@@ -7,8 +7,8 @@ export default {
   theme: {
     extend: {
       colors: {
-        /* Terminal Design System — Cold, Institutional */
-        bg: '#090c0f',
+        /* Bloomberg Terminal Design System — Institutional */
+        bg: '#06090c',
         'surface-1': '#0d1117',
         'surface-2': '#131920',
         'surface-3': '#1a2230',
@@ -23,10 +23,16 @@ export default {
         'text-tertiary': '#4a5568',
         'text-inverse': '#090c0f',
 
-        /* Single electric teal accent */
+        /* Bloomberg orange — primary terminal accent */
+        bloomberg: '#f07030',
+        'bloomberg-dim': 'rgba(240, 112, 48, 0.15)',
+        'bloomberg-muted': 'rgba(240, 112, 48, 0.08)',
+        'bloomberg-border': 'rgba(240, 112, 48, 0.30)',
+
+        /* Teal — secondary action color */
         accent: '#00d4aa',
         'accent-dim': '#00a882',
-        'accent-muted': 'rgba(0, 212, 170, 0.12)',
+        'accent-muted': 'rgba(0, 212, 170, 0.10)',
         'accent-border': 'rgba(0, 212, 170, 0.25)',
 
         /* Semantic colors (data only) */
@@ -151,7 +157,7 @@ export default {
 
       /* Layout dimensions */
       height: {
-        'topbar': '48px',
+        'topbar': '64px',
       },
       width: {
         'sidebar': '220px',

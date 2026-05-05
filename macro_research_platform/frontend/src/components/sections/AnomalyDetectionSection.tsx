@@ -60,7 +60,7 @@ export function AnomalyDetectionSection({ data }: AnomalyDetectionSectionProps) 
   };
 
   return (
-    <div className="terminal-section">
+    <div id="anomaly-detection" className="terminal-section">
       {/* Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
@@ -112,11 +112,11 @@ export function AnomalyDetectionSection({ data }: AnomalyDetectionSectionProps) 
           <div className="border border-border bg-surface-1">
             <div className="px-3 py-1.5 border-b border-border-subtle bg-surface-2">
               <span className="text-2xs text-red uppercase tracking-wider">
-                Anomalous ({data.anomalousFeatures.length})
+                Anomalous ({(data.anomalousFeatures ?? []).length})
               </span>
             </div>
             <div className="p-2">
-              {data.anomalousFeatures.map((feature) => (
+              {(data.anomalousFeatures ?? []).map((feature) => (
                 <FeatureRow key={feature.feature} feature={feature} />
               ))}
             </div>

@@ -35,7 +35,7 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">27</span>
+          <span className="section-tag">22</span>
           <h2 className="section-title">International Macro</h2>
         </div>
       </div>
@@ -68,7 +68,7 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
           <div className="mt-2">
             <div className="h-1 bg-surface-4 relative">
               <div
-                className="absolute top-0 bottom-0 bg-accent"
+                className="absolute top-0 bottom-0 bg-bloomberg"
                 style={{ width: `${data.globalLiquidityComposite ?? 50}%` }}
               />
             </div>
@@ -93,10 +93,11 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
                 </div>
 
                 <div className="space-y-1.5">
+                  {/* Removed slice(0, 8) truncation */}
                   <div className="flex items-center justify-between">
                     <span className="text-2xs text-text-tertiary">Regime</span>
                     <span className={getRegimeTag(region.regime || '')}>
-                      {(region.regime || 'Unknown').slice(0, 8)}
+                      {(region.regime || 'Unknown')}
                     </span>
                   </div>
 
@@ -119,7 +120,7 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
                       <span className="text-2xs text-text-tertiary">Conf</span>
                       <div className="w-10 h-1 bg-surface-4">
                         <div
-                          className="h-full bg-accent"
+                          className="h-full bg-bloomberg"
                           style={{ width: `${region.confidence * 100}%` }}
                         />
                       </div>
@@ -141,7 +142,7 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
               </span>
             </div>
             <div className="space-y-1">
-              {data.regimeDivergences.map((div, idx) => (
+              {(data.regimeDivergences ?? []).map((div, idx) => (
                 <div key={idx} className="flex items-center gap-2 p-1.5 bg-surface-1">
                   <span className="text-xs text-text-secondary">{div.pair}</span>
                   <div className="flex items-center gap-2 text-2xs">
@@ -163,7 +164,7 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
               <span className="text-2xs text-text-tertiary uppercase tracking-wider">FX Implications</span>
             </div>
             <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-              {data.fxImplications.map((fx, idx) => (
+              {(data.fxImplications ?? []).map((fx, idx) => (
                 <div key={idx} className="p-2 bg-surface-2 border border-border-subtle">
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-mono font-medium text-text-primary">
@@ -182,7 +183,8 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
 
         {/* Last Updated */}
         <div className="text-2xs text-text-tertiary text-right">
-          Last: {new Date(data.lastUpdated).toLocaleDateString()}
+          {/* FIXED (BUG 8): Use ISO date format */}
+          Last: {new Date(data.lastUpdated).toISOString().split('T')[0]}
         </div>
       </div>
     </div>

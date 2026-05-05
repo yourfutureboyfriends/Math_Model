@@ -36,7 +36,7 @@ export function GMOForecastsSection({ data }: GMOForecastsSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">15</span>
+          <span className="section-tag">19</span>
           <h2 className="section-title">GMO 7-Year Forecasts</h2>
         </div>
       </div>
@@ -111,6 +111,17 @@ export function GMOForecastsSection({ data }: GMOForecastsSectionProps) {
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* Methodology Disclaimer */}
+        <div className="p-3 bg-surface-2 border border-border-subtle">
+          <div className="text-2xs text-text-tertiary leading-relaxed">
+            <strong>Methodology:</strong> Based on GMO&apos;s mean-reversion framework.
+            Returns = Current Yield + Valuation Change. Equities use 7-year CAGR from
+            normalized earnings yields minus mean reversion. Bonds use yield minus
+            duration risk. Commodities use production cost vs spot deviation.
+            <span className="text-amber ml-1">Not investment advice.</span>
+          </div>
         </div>
 
         {/* Signal distribution */}

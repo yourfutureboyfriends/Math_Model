@@ -1,196 +1,162 @@
 // Section G Panel 1 — Market Clock + Global Equity Monitor
-// Real-time market status and global indices grid
+// Real-time market status with live ticking seconds
 
-import { useState, useEffect } from 'react';
-import { Badge } from '@/components/ui/Badge';
-import { MetricCard } from '@/components/ui/MetricCard';
+import React from 'react';
 import { cn } from '@/lib/utils';
 
-interface MarketIndex {
-  ticker: string;
-  name: string;
-  region: string;
-  price: number;
-  change1d: number;
-  change1m: number;
-  week52Percentile: number;
-  momentumSignal: string;
+// Market sessions configuration - module level constant
+const SESSIONS = [
+  { name: 'New York',  tz: 'America/New_York',  open: 9.5,  close: 16   },
+  { name: 'London',    tz: 'Europe/London',      open: 8,    close: 16.5 },
+  { name: 'Tokyo',     tz: 'Asia/Tokyo',         open: 9,    close: 15.5 },
+  { name: 'Sydney',    tz: 'Australia/Sydney',   open: 10,   close: 16   },
+  { name: 'Hong Kong', tz: 'Asia/Hong_Kong',     open: 9.5,  close: 16   },
+  { name: 'Frankfurt', tz: 'Europe/Berlin',      open: 9,    close: 17.5 },
+];
+
+// Get current hour in a specific timezone
+function getLocalHour(tz: string): number {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false,
+    }).formatToParts(new Date());
+    const h = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0');
+    const m = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0');
+    return h + m / 60;
+  } catch {
+    return 0;
+  }
 }
 
-interface MarketClock {
-  exchange: string;
-  status: 'OPEN' | 'CLOSED' | 'PRE_MARKET' | 'POST_MARKET' | 'WEEKEND';
-  localTime: string;
-  timeToOpenMinutes?: number;
-  timeToCloseMinutes?: number;
-  nextSession: string;
+// Get time string in a specific timezone
+function getLocalTimeStr(tz: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(new Date());
+  } catch {
+    return '--:--:--';
+  }
 }
 
-interface GlobalMarketsData {
-  indices: MarketIndex[];
-  dmAverage1m: number;
-  emAverage1m: number;
-  dmEmSpread: number;
-  globalRiskOnScore: number;
-  marketClock: MarketClock[];
-  vixComplex: {
-    fearComposite?: number;
-    fearStatus: string;
-  };
+// Check if a session is currently open
+function isSessionOpen(open: number, close: number, tz: string): boolean {
+  const h = getLocalHour(tz);
+  return h >= open && h < close;
 }
 
-export function MarketClockSection() {
-  const [data, setData] = useState<GlobalMarketsData | null>(null);
-  const [loading, setLoading] = useState(true);
+// Calculate progress through the trading day
+function getSessionProgress(open: number, close: number, tz: string): number {
+  const h = getLocalHour(tz);
+  if (h < open || h >= close) return 0;
+  return Math.min((h - open) / (close - open), 1);
+}
 
-  useEffect(() => {
-    fetch('/api/global/markets')
-      .then(r => r.json())
-      .then(d => {
-        setData(d);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+export const MarketClockSection: React.FC = () => {
+  const [tick, setTick] = React.useState(0);
+
+  // Update every second to show live time
+  // tick is used to trigger re-renders for live clock
+  React.useEffect(() => {
+    const timer = setInterval(() => setTick(n => n + 1), 1000);
+    return () => clearInterval(timer);
   }, []);
 
-  if (loading) {
-    return (
-      <div className="h-32 bg-surface-1 border border-border animate-pulse" />
-    );
-  }
+  // Force re-render when tick changes (live clock update)
+  void tick;
 
-  const dmIndices = data?.indices.filter(i => i.region !== 'EM') || [];
-  const emIndices = data?.indices.filter(i => i.region === 'EM') || [];
+  // Calculate UTC time
+  const utcTime = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'UTC',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(new Date());
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'OPEN': return 'bg-green';
-      case 'PRE_MARKET':
-      case 'POST_MARKET': return 'bg-amber';
-      default: return 'bg-red';
-    }
-  };
+  // Count open sessions (with guard for SESSIONS being undefined)
+  const openCount = (SESSIONS ?? []).filter(
+    s => isSessionOpen(s.open, s.close, s.tz)
+  ).length;
 
   return (
-    <div className="space-y-4">
-      {/* Market Clock Row */}
-      <div className="flex items-center gap-4 overflow-x-auto pb-2">
-        {data?.marketClock.map(clock => (
-          <div
-            key={clock.exchange}
-            className={cn(
-              'flex items-center gap-2 px-3 py-1.5 border min-w-fit',
-              clock.status === 'OPEN' ? 'border-green/30 bg-green-dim' : 'border-border-subtle bg-surface-2'
-            )}
-          >
-            <div className={cn('w-2 h-2 rounded-full', getStatusColor(clock.status))} />
-            <span className="text-2xs text-text-tertiary uppercase">{clock.exchange}</span>
-            <span className={cn(
-              'text-xs font-mono',
-              clock.status === 'OPEN' ? 'text-green' : 'text-text-secondary'
-            )}>
-              {clock.status === 'OPEN' && clock.timeToCloseMinutes
-                ? `${Math.floor(clock.timeToCloseMinutes / 60)}h${clock.timeToCloseMinutes % 60}m left`
-                : clock.status === 'CLOSED' && clock.timeToOpenMinutes
-                ? `opens in ${Math.floor(clock.timeToOpenMinutes / 60)}h`
-                : clock.status}
-            </span>
-          </div>
-        ))}
+    <section id="market-clock" className="terminal-section">
+      {/* Section Header */}
+      <div className="section-header">
+        <span className="section-tag">CLOCK</span>
+        <h2 className="section-title">Market Clock</h2>
+        <span className="section-meta text-text-secondary text-xs">
+          {openCount} session{openCount !== 1 ? 's' : ''} open
+        </span>
       </div>
 
-      {/* Fear Composite */}
-      {data?.vixComplex?.fearComposite && (
-        <div className="flex items-center gap-4 text-xs">
-          <span className="text-text-tertiary">FEAR COMPOSITE:</span>
-          <span className={cn(
-            'font-mono font-bold',
-            data.vixComplex.fearComposite > 70 ? 'text-red' :
-            data.vixComplex.fearComposite < 30 ? 'text-green' : 'text-text-primary'
-          )}>
-            {data.vixComplex.fearComposite.toFixed(1)}
-          </span>
-          <Badge variant={data.vixComplex.fearStatus === 'SYSTEMIC FEAR' ? 'danger' : 'neutral'}>
-            {data.vixComplex.fearStatus}
-          </Badge>
-        </div>
-      )}
-
-      {/* Aggregate Metrics */}
-      <div className="grid grid-cols-4 gap-3">
-        <MetricCard
-          label="DM Avg 1M"
-          value={data?.dmAverage1m ? `${data.dmAverage1m > 0 ? '+' : ''}${data.dmAverage1m.toFixed(2)}%` : '--'}
-          direction={data?.dmAverage1m && data.dmAverage1m > 0 ? 'up' : 'down'}
-        />
-        <MetricCard
-          label="EM Avg 1M"
-          value={data?.emAverage1m ? `${data.emAverage1m > 0 ? '+' : ''}${data.emAverage1m.toFixed(2)}%` : '--'}
-          direction={data?.emAverage1m && data.emAverage1m > 0 ? 'up' : 'down'}
-        />
-        <MetricCard
-          label="DM-EM Spread"
-          value={data?.dmEmSpread ? `${data.dmEmSpread > 0 ? '+' : ''}${data.dmEmSpread.toFixed(2)}%` : '--'}
-          direction={data?.dmEmSpread && data.dmEmSpread > 0 ? 'up' : 'down'}
-        />
-        <MetricCard
-          label="Risk-On Score"
-          value={data?.globalRiskOnScore ? `${data.globalRiskOnScore.toFixed(0)}%` : '--'}
-          direction={data?.globalRiskOnScore && data.globalRiskOnScore > 50 ? 'up' : 'down'}
-        />
+      {/* UTC time display */}
+      <div className="flex items-center gap-3 mb-4">
+        <span className="text-text-secondary text-xs uppercase tracking-widest">
+          UTC
+        </span>
+        <span className="text-bloomberg font-mono text-xl tabular-nums">
+          {utcTime}
+        </span>
       </div>
 
-      {/* DM Indices Grid */}
-      <div>
-        <div className="text-2xs text-text-tertiary uppercase mb-2">Developed Markets</div>
-        <div className="grid grid-cols-7 gap-1 text-xs">
-          {dmIndices.slice(0, 14).map(idx => (
+      {/* Session grid */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        {SESSIONS.map(session => {
+          const open = isSessionOpen(session.open, session.close, session.tz);
+          const progress = getSessionProgress(session.open, session.close, session.tz);
+          const localTime = getLocalTimeStr(session.tz);
+
+          return (
             <div
-              key={idx.ticker}
+              key={session.name}
               className={cn(
-                'p-2 border border-border-subtle',
-                idx.momentumSignal === 'UPTREND' && 'bg-green-dim/30',
-                idx.momentumSignal === 'DOWNTREND' && 'bg-red-dim/30'
+                'p-3 border bg-surface-2 flex flex-col gap-1.5',
+                open ? 'border-bloomberg/30' : 'border-border-subtle opacity-50'
               )}
             >
-              <div className="text-2xs text-text-tertiary truncate">{idx.name}</div>
-              <div className="font-mono">{idx.price?.toFixed(0) || '--'}</div>
-              <div className={cn(
-                'text-2xs font-mono',
-                idx.change1d > 0 ? 'text-green' : idx.change1d < 0 ? 'text-red' : 'text-text-secondary'
-              )}>
-                {idx.change1d > 0 ? '+' : ''}{idx.change1d?.toFixed(2) || '--'}%
+              {/* City + status */}
+              <div className="flex items-center justify-between">
+                <span className="text-text-secondary text-xs">
+                  {session.name}
+                </span>
+                <span className={cn(
+                  'text-xs font-semibold px-1.5 py-0.5 rounded',
+                  open
+                    ? 'bg-green-dim text-green'
+                    : 'bg-surface-3 text-text-tertiary'
+                )}>
+                  {open ? 'OPEN' : 'CLOSED'}
+                </span>
               </div>
-            </div>
-          ))}
-        </div>
-      </div>
 
-      {/* EM Indices Grid */}
-      <div>
-        <div className="text-2xs text-text-tertiary uppercase mb-2">Emerging Markets</div>
-        <div className="grid grid-cols-7 gap-1 text-xs">
-          {emIndices.map(idx => (
-            <div
-              key={idx.ticker}
-              className={cn(
-                'p-2 border border-border-subtle',
-                idx.momentumSignal === 'UPTREND' && 'bg-green-dim/30',
-                idx.momentumSignal === 'DOWNTREND' && 'bg-red-dim/30'
-              )}
-            >
-              <div className="text-2xs text-text-tertiary truncate">{idx.name}</div>
-              <div className="font-mono">{idx.price?.toFixed(0) || '--'}</div>
-              <div className={cn(
-                'text-2xs font-mono',
-                idx.change1d > 0 ? 'text-green' : idx.change1d < 0 ? 'text-red' : 'text-text-secondary'
-              )}>
-                {idx.change1d > 0 ? '+' : ''}{idx.change1d?.toFixed(2) || '--'}%
+              {/* Local time */}
+              <span className="font-mono tabular-nums text-text-primary text-sm">
+                {localTime}
+              </span>
+
+              {/* Progress bar (only when open) */}
+              <div className="h-0.5 w-full rounded bg-surface-3">
+                {open && (
+                  <div
+                    className="h-full bg-bloomberg transition-all duration-1000"
+                    style={{ width: `${progress * 100}%` }}
+                  />
+                )}
               </div>
             </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
-    </div>
+    </section>
   );
-}
+};
+
+export default MarketClockSection;

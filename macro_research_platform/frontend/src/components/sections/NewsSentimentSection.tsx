@@ -17,7 +17,7 @@ export function NewsSentimentSection({ data }: NewsSentimentSectionProps) {
 
   const getSentimentColor = (score: number) => {
     if (score > 20) return 'text-green';
-    if (score > 5) return 'text-accent';
+    if (score > 5) return 'text-amber';
     if (score > -5) return 'text-text-secondary';
     if (score > -20) return 'text-amber';
     return 'text-red';
@@ -49,7 +49,7 @@ export function NewsSentimentSection({ data }: NewsSentimentSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">32</span>
+          <span className="section-tag">33</span>
           <h2 className="section-title">News Sentiment</h2>
         </div>
       </div>
@@ -72,7 +72,7 @@ export function NewsSentimentSection({ data }: NewsSentimentSectionProps) {
           <div className="relative h-2 bg-surface-4 mb-2">
             <div className="absolute inset-0 bg-gradient-to-r from-red via-text-tertiary to-green" />
             <div
-              className="absolute top-0 bottom-0 w-0.5 bg-white z-10"
+              className="absolute top-0 bottom-0 w-0.5 bg-text-tertiary z-10"
               style={{ left: `${overallPosition}%` }}
             />
           </div>
@@ -159,19 +159,19 @@ export function NewsSentimentSection({ data }: NewsSentimentSectionProps) {
           </div>
         )}
 
-        {/* Top bearish headlines */}
-        {data.topBearishHeadlines && data.topBearishHeadlines.length > 0 && (
-          <div>
-            <button
-              onClick={() => setShowBearish(!showBearish)}
-              className="flex items-center justify-between w-full p-2 bg-surface-1 border border-border hover:bg-surface-2 transition-colors"
-            >
-              <span className="text-xs font-medium text-red">Top Bearish</span>
-              {showBearish ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            </button>
-            {showBearish && (
-              <div className="mt-1 space-y-1">
-                {data.topBearishHeadlines.slice(0, 3).map((headline, idx) => (
+        {/* Top bearish headlines - FIXED: BUG-F10 - Show 'No articles' when empty */}
+        <div>
+          <button
+            onClick={() => setShowBearish(!showBearish)}
+            className="flex items-center justify-between w-full p-2 bg-surface-1 border border-border hover:bg-surface-2 transition-colors"
+          >
+            <span className="text-xs font-medium text-red">Top Bearish</span>
+            {showBearish ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+          {showBearish && (
+            <div className="mt-1 space-y-1">
+              {(data.topBearishHeadlines ?? []).length > 0 ? (
+                data.topBearishHeadlines.slice(0, 3).map((headline, idx) => (
                   <div key={idx} className="p-2 bg-surface-2 border border-border-subtle">
                     <div className="text-xs text-text-secondary mb-0.5">{headline.headline}</div>
                     <div className="flex items-center justify-between text-2xs">
@@ -179,25 +179,27 @@ export function NewsSentimentSection({ data }: NewsSentimentSectionProps) {
                       <span className="font-mono text-red">{headline.score.toFixed(0)}</span>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                ))
+              ) : (
+                <div className="p-2 text-text-secondary text-xs">No bearish articles today</div>
+              )}
+            </div>
+          )}
+        </div>
 
-        {/* Top bullish headlines */}
-        {data.topBullishHeadlines && data.topBullishHeadlines.length > 0 && (
-          <div>
-            <button
-              onClick={() => setShowBullish(!showBullish)}
-              className="flex items-center justify-between w-full p-2 bg-surface-1 border border-border hover:bg-surface-2 transition-colors"
-            >
-              <span className="text-xs font-medium text-green">Top Bullish</span>
-              {showBullish ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            </button>
-            {showBullish && (
-              <div className="mt-1 space-y-1">
-                {data.topBullishHeadlines.slice(0, 3).map((headline, idx) => (
+        {/* Top bullish headlines - FIXED: BUG-F10 - Show 'No articles' when empty */}
+        <div>
+          <button
+            onClick={() => setShowBullish(!showBullish)}
+            className="flex items-center justify-between w-full p-2 bg-surface-1 border border-border hover:bg-surface-2 transition-colors"
+          >
+            <span className="text-xs font-medium text-green">Top Bullish</span>
+            {showBullish ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+          {showBullish && (
+            <div className="mt-1 space-y-1">
+              {(data.topBullishHeadlines ?? []).length > 0 ? (
+                data.topBullishHeadlines.slice(0, 3).map((headline, idx) => (
                   <div key={idx} className="p-2 bg-surface-2 border border-border-subtle">
                     <div className="text-xs text-text-secondary mb-0.5">{headline.headline}</div>
                     <div className="flex items-center justify-between text-2xs">
@@ -205,11 +207,13 @@ export function NewsSentimentSection({ data }: NewsSentimentSectionProps) {
                       <span className="font-mono text-green">+{headline.score.toFixed(0)}</span>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                ))
+              ) : (
+                <div className="p-2 text-text-secondary text-xs">No bullish articles today</div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

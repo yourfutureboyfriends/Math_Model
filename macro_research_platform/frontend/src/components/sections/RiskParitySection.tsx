@@ -25,7 +25,7 @@ export function RiskParitySection({ data }: RiskParitySectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">36</span>
+          <span className="section-tag">28</span>
           <h2 className="section-title">Risk Parity</h2>
           <span className="section-meta">
             {rebalancingNeeded ? 'Rebalance' : 'Balanced'}
@@ -108,7 +108,7 @@ export function RiskParitySection({ data }: RiskParitySectionProps) {
                         {item.signal}
                       </span>
                     </td>
-                    <td className="py-2 px-3 text-right font-mono text-xs text-accent">
+                    <td className="py-2 px-3 text-right font-mono text-xs text-bloomberg">
                       {item.targetAllocationPct?.toFixed(1) || ((item.adjustedWeight || 0) * 100).toFixed(1)}%
                     </td>
                   </tr>
@@ -135,7 +135,8 @@ export function RiskParitySection({ data }: RiskParitySectionProps) {
 
         {/* Last Rebalanced */}
         <div className="text-2xs text-text-tertiary text-right">
-          Last: {new Date(lastRebalanced).toLocaleDateString()}
+          {/* FIXED (BUG 8): Use ISO date format */}
+          Last: {new Date(lastRebalanced).toISOString().split('T')[0]}
         </div>
       </div>
     </div>

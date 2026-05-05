@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import styles from "./MarketClockBar.module.css";
 
-// ═══════════════════════════════════════════════════════════════════════════════
+
 // Types
-// ═══════════════════════════════════════════════════════════════════════════════
+
 interface MarketConfig {
   name: string;
   tz: string;

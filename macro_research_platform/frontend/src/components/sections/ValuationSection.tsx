@@ -40,7 +40,7 @@ export function ValuationSection({ data }: ValuationSectionProps) {
   const getPercentileColor = (percentile: number) => {
     if (percentile > 75) return 'bg-red';
     if (percentile > 50) return 'bg-amber';
-    if (percentile > 25) return 'bg-accent';
+    if (percentile > 25) return 'bg-bloomberg';
     return 'bg-green';
   };
 
@@ -49,7 +49,7 @@ export function ValuationSection({ data }: ValuationSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">39</span>
+          <span className="section-tag">20</span>
           <h2 className="section-title">Valuation Filter</h2>
           <span className="section-meta">{data.regime.toUpperCase()}</span>
         </div>
@@ -74,7 +74,7 @@ export function ValuationSection({ data }: ValuationSectionProps) {
 
         {/* Metrics */}
         <div className="space-y-2">
-          {data.metrics.map((metric) => (
+          {(data.metrics ?? []).map((metric) => (
             <div key={metric.name} className="p-2 bg-surface-1 border border-border">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-medium text-text-primary">{metric.name}</span>
@@ -118,11 +118,11 @@ export function ValuationSection({ data }: ValuationSectionProps) {
         <div className="p-3 bg-surface-1 border border-border">
           <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Expected Returns (Annual)</div>
           <div className="grid grid-cols-3 gap-2">
-            {Object.entries(data.expectedReturns).map(([asset, ret]) => (
+            {Object.entries(data.expectedReturns ?? {}).map(([asset, ret]) => (
               <div key={asset} className="text-center p-2 bg-surface-2">
                 <div className="text-2xs text-text-tertiary capitalize">{asset}</div>
-                <div className={`font-mono text-sm font-medium ${ret >= 5 ? 'text-green' : ret >= 3 ? 'text-text-primary' : 'text-amber'}`}>
-                  {ret.toFixed(1)}%
+                <div className={`font-mono text-sm font-medium ${ret != null && ret >= 5 ? 'text-green' : ret != null && ret >= 3 ? 'text-text-primary' : 'text-amber'}`}>
+                  {ret != null ? `${ret.toFixed(1)}%` : '—'}
                 </div>
               </div>
             ))}

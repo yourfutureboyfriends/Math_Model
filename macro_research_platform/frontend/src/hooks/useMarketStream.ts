@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 
-// ═══════════════════════════════════════════════════════════════════════════════
+
 // Types
-// ═══════════════════════════════════════════════════════════════════════════════
+
 export interface PriceData {
   symbol: string;
   price: number;
@@ -15,6 +15,19 @@ export interface PriceData {
   name: string;
   localTimestamp?: Date;
   direction?: "up" | "down" | "unchanged";
+}
+
+// REST fallback data type
+interface MarketData {
+  spx: number | null;
+  vix: number | null;
+  tenYear: number | null;
+  twoYear: number | null;
+  dxy: number | null;
+  eurusd: number | null;
+  gold: number | null;
+  oil: number | null;
+  fed: number | null;
 }
 
 export interface RegimeChangeData {
@@ -35,15 +48,19 @@ export interface MarketStreamState {
   socket: Socket | null;
   getPrice: (symbol: string) => PriceData | null;
   getAllPrices: () => PriceData[];
+  restFallback?: MarketData | null;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+
 // SINGLETON: shared socket instance across all components
-// ═══════════════════════════════════════════════════════════════════════════════
+
 let _sharedSocket: Socket | null = null;
 let _connectionCount = 0;
+let _socketErrorLogged = false;
+let _socketRetryCount = 0;
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:8001";
+// Connect directly to backend — bypass Vite proxy for WebSocket
+const BACKEND_URL = import.meta.env.VITE_API_URL || "http://localhost:3002";
 
 export function useMarketStream(): MarketStreamState {
   const [isConnected, setIsConnected] = useState(false);
@@ -56,11 +73,15 @@ export function useMarketStream(): MarketStreamState {
   useEffect(() => {
     // Create socket singleton on first mount
     if (!_sharedSocket) {
-      _sharedSocket = io(SOCKET_URL, {
-        transports: ["websocket", "polling"], // Fallback for reliability
+      _sharedSocket = io(BACKEND_URL, {
+        path: "/socket.io",
+        transports: ["websocket", "polling"],
         reconnection: true,
-        reconnectionDelay: 1000,
+        reconnectionDelay: 3000,
+        reconnectionDelayMax: 15000,
         reconnectionAttempts: 5,
+        timeout: 10000,
+        withCredentials: false,
       });
     }
 
@@ -72,15 +93,20 @@ export function useMarketStream(): MarketStreamState {
     // ─────────────────────────────────────────────────────────────────────────
 
     const handleConnect = () => {
-      console.log("[Socket] Connected:", socket.id);
+      _socketRetryCount = 0;
+      _socketErrorLogged = false;
       setIsConnected(true);
       setError(null);
     };
 
-    const handleDisconnect = (reason: string) => {
-      console.log("[Socket] Disconnected:", reason);
+    const handleDisconnect = () => {
       setIsConnected(false);
     };
+
+    // Stop retrying after max attempts to prevent flood
+    socket.io.on("reconnect_failed", () => {
+      socket.disconnect();
+    });
 
     const handleLiveData = (data: { prices: PriceData[] }) => {
       if (data?.prices) {
@@ -108,14 +134,16 @@ export function useMarketStream(): MarketStreamState {
     };
 
     const handleRegimeChange = (data: RegimeChangeData) => {
-      console.log("[Socket] Regime change:", data);
       setRegimeChange(data);
       // Auto-dismiss after 10 seconds
       setTimeout(() => setRegimeChange(null), 10000);
     };
 
     const handleConnectError = (err: Error) => {
-      console.error("[Socket] Connection error:", err);
+      _socketRetryCount++;
+      if (!_socketErrorLogged) {
+        _socketErrorLogged = true;
+      }
       setError(err.message);
       setIsConnected(false);
     };
@@ -167,15 +195,52 @@ export function useMarketStream(): MarketStreamState {
     return Object.values(prices);
   }, [prices]);
 
+  // REST fallback — poll dashboard when WebSocket is not delivering data
+  const [restData, setRestData] = useState<MarketData | null>(null);
+  const hasLiveData = isConnected && Object.keys(prices).length > 0;
+
+  useEffect(() => {
+    if (hasLiveData) return; // Don't poll if we have live data
+
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/dashboard');
+        if (!res.ok) return;
+        const json = await res.json();
+        const km = json?.keyMetrics;
+        const ri = json?.riskIndicators;
+        if (!km) return;
+
+        // FIXED: Map all ticker fields from dashboard response (BUG 9)
+        setRestData({
+          spx: km.spxLevel ?? km.growth?.value ?? null,
+          vix: ri?.vix ?? km.risk?.value ?? null,
+          tenYear: km.tenYearYield ?? km.liquidity?.value ?? null,
+          twoYear: km.twoYearYield ?? null,
+          dxy: km.dxy ?? null,
+          eurusd: km.eurusd ?? null,
+          gold: km.gold ?? null,
+          oil: km.oil ?? null,
+          fed: km.fedRate ?? null,
+        });
+      } catch {}
+    };
+
+    poll();
+    const id = setInterval(poll, 30000);
+    return () => clearInterval(id);
+  }, [hasLiveData]);
+
   return {
-    isConnected,
-    prices,
+    isConnected: isConnected || !!restData,
+    prices: hasLiveData ? prices : (restData as unknown as Record<string, PriceData>) || {},
     getPrice,
-    getAllPrices,
+    getAllPrices: hasLiveData ? getAllPrices : () => [],
     regimeChange,
-    lastUpdate,
+    lastUpdate: hasLiveData ? lastUpdate : (restData ? new Date() : null),
     error,
     socket: _sharedSocket,
+    restFallback: restData,
   };
 }
 

@@ -62,8 +62,8 @@ class RegimeContext:
         """Regime-appropriate supporting/opposing tags for Business Layer."""
         tags = {
             "Goldilocks":  {
-                "supporting": ["growth_momentum", "easing_inflation", "credit_expanding"],
-                "opposing":   ["late_cycle_risk", "valuation_stretched"],
+                "supporting": ["strong_growth", "easy_liquidity", "low_recession_risk"],
+                "opposing":   ["late_cycle_risk", "valuation_stretch"],
             },
             "Reflation": {
                 "supporting": ["growth_momentum", "commodity_tailwind", "earnings_upgrades"],  # FIXED: was growth_positive

@@ -113,7 +113,7 @@ export function FXMonitorSection() {
               className={cn(
                 'px-3 py-1 text-xs border',
                 view === 'grid'
-                  ? 'bg-accent text-bg border-accent'
+                  ? 'bg-bloomberg text-bg border-bloomberg'
                   : 'bg-surface-2 text-text-secondary border-border-subtle'
               )}
             >
@@ -124,7 +124,7 @@ export function FXMonitorSection() {
               className={cn(
                 'px-3 py-1 text-xs border',
                 view === 'table'
-                  ? 'bg-accent text-bg border-accent'
+                  ? 'bg-bloomberg text-bg border-bloomberg'
                   : 'bg-surface-2 text-text-secondary border-border-subtle'
               )}
             >
@@ -146,7 +146,7 @@ export function FXMonitorSection() {
           )}
         </div>
 
-        {/* Grid View */}
+        {/* Grid View - FIXED (BUG 3): Use != null checks */}
         {view === 'grid' && (
           <div className="grid grid-cols-4 gap-2">
             {majorPairs.map(fx => (
@@ -155,12 +155,12 @@ export function FXMonitorSection() {
                 className="p-3 border border-border-subtle bg-surface-2"
               >
                 <div className="text-2xs text-text-tertiary uppercase">{fx.pair}</div>
-                <div className="font-mono text-lg">{fx.spot?.toFixed(4) || '--'}</div>
+                <div className="font-mono text-lg">{fx.spot != null ? fx.spot.toFixed(4) : '--'}</div>
                 <div className="flex items-center justify-between text-xs mt-1">
                   <span className={cn(
-                    fx.change1d > 0 ? 'text-green' : 'text-red'
+                    (fx.change1d ?? 0) > 0 ? 'text-green' : (fx.change1d ?? 0) < 0 ? 'text-red' : 'text-text-secondary'
                   )}>
-                    {fx.change1d ? `${fx.change1d > 0 ? '+' : ''}${fx.change1d.toFixed(2)}%` : '--'}
+                    {fx.change1d != null ? `${fx.change1d >= 0 ? '+' : ''}${fx.change1d.toFixed(2)}%` : '--'}
                   </span>
                   <span className={cn(
                     'text-2xs',
@@ -178,28 +178,28 @@ export function FXMonitorSection() {
         {/* Table View */}
         {view === 'table' && (
           <Table
-            data={data?.g10}
+            data={data?.g10 ?? []}
             columns={fxColumns}
             keyExtractor={(f) => f.pair}
           />
         )}
 
-        {/* EM FX Summary */}
+        {/* EM FX Summary - FIXED (BUG 3): Use != null checks */}
         <div>
           <div className="text-2xs text-text-tertiary uppercase mb-2">EM FX</div>
           <div className="grid grid-cols-4 gap-2">
-            {data?.em?.slice(0, 4).map(fx => (
+            {(data?.em ?? []).slice(0, 4).map(fx => (
               <div
                 key={fx.pair}
                 className="p-2 border border-border-subtle"
               >
                 <div className="text-2xs text-text-tertiary">{fx.pair}</div>
-                <div className="font-mono">{fx.spot?.toFixed(2) || '--'}</div>
+                <div className="font-mono">{fx.spot != null ? fx.spot.toFixed(2) : '--'}</div>
                 <div className={cn(
                   'text-2xs font-mono',
-                  fx.change1m > 0 ? 'text-green' : 'text-red'
+                  (fx.change1m ?? 0) > 0 ? 'text-green' : (fx.change1m ?? 0) < 0 ? 'text-red' : 'text-text-secondary'
                 )}>
-                  {fx.change1m ? `${fx.change1m > 0 ? '+' : ''}${fx.change1m.toFixed(1)}%` : '--'}
+                  {fx.change1m != null ? `${fx.change1m >= 0 ? '+' : ''}${fx.change1m.toFixed(1)}%` : '--'}
                 </div>
               </div>
             ))}

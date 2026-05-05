@@ -56,13 +56,13 @@ export function FactorDecompositionSection({ data }: FactorDecompositionSectionP
 
           {/* Optimal marker */}
           <div
-            className="absolute top-0 bottom-0 w-px bg-white z-10"
+            className="absolute top-0 bottom-0 w-px bg-text-tertiary z-10"
             style={{ left: `${optimalPosition}%` }}
           />
 
           {/* Current position marker */}
           <div
-            className="absolute top-1/2 w-2 h-2 bg-accent border border-white z-20"
+            className="absolute top-1/2 w-2 h-2 bg-bloomberg border border-surface-2 z-20"
             style={{
               left: `${betaPosition}%`,
               transform: `translate(-50%, -50%)`
@@ -84,7 +84,7 @@ export function FactorDecompositionSection({ data }: FactorDecompositionSectionP
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">17</span>
+          <span className="section-tag">27</span>
           <h2 className="section-title">Factor Decomposition</h2>
         </div>
       </div>

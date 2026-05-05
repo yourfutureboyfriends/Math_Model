@@ -45,14 +45,20 @@ export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnal
   // Model Portfolio View (Phase 10)
   if (simulationData) {
     const { metrics, holdings, inceptionDate, benchmark } = simulationData;
-    const { terminal, benchmark6040, spy } = metrics;
+    const { terminal, benchmark6040, spy } = metrics || {};
+    // Use null sentinels — display "—" when no portfolio history exists, not "0.0%"
+    const safeTerminal = terminal || { totalReturn: null, annReturn: null, sharpe: null, maxDrawdown: null, winRate: null };
+    const safeBenchmark6040 = benchmark6040 || { totalReturn: null, annReturn: null, sharpe: null, maxDrawdown: null, winRate: null };
+    const safeSpy = spy || { totalReturn: null, annReturn: null, sharpe: null, maxDrawdown: null, winRate: null };
+    const fmt = (v: number | null, decimals = 1, pct = true) =>
+      v === null || v === undefined ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(decimals)}${pct ? '%' : ''}`;
 
     return (
       <div id="portfolio" className="terminal-section">
         {/* Section Header */}
         <div className="section-header mb-3">
           <div className="section-header-left">
-            <span className="section-tag">20</span>
+            <span className="section-tag">36</span>
             <h2 className="section-title">Model Portfolio</h2>
           </div>
           <div className="flex items-center gap-2">
@@ -82,54 +88,54 @@ export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnal
                 <tr className="border-b border-border-subtle">
                   <td className="py-2 px-3 text-2xs text-text-secondary">Total Return</td>
                   <td className="py-2 px-3 text-right">
-                    <span className={`font-mono text-sm font-bold ${terminal.totalReturn >= 0 ? 'text-green' : 'text-red'}`}>
-                      {terminal.totalReturn >= 0 ? '+' : ''}{terminal.totalReturn.toFixed(1)}%
+                    <span className={`font-mono text-sm font-bold ${safeTerminal.totalReturn === null ? 'text-text-tertiary' : safeTerminal.totalReturn >= 0 ? 'text-green' : 'text-red'}`}>
+                      {fmt(safeTerminal.totalReturn)}
                     </span>
                   </td>
                   <td className="py-2 px-3 text-right">
-                    <span className={`font-mono text-sm ${benchmark6040.totalReturn >= 0 ? 'text-green' : 'text-red'}`}>
-                      {benchmark6040.totalReturn >= 0 ? '+' : ''}{benchmark6040.totalReturn.toFixed(1)}%
+                    <span className={`font-mono text-sm ${safeBenchmark6040.totalReturn === null ? 'text-text-tertiary' : safeBenchmark6040.totalReturn >= 0 ? 'text-green' : 'text-red'}`}>
+                      {fmt(safeBenchmark6040.totalReturn)}
                     </span>
                   </td>
                   <td className="py-2 px-3 text-right">
-                    <span className={`font-mono text-sm ${spy.totalReturn >= 0 ? 'text-green' : 'text-red'}`}>
-                      {spy.totalReturn >= 0 ? '+' : ''}{spy.totalReturn.toFixed(1)}%
+                    <span className={`font-mono text-sm ${safeSpy.totalReturn === null ? 'text-text-tertiary' : safeSpy.totalReturn >= 0 ? 'text-green' : 'text-red'}`}>
+                      {fmt(safeSpy.totalReturn)}
                     </span>
                   </td>
                 </tr>
                 <tr className="border-b border-border-subtle">
                   <td className="py-2 px-3 text-2xs text-text-secondary">Ann. Return</td>
                   <td className="py-2 px-3 text-right">
-                    <span className={`font-mono text-sm ${terminal.annReturn >= 0 ? 'text-green' : 'text-red'}`}>
-                      {terminal.annReturn >= 0 ? '+' : ''}{terminal.annReturn.toFixed(1)}%
+                    <span className={`font-mono text-sm ${safeTerminal.annReturn === null ? 'text-text-tertiary' : safeTerminal.annReturn >= 0 ? 'text-green' : 'text-red'}`}>
+                      {fmt(safeTerminal.annReturn)}
                     </span>
                   </td>
                   <td className="py-2 px-3 text-right">
-                    <span className={`font-mono text-sm ${benchmark6040.annReturn >= 0 ? 'text-green' : 'text-red'}`}>
-                      {benchmark6040.annReturn >= 0 ? '+' : ''}{benchmark6040.annReturn.toFixed(1)}%
+                    <span className={`font-mono text-sm ${safeBenchmark6040.annReturn === null ? 'text-text-tertiary' : safeBenchmark6040.annReturn >= 0 ? 'text-green' : 'text-red'}`}>
+                      {fmt(safeBenchmark6040.annReturn)}
                     </span>
                   </td>
                   <td className="py-2 px-3 text-right">
-                    <span className={`font-mono text-sm ${spy.annReturn >= 0 ? 'text-green' : 'text-red'}`}>
-                      {spy.annReturn >= 0 ? '+' : ''}{spy.annReturn.toFixed(1)}%
+                    <span className={`font-mono text-sm ${safeSpy.annReturn === null ? 'text-text-tertiary' : safeSpy.annReturn >= 0 ? 'text-green' : 'text-red'}`}>
+                      {fmt(safeSpy.annReturn)}
                     </span>
                   </td>
                 </tr>
                 <tr className="border-b border-border-subtle">
                   <td className="py-2 px-3 text-2xs text-text-secondary">Sharpe</td>
                   <td className="py-2 px-3 text-right">
-                    <span className={`font-mono text-sm ${terminal.sharpe > 1 ? 'text-green' : terminal.sharpe > 0 ? 'text-amber' : 'text-red'}`}>
-                      {terminal.sharpe.toFixed(2)}
+                    <span className={`font-mono text-sm ${safeTerminal.sharpe === null ? 'text-text-tertiary' : safeTerminal.sharpe > 1 ? 'text-green' : safeTerminal.sharpe > 0 ? 'text-amber' : 'text-red'}`}>
+                      {safeTerminal.sharpe === null ? '—' : safeTerminal.sharpe.toFixed(2)}
                     </span>
                   </td>
                   <td className="py-2 px-3 text-right">
                     <span className="font-mono text-sm text-text-primary">
-                      {benchmark6040.sharpe.toFixed(2)}
+                      {safeBenchmark6040.sharpe === null ? '—' : safeBenchmark6040.sharpe.toFixed(2)}
                     </span>
                   </td>
                   <td className="py-2 px-3 text-right">
                     <span className="font-mono text-sm text-text-primary">
-                      {spy.sharpe.toFixed(2)}
+                      {safeSpy.sharpe === null ? '—' : safeSpy.sharpe.toFixed(2)}
                     </span>
                   </td>
                 </tr>
@@ -137,17 +143,17 @@ export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnal
                   <td className="py-2 px-3 text-2xs text-text-secondary">Max Drawdown</td>
                   <td className="py-2 px-3 text-right">
                     <span className="font-mono text-sm text-red">
-                      {terminal.maxDrawdown.toFixed(1)}%
+                      {safeTerminal.maxDrawdown === null ? '—' : `${safeTerminal.maxDrawdown.toFixed(1)}%`}
                     </span>
                   </td>
                   <td className="py-2 px-3 text-right">
                     <span className="font-mono text-sm text-red">
-                      {benchmark6040.maxDrawdown.toFixed(1)}%
+                      {safeBenchmark6040.maxDrawdown === null ? '—' : `${safeBenchmark6040.maxDrawdown.toFixed(1)}%`}
                     </span>
                   </td>
                   <td className="py-2 px-3 text-right">
                     <span className="font-mono text-sm text-red">
-                      {spy.maxDrawdown.toFixed(1)}%
+                      {safeSpy.maxDrawdown === null ? '—' : `${safeSpy.maxDrawdown.toFixed(1)}%`}
                     </span>
                   </td>
                 </tr>
@@ -155,14 +161,14 @@ export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnal
                   <td className="py-2 px-3 text-2xs text-text-secondary">Win Rate</td>
                   <td className="py-2 px-3 text-right">
                     <span className="font-mono text-sm text-text-primary">
-                      {terminal.winRate !== null ? `${terminal.winRate.toFixed(0)}%` : '--'}
+                      {safeTerminal.winRate !== null ? `${safeTerminal.winRate.toFixed(0)}%` : '—'}
                     </span>
                   </td>
                   <td className="py-2 px-3 text-right">
-                    <span className="font-mono text-sm text-text-secondary">--</span>
+                    <span className="font-mono text-sm text-text-secondary">—</span>
                   </td>
                   <td className="py-2 px-3 text-right">
-                    <span className="font-mono text-sm text-text-secondary">--</span>
+                    <span className="font-mono text-sm text-text-secondary">—</span>
                   </td>
                 </tr>
               </tbody>
@@ -233,7 +239,7 @@ export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnal
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">20</span>
+          <span className="section-tag">36</span>
           <h2 className="section-title">Portfolio Analyser</h2>
         </div>
       </div>
@@ -413,7 +419,7 @@ export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnal
                       <div className="flex items-center gap-2">
                         <div className="w-16 h-1 bg-surface-4">
                           <div
-                            className="h-full bg-accent"
+                            className="h-full bg-bloomberg"
                             style={{ width: `${exposure * 100}%` }}
                           />
                         </div>

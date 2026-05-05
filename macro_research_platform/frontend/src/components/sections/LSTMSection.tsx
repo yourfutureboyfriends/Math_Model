@@ -39,7 +39,7 @@ export function LSTMSection({ data }: LSTMSectionProps) {
     .sort((a, b) => b.probability - a.probability);
 
   return (
-    <div className="terminal-section">
+    <div id="lstm" className="terminal-section">
       {/* Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
@@ -128,7 +128,7 @@ export function LSTMSection({ data }: LSTMSectionProps) {
                   <div className="flex items-center gap-2 w-24">
                     <div className="flex-1 h-1 bg-surface-4">
                       <div
-                        className="h-full bg-accent"
+                        className="h-full bg-bloomberg"
                         style={{ width: `${item.probability}%` }}
                       />
                     </div>

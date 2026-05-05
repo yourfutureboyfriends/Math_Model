@@ -3,6 +3,7 @@
 
 import { Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AnimatedValue } from '@/components/ui';
 import type { EnsembleSignalData } from '@/types';
 
 interface MasterSignalSectionProps {
@@ -44,15 +45,15 @@ export function MasterSignalSection({ data }: MasterSignalSectionProps) {
   // Score is already normalized, we just need to map to percentage
   const scalePosition = ((score + 1) / 2) * 100;
 
-  // Model agreement dots - 15 models
-  const modelDots = data.modelBreakdown?.slice(0, 15).map((m: any) => ({
+  // Model agreement dots — derived from actual modelBreakdown length
+  const modelDots = data.modelBreakdown?.map((m: any) => ({
     signal: m.signal,
     color: m.signal.includes('Bullish') || m.signal.includes('Risk-On') ? 'green' :
            m.signal.includes('Bearish') || m.signal.includes('Risk-Off') ? 'red' : 'neutral'
   })) || [];
 
   return (
-    <div className="h-22 bg-surface-2 border-b border-border">
+    <div id="master-signal" className="h-22 bg-surface-2 border-b border-border">
       <div className="h-full flex items-center px-4 gap-6">
         {/* Left: Ensemble Signal */}
         <div className="w-44 flex-shrink-0">
@@ -63,7 +64,7 @@ export function MasterSignalSection({ data }: MasterSignalSectionProps) {
             {data.ensembleSignal}
           </div>
           <div className="text-xs text-text-secondary mt-0.5">
-            {data.adaptiveWeightingActive ? '15 models · Adaptive' : '15 models · Static'}
+            {`${data.modelBreakdown?.length ?? 0} models · ${data.adaptiveWeightingActive ? 'Adaptive' : 'Static'}`}
           </div>
         </div>
 
@@ -102,10 +103,14 @@ export function MasterSignalSection({ data }: MasterSignalSectionProps) {
 
           <div className="flex items-center justify-between text-xs mt-2">
             <span className={cn('font-mono font-bold', score < 0 ? signalColors.color : 'text-text-tertiary')}>
-              {score < 0 ? `${score.toFixed(2)} score` : '—'}
+              {score < 0 ? (
+                <AnimatedValue value={score} decimals={2} suffix=" score" colorize={false} />
+              ) : '—'}
             </span>
             <span className={cn('font-mono font-bold', score > 0 ? signalColors.color : 'text-text-tertiary')}>
-              {score > 0 ? `+${score.toFixed(2)} score` : '—'}
+              {score > 0 ? (
+                `+${score.toFixed(2)} score`
+              ) : '—'}
             </span>
           </div>
         </div>
@@ -129,10 +134,19 @@ export function MasterSignalSection({ data }: MasterSignalSectionProps) {
             </div>
             <div className={cn(
               'text-sm font-mono font-bold',
-              data.agreementRatio >= 0.8 ? 'text-green' :
-              data.agreementRatio >= 0.6 ? 'text-amber' : 'text-red'
+              ((data?.agreementRatio ?? 0) > 1 ? (data?.agreementRatio ?? 0) : (data?.agreementRatio ?? 0) * 100) >= 80 ? 'text-green' :
+              ((data?.agreementRatio ?? 0) > 1 ? (data?.agreementRatio ?? 0) : (data?.agreementRatio ?? 0) * 100) >= 60 ? 'text-amber' : 'text-red'
             )}>
-              {(data.agreementRatio * 100).toFixed(0)}%
+              <AnimatedValue
+                value={(() => {
+                  const raw = data?.agreementRatio ?? 0;
+                  const pct = raw > 1 ? raw : raw * 100;
+                  return Math.min(100, Math.max(0, Math.round(pct)));
+                })()}
+                decimals={0}
+                suffix="%"
+                colorize={false}
+              />
             </div>
           </div>
 
@@ -142,7 +156,7 @@ export function MasterSignalSection({ data }: MasterSignalSectionProps) {
               RISK BUDGET
             </div>
             <div className="text-sm font-mono font-bold text-text-primary">
-              {data.riskBudgetFinal.toFixed(2)}x
+              <AnimatedValue value={data.riskBudgetFinal} decimals={2} suffix="x" colorize={false} />
             </div>
           </div>
 

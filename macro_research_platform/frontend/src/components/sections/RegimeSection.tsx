@@ -2,6 +2,7 @@
 // Dense panel with current regime, factor impacts, and history
 
 import { cn } from '@/lib/utils';
+import { AnimatedValue, SkeletonCard } from '@/components/ui';
 import type { RegimeData } from '@/types';
 
 interface RegimeSectionProps {
@@ -9,7 +10,19 @@ interface RegimeSectionProps {
 }
 
 export function RegimeSection({ data }: RegimeSectionProps) {
-  if (!data) return null;
+  if (!data) {
+    return (
+      <div id="regime" className="terminal-section">
+        <div className="section-header mb-3">
+          <div className="section-header-left">
+            <span className="section-tag">04</span>
+            <h2 className="section-title">Regime Classification</h2>
+          </div>
+        </div>
+        <SkeletonCard />
+      </div>
+    );
+  }
 
   const getRegimeColor = (regime: string) => {
     const normalized = regime.toLowerCase();
@@ -48,7 +61,7 @@ export function RegimeSection({ data }: RegimeSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">03</span>
+          <span className="section-tag">04</span>
           <h2 className="section-title">Regime Classification</h2>
           <span className="section-meta">{data.current.toUpperCase()} · {data.confidence.toUpperCase()} CONFIDENCE</span>
         </div>
@@ -84,9 +97,14 @@ export function RegimeSection({ data }: RegimeSectionProps) {
             </div>
             <div className="h-1 bg-surface-4">
               <div
-                className="h-full bg-accent transition-all duration-500"
+                className="h-full bg-bloomberg transition-all duration-500"
                 style={{ width: `${data.confidenceScore * 100}%` }}
               />
+            </div>
+            <div className="text-right mt-1">
+              <span className="font-mono text-xs text-bloomberg">
+                <AnimatedValue value={data.confidenceScore * 100} decimals={0} suffix="%" />
+              </span>
             </div>
           </div>
         </div>
@@ -106,7 +124,7 @@ export function RegimeSection({ data }: RegimeSectionProps) {
                 </tr>
               </thead>
               <tbody>
-                {data.interpretations.map((interp) => (
+                {(data.interpretations ?? []).map((interp) => (
                   <tr key={interp.factor} className="border-b border-border-subtle last:border-0">
                     <td className="py-2 px-3 text-sm text-text-primary">{interp.factor}</td>
                     <td className="py-2 px-3 text-sm text-text-secondary">{interp.impact}</td>
@@ -122,13 +140,28 @@ export function RegimeSection({ data }: RegimeSectionProps) {
           </div>
         )}
 
-        {/* Regime History */}
+        {/* Regime History - FIXED: BUG-F6 - Human readable dates */}
         {data.history && data.history.length > 0 && (
           <div className="p-3 border border-border bg-surface-1">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">History</div>
             <div className="flex flex-wrap gap-1">
               {data.history.slice(-6).map((h, idx) => {
                 const regimeColor = getRegimeColor(h.regime);
+                // FIXED (BUG 8): Use ISO date format for consistency
+                const fmtRegimeDate = (d: string) => {
+                  return d.split('T')[0]; // Already in ISO format from API
+                };
+                // Normalize regime names
+                const fmtRegimeName = (r: string) => {
+                  const names: Record<string, string> = {
+                    'Goldilocks': 'Goldilocks',
+                    'Reflation': 'Reflation',
+                    'Stagflation': 'Stagflation',
+                    'Slowdown': 'Slowdown',
+                    'Slow': 'Slowdown',
+                  };
+                  return names[r] || r;
+                };
                 return (
                   <div
                     key={idx}
@@ -140,8 +173,9 @@ export function RegimeSection({ data }: RegimeSectionProps) {
                       regimeColor === 'text-blue' ? 'text-blue bg-blue-dim' :
                       'text-text-secondary bg-surface-2'
                     )}
+                    title={`${h.date}: ${h.regime}`}
                   >
-                    {h.date}: {h.regime.slice(0, 4)}
+                    {fmtRegimeDate(h.date)}: {fmtRegimeName(h.regime)}
                   </div>
                 );
               })}

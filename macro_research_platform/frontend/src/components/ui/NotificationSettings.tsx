@@ -69,7 +69,7 @@ export function NotificationSettings() {
         });
       }
     } catch (error) {
-      console.error('Failed to load notification config:', error);
+      // Load error handled silently
     }
   };
 
@@ -97,7 +97,7 @@ export function NotificationSettings() {
         setTimeout(() => setIsSaved(false), 2000);
       }
     } catch (error) {
-      console.error('Failed to save config:', error);
+      // Save error handled silently
     } finally {
       setIsLoading(false);
     }
@@ -115,7 +115,7 @@ export function NotificationSettings() {
         setTestResults(data.results);
       }
     } catch (error) {
-      console.error('Test failed:', error);
+      // Test error handled silently
     } finally {
       setIsLoading(false);
     }
@@ -185,7 +185,7 @@ export function NotificationSettings() {
                 className={cn(
                   'p-4 border rounded cursor-pointer transition-colors',
                   config.email_enabled
-                    ? 'border-accent bg-accent/5'
+                    ? 'border-bloomberg bg-bloomberg/5'
                     : 'border-border-subtle bg-surface-2'
                 )}
                 onClick={() => setConfig((p) => ({ ...p, email_enabled: !p.email_enabled }))}
@@ -196,7 +196,7 @@ export function NotificationSettings() {
                     className={cn(
                       'w-4 h-4 rounded-full border-2',
                       config.email_enabled
-                        ? 'border-accent bg-accent'
+                        ? 'border-bloomberg bg-bloomberg'
                         : 'border-text-tertiary'
                     )}
                   >
@@ -212,7 +212,7 @@ export function NotificationSettings() {
                 className={cn(
                   'p-4 border rounded cursor-pointer transition-colors',
                   config.slack_enabled
-                    ? 'border-accent bg-accent/5'
+                    ? 'border-bloomberg bg-bloomberg/5'
                     : 'border-border-subtle bg-surface-2'
                 )}
                 onClick={() => setConfig((p) => ({ ...p, slack_enabled: !p.slack_enabled }))}
@@ -223,7 +223,7 @@ export function NotificationSettings() {
                     className={cn(
                       'w-4 h-4 rounded-full border-2',
                       config.slack_enabled
-                        ? 'border-accent bg-accent'
+                        ? 'border-bloomberg bg-bloomberg'
                         : 'border-text-tertiary'
                     )}
                   >
@@ -239,7 +239,7 @@ export function NotificationSettings() {
                 className={cn(
                   'p-4 border rounded cursor-pointer transition-colors',
                   config.browser_enabled
-                    ? 'border-accent bg-accent/5'
+                    ? 'border-bloomberg bg-bloomberg/5'
                     : 'border-border-subtle bg-surface-2'
                 )}
                 onClick={requestBrowserPermission}
@@ -250,7 +250,7 @@ export function NotificationSettings() {
                     className={cn(
                       'w-4 h-4 rounded-full border-2',
                       config.browser_enabled
-                        ? 'border-accent bg-accent'
+                        ? 'border-bloomberg bg-bloomberg'
                         : 'border-text-tertiary'
                     )}
                   >
@@ -322,7 +322,7 @@ export function NotificationSettings() {
                   }
                   className={cn(
                     'w-10 h-5 rounded-full transition-colors relative',
-                    config.quiet_hours.enabled ? 'bg-accent' : 'bg-surface-3'
+                    config.quiet_hours.enabled ? 'bg-bloomberg' : 'bg-surface-3'
                   )}
                 >
                   <div
@@ -416,7 +416,7 @@ export function NotificationSettings() {
               <button
                 onClick={saveConfig}
                 disabled={isLoading}
-                className="px-6 py-2 bg-accent text-bg rounded text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-50"
+                className="px-6 py-2 bg-bloomberg text-bg rounded text-sm font-medium hover:bg-bloomberg/90 transition-colors disabled:opacity-50"
               >
                 {isLoading ? 'Saving...' : 'Save Settings'}
               </button>

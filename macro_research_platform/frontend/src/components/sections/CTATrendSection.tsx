@@ -11,7 +11,7 @@ interface CTATrendSectionProps {
 export function CTATrendSection({ data }: CTATrendSectionProps) {
   if (!data) return null;
 
-  const getTrendIcon = (direction: string) => {
+  const getTrendIcon = (direction: string | undefined) => {
     switch (direction) {
       case 'UPTREND':
         return <TrendingUp className="w-3 h-3 text-green" />;
@@ -22,7 +22,7 @@ export function CTATrendSection({ data }: CTATrendSectionProps) {
     }
   };
 
-  const getTrendColor = (direction: string) => {
+  const getTrendColor = (direction: string | undefined) => {
     switch (direction) {
       case 'UPTREND':
         return 'text-green';
@@ -33,7 +33,8 @@ export function CTATrendSection({ data }: CTATrendSectionProps) {
     }
   };
 
-  const getSignalArrow = (signal: number) => {
+  const getSignalArrow = (signal: number | undefined | null) => {
+    if (signal == null) return <Minus className="w-3 h-3 text-text-tertiary" />;
     if (signal > 0) return <TrendingUp className="w-3 h-3 text-green" />;
     if (signal < 0) return <TrendingDown className="w-3 h-3 text-red" />;
     return <Minus className="w-3 h-3 text-text-tertiary" />;
@@ -44,7 +45,7 @@ export function CTATrendSection({ data }: CTATrendSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">20</span>
+          <span className="section-tag">32</span>
           <h2 className="section-title">CTA Trend Following</h2>
           <span className={`section-meta ${data.ctaSignal === 'BULLISH' ? 'text-green' : data.ctaSignal === 'BEARISH' ? 'text-red' : 'text-text-secondary'}`}>
             {data.ctaSignal}
@@ -83,7 +84,7 @@ export function CTATrendSection({ data }: CTATrendSectionProps) {
         </div>
 
         {/* Contradictions Alert */}
-        {data.contradictions.length > 0 && (
+        {(data.contradictions?.length ?? 0) > 0 && (
           <div className="p-3 border border-amber bg-amber-dim">
             <div className="flex items-center gap-2 mb-2">
               <AlertTriangle className="w-3 h-3 text-amber" />
@@ -92,7 +93,7 @@ export function CTATrendSection({ data }: CTATrendSectionProps) {
               </span>
             </div>
             <div className="space-y-1">
-              {data.contradictions.map((contradiction, idx) => (
+              {(data.contradictions ?? []).map((contradiction, idx) => (
                 <div key={idx} className="flex items-center gap-2 text-xs">
                   <ArrowRightLeft className="w-3 h-3 text-amber" />
                   <span className="text-text-secondary">{contradiction.ticker}:</span>
@@ -119,7 +120,7 @@ export function CTATrendSection({ data }: CTATrendSectionProps) {
               </tr>
             </thead>
             <tbody>
-              {data.assets.map((asset) => (
+              {(data.assets ?? []).map((asset) => (
                 <tr
                   key={asset.ticker}
                   className={`border-b border-border-subtle last:border-0 ${asset.contradiction ? 'bg-amber-dim' : ''}`}
@@ -133,32 +134,38 @@ export function CTATrendSection({ data }: CTATrendSectionProps) {
                   <td className="py-2 px-2 text-center">
                     <div className="flex items-center justify-center gap-1">
                       {getSignalArrow(asset.signals.fast.signal)}
-                      <span className={`font-mono text-2xs ${asset.signals.fast.return >= 0 ? 'text-green' : 'text-red'}`}>
-                        {asset.signals.fast.return >= 0 ? '+' : ''}{asset.signals.fast.return.toFixed(1)}%
+                      <span className={`font-mono text-2xs ${(asset.signals.fast.return ?? 0) >= 0 ? 'text-green' : 'text-red'}`}>
+                        {asset.signals.fast.return != null && typeof asset.signals.fast.return === 'number' && isFinite(asset.signals.fast.return)
+                          ? `${asset.signals.fast.return >= 0 ? '+' : ''}${asset.signals.fast.return.toFixed(1)}%`
+                          : '—'}
                       </span>
                     </div>
                   </td>
                   <td className="py-2 px-2 text-center">
                     <div className="flex items-center justify-center gap-1">
                       {getSignalArrow(asset.signals.medium.signal)}
-                      <span className={`font-mono text-2xs ${asset.signals.medium.return >= 0 ? 'text-green' : 'text-red'}`}>
-                        {asset.signals.medium.return >= 0 ? '+' : ''}{asset.signals.medium.return.toFixed(1)}%
+                      <span className={`font-mono text-2xs ${(asset.signals.medium.return ?? 0) >= 0 ? 'text-green' : 'text-red'}`}>
+                        {asset.signals.medium.return != null && typeof asset.signals.medium.return === 'number' && isFinite(asset.signals.medium.return)
+                          ? `${asset.signals.medium.return >= 0 ? '+' : ''}${asset.signals.medium.return.toFixed(1)}%`
+                          : '—'}
                       </span>
                     </div>
                   </td>
                   <td className="py-2 px-2 text-center">
                     <div className="flex items-center justify-center gap-1">
                       {getSignalArrow(asset.signals.slow.signal)}
-                      <span className={`font-mono text-2xs ${asset.signals.slow.return != null && asset.signals.slow.return >= 0 ? 'text-green' : 'text-red'}`}>
-                        {asset.signals.slow.return != null ? `${asset.signals.slow.return >= 0 ? '+' : ''}${asset.signals.slow.return.toFixed(1)}%` : '—'}
+                      <span className={`font-mono text-2xs ${(asset.signals.slow.return ?? 0) >= 0 ? 'text-green' : 'text-red'}`}>
+                        {asset.signals.slow.return != null && typeof asset.signals.slow.return === 'number' && isFinite(asset.signals.slow.return)
+                          ? `${asset.signals.slow.return >= 0 ? '+' : ''}${asset.signals.slow.return.toFixed(1)}%`
+                          : '—'}
                       </span>
                     </div>
                   </td>
                   <td className="py-2 px-2 text-center">
                     <div className="flex items-center justify-center gap-1">
-                      {getTrendIcon(asset.direction)}
-                      <span className={`font-mono text-2xs ${getTrendColor(asset.direction)}`}>
-                        {asset.direction.charAt(0)}
+                      {getTrendIcon(asset.direction ?? 'NO TREND')}
+                      <span className={`font-mono text-2xs ${getTrendColor(asset.direction ?? 'NO TREND')}`}>
+                        {(asset.direction ?? 'N').charAt(0)}
                       </span>
                     </div>
                   </td>
@@ -184,6 +191,14 @@ export function CTATrendSection({ data }: CTATrendSectionProps) {
             {data.summary.overallTrendRegime === 'Mixed' && 'Mixed trend signals with conflicting momentum across asset classes.'}
             {data.summary.contradictions > 0 && ` ${data.summary.contradictions} asset(s) contradict regime expectations.`}
           </p>
+          {/* FIXED: BUG-C2 - Add divergence warning when CTA contradicts macro regime */}
+          {(data.contradictions?.length ?? 0) > 0 && (
+            <div className="text-amber text-xs mt-2">
+              ⚠ {data.contradictions.length} asset(s) contradict Slowdown regime —
+              momentum may be running ahead of macro fundamentals.
+              Consider reducing CTA weight vs macro signal.
+            </div>
+          )}
         </div>
       </div>
     </div>

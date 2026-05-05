@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MACRO TERMINAL Research Report</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+            @bottom-center {
+                content: "Page " counter(page) " of " counter(pages);
+                font-size: 9pt;
+                color: #666;
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Georgia, "Times New Roman", serif;
+            font-size: 11pt;
+            line-height: 1.5;
+            color: #1a1a1a;
+            background: white;
+        }
+
+        .header {
+            border-bottom: 2px solid #1a1a1a;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 10px;
+        }
+
+        .fund-name {
+            font-size: 18pt;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+
+        .confidential {
+            font-size: 9pt;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .header-bottom {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10pt;
+            color: #666;
+        }
+
+        .section {
+            margin-bottom: 25px;
+            page-break-inside: avoid;
+        }
+
+        .section-title {
+            font-size: 14pt;
+            font-weight: bold;
+            margin-bottom: 12px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #ccc;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .subsection-title {
+            font-size: 11pt;
+            font-weight: bold;
+            margin-top: 15px;
+            margin-bottom: 8px;
+        }
+
+        .exec-summary-box {
+            background: #f5f5f5;
+            border-left: 4px solid #1a1a1a;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .kpi-grid {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+        }
+
+        .kpi-item {
+            flex: 1;
+            text-align: center;
+        }
+
+        .kpi-label {
+            font-size: 9pt;
+            color: #666;
+            text-transform: uppercase;
+        }
+
+        .kpi-value {
+            font-size: 16pt;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        .signal-positive { color: #2e7d32; }
+        .signal-negative { color: #c62828; }
+        .signal-neutral { color: #666; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 10pt;
+        }
+
+        th {
+            background: #f5f5f5;
+            border-bottom: 2px solid #1a1a1a;
+            padding: 8px;
+            text-align: left;
+            font-weight: bold;
+        }
+
+        td {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        tr:nth-child(even) {
+            background: #fafafa;
+        }
+
+        .trade-idea-card {
+            border: 1px solid #ddd;
+            padding: 12px;
+            margin-bottom: 10px;
+            background: #fafafa;
+        }
+
+        .trade-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .trade-direction {
+            font-weight: bold;
+            font-size: 12pt;
+        }
+
+        .trade-ticker {
+            font-size: 14pt;
+            font-weight: bold;
+        }
+
+        .trade-levels {
+            display: flex;
+            gap: 15px;
+            margin-top: 8px;
+            font-size: 10pt;
+        }
+
+        .level-item {
+            flex: 1;
+        }
+
+        .level-label {
+            font-size: 8pt;
+            color: #666;
+            text-transform: uppercase;
+        }
+
+        .level-value {
+            font-weight: bold;
+            font-family: "Courier New", monospace;
+        }
+
+        .risk-metric {
+            display: inline-block;
+            padding: 4px 8px;
+            background: #f5f5f5;
+            border-radius: 3px;
+            margin-right: 10px;
+            font-size: 10pt;
+        }
+
+        .bullet-list {
+            margin-left: 20px;
+            margin-top: 8px;
+        }
+
+        .bullet-list li {
+            margin-bottom: 5px;
+        }
+
+        .footer {
+            margin-top: 40px;
+            padding-top: 15px;
+            border-top: 1px solid #ccc;
+            font-size: 9pt;
+            color: #666;
+            text-align: center;
+        }
+
+        .page-break {
+            page-break-after: always;
+        }
+
+        .highlight {
+            background: #fffde7;
+            padding: 2px 4px;
+        }
+
+        .override-badge {
+            display: inline-block;
+            background: #c62828;
+            color: white;
+            padding: 2px 6px;
+            font-size: 8pt;
+            border-radius: 3px;
+            margin-left: 5px;
+        }
+
+        .confidence-high { color: #2e7d32; }
+        .confidence-medium { color: #f57c00; }
+        .confidence-low { color: #666; }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-top">
+            <div class="fund-name">MACRO RESEARCH</div>
+            <div class="confidential">CONFIDENTIAL</div>
+        </div>
+        <div class="header-bottom">
+            <div>{{ report_date }}</div>
+            <div>MACRO TERMINALv8.0</div>
+            <div>Report Type: {{ report_type }}</div>
+        </div>
+    </div>
+
+    {% if 'executive' in sections %}
+    <!-- Executive Summary -->
+    <div class="section">
+        <div class="section-title">Executive Summary</div>
+        <div class="exec-summary-box">
+            <div class="kpi-grid">
+                <div class="kpi-item">
+                    <div class="kpi-label">Current Regime</div>
+                    <div class="kpi-value">{{ regime.current }}</div>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-label">Master Signal</div>
+                    <div class="kpi-value {% if ensemble.ensembleScore > 0 %}signal-positive{% elif ensemble.ensembleScore < 0 %}signal-negative{% else %}signal-neutral{% endif %}">
+                        {{ ensemble.ensembleSignal }}
+                    </div>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-label">Conviction</div>
+                    <div class="kpi-value confidence-{{ ensemble.conviction|lower }}">{{ ensemble.conviction }}</div>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-label">Risk Budget</div>
+                    <div class="kpi-value">{{ "%.0f"|format(ensemble.riskBudgetFinal * 100) }}%</div>
+                </div>
+            </div>
+        </div>
+        <p><strong>Thesis:</strong> {{ regime.interpretations[0].implication if regime.interpretations else "Macro conditions suggest defensive positioning with duration exposure." }}</p>
+    </div>
+    {% endif %}
+
+    {% if 'regime' in sections %}
+    <!-- Regime Analysis -->
+    <div class="section">
+        <div class="section-title">Regime Analysis</div>
+
+        <div class="subsection-title">Current Classification</div>
+        <p><strong>Regime:</strong> {{ regime.current }} (Confidence: {{ "%.0f"|format(regime.confidenceScore * 100) }}%)</p>
+        <p><strong>Duration:</strong> {{ regime.duration }} months</p>
+
+        <div class="subsection-title">Key Factors</div>
+        <ul class="bullet-list">
+            {% for interp in regime.interpretations %}
+            <li><strong>{{ interp.factor }}:</strong> {{ interp.impact }} ({{ interp.color }})</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if 'signal_stack' in sections %}
+    <!-- Signal Stack -->
+    <div class="section">
+        <div class="section-title">Signal Stack</div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Layer</th>
+                    <th>Signal</th>
+                    <th>Conviction</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for layer in signal_stack.layers %}
+                <tr>
+                    <td>{{ layer.layer }}</td>
+                    <td>{{ layer.signal }}</td>
+                    <td class="confidence-{{ 'high' if layer.confidence > 0.7 else 'medium' if layer.confidence > 0.5 else 'low' }}">
+                        {{ "%.0f"|format(layer.confidence * 100) }}%
+                    </td>
+                    <td>
+                        {% if layer.override %}
+                        <span class="override-badge">OVERRIDE</span>
+                        {% else %}
+                        Active
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if signal_stack.blackout_active %}
+        <div style="margin-top: 10px; padding: 10px; background: #fff3e0; border-left: 3px solid #e65100;">
+            <strong>⚠ Blackout Active:</strong> {{ signal_stack.blackout_warning }}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if 'trade_ideas' in sections %}
+    <!-- Trade Ideas -->
+    <div class="section">
+        <div class="section-title">Trade Ideas</div>
+        <p style="margin-bottom: 15px; font-size: 10pt; color: #666;">
+            Generated {{ trade_ideas.generated_at }} | Regime: {{ trade_ideas.regime }} | Risk Budget: {{ "%.0f"|format(trade_ideas.risk_budget * 100) }}%
+        </p>
+
+        {% for idea in trade_ideas.ideas[:3] %}
+        <div class="trade-idea-card">
+            <div class="trade-header">
+                <div>
+                    <span class="trade-direction {% if idea.direction == 'LONG' %}signal-positive{% else %}signal-negative{% endif %}">
+                        {{ idea.direction }}
+                    </span>
+                    <span class="trade-ticker">{{ idea.ticker }}</span>
+                    <span style="font-size: 10pt; color: #666; margin-left: 10px;">{{ idea.instrument }}</span>
+                </div>
+                <div style="font-size: 10pt; color: #666;">
+                    Confidence: {{ "%.0f"|format(idea.confidence * 100) }}%
+                </div>
+            </div>
+            <p style="font-size: 10pt; margin: 8px 0; color: #444;">{{ idea.thesis }}</p>
+            <div class="trade-levels">
+                <div class="level-item">
+                    <div class="level-label">Entry</div>
+                    <div class="level-value">${{ "%.2f"|format(idea.entry_level) }}</div>
+                </div>
+                <div class="level-item">
+                    <div class="level-label">Stop</div>
+                    <div class="level-value" style="color: #c62828;">${{ "%.2f"|format(idea.stop_loss) }}</div>
+                </div>
+                <div class="level-item">
+                    <div class="level-label">Target 1</div>
+                    <div class="level-value" style="color: #2e7d32;">${{ "%.2f"|format(idea.target_1) }}</div>
+                </div>
+                <div class="level-item">
+                    <div class="level-label">Target 2</div>
+                    <div class="level-value" style="color: #2e7d32;">${{ "%.2f"|format(idea.target_2) }}</div>
+                </div>
+                <div class="level-item">
+                    <div class="level-label">Size</div>
+                    <div class="level-value">{{ idea.position_size_pct }}%</div>
+                </div>
+                <div class="level-item">
+                    <div class="level-label">R/R</div>
+                    <div class="level-value">{{ idea.risk_reward }}x</div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if 'sector_allocation' in sections %}
+    <!-- Sector Allocation -->
+    <div class="section">
+        <div class="section-title">Sector Allocation</div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Sector</th>
+                    <th>Signal</th>
+                    <th>Z-Score</th>
+                    <th>Recommendation</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sector in sector_allocation %}
+                <tr>
+                    <td>{{ sector.name }}</td>
+                    <td class="{% if sector.signal == 'BULLISH' %}signal-positive{% elif sector.signal == 'BEARISH' %}signal-negative{% else %}signal-neutral{% endif %}">
+                        {{ sector.signal }}
+                    </td>
+                    <td>{{ "%.2f"|format(sector.zscore) }}</td>
+                    <td>{{ sector.recommendation }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    {% if 'risk' in sections %}
+    <!-- Risk Metrics -->
+    <div class="section">
+        <div class="section-title">Risk Analytics</div>
+
+        <div class="subsection-title">Value at Risk</div>
+        <p>
+            <span class="risk-metric">VaR 95% (1d): {{ "%.2f"|format(risk.var.var_95_1d * 100) }}%</span>
+            <span class="risk-metric">VaR 99% (1d): {{ "%.2f"|format(risk.var.var_99_1d * 100) }}%</span>
+            <span class="risk-metric">CVaR 95%: {{ "%.2f"|format(risk.var.cvar_95 * 100) }}%</span>
+        </p>
+        <p style="font-size: 9pt; color: #666; margin-top: 5px;">
+            Methodology: {{ risk.var.methodology }} | Lookback: {{ risk.var.lookback_days }} days
+        </p>
+
+        <div class="subsection-title">Drawdown Analysis</div>
+        <p>
+            <span class="risk-metric">Current: {{ risk.drawdown.current_drawdown_pct }}%</span>
+            <span class="risk-metric">Max: {{ risk.drawdown.max_drawdown_pct }}%</span>
+            <span class="risk-metric">Vol 30d: {{ risk.drawdown.rolling_vol_30d }}%</span>
+        </p>
+
+        <div class="subsection-title">Stress Test Summary</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Scenario</th>
+                    <th>Portfolio Impact</th>
+                    <th>Recovery</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for scenario in risk.stress_tests.scenarios %}
+                <tr>
+                    <td>{{ scenario.name }}</td>
+                    <td class="{% if scenario.portfolio_return_pct < -15 %}signal-negative{% elif scenario.portfolio_return_pct > 0 %}signal-positive{% endif %}">
+                        {{ "%.1f"|format(scenario.portfolio_return_pct) }}%
+                    </td>
+                    <td>{{ scenario.recovery_months_estimate }} months</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    {% if 'investment_memo' in sections %}
+    <!-- Investment Memo -->
+    <div class="section">
+        <div class="section-title">Investment Memo</div>
+
+        <div class="subsection-title">Thesis</div>
+        <p>{{ investment_memo.thesis }}</p>
+
+        <div class="subsection-title">Key Points</div>
+        <ul class="bullet-list">
+            {% for point in investment_memo.key_points %}
+            <li>{{ point }}</li>
+            {% endfor %}
+        </ul>
+
+        <div class="subsection-title">Risks</div>
+        <ul class="bullet-list">
+            {% for risk in investment_memo.risks %}
+            <li>{{ risk }}</li>
+            {% endfor %}
+        </ul>
+
+        <div class="subsection-title">Opportunities</div>
+        <ul class="bullet-list">
+            {% for opp in investment_memo.opportunities %}
+            <li>{{ opp }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- Footer -->
+    <div class="footer">
+        Generated by MACRO TERMINALv8.0 | {{ report_timestamp }}<br>
+        This report is for informational purposes only and does not constitute investment advice.
+    </div>
+</body>
+</html>

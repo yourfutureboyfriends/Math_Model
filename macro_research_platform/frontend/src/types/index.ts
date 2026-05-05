@@ -1,10 +1,16 @@
+// ─────────────────────────────────────────────────────────────────────────────
 // API Response Types
+// Central type definitions for all dashboard data consumed by the frontend.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Top-level dashboard payload ──────────────────────────────────────────────
 
 export interface DashboardData {
   regime: RegimeData;
   keyMetrics: KeyMetrics;
   scores: Scores;
   signals: SignalsData;
+  morningBrief?: MorningBriefData;
   sectorAllocation: SectorAllocationData;
   riskIndicators: RiskIndicatorsData;
   advancedIndicators: AdvancedIndicatorsData;
@@ -22,40 +28,79 @@ export interface DashboardData {
   momentumVeto?: MomentumVetoData;
   correlationRegime?: CorrelationRegimeData;
   signalStack?: SignalStackData;
-  signalStackV2?: SignalStackData;
-  // ADDED: Phase 4 properties
   alerts?: AlertsData;
   internationalMacro?: InternationalMacroData;
-  // ADDED: Phase 5 properties
   debtCycle?: DebtCycleData;
   riskParityAllocation?: RiskParityData;
   regimeTransitions?: TransitionMatrixData;
   pureAlpha?: PureAlphaData;
   portfolioAnalytics?: PortfolioAnalytics;
   expectedReturns?: ExpectedReturnsData;
-  // ADDED: Phase 6 properties
   factorRotation?: FactorRotationData;
   geopoliticalRisk?: GeopoliticalRiskData;
   optionsIntelligence?: OptionsIntelligenceData;
   trendSignals?: TrendSignalsData;
-  // ADDED: Phase 7 properties
   newsSentiment?: NewsSentimentData;
   gmoForecasts?: GMOForecastsData;
   reflexivity?: ReflexivityData;
   factorDecomposition?: FactorDecompositionData;
   horizonAnalysis?: HorizonAnalysisData;
-  // ADDED: Phase 8 properties
   anomalyDetection?: AnomalyDetectionData;
   lstmPrediction?: LSTMPredictionData;
   ensembleSignal?: EnsembleSignalData;
   performanceTracking?: PerformanceTrackingData;
-  // ADDED: Phase 9 properties
-  earningsSurprises?: any;
-  yieldCurveShape?: any;
-  cbDivergence?: any;
-  // ADDED: Phase 10 properties
+  systemHealth?: SystemHealthData;
   portfolioSimulation?: PortfolioSimulationData;
+  equityResearch?: EquityResearchData;
+  tradeIdeas?: TradeIdeasData;
+  tradeRecommendations?: TradeRecommendationsData;
+  eventCalendar?: EventCalendarData;
+  scenarioAnalysis?: ScenarioAnalysisData;
 }
+
+// ── Morning Brief ─────────────────────────────────────────────────────────────
+
+export interface MorningBriefPriority {
+  type: 'calendar' | 'tension' | 'signal';
+  priority: number;
+  title: string;
+  time?: string;
+  date?: string;
+  implication: string;
+}
+
+export interface MorningBriefRisk {
+  type: string;
+  text: string;
+  severity: 'WARNING' | 'INFO' | 'CRITICAL';
+}
+
+export interface MorningBriefTrade {
+  ticker: string;
+  direction: 'LONG' | 'SHORT';
+  conviction: 'HIGH' | 'MEDIUM' | 'LOW';
+  rr?: number;
+  entry?: number;
+  target?: number;
+  stop?: number;
+  thesis?: string;
+  category?: string;
+  horizon_days?: number;
+}
+
+export interface MorningBriefData {
+  date: string;
+  regime: string;
+  duration_months: number;
+  confidence: number;
+  priorities: MorningBriefPriority[];
+  risks: MorningBriefRisk[];
+  conviction_trades: MorningBriefTrade[];
+  position_modifier: number;
+  model_caution: boolean;
+}
+
+// ── Regime ────────────────────────────────────────────────────────────────────
 
 export interface RegimeData {
   current: string;
@@ -64,6 +109,7 @@ export interface RegimeData {
   duration: number;
   history: RegimeHistoryPoint[];
   interpretations: RegimeInterpretation[];
+  playbook?: RegimePlaybookData;
 }
 
 export interface RegimeHistoryPoint {
@@ -76,6 +122,54 @@ export interface RegimeInterpretation {
   impact: string;
   color: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 }
+
+export interface RegimePlaybookData {
+  regime: string;
+  summary: string;
+  assetAllocation: PlaybookAssetAllocation[];
+  factorPreferences: PlaybookFactorPreference[];
+  riskGuidelines: PlaybookRiskGuideline[];
+  historicalPerformance: PlaybookHistoricalPerformance;
+  tradeSetup: PlaybookTradeSetup;
+}
+
+export interface PlaybookAssetAllocation {
+  asset: string;
+  bias: 'LONG' | 'SHORT' | 'NEUTRAL';
+  conviction: 'HIGH' | 'MEDIUM' | 'LOW';
+  sizing: string;
+  rationale: string;
+}
+
+export interface PlaybookFactorPreference {
+  factor: string;
+  preference: 'OVERWEIGHT' | 'UNDERWEIGHT' | 'NEUTRAL';
+  conviction: 'HIGH' | 'MEDIUM' | 'LOW';
+  rationale: string;
+}
+
+export interface PlaybookRiskGuideline {
+  rule: string;
+  priority: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  description: string;
+}
+
+export interface PlaybookHistoricalPerformance {
+  avgReturn: number;
+  winRate: number;
+  avgDuration: number;
+  bestAsset: string;
+  worstAsset: string;
+}
+
+export interface PlaybookTradeSetup {
+  primaryTrade: string;
+  secondaryTrade: string;
+  exitTrigger: string;
+  timeHorizon: string;
+}
+
+// ── Key Metrics & Scores ─────────────────────────────────────────────────────
 
 export interface KeyMetrics {
   growth: MetricWithSparkline;
@@ -104,6 +198,8 @@ export interface Scores {
   risk: number;
 }
 
+// ── Signals ───────────────────────────────────────────────────────────────────
+
 export interface SignalsData {
   growth: SignalDetails;
   inflation: SignalDetails;
@@ -119,6 +215,35 @@ export interface SignalDetails {
   interpretation: string;
   history: number[];
 }
+
+export interface SignalLayer {
+  layer: string;
+  priority: number;
+  signal: string;
+  conviction: number;
+  override?: string;
+}
+
+export interface SignalStackData {
+  finalSignal: string;
+  conviction: number;
+  layers: SignalLayer[];
+  overridesApplied: string[];
+  overrideLog?: OverrideLogEntry[];
+  reasoning: string;
+  timestamp: string;
+}
+
+export interface OverrideLogEntry {
+  timestamp: string;
+  layer: string;
+  originalSignal: string;
+  newSignal: string;
+  reason: string;
+  triggeredBy: string;
+}
+
+// ── Sector & Factor Allocation ────────────────────────────────────────────────
 
 export interface SectorAllocationData {
   sectors: Sector[];
@@ -139,10 +264,43 @@ export interface SectorChartPoint {
   color: string;
 }
 
+export interface FactorRotationData {
+  currentRegime: string;
+  factors: FactorData[];
+  topPicks: string[];
+  avoid: string[];
+  regimeFactorSummary: string;
+  lastUpdated: string;
+}
+
+export interface FactorData {
+  factor: string;
+  ticker: string;
+  name: string;
+  regimeBase: number;
+  momentum3m: number;
+  momentum12m: number;
+  relativeStrength: number;
+  percentile52w: number;
+  compositeScore: number;
+  signal: 'OVERWEIGHT' | 'SLIGHT OVERWEIGHT' | 'NEUTRAL' | 'SLIGHT UNDERWEIGHT' | 'UNDERWEIGHT';
+  conviction: 'High' | 'Medium' | 'Low';
+  rationale: string;
+}
+
+// ── Risk ──────────────────────────────────────────────────────────────────────
+
 export interface RiskIndicatorsData {
   indicators: RiskIndicator[];
   compositeScore: number;
   regime: string;
+}
+
+export interface RiskIndicator {
+  name: string;
+  value: string;
+  level: 'low' | 'medium' | 'high' | 'extreme';
+  interpretation: string;
 }
 
 export interface RecessionData {
@@ -153,13 +311,6 @@ export interface RecessionData {
   sahmValue: number;
   sahmSignal: string;
   description: string;
-}
-
-export interface RiskIndicator {
-  name: string;
-  value: string;
-  level: 'low' | 'medium' | 'high' | 'extreme';
-  interpretation: string;
 }
 
 export interface AdvancedIndicator {
@@ -176,6 +327,8 @@ export interface AdvancedIndicatorsData {
   leiComposite: AdvancedIndicator;
   riskParity: AdvancedIndicator;
 }
+
+// ── Business Layer ────────────────────────────────────────────────────────────
 
 export interface ExpectedReturn {
   assetOrSector: string;
@@ -217,6 +370,8 @@ export interface BusinessLayerData {
   decisionLog: DecisionLogEntry[];
 }
 
+// ── Model Agreement & Transmission ───────────────────────────────────────────
+
 export interface ModelAgreementItem {
   model: string;
   indicator: string;
@@ -239,6 +394,8 @@ export interface TransmissionAnalysisData {
   summary: string;
 }
 
+// ── Investment Memo & Data Watch ──────────────────────────────────────────────
+
 export interface InvestmentMemoData {
   regimeSummary: string;
   keyPoints: string[];
@@ -255,6 +412,7 @@ export interface DataToWatchItem {
 
 export interface DataMetadata {
   latestDate: string;
+  lastRefreshed: string;
   dataStatus: 'current' | 'acceptable' | 'stale' | 'unknown';
   daysSinceUpdate: number;
   mode: 'live' | 'sample';
@@ -262,9 +420,7 @@ export interface DataMetadata {
   supportingEvidence?: string[];
 }
 
-// =============================================================================
-// NEW QUANTITATIVE MODULES (7 modules)
-// =============================================================================
+// ── Nowcast & Macro Conditions ────────────────────────────────────────────────
 
 export interface NowcastComponent {
   name: string;
@@ -378,7 +534,10 @@ export interface MomentumVetoData {
     rationale: string;
   };
   description: string;
+  reasoning?: string;
 }
+
+// ── Correlation & Portfolio Construction ──────────────────────────────────────
 
 export interface CorrelationPair {
   assetPair: string;
@@ -400,126 +559,6 @@ export interface CorrelationRegimeData {
   };
   description: string;
 }
-
-export interface SignalLayer {
-  layer: string;
-  priority: number;
-  signal: string;
-  conviction: number;
-  override?: string;
-}
-
-export interface SignalStackData {
-  finalSignal: string;
-  conviction: number;
-  layers: SignalLayer[];
-  overridesApplied: string[];
-  overrideLog?: OverrideLogEntry[];
-  reasoning: string;
-  timestamp: string;
-}
-
-export interface OverrideLogEntry {
-  timestamp: string;
-  layer: string;
-  originalSignal: string;
-  newSignal: string;
-  reason: string;
-  triggeredBy: string;
-}
-
-// =============================================================================
-// PHASE 4 TYPES
-// =============================================================================
-
-export interface AlertItem {
-  id: string;
-  severity: 'critical' | 'warning' | 'info';
-  triggered: boolean;
-  triggeredAt?: string;
-  message: string;
-  action: string;
-  currentValue: number | string;
-  threshold: number | string;
-  acknowledged: boolean;
-}
-
-export interface AlertsData {
-  active: AlertItem[];
-  count: {
-    critical: number;
-    warning: number;
-    info: number;
-  };
-  lastEvaluated: string;
-}
-
-export interface RegionMacroData {
-  regime: string;
-  growth: number;
-  inflation: number;
-  confidence?: number;
-}
-
-export interface RegimeDivergence {
-  pair: string;
-  us: string;
-  other: string;
-  divergence: boolean;
-}
-
-export interface FXImplication {
-  pair: string;
-  bias: string;
-  reason: string;
-}
-
-export interface InternationalMacroData {
-  regions: {
-    US: RegionMacroData;
-    EU: RegionMacroData;
-    UK: RegionMacroData;
-    Japan: RegionMacroData;
-  };
-  globalLiquidityComposite: number;
-  regimeDivergences: RegimeDivergence[];
-  fxImplications: FXImplication[];
-  lastUpdated: string;
-}
-
-// =============================================================================
-// DEBT CYCLE MONITOR TYPES
-// =============================================================================
-
-export type CyclePosition = 'Early Expansion' | 'Mid Cycle' | 'Late Cycle' | 'Deleveraging';
-export type CycleSeverity = 'mild' | 'moderate' | 'severe';
-
-export interface DebtCycleIndicator {
-  name: string;
-  value: number;
-  formatted: string;
-  signal: 'contraction' | 'neutral' | 'expansion';
-  description: string;
-}
-
-export interface DebtCycleData {
-  cyclePosition: CyclePosition;
-  cycleScore: number;
-  severity: CycleSeverity;
-  indicators: {
-    realRate: DebtCycleIndicator;
-    debtGDP: DebtCycleIndicator;
-    debtServiceRatio: DebtCycleIndicator;
-    creditImpulse: DebtCycleIndicator;
-    m2Growth: DebtCycleIndicator;
-  };
-  historicalAnalog: string;
-  implication: string;
-}
-
-// =============================================================================
-// PHASE 5 TYPES - Risk Parity, Regime Transition, International, Alpha Signals
-// =============================================================================
 
 export interface RiskParityAsset {
   asset: string;
@@ -544,44 +583,6 @@ export interface RiskParityData {
   targetVolatility: number;
   rebalancingNeeded: boolean;
   lastRebalanced: string;
-}
-
-export interface RegimeTransition {
-  fromRegime: string;
-  toRegime: string;
-  probability: number;
-  avgReturn: number;
-  volatility: number;
-  sharpe: number;
-  maxDrawdown: number;
-  winRate: number;
-  sampleSize: number;
-}
-
-export interface TransitionMatrixData {
-  transitions: RegimeTransition[];
-  currentRegime: string;
-  mostLikelyNext: string;
-  matrix: Record<string, Record<string, number>>;
-}
-
-export interface PureAlphaSignal {
-  name: string;
-  category: 'value' | 'momentum' | 'carry' | 'volatility' | 'sentiment';
-  signal: number;
-  zScore: number;
-  percentile: number;
-  strength: 'weak' | 'moderate' | 'strong';
-  direction: 'long' | 'short' | 'neutral';
-  confidence: number;
-  description: string;
-}
-
-export interface PureAlphaData {
-  signals: PureAlphaSignal[];
-  compositeScore: number;
-  regime: 'expansion' | 'contraction' | 'neutral';
-  topIdeas: string[];
 }
 
 export interface PortfolioHolding {
@@ -639,6 +640,90 @@ export interface PortfolioSimulationData {
   lastUpdated: string;
 }
 
+// ── International Macro & Regime Transitions ──────────────────────────────────
+
+export interface RegionMacroData {
+  regime: string;
+  growth: number;
+  inflation: number;
+  confidence?: number;
+}
+
+export interface RegimeDivergence {
+  pair: string;
+  us: string;
+  other: string;
+  divergence: boolean;
+}
+
+export interface FXImplication {
+  pair: string;
+  bias: string;
+  reason: string;
+}
+
+export interface InternationalMacroData {
+  regions: {
+    US: RegionMacroData;
+    EU: RegionMacroData;
+    UK: RegionMacroData;
+    Japan: RegionMacroData;
+  };
+  globalLiquidityComposite: number;
+  regimeDivergences: RegimeDivergence[];
+  fxImplications: FXImplication[];
+  lastUpdated: string;
+}
+
+export interface RegimeTransition {
+  fromRegime: string;
+  toRegime: string;
+  probability: number;
+  avgReturn: number;
+  volatility: number;
+  sharpe: number;
+  maxDrawdown: number;
+  winRate: number;
+  sampleSize: number;
+}
+
+export interface TransitionMatrixData {
+  transitions: RegimeTransition[];
+  currentRegime: string;
+  mostLikelyNext: string;
+  matrix: Record<string, Record<string, number>>;
+}
+
+// ── Debt Cycle ────────────────────────────────────────────────────────────────
+
+export type CyclePosition = 'Early Expansion' | 'Mid Cycle' | 'Late Cycle' | 'Deleveraging';
+export type CycleSeverity = 'mild' | 'moderate' | 'severe';
+
+export interface DebtCycleIndicator {
+  name: string;
+  value: number;
+  formatted: string;
+  signal: 'contraction' | 'neutral' | 'expansion';
+  description: string;
+}
+
+export interface DebtCycleData {
+  cyclePosition: CyclePosition;
+  cycleScore: number;
+  severity: CycleSeverity;
+  indicators: {
+    realRate: DebtCycleIndicator;
+    debtGDP: DebtCycleIndicator;
+    debtServiceRatio: DebtCycleIndicator;
+    creditImpulse: DebtCycleIndicator;
+    m2Growth: DebtCycleIndicator;
+  };
+  historicalAnalog: string;
+  implication: string;
+}
+
+// ── Expected Returns & Alpha Signals ─────────────────────────────────────────
+
 export interface ExpectedReturnScenario {
   scenario: string;
   probability: number;
@@ -653,87 +738,26 @@ export interface ExpectedReturnsData {
   riskAdjustedReturns: Record<string, number>;
 }
 
-// =============================================================================
-// PHASE 6 TYPES - Factor Rotation, Geopolitical Risk, Options, Trends
-// =============================================================================
-
-export interface FactorRotationData {
-  currentRegime: string;
-  factors: FactorData[];
-  topPicks: string[];
-  avoid: string[];
-  regimeFactorSummary: string;
-  lastUpdated: string;
-}
-
-export interface FactorData {
-  factor: string;
-  ticker: string;
+export interface PureAlphaSignal {
   name: string;
-  regimeBase: number;
-  momentum3m: number;
-  momentum12m: number;
-  relativeStrength: number;
-  percentile52w: number;
+  category: 'value' | 'momentum' | 'carry' | 'volatility' | 'sentiment';
+  signal: number;
+  zScore: number;
+  percentile: number;
+  strength: 'weak' | 'moderate' | 'strong';
+  direction: 'long' | 'short' | 'neutral';
+  confidence: number;
+  description: string;
+}
+
+export interface PureAlphaData {
+  signals: PureAlphaSignal[];
   compositeScore: number;
-  signal: 'OVERWEIGHT' | 'SLIGHT OVERWEIGHT' | 'NEUTRAL' | 'SLIGHT UNDERWEIGHT' | 'UNDERWEIGHT';
-  conviction: 'High' | 'Medium' | 'Low';
-  rationale: string;
+  regime: 'expansion' | 'contraction' | 'neutral';
+  topIdeas: string[];
 }
 
-export interface GeopoliticalRiskComponent {
-  value: number;
-  zscore: number;
-  trend: string;
-  series: string;
-}
-
-export interface GeopoliticalRiskData {
-  tailRiskScore: number;
-  tailRiskLevel: 'Extreme' | 'Elevated' | 'Moderate' | 'Low';
-  components: {
-    geopoliticalRisk: GeopoliticalRiskComponent;
-    policyUncertainty: GeopoliticalRiskComponent;
-    financialStress: GeopoliticalRiskComponent;
-  };
-  confidenceAdjustment: number;
-  interpretation: string;
-  note: string;
-  lastUpdated: string;
-}
-
-export interface OptionsComponent {
-  value: number;
-  normalised: number;
-  level: string;
-}
-
-export interface OptionsTermStructure {
-  slope: number;
-  normalised: number;
-  structure: string;
-}
-
-export interface OptionsContrarianSignal {
-  signal: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
-  strength: 'Strong' | 'Moderate' | 'None';
-  note: string;
-}
-
-export interface OptionsIntelligenceData {
-  optionsFearComposite: number;
-  sentiment: 'Extreme Fear' | 'Fear' | 'Neutral' | 'Greed' | 'Extreme Greed';
-  contrarian: OptionsContrarianSignal;
-  components: {
-    vix?: OptionsComponent;
-    vvix?: OptionsComponent;
-    skew?: OptionsComponent;
-    putCallRatio?: OptionsComponent;
-    termStructure?: OptionsTermStructure;
-  };
-  interpretation: string;
-  lastUpdated: string;
-}
+// ── CTA Trend Signals ─────────────────────────────────────────────────────────
 
 export interface TrendSignal {
   return: number;
@@ -779,50 +803,7 @@ export interface TrendSignalsData {
   lastUpdated: string;
 }
 
-// Component Props Types
-
-export interface CardProps {
-  title?: string;
-  children: React.ReactNode;
-  className?: string;
-  loading?: boolean;
-}
-
-export interface MetricCardProps {
-  label: string;
-  value: string;
-  direction?: 'up' | 'down' | 'neutral';
-  sparklineData?: number[];
-  color?: string;
-}
-
-export interface BadgeProps {
-  children: React.ReactNode;
-  variant?: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
-}
-
-export interface TableProps<T> {
-  data: T[];
-  columns: TableColumn<T>[];
-  keyExtractor: (item: T) => string;
-}
-
-export interface TableColumn<T> {
-  header: string;
-  accessor: keyof T | ((item: T) => React.ReactNode);
-  align?: 'left' | 'center' | 'right';
-}
-
-export interface SparklineProps {
-  data: number[];
-  color?: string;
-  height?: number;
-  width?: number;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// PHASE 7 TYPE DEFINITIONS
-// ═══════════════════════════════════════════════════════════════════════════════
+// ── Alternative Data: News, GMO, Geopolitical, Options ───────────────────────
 
 export interface NewsSentimentData {
   overall: {
@@ -893,6 +874,62 @@ export interface GMOForecastsData {
   error?: string;
 }
 
+export interface GeopoliticalRiskComponent {
+  value: number;
+  zscore: number;
+  trend: string;
+  series: string;
+}
+
+export interface GeopoliticalRiskData {
+  tailRiskScore: number;
+  tailRiskLevel: 'Extreme' | 'Elevated' | 'Moderate' | 'Low';
+  components: {
+    geopoliticalRisk: GeopoliticalRiskComponent;
+    policyUncertainty: GeopoliticalRiskComponent;
+    financialStress: GeopoliticalRiskComponent;
+  };
+  confidenceAdjustment: number;
+  interpretation: string;
+  note: string;
+  lastUpdated: string;
+}
+
+export interface OptionsComponent {
+  value: number;
+  normalised: number;
+  level: string;
+}
+
+export interface OptionsTermStructure {
+  slope: number;
+  normalised: number;
+  structure: string;
+}
+
+export interface OptionsContrarianSignal {
+  signal: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  strength: 'Strong' | 'Moderate' | 'None';
+  note: string;
+}
+
+export interface OptionsIntelligenceData {
+  optionsFearComposite: number;
+  sentiment: 'Extreme Fear' | 'Fear' | 'Neutral' | 'Greed' | 'Extreme Greed';
+  contrarian: OptionsContrarianSignal;
+  components: {
+    vix?: OptionsComponent;
+    vvix?: OptionsComponent;
+    skew?: OptionsComponent;
+    putCallRatio?: OptionsComponent;
+    termStructure?: OptionsTermStructure;
+  };
+  interpretation: string;
+  lastUpdated: string;
+}
+
+// ── Reflexivity & Factor Decomposition ───────────────────────────────────────
+
 export interface ReflexivityLoop {
   loop: string;
   id: string;
@@ -901,16 +938,8 @@ export interface ReflexivityLoop {
   severity: string;
   correlation: number;
   variables: {
-    cause: {
-      name: string;
-      trend: string;
-      change3m: number;
-    };
-    effect: {
-      name: string;
-      trend: string;
-      change3m: number;
-    };
+    cause: { name: string; trend: string; change3m: number };
+    effect: { name: string; trend: string; change3m: number };
   };
   interpretation: string;
   implication?: string;
@@ -967,6 +996,8 @@ export interface FactorDecompositionData {
   error?: string;
 }
 
+// ── Horizon Analysis ──────────────────────────────────────────────────────────
+
 export interface HorizonSignal {
   horizon: string;
   signal: string;
@@ -1001,17 +1032,39 @@ export interface HorizonActionableSummary {
   recommendation: string;
 }
 
+export interface HorizonSignalData {
+  signal: 'RISK_ON' | 'RISK_OFF' | 'NEUTRAL';
+  score: number;
+  sources: string[];
+  confidence: number;
+}
+
+export interface HorizonTension {
+  type: string;
+  description: string;
+  severity: 'HIGH' | 'PARTIAL';
+  implication: string;
+}
+
 export interface HorizonAnalysisData {
-  assetAnalysis: AssetHorizonAnalysis[];
-  tensionSummary: HorizonTensionSummary;
-  actionableSummary: HorizonActionableSummary;
-  lastUpdated: string;
+  // Three-horizon format (current)
+  short_term?: HorizonSignalData;
+  medium_term?: HorizonSignalData;
+  long_term?: HorizonSignalData;
+  tensions?: HorizonTension[];
+  aligned_count?: number;
+  recommendation?: string;
+  position_size_modifier?: number;
+  // Legacy format
+  assetAnalysis?: AssetHorizonAnalysis[];
+  tensionSummary?: HorizonTensionSummary;
+  actionableSummary?: HorizonActionableSummary;
+  lastUpdated?: string;
+  generated_at?: string;
   error?: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// PHASE 8 TYPE DEFINITIONS — ML Layer
-// ═══════════════════════════════════════════════════════════════════════════════
+// ── ML Layer ──────────────────────────────────────────────────────────────────
 
 export interface AnomalousFeature {
   feature: string;
@@ -1051,6 +1104,8 @@ export interface LSTMPredictionData {
   error?: string;
 }
 
+// ── Ensemble Signal ───────────────────────────────────────────────────────────
+
 export interface ModelContribution {
   model: string;
   signal: string;
@@ -1083,6 +1138,8 @@ export interface EnsembleSignalData {
   riskBudgetFinal: number;
   interpretation: string;
   lastUpdated: string;
+  regimeConflict?: boolean;
+  regimeConflictNote?: string;
   error?: string;
 }
 
@@ -1108,4 +1165,285 @@ export interface PerformanceTrackingData {
   note: string;
   lastUpdated: string;
   error?: string;
+}
+
+// ── System Health ─────────────────────────────────────────────────────────────
+
+export interface HealthStatus {
+  component: string;
+  status: 'healthy' | 'degraded' | 'down' | 'unknown';
+  latency?: number;
+  lastCheck?: string;
+  message?: string;
+}
+
+export interface SystemHealthData {
+  overallStatus: 'healthy' | 'degraded' | 'critical' | 'unknown';
+  apiStatus: HealthStatus;
+  modelStatus: HealthStatus;
+  dataPipeline: HealthStatus;
+  cacheStatus: HealthStatus;
+  uptime: string;
+  version: string;
+  activeModels: number;
+  totalModels: number;
+  lastPrediction: string;
+  errorRate: number;
+  avgLatency: number;
+}
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+
+export interface AlertItem {
+  id: string;
+  severity: 'critical' | 'warning' | 'info';
+  triggered: boolean;
+  triggeredAt?: string;
+  message: string;
+  action: string;
+  currentValue: number | string;
+  threshold: number | string;
+  acknowledged: boolean;
+}
+
+export interface AlertsData {
+  active: AlertItem[];
+  count: {
+    critical: number;
+    warning: number;
+    info: number;
+  };
+  lastEvaluated: string;
+}
+
+// ── Equity Research ───────────────────────────────────────────────────────────
+
+export interface SectorRec {
+  sector: string;
+  signal: string;
+  confidence: number;
+  expectedReturn: number;
+  macroDrivers: string[];
+  weight?: number;
+}
+
+export interface CountryPick {
+  country: string;
+  ticker: string;
+  score: number;
+}
+
+export interface EquityValuationData {
+  regime: string;
+  currentPE: number;
+  targetPE: number;
+  upsidePotential: number;
+  signal: string;
+}
+
+export interface EquityResearchData {
+  sectorRotation: {
+    regime: string;
+    recommendations: SectorRec[];
+    leader: string;
+    laggard: string;
+    intensity: number;
+  };
+  factorRotation: {
+    regime: string;
+    weights: Record<string, number>;
+    explanation: {
+      thesis?: string;
+      overweights?: { factor: string; weight: number }[];
+    };
+  };
+  valuation: EquityValuationData;
+  countryRanking: {
+    globalRegime: string;
+    allocation: Record<string, number>;
+    topMarkets: CountryPick[];
+  };
+  lastUpdated: string;
+  note?: string;
+}
+
+// ── Trade Ideas ───────────────────────────────────────────────────────────────
+
+export interface TradeIdea {
+  id: number | string;
+  ticker: string;
+  direction: 'LONG' | 'SHORT';
+  thesis: string;
+  entry?: number | null;
+  target?: number | null;
+  stop?: number | null;
+  rr?: number;
+  kelly_size?: number;
+  suggested_size?: number;
+  position_size_pct?: number;
+  horizon_days: number;
+  conviction: 'HIGH' | 'MEDIUM' | 'LOW';
+  category: string;
+  regime_valid: boolean;
+  regime_current: string;
+  status: 'ACTIVE' | 'REVIEW';
+  days_open: number;
+  pnl_pct: number;
+  exit_conditions: string[];
+}
+
+export interface TradeIdeasData {
+  ideas?: TradeIdea[];
+  regime?: string;
+  total_ideas?: number;
+  generated_at?: string;
+  risk_budget?: number;
+}
+
+// ── Trade Recommendations (Dynamic Engine) ────────────────────────────────────
+
+export interface TradeComponentScores {
+  regime_alignment: number;
+  factor_alignment: number;
+  momentum: number;
+  fundamental: number;
+  macro: number;
+  analyst: number;
+}
+
+export interface TradeRecommendation {
+  ticker: string;
+  name: string;
+  asset_class: string;
+  sector: string;
+  factor: string;
+  composite_score: number;
+  confidence: number;
+  component_scores: TradeComponentScores;
+  kelly_pct: number;
+  position_pct?: number;
+  market_cap: number;
+  avg_volume: number;
+  last_price: number;
+  pe?: number;
+  div_yield?: number;
+  beta?: number;
+}
+
+export interface PairTrade {
+  long_ticker: string;
+  long_name: string;
+  short_ticker: string;
+  short_name: string;
+  sector: string;
+  regime: string;
+  long_score: number;
+  short_score: number;
+  net_score: number;
+  long_position: number;
+  short_position: number;
+}
+
+export interface TradeRecommendationsSummary {
+  total_scored: number;
+  qualified_count: number;
+  long_count: number;
+  short_count: number;
+  avg_confidence: number;
+  avg_long_score: number;
+  avg_short_score: number;
+  pair_trade_count: number;
+}
+
+export interface TradeRecommendationsData {
+  regime: string;
+  macro_score: number;
+  generated_at: string;
+  longs: TradeRecommendation[];
+  shorts: TradeRecommendation[];
+  pair_trades: PairTrade[];
+  summary: TradeRecommendationsSummary;
+  duration_seconds?: number;
+}
+
+// ── Economic Calendar ─────────────────────────────────────────────────────────
+
+export interface CalendarEvent {
+  id: number;
+  event_name: string;
+  importance: 'HIGH' | 'MEDIUM' | 'LOW';
+  release_datetime: string;
+  time_et?: string;
+  actual: string | null;
+  forecast: string | null;
+  previous: string | null;
+  affected_assets?: string[];
+}
+
+export interface EventCalendarData {
+  upcoming?: CalendarEvent[];
+  this_week?: CalendarEvent[];
+  blackout_active?: boolean;
+  minutes_to_next?: number;
+}
+
+// ── Scenario Analysis ─────────────────────────────────────────────────────────
+
+export interface ScenarioData {
+  scenario: string;
+  probability: number;
+  expectedReturn: number;
+  confidenceInterval: [number, number];
+  description: string;
+  trigger: string;
+  regime_shift: string;
+}
+
+export interface ScenarioAnalysisData {
+  regime: string;
+  scenarios: ScenarioData[];
+  timestamp: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI Component Prop Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CardProps {
+  title?: string;
+  children: React.ReactNode;
+  className?: string;
+  loading?: boolean;
+}
+
+export interface MetricCardProps {
+  label: string;
+  value: string;
+  direction?: 'up' | 'down' | 'neutral';
+  sparklineData?: number[];
+  color?: string;
+}
+
+export interface BadgeProps {
+  children: React.ReactNode;
+  variant?: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
+}
+
+export interface TableProps<T> {
+  data: T[];
+  columns: TableColumn<T>[];
+  keyExtractor: (item: T) => string;
+}
+
+export interface TableColumn<T> {
+  header: string;
+  accessor: keyof T | ((item: T) => React.ReactNode);
+  align?: 'left' | 'center' | 'right';
+}
+
+export interface SparklineProps {
+  data: number[];
+  color?: string;
+  height?: number;
+  width?: number;
 }

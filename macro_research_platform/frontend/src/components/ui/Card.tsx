@@ -39,3 +39,28 @@ export function Card({ title, children, className, loading }: CardProps) {
     </div>
   );
 }
+
+// Sub-components for compound pattern
+export function CardHeader({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn('px-3 py-2 bg-surface-2 border-b border-border-subtle', className)}>
+      {children}
+    </div>
+  );
+}
+
+export function CardTitle({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <h3 className={cn('text-2xs font-medium text-text-tertiary uppercase tracking-wider', className)}>
+      {children}
+    </h3>
+  );
+}
+
+export function CardContent({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn('p-3', className)}>
+      {children}
+    </div>
+  );
+}

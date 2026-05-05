@@ -100,7 +100,7 @@ export function DebtCycleSection({ data }: DebtCycleSectionProps) {
                     className={cn(
                       'flex-1',
                       isCurrent
-                        ? 'bg-accent'
+                        ? 'bg-bloomberg'
                         : isActive
                         ? pos === 'Early Expansion'
                           ? 'bg-green'
@@ -144,7 +144,7 @@ export function DebtCycleSection({ data }: DebtCycleSectionProps) {
           </div>
           <div className="h-1 bg-surface-4 relative">
             <div
-              className="absolute top-0 bottom-0 bg-accent"
+              className="absolute top-0 bottom-0 bg-bloomberg"
               style={{ width: `${((data.cycleScore + 5) / 10) * 100}%` }}
             />
             <div className="absolute top-0 bottom-0 left-1/2 w-px bg-text-tertiary/30" />

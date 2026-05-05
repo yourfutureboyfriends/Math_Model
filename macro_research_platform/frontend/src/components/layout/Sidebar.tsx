@@ -1,16 +1,18 @@
-// Phase 8 Terminal Sidebar
-// 220px fixed, collapsible to 48px
-// FIXED: Order matches App.tsx dashboard flow exactly
+// UPGRADE-9: Terminal Sidebar — Hedge Fund Workflow Organization
+// Optimized navigation for PM daily workflow: Morning → Signals → Trades → Risk → Strategy
 
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
 import { Logo } from './Logo';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 
 interface NavItem {
   id: string;
   label: string;
   icon: string;
+  permission: string;
+  highlight?: boolean;
 }
 
 interface NavSection {
@@ -18,75 +20,102 @@ interface NavSection {
   items: NavItem[];
 }
 
-// FIXED: Navigation order matches App.tsx section order exactly
+// UPGRADE-9: Reorganized navigation for hedge fund workflow
+// FIXED (A): Navigation now matches App.tsx section order exactly
 const navigation: NavSection[] = [
+  {
+    title: 'MORNING BRIEF',
+    items: [
+      { id: 'morning-brief', label: 'Morning Brief', icon: '☀', permission: 'master_signal', highlight: true },
+    ],
+  },
   {
     title: 'OVERVIEW',
     items: [
-      { id: 'master-signal', label: 'Master Signal', icon: '◉' },
-      { id: 'key-metrics', label: 'Key Metrics', icon: '◆' },
-      { id: 'regime', label: 'Regime Engine', icon: '◇' },
+      { id: 'master-signal', label: 'Master Ensemble', icon: '◆', permission: 'master_signal', highlight: true },
+      { id: 'key-metrics', label: 'Key Metrics', icon: '◆', permission: 'key_metrics' },
+      { id: 'regime', label: 'Regime Engine', icon: '◇', permission: 'regime_engine', highlight: true },
+      { id: 'regime-playbook', label: 'Regime Playbook', icon: '◇', permission: 'regime_engine', highlight: true },
+      { id: 'market-clock', label: 'Market Clock', icon: '◆', permission: 'master_signal' },
     ],
   },
   {
     title: 'SIGNALS',
     items: [
-      { id: 'ml-signals', label: 'ML Signals', icon: '◆' },
-      { id: 'ensemble', label: 'Ensemble', icon: '◆' },
-      { id: 'signal-stack', label: 'Signal Stack', icon: '◆' },
-      { id: 'sector-allocation', label: 'Sector Allocation', icon: '◆' },
-      { id: 'factor-rotation', label: 'Factor Rotation', icon: '◆' },
+      { id: 'signals', label: 'Signal Interpretation', icon: '◆', permission: 'ml_signals' },
+      { id: 'ensemble', label: 'Ensemble', icon: '◆', permission: 'ensemble', highlight: true },
+      { id: 'signal-stack', label: 'Signal Stack', icon: '◆', permission: 'signal_stack' },
+      { id: 'sector-allocation', label: 'Sector Allocation', icon: '◆', permission: 'sector_allocation' },
+      { id: 'factor-rotation', label: 'Factor Rotation', icon: '◆', permission: 'factor_rotation' },
+      { id: 'cot-positioning', label: 'COT Positioning', icon: '◆', permission: 'signal_stack' },
     ],
   },
   {
     title: 'RISK',
     items: [
-      { id: 'risk-indicators', label: 'Risk Indicators', icon: '◆' },
-      { id: 'debt-cycle', label: 'Debt Cycle', icon: '◆' },
-      { id: 'advanced', label: 'Advanced Indicators', icon: '◆' },
+      { id: 'risk-indicators', label: 'Risk Indicators', icon: '◆', permission: 'risk_indicators', highlight: true },
+      { id: 'risk-analytics', label: 'Risk Analytics', icon: '◆', permission: 'var_drawdown', highlight: true },
+      { id: 'debt-cycle', label: 'Debt Cycle', icon: '◆', permission: 'debt_cycle' },
+      { id: 'advanced', label: 'Advanced Indicators', icon: '◆', permission: 'advanced_indicators' },
     ],
   },
   {
     title: 'FORECASTS',
     items: [
-      { id: 'nowcast', label: 'GDP Nowcast', icon: '◆' },
-      { id: 'liquidity', label: 'Liquidity', icon: '◆' },
-      { id: 'sentiment', label: 'Sentiment', icon: '◆' },
+      { id: 'nowcast', label: 'GDP Nowcast', icon: '◆', permission: 'gdp_nowcast' },
+      { id: 'liquidity', label: 'Liquidity Conditions', icon: '◆', permission: 'liquidity' },
+      { id: 'sentiment', label: 'Sentiment', icon: '◆', permission: 'sentiment' },
+      { id: 'yield-curve', label: 'Yield Curve', icon: '◆', permission: 'master_signal' },
     ],
   },
   {
     title: 'STRATEGY',
     items: [
-      { id: 'gmo', label: 'GMO 7-Year', icon: '◆' },
-      { id: 'valuation', label: 'Valuation', icon: '◆' },
-      { id: 'expected-returns', label: 'Expected Returns', icon: '◆' },
-      { id: 'international-macro', label: 'International Macro', icon: '◆' },
-      { id: 'reflexivity', label: 'Reflexivity', icon: '◆' },
-      { id: 'transmission', label: 'Transmission', icon: '◆' },
-      { id: 'regime-transition', label: 'Regime Transition', icon: '◆' },
-      { id: 'correlation-regime', label: 'Correlation Regime', icon: '◆' },
-      { id: 'factor-decomp', label: 'Factor Decomp', icon: '◆' },
-      { id: 'risk-parity', label: 'Risk Parity', icon: '◆' },
-      { id: 'momentum-veto', label: 'Momentum Veto', icon: '◆' },
-      { id: 'horizon', label: 'Horizon Tensions', icon: '◆' },
-      { id: 'model-agreement', label: 'Model Agreement', icon: '◆' },
-      { id: 'cta-trends', label: 'CTA Trends', icon: '◆' },
-      { id: 'news-sentiment', label: 'News Sentiment', icon: '◆' },
+      { id: 'expected-returns', label: 'Expected Returns', icon: '◆', permission: 'expected_returns', highlight: true },
+      { id: 'gmo-forecasts', label: 'GMO 7-Year', icon: '◆', permission: 'gmo_7year' },
+      { id: 'valuation', label: 'Valuation Filter', icon: '◆', permission: 'valuation' },
+      { id: 'fx-monitor', label: 'FX Monitor', icon: '◆', permission: 'master_signal' },
+      { id: 'commodities-dashboard', label: 'Commodities', icon: '◆', permission: 'master_signal' },
+      { id: 'fixed-income-dashboard', label: 'Fixed Income', icon: '◆', permission: 'master_signal' },
+      { id: 'international', label: 'International Macro', icon: '◆', permission: 'international_macro' },
+      { id: 'reflexivity', label: 'Reflexivity', icon: '◆', permission: 'reflexivity' },
+      { id: 'transmission', label: 'Transmission', icon: '◆', permission: 'transmission' },
+      { id: 'regime-transition', label: 'Regime Transition', icon: '◆', permission: 'regime_transition' },
+      { id: 'correlation', label: 'Correlation Regime', icon: '◆', permission: 'correlation' },
+      { id: 'factor-decomposition', label: 'Factor Decomposition', icon: '◆', permission: 'factor_decomp' },
+      { id: 'risk-parity', label: 'Risk Parity', icon: '◆', permission: 'risk_parity' },
+      { id: 'momentum-veto', label: 'Momentum Veto', icon: '◆', permission: 'momentum_veto' },
+      { id: 'horizon-tension', label: 'Horizon Tensions', icon: '◆', permission: 'horizon_tensions', highlight: true },
+      { id: 'model-agreement', label: 'Model Agreement', icon: '◆', permission: 'model_agreement' },
+      { id: 'cta-trend', label: 'CTA Trends', icon: '◆', permission: 'cta_trends' },
+      { id: 'news-sentiment', label: 'News Sentiment', icon: '◆', permission: 'news_sentiment' },
+    ],
+  },
+  {
+    title: 'RESEARCH',
+    items: [
+      { id: 'equity-research', label: 'Equity Research', icon: '◆', permission: 'equity_research', highlight: true },
+      { id: 'performance-attribution', label: 'Performance Attribution', icon: '◆', permission: 'performance_tracking', highlight: true },
     ],
   },
   {
     title: 'PORTFOLIO',
     items: [
-      { id: 'portfolio-fit', label: 'Portfolio Fit', icon: '◆' },
-      { id: 'data-to-watch', label: 'Data to Watch', icon: '◆' },
-      { id: 'investment-memo', label: 'Investment Memo', icon: '◆' },
-      { id: 'business-layer', label: 'Business Layer', icon: '◆' },
+      { id: 'trade-ideas', label: 'Trade Ideas', icon: '◆', permission: 'trade_ideas', highlight: true },
+      { id: 'trade-recommendations', label: 'Trade Recommendations', icon: '◆', permission: 'trade_recommendations', highlight: true },
+      { id: 'scenario-analysis', label: 'Scenario Analysis', icon: '◆', permission: 'master_signal' },
+      { id: 'portfolio', label: 'Model Portfolio', icon: '◆', permission: 'portfolio_fit', highlight: true },
+      { id: 'data-to-watch', label: 'Data to Watch', icon: '◆', permission: 'investment_memo' },
+      { id: 'investment-memo', label: 'Investment Memo', icon: '◆', permission: 'investment_memo' },
+      { id: 'business-layer', label: 'Business Layer', icon: '◆', permission: 'business_layer' },
+      { id: 'economic-calendar', label: 'Economic Calendar', icon: '◆', permission: 'economic_calendar' },
     ],
   },
   {
     title: 'SYSTEM',
     items: [
-      { id: 'system-health', label: 'System Health', icon: '◆' },
+      { id: 'system-health', label: 'System Health', icon: '◆', permission: 'system_health' },
+      { id: 'data-explorer', label: 'Data Explorer', icon: '◆', permission: 'system_health' },
     ],
   },
 ];
@@ -95,18 +124,39 @@ interface SidebarProps {
   activeSection?: string;
   onNavigate?: (section: string) => void;
   currentRegime?: string;
+  collapsed?: boolean;
+  onCollapse?: () => void;
 }
 
-export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRegime }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRegime, collapsed: externalCollapsed, onCollapse }: SidebarProps) {
+  const [internalCollapsed, setInternalCollapsed] = useState(false);
+  const { user, logout } = useAuth();
+
+  // Use external state if provided, otherwise internal
+  const collapsed = externalCollapsed ?? internalCollapsed;
+  const handleCollapse = () => {
+    if (onCollapse) {
+      onCollapse();
+    } else {
+      setInternalCollapsed(!internalCollapsed);
+    }
+  };
+
+  // FIXED: Navigation always renders — unconditional, no permission filtering
+  // All users see all navigation items; permission-based feature hiding is deprecated
+  const filteredNavigation = navigation;
+
+  const handleLogout = async () => {
+    await logout();
+  };
 
   return (
-    <aside
+    <div
       className={cn(
-        'fixed left-0 top-12 bottom-0 bg-surface-1 border-r border-border z-40',
-        'flex flex-col transition-all duration-200',
-        collapsed ? 'w-12' : 'w-56'
+        'h-full flex flex-col bg-surface-1',
+        collapsed ? 'w-[48px] min-w-[48px]' : 'w-[224px] min-w-[224px]'
       )}
+      style={{ display: 'flex', flexDirection: 'column' }}
     >
       {/* Platform ID */}
       <div className="h-10 flex items-center px-3 border-b border-border-subtle">
@@ -121,7 +171,7 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-2">
-        {navigation.map((section) => (
+        {filteredNavigation.map((section) => (
           <div key={section.title} className="mb-1">
             {!collapsed && (
               <div className="px-4 py-1.5 text-2xs text-text-tertiary font-medium tracking-wider">
@@ -139,18 +189,26 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
                       'w-full h-7 flex items-center transition-all duration-120',
                       collapsed ? 'justify-center px-0' : 'px-4',
                       isActive
-                        ? 'bg-accent-muted text-accent border-l-2 border-accent'
-                        : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
+                        ? 'bg-bloomberg-muted text-bloomberg border-l-2 border-bloomberg'
+                        : item.highlight
+                          ? 'text-amber hover:bg-amber-dim hover:text-amber border-l-2 border-transparent hover:border-amber'
+                          : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
                     )}
                   >
                     <span className={cn(
                       'font-mono text-xs',
-                      isActive ? 'text-accent' : 'text-text-secondary'
+                      isActive ? 'text-bloomberg' : item.highlight ? 'text-amber' : 'text-text-secondary'
                     )}>
                       {item.icon}
                     </span>
                     {!collapsed && (
-                      <span className="ml-2 text-xs">{item.label}</span>
+                      <span className={cn(
+                        "ml-2 text-xs",
+                        item.highlight && !isActive && "font-medium"
+                      )}
+                      >
+                        {item.label}
+                      </span>
                     )}
                   </button>
                 );
@@ -160,9 +218,30 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
         ))}
       </nav>
 
+      {/* Role Badge & Logout */}
+      {!collapsed && user && (
+        <div className="px-3 py-2 border-t border-border-subtle">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-bloomberg" />
+              <span className="text-xs text-text-secondary">
+                {user.role.toUpperCase()} — {user.display_name}
+              </span>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="p-1 text-text-tertiary hover:text-text-primary transition-colors"
+              title="Logout"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Collapse button */}
       <button
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={handleCollapse}
         className="h-8 flex items-center justify-center border-t border-border-subtle text-text-tertiary hover:text-text-primary hover:bg-surface-3 transition-colors"
       >
         {collapsed ? (
@@ -174,6 +253,6 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
           </div>
         )}
       </button>
-    </aside>
+    </div>
   );
 }

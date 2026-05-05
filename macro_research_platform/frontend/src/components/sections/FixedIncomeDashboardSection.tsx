@@ -130,17 +130,17 @@ export function FixedIncomeDashboardSection() {
             keyExtractor={(c) => c.name}
           />
 
-          {/* Breakeven Inflation */}
+          {/* Breakeven Inflation - FIXED (BUG 5): Use != null check instead of || */}
           <div className="mt-4 p-3 border border-border-subtle bg-surface-2">
             <div className="text-2xs text-text-tertiary uppercase mb-2">Inflation Expectations</div>
             <div className="flex justify-between text-sm">
               <div>
                 <div className="text-2xs text-text-tertiary">10Y Breakeven</div>
-                <div className="font-mono">{data?.breakevenInflation?.tenYear?.toFixed(2) || '--'}%</div>
+                <div className="font-mono">{data?.breakevenInflation?.tenYear != null ? data.breakevenInflation.tenYear.toFixed(2) : '--'}%</div>
               </div>
               <div className="text-right">
                 <div className="text-2xs text-text-tertiary">5Y5Y Forward</div>
-                <div className="font-mono">{data?.breakevenInflation?.fiveYearFiveYear?.toFixed(2) || '--'}%</div>
+                <div className="font-mono">{data?.breakevenInflation?.fiveYearFiveYear != null ? data.breakevenInflation.fiveYearFiveYear.toFixed(2) : '--'}%</div>
               </div>
             </div>
             <div className="mt-2 text-2xs">

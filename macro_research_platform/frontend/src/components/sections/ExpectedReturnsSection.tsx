@@ -20,7 +20,7 @@ export function ExpectedReturnsSection({ data }: ExpectedReturnsSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">26</span>
+          <span className="section-tag">21</span>
           <h2 className="section-title">Expected Returns</h2>
         </div>
       </div>
@@ -74,7 +74,7 @@ export function ExpectedReturnsSection({ data }: ExpectedReturnsSectionProps) {
                   <div className="relative h-4 bg-surface-4">
                     {/* Probability bar */}
                     <div
-                      className="absolute top-0 left-0 bottom-0 bg-accent/20 border-r border-accent"
+                      className="absolute top-0 left-0 bottom-0 bg-bloomberg-muted border-r border-bloomberg"
                       style={{ width: `${scenario.probability * 100}%` }}
                     />
                     {/* Confidence interval markers */}
@@ -88,7 +88,7 @@ export function ExpectedReturnsSection({ data }: ExpectedReturnsSectionProps) {
                     />
                     {/* Expected return marker */}
                     <div
-                      className="absolute top-0 bottom-0 w-0.5 bg-accent"
+                      className="absolute top-0 bottom-0 w-0.5 bg-bloomberg"
                       style={{ left: `${((scenario.expectedReturn + 0.5) / 1) * 100}%` }}
                     />
                   </div>

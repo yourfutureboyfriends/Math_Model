@@ -27,7 +27,7 @@ export function FactorRotationSection({ data }: FactorRotationSectionProps) {
 
   const getScoreBarColor = (score: number) => {
     if (score >= 0.5) return 'bg-green';
-    if (score >= 0) return 'bg-accent';
+    if (score >= 0) return 'bg-bloomberg';
     if (score >= -0.5) return 'bg-amber';
     return 'bg-red';
   };
@@ -37,7 +37,7 @@ export function FactorRotationSection({ data }: FactorRotationSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">08</span>
+          <span className="section-tag">10</span>
           <h2 className="section-title">Factor Rotation</h2>
           <span className="section-meta">{data.currentRegime}</span>
         </div>
@@ -46,7 +46,7 @@ export function FactorRotationSection({ data }: FactorRotationSectionProps) {
       <div className="space-y-3">
         {/* Factor Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {data.factors.map((factor) => (
+          {(data.factors ?? []).map((factor) => (
             <div
               key={factor.ticker}
               className="border border-border bg-surface-1 p-3"
@@ -105,7 +105,7 @@ export function FactorRotationSection({ data }: FactorRotationSectionProps) {
               <span className="text-xs font-medium text-text-primary">Top Picks</span>
             </div>
             <div className="flex flex-wrap gap-1">
-              {data.topPicks.map((ticker) => (
+              {(data.topPicks ?? []).map((ticker) => (
                 <span key={ticker} className="signal-tag bullish text-2xs">
                   {ticker}
                 </span>
@@ -118,7 +118,7 @@ export function FactorRotationSection({ data }: FactorRotationSectionProps) {
               <span className="text-xs font-medium text-text-primary">Avoid</span>
             </div>
             <div className="flex flex-wrap gap-1">
-              {data.avoid.map((ticker) => (
+              {(data.avoid ?? []).map((ticker) => (
                 <span key={ticker} className="signal-tag bearish text-2xs">
                   {ticker}
                 </span>

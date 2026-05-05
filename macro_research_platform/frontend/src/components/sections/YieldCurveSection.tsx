@@ -94,7 +94,7 @@ export function YieldCurveSection() {
               className={cn(
                 'px-3 py-1 text-xs font-mono border transition-colors',
                 selectedCountry === c.code
-                  ? 'bg-accent text-bg border-accent'
+                  ? 'bg-bloomberg text-bg border-bloomberg'
                   : 'bg-surface-2 text-text-secondary border-border-subtle hover:bg-surface-3'
               )}
             >
@@ -153,7 +153,7 @@ export function YieldCurveSection() {
               {pathData && (
                 <path
                   d={pathData}
-                  stroke="var(--accent)"
+                  stroke="var(--bloomberg)"
                   strokeWidth={2}
                   fill="none"
                   vectorEffect="non-scaling-stroke"
@@ -167,22 +167,22 @@ export function YieldCurveSection() {
                   cx={xScale(p.tenor)}
                   cy={yScale(p.yield)}
                   r={3}
-                  fill="var(--accent)"
+                  fill="var(--bloomberg)"
                 />
               ))}
             </g>
           </svg>
         </div>
 
-        {/* Key Metrics */}
+        {/* Key Metrics - FIXED (BUG 2): Use != null check instead of truthy to allow 0 values */}
         <div className="grid grid-cols-4 gap-3 text-xs">
           <div className="p-2 border border-border-subtle bg-surface-2">
             <div className="text-2xs text-text-tertiary uppercase">2s10s Spread</div>
             <div className={cn(
               'font-mono font-bold',
-              curve?.spread2s10s && curve.spread2s10s < 0 ? 'text-red' : 'text-text-primary'
+              curve?.spread2s10s != null && curve.spread2s10s < 0 ? 'text-red' : 'text-text-primary'
             )}>
-              {curve?.spread2s10s ? `${curve.spread2s10s > 0 ? '+' : ''}${curve.spread2s10s.toFixed(2)}%` : '--'}
+              {curve?.spread2s10s != null ? `${curve.spread2s10s >= 0 ? '+' : ''}${curve.spread2s10s.toFixed(2)}%` : '--'}
             </div>
             <div className="text-2xs text-text-tertiary">{curve?.shape}</div>
           </div>
@@ -190,7 +190,7 @@ export function YieldCurveSection() {
           <div className="p-2 border border-border-subtle bg-surface-2">
             <div className="text-2xs text-text-tertiary uppercase">3m10y Spread</div>
             <div className="font-mono font-bold text-text-primary">
-              {curve?.spread3m10y ? `${curve.spread3m10y > 0 ? '+' : ''}${curve.spread3m10y.toFixed(2)}%` : '--'}
+              {curve?.spread3m10y != null ? `${curve.spread3m10y >= 0 ? '+' : ''}${curve.spread3m10y.toFixed(2)}%` : '--'}
             </div>
             <div className="text-2xs text-text-tertiary">Recession Predictor</div>
           </div>
@@ -198,7 +198,7 @@ export function YieldCurveSection() {
           <div className="p-2 border border-border-subtle bg-surface-2">
             <div className="text-2xs text-text-tertiary uppercase">Real Yield 10Y</div>
             <div className="font-mono font-bold text-text-primary">
-              {curve?.realYield10y ? `${curve.realYield10y > 0 ? '+' : ''}${curve.realYield10y.toFixed(2)}%` : '--'}
+              {curve?.realYield10y != null ? `${curve.realYield10y >= 0 ? '+' : ''}${curve.realYield10y.toFixed(2)}%` : '--'}
             </div>
             <div className="text-2xs text-text-tertiary">{data?.realYieldSignal}</div>
           </div>
@@ -207,9 +207,9 @@ export function YieldCurveSection() {
             <div className="text-2xs text-text-tertiary uppercase">Recession Prob</div>
             <div className={cn(
               'font-mono font-bold',
-              curve?.recessionProb && curve.recessionProb > 0.3 ? 'text-red' : 'text-text-primary'
+              curve?.recessionProb != null && curve.recessionProb > 0.3 ? 'text-red' : 'text-text-primary'
             )}>
-              {curve?.recessionProb ? `${(curve.recessionProb * 100).toFixed(1)}%` : '--'}
+              {curve?.recessionProb != null ? `${(curve.recessionProb * 100).toFixed(1)}%` : '--'}
             </div>
             <div className="text-2xs text-text-tertiary">Estrella-Mishkin</div>
           </div>

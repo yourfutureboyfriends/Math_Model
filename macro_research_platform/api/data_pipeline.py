@@ -27,6 +27,13 @@ PIPELINE_BOUNDS = {
     "sahm_rule":     (-2.0,    5.0),
     "m2_level":      (10000.0, 35000.0),
     "unemployment":  (1.0,     20.0),
+    # Yield curve tenor bounds
+    "yield_3m":      (0.0,     15.0),
+    "yield_2y":      (0.0,     15.0),
+    "yield_5y":      (0.0,     15.0),
+    "yield_10y":     (0.0,     15.0),
+    "yield_30y":     (0.0,     15.0),
+    "spread_3m10y":  (-5.0,    10.0),
 }
 
 PIPELINE_FALLBACKS = {
@@ -39,6 +46,13 @@ PIPELINE_FALLBACKS = {
     "sahm_rule":     0.20,
     "m2_level":      21500.0,
     "unemployment":  4.2,
+    # Yield curve tenor fallbacks (approximate current values)
+    "yield_3m":      4.3,
+    "yield_2y":      3.8,
+    "yield_5y":      3.9,
+    "yield_10y":     4.2,
+    "yield_30y":     4.5,
+    "spread_3m10y":  -0.1,
 }
 
 
@@ -120,6 +134,13 @@ def fetch_all_latest_values() -> dict:
         "t10y2y_bps":    ("T10Y2Y",          "yield_curve",   100.0),
         "unemployment":  ("UNRATE",          "unemployment",  1.0),
         "m2_level":      ("M2SL",            "m2_level",      1.0),
+        # Yield curve tenors for rates endpoint
+        "yield_3m":      ("TB3MS",           "yield_3m",      1.0),
+        "yield_2y":      ("DGS2",            "yield_2y",      1.0),
+        "yield_5y":      ("DGS5",            "yield_5y",      1.0),
+        "yield_10y":     ("DGS10",           "yield_10y",     1.0),
+        "yield_30y":     ("DGS30",           "yield_30y",     1.0),
+        "spread_3m10y":  ("T10Y3M",          "spread_3m10y",  1.0),
     }
 
     for col, (series, metric, multiply) in fred_map.items():
@@ -127,6 +148,7 @@ def fetch_all_latest_values() -> dict:
         if raw is not None:
             raw = raw * multiply
         row[col] = validate_pipeline_value(metric, raw)
+        time.sleep(0.1)  # Rate limit protection
 
     yf_map = {
         "spy_close": "SPY",
@@ -172,6 +194,38 @@ def fetch_all_latest_values() -> dict:
     return row
 
 
+def validate_before_csv_write(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Validate and fix NaN values before writing CSV.
+    Critical columns are forward-filled; others logged.
+    """
+    critical_cols = [
+        'us_cpi', 'core_cpi_yoy', 'hy_spreads', 'equity_momentum_12m',
+        'fed_funds_rate', 'vix', 'us_10y_yield', 'us_2y_yield',
+        'yield_3m', 'yield_2y', 'yield_5y', 'yield_10y', 'yield_30y',
+    ]
+
+    for col in critical_cols:
+        if col not in df.columns:
+            logger.warning(f"[PIPELINE] Missing critical column: {col}")
+            continue
+
+        n_nan = df[col].isna().sum()
+        if n_nan > 0:
+            # Forward fill, then backward fill any remaining NaN at start
+            df[col] = df[col].ffill().bfill()
+            logger.warning(f"[PIPELINE] {col}: forward-filled {n_nan} NaN values")
+
+        # Verify last value is not NaN
+        if pd.isna(df[col].iloc[-1]):
+            logger.error(f"[PIPELINE] {col} STILL NaN after fill — using last valid")
+            last_valid = df[col].dropna().iloc[-1] if not df[col].dropna().empty else None
+            if last_valid is not None:
+                df.loc[df.index[-1], col] = last_valid
+
+    return df
+
+
 def update_csv(row: dict) -> bool:
     if len(row) < 5:
         logger.error(f"[PIPELINE] Only {len(row)} fields — aborting")
@@ -194,6 +248,9 @@ def update_csv(row: dict) -> bool:
     df = pd.concat([df, new_row.to_frame().T])
     df.index = pd.to_datetime(df.index)
     df = df.sort_index()
+
+    # P1-FIX-3: Validate and fix NaN values before writing
+    df = validate_before_csv_write(df)
 
     try:
         df.to_csv(CSV_PATH)

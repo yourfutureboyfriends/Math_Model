@@ -25,32 +25,32 @@ export function MasterSignalHeader({ data }: MasterSignalHeaderProps) {
   const getSignalStyles = (signal: string) => {
     if (signal.includes('Strong Bullish') || signal.includes('Risk-On')) {
       return {
-        bg: 'bg-accent-green/10 border-accent-green/30',
-        text: 'text-accent-green',
+        bg: 'bg-green-dim border-green',
+        text: 'text-green',
         icon: TrendingUp,
         pulse: true,
       };
     }
     if (signal.includes('Bullish')) {
       return {
-        bg: 'bg-accent-green/5 border-accent-green/20',
-        text: 'text-accent-green',
+        bg: 'bg-green-dim border-green',
+        text: 'text-green',
         icon: TrendingUp,
         pulse: false,
       };
     }
     if (signal.includes('Strong Bearish') || signal.includes('Risk-Off')) {
       return {
-        bg: 'bg-accent-red/10 border-accent-red/30',
-        text: 'text-accent-red',
+        bg: 'bg-red-dim border-red',
+        text: 'text-red',
         icon: TrendingDown,
         pulse: true,
       };
     }
     if (signal.includes('Bearish')) {
       return {
-        bg: 'bg-accent-red/5 border-accent-red/20',
-        text: 'text-accent-red',
+        bg: 'bg-red-dim border-red',
+        text: 'text-red',
         icon: TrendingDown,
         pulse: false,
       };
@@ -105,7 +105,7 @@ export function MasterSignalHeader({ data }: MasterSignalHeaderProps) {
               <div
                 className={cn(
                   'h-full transition-all duration-500',
-                  data.ensembleScore > 0 ? 'bg-accent-green' : 'bg-accent-red'
+                  data.ensembleScore > 0 ? 'bg-green' : 'bg-red'
                 )}
                 style={{
                   width: `${Math.abs(data.ensembleScore) * 50}%`,
@@ -129,8 +129,8 @@ export function MasterSignalHeader({ data }: MasterSignalHeaderProps) {
               </div>
               <div className={cn(
                 'text-lg font-mono font-bold',
-                data.agreementRatio >= 0.8 ? 'text-accent-green' :
-                data.agreementRatio >= 0.6 ? 'text-accent-amber' : 'text-accent-red'
+                data.agreementRatio >= 0.8 ? 'text-green' :
+                data.agreementRatio >= 0.6 ? 'text-amber' : 'text-red'
               )}>
                 {(data.agreementRatio * 100).toFixed(0)}%
               </div>

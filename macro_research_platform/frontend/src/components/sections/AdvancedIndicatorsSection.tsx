@@ -62,7 +62,7 @@ export function AdvancedIndicatorsSection({ data }: AdvancedIndicatorsSectionPro
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">11</span>
+          <span className="section-tag">15</span>
           <h2 className="section-title">Advanced Indicators</h2>
         </div>
       </div>

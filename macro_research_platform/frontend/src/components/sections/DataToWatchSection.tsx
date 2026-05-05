@@ -29,7 +29,7 @@ export function DataToWatchSection({ data }: DataToWatchSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">25</span>
+          <span className="section-tag">37</span>
           <h2 className="section-title">Data to Watch</h2>
         </div>
       </div>

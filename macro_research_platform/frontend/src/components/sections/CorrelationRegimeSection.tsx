@@ -9,7 +9,29 @@ interface CorrelationRegimeSectionProps {
 }
 
 export function CorrelationRegimeSection({ data }: CorrelationRegimeSectionProps) {
-  if (!data) return null;
+  if (!data) {
+    return (
+      <div id="correlation" className="terminal-section">
+        <div className="section-header mb-3">
+          <div className="section-header-left">
+            <span className="section-tag">26</span>
+            <h2 className="section-title">Correlation Regime</h2>
+          </div>
+        </div>
+        <div className="p-4 text-text-secondary text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  // Safe destructuring with defaults
+  const currentRegime = data?.currentRegime ?? 'STANDARD';
+  const switchTriggered = data?.switchTriggered ?? false;
+  const equityBondCorrelation = data?.equityBondCorrelation ?? 0;
+  const fallbackStrategy = data?.fallbackStrategy ?? 'STANDARD';
+  const correlations = data?.correlations ?? [];
+  const normalWeights = data?.riskParityAdjustment?.normalWeights ?? {};
+  const adjustedWeights = data?.riskParityAdjustment?.adjustedWeights ?? {};
+  const riskParityRationale = data?.riskParityAdjustment?.rationale ?? '';
 
   const getCorrelationIcon = (correlation: number) => {
     if (Math.abs(correlation) > 0.3) return <Link2 className="w-3 h-3 text-red" />;
@@ -32,39 +54,39 @@ export function CorrelationRegimeSection({ data }: CorrelationRegimeSectionProps
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">23</span>
+          <span className="section-tag">26</span>
           <h2 className="section-title">Correlation Regime</h2>
-          <span className={`section-meta ${data.switchTriggered ? 'text-red' : 'text-green'}`}>
-            {data.currentRegime.replace('_', ' ').toUpperCase()}
+          <span className={`section-meta ${switchTriggered ? 'text-red' : 'text-green'}`}>
+            {(currentRegime ?? '').replace(/_/g, ' ').toUpperCase()}
           </span>
         </div>
       </div>
 
       <div className="space-y-3">
         {/* Current Regime Header */}
-        <div className={`p-3 border ${data.switchTriggered ? 'bg-red-dim border-red' : 'bg-green-dim border-green'}`}>
+        <div className={`p-3 border ${switchTriggered ? 'bg-red-dim border-red' : 'bg-green-dim border-green'}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <GitBranch className={`w-4 h-4 ${data.switchTriggered ? 'text-red' : 'text-green'}`} />
+              <GitBranch className={`w-4 h-4 ${switchTriggered ? 'text-red' : 'text-green'}`} />
               <div>
                 <div className="text-2xs text-text-tertiary uppercase tracking-wider">Current Regime</div>
-                <div className={`text-xl font-mono font-bold ${data.switchTriggered ? 'text-red' : 'text-green'}`}>
-                  {data.currentRegime.replace('_', ' ').toUpperCase()}
+                <div className={`text-xl font-mono font-bold ${switchTriggered ? 'text-red' : 'text-green'}`}>
+                  {(currentRegime ?? '').replace(/_/g, ' ').toUpperCase()}
                 </div>
               </div>
             </div>
             <div className="text-right">
               <div className="text-2xs text-text-tertiary">Equity-Bond ρ</div>
-              <div className={`text-base font-mono ${getCorrelationColor(data.equityBondCorrelation)}`}>
-                {data.equityBondCorrelation.toFixed(3)}
+              <div className={`text-base font-mono ${getCorrelationColor(equityBondCorrelation)}`}>
+                {equityBondCorrelation.toFixed(3)}
               </div>
             </div>
           </div>
 
-          {data.switchTriggered && (
+          {switchTriggered && (
             <div className="mt-2 p-2 border border-red bg-red/10 flex items-center gap-2">
               <AlertTriangle className="w-3 h-3 text-red" />
-              <span className="text-xs text-red">Switch: {data.fallbackStrategy.replace('_', ' ')}</span>
+              <span className="text-xs text-red">Switch: {(fallbackStrategy ?? '').replace(/_/g, ' ')}</span>
             </div>
           )}
         </div>
@@ -75,21 +97,21 @@ export function CorrelationRegimeSection({ data }: CorrelationRegimeSectionProps
             <span className="text-2xs text-text-tertiary uppercase tracking-wider">60-Day Rolling Correlations</span>
           </div>
           <div className="p-2 space-y-2">
-            {data.correlations.map((corr) => (
-              <div key={corr.assetPair} className="p-2 border border-border-subtle bg-surface-2">
+            {correlations.map((corr) => (
+              <div key={corr?.assetPair ?? 'unknown'} className="p-2 border border-border-subtle bg-surface-2">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-medium text-text-primary">{corr.assetPair}</span>
-                  {getCorrelationIcon(corr.correlation60d)}
+                  <span className="text-xs font-medium text-text-primary">{corr?.assetPair ?? 'Unknown'}</span>
+                  {getCorrelationIcon(corr?.correlation60d ?? 0)}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-base font-mono font-bold ${getCorrelationColor(corr.correlation60d)}`}>
-                    {corr.correlation60d > 0 ? '+' : ''}{corr.correlation60d.toFixed(3)}
+                  <span className={`text-base font-mono font-bold ${getCorrelationColor(corr?.correlation60d ?? 0)}`}>
+                    {(corr?.correlation60d ?? 0) > 0 ? '+' : ''}{(corr?.correlation60d ?? 0).toFixed(3)}
                   </span>
-                  <span className={getRegimeTag(corr.regime)}>
-                    {corr.regime}
+                  <span className={getRegimeTag(corr?.regime ?? 'neutral')}>
+                    {corr?.regime ?? 'neutral'}
                   </span>
                 </div>
-                <p className="text-2xs text-text-secondary mt-1">{corr.interpretation}</p>
+                <p className="text-2xs text-text-secondary mt-1">{corr?.interpretation ?? ''}</p>
               </div>
             ))}
           </div>
@@ -103,23 +125,23 @@ export function CorrelationRegimeSection({ data }: CorrelationRegimeSectionProps
             <div>
               <div className="text-2xs text-text-tertiary mb-1">Standard</div>
               <div className="space-y-1">
-                {Object.entries(data.riskParityAdjustment.normalWeights).map(([asset, weight]) => (
+                {Object.entries(normalWeights).map(([asset, weight]) => (
                   <div key={asset} className="flex items-center justify-between text-xs">
                     <span className="text-text-secondary capitalize">{asset}</span>
-                    <span className="font-mono text-text-primary">{(weight * 100).toFixed(0)}%</span>
+                    <span className="font-mono text-text-primary">{((weight ?? 0) * 100).toFixed(0)}%</span>
                   </div>
                 ))}
               </div>
             </div>
 
             <div>
-              <div className="text-2xs text-text-tertiary mb-1">{data.switchTriggered ? 'Adjusted' : 'Current'}</div>
+              <div className="text-2xs text-text-tertiary mb-1">{switchTriggered ? 'Adjusted' : 'Current'}</div>
               <div className="space-y-1">
-                {Object.entries(data.riskParityAdjustment.adjustedWeights).map(([asset, weight]) => (
+                {Object.entries(adjustedWeights).map(([asset, weight]) => (
                   <div key={asset} className="flex items-center justify-between text-xs">
                     <span className="text-text-secondary capitalize">{asset}</span>
-                    <span className={`font-mono ${data.switchTriggered && weight !== data.riskParityAdjustment.normalWeights[asset] ? 'text-amber' : 'text-text-primary'}`}>
-                      {(weight * 100).toFixed(0)}%
+                    <span className={`font-mono ${switchTriggered && weight !== normalWeights[asset] ? 'text-amber' : 'text-text-primary'}`}>
+                      {((weight ?? 0) * 100).toFixed(0)}%
                     </span>
                   </div>
                 ))}
@@ -128,7 +150,7 @@ export function CorrelationRegimeSection({ data }: CorrelationRegimeSectionProps
           </div>
 
           <p className="text-xs text-text-secondary border-t border-border-subtle pt-2">
-            {data.riskParityAdjustment.rationale}
+            {riskParityRationale}
           </p>
         </div>
       </div>

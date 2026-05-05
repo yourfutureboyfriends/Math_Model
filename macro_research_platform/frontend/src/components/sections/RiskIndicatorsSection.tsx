@@ -3,6 +3,7 @@
 
 import { cn } from '@/lib/utils';
 import { Shield, AlertTriangle, Globe } from 'lucide-react';
+import { AnimatedValue, SkeletonCard } from '@/components/ui';
 import type { RiskIndicatorsData, GeopoliticalRiskData } from '@/types';
 
 interface RiskIndicatorsSectionProps {
@@ -11,7 +12,19 @@ interface RiskIndicatorsSectionProps {
 }
 
 export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicatorsSectionProps) {
-  if (!data) return null;
+  if (!data) {
+    return (
+      <div id="risk-indicators" className="terminal-section">
+        <div className="section-header mb-3">
+          <div className="section-header-left">
+            <span className="section-tag">12</span>
+            <h2 className="section-title">Risk Indicators</h2>
+          </div>
+        </div>
+        <SkeletonCard />
+      </div>
+    );
+  }
 
   const getRiskTag = (level: string) => {
     switch (level) {
@@ -38,7 +51,7 @@ export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicators
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">09</span>
+          <span className="section-tag">12</span>
           <h2 className="section-title">Risk Indicators</h2>
         </div>
       </div>
@@ -65,7 +78,7 @@ export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicators
                   geopoliticalData.tailRiskLevel === 'Extreme' ? 'text-red' :
                   geopoliticalData.tailRiskLevel === 'Elevated' ? 'text-amber' : 'text-text-primary'
                 )}>
-                  {geopoliticalData.tailRiskScore.toFixed(2)}σ
+                  <AnimatedValue value={geopoliticalData.tailRiskScore} decimals={2} suffix="σ" />
                 </div>
               </div>
               <span className={getRiskTag(geopoliticalData.tailRiskLevel.toLowerCase())}>
@@ -89,7 +102,7 @@ export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicators
               <div>
                 <div className="text-2xs text-text-tertiary uppercase tracking-wider">Composite Risk</div>
                 <div className={cn('text-xl font-mono font-bold', getCompositeColor(data.compositeScore))}>
-                  {data.compositeScore.toFixed(2)}
+                  <AnimatedValue value={data.compositeScore} decimals={2} />
                 </div>
               </div>
             </div>
@@ -111,7 +124,7 @@ export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicators
                 </tr>
               </thead>
               <tbody>
-                {data.indicators.map((item) => (
+                {(data.indicators ?? []).map((item) => (
                   <tr key={item.name} className="border-b border-border-subtle last:border-0 hover:bg-surface-3 transition-colors">
                     <td className="py-2 px-3 text-sm text-text-primary">{item.name}</td>
                     <td className="py-2 px-3 text-right font-mono text-sm text-text-primary">{item.value}</td>

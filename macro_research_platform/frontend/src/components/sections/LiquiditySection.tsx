@@ -38,7 +38,7 @@ export function LiquiditySection({ data }: LiquiditySectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">29</span>
+          <span className="section-tag">28</span>
           <h2 className="section-title">Liquidity Conditions</h2>
           <span className="section-meta">{data.regime.toUpperCase()}</span>
         </div>
@@ -65,7 +65,7 @@ export function LiquiditySection({ data }: LiquiditySectionProps) {
 
         {/* Indicators Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {data.indicators.map((indicator) => (
+          {(data.indicators ?? []).map((indicator) => (
             <div key={indicator.name} className="p-2 bg-surface-1 border border-border">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-medium text-text-primary">{indicator.name}</span>

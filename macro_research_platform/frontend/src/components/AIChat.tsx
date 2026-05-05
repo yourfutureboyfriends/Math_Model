@@ -67,7 +67,7 @@ export function AIChat() {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-4 py-3 bg-accent text-bg font-medium rounded-lg shadow-lg hover:bg-accent/90 transition-colors"
+        className="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-4 py-3 bg-bloomberg text-bg font-medium rounded-lg shadow-lg hover:bg-bloomberg/90 transition-colors"
       >
         <MessageSquare className="w-5 h-5" />
         <span className="text-sm">Ask the Terminal</span>
@@ -80,7 +80,7 @@ export function AIChat() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-surface-2 border-b border-border-subtle rounded-t-lg">
         <div className="flex items-center gap-2">
-          <Bot className="w-5 h-5 text-accent" />
+          <Bot className="w-5 h-5 text-bloomberg" />
           <div>
             <h3 className="text-sm font-medium text-text-primary">Macro Assistant</h3>
             <p className="text-2xs text-text-tertiary">Ask about current conditions</p>
@@ -127,7 +127,7 @@ export function AIChat() {
             className={`flex gap-2 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}
           >
             <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-              message.role === 'user' ? 'bg-accent text-bg' : 'bg-surface-3 text-accent'
+              message.role === 'user' ? 'bg-bloomberg text-bg' : 'bg-surface-3 text-bloomberg'
             }`}>
               {message.role === 'user' ? (
                 <User className="w-3 h-3" />
@@ -137,7 +137,7 @@ export function AIChat() {
             </div>
             <div className={`max-w-[80%] px-3 py-2 rounded-lg text-xs ${
               message.role === 'user'
-                ? 'bg-accent text-bg'
+                ? 'bg-bloomberg text-bg'
                 : 'bg-surface-2 text-text-primary border border-border-subtle'
             }`}>
               {message.content}
@@ -147,7 +147,7 @@ export function AIChat() {
 
         {isLoading && (
           <div className="flex gap-2">
-            <div className="w-6 h-6 rounded-full bg-surface-3 text-accent flex items-center justify-center flex-shrink-0">
+            <div className="w-6 h-6 rounded-full bg-surface-3 text-bloomberg flex items-center justify-center flex-shrink-0">
               <Bot className="w-3 h-3" />
             </div>
             <div className="px-3 py-2 bg-surface-2 border border-border-subtle rounded-lg">
@@ -177,13 +177,13 @@ export function AIChat() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about macro conditions..."
-            className="flex-1 px-3 py-2 bg-surface-2 border border-border-subtle rounded text-xs text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent"
+            className="flex-1 px-3 py-2 bg-surface-2 border border-border-subtle rounded text-xs text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-bloomberg"
             disabled={isLoading}
           />
           <button
             type="submit"
             disabled={isLoading || !input.trim()}
-            className="px-3 py-2 bg-accent text-bg rounded hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-2 bg-bloomberg text-bg rounded hover:bg-bloomberg/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Send className="w-4 h-4" />
           </button>

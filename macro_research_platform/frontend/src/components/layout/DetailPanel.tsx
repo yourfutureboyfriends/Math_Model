@@ -46,7 +46,7 @@ export function DetailPanel({ isOpen, onClose, activeSection, data }: DetailPane
                       <div
                         className={cn(
                           'h-full rounded-sm',
-                          model.weightedContribution > 0 ? 'bg-accent' : 'bg-red'
+                          model.weightedContribution > 0 ? 'bg-bloomberg' : 'bg-red'
                         )}
                         style={{
                           width: `${Math.min(100, Math.abs(model.weightedContribution) * 100)}%`,
@@ -59,7 +59,7 @@ export function DetailPanel({ isOpen, onClose, activeSection, data }: DetailPane
                     <span
                       className={cn(
                         'w-12 text-xs font-mono text-right',
-                        model.weightedContribution > 0 ? 'text-accent' : 'text-red'
+                        model.weightedContribution > 0 ? 'text-bloomberg' : 'text-red'
                       )}
                     >
                       {model.weightedContribution > 0 ? '+' : ''}
@@ -131,7 +131,7 @@ export function DetailPanel({ isOpen, onClose, activeSection, data }: DetailPane
       {/* Desktop: Fixed panel */}
       <div
         className={cn(
-          'hidden lg:block fixed top-12 right-0 bottom-0 w-72 bg-surface-1 border-l border-border z-30',
+          'hidden lg:block fixed top-16 right-0 bottom-0 w-72 bg-surface-1 border-l border-border z-30',
           'transform transition-transform duration-200',
           isOpen ? 'translate-x-0' : 'translate-x-full'
         )}
@@ -149,7 +149,7 @@ export function DetailPanel({ isOpen, onClose, activeSection, data }: DetailPane
         )}
         <div
           className={cn(
-            'lg:hidden fixed top-12 right-0 bottom-0 w-80 bg-surface-1 border-l border-border z-50',
+            'lg:hidden fixed top-16 right-0 bottom-0 w-80 bg-surface-1 border-l border-border z-50',
             'transform transition-transform duration-200',
             isOpen ? 'translate-x-0' : 'translate-x-full'
           )}

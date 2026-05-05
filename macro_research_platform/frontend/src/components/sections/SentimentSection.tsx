@@ -1,171 +1,157 @@
-// Phase 8 — Sentiment & Risk Appetite Section (Redesigned)
-// Unified panel with options intelligence integration
-
-import { cn } from '@/lib/utils';
-import type { SentimentRiskData, OptionsIntelligenceData } from '@/types';
+import { Card } from '@/components/ui/Card';
+import type { SentimentRiskData } from '@/types';
 
 interface SentimentSectionProps {
   data?: SentimentRiskData;
-  optionsData?: OptionsIntelligenceData;
 }
 
-export function SentimentSection({ data, optionsData }: SentimentSectionProps) {
-  if (!data) return null;
-
-  const getRiskColor = (value: number) => {
-    if (value > 75) return 'text-green';
-    if (value > 50) return 'text-blue';
-    if (value < 25) return 'text-red';
-    if (value < 40) return 'text-amber';
-    return 'text-text-secondary';
-  };
-
-  const getPercentileBar = (percentile: number) => {
-    const width = Math.max(0, Math.min(100, percentile));
-    let color = 'bg-green';
-    if (percentile > 75) color = 'bg-green';
-    else if (percentile > 50) color = 'bg-blue';
-    else if (percentile > 25) color = 'bg-amber';
-    else color = 'bg-red';
-
+export function SentimentSection({ data }: SentimentSectionProps) {
+  if (!data) {
     return (
-      <div className="w-full h-1 bg-surface-4">
-        <div className={`h-full ${color}`} style={{ width: `${width}%` }} />
+      <div id="sentiment" className="terminal-section">
+        <div className="section-header mb-3">
+          <div className="section-header-left">
+            <span className="section-tag">18</span>
+            <h2 className="section-title">Sentiment</h2>
+          </div>
+        </div>
+        <Card className="p-6">
+          <div className="animate-pulse bg-surface-2 rounded h-32" />
+        </Card>
       </div>
     );
+  }
+
+  const getRiskAppetiteColor = (score: number) => {
+    if (score >= 70) return 'text-green';
+    if (score >= 50) return 'text-amber';
+    if (score >= 30) return 'text-orange-400';
+    return 'text-red';
+  };
+
+  const getRiskAppetiteLabel = (score: number) => {
+    if (score >= 80) return 'Extreme Greed';
+    if (score >= 60) return 'Greed';
+    if (score >= 40) return 'Neutral';
+    if (score >= 20) return 'Fear';
+    return 'Extreme Fear';
+  };
+
+  const getContrarianColor = (signal: string) => {
+    if (signal?.toLowerCase().includes('bull')) return 'text-green';
+    if (signal?.toLowerCase().includes('bear')) return 'text-red';
+    return 'text-text-secondary';
   };
 
   return (
     <div id="sentiment" className="terminal-section">
-      {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">14</span>
-          <h2 className="section-title">Sentiment & Risk Appetite</h2>
+          <span className="section-tag">18</span>
+          <h2 className="section-title">Sentiment</h2>
         </div>
       </div>
 
-      <div className="space-y-3">
-        {/* Main Header */}
-        <div className="p-3 bg-surface-1 border border-border">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-0.5">Risk Appetite Index</div>
-              <div className={`text-xl font-mono font-bold ${getRiskColor(data.compositeRiskAppetite)}`}>
-                {data.compositeRiskAppetite.toFixed(1)}
-              </div>
-            </div>
-            <span className={data.regime === 'Risk-On' ? 'signal-tag bullish' : data.regime === 'Risk-Off' ? 'signal-tag bearish' : 'signal-tag neutral'}>
-              {data.regime.toUpperCase()}
+      <Card className="p-4">
+        {/* Risk Appetite Score */}
+        <div className="mb-4 pb-4 border-b border-border-subtle">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-text-secondary">Risk Appetite</span>
+            <span className={`text-lg font-bold font-mono ${getRiskAppetiteColor(data.compositeRiskAppetite)}`}>
+              {data.compositeRiskAppetite?.toFixed(0) ?? '--'}
             </span>
+          </div>
+          <div className="w-full bg-surface-3 h-1">
+            <div
+              className="bg-gradient-to-r from-red via-amber to-green h-1 transition-all"
+              style={{ width: `${Math.min(100, Math.max(0, data.compositeRiskAppetite ?? 50))}%` }}
+            />
+          </div>
+          <div className="mt-2 text-xs text-text-secondary">
+            {getRiskAppetiteLabel(data.compositeRiskAppetite ?? 50)}
+            <span className="text-text-tertiary ml-2">— {data.regime || 'Unknown'} regime</span>
           </div>
         </div>
 
-        {/* Options Intelligence */}
-        {optionsData && (
-          <div className="border border-border bg-surface-1">
-            <div className="px-3 py-1.5 border-b border-border-subtle bg-surface-2">
-              <span className="text-2xs text-text-tertiary uppercase tracking-wider">Options Intelligence</span>
-            </div>
-            <div className="p-2">
-              {/* Options Fear Composite */}
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-text-secondary">Fear Composite</span>
-                <span className="font-mono text-sm text-text-primary">
-                  {optionsData.optionsFearComposite.toFixed(1)}
-                </span>
-              </div>
-              <div className="h-1 bg-surface-4 mb-3">
-                <div
-                  className="h-full bg-accent"
-                  style={{ width: `${optionsData.optionsFearComposite}%` }}
-                />
-              </div>
-
-              {/* Component Breakdown */}
-              <div className="grid grid-cols-2 gap-2 text-2xs">
-                {optionsData.components.vix && (
-                  <div className="flex justify-between">
-                    <span className="text-text-tertiary">VIX</span>
-                    <span className="font-mono text-text-primary">{optionsData.components.vix.value}</span>
-                  </div>
-                )}
-                {optionsData.components.vvix && (
-                  <div className="flex justify-between">
-                    <span className="text-text-tertiary">VVIX</span>
-                    <span className="font-mono text-text-primary">{optionsData.components.vvix.value}</span>
-                  </div>
-                )}
-                {optionsData.components.skew && (
-                  <div className="flex justify-between">
-                    <span className="text-text-tertiary">SKEW</span>
-                    <span className="font-mono text-text-primary">{optionsData.components.skew.value}</span>
-                  </div>
-                )}
-                {optionsData.components.putCallRatio && (
-                  <div className="flex justify-between">
-                    <span className="text-text-tertiary">P/C</span>
-                    <span className="font-mono text-text-primary">{optionsData.components.putCallRatio.value}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Contrarian Signal */}
-              {optionsData.contrarian.signal !== 'NEUTRAL' && (
-                <div className={`mt-2 p-2 border ${optionsData.contrarian.signal === 'BULLISH' ? 'bg-green-dim border-green' : 'bg-amber-dim border-amber'}`}>
-                  <span className={`text-xs font-medium ${optionsData.contrarian.signal === 'BULLISH' ? 'text-green' : 'text-amber'}`}>
-                    Contrarian: {optionsData.contrarian.signal}
+        {/* Gauges */}
+        {data.gauges && data.gauges.length > 0 && (
+          <div className="grid grid-cols-2 gap-3 mb-4 pb-4 border-b border-border-subtle">
+            {data.gauges.slice(0, 4).map((gauge, idx) => (
+              <div key={idx} className="bg-surface-2 p-2 rounded">
+                <div className="text-2xs text-text-tertiary uppercase">{gauge.name}</div>
+                <div className="flex items-baseline gap-2">
+                  <span className={`font-mono font-medium ${gauge.value > 0 ? 'text-green' : gauge.value < 0 ? 'text-red' : 'text-text-secondary'}`}>
+                    {gauge.value > 0 ? '+' : ''}{gauge.value?.toFixed(2) ?? '--'}
                   </span>
-                  <p className="text-2xs text-text-secondary mt-0.5">{optionsData.contrarian.note}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Sentiment Gauges */}
-        <div className="border border-border bg-surface-1">
-          <div className="px-3 py-1.5 border-b border-border-subtle bg-surface-2">
-            <span className="text-2xs text-text-tertiary uppercase tracking-wider">Sentiment Gauges</span>
-          </div>
-          <div className="p-2 space-y-2">
-            {data.gauges.map((gauge) => (
-              <div key={gauge.name}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-text-secondary">{gauge.name}</span>
-                  <span className="text-2xs text-text-tertiary">{gauge.percentile.toFixed(0)}th %ile</span>
-                </div>
-                {getPercentileBar(gauge.percentile)}
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-sm font-mono text-text-primary">{gauge.formatted}</span>
                   <span className="text-2xs text-text-tertiary">{gauge.signal}</span>
                 </div>
               </div>
             ))}
           </div>
+        )}
+
+        {/* VIX & AAII */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          {data.vixTermStructure && (
+            <div>
+              <div className="text-2xs text-text-tertiary uppercase mb-1">VIX Term Structure</div>
+              <div className="text-sm font-medium text-text-primary">
+                {data.vixTermStructure.structure || '—'}
+              </div>
+              <div className="text-2xs text-text-secondary">
+                Ratio: {data.vixTermStructure.ratio?.toFixed(2) ?? '—'}
+              </div>
+            </div>
+          )}
+          {data.aaiiSentiment && (
+            <div>
+              <div className="text-2xs text-text-tertiary uppercase mb-1">AAII Sentiment</div>
+              <div className="text-sm font-medium text-text-primary">
+                {data.aaiiSentiment.signal || '—'}
+              </div>
+              <div className="text-2xs text-text-secondary">
+                Spread: {data.aaiiSentiment.bullBearSpread != null
+                  ? `${data.aaiiSentiment.bullBearSpread >= 0 ? '+' : ''}${data.aaiiSentiment.bullBearSpread.toFixed(0)}%`
+                  : '—'}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Cross-Asset Momentum */}
-        <div className="p-2 border border-border bg-surface-1">
-          <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Cross-Asset Momentum</div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-text-secondary">Avg (3M)</span>
-            <span className={cn('font-mono text-sm', data.crossAssetMomentum.averageMomentum >= 0 ? 'text-green' : 'text-red')}>
-              {data.crossAssetMomentum.averageMomentum >= 0 ? '+' : ''}{data.crossAssetMomentum.averageMomentum.toFixed(1)}%
+        {/* Cross Asset Momentum */}
+        {data.crossAssetMomentum && data.crossAssetMomentum.assets && data.crossAssetMomentum.assets.length > 0 && (
+          <div className="mb-4">
+            <div className="text-2xs text-text-tertiary uppercase mb-2">Cross Asset Momentum</div>
+            <div className="flex flex-wrap gap-2">
+              {data.crossAssetMomentum.assets.slice(0, 5).map((asset, idx) => (
+                <span
+                  key={idx}
+                  className={`text-xs px-2 py-1 rounded ${
+                    asset.signal?.toLowerCase().includes('bull') ? 'bg-green-dim text-green' :
+                    asset.signal?.toLowerCase().includes('bear') ? 'bg-red-dim text-red' :
+                    'bg-surface-3 text-text-secondary'
+                  }`}
+                >
+                  {asset.asset}: {asset.momentum3m?.toFixed(1) ?? '--'}%
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Contrarian Signal & Description */}
+        <div className="pt-3 border-t border-border-subtle">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-2xs text-text-tertiary uppercase">Contrarian Signal</span>
+            <span className={`text-sm font-medium ${getContrarianColor(data.contrarianSignal)}`}>
+              {data.contrarianSignal || 'Neutral'}
             </span>
           </div>
-          <div className="grid grid-cols-3 gap-1">
-            {data.crossAssetMomentum.assets.slice(0, 6).map((asset) => (
-              <div key={asset.asset} className="text-2xs p-1 bg-surface-2 flex justify-between">
-                <span className="text-text-tertiary">{asset.asset}</span>
-                <span className={cn('font-mono', asset.momentum3m >= 0 ? 'text-green' : 'text-red')}>
-                  {asset.momentum3m >= 0 ? '+' : ''}{asset.momentum3m.toFixed(1)}%
-                </span>
-              </div>
-            ))}
-          </div>
+          <p className="text-xs text-text-secondary leading-relaxed">
+            {data.description || 'No sentiment data available.'}
+          </p>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

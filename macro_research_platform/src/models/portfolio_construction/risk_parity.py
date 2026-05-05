@@ -103,7 +103,8 @@ ALL_WEATHER_ASSETS = [
         name="equities",
         label="Global Equities",
         environment="growth_up / inflation_down",
-        columns=["sp500", "equity_momentum_12m", "SP500"],
+        # FIXED: Updated column names to match us_economic_data.csv (BUG-AW)
+        columns=["equity_index", "SPY", "sp500", "equity_momentum_12m", "SP500"],
         direction=+1,
         description="Equities do best in growth-up / inflation-stable environments. "
                     "Key risk: recession and re-rating risk.",
@@ -112,7 +113,8 @@ ALL_WEATHER_ASSETS = [
         name="nominal_bonds",
         label="Long-Term Treasuries",
         environment="growth_down / inflation_down",
-        columns=["yield_10y", "us_10y_yield", "DGS10"],
+        # FIXED: Updated column names to match us_economic_data.csv (BUG-AW)
+        columns=["us_10y_yield", "yield_10y", "us_treasury_10y", "DGS10"],
         direction=-1,   # Bond PRICE moves inverse to yield
         description="Nominal Treasuries do best when growth and inflation are falling. "
                     "The classic 'risk-off' safe haven. Duration risk is the primary factor.",
@@ -130,7 +132,8 @@ ALL_WEATHER_ASSETS = [
         name="credit",
         label="Credit / High Yield",
         environment="growth_up",
-        columns=["hy_spreads", "high_yield_spread", "bbb_spread"],
+        # FIXED: Updated column names to match us_economic_data.csv (BUG-AW)
+        columns=["credit_spreads", "hy_spreads", "high_yield_spread", "bbb_spread"],
         direction=-1,   # Tighter spreads = positive credit return
         description="Credit (HY bonds) does well in growth-up environments. "
                     "Exposed to default cycles; spreads widen sharply in recessions.",
@@ -139,7 +142,8 @@ ALL_WEATHER_ASSETS = [
         name="inflation_linked",
         label="Inflation-Linked / TIPS",
         environment="inflation_up",
-        columns=["inflation_breakeven_10y", "T10YIE", "core_pce_yoy", "cpi_yoy"],
+        # FIXED: Updated column names to match us_economic_data.csv (BUG-AW)
+        columns=["us_cpi", "core_cpi_yoy", "inflation_breakeven_10y", "T10YIE", "core_pce_yoy", "cpi_yoy"],
         direction=+1,
         description="TIPS / inflation-linked bonds outperform in inflation-up environments. "
                     "Real yield is the discount rate; nominal bonds lose purchasing power.",
@@ -219,7 +223,7 @@ class RiskParityAllocator:
             window = min(self.vol_window, len(clean))
             if window < self.min_periods:
                 # Insufficient history — use a reasonable default
-                vols[name] = 15.0   # 15% annualised default
+                vols[name] = 15.0   # FIXED (BUG 12): 15% annualised default (percentage units to match computed vols)
             else:
                 vol_monthly = clean.iloc[-window:].std()
                 vols[name] = vol_monthly * np.sqrt(12)  # annualise
@@ -359,8 +363,8 @@ class RiskParityAllocator:
             return RiskParityResult(
                 weights=equal_w,
                 risk_contributions={k: 100.0 / len(equal_w) for k in equal_w},
-                volatilities={k: 10.0 for k in equal_w},
-                portfolio_vol=10.0,
+                volatilities={k: 0.10 for k in equal_w},  # FIXED (BUG 5): decimal not percentage
+                portfolio_vol=0.10,  # FIXED (BUG 5): 10% as decimal, not percentage
                 diversification_ratio=1.0,
                 regime_positioning="unknown",
                 description="No return data available; using equal weights",

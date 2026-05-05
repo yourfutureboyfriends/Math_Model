@@ -4,7 +4,7 @@ Applies unit conversions, bounds checks, NaN guards, and fallbacks.
 """
 import logging, math, time
 from typing import Any, Optional, Callable
-from api.data_contracts import CONTRACTS, MetricContract
+from data_contracts import CONTRACTS, MetricContract
 
 logger = logging.getLogger(__name__)
 

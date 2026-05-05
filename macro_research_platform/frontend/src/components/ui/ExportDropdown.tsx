@@ -69,7 +69,6 @@ export function ExportDropdown() {
         };
       }
     } catch (error) {
-      console.error('Export failed:', error);
       alert('Failed to generate report. Please try again.');
     } finally {
       setIsExporting(false);
@@ -127,7 +126,7 @@ export function ExportDropdown() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy:', err);
+      // Copy failed silently
     }
   };
 
@@ -171,7 +170,7 @@ export function ExportDropdown() {
         className={cn(
           'flex items-center gap-2 px-3 py-1.5 border rounded text-xs font-medium transition-colors',
           isOpen
-            ? 'bg-accent text-bg border-accent'
+            ? 'bg-bloomberg text-bg border-bloomberg'
             : 'bg-surface-2 text-text-secondary border-border-subtle hover:bg-surface-3 hover:text-text-primary'
         )}
       >

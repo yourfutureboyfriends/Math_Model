@@ -2,9 +2,9 @@ import React, { useRef, useEffect, useState } from "react";
 import { useMarketStream } from "@/hooks/useMarketStream";
 import styles from "./LivePriceTile.module.css";
 
-// ═══════════════════════════════════════════════════════════════════════════════
+
 // Types
-// ═══════════════════════════════════════════════════════════════════════════════
+
 interface LivePriceTileProps {
   symbol: string;
   className?: string;

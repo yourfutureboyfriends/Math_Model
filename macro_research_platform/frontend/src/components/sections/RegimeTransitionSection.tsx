@@ -43,7 +43,7 @@ export function RegimeTransitionSection({ data }: RegimeTransitionSectionProps) 
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">35</span>
+          <span className="section-tag">25</span>
           <h2 className="section-title">Regime Transition</h2>
           <span className="section-meta">{currentRegime}</span>
         </div>
@@ -70,7 +70,7 @@ export function RegimeTransitionSection({ data }: RegimeTransitionSectionProps) 
                 Most Likely Next
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-base font-bold text-accent">
+                <span className="text-base font-bold text-bloomberg">
                   {mostLikelyNext}
                 </span>
                 <ArrowRight className="w-3 h-3 text-text-tertiary" />
@@ -103,7 +103,7 @@ export function RegimeTransitionSection({ data }: RegimeTransitionSectionProps) 
                   <div className="flex items-center gap-2">
                     <div className="w-20 h-1 bg-surface-4">
                       <div
-                        className="h-full bg-accent"
+                        className="h-full bg-bloomberg"
                         style={{ width: `${t.probability * 100}%` }}
                       />
                     </div>
@@ -122,7 +122,7 @@ export function RegimeTransitionSection({ data }: RegimeTransitionSectionProps) 
             <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">
               Next Regime Probability
             </div>
-            <div className="text-2xl font-mono font-bold text-accent">
+            <div className="text-2xl font-mono font-bold text-bloomberg">
               {(nextRegimeProbability * 100).toFixed(0)}%
             </div>
             <div className="text-xs text-text-secondary mt-1">{mostLikelyNext}</div>
@@ -174,7 +174,7 @@ function TransitionMatrixGrid({ matrix, current }: TransitionMatrixGridProps) {
       </thead>
       <tbody>
         {regimes.map((from) => (
-          <tr key={from} className={from === current ? 'bg-accent-dim' : ''}>
+          <tr key={from} className={from === current ? 'bg-bloomberg-dim' : ''}>
             <td className="p-1.5 font-medium text-text-primary">{from.slice(0, 8)}</td>
             {regimes.map((to) => {
               const prob = matrix[from]?.[to] || 0;
@@ -189,7 +189,7 @@ function TransitionMatrixGrid({ matrix, current }: TransitionMatrixGridProps) {
                           : prob > 0.2
                             ? 'rgba(0, 212, 170, 0.1)'
                             : 'transparent',
-                      color: prob > 0.3 ? 'var(--accent)' : 'var(--text-tertiary)',
+                      color: prob > 0.3 ? 'var(--bloomberg)' : 'var(--text-tertiary)',
                     }}
                   >
                     {(prob * 100).toFixed(0)}%

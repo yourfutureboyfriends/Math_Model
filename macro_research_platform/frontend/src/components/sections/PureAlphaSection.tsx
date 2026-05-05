@@ -68,7 +68,7 @@ export function PureAlphaSection({ data }: PureAlphaSectionProps) {
                 </div>
                 <div className="flex items-baseline gap-2">
                   <span className={`text-xl font-bold font-mono ${
-                    data.compositeScore > 0.6 ? 'text-green' : data.compositeScore > 0.3 ? 'text-accent' : 'text-text-secondary'
+                    data.compositeScore > 0.6 ? 'text-green' : data.compositeScore > 0.3 ? 'text-amber' : 'text-text-secondary'
                   }`}>
                     {data.compositeScore.toFixed(2)}
                   </span>
@@ -95,7 +95,7 @@ export function PureAlphaSection({ data }: PureAlphaSectionProps) {
           <div className="mt-2">
             <div className="h-1 bg-surface-4">
               <div
-                className="h-full bg-accent"
+                className="h-full bg-bloomberg"
                 style={{ width: `${data.compositeScore * 100}%` }}
               />
             </div>
@@ -139,7 +139,7 @@ export function PureAlphaSection({ data }: PureAlphaSectionProps) {
                   <td className="py-2 px-3 text-center">
                     <div className="flex items-center justify-center gap-1">
                       <div className="w-8 h-1 bg-surface-4">
-                        <div className="h-full bg-accent" style={{ width: `${signal.percentile}%` }} />
+                        <div className="h-full bg-bloomberg" style={{ width: `${signal.percentile}%` }} />
                       </div>
                       <span className="text-2xs text-text-tertiary">{signal.percentile}</span>
                     </div>

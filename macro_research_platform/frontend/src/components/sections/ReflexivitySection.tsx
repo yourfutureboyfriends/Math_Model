@@ -88,7 +88,7 @@ export function ReflexivitySection({ data }: ReflexivitySectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">16</span>
+          <span className="section-tag">23</span>
           <h2 className="section-title">Reflexivity Monitor</h2>
           {data.loopCount?.active > 0 && (
             <span className="section-meta text-red">{data.loopCount.active} ACTIVE</span>
@@ -124,7 +124,7 @@ export function ReflexivitySection({ data }: ReflexivitySectionProps) {
               Active Loops ({data.loopCount?.active || 0})
             </div>
             <div className="space-y-2">
-              {data.activeLoops.map((loop) => (
+              {(data.activeLoops ?? []).map((loop) => (
                 <LoopCard key={loop.id} loop={loop} active={true} />
               ))}
             </div>

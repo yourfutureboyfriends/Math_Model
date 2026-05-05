@@ -61,6 +61,7 @@ export function CommoditiesDashboardSection() {
     return <div className="h-64 bg-surface-1 border border-border animate-pulse" />;
   }
 
+  // FIXED (BUG 4): Use != null checks instead of truthy
   const renderCommodityRow = (commodities: Commodity[]) => (
     <div className="grid grid-cols-4 gap-2">
       {commodities.slice(0, 4).map(c => (
@@ -69,15 +70,15 @@ export function CommoditiesDashboardSection() {
           className="p-2 border border-border-subtle bg-surface-2"
         >
           <div className="text-2xs text-text-tertiary truncate">{c.name}</div>
-          <div className="font-mono">{c.spot?.toFixed(2) || '--'}</div>
+          <div className="font-mono">{c.spot != null ? c.spot.toFixed(2) : '--'}</div>
           <div className="flex items-center justify-between text-2xs">
             <span className={cn(
-              c.change1d > 0 ? 'text-green' : 'text-red'
+              (c.change1d ?? 0) > 0 ? 'text-green' : (c.change1d ?? 0) < 0 ? 'text-red' : 'text-text-secondary'
             )}>
-              {c.change1d ? `${c.change1d > 0 ? '+' : ''}${c.change1d.toFixed(1)}%` : '--'}
+              {c.change1d != null ? `${c.change1d >= 0 ? '+' : ''}${c.change1d.toFixed(1)}%` : '--'}
             </span>
             <span className="text-text-tertiary">
-              52W: {c.week52Percentile?.toFixed(0) || '--'}%
+              52W: {c.week52Percentile != null ? c.week52Percentile.toFixed(0) : '--'}%
             </span>
           </div>
         </div>

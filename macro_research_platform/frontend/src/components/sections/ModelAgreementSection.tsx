@@ -44,7 +44,7 @@ export function ModelAgreementSection({ data }: ModelAgreementSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">30</span>
+          <span className="section-tag">31</span>
           <h2 className="section-title">Model Agreement</h2>
         </div>
       </div>
@@ -69,7 +69,7 @@ export function ModelAgreementSection({ data }: ModelAgreementSectionProps) {
               </tr>
             </thead>
             <tbody>
-              {data.items.map((item, idx) => (
+              {(data.items ?? []).map((item, idx) => (
                 <tr key={`${item.model}-${item.indicator}-${idx}`} className="border-b border-border-subtle last:border-0">
                   <td className="py-2 px-3 text-xs font-medium text-text-primary">{item.model}</td>
                   <td className="py-2 px-3 text-xs text-text-secondary">{item.indicator}</td>

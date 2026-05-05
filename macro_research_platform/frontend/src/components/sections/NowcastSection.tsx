@@ -8,6 +8,21 @@ interface NowcastSectionProps {
   data?: NowcastData;
 }
 
+// Format ISO timestamp to readable time
+const fmtTimestamp = (iso: string | undefined): string => {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZone: 'UTC',
+    }) + ' UTC';
+  } catch {
+    return iso;
+  }
+};
+
 export function NowcastSection({ data }: NowcastSectionProps) {
   if (!data) return null;
 
@@ -27,7 +42,7 @@ export function NowcastSection({ data }: NowcastSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">12</span>
+          <span className="section-tag">16</span>
           <h2 className="section-title">GDP Nowcast</h2>
         </div>
       </div>
@@ -61,8 +76,11 @@ export function NowcastSection({ data }: NowcastSectionProps) {
           </div>
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider">RMSE</div>
+            {/* FIXED: BUG-B8 - Handle null/undefined rmse properly */}
             <div className="text-base font-mono text-text-primary">
-              {data.confidenceInterval.rmse}%
+              {data.confidenceInterval.rmse !== null && data.confidenceInterval.rmse !== undefined && typeof data.confidenceInterval.rmse === 'number'
+                ? `±${data.confidenceInterval.rmse.toFixed(2)}pp`
+                : '±N/A'}
             </div>
           </div>
         </div>
@@ -75,14 +93,15 @@ export function NowcastSection({ data }: NowcastSectionProps) {
             </span>
           </div>
           <div className="p-2 grid grid-cols-2 md:grid-cols-4 gap-2">
-            {data.components.map((comp) => (
+            {(data.components ?? []).map((comp) => (
               <div key={comp.name} className="p-2 bg-surface-2">
                 <div className="text-xs text-text-secondary">{comp.name}</div>
                 <div className="flex items-center justify-between">
                   <span className={cn('font-mono text-sm', getStatusColor(comp.status))}>
                     {comp.contribution >= 0 ? '+' : ''}{comp.contribution.toFixed(2)}%
                   </span>
-                  <span className="text-2xs text-text-tertiary">w{comp.weight}</span>
+                  {/* FIX: weight is a decimal (0.35); display as percentage for readability */}
+                  <span className="text-2xs text-text-tertiary">w{(comp.weight * 100).toFixed(0)}%</span>
                 </div>
               </div>
             ))}
@@ -95,7 +114,10 @@ export function NowcastSection({ data }: NowcastSectionProps) {
             Methodology
           </div>
           <p className="text-xs text-text-secondary">{data.methodology}</p>
-          <p className="text-2xs text-text-tertiary font-mono mt-1">{data.lastUpdated}</p>
+          {/* Format timestamp */}
+          <p className="text-2xs text-text-tertiary font-mono mt-1">
+            Updated: {fmtTimestamp(data?.lastUpdated)}
+          </p>
         </div>
       </div>
     </div>

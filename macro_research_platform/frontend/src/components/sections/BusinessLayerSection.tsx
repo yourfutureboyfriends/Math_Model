@@ -124,7 +124,7 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">21</span>
+          <span className="section-tag">39</span>
           <h2 className="section-title">Business Layer</h2>
         </div>
       </div>
@@ -245,7 +245,7 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
             {expandedSections.expectedReturns && (
               <div className="p-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {data.expectedReturns.map((item) => (
+                  {(data.expectedReturns ?? []).map((item) => (
                     <div key={item.assetOrSector} className="p-2 border border-border bg-surface-2">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-medium text-text-primary">{item.assetOrSector}</span>
@@ -293,7 +293,7 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
             {expandedSections.positionSizing && (
               <div className="p-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                  {data.positionSizing.map((item) => (
+                  {(data.positionSizing ?? []).map((item) => (
                     <div
                       key={item.assetOrSector}
                       className={`p-2 border ${
@@ -345,7 +345,7 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.signalScorecard.map((item) => (
+                    {(data.signalScorecard ?? []).map((item) => (
                       <tr key={item.signal} className="border-b border-border-subtle last:border-0">
                         <td className="py-1.5 px-2 text-xs text-text-primary">{item.signal}</td>
                         <td className="py-1.5 px-2 text-xs text-text-secondary">{item.category}</td>
@@ -381,10 +381,11 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
             {expandedSections.decisionLog && (
               <div className="p-2">
                 <div className="space-y-1">
-                  {data.decisionLog.map((item, idx) => (
+                  {(data.decisionLog ?? []).map((item, idx) => (
                     <div key={`${item.timestamp}-${idx}`} className="flex items-center gap-3 p-2 border-b border-border-subtle last:border-0">
                       <div className="text-2xs text-text-tertiary w-20 shrink-0">
-                        {new Date(item.timestamp).toLocaleDateString()}
+                        {/* FIXED (BUG 8): Use ISO date format */}
+                        {new Date(item.timestamp).toISOString().split('T')[0]}
                       </div>
                       <span className="signal-tag neutral text-2xs shrink-0">{item.recommendationType}</span>
                       <span className="flex-1 text-xs text-text-secondary truncate">{item.headline}</span>

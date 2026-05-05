@@ -10,9 +10,9 @@ interface HeaderProps {
 }
 
 const statusColors = {
-  current: 'text-accent-green',
-  acceptable: 'text-accent-amber',
-  stale: 'text-accent-red',
+  current: 'text-green',
+  acceptable: 'text-amber',
+  stale: 'text-red',
   unknown: 'text-text-muted',
 };
 
@@ -28,7 +28,7 @@ export function Header({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-terminal-elevated rounded-lg">
-            <Terminal className="w-6 h-6 text-accent-amber" />
+            <Terminal className="w-6 h-6 text-amber" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-text-primary tracking-tight">
@@ -66,7 +66,7 @@ export function Header({
             <span className="text-text-muted">Mode:</span>
             <span className={cn(
               'ml-2 font-mono',
-              mode === 'live' ? 'text-accent-green' : 'text-accent-amber'
+              mode === 'live' ? 'text-green' : 'text-amber'
             )}>
               {mode.toUpperCase()}
             </span>

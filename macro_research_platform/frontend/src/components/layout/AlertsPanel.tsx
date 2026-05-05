@@ -96,7 +96,7 @@ export function AlertsPanel({
       {/* Panel */}
       <div
         className={cn(
-          'fixed top-12 right-0 bottom-0 w-80 bg-surface-1 border-l border-border z-50',
+          'fixed top-16 right-0 bottom-0 w-80 bg-surface-1 border-l border-border z-50',
           'transform transition-transform duration-200 ease-out',
           isOpen ? 'translate-x-0' : 'translate-x-full'
         )}
@@ -167,7 +167,7 @@ export function AlertsPanel({
                     {alert.action && (
                       <button
                         onClick={() => onViewSection?.(alert.action!)}
-                        className="px-2 py-1 text-2xs font-medium text-accent border border-accent/30 rounded-sm hover:bg-accent-muted transition-colors"
+                        className="px-2 py-1 text-2xs font-medium text-bloomberg border border-bloomberg/30 rounded-sm hover:bg-bloomberg-muted transition-colors"
                       >
                         VIEW SECTION
                       </button>

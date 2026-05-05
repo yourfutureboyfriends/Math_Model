@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """
-WebSocket Streaming Manager
-============================
+WebSocket Streaming Manager with Redis Pub/Sub (Phase 9D)
+==========================================================
 Handles real-time market data streaming using yfinance
 and broadcasts updates to all connected clients every 2 seconds.
 
-Integrates with the existing python-socketio AsyncServer in main.py.
+NEW: Redis pub/sub integration for multi-worker broadcasting (Phase 9D)
+- Local connections maintained per worker
+- Redis pub/sub for cross-worker message distribution
+- Graceful fallback if Redis unavailable
 
 Architecture:
-- Data ingestion thread (yfinance polling with AsyncWebSocket support)
+- Data ingestion thread (yfinance polling)
 - Price cache with threading.Lock() protection
-- Broadcast thread (emits to all clients every 2s)
+- Broadcast thread (emits to local clients + Redis)
+- Redis listener thread (receives from other workers)
 - Market clock thread (timezone-based status)
 - Regime watcher thread (alerts on changes)
 """
@@ -20,9 +24,18 @@ import time
 import json
 import asyncio
 import logging
+import os
 from datetime import datetime
-from typing import Dict, Optional, Callable, Any, List
+from typing import Dict, Optional, Callable, Any, List, Set
 from concurrent.futures import ThreadPoolExecutor
+
+# Redis imports
+try:
+    import redis.asyncio as redis
+    _REDIS_AVAILABLE = True
+except ImportError:
+    _REDIS_AVAILABLE = False
+    logging.warning("[WebSocket] redis not available, using local-only broadcast")
 
 try:
     import pytz
@@ -39,6 +52,14 @@ _price_cache: Dict[str, Dict[str, Any]] = {}
 _cache_lock = threading.Lock()
 _connected_clients: int = 0
 _last_known_regime: Optional[str] = None
+
+# Redis configuration
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+WS_CHANNEL_PREFIX = "ws:broadcast"
+
+# Redis connection (async - for publishing)
+_redis_pool: Optional[redis.Redis] = None
+_redis_lock = threading.Lock()
 
 # Market data configuration
 STREAM_TICKERS = {
@@ -76,6 +97,94 @@ STREAM_TICKERS = {
 }
 
 
+# Redis Connection Management (Phase 9D)
+
+
+def _get_redis_pool() -> Optional[redis.Redis]:
+    """Get or create Redis connection pool (thread-safe)"""
+    global _redis_pool
+
+    if not _REDIS_AVAILABLE:
+        return None
+
+    with _redis_lock:
+        if _redis_pool is None:
+            try:
+                _redis_pool = redis.from_url(
+                    REDIS_URL,
+                    encoding="utf-8",
+                    decode_responses=True,
+                    max_connections=20,
+                )
+                logging.info("[WebSocket] Redis connection established")
+            except Exception as e:
+                logging.error(f"[WebSocket] Failed to connect to Redis: {e}")
+                _redis_pool = None
+
+        return _redis_pool
+
+
+async def _broadcast_to_redis(channel: str, message: Dict[str, Any]) -> bool:
+    """Broadcast message to Redis pub/sub channel"""
+    pool = _get_redis_pool()
+    if pool is None:
+        return False
+
+    try:
+        channel_name = f"{WS_CHANNEL_PREFIX}:{channel}"
+        await pool.publish(channel_name, json.dumps(message))
+        return True
+    except Exception as e:
+        logging.warning(f"[WebSocket] Redis publish failed: {e}")
+        return False
+
+
+async def _listen_redis():
+    """Listen for messages from Redis and broadcast locally"""
+    if not _REDIS_AVAILABLE:
+        return
+
+    pool = _get_redis_pool()
+    if pool is None:
+        return
+
+    try:
+        pubsub = pool.pubsub()
+        await pubsub.subscribe(
+            f"{WS_CHANNEL_PREFIX}:signals",
+            f"{WS_CHANNEL_PREFIX}:regime",
+            f"{WS_CHANNEL_PREFIX}:market",
+            f"{WS_CHANNEL_PREFIX}:alerts",
+            f"{WS_CHANNEL_PREFIX}:all",
+        )
+
+        logging.info("[WebSocket] Redis pub/sub listener started")
+
+        async for message in pubsub.listen():
+            if message["type"] == "message":
+                try:
+                    data = json.loads(message["data"])
+                    # Only emit if not from this worker (avoid duplication)
+                    if data.get("worker_id") != _get_worker_id():
+                        await _emit_local(data)
+                except Exception as e:
+                    logging.warning(f"[WebSocket] Error processing Redis message: {e}")
+
+    except asyncio.CancelledError:
+        logging.info("[WebSocket] Redis listener cancelled")
+        raise
+    except Exception as e:
+        logging.error(f"[WebSocket] Redis listener error: {e}")
+
+
+def _get_worker_id() -> str:
+    """Get unique worker ID for this process"""
+    return f"{os.getpid()}_{threading.current_thread().ident}"
+
+
+# Price and Broadcasting Logic
+
+
 def _price_updater(symbol: str, price: float, timestamp: datetime):
     """Thread-safe price update from WebSocket feed."""
     with _cache_lock:
@@ -94,27 +203,11 @@ def _price_updater(symbol: str, price: float, timestamp: datetime):
 
 def _run_yf_stream():
     """
-    Run yfinance AsyncWebSocket stream if available.
-    Falls back to polling if AsyncWebSocket unavailable.
+    Run yfinance streaming.
+    Uses polling loop as primary method.
     """
-    try:
-        import yfinance as yf
-
-        # Try AsyncWebSocket first (newer yfinance versions)
-        if hasattr(yf, "AsyncWebSocket"):
-            logging.info("[WebSocket] Using yfinance AsyncWebSocket")
-            ws = yf.AsyncWebSocket(
-                tickers=list(STREAM_TICKERS.keys()),
-                callback=_price_updater,
-            )
-            asyncio.run(ws.listen())
-        else:
-            # Fallback: polling loop
-            logging.info("[WebSocket] AsyncWebSocket not available, using polling")
-            _polling_fallback()
-    except Exception as e:
-        logging.warning(f"[WebSocket] Stream error: {e}, using polling fallback")
-        _polling_fallback()
+    logging.info("[WebSocket] Using polling fallback (reliable method)")
+    _polling_fallback()
 
 
 def _polling_fallback():
@@ -148,6 +241,7 @@ def _broadcast_loop_sync():
 async def _broadcast_loop():
     """Emit 'live_data' event to ALL clients every 2 seconds."""
     global _sio, _connected_clients
+
     while True:
         await asyncio.sleep(2)
         if _sio is None or _connected_clients == 0:
@@ -157,10 +251,44 @@ async def _broadcast_loop():
             snapshot = list(_price_cache.values())
 
         if snapshot:
+            message = {
+                "type": "live_data",
+                "worker_id": _get_worker_id(),
+                "timestamp": datetime.utcnow().isoformat(),
+                "prices": snapshot,
+            }
+
             try:
+                # Emit locally first
                 await _sio.emit("live_data", {"prices": snapshot})
+
+                # Also broadcast to Redis for other workers
+                await _broadcast_to_redis("market", message)
             except Exception as e:
                 logging.warning(f"[WebSocket] Broadcast error: {e}")
+
+
+async def _emit_local(data: Dict[str, Any]):
+    """Emit message to locally connected SocketIO clients"""
+    global _sio
+    if _sio is None:
+        return
+
+    try:
+        msg_type = data.get("type")
+        if msg_type == "live_data":
+            await _sio.emit("live_data", {"prices": data.get("prices", [])})
+        elif msg_type == "signal_update":
+            await _sio.emit("signal_update", data.get("data", {}))
+        elif msg_type == "regime_change":
+            await _sio.emit("REGIME_CHANGE", data.get("data", {}))
+        elif msg_type == "alert":
+            await _sio.emit("alert", data.get("data", {}))
+    except Exception as e:
+        logging.warning(f"[WebSocket] Local emit error: {e}")
+
+
+# Market Clock and Regime Watcher
 
 
 def _get_market_clock():
@@ -219,6 +347,7 @@ async def _regime_watcher_loop():
     """
     Check regime changes every 60 seconds.
     Emits 'REGIME_CHANGE' event when regime differs from last known.
+    Uses Redis pub/sub for cross-worker distribution.
     """
     global _sio, _connected_clients, _last_known_regime
 
@@ -232,10 +361,8 @@ async def _regime_watcher_loop():
             regime_data = None
             current_regime = None
 
-            # FIXED: Use shared regime context, not independent classification (BUG-05)
             try:
                 from api.regime_context import build_regime_context
-                # Import latest values from data cache or compute
                 from api.data_fetcher import _METRIC_CACHE
                 growth = _METRIC_CACHE.get("growth", (2.0, 0))[0]
                 inflation = _METRIC_CACHE.get("inflation", (3.3, 0))[0]
@@ -248,16 +375,34 @@ async def _regime_watcher_loop():
 
             if current_regime and current_regime != _last_known_regime:
                 _last_known_regime = current_regime
-                await _sio.emit(
-                    "REGIME_CHANGE",
-                    {
+
+                message = {
+                    "type": "regime_change",
+                    "worker_id": _get_worker_id(),
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "data": {
                         "regime": current_regime,
                         "timestamp": datetime.now().isoformat(),
                         "details": regime_data or {},
                     }
-                )
+                }
+
+                # Emit locally
+                await _sio.emit("REGIME_CHANGE", message["data"])
+
+                # Broadcast to Redis for other workers
+                await _broadcast_to_redis("regime", message)
+
         except Exception as e:
             logging.warning(f"[WebSocket] Regime watcher error: {e}")
+
+
+def _redis_listener_sync():
+    """Synchronous wrapper for Redis listener."""
+    asyncio.run(_listen_redis())
+
+
+# Public API
 
 
 def set_socketio(socketio_instance):
@@ -313,6 +458,12 @@ def start_streaming():
     threading.Thread(target=_run_yf_stream, daemon=True, name="yf-stream").start()
     threading.Thread(target=_broadcast_loop_sync, daemon=True, name="broadcast").start()
     threading.Thread(target=_regime_watcher_sync, daemon=True, name="regime-watcher").start()
+
+    # Start Redis listener if available
+    if _REDIS_AVAILABLE:
+        threading.Thread(target=_redis_listener_sync, daemon=True, name="redis-listener").start()
+        logging.info("[WebSocket] Redis pub/sub listener thread started")
+
     logging.info("[WebSocket] Streaming threads started")
 
 
@@ -323,6 +474,8 @@ def get_stream_status():
         "cached_prices": len(_price_cache),
         "connected_clients": _connected_clients,
         "market_clock": _get_market_clock(),
+        "redis_available": _REDIS_AVAILABLE,
+        "redis_connected": _redis_pool is not None,
     }
 
 
@@ -335,3 +488,57 @@ def update_client_count(count: int):
 def get_connected_count() -> int:
     """Get current connected client count."""
     return _connected_clients
+
+
+# Phase 9D: New Redis Broadcast Functions
+
+
+async def broadcast_signal_update(signal_data: Dict[str, Any]) -> bool:
+    """Broadcast signal update via Redis to all workers"""
+    message = {
+        "type": "signal_update",
+        "worker_id": _get_worker_id(),
+        "timestamp": datetime.utcnow().isoformat(),
+        "data": signal_data,
+    }
+
+    # Emit locally first
+    if _sio:
+        await _sio.emit("signal_update", signal_data)
+
+    # Broadcast via Redis
+    return await _broadcast_to_redis("signals", message)
+
+
+async def broadcast_regime_change(regime_data: Dict[str, Any]) -> bool:
+    """Broadcast regime change via Redis to all workers"""
+    message = {
+        "type": "regime_change",
+        "worker_id": _get_worker_id(),
+        "timestamp": datetime.utcnow().isoformat(),
+        "data": regime_data,
+    }
+
+    # Emit locally first
+    if _sio:
+        await _sio.emit("REGIME_CHANGE", regime_data)
+
+    # Broadcast via Redis
+    return await _broadcast_to_redis("regime", message)
+
+
+async def broadcast_alert(alert_data: Dict[str, Any]) -> bool:
+    """Broadcast alert via Redis to all workers"""
+    message = {
+        "type": "alert",
+        "worker_id": _get_worker_id(),
+        "timestamp": datetime.utcnow().isoformat(),
+        "data": alert_data,
+    }
+
+    # Emit locally first
+    if _sio:
+        await _sio.emit("alert", alert_data)
+
+    # Broadcast via Redis
+    return await _broadcast_to_redis("alerts", message)

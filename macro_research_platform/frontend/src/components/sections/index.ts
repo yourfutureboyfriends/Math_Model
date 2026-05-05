@@ -1,7 +1,11 @@
-// Section Components - Terminal Redesign
+// Section component barrel — all terminal sections exported from here.
+// Import sections from this file; never import a section file directly.
+
+export { MorningBriefSection } from './MorningBriefSection';
 export { MasterSignalSection } from './MasterSignalSection';
 export { KeyMetricsSection } from './KeyMetricsSection';
 export { RegimeSection } from './RegimeSection';
+export { RegimePlaybookSection } from './RegimePlaybookSection';
 export { SignalStackSection } from './SignalStackSection';
 export { SectorAllocationSection } from './SectorAllocationSection';
 export { FactorRotationSection } from './FactorRotationSection';
@@ -18,10 +22,8 @@ export { HorizonTensionSection } from './HorizonTensionSection';
 export { PortfolioAnalyserSection } from './PortfolioAnalyserSection';
 export { CTATrendSection } from './CTATrendSection';
 export { BusinessLayerSection } from './BusinessLayerSection';
-export { AnomalyDetectionSection } from './AnomalyDetectionSection';
-export { LSTMSection } from './LSTMSection';
 export { EnsembleSection } from './EnsembleSection';
-export { PerformanceTrackingSection } from './PerformanceTrackingSection';
+export { PerformanceAttributionSection } from './PerformanceAttributionSection';
 export { SystemHealthSection } from './SystemHealthSection';
 export { DataExplorerSection } from './DataExplorerSection';
 export { DataToWatchSection } from './DataToWatchSection';
@@ -38,4 +40,15 @@ export { MomentumVetoSection } from './MomentumVetoSection';
 export { ValuationSection } from './ValuationSection';
 export { NewsSentimentSection } from './NewsSentimentSection';
 export { SignalsSection } from './SignalsSection';
-// AlertsBanner is in layout, not sections
+export { EquityResearchSection } from './EquityResearchSection';
+export { COTPositioningSection } from './COTPositioningSection';
+export { RiskAnalyticsSection } from './RiskAnalyticsSection';
+export { EventCalendarSection } from './EventCalendarSection';
+export { TradeIdeasSection } from './TradeIdeasSection';
+export { ScenarioAnalysisSection } from './ScenarioAnalysisSection';
+export { YieldCurveSection } from './YieldCurveSection';
+export { FXMonitorSection } from './FXMonitorSection';
+export { CommoditiesDashboardSection } from './CommoditiesDashboardSection';
+export { FixedIncomeDashboardSection } from './FixedIncomeDashboardSection';
+export { MarketClockSection } from './MarketClockSection';
+export { TradeRecommendationsSection } from './TradeRecommendationsSection';

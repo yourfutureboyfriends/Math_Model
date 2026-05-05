@@ -1,5 +1,5 @@
 // Phase 8 — Master Ensemble Signal Section (Redesigned)
-// Combined signal from all 15 models with terminal aesthetic
+// Combined signal from all active models with terminal aesthetic
 
 import { Activity, AlertCircle } from 'lucide-react';
 import type { EnsembleSignalData, ModelContribution } from '@/types';
@@ -19,7 +19,7 @@ export function EnsembleSection({ data }: EnsembleSectionProps) {
 
   const getScoreColor = (score: number) => {
     if (score >= 0.6) return 'text-green';
-    if (score >= 0.2) return 'text-accent';
+    if (score >= 0.2) return 'text-amber';
     if (score >= -0.2) return 'text-text-secondary';
     if (score >= -0.6) return 'text-amber';
     return 'text-red';
@@ -44,7 +44,7 @@ export function EnsembleSection({ data }: EnsembleSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">40</span>
+          <span className="section-tag">07</span>
           <h2 className="section-title">Master Ensemble</h2>
           <span className="section-meta">{data.ensembleSignal.toUpperCase()}</span>
         </div>
@@ -73,7 +73,7 @@ export function EnsembleSection({ data }: EnsembleSectionProps) {
           {/* Score Bar */}
           <div className="relative h-2 bg-surface-4 mb-2">
             <div
-              className="absolute top-0 bottom-0 bg-accent"
+              className="absolute top-0 bottom-0 bg-bloomberg"
               style={{
                 left: data.ensembleScore < 0 ? undefined : '50%',
                 right: data.ensembleScore < 0 ? '50%' : undefined,
@@ -87,7 +87,11 @@ export function EnsembleSection({ data }: EnsembleSectionProps) {
           <div className="flex items-center justify-between text-2xs text-text-tertiary">
             <span>Conviction: {data.conviction}</span>
             <span className={getAgreementColor(data.agreementRatio)}>
-              Agreement: {(data.agreementRatio * 100).toFixed(0)}%
+              Agreement: {(() => {
+                const raw = data?.agreementRatio ?? 0;
+                const pct = raw > 1 ? raw : raw * 100;
+                return Math.min(100, Math.max(0, Math.round(pct)));
+              })()}%
             </span>
           </div>
         </div>
@@ -173,6 +177,16 @@ export function EnsembleSection({ data }: EnsembleSectionProps) {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* FIXED (BUG 5): Regime Conflict Warning */}
+        {data.regimeConflict && (
+          <div className="p-3 border border-amber bg-amber-dim">
+            <div className="text-2xs text-amber uppercase tracking-wider mb-1">
+              Regime / Signal Mismatch
+            </div>
+            <p className="text-xs text-amber">{data.regimeConflictNote}</p>
           </div>
         )}
 

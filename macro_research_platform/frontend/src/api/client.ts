@@ -19,11 +19,7 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError) => {
-        if (error.response?.status === 503) {
-          console.error('Data not available. Run pipeline first.');
-        } else if (error.response?.status === 500) {
-          console.error('Server error:', error.response.data);
-        }
+        // Error statuses handled by consuming code
         return Promise.reject(error);
       }
     );

@@ -3,6 +3,7 @@
 
 import { cn } from '@/lib/utils';
 import { Layers, Shield } from 'lucide-react';
+import { AnimatedValue, SkeletonSignalStack } from '@/components/ui';
 import type { SignalStackData } from '@/types';
 
 interface SignalStackSectionProps {
@@ -10,7 +11,19 @@ interface SignalStackSectionProps {
 }
 
 export function SignalStackSection({ data }: SignalStackSectionProps) {
-  if (!data) return null;
+  if (!data) {
+    return (
+      <div id="signal-stack" className="terminal-section">
+        <div className="section-header mb-3">
+          <div className="section-header-left">
+            <span className="section-tag">08</span>
+            <h2 className="section-title">Signal Stack</h2>
+          </div>
+        </div>
+        <SkeletonSignalStack rows={8} />
+      </div>
+    );
+  }
 
   // Handle both old format (layers array) and new format (layerOutputs object)
   const layerOutputs = (data as any).layerOutputs || {};
@@ -58,7 +71,7 @@ export function SignalStackSection({ data }: SignalStackSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">06</span>
+          <span className="section-tag">08</span>
           <h2 className="section-title">Signal Stack</h2>
           <span className="section-meta">{sortedLayers.length} layers</span>
         </div>
@@ -81,7 +94,7 @@ export function SignalStackSection({ data }: SignalStackSectionProps) {
                 Confidence
               </div>
               <div className="text-base font-mono font-bold text-text-primary">
-                {(conviction * 100).toFixed(0)}%
+                <AnimatedValue value={conviction * 100} decimals={0} suffix="%" />
               </div>
             </div>
           </div>
@@ -90,7 +103,7 @@ export function SignalStackSection({ data }: SignalStackSectionProps) {
           <div className="mt-3">
             <div className="h-1 bg-surface-4">
               <div
-                className="h-full bg-accent transition-all duration-500"
+                className="h-full bg-bloomberg transition-all duration-500"
                 style={{ width: `${conviction * 100}%` }}
               />
             </div>
@@ -160,12 +173,12 @@ export function SignalStackSection({ data }: SignalStackSectionProps) {
                             width: `${(layer.conviction || 0.5) * 100}%`,
                             backgroundColor:
                               layer.conviction >= 0.7 ? 'var(--green)' :
-                              layer.conviction >= 0.4 ? 'var(--accent)' : 'var(--text-tertiary)',
+                              layer.conviction >= 0.4 ? 'var(--amber)' : 'var(--text-tertiary)',
                           }}
                         />
                       </div>
                       <span className="text-2xs font-mono text-text-secondary w-6 text-right">
-                        {((layer.conviction || 0.5) * 100).toFixed(0)}%
+                        <AnimatedValue value={(layer.conviction || 0.5) * 100} decimals={0} suffix="%" />
                       </span>
                     </div>
                   </div>
@@ -182,14 +195,16 @@ export function SignalStackSection({ data }: SignalStackSectionProps) {
           </div>
         </div>
 
-        {/* Reasoning */}
+        {/* Reasoning - FIXED: BUG-F7 - Human readable timestamp */}
         <div className="p-3 border border-border bg-surface-1">
           <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">
             Reasoning
           </div>
           <p className="text-xs text-text-secondary">{reasoning || 'Signal stack calculated from multi-layer analysis'}</p>
           {timestamp && (
-            <div className="text-2xs text-text-tertiary font-mono mt-2">{timestamp}</div>
+            <div className="text-2xs text-text-tertiary font-mono mt-2">
+              Updated: {new Date(timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </div>
           )}
         </div>
       </div>

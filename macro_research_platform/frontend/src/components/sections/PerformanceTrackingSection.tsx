@@ -14,7 +14,7 @@ export function PerformanceTrackingSection({ data }: PerformanceTrackingSectionP
   const getAccuracyColor = (accuracy: number | null) => {
     if (accuracy === null) return 'text-text-secondary';
     if (accuracy >= 0.75) return 'text-green';
-    if (accuracy >= 0.6) return 'text-accent';
+    if (accuracy >= 0.6) return 'text-amber';
     if (accuracy >= 0.45) return 'text-amber';
     return 'text-red';
   };
@@ -49,7 +49,7 @@ export function PerformanceTrackingSection({ data }: PerformanceTrackingSectionP
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">33</span>
+          <span className="section-tag">14</span>
           <h2 className="section-title">Performance Tracking</h2>
         </div>
       </div>

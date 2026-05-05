@@ -1,13 +1,16 @@
-// TerminalShell — 3-panel institutional trading terminal layout
-// Topbar + Sidebar + Main + Detail Panel
+// UPGRADE-6: Terminal Shell with Keyboard Shortcuts — Analyst Workflow
+// Comprehensive keyboard navigation for power users
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Topbar } from './Topbar';
 import { Sidebar } from './Sidebar';
 import { DetailPanel } from './DetailPanel';
 import { CommandPalette } from './CommandPalette';
 import { AlertsPanel } from './AlertsPanel';
+import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
+import { BlackoutBanner } from '../EconomicCalendar';
 import { cn } from '@/lib/utils';
+import { ErrorBoundary } from '../ErrorBoundary';
 
 interface TerminalShellProps {
   children: React.ReactNode;
@@ -19,6 +22,8 @@ interface TerminalShellProps {
   onRefresh?: () => void;
   loading?: boolean;
   data?: any;
+  activeSection?: string;
+  onNavigate?: (sectionId: string) => void;
 }
 
 export function TerminalShell({
@@ -31,48 +36,165 @@ export function TerminalShell({
   onRefresh,
   loading,
   data,
+  activeSection: externalActiveSection,
+  onNavigate: externalOnNavigate,
 }: TerminalShellProps) {
-  const [activeSection, setActiveSection] = useState('master-signal');
-  const [detailPanelOpen, setDetailPanelOpen] = useState(true);
+  const [internalActiveSection, setInternalActiveSection] = useState('master-signal');
+  const [detailPanelOpen, setDetailPanelOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [alertsPanelOpen, setAlertsPanelOpen] = useState(false);
-  const [sidebarCollapsed] = useState(false);
+  // FIXED (BUG 2): Ensure sidebar is never undefined/null - always boolean
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
+  const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
+  const keyTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // Keyboard shortcuts
+  // Use external state if provided, otherwise internal
+  const activeSection = externalActiveSection ?? internalActiveSection;
+  const setActiveSection = externalActiveSection ? () => {} : setInternalActiveSection;
+
+  // UPGRADE-6: Enhanced Keyboard Shortcuts — Analyst Workflow
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // Cmd+K / Ctrl+K for command palette
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setCommandPaletteOpen((prev) => !prev);
+      // Skip if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
       }
+
+      const key = e.key.toLowerCase();
+
+      // Cmd/Ctrl modifiers
+      if (e.metaKey || e.ctrlKey) {
+        switch (key) {
+          case 'k':
+            e.preventDefault();
+            setCommandPaletteOpen((prev) => !prev);
+            return;
+          case 'r':
+            e.preventDefault();
+            onRefresh?.();
+            return;
+          case 'b':
+            e.preventDefault();
+            setSidebarCollapsed((prev) => !prev);
+            return;
+          case 'd':
+            e.preventDefault();
+            setDetailPanelOpen((prev) => !prev);
+            return;
+          case 'e':
+            e.preventDefault();
+            // Export data
+            window.dispatchEvent(new CustomEvent('export-data'));
+            return;
+          case 's':
+            e.preventDefault();
+            // Save snapshot
+            window.dispatchEvent(new CustomEvent('save-snapshot'));
+            return;
+        }
+      }
+
       // Escape to close panels
       if (e.key === 'Escape') {
         setCommandPaletteOpen(false);
         setAlertsPanelOpen(false);
+        setShortcutsHelpOpen(false);
+        return;
       }
-      // G for master signal
-      if (e.key === 'g' && !e.metaKey && !e.ctrlKey) {
-        setActiveSection('master-signal');
-        document.getElementById('master-signal')?.scrollIntoView({ behavior: 'smooth' });
+
+      // ? for help
+      if (key === '?') {
+        e.preventDefault();
+        setShortcutsHelpOpen(true);
+        return;
       }
-      // R for regime
-      if (e.key === 'r' && !e.metaKey && !e.ctrlKey) {
-        setActiveSection('regime');
-        document.getElementById('regime')?.scrollIntoView({ behavior: 'smooth' });
+
+      // Single key navigation
+      const sectionMap: Record<string, string> = {
+        'm': 'morning-brief',      // M = Morning Brief
+        'g': 'master-signal',      // G = Master Signal (existing)
+        'k': 'key-metrics',        // K = Key Metrics
+        'r': 'regime',             // R = Regime (existing)
+        'p': 'regime-playbook',    // P = Playbook
+        's': 'signals',            // S = ML Signals
+        'e': 'ensemble',           // E = Ensemble
+        't': 'trade-ideas',         // T = Trade Ideas
+        'f': 'factor-rotation',    // F = Factor Rotation (existing)
+        'c': 'cot-positioning',    // C = COT Positioning
+        'v': 'risk-indicators',    // V = Risk (V for Volatility)
+        'a': 'risk-analytics',     // A = Risk Analytics
+        'd': 'debt-cycle',         // D = Debt Cycle
+        'n': 'nowcast',            // N = Nowcast
+        'l': 'liquidity',          // L = Liquidity
+        'i': 'sentiment',          // I = Sentiment
+        'y': 'gmo-forecasts',     // Y = GMO (Yield forecasts)
+        'u': 'valuation',           // U = Valuation
+        'x': 'expected-returns',  // X = Expected Returns
+        'o': 'portfolio-analyser', // O = Portfolio
+        'z': 'system-health',      // Z = System Health (instead of H)
+        'h': 'horizon-tension',    // H = Horizon Tension
+        'w': 'news-sentiment',    // W = News
+        'q': 'model-agreement',   // Q = Model Agreement
+        'j': 'economic-calendar', // J = Calendar
+      };
+
+      if (sectionMap[key] && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        const sectionId = sectionMap[key];
+        setActiveSection(sectionId);
+        document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
+        return;
       }
-      // F for factor rotation
-      if (e.key === 'f' && !e.metaKey && !e.ctrlKey) {
-        setActiveSection('factor-rotation');
-        document.getElementById('factor-rotation')?.scrollIntoView({ behavior: 'smooth' });
+
+      // Number keys for quick access (1-9)
+      if (/^[1-9]$/.test(e.key)) {
+        e.preventDefault();
+        const numSections = [
+          'morning-brief',
+          'master-signal',
+          'regime',
+          'signals',
+          'risk-analytics',
+          'trade-ideas',
+          'nowcast',
+          'expected-returns',
+          'system-health',
+        ];
+        const index = parseInt(e.key) - 1;
+        if (numSections[index]) {
+          const sectionId = numSections[index];
+          setActiveSection(sectionId);
+          document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
+        }
+        return;
       }
-      // H for system health
-      if (e.key === 'h' && !e.metaKey && !e.ctrlKey) {
-        setActiveSection('system-health');
-        document.getElementById('system-health')?.scrollIntoView({ behavior: 'smooth' });
+
+      // Arrow keys for section navigation
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const sections = document.querySelectorAll('section[id]');
+        const currentIndex = Array.from(sections).findIndex(
+          (s) => s.id === activeSection
+        );
+
+        if (e.key === 'ArrowDown' && currentIndex < sections.length - 1) {
+          e.preventDefault();
+          const nextSection = sections[currentIndex + 1];
+          setActiveSection(nextSection.id);
+          nextSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else if (e.key === 'ArrowUp' && currentIndex > 0) {
+          e.preventDefault();
+          const prevSection = sections[currentIndex - 1];
+          setActiveSection(prevSection.id);
+          prevSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        return;
+      }
+
+      if (keyTimeoutRef.current) {
+        clearTimeout(keyTimeoutRef.current);
       }
     },
-    []
+    [activeSection, onRefresh]
   );
 
   useEffect(() => {
@@ -88,33 +210,42 @@ export function TerminalShell({
         'master-signal',
         'key-metrics',
         'regime',
-        'ml-signals',
+        'signals',
         'ensemble',
         'signal-stack',
         'sector-allocation',
         'factor-rotation',
+        'cot-positioning',
         'risk-indicators',
+        'risk-analytics',
         'debt-cycle',
         'advanced',
         'nowcast',
         'liquidity',
         'sentiment',
-        'gmo',
+        'gmo-forecasts',
         'valuation',
         'expected-returns',
-        'international-macro',
+        'international',
         'reflexivity',
         'transmission',
         'regime-transition',
-        'correlation-regime',
-        'factor-decomp',
+        'correlation',
+        'factor-decomposition',
         'risk-parity',
         'momentum-veto',
-        'horizon',
+        'horizon-tension',
         'model-agreement',
-        'cta-trends',
+        'cta-trend',
         'news-sentiment',
+        'lstm',
+        'performance',
+        'anomaly-detection',
+        'portfolio',
+        'equity-research',
+        'trade-ideas',
         'portfolio-fit',
+        'economic-calendar',
         'data-to-watch',
         'investment-memo',
         'business-layer',
@@ -145,10 +276,15 @@ export function TerminalShell({
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+    // Call external handler if provided
+    externalOnNavigate?.(sectionId);
   };
 
   return (
     <div className="min-h-screen bg-bg">
+      {/* Economic Calendar Blackout Banner */}
+      <BlackoutBanner />
+
       {/* Topbar */}
       <Topbar
         latestDate={latestDate}
@@ -159,31 +295,37 @@ export function TerminalShell({
         loading={loading}
         onCommandPalette={() => setCommandPaletteOpen(true)}
         onAlertsPanel={() => setAlertsPanelOpen(true)}
+        currentRegime={currentRegime}
+        data={data}
       />
 
       {/* Sidebar */}
-      <div
+      <aside
         className={cn(
-          'fixed left-0 top-12 bottom-0 z-40 transition-all duration-200',
-          sidebarCollapsed ? 'w-12' : 'w-56'
+          'fixed left-0 top-16 bottom-0 z-40 flex flex-col transition-all duration-200 bg-surface-1 border-r border-border overflow-hidden',
+          sidebarCollapsed ? 'w-[48px] min-w-[48px]' : 'w-[224px] min-w-[224px]'
         )}
       >
-        <Sidebar
-          activeSection={activeSection}
-          onNavigate={handleNavigate}
-          currentRegime={currentRegime}
-        />
-      </div>
+        <ErrorBoundary sectionName="Sidebar">
+          <Sidebar
+            activeSection={activeSection}
+            onNavigate={handleNavigate}
+            currentRegime={currentRegime}
+            collapsed={sidebarCollapsed}
+            onCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          />
+        </ErrorBoundary>
+      </aside>
 
       {/* Main Content */}
       <main
         className={cn(
-          'pt-12 transition-all duration-200',
-          sidebarCollapsed ? 'pl-12' : 'pl-56',
+          'pt-16 transition-all duration-200 min-h-screen',
+          sidebarCollapsed ? 'pl-[48px]' : 'pl-[224px]',
           detailPanelOpen ? 'lg:pr-72' : 'pr-0'
         )}
       >
-        <div className="min-h-[calc(100vh-48px)]">
+        <div className="min-h-[calc(100vh-64px)]">
           {children}
         </div>
       </main>
@@ -211,6 +353,7 @@ export function TerminalShell({
           }
         }}
         onViewHealth={() => handleNavigate('system-health')}
+        currentRegime={currentRegime}
       />
 
       {/* Alerts Panel */}
@@ -218,6 +361,12 @@ export function TerminalShell({
         isOpen={alertsPanelOpen}
         onClose={() => setAlertsPanelOpen(false)}
         onViewSection={handleNavigate}
+      />
+
+      {/* UPGRADE-6: Keyboard Shortcuts Help */}
+      <KeyboardShortcutsHelp
+        isOpen={shortcutsHelpOpen}
+        onClose={() => setShortcutsHelpOpen(false)}
       />
     </div>
   );
