@@ -1,0 +1,8 @@
+Sector,Signal,Score,Rationale,generated_date,data_source
+Utilities,Overweight,0.761,"Bond-like, defensive sector. Benefits from falling yields. Hurt when rates rise sharply (higher financing costs, unattractive vs bonds).",2026-04-26 02:20:29,macro_regime_model
+Healthcare,Neutral,0.477,Relatively defensive: demand is non-discretionary and less cyclical. Provides stable earnings across most macro environments.,2026-04-26 02:20:29,macro_regime_model
+Technology,Neutral,0.131,Long-duration growth asset: valued on distant future earnings. Very sensitive to changes in discount rates (yields).,2026-04-26 02:20:29,macro_regime_model
+Consumer Discretionary,Neutral,-0.477,"Depends on disposable income: employment, real wages, and consumer confidence. Inflation squeezing real wages is the main headwind.",2026-04-26 02:20:29,macro_regime_model
+Energy,Underweight,-0.516,Revenues driven by commodity prices. Inflation and global demand are positives; demand collapse is a key risk.,2026-04-26 02:20:29,macro_regime_model
+Industrials,Underweight,-0.584,"Driven by manufacturing activity, capex cycles, and trade. PMI and global demand are the key leading indicators.",2026-04-26 02:20:29,macro_regime_model
+Banks,Underweight,-0.623,Benefits from steeper yield curves (higher NIM) and rising rates. Hurt by recession risk and credit deterioration.,2026-04-26 02:20:29,macro_regime_model

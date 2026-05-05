@@ -1,0 +1,23 @@
+{
+  "timestamp": "20260428_152013",
+  "rows": 358,
+  "columns": [
+    "us_unemployment_rate",
+    "us_industrial_production",
+    "us_retail_sales",
+    "us_cpi",
+    "us_core_cpi",
+    "us_ppi",
+    "us_10y_yield",
+    "ted_spread",
+    "vix",
+    "dollar_index",
+    "oil_price",
+    "sp500"
+  ],
+  "date_range": [
+    "2011-05-01T00:00:00",
+    "2026-03-31T00:00:00"
+  ],
+  "source": "FRED"
+}

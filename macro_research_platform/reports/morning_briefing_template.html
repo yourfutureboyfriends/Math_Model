@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{REPORT_TITLE}} — {{REPORT_DATE}}</title>
+
+  <!-- Geist Fonts -->
+  <link rel="preconnect" href="https://assets.vercel.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ═══════════════════════════════════════════════════════════════════
+       PRINT STYLES — Goldman Sachs / Bridgewater Morning Briefing Format
+       ═══════════════════════════════════════════════════════════════════ */
+
+    :root {
+      --bg: #ffffff;
+      --surface-1: #f8f9fa;
+      --surface-2: #f1f3f5;
+      --surface-3: #e9ecef;
+      --border: #dee2e6;
+      --border-subtle: #e9ecef;
+      --text-primary: #1a1a2e;
+      --text-secondary: #495057;
+      --text-tertiary: #6c757d;
+      --accent: #006d5b;
+      --accent-light: #e8f5f1;
+      --green: #2d6a4f;
+      --green-light: #d3eadd;
+      --red: #c1121f;
+      --red-light: #f8d7da;
+      --amber: #ca6702;
+      --amber-light: #fff3cd;
+      --blue: #0066cc;
+    }
+
+    @page {
+      size: A4 landscape;
+      margin: 15mm 12mm 12mm 12mm;
+
+      @bottom-center {
+        content: "MACRO RESEARCH PLATFORM · CONFIDENTIAL RESEARCH · NOT INVESTMENT ADVICE";
+        font-size: 8pt;
+        color: #6c757d;
+        font-family: 'JetBrains Mono', monospace;
+      }
+
+      @bottom-right {
+        content: "Page " counter(page) " of " counter(pages);
+        font-size: 8pt;
+        color: #6c757d;
+        font-family: 'JetBrains Mono', monospace;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 9pt;
+      line-height: 1.4;
+      color: var(--text-primary);
+      background: var(--bg);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       TYPOGRAPHY
+       ═══════════════════════════════════════════════════════════════════ */
+
+    h1 {
+      font-size: 18pt;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+      margin-bottom: 4pt;
+    }
+
+    h2 {
+      font-size: 11pt;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-primary);
+      border-bottom: 2px solid var(--text-primary);
+      padding-bottom: 3pt;
+      margin-bottom: 8pt;
+    }
+
+    h3 {
+      font-size: 9pt;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      color: var(--text-secondary);
+      margin-bottom: 6pt;
+    }
+
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .text-small { font-size: 8pt; }
+    .text-xs { font-size: 7pt; }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       LAYOUT
+       ═══════════════════════════════════════════════════════════════════ */
+
+    .page {
+      width: 100%;
+      min-height: 170mm;
+      padding: 8mm;
+      page-break-after: always;
+      position: relative;
+    }
+
+    .page:last-child {
+      page-break-after: auto;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid var(--text-primary);
+      padding-bottom: 8pt;
+      margin-bottom: 12pt;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12pt;
+    }
+
+    .logo {
+      width: 32pt;
+      height: 32pt;
+      background: var(--text-primary);
+      border-radius: 4pt;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: 12pt;
+    }
+
+    .header-title {
+      line-height: 1.2;
+    }
+
+    .header-title .main {
+      font-size: 14pt;
+      font-weight: 600;
+      letter-spacing: -0.3px;
+    }
+
+    .header-title .sub {
+      font-size: 10pt;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .header-right {
+      text-align: right;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 8pt;
+      color: var(--text-secondary);
+    }
+
+    .header-right .date {
+      font-size: 10pt;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .header-right .mode {
+      display: inline-block;
+      padding: 2pt 6pt;
+      background: var(--accent-light);
+      color: var(--accent);
+      border-radius: 2pt;
+      margin-top: 4pt;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       MASTER SIGNAL BANNER
+       ═══════════════════════════════════════════════════════════════════ */
+
+    .master-signal-banner {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      padding: 12pt 16pt;
+      margin-bottom: 12pt;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .signal-label {
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+    }
+
+    .signal-value {
+      font-size: 24pt;
+      font-weight: 700;
+      letter-spacing: -1px;
+    }
+
+    .signal-value.risk-on { color: var(--green); }
+    .signal-value.risk-off { color: var(--red); }
+    .signal-value.neutral { color: var(--amber); }
+
+    .signal-meta {
+      text-align: right;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 8pt;
+      color: var(--text-secondary);
+    }
+
+    .signal-score {
+      font-size: 14pt;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       GRID LAYOUTS
+       ═══════════════════════════════════════════════════════════════════ */
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12pt;
+      margin-bottom: 12pt;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12pt;
+      margin-bottom: 12pt;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8pt;
+      margin-bottom: 12pt;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       CARDS & BOXES
+       ═══════════════════════════════════════════════════════════════════ */
+
+    .card {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      padding: 10pt;
+    }
+
+    .card-title {
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      margin-bottom: 8pt;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 4pt;
+    }
+
+    .metric-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4pt 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .metric-row:last-child {
+      border-bottom: none;
+    }
+
+    .metric-label {
+      font-size: 8pt;
+      color: var(--text-secondary);
+    }
+
+    .metric-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10pt;
+      font-weight: 600;
+    }
+
+    .metric-value.positive { color: var(--green); }
+    .metric-value.negative { color: var(--red); }
+    .metric-value.neutral { color: var(--text-secondary); }
+
+    .metric-change {
+      font-size: 7pt;
+      margin-left: 4pt;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       REGIME DISPLAY
+       ═══════════════════════════════════════════════════════════════════ */
+
+    .regime-display {
+      background: var(--surface-1);
+      border: 2px solid var(--border);
+      padding: 12pt;
+      text-align: center;
+    }
+
+    .regime-name {
+      font-size: 20pt;
+      font-weight: 700;
+      letter-spacing: 1px;
+      margin-bottom: 6pt;
+    }
+
+    .regime-stagflation { color: #c1121f; }
+    .regime-goldilocks { color: #2d6a4f; }
+    .regime-reflation { color: #006d5b; }
+    .regime-slowdown { color: #ca6702; }
+
+    .regime-confidence {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9pt;
+      color: var(--text-secondary);
+      margin-bottom: 8pt;
+    }
+
+    .factor-impacts {
+      margin-top: 10pt;
+    }
+
+    .factor-row {
+      display: flex;
+      align-items: center;
+      gap: 8pt;
+      margin-bottom: 4pt;
+      font-size: 8pt;
+    }
+
+    .factor-name {
+      width: 60pt;
+      text-align: right;
+      font-weight: 500;
+    }
+
+    .factor-bar {
+      flex: 1;
+      height: 8pt;
+      background: var(--surface-2);
+      position: relative;
+    }
+
+    .factor-bar-fill {
+      height: 100%;
+      background: var(--text-secondary);
+    }
+
+    .factor-bar-fill.expansion { background: var(--green); }
+    .factor-bar-fill.contraction { background: var(--red); }
+    .factor-bar-fill.neutral { background: var(--amber); }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       SECTOR RECOMMENDATIONS
+       ═══════════════════════════════════════════════════════════════════ */
+
+    .sectors-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8pt;
+    }
+
+    .sector-category {
+      padding: 8pt;
+      border-left: 3px solid;
+    }
+
+    .sector-category.overweight {
+      background: var(--green-light);
+      border-color: var(--green);
+    }
+
+    .sector-category.neutral {
+      background: var(--surface-2);
+      border-color: var(--text-secondary);
+    }
+
+    .sector-category.underweight {
+      background: var(--red-light);
+      border-color: var(--red);
+    }
+
+    .sector-category-title {
+      font-size: 7pt;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+      margin-bottom: 4pt;
+    }
+
+    .sector-list {
+      font-size: 8pt;
+      line-height: 1.5;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       TABLES
+       ═══════════════════════════════════════════════════════════════════ */
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8pt;
+      margin-bottom: 8pt;
+    }
+
+    thead tr {
+      background: var(--surface-2);
+      border-bottom: 2px solid var(--border);
+    }
+
+    th {
+      padding: 4pt 6pt;
+      text-align: left;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 7pt;
+      letter-spacing: 0.3px;
+      color: var(--text-secondary);
+    }
+
+    th.numeric {
+      text-align: right;
+    }
+
+    td {
+      padding: 4pt 6pt;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    td.numeric {
+      text-align: right;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    tr {
+      page-break-inside: avoid;
+    }
+
+    tbody tr:nth-child(even) {
+      background: var(--surface-1);
+    }
+
+    .cell-up { color: var(--green); }
+    .cell-down { color: var(--red); }
+    .cell-neutral { color: var(--text-tertiary); }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       CHARTS & VISUALIZATIONS
+       ═══════════════════════════════════════════════════════════════════ */
+
+    .chart-container {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      padding: 8pt;
+      height: 120pt;
+      position: relative;
+    }
+
+    .yield-curve {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-around;
+      height: 100%;
+      padding: 8pt 0;
+    }
+
+    .yield-bar {
+      width: 24pt;
+      background: var(--accent);
+      position: relative;
+      border-radius: 2pt 2pt 0 0;
+    }
+
+    .yield-bar-label {
+      position: absolute;
+      bottom: -14pt;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 7pt;
+      font-family: 'JetBrains Mono', monospace;
+      white-space: nowrap;
+    }
+
+    .yield-bar-value {
+      position: absolute;
+      top: -12pt;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 7pt;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       HEATMAP
+       ═══════════════════════════════════════════════════════════════════ */
+
+    .heatmap {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 1pt;
+    }
+
+    .heatmap-cell {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 7pt;
+      font-family: 'JetBrains Mono', monospace;
+      border-radius: 1pt;
+    }
+
+    .heatmap-legend {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8pt;
+      margin-top: 4pt;
+      font-size: 7pt;
+    }
+
+    .heatmap-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 3pt;
+    }
+
+    .legend-dot {
+      width: 8pt;
+      height: 8pt;
+      border-radius: 1pt;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       RISK METRICS
+       ═══════════════════════════════════════════════════════════════════ */
+
+    .risk-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8pt;
+    }
+
+    .risk-metric {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      padding: 8pt;
+      text-align: center;
+    }
+
+    .risk-metric-label {
+      font-size: 7pt;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin-bottom: 4pt;
+    }
+
+    .risk-metric-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 16pt;
+      font-weight: 600;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       STRESS SCENARIOS
+       ═══════════════════════════════════════════════════════════════════ */
+
+    .stress-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6pt;
+    }
+
+    .stress-card {
+      padding: 6pt;
+      border: 1px solid var(--border);
+      font-size: 8pt;
+    }
+
+    .stress-card-title {
+      font-weight: 600;
+      margin-bottom: 2pt;
+    }
+
+    .stress-card-pnl {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+    }
+
+    .stress-card-pnl.negative { color: var(--red); }
+    .stress-card-pnl.positive { color: var(--green); }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       ML SIGNALS
+       ═══════════════════════════════════════════════════════════════════ */
+
+    .ml-signal-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6pt 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .ml-signal-name {
+      font-weight: 500;
+    }
+
+    .ml-signal-indicator {
+      display: flex;
+      align-items: center;
+      gap: 4pt;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 8pt;
+    }
+
+    .ml-signal-dot {
+      width: 6pt;
+      height: 6pt;
+      border-radius: 50%;
+    }
+
+    .ml-signal-dot.bullish { background: var(--green); }
+    .ml-signal-dot.bearish { background: var(--red); }
+    .ml-signal-dot.neutral { background: var(--amber); }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       DISCLAIMER
+       ═══════════════════════════════════════════════════════════════════ */
+
+    .disclaimer {
+      font-size: 6.5pt;
+      color: var(--text-tertiary);
+      line-height: 1.4;
+      padding-top: 8pt;
+      border-top: 1px solid var(--border);
+      margin-top: 8pt;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       UTILITIES
+       ═══════════════════════════════════════════════════════════════════ */
+
+    .page-break { page-break-after: always; }
+    .no-print { display: none !important; }
+
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    .text-left { text-align: left; }
+
+    .font-bold { font-weight: 600; }
+    .font-normal { font-weight: 400; }
+
+    .mt-1 { margin-top: 4pt; }
+    .mt-2 { margin-top: 8pt; }
+    .mb-1 { margin-bottom: 4pt; }
+    .mb-2 { margin-bottom: 8pt; }
+
+    .inline-badge {
+      display: inline-block;
+      padding: 1pt 4pt;
+      border-radius: 2pt;
+      font-size: 7pt;
+      font-weight: 600;
+    }
+
+    .badge-high { background: var(--green-light); color: var(--green); }
+    .badge-medium { background: var(--amber-light); color: var(--amber); }
+    .badge-low { background: var(--red-light); color: var(--red); }
+
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     PAGE 1 — EXECUTIVE SUMMARY
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">MRP</div>
+      <div class="header-title">
+        <div class="main">Macro Research Platform</div>
+        <div class="sub">Morning Briefing</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="date">{{REPORT_DATE}}</div>
+      <div>{{REPORT_TIME}} UTC</div>
+      <div class="mode">{{DATA_MODE}}</div>
+    </div>
+  </div>
+
+  <!-- Master Signal Banner -->
+  <div class="master-signal-banner">
+    <div>
+      <div class="signal-label">Master Signal</div>
+      <div class="signal-value {{SIGNAL_CLASS}}">{{MASTER_SIGNAL}}</div>
+    </div>
+    <div>
+      <div class="signal-label">Ensemble Score</div>
+      <div class="signal-score">{{ENSEMBLE_SCORE}}</div>
+    </div>
+    <div class="signal-meta">
+      <div>{{MODEL_COUNT}} models · {{AGREEMENT_PCT}}% agreement</div>
+      <div>Conviction: <span class="inline-badge badge-{{CONVICTION_CLASS}}">{{CONVICTION}}</span></div>
+    </div>
+  </div>
+
+  <!-- Main Content Grid -->
+  <div class="grid-2">
+    <!-- Left: Regime Classification -->
+    <div>
+      <h2>Regime Classification</h2>
+      <div class="regime-display">
+        <div class="regime-name regime-{{REGIME_CLASS}}">{{CURRENT_REGIME}}</div>
+        <div class="regime-confidence">
+          Confidence: {{REGIME_CONFIDENCE}}%
+          <span class="inline-badge badge-{{REGIME_CONFIDENCE_CLASS}}">{{REGIME_CONFIDENCE_LABEL}}</span>
+        </div>
+        <div style="font-size: 8pt; color: var(--text-secondary); margin-bottom: 8pt;">
+          Duration: {{REGIME_DURATION}} months
+        </div>
+
+        <div class="factor-impacts">
+          <div class="factor-row">
+            <span class="factor-name">Growth</span>
+            <div class="factor-bar">
+              <div class="factor-bar-fill {{GROWTH_CLASS}}" style="width: {{GROWTH_PCT}}%"></div>
+            </div>
+            <span style="font-size: 7pt; color: var(--text-secondary);">{{GROWTH_STATUS}}</span>
+          </div>
+          <div class="factor-row">
+            <span class="factor-name">Inflation</span>
+            <div class="factor-bar">
+              <div class="factor-bar-fill {{INFLATION_CLASS}}" style="width: {{INFLATION_PCT}}%"></div>
+            </div>
+            <span style="font-size: 7pt; color: var(--text-secondary);">{{INFLATION_STATUS}}</span>
+          </div>
+          <div class="factor-row">
+            <span class="factor-name">Liquidity</span>
+            <div class="factor-bar">
+              <div class="factor-bar-fill {{LIQUIDITY_CLASS}}" style="width: {{LIQUIDITY_PCT}}%"></div>
+            </div>
+            <span style="font-size: 7pt; color: var(--text-secondary);">{{LIQUIDITY_STATUS}}</span>
+          </div>
+          <div class="factor-row">
+            <span class="factor-name">Risk</span>
+            <div class="factor-bar">
+              <div class="factor-bar-fill {{RISK_CLASS}}" style="width: {{RISK_PCT}}%"></div>
+            </div>
+            <span style="font-size: 7pt; color: var(--text-secondary);">{{RISK_STATUS}}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Key Metrics -->
+    <div>
+      <h2>Key Metrics</h2>
+      <div class="card">
+        <div class="metric-row">
+          <span class="metric-label">Growth</span>
+          <span class="metric-value {{GROWTH_DIR}}">{{GROWTH_VALUE}}% <span class="metric-change">{{GROWTH_ARROW}}</span></span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Inflation</span>
+          <span class="metric-value {{INFLATION_DIR}}">{{INFLATION_VALUE}}% <span class="metric-change">{{INFLATION_ARROW}}</span></span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Liquidity</span>
+          <span class="metric-value {{LIQUIDITY_DIR}}">{{LIQUIDITY_VALUE}}σ <span class="metric-change">{{LIQUIDITY_ARROW}}</span></span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Risk</span>
+          <span class="metric-value {{RISK_DIR}}">{{RISK_VALUE}}σ <span class="metric-change">{{RISK_ARROW}}</span></span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">VIX</span>
+          <span class="metric-value">{{VIX_VALUE}}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Recession Risk</span>
+          <span class="metric-value">{{RECESSION_RISK}}%</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">10Y Yield</span>
+          <span class="metric-value">{{TEN_YEAR_YIELD}}%</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">HY OAS</span>
+          <span class="metric-value">{{HY_OAS}}bp</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sector Recommendations -->
+  <h2>Sector Recommendations</h2>
+  <div class="sectors-grid mb-2">
+    <div class="sector-category overweight">
+      <div class="sector-category-title">Overweight</div>
+      <div class="sector-list">{{OVERWEIGHT_SECTORS}}</div>
+    </div>
+    <div class="sector-category neutral">
+      <div class="sector-category-title">Neutral</div>
+      <div class="sector-list">{{NEUTRAL_SECTORS}}</div>
+    </div>
+    <div class="sector-category underweight">
+      <div class="sector-category-title">Underweight</div>
+      <div class="sector-list">{{UNDERWEIGHT_SECTORS}}</div>
+    </div>
+  </div>
+
+  <!-- Factor Rotation -->
+  <h2>Factor Rotation (AQR Framework)</h2>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Overweight Factors</div>
+      <div style="font-size: 9pt;">{{OVERWEIGHT_FACTORS}}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Underweight Factors</div>
+      <div style="font-size: 9pt;">{{UNDERWEIGHT_FACTORS}}</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     PAGE 2 — FIXED INCOME & FX
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">MRP</div>
+      <div class="header-title">
+        <div class="main">Fixed Income & FX</div>
+        <div class="sub">Rates, Credit, and Currency Monitor</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="date">{{REPORT_DATE}}</div>
+      <div class="mode">{{DATA_MODE}}</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- Left: Yield Curve -->
+    <div>
+      <h2>US Treasury Yield Curve</h2>
+      <div class="chart-container">
+        <div class="yield-curve">
+          <div class="yield-bar" style="height: {{YIELD_3M_PCT}}%">
+            <span class="yield-bar-value">{{YIELD_3M}}%</span>
+            <span class="yield-bar-label">3M</span>
+          </div>
+          <div class="yield-bar" style="height: {{YIELD_2Y_PCT}}%">
+            <span class="yield-bar-value">{{YIELD_2Y}}%</span>
+            <span class="yield-bar-label">2Y</span>
+          </div>
+          <div class="yield-bar" style="height: {{YIELD_5Y_PCT}}%">
+            <span class="yield-bar-value">{{YIELD_5Y}}%</span>
+            <span class="yield-bar-label">5Y</span>
+          </div>
+          <div class="yield-bar" style="height: {{YIELD_10Y_PCT}}%">
+            <span class="yield-bar-value">{{YIELD_10Y}}%</span>
+            <span class="yield-bar-label">10Y</span>
+          </div>
+          <div class="yield-bar" style="height: {{YIELD_30Y_PCT}}%">
+            <span class="yield-bar-value">{{YIELD_30Y}}%</span>
+            <span class="yield-bar-label">30Y</span>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="mt-2">Key Spreads</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Spread</th>
+            <th class="numeric">Value (bp)</th>
+            <th class="numeric">1D Change</th>
+            <th>Signal</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>10Y - 2Y</td>
+            <td class="numeric">{{CURVE_10Y2Y}}</td>
+            <td class="numeric {{CURVE_10Y2Y_DIR}}">{{CURVE_10Y2Y_CHANGE}}</td>
+            <td>{{CURVE_10Y2Y_SIGNAL}}</td>
+          </tr>
+          <tr>
+            <td>10Y - 3M</td>
+            <td class="numeric">{{CURVE_10Y3M}}</td>
+            <td class="numeric {{CURVE_10Y3M_DIR}}">{{CURVE_10Y3M_CHANGE}}</td>
+            <td>{{CURVE_10Y3M_SIGNAL}}</td>
+          </tr>
+          <tr>
+            <td>High Yield OAS</td>
+            <td class="numeric">{{HY_OAS_TABLE}}</td>
+            <td class="numeric {{HY_OAS_DIR}}">{{HY_OAS_CHANGE}}</td>
+            <td>{{HY_OAS_SIGNAL}}</td>
+          </tr>
+          <tr>
+            <td>IG CDX</td>
+            <td class="numeric">{{IG_CDX}}</td>
+            <td class="numeric {{IG_CDX_DIR}}">{{IG_CDX_CHANGE}}</td>
+            <td>{{IG_CDX_SIGNAL}}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Right: FX & Central Banks -->
+    <div>
+      <h2>G10 Foreign Exchange</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Pair</th>
+            <th class="numeric">Spot</th>
+            <th class="numeric">1D Change</th>
+            <th class="numeric">1M Change</th>
+            <th>Trend</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{FX_TABLE_ROWS}}
+        </tbody>
+      </table>
+
+      <h3 class="mt-2">Central Bank Divergence</h3>
+      <div class="card">
+        <div class="metric-row">
+          <span class="metric-label">Fed Policy Rate</span>
+          <span class="metric-value">{{FED_RATE}}%</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">ECB Deposit Rate</span>
+          <span class="metric-value">{{ECB_RATE}}%</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">BoE Bank Rate</span>
+          <span class="metric-value">{{BOE_RATE}}%</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">BoJ Policy Rate</span>
+          <span class="metric-value">{{BOJ_RATE}}%</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">RBA Cash Rate</span>
+          <span class="metric-value">{{RBA_RATE}}%</span>
+        </div>
+      </div>
+
+      <div class="mt-2" style="font-size: 8pt; color: var(--text-secondary);">
+        <strong>Divergence Signal:</strong> {{CB_DIVERGENCE_SIGNAL}}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     PAGE 3 — GLOBAL EQUITY & COMMODITY MONITOR
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">MRP</div>
+      <div class="header-title">
+        <div class="main">Global Markets</div>
+        <div class="sub">Equity and Commodity Monitor</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="date">{{REPORT_DATE}}</div>
+      <div class="mode">{{DATA_MODE}}</div>
+    </div>
+  </div>
+
+  <!-- Global Equity Indices -->
+  <h2>Global Equity Indices</h2>
+  <div style="margin-bottom: 12pt;">
+    <table>
+      <thead>
+        <tr>
+          <th>Region</th>
+          <th>Index</th>
+          <th class="numeric">Level</th>
+          <th class="numeric">1D %</th>
+          <th class="numeric">1M %</th>
+          <th class="numeric">YTD %</th>
+          <th>52W Range</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{EQUITY_TABLE_ROWS}}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid-2">
+    <!-- Commodity Complex -->
+    <div>
+      <h2>Commodity Complex</h2>
+
+      <h3>Energy</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Commodity</th>
+            <th class="numeric">Spot</th>
+            <th class="numeric">1D %</th>
+            <th>52W %ile</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ENERGY_TABLE_ROWS}}
+        </tbody>
+      </table>
+
+      <h3 class="mt-1">Metals</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Metal</th>
+            <th class="numeric">Spot</th>
+            <th class="numeric">1D %</th>
+            <th>52W %ile</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{METALS_TABLE_ROWS}}
+        </tbody>
+      </table>
+
+      <h3 class="mt-1">Agriculture</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Commodity</th>
+            <th class="numeric">Spot</th>
+            <th class="numeric">1D %</th>
+            <th>52W %ile</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{AGRICULTURE_TABLE_ROWS}}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Cross-Asset Heatmap -->
+    <div>
+      <h2>Cross-Asset Returns (1M %)</h2>
+      <div class="card">
+        <div class="heatmap">
+          {{HEATMAP_CELLS}}
+        </div>
+        <div class="heatmap-legend">
+          <div class="heatmap-legend-item">
+            <div class="legend-dot" style="background: #2d6a4f;"></div>
+            <span>> +5%</span>
+          </div>
+          <div class="heatmap-legend-item">
+            <div class="legend-dot" style="background: #74c69d;"></div>
+            <span>0 to +5%</span>
+          </div>
+          <div class="heatmap-legend-item">
+            <div class="legend-dot" style="background: #f1f3f5;"></div>
+            <span>0%</span>
+          </div>
+          <div class="heatmap-legend-item">
+            <div class="legend-dot" style="background: #ffccd5;"></div>
+            <span>-5% to 0</span>
+          </div>
+          <div class="heatmap-legend-item">
+            <div class="legend-dot" style="background: #c1121f;"></div>
+            <span>< -5%</span>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="mt-2">Macro Signals</h3>
+      <div class="card">
+        <div class="metric-row">
+          <span class="metric-label">Copper/Gold Ratio</span>
+          <span class="metric-value">{{COPPER_GOLD_RATIO}}</span>
+          <span class="text-small" style="color: var(--text-secondary);">{{COPPER_GOLD_SIGNAL}}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Oil Trend</span>
+          <span class="metric-value">{{OIL_TREND}}</span>
+          <span class="text-small" style="color: var(--text-secondary);">{{OIL_TREND_INTERPRETATION}}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Inflation Index</span>
+          <span class="metric-value">{{COMMODITY_INFLATION}}%</span>
+          <span class="inline-badge badge-{{INFLATION_IDX_CLASS}}">{{INFLATION_IDX_SIGNAL}}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     PAGE 4 — RISK ANALYTICS & SIGNALS
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="page">
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">MRP</div>
+      <div class="header-title">
+        <div class="main">Risk Analytics & Signals</div>
+        <div class="sub">Portfolio Risk and ML Indicators</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="date">{{REPORT_DATE}}</div>
+      <div class="mode">{{DATA_MODE}}</div>
+    </div>
+  </div>
+
+  <div class="grid-3">
+    <!-- Left: Risk Indicators -->
+    <div>
+      <h2>Risk Indicators</h2>
+      <div class="card">
+        <div class="metric-row">
+          <span class="metric-label">VIX</span>
+          <span class="metric-value">{{VIX_RISK}}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">VVIX</span>
+          <span class="metric-value">{{VVIX}}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Skew</span>
+          <span class="metric-value">{{SKEW}}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Term Structure</span>
+          <span class="metric-value">{{VIX_TERM_STRUCTURE}}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Put/Call Ratio</span>
+          <span class="metric-value">{{PUT_CALL_RATIO}}</span>
+        </div>
+      </div>
+
+      <h3 class="mt-2">Advanced Indicators</h3>
+      <div class="card">
+        <div class="metric-row">
+          <span class="metric-label">Credit Impulse</span>
+          <span class="metric-value">{{CREDIT_IMPULSE}}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">LEI Z-Score</span>
+          <span class="metric-value">{{LEI_ZSCORE}}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Sahm Rule</span>
+          <span class="metric-value">{{SAHM_RULE}}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Liquidity Stress</span>
+          <span class="metric-value">{{LIQUIDITY_STRESS}}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center: Portfolio Risk Metrics -->
+    <div>
+      <h2>Portfolio Risk Metrics</h2>
+      <div class="risk-grid mb-2">
+        <div class="risk-metric">
+          <div class="risk-metric-label">Sharpe</div>
+          <div class="risk-metric-value">{{SHARPE_RATIO}}</div>
+        </div>
+        <div class="risk-metric">
+          <div class="risk-metric-label">Sortino</div>
+          <div class="risk-metric-value">{{SORTINO_RATIO}}</div>
+        </div>
+        <div class="risk-metric">
+          <div class="risk-metric-label">Max DD</div>
+          <div class="risk-metric-value">{{MAX_DRAWDOWN}}%</div>
+        </div>
+        <div class="risk-metric">
+          <div class="risk-metric-label">VaR 95%</div>
+          <div class="risk-metric-value">{{VAR_95}}%</div>
+        </div>
+      </div>
+
+      <h3>Current Drawdown</h3>
+      <div class="card">
+        <div class="metric-row">
+          <span class="metric-label">Current DD</span>
+          <span class="metric-value {{DD_CLASS}}">{{CURRENT_DD}}%</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Severity</span>
+          <span class="metric-value">{{DD_SEVERITY}}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Days in DD</span>
+          <span class="metric-value">{{DD_DAYS}}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Recovery Est.</span>
+          <span class="metric-value">{{DD_RECOVERY}}</span>
+        </div>
+      </div>
+
+      <h3 class="mt-2">Diversification Score</h3>
+      <div class="card">
+        <div class="metric-row">
+          <span class="metric-label">3M Correlation</span>
+          <span class="metric-value">{{DIVERSIFICATION_SCORE}}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Rating</span>
+          <span class="inline-badge badge-{{DIVERSIFICATION_CLASS}}">{{DIVERSIFICATION_RATING}}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Stress Tests & ML -->
+    <div>
+      <h2>Stress Test Scenarios</h2>
+      <div class="stress-grid mb-2">
+        {{STRESS_SCENARIO_CARDS}}
+      </div>
+
+      <h3>ML Signals Summary</h3>
+      <div class="card">
+        <div class="ml-signal-row">
+          <span class="ml-signal-name">LSTM Prediction</span>
+          <div class="ml-signal-indicator">
+            <div class="ml-signal-dot {{LSTM_CLASS}}"></div>
+            <span>{{LSTM_SIGNAL}}</span>
+          </div>
+        </div>
+        <div class="ml-signal-row">
+          <span class="ml-signal-name">Anomaly Detection</span>
+          <div class="ml-signal-indicator">
+            <div class="ml-signal-dot {{ANOMALY_CLASS}}"></div>
+            <span>{{ANOMALY_STATUS}}</span>
+          </div>
+        </div>
+        <div class="ml-signal-row">
+          <span class="ml-signal-name">Reflexivity Loop</span>
+          <div class="ml-signal-indicator">
+            <div class="ml-signal-dot {{REFLEXIVITY_CLASS}}"></div>
+            <span>{{REFLEXIVITY_STATUS}}</span>
+          </div>
+        </div>
+        <div class="ml-signal-row">
+          <span class="ml-signal-name">Factor Decomposition</span>
+          <div class="ml-signal-indicator">
+            <div class="ml-signal-dot {{FACTOR_CLASS}}"></div>
+            <span>{{FACTOR_STATUS}}</span>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="mt-2">Next 12M Return Forecast</h3>
+      <div class="card">
+        {{FORECAST_TABLE}}
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="disclaimer">
+    <strong>METHODOLOGY:</strong> This report synthesizes data from multiple models including Bridgewater-style regime classification,
+    Estrella-Mishkin recession probability, Credit Impulse (Biggs et al), AQR factor framework, and proprietary ensemble methods.
+    All data sourced from FRED, yfinance, and internal models. Report generated at {{REPORT_TIMESTAMP}}.<br><br>
+    <strong>DISCLAIMER:</strong> This document is for informational purposes only and does not constitute investment advice.
+    Past performance is not indicative of future results. The analysis herein is based on models with inherent limitations
+    and uncertainties. Consult a qualified financial advisor before making investment decisions.
+  </div>
+</div>
+
+</body>
+</html>

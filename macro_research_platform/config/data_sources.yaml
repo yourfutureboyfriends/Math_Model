@@ -1,0 +1,207 @@
+# Data Sources Configuration
+# Defines all external data sources and their connection parameters
+
+sources:
+  fred:
+    name: "Federal Reserve Economic Data"
+    base_url: "https://api.stlouisfed.org/fred"
+    api_key_env: "FRED_API_KEY"
+    rate_limit: 100
+    rate_limit_period: "minute"
+    default_frequency: "monthly"
+    data_quality: "high"
+    requires_api_key: true
+    supports_vintage: false
+    supports_realtime: true
+    priority: 1
+    regions:
+      - US
+      - Global
+
+  alfred:
+    name: "Archival Federal Reserve Economic Data"
+    base_url: "https://alfred.stlouisfed.org"
+    api_key_env: "FRED_API_KEY"
+    rate_limit: 100
+    rate_limit_period: "minute"
+    default_frequency: "monthly"
+    data_quality: "very_high"
+    requires_api_key: true
+    supports_vintage: true
+    supports_realtime: false
+    priority: 1
+    regions:
+      - US
+    notes: "Use for backtesting with vintage data to avoid look-ahead bias"
+
+  bea:
+    name: "Bureau of Economic Analysis"
+    base_url: "https://apps.bea.gov/api"
+    api_key_env: "BEA_API_KEY"
+    rate_limit: 100
+    rate_limit_period: "day"
+    default_frequency: "quarterly"
+    data_quality: "high"
+    requires_api_key: true
+    supports_vintage: false
+    supports_realtime: true
+    priority: 2
+    regions:
+      - US
+    datasets:
+      - NIPA
+      - NIUnderlyingDetail
+      - FixedAssets
+      - Regional
+
+  bls:
+    name: "Bureau of Labor Statistics"
+    base_url: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+    api_key_env: "BLS_API_KEY"
+    rate_limit: 500
+    rate_limit_period: "day"
+    default_frequency: "monthly"
+    data_quality: "high"
+    requires_api_key: true
+    supports_vintage: false
+    supports_realtime: true
+    priority: 2
+    regions:
+      - US
+    surveys:
+      - CPI
+      - PPI
+      - Employment
+      - Productivity
+
+  chicago_fed:
+    name: "Federal Reserve Bank of Chicago"
+    base_url: "https://www.chicagofed.org"
+    api_key_env: null
+    rate_limit: null
+    default_frequency: "weekly"
+    data_quality: "high"
+    requires_api_key: false
+    supports_vintage: false
+    supports_realtime: true
+    priority: 2
+    regions:
+      - US
+    series:
+      - NFCI
+      - ANFCI
+
+  ons:
+    name: "Office for National Statistics UK"
+    base_url: "https://api.ons.gov.uk"
+    api_key_env: null
+    rate_limit: null
+    default_frequency: "monthly"
+    data_quality: "high"
+    requires_api_key: false
+    supports_vintage: false
+    supports_realtime: true
+    priority: 3
+    regions:
+      - UK
+
+  boe:
+    name: "Bank of England"
+    base_url: "https://www.bankofengland.co.uk/boeapps/iadb"
+    api_key_env: null
+    rate_limit: null
+    default_frequency: "monthly"
+    data_quality: "high"
+    requires_api_key: false
+    supports_vintage: false
+    supports_realtime: true
+    priority: 3
+    regions:
+      - UK
+
+  ecb:
+    name: "European Central Bank"
+    base_url: "https://data-api.ecb.europa.eu"
+    api_key_env: null
+    rate_limit: null
+    default_frequency: "monthly"
+    data_quality: "high"
+    requires_api_key: false
+    supports_vintage: false
+    supports_realtime: true
+    priority: 3
+    regions:
+      - EU
+
+  imf:
+    name: "International Monetary Fund"
+    base_url: "https://www.imf.org/external/datamapper/api"
+    api_key_env: null
+    rate_limit: null
+    default_frequency: "annual"
+    data_quality: "medium"
+    requires_api_key: false
+    supports_vintage: false
+    supports_realtime: true
+    priority: 4
+    regions:
+      - Global
+
+  oecd:
+    name: "Organisation for Economic Co-operation and Development"
+    base_url: "https://stats.oecd.org/SDMX-JSON/data"
+    api_key_env: null
+    rate_limit: null
+    default_frequency: "monthly"
+    data_quality: "medium"
+    requires_api_key: false
+    supports_vintage: false
+    supports_realtime: true
+    priority: 4
+    regions:
+      - Global
+
+  world_bank:
+    name: "World Bank Open Data"
+    base_url: "https://api.worldbank.org/v2"
+    api_key_env: null
+    rate_limit: 100
+    rate_limit_period: "day"
+    default_frequency: "annual"
+    data_quality: "medium"
+    requires_api_key: false
+    supports_vintage: false
+    supports_realtime: true
+    priority: 5
+    regions:
+      - Global
+
+  sample:
+    name: "Sample/Placeholder Data"
+    base_url: null
+    api_key_env: null
+    rate_limit: null
+    default_frequency: "monthly"
+    data_quality: "low"
+    requires_api_key: false
+    supports_vintage: false
+    supports_realtime: false
+    priority: 99
+    regions:
+      - Global
+    notes: "Synthetic data for testing and demonstration only"
+
+# Data quality thresholds
+quality_thresholds:
+  high:
+    min_completeness: 0.95
+    max_staleness_days: 7
+    min_source_reliability: 0.9
+  medium:
+    min_completeness: 0.85
+    max_staleness_days: 30
+    min_source_reliability: 0.7
+  low:
+    min_completeness: 0.70
+    max_staleness_days: 90
+    min_source_reliability: 0.5

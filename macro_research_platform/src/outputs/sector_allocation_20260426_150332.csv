@@ -1,0 +1,12 @@
+Sector,Signal,Score,Confidence,Rationale,generated_date,data_source
+Technology,Neutral,-0.04,0.8,Mixed signals,2026-04-26 15:03:32,macro_regime_model
+Financials,Neutral,-0.07,0.8,Mixed signals,2026-04-26 15:03:32,macro_regime_model
+Energy,Neutral,0.26,0.8,Mixed signals,2026-04-26 15:03:32,macro_regime_model
+Consumer Discretionary,Neutral,-0.13,0.8,Mixed signals,2026-04-26 15:03:32,macro_regime_model
+Consumer Staples,Neutral,0.1,0.7,Mixed signals,2026-04-26 15:03:32,macro_regime_model
+Healthcare,Neutral,0.16,0.7,Mixed signals,2026-04-26 15:03:32,macro_regime_model
+Industrials,Neutral,-0.01,0.8,Mixed signals,2026-04-26 15:03:32,macro_regime_model
+Materials,Neutral,0.2,0.8,Mixed signals,2026-04-26 15:03:32,macro_regime_model
+Utilities,Neutral,0.17,0.7,Mixed signals,2026-04-26 15:03:32,macro_regime_model
+Communication Services,Neutral,0.02,0.7,Mixed signals,2026-04-26 15:03:32,macro_regime_model
+Real Estate,Neutral,0.08,0.7,Mixed signals,2026-04-26 15:03:32,macro_regime_model

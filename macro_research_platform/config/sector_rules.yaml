@@ -1,0 +1,526 @@
+# =============================================================================
+# Sector Allocation Rules - Config Driven
+#
+# CHANGE SUMMARY
+# =============================================================================
+# FIXED: "Inflation Pressure / Late-Cycle", "Recovery / Mixed", and
+#        "Mixed / Transition" regime entries previously used YAML anchors
+#        (&id001 / *id001 etc.) that mapped ALL sectors to the same block with
+#        score: 0.0.  This caused every sector to receive a zero regime_fit
+#        score for those regimes, making all signals Neutral/PLACEHOLDER.
+#        Replaced with sector-specific scores reflecting real macro logic.
+# FIXED: signal_thresholds overweight/underweight were 0.4 / -0.4.  Given
+#        that all components are multiplied by their weights (regime_fit at
+#        0.30, etc.) the maximum possible regime_fit contribution is ~0.24.
+#        Reaching ±0.4 total required near-perfect alignment across all
+#        factors, producing Neutral for nearly every sector in practice.
+#        Lowered to ±0.15 so meaningful signals emerge under realistic scores.
+# =============================================================================
+
+sectors:
+  Technology:
+    name: Technology
+    tickers:
+    - XLK
+    characteristics:
+      cyclical_beta: 1.1
+      rate_sensitivity: high
+      earnings_volatility: high
+      global_exposure: high
+    regime_performance:
+      Goldilocks:
+        score: 0.6
+        rationale: Growth supportive, rates contained
+      Reflation:
+        score: -0.2
+        rationale: Rates pressure on long-duration cash flows
+      Slowdown:
+        score: 0.3
+        rationale: Duration exposure favorable as rates fall
+      Stagflation:
+        score: -0.5
+        rationale: Multiple compression from high rates
+      # FIXED: sector-specific scores (was score: 0.0 via shared YAML anchor)
+      Inflation Pressure / Late-Cycle:
+        score: -0.3
+        rationale: Rising rates compress growth-stock multiples; late-cycle headwind
+      Recovery / Mixed:
+        score: 0.4
+        rationale: Rate expectations ease; earnings recovery boosts growth names
+      Mixed / Transition:
+        score: 0.0
+        rationale: High policy uncertainty; await clearer direction
+    factor_sensitivities:
+      growth: 0.8
+      inflation: -0.3
+      liquidity: 0.7
+      risk: 0.6
+    financial_conditions_impact:
+      easing: 0.4
+      neutral: 0.0
+      tightening: -0.4
+
+  Financials:
+    name: Financials
+    tickers:
+    - XLF
+    characteristics:
+      cyclical_beta: 1.2
+      rate_sensitivity: high
+      earnings_volatility: medium
+      global_exposure: medium
+    regime_performance:
+      Goldilocks:
+        score: 0.8
+        rationale: Steep curve, credit expansion
+      Reflation:
+        score: 0.4
+        rationale: Rate hikes support net interest margin
+      Slowdown:
+        score: -0.3
+        rationale: Curve flattens, credit risk rises
+      Stagflation:
+        score: -0.6
+        rationale: Curve inversion risk, credit losses
+      # FIXED: sector-specific scores
+      Inflation Pressure / Late-Cycle:
+        score: 0.4
+        rationale: Rising rates widen net interest margins; credit still healthy
+      Recovery / Mixed:
+        score: 0.3
+        rationale: Credit conditions improving; loan growth picks up
+      Mixed / Transition:
+        score: -0.1
+        rationale: Uncertainty weighs on credit extension
+    factor_sensitivities:
+      growth: 0.7
+      inflation: 0.2
+      liquidity: 0.5
+      risk: 0.5
+    financial_conditions_impact:
+      easing: 0.3
+      neutral: 0.0
+      tightening: -0.5
+
+  Energy:
+    name: Energy
+    tickers:
+    - XLE
+    characteristics:
+      cyclical_beta: 1.3
+      rate_sensitivity: low
+      earnings_volatility: very_high
+      global_exposure: high
+    regime_performance:
+      Goldilocks:
+        score: 0.3
+        rationale: Demand growth positive
+      Reflation:
+        score: 0.8
+        rationale: Inflation hedge, commodity rally
+      Slowdown:
+        score: -0.5
+        rationale: Demand destruction risk
+      Stagflation:
+        score: 0.7
+        rationale: Supply-driven inflation benefits
+      # FIXED: sector-specific scores
+      Inflation Pressure / Late-Cycle:
+        score: 0.6
+        rationale: Commodity demand robust; energy acts as inflation hedge
+      Recovery / Mixed:
+        score: 0.2
+        rationale: Demand recovery supports oil prices; upside from capex
+      Mixed / Transition:
+        score: 0.1
+        rationale: Geopolitical premium offsets demand uncertainty
+    factor_sensitivities:
+      growth: 0.5
+      inflation: 0.8
+      liquidity: 0.2
+      risk: 0.3
+    financial_conditions_impact:
+      easing: 0.1
+      neutral: 0.0
+      tightening: -0.2
+
+  Consumer_Discretionary:
+    name: Consumer Discretionary
+    tickers:
+    - XLY
+    characteristics:
+      cyclical_beta: 1.2
+      rate_sensitivity: medium
+      earnings_volatility: high
+      global_exposure: medium
+    regime_performance:
+      Goldilocks:
+        score: 0.7
+        rationale: Strong consumption, employment
+      Reflation:
+        score: 0.2
+        rationale: Inflation pressure on margins
+      Slowdown:
+        score: -0.6
+        rationale: First sector to weaken
+      Stagflation:
+        score: -0.7
+        rationale: Consumer purchasing power squeezed
+      # FIXED: sector-specific scores
+      Inflation Pressure / Late-Cycle:
+        score: -0.4
+        rationale: Inflation erodes real purchasing power; margin compression
+      Recovery / Mixed:
+        score: 0.4
+        rationale: Pent-up demand releases; employment still solid
+      Mixed / Transition:
+        score: -0.2
+        rationale: Consumer confidence fragile during regime uncertainty
+    factor_sensitivities:
+      growth: 0.9
+      inflation: -0.4
+      liquidity: 0.6
+      risk: 0.7
+    financial_conditions_impact:
+      easing: 0.4
+      neutral: 0.0
+      tightening: -0.5
+
+  Consumer_Staples:
+    name: Consumer Staples
+    tickers:
+    - XLP
+    characteristics:
+      cyclical_beta: 0.5
+      rate_sensitivity: low
+      earnings_volatility: low
+      global_exposure: medium
+    regime_performance:
+      Goldilocks:
+        score: -0.1
+        rationale: Defensive underperforms in risk-on
+      Reflation:
+        score: -0.3
+        rationale: Input cost pressure
+      Slowdown:
+        score: 0.4
+        rationale: Defensive characteristics
+      Stagflation:
+        score: 0.2
+        rationale: Stable demand, pricing power
+      # FIXED: sector-specific scores
+      Inflation Pressure / Late-Cycle:
+        score: 0.1
+        rationale: Pricing power partially offsets input costs; mild defensive bid
+      Recovery / Mixed:
+        score: -0.1
+        rationale: Underperforms as risk appetite returns
+      Mixed / Transition:
+        score: 0.2
+        rationale: Defensive properties attractive amid uncertainty
+    factor_sensitivities:
+      growth: 0.3
+      inflation: -0.1
+      liquidity: 0.2
+      risk: -0.3
+    financial_conditions_impact:
+      easing: -0.1
+      neutral: 0.0
+      tightening: 0.3
+
+  Healthcare:
+    name: Healthcare
+    tickers:
+    - XLV
+    characteristics:
+      cyclical_beta: 0.6
+      rate_sensitivity: medium
+      earnings_volatility: low
+      global_exposure: medium
+    regime_performance:
+      Goldilocks:
+        score: 0.1
+        rationale: Neutral in expansion
+      Reflation:
+        score: -0.2
+        rationale: Regulatory cost pressure
+      Slowdown:
+        score: 0.5
+        rationale: Earnings stability attractive
+      Stagflation:
+        score: 0.3
+        rationale: Defensive demand
+      # FIXED: sector-specific scores
+      Inflation Pressure / Late-Cycle:
+        score: 0.1
+        rationale: Inelastic demand; modest pricing power; mild defensive premium
+      Recovery / Mixed:
+        score: 0.0
+        rationale: Neutral; neither strongly cyclical nor defensive
+      Mixed / Transition:
+        score: 0.2
+        rationale: Defensive earnings quality sought during uncertainty
+    factor_sensitivities:
+      growth: 0.3
+      inflation: 0.1
+      liquidity: 0.3
+      risk: -0.4
+    financial_conditions_impact:
+      easing: 0.0
+      neutral: 0.0
+      tightening: 0.2
+
+  Industrials:
+    name: Industrials
+    tickers:
+    - XLI
+    characteristics:
+      cyclical_beta: 1.1
+      rate_sensitivity: medium
+      earnings_volatility: high
+      global_exposure: high
+    regime_performance:
+      Goldilocks:
+        score: 0.6
+        rationale: Capex recovery, manufacturing strong
+      Reflation:
+        score: 0.5
+        rationale: Activity and pricing both positive
+      Slowdown:
+        score: -0.5
+        rationale: Order book deterioration
+      Stagflation:
+        score: -0.3
+        rationale: Input costs pressure margins
+      # FIXED: sector-specific scores
+      Inflation Pressure / Late-Cycle:
+        score: 0.1
+        rationale: Activity still solid but input-cost squeeze limits upside
+      Recovery / Mixed:
+        score: 0.5
+        rationale: Capex and infrastructure recovery; early-cycle leader
+      Mixed / Transition:
+        score: 0.0
+        rationale: Order visibility limited; await policy clarity
+    factor_sensitivities:
+      growth: 0.8
+      inflation: 0.3
+      liquidity: 0.4
+      risk: 0.5
+    financial_conditions_impact:
+      easing: 0.3
+      neutral: 0.0
+      tightening: -0.3
+
+  Materials:
+    name: Materials
+    tickers:
+    - XLB
+    characteristics:
+      cyclical_beta: 1.2
+      rate_sensitivity: low
+      earnings_volatility: high
+      global_exposure: high
+    regime_performance:
+      Goldilocks:
+        score: 0.4
+        rationale: Demand positive, prices stable
+      Reflation:
+        score: 0.7
+        rationale: Commodity inflation benefits
+      Slowdown:
+        score: -0.4
+        rationale: Demand weakness
+      Stagflation:
+        score: 0.5
+        rationale: Inflation hedge
+      # FIXED: sector-specific scores
+      Inflation Pressure / Late-Cycle:
+        score: 0.5
+        rationale: Commodity prices elevated; inflation pass-through strong
+      Recovery / Mixed:
+        score: 0.3
+        rationale: Supply chain restocking; construction/manufacturing recovery
+      Mixed / Transition:
+        score: 0.0
+        rationale: Commodity prices range-bound amid mixed growth signals
+    factor_sensitivities:
+      growth: 0.7
+      inflation: 0.7
+      liquidity: 0.3
+      risk: 0.4
+    financial_conditions_impact:
+      easing: 0.2
+      neutral: 0.0
+      tightening: -0.2
+
+  Utilities:
+    name: Utilities
+    tickers:
+    - XLU
+    characteristics:
+      cyclical_beta: 0.3
+      rate_sensitivity: very_high
+      earnings_volatility: low
+      global_exposure: low
+    regime_performance:
+      Goldilocks:
+        score: -0.3
+        rationale: Underperforms in risk-on, rates pressure
+      Reflation:
+        score: -0.5
+        rationale: High duration hurt by rising rates
+      Slowdown:
+        score: 0.6
+        rationale: Rate sensitivity helps as yields fall
+      Stagflation:
+        score: 0.1
+        rationale: Rates high but may fall
+      # FIXED: sector-specific scores
+      Inflation Pressure / Late-Cycle:
+        score: -0.5
+        rationale: Rising real yields crush long-duration regulated cash flows
+      Recovery / Mixed:
+        score: -0.2
+        rationale: Rate expectations rising slightly; defensive premium fades
+      Mixed / Transition:
+        score: 0.1
+        rationale: Flight-to-safety partial offset to rate headwind
+    factor_sensitivities:
+      growth: -0.1
+      inflation: -0.4
+      liquidity: 0.5
+      risk: -0.5
+    financial_conditions_impact:
+      easing: 0.5
+      neutral: 0.0
+      tightening: -0.5
+
+  Communication_Services:
+    name: Communication Services
+    tickers:
+    - XLC
+    characteristics:
+      cyclical_beta: 0.9
+      rate_sensitivity: high
+      earnings_volatility: medium
+      global_exposure: high
+    regime_performance:
+      Goldilocks:
+        score: 0.3
+        rationale: Ad spending improves
+      Reflation:
+        score: -0.2
+        rationale: Rate pressure on growth names
+      Slowdown:
+        score: 0.1
+        rationale: Mixed defensive/growth
+      Stagflation:
+        score: -0.3
+        rationale: Consumer discretionary cutbacks
+      # FIXED: sector-specific scores
+      Inflation Pressure / Late-Cycle:
+        score: -0.2
+        rationale: Rate headwind on growth component; ad budgets under pressure
+      Recovery / Mixed:
+        score: 0.3
+        rationale: Advertising recovery; streaming/digital re-accelerates
+      Mixed / Transition:
+        score: 0.0
+        rationale: Mixed cyclical and defensive characteristics balance out
+    factor_sensitivities:
+      growth: 0.6
+      inflation: -0.2
+      liquidity: 0.5
+      risk: 0.4
+    financial_conditions_impact:
+      easing: 0.3
+      neutral: 0.0
+      tightening: -0.3
+
+  Real_Estate:
+    name: Real Estate
+    tickers:
+    - XLRE
+    characteristics:
+      cyclical_beta: 0.8
+      rate_sensitivity: very_high
+      earnings_volatility: medium
+      global_exposure: medium
+    regime_performance:
+      Goldilocks:
+        score: -0.1
+        rationale: Activity good but rates a headwind
+      Reflation:
+        score: -0.6
+        rationale: Rate sensitive in tightening
+      Slowdown:
+        score: 0.4
+        rationale: Yield alternative attractive
+      Stagflation:
+        score: -0.2
+        rationale: Rates high, activity weak
+      # FIXED: sector-specific scores
+      Inflation Pressure / Late-Cycle:
+        score: -0.6
+        rationale: Cap rate expansion from rising yields destroys property valuations
+      Recovery / Mixed:
+        score: 0.2
+        rationale: Transaction volumes recover; cap rate compression possible
+      Mixed / Transition:
+        score: -0.1
+        rationale: Rate uncertainty keeps buyers sidelined
+    factor_sensitivities:
+      growth: 0.4
+      inflation: -0.3
+      liquidity: 0.6
+      risk: 0.2
+    financial_conditions_impact:
+      easing: 0.4
+      neutral: 0.0
+      tightening: -0.6
+
+scoring_formula: "sector_score =\n  (regime_fit * 0.30) +\n  (financial_conditions_fit\
+  \ * 0.20) +\n  (earnings_sensitivity_to_growth * 0.15) +\n  (rate_sensitivity_score\
+  \ * 0.10) +\n  (credit_sensitivity_score * 0.10) +\n  (momentum_confirmation * 0.10)\
+  \ +\n  (valuation_support * 0.05) -\n  (recession_risk_penalty)\n"
+
+scoring_components:
+  regime_fit:
+    weight: 0.30
+    description: How well does this sector perform in the current macro regime
+  financial_conditions_fit:
+    weight: 0.20
+    description: Alignment with financial conditions (easing/tightening)
+  earnings_sensitivity:
+    weight: 0.15
+    description: Cyclical earnings beta to growth score
+  rate_sensitivity:
+    weight: 0.10
+    description: Sensitivity to interest rate levels
+  credit_sensitivity:
+    weight: 0.10
+    description: Sensitivity to credit market conditions
+  momentum_confirmation:
+    weight: 0.10
+    description: Price/earnings momentum confirmation
+  valuation_support:
+    weight: 0.05
+    description: Relative valuation support
+
+# FIXED: Lowered from ±0.40 to ±0.15.
+# Rationale: the maximum regime_fit contribution is regime_score * 0.30.
+# For the highest-scoring sector/regime pair (0.8 * 0.30 = 0.24), reaching
+# the old ±0.40 threshold required near-perfect multi-factor alignment.
+# Under typical live-data conditions (growth ~0.0–0.2) most sectors scored
+# Neutral regardless of regime.  ±0.15 produces well-calibrated signals.
+signal_thresholds:
+  overweight: 0.15
+  neutral_min: -0.15
+  neutral_max: 0.15
+  underweight: -0.15
+
+constraints:
+  max_sector_weight: 0.25
+  min_sector_weight: 0.05
+  max_deviation_from_benchmark: 0.1

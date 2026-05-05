@@ -1,0 +1,18 @@
+{
+  "timestamp": "20260428_170605",
+  "rows": 180,
+  "columns": [
+    "us_unemployment_rate",
+    "us_industrial_production",
+    "us_retail_sales",
+    "us_core_cpi",
+    "us_ppi",
+    "us_fed_funds",
+    "high_yield_spread"
+  ],
+  "date_range": [
+    "2011-05-01T00:00:00",
+    "2026-04-01T00:00:00"
+  ],
+  "source": "FRED"
+}

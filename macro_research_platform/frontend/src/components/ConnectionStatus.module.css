@@ -1,0 +1,136 @@
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: var(--card-bg, oklch(0.2 0.02 260));
+  border-radius: 8px;
+  font-size: 13px;
+  border: 1px solid oklch(0.3 0.02 260);
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Pulsing dot animation */
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+}
+
+.pulse-dot::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+}
+
+/* Live status - green */
+.status-live .pulse-dot {
+  background: oklch(0.7 0.15 145);
+}
+
+.status-live .pulse-dot.pulsing::before {
+  background: oklch(0.7 0.15 145);
+  animation: pulse-ring 2s ease-out infinite;
+}
+
+/* Offline status - red */
+.status-offline .pulse-dot {
+  background: oklch(0.6 0.1 25);
+}
+
+/* Connecting status - yellow */
+.status-connecting .pulse-dot {
+  background: oklch(0.7 0.12 80);
+}
+
+.status-connecting .pulse-dot.pulsing::before {
+  background: oklch(0.7 0.12 80);
+  animation: pulse-ring 1s ease-out infinite;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(3);
+    opacity: 0;
+  }
+}
+
+.status-label {
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.status-live .status-label {
+  color: oklch(0.7 0.15 145);
+}
+
+.status-offline .status-label {
+  color: oklch(0.6 0.1 25);
+}
+
+.status-connecting .status-label {
+  color: oklch(0.7 0.12 80);
+}
+
+/* Status details */
+.status-details {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-secondary, oklch(0.6 0.02 260));
+}
+
+.separator {
+  opacity: 0.3;
+}
+
+.ticker-count {
+  font-weight: 500;
+}
+
+.last-update {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+/* Compact variant */
+.connection-status.compact {
+  padding: 6px 12px;
+  gap: 12px;
+}
+
+.connection-status.compact .status-details {
+  display: none;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .connection-status {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .status-details {
+    font-size: 11px;
+  }
+}

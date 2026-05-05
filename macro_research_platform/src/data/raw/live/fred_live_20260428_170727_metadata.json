@@ -1,0 +1,18 @@
+{
+  "timestamp": "20260428_170727",
+  "rows": 179,
+  "columns": [
+    "us_unemployment_rate",
+    "us_industrial_production",
+    "us_retail_sales",
+    "us_cpi",
+    "us_core_cpi",
+    "us_ppi",
+    "us_fed_funds"
+  ],
+  "date_range": [
+    "2011-05-01T00:00:00",
+    "2026-03-01T00:00:00"
+  ],
+  "source": "FRED"
+}

@@ -1,0 +1,12 @@
+Sector,Score,Signal,generated_date,data_source
+Technology,-0.04,Neutral,2026-04-26 10:13:54,macro_regime_model
+Financials,-0.07,Neutral,2026-04-26 10:13:54,macro_regime_model
+Energy,0.26,Neutral,2026-04-26 10:13:54,macro_regime_model
+Consumer Discretionary,-0.13,Neutral,2026-04-26 10:13:54,macro_regime_model
+Consumer Staples,0.1,Neutral,2026-04-26 10:13:54,macro_regime_model
+Healthcare,0.16,Neutral,2026-04-26 10:13:54,macro_regime_model
+Industrials,-0.01,Neutral,2026-04-26 10:13:54,macro_regime_model
+Materials,0.2,Neutral,2026-04-26 10:13:54,macro_regime_model
+Utilities,0.17,Neutral,2026-04-26 10:13:54,macro_regime_model
+Communication Services,0.02,Neutral,2026-04-26 10:13:54,macro_regime_model
+Real Estate,0.08,Neutral,2026-04-26 10:13:54,macro_regime_model

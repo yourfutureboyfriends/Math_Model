@@ -1,0 +1,108 @@
+# Global Macro Aggregation Weights
+# These weights determine how country-specific macro data
+# is aggregated into a global macro view.
+
+# Default weights for global aggregation
+# Weights should sum to 1.0 (100%)
+country_weights:
+  US: 0.40          # United States: 40%
+  EuroArea: 0.20    # Euro Area: 20%
+  China: 0.20       # China: 20%
+  Japan: 0.10       # Japan: 10%
+  UK: 0.05          # United Kingdom: 5%
+  EmergingMarkets: 0.05  # Emerging Markets: 5%
+
+# Alternative weighting schemes
+weight_schemes:
+  # Market-cap weighted (approximate)
+  market_cap:
+    US: 0.55
+    EuroArea: 0.18
+    China: 0.12
+    Japan: 0.08
+    UK: 0.04
+    EmergingMarkets: 0.03
+
+  # GDP-weighted
+  gdp:
+    US: 0.25
+    EuroArea: 0.15
+    China: 0.20
+    Japan: 0.08
+    UK: 0.06
+    EmergingMarkets: 0.26
+
+  # Equal weights
+  equal:
+    US: 0.1667
+    EuroArea: 0.1667
+    China: 0.1667
+    Japan: 0.1667
+    UK: 0.1667
+    EmergingMarkets: 0.1666
+
+# Regional weights for regional analysis
+regional_weights:
+  NorthAmerica: 0.40      # US + Canada (US proxy)
+  Europe: 0.25          # Euro Area + UK
+  Asia: 0.30           # China + Japan
+  Emerging: 0.05        # EM aggregate
+
+# Cross-asset aggregation weights
+# How much each country's conditions affect asset classes
+cross_asset_weights:
+  # Equities weighting
+  equities:
+    US: 0.50
+    EuroArea: 0.20
+    China: 0.15
+    Japan: 0.08
+    UK: 0.04
+    EmergingMarkets: 0.03
+
+  # Rates weighting
+  rates:
+    US: 0.45
+    EuroArea: 0.25
+    China: 0.10
+    Japan: 0.10
+    UK: 0.07
+    EmergingMarkets: 0.03
+
+  # FX weighting
+  fx:
+    US: 0.35      # Drives all other FX
+    EuroArea: 0.20
+    China: 0.15
+    Japan: 0.15
+    UK: 0.10
+    EmergingMarkets: 0.05
+
+  # Commodities weighting
+  commodities:
+    US: 0.30      # Demand side
+    China: 0.40   # Major consumer
+    EuroArea: 0.15
+    EmergingMarkets: 0.15
+
+# Recession risk aggregation weights
+# Different countries have different impact on global recession
+recession_weights:
+  US: 0.45          # US recession most important for global
+  EuroArea: 0.25   # Large spillovers
+  China: 0.20      # Major trading partner
+  Japan: 0.05
+  UK: 0.03
+  EmergingMarkets: 0.02
+
+# Thresholds for global regime classification
+thresholds:
+  global_growth_trend: 2.5
+  global_inflation_target: 2.0
+  recession_warning: 0.30
+  recession_high: 0.50
+  financial_conditions_tight: 0.50
+  liquidity_tight: 0.40
+
+# Minimum data quality threshold for inclusion
+min_data_quality: 0.3

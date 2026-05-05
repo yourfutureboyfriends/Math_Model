@@ -1,0 +1,299 @@
+# Model Settings Configuration
+# Defines all model parameters, thresholds, and weights
+
+# Version and metadata
+version: "2.0.0"
+last_updated: "2026-04-26"
+model_name: "Macro Regime Classification Model"
+author: "Institutional Macro Research"
+
+# Scoring parameters
+scoring:
+  z_score_lookback_months: 60
+  min_observations_for_z_score: 36
+  momentum_window_months: 3
+  trend_threshold: 0.3
+
+  # Direction classification thresholds
+  direction_thresholds:
+    accelerating: 0.5
+    stable: -0.3
+    decelerating: -0.5
+
+  # Score bounds
+  score_min: -3.0
+  score_max: 3.0
+
+# Regime classification
+regime_classification:
+  regimes:
+    Goldilocks:
+      name: "Goldilocks"
+      description: "Above-trend growth, below-trend inflation"
+      conditions:
+        growth_direction: "accelerating_or_stable_positive"
+        inflation_direction: "decelerating_or_stable_low"
+      typical_duration_months: 12
+      historical_frequency: 0.25
+
+    Reflation:
+      name: "Reflation"
+      description: "Above-trend growth, rising inflation"
+      conditions:
+        growth_direction: "accelerating"
+        inflation_direction: "accelerating"
+      typical_duration_months: 8
+      historical_frequency: 0.20
+
+    Slowdown:
+      name: "Slowdown"
+      description: "Decelerating growth, below-trend inflation"
+      conditions:
+        growth_direction: "decelerating"
+        inflation_direction: "decelerating_or_stable_low"
+      typical_duration_months: 10
+      historical_frequency: 0.30
+
+    Stagflation:
+      name: "Stagflation"
+      description: "Below-trend growth, above-trend inflation"
+      conditions:
+        growth_direction: "decelerating"
+        inflation_direction: "accelerating_or_stable_high"
+      typical_duration_months: 6
+      historical_frequency: 0.15
+
+  # Minimum confidence for regime classification
+  min_confidence: 0.6
+
+# Recession model
+recession_model:
+  lookback_months: 18
+  variables:
+    yield_curve_slope:
+      weight: 0.35
+      threshold: -0.5
+    credit_spread:
+      weight: 0.25
+      threshold: 400  # basis points
+    unemployment_change:
+      weight: 0.25
+      threshold: 0.5  # percentage points over 3 months
+    equity_momentum:
+      weight: 0.15
+      threshold: -0.1  # 3-month return
+
+  risk_levels:
+    low:
+      max_probability: 0.20
+      description: "Low recession risk"
+    moderate:
+      min_probability: 0.20
+      max_probability: 0.40
+      description: "Moderate recession risk"
+    high:
+      min_probability: 0.40
+      description: "High recession risk"
+
+# Financial conditions model
+financial_conditions:
+  components:
+    real_yield:
+      weight: 0.25
+      normal_range: [-1, 3]
+    credit_spread:
+      weight: 0.25
+      normal_range: [200, 500]
+    equity_momentum:
+      weight: 0.20
+      lookback_months: 3
+    dollar_index:
+      weight: 0.15
+    vix_level:
+      weight: 0.15
+      normal_range: [10, 25]
+
+  impulse_categories:
+    easing: "Financial conditions easing"
+    neutral: "Financial conditions neutral"
+    tightening: "Financial conditions tightening"
+
+  thresholds:
+    easing_threshold: -0.5
+    tightening_threshold: 0.5
+
+# Credit stress model
+credit_stress:
+  indicators:
+    high_yield_spread:
+      weight: 0.4
+      normal_range: [300, 500]
+    investment_grade_spread:
+      weight: 0.2
+      normal_range: [80, 150]
+    default_rate:
+      weight: 0.3
+      normal_range: [2, 5]
+    distressed_ratio:
+      weight: 0.1
+      threshold: 10
+
+  stress_levels:
+    normal: { max_spread: 400 }
+    elevated: { min_spread: 400, max_spread: 600 }
+    high: { min_spread: 600, max_spread: 800 }
+    severe: { min_spread: 800 }
+
+# Sector allocation model
+sector_allocation:
+  scoring_components:
+    regime_fit:
+      weight: 0.30
+      description: "Sector historical performance in current regime"
+    financial_conditions_fit:
+      weight: 0.20
+      description: "Alignment with current financial conditions"
+    earnings_sensitivity:
+      weight: 0.15
+      description: "Cyclical vs defensive earnings profile"
+    rate_sensitivity:
+      weight: 0.10
+      description: "Duration and discount rate sensitivity"
+    credit_sensitivity:
+      weight: 0.10
+      description: "Credit market exposure"
+    momentum_confirmation:
+      weight: 0.10
+      description: "Recent price momentum"
+    valuation_support:
+      weight: 0.05
+      description: "Relative valuation support"
+
+  signal_thresholds:
+    overweight: 0.4
+    neutral_min: -0.4
+    neutral_max: 0.4
+    underweight: -0.4
+
+  recession_penalty:
+    enabled: true
+    penalty_per_recession_risk_10pct: -0.1
+
+# Cross-asset model
+cross_asset:
+  asset_classes:
+    - rates
+    - credit
+    - equities
+    - commodities
+    - fx
+
+  scoring_components:
+    regime_weight: 0.50
+    factor_sensitivity_weight: 0.50
+
+  factors:
+    growth:
+      sensitivity_range: [-0.5, 0.5]
+    inflation:
+      sensitivity_range: [-0.7, 0.7]
+    liquidity:
+      sensitivity_range: [-0.6, 0.6]
+    risk:
+      sensitivity_range: [-0.7, 0.7]
+
+# Signal confidence engine
+signal_confidence:
+  components:
+    signal_strength:
+      weight: 0.25
+      description: "Magnitude of signal score"
+    data_quality:
+      weight: 0.20
+      description: "Quality of underlying data"
+    cross_indicator_agreement:
+      weight: 0.20
+      description: "Agreement across related indicators"
+    momentum_confirmation:
+      weight: 0.15
+      description: "Directional momentum confirmation"
+    recency:
+      weight: 0.10
+      description: "Recency of data updates"
+    revision_risk:
+      weight: 0.10
+      description: "Risk of data revision"
+
+  levels:
+    low:
+      max_score: 0.4
+      description: "Low confidence - consider reducing position sizes"
+    medium:
+      min_score: 0.4
+      max_score: 0.7
+      description: "Medium confidence - standard position sizing"
+    high:
+      min_score: 0.7
+      description: "High confidence - can increase conviction"
+
+# Backtesting parameters
+backtesting:
+  default_start_date: "2000-01-01"
+  minimum_observations: 60
+  train_test_split: 0.7
+  walk_forward_window_months: 12
+
+  # Performance metrics
+  metrics:
+    - information_ratio
+    - sharpe_ratio
+    - sortino_ratio
+    - max_drawdown
+    - hit_rate
+    - turnover
+    - avg_holding_period
+
+  # Transaction cost assumptions
+  transaction_costs:
+    equity_bps: 10
+    fixed_income_bps: 5
+    fx_bps: 3
+
+# Data quality
+data_quality:
+  min_completeness_pct: 80
+  max_staleness_days:
+    daily: 7
+    weekly: 14
+    monthly: 45
+    quarterly: 120
+    annual: 420
+
+  quality_score_weights:
+    completeness: 0.30
+    freshness: 0.25
+    stability: 0.20
+    source_reliability: 0.15
+    revision_risk: 0.10
+
+# Nowcasting
+nowcasting:
+  factors_to_extract: 3
+  min_observations: 24
+  bridge_equation: true
+  mixed_frequency: true
+
+# Output settings
+output:
+  default_format: "parquet"
+  compression: "zstd"
+  date_format: "%Y-%m-%d"
+  decimal_places: 4
+
+  files:
+    latest_snapshot: "latest_signal_snapshot.csv"
+    signal_history: "signal_history.csv"
+    backtest_results: "backtest_summary.csv"
+    data_freshness: "data_freshness_report.csv"
+    source_status: "source_status_report.csv"
+    data_status: "latest_data_status.md"

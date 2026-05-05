@@ -1,0 +1,14 @@
+signal,category,status,confidence,research_support
+ts_momentum,macro,active,70%,Systematic signal
+cross_asset_momentum,macro,active,70%,Systematic signal
+trend_following,macro,active,70%,Systematic signal
+growth_diffusion,macro,active,70%,Systematic signal
+inflation_diffusion,macro,active,70%,Systematic signal
+credit_stress,macro,active,70%,Systematic signal
+global_liquidity_pressure,macro,active,70%,Systematic signal
+policy_uncertainty,macro,active,70%,Systematic signal
+cape_valuation,macro,active,70%,Systematic signal
+yield_gap,macro,active,70%,Systematic signal
+term_premium_carry,macro,active,70%,Systematic signal
+fx_carry,macro,active,70%,Systematic signal
+dollar_cycle,macro,active,70%,Systematic signal

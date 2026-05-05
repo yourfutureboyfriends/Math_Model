@@ -1,0 +1,119 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Macro Research Platform — Docker Compose Production Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+
+version: '3.9'
+
+services:
+
+  # ═════════════════════════════════════════════════════════════════════════════
+  # Backend API (Flask + SocketIO)
+  # ═════════════════════════════════════════════════════════════════════════════
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: macro-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FLASK_ENV=production
+      - LOG_LEVEL=INFO
+      - DATABASE_URL=/app/database/macro_platform.db
+      - REPORTS_DIR=/app/reports
+    env_file:
+      - .env
+    volumes:
+      - macro_db:/app/database
+      - macro_reports:/app/reports
+      - macro_logs:/app/logs
+      - macro_data:/app/data/processed/live
+    networks:
+      - macro-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health/full"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  # ═════════════════════════════════════════════════════════════════════════════
+  # Frontend (Nginx serving React build)
+  # ═════════════════════════════════════════════════════════════════════════════
+  frontend:
+    image: nginx:alpine
+    container_name: macro-frontend
+    restart: unless-stopped
+    ports:
+      - "3002:80"
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - macro-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ═════════════════════════════════════════════════════════════════════════════
+  # Optional: Redis for distributed caching (uncomment if needed)
+  # ═════════════════════════════════════════════════════════════════════════════
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: macro-redis
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6379:6379"
+  #   command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+  #   volumes:
+  #     - redis_data:/data
+  #   networks:
+  #     - macro-network
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 3s
+  #     retries: 3
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Persistent Volumes
+# ═══════════════════════════════════════════════════════════════════════════════
+
+volumes:
+  macro_db:
+    driver: local
+  macro_reports:
+    driver: local
+  macro_logs:
+    driver: local
+  macro_data:
+    driver: local
+  # redis_data:
+  #   driver: local
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Networks
+# ═══════════════════════════════════════════════════════════════════════════════
+
+networks:
+  macro-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

@@ -1,0 +1,439 @@
+# Research Map Configuration
+# Maps academic papers to model components and implementation
+
+papers:
+  # Large macro data and factor models
+  stock_watson_2002a:
+    citation: "Stock, J.H. and Watson, M.W. (2002). Forecasting Using Principal Components from a Large Number of Predictors. Journal of the American Statistical Association, 97(460), pp.1167-1179."
+    main_idea: "Principal components from large datasets can improve forecasts by capturing common factors"
+    model_area: "nowcasting"
+    variables_added:
+      - common_factors
+      - diffusion_index
+    implementation: "Extract first 3 principal components from macro indicators as latent factors"
+    priority: high
+    difficulty: medium
+    risk_or_limitation: "Factors may be unstable over time; requires minimum number of series"
+
+  stock_watson_2002b:
+    citation: "Stock, J.H. and Watson, M.W. (2002). Macroeconomic Forecasting Using Diffusion Indexes. Journal of Business & Economic Statistics, 20(2), pp.147-162."
+    main_idea: "Diffusion indexes summarize co-movement in many series for forecasting"
+    model_area: "nowcasting"
+    variables_added:
+      - business_conditions_index
+    implementation: "Dynamic factor model for coincident economic activity"
+    priority: high
+    difficulty: medium
+    risk_or_limitation: "May lag true turning points; sensitive to data revisions"
+
+  mccracken_ng_2016:
+    citation: "McCracken, M.W. and Ng, S. (2016). FRED-MD: A Monthly Database for Macroeconomic Research. Journal of Business & Economic Statistics, 34(4), pp.574-589."
+    main_idea: "Curated monthly macro database with standardized transformations"
+    model_area: "data_infrastructure"
+    variables_added:
+      - standardized_transformations
+      - outlier_detection
+    implementation: "Apply FRED-MD transformation codes to standardize inputs"
+    priority: high
+    difficulty: low
+    risk_or_limitation: "US-centric; transformations may not suit all use cases"
+
+  giannone_reichlin_small_2008:
+    citation: "Giannone, D., Reichlin, L. and Small, D. (2008). Nowcasting: The Real-Time Informational Content of Macroeconomic Data. Journal of Monetary Economics, 55(4), pp.665-676."
+    main_idea: "Use mixed-frequency data to estimate current quarter GDP before official release"
+    model_area: "nowcasting"
+    variables_added:
+      - gdp_nowcast
+      - nowcast_confidence
+    implementation: "Bridge equations relating monthly indicators to quarterly GDP"
+    priority: high
+    difficulty: high
+    risk_or_limitation: "Bridge coefficients may shift; requires regular recalibration"
+
+  bok_etal_2018:
+    citation: "Bok, B., Caratelli, D., Giannone, D., Sbordone, A.M. and Tambalotti, A. (2018). Macroeconomic Nowcasting and Forecasting with Big Data. Annual Review of Economics, 10, pp.615-643."
+    main_idea: "Survey of nowcasting methods using large datasets and mixed frequencies"
+    model_area: "nowcasting"
+    variables_added:
+      - big_data_factors
+    implementation: "Machine learning-augmented factor models"
+    priority: medium
+    difficulty: high
+    risk_or_limitation: "Overfitting risk with many predictors"
+
+  aruoba_diebold_scotti_2009:
+    citation: "Aruoba, S.B., Diebold, F.X. and Scotti, C. (2009). Real-Time Measurement of Business Conditions. Journal of Business & Economic Statistics, 27(4), pp.417-427."
+    main_idea: "ADS business conditions index using mixed-frequency dynamic factor model"
+    model_area: "nowcasting"
+    variables_added:
+      - business_conditions_index
+    implementation: "Daily updating coincident indicator"
+    priority: high
+    difficulty: high
+    risk_or_limitation: "Revisions can be substantial"
+
+  # Recession and financial cycle
+  estrella_mishkin_1998:
+    citation: "Estrella, A. and Mishkin, F.S. (1998). Predicting U.S. Recessions: Financial Variables as Leading Indicators. Review of Economics and Statistics, 80(1), pp.45-61."
+    main_idea: "Yield curve slope predicts recessions 4-6 quarters ahead"
+    model_area: "recession_model"
+    variables_added:
+      - yield_curve_signal
+    implementation: "Logistic regression using yield curve spread"
+    priority: very_high
+    difficulty: low
+    risk_or_limitation: "False positives possible; zero lower bound changes dynamics"
+
+  estrella_hardouvelis_1991:
+    citation: "Estrella, A. and Hardouvelis, G.A. (1991). The Term Structure as a Predictor of Real Economic Activity. Journal of Finance, 46(2), pp.555-576."
+    main_idea: "Term spread predicts real GDP growth"
+    model_area: "recession_model"
+    variables_added:
+      - term_spread_growth_prediction
+    implementation: "Predictive regression framework"
+    priority: high
+    difficulty: medium
+    risk_or_limitation: "May not work at zero lower bound"
+
+  wright_2006:
+    citation: "Wright, J.H. (2006). The Yield Curve and Predicting Recessions. Finance and Economics Discussion Series, 2006-07."
+    main_idea: "Combining term spread and short-term rate improves recession prediction"
+    model_area: "recession_model"
+    variables_added:
+      - combined_recession_signal
+    implementation: "Probit model with term spread and federal funds rate"
+    priority: high
+    difficulty: medium
+    risk_or_limitation: "Sample limited to post-war period"
+
+  borio_etal_2022:
+    citation: "Borio, C., Drehmann, M. and Xia, D. (2019). Predicting Recessions: Financial Cycle Versus Term Spread. BIS Working Papers No 773."
+    main_idea: "Financial cycle measures improve upon yield curve for recession prediction"
+    model_area: "recession_model"
+    variables_added:
+      - credit_gap
+      - financial_cycle_peak
+    implementation: "Combine term spread with credit-to-GDP gap"
+    priority: high
+    difficulty: high
+    risk_or_limitation: "Credit gap requires careful detrending"
+
+  jorda_schularick_taylor_2015:
+    citation: "Jordà, Ò., Schularick, M. and Taylor, A.M. (2015). Leveraged Bubbles. Journal of Monetary Economics, 76, pp.S1-S20."
+    main_idea: "Credit booms combined with asset price booms predict crises"
+    model_area: "credit_stress_model"
+    variables_added:
+      - leveraged_bubble_indicator
+    implementation: "Monitor credit growth and asset price growth jointly"
+    priority: medium
+    difficulty: high
+    risk_or_limitation: "Long historical data required"
+
+  lopez_salido_etal_2017:
+    citation: "López-Salido, D., Stein, J.C. and Zakrajšek, E. (2017). Credit-Market Sentiment and the Business Cycle. Quarterly Journal of Economics, 132(3), pp.1373-1426."
+    main_idea: "Credit market sentiment predicts economic activity"
+    model_area: "credit_stress_model"
+    variables_added:
+      - credit_sentiment
+    implementation: "Decompose credit spreads into fundamental and sentiment components"
+    priority: high
+    difficulty: high
+    risk_or_limitation: "Sentiment extraction requires careful modeling"
+
+  # Credit and financial conditions
+  gilchrist_zakrajsek_2012:
+    citation: "Gilchrist, S. and Zakrajšek, E. (2012). Credit Spreads and Business Cycle Fluctuations. American Economic Review, 102(4), pp.1692-1720."
+    main_idea: "Credit spreads predict economic activity through firm investment channel"
+    model_area: "credit_stress_model"
+    variables_added:
+      - credit_spread_signal
+      - excess_bond_premium
+    implementation: "Use credit spreads as predictive variable for growth"
+    priority: very_high
+    difficulty: medium
+    risk_or_limitation: "Spreads may reflect liquidity not just default risk"
+
+  adrian_crum_moench_2013:
+    citation: "Adrian, T., Crump, R.K. and Moench, E. (2013). Pricing the Term Structure with Linear Regressions. Journal of Financial Economics, 110(1), pp.110-138."
+    main_idea: "Factor model of Treasury yields using level, slope, curvature"
+    model_area: "yield_curve_model"
+    variables_added:
+      - yield_factors
+    implementation: "Extract yield curve factors via regression"
+    priority: medium
+    difficulty: medium
+    risk_or_limitation: "Factors may not capture all yield dynamics"
+
+  adrian_etal_2019:
+    citation: "Adrian, T., Boyarchenko, N. and Giannone, D. (2019). Vulnerable Growth. American Economic Review, 109(4), pp.1263-1289."
+    main_idea: "Conditional distribution of GDP growth depends on financial conditions"
+    model_area: "financial_conditions_model"
+    variables_added:
+      - gdp_at_risk
+      - vulnerable_growth_indicator
+    implementation: "Quantile regression with financial conditions"
+    priority: high
+    difficulty: very_high
+    risk_or_limitation: "Requires long time series for tail estimation"
+
+  # Inflation
+  bekaert_engstrom_2010:
+    citation: "Bekaert, G. and Engstrom, E. (2010). Inflation and the Stock Market: Understanding the 'Fed Model'. Journal of Monetary Economics, 57(3), pp.278-294."
+    main_idea: "Stock-bond yield relationship varies with inflation regime"
+    model_area: "valuation_model"
+    variables_added:
+      - inflation_regime_valuation
+    implementation: "State-dependent equity premium"
+    priority: medium
+    difficulty: medium
+    risk_or_limitation: "Fed model has periods of breakdown"
+
+  fang_etal_2022:
+    citation: "Fang, X., Liu, B. and Roussanov, N. (2022). Getting to the Core: Inflation Risks Within and Across Asset Classes. NBER Working Paper 30169."
+    main_idea: "Different assets exposed to different inflation components"
+    model_area: "inflation_shock_model"
+    variables_added:
+      - core_exposure_by_asset
+      - energy_exposure_by_asset
+    implementation: "Decompose inflation shocks and map to asset returns"
+    priority: high
+    difficulty: high
+    risk_or_limitation: "Requires granular inflation data"
+
+  stock_watson_2007:
+    citation: "Stock, J.H. and Watson, M.W. (2007). Why Has U.S. Inflation Become Harder to Forecast? Journal of Money, Credit and Banking, 39(s1), pp.3-33."
+    main_idea: "Phillips curve has weakened, univariate models beat multivariate"
+    model_area: "inflation_nowcast"
+    variables_added:
+      - univariate_inflation_forecast
+    implementation: "AR model benchmark for inflation"
+    priority: medium
+    difficulty: low
+    risk_or_limitation: "Assumes stability in autoregressive structure"
+
+  atkeson_ohanian_2001:
+    citation: "Atkeson, A. and Ohanian, L.E. (2001). Are Phillips Curves Useful for Forecasting Inflation? Federal Reserve Bank of Minneapolis Quarterly Review, 25(1), pp.2-11."
+    main_idea: "Phillips curve forecasts no better than naive forecast"
+    model_area: "inflation_nowcast"
+    variables_added:
+      - naive_inflation_benchmark
+    implementation: "Random walk benchmark for inflation forecasts"
+    priority: medium
+    difficulty: low
+    risk_or_limitation: "Naive model may miss regime shifts"
+
+  kilian_2008:
+    citation: "Kilian, L. (2008). The Economic Effects of Energy Price Shocks. Journal of Economic Literature, 46(4), pp.871-909."
+    main_idea: "Oil price shocks have different effects depending on source"
+    model_area: "inflation_shock_model"
+    variables_added:
+      - supply_vs_demand_shock
+      - oil_price_change
+    implementation: "Structural VAR to identify shock sources"
+    priority: medium
+    difficulty: high
+    risk_or_limitation: "Identification assumptions debatable"
+
+  kilian_park_2009:
+    citation: "Kilian, L. and Park, C. (2009). The Impact of Oil Price Shocks on the U.S. Stock Market. International Economic Review, 50(4), pp.1267-1287."
+    main_idea: "Stock market response varies by shock type and sector"
+    model_area: "sector_allocation"
+    variables_added:
+      - sector_oil_sensitivity
+    implementation: "Time-varying exposure estimation"
+    priority: medium
+    difficulty: high
+    risk_or_limitation: "Requires disaggregated data"
+
+  # Asset allocation and expected returns
+  fama_french_1989:
+    citation: "Fama, E.F. and French, K.R. (1989). Business Conditions and Expected Returns on Stocks and Bonds. Journal of Financial Economics, 25(1), pp.23-49."
+    main_idea: "Expected returns vary with business cycle; term and default premia are time-varying"
+    model_area: "cross_asset_model"
+    variables_added:
+      - time_varying_premium
+      - term_premium_signal
+    implementation: "Predictive regressions for equity and bond returns"
+    priority: very_high
+    difficulty: medium
+    risk_or_limitation: "Out-of-sample performance weaker than in-sample"
+
+  chen_roll_ross_1986:
+    citation: "Chen, N.F., Roll, R. and Ross, S.A. (1986). Economic Forces and the Stock Market. Journal of Business, 59(3), pp.383-403."
+    main_idea: "Macro factors (inflation, industrial production, risk premia) explain stock returns"
+    model_area: "cross_asset_model"
+    variables_added:
+      - macro_factor_exposures
+    implementation: "APT with macro factors"
+    priority: very_high
+    difficulty: medium
+    risk_or_limitation: "Factors may not be stable; statistical identification"
+
+  lettau_ludvigson_2001:
+    citation: "Lettau, M. and Ludvigson, S. (2001). Consumption, Aggregate Wealth, and Expected Stock Returns. Journal of Finance, 56(3), pp.815-849."
+    main_idea: "Consumption-wealth ratio predicts stock returns"
+    model_area: "valuation_model"
+    variables_added:
+      - cay_ratio
+    implementation: "Long-run consumption-wealth predictor"
+    priority: medium
+    difficulty: medium
+    risk_or_limitation: "Requires cointegration assumption"
+
+  campbell_vuolteenaho_2004:
+    citation: "Campbell, J.Y. and Vuolteenaho, T. (2004). Bad Beta, Good Beta. American Economic Review, 94(5), pp.1249-1275."
+    main_idea: "Decompose market beta into cash-flow and discount-rate news"
+    model_area: "risk_model"
+    variables_added:
+      - cash_flow_beta
+      - discount_rate_beta
+    implementation: "ICAPM with macro-factor decomposition"
+    priority: medium
+    difficulty: very_high
+    risk_or_limitation: "Requires variance decomposition assumptions"
+
+  cochrane_piazzesi_2005:
+    citation: "Cochrane, J.H. and Piazzesi, M. (2005). Bond Risk Premia. American Economic Review, 95(1), pp.138-160."
+    main_idea: "Linear combination of forward rates predicts bond returns"
+    model_area: "yield_curve_model"
+    variables_added:
+      - bond_risk_premium_signal
+    implementation: "Linear combinations of forward rates as predictors"
+    priority: high
+    difficulty: high
+    risk_or_limitation: "Out-of-sample degradation"
+
+  campbell_shiller_1991:
+    citation: "Campbell, J.Y. and Shiller, R.J. (1991). Yield Spreads and Interest Rate Movements: A Bird's Eye View. Review of Economic Studies, 58(3), pp.495-514."
+    main_idea: "Yield spreads predict future rate changes"
+    model_area: "yield_curve_model"
+    variables_added:
+      - yield_spread_signal
+    implementation: "Predictive regressions for yield changes"
+    priority: high
+    difficulty: medium
+    risk_or_limitation: "Expectations hypothesis deviations vary over time"
+
+  ilmanen_2011:
+    citation: "Ilmanen, A. (2011). Expected Returns: An Investor's Guide to Harvesting Market Rewards. Wiley."
+    main_idea: "Comprehensive review of return predictability across asset classes"
+    model_area: "cross_asset_model"
+    variables_added:
+      - multi_asset_signals
+    implementation: "Synthesis of carry, value, momentum, macro signals"
+    priority: very_high
+    difficulty: medium
+    risk_or_limitation: "Multiple testing concerns; publication bias"
+
+  # Momentum, carry, and trend
+  moskowitz_etal_2012:
+    citation: "Moskowitz, T.J., Ooi, Y.H. and Pedersen, L.H. (2012). Time Series Momentum. Journal of Financial Economics, 104(2), pp.228-250."
+    main_idea: "Past 12-month returns predict next-month returns across asset classes"
+    model_area: "momentum_model"
+    variables_added:
+      - ts_momentum_signal
+    implementation: "12-month lookback momentum rule"
+    priority: high
+    difficulty: low
+    risk_or_limitation: "Can have sharp reversals"
+
+  koijen_etal_2018:
+    citation: "Koijen, R.S., Moskowitz, T.J., Pedersen, L.H. and Vrugt, E.B. (2018). Carry. Journal of Financial Economics, 127(2), pp.197-225."
+    main_idea: "Returns correlate with carry across asset classes"
+    model_area: "carry_model"
+    variables_added:
+      - carry_signal
+    implementation: "Slope of forward curve as return predictor"
+    priority: medium
+    difficulty: medium
+    risk_or_limitation: "Carry trades can experience crashes"
+
+  hurst_etal_2013:
+    citation: "Hurst, B., Ooi, Y.H. and Pedersen, L.H. (2013). A Century of Evidence on Trend-Following Investing. AQR Working Paper."
+    main_idea: "Trend following works across time and asset classes"
+    model_area: "momentum_model"
+    variables_added:
+      - trend_following_signal
+    implementation: "Multi-horizon trend rules"
+    priority: medium
+    difficulty: medium
+    risk_or_limitation: "Transaction costs can erode returns"
+
+  # Monetary policy and rates
+  taylor_1993:
+    citation: "Taylor, J.B. (1993). Discretion versus Policy Rules in Practice. Carnegie-Rochester Conference Series on Public Policy, 39, pp.195-214."
+    main_idea: "Simple interest rate rule describes Fed behavior"
+    model_area: "rates_model"
+    variables_added:
+      - taylor_rule_gap
+    implementation: "Compare actual fed funds rate to Taylor rule"
+    priority: medium
+    difficulty: low
+    risk_or_limitation: "Fed has deviated from Taylor rule significantly"
+
+  gurkaynak_etal_2005:
+    citation: "Gürkaynak, R.S., Sack, B. and Swanson, E.T. (2005). Do Actions Speak Louder Than Words? The Response of Asset Prices to Monetary Policy Actions and Statements. Journal of Finance, 60(1), pp.399-422."
+    main_idea: "Fed communications affect asset prices through path of rates, not just current rate"
+    model_area: "rates_model"
+    variables_added:
+      - monetary_policy_surprise
+    implementation: "Extract unexpected component from Fed actions"
+    priority: medium
+    difficulty: high
+    risk_or_limitation: "Requires high-frequency data"
+
+  bernanke_kuttner_2005:
+    citation: "Bernanke, B.S. and Kuttner, K.N. (2005). What Explains the Stock Market's Reaction to Federal Reserve Policy? Journal of Finance, 60(3), pp.1221-1257."
+    main_idea: "Stock market responds to unexpected rate changes, not expected"
+    model_area: "rates_model"
+    variables_added:
+      - fed_surprise_signal
+    implementation: "Decompose rate changes into expected and unexpected"
+    priority: medium
+    difficulty: high
+    risk_or_limitation: "Expectations measurement challenging"
+
+  hanson_stein_2015:
+    citation: "Hanson, S.G. and Stein, J.C. (2015). Monetary Policy and Long-Term Real Rates. Journal of Financial Economics, 115(3), pp.429-448."
+    main_idea: "Monetary policy affects long-term real rates through segmented markets"
+    model_area: "rates_model"
+    variables_added:
+      - real_rate_momentum
+    implementation: "Track real yield changes"
+    priority: medium
+    difficulty: medium
+    risk_or_limitation: "Segmentation effects time-varying"
+
+# Implementation roadmap
+implementation_roadmap:
+  phase_1:
+    papers:
+      - estrella_mishkin_1998
+      - fama_french_1989
+      - chen_roll_ross_1986
+      - stock_watson_2002a
+    status: "implemented"
+
+  phase_2:
+    papers:
+      - gilchrist_zakrajsek_2012
+      - mccracken_ng_2016
+      - giannone_reichlin_small_2008
+      - wright_2006
+    status: "planned"
+
+  phase_3:
+    papers:
+      - adrian_etal_2019
+      - borio_etal_2022
+      - fang_etal_2022
+      - campbell_vuolteenaho_2004
+    status: "future"
+
+  phase_4:
+    papers:
+      - moskowitz_etal_2012
+      - koijen_etal_2018
+      - cochrane_piazzesi_2005
+      - ilmanen_2011
+    status: "future"

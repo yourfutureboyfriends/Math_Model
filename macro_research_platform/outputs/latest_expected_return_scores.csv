@@ -1,0 +1,17 @@
+asset_or_sector,expected_return_score,volatility_estimate,sharpe_estimate,confidence,signal_contributions,interpretation
+Technology,0.0000,0.1500,-0.27,0.30,{},unattractive
+Financials,0.0000,0.1500,-0.27,0.30,{},unattractive
+Energy,0.0000,0.1500,-0.27,0.30,{},unattractive
+Consumer Discretionary,0.0000,0.1500,-0.27,0.30,{},unattractive
+Consumer Staples,0.0000,0.1500,-0.27,0.30,{},unattractive
+Healthcare,0.0000,0.1500,-0.27,0.30,{},unattractive
+Industrials,0.0000,0.1500,-0.27,0.30,{},unattractive
+Materials,0.0000,0.1500,-0.27,0.30,{},unattractive
+Utilities,0.0000,0.1500,-0.27,0.30,{},unattractive
+Communication Services,0.0000,0.1500,-0.27,0.30,{},unattractive
+Real Estate,0.0000,0.1500,-0.27,0.30,{},unattractive
+equities,0.0000,0.1600,-0.25,0.30,{},unattractive
+rates,0.0000,0.0500,-0.80,0.30,{},unattractive
+credit,0.0000,0.0800,-0.50,0.30,{},unattractive
+commodities,0.0000,0.2000,-0.20,0.30,{},unattractive
+fx,0.0000,0.1000,-0.40,0.30,{},unattractive

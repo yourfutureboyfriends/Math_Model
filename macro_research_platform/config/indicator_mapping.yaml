@@ -1,0 +1,412 @@
+# Indicator Mapping Configuration
+# Maps external series IDs to internal model variables
+
+indicators:
+  # Growth Indicators
+  us_unemployment_rate:
+    source: fred
+    source_series_id: UNRATE
+    frequency: monthly
+    category: labour
+    transformation: level
+    direction: negative_for_growth
+    release_lag_days: 30
+    importance_weight: 1.0
+    model_bucket: growth_momentum
+    asset_impact:
+      cyclical_equities: negative_when_rising
+      duration: positive_when_rising
+    description: "US unemployment rate"
+    research_support:
+      - "Okun's Law: unemployment inversely related to output"
+      - "Sahm Rule: 3-month moving average unemployment rise signals recession"
+
+  us_payrolls:
+    source: fred
+    source_series_id: PAYEMS
+    frequency: monthly
+    category: labour
+    transformation: mom_pct_change
+    direction: positive_for_growth
+    release_lag_days: 30
+    importance_weight: 1.0
+    model_bucket: growth_momentum
+    asset_impact:
+      cyclical_equities: positive
+      duration: negative
+    description: "Total nonfarm payrolls"
+
+  us_initial_claims:
+    source: fred
+    source_series_id: ICSA
+    frequency: weekly
+    category: labour
+    transformation: level
+    direction: negative_for_growth
+    release_lag_days: 7
+    importance_weight: 0.9
+    model_bucket: growth_momentum
+    asset_impact:
+      cyclical_equities: negative_when_rising
+    description: "Initial unemployment claims"
+
+  us_industrial_production:
+    source: fred
+    source_series_id: INDPRO
+    frequency: monthly
+    category: activity
+    transformation: mom_pct_change
+    direction: positive_for_growth
+    release_lag_days: 30
+    importance_weight: 0.9
+    model_bucket: growth_momentum
+    asset_impact:
+      cyclical_equities: positive
+    description: "Industrial production index"
+
+  us_retail_sales:
+    source: fred
+    source_series_id: RETAILx
+    frequency: monthly
+    category: activity
+    transformation: mom_pct_change
+    direction: positive_for_growth
+    release_lag_days: 30
+    importance_weight: 0.8
+    model_bucket: growth_momentum
+    asset_impact:
+      consumer_discretionary: positive
+    description: "Retail and food services sales ex autos"
+
+  us_real_gdp:
+    source: bea
+    source_series_id: "NIPA Table 1.1.6"
+    frequency: quarterly
+    category: activity
+    transformation: qoq_annualized
+    direction: positive_for_growth
+    release_lag_days: 90
+    importance_weight: 1.0
+    model_bucket: growth_momentum
+    asset_impact:
+      equities: positive
+    description: "Real GDP"
+
+  us_pmi:
+    source: sample
+    source_series_id: null
+    frequency: monthly
+    category: activity
+    transformation: level
+    direction: positive_for_growth
+    release_lag_days: 30
+    importance_weight: 0.9
+    model_bucket: growth_momentum
+    asset_impact:
+      cyclical_equities: positive
+    description: "Manufacturing PMI"
+
+  # Inflation Indicators
+  us_cpi_yoy:
+    source: bls
+    source_series_id: CPIAUCNS
+    frequency: monthly
+    category: inflation
+    transformation: yoy_pct_change
+    direction: negative_for_risk_assets_when_high
+    release_lag_days: 30
+    importance_weight: 1.0
+    model_bucket: inflation_pressure
+    asset_impact:
+      duration: negative_when_rising
+      long_duration_growth: negative_when_rising
+    description: "Consumer price index year-over-year"
+
+  us_core_cpi:
+    source: bls
+    source_series_id: CPILFENS
+    frequency: monthly
+    category: inflation
+    transformation: yoy_pct_change
+    direction: negative_for_risk_assets_when_high
+    release_lag_days: 30
+    importance_weight: 1.0
+    model_bucket: inflation_pressure
+    asset_impact:
+      duration: negative
+    description: "Core CPI (ex food and energy)"
+
+  us_ppi:
+    source: bls
+    source_series_id: PPIACO
+    frequency: monthly
+    category: inflation
+    transformation: yoy_pct_change
+    direction: leading_indicator
+    release_lag_days: 30
+    importance_weight: 0.8
+    model_bucket: inflation_pressure
+    asset_impact:
+      materials: leads_input_costs
+    description: "Producer price index"
+
+  us_average_hourly_earnings:
+    source: bls
+    source_series_id: CES0500000003
+    frequency: monthly
+    category: labour
+    transformation: yoy_pct_change
+    direction: wage_inflation_signal
+    release_lag_days: 30
+    importance_weight: 0.9
+    model_bucket: inflation_pressure
+    asset_impact:
+      labour_intensive: negative_when_accelerating
+    description: "Average hourly earnings"
+
+  # Financial Conditions
+  us_nfci:
+    source: chicago_fed
+    source_series_id: NFCI
+    frequency: weekly
+    category: financial_conditions
+    transformation: level
+    direction: tighter_when_positive
+    release_lag_days: 7
+    importance_weight: 1.0
+    model_bucket: financial_conditions
+    asset_impact:
+      risk_assets: negative_when_tightening
+      credit: negative_when_tightening
+    description: "National Financial Conditions Index"
+    notes: "Positive = tighter than average, Negative = looser than average"
+
+  us_ted_spread:
+    source: fred
+    source_series_id: TEDRATE
+    frequency: daily
+    category: credit_stress
+    transformation: level
+    direction: negative_for_liquidity
+    release_lag_days: 1
+    importance_weight: 0.8
+    model_bucket: liquidity
+    asset_impact:
+      credit: negative_when_rising
+    description: "TED spread"
+
+  us_credit_spread:
+    source: fred
+    source_series_id: BAMLH0A0HYM2
+    frequency: daily
+    category: credit_stress
+    transformation: level
+    direction: negative_for_growth
+    release_lag_days: 1
+    importance_weight: 0.9
+    model_bucket: credit_stress
+    asset_impact:
+      high_yield: negative
+      cyclicals: negative
+    description: "High yield credit spread"
+
+  # Interest Rates
+  us_10y_yield:
+    source: fred
+    source_series_id: DGS10
+    frequency: daily
+    category: rates
+    transformation: level
+    direction: signal
+    release_lag_days: 1
+    importance_weight: 0.9
+    model_bucket: rates
+    asset_impact:
+      duration: direct
+      long_duration_equities: inverse
+    description: "10-year Treasury yield"
+
+  us_2y_yield:
+    source: fred
+    source_series_id: DGS2
+    frequency: daily
+    category: rates
+    transformation: level
+    direction: signal
+    release_lag_days: 1
+    importance_weight: 0.8
+    model_bucket: rates
+    asset_impact:
+      front_end: direct
+    description: "2-year Treasury yield"
+
+  us_3m_yield:
+    source: fred
+    source_series_id: DGS3MO
+    frequency: daily
+    category: rates
+    transformation: level
+    direction: signal
+    release_lag_days: 1
+    importance_weight: 0.7
+    model_bucket: rates
+    asset_impact:
+      money_market: direct
+    description: "3-month Treasury yield"
+
+  us_yield_curve:
+    source: computed
+    source_series_id: null
+    frequency: daily
+    category: rates
+    transformation: spread_10y_minus_2y
+    direction: recession_signal_when_inverted
+    release_lag_days: 1
+    importance_weight: 1.0
+    model_bucket: recession_indicator
+    asset_impact:
+      banks: negative_when_inverted
+      duration: mixed
+    description: "Yield curve spread (10Y - 2Y)"
+    research_support:
+      - "Estrella and Mishkin (1998): yield curve predicts recessions"
+      - "Every US recession preceded by yield curve inversion"
+
+  # Market Data
+  sp500:
+    source: fred
+    source_series_id: SP500
+    frequency: daily
+    category: equity
+    transformation: mom_pct_change
+    direction: risk_appetite
+    release_lag_days: 1
+    importance_weight: 0.8
+    model_bucket: risk_appetite
+    asset_impact:
+      equities: direct
+    description: "S&P 500 index"
+
+  vix:
+    source: fred
+    source_series_id: VIXCLS
+    frequency: daily
+    category: volatility
+    transformation: level
+    direction: risk_aversion
+    release_lag_days: 1
+    importance_weight: 0.8
+    model_bucket: risk_appetite
+    asset_impact:
+      risk_assets: negative_when_rising
+    description: "VIX volatility index"
+
+  dxy:
+    source: fred
+    source_series_id: DTWEXBGS
+    frequency: daily
+    category: fx
+    transformation: level
+    direction: mixed
+    release_lag_days: 1
+    importance_weight: 0.7
+    model_bucket: fx
+    asset_impact:
+      multinationals: negative_when_strong
+      commodities: negative_when_strong
+    description: "US Dollar Index"
+
+  oil_price:
+    source: fred
+    source_series_id: DCOILWTICO
+    frequency: daily
+    category: commodity
+    transformation: level
+    direction: supply_demand_signal
+    release_lag_days: 1
+    importance_weight: 0.7
+    model_bucket: commodity
+    asset_impact:
+      energy: positive
+      transport: negative
+      inflation: positive_when_shock
+    description: "WTI crude oil price"
+
+  gold_price:
+    source: fred
+    source_series_id: GOLDAMGBD228NLBM
+    frequency: daily
+    category: commodity
+    transformation: level
+    direction: safe_haven
+    release_lag_days: 1
+    importance_weight: 0.6
+    model_bucket: safe_haven
+    asset_impact:
+      gold: direct
+      real_rates: inverse
+    description: "Gold price"
+
+# Model buckets define which indicators feed into which scores
+model_buckets:
+  growth_momentum:
+    name: "Growth Momentum"
+    description: "Economic activity and employment indicators"
+    indicators:
+      - us_unemployment_rate
+      - us_payrolls
+      - us_initial_claims
+      - us_industrial_production
+      - us_retail_sales
+      - us_pmi
+
+  inflation_pressure:
+    name: "Inflation Pressure"
+    description: "Price and wage inflation indicators"
+    indicators:
+      - us_cpi_yoy
+      - us_core_cpi
+      - us_ppi
+      - us_average_hourly_earnings
+
+  financial_conditions:
+    name: "Financial Conditions"
+    description: "Overall financial conditions tightness"
+    indicators:
+      - us_nfci
+
+  liquidity:
+    name: "Liquidity Conditions"
+    description: "Money market and short-term funding conditions"
+    indicators:
+      - us_ted_spread
+
+  credit_stress:
+    name: "Credit Stress"
+    description: "Corporate credit market conditions"
+    indicators:
+      - us_credit_spread
+
+  rates:
+    name: "Interest Rates"
+    description: "Yield levels and term structure"
+    indicators:
+      - us_10y_yield
+      - us_2y_yield
+      - us_3m_yield
+      - us_yield_curve
+
+  risk_appetite:
+    name: "Risk Appetite"
+    description: "Market-based risk sentiment measures"
+    indicators:
+      - sp500
+      - vix
+
+  recession_indicator:
+    name: "Recession Indicator"
+    description: "Leading recession signals"
+    indicators:
+      - us_yield_curve
+      - us_credit_spread
+      - us_unemployment_rate
