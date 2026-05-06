@@ -1,12 +1,40 @@
-// Phase 8 — Business Layer Outputs Section (Redesigned)
-// Business outputs with terminal aesthetic
+// Phase 8 — Business Layer Outputs Section (Redesigned) + Phase 3D Business Hook + Phase 4B Performance
+// Business outputs with terminal aesthetic using useBusinessLayer
+// Wrapped with React.memo for performance optimization
 
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { FileText, ChevronDown, ChevronRight, TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, Lightbulb, Target } from 'lucide-react';
-import type { BusinessLayerData } from '@/types';
+import { useBusinessLayer } from '@/hooks/useBusinessLayer';
+import { LoadingState } from '@/components/ui';
+import { fmtChange } from '@/utils/format';
 
-interface BusinessLayerSectionProps {
-  data?: BusinessLayerData;
+// Type definitions matching API response
+interface ExpectedReturnItem {
+  asset_class: string;
+  expected_return_score: number;
+  rationale?: string;
+  conviction?: string;
+  sharpe_estimate?: number;
+}
+
+interface PositionSizingItem {
+  asset_class: string;
+  recommended_weight: number;
+  min_weight?: number;
+  max_weight?: number;
+  rationale?: string;
+  conviction?: string;
+  bucket?: string;
+}
+
+interface DecisionLogItem {
+  date: string;
+  action?: string;
+  asset?: string;
+  headline?: string;
+  timestamp?: string;
+  recommendationType?: string;
+  conviction?: string;
 }
 
 interface ParsedRecommendation {
@@ -89,8 +117,8 @@ function getPositionSizeIcon(size: string) {
   return <Minus className="w-3 h-3 text-text-tertiary" />;
 }
 
-export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
-  if (!data) return null;
+export const BusinessLayerSection = memo(function BusinessLayerSection() {
+  const { recommendations, decisionLog, loading, error, refresh } = useBusinessLayer();
 
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     recommendations: true,
@@ -99,6 +127,26 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
     signalScorecard: false,
     decisionLog: false,
   });
+
+  if (loading) {
+    return <LoadingState message="Loading business layer..." />;
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 bg-surface-1 border border-border text-center">
+        <div className="text-amber mb-2">{error}</div>
+        <button onClick={refresh} className="px-3 py-1 bg-surface-2 text-xs font-mono">Retry</button>
+      </div>
+    );
+  }
+
+  // Map hook data to section data format
+  const expectedReturns: ExpectedReturnItem[] = recommendations?.expected_returns || [];
+  const positionSizing: PositionSizingItem[] = recommendations?.position_sizing || [];
+  const signalScorecard = recommendations?.signal_scorecard || [];
+  const decisionEntries: DecisionLogItem[] = decisionLog?.entries || [];
+  const summary = recommendations?.summary || null;
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
@@ -117,7 +165,7 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
     }
   };
 
-  const parsedRecommendations = data.recommendations ? parseRecommendations(data.recommendations) : [];
+  const parsedRecommendations = summary ? parseRecommendations(summary) : [];
 
   return (
     <div id="business-layer" className="terminal-section">
@@ -225,7 +273,7 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
         )}
 
         {/* Expected Returns */}
-        {data.expectedReturns.length > 0 && (
+        {expectedReturns.length > 0 && (
           <div className="border border-border bg-surface-1">
             <button
               onClick={() => toggleSection('expectedReturns')}
@@ -234,7 +282,7 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
               <div className="flex items-center gap-2">
                 <TrendingUp className="w-3 h-3 text-green" />
                 <span className="text-xs font-medium text-text-primary">Expected Returns</span>
-                <span className="signal-tag neutral">{data.expectedReturns.length}</span>
+                <span className="signal-tag neutral">{expectedReturns.length}</span>
               </div>
               {expandedSections.expectedReturns ? (
                 <ChevronDown className="w-3 h-3 text-text-tertiary" />
@@ -245,23 +293,23 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
             {expandedSections.expectedReturns && (
               <div className="p-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {(data.expectedReturns ?? []).map((item) => (
-                    <div key={item.assetOrSector} className="p-2 border border-border bg-surface-2">
+                  {expectedReturns.map((item) => (
+                    <div key={item.asset_class} className="p-2 border border-border bg-surface-2">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium text-text-primary">{item.assetOrSector}</span>
-                        <span className={getConfidenceTag(item.confidence)}>{item.confidence}</span>
+                        <span className="text-xs font-medium text-text-primary">{item.asset_class}</span>
+                        <span className={getConfidenceTag(item.conviction || 'Medium')}>{item.conviction || 'Medium'}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div>
                           <span className="text-2xs text-text-tertiary block">Return</span>
                           <div className="font-mono text-text-primary">
-                            {item.expectedReturn > 0 ? '+' : ''}{(item.expectedReturn * 100).toFixed(1)}%
+                            {fmtChange(item.expected_return_score / 100)}
                           </div>
                         </div>
                         <div>
                           <span className="text-2xs text-text-tertiary block">Sharpe</span>
-                          <div className={`font-mono ${item.sharpeEstimate > 0 ? 'text-green' : item.sharpeEstimate < 0 ? 'text-red' : 'text-text-secondary'}`}>
-                            {item.sharpeEstimate.toFixed(2)}
+                          <div className={`font-mono ${(item.sharpe_estimate || 0) > 0 ? 'text-green' : (item.sharpe_estimate || 0) < 0 ? 'text-red' : 'text-text-secondary'}`}>
+                            {item.sharpe_estimate != null ? item.sharpe_estimate.toFixed(2) : '--'}
                           </div>
                         </div>
                       </div>
@@ -274,7 +322,7 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
         )}
 
         {/* Position Sizing */}
-        {data.positionSizing.length > 0 && (
+        {positionSizing.length > 0 && (
           <div className="border border-border bg-surface-1">
             <button
               onClick={() => toggleSection('positionSizing')}
@@ -293,23 +341,23 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
             {expandedSections.positionSizing && (
               <div className="p-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                  {(data.positionSizing ?? []).map((item) => (
+                  {positionSizing.map((item) => (
                     <div
-                      key={item.assetOrSector}
+                      key={item.asset_class}
                       className={`p-2 border ${
-                        item.suggestedSize > 0 ? 'border-green/30 bg-green-dim' : item.suggestedSize < 0 ? 'border-red/30 bg-red-dim' : 'border-border bg-surface-2'
+                        item.recommended_weight > 0 ? 'border-green/30 bg-green-dim' : item.recommended_weight < 0 ? 'border-red/30 bg-red-dim' : 'border-border bg-surface-2'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium text-text-primary">{item.assetOrSector}</span>
-                        {item.suggestedSize > 0 ? <TrendingUp className="w-3 h-3 text-green" /> : item.suggestedSize < 0 ? <TrendingDown className="w-3 h-3 text-red" /> : <Minus className="w-3 h-3 text-text-tertiary" />}
+                        <span className="text-xs font-medium text-text-primary">{item.asset_class}</span>
+                        {item.recommended_weight > 0 ? <TrendingUp className="w-3 h-3 text-green" /> : item.recommended_weight < 0 ? <TrendingDown className="w-3 h-3 text-red" /> : <Minus className="w-3 h-3 text-text-tertiary" />}
                       </div>
                       <div className="text-base font-mono font-bold text-text-primary">
-                        {item.suggestedSize > 0 ? '+' : ''}{item.suggestedSize.toFixed(1)}%
+                        {fmtChange(item.recommended_weight / 100)}
                       </div>
                       <div className="flex items-center justify-between mt-1">
-                        <span className={getConfidenceTag(item.conviction)}>{item.conviction}</span>
-                        <span className="text-2xs text-text-tertiary">{item.bucket}</span>
+                        <span className={getConfidenceTag(item.conviction || 'Medium')}>{item.conviction || 'Medium'}</span>
+                        <span className="text-2xs text-text-tertiary">{item.bucket || 'Neutral'}</span>
                       </div>
                     </div>
                   ))}
@@ -320,7 +368,7 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
         )}
 
         {/* Signal Scorecard */}
-        {data.signalScorecard.length > 0 && (
+        {signalScorecard.length > 0 && (
           <div className="border border-border bg-surface-1">
             <button
               onClick={() => toggleSection('signalScorecard')}
@@ -345,7 +393,7 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {(data.signalScorecard ?? []).map((item) => (
+                    {signalScorecard.map((item: any) => (
                       <tr key={item.signal} className="border-b border-border-subtle last:border-0">
                         <td className="py-1.5 px-2 text-xs text-text-primary">{item.signal}</td>
                         <td className="py-1.5 px-2 text-xs text-text-secondary">{item.category}</td>
@@ -365,7 +413,7 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
         )}
 
         {/* Decision Log */}
-        {data.decisionLog.length > 0 && (
+        {decisionEntries.length > 0 && (
           <div className="border border-border bg-surface-1">
             <button
               onClick={() => toggleSection('decisionLog')}
@@ -381,15 +429,14 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
             {expandedSections.decisionLog && (
               <div className="p-2">
                 <div className="space-y-1">
-                  {(data.decisionLog ?? []).map((item, idx) => (
-                    <div key={`${item.timestamp}-${idx}`} className="flex items-center gap-3 p-2 border-b border-border-subtle last:border-0">
+                  {decisionEntries.map((item, idx) => (
+                    <div key={`${item.date}-${idx}`} className="flex items-center gap-3 p-2 border-b border-border-subtle last:border-0">
                       <div className="text-2xs text-text-tertiary w-20 shrink-0">
-                        {/* FIXED (BUG 8): Use ISO date format */}
-                        {new Date(item.timestamp).toISOString().split('T')[0]}
+                        {item.date}
                       </div>
-                      <span className="signal-tag neutral text-2xs shrink-0">{item.recommendationType}</span>
-                      <span className="flex-1 text-xs text-text-secondary truncate">{item.headline}</span>
-                      <span className={getConfidenceTag(item.conviction)}>{item.conviction.charAt(0)}</span>
+                      <span className="signal-tag neutral text-2xs shrink-0">{item.recommendationType || 'Action'}</span>
+                      <span className="flex-1 text-xs text-text-secondary truncate">{item.headline || item.action}</span>
+                      <span className={getConfidenceTag(item.conviction || 'Medium')}>{(item.conviction || 'M').charAt(0)}</span>
                     </div>
                   ))}
                 </div>
@@ -398,11 +445,11 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
           </div>
         )}
 
-        {!data.recommendations &&
-          data.expectedReturns.length === 0 &&
-          data.positionSizing.length === 0 &&
-          data.signalScorecard.length === 0 &&
-          data.decisionLog.length === 0 && (
+        {!summary &&
+          expectedReturns.length === 0 &&
+          positionSizing.length === 0 &&
+          signalScorecard.length === 0 &&
+          decisionEntries.length === 0 && (
             <div className="p-3 bg-surface-1 border border-border text-center">
               <p className="text-xs text-text-secondary">
                 Business outputs not found. Run{' '}
@@ -413,4 +460,4 @@ export function BusinessLayerSection({ data }: BusinessLayerSectionProps) {
       </div>
     </div>
   );
-}
+});

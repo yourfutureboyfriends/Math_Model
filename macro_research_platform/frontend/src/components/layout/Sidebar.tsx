@@ -21,7 +21,7 @@ interface NavSection {
 }
 
 // UPGRADE-9: Reorganized navigation for hedge fund workflow
-// FIXED (A): Navigation now matches App.tsx section order exactly
+// FIXED (PART 3): Sidebar reorganized per user spec
 const navigation: NavSection[] = [
   {
     title: 'MORNING BRIEF',
@@ -48,6 +48,10 @@ const navigation: NavSection[] = [
       { id: 'sector-allocation', label: 'Sector Allocation', icon: '◆', permission: 'sector_allocation' },
       { id: 'factor-rotation', label: 'Factor Rotation', icon: '◆', permission: 'factor_rotation' },
       { id: 'cot-positioning', label: 'COT Positioning', icon: '◆', permission: 'signal_stack' },
+      // FIXED (PART 3): Moved from STRATEGY to SIGNALS
+      { id: 'model-agreement', label: 'Model Agreement', icon: '◆', permission: 'model_agreement' },
+      { id: 'cta-trend', label: 'CTA Trends', icon: '◆', permission: 'cta_trends' },
+      { id: 'news-sentiment', label: 'News Sentiment', icon: '◆', permission: 'news_sentiment' },
     ],
   },
   {
@@ -57,6 +61,11 @@ const navigation: NavSection[] = [
       { id: 'risk-analytics', label: 'Risk Analytics', icon: '◆', permission: 'var_drawdown', highlight: true },
       { id: 'debt-cycle', label: 'Debt Cycle', icon: '◆', permission: 'debt_cycle' },
       { id: 'advanced', label: 'Advanced Indicators', icon: '◆', permission: 'advanced_indicators' },
+      // FIXED (PART 3): Moved from STRATEGY to RISK
+      { id: 'correlation', label: 'Correlation Regime', icon: '◆', permission: 'correlation' },
+      { id: 'factor-decomposition', label: 'Factor Decomposition', icon: '◆', permission: 'factor_decomp' },
+      { id: 'risk-parity', label: 'Risk Parity', icon: '◆', permission: 'risk_parity' },
+      { id: 'horizon-tension', label: 'Horizon Tensions', icon: '◆', permission: 'horizon_tensions', highlight: true },
     ],
   },
   {
@@ -66,6 +75,8 @@ const navigation: NavSection[] = [
       { id: 'liquidity', label: 'Liquidity Conditions', icon: '◆', permission: 'liquidity' },
       { id: 'sentiment', label: 'Sentiment', icon: '◆', permission: 'sentiment' },
       { id: 'yield-curve', label: 'Yield Curve', icon: '◆', permission: 'master_signal' },
+      // FIXED (PART 3): Moved from STRATEGY to FORECASTS
+      { id: 'valuation', label: 'Valuation Filter', icon: '◆', permission: 'valuation' },
     ],
   },
   {
@@ -73,7 +84,6 @@ const navigation: NavSection[] = [
     items: [
       { id: 'expected-returns', label: 'Expected Returns', icon: '◆', permission: 'expected_returns', highlight: true },
       { id: 'gmo-forecasts', label: 'GMO 7-Year', icon: '◆', permission: 'gmo_7year' },
-      { id: 'valuation', label: 'Valuation Filter', icon: '◆', permission: 'valuation' },
       { id: 'fx-monitor', label: 'FX Monitor', icon: '◆', permission: 'master_signal' },
       { id: 'commodities-dashboard', label: 'Commodities', icon: '◆', permission: 'master_signal' },
       { id: 'fixed-income-dashboard', label: 'Fixed Income', icon: '◆', permission: 'master_signal' },
@@ -81,21 +91,13 @@ const navigation: NavSection[] = [
       { id: 'reflexivity', label: 'Reflexivity', icon: '◆', permission: 'reflexivity' },
       { id: 'transmission', label: 'Transmission', icon: '◆', permission: 'transmission' },
       { id: 'regime-transition', label: 'Regime Transition', icon: '◆', permission: 'regime_transition' },
-      { id: 'correlation', label: 'Correlation Regime', icon: '◆', permission: 'correlation' },
-      { id: 'factor-decomposition', label: 'Factor Decomposition', icon: '◆', permission: 'factor_decomp' },
-      { id: 'risk-parity', label: 'Risk Parity', icon: '◆', permission: 'risk_parity' },
       { id: 'momentum-veto', label: 'Momentum Veto', icon: '◆', permission: 'momentum_veto' },
-      { id: 'horizon-tension', label: 'Horizon Tensions', icon: '◆', permission: 'horizon_tensions', highlight: true },
-      { id: 'model-agreement', label: 'Model Agreement', icon: '◆', permission: 'model_agreement' },
-      { id: 'cta-trend', label: 'CTA Trends', icon: '◆', permission: 'cta_trends' },
-      { id: 'news-sentiment', label: 'News Sentiment', icon: '◆', permission: 'news_sentiment' },
     ],
   },
   {
     title: 'RESEARCH',
     items: [
       { id: 'equity-research', label: 'Equity Research', icon: '◆', permission: 'equity_research', highlight: true },
-      { id: 'performance-attribution', label: 'Performance Attribution', icon: '◆', permission: 'performance_tracking', highlight: true },
     ],
   },
   {
@@ -105,6 +107,8 @@ const navigation: NavSection[] = [
       { id: 'trade-recommendations', label: 'Trade Recommendations', icon: '◆', permission: 'trade_recommendations', highlight: true },
       { id: 'scenario-analysis', label: 'Scenario Analysis', icon: '◆', permission: 'master_signal' },
       { id: 'portfolio', label: 'Model Portfolio', icon: '◆', permission: 'portfolio_fit', highlight: true },
+      // FIXED (PART 3): Moved from RESEARCH to PORTFOLIO
+      { id: 'performance-attribution', label: 'Performance Attribution', icon: '◆', permission: 'performance_tracking', highlight: true },
       { id: 'data-to-watch', label: 'Data to Watch', icon: '◆', permission: 'investment_memo' },
       { id: 'investment-memo', label: 'Investment Memo', icon: '◆', permission: 'investment_memo' },
       { id: 'business-layer', label: 'Business Layer', icon: '◆', permission: 'business_layer' },

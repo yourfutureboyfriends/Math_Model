@@ -1,15 +1,10 @@
-// Phase 8 — Horizon Tension Analysis Section (Three-Horizon Model)
+// Phase 8 — Horizon Tension Analysis Section (Three-Horizon Model) + Phase 2 Format Library
 // Short (1-5d) | Medium (1-4wk) | Long (3-12m) with tension detection
 
 import { useState, useEffect } from 'react';
 import { Clock, Zap, TrendingUp, Minus, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-// Safe number formatter
-const fmt = (val: number | undefined | null, decimals = 0): string => {
-  if (val === undefined || val === null || isNaN(val)) return '—';
-  return Number(val).toFixed(decimals);
-};
+import { useMacroStore } from '@/store/macroStore';
 
 interface HorizonEvent {
   date?: string;
@@ -36,6 +31,9 @@ export function HorizonTensionSection() {
   const [data, setData] = useState<HorizonData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Use macro store for regime context
+  const regime = useMacroStore((state) => state.regime);
 
   useEffect(() => {
     const fetchHorizonData = async () => {
@@ -158,7 +156,7 @@ export function HorizonTensionSection() {
           <span className="section-tag">30</span>
           <h2 className="section-title">Horizon Tensions</h2>
           <span className="section-meta">
-            Risk density: {risk_density}
+            Regime: {regime.current ? regime.current.toUpperCase() : '—'} | Risk density: {risk_density}
           </span>
         </div>
       </div>
@@ -186,7 +184,7 @@ export function HorizonTensionSection() {
                 </div>
                 <div className="text-sm text-text-primary">{next_high_impact?.event || 'Unknown'}</div>
                 <div className="text-2xs text-text-secondary">
-                  {next_high_impact?.date || '—'} • {fmt(next_high_impact?.days_away)} days away
+                  {next_high_impact?.date || '—'} • {next_high_impact?.days_away ?? '—'} days away
                 </div>
               </div>
             </div>
@@ -261,7 +259,7 @@ export function HorizonTensionSection() {
                       (event?.days_away ?? 999) <= 7 ? "text-amber" :
                       "text-text-secondary"
                     )}>
-                      {fmt(event?.days_away)}
+                      {event?.days_away ?? '—'}
                     </span>
                   </td>
                   <td className="py-2 px-2 text-center">

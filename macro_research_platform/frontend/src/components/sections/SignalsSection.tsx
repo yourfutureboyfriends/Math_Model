@@ -1,7 +1,9 @@
-// Phase 8 — Signal Interpretation Section (Redesigned)
-// Signal interpretation with terminal aesthetic
+// Phase 8 — Signal Interpretation Section (Redesigned) + Phase 1E Store Integration
+// Signal interpretation with terminal aesthetic using macroStore
 
 import { TrendingUp, TrendingDown, Minus, History } from 'lucide-react';
+import { useMacroStore } from '@/store/macroStore';
+import { fmtSignal, fmtChange } from '@/utils/format';
 import type { SignalsData } from '@/types';
 
 interface SignalsSectionProps {
@@ -9,7 +11,9 @@ interface SignalsSectionProps {
 }
 
 export function SignalsSection({ data }: SignalsSectionProps) {
-  if (!data) return null;
+  // Use macro store for live signal data
+  const signals = useMacroStore((state) => state.signals);
+  const isLoading = useMacroStore((state) => state.meta.dataStatus === 'loading');
 
   const getDirectionIcon = (direction: string) => {
     switch (direction) {
@@ -33,12 +37,61 @@ export function SignalsSection({ data }: SignalsSectionProps) {
     }
   };
 
+  // Map store signals to display format
   const signalsData = [
-    { name: 'Growth', ...data.growth },
-    { name: 'Inflation', ...data.inflation },
-    { name: 'Liquidity', ...data.liquidity },
-    { name: 'Risk', ...data.risk },
+    {
+      name: 'Growth',
+      latestScore: signals.growth.score ?? 0,
+      threeMonthChange: signals.growth.threeMonth ?? 0,
+      state: signals.growth.state ?? 'neutral',
+      direction: (signals.growth.score ?? 0) > 0.3 ? 'improving' : (signals.growth.score ?? 0) < -0.3 ? 'deteriorating' : 'stable',
+      interpretation: data?.growth?.interpretation ?? `${signals.growth.score && signals.growth.score > 0 ? 'Positive' : 'Negative'} growth momentum`,
+      history: data?.growth?.history ?? [],
+    },
+    {
+      name: 'Inflation',
+      latestScore: signals.inflation.score ?? 0,
+      threeMonthChange: signals.inflation.threeMonth ?? 0,
+      state: signals.inflation.state ?? 'neutral',
+      direction: (signals.inflation.score ?? 0) > 0.3 ? 'improving' : (signals.inflation.score ?? 0) < -0.3 ? 'deteriorating' : 'stable',
+      interpretation: data?.inflation?.interpretation ?? `${signals.inflation.score && signals.inflation.score > 0 ? 'Rising' : 'Falling'} inflation pressure`,
+      history: data?.inflation?.history ?? [],
+    },
+    {
+      name: 'Liquidity',
+      latestScore: signals.liquidity.score ?? 0,
+      threeMonthChange: signals.liquidity.threeMonth ?? 0,
+      state: signals.liquidity.state ?? 'neutral',
+      direction: (signals.liquidity.score ?? 0) > 0.3 ? 'improving' : (signals.liquidity.score ?? 0) < -0.3 ? 'deteriorating' : 'stable',
+      interpretation: data?.liquidity?.interpretation ?? `${signals.liquidity.score && signals.liquidity.score > 0 ? 'Accommodative' : 'Restrictive'} financial conditions`,
+      history: data?.liquidity?.history ?? [],
+    },
+    {
+      name: 'Risk',
+      latestScore: signals.risk.score ?? 0,
+      threeMonthChange: signals.risk.threeMonth ?? 0,
+      state: signals.risk.state ?? 'neutral',
+      direction: (signals.risk.score ?? 0) > 0.3 ? 'improving' : (signals.risk.score ?? 0) < -0.3 ? 'deteriorating' : 'stable',
+      interpretation: data?.risk?.interpretation ?? `${signals.risk.score && signals.risk.score > 0 ? 'Elevated' : 'Muted'} risk appetite`,
+      history: data?.risk?.history ?? [],
+    },
   ];
+
+  if (isLoading && !data) {
+    return (
+      <div id="signals" className="terminal-section">
+        <div className="section-header mb-3">
+          <div className="section-header-left">
+            <span className="section-tag">06</span>
+            <h2 className="section-title">Signal Interpretation</h2>
+          </div>
+        </div>
+        <div className="p-8 bg-surface-1 border border-border text-center text-text-secondary">
+          Loading signals...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div id="signals" className="terminal-section">
@@ -68,19 +121,19 @@ export function SignalsSection({ data }: SignalsSectionProps) {
                 <tr key={signal.name} className="border-b border-border-subtle last:border-0">
                   <td className="py-2 px-3 text-sm font-medium text-text-primary">{signal.name}</td>
                   <td className="py-2 px-3 text-right font-mono text-xs text-text-primary">
-                    {signal.latestScore >= 0 ? '+' : ''}{signal.latestScore.toFixed(2)}
+                    {fmtSignal(signal.latestScore)}
                   </td>
                   <td className="py-2 px-3 text-right font-mono text-xs">
                     <span
                       className={
-                        signal.threeMonthChange.startsWith('+')
+                        signal.threeMonthChange > 0
                           ? 'text-green'
-                          : signal.threeMonthChange.startsWith('-')
+                          : signal.threeMonthChange < 0
                             ? 'text-red'
                             : 'text-text-tertiary'
                       }
                     >
-                      {signal.threeMonthChange}
+                      {fmtChange(signal.threeMonthChange)}
                     </span>
                   </td>
                   <td className="py-2 px-3 text-center text-xs text-text-secondary">{signal.state}</td>
@@ -116,7 +169,7 @@ export function SignalsSection({ data }: SignalsSectionProps) {
                         val > 0 ? 'text-green' : val < 0 ? 'text-red' : 'text-text-tertiary'
                       }`}
                     >
-                      {val >= 0 ? '+' : ''}{val.toFixed(1)}
+                      {fmtSignal(val)}
                     </span>
                   ))}
                 </div>

@@ -1,8 +1,10 @@
-// Phase 8 — Regime Classification Section (Redesigned)
-// Dense panel with current regime, factor impacts, and history
+// Phase 8 — Regime Classification Section (Redesigned) + Phase 1E Store Integration
+// Dense panel using macroStore for live regime data
 
 import { cn } from '@/lib/utils';
 import { AnimatedValue, SkeletonCard } from '@/components/ui';
+import { useMacroStore } from '@/store/macroStore';
+import { fmtRegime, fmtProbability, fmtDuration } from '@/utils/format';
 import type { RegimeData } from '@/types';
 
 interface RegimeSectionProps {
@@ -10,7 +12,11 @@ interface RegimeSectionProps {
 }
 
 export function RegimeSection({ data }: RegimeSectionProps) {
-  if (!data) {
+  // Use macro store for live regime data
+  const regime = useMacroStore((state) => state.regime);
+  const isLoading = useMacroStore((state) => state.meta.dataStatus === 'loading');
+
+  if (isLoading && !data) {
     return (
       <div id="regime" className="terminal-section">
         <div className="section-header mb-3">
@@ -24,8 +30,29 @@ export function RegimeSection({ data }: RegimeSectionProps) {
     );
   }
 
-  const getRegimeColor = (regime: string) => {
-    const normalized = regime.toLowerCase();
+  // Prioritize store data, fallback to props
+  const currentRegime = regime.current || data?.current;
+  const confidence = regime.confidence ?? (data?.confidenceScore ? data.confidenceScore * 100 : null);
+  const duration = regime.duration || data?.duration;
+
+  if (!currentRegime) {
+    return (
+      <div id="regime" className="terminal-section">
+        <div className="section-header mb-3">
+          <div className="section-header-left">
+            <span className="section-tag">04</span>
+            <h2 className="section-title">Regime Classification</h2>
+          </div>
+        </div>
+        <div className="p-8 bg-surface-1 border border-border text-center text-text-secondary">
+          No regime data available
+        </div>
+      </div>
+    );
+  }
+
+  const getRegimeColor = (regimeName: string) => {
+    const normalized = regimeName.toLowerCase();
     if (normalized.includes('goldilocks') || normalized.includes('risk-on')) return 'text-green';
     if (normalized.includes('reflation') || normalized.includes('recovery')) return 'text-blue';
     if (normalized.includes('slowdown')) return 'text-amber';
@@ -33,8 +60,8 @@ export function RegimeSection({ data }: RegimeSectionProps) {
     return 'text-text-primary';
   };
 
-  const getRegimeBg = (regime: string) => {
-    const normalized = regime.toLowerCase();
+  const getRegimeBg = (regimeName: string) => {
+    const normalized = regimeName.toLowerCase();
     if (normalized.includes('goldilocks') || normalized.includes('risk-on')) return 'bg-green-dim border-green';
     if (normalized.includes('reflation') || normalized.includes('recovery')) return 'bg-blue-dim border-blue';
     if (normalized.includes('slowdown')) return 'bg-amber-dim border-amber';
@@ -42,8 +69,9 @@ export function RegimeSection({ data }: RegimeSectionProps) {
     return 'bg-surface-2 border-border';
   };
 
-  const getConfidenceBadge = (confidence: string) => {
-    switch (confidence.toLowerCase()) {
+  const getConfidenceBadge = (conf: string | number | null) => {
+    const confStr = typeof conf === 'number' ? (conf > 70 ? 'high' : conf > 40 ? 'medium' : 'low') : String(conf).toLowerCase();
+    switch (confStr) {
       case 'high':
         return 'signal-tag bullish';
       case 'medium':
@@ -55,7 +83,6 @@ export function RegimeSection({ data }: RegimeSectionProps) {
     }
   };
 
-
   return (
     <div id="regime" className="terminal-section">
       {/* Section Header */}
@@ -63,20 +90,22 @@ export function RegimeSection({ data }: RegimeSectionProps) {
         <div className="section-header-left">
           <span className="section-tag">04</span>
           <h2 className="section-title">Regime Classification</h2>
-          <span className="section-meta">{data.current.toUpperCase()} · {data.confidence.toUpperCase()} CONFIDENCE</span>
+          <span className="section-meta">
+            {fmtRegime(currentRegime).toUpperCase()} · {confidence ? fmtProbability(confidence / 100) : '—'} CONFIDENCE
+          </span>
         </div>
       </div>
 
       <div className="space-y-3">
         {/* Current Regime Card */}
-        <div className={cn('p-3 border', getRegimeBg(data.current))}>
+        <div className={cn('p-3 border', getRegimeBg(currentRegime))}>
           <div className="flex items-center justify-between mb-2">
             <div>
               <div className="text-2xs text-text-secondary uppercase tracking-wider mb-0.5">
                 Current Regime
               </div>
-              <div className={cn('text-lg font-mono font-bold', getRegimeColor(data.current))}>
-                {data.current}
+              <div className={cn('text-lg font-mono font-bold', getRegimeColor(currentRegime))}>
+                {fmtRegime(currentRegime)}
               </div>
             </div>
             <div className="text-right">
@@ -84,33 +113,52 @@ export function RegimeSection({ data }: RegimeSectionProps) {
                 Duration
               </div>
               <div className="text-sm font-mono text-text-primary">
-                {data.duration} months
+                {duration ? fmtDuration(duration) : '—'}
               </div>
             </div>
           </div>
 
           {/* Confidence Score Bar */}
-          <div className="mt-3">
-            <div className="flex items-center justify-between text-2xs mb-1">
-              <span className="text-text-tertiary">Confidence</span>
-              <span className="font-mono text-text-primary">{(data.confidenceScore * 100).toFixed(0)}%</span>
+          {confidence && (
+            <div className="mt-3">
+              <div className="flex items-center justify-between text-2xs mb-1">
+                <span className="text-text-tertiary">Confidence</span>
+                <span className="font-mono text-text-primary">{fmtProbability(confidence / 100)}</span>
+              </div>
+              <div className="h-1 bg-surface-4">
+                <div
+                  className="h-full bg-bloomberg transition-all duration-500"
+                  style={{ width: `${Math.min(100, confidence)}%` }}
+                />
+              </div>
+              <div className="text-right mt-1">
+                <span className="font-mono text-xs text-bloomberg">
+                  <AnimatedValue value={confidence} decimals={0} suffix="%" />
+                </span>
+              </div>
             </div>
-            <div className="h-1 bg-surface-4">
-              <div
-                className="h-full bg-bloomberg transition-all duration-500"
-                style={{ width: `${data.confidenceScore * 100}%` }}
-              />
+          )}
+
+          {/* Regime Probabilities from Store */}
+          {regime.probabilities && (
+            <div className="mt-3 pt-3 border-t border-border-subtle">
+              <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Probabilities</div>
+              <div className="grid grid-cols-2 gap-2">
+                {Object.entries(regime.probabilities).map(([key, prob]) => (
+                  prob !== null && (
+                    <div key={key} className="flex items-center justify-between">
+                      <span className="text-xs text-text-secondary capitalize">{key}</span>
+                      <span className="font-mono text-xs text-text-primary">{fmtProbability(prob)}</span>
+                    </div>
+                  )
+                ))}
+              </div>
             </div>
-            <div className="text-right mt-1">
-              <span className="font-mono text-xs text-bloomberg">
-                <AnimatedValue value={data.confidenceScore * 100} decimals={0} suffix="%" />
-              </span>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Factor Impacts Table */}
-        {data.interpretations && data.interpretations.length > 0 && (
+        {data?.interpretations && data.interpretations.length > 0 && (
           <div className="border border-border bg-surface-1">
             <div className="px-3 py-2 border-b border-border-subtle bg-surface-2">
               <span className="text-2xs text-text-tertiary uppercase tracking-wider">Factor Impacts</span>
@@ -140,18 +188,14 @@ export function RegimeSection({ data }: RegimeSectionProps) {
           </div>
         )}
 
-        {/* Regime History - FIXED: BUG-F6 - Human readable dates */}
-        {data.history && data.history.length > 0 && (
+        {/* Regime History */}
+        {data?.history && data.history.length > 0 && (
           <div className="p-3 border border-border bg-surface-1">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">History</div>
             <div className="flex flex-wrap gap-1">
               {data.history.slice(-6).map((h, idx) => {
                 const regimeColor = getRegimeColor(h.regime);
-                // FIXED (BUG 8): Use ISO date format for consistency
-                const fmtRegimeDate = (d: string) => {
-                  return d.split('T')[0]; // Already in ISO format from API
-                };
-                // Normalize regime names
+                const fmtRegimeDate = (d: string) => d.split('T')[0];
                 const fmtRegimeName = (r: string) => {
                   const names: Record<string, string> = {
                     'Goldilocks': 'Goldilocks',

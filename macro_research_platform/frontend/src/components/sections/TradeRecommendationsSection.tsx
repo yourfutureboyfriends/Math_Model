@@ -1,4 +1,4 @@
-// Trade Recommendations Section — v2.0 7-Layer Signal Engine
+// Trade Recommendations Section — v2.0 7-Layer Signal Engine + Phase 1E Store Integration
 // Implements AQR (Value/Momentum/QMJ/BAB/Carry), Bridgewater (Regime), Man AHL (Trend)
 // Papers: Asness et al. (2013, 2014), Frazzini-Pedersen (2014), Hurst-Ooi-Pedersen (2013)
 
@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { ArrowUp, ArrowDown, BarChart3, RefreshCw, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useMacroStore } from '@/store/macroStore';
+import { fmtRegime, fmtProbability, fmtSignal, fmtMagnitude } from '@/utils/format';
 
 interface MetaLabel {
   act: boolean;
@@ -193,6 +195,8 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
   const [activeTab, setActiveTab] = useState<'longs' | 'shorts' | 'pairs' | 'factors' | 'methodology' | 'health'>('longs');
   const [showDetails, setShowDetails] = useState<string | null>(null);
 
+  // Use macro store for regime data
+  const storeRegime = useMacroStore((state) => state.regime);
   const recommendations = data?.tradeRecommendations;
 
   if (!recommendations) {
@@ -216,7 +220,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
     );
   }
 
-  const { longs, shorts, pair_trades, summary, regime, macro_score, generated_at } = recommendations;
+  const { longs, shorts, pair_trades, summary, macro_score, generated_at } = recommendations;
   const factorSummary = recommendations.factor_summary;
   const regimeProbs = recommendations.regime_probabilities;
   const meta = recommendations._meta;
@@ -224,12 +228,8 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
   const signalHealth = recommendations.signal_health;
   const metaStats = recommendations.meta_stats;
 
-  const formatCurrency = (val: number) => {
-    if (val >= 1e12) return `$${(val / 1e12).toFixed(2)}T`;
-    if (val >= 1e9) return `$${(val / 1e9).toFixed(2)}B`;
-    if (val >= 1e6) return `$${(val / 1e6).toFixed(2)}M`;
-    return `$${val.toFixed(0)}`;
-  };
+  // Use store regime as authoritative, fallback to API data
+  const regime = storeRegime.current || recommendations.regime;
 
   const getScoreColor = (score: number) => {
     if (score > 0.5) return 'text-green';
@@ -239,10 +239,17 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
     return 'text-red';
   };
 
-  // Format layer contribution for display
+  // Format layer contribution using format library
   const formatLayerContrib = (contrib: number) => {
     if (contrib === undefined || isNaN(contrib)) return '—';
-    return contrib > 0 ? `+${contrib.toFixed(2)}` : contrib.toFixed(2);
+    return fmtSignal(contrib);
+  };
+
+  // Format position size using format library
+  const formatPositionSize = (pct: number) => {
+    // If value > 1, it's already a percentage (e.g., 9.5), not decimal (0.095)
+    const normalized = pct > 1 ? pct : pct * 100;
+    return fmtProbability(normalized / 100);
   };
 
   return (
@@ -259,10 +266,10 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="neutral" className="text-xs font-mono">
-            {regime} REGIME
+            {fmtRegime(regime).toUpperCase()} REGIME
           </Badge>
           <Badge variant={macro_score > 0 ? 'success' : macro_score < 0 ? 'danger' : 'neutral'} className="text-xs font-mono">
-            MACRO: {macro_score > 0 ? '+' : ''}{macro_score.toFixed(2)}
+            MACRO: {fmtSignal(macro_score)}
           </Badge>
           <button
             onClick={onRefresh}
@@ -273,7 +280,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
         </div>
       </div>
 
-      {/* Regime Probability Vector (v2.0) */}
+      {/* Regime Probability Vector (v2.0) - Uses format library */}
       {regimeProbs && (
         <Card className="bg-surface-1 border-border p-3 mb-4">
           <div className="flex items-center gap-4">
@@ -288,9 +295,9 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                         'font-mono',
                         reg === regime ? 'text-text-primary font-medium' : 'text-text-tertiary'
                       )}>
-                        {reg}
+                        {fmtRegime(reg)}
                       </span>
-                      <span className="text-text-tertiary">{(prob * 100).toFixed(0)}%</span>
+                      <span className="text-text-tertiary">{fmtProbability(prob)}</span>
                     </div>
                     <div className="h-1 bg-surface-4 rounded-sm overflow-hidden">
                       <div
@@ -324,7 +331,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
         </Card>
         <Card className="bg-surface-1 border-border p-3">
           <div className="text-xs text-text-secondary mb-1">AVG CONFIDENCE</div>
-          <div className="text-lg font-mono text-text-primary">{(summary.avg_confidence * 100).toFixed(0)}%</div>
+          <div className="text-lg font-mono text-text-primary">{fmtProbability(summary.avg_confidence)}</div>
         </Card>
       </div>
 
@@ -373,7 +380,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                 Filtered: <span className="text-text-primary">{metaStats.filtered_out}</span>
               </span>
               <span className="text-text-secondary">
-                Avg Meta: <span className="text-text-primary">{(metaStats.avg_meta_score * 100).toFixed(0)}%</span>
+                Avg Meta: <span className="text-text-primary">{fmtProbability(metaStats.avg_meta_score)}</span>
               </span>
             </div>
           </div>
@@ -382,7 +389,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
               Worst factor: <span className="text-text-primary">{crowding.worst_factor}</span>
               {crowding.factor_crowding[crowding.worst_factor]?.score !== undefined && (
                 <span className="ml-2">
-                  (score {crowding.factor_crowding[crowding.worst_factor].score.toFixed(2)},
+                  (score {fmtSignal(crowding.factor_crowding[crowding.worst_factor].score)},
                   {crowding.factor_crowding[crowding.worst_factor].direction})
                 </span>
               )}
@@ -459,26 +466,26 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                           'bg-surface-3 text-text-tertiary border-border'
                         )}
                       >
-                        META {(rec.meta.meta_score * 100).toFixed(0)}%
+                        META {fmtProbability(rec.meta.meta_score)}
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="text-right">
                       <div className={cn('text-sm font-mono', getScoreColor(rec.composite_score))}>
-                        {rec.composite_score > 0 ? '+' : ''}{rec.composite_score.toFixed(2)}
+                        {fmtSignal(rec.composite_score)}
                       </div>
                       <div className="text-xs text-text-secondary">score</div>
                     </div>
                     <div className="text-right min-w-[60px]">
                       <div className="text-sm font-mono text-bloomberg">
-                        {(rec.confidence * 100).toFixed(0)}%
+                        {fmtProbability(rec.confidence)}
                       </div>
                       <div className="text-xs text-text-secondary">conf</div>
                     </div>
                     <div className="text-right min-w-[60px]">
                       <div className="text-sm font-mono text-green">
-                        {rec.position_pct ? `${(rec.position_pct * 100).toFixed(1)}%` : `${(rec.kelly_pct * 100).toFixed(1)}%`}
+                        {formatPositionSize(rec.position_pct || rec.kelly_pct || 0)}
                       </div>
                       <div className="text-xs text-text-secondary">size</div>
                     </div>
@@ -491,8 +498,8 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                     <div className="grid grid-cols-4 gap-2 text-xs mb-2">
                       <div><span className="text-text-secondary">Sector:</span> {rec.sector || 'N/A'}</div>
                       <div><span className="text-text-secondary">Factor:</span> <span style={{ color: FACTOR_COLORS[rec.factor || 'value'] }}>{rec.factor || 'N/A'}</span></div>
-                      <div><span className="text-text-secondary">Mkt Cap:</span> {formatCurrency(rec.market_cap)}</div>
-                      <div><span className="text-text-secondary">Price:</span> ${rec.last_price.toFixed(2)}</div>
+                      <div><span className="text-text-secondary">Mkt Cap:</span> {fmtMagnitude(rec.market_cap)}</div>
+                      <div><span className="text-text-secondary">Price:</span> ${fmtMagnitude(rec.last_price, 2)}</div>
                     </div>
                     {/* Layer Contributions (v2.0) */}
                     {rec.layer_contributions && (
@@ -558,19 +565,19 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                   <div className="flex items-center gap-3">
                     <div className="text-right">
                       <div className={cn('text-sm font-mono', getScoreColor(rec.composite_score))}>
-                        {rec.composite_score.toFixed(2)}
+                        {fmtSignal(rec.composite_score)}
                       </div>
                       <div className="text-xs text-text-secondary">score</div>
                     </div>
                     <div className="text-right min-w-[60px]">
                       <div className="text-sm font-mono text-bloomberg">
-                        {(rec.confidence * 100).toFixed(0)}%
+                        {fmtProbability(rec.confidence)}
                       </div>
                       <div className="text-xs text-text-secondary">conf</div>
                     </div>
                     <div className="text-right min-w-[60px]">
                       <div className="text-sm font-mono text-red">
-                        {rec.position_pct ? `${(Math.abs(rec.position_pct) * 100).toFixed(1)}%` : `${(rec.kelly_pct * 100).toFixed(1)}%`}
+                        {formatPositionSize(Math.abs(rec.position_pct || rec.kelly_pct || 0))}
                       </div>
                       <div className="text-xs text-text-secondary">size</div>
                     </div>
@@ -583,8 +590,8 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                     <div className="grid grid-cols-4 gap-2 text-xs mb-2">
                       <div><span className="text-text-secondary">Sector:</span> {rec.sector || 'N/A'}</div>
                       <div><span className="text-text-secondary">Factor:</span> <span style={{ color: FACTOR_COLORS[rec.factor || 'value'] }}>{rec.factor || 'N/A'}</span></div>
-                      <div><span className="text-text-secondary">Mkt Cap:</span> {formatCurrency(rec.market_cap)}</div>
-                      <div><span className="text-text-secondary">Price:</span> ${rec.last_price.toFixed(2)}</div>
+                      <div><span className="text-text-secondary">Mkt Cap:</span> {fmtMagnitude(rec.market_cap)}</div>
+                      <div><span className="text-text-secondary">Price:</span> ${fmtMagnitude(rec.last_price, 2)}</div>
                     </div>
                     {/* Layer Contributions (v2.0) */}
                     {rec.layer_contributions && (
@@ -638,7 +645,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                   <div className="flex items-center gap-3">
                     <div className="text-right">
                       <div className="text-sm font-mono text-bloomberg">
-                        {pair.net_score > 0 ? '+' : ''}{pair.net_score.toFixed(2)}
+                        {fmtSignal(pair.net_score)}
                       </div>
                       <div className="text-xs text-text-secondary">net score</div>
                     </div>
@@ -668,7 +675,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
           <Card className="bg-surface-1 border-border">
             <CardHeader className="pb-2">
               <CardTitle className="text-xs font-mono text-text-secondary">
-                FACTOR WEIGHTS ({regime})
+                FACTOR WEIGHTS ({fmtRegime(regime)})
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -694,7 +701,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                                 style={{ width: `${Math.min(weight * 100, 100)}%`, backgroundColor: FACTOR_COLORS[factor] || '#6b7280' }}
                               />
                             </div>
-                            <span className="text-xs font-mono min-w-[40px] text-right">{(weight * 100).toFixed(0)}%</span>
+                            <span className="text-xs font-mono min-w-[40px] text-right">{fmtProbability(weight)}</span>
                           </div>
                         </div>
                       ))}
@@ -728,11 +735,11 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
             </CardHeader>
             <CardContent>
               <p className="text-sm text-text-secondary">
-                {regime === 'Goldilocks' && 'Growth and momentum dominate in Goldilocks conditions. Quality provides downside protection.'}
-                {regime === 'Reflation' && 'Value and cyclical factors outperform during reflation. Momentum captures trending themes.'}
-                {regime === 'Slowdown' && 'Defensive factors (quality, low vol, duration) lead in slowdowns. Credit exposure provides carry.'}
-                {regime === 'Stagflation' && 'Inflation-sensitive assets and low volatility outperform. Quality screens for margin resilience.'}
-                {!['Goldilocks', 'Reflation', 'Slowdown', 'Stagflation'].includes(regime) && 'Factor timing based on macro regime analysis.'}
+                {regime.toLowerCase().includes('goldilocks') && 'Growth and momentum dominate in Goldilocks conditions. Quality provides downside protection.'}
+                {regime.toLowerCase().includes('reflation') && 'Value and cyclical factors outperform during reflation. Momentum captures trending themes.'}
+                {regime.toLowerCase().includes('slowdown') && 'Defensive factors (quality, low vol, duration) lead in slowdowns. Credit exposure provides carry.'}
+                {regime.toLowerCase().includes('stagflation') && 'Inflation-sensitive assets and low volatility outperform. Quality screens for margin resilience.'}
+                {!['goldilocks', 'reflation', 'slowdown', 'stagflation'].some(r => regime.toLowerCase().includes(r)) && 'Factor timing based on macro regime analysis.'}
               </p>
               {/* Signal Z-Scores (v2.0) */}
               {factorSummary && (
@@ -742,37 +749,37 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                     <div className="flex justify-between text-xs">
                       <span>Value</span>
                       <span className={factorSummary.value_z > 0 ? 'text-green' : 'text-red'}>
-                        {factorSummary.value_z > 0 ? '+' : ''}{factorSummary.value_z.toFixed(2)}
+                        {fmtSignal(factorSummary.value_z)}
                       </span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span>Momentum</span>
                       <span className={factorSummary.momentum_z > 0 ? 'text-green' : 'text-red'}>
-                        {factorSummary.momentum_z > 0 ? '+' : ''}{factorSummary.momentum_z.toFixed(2)}
+                        {fmtSignal(factorSummary.momentum_z)}
                       </span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span>Quality</span>
                       <span className={factorSummary.quality_z > 0 ? 'text-green' : 'text-red'}>
-                        {factorSummary.quality_z > 0 ? '+' : ''}{factorSummary.quality_z.toFixed(2)}
+                        {fmtSignal(factorSummary.quality_z)}
                       </span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span>BAB</span>
                       <span className={factorSummary.bab_z > 0 ? 'text-green' : 'text-red'}>
-                        {factorSummary.bab_z > 0 ? '+' : ''}{factorSummary.bab_z.toFixed(2)}
+                        {fmtSignal(factorSummary.bab_z)}
                       </span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span>Carry</span>
                       <span className={factorSummary.carry_z > 0 ? 'text-green' : 'text-red'}>
-                        {factorSummary.carry_z > 0 ? '+' : ''}{factorSummary.carry_z.toFixed(2)}
+                        {fmtSignal(factorSummary.carry_z)}
                       </span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span>Trend</span>
                       <span className={factorSummary.trend_z > 0 ? 'text-green' : 'text-red'}>
-                        {factorSummary.trend_z > 0 ? '+' : ''}{factorSummary.trend_z.toFixed(2)}
+                        {fmtSignal(factorSummary.trend_z)}
                       </span>
                     </div>
                   </div>
@@ -943,10 +950,10 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                         'font-mono',
                         data.rolling_ic >= 0.05 ? 'text-green' : data.rolling_ic >= 0.01 ? 'text-amber' : 'text-red'
                       )}>
-                        {data.rolling_ic > 0 ? '+' : ''}{data.rolling_ic.toFixed(3)}
+                        {fmtSignal(data.rolling_ic)}
                       </div>
-                      <div className="font-mono text-text-secondary">{data.icir.toFixed(2)}</div>
-                      <div className="font-mono text-text-secondary">{(data.ic_stability * 100).toFixed(0)}%</div>
+                      <div className="font-mono text-text-secondary">{fmtSignal(data.icir)}</div>
+                      <div className="font-mono text-text-secondary">{fmtProbability(data.ic_stability)}</div>
                       <div>
                         <Badge
                           variant={data.health === 'HEALTHY' ? 'success' : data.health === 'ACCEPTABLE' ? 'warning' : 'danger'}
@@ -955,7 +962,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                           {data.health}
                         </Badge>
                       </div>
-                      <div className="font-mono text-right text-text-secondary">{(data.weight_mult * 100).toFixed(0)}%</div>
+                      <div className="font-mono text-right text-text-secondary">{fmtProbability(data.weight_mult)}</div>
                     </div>
                   ))}
                 </div>              </CardContent>
@@ -992,7 +999,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                         'font-mono',
                         data.score >= 0.65 ? 'text-red' : data.score >= 0.50 ? 'text-amber' : 'text-green'
                       )}>
-                        {data.score.toFixed(2)}
+                        {fmtSignal(data.score)}
                       </div>
                       <div>
                         <Badge
@@ -1017,10 +1024,10 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                         'font-mono font-medium',
                         crowding.portfolio_crowding_score >= 0.65 ? 'text-red' :
                         crowding.portfolio_crowding_score >= 0.50 ? 'text-amber' : 'text-green'
-                      )}>{crowding.portfolio_crowding_score.toFixed(2)}</span>
+                      )}>{fmtSignal(crowding.portfolio_crowding_score)}</span>
                     </div>
                     <div className="text-xs text-text-secondary">
-                      Size Multiplier: <span className="font-mono font-medium text-bloomberg">{(crowding.size_multiplier * 100).toFixed(0)}%</span>
+                      Size Multiplier: <span className="font-mono font-medium text-bloomberg">{fmtProbability(crowding.size_multiplier)}</span>
                     </div>
                   </div>
                 </div>
@@ -1059,7 +1066,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                       <div className="font-mono text-right">{metaStats.total_candidates}</div>                      <div className="text-text-secondary">Passed Filter</div>
                       <div className="font-mono text-right text-green">{metaStats.passed_meta}</div>                      <div className="text-text-secondary">Filtered Out</div>
                       <div className="font-mono text-right text-amber">{metaStats.filtered_out}</div>                      <div className="text-text-secondary">Avg Meta Score</div>
-                      <div className="font-mono text-right text-bloomberg">{(metaStats.avg_meta_score * 100).toFixed(1)}%</div>
+                      <div className="font-mono text-right text-bloomberg">{fmtProbability(metaStats.avg_meta_score)}</div>
                     </div>                  </div>
                 </div>              </CardContent>
             </Card>
@@ -1071,7 +1078,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
       <div className="mt-4 flex justify-between items-center text-xs text-text-tertiary">
         <span>
           Generated {new Date(generated_at).toLocaleString()}
-          {recommendations.duration_seconds && ` · ${recommendations.duration_seconds.toFixed(1)}s`}
+          {recommendations.duration_seconds && ` · ${fmtMagnitude(recommendations.duration_seconds, 1)}s`}
         </span>
         <span>{summary.total_scored.toLocaleString()} assets scored</span>
       </div>

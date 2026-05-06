@@ -21,6 +21,22 @@ interface SystemHealthSectionProps {
 }
 
 export function SystemHealthSection({ data, performanceData }: SystemHealthSectionProps) {
+  // FIXED: Add top-level null guard (Fix 7)
+  if (!data) {
+    return (
+      <section id="system-health" className="terminal-section">
+        <div className="section-header">
+          <span className="section-tag">HEALTH</span>
+          <h2 className="section-title">System Health</h2>
+        </div>
+        <div className="flex items-center gap-2 p-4">
+          <div className="skeleton skeleton-text w-24" />
+          <div className="skeleton skeleton-text w-16" />
+        </div>
+      </section>
+    )
+  }
+
   const getStatusColor = (status?: string) => {
     switch (status?.toLowerCase()) {
       case 'healthy':

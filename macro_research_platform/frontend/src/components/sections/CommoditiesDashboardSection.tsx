@@ -1,10 +1,12 @@
-// Section G Panel 6 — Commodities Dashboard
-// Energy, metals, and agriculture with macro signals
+// Section G Panel 6 — Commodities Dashboard + Phase 2 Store Integration
+// Energy, metals, and agriculture with macro signals using format library
 
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
+import { useMacroStore } from '@/store/macroStore';
+import { fmtPrice, fmtChange, fmtProbability } from '@/utils/format';
 
 interface Commodity {
   symbol: string;
@@ -47,6 +49,11 @@ export function CommoditiesDashboardSection() {
   const [data, setData] = useState<CommoditiesResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Use macro store for GLD/WTI prices
+  const prices = useMacroStore((state) => state.prices);
+  const changes = useMacroStore((state) => state.changes);
+  const storeLoading = useMacroStore((state) => state.meta.dataStatus === 'loading');
+
   useEffect(() => {
     fetch('/api/commodities')
       .then(r => r.json())
@@ -57,11 +64,14 @@ export function CommoditiesDashboardSection() {
       .catch(() => setLoading(false));
   }, []);
 
-  if (loading) {
+  if (loading || storeLoading) {
     return <div className="h-64 bg-surface-1 border border-border animate-pulse" />;
   }
 
-  // FIXED (BUG 4): Use != null checks instead of truthy
+  // Use store prices for gold if available
+  const goldPrice = prices.GLD;
+  const goldChange = changes.GLD;
+
   const renderCommodityRow = (commodities: Commodity[]) => (
     <div className="grid grid-cols-4 gap-2">
       {commodities.slice(0, 4).map(c => (
@@ -70,15 +80,15 @@ export function CommoditiesDashboardSection() {
           className="p-2 border border-border-subtle bg-surface-2"
         >
           <div className="text-2xs text-text-tertiary truncate">{c.name}</div>
-          <div className="font-mono">{c.spot != null ? c.spot.toFixed(2) : '--'}</div>
+          <div className="font-mono">{fmtPrice(c.spot, 2)}</div>
           <div className="flex items-center justify-between text-2xs">
             <span className={cn(
               (c.change1d ?? 0) > 0 ? 'text-green' : (c.change1d ?? 0) < 0 ? 'text-red' : 'text-text-secondary'
             )}>
-              {c.change1d != null ? `${c.change1d >= 0 ? '+' : ''}${c.change1d.toFixed(1)}%` : '--'}
+              {c.change1d != null ? fmtChange(c.change1d / 100) : '--'}
             </span>
             <span className="text-text-tertiary">
-              52W: {c.week52Percentile != null ? c.week52Percentile.toFixed(0) : '--'}%
+              52W: {c.week52Percentile != null ? fmtProbability(c.week52Percentile / 100) : '--'}
             </span>
           </div>
         </div>
@@ -114,10 +124,24 @@ export function CommoditiesDashboardSection() {
         <div className="space-y-3">
           <div className="text-2xs text-text-tertiary uppercase">Macro Signals</div>
 
+          {/* Gold from store */}
+          {goldPrice && (
+            <div className="p-3 border border-border-subtle bg-surface-2">
+              <div className="text-2xs text-text-tertiary">Gold (GLD)</div>
+              <div className="font-mono text-lg">{fmtPrice(goldPrice)}</div>
+              <span className={cn(
+                'text-xs',
+                (goldChange ?? 0) > 0 ? 'text-green' : (goldChange ?? 0) < 0 ? 'text-red' : 'text-text-secondary'
+              )}>
+                {goldChange != null ? fmtChange(goldChange) : '--'}
+              </span>
+            </div>
+          )}
+
           {data?.macroSignals?.copperGoldRatio && (
             <div className="p-3 border border-border-subtle bg-surface-2">
               <div className="text-2xs text-text-tertiary">Copper/Gold Ratio</div>
-              <div className="font-mono text-lg">{data.macroSignals.copperGoldRatio.value.toFixed(4)}</div>
+              <div className="font-mono text-lg">{fmtPrice(data.macroSignals.copperGoldRatio.value, 4)}</div>
               <Badge
                 variant={data.macroSignals.copperGoldRatio.signal === 'RISK-ON' ? 'success' : 'neutral'}
               >
@@ -154,7 +178,7 @@ export function CommoditiesDashboardSection() {
                 data.macroSignals.commodityInflationIndex.score > 2 ? 'text-red' :
                 data.macroSignals.commodityInflationIndex.score < -2 ? 'text-green' : 'text-text-primary'
               )}>
-                {data.macroSignals.commodityInflationIndex.score.toFixed(1)}%
+                {fmtChange(data.macroSignals.commodityInflationIndex.score / 100)}
               </div>
               <Badge
                 variant={data.macroSignals.commodityInflationIndex.signal === 'RISING' ? 'warning' : 'neutral'}

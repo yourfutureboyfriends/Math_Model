@@ -1,12 +1,13 @@
-// Risk Dashboard Scenarios — Hedge Fund Grade Risk Analytics
-// Shows macro scenarios, position-level risk, and concentration detection
+// Risk Dashboard Scenarios — Hedge Fund Grade Risk Analytics + Phase 2 Format Library
+// Shows macro scenarios, position-level risk using format library
 
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/context/AuthContext';
 import { AlertTriangle, Target } from 'lucide-react';
+import { useMacroStore } from '@/store/macroStore';
+import { fmtChange, fmtPriceInt } from '@/utils/format';
 
 interface DrawdownMetrics {
   currentDrawdown?: number;
@@ -86,20 +87,14 @@ export function RiskAnalyticsSection() {
   const [data, setData] = useState<RiskAnalyticsData | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('returns');
   const [loading, setLoading] = useState(true);
-  const { token } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+
+  // Use macro store for regime context
+  const regime = useMacroStore((state) => state.regime);
 
   useEffect(() => {
-    // Don't fetch if not authenticated
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-
-    fetch('/api/risk/full', {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    })
+    // FIXED (PART 2): Fetch without auth requirement
+    fetch('/api/risk/full')
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -107,12 +102,37 @@ export function RiskAnalyticsSection() {
       .then(d => {
         setData(d);
         setLoading(false);
+        setError(null);
       })
-      .catch(() => setLoading(false));
-  }, [token]);
+      .catch((e) => {
+        setLoading(false);
+        setError(e.message);
+      });
+  }, []);
 
   if (loading) {
-    return <div className="h-64 bg-surface-1 border border-border animate-pulse" />;
+    return (
+      <div id="risk-analytics" className="terminal-section">
+        <Card title="RISK ANALYTICS">
+          <div className="h-64 bg-surface-1 border border-border animate-pulse flex items-center justify-center">
+            <span className="text-text-secondary font-mono text-sm">Loading risk analytics...</span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div id="risk-analytics" className="terminal-section">
+        <Card title="RISK ANALYTICS">
+          <div className="h-32 bg-surface-1 border border-border flex flex-col items-center justify-center gap-2">
+            <span className="text-text-secondary font-mono text-sm">Risk analytics temporarily unavailable</span>
+            <span className="text-text-tertiary font-mono text-xs">{error || 'No data received'}</span>
+          </div>
+        </Card>
+      </div>
+    );
   }
 
   const tabs: { key: TabType; label: string }[] = [
@@ -133,25 +153,25 @@ export function RiskAnalyticsSection() {
             'font-mono text-lg font-bold',
             data?.riskAdjustedReturns?.sharpeRatio && data.riskAdjustedReturns.sharpeRatio > 1 ? 'text-green' : 'text-text-primary'
           )}>
-            {data?.riskAdjustedReturns?.sharpeRatio?.toFixed(2) || '--'}
+            {data?.riskAdjustedReturns?.sharpeRatio != null ? data.riskAdjustedReturns.sharpeRatio.toFixed(2) : '--'}
           </div>
         </div>
         <div className="p-3 border border-border-subtle bg-surface-2">
           <div className="text-2xs text-text-tertiary uppercase">Sortino</div>
           <div className="font-mono text-lg font-bold">
-            {data?.riskAdjustedReturns?.sortinoRatio?.toFixed(2) || '--'}
+            {data?.riskAdjustedReturns?.sortinoRatio != null ? data.riskAdjustedReturns.sortinoRatio.toFixed(2) : '--'}
           </div>
         </div>
         <div className="p-3 border border-border-subtle bg-surface-2">
           <div className="text-2xs text-text-tertiary uppercase">Calmar</div>
           <div className="font-mono text-lg font-bold">
-            {data?.riskAdjustedReturns?.calmarRatio?.toFixed(2) || '--'}
+            {data?.riskAdjustedReturns?.calmarRatio != null ? data.riskAdjustedReturns.calmarRatio.toFixed(2) : '--'}
           </div>
         </div>
         <div className="p-3 border border-border-subtle bg-surface-2">
           <div className="text-2xs text-text-tertiary uppercase">Info Ratio</div>
           <div className="font-mono text-lg font-bold">
-            {data?.riskAdjustedReturns?.informationRatio?.toFixed(2) || '--'}
+            {data?.riskAdjustedReturns?.informationRatio != null ? data.riskAdjustedReturns.informationRatio.toFixed(2) : '--'}
           </div>
         </div>
       </div>
@@ -160,7 +180,7 @@ export function RiskAnalyticsSection() {
         <div className="p-3 border border-border-subtle bg-surface-2">
           <div className="text-2xs text-text-tertiary uppercase">Beta vs SPY</div>
           <div className="font-mono text-lg">
-            {data?.riskAdjustedReturns?.betaVsSpy?.toFixed(2) || '--'}
+            {data?.riskAdjustedReturns?.betaVsSpy != null ? data.riskAdjustedReturns.betaVsSpy.toFixed(2) : '--'}
           </div>
           <div className="text-2xs text-text-tertiary">
             {data?.riskAdjustedReturns?.betaVsSpy && data.riskAdjustedReturns.betaVsSpy < 0.5
@@ -173,11 +193,9 @@ export function RiskAnalyticsSection() {
           <div className="font-mono text-lg text-red">
             {(() => {
               const val = data?.riskAdjustedReturns?.var95;
-              if (!val) return '--';
-              const abs = Math.abs(val);
-              if (abs >= 1000000) return `-$${(abs/1000000).toFixed(2)}M/day`;
-              if (abs >= 1000) return `-$${(abs/1000).toFixed(1)}K/day`;
-              return `-$${abs.toFixed(0)}/day`;
+              // FIXED (BUG 3): Handle null/undefined/NaN and format as percentage
+              if (val === null || val === undefined || isNaN(val)) return '--';
+              return fmtChange(val);
             })()}
           </div>
         </div>
@@ -186,11 +204,9 @@ export function RiskAnalyticsSection() {
           <div className="font-mono text-lg text-red">
             {(() => {
               const val = data?.riskAdjustedReturns?.cvar95;
-              if (!val) return '--';
-              const abs = Math.abs(val);
-              if (abs >= 1000000) return `-$${(abs/1000000).toFixed(2)}M/day`;
-              if (abs >= 1000) return `-$${(abs/1000).toFixed(1)}K/day`;
-              return `-$${abs.toFixed(0)}/day`;
+              // FIXED (BUG 3): Handle null/undefined/NaN and format as percentage
+              if (val === null || val === undefined || isNaN(val)) return '--';
+              return fmtChange(val);
             })()}
           </div>
         </div>
@@ -207,7 +223,7 @@ export function RiskAnalyticsSection() {
             'font-mono text-lg font-bold',
             data?.drawdown?.currentDrawdown && data.drawdown.currentDrawdown < -10 ? 'text-red' : 'text-text-primary'
           )}>
-            {data?.drawdown?.currentDrawdown?.toFixed(1) || '--'}%
+            {data?.drawdown?.currentDrawdown != null ? fmtChange(data.drawdown.currentDrawdown / 100) : '--'}
           </div>
           <Badge
             variant={
@@ -221,7 +237,7 @@ export function RiskAnalyticsSection() {
         <div className="p-3 border border-border-subtle bg-surface-2">
           <div className="text-2xs text-text-tertiary uppercase">Max 12M Drawdown</div>
           <div className="font-mono text-lg font-bold">
-            {data?.drawdown?.maxDrawdown12m?.toFixed(1) || '--'}%
+            {data?.drawdown?.maxDrawdown12m != null ? fmtChange(data.drawdown.maxDrawdown12m / 100) : '--'}
           </div>
         </div>
         <div className="p-3 border border-border-subtle bg-surface-2">
@@ -248,7 +264,7 @@ export function RiskAnalyticsSection() {
               data?.correlation?.diversificationScore && data.correlation.diversificationScore > 0.5 ? 'text-green' :
               data?.correlation?.diversificationScore && data.correlation.diversificationScore > 0.3 ? 'text-amber' : 'text-red'
             )}>
-              {data?.correlation?.diversificationScore?.toFixed(2) || '--'}
+              {data?.correlation?.diversificationScore != null ? data.correlation.diversificationScore.toFixed(2) : '--'}
             </span>
             <Badge
               variant={
@@ -272,7 +288,7 @@ export function RiskAnalyticsSection() {
           <div className="flex flex-wrap gap-2">
             {data.correlation.highCorrelationPairs.map((pair, idx) => (
               <span key={idx} className="text-xs bg-red-dim/20 text-red px-2 py-1 rounded">
-                {pair.pair} ({pair.corr.toFixed(2)})
+                {pair.pair} ({pair.corr != null ? pair.corr.toFixed(2) : '--'})
               </span>
             ))}
           </div>
@@ -298,7 +314,7 @@ export function RiskAnalyticsSection() {
                 'bg-green-dim/30'
               )}
             >
-              {corr.toFixed(2)}
+              {corr != null ? corr.toFixed(2) : '--'}
             </div>
           ))
         )}
@@ -323,7 +339,7 @@ export function RiskAnalyticsSection() {
               scenario.portfolioPnlPct && scenario.portfolioPnlPct < -15 ? 'text-red' :
               scenario.portfolioPnlPct && scenario.portfolioPnlPct < -10 ? 'text-amber' : 'text-text-primary'
             )}>
-              {scenario.portfolioPnlPct?.toFixed(1) || '--'}%
+              {scenario.portfolioPnlPct != null ? fmtChange(scenario.portfolioPnlPct / 100) : '--'}
             </div>
             <div className="text-2xs text-text-tertiary">
               Worst: {scenario.worstComponent}
@@ -344,12 +360,15 @@ export function RiskAnalyticsSection() {
 
   // Macro Scenario Analysis Table
   const renderScenariosTab = () => {
-    const scenarios = data?.macroScenarios || [
-      { name: 'Soft Landing', probability: 40, spyShock: 8, tltShock: 5, gldShock: 2, hygShock: 4, dxyShock: -2, portfolioImpact: 5.2, hedgeSuggestion: 'Maintain current allocation' },
-      { name: 'Inflation Spike', probability: 15, spyShock: -12, tltShock: -15, gldShock: 8, hygShock: -8, dxyShock: 3, portfolioImpact: -8.5, hedgeSuggestion: 'Long GLD, Short TLT' },
-      { name: 'Policy Mistake', probability: 25, spyShock: -18, tltShock: 8, gldShock: 5, hygShock: -12, dxyShock: 2, portfolioImpact: -10.2, hedgeSuggestion: 'Long TLT, Reduce SPY' },
-      { name: 'Stagflation', probability: 20, spyShock: -15, tltShock: -10, gldShock: 12, hygShock: -10, dxyShock: -5, portfolioImpact: -9.8, hedgeSuggestion: 'Long GLD, Commodity exposure' },
-    ];
+    const scenarios = data?.macroScenarios ?? [];
+
+    if (scenarios.length === 0) {
+      return (
+        <div className="p-6 text-center text-text-secondary text-sm border border-dashed border-border-subtle">
+          No macro scenario data available. Upload a portfolio to enable scenario analysis.
+        </div>
+      );
+    }
 
     const totalProb = scenarios.reduce((sum, s) => sum + s.probability, 0);
     const weightedReturn = scenarios.reduce((sum, s) => sum + (s.probability / 100) * s.portfolioImpact, 0);
@@ -389,7 +408,7 @@ export function RiskAnalyticsSection() {
                   scenario.portfolioImpact < -5 ? 'text-red' :
                   scenario.portfolioImpact > 0 ? 'text-green' : 'text-text-primary'
                 )}>
-                  {scenario.portfolioImpact > 0 ? '+' : ''}{scenario.portfolioImpact.toFixed(1)}%
+                  {fmtChange(scenario.portfolioImpact / 100)}
                 </div>
               </div>
 
@@ -401,7 +420,7 @@ export function RiskAnalyticsSection() {
                     'font-mono text-xs',
                     scenario.spyShock < 0 ? 'text-red' : 'text-green'
                   )}>
-                    {scenario.spyShock > 0 ? '+' : ''}{scenario.spyShock}%
+                    {fmtChange(scenario.spyShock / 100)}
                   </div>
                 </div>
                 <div className="text-center p-1.5 bg-surface-3">
@@ -410,7 +429,7 @@ export function RiskAnalyticsSection() {
                     'font-mono text-xs',
                     scenario.tltShock < 0 ? 'text-red' : 'text-green'
                   )}>
-                    {scenario.tltShock > 0 ? '+' : ''}{scenario.tltShock}%
+                    {fmtChange(scenario.tltShock / 100)}
                   </div>
                 </div>
                 <div className="text-center p-1.5 bg-surface-3">
@@ -419,7 +438,7 @@ export function RiskAnalyticsSection() {
                     'font-mono text-xs',
                     scenario.gldShock < 0 ? 'text-red' : 'text-green'
                   )}>
-                    {scenario.gldShock > 0 ? '+' : ''}{scenario.gldShock}%
+                    {fmtChange(scenario.gldShock / 100)}
                   </div>
                 </div>
                 <div className="text-center p-1.5 bg-surface-3">
@@ -428,7 +447,7 @@ export function RiskAnalyticsSection() {
                     'font-mono text-xs',
                     scenario.hygShock < 0 ? 'text-red' : 'text-green'
                   )}>
-                    {scenario.hygShock > 0 ? '+' : ''}{scenario.hygShock}%
+                    {fmtChange(scenario.hygShock / 100)}
                   </div>
                 </div>
                 <div className="text-center p-1.5 bg-surface-3">
@@ -437,7 +456,7 @@ export function RiskAnalyticsSection() {
                     'font-mono text-xs',
                     scenario.dxyShock < 0 ? 'text-red' : 'text-green'
                   )}>
-                    {scenario.dxyShock > 0 ? '+' : ''}{scenario.dxyShock}%
+                    {fmtChange(scenario.dxyShock / 100)}
                   </div>
                 </div>
               </div>
@@ -459,7 +478,7 @@ export function RiskAnalyticsSection() {
               'font-mono font-bold text-lg',
               weightedReturn < 0 ? 'text-red' : 'text-green'
             )}>
-              {weightedReturn > 0 ? '+' : ''}{weightedReturn.toFixed(2)}%
+              {fmtChange(weightedReturn / 100)}
             </div>
           </div>
         </div>
@@ -487,9 +506,7 @@ export function RiskAnalyticsSection() {
           <div className="p-3 border border-border-subtle bg-surface-2">
             <div className="text-2xs text-text-tertiary uppercase">Portfolio VaR 95%</div>
             <div className="font-mono text-lg font-bold text-red">
-              {totalVar >= 1000000 ? `-$${(totalVar/1000000).toFixed(2)}M` :
-               totalVar >= 1000 ? `-$${(totalVar/1000).toFixed(1)}K` :
-               `-$${totalVar.toFixed(0)}`}
+              -{fmtPriceInt(totalVar)}
             </div>
           </div>
           <div className="p-3 border border-border-subtle bg-surface-2">
@@ -525,22 +542,22 @@ export function RiskAnalyticsSection() {
               )}
             >
               <div className="font-mono font-medium">{pos.ticker}</div>
-              <div className="text-right font-mono">{(pos.weight * 100).toFixed(1)}%</div>
-              <div className="text-right font-mono">{pos.contributionPct.toFixed(1)}%</div>
+              <div className="text-right font-mono">{fmtChange(pos.weight)}</div>
+              <div className="text-right font-mono">{fmtChange(pos.contributionPct / 100)}</div>
               <div className="text-right font-mono text-red">
-                -${(pos.var95 / 1000).toFixed(1)}K
+                -{fmtPriceInt(pos.var95)}
               </div>
               <div className={cn(
                 'text-right font-mono',
                 pos.beta > 1.2 ? 'text-amber' : 'text-text-primary'
               )}>
-                {pos.beta.toFixed(2)}
+                {pos.beta != null ? pos.beta.toFixed(2) : '--'}
               </div>
               <div className={cn(
                 'text-right font-mono',
                 pos.stressLoss < -15 ? 'text-red' : pos.stressLoss < -10 ? 'text-amber' : 'text-text-primary'
               )}>
-                {pos.stressLoss.toFixed(1)}%
+                {fmtChange(pos.stressLoss / 100)}
               </div>
               <div className="flex gap-1">
                 {pos.flags.map((flag, fidx) => (
@@ -563,7 +580,7 @@ export function RiskAnalyticsSection() {
 
   return (
     <div id="risk-analytics" className="terminal-section">
-    <Card title="RISK ANALYTICS">
+    <Card title={`RISK ANALYTICS | Regime: ${regime.current ? regime.current.toUpperCase() : '—'}`}>
       <div className="space-y-4">
         {/* Tabs */}
         <div className="flex gap-1">

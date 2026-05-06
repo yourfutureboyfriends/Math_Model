@@ -1,11 +1,13 @@
-// Section G Panel 4 — Fixed Income Dashboard
-// Comprehensive rates and credit spreads table
+// Section G Panel 4 — Fixed Income Dashboard + Phase 2 Store Integration
+// Comprehensive rates and credit spreads using format library
 
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Table } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
+import { useMacroStore } from '@/store/macroStore';
+import { fmtRate, fmtBps, fmtChange } from '@/utils/format';
 
 interface RatesTableItem {
   instrument: string;
@@ -35,6 +37,10 @@ export function FixedIncomeDashboardSection() {
   const [data, setData] = useState<FixedIncomeData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Use macro store for rates
+  const prices = useMacroStore((state) => state.prices);
+  const storeLoading = useMacroStore((state) => state.meta.dataStatus === 'loading');
+
   useEffect(() => {
     fetch('/api/rates')
       .then(r => r.json())
@@ -45,16 +51,35 @@ export function FixedIncomeDashboardSection() {
       .catch(() => setLoading(false));
   }, []);
 
-  if (loading) {
+  if (loading || storeLoading) {
     return <div className="h-64 bg-surface-1 border border-border animate-pulse" />;
   }
+
+  // Build rates table with store data where available
+  const buildRatesTable = (): RatesTableItem[] => {
+    const table = data?.ratesTable || [];
+
+    // Replace 10Y and 2Y with store data if available
+    return table.map(item => {
+      if (item.instrument === '10Y Treasury' && prices.TENYR) {
+        return { ...item, yield: prices.TENYR };
+      }
+      if (item.instrument === '2Y Treasury' && prices.TWYR) {
+        return { ...item, yield: prices.TWYR };
+      }
+      if (item.instrument === 'Fed Funds' && prices.FED) {
+        return { ...item, yield: prices.FED };
+      }
+      return item;
+    });
+  };
 
   const ratesColumns = [
     { header: 'Instrument', accessor: (r: RatesTableItem) => r.instrument, align: 'left' as const },
     {
       header: 'Yield/Spread',
       accessor: (r: RatesTableItem) => (
-        <span className="font-mono">{r.yield?.toFixed(2) || '--'}%</span>
+        <span className="font-mono">{fmtRate(r.yield)}</span>
       ),
       align: 'right' as const,
     },
@@ -78,7 +103,7 @@ export function FixedIncomeDashboardSection() {
     {
       header: 'BPS',
       accessor: (c: CreditSpread) => (
-        <span className="font-mono">{c.spreadBps || '--'}</span>
+        <span className="font-mono">{fmtBps(c.spreadBps)}</span>
       ),
       align: 'right' as const,
     },
@@ -90,7 +115,7 @@ export function FixedIncomeDashboardSection() {
           c.change1w && c.change1w > 0 ? 'text-red' :
           c.change1w && c.change1w < 0 ? 'text-green' : 'text-text-secondary'
         )}>
-          {c.change1w ? `${c.change1w > 0 ? '+' : ''}${c.change1w.toFixed(0)}` : '--'}
+          {c.change1w ? fmtChange(c.change1w / 10000) : '--'}
         </span>
       ),
       align: 'right' as const,
@@ -115,7 +140,7 @@ export function FixedIncomeDashboardSection() {
         <div>
           <div className="text-2xs text-text-tertiary uppercase mb-2">Rates & Spreads</div>
           <Table
-            data={data?.ratesTable}
+            data={buildRatesTable()}
             columns={ratesColumns}
             keyExtractor={(r) => r.instrument}
           />
@@ -130,17 +155,17 @@ export function FixedIncomeDashboardSection() {
             keyExtractor={(c) => c.name}
           />
 
-          {/* Breakeven Inflation - FIXED (BUG 5): Use != null check instead of || */}
+          {/* Breakeven Inflation */}
           <div className="mt-4 p-3 border border-border-subtle bg-surface-2">
             <div className="text-2xs text-text-tertiary uppercase mb-2">Inflation Expectations</div>
             <div className="flex justify-between text-sm">
               <div>
                 <div className="text-2xs text-text-tertiary">10Y Breakeven</div>
-                <div className="font-mono">{data?.breakevenInflation?.tenYear != null ? data.breakevenInflation.tenYear.toFixed(2) : '--'}%</div>
+                <div className="font-mono">{data?.breakevenInflation?.tenYear != null ? fmtRate(data.breakevenInflation.tenYear) : '--'}</div>
               </div>
               <div className="text-right">
                 <div className="text-2xs text-text-tertiary">5Y5Y Forward</div>
-                <div className="font-mono">{data?.breakevenInflation?.fiveYearFiveYear != null ? data.breakevenInflation.fiveYearFiveYear.toFixed(2) : '--'}%</div>
+                <div className="font-mono">{data?.breakevenInflation?.fiveYearFiveYear != null ? fmtRate(data.breakevenInflation.fiveYearFiveYear) : '--'}</div>
               </div>
             </div>
             <div className="mt-2 text-2xs">

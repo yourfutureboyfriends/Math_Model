@@ -1,7 +1,9 @@
-// Phase 8 — Cross-Asset Momentum Veto Section (Redesigned)
-// Momentum veto with terminal aesthetic
+// Phase 8 — Cross-Asset Momentum Veto Section (Redesigned) + Phase 4A Format Library
+// Momentum veto using format library
 
 import { Zap, TrendingDown, TrendingUp, CheckCircle } from 'lucide-react';
+import { useMacroStore } from '@/store/macroStore';
+import { fmtChange } from '@/utils/format';
 import type { MomentumVetoData } from '@/types';
 
 interface MomentumVetoSectionProps {
@@ -9,6 +11,9 @@ interface MomentumVetoSectionProps {
 }
 
 export function MomentumVetoSection({ data }: MomentumVetoSectionProps) {
+  // Use macro store for regime context
+  const regime = useMacroStore((state) => state.regime);
+
   if (!data) {
     return (
       <div id="momentum-veto" className="terminal-section">
@@ -16,6 +21,7 @@ export function MomentumVetoSection({ data }: MomentumVetoSectionProps) {
           <div className="section-header-left">
             <span className="section-tag">29</span>
             <h2 className="section-title">Momentum Veto</h2>
+            <span className="section-meta">Regime: {regime.current ? regime.current.toUpperCase() : '—'}</span>
           </div>
         </div>
         <div className="p-4 text-text-secondary text-sm">Loading...</div>
@@ -57,7 +63,7 @@ export function MomentumVetoSection({ data }: MomentumVetoSectionProps) {
           <span className="section-tag">29</span>
           <h2 className="section-title">Momentum Veto</h2>
           <span className={`section-meta ${vetoActive ? 'text-red' : 'text-green'}`}>
-            {vetoActive ? 'VETO' : 'PASS'}
+            {vetoActive ? 'VETO' : 'PASS'} | Regime: {regime.current ? regime.current.toUpperCase() : '—'}
           </span>
         </div>
       </div>
@@ -122,19 +128,19 @@ export function MomentumVetoSection({ data }: MomentumVetoSectionProps) {
                 <div>
                   <span className="text-2xs text-text-tertiary">12M:</span>
                   <span className={`font-mono ml-1 ${(asset?.return12m ?? 0) >= 0 ? 'text-green' : 'text-red'}`}>
-                    {(asset?.return12m ?? 0) >= 0 ? '+' : ''}{(asset?.return12m ?? 0).toFixed(1)}%
+                    {fmtChange(asset?.return12m)}
                   </span>
                 </div>
                 <div>
                   <span className="text-2xs text-text-tertiary">12-1 Mo:</span>
                   <span className={`font-mono ml-1 ${(asset?.momentum12_1 ?? 0) >= 0 ? 'text-green' : 'text-red'}`}>
-                    {(asset?.momentum12_1 ?? 0) >= 0 ? '+' : ''}{(asset?.momentum12_1 ?? 0).toFixed(1)}%
+                    {fmtChange(asset?.momentum12_1)}
                   </span>
                 </div>
               </div>
 
               <div className="flex items-center justify-between text-xs">
-                <span className="text-2xs text-text-tertiary">Dampened: {(asset?.dampenedSignal ?? 0) >= 0 ? '+' : ''}{(asset?.dampenedSignal ?? 0).toFixed(1)}%</span>
+                <span className="text-2xs text-text-tertiary">Dampened: {fmtChange(asset?.dampenedSignal)}</span>
                 <span className={`text-2xs font-medium ${(asset?.interpretation ?? '').includes('VETO') ? 'text-red' : 'text-green'}`}>
                   {asset?.interpretation ?? ''}
                 </span>

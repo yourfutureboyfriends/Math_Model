@@ -73,41 +73,45 @@ interface Props {
   data?: PerformanceAttributionData | null;
 }
 
-// Sample data for demonstration
-// FIXED (BUG K): Removed hardcoded SAMPLE_DATA - now uses nulls to trigger "—" display
-const SAMPLE_DATA: PerformanceAttributionData = {
-  period: null as any,
-  totalReturn: null as any,
-  benchmarkReturn: null as any,
-  alpha: null as any,
-  factorAttribution: [],
-  sectorAttribution: [],
-  regimeAttribution: [],
-  riskAttribution: {
-    totalVolatility: null as any,
-    systematicRisk: null as any,
-    specificRisk: null as any,
-    factorRisk: null as any,
-    idiosyncraticRisk: null as any,
-    var95: null as any,
-    maxDrawdown: null as any,
-  },
-  benchmarkComparison: {
-    vsSPY: null as any,
-    vsSixtyForty: null as any,
-    vsRiskParity: null as any,
-    informationRatio: null as any,
-    trackingError: null as any,
-    upsideCapture: null as any,
-    downsideCapture: null as any,
-  },
-};
-
 export function PerformanceAttributionSection({ data }: Props) {
-  const attribution = data || SAMPLE_DATA;
+  // Safe formatters for potentially null values
+  const fmt = (
+    val: number | null | undefined,
+    decimals = 1,
+    prefix = '',
+    suffix = '%'
+  ): string => {
+    if (val === null || val === undefined || isNaN(Number(val))) {
+      return '--';
+    }
+    const n = Number(val);
+    const sign = prefix === '+' && n >= 0 ? '+' : '';
+    return `${sign}${n.toFixed(decimals)}${suffix}`;
+  };
 
-  const getColorClass = (value: number) =>
-    value >= 0 ? 'text-green' : 'text-red';
+  const fmtPct = (v: number | null | undefined, decimals = 1) =>
+    fmt(v, decimals, '+', '%');
+
+  const getColorClass = (value: number | null | undefined) => {
+    if (value === null || value === undefined || isNaN(Number(value))) {
+      return 'text-text-tertiary';
+    }
+    return Number(value) >= 0 ? 'text-green' : 'text-red';
+  };
+
+  // Loading guard - if no real data yet
+  if (!data) {
+    return (
+      <section id="performance-attribution" className="terminal-section">
+        <div className="section-header">
+          <span className="section-tag">ATTR</span>
+          <h2 className="section-title">Performance Attribution</h2>
+          <Badge variant="neutral" className="ml-2">--</Badge>
+        </div>
+        <div className="text-text-secondary text-sm">Loading attribution data...</div>
+      </section>
+    );
+  }
 
   return (
     <section id="performance-attribution" className="terminal-section">
@@ -115,7 +119,7 @@ export function PerformanceAttributionSection({ data }: Props) {
         <span className="section-tag">ATTR</span>
         <h2 className="section-title">Performance Attribution</h2>
         <Badge variant="neutral" className="ml-2">
-          {attribution.period}
+          {data.period}
         </Badge>
       </div>
 
@@ -123,38 +127,38 @@ export function PerformanceAttributionSection({ data }: Props) {
       <div className="grid grid-cols-4 gap-3 mb-4">
         <Card className="p-3">
           <div className="text-2xs text-text-tertiary uppercase mb-1">Portfolio Return</div>
-          <div className={cn("font-mono text-2xl font-bold", getColorClass(attribution.totalReturn))}>
-            {attribution.totalReturn > 0 ? '+' : ''}{attribution.totalReturn.toFixed(1)}%
+          <div className={cn("font-mono text-2xl font-bold", getColorClass(data.totalReturn))}>
+            {fmtPct(data.totalReturn)}
           </div>
           <div className="text-2xs text-text-tertiary mt-1">
-            vs {attribution.benchmarkReturn.toFixed(1)}% benchmark
+            vs {fmt(data.benchmarkReturn, 1, '', '%')} benchmark
           </div>
         </Card>
 
         <Card className="p-3">
           <div className="text-2xs text-text-tertiary uppercase mb-1">Alpha Generated</div>
-          <div className={cn("font-mono text-2xl font-bold", getColorClass(attribution.alpha))}>
-            {attribution.alpha > 0 ? '+' : ''}{attribution.alpha.toFixed(1)}%
+          <div className={cn("font-mono text-2xl font-bold", getColorClass(data.alpha))}>
+            {fmtPct(data.alpha)}
           </div>
           <div className="text-2xs text-text-tertiary mt-1">
-            IR: {attribution.benchmarkComparison.informationRatio.toFixed(2)}
+            IR: {fmt(data.benchmarkComparison.informationRatio, 2, '', '')}
           </div>
         </Card>
 
         <Card className="p-3">
           <div className="text-2xs text-text-tertiary uppercase mb-1">Max Drawdown</div>
           <div className="font-mono text-2xl font-bold text-amber">
-            {attribution.riskAttribution.maxDrawdown.toFixed(1)}%
+            {fmt(data.riskAttribution.maxDrawdown, 1, '', '%')}
           </div>
           <div className="text-2xs text-text-tertiary mt-1">
-            VaR 95%: {attribution.riskAttribution.var95.toFixed(1)}%
+            VaR 95%: {fmt(data.riskAttribution.var95, 1, '', '%')}
           </div>
         </Card>
 
         <Card className="p-3">
           <div className="text-2xs text-text-tertiary uppercase mb-1">Tracking Error</div>
           <div className="font-mono text-2xl font-bold text-text-primary">
-            {attribution.benchmarkComparison.trackingError.toFixed(1)}%
+            {fmt(data.benchmarkComparison.trackingError, 1, '', '%')}
           </div>
           <div className="text-2xs text-text-tertiary mt-1">
             Active mgmt contribution
@@ -167,7 +171,7 @@ export function PerformanceAttributionSection({ data }: Props) {
         {/* Factor Attribution */}
         <Card title="Factor Attribution" className="h-full">
           <div className="space-y-2">
-            {attribution.factorAttribution.map((factor) => (
+            {data.factorAttribution.map((factor) => (
               <div key={factor.factor} className="flex items-center gap-3">
                 <div className="w-24 text-sm text-text-secondary">
                   {factor.factor}
@@ -180,10 +184,10 @@ export function PerformanceAttributionSection({ data }: Props) {
                           "h-full flex items-center justify-end px-1",
                           factor.contributionPct >= 0 ? "bg-green" : "bg-red"
                         )}
-                        style={{ width: `${Math.min(100, Math.abs(factor.contributionPct) * 10)}%` }}
+                        style={{ width: `${Math.min(100, Math.abs(factor.contributionPct || 0) * 10)}%` }}
                       >
                         <span className="text-2xs font-mono">
-                          {factor.contributionPct > 0 ? '+' : ''}{factor.contributionPct.toFixed(1)}%
+                          {fmtPct(factor.contributionPct)}
                         </span>
                       </div>
                     </div>
@@ -193,7 +197,7 @@ export function PerformanceAttributionSection({ data }: Props) {
                   "w-16 text-right font-mono text-xs",
                   factor.excessReturn >= 0 ? "text-green" : "text-red"
                 )}>
-                  {factor.excessReturn > 0 ? '+' : ''}{factor.excessReturn.toFixed(2)}%
+                  {fmt(factor.excessReturn, 2, '+', '%')}
                 </div>
               </div>
             ))}
@@ -210,7 +214,7 @@ export function PerformanceAttributionSection({ data }: Props) {
         {/* Sector Attribution */}
         <Card title="Sector Attribution" className="h-full">
           <div className="space-y-1.5">
-            {attribution.sectorAttribution.map((sector) => (
+            {data.sectorAttribution.map((sector) => (
               <div
                 key={sector.sector}
                 className={cn(
@@ -225,28 +229,28 @@ export function PerformanceAttributionSection({ data }: Props) {
                 </div>
                 <div className="flex-1 flex items-center gap-2">
                   <div className="w-20 text-right font-mono text-xs text-text-tertiary">
-                    {(sector.allocation * 100).toFixed(0)}%
+                    {fmt((sector.allocation || 0) * 100, 0, '', '')}%
                     <span className={cn(
                       "ml-1",
-                      sector.activeWeight > 0 ? "text-green" : "text-red"
+                      (sector.activeWeight || 0) > 0 ? "text-green" : "text-red"
                     )}>
-                      {sector.activeWeight > 0 ? '+' : ''}{(sector.activeWeight * 100).toFixed(1)}%
+                      {fmt((sector.activeWeight || 0) * 100, 1, '+', '%')}
                     </span>
                   </div>
                   <div className="flex-1 h-3 bg-surface-3 rounded-sm overflow-hidden">
                     <div
                       className={cn(
                         "h-full",
-                        sector.contributionPct >= 0 ? "bg-green" : "bg-red"
+                        (sector.contributionPct || 0) >= 0 ? "bg-green" : "bg-red"
                       )}
-                      style={{ width: `${Math.min(100, Math.abs(sector.contributionPct) * 15)}%` }}
+                      style={{ width: `${Math.min(100, Math.abs(sector.contributionPct || 0) * 15)}%` }}
                     />
                   </div>
                   <div className={cn(
                     "w-12 text-right font-mono text-xs",
                     getColorClass(sector.contributionPct)
                   )}>
-                    {sector.contributionPct > 0 ? '+' : ''}{sector.contributionPct.toFixed(1)}%
+                    {fmtPct(sector.contributionPct)}
                   </div>
                 </div>
               </div>
@@ -257,7 +261,7 @@ export function PerformanceAttributionSection({ data }: Props) {
         {/* Regime Attribution */}
         <Card title="Regime Attribution" className="h-full">
           <div className="space-y-3">
-            {attribution.regimeAttribution.map((regime) => (
+            {data.regimeAttribution.map((regime) => (
               <div key={regime.regime} className="space-y-1">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -272,7 +276,7 @@ export function PerformanceAttributionSection({ data }: Props) {
                     "font-mono text-sm",
                     getColorClass(regime.returnPct)
                   )}>
-                    {regime.returnPct > 0 ? '+' : ''}{regime.returnPct.toFixed(1)}%
+                    {fmtPct(regime.returnPct)}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -280,13 +284,13 @@ export function PerformanceAttributionSection({ data }: Props) {
                     <div
                       className={cn(
                         "h-full",
-                        regime.contributionPct >= 0 ? "bg-bloomberg" : "bg-red"
+                        (regime.contributionPct || 0) >= 0 ? "bg-bloomberg" : "bg-red"
                       )}
-                      style={{ width: `${regime.frequency}%` }}
+                      style={{ width: `${regime.frequency || 0}%` }}
                     />
                   </div>
                   <div className="w-12 text-right text-xs text-text-tertiary">
-                    {regime.contributionPct.toFixed(1)}%
+                    {fmt(regime.contributionPct, 1, '', '%')}
                   </div>
                 </div>
               </div>
@@ -296,7 +300,7 @@ export function PerformanceAttributionSection({ data }: Props) {
           <div className="mt-4 p-3 bg-surface-2 border border-border-subtle">
             <div className="text-xs text-text-secondary">
               Best performing regime: <span className="text-green font-medium">Goldilocks</span>
-              {' '}({attribution.regimeAttribution[0].returnPct.toFixed(1)}% avg return)
+              {' '}({data.regimeAttribution[0] ? fmt(data.regimeAttribution[0].returnPct, 1, '', '%') : '--'} avg return)
             </div>
           </div>
         </Card>
@@ -305,9 +309,9 @@ export function PerformanceAttributionSection({ data }: Props) {
         <Card title="Benchmark Comparison" className="h-full">
           <div className="space-y-3">
             {[
-              { label: 'vs SPY', value: attribution.benchmarkComparison.vsSPY, icon: Target },
-              { label: 'vs 60/40', value: attribution.benchmarkComparison.vsSixtyForty, icon: Activity },
-              { label: 'vs Risk Parity', value: attribution.benchmarkComparison.vsRiskParity, icon: BarChart3 },
+              { label: 'vs SPY', value: data.benchmarkComparison.vsSPY, icon: Target },
+              { label: 'vs 60/40', value: data.benchmarkComparison.vsSixtyForty, icon: Activity },
+              { label: 'vs Risk Parity', value: data.benchmarkComparison.vsRiskParity, icon: BarChart3 },
             ].map((item) => (
               <div key={item.label} className="flex items-center justify-between p-2 border border-border-subtle bg-surface-2">
                 <div className="flex items-center gap-2">
@@ -318,12 +322,12 @@ export function PerformanceAttributionSection({ data }: Props) {
                   "flex items-center gap-1 font-mono text-sm",
                   getColorClass(item.value)
                 )}>
-                  {item.value >= 0 ? (
+                  {(item.value || 0) >= 0 ? (
                     <ArrowUpRight className="w-4 h-4" />
                   ) : (
                     <ArrowDownRight className="w-4 h-4" />
                   )}
-                  {item.value > 0 ? '+' : ''}{item.value.toFixed(1)}%
+                  {fmtPct(item.value)}
                 </div>
               </div>
             ))}
@@ -333,24 +337,24 @@ export function PerformanceAttributionSection({ data }: Props) {
             <div className="flex items-center justify-between text-xs">
               <span className="text-text-tertiary">Upside Capture</span>
               <span className="font-mono text-green">
-                {attribution.benchmarkComparison.upsideCapture}%
+                {fmt(data.benchmarkComparison.upsideCapture, 0, '', '%')}
               </span>
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-text-tertiary">Downside Capture</span>
               <span className="font-mono text-amber">
-                {attribution.benchmarkComparison.downsideCapture}%
+                {fmt(data.benchmarkComparison.downsideCapture, 0, '', '%')}
               </span>
             </div>
             <div className="flex items-center justify-between text-xs">
               <span className="text-text-tertiary">Information Ratio</span>
               <span className={cn(
                 "font-mono",
-                attribution.benchmarkComparison.informationRatio > 0.5
+                (data.benchmarkComparison.informationRatio || 0) > 0.5
                   ? "text-green"
                   : "text-text-primary"
               )}>
-                {attribution.benchmarkComparison.informationRatio.toFixed(2)}
+                {fmt(data.benchmarkComparison.informationRatio, 2, '', '')}
               </span>
             </div>
           </div>
@@ -363,25 +367,26 @@ export function PerformanceAttributionSection({ data }: Props) {
           <div className="flex items-center gap-6">
             <div>
               <span className="text-text-tertiary">Systematic Risk: </span>
-              <span className="font-mono text-text-primary">{attribution.riskAttribution.systematicRisk.toFixed(1)}%</span>
+              <span className="font-mono text-text-primary">{fmt(data.riskAttribution.systematicRisk, 1, '', '%')}</span>
             </div>
             <div>
               <span className="text-text-tertiary">Specific Risk: </span>
-              <span className="font-mono text-text-primary">{attribution.riskAttribution.specificRisk.toFixed(1)}%</span>
+              <span className="font-mono text-text-primary">{fmt(data.riskAttribution.specificRisk, 1, '', '%')}</span>
             </div>
             <div>
               <span className="text-text-tertiary">Factor Risk: </span>
-              <span className="font-mono text-text-primary">{attribution.riskAttribution.factorRisk.toFixed(1)}%</span>
+              <span className="font-mono text-text-primary">{fmt(data.riskAttribution.factorRisk, 1, '', '%')}</span>
             </div>
             <div>
               <span className="text-text-tertiary">Idiosyncratic: </span>
-              <span className="font-mono text-text-primary">{attribution.riskAttribution.idiosyncraticRisk.toFixed(1)}%</span>
+              <span className="font-mono text-text-primary">{fmt(data.riskAttribution.idiosyncraticRisk, 1, '', '%')}</span>
             </div>
           </div>
           <div className="text-text-tertiary">
             Updated: Daily
           </div>
-        </div>      </div>
+        </div>
+      </div>
     </section>
   );
 }

@@ -1,18 +1,11 @@
-// COT Positioning Section — CFTC Commitments of Traders analysis
+// COT Positioning Section — CFTC Commitments of Traders analysis + Phase 2 Format Library
 // Shows speculative positioning extremes with contrarian signals
 
 import { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-// Safe number formatters (used by fmtK, kept for consistency)
-
-const fmtK = (val: number | undefined | null): string => {
-  if (val === undefined || val === null || isNaN(val)) return '—';
-  const n = Number(val);
-  if (Math.abs(n) >= 1000) return (n / 1000).toFixed(1) + 'K';
-  return n.toFixed(0);
-};
+import { useMacroStore } from '@/store/macroStore';
+import { fmtPriceInt } from '@/utils/format';
 
 interface COTContract {
   name?: string;
@@ -46,6 +39,9 @@ export function COTPositioningSection() {
   const [data, setData] = useState<COTData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Use macro store for regime context
+  const regime = useMacroStore((state) => state.regime);
 
   useEffect(() => {
     const fetchCOT = async () => {
@@ -157,7 +153,7 @@ export function COTPositioningSection() {
           <span className="section-tag">COT</span>
           <h2 className="section-title">CFTC Positioning</h2>
           <span className="section-meta">
-            {data.extreme_positions ?? normalizedContracts.filter(c => c.extreme_long || c.extreme_short).length} extreme positions
+            Regime: {regime.current ? regime.current.toUpperCase() : '—'} | {data.extreme_positions ?? normalizedContracts.filter(c => c.extreme_long || c.extreme_short).length} extreme positions
           </span>
         </div>
       </div>
@@ -234,7 +230,7 @@ export function COTPositioningSection() {
                       contract.net_position > 0 ? 'text-green' : 'text-red'
                     )}>
                       {contract.net_position > 0 ? '+' : ''}
-                      {fmtK(contract.net_position)}
+                      {contract.net_position != null ? fmtPriceInt(contract.net_position) : '—'}
                     </span>
                   </td>
                   <td className="py-2 px-2 text-center">
@@ -262,7 +258,7 @@ export function COTPositioningSection() {
                         'text-text-tertiary'
                       )}>
                         {contract.net_change > 0 ? '+' : ''}
-                        {fmtK(contract.net_change)}
+                        {contract.net_change != null ? fmtPriceInt(contract.net_change) : '—'}
                       </span>
                     </div>
                   </td>

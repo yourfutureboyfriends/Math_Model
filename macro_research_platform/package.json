@@ -1,0 +1,17 @@
+{
+  "name": "macro-os",
+  "version": "8.0.0",
+  "description": "Macro Terminal v8.0 - Hedge Fund Research Platform",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n API,FE -c cyan,green \"npm run api\" \"npm run fe\"",
+    "api": "cd /Users/daltonyuen/Math_Model/macro_research_platform && python -c \"import uvicorn; import os; from api.main import find_free_port, write_port_file; port = find_free_port(8000); os.environ['RUNTIME_API_PORT'] = str(port); write_port_file(port); uvicorn.run('api.main:socket_app', host='0.0.0.0', port=port)\"",
+    "fe": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "start": "npm run dev",
+    "preview": "cd frontend && npm run preview"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

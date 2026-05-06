@@ -1,11 +1,13 @@
-// Section G Panel 7 — Positioning & Flows
-// CFTC COT data, fund flows, and short interest
+// Section G Panel 7 — Positioning & Flows + Phase 2 Format Library
+// CFTC COT data, fund flows, and short interest using format library
 
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Table } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
+import { useMacroStore } from '@/store/macroStore';
+import { fmtChange, fmtPrice } from '@/utils/format';
 
 interface COTPosition {
   contract: string;
@@ -48,6 +50,9 @@ export function PositioningSection() {
   const [data, setData] = useState<PositioningData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Use macro store for regime context
+  const regime = useMacroStore((state) => state.regime);
+
   useEffect(() => {
     fetch('/api/positioning')
       .then(r => r.json())
@@ -71,7 +76,7 @@ export function PositioningSection() {
           'font-mono',
           p.percentOI > 0 ? 'text-green' : 'text-red'
         )}>
-          {p.percentOI ? `${p.percentOI > 0 ? '+' : ''}${p.percentOI.toFixed(1)}%` : '--'}
+          {p.percentOI != null ? fmtChange(p.percentOI / 100) : '--'}
         </span>
       ),
       align: 'right' as const,
@@ -99,7 +104,7 @@ export function PositioningSection() {
   ];
 
   return (
-    <Card title="POSITIONING & FLOWS">
+    <Card title={`POSITIONING & FLOWS | Regime: ${regime.current ? regime.current.toUpperCase() : '—'}`}>
       <div className="grid grid-cols-2 gap-4">
         {/* COT Table */}
         <div>
@@ -136,7 +141,7 @@ export function PositioningSection() {
                 >
                   <span className="text-xs">{flow.name}</span>
                   <div className="text-right">
-                    <div className="font-mono text-sm">${flow.value?.toFixed(2)}T</div>
+                    <div className="font-mono text-sm">${flow.value != null ? fmtPrice(flow.value, 2) : '--'}T</div>
                     <div className={cn(
                       'text-2xs',
                       flow.signal === 'RISK-ON' ? 'text-green' : 'text-red'
@@ -159,7 +164,7 @@ export function PositioningSection() {
                   className="p-2 border border-border-subtle"
                 >
                   <div className="text-2xs text-text-tertiary">{si.ticker}</div>
-                  <div className="font-mono">{si.shortPercent?.toFixed(1) || '--'}%</div>
+                  <div className="font-mono">{si.shortPercent != null ? fmtChange(si.shortPercent / 100) : '--'}</div>
                   {si.signal !== 'NORMAL' && (
                     <div className="text-2xs text-amber">{si.signal}</div>
                   )}

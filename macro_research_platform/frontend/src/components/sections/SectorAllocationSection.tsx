@@ -1,9 +1,11 @@
-// Phase 8 — Sector Allocation Section with Earnings Revision Overlay
-// Terminal-style table with score bars, EPS revisions, and divergence detection
+// Phase 8 — Sector Allocation Section with Earnings Revision Overlay + Phase 1E Store Integration
+// Terminal-style table using format library
 
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { Zap, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { useMacroStore } from '@/store/macroStore';
+import { fmtSignal, fmtChange } from '@/utils/format';
 import type { SectorAllocationData } from '@/types';
 
 interface EnhancedSector {
@@ -54,6 +56,9 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
   const [earningsData, setEarningsData] = useState<EarningsData | null>(null);
   const [, setLoading] = useState(true);
 
+  // Use macro store for regime context
+  const regime = useMacroStore((state) => state.regime);
+
   useEffect(() => {
     const fetchEarnings = async () => {
       try {
@@ -90,7 +95,6 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
       beats_rate: earnings?.beats_rate ?? 0.5,
       divergence: earnings?.divergence ?? false,
       divergence_type: earnings?.divergence_type ?? null,
-      // color: '#7d8590',  // Removed: Sector type doesn't include color
     };
   });
 
@@ -133,7 +137,7 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
         <div className="section-header-left">
           <span className="section-tag">09</span>
           <h2 className="section-title">Sector Allocation</h2>
-          <span className="section-meta">Avg: {avgScore.toFixed(2)}</span>
+          <span className="section-meta">Regime: {regime.current ? regime.current.toUpperCase() : '—'} | Avg: {fmtSignal(avgScore)}</span>
         </div>
       </div>
 
@@ -152,7 +156,7 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
                     <div key={idx} className="text-xs text-text-secondary">
                       {div.sector}: Macro {div.macro_signal} but EPS revisions
                       {div.revision_pct > 0 ? ' UP' : ' DOWN'}
-                      {' '}{div.revision_pct > 0 ? '+' : ''}{div.revision_pct.toFixed(1)}%
+                      {' '}{fmtChange(div.revision_pct / 100)}
                     </div>
                   ))}
                 </div>
@@ -168,15 +172,15 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
         <div className="grid grid-cols-3 gap-3">
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider">Avg Score</div>
-            <div className="text-base font-mono font-bold text-text-primary">{avgScore.toFixed(2)}</div>
+            <div className="text-base font-mono font-bold text-text-primary">{fmtSignal(avgScore)}</div>
           </div>
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider">Max</div>
-            <div className="text-base font-mono font-bold text-green">+{maxScore.toFixed(2)}</div>
+            <div className="text-base font-mono font-bold text-green">{fmtSignal(maxScore)}</div>
           </div>
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider">Min</div>
-            <div className="text-base font-mono font-bold text-red">{minScore.toFixed(2)}</div>
+            <div className="text-base font-mono font-bold text-red">{fmtSignal(minScore)}</div>
           </div>
         </div>
 
@@ -213,14 +217,14 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
                       'font-mono text-sm tabular-nums',
                       sector.enhanced_score > 0 ? 'text-green' : sector.enhanced_score < 0 ? 'text-red' : 'text-text-secondary'
                     )}>
-                      {sector.enhanced_score > 0 ? '+' : ''}{sector.enhanced_score.toFixed(2)}
+                      {fmtSignal(sector.enhanced_score)}
                     </span>
                     {sector.earnings_addon !== 0 && (
                       <span className={cn(
                         'text-2xs ml-1',
                         sector.earnings_addon > 0 ? 'text-green' : 'text-red'
                       )}>
-                        {sector.earnings_addon > 0 ? '+' : ''}{sector.earnings_addon.toFixed(2)}
+                        {fmtSignal(sector.earnings_addon)}
                       </span>
                     )}
                   </td>
@@ -230,7 +234,7 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
                       getEpsRevColor(sector.eps_revision_pct)
                     )}>
                       {getEpsRevIcon(sector.direction)}
-                      {sector.eps_revision_pct > 0 ? '+' : ''}{sector.eps_revision_pct.toFixed(1)}%
+                      {fmtChange(sector.eps_revision_pct / 100)}
                     </div>
                   </td>
                   <td className="py-2 px-2 text-center">

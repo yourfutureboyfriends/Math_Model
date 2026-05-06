@@ -1,10 +1,12 @@
-// Section G Panel 3 — Central Bank Divergence Matrix
-// G10 central bank policy rates and divergence tracking
+// Section G Panel 3 — Central Bank Divergence Matrix + Phase 2 Format Library
+// G10 central bank policy rates using format library
 
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Table } from '@/components/ui/Table';
 import { cn } from '@/lib/utils';
+import { useMacroStore } from '@/store/macroStore';
+import { fmtRate, fmtBps } from '@/utils/format';
 
 interface CentralBank {
   code: string;
@@ -40,6 +42,9 @@ export function CentralBankDivergenceSection() {
   const [data, setData] = useState<CountryMacroData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Use macro store for regime context
+  const regime = useMacroStore((state) => state.regime);
+
   useEffect(() => {
     fetch('/api/global/countries')
       .then(r => r.json())
@@ -59,7 +64,7 @@ export function CentralBankDivergenceSection() {
     {
       header: 'Rate',
       accessor: (cb: CentralBank) => (
-        <span className="font-mono">{cb.currentRate?.toFixed(2) || '--'}%</span>
+        <span className="font-mono">{cb.currentRate != null ? fmtRate(cb.currentRate / 100) : '--'}</span>
       ),
       align: 'right' as const,
     },
@@ -70,7 +75,7 @@ export function CentralBankDivergenceSection() {
           'font-mono',
           cb.realRate > 0 ? 'text-green' : 'text-red'
         )}>
-          {cb.realRate > 0 ? '+' : ''}{cb.realRate?.toFixed(2) || '--'}%
+          {cb.realRate != null ? fmtRate(cb.realRate / 100) : '--'}
         </span>
       ),
       align: 'right' as const,
@@ -99,7 +104,7 @@ export function CentralBankDivergenceSection() {
   ];
 
   return (
-    <Card title="CENTRAL BANK DIVERGENCE">
+    <Card title={`CENTRAL BANK DIVERGENCE | Regime: ${regime.current ? regime.current.toUpperCase() : '—'}`}>
       <div className="grid grid-cols-5 gap-4">
         {/* CB Table */}
         <div className="col-span-3">
@@ -128,7 +133,7 @@ export function CentralBankDivergenceSection() {
                   'font-mono font-bold',
                   pair.isExtreme && 'text-amber'
                 )}>
-                  {pair.spreadBps}bp
+                  {fmtBps(pair.spreadBps)}
                 </div>
                 <div className="text-2xs text-text-tertiary">{pair.direction}</div>
               </div>
@@ -139,7 +144,7 @@ export function CentralBankDivergenceSection() {
             <div className="mt-4 p-2 border border-amber bg-amber-dim/10">
               <div className="text-2xs text-amber uppercase">Most Divergent</div>
               <div className="text-sm font-mono">{data.divergence.mostDivergent.pair.replace('FED vs ', '')}</div>
-              <div className="text-xs">{data.divergence.mostDivergent.spreadBps}bp spread</div>
+              <div className="text-xs">{fmtBps(data.divergence.mostDivergent.spreadBps)} spread</div>
             </div>
           )}
         </div>

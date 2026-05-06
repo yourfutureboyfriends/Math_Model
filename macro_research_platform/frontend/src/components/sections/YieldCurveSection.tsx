@@ -1,9 +1,11 @@
-// Section G Panel 2 — Yield Curve Explorer
-// Interactive yield curve visualization for multiple countries
+// Section G Panel 2 — Yield Curve Explorer + Phase 2 Store Integration
+// Interactive yield curve visualization using format library
 
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { cn } from '@/lib/utils';
+import { useMacroStore } from '@/store/macroStore';
+import { fmtRate, fmtProbability } from '@/utils/format';
 
 interface YieldPoint {
   tenor: number;
@@ -45,6 +47,10 @@ export function YieldCurveSection() {
   const [selectedCountry, setSelectedCountry] = useState('US');
   const [loading, setLoading] = useState(true);
 
+  // Use macro store for loading state and regime context
+  const storeLoading = useMacroStore((state) => state.meta.dataStatus === 'loading');
+  const regime = useMacroStore((state) => state.regime);
+
   useEffect(() => {
     fetch('/api/rates')
       .then(r => r.json())
@@ -78,12 +84,12 @@ export function YieldCurveSection() {
     .map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(p.tenor)} ${yScale(p.yield)}`)
     .join(' ');
 
-  if (loading) {
+  if (loading || storeLoading) {
     return <div className="h-64 bg-surface-1 border border-border animate-pulse" />;
   }
 
   return (
-    <Card title="YIELD CURVE EXPLORER">
+    <Card title={`YIELD CURVE EXPLORER | Regime: ${regime.current ? regime.current.toUpperCase() : '—'}`}>
       <div className="space-y-4">
         {/* Country Tabs */}
         <div className="flex gap-1 overflow-x-auto">
@@ -127,7 +133,7 @@ export function YieldCurveSection() {
                     textAnchor="end"
                     dominantBaseline="middle"
                   >
-                    {(minYield + (yieldRange * tick) / 5).toFixed(1)}%
+                    {fmtRate(minYield + (yieldRange * tick) / 5)}
                   </text>
                 </g>
               ))}
@@ -182,7 +188,7 @@ export function YieldCurveSection() {
               'font-mono font-bold',
               curve?.spread2s10s != null && curve.spread2s10s < 0 ? 'text-red' : 'text-text-primary'
             )}>
-              {curve?.spread2s10s != null ? `${curve.spread2s10s >= 0 ? '+' : ''}${curve.spread2s10s.toFixed(2)}%` : '--'}
+              {curve?.spread2s10s != null ? fmtRate(curve.spread2s10s / 100) : '--'}
             </div>
             <div className="text-2xs text-text-tertiary">{curve?.shape}</div>
           </div>
@@ -190,7 +196,7 @@ export function YieldCurveSection() {
           <div className="p-2 border border-border-subtle bg-surface-2">
             <div className="text-2xs text-text-tertiary uppercase">3m10y Spread</div>
             <div className="font-mono font-bold text-text-primary">
-              {curve?.spread3m10y != null ? `${curve.spread3m10y >= 0 ? '+' : ''}${curve.spread3m10y.toFixed(2)}%` : '--'}
+              {curve?.spread3m10y != null ? fmtRate(curve.spread3m10y / 100) : '--'}
             </div>
             <div className="text-2xs text-text-tertiary">Recession Predictor</div>
           </div>
@@ -198,7 +204,7 @@ export function YieldCurveSection() {
           <div className="p-2 border border-border-subtle bg-surface-2">
             <div className="text-2xs text-text-tertiary uppercase">Real Yield 10Y</div>
             <div className="font-mono font-bold text-text-primary">
-              {curve?.realYield10y != null ? `${curve.realYield10y >= 0 ? '+' : ''}${curve.realYield10y.toFixed(2)}%` : '--'}
+              {curve?.realYield10y != null ? fmtRate(curve.realYield10y / 100) : '--'}
             </div>
             <div className="text-2xs text-text-tertiary">{data?.realYieldSignal}</div>
           </div>
@@ -209,7 +215,7 @@ export function YieldCurveSection() {
               'font-mono font-bold',
               curve?.recessionProb != null && curve.recessionProb > 0.3 ? 'text-red' : 'text-text-primary'
             )}>
-              {curve?.recessionProb != null ? `${(curve.recessionProb * 100).toFixed(1)}%` : '--'}
+              {curve?.recessionProb != null ? fmtProbability(curve.recessionProb) : '--'}
             </div>
             <div className="text-2xs text-text-tertiary">Estrella-Mishkin</div>
           </div>

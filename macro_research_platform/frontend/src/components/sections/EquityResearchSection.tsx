@@ -166,9 +166,12 @@ export function EquityResearchSection({ data }: EquityResearchSectionProps) {
                           </Badge>
                           <span className={cn(
                             'text-xs font-mono',
-                            rec.expectedReturn > 0 ? 'text-green' : 'text-red'
+                            typeof rec.expectedReturn === 'number' && rec.expectedReturn > 0 ? 'text-green' : 'text-red'
                           )}>
-                            {rec.expectedReturn > 0 ? '+' : ''}{typeof rec.expectedReturn === 'number' ? rec.expectedReturn.toFixed(1) : String(rec.expectedReturn).replace('%', '')}%
+                            {/* BUG-8 FIX: Guard against undefined expectedReturn */}
+                            {typeof rec.expectedReturn === 'number'
+                              ? `${rec.expectedReturn > 0 ? '+' : ''}${rec.expectedReturn.toFixed(1)}%`
+                              : '--'}
                           </span>
                         </div>
                       </div>

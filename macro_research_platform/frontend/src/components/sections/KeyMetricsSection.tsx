@@ -1,9 +1,11 @@
-// Phase 8 — Key Metrics Section (Redesigned)
-// Six KPI cards, 80px fixed height, terminal aesthetic
+// Phase 8 — Key Metrics Section (Redesigned) + Phase 1E Store Integration
+// Six KPI cards using macroStore data and format library
 
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AnimatedValue } from '@/components/ui';
+import { useMacroStore } from '@/store/macroStore';
+import { fmtSignal, fmtDuration, fmtProbabilityPrecise } from '@/utils/format';
 import type { KeyMetrics } from '@/types';
 
 interface KeyMetricsSectionProps {
@@ -17,18 +19,18 @@ function buildSparklinePath(data: number[], width: number, height: number) {
   const max = Math.max(...data);
   const range = max - min || 1;
   const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const y = height - ((v - min) / range) * height;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
+    const x = Math.round((i / (data.length - 1)) * width * 10) / 10;
+    const y = Math.round((height - ((v - min) / range) * height) * 10) / 10;
+    return `${x},${y}`;
   });
   return `M${points.join('L')}`;
 }
 
 // Parse numeric value from formatted string for animation
 function parseNumericValue(formatted: string): number {
-  const cleaned = formatted.replace(/[$,%]/g, '').replace(/[+-]/g, '')
-  const parsed = parseFloat(cleaned)
-  return isNaN(parsed) ? 0 : parsed
+  const cleaned = formatted.replace(/[$,%]/g, '').replace(/[+-]/g, '');
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? 0 : parsed;
 }
 
 function KPICard({
@@ -113,7 +115,9 @@ function KPICard({
 }
 
 export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
-  if (!data) return null;
+  // Use macro store for live signal data
+  const signals = useMacroStore((state) => state.signals);
+  const regime = useMacroStore((state) => state.regime);
 
   const getScoreDirection = (value: number): 'up' | 'down' | 'neutral' => {
     if (value > 0) return 'up';
@@ -127,10 +131,18 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
     return 'text-amber';
   };
 
-  const getInflationColor = (direction: string) => {
-    // Rising inflation is typically bad
-    return direction === 'up' ? 'text-amber' : 'text-green';
-  };
+  // Format signal scores using format library
+  const growthScore = signals.growth.score ?? 0;
+  const inflationScore = signals.inflation.score ?? 0;
+  const liquidityScore = signals.liquidity.score ?? 0;
+  const riskScore = signals.risk.score ?? 0;
+
+  // Use prop data for sparklines if available, otherwise empty
+  const growthSparkline = data?.growth.sparklineData ?? [];
+  const inflationSparkline = data?.inflation.sparklineData ?? [];
+  const liquiditySparkline = data?.liquidity.sparklineData ?? [];
+  const riskSparkline = data?.risk.sparklineData ?? [];
+  const recessionSparkline = data?.recession.sparklineData ?? [];
 
   return (
     <div id="key-metrics" className="terminal-section">
@@ -146,52 +158,49 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <KPICard
           label="Growth"
-          value={data.growth.formatted}
-          numericValue={data.growth.value}
-          direction={getScoreDirection(data.growth.value)}
-          sparklineData={data.growth.sparklineData}
-          valueColor={getScoreDirection(data.growth.value) === 'up' ? 'text-green' : 'text-text-primary'}
-          suffix="%"
+          value={fmtSignal(growthScore) ?? '—'}
+          numericValue={growthScore}
+          direction={getScoreDirection(growthScore)}
+          sparklineData={growthSparkline}
+          valueColor={getScoreDirection(growthScore) === 'up' ? 'text-green' : 'text-text-primary'}
         />
 
         <KPICard
           label="Inflation"
-          value={data.inflation.formatted}
-          numericValue={data.inflation.value}
-          direction={getScoreDirection(data.inflation.value)}
-          sparklineData={data.inflation.sparklineData}
-          valueColor={getInflationColor(data.inflation.direction)}
-          suffix="%"
+          value={fmtSignal(inflationScore) ?? '—'}
+          numericValue={inflationScore}
+          direction={getScoreDirection(inflationScore)}
+          sparklineData={inflationSparkline}
+          valueColor={getScoreDirection(inflationScore) === 'up' ? 'text-amber' : 'text-green'}
         />
 
         <KPICard
           label="Fin. Conditions"
-          value={data.liquidity.formatted}
-          numericValue={data.liquidity.value}
+          value={fmtSignal(liquidityScore) ?? '—'}
+          numericValue={liquidityScore}
           direction="neutral"
-          sparklineData={data.liquidity.sparklineData}
+          sparklineData={liquiditySparkline}
         />
 
         <KPICard
           label="Risk Appetite"
-          value={data.risk.formatted}
-          numericValue={data.risk.value}
-          direction={getScoreDirection(data.risk.value)}
-          sparklineData={data.risk.sparklineData}
-          suffix="%"
+          value={fmtSignal(riskScore) ?? '—'}
+          numericValue={riskScore}
+          direction={getScoreDirection(riskScore)}
+          sparklineData={riskSparkline}
         />
 
         <KPICard
           label="Recession Risk"
-          value={data.recession.formatted}
-          numericValue={data.recession.value}
-          direction={data.recession.value > 15 ? 'down' : 'up'}
-          sparklineData={data.recession.sparklineData}
-          valueColor={getRecessionColor(data.recession.value)}
+          value={data?.recession?.formatted ?? '—'}
+          numericValue={isNaN(data?.recession?.value ?? 0) ? 0 : (data?.recession?.value ?? 0)}
+          direction={isNaN(data?.recession?.value ?? 0) ? 'neutral' : ((data?.recession?.value ?? 0) > 15 ? 'down' : 'up')}
+          sparklineData={recessionSparkline}
+          valueColor={getRecessionColor(isNaN(data?.recession?.value ?? 0) ? 0 : (data?.recession?.value ?? 0))}
           suffix="%"
         />
 
-        {/* Regime Duration - Special Card */}
+        {/* Regime Duration - Uses store */}
         <div className="relative h-20 bg-surface-1 border border-border p-3 flex flex-col">
           <div className="absolute top-0 left-0 right-0 h-px bg-bloomberg" />
           <div className="flex items-center justify-between mb-1">
@@ -199,10 +208,10 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
             <span className="text-2xs text-text-tertiary uppercase">Current</span>
           </div>
           <div className="text-lg font-mono font-bold text-text-primary tabular-nums">
-            {data.regimeDuration.value}
+            {regime.duration ? fmtDuration(regime.duration) : '—'}
           </div>
           <div className="mt-auto text-xs text-text-tertiary truncate">
-            {data.regimeDuration.currentRegime}
+            {regime.confidence ? fmtProbabilityPrecise(regime.confidence, 0) + ' confidence' : '—'}
           </div>
         </div>
       </div>

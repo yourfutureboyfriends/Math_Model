@@ -1,4 +1,8 @@
+// Sentiment Section + Phase 4A Format Library
+
 import { Card } from '@/components/ui/Card';
+import { useMacroStore } from '@/store/macroStore';
+import { fmtChange } from '@/utils/format';
 import type { SentimentRiskData } from '@/types';
 
 interface SentimentSectionProps {
@@ -6,6 +10,8 @@ interface SentimentSectionProps {
 }
 
 export function SentimentSection({ data }: SentimentSectionProps) {
+  const regime = useMacroStore((state) => state.regime);
+
   if (!data) {
     return (
       <div id="sentiment" className="terminal-section">
@@ -13,6 +19,7 @@ export function SentimentSection({ data }: SentimentSectionProps) {
           <div className="section-header-left">
             <span className="section-tag">18</span>
             <h2 className="section-title">Sentiment</h2>
+            <span className="section-meta">Regime: {regime.current ? regime.current.toUpperCase() : '—'}</span>
           </div>
         </div>
         <Card className="p-6">
@@ -25,7 +32,7 @@ export function SentimentSection({ data }: SentimentSectionProps) {
   const getRiskAppetiteColor = (score: number) => {
     if (score >= 70) return 'text-green';
     if (score >= 50) return 'text-amber';
-    if (score >= 30) return 'text-orange-400';
+    if (score >= 30) return 'text-amber';
     return 'text-red';
   };
 
@@ -49,6 +56,7 @@ export function SentimentSection({ data }: SentimentSectionProps) {
         <div className="section-header-left">
           <span className="section-tag">18</span>
           <h2 className="section-title">Sentiment</h2>
+          <span className="section-meta">Regime: {regime.current ? regime.current.toUpperCase() : '—'}</span>
         </div>
       </div>
 
@@ -58,7 +66,7 @@ export function SentimentSection({ data }: SentimentSectionProps) {
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-text-secondary">Risk Appetite</span>
             <span className={`text-lg font-bold font-mono ${getRiskAppetiteColor(data.compositeRiskAppetite)}`}>
-              {data.compositeRiskAppetite?.toFixed(0) ?? '--'}
+              {data.compositeRiskAppetite != null ? Math.round(data.compositeRiskAppetite) : '--'}
             </span>
           </div>
           <div className="w-full bg-surface-3 h-1">
@@ -81,7 +89,7 @@ export function SentimentSection({ data }: SentimentSectionProps) {
                 <div className="text-2xs text-text-tertiary uppercase">{gauge.name}</div>
                 <div className="flex items-baseline gap-2">
                   <span className={`font-mono font-medium ${gauge.value > 0 ? 'text-green' : gauge.value < 0 ? 'text-red' : 'text-text-secondary'}`}>
-                    {gauge.value > 0 ? '+' : ''}{gauge.value?.toFixed(2) ?? '--'}
+                    {fmtChange(gauge.value)}
                   </span>
                   <span className="text-2xs text-text-tertiary">{gauge.signal}</span>
                 </div>
@@ -99,7 +107,7 @@ export function SentimentSection({ data }: SentimentSectionProps) {
                 {data.vixTermStructure.structure || '—'}
               </div>
               <div className="text-2xs text-text-secondary">
-                Ratio: {data.vixTermStructure.ratio?.toFixed(2) ?? '—'}
+                Ratio: {data.vixTermStructure.ratio != null ? data.vixTermStructure.ratio.toFixed(2) : '—'}
               </div>
             </div>
           )}
@@ -110,9 +118,7 @@ export function SentimentSection({ data }: SentimentSectionProps) {
                 {data.aaiiSentiment.signal || '—'}
               </div>
               <div className="text-2xs text-text-secondary">
-                Spread: {data.aaiiSentiment.bullBearSpread != null
-                  ? `${data.aaiiSentiment.bullBearSpread >= 0 ? '+' : ''}${data.aaiiSentiment.bullBearSpread.toFixed(0)}%`
-                  : '—'}
+                Spread: {fmtChange(data.aaiiSentiment.bullBearSpread ?? null)}
               </div>
             </div>
           )}
@@ -132,7 +138,7 @@ export function SentimentSection({ data }: SentimentSectionProps) {
                     'bg-surface-3 text-text-secondary'
                   }`}
                 >
-                  {asset.asset}: {asset.momentum3m?.toFixed(1) ?? '--'}%
+                  {asset.asset}: {fmtChange(asset.momentum3m)}
                 </span>
               ))}
             </div>

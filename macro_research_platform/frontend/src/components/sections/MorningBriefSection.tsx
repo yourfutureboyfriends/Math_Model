@@ -1,8 +1,9 @@
-// Morning Brief Section
+// Morning Brief Section + Phase 4A Format Library
 // First thing a PM reads - actionable priorities, risks, conviction trades
 // Only section allowed to have colored border (editorial lead)
 
 import { AlertTriangle, Target, Calendar, TrendingUp, Shield } from 'lucide-react';
+import { fmtProbability, fmtChange } from '@/utils/format';
 
 interface Priority {
   type: 'calendar' | 'tension' | 'signal';
@@ -128,11 +129,11 @@ export function MorningBriefSection({ data }: Props) {
           </div>
           <div className="text-xs text-text-secondary">
             <span className="font-mono text-text-primary">{duration_months}</span> months ·
-            <span className="font-mono text-text-primary">{(typeof confidence === 'number' && isFinite(confidence)) ? (confidence > 1 ? confidence : confidence * 100).toFixed(0) : '—'}%</span> confidence
+            <span className="font-mono text-text-primary">{fmtProbability(typeof confidence === 'number' && isFinite(confidence) ? confidence : null)}</span> confidence
           </div>
           {(typeof position_modifier === 'number' && isFinite(position_modifier) && position_modifier < 1.0) && (
             <div className="text-2xs text-amber bg-amber-dim px-2 py-1 rounded">
-              Position size: {(position_modifier * 100).toFixed(0)}%
+              Position size: {fmtChange(position_modifier)}
             </div>
           )}
         </div>
@@ -237,7 +238,7 @@ export function MorningBriefSection({ data }: Props) {
                   </div>
                   {trade.rr && (
                     <div className="text-xs text-text-secondary">
-                      R/R {trade.rr.toFixed(1)}x
+                      R/R {trade.rr != null ? trade.rr.toFixed(1) : '--'}x
                     </div>
                   )}
                   {trade.entry && trade.target && (

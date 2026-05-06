@@ -129,10 +129,12 @@ export function MasterSignalHeader({ data }: MasterSignalHeaderProps) {
               </div>
               <div className={cn(
                 'text-lg font-mono font-bold',
-                data.agreementRatio >= 0.8 ? 'text-green' :
-                data.agreementRatio >= 0.6 ? 'text-amber' : 'text-red'
+                // FIXED (BUG 8): Handle both decimal (0.72) and percentage (72) formats
+                (data.agreementRatio > 1 ? data.agreementRatio / 100 : data.agreementRatio) >= 0.8 ? 'text-green' :
+                (data.agreementRatio > 1 ? data.agreementRatio / 100 : data.agreementRatio) >= 0.6 ? 'text-amber' : 'text-red'
               )}>
-                {(data.agreementRatio * 100).toFixed(0)}%
+                {/* FIXED (BUG 8): Handle both decimal and percentage formats */}
+                {data.agreementRatio > 1 ? data.agreementRatio.toFixed(0) : (data.agreementRatio * 100).toFixed(0)}%
               </div>
             </div>
 

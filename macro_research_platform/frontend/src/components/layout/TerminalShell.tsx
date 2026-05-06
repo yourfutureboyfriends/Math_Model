@@ -34,7 +34,7 @@ export function TerminalShell({
   currentRegime,
   alertCount = 0,
   onRefresh,
-  loading,
+  loading: _loading,
   data,
   activeSection: externalActiveSection,
   onNavigate: externalOnNavigate,
@@ -292,11 +292,9 @@ export function TerminalShell({
         mode={mode}
         alertCount={alertCount}
         onRefresh={onRefresh}
-        loading={loading}
         onCommandPalette={() => setCommandPaletteOpen(true)}
         onAlertsPanel={() => setAlertsPanelOpen(true)}
         currentRegime={currentRegime}
-        data={data}
       />
 
       {/* Sidebar */}

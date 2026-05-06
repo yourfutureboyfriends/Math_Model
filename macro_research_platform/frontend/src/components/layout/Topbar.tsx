@@ -2,15 +2,24 @@
 // Row 1: Branding | Function keys | Session badges | Data status | Time | Tools
 // Row 2: Market ticker strip
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Download, Maximize, AlertTriangle, LayoutGrid, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useMacroStore, selectMeta, selectIsLoading } from '@/store/macroStore';
+import {
+  fmtPriceInt,
+  fmtVol,
+  fmtRate,
+  fmtChange,
+  fmtFx,
+  fmtRegime,
+} from '@/utils/format';
 
 interface TickerItem {
   sym: string;
-  val?: number | string;
-  chg?: number;
-  pct?: number;
+  val: string;
+  chg?: string;
+  colorClass?: string;
 }
 
 interface TopbarProps {
@@ -19,11 +28,9 @@ interface TopbarProps {
   mode?: string;
   alertCount?: number;
   onRefresh?: () => void;
-  loading?: boolean;
   onCommandPalette?: () => void;
   onAlertsPanel?: () => void;
   currentRegime?: string;
-  data?: any;
 }
 
 // Derive market session status from current UTC time
@@ -32,82 +39,108 @@ function getSessionStatus(): { us: 'open' | 'pre' | 'closed'; eu: 'open' | 'clos
   const utcH = now.getUTCHours();
   const utcM = now.getUTCMinutes();
   const utcMin = utcH * 60 + utcM;
-  const day = now.getUTCDay(); // 0=Sun, 6=Sat
+  const day = now.getUTCDay();
 
   const isWeekday = day >= 1 && day <= 5;
 
   return {
-    // NYSE: 14:30–21:00 UTC; pre: 09:00–14:30 UTC
     us: !isWeekday ? 'closed'
       : utcMin >= 870 && utcMin < 1260 ? 'open'
       : utcMin >= 540 && utcMin < 870  ? 'pre'
       : 'closed',
-    // LSE: 08:00–16:30 UTC
     eu: !isWeekday ? 'closed'
       : utcMin >= 480 && utcMin < 990  ? 'open'
       : 'closed',
-    // TSE: 00:00–06:00 UTC (approx)
     as: !isWeekday ? 'closed'
       : utcMin >= 0 && utcMin < 360    ? 'open'
       : 'closed',
   };
 }
 
-// Extract ticker data from dashboard response
-function buildTicker(data?: any): TickerItem[] {
-  const km = data?.keyMetrics;
-  const ri = data?.riskIndicators;
-  // const liq = data?.liquidity;  // Reserved for liquidity ticker display
+// Build ticker data from store
+function buildTicker(
+  prices: Record<string, number | null>,
+  changes: Record<string, number | null>,
+  isLoading: boolean
+): TickerItem[] {
+  if (isLoading) {
+    return [
+      { sym: 'SPX', val: '—' },
+      { sym: 'NDX', val: '—' },
+      { sym: 'VIX', val: '—' },
+      { sym: '10Y', val: '—' },
+      { sym: '2Y', val: '—' },
+      { sym: 'DXY', val: '—' },
+      { sym: 'EUR/USD', val: '—' },
+      { sym: 'GLD', val: '—' },
+      { sym: 'WTI', val: '—' },
+      { sym: 'FED', val: '—' },
+    ];
+  }
+
+  const getChangeColor = (v: number | null): string | undefined => {
+    if (v == null) return undefined;
+    return v > 0 ? 'text-green' : v < 0 ? 'text-red' : undefined;
+  };
 
   return [
     {
       sym: 'SPX',
-      val: km?.spxLevel   ? Number(km.spxLevel).toFixed(0)   : undefined,
-      chg: km?.spxChange  ? Number(km.spxChange)              : undefined,
-      pct: km?.spxChangePct ? Number(km.spxChangePct)         : undefined,
+      val: fmtPriceInt(prices.SPX),
+      chg: changes.SPX != null ? fmtChange(changes.SPX) : undefined,
+      colorClass: getChangeColor(changes.SPX),
     },
     {
       sym: 'NDX',
-      val: km?.ndxLevel   ? Number(km.ndxLevel).toFixed(0)   : undefined,
-      pct: km?.ndxChangePct ? Number(km.ndxChangePct)        : undefined,
+      val: fmtPriceInt(prices.NDX),
+      chg: changes.NDX != null ? fmtChange(changes.NDX) : undefined,
+      colorClass: getChangeColor(changes.NDX),
     },
     {
       sym: 'VIX',
-      val: ri?.vix        ? Number(ri.vix).toFixed(1)        : undefined,
-      chg: ri?.vixChange  ? Number(ri.vixChange)             : undefined,
+      val: fmtVol(prices.VIX),
+      chg: changes.VIX != null ? fmtChange(changes.VIX) : undefined,
+      colorClass: getChangeColor(changes.VIX),
     },
     {
       sym: '10Y',
-      val: km?.tenYearYield ? (Number(km.tenYearYield) * 100).toFixed(2) + '%' : undefined,
-      chg: km?.tenYearChange ? Number(km.tenYearChange)      : undefined,
+      val: fmtRate(prices.TENYR),
+      chg: changes.TENYR != null ? fmtChange(changes.TENYR) : undefined,
+      colorClass: getChangeColor(changes.TENYR),
     },
     {
       sym: '2Y',
-      val: km?.twoYearYield ? (Number(km.twoYearYield) * 100).toFixed(2) + '%' : undefined,
+      val: fmtRate(prices.TWYR),
+      chg: changes.TWYR != null ? fmtChange(changes.TWYR) : undefined,
+      colorClass: getChangeColor(changes.TWYR),
     },
     {
       sym: 'DXY',
-      val: km?.dxy         ? Number(km.dxy).toFixed(2)       : undefined,
-      pct: km?.dxyChangePct ? Number(km.dxyChangePct)        : undefined,
+      val: fmtFx(prices.DXY, 2),
+      chg: changes.DXY != null ? fmtChange(changes.DXY) : undefined,
+      colorClass: getChangeColor(changes.DXY),
     },
     {
       sym: 'EUR/USD',
-      val: km?.eurusd      ? Number(km.eurusd).toFixed(4)    : undefined,
-      pct: km?.eurusdChangePct ? Number(km.eurusdChangePct)  : undefined,
+      val: fmtFx(prices.EURUSD),
+      chg: changes.EURUSD != null ? fmtChange(changes.EURUSD) : undefined,
+      colorClass: getChangeColor(changes.EURUSD),
     },
     {
       sym: 'GLD',
-      val: km?.gold        ? Number(km.gold).toFixed(0)      : undefined,
-      pct: km?.goldChangePct ? Number(km.goldChangePct)      : undefined,
+      val: fmtPriceInt(prices.GLD),
+      chg: changes.GLD != null ? fmtChange(changes.GLD) : undefined,
+      colorClass: getChangeColor(changes.GLD),
     },
     {
       sym: 'WTI',
-      val: km?.oil         ? Number(km.oil).toFixed(2)       : undefined,
-      pct: km?.oilChangePct ? Number(km.oilChangePct)       : undefined,
+      val: fmtFx(prices.WTI, 2),
+      chg: changes.WTI != null ? fmtChange(changes.WTI) : undefined,
+      colorClass: getChangeColor(changes.WTI),
     },
     {
       sym: 'FED',
-      val: km?.fedRate     ? (Number(km.fedRate) * 100).toFixed(2) + '%' : undefined,
+      val: fmtRate(prices.FED),
     },
   ];
 }
@@ -123,20 +156,32 @@ const FN_KEYS = [
 ];
 
 export function Topbar({
-  latestDate,
-  dataStatus = 'unknown',
+  latestDate: latestDateProp,
+  dataStatus: dataStatusProp,
   mode = 'LIVE',
   alertCount = 0,
   onRefresh,
-  loading,
   onCommandPalette,
   onAlertsPanel,
-  data,
+  currentRegime: currentRegimeProp,
 }: TopbarProps) {
   const [downloading, setDownloading] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [sessions, setSessions] = useState(getSessionStatus());
+
+  // Use macro store
+  const prices = useMacroStore((state) => state.prices);
+  const changes = useMacroStore((state) => state.changes);
+  const regime = useMacroStore((state) => state.regime);
+  const meta = useMacroStore(selectMeta);
+
+  // Prioritize store values over props (mark as used)
+  const _latestDate = meta.latestDate || latestDateProp;
+  const _dataStatus = meta.dataStatus === 'live' ? 'current' : meta.dataStatus === 'stale' ? 'stale' : dataStatusProp;
+  const _currentRegime = regime.current || currentRegimeProp;
+  void _latestDate; void _dataStatus; void _currentRegime; // suppress unused warnings
+  const isLoading = useMacroStore(selectIsLoading);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -191,19 +236,22 @@ export function Topbar({
   };
 
   const statusDot =
-    dataStatus === 'current'    ? 'bg-green'     :
-    dataStatus === 'acceptable' ? 'bg-amber'     :
-    dataStatus === 'stale'      ? 'bg-red'       : 'bg-text-tertiary';
+    meta.dataStatus === 'live'    ? 'bg-green'     :
+    meta.dataStatus === 'loading' ? 'bg-amber'     :
+    meta.dataStatus === 'stale'   ? 'bg-red'       : 'bg-text-tertiary';
 
   const statusLabel =
-    dataStatus === 'current'    ? 'LIVE'     :
-    dataStatus === 'acceptable' ? 'CACHED'   :
-    dataStatus === 'stale'      ? 'STALE'    : 'UNK';
+    meta.dataStatus === 'live'    ? 'LIVE'     :
+    meta.dataStatus === 'loading' ? 'LOADING'  :
+    meta.dataStatus === 'stale'   ? 'STALE'    : 'UNK';
 
   const timeStr = currentTime.toISOString().split('T')[1].split('.')[0];
   const dateStr = currentTime.toISOString().split('T')[0];
 
-  const ticker = buildTicker(data);
+  const ticker = useMemo(
+    () => buildTicker(prices as unknown as Record<string, number | null>, changes, isLoading),
+    [prices, changes, isLoading]
+  );
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-surface-2 border-b border-border"
@@ -266,9 +314,9 @@ export function Topbar({
           <span className="font-mono text-text-secondary" style={{ fontSize: 10, letterSpacing: '0.06em' }}>
             {statusLabel}
           </span>
-          {latestDate && (
+          {meta.latestDate && (
             <span className="hidden md:inline font-mono text-text-tertiary" style={{ fontSize: 10 }}>
-              {latestDate}
+              {meta.latestDate}
             </span>
           )}
         </div>
@@ -311,12 +359,12 @@ export function Topbar({
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={onRefresh}
-            disabled={loading}
+            disabled={isLoading}
             className="icon-btn"
             style={{ width: 26, height: 26 }}
             title="Refresh data"
           >
-            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+            <RefreshCw className={cn('w-3.5 h-3.5', isLoading && 'animate-spin')} />
           </button>
 
           <button
@@ -372,20 +420,10 @@ export function Topbar({
         {ticker.map((item) => (
           <div key={item.sym} className="ticker-item">
             <span className="ticker-sym">{item.sym}</span>
-            {item.val !== undefined ? (
-              <span className="ticker-val">{item.val}</span>
-            ) : (
-              <span className="ticker-val text-text-tertiary">—</span>
+            <span className="ticker-val">{item.val}</span>
+            {item.chg && (
+              <span className={cn('ticker-chg', item.colorClass)}>{item.chg}</span>
             )}
-            {item.pct !== undefined ? (
-              <span className={item.pct >= 0 ? 'ticker-chg-pos' : 'ticker-chg-neg'}>
-                {item.pct >= 0 ? '+' : ''}{item.pct.toFixed(2)}%
-              </span>
-            ) : item.chg !== undefined ? (
-              <span className={item.chg >= 0 ? 'ticker-chg-pos' : 'ticker-chg-neg'}>
-                {item.chg >= 0 ? '+' : ''}{item.chg.toFixed(2)}
-              </span>
-            ) : null}
           </div>
         ))}
 
@@ -393,7 +431,7 @@ export function Topbar({
         <div className="ml-auto flex items-center px-3 shrink-0 border-l border-border-subtle h-full gap-2">
           <span className="font-mono text-text-tertiary" style={{ fontSize: 9, letterSpacing: '0.06em' }}>REGIME</span>
           <span className="font-mono text-bloomberg font-bold" style={{ fontSize: 10, letterSpacing: '0.06em' }}>
-            {data?.regime?.current?.toUpperCase() ?? '—'}
+            {regime.current ? fmtRegime(regime.current).toUpperCase() : '—'}
           </span>
         </div>
       </div>

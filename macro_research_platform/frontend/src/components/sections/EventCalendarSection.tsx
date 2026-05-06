@@ -29,11 +29,18 @@ interface Props {
 
 export function EventCalendarSection({ data }: Props) {
   const [loading, setLoading] = useState(!data);
+  const [timedOut, setTimedOut] = useState(false);
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     if (data) setLoading(false);
   }, [data]);
+
+  // FIXED (BUG 8): Timeout after 10 seconds to prevent infinite loading (Fix 8)
+  useEffect(() => {
+    const t = setTimeout(() => setTimedOut(true), 10000);
+    return () => clearTimeout(t);
+  }, []);
 
   // Live countdown timer - updates every minute
   useEffect(() => {
@@ -41,8 +48,8 @@ export function EventCalendarSection({ data }: Props) {
     return () => clearInterval(interval);
   }, []);
 
-  // Loading state
-  if (loading) {
+  // Loading state with timeout
+  if (loading && !timedOut) {
     return (
       <section id="economic-calendar" className="terminal-section">
         <div className="section-header">
