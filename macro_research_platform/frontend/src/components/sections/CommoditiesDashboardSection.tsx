@@ -1,9 +1,11 @@
 // Section G Panel 6 — Commodities Dashboard + Phase 2 Store Integration
 // Energy, metals, and agriculture with macro signals using format library
 
-import { useState, useEffect } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { cn } from '@/lib/utils';
 import { useMacroStore } from '@/store/macroStore';
 import { fmtPrice, fmtChange, fmtProbability } from '@/utils/format';
@@ -45,27 +47,60 @@ interface CommoditiesResponse {
   macroSignals: MacroSignals;
 }
 
-export function CommoditiesDashboardSection() {
+export const CommoditiesDashboardSection = memo(function CommoditiesDashboardSection() {
   const [data, setData] = useState<CommoditiesResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Use macro store for GLD/WTI prices
   const prices = useMacroStore((state) => state.prices);
   const changes = useMacroStore((state) => state.changes);
   const storeLoading = useMacroStore((state) => state.meta.dataStatus === 'loading');
+  const storeError = useMacroStore((state) => state.meta.dataStatus === 'error');
 
   useEffect(() => {
+    let cancelled = false;
+
     fetch('/api/commodities')
-      .then(r => r.json())
-      .then(d => {
-        setData(d);
-        setLoading(false);
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
       })
-      .catch(() => setLoading(false));
+      .then(d => {
+        if (!cancelled) {
+          setData(d);
+          setLoading(false);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setError(e.message);
+          setLoading(false);
+        }
+      });
+
+    return () => { cancelled = true; };
   }, []);
 
   if (loading || storeLoading) {
-    return <div className="h-64 bg-surface-1 border border-border animate-pulse" />;
+    return (
+      <Card title="COMMODITIES DASHBOARD">
+        <LoadingState message="Loading commodities data..." className="h-64" />
+      </Card>
+    );
+  }
+
+  if (error || storeError) {
+    return (
+      <Card title="COMMODITIES DASHBOARD">
+        <div className="h-64">
+          <ErrorState
+            message={error || 'Store data unavailable'}
+            retry={() => window.location.reload()}
+          />
+        </div>
+      </Card>
+    );
   }
 
   // Use store prices for gold if available
@@ -191,4 +226,4 @@ export function CommoditiesDashboardSection() {
       </div>
     </Card>
   );
-}
+});

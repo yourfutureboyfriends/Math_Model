@@ -230,6 +230,29 @@ from api.regime_context import build_regime_context, RegimeContext
 from api.data_freshness import validate_all_freshness, get_freshness_summary
 from api.alerting import alert_on_data_integrity, AlertSeverity
 
+# FIXED: Phase 7 - New consolidated data architecture (safe migration)
+from api.services.refresh_coordinator import refresh_coordinator
+from api.services.price_service import price_service
+from api.services.regime_service import regime_service
+from api.repository.market_repository import market_repository
+from api.repository.macro_repository import macro_repository
+from api.diagnostics import router as health_router, diagnostics_router
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MODEL VALIDATION - Forecast Tracking Integration (Phase 1-10)
+# ═══════════════════════════════════════════════════════════════════════════════
+from api.services.forecast_tracker import forecast_tracker, ForecastTracker
+from api.services.regime_validation import regime_validator
+from api.services.recession_validation import recession_validator
+from api.services.expected_returns_validation import expected_returns_validator
+from api.services.portfolio_validation import portfolio_validator
+from api.services.nowcast_validation import nowcast_validator
+from api.services.momentum_validation import momentum_validator
+from database.db import (
+    insert_regime,
+    get_db,
+)
+
 # ── Model imports ─────────────────────────────────────────────────────────────
 try:
     from src.models.recession_risk.recession_model import (
@@ -2178,6 +2201,20 @@ def get_regime_data(df: pd.DataFrame) -> RegimeData:
     if regime == "Stagflation" and duration > 6 and confidence_score > 0.75:
         alert = f"ALERT: Stagflation persistent for {duration} months with {confidence} confidence. Review defensive positioning."
 
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # LOG REGIME PREDICTION TO FORECAST TRACKER (Phase 2 Validation)
+    # ═══════════════════════════════════════════════════════════════════════════════
+    try:
+        forecast_tracker.log_regime_forecast(
+            regime=regime,
+            confidence=confidence_score,
+            method="threshold",
+            growth_score=scores.get("growth", 0.0),
+            inflation_score=scores.get("inflation", 0.0)
+        )
+    except Exception as e:
+        logger.warning(f"[ForecastTracker] Failed to log regime: {e}")
+
     return RegimeData(
         current=regime,
         confidence=confidence,
@@ -3108,6 +3145,20 @@ def calculate_expected_returns(
     # FIXED: Calculate weighted portfolio return
     total_weight = sum(s.currentWeight for s in sectors)
     weighted_return = sum(s.currentWeight * s.expectedReturn for s in sectors) / total_weight if total_weight > 0 else 0
+
+    # Log expected returns to tracking table (one row per sector)
+    try:
+        for s in sectors:
+            expected_returns_validator.log_forecast(
+                date=datetime.utcnow().strftime("%Y-%m-%d"),
+                sector=s.ticker,
+                expected_return=s.expectedReturn,
+                components={"earnings_yield": s.earningsYield, "regime_premium": s.regimePremium},
+                regime=regime,
+                confidence=None
+            )
+    except Exception as e:
+        logger.warning(f"[ExpectedReturnsValidator] Failed to log expected returns: {e}")
 
     return ExpectedReturnsResult(
         sectors=sectors,
@@ -6839,6 +6890,19 @@ def calculate_risk_parity_weights(df: pd.DataFrame) -> RiskParityAllocationData:
     else:
         diversification_ratio = 1.0
 
+    # Log portfolio allocation to tracking table
+    try:
+        weights_dict = {h.ticker: h.targetAllocationPct / 100.0 for h in holdings}  # Convert to decimals
+        portfolio_validator.log_allocation(
+            date=datetime.utcnow().strftime("%Y-%m-%d"),
+            method="risk_parity",
+            weights=weights_dict,
+            regime=None,  # Will be updated when regime context available
+            risk_budget=None
+        )
+    except Exception as e:
+        logger.warning(f"[PortfolioValidator] Failed to log portfolio allocation: {e}")
+
     return RiskParityAllocationData(
         holdings=holdings,
         totalHoldings=len(holdings),
@@ -7251,6 +7315,23 @@ def get_recession_data(df: pd.DataFrame) -> RecessionData:
                 trend_direction = "falling"
             else:
                 trend_direction = "stable"
+
+        # ═══════════════════════════════════════════════════════════════════════════════
+        # LOG RECESSION FORECAST TO FORECAST TRACKER (Phase 5 Validation)
+        # ═══════════════════════════════════════════════════════════════════════════════
+        try:
+            recession_validator.log_recession_forecast(
+                date=datetime.utcnow().strftime("%Y-%m-%d"),
+                horizon="12M",
+                components={
+                    "logistic": p_logistic / 100.0 if p_logistic else 0.0,
+                    "probit": p_em / 100.0 if p_em else 0.0,
+                    "sahm": sahm_value
+                },
+                blended_probability=blended / 100.0 if blended else 0.0
+            )
+        except Exception as e:
+            logger.warning(f"[RecessionValidator] Failed to log forecast: {e}")
 
         return RecessionData(
             probability=round(blended, 1),
@@ -8221,6 +8302,20 @@ def get_nowcast_data(df: pd.DataFrame) -> Dict[str, Any]:
                 "actual": None
             })
 
+    # Log nowcast to tracking table
+    try:
+        nowcast_validator.log_nowcast(
+            date=datetime.utcnow().strftime("%Y-%m-%d"),
+            variable="GDP",
+            nowcast_value=round(nowcast_qoq, 2),
+            vintage=f"{datetime.utcnow().strftime('%Y-%m-%d')}_realtime",
+            predictors={i["name"]: i["contribution"] for i in indicators},
+            confidence_interval=(confidence.get("lower", 0), confidence.get("upper", 0)),
+            regime=None
+        )
+    except Exception as e:
+        logger.warning(f"[NowcastValidator] Failed to log nowcast: {e}")
+
     return {
         "gdpNowcast": round(nowcast_qoq, 2),
         "nowcastQoQ": round(nowcast_qoq, 2),
@@ -8968,6 +9063,27 @@ def get_momentum_veto(df: pd.DataFrame) -> Dict[str, Any]:
             "rationale": "No momentum vetoes active"
         }
 
+    # Log momentum signals to tracking table (one row per asset)
+    try:
+        for a in assets:
+            # Map asset name to ticker (simplified mapping)
+            ticker_map = {
+                "S&P 500": "SPY", "MSCI EAFE": "EFA", "MSCI EM": "EEM",
+                "US 10Y Treasury": "IEF", "HY Corporate": "HYG",
+                "Gold": "GLD", "WTI Crude": "USO"
+            }
+            ticker = ticker_map.get(a["asset"], a["asset"].replace(" ", "_").upper())
+            momentum_validator.log_momentum_signal(
+                date=datetime.utcnow().strftime("%Y-%m-%d"),
+                sector=ticker,
+                formation_period="12M",
+                momentum_score=a["momentum12_1"] / 100.0,  # Normalize to decimal
+                lookback_return=a["return12m"] / 100.0,
+                regime=None
+            )
+    except Exception as e:
+        logger.warning(f"[MomentumValidator] Failed to log momentum forecast: {e}")
+
     # FIXED: Ensure consistent dampener value in description and return (BUG 7)
     dampener_pct = int(round(DAMPENER * 100))
     return {
@@ -9284,6 +9400,27 @@ async def lifespan(app: FastAPI):
         )
         logger.info("[STARTUP] Scheduled market_hours_refresh every 15min 13:00-21:00 UTC")
 
+        # FIXED: Phase 7 - Add new consolidated data refresh jobs
+        # Price refresh every 60 seconds via new provider architecture
+        _scheduler.add_job(
+            func=lambda: refresh_coordinator.refresh_prices(),
+            trigger="interval",
+            seconds=60,
+            id="consolidated_price_refresh",
+            replace_existing=True,
+        )
+        logger.info("[STARTUP] Scheduled consolidated_price_refresh every 60s")
+
+        # Macro data refresh every 15 minutes
+        _scheduler.add_job(
+            func=lambda: refresh_coordinator.refresh_macro(),
+            trigger="interval",
+            minutes=15,
+            id="consolidated_macro_refresh",
+            replace_existing=True,
+        )
+        logger.info("[STARTUP] Scheduled consolidated_macro_refresh every 15min")
+
     except Exception as e:
         logger.error(f"[STARTUP] Failed to initialize scheduler: {e}")
 
@@ -9334,6 +9471,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# FIXED: Phase 7 - Register new diagnostics routers
+app.include_router(health_router)
+app.include_router(diagnostics_router)
 
 # FIXED: Mount Socket.IO app
 socket_app = socketio.ASGIApp(sio, app)
@@ -11282,18 +11423,17 @@ async def get_dashboard():
 # PHASE 1: UNIFIED DASHBOARD API (Standardised Data Contract)
 # =============================================================================
 
-@app.get("/api/v2/dashboard")
+@app.get("/api/v2/dashboard", deprecated=True)
 async def get_unified_dashboard():
     """
-    Unified dashboard endpoint - single source of truth for all frontend data.
+    DEPRECATED: Use /api/dashboard instead.
 
-    Standardised format:
-    - All rates as decimals (3.64), NOT basis points (364)
-    - All percentages as decimals (0.80), NOT 80 or 8000
-    - All probabilities as decimals 0-1, NOT 0-100
-    - All agreement scores as decimals 0-1, NOT basis points
-    - No nulls for critical fields (use 0.0 as fallback)
+    This endpoint will be removed in v9.0. Redirects to primary endpoint.
+
+    Previously: Unified dashboard endpoint - single source of truth for all frontend data.
     """
+    logger.warning("DEPRECATED: /api/v2/dashboard called, redirecting to /api/dashboard")
+    return await get_dashboard(mode="live")
     try:
         # Load data
         df = _load_data_or_fail()
@@ -11463,6 +11603,70 @@ async def get_unified_dashboard():
 
     except Exception as e:
         logger.error(f"Unified dashboard failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Dashboard error: {str(e)}")
+
+
+# FIXED: Phase 7 - Consolidated dashboard endpoint using new architecture
+@app.get("/api/v3/dashboard", deprecated=True)
+async def get_consolidated_dashboard():
+    """
+    DEPRECATED: Use /api/dashboard instead.
+
+    This endpoint will be removed in v9.0. Redirects to primary endpoint.
+
+    Previously: Consolidated dashboard using new data architecture.
+    """
+    logger.warning("DEPRECATED: /api/v3/dashboard called, redirecting to /api/dashboard")
+    return await get_dashboard(mode="live")
+    try:
+        # Refresh data if stale
+        if not market_repository.is_fresh():
+            refresh_coordinator.refresh_prices()
+
+        # Get prices from repository (not direct yfinance)
+        prices = price_service.get_current_prices()
+        changes = price_service.get_changes()
+
+        # Get macro data from repository
+        fed_rate = macro_repository.get_metric_value("fed_funds")
+        inflation = macro_repository.get_metric_value("inflation")
+        growth = macro_repository.get_metric_value("growth")
+
+        # Get regime from service (single computation)
+        regime_dict = regime_service.get_regime_as_dict()
+
+        # Get sector recommendations from service
+        if regime_dict:
+            recommendations = regime_service.get_sector_recommendations()
+        else:
+            recommendations = []
+
+        # Build response
+        response = {
+            "status": "success",
+            "data": {
+                "prices": prices,
+                "changes": changes,
+                "macro": {
+                    "fed_rate": fed_rate,
+                    "inflation": inflation,
+                    "growth": growth,
+                },
+                "regime": regime_dict,
+                "sectors": recommendations[:5],  # Top 5
+            },
+            "meta": {
+                "version": "3.0",
+                "architecture": "consolidated",
+                "prices_fresh": market_repository.is_fresh(),
+                "prices_last_update": market_repository.get_last_update().isoformat() if market_repository.get_last_update() else None,
+            }
+        }
+
+        return response
+
+    except Exception as e:
+        logger.error(f"Consolidated dashboard failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Dashboard error: {str(e)}")
 
 
