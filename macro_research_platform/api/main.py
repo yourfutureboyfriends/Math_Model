@@ -126,7 +126,7 @@ def _refresh_price_cache():
                     prev = float(h["Close"].iloc[-2])
                     change_pct = ((latest - prev) / prev) * 100 if prev > 0 else 0
                     new_cache[canonical] = {"price": latest, "change_pct": change_pct}
-            except Exception:
+            except Exception as e:
                 pass
         _price_cache = new_cache
         _price_cache_timestamp = datetime.now()
@@ -426,7 +426,7 @@ def get_monthly_df(df: pd.DataFrame) -> pd.DataFrame:
     try:
         # Use 'ME' for Month-End (pandas 2.0+) - 'M' is deprecated
         return df.resample('ME').last().dropna(how='all')
-    except Exception:
+    except Exception as e:
         # Fallback: just return the dataframe if resampling fails
         return df
 
@@ -611,7 +611,7 @@ def _parse_fomc_date_string(text: str) -> str | None:
             month_num = datetime.strptime(month_str, "%B").month
             dt = datetime(int(year), month_num, int(day))
             return dt.strftime("%Y-%m-%d")
-    except Exception:
+    except Exception as e:
         pass
     return None
 
@@ -2751,7 +2751,7 @@ def calculate_signal_stack(
             }
         else:
             layer_outputs["geopoliticalRisk"] = {"adjustment": 0.0}
-    except Exception:
+    except Exception as e:
         layer_outputs["geopoliticalRisk"] = {"adjustment": 0.0}
 
     # FIXED: Layer 5 - Liquidity Modifier
@@ -2786,7 +2786,7 @@ def calculate_signal_stack(
             }
         else:
             layer_outputs["optionsIntelligence"] = {"adjustment": 0.0}
-    except Exception:
+    except Exception as e:
         layer_outputs["optionsIntelligence"] = {"adjustment": 0.0}
 
     # FIXED: Phase 6 - Layer 7 - Trend Following Modifier
@@ -2817,7 +2817,7 @@ def calculate_signal_stack(
             }
         else:
             layer_outputs["trendFollowing"] = {"adjustment": 0.0}
-    except Exception:
+    except Exception as e:
         layer_outputs["trendFollowing"] = {"adjustment": 0.0}
 
     # FIXED: Layer 8 - Sentiment Modifier
@@ -2835,7 +2835,7 @@ def calculate_signal_stack(
             "riskAppetite": risk_appetite,
             "adjustment": layer8_adjustment
         }
-    except Exception:
+    except Exception as e:
         layer_outputs["sentiment"] = {"adjustment": 0.0}
 
     # FIXED: Layer 9 - Momentum Confirmation
@@ -2854,7 +2854,7 @@ def calculate_signal_stack(
             "crossAsset": cross_asset_momentum,
             "adjustment": layer9_adjustment
         }
-    except Exception:
+    except Exception as e:
         layer_outputs["momentum"] = {"adjustment": 0.0}
 
     # FIXED: Layer 10 - Valuation Cap
@@ -2874,7 +2874,7 @@ def calculate_signal_stack(
     try:
         if sentiment_data.get("regime") == "Contained" and layer6_adjustment < 0:
             divergences.append("Risk composite (Contained) contradicts directional signal (Deteriorating)")
-    except Exception:
+    except Exception as e:
         pass
 
     # Clamp risk budget
@@ -3742,7 +3742,7 @@ def calculate_trend_signals(df: pd.DataFrame) -> Dict[str, Any]:
     # FIXED: Get current regime
     try:
         current_regime = _classify_regime_from_scores(_compute_regime_scores(df))
-    except Exception:
+    except Exception as e:
         current_regime = "Stagflation"
 
     assets = []
@@ -4325,7 +4325,7 @@ def calculate_news_sentiment() -> Dict[str, Any]:
                     recent_scores.append(a["score"])
                 elif hours_ago < 24:
                     older_scores.append(a["score"])
-            except Exception:
+            except Exception as e:
                 pass
 
         momentum = np.mean(recent_scores) - np.mean(older_scores) if older_scores else 0.0
@@ -4536,7 +4536,7 @@ def calculate_gmo_forecasts(df: pd.DataFrame, fred_api_key: Optional[str] = None
                                 data = response.json()
                                 if data.get("observations"):
                                     cape_value = float(data["observations"][0]["value"])
-                        except Exception:
+                        except Exception as e:
                             pass
 
                     # Fallback: calculate from price/earnings
@@ -4624,7 +4624,7 @@ def calculate_gmo_forecasts(df: pd.DataFrame, fred_api_key: Optional[str] = None
                                 data = response.json()
                                 if data.get("observations"):
                                     current_yield = float(data["observations"][0]["value"])
-                        except Exception:
+                        except Exception as e:
                             pass
 
                     if current_yield is None:
@@ -4674,7 +4674,7 @@ def calculate_gmo_forecasts(df: pd.DataFrame, fred_api_key: Optional[str] = None
                                     if m2_recent:
                                         m2_value = m2_recent[0] / 1000  # Convert to trillions
                                         historical_m2 = np.mean(m2_recent[-252:]) / 1000 if len(m2_recent) >= 252 else m2_value
-                        except Exception:
+                        except Exception as e:
                             pass
 
                     if m2_value:
@@ -5689,7 +5689,7 @@ def evaluate_alerts(
         y2 = _get(df, "us_2y_yield", "DGS2", "yield_2y")
         if not np.isnan(y10) and not np.isnan(y2):
             yield_curve = y10 - y2
-    except Exception:
+    except Exception as e:
         pass
 
     # Get inflation 3M change
@@ -5699,7 +5699,7 @@ def evaluate_alerts(
         cpi_series = _series(df, "us_cpi", "cpi_yoy", "CPIAUCSL_PC1")  # FIXED: Use _PC1 for YoY %
         if len(cpi_series) >= 4:
             inflation_3m_change = (cpi_series.iloc[-1] - cpi_series.iloc[-4])
-    except Exception:
+    except Exception as e:
         pass
 
     # Get liquidity composite
@@ -5708,7 +5708,7 @@ def evaluate_alerts(
         liq_series = _series(df, "liquidity_composite", "liquidity_index")
         if not liq_series.empty:
             liquidity_score = liq_series.iloc[-1]
-    except Exception:
+    except Exception as e:
         pass
 
     # Get cross-asset momentum
@@ -6254,7 +6254,7 @@ def _monthly_sparkline(series: pd.Series) -> list:
 
         # Get last 24 months
         return [round(v, 2) for v in monthly.tail(24).tolist()]
-    except Exception:
+    except Exception as e:
         # Fallback to raw data
         return [round(v, 2) for v in series.tail(24).tolist()]
 
@@ -6334,7 +6334,7 @@ def get_key_metrics(df: pd.DataFrame) -> KeyMetrics:
                     _prev = float(_h["Close"].iloc[-2])
                     _change_pct = ((_latest - _prev) / _prev) * 100 if _prev > 0 else 0
                     _topbar_prices[_sym] = {"price": _latest, "change_pct": _change_pct}
-            except Exception:
+            except Exception as e:
                 pass
     except ImportError:
         pass
@@ -6450,7 +6450,7 @@ def get_signals(df: pd.DataFrame) -> SignalsData:
                                 hist_labels.append(idx.strftime("%b %y"))
                             else:
                                 hist_labels.append(str(idx)[:6])
-            except Exception:
+            except Exception as e:
                 pass
         if not hist:
             hist = [score] * 12
@@ -7377,7 +7377,7 @@ def get_model_agreement(df: pd.DataFrame, regime_ctx=None) -> ModelAgreementData
             rec_prob = safe_float(rec_prob_raw, default=None)
             if rec_prob is None or (isinstance(rec_prob, float) and math.isnan(rec_prob)):
                 rec_prob = 0.0
-        except Exception:
+        except Exception as e:
             rec_prob = 0.0
 
     # FIXED: Format recession probability indicator with NaN guard (BUG 4)
@@ -7430,7 +7430,7 @@ def get_model_agreement(df: pd.DataFrame, regime_ctx=None) -> ModelAgreementData
                     impact=f"LEI {lei.trend} - mixed growth signal",
                     color="warning"
                 ))
-        except Exception:
+        except Exception as e:
             pass
 
     # ── Credit Impulse ────────────────────────────────────────────────────
@@ -7443,7 +7443,7 @@ def get_model_agreement(df: pd.DataFrame, regime_ctx=None) -> ModelAgreementData
                 impact=ci.description,
                 color=color
             ))
-        except Exception:
+        except Exception as e:
             pass
 
     # BUG-J FIX: Use shared regime context instead of local scores
@@ -7602,21 +7602,21 @@ def get_investment_memo(df: pd.DataFrame) -> InvestmentMemoData:
     if _RECESSION_OK:
         try:
             rec_prob = get_current_recession_probability(df)
-        except Exception:
+        except Exception as e:
             pass
 
     lei_trend = "unknown"
     if _LEI_OK:
         try:
             lei_trend = LEICompositeModel().compute(df).trend
-        except Exception:
+        except Exception as e:
             pass
 
     ci_signal = "NEUTRAL"
     if _CREDIT_OK:
         try:
             ci_signal = CreditImpulseModel().compute(df).signal
-        except Exception:
+        except Exception as e:
             pass
 
     g, i, l, r = scores["growth"], scores["inflation"], scores["liquidity"], scores["risk"]
@@ -7828,7 +7828,7 @@ def _compute_sector_expected_returns(df: Optional[pd.DataFrame] = None) -> List[
         try:
             regime_scores = _compute_regime_scores(df)
             regime = _classify_regime_from_scores(regime_scores)
-        except Exception:
+        except Exception as e:
             pass
 
     # Sector returns by regime (annualized %)
@@ -7981,7 +7981,7 @@ def _compute_position_sizing_from_sectors(df: Optional[pd.DataFrame], regime_dat
                         score = -0.3
                     else:
                         score = 0.0
-            except Exception:
+            except Exception as e:
                 score = 0.0
 
             # Determine position based on score
@@ -8074,7 +8074,7 @@ def _compute_signal_scorecard(regime_data, df=None) -> List[SignalScorecardItem]
                 i = _get(df, "core_cpi_yoy", "us_cpi")
                 if not np.isnan(i):
                     inflation_z = (i - 2.5) / 1.5  # Approximate z-score
-            except Exception:
+            except Exception as e:
                 pass
 
     description = f"Growth momentum {growth_z:+.2f}σ, inflation {inflation_z:+.2f}σ — {regime} regime"
@@ -9131,7 +9131,7 @@ def get_correlation_regime(df: pd.DataFrame) -> Dict[str, Any]:
                 "regime": "positive" if equity_bond_corr > 0 else "negative",
                 "interpretation": "Diversification breakdown" if equity_bond_corr > 0.3 else "Normal diversification"
             })
-        except Exception:
+        except Exception as e:
             pass
 
     equity_comm_corr = 0.0
@@ -9145,7 +9145,7 @@ def get_correlation_regime(df: pd.DataFrame) -> Dict[str, Any]:
                 "regime": "positive" if equity_comm_corr > 0 else "negative",
                 "interpretation": "Inflation hedge works" if equity_comm_corr < 0.3 else "Commodities tracking equities"
             })
-        except Exception:
+        except Exception as e:
             pass
 
     # Determine regime
@@ -9196,7 +9196,7 @@ def get_signal_stack(df: pd.DataFrame) -> Dict[str, Any]:
     if _RECESSION_OK:
         try:
             rec_prob = get_current_recession_probability(df)
-        except Exception:
+        except Exception as e:
             pass
 
     if rec_prob > 50:
@@ -9441,7 +9441,7 @@ async def lifespan(app: FastAPI):
         port_path = _ROOT / ".api_port"
         if port_path.exists():
             port_path.unlink()
-    except Exception:
+    except Exception as e:
         pass
 
 app = FastAPI(
@@ -9536,13 +9536,13 @@ async def health_check():
             growth = fetch_metric("growth", force_refresh=True)
             if not (-15 <= growth <= 15):
                 integrity_errors.append(f"Growth {growth}% out of bounds")
-        except Exception:
+        except Exception as e:
             pass
         try:
             inflation = fetch_metric("inflation", force_refresh=True)
             if not (-5 <= inflation <= 25):
                 integrity_errors.append(f"Inflation {inflation}% out of bounds")
-        except Exception:
+        except Exception as e:
             pass
         if integrity_errors:
             integrity_status = "DEGRADED"
@@ -9609,7 +9609,7 @@ async def login(request: Request):
                 form_data = parse_qs(body.decode('utf-8'))
                 input_username = form_data.get('username', [None])[0]
                 input_password = form_data.get('password', [None])[0]
-            except Exception:
+            except Exception as e:
                 pass
 
         if not input_username or not input_password:
@@ -11718,7 +11718,7 @@ async def data_freshness():
                         'id': job.id,
                         'next_run': next_run.isoformat() if next_run else 'paused'
                     })
-        except Exception:
+        except Exception as e:
             pass
 
         return {
@@ -12898,7 +12898,7 @@ def _fetch_intl_yield(yf_ticker: str, fallback: float) -> float:
         if not hist.empty:
             val = float(hist["Close"].dropna().iloc[-1])
             return round(val / 100, 4) if val > 1.0 else round(val, 4)
-    except Exception:
+    except Exception as e:
         pass
     return fallback
 
@@ -12926,7 +12926,7 @@ def _fetch_intl_yield_from_fred(fred_series: str, fallback: float) -> float:
                 if val and val != ".":
                     # FRED international yields are in percent (e.g., 4.5 for 4.5%)
                     return round(float(val) / 100, 4)
-    except Exception:
+    except Exception as e:
         pass
     return fallback
 
@@ -13961,7 +13961,7 @@ async def get_horizon_risks():
                                         "category": "MONETARY_POLICY" if "FOMC" in event.get("event", "") else "GROWTH",
                                         "days_away": days_away,
                                     })
-                                except Exception:
+                                except Exception as e:
                                     pass
             except Exception as e:
                 logger.warning(f"Finnhub calendar fetch failed: {e}")
@@ -14003,7 +14003,7 @@ async def get_horizon_risks():
                         "category": "INFLATION",
                         "days_away": days_away,
                     })
-            except Exception:
+            except Exception as e:
                 pass
 
         # Add NFP releases (first Friday of each month)
@@ -14020,7 +14020,7 @@ async def get_horizon_risks():
                         "category": "LABOR",
                         "days_away": days_away,
                     })
-            except Exception:
+            except Exception as e:
                 pass
 
         # Deduplicate by date + event
