@@ -2095,7 +2095,11 @@ def get_regime_data(df: pd.DataFrame) -> RegimeData:
                 return 0.0
             current = float(subset.iloc[-1])
             return (current - mean) / std
-        except:
+        except (IndexError, ValueError, TypeError) as e:
+            logger.debug(f"[_zscore_for_date] Calculation failed: {e}")
+            return 0.0
+        except Exception as e:
+            logger.warning(f"[_zscore_for_date] Unexpected error: {e}")
             return 0.0
 
     # FIXED (BUG 5): Build history using ACTUAL data dates with rolling z-scores
@@ -11509,7 +11513,11 @@ async def get_unified_dashboard():
             change = signal_group.get('threeMonthChange', '0.00')
             try:
                 change_val = float(change.replace('+', '').replace('σ', '')) if isinstance(change, str) else float(change)
-            except:
+            except (ValueError, TypeError, AttributeError) as e:
+                logger.debug(f"[signal] Failed to parse change value '{change}': {e}")
+                change_val = 0.0
+            except Exception as e:
+                logger.warning(f"[signal] Unexpected error parsing change: {e}")
                 change_val = 0.0
 
             return {
