@@ -14397,7 +14397,7 @@ async def get_prices():
             "spxChg": prices["spx"]["change_pct"] if prices["spx"] else None,
             "ndx": prices["ndx"]["price"] if prices["ndx"] else None,
             "ndxChg": prices["ndx"]["change_pct"] if prices["ndx"] else None,
-            "vix": None,  # TODO: Add VIX to cache
+            "vix": None,  # VIX data not yet cached
             "tenYear": prices["tenYear"]["price"] if prices["tenYear"] else None,
             "twoYear": prices["twoYear"]["price"] if prices["twoYear"] else None,
             "dxy": prices["dxy"]["price"] if prices["dxy"] else None,
