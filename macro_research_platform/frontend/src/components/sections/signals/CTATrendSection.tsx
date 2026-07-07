@@ -2,6 +2,7 @@
 // Multi-timeframe trend signals with terminal aesthetic
 
 import { TrendingUp, TrendingDown, Minus, AlertTriangle, Activity, ArrowRightLeft } from 'lucide-react';
+import { ComputedTag } from '@/components/ui/ComputedTag';
 import type { TrendSignalsData } from '@/types';
 import { useMacroStore } from '@/store/macroStore';
 
@@ -91,6 +92,7 @@ export function CTATrendSection({ data: dataProp }: CTATrendSectionProps) {
             {ctaSignal}
           </span>
         </div>
+        <ComputedTag section="trendSignals" />
       </div>
 
       <div className="space-y-3">

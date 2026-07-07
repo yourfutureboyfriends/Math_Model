@@ -2,6 +2,7 @@
 // Long-term return expectations with terminal aesthetic
 
 import { Clock, AlertTriangle } from 'lucide-react';
+import { ComputedTag } from '@/components/ui/ComputedTag';
 import type { GMOForecastsData } from '@/types';
 import { useMacroStore } from '@/store/macroStore';
 
@@ -71,6 +72,7 @@ export function GMOForecastsSection({ data: dataProp }: GMOForecastsSectionProps
           <span className="section-tag">19</span>
           <h2 className="section-title">GMO 7-Year Forecasts</h2>
         </div>
+        <ComputedTag section="gmoForecasts" />
       </div>
 
       <div className="space-y-3">

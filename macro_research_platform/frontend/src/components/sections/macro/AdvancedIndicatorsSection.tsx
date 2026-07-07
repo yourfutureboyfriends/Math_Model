@@ -2,6 +2,7 @@
 // 2x2 compact grid, 120px card height max
 
 import { cn } from '@/lib/utils';
+import { ComputedTag } from '@/components/ui/ComputedTag';
 import type { AdvancedIndicatorsData } from '@/types';
 import { useMacroStore } from '@/store/macroStore';
 
@@ -88,6 +89,7 @@ export function AdvancedIndicatorsSection({ data }: AdvancedIndicatorsSectionPro
           <span className="section-tag">15</span>
           <h2 className="section-title">Advanced Indicators</h2>
         </div>
+        <ComputedTag section="advancedIndicators" />
       </div>
 
       {/* 2x2 Grid */}

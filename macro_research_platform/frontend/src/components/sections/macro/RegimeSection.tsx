@@ -2,6 +2,7 @@
 // Dense panel using macroStore for live regime data
 
 import { cn } from '@/lib/utils';
+import { ComputedTag } from '@/components/ui/ComputedTag';
 import { AnimatedValue, SkeletonCard } from '@/components/ui';
 import { useMacroStore } from '@/store/macroStore';
 import { fmtRegime, fmtProbability, fmtDuration } from '@/utils/format';
@@ -106,6 +107,7 @@ export function RegimeSection({ data }: RegimeSectionProps) {
             {fmtRegime(currentRegime).toUpperCase()} · {confidence ? fmtProbability(confidence / 100) : '—'} CONFIDENCE
           </span>
         </div>
+        <ComputedTag section="regime" />
       </div>
 
       <div className="space-y-3">

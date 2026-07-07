@@ -2,6 +2,7 @@
 // Dalio/Bridgewater debt cycle framework with terminal aesthetic
 
 import { cn } from '@/lib/utils';
+import { ComputedTag } from '@/components/ui/ComputedTag';
 import { TrendingUp, TrendingDown, Minus, Clock, History } from 'lucide-react';
 import type { DebtCycleData, CyclePosition } from '@/types';
 import { useMacroStore } from '@/store/macroStore';
@@ -97,6 +98,7 @@ export function DebtCycleSection({ data }: DebtCycleSectionProps) {
             {cyclePosition.toUpperCase()}
           </span>
         </div>
+        <ComputedTag section="debtCycle" />
       </div>
 
       <div className="space-y-3">

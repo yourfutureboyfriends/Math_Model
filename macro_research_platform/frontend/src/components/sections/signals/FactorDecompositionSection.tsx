@@ -3,6 +3,7 @@
 // exposure, contribution, tStat, significance}]}) as a real exposure table.
 
 import { Target, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { ComputedTag } from '@/components/ui/ComputedTag';
 import type { FactorDecompositionData } from '@/types';
 import { useMacroStore } from '@/store/macroStore';
 
@@ -42,6 +43,7 @@ export function FactorDecompositionSection({ data: dataProp }: FactorDecompositi
           <span className="section-tag">27</span>
           <h2 className="section-title">Factor Decomposition</h2>
         </div>
+        <ComputedTag section="factorDecomposition" />
       </div>
 
       <div className="space-y-3">

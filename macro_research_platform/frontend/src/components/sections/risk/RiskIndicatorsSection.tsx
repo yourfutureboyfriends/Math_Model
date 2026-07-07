@@ -2,6 +2,7 @@
 // Risk table with geopolitical integration
 
 import { cn } from '@/lib/utils';
+import { ComputedTag } from '@/components/ui/ComputedTag';
 import { Shield, AlertTriangle, Globe } from 'lucide-react';
 import { AnimatedValue, SkeletonCard } from '@/components/ui';
 import type { RiskIndicatorsData, GeopoliticalRiskData } from '@/types';
@@ -73,6 +74,7 @@ export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicators
           <span className="section-tag">12</span>
           <h2 className="section-title">Risk Indicators</h2>
         </div>
+        <ComputedTag section="riskIndicators" />
       </div>
 
       <div className="space-y-3">

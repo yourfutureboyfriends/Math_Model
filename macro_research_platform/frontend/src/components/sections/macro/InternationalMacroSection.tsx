@@ -2,6 +2,7 @@
 // Global macro regime comparison with terminal aesthetic
 
 import { Globe, AlertTriangle, ArrowRightLeft, Activity } from 'lucide-react';
+import { ComputedTag } from '@/components/ui/ComputedTag';
 import type { InternationalMacroData } from '@/types';
 import { useMacroStore } from '@/store/macroStore';
 
@@ -58,6 +59,7 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
           <span className="section-tag">22</span>
           <h2 className="section-title">International Macro</h2>
         </div>
+        <ComputedTag section="internationalMacro" />
       </div>
 
       <div className="space-y-3">

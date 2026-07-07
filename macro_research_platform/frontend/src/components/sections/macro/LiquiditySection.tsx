@@ -2,6 +2,7 @@
 // Liquidity conditions with terminal aesthetic
 
 import { Droplets, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { ComputedTag } from '@/components/ui/ComputedTag';
 import type { LiquidityConditionsData } from '@/types';
 import { useMacroStore } from '@/store/macroStore';
 
@@ -61,6 +62,7 @@ export function LiquiditySection({ data }: LiquiditySectionProps) {
           <h2 className="section-title">Liquidity Conditions</h2>
           <span className="section-meta">{data.regime.toUpperCase()}</span>
         </div>
+        <ComputedTag section="liquidity" />
       </div>
 
       <div className="space-y-3">

@@ -2,6 +2,7 @@
 // Valuation metrics with terminal aesthetic
 
 import { Scale, ArrowUp, ArrowDown, Minus } from 'lucide-react';
+import { ComputedTag } from '@/components/ui/ComputedTag';
 import type { ValuationFilterData } from '@/types';
 import { useMacroStore } from '@/store/macroStore';
 
@@ -78,6 +79,7 @@ export function ValuationSection({ data }: ValuationSectionProps) {
           <h2 className="section-title">Valuation Filter</h2>
           <span className="section-meta">{String(regime).toUpperCase()}</span>
         </div>
+        <ComputedTag section="valuation" />
       </div>
 
       <div className="space-y-3">
