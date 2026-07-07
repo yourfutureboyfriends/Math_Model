@@ -8380,6 +8380,23 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("[config] FRED_API_KEY loaded: NO — CHECK .env file")
 
+    # Warm the dashboard cache in the background and keep it fresh. The dashboard
+    # aggregates many live fetches (15-20s cold) which exceeds the frontend's 8s
+    # timeout; a warm cache lets the UI load instantly. TTL is 60s, refresh at 45s.
+    import asyncio as _asyncio
+
+    async def _dashboard_warm_loop():
+        from api.handlers.dashboard_handler import warm_dashboard_cache
+        while True:
+            await warm_dashboard_cache("live")
+            await _asyncio.sleep(45)
+
+    try:
+        _asyncio.create_task(_dashboard_warm_loop())
+        logger.info("[STARTUP] Dashboard cache warm loop started")
+    except Exception as e:
+        logger.warning(f"[STARTUP] Could not start dashboard warm loop: {e}")
+
     yield
 
     # Shutdown: gracefully stop scheduler and remove port file

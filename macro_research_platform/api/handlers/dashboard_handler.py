@@ -31,7 +31,47 @@ logger = logging.getLogger(__name__)
 _yahoo_provider = YahooFinanceProvider()
 
 
+import time as _dash_time
+import asyncio as _dash_asyncio
+
+# The dashboard aggregates many live FRED/yfinance fetches and takes 15-20s cold,
+# which blows past the frontend's 8s timeout on every uncached load. Serve a cached
+# response (refreshed in the background by the startup warm task) so the UI loads
+# instantly, and use a single-flight lock so concurrent cold requests compute once.
+_DASHBOARD_CACHE: dict[str, tuple[float, "DashboardData"]] = {}
+_DASHBOARD_TTL = 60  # seconds
+_DASHBOARD_LOCKS: dict[str, "_dash_asyncio.Lock"] = {}
+
+
 async def get_dashboard_data(mode: str = "live") -> DashboardData:
+    """Return dashboard data, served from a short-TTL cache when fresh."""
+    now_ts = _dash_time.time()
+    cached = _DASHBOARD_CACHE.get(mode)
+    if cached and now_ts - cached[0] < _DASHBOARD_TTL:
+        return cached[1]
+
+    lock = _DASHBOARD_LOCKS.setdefault(mode, _dash_asyncio.Lock())
+    async with lock:
+        # Another request may have refreshed the cache while we waited for the lock.
+        cached = _DASHBOARD_CACHE.get(mode)
+        if cached and _dash_time.time() - cached[0] < _DASHBOARD_TTL:
+            return cached[1]
+        data = await _build_dashboard_data(mode)
+        _DASHBOARD_CACHE[mode] = (_dash_time.time(), data)
+        return data
+
+
+async def warm_dashboard_cache(mode: str = "live") -> None:
+    """Pre-compute and cache the dashboard so the first UI load hits a warm cache."""
+    try:
+        data = await _build_dashboard_data(mode)
+        _DASHBOARD_CACHE[mode] = (_dash_time.time(), data)
+        logger.info("[dashboard_handler] Cache warmed for mode=%s", mode)
+    except Exception as e:
+        logger.warning("[dashboard_handler] Cache warm failed: %s", e)
+
+
+async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     """
     Build complete dashboard data from real market calculations.
 
