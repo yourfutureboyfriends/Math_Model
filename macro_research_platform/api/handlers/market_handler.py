@@ -64,6 +64,46 @@ async def _fetch_closes(yf_ticker: str) -> list[float]:
     return closes
 
 
+def _fred_recent_values(series_id: str, n: int = 8) -> list[float]:
+    """Most-recent `n` numeric observations for a FRED series, newest first."""
+    from api.config import FRED_API_KEY
+    if not FRED_API_KEY:
+        return []
+    try:
+        import requests
+        url = (
+            f"https://api.stlouisfed.org/fred/series/observations"
+            f"?series_id={series_id}&api_key={FRED_API_KEY}"
+            f"&file_type=json&sort_order=desc&limit={n}"
+        )
+        resp = requests.get(url, timeout=(3, 10))
+        resp.raise_for_status()
+        vals = []
+        for obs in resp.json().get("observations", []):
+            v = obs.get("value")
+            if v not in (".", "", None):
+                vals.append(float(v))
+        return vals
+    except Exception as e:
+        logger.warning(f"FRED recent-values fetch failed for {series_id}: {e}")
+        return []
+
+
+async def _credit_spread(name: str, series_id: str, tight_bps: float, wide_bps: float,
+                         fallback_bps: float) -> Dict[str, Any]:
+    """Live ICE BofA OAS credit spread (percent -> bps) with a real 1-week change."""
+    vals = await asyncio.to_thread(_fred_recent_values, series_id, 8)
+    if not vals:
+        return {"name": name, "spreadBps": fallback_bps, "change1wBps": None,
+                "signal": "normal"}
+    spread_bps = round(vals[0] * 100)  # OAS is in percent
+    # ~5 trading days ago for the 1-week change; fall back to oldest available.
+    prior = vals[5] if len(vals) > 5 else vals[-1]
+    change_1w = round((vals[0] - prior) * 100)
+    signal = "tight" if spread_bps < tight_bps else "wide" if spread_bps > wide_bps else "normal"
+    return {"name": name, "spreadBps": spread_bps, "change1wBps": change_1w, "signal": signal}
+
+
 async def get_rates_data() -> Dict[str, Any]:
     """Get interest rates data from Yahoo Finance with yield curve structure."""
     logger.info("Fetching rates data")
@@ -132,6 +172,13 @@ async def get_rates_data() -> Dict[str, Any]:
     # Real yield (nominal - inflation, assuming 3% inflation)
     real_yield_10y = ten_yr - 3.0
 
+    # Live ICE BofA OAS credit spreads with real 1-week changes.
+    credit_spreads = await asyncio.gather(
+        _credit_spread("Investment Grade", "BAMLC0A0CM", 120, 200, 85),
+        _credit_spread("High Yield", "BAMLH0A0HYM2", 350, 600, 320),
+        _credit_spread("Emerging Markets", "BAMLEMCBPIOAS", 300, 500, 280),
+    )
+
     return {
         # New structure expected by frontend
         "yieldCurves": {
@@ -186,11 +233,7 @@ async def get_rates_data() -> Dict[str, Any]:
                 "recessionProb": 0.12
             }
         },
-        "creditSpreads": [
-            {"name": "Investment Grade", "spreadBps": 85, "signal": "tight"},
-            {"name": "High Yield", "spreadBps": 320, "signal": "normal"},
-            {"name": "Emerging Markets", "spreadBps": 280, "signal": "normal"}
-        ],
+        "creditSpreads": list(credit_spreads),
         "realYieldSignal": "positive" if real_yield_10y > 1.0 else "negative" if real_yield_10y < 0 else "neutral",
         # Legacy fields for backward compatibility
         "tenYear": round(ten_yr, 2),
