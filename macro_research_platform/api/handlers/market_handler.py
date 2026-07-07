@@ -4,9 +4,11 @@ from datetime import datetime
 import logging
 
 from api.providers import YahooFinanceProvider
+from api.providers.fred_provider import FREDProvider
 
 logger = logging.getLogger(__name__)
 _yahoo_provider = YahooFinanceProvider()
+_fred_provider = FREDProvider()
 
 
 async def get_rates_data() -> Dict[str, Any]:
@@ -25,7 +27,17 @@ async def get_rates_data() -> Dict[str, Any]:
     # Use fallback values if fetch failed
     ten_yr = ten_yr or 4.5
     two_yr = two_yr or 4.2
-    fed_funds = 5.25  # Would need Fed data
+
+    # Live effective fed funds rate from FRED (was hardcoded 5.25, which is stale
+    # and falsely inverts the 3m10y curve). Fall back to a plausible level on failure.
+    fed_funds = None
+    try:
+        obs = _fred_provider.fetch_latest("FEDFUNDS")
+        if obs is not None:
+            fed_funds = obs.value
+    except Exception as e:
+        logger.warning(f"FEDFUNDS fetch failed: {e}")
+    fed_funds = fed_funds if fed_funds is not None else 4.3
 
     # Calculate spreads
     spread_2s10s = (ten_yr - two_yr) * 100  # Convert to basis points for frontend
