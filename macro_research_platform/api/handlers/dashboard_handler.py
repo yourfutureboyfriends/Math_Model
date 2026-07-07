@@ -259,6 +259,31 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     )
 
     # Create key metrics
+    # Real daily % changes from cached daily history (reuses market_handler helpers,
+    # so no extra network cost). Previously all *ChangePct fields were None -> the UI
+    # showed +0.00% for FX/prices.
+    from api.handlers.market_handler import _fetch_closes, _pct_change
+    _chg_tickers = {
+        'SPX': '^GSPC', 'NDX': '^NDX', 'VIX': '^VIX', 'DXY': 'DX-Y.NYB',
+        'EURUSD': 'EURUSD=X', 'GLD': 'GC=F', 'WTI': 'CL=F',
+    }
+    # Store as FRACTIONS (0.0007 = 0.07%) to match the frontend's fmtChange convention.
+    _chg = {}
+    for _k, _t in _chg_tickers.items():
+        _closes = await _fetch_closes(_t)
+        _pc = _pct_change(_closes, 1) if _closes else None
+        _chg[_k] = (_pc / 100.0) if _pc is not None else None
+
+    # Live fed funds rate (was hardcoded 4.5 -> stale "FED 4.50%" in the ticker).
+    fed_rate = 4.3
+    try:
+        from api.providers.fred_provider import FREDProvider
+        _obs = FREDProvider().fetch_latest("FEDFUNDS")
+        if _obs is not None:
+            fed_rate = round(_obs.value, 2)
+    except Exception as e:
+        logger.warning(f"[dashboard_handler] FEDFUNDS fetch failed: {e}")
+
     key_metrics = KeyMetrics(
         growth=MetricWithSparkline(
             value=round(growth_score * 100, 1),
@@ -292,24 +317,24 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         ),
         regimeDuration={"current": f"{regime_duration} months", "currentRegime": regime_name},
         spxLevel=spx_level,
-        spxChange=None,  # Historical fetch not implemented - return None instead of fake value
-        spxChangePct=None,  # Cannot calculate without yesterday's price
+        spxChange=None,
+        spxChangePct=_chg.get('SPX'),
         ndxLevel=ndx_level,
-        ndxChangePct=None,  # Cannot calculate without historical data
+        ndxChangePct=_chg.get('NDX'),
         tenYearYield=ten_yr,
         tenYearChange=yield_spread,
         twoYearYield=two_yr,
         dxy=dxy_level,
-        dxyChangePct=None,  # Cannot calculate without historical data
+        dxyChangePct=_chg.get('DXY'),
         eurusd=eurusd_level,  # Fixed: was hardcoded to None
-        eurusdChangePct=None,  # Cannot calculate without yesterday's price
+        eurusdChangePct=_chg.get('EURUSD'),
         gold=gold_level,
-        goldChangePct=None,  # Cannot calculate without historical data
+        goldChangePct=_chg.get('GLD'),
         oil=oil_level,
-        oilChangePct=None,  # Cannot calculate without historical data
-        fedRate=4.5,
+        oilChangePct=_chg.get('WTI'),
+        fedRate=fed_rate,
         vix=vix_level,
-        vixChange=None  # Cannot calculate without historical data
+        vixChange=_chg.get('VIX'),
     )
 
     # Calculate factor rotation
@@ -363,10 +388,10 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         assets=[
             {
                 "asset": "SPX",
-                # return12m: annualised % return derived from growth_score momentum signal
-                # growth_score=0.63 → ~15% return; 0.3 → ~5%; 0.8 → ~22%
-                "return12m": round((growth_score - 0.3) * 55.0, 1),
-                "return1m": round((growth_score - 0.45) * 8.0, 2),
+                # Returns as fractions (0.18 = 18%) to match momentum12_1 and the
+                # frontend's fmtChange convention. growth_score=0.63 → ~18%.
+                "return12m": round((growth_score - 0.3) * 0.55, 4),
+                "return1m": round((growth_score - 0.45) * 0.08, 4),
                 "momentum12_1": round(growth_score - 0.5, 2),
                 "dampenedSignal": round((growth_score - 0.5) * (0.5 if growth_score < 0.4 else 1.0), 2),
                 "rawSignal": "NEGATIVE" if growth_score < 0.3 else "POSITIVE",
@@ -374,8 +399,8 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
             },
             {
                 "asset": "NDX",
-                "return12m": round((growth_score - 0.3) * 66.0, 1),
-                "return1m": round((growth_score - 0.45) * 10.0, 2),
+                "return12m": round((growth_score - 0.3) * 0.66, 4),
+                "return1m": round((growth_score - 0.45) * 0.10, 4),
                 "momentum12_1": round((growth_score - 0.5) * 1.2, 2),
                 "dampenedSignal": round((growth_score - 0.5) * 1.2 * (0.5 if growth_score < 0.4 else 1.0), 2),
                 "rawSignal": "NEGATIVE" if growth_score < 0.3 else "POSITIVE",

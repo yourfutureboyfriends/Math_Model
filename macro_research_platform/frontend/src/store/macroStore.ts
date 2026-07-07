@@ -290,6 +290,7 @@ export const useMacroStore = create<MacroState>()(
             NDX: data.keyMetrics?.ndxChangePct ?? get().changes.NDX,
             VIX: data.keyMetrics?.vixChange ?? get().changes.VIX,
             DXY: data.keyMetrics?.dxyChangePct ?? get().changes.DXY,
+            EURUSD: data.keyMetrics?.eurusdChangePct ?? get().changes.EURUSD,
           },
           regime: {
             current: data.regime.current || null,
