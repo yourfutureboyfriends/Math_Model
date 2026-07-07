@@ -459,9 +459,11 @@ export const useMacroStore = create<MacroState>()(
           };
 
           ws.onerror = (error) => {
-            console.error('[MacroStore] WebSocket error:', error);
-            // Don't set error state immediately, let onclose handle reconnection
-            // This prevents flashing error states during temporary network issues
+            // A transient socket error (e.g. the backend restarting) is expected and is
+            // handled by onclose's reconnect/backoff, so log at debug level to avoid
+            // alarming red console errors during normal reconnect cycles. A genuine
+            // give-up is surfaced as an error by the onclose handler.
+            console.debug('[MacroStore] WebSocket transient error (will reconnect):', error);
           };
         } catch (e) {
           console.error('[MacroStore] WebSocket setup error:', e);
