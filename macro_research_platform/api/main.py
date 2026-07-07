@@ -8602,6 +8602,41 @@ async def health_check():
     }
 
 
+@app.get("/api/v1/health/sources")
+async def health_sources_v1():
+    """Per-source data-feed health (FRED, market data, database) with response times.
+
+    A PM needs to know exactly which upstream is degraded. Actively probes each
+    dependency (cached ~30s) and reports status/latency/detail per source.
+    """
+    import asyncio as _aio
+    from api.health_sources import get_sources_health
+    try:
+        return await _aio.to_thread(get_sources_health)
+    except Exception as e:
+        logger.error("[health/sources] probe failed: %s", e)
+        return {"overall": "down", "live": 0, "total": 0, "sources": {},
+                "checked_at": datetime.now().isoformat(), "error": str(e)[:160]}
+
+
+@app.get("/api/v1/health")
+async def health_v1():
+    """Unified versioned health: analytics status + per-source feed health."""
+    import asyncio as _aio
+    from api.health_sources import get_sources_health
+    try:
+        sources = await _aio.to_thread(get_sources_health)
+    except Exception as e:
+        logger.error("[health/v1] source probe failed: %s", e)
+        sources = {"overall": "down", "live": 0, "total": 0, "sources": {}, "error": str(e)[:160]}
+    return {
+        "status": "ok",
+        "version": "v1",
+        "dataSources": sources,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
 # FIXED: Auth endpoint (previously missing - caused 404)
 from fastapi import Request
 

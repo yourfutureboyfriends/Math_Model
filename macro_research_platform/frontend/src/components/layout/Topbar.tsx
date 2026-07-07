@@ -6,6 +6,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { Download, Maximize, AlertTriangle, LayoutGrid, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMacroStore, selectMeta, selectIsLoading } from '@/store/macroStore';
+import { SystemStatusBadge } from '@/components/SystemStatusBadge';
+import { DataHealthIndicator } from '@/components/DataHealthIndicator';
 import {
   fmtPriceInt,
   fmtVol,
@@ -336,7 +338,8 @@ export function Topbar({
         </div>
 
         {/* Mode badge */}
-        <div className="ml-auto flex items-center gap-1 shrink-0">
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          <DataHealthIndicator />
           <span className="font-mono text-bloomberg bg-bloomberg-muted border border-bloomberg-border px-2 py-0.5"
                 style={{ fontSize: 10, letterSpacing: '0.08em' }}>
             {mode}
@@ -433,6 +436,11 @@ export function Topbar({
           <span className="font-mono text-bloomberg font-bold" style={{ fontSize: 10, letterSpacing: '0.06em' }}>
             {regime.current ? fmtRegime(regime.current).toUpperCase() : '—'}
           </span>
+        </div>
+
+        {/* Phase 5: System Status Badge */}
+        <div className="flex items-center px-2 shrink-0 border-l border-border-subtle h-full">
+          <SystemStatusBadge compact />
         </div>
       </div>
     </header>
