@@ -10,6 +10,9 @@
 
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import { getWebSocketUrl } from '@/lib/network';
+import { api, type DashboardData } from '@/lib/apiClient';
+import type { DashboardData as FullDashboardData } from '@/types';
 
 // Types
 interface Prices {
@@ -65,12 +68,65 @@ interface Ensemble {
   conviction: string | null;
   agreement: number | null;
   riskBudget: number | null;
+  mode: string | null;
 }
 
 interface Meta {
   latestDate: string | null;
   dataStatus: 'loading' | 'live' | 'stale' | 'error';
   lastUpdated: string | null;
+}
+
+interface CorrelationRegime {
+  currentRegime: string | null;
+  switchTriggered: boolean;
+  equityBondCorrelation: number | null;
+  fallbackStrategy: string | null;
+  correlations: Array<{
+    assetPair: string;
+    correlation60d: number;
+    regime: string;
+    interpretation: string;
+  }>;
+  riskParityAdjustment: {
+    normalWeights: Record<string, number>;
+    adjustedWeights: Record<string, number>;
+    rationale: string;
+  };
+}
+
+interface MomentumVeto {
+  vetoActive: boolean;
+  dampenerApplied: number;
+  assets: Array<{
+    asset: string;
+    return12m: number;
+    return1m: number;
+    momentum12_1: number;
+    dampenedSignal: number;
+    rawSignal: string;
+    interpretation: string;
+  }>;
+  portfolioAdjustment: {
+    action: string;
+    magnitude: number;
+    rationale: string;
+  };
+}
+
+interface SignalStackLayer {
+  layer: string;
+  priority: number;
+  signal: string;
+  conviction: number;
+  override: string | null;
+}
+
+interface SignalStack {
+  layers: SignalStackLayer[];
+  finalSignal: string;
+  confidence: number;
+  timestamp: string;
 }
 
 interface MacroState {
@@ -80,6 +136,10 @@ interface MacroState {
   regime: Regime;
   signals: Signals;
   ensemble: Ensemble;
+  correlationRegime: CorrelationRegime | null;
+  momentumVeto: MomentumVeto | null;
+  signalStack: SignalStack | null;
+  fullDashboard: FullDashboardData | null;  // Complete raw dashboard response
   meta: Meta;
 
   // WebSocket
@@ -127,8 +187,15 @@ const defaultSignal: Signal = {
 let ws: WebSocket | null = null;
 let reconnectTimeout: NodeJS.Timeout | null = null;
 let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 5;
-const RECONNECT_DELAY = 5000; // 5 seconds
+const MAX_RECONNECT_ATTEMPTS = 10;
+const INITIAL_RECONNECT_DELAY = 1000; // 1 second
+const MAX_RECONNECT_DELAY = 30000; // 30 seconds
+
+// Calculate exponential backoff delay
+function getReconnectDelay(): number {
+  const delay = INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts);
+  return Math.min(delay, MAX_RECONNECT_DELAY);
+}
 
 export const useMacroStore = create<MacroState>()(
   subscribeWithSelector((set, get) => ({
@@ -157,7 +224,12 @@ export const useMacroStore = create<MacroState>()(
       conviction: null,
       agreement: null,
       riskBudget: null,
+      mode: null,
     },
+    correlationRegime: null,
+    momentumVeto: null,
+    signalStack: null,
+    fullDashboard: null,
     meta: {
       latestDate: null,
       dataStatus: 'loading',
@@ -173,31 +245,115 @@ export const useMacroStore = create<MacroState>()(
         wsError: null,
       });
 
-      try {
-        // Try new unified endpoint first
-        const res = await fetch('/api/v2/dashboard');
-
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      // 8-second hard timeout — prevent infinite loading
+      const timeoutId = setTimeout(() => {
+        if (get().meta.dataStatus === 'loading') {
+          console.warn('[MacroStore] Dashboard fetch timed out after 8s');
+          set({
+            meta: { ...get().meta, dataStatus: 'error' },
+            wsError: 'Data unavailable — service did not respond in time',
+          });
         }
+      }, 8000);
 
-        const data = await res.json();
+      try {
+        // Use typed API client with validation
+        console.log('[MacroStore] Fetching dashboard...');
+        const data: DashboardData = await api.dashboard.get('live');
+        clearTimeout(timeoutId);
 
+        // Transform validated DashboardData to store format
         set({
-          prices: data.prices || { ...defaultPrices },
-          changes: data.changes || {},
-          regime: data.regime || get().regime,
-          signals: data.signals || get().signals,
-          ensemble: data.ensemble || get().ensemble,
+          // Extract prices from keyMetrics (if available)
+          prices: {
+            SPX: data.keyMetrics?.spxLevel ?? get().prices.SPX,
+            NDX: data.keyMetrics?.ndxLevel ?? get().prices.NDX,
+            VIX: data.keyMetrics?.vix ?? get().prices.VIX,
+            TENYR: data.keyMetrics?.tenYearYield ?? get().prices.TENYR,
+            TWYR: data.keyMetrics?.twoYearYield ?? get().prices.TWYR,
+            FED: data.keyMetrics?.fedRate ?? get().prices.FED,
+            DXY: data.keyMetrics?.dxy ?? get().prices.DXY,
+            EURUSD: data.keyMetrics?.eurusd ?? get().prices.EURUSD,
+            GBPUSD: get().prices.GBPUSD,
+            USDJPY: get().prices.USDJPY,
+            USDCAD: get().prices.USDCAD,
+            USDCHF: get().prices.USDCHF,
+            AUDUSD: get().prices.AUDUSD,
+            NZDUSD: get().prices.NZDUSD,
+            GLD: data.keyMetrics?.gold ?? get().prices.GLD,
+            WTI: data.keyMetrics?.oil ?? get().prices.WTI,
+          },
+          // Extract changes from keyMetrics
+          changes: {
+            ...get().changes,
+            SPX: data.keyMetrics?.spxChangePct ?? get().changes.SPX,
+            NDX: data.keyMetrics?.ndxChangePct ?? get().changes.NDX,
+            VIX: data.keyMetrics?.vixChange ?? get().changes.VIX,
+            DXY: data.keyMetrics?.dxyChangePct ?? get().changes.DXY,
+          },
+          regime: {
+            current: data.regime.current || null,
+            confidence: data.regime.confidenceScore || null,
+            duration: data.regime.duration || null,
+            probabilities: get().regime.probabilities, // Keep existing
+          },
+          // Ensemble data IS part of the dashboard response — map it so the Morning
+          // Brief signal bar reflects live score/agreement/conviction/mode instead of
+          // showing Neutral / 0% / Static defaults.
+          ensemble: data.ensemble ? {
+            score: (data.ensemble as any).score ?? null,
+            conviction: (data.ensemble as any).conviction ?? null,
+            agreement: (data.ensemble as any).agreement ?? null,
+            riskBudget: (data.ensemble as any).riskBudget ?? null,
+            mode: (data.ensemble as any).mode ?? null,
+          } : get().ensemble,
+          // Correlation regime data from dashboard
+          correlationRegime: (data.correlationRegime as CorrelationRegime) || null,
+          // Momentum veto data from dashboard
+          momentumVeto: (data.momentumVeto as MomentumVeto) || null,
+          // Signal stack data from dashboard
+          signalStack: data.signalStack ? {
+            ...data.signalStack,
+            layers: ((data.signalStack.layers || []) as any[]).map((l: any) => ({
+              ...l,
+              override: l.override ?? null,
+            })) as SignalStackLayer[],
+          } as SignalStack : null,
+          // Read from new field names (latestScore, threeMonthChange) with fallback to legacy
+          // Parse threeMonthChange string (e.g., "+0.2") to number
+          signals: data.signals ? {
+            growth: {
+              score: data.signals.growth?.latestScore ?? data.signals.growth?.score ?? null,
+              threeMonth: parseFloat(String(data.signals.growth?.threeMonthChange ?? data.signals.growth?.threeMonth ?? '0').replace('+', '')) || null,
+              state: data.signals.growth?.state || null,
+            },
+            inflation: {
+              score: data.signals.inflation?.latestScore ?? data.signals.inflation?.score ?? null,
+              threeMonth: parseFloat(String(data.signals.inflation?.threeMonthChange ?? data.signals.inflation?.threeMonth ?? '0').replace('+', '')) || null,
+              state: data.signals.inflation?.state || null,
+            },
+            liquidity: {
+              score: data.signals.liquidity?.latestScore ?? data.signals.liquidity?.score ?? null,
+              threeMonth: parseFloat(String(data.signals.liquidity?.threeMonthChange ?? data.signals.liquidity?.threeMonth ?? '0').replace('+', '')) || null,
+              state: data.signals.liquidity?.state || null,
+            },
+            risk: {
+              score: data.signals.risk?.latestScore ?? data.signals.risk?.score ?? null,
+              threeMonth: parseFloat(String(data.signals.risk?.threeMonthChange ?? data.signals.risk?.threeMonth ?? '0').replace('+', '')) || null,
+              state: data.signals.risk?.state || null,
+            },
+          } : get().signals,
+          fullDashboard: data as unknown as FullDashboardData,
           meta: {
-            latestDate: data.meta?.latestDate || null,
+            latestDate: data.metadata?.latestDate || null,
             dataStatus: 'live',
-            lastUpdated: data.meta?.lastUpdated || new Date().toISOString(),
+            lastUpdated: data.metadata?.lastRefreshed || new Date().toISOString(),
           },
         });
 
-        console.log('[MacroStore] Dashboard fetched successfully');
+        console.log('[MacroStore] Dashboard fetched and validated successfully');
       } catch (e) {
+        clearTimeout(timeoutId);
         console.error('[MacroStore] Dashboard fetch failed:', e);
         set({
           meta: { ...get().meta, dataStatus: 'error' },
@@ -208,9 +364,13 @@ export const useMacroStore = create<MacroState>()(
 
     // Start WebSocket for live price updates
     startWebSocket: () => {
-      // Prevent multiple connections
+      // Prevent multiple connections or if already connecting
       if (ws?.readyState === WebSocket.OPEN) {
         console.log('[MacroStore] WebSocket already connected');
+        return;
+      }
+      if (ws?.readyState === WebSocket.CONNECTING) {
+        console.log('[MacroStore] WebSocket already connecting');
         return;
       }
 
@@ -219,7 +379,7 @@ export const useMacroStore = create<MacroState>()(
 
       const connect = () => {
         try {
-          const wsUrl = `ws://${window.location.host}/ws/prices`;
+          const wsUrl = getWebSocketUrl('/ws/prices');
           console.log('[MacroStore] Connecting WebSocket:', wsUrl);
 
           ws = new WebSocket(wsUrl);
@@ -237,12 +397,19 @@ export const useMacroStore = create<MacroState>()(
           ws.onmessage = (event) => {
             try {
               const update = JSON.parse(event.data);
+              console.log('[MacroStore] WebSocket message:', update.type || 'unknown');
 
               // Handle price updates
-              if (update.prices) {
+              if (update.prices || update.data) {
                 set({
-                  prices: { ...get().prices, ...update.prices },
+                  prices: { ...get().prices, ...(update.prices || update.data) },
                 });
+              }
+
+              // Handle heartbeat
+              if (update.type === 'heartbeat') {
+                // Connection is alive, no action needed
+                console.log('[MacroStore] WebSocket heartbeat received');
               }
 
               // Handle regime changes
@@ -263,27 +430,37 @@ export const useMacroStore = create<MacroState>()(
             }
           };
 
-          ws.onclose = () => {
-            console.log('[MacroStore] WebSocket disconnected');
+          ws.onclose = (event) => {
+            console.log('[MacroStore] WebSocket disconnected:', {
+              code: event.code,
+              reason: event.reason,
+              wasClean: event.wasClean,
+            });
+
+            // Don't update state if we're intentionally closing
+            if (ws === null) return;
+
             set({
               wsConnected: false,
               meta: { ...get().meta, dataStatus: 'stale' },
             });
 
-            // Auto-reconnect with backoff
+            // Auto-reconnect with exponential backoff
             if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
               reconnectAttempts++;
-              console.log(`[MacroStore] Reconnecting in ${RECONNECT_DELAY}ms (attempt ${reconnectAttempts})`);
-              reconnectTimeout = setTimeout(connect, RECONNECT_DELAY);
+              const delay = getReconnectDelay();
+              console.log(`[MacroStore] Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+              reconnectTimeout = setTimeout(connect, delay);
             } else {
-              console.error('[MacroStore] Max reconnect attempts reached');
-              set({ wsError: 'WebSocket connection failed after retries' });
+              console.error('[MacroStore] Max reconnect attempts reached, giving up');
+              set({ wsError: 'WebSocket unavailable - using REST fallback' });
             }
           };
 
           ws.onerror = (error) => {
             console.error('[MacroStore] WebSocket error:', error);
-            set({ wsError: 'WebSocket connection error' });
+            // Don't set error state immediately, let onclose handle reconnection
+            // This prevents flashing error states during temporary network issues
           };
         } catch (e) {
           console.error('[MacroStore] WebSocket setup error:', e);
@@ -330,6 +507,7 @@ export const useMacroStore = create<MacroState>()(
 );
 
 // Export selector helpers for common data access
+export const selectFullDashboard = (state: MacroState) => state.fullDashboard;
 export const selectPrices = (state: MacroState) => state.prices;
 export const selectRegime = (state: MacroState) => state.regime;
 export const selectSignals = (state: MacroState) => state.signals;
