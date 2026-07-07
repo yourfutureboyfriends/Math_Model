@@ -3,12 +3,65 @@ from typing import Dict, Any
 from datetime import datetime
 import logging
 
+import asyncio
+import time as _time
+
 from api.providers import YahooFinanceProvider
 from api.providers.fred_provider import FREDProvider
 
 logger = logging.getLogger(__name__)
 _yahoo_provider = YahooFinanceProvider()
 _fred_provider = FREDProvider()
+
+# Small module-level TTL cache so a burst of /api/market calls does not trigger
+# a fresh yfinance history pull for every instrument on every request.
+_HISTORY_CACHE: dict[str, tuple[float, dict]] = {}
+_HISTORY_TTL = 600  # 10 minutes
+
+
+def _clean_closes(hist: dict) -> list[float]:
+    """Extract non-NaN close prices from a fetch_history result."""
+    if not hist or not hist.get("close"):
+        return []
+    return [c for c in hist["close"] if isinstance(c, (int, float)) and c == c]
+
+
+def _pct_change(closes: list[float], lookback: int) -> "float | None":
+    """Percent change over `lookback` trading days, or None if insufficient data."""
+    if len(closes) <= lookback:
+        return None
+    prev = closes[-1 - lookback]
+    cur = closes[-1]
+    if not prev:
+        return None
+    return round((cur / prev - 1.0) * 100.0, 2)
+
+
+def _percentile_52w(closes: list[float], cur: float) -> "int | None":
+    """Where `cur` sits within the trailing range, 0-100. None if flat/empty."""
+    if not closes:
+        return None
+    lo, hi = min(closes), max(closes)
+    if hi == lo:
+        return 50
+    return round((cur - lo) / (hi - lo) * 100)
+
+
+async def _fetch_closes(yf_ticker: str) -> list[float]:
+    """Fetch 1y daily closes for a raw yfinance ticker, cached, off the event loop."""
+    now = _time.time()
+    cached = _HISTORY_CACHE.get(yf_ticker)
+    if cached and now - cached[0] < _HISTORY_TTL:
+        return cached[1].get("closes", [])
+    try:
+        hist = await asyncio.to_thread(_yahoo_provider.fetch_history, yf_ticker, "1y", "1d")
+    except Exception as e:
+        logger.warning(f"history fetch failed for {yf_ticker}: {e}")
+        hist = None
+    closes = _clean_closes(hist)
+    if closes:
+        _HISTORY_CACHE[yf_ticker] = (now, {"closes": closes})
+    return closes
 
 
 async def get_rates_data() -> Dict[str, Any]:
@@ -149,138 +202,92 @@ async def get_rates_data() -> Dict[str, Any]:
 
 
 async def get_fx_data() -> Dict[str, Any]:
-    """Get FX data from Yahoo Finance."""
+    """Get FX data from Yahoo Finance with real daily % changes."""
     logger.info("Fetching FX data")
 
-    result = await _yahoo_provider.fetch_latest_async(['DXY', 'EURUSD', 'GBPUSD', 'USDJPY'])
+    # (canonical symbol, response key, yfinance ticker for history, decimals, fallback)
+    pairs = [
+        ("DXY", "dxy", "DX-Y.NYB", 2, 104.0),
+        ("EURUSD", "eurusd", "EURUSD=X", 4, 1.08),
+        ("GBPUSD", "gbpusd", "GBPUSD=X", 4, 1.265),
+        ("USDJPY", "usdjpy", "USDJPY=X", 2, 148.2),  # raw ticker already quotes USD/JPY
+    ]
 
-    dxy = result.data.get('DXY', {}).price if result.success and result.data and 'DXY' in result.data else None
-    eurusd = result.data.get('EURUSD', {}).price if result.success and result.data and 'EURUSD' in result.data else None
-
-    return {
-        "dxy": round(dxy, 2) if dxy else 104.0,
-        "eurusd": round(eurusd, 4) if eurusd else 1.08,
-        "gbpusd": 1.265,  # Would need real data
-        "usdjpy": 148.2,  # Would need real data
-        "lastUpdated": datetime.now().isoformat()
-    }
+    out: Dict[str, Any] = {"lastUpdated": datetime.now().isoformat()}
+    for canonical, key, yf_ticker, dp, fallback in pairs:
+        closes = await _fetch_closes(yf_ticker)
+        if closes:
+            spot = closes[-1]
+            out[key] = round(spot, dp)
+            out[f"{key}Change"] = _pct_change(closes, 1)
+        else:
+            out[key] = fallback
+            out[f"{key}Change"] = None  # explicit: daily change unavailable
+    return out
 
 
 async def get_commodities_data() -> Dict[str, Any]:
-    """Get commodities data with calculated macro signals."""
+    """Get commodities data with real prices, changes and calculated macro signals."""
     logger.info("Fetching commodities data")
 
-    # Fetch real prices from Yahoo Finance
-    result = await _yahoo_provider.fetch_latest_async(['GLD', 'WTI'])
+    # (symbol, name, yfinance ticker, decimals, spot fallback)
+    specs = [
+        ("energy", "CL", "WTI Crude", "CL=F", 2, 75.5),
+        ("energy", "NG", "Natural Gas", "NG=F", 2, 2.85),
+        ("metals", "GC", "Gold", "GC=F", 2, 2050.0),
+        ("metals", "HG", "Copper", "HG=F", 4, 3.85),
+        ("metals", "SI", "Silver", "SI=F", 2, 24.5),
+        ("agriculture", "ZC", "Corn", "ZC=F", 2, 4.45),
+        ("agriculture", "ZS", "Soybeans", "ZS=F", 2, 11.85),
+        ("agriculture", "ZW", "Wheat", "ZW=F", 2, 5.95),
+    ]
 
-    gold_price = None
-    oil_price = None
-    if result.success and result.data:
-        gold_price = result.data.get('GLD', {}).price if 'GLD' in result.data else None
-        oil_price = result.data.get('WTI', {}).price if 'WTI' in result.data else None
+    # Fetch all histories concurrently (each is cached + off the event loop).
+    closes_list = await asyncio.gather(*[_fetch_closes(s[3]) for s in specs])
 
-    # Use fallback values if fetch failed
-    gold_price = gold_price or 2050.0
-    oil_price = oil_price or 75.5
+    groups: Dict[str, list] = {"energy": [], "metals": [], "agriculture": []}
+    spot_by_symbol: Dict[str, float] = {}
+    for (group, sym, name, _tick, dp, fallback), closes in zip(specs, closes_list):
+        if closes:
+            spot = closes[-1]
+            row = {
+                "symbol": sym,
+                "name": name,
+                "spot": round(spot, dp),
+                "change1d": _pct_change(closes, 1),
+                "change1m": _pct_change(closes, 21),
+                "change3m": _pct_change(closes, 63),
+                "week52Percentile": _percentile_52w(closes, spot),
+            }
+        else:
+            # No live data — surface the fallback spot but null the changes rather
+            # than inventing them, so the UI can show "--" honestly.
+            row = {
+                "symbol": sym, "name": name, "spot": round(fallback, dp),
+                "change1d": None, "change1m": None, "change3m": None,
+                "week52Percentile": None,
+            }
+        groups[group].append(row)
+        spot_by_symbol[sym] = row["spot"]
 
-    # Calculate synthetic changes (would need historical data in production)
-    gold_change_1d = 0.5
-    oil_change_1d = -0.8
+    gold_price = spot_by_symbol.get("GC", 2050.0)
+    copper_price = spot_by_symbol.get("HG", 3.85)
+    oil_row = groups["energy"][0]
+    oil_change_1d = oil_row.get("change1d") or 0.0
+    gold_change_1d = groups["metals"][0].get("change1d") or 0.0
 
-    # Calculate copper/gold ratio signal (synthetic)
-    copper_price = 3.85
-    copper_gold_ratio = copper_price / (gold_price / 1000)
+    # Copper/gold ratio (copper $/lb vs gold $/oz-in-thousands)
+    copper_gold_ratio = copper_price / (gold_price / 1000) if gold_price else 0.0
     ratio_signal = "RISK-ON" if copper_gold_ratio > 1.8 else "RISK-OFF"
 
-    # Calculate oil trend
     oil_trend = "RISING" if oil_change_1d > 0 else "FALLING"
     oil_interpretation = "Supply concerns" if oil_change_1d > 0 else "Demand moderation"
 
-    # Calculate inflation index
     inflation_score = (gold_change_1d + oil_change_1d) / 2
     inflation_signal = "RISING" if inflation_score > 0 else "FALLING"
 
     return {
-        "commodities": {
-            "energy": [
-                {
-                    "symbol": "CL",
-                    "name": "WTI Crude",
-                    "spot": round(oil_price, 2),
-                    "change1d": oil_change_1d,
-                    "change1m": 2.5,  # Synthetic
-                    "change3m": -5.2,  # Synthetic
-                    "week52Percentile": 45  # Synthetic
-                },
-                {
-                    "symbol": "NG",
-                    "name": "Natural Gas",
-                    "spot": 2.85,  # Would need real data
-                    "change1d": 1.2,
-                    "change1m": -3.5,
-                    "change3m": 8.2,
-                    "week52Percentile": 35
-                }
-            ],
-            "metals": [
-                {
-                    "symbol": "GC",
-                    "name": "Gold",
-                    "spot": round(gold_price, 2),
-                    "change1d": gold_change_1d,
-                    "change1m": 3.2,
-                    "change3m": 8.5,
-                    "week52Percentile": 78
-                },
-                {
-                    "symbol": "HG",
-                    "name": "Copper",
-                    "spot": copper_price,
-                    "change1d": 0.3,
-                    "change1m": 1.8,
-                    "change3m": 4.2,
-                    "week52Percentile": 62
-                },
-                {
-                    "symbol": "SI",
-                    "name": "Silver",
-                    "spot": 24.5,
-                    "change1d": 0.8,
-                    "change1m": 4.2,
-                    "change3m": 12.5,
-                    "week52Percentile": 68
-                }
-            ],
-            "agriculture": [
-                {
-                    "symbol": "ZC",
-                    "name": "Corn",
-                    "spot": 4.45,
-                    "change1d": -0.5,
-                    "change1m": -2.8,
-                    "change3m": -8.5,
-                    "week52Percentile": 35
-                },
-                {
-                    "symbol": "ZS",
-                    "name": "Soybeans",
-                    "spot": 11.85,
-                    "change1d": 0.3,
-                    "change1m": -1.5,
-                    "change3m": -6.2,
-                    "week52Percentile": 42
-                },
-                {
-                    "symbol": "ZW",
-                    "name": "Wheat",
-                    "spot": 5.95,
-                    "change1d": 0.8,
-                    "change1m": 2.2,
-                    "change3m": -4.5,
-                    "week52Percentile": 48
-                }
-            ]
-        },
+        "commodities": groups,
         "macroSignals": {
             "copperGoldRatio": {
                 "value": round(copper_gold_ratio, 4),
@@ -305,14 +312,17 @@ async def get_prices_data() -> Dict[str, Any]:
     logger.info("Fetching prices data")
 
     result = await _yahoo_provider.fetch_latest_async(['SPX', 'NDX', 'VIX', 'DXY'])
+    yf_tickers = {'SPX': '^GSPC', 'NDX': '^NDX', 'VIX': '^VIX', 'DXY': 'DX-Y.NYB'}
 
     prices = {}
     if result.success and result.data:
         for symbol in ['SPX', 'NDX', 'VIX', 'DXY']:
             if symbol in result.data:
+                closes = await _fetch_closes(yf_tickers[symbol])
+                change = _pct_change(closes, 1) if closes else None
                 prices[symbol] = {
                     "price": round(result.data[symbol].price, 2),
-                    "change_pct": 0.0  # Would need historical data
+                    "change_pct": change if change is not None else 0.0,
                 }
 
     # Use fallbacks if needed
