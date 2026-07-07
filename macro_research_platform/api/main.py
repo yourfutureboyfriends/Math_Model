@@ -25,7 +25,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
-# ── Project root on sys.path so we can import from src/ ──────────────────────
 # MUST be before any project imports
 _ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_ROOT))
@@ -36,7 +35,7 @@ load_dotenv()
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
@@ -90,9 +89,7 @@ REGIME_BASE_SCORES = {
 # FIXED (Fix 9): Single canonical inception date constant
 PORTFOLIO_INCEPTION_DATE = "2024-01-01"
 
-# =============================================================================
 # CANONICAL PRICE CACHE (Fix 8) — Single source of truth for market prices
-# =============================================================================
 
 _price_cache: Dict[str, Dict[str, Any]] = {}
 _price_cache_timestamp: Optional[datetime] = None
@@ -143,9 +140,7 @@ def get_cached_price(symbol: str) -> Optional[Dict[str, Any]]:
     return _price_cache.get(symbol.upper())
 
 
-# =============================================================================
 # DYNAMIC PORT CONFIGURATION — Never hardcode ports
-# =============================================================================
 
 import socket
 
@@ -253,7 +248,34 @@ from database.db import (
     get_db,
 )
 
-# ── Model imports ─────────────────────────────────────────────────────────────
+# FIXED: Phase 3 - Import Pydantic models from schemas module
+from api.schemas.models import (
+    RegimeData, KeyMetrics, RecessionData, SignalsData, SignalDetails,
+    SectorAllocationData, RiskParityAllocationData, ExpectedReturnsResult,
+    DashboardData, BusinessLayerData, RegimeContextData,
+    NewsItem, CalendarEvent, HistoricalPoint, SparklineData,
+    FinancialConditionsData, CreditImpulseData, LEIData, SahmRuleData,
+    EstrellaMishkinData, MacroIndicatorsData, MarketData,
+    YieldCurveData, FXData, CommodityData, PriceData,
+    AlertData, AlertsData, RiskMetrics, FactorData, TrendData,
+    PositionSizeData, PositionSizing, SignalScorecardData, SignalScorecardItem, DecisionLogEntry,
+    ICPackData, TradeIdeaData, MorningBriefData, AskResponse, AskRequest,
+    SignalStackLayer, SignalStackResult,
+    ExpectedReturnSector, SectorPerformance, CurrentRegimeValidation,
+    ValidationMetrics, RecessionProbabilityPoint, DrawdownData,
+    RiskAdjustedReturnsData, CorrelationData, StressTestData,
+    SentimentRiskData, ValuationMetric, ValuationFilterData,
+    AssetMomentum, MomentumVetoData, CorrelationPair, CorrelationRegimeData,
+    SignalLayer, SignalStackData, LoginResponse,
+    RegimeTransitionProbabilities, RegimeBacktestResult, DebtCycleResult,
+    InternationalMacroResult, RiskIndicatorsData, AdvancedIndicatorsData,
+    ModelAgreementData, TransmissionAnalysisData, DataToWatchItem,
+    InvestmentMemoData, NowcastData, LiquidityConditionsData, AlertItem,
+    AdvancedIndicator, RiskIndicator, ModelAgreementItem, TransmissionChannel,
+    LiquidityIndicator, SentimentGauge, DebtCycleIndicator, DebtCycleIndicators,
+    DataMetadata, Sector, RiskParityItem, MetricWithSparkline,
+)
+
 try:
     from src.models.recession_risk.recession_model import (
         get_current_recession_probability,
@@ -317,7 +339,6 @@ except Exception as _e:
     logging.warning(f"macro_features import failed: {_e}")
     _FEATURES_OK = False
 
-# ── New Model imports (7 Quantitative Modules) ──────────────────────────────────
 try:
     from src.models.nowcasting.gdp_nowcast import get_gdp_nowcast
     _NOWCAST_OK = True
@@ -369,9 +390,7 @@ except Exception as _e:
 
 logger = logging.getLogger(__name__)
 
-# =============================================================================
 # GLOBAL UTILITY FUNCTIONS
-# =============================================================================
 
 def scrub_nans(obj):
     """
@@ -621,7 +640,7 @@ def _fetch_fred_release_dates(release_id: int, n: int = 8) -> list[str]:
     """Fetch release dates from FRED API."""
     try:
         import requests
-        FRED_API_KEY = os.getenv("FRED_API_KEY", "")
+        from api.config import FRED_API_KEY
         if not FRED_API_KEY:
             logger.warning("FRED_API_KEY not set, using fallback dates")
             return []
@@ -638,7 +657,6 @@ def _fetch_fred_release_dates(release_id: int, n: int = 8) -> list[str]:
         return []
 
 
-# ── Dashboard Caching ──────────────────────────────────────────────────────────
 # FIXED: Tier 1D - Dashboard response caching with 5-minute TTL
 # Reduces response time from ~4s to <100ms for cached responses
 _DASHBOARD_CACHE: Dict[str, Any] = {"data": None, "timestamp": 0.0, "mode": "live"}
@@ -648,1083 +666,13 @@ _DASHBOARD_CACHE_TTL_SECONDS = 300  # 5 minutes
 # FIXED: R-01 - APScheduler for automated data pipeline
 _scheduler = AsyncIOScheduler(timezone="UTC")
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
 PROJECT_ROOT = _ROOT
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed" / "live"
 SAMPLE_PATH   = PROJECT_ROOT / "data" / "raw" / "sample_macro_data.csv"
 OUTPUTS_DIR   = PROJECT_ROOT / "outputs"
 
 
-# =============================================================================
-# Pydantic Models
-# =============================================================================
-
-class RegimeData(BaseModel):
-    current: str
-    confidence: str
-    confidenceScore: float
-    duration: int
-    history: List[Dict[str, str]]
-    interpretations: List[Dict[str, str]]
-    alert: Optional[str] = None  # Alert when stagflation >6 months with high confidence
-
-    @field_validator('confidenceScore', mode='before')
-    @classmethod
-    def clean_confidence_score(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6) if v is not None else 0.0
-
-    @classmethod
-    def default(cls) -> "RegimeData":
-        return cls(
-            current="Unknown",
-            confidence="low",
-            confidenceScore=0.0,
-            duration=0,
-            history=[],
-            interpretations=[],
-            alert=None
-        )
-
-
-class MetricWithSparkline(BaseModel):
-    value: float
-    formatted: str
-    direction: str
-    sparklineData: List[float]
-
-    @field_validator('value', mode='before')
-    @classmethod
-    def clean_value(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-    @field_validator('sparklineData', mode='before')
-    @classmethod
-    def clean_sparkline(cls, v):
-        if not isinstance(v, list):
-            return []
-        return [0.0 if (isinstance(x, float) and (np.isnan(x) or np.isinf(x))) else round(float(x), 6) for x in v]
-
-    @classmethod
-    def default(cls) -> "MetricWithSparkline":
-        return cls(
-            value=0.0,
-            formatted="—",
-            direction="neutral",
-            sparklineData=[]
-        )
-
-
-class KeyMetrics(BaseModel):
-    growth: MetricWithSparkline
-    inflation: MetricWithSparkline
-    liquidity: MetricWithSparkline
-    risk: MetricWithSparkline
-    recession: MetricWithSparkline
-    regimeDuration: Dict[str, str]
-    # FIXED: Additional fields for Topbar ticker (BUG 6)
-    spxLevel: Optional[float] = None
-    spxChange: Optional[float] = None
-    spxChangePct: Optional[float] = None
-    ndxLevel: Optional[float] = None
-    ndxChangePct: Optional[float] = None
-    tenYearYield: Optional[float] = None
-    tenYearChange: Optional[float] = None
-    twoYearYield: Optional[float] = None
-    dxy: Optional[float] = None
-    dxyChangePct: Optional[float] = None
-    eurusd: Optional[float] = None
-    eurusdChangePct: Optional[float] = None
-    gold: Optional[float] = None
-    goldChangePct: Optional[float] = None
-    oil: Optional[float] = None
-    oilChangePct: Optional[float] = None
-    fedRate: Optional[float] = None
-    vix: Optional[float] = None
-    vixChange: Optional[float] = None
-
-    @classmethod
-    def default(cls) -> "KeyMetrics":
-        return cls(
-            growth=MetricWithSparkline.default(),
-            inflation=MetricWithSparkline.default(),
-            liquidity=MetricWithSparkline.default(),
-            risk=MetricWithSparkline.default(),
-            recession=MetricWithSparkline.default(),
-            regimeDuration={"current": "N/A"}
-        )
-
-
-class SignalDetails(BaseModel):
-    latestScore: float
-    threeMonthChange: str
-    state: str
-    direction: str
-    interpretation: str
-    history: List[float]
-    historyLabels: List[str]  # Month labels e.g., ["Apr 24", "May 24", ...]
-
-    @field_validator('latestScore', mode='before')
-    @classmethod
-    def clean_latest_score(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-    @field_validator('history', mode='before')
-    @classmethod
-    def clean_history(cls, v):
-        if not isinstance(v, list):
-            return []
-        return [0.0 if (isinstance(x, float) and (np.isnan(x) or np.isinf(x))) else round(float(x), 6) for x in v]
-
-    @classmethod
-    def default(cls, name: str = "Unknown") -> "SignalDetails":
-        return cls(
-            latestScore=0.0,
-            threeMonthChange="—",
-            state="neutral",
-            direction="stable",
-            interpretation=f"No data available for {name}",
-            history=[],
-            historyLabels=[]
-        )
-
-
-class SignalsData(BaseModel):
-    growth: SignalDetails
-    inflation: SignalDetails
-    liquidity: SignalDetails
-    risk: SignalDetails
-
-    @classmethod
-    def default(cls) -> "SignalsData":
-        return cls(
-            growth=SignalDetails.default("growth"),
-            inflation=SignalDetails.default("inflation"),
-            liquidity=SignalDetails.default("liquidity"),
-            risk=SignalDetails.default("risk")
-        )
-
-
-class Sector(BaseModel):
-    name: str
-    score: float
-    signal: str
-    conviction: str
-    rationale: str
-
-    @field_validator('score', mode='before')
-    @classmethod
-    def clean_score(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-    @classmethod
-    def default(cls, name: str = "Unknown") -> "Sector":
-        return cls(
-            name=name,
-            score=0.0,
-            signal="NEUTRAL",
-            conviction="low",
-            rationale="No data available"
-        )
-
-
-class SectorAllocationData(BaseModel):
-    sectors: List[Sector]
-    chartData: List[Dict[str, Any]]
-
-    @classmethod
-    def default(cls) -> "SectorAllocationData":
-        return cls(
-            sectors=[],
-            chartData=[]
-        )
-
-
-class RiskParityItem(BaseModel):
-    ticker: str
-    sector: str
-    annualisedVol: float  # FIXED: renamed from baseVolatility
-    baseWeight: float  # FIXED: renamed from inverseVolWeight
-    signalScore: float
-    signal: str  # FIXED: added signal label
-    conviction: str  # FIXED: added conviction label
-    adjustedWeight: float
-    targetAllocationPct: float
-
-    @field_validator('annualisedVol', 'baseWeight', 'signalScore', 'adjustedWeight', 'targetAllocationPct', mode='before')
-    @classmethod
-    def clean_float_fields(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        val = float(v) if v is not None else 0.0
-        # Clamp targetAllocationPct to 0-100 range
-        if cls.__name__ == 'targetAllocationPct':
-            return round(max(0.0, min(100.0, val)), 6)
-        return round(val, 6)
-
-    @classmethod
-    def default(cls, ticker: str = "UNKNOWN") -> "RiskParityItem":
-        return cls(
-            ticker=ticker,
-            sector="Unknown",
-            annualisedVol=0.0,
-            baseWeight=0.0,
-            signalScore=0.0,
-            signal="NEUTRAL",
-            conviction="low",
-            adjustedWeight=0.0,
-            targetAllocationPct=0.0
-        )
-
-
-class RiskParityAllocationData(BaseModel):
-    holdings: List[RiskParityItem]
-    totalHoldings: int
-    lastRebalanced: str
-    methodology: str
-    # FIXED: Added portfolio-level summary fields
-    portfolioVol: Optional[float] = None
-    diversificationRatio: Optional[float] = None
-    regimeAdjustmentActive: bool = True
-    lastUpdated: Optional[str] = None
-
-    @classmethod
-    def default(cls) -> "RiskParityAllocationData":
-        return cls(
-            holdings=[],
-            totalHoldings=0,
-            lastRebalanced="N/A",
-            methodology="Risk Parity with Regime Adjustment",
-            portfolioVol=None,
-            diversificationRatio=None,
-            regimeAdjustmentActive=True,
-            lastUpdated=None
-        )
-
-
-# FIXED: Regime Transitions Pydantic Models
-class RegimeTransitionProbabilities(BaseModel):
-    currentRegime: str
-    transitions: Dict[str, Dict[str, float]]
-    mostLikelyNext: str
-    nextRegimeProbability: float
-    secondMostLikely: Optional[str] = None
-    warning: Optional[str] = None
-
-    @field_validator('nextRegimeProbability', mode='before')
-    @classmethod
-    def clean_probability(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-
-# FIXED: Debt Cycle Monitor Pydantic Models
-class DebtCycleIndicator(BaseModel):
-    value: float
-    signal: str
-    interpretation: str
-    trend: Optional[str] = None
-
-    @field_validator('value', mode='before')
-    @classmethod
-    def clean_value(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-
-class DebtCycleIndicators(BaseModel):
-    realRate: DebtCycleIndicator
-    debtGDP: DebtCycleIndicator
-    debtServiceRatio: DebtCycleIndicator
-    creditImpulse: DebtCycleIndicator
-    m2Growth: DebtCycleIndicator
-
-
-class DebtCycleResult(BaseModel):
-    cyclePosition: str
-    cycleScore: int
-    severity: str
-    indicators: DebtCycleIndicators
-    implication: str
-    historicalAnalog: str
-    lastUpdated: Optional[str] = None
-
-
-# FIXED: Signal Stack Pydantic Models
-class SignalStackLayer(BaseModel):
-    layer: int
-    name: str
-    value: Any
-    triggered: bool
-    adjustment: float
-    override: Optional[str] = None
-
-    @field_validator('adjustment', mode='before')
-    @classmethod
-    def clean_adjustment(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-
-class SignalLayerItem(BaseModel):
-    """FIXED: Individual signal layer matching frontend SignalLayer interface"""
-    layer: str
-    priority: int
-    signal: str
-    conviction: float
-    override: Optional[str] = None
-
-    @field_validator('conviction', mode='before')
-    @classmethod
-    def clean_conviction(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.5
-        return round(max(0.0, min(1.0, float(v))), 6)
-
-
-class SignalStackResult(BaseModel):
-    """FIXED: Signal stack result matching frontend SignalStackData interface"""
-    finalStance: str
-    riskBudget: float
-    activeLayer: int
-    overrideReason: Optional[str] = None
-    layerOutputs: Dict[str, Any]
-    divergences: List[str]
-    lastUpdated: Optional[str] = None
-    # FIXED: Added fields for frontend compatibility
-    finalSignal: str = "NEUTRAL"
-    conviction: float = 0.5
-    layers: List[SignalLayerItem] = []
-    overridesApplied: List[str] = []
-    reasoning: str = ""
-    timestamp: Optional[str] = None
-
-    @field_validator('riskBudget', mode='before')
-    @classmethod
-    def clean_risk_budget(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 1.0
-        return round(max(0.0, min(1.0, float(v))), 6)
-
-    @field_validator('conviction', mode='before')
-    @classmethod
-    def clean_conviction(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.5
-        return round(max(0.0, min(1.0, float(v))), 6)
-
-
-# FIXED: Expected Returns Pydantic Models
-class ExpectedReturnSector(BaseModel):
-    sector: str
-    ticker: str
-    earningsYield: Optional[float] = None
-    regimePremium: float
-    expectedReturn: float
-    currentWeight: float
-    signal: str
-
-    @field_validator('earningsYield', 'regimePremium', 'expectedReturn', 'currentWeight', mode='before')
-    @classmethod
-    def clean_floats(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-
-class ExpectedReturnsResult(BaseModel):
-    sectors: List[ExpectedReturnSector]
-    weightedPortfolioReturn: float
-    methodology: str
-    lastUpdated: Optional[str] = None
-
-    @field_validator('weightedPortfolioReturn', mode='before')
-    @classmethod
-    def clean_return(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-
-# FIXED: Regime Backtest Engine Pydantic Models
-class SectorPerformance(BaseModel):
-    avgMonthlyReturn: float
-    winRate: float
-    sharpe: float
-
-    @field_validator('avgMonthlyReturn', 'winRate', 'sharpe', mode='before')
-    @classmethod
-    def clean_metrics(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-
-class CurrentRegimeValidation(BaseModel):
-    regime: str
-    modelSignal: str
-    historicallyConfirmed: bool
-    historicalAvgReturn: float
-    confidenceNote: str
-
-    @field_validator('historicalAvgReturn', mode='before')
-    @classmethod
-    def clean_return(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-
-class RegimeBacktestResult(BaseModel):
-    backtestPeriod: str
-    totalMonths: int
-    regimeFrequency: Dict[str, float]
-    sectorReturns: Dict[str, Dict[str, SectorPerformance]]
-    currentRegimeValidation: CurrentRegimeValidation
-    lastUpdated: Optional[str] = None
-
-
-# FIXED: Phase 4 - Alerts Engine Pydantic Models
-class AlertItem(BaseModel):
-    id: str
-    severity: str  # critical, warning, info
-    triggered: bool
-    triggeredAt: Optional[str] = None
-    message: str
-    action: str
-    currentValue: Any
-    threshold: Any
-    acknowledged: bool = False
-
-    @field_validator('currentValue', 'threshold', mode='before')
-    @classmethod
-    def clean_values(cls, v):
-        if isinstance(v, float) and (np.isnan(v) or np.isinf(v)):
-            return None
-        return v
-
-
-class AlertsData(BaseModel):
-    active: List[AlertItem]
-    count: Dict[str, int]
-    lastEvaluated: str
-
-
-# FIXED: Phase 4 - International Macro Pydantic Models
-class RegionMacroData(BaseModel):
-    regime: str
-    growth: float
-    inflation: float
-    confidence: Optional[float] = None
-
-    @field_validator('growth', 'inflation', mode='before')
-    @classmethod
-    def clean_metrics(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-    @field_validator('confidence', mode='before')
-    @classmethod
-    def clean_confidence(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return None
-        return round(float(v), 6)
-
-
-class RegimeDivergence(BaseModel):
-    pair: str
-    us: str
-    other: str
-    divergence: bool
-
-
-class FXImplication(BaseModel):
-    pair: str
-    bias: str
-    reason: str
-
-
-class InternationalMacroResult(BaseModel):
-    regions: Dict[str, RegionMacroData]
-    globalLiquidityComposite: float
-    regimeDivergences: List[RegimeDivergence]
-    fxImplications: List[FXImplication]
-    lastUpdated: Optional[str] = None
-
-
-class RiskIndicator(BaseModel):
-    name: str
-    value: str
-    level: str
-    interpretation: str
-
-
-class RiskIndicatorsData(BaseModel):
-    indicators: List[RiskIndicator]
-    compositeScore: float
-    regime: str
-    divergenceWarning: Optional[str] = None  # Set when composite and direction contradict
-    # FIXED (BUG H): Add flat VIX properties for Topbar ticker
-    vix: Optional[float] = None
-    vixChange: Optional[float] = None
-
-    @field_validator('compositeScore', mode='before')
-    @classmethod
-    def clean_score(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-
-class AdvancedIndicator(BaseModel):
-    name: str
-    value: str
-    status: str
-    trend: str
-    description: str
-
-
-class AdvancedIndicatorsData(BaseModel):
-    sahmRule: AdvancedIndicator
-    creditImpulse: AdvancedIndicator
-    leiComposite: AdvancedIndicator
-    riskParity: AdvancedIndicator
-
-
-class RecessionData(BaseModel):
-    probability: float
-    level: str
-    logisticProb: float
-    emProbitProb: float
-    sahmValue: float
-    sahmSignal: str
-    description: str
-    trendDirection: str  # rising, falling, stable
-    oneMonthDelta: float  # Change from last month (+/- percentage points)
-
-    @field_validator('probability', 'logisticProb', 'emProbitProb', 'sahmValue', 'oneMonthDelta', mode='before')
-    @classmethod
-    def clean_probabilities(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-    @classmethod
-    def default(cls) -> "RecessionData":
-        return cls(
-            probability=0.0,
-            level="low",
-            logisticProb=0.0,
-            emProbitProb=0.0,
-            sahmValue=0.0,
-            sahmSignal="normal",
-            description="No recession data available",
-            trendDirection="stable",
-            oneMonthDelta=0.0
-        )
-
-
-class BusinessRecommendation(BaseModel):
-    type: str
-    headline: str
-    conviction: str
-    rationale: str
-
-    @classmethod
-    def default(cls) -> "BusinessRecommendation":
-        return cls(
-            type="HOLD",
-            headline="No recommendations available",
-            conviction="low",
-            rationale="Insufficient data to generate recommendations"
-        )
-
-
-class ExpectedReturn(BaseModel):
-    assetOrSector: str
-    expectedReturn: float
-    sharpeEstimate: float
-    confidence: str
-    interpretation: str
-
-    @field_validator('expectedReturn', 'sharpeEstimate', mode='before')
-    @classmethod
-    def clean_returns(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-    @classmethod
-    def default(cls, asset: str = "Unknown") -> "ExpectedReturn":
-        return cls(
-            assetOrSector=asset,
-            expectedReturn=0.0,
-            sharpeEstimate=0.0,
-            confidence="low",
-            interpretation="No data available"
-        )
-
-
-class PositionSizing(BaseModel):
-    assetOrSector: str
-    suggestedSize: float
-    bucket: str
-    conviction: str
-    reason: str
-
-    @field_validator('suggestedSize', mode='before')
-    @classmethod
-    def clean_size(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        # Clamp to 0-100%
-        return round(max(0.0, min(100.0, float(v))), 6)
-
-    @classmethod
-    def default(cls, asset: str = "Unknown") -> "PositionSizing":
-        return cls(
-            assetOrSector=asset,
-            suggestedSize=0.0,
-            bucket="neutral",
-            conviction="low",
-            reason="No data available"
-        )
-
-
-class SignalScorecardItem(BaseModel):
-    signal: str
-    category: str
-    status: str
-    confidence: str
-    researchSupport: str
-
-
-class DecisionLogEntry(BaseModel):
-    timestamp: str
-    recommendationType: str
-    headline: str
-    conviction: str
-    suggestedPositionSize: float
-
-    @field_validator('suggestedPositionSize', mode='before')
-    @classmethod
-    def clean_size(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(max(0.0, min(100.0, float(v))), 6)
-
-
-class BusinessLayerData(BaseModel):
-    recommendations: Optional[str]
-    expectedReturns: List[ExpectedReturn]
-    positionSizing: List[PositionSizing]
-    signalScorecard: List[SignalScorecardItem]
-    decisionLog: List[DecisionLogEntry]
-
-    @classmethod
-    def default(cls) -> "BusinessLayerData":
-        return cls(
-            recommendations=None,
-            expectedReturns=[],
-            positionSizing=[],
-            signalScorecard=[],
-            decisionLog=[]
-        )
-
-
-class ModelAgreementItem(BaseModel):
-    model: str
-    indicator: str
-    impact: str
-    color: str
-
-
-class ModelAgreementData(BaseModel):
-    items: List[ModelAgreementItem]
-
-
-class TransmissionChannel(BaseModel):
-    channel: str
-    status: str
-    description: str
-
-
-class TransmissionAnalysisData(BaseModel):
-    channels: List[TransmissionChannel]
-    summary: str
-
-
-class DataToWatchItem(BaseModel):
-    indicator: str
-    importance: str
-    nextRelease: str
-    expectedImpact: str
-
-
-class InvestmentMemoData(BaseModel):
-    regimeSummary: str
-    keyPoints: List[str]
-    risks: List[str]
-    opportunities: List[str]
-
-    @classmethod
-    def default(cls) -> "InvestmentMemoData":
-        return cls(
-            regimeSummary="No regime data available",
-            keyPoints=["Data unavailable"],
-            risks=["Data unavailable"],
-            opportunities=["Data unavailable"]
-        )
-
-
-class DataMetadata(BaseModel):
-    latestDate: str
-    dataStatus: str
-    daysSinceUpdate: int
-    mode: str
-    validationWarnings: List[str] = []
-    supportingEvidence: List[str] = []
-
-    @classmethod
-    def default(cls) -> "DataMetadata":
-        return cls(
-            latestDate="N/A",
-            dataStatus="unavailable",
-            daysSinceUpdate=0,
-            mode="unknown",
-            validationWarnings=["Data source unavailable"],
-            supportingEvidence=[]
-        )
-
-
-class DashboardData(BaseModel):
-    regime: RegimeData
-    keyMetrics: KeyMetrics
-    signals: SignalsData
-    sectorAllocation: SectorAllocationData
-    riskIndicators: RiskIndicatorsData
-    advancedIndicators: AdvancedIndicatorsData
-    recession: RecessionData
-    businessLayer: BusinessLayerData
-    modelAgreement: ModelAgreementData
-    transmissionAnalysis: TransmissionAnalysisData
-    investmentMemo: InvestmentMemoData
-    dataToWatch: List[DataToWatchItem]
-    metadata: DataMetadata
-    nowcast: Optional[Dict[str, Any]] = None
-    liquidity: Optional[Dict[str, Any]] = None
-    sentiment: Optional[Dict[str, Any]] = None
-    valuation: Optional[Dict[str, Any]] = None
-    momentumVeto: Optional[Dict[str, Any]] = None
-    correlationRegime: Optional[Dict[str, Any]] = None
-    signalStack: Optional[Dict[str, Any]] = None
-    riskParityAllocation: Optional[RiskParityAllocationData] = None
-    regimeTransitions: Optional[RegimeTransitionProbabilities] = None
-    debtCycle: Optional[DebtCycleResult] = None
-    signalStackV2: Optional[SignalStackResult] = None
-    expectedReturns: Optional[Dict[str, Any]] = None  # ExpectedReturnsData format for frontend
-    regimeBacktest: Optional[RegimeBacktestResult] = None
-    alerts: Optional[AlertsData] = None
-    internationalMacro: Optional[InternationalMacroResult] = None
-    # FIXED: Phase 6 - New data fields
-    geopoliticalRisk: Optional[Dict[str, Any]] = None
-    optionsIntelligence: Optional[Dict[str, Any]] = None
-    trendSignals: Optional[Dict[str, Any]] = None
-    factorRotation: Optional[Dict[str, Any]] = None
-    # FIXED: Phase 7 - GMO Forecasts
-    gmoForecasts: Optional[Dict[str, Any]] = None
-    reflexivity: Optional[Dict[str, Any]] = None
-    factorDecomposition: Optional[Dict[str, Any]] = None
-    horizonAnalysis: Optional[Dict[str, Any]] = None
-    # FIXED: ML Signals
-    anomalyDetection: Optional[Dict[str, Any]] = None
-    lstmPrediction: Optional[Dict[str, Any]] = None
-    ensembleSignal: Optional[Dict[str, Any]] = None  # EnsembleSignalData format for frontend
-    performanceTracking: Optional[Dict[str, Any]] = None
-    mlSignals: Optional[Dict[str, Any]] = None
-    # FIXED: Portfolio and News
-    portfolioSimulation: Optional[Dict[str, Any]] = None
-    newsSentiment: Optional[Dict[str, Any]] = None
-    # FIXED: Date/staleness fields for topbar display
-    dataAsOf: Optional[str] = None
-    dataAsOfLabel: Optional[str] = None
-    lastUpdated: Optional[str] = None
-    isStale: bool = False
-    cacheAgeSeconds: int = 0
-    dataMode: str = "LIVE"
-    # FIXED: Data validation fields
-    _dataErrors: Optional[List[str]] = None
-    _dataHealthy: Optional[bool] = None
-    # FIXED: Trade recommendations from 7-layer signal engine
-    tradeRecommendations: Optional[Dict[str, Any]] = None
-    # FIXED: System health monitoring
-    systemHealth: Optional[Dict[str, Any]] = None
-    # FIXED: Scenario analysis
-    scenarioAnalysis: Optional[Dict[str, Any]] = None
-    # FIXED: Trade ideas
-    tradeIdeas: Optional[Dict[str, Any]] = None
-    # FIXED: Morning brief
-    morningBrief: Optional[Dict[str, Any]] = None
-    # FIXED: Equity research
-    equityResearch: Optional[Dict[str, Any]] = None
-    # FIXED: Economic calendar
-    eventCalendar: Optional[Dict[str, Any]] = None
-    # FIXED: Risk analytics
-    riskAnalytics: Optional[Dict[str, Any]] = None
-    # FIXED: Model Portfolio (Issue 6)
-    modelPortfolio: Optional[Dict[str, Any]] = None
-
-
-# =============================================================================
-# NEW QUANTITATIVE MODULES (7 modules)
-# =============================================================================
-
-class NowcastComponent(BaseModel):
-    name: str
-    weight: float
-    contribution: float
-    status: str
-
-    @field_validator('weight', 'contribution', mode='before')
-    @classmethod
-    def clean_floats(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-
-class NowcastData(BaseModel):
-    gdpNowcast: float
-    nowcastQoQ: float
-    nowcastYoY: float
-    confidenceInterval: Dict[str, float]
-    components: List[NowcastComponent]
-    revisionHistory: List[Dict[str, Any]]
-    methodology: str
-    lastUpdated: str
-
-    @field_validator('gdpNowcast', 'nowcastQoQ', 'nowcastYoY', mode='before')
-    @classmethod
-    def clean_floats(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-
-class LiquidityIndicator(BaseModel):
-    name: str
-    value: float
-    formatted: str
-    zScore: float
-    trend: str
-    interpretation: str
-
-    @field_validator('value', 'zScore', mode='before')
-    @classmethod
-    def clean_floats(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-
-class LiquidityConditionsData(BaseModel):
-    compositeScore: float
-    regime: str
-    indicators: List[LiquidityIndicator]
-    fedPolicyStance: str
-    creditAvailability: str
-    description: str
-
-    @field_validator('compositeScore', mode='before')
-    @classmethod
-    def clean_score(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-
-class SentimentGauge(BaseModel):
-    name: str
-    value: float
-    formatted: str
-    signal: str
-    percentile: float
-    description: str
-
-    @field_validator('value', 'percentile', mode='before')
-    @classmethod
-    def clean_floats(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        val = float(v) if v is not None else 0.0
-        # Clamp percentile to 0-100
-        if cls.__name__ == 'percentile':
-            return round(max(0.0, min(100.0, val)), 6)
-        return round(val, 6)
-
-
-class SentimentRiskData(BaseModel):
-    compositeRiskAppetite: float
-    regime: str
-    gauges: List[SentimentGauge]
-    vixTermStructure: Dict[str, Any]
-    aaiiSentiment: Dict[str, Any]
-    crossAssetMomentum: Dict[str, Any]
-    contrarianSignal: str
-    description: str
-
-    @field_validator('compositeRiskAppetite', mode='before')
-    @classmethod
-    def clean_score(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-
-class ValuationMetric(BaseModel):
-    name: str
-    currentValue: float
-    historicalMean: float
-    zScore: float
-    percentile: float
-    signal: str
-    interpretation: str
-
-    @field_validator('currentValue', 'historicalMean', 'zScore', 'percentile', mode='before')
-    @classmethod
-    def clean_floats(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        val = float(v) if v is not None else 0.0
-        # Clamp percentile to 0-100
-        if cls.__name__ == 'percentile':
-            return round(max(0.0, min(100.0, val)), 6)
-        return round(val, 6)
-
-
-class ValuationFilterData(BaseModel):
-    compositeScore: float
-    regime: str
-    metrics: List[ValuationMetric]
-    expectedReturns: Dict[str, float]
-    description: str
-
-    @field_validator('compositeScore', mode='before')
-    @classmethod
-    def clean_score(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-
-class AssetMomentum(BaseModel):
-    asset: str
-    return12m: float
-    return1m: float
-    momentum12_1: float
-    dampenedSignal: float
-    rawSignal: str
-    interpretation: str
-
-    @field_validator('return12m', 'return1m', 'momentum12_1', 'dampenedSignal', mode='before')
-    @classmethod
-    def clean_returns(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(float(v), 6)
-
-
-class MomentumVetoData(BaseModel):
-    vetoActive: bool
-    dampenerApplied: float
-    assets: List[AssetMomentum]
-    portfolioAdjustment: Dict[str, Any]
-    description: str
-
-    @field_validator('dampenerApplied', mode='before')
-    @classmethod
-    def clean_dampener(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(max(0.0, min(1.0, float(v))), 6)
-
-
-class CorrelationPair(BaseModel):
-    assetPair: str
-    correlation60d: float
-    regime: str
-    interpretation: str
-
-    @field_validator('correlation60d', mode='before')
-    @classmethod
-    def clean_correlation(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(max(-1.0, min(1.0, float(v))), 6)
-
-
-class CorrelationRegimeData(BaseModel):
-    currentRegime: str
-    equityBondCorrelation: float
-    switchTriggered: bool
-    fallbackStrategy: str
-    correlations: List[CorrelationPair]
-    riskParityAdjustment: Dict[str, Any]
-    description: str
-
-    @field_validator('equityBondCorrelation', mode='before')
-    @classmethod
-    def clean_correlation(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.0
-        return round(max(-1.0, min(1.0, float(v))), 6)
-
-
-class SignalLayer(BaseModel):
-    layer: str
-    priority: int
-    signal: str
-    conviction: float
-    override: Optional[str] = None
-
-    @field_validator('conviction', mode='before')
-    @classmethod
-    def clean_conviction(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.5
-        return round(max(0.0, min(1.0, float(v))), 6)
-
-
-class SignalStackData(BaseModel):
-    finalSignal: str
-    conviction: float
-    layers: List[SignalLayer]
-    overridesApplied: List[str]
-    reasoning: str
-    timestamp: str
-
-    @field_validator('conviction', mode='before')
-    @classmethod
-    def clean_conviction(cls, v):
-        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-            return 0.5
-        return round(max(0.0, min(1.0, float(v))), 6)
-
-
-# =============================================================================
 # Column name resolution helpers
-# =============================================================================
 
 def _get(df: pd.DataFrame, *candidates, default=np.nan):
     """Return the first available column value (most recent), or default."""
@@ -1744,25 +692,35 @@ def _series(df: pd.DataFrame, *candidates) -> pd.Series:
     return pd.Series(dtype=float)
 
 
-# =============================================================================
 # Data Loading
-# =============================================================================
 
 def _fetch_fresh_fred_value(series_id: str) -> Optional[float]:
     """
     Fetch fresh value from FRED API for critical metrics.
     Returns None if FRED API key not configured or fetch fails.
     """
-    api_key = os.getenv("FRED_API_KEY")
+    from api.config import FRED_API_KEY
+    api_key = FRED_API_KEY
     if not api_key or api_key == "your_fred_api_key_here":
         return None
 
     try:
         import requests
+        # FRED transforms (e.g. year-over-year %) are a `units` query param, NOT a
+        # series-id suffix. Translate a trailing _PC1 / _PCH into units=pc1 / pch so
+        # ids like "CPIAUCSL_PC1" resolve to CPIAUCSL with units=pc1 instead of 400ing.
+        units = "lin"
+        real_series_id = series_id
+        for suffix, unit in (("_PC1", "pc1"), ("_PCH", "pch"), ("_PCA", "pca")):
+            if series_id.endswith(suffix):
+                real_series_id = series_id[: -len(suffix)]
+                units = unit
+                break
         url = (
             f"https://api.stlouisfed.org/fred/series/observations"
-            f"?series_id={series_id}"
+            f"?series_id={real_series_id}"
             f"&api_key={api_key}"
+            f"&units={units}"
             f"&file_type=json"
             f"&sort_order=desc"
             f"&limit=1"
@@ -1923,9 +881,7 @@ def load_business_outputs() -> Dict[str, Any]:
     return outputs
 
 
-# =============================================================================
 # Regime computation helpers
-# =============================================================================
 
 def _compute_regime_scores(df: pd.DataFrame) -> Dict[str, float]:
     """
@@ -1948,7 +904,6 @@ def _compute_regime_scores(df: pd.DataFrame) -> Dict[str, float]:
         except Exception as e:
             logger.warning(f"Full feature pipeline failed, using fallback: {e}")
 
-    # ── Fallback: simple z-score from raw columns ──────────────────────────
     scores = {}
 
     def _zscore_latest(series: pd.Series, window: int = 36) -> float:
@@ -2025,9 +980,7 @@ def _classify_regime_from_scores(scores: Dict[str, float]) -> str:
     return classify_regime(g_dir, i_dir)
 
 
-# =============================================================================
 # Dashboard Section Builders
-# =============================================================================
 
 def get_regime_data(df: pd.DataFrame) -> RegimeData:
     # FIXED: Use single source of truth for regime classification (BUG-03, BUG-05)
@@ -2219,6 +1172,23 @@ def get_regime_data(df: pd.DataFrame) -> RegimeData:
     except Exception as e:
         logger.warning(f"[ForecastTracker] Failed to log regime: {e}")
 
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # BUILD REGIME PLAYBOOK - Required for all classified regimes
+    # ═══════════════════════════════════════════════════════════════════════════════
+    from api.calculations import get_regime_characteristics
+
+    regime_chars = get_regime_characteristics(regime)
+    playbook = {
+        "summary": regime_chars.description if regime_chars else f"{regime} regime",
+        "keyRisks": regime_chars.themes[:3] if regime_chars else ["Market risk", "Policy uncertainty"],
+        "opportunities": [
+            f"{regime_chars.equity_bias.title()} equities" if regime_chars else "Neutral equities",
+            f"{regime_chars.duration_bias} duration" if regime_chars else "Neutral duration",
+            f"{regime_chars.commodity_bias} commodities" if regime_chars else "Neutral commodities"
+        ],
+        "positioningGuidance": f"{regime}: {regime_chars.description if regime_chars else 'Active regime'}"
+    }
+
     return RegimeData(
         current=regime,
         confidence=confidence,
@@ -2231,7 +1201,8 @@ def get_regime_data(df: pd.DataFrame) -> RegimeData:
             {"factor": "Liquidity", "impact": l_label, "color": l_color},
             {"factor": "Risk",      "impact": r_label, "color": r_color},
         ],
-        alert=alert
+        alert=alert,
+        playbook=playbook
     )
 
 
@@ -2409,8 +1380,9 @@ def calculate_debt_cycle(df: pd.DataFrame, fred_api_key: Optional[str] = None) -
     }
 
     # FIXED: Initialize data dictionary
+    from api.config import FRED_API_KEY as CONFIG_FRED_KEY
     debt_data = {}
-    api_key = fred_api_key or os.getenv("FRED_API_KEY", "")
+    api_key = fred_api_key or CONFIG_FRED_KEY or ""
 
     # FIXED: Try to fetch from FRED API if key available
     if api_key:
@@ -2888,7 +1860,7 @@ def calculate_signal_stack(
     recession_triggered = layer_outputs.get("recession", {}).get("triggered", False)
     if recession_triggered:
         overrides_applied.append("Layer 1: Recession probability > 60%")
-    layers.append(SignalLayerItem(
+    layers.append(SignalStackLayer(
         layer="Recession Probability",
         priority=1,
         signal="VETO" if recession_triggered else "PASS",
@@ -2898,7 +1870,7 @@ def calculate_signal_stack(
 
     # Layer 2: Regime
     regime_signal = layer_outputs.get("regime", {}).get("baseStance", base_stance)
-    layers.append(SignalLayerItem(
+    layers.append(SignalStackLayer(
         layer="Regime Classification",
         priority=2,
         signal=regime_signal,
@@ -2911,7 +1883,7 @@ def calculate_signal_stack(
     debt_position = layer_outputs.get("debtCycle", {}).get("position", "Mid Cycle") or "Mid Cycle"
     if debt_cycle_adj != 0:
         overrides_applied.append(f"Layer 3: Debt cycle adjustment ({debt_cycle_adj:+.0%})")
-    layers.append(SignalLayerItem(
+    layers.append(SignalStackLayer(
         layer="Debt Cycle",
         priority=3,
         signal=debt_position,
@@ -2924,7 +1896,7 @@ def calculate_signal_stack(
     tail_score = layer_outputs.get("geopoliticalRisk", {}).get("tailRiskScore", 0) or 0
     if geo_adj != 0:
         overrides_applied.append(f"Layer 4: Geopolitical risk ({tail_score:.1f})")
-    layers.append(SignalLayerItem(
+    layers.append(SignalStackLayer(
         layer="Geopolitical Risk",
         priority=4,
         signal="ELEVATED" if tail_score > 1.5 else "NORMAL",
@@ -2937,7 +1909,7 @@ def calculate_signal_stack(
     liq_score = layer_outputs.get("liquidity", {}).get("score", 0) or 0
     if liq_adj != 0:
         overrides_applied.append(f"Layer 5: Liquidity conditions ({liq_adj:+.0%})")
-    layers.append(SignalLayerItem(
+    layers.append(SignalStackLayer(
         layer="Liquidity Conditions",
         priority=5,
         signal="EXPANSIVE" if liq_score > 0.5 else "CONTRACTING" if liq_score < -0.5 else "NEUTRAL",
@@ -2951,7 +1923,7 @@ def calculate_signal_stack(
     opt_signal = "EXTREME_FEAR" if fear > 70 else "EXTREME_GREED" if fear < 15 else "NEUTRAL"
     if opt_adj != 0:
         overrides_applied.append(f"Layer 6: Options sentiment ({opt_signal})")
-    layers.append(SignalLayerItem(
+    layers.append(SignalStackLayer(
         layer="Options Intelligence",
         priority=6,
         signal=opt_signal,
@@ -2965,7 +1937,7 @@ def calculate_signal_stack(
     contradictions = layer_outputs.get("trendFollowing", {}).get("contradictions", 0)
     if trend_adj != 0:
         overrides_applied.append(f"Layer 7: CTA trend ({cta}, {contradictions} contradictions)")
-    layers.append(SignalLayerItem(
+    layers.append(SignalStackLayer(
         layer="Trend Following",
         priority=7,
         signal=cta,
@@ -2978,7 +1950,7 @@ def calculate_signal_stack(
     vix_val = layer_outputs.get("sentiment", {}).get("vix", 20)
     if sent_adj != 0:
         overrides_applied.append(f"Layer 8: Sentiment (VIX: {vix_val:.1f})")
-    layers.append(SignalLayerItem(
+    layers.append(SignalStackLayer(
         layer="Sentiment",
         priority=8,
         signal="FEAR" if vix_val > 30 else "GREED" if vix_val < 15 else "NEUTRAL",
@@ -2991,7 +1963,7 @@ def calculate_signal_stack(
     cross_mom = layer_outputs.get("momentum", {}).get("crossAsset", 0)
     if mom_adj != 0:
         overrides_applied.append(f"Layer 9: Cross-asset momentum ({mom_adj:+.0%})")
-    layers.append(SignalLayerItem(
+    layers.append(SignalStackLayer(
         layer="Momentum Confirmation",
         priority=9,
         signal="POSITIVE" if cross_mom > 10 else "NEGATIVE" if cross_mom < -10 else "NEUTRAL",
@@ -3004,7 +1976,7 @@ def calculate_signal_stack(
     z_val = layer_outputs.get("valuation", {}).get("zScore", 0)
     if val_capped:
         overrides_applied.append(f"Layer 10: Valuation cap (z-score: {z_val:.1f})")
-    layers.append(SignalLayerItem(
+    layers.append(SignalStackLayer(
         layer="Valuation Cap",
         priority=10,
         signal="EXPENSIVE" if z_val > 2 else "CHEAP" if z_val < -1 else "FAIR",
@@ -3340,9 +2312,7 @@ def run_regime_backtest(current_regime: str = "Stagflation") -> RegimeBacktestRe
     return result
 
 
-# =============================================================================
 # PHASE 6: AQR FACTOR ROTATION + GEOPOLITICAL RISK + OPTIONS INTELLIGENCE + CTA TREND
-# =============================================================================
 
 def calculate_geopolitical_risk(df: pd.DataFrame, fred_api_key: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -3367,8 +2337,9 @@ def calculate_geopolitical_risk(df: pd.DataFrame, fred_api_key: Optional[str] = 
         "STLFSI4": "St. Louis Fed Financial Stress Index",
     }
 
+    from api.config import FRED_API_KEY as CONFIG_FRED_KEY
     geo_data = {}
-    api_key = fred_api_key or os.getenv("FRED_API_KEY", "")
+    api_key = fred_api_key or CONFIG_FRED_KEY or ""
 
     # FIXED: Try to fetch from FRED API
     if api_key:
@@ -6021,7 +4992,8 @@ def calculate_international_macro(df: pd.DataFrame, fred_api_key: Optional[str] 
     }
 
     # FIXED: Try to fetch from FRED API
-    api_key = fred_api_key or os.getenv("FRED_API_KEY", "")
+    from api.config import FRED_API_KEY as CONFIG_FRED_KEY
+    api_key = fred_api_key or CONFIG_FRED_KEY or ""
     if api_key:
         try:
             from fredapi import Fred
@@ -6959,7 +5931,6 @@ def get_risk_indicators(df: pd.DataFrame) -> RiskIndicatorsData:
     indicators = []
     trend_scores = []  # Track direction of change for divergence detection
 
-    # ── HY Credit Spreads ─────────────────────────────────────────────────
     # FIXED: Use unified source-of-truth function
     hy = _get_hy_spread_bps(df)
     hy_series = _series(df, "hy_spreads", "high_yield_spread", "baa_credit_spread")
@@ -6983,7 +5954,6 @@ def get_risk_indicators(df: pd.DataFrame) -> RiskIndicatorsData:
         if len(hy_series) >= 2:
             trend_scores.append(-1 if hy_series.iloc[-1] < hy_series.iloc[-2] else 1)
 
-    # ── VIX ───────────────────────────────────────────────────────────────
     vix = _get(df, "vix", "us_vix")
     vix_series = _series(df, "vix", "us_vix")
     if not np.isnan(vix):
@@ -7005,7 +5975,6 @@ def get_risk_indicators(df: pd.DataFrame) -> RiskIndicatorsData:
         if len(vix_series) >= 2:
             trend_scores.append(-1 if vix_series.iloc[-1] < vix_series.iloc[-2] else 1)
 
-    # ── Yield Curve (10Y–2Y or 10Y–3M) ───────────────────────────────────
     yc = _get(df, "yield_curve", "us_yield_curve")
     yc_series = _series(df, "yield_curve", "us_yield_curve")
     y10 = _get(df, "yield_10y", "us_10y_yield")
@@ -7031,7 +6000,6 @@ def get_risk_indicators(df: pd.DataFrame) -> RiskIndicatorsData:
         if len(yc_series) >= 2:
             trend_scores.append(1 if yc_series.iloc[-1] > yc_series.iloc[-2] else -1)
 
-    # ── BBB Spread ────────────────────────────────────────────────────────
     bbb = _get(df, "bbb_spread", "credit_spreads")
     bbb_series = _series(df, "bbb_spread", "credit_spreads")
     if not np.isnan(bbb):
@@ -7098,7 +6066,6 @@ def get_risk_indicators(df: pd.DataFrame) -> RiskIndicatorsData:
 def get_advanced_indicators(df: pd.DataFrame) -> AdvancedIndicatorsData:
     """All four advanced indicators computed from live models."""
 
-    # ── 1. Sahm Rule ──────────────────────────────────────────────────────
     # FIXED: Look for UNRATE column with multiple fallbacks (BUG 5)
     unrate_col = None
     for col in ['UNRATE', 'unrate', 'unemployment_rate', 'UNEMPLOY', 'us_unemployment']:
@@ -7176,7 +6143,6 @@ def get_advanced_indicators(df: pd.DataFrame) -> AdvancedIndicatorsData:
         description=sahm_description
     )
 
-    # ── 2. Credit Impulse (Biggs-Mayer-Pick 2010) ─────────────────────────
     if _CREDIT_OK:
         try:
             ci_model = CreditImpulseModel()
@@ -7196,7 +6162,6 @@ def get_advanced_indicators(df: pd.DataFrame) -> AdvancedIndicatorsData:
     else:
         credit_ind = _fallback_indicator("Credit Impulse", "Model not available")
 
-    # ── 3. LEI Composite (Conference Board) ───────────────────────────────
     if _LEI_OK:
         try:
             lei_model  = LEICompositeModel()
@@ -7216,7 +6181,6 @@ def get_advanced_indicators(df: pd.DataFrame) -> AdvancedIndicatorsData:
     else:
         lei_ind = _fallback_indicator("LEI Composite", "Model not available")
 
-    # ── 4. All Weather Risk Parity (Qian 2005 / Bridgewater) ──────────────
     if _RISKPARITY_OK:
         try:
             rp_model  = RiskParityAllocator(method="inverse_vol")
@@ -7369,7 +6333,6 @@ def get_model_agreement(df: pd.DataFrame, regime_ctx=None) -> ModelAgreementData
     items = []
     scores = _compute_regime_scores(df)
 
-    # ── Recession model ────────────────────────────────────────────────────
     rec_prob = 0.0
     if _RECESSION_OK:
         try:
@@ -7408,7 +6371,6 @@ def get_model_agreement(df: pd.DataFrame, regime_ctx=None) -> ModelAgreementData
             color="danger"
         ))
 
-    # ── LEI Composite ─────────────────────────────────────────────────────
     if _LEI_OK:
         try:
             lei = LEICompositeModel().compute(df)
@@ -7433,7 +6395,6 @@ def get_model_agreement(df: pd.DataFrame, regime_ctx=None) -> ModelAgreementData
         except Exception as e:
             pass
 
-    # ── Credit Impulse ────────────────────────────────────────────────────
     if _CREDIT_OK:
         try:
             ci = CreditImpulseModel().compute(df)
@@ -8176,9 +7137,7 @@ def get_business_layer(df: Optional[pd.DataFrame] = None, regime_ctx=None) -> Bu
     )
 
 
-# =============================================================================
 # MODULE 1: NOWCASTING LAYER (DFM/MIDAS GDP Nowcast)
-# =============================================================================
 
 def get_nowcast_data(df: pd.DataFrame) -> Dict[str, Any]:
     """
@@ -8332,9 +7291,7 @@ def get_nowcast_data(df: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-# =============================================================================
 # MODULE 2: LIQUIDITY CONDITIONS INDEX
-# =============================================================================
 
 def get_liquidity_conditions(df: pd.DataFrame) -> Dict[str, Any]:
     """
@@ -8494,9 +7451,7 @@ def get_liquidity_conditions(df: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-# =============================================================================
 # MODULE 3: SENTIMENT & RISK APPETITE
-# =============================================================================
 
 # FIXED: Pre-fetch Fear & Greed data at module load
 _FEAR_GREED_CACHE: Optional[Dict[str, Any]] = None
@@ -8842,9 +7797,7 @@ def get_sentiment_risk_data(df: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-# =============================================================================
 # MODULE 4: VALUATION FILTER
-# =============================================================================
 
 def get_valuation_filter(df: pd.DataFrame) -> Dict[str, Any]:
     """
@@ -8970,9 +7923,7 @@ def get_valuation_filter(df: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-# =============================================================================
 # MODULE 5: CROSS-ASSET MOMENTUM VETO
-# =============================================================================
 
 def get_momentum_veto(df: pd.DataFrame) -> Dict[str, Any]:
     """
@@ -9102,9 +8053,7 @@ def get_momentum_veto(df: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-# =============================================================================
 # MODULE 6: CORRELATION REGIME ADJUSTMENT
-# =============================================================================
 
 def get_correlation_regime(df: pd.DataFrame) -> Dict[str, Any]:
     """
@@ -9179,9 +8128,7 @@ def get_correlation_regime(df: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-# =============================================================================
 # MODULE 7: SIGNAL HIERARCHY & OVERRIDE LOGIC
-# =============================================================================
 
 def get_signal_stack(df: pd.DataFrame) -> Dict[str, Any]:
     """
@@ -9365,9 +8312,7 @@ def get_signal_stack(df: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-# =============================================================================
 # FastAPI App
-# =============================================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -9428,6 +8373,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"[STARTUP] Failed to initialize scheduler: {e}")
 
+    # FIXED: Log FRED API key status at startup
+    from api.config import FRED_API_KEY
+    if FRED_API_KEY:
+        logger.info("[config] FRED_API_KEY loaded: YES (key starts with: %s...)", FRED_API_KEY[:4])
+    else:
+        logger.warning("[config] FRED_API_KEY loaded: NO — CHECK .env file")
+
     yield
 
     # Shutdown: gracefully stop scheduler and remove port file
@@ -9479,6 +8431,80 @@ app.add_middleware(
 # FIXED: Phase 7 - Register new diagnostics routers
 app.include_router(health_router)
 app.include_router(diagnostics_router)
+
+# FIXED: Phase 3 - Register modular routers
+from api.routers import dashboard_router, market_router, signals_router, risk_router, business_router
+app.include_router(dashboard_router)
+app.include_router(market_router)
+app.include_router(signals_router)
+app.include_router(risk_router)
+app.include_router(business_router)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NATIVE WEBSOCKET ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.websocket("/ws/prices")
+async def websocket_prices(websocket: WebSocket):
+    """
+    Native WebSocket endpoint for real-time price streaming.
+    Falls back to cached data if real-time sources unavailable.
+    """
+    await websocket.accept()
+    logger.info("[WebSocket] Client connected to /ws/prices")
+
+    try:
+        # Send initial connection confirmation
+        await websocket.send_json({
+            "type": "connected",
+            "timestamp": datetime.now().isoformat(),
+            "message": "Connected to price stream"
+        })
+
+        # Simple heartbeat loop
+        import asyncio
+        while True:
+            try:
+                # Try to get latest prices from cache if available
+                try:
+                    from api.services.price_service import price_service
+                    prices = price_service.get_latest_prices(["SPY", "QQQ", "IWM", "GLD", "TLT"])
+                    if prices:
+                        await websocket.send_json({
+                            "type": "prices",
+                            "timestamp": datetime.now().isoformat(),
+                            "data": prices
+                        })
+                    else:
+                        # Send heartbeat if no prices
+                        await websocket.send_json({
+                            "type": "heartbeat",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                except Exception as e:
+                    logger.debug(f"[WebSocket] Price service unavailable: {e}")
+                    await websocket.send_json({
+                        "type": "heartbeat",
+                        "timestamp": datetime.now().isoformat()
+                    })
+
+                # Wait 5 seconds between updates
+                await asyncio.sleep(5)
+
+            except Exception as e:
+                logger.warning(f"[WebSocket] Error in price loop: {e}")
+                await asyncio.sleep(5)
+
+    except WebSocketDisconnect:
+        logger.info("[WebSocket] Client disconnected from /ws/prices")
+    except Exception as e:
+        logger.error(f"[WebSocket] Unexpected error: {e}")
+    finally:
+        try:
+            await websocket.close()
+        except RuntimeError:  # WebSocket may already be closed
+            pass
+
 
 # FIXED: Mount Socket.IO app
 socket_app = socketio.ASGIApp(sio, app)
@@ -9532,14 +8558,16 @@ async def health_check():
     if df is not None:
         # Quick validation of key metrics
         from api.data_fetcher import fetch_metric
+        # Wire in the live FRED fetcher — without it fetch_metric has no source and
+        # always falls back, spamming "ALL SOURCES FAILED" on every health poll.
         try:
-            growth = fetch_metric("growth", force_refresh=True)
+            growth = fetch_metric("growth", fred_fetch_fn=_fetch_fresh_fred_value)
             if not (-15 <= growth <= 15):
                 integrity_errors.append(f"Growth {growth}% out of bounds")
         except Exception as e:
             pass
         try:
-            inflation = fetch_metric("inflation", force_refresh=True)
+            inflation = fetch_metric("inflation", fred_fetch_fn=_fetch_fresh_fred_value)
             if not (-5 <= inflation <= 25):
                 integrity_errors.append(f"Inflation {inflation}% out of bounds")
         except Exception as e:
@@ -9559,17 +8587,6 @@ async def health_check():
 
 # FIXED: Auth endpoint (previously missing - caused 404)
 from fastapi import Request
-
-
-class LoginResponse(BaseModel):
-    success: bool
-    token: Optional[str] = None
-    access_token: Optional[str] = None  # Frontend expects this field
-    user: Optional[Dict[str, Any]] = None
-    role: Optional[str] = None  # Frontend expects this
-    display_name: Optional[str] = None  # Frontend expects this
-    permissions: Optional[List[str]] = None  # Frontend expects this
-    error: Optional[str] = None
 
 
 @app.post("/api/auth/login", response_model=LoginResponse)
@@ -10161,1524 +9178,8 @@ def generate_trade_recommendations_data(
         }
 
 
-@app.get("/api/dashboard", response_model=DashboardData)
-async def get_dashboard():
-    # FIXED: Tier 1D - Check cache first before expensive computation
-    current_time = time.time()
-    with _DASHBOARD_CACHE_LOCK:
-        if (
-            _DASHBOARD_CACHE["data"] is not None
-            and (current_time - _DASHBOARD_CACHE["timestamp"]) < _DASHBOARD_CACHE_TTL_SECONDS
-        ):
-            logger.debug(f"Dashboard cache hit - age: {current_time - _DASHBOARD_CACHE['timestamp']:.1f}s")
-            return _DASHBOARD_CACHE["data"]
-
-    df = load_processed_data()
-    mode = "live"
-    if df is None:
-        df = load_sample_data()
-        mode = "sample"
-    if df is None:
-        raise HTTPException(status_code=503, detail="No data available. Run pipeline first.")
-
-    # Build new module outputs (camelCase to match frontend types)
-    nowcast_out = None
-    if _NOWCAST_OK:
-        try:
-            # FIXED: Use get_nowcast_data for proper RMSE and component breakdown
-            nowcast_data = get_nowcast_data(df)
-            nowcast_out = nowcast_data
-        except Exception as e:
-            logger.warning(f"Nowcast data failed: {e}")
-            # Fallback to module function
-            try:
-                n = get_gdp_nowcast(df)
-                nowcast_out = {
-                    "gdpNowcast": n.nowcast_gdp_growth,
-                    "nowcastQoQ": n.nowcast_gdp_growth / 4,
-                    "nowcastYoY": n.nowcast_gdp_growth,
-                    "confidenceInterval": {
-                        "lower": n.confidence_interval_low,
-                        "upper": n.confidence_interval_high,
-                        "rmse": "N/A",
-                        "rmseTooltip": "Requires historical backtest data",
-                    },
-                    "components": [],
-                    "revisionHistory": [],
-                    "methodology": "DFM/PCA (Mariano & Murasawa 2010)",
-                    "lastUpdated": n.last_updated,
-                }
-            except Exception as e2:
-                logger.warning(f"Nowcast fallback failed: {e2}")
-
-    liquidity_out = None
-    if _LIQUIDITY_OK:
-        try:
-            # FIXED: Use get_liquidity_conditions for proper indicator breakdown
-            liquidity_data = get_liquidity_conditions(df)
-            liquidity_out = liquidity_data
-        except Exception as e:
-            logger.warning(f"Liquidity conditions failed: {e}")
-            # Fallback to module function
-            try:
-                l = get_liquidity_index(df)
-                liquidity_out = {
-                    "compositeScore": l.liquidity_index,
-                    "regime": l.signal,
-                    "indicators": [
-                        {"name": k, "value": v, "formatted": f"{v:+.2f}", "zScore": v, "trend": "neutral", "interpretation": l.description}
-                        for k, v in l.components.items()
-                    ] if l.components else [],
-                    "fedPolicyStance": "Neutral",
-                    "creditAvailability": l.signal,
-                    "description": l.description,
-                }
-            except Exception as e2:
-                logger.warning(f"Liquidity fallback failed: {e2}")
-
-    sentiment_out = None
-    if _SENTIMENT_OK:
-        try:
-            # FIXED: Use get_sentiment_risk_data for proper AAII and cross-asset momentum
-            sentiment_data = get_sentiment_risk_data(df)
-            sentiment_out = sentiment_data
-        except Exception as e:
-            logger.warning(f"Sentiment failed: {e}")
-            # Fallback to module function
-            try:
-                scores = _compute_regime_scores(df)
-                regime_score = scores.get("growth", 0)
-                s = get_risk_appetite(df, regime_score)
-                sentiment_out = {
-                    "compositeRiskAppetite": s.risk_appetite_score,
-                    "regime": s.signal,
-                    "gauges": [
-                        {"name": k, "value": v, "formatted": f"{v:+.2f}", "signal": s.signal, "percentile": 50 + int(v * 25), "description": s.description}
-                        for k, v in s.components.items()
-                    ] if s.components else [],
-                    "vixTermStructure": {"ratio": s.components.get("vix_term_structure"), "structure": "contango" if s.components.get("vix_term_structure", 0) > 0 else "backwardation"},
-                    "aaiiSentiment": {"bullBearSpread": s.components.get("aaii_sentiment"), "signal": s.signal} if s.components.get("aaii_sentiment") is not None else {"signal": s.signal},
-                    "crossAssetMomentum": {"averageMomentum": 0, "assets": [], "regime": s.signal},
-                    "contrarianSignal": "Neutral",
-                    "description": s.description,
-                }
-            except Exception as e2:
-                logger.warning(f"Sentiment fallback failed: {e2}")
-
-    valuation_out = None
-    if _VALUATION_OK:
-        try:
-            v = _get_new_valuation(df)
-            metrics = []
-            for name, data in v.components.items():
-                metrics.append({
-                    "name": name,
-                    "currentValue": data.get("value", 0),
-                    "historicalMean": data.get("value", 0),  # Placeholder
-                    "zScore": 0,  # Placeholder
-                    "percentile": data.get("percentile", 50),
-                    "signal": data.get("signal", "FAIR"),
-                    "interpretation": v.description,
-                })
-            valuation_out = {
-                "compositeScore": v.position_size_scalar,
-                "regime": v.overall_valuation,
-                "metrics": metrics,
-                "expectedReturns": {},
-                "description": v.description,
-            }
-            # If no components were found, add sample data
-            if not metrics:
-                raise ValueError("No valuation components available")
-        except Exception as e:
-            logger.warning(f"Valuation failed: {e}, using sample data")
-            # FIXED: Sample valuation data when real data unavailable
-            valuation_out = {
-                "compositeScore": 1.0,
-                "regime": "FAIR",
-                "metrics": [
-                    {
-                        "name": "Equity CAPE",
-                        "currentValue": 32.5,
-                        "historicalMean": 28.0,
-                        "zScore": 0.8,
-                        "percentile": 78,
-                        "signal": "EXPENSIVE",
-                        "interpretation": "Stretched equity valuations",
-                    },
-                    {
-                        "name": "Bond Real Yield",
-                        "currentValue": 1.85,
-                        "historicalMean": 1.2,
-                        "zScore": 0.6,
-                        "percentile": 72,
-                        "signal": "ATTRACTIVE",
-                        "interpretation": "Bonds offer reasonable value",
-                    },
-                    {
-                        "name": "Credit Spreads",
-                        "currentValue": 0.3,
-                        "historicalMean": 0.5,
-                        "zScore": -0.4,
-                        "percentile": 35,
-                        "signal": "TIGHT",
-                        "interpretation": "Credit spreads below average",
-                    },
-                ],
-                "expectedReturns": {
-                    "SPY": 6.5,
-                    "TLT": 4.8,
-                    "GLD": 5.2,
-                    "HYG": 5.8,
-                },
-                "description": "Valuation: FAIR - Mixed signals across asset classes (sample data)",
-            }
-
-    momentum_out = None
-    if _MOMENTUM_OK:
-        try:
-            regime = _classify_regime_from_scores(_compute_regime_scores(df))
-            m = _get_new_momentum(df, regime)
-            assets = []
-            for asset_name, asset_data in m.assets.items():
-                assets.append({
-                    "asset": asset_name,
-                    "return12m": asset_data.get("momentum_pct", 0),
-                    "return1m": 0,
-                    "momentum12_1": asset_data.get("momentum_zscore", 0),
-                    "dampenedSignal": asset_data.get("dampenedSignal", 0) if "dampenedSignal" in asset_data else asset_data.get("momentum_zscore", 0),
-                    "rawSignal": asset_data.get("direction", "FLAT"),
-                    "interpretation": f"Expected: {asset_data.get('expected_direction', 'FLAT')}, Actual: {asset_data.get('direction', 'FLAT')}",
-                })
-            # FIXED (BUG 11): Ensure consistent dampener value in all fields
-            momentum_out = {
-                "vetoActive": bool(m.veto_active),
-                "dampenerApplied": 0.5,  # FIXED (BUG 7): Always 0.5 (50%), not conditional on veto
-                "dampener": 0.5,  # Alias for frontend compatibility
-                "dampener_pct": 50,  # Percentage form for frontend
-                "assets": assets,
-                "portfolioAdjustment": {
-                    "action": "REDUCE_RISK" if m.veto_active else "MAINTAIN",
-                    "magnitude": 0.5 if m.veto_active else 0.0,
-                    "affectedAssets": [a for a in m.assets.keys() if m.assets[a].get("dampener_applied")],
-                    "rationale": m.description,
-                },
-                "description": m.description,
-            }
-        except Exception as e:
-            logger.warning(f"Momentum failed: {e}")
-
-        # FIXED (BUG J): Fallback momentum data if calculation failed
-        if momentum_out is None:
-            momentum_out = {
-                "vetoActive": False,
-                "dampenerApplied": 0.5,
-                "dampener": 0.5,
-                "assets": [
-                    {"asset": "S&P 500", "return12m": 8.5, "return1m": 0.8, "momentum12_1": 7.7, "dampenedSignal": 3.85, "rawSignal": "positive", "interpretation": "OK: positive"},
-                    {"asset": "MSCI EAFE", "return12m": 6.2, "return1m": 0.5, "momentum12_1": 5.7, "dampenedSignal": 2.85, "rawSignal": "positive", "interpretation": "OK: positive"},
-                    {"asset": "Gold", "return12m": 12.1, "return1m": 1.2, "momentum12_1": 10.9, "dampenedSignal": 5.45, "rawSignal": "strong_positive", "interpretation": "OK: strong_positive"},
-                ],
-                "portfolioAdjustment": {
-                    "action": "MAINTAIN",
-                    "magnitude": 0.0,
-                    "rationale": "No momentum conflicts detected — maintain current allocation at full size."
-                },
-                "description": "Momentum filter using 12-1 month returns with 50% dampener. Research: Asness (1997), Moskowitz & Grinblatt (1999)."
-            }
-
-    correlation_out = None
-    if _CORRELATION_OK:
-        try:
-            c = _get_new_correlation(df)
-            correlations = []
-            for pair, corr in c.correlation_matrix.items():
-                correlations.append({
-                    "assetPair": pair,
-                    "correlation60d": corr,
-                    "regime": "Positive" if corr > 0.3 else "Negative" if corr < -0.3 else "Neutral",
-                    "interpretation": "Stagflation risk" if corr > 0.3 else "Normal diversification",
-                })
-            correlation_out = {
-                "currentRegime": c.risk_parity_mode,
-                "equityBondCorrelation": c.equity_bond_correlation,
-                "switchTriggered": c.risk_parity_mode == "MINIMUM_CORRELATION",
-                "fallbackStrategy": "Minimum Correlation" if c.risk_parity_mode == "MINIMUM_CORRELATION" else "Risk Parity",
-                "correlations": correlations,
-                "riskParityAdjustment": {
-                    "normalWeights": {},
-                    "adjustedWeights": {},
-                    "rationale": c.warning or "Standard risk parity allocation",
-                },
-                "description": c.warning or "Standard correlation regime",
-            }
-        except Exception as e:
-            logger.warning(f"Correlation regime failed: {e}")
-
-    signalstack_out = None
-    if _SIGNALSTACK_OK:
-        try:
-            sh = _get_new_signal_stack(df)
-            layers = []
-            overrides = []
-            for p in sh.pipeline:
-                layer_data = {
-                    "layer": p.name,
-                    "priority": p.layer,
-                    "signal": p.value,
-                    "conviction": p.confidence,
-                }
-                if bool(p.override_flag):
-                    layer_data["override"] = f"Override active at layer {p.layer}"
-                    overrides.append(f"Layer {p.layer}: {p.name}")
-                layers.append(layer_data)
-            signalstack_out = {
-                "finalSignal": sh.final_regime,
-                "conviction": 0.7 if not sh.recession_override_active else 0.9,
-                "layers": layers,
-                "overridesApplied": overrides,
-                "reasoning": sh.description,
-                "timestamp": datetime.now().isoformat(),
-            }
-        except Exception as e:
-            logger.warning(f"Signal stack failed: {e}")
-
-    # FIXED: Calculate Risk Parity weights using inverse volatility methodology
-    risk_parity_out = None
-    try:
-        risk_parity_out = calculate_risk_parity_weights(df)
-    except Exception as e:
-        logger.warning(f"Risk Parity calculation failed: {e}")
-
-    # FIXED: Calculate regime transition probabilities
-    regime_transitions_out = None
-    regime_data = None
-    regime_ctx = None  # FIXED B-01/B-02: Build regime_ctx for passing to functions
-    try:
-        regime_data = get_regime_data(df)
-        # FIXED B-01/B-02: Build regime_ctx fresh from data (same as get_regime_data does)
-        # This ensures international macro US row matches master regime
-        if df is not None:
-            growth_val = _get(df, "gdp_growth") or 2.0
-            inflation_val = _get(df, "core_cpi_yoy", "us_cpi") or 3.3
-            regime_ctx = build_regime_context(
-                growth_val=growth_val,
-                inflation_val=inflation_val,
-                confidence=regime_data.confidenceScore if regime_data else 0.8
-            )
-        # FIXED (BUG 14): Pass LIVE current regime to ensure transitions from correct regime
-        regime_transitions_out = calculate_regime_transitions(
-            regime_data.history if regime_data else [],
-            live_regime=regime_data.current if regime_data else None
-        )
-    except Exception as e:
-        logger.warning(f"Regime transitions calculation failed: {e}")
-
-    # FIXED: Calculate Debt Cycle Monitor (Task 1)
-    debt_cycle_out = None
-    try:
-        debt_cycle_out = calculate_debt_cycle(df)
-    except Exception as e:
-        logger.warning(f"Debt cycle calculation failed: {e}")
-
-    # FIXED: Calculate Signal Stack (Task 2)
-    signal_stack_v2_out = None
-    try:
-        # Get required inputs
-        recession_data = get_recession_data(df)
-        recession_prob = recession_data.probability if recession_data else 0
-        liquidity_score = liquidity_out.get('compositeScore', 0) if isinstance(liquidity_out, dict) else 0
-        sentiment_for_stack = sentiment_out if sentiment_out else {}
-        valuation_z = 0.0
-
-        signal_stack_v2_out = calculate_signal_stack(
-            df=df,
-            regime_data=regime_data if regime_data else RegimeData(current="Stagflation", confidence="Medium", confidenceScore=0.5, duration=6, history=[], interpretations=[]),
-            debt_cycle=debt_cycle_out if debt_cycle_out else DebtCycleResult(cyclePosition="Late Cycle", cycleScore=-1, severity="moderate", indicators=DebtCycleIndicators(realRate=DebtCycleIndicator(value=1.5, signal="neutral", interpretation=""), debtGDP=DebtCycleIndicator(value=120, signal="stable", interpretation=""), debtServiceRatio=DebtCycleIndicator(value=9.8, signal="elevated", interpretation=""), creditImpulse=DebtCycleIndicator(value=-0.5, signal="stable", interpretation=""), m2Growth=DebtCycleIndicator(value=2.0, signal="neutral", interpretation="")), implication="", historicalAnalog=""),
-            recession_prob=recession_prob,
-            liquidity_score=liquidity_score,
-            sentiment_data=sentiment_for_stack,
-            valuation_zscore=valuation_z
-        )
-    except Exception as e:
-        logger.warning(f"Signal stack v2 calculation failed: {e}")
-
-    # FIXED: Generate Trade Recommendations (7-Layer Signal Engine)
-    trade_recommendations_out = None
-    try:
-        trade_recommendations_out = generate_trade_recommendations_data(
-            df=df,
-            regime_data=regime_data,
-            signal_stack=signal_stack_v2_out
-        )
-        logger.info(f"Generated {trade_recommendations_out.get('summary', {}).get('qualified_count', 0)} trade recommendations")
-    except Exception as e:
-        logger.warning(f"Trade recommendations generation failed: {e}")
-
-    # FIXED: Calculate Expected Returns (Task 5)
-    expected_returns_out = None
-    try:
-        current_regime = regime_data.current if regime_data else "Stagflation"
-        expected_returns_result = calculate_expected_returns(
-            df=df,
-            risk_parity=risk_parity_out if risk_parity_out else RiskParityAllocationData(holdings=[], totalHoldings=0, lastRebalanced="", methodology=""),
-            regime=current_regime
-        )
-        # FIXED: Transform to frontend ExpectedReturnsData format
-        expected_returns_out = _transform_expected_returns(expected_returns_result, current_regime)
-    except Exception as e:
-        logger.warning(f"Expected returns calculation failed: {e}")
-        # FIXED: Return fallback data on error
-        expected_returns_out = _get_fallback_expected_returns("Stagflation")
-
-    # FIXED: Calculate Regime Backtest (Task 3)
-    regime_backtest_out = None
-    try:
-        current_regime = regime_data.current if regime_data else "Stagflation"
-        regime_backtest_out = run_regime_backtest(current_regime)
-    except Exception as e:
-        logger.warning(f"Regime backtest calculation failed: {e}")
-
-    # FIXED: Phase 4 - Calculate Alerts
-    alerts_out = None
-    try:
-        recession_dict = {"probability": recession_prob}
-        if hasattr(recession_data, 'sahmValue'):
-            recession_dict["sahmValue"] = recession_data.sahmValue
-        elif hasattr(get_recession_data(df), 'sahmValue'):
-            recession_dict["sahmValue"] = get_recession_data(df).sahmValue
-        else:
-            recession_dict["sahmValue"] = 0.0
-
-        alerts_out = evaluate_alerts(
-            df=df,
-            regime_data=regime_data,
-            recession_data=recession_dict,
-            sentiment_data=sentiment_out if sentiment_out else {},
-            debt_cycle=debt_cycle_out,
-            regime_transitions=regime_transitions_out
-        )
-    except Exception as e:
-        logger.warning(f"Alerts evaluation failed: {e}")
-
-    # FIXED: Phase 4 - Calculate International Macro
-    international_macro_out = None
-    try:
-        # FIXED B-01: Pass regime_ctx to ensure US row uses master regime values
-        # This ensures US regime, growth, inflation always match master regime_ctx
-        international_macro_out = calculate_international_macro(df, regime_ctx=regime_ctx)
-    except Exception as e:
-        logger.warning(f"International macro calculation failed: {e}")
-
-    # FIXED: Phase 6 - Calculate Geopolitical Risk
-    geopolitical_risk_out = None
-    try:
-        geopolitical_risk_out = calculate_geopolitical_risk(df)
-    except Exception as e:
-        logger.warning(f"Geopolitical risk calculation failed: {e}")
-
-    # FIXED: Phase 6 - Calculate Options Intelligence
-    options_intelligence_out = None
-    try:
-        options_intelligence_out = calculate_options_intelligence(df)
-    except Exception as e:
-        logger.warning(f"Options intelligence calculation failed: {e}")
-
-    # FIXED: Phase 6 - Calculate Trend Signals
-    trend_signals_out = None
-    try:
-        trend_signals_out = calculate_trend_signals(df)
-    except Exception as e:
-        logger.warning(f"Trend signals calculation failed: {e}")
-
-    # FIXED: Phase 6 - Calculate Factor Rotation
-    factor_rotation_out = None
-    try:
-        current_regime = regime_data.current if regime_data else "Stagflation"
-        factor_rotation_out = calculate_factor_rotation(current_regime)
-    except Exception as e:
-        logger.warning(f"Factor rotation calculation failed: {e}")
-
-    # FIXED: Phase 6 - Update Signal Stack V2 with new layers
-    try:
-        signal_stack_v2_out = calculate_signal_stack(
-            df=df,
-            regime_data=regime_data if regime_data else RegimeData(current="Stagflation", confidence="Medium", confidenceScore=0.5, duration=6, history=[], interpretations=[]),
-            debt_cycle=debt_cycle_out if debt_cycle_out else DebtCycleResult(cyclePosition="Late Cycle", cycleScore=-1, severity="moderate", indicators=DebtCycleIndicators(realRate=DebtCycleIndicator(value=1.5, signal="neutral", interpretation=""), debtGDP=DebtCycleIndicator(value=120, signal="stable", interpretation=""), debtServiceRatio=DebtCycleIndicator(value=9.8, signal="elevated", interpretation=""), creditImpulse=DebtCycleIndicator(value=-0.5, signal="stable", interpretation=""), m2Growth=DebtCycleIndicator(value=2.0, signal="neutral", interpretation="")), implication="", historicalAnalog=""),
-            recession_prob=recession_prob,
-            liquidity_score=liquidity_out.get('compositeScore', 0) if isinstance(liquidity_out, dict) else 0,
-            sentiment_data=sentiment_out if sentiment_out else {},
-            valuation_zscore=0.0,
-            geopolitical_risk=geopolitical_risk_out,
-            options_intelligence=options_intelligence_out,
-            trend_signals=trend_signals_out
-        )
-    except Exception as e:
-        logger.warning(f"Signal stack v2 update failed: {e}")
-
-    # FIXED: Phase 6 - Add new alerts from geopolitical and options
-    try:
-        if geopolitical_risk_out and geopolitical_risk_out.get("tailRiskScore", 0) > 1.0:
-            if alerts_out and "active" in alerts_out:
-                alerts_out["active"].append({
-                    "id": "geo-risk-001",
-                    "severity": "warning",
-                    "triggered": True,
-                    "triggeredAt": datetime.now().isoformat(),
-                    "message": f"Geopolitical risk elevated at {geopolitical_risk_out.get('tailRiskScore', 0):.1f}σ - policy uncertainty rising",
-                    "action": "Increase hedges, widen position sizing buffers",
-                    "currentValue": geopolitical_risk_out.get("tailRiskScore", 0),
-                    "threshold": 1.0,
-                    "acknowledged": False
-                })
-
-        if options_intelligence_out and options_intelligence_out.get("optionsFearComposite", 50) > 70:
-            if alerts_out and "active" in alerts_out:
-                alerts_out["active"].append({
-                    "id": "options-fear-001",
-                    "severity": "warning",
-                    "triggered": True,
-                    "triggeredAt": datetime.now().isoformat(),
-                    "message": f"Options fear composite at {options_intelligence_out.get('optionsFearComposite', 0):.0f} - extreme fear, contrarian buy signal",
-                    "action": "Consider opportunistic entries, high conviction reversals",
-                    "currentValue": options_intelligence_out.get("optionsFearComposite", 0),
-                    "threshold": 70,
-                    "acknowledged": False
-                })
-
-        if options_intelligence_out and options_intelligence_out.get("optionsFearComposite", 50) < 15:
-            if alerts_out and "active" in alerts_out:
-                alerts_out["active"].append({
-                    "id": "options-greed-001",
-                    "severity": "warning",
-                    "triggered": True,
-                    "triggeredAt": datetime.now().isoformat(),
-                    "message": f"Options greed composite at {options_intelligence_out.get('optionsFearComposite', 0):.0f} - complacency detected, add hedges",
-                    "action": "Add portfolio hedges, consider reducing risk",
-                    "currentValue": options_intelligence_out.get("optionsFearComposite", 0),
-                    "threshold": 15,
-                    "acknowledged": False
-                })
-    except Exception as e:
-        logger.warning(f"Alert update failed: {e}")
-
-    # FIXED: Phase 7 - Calculate advanced quantitative modules
-    news_sentiment_out = None
-    gmo_forecasts_out = None
-    reflexivity_out = None
-    factor_decomp_out = None
-    horizon_analysis_out = None
-
-    try:
-        news_sentiment_out = calculate_news_sentiment()
-    except Exception as e:
-        logger.warning(f"News sentiment calculation failed: {e}")
-
-    try:
-        gmo_forecasts_out = calculate_gmo_forecasts(df)
-    except Exception as e:
-        logger.warning(f"GMO forecasts calculation failed: {e}")
-
-    try:
-        reflexivity_out = detect_reflexivity_loops(df)
-        # FIXED: Update regime transitions if reflexivity active
-        if reflexivity_out and reflexivity_out.get("reflexivityAlert"):
-            if regime_transitions_out and "transitionMatrix" in regime_transitions_out:
-                # Boost stay probability by 10%
-                current_regime = regime_data.get("current", "Stagflation") if isinstance(regime_data, dict) else "Stagflation"
-                matrix = regime_transitions_out["transitionMatrix"]
-                if current_regime in matrix:
-                    matrix[current_regime][current_regime] = min(1.0, matrix[current_regime].get(current_regime, 0.3) + 0.1)
-                    regime_transitions_out["reflexivityAdjusted"] = True
-    except Exception as e:
-        logger.warning(f"Reflexivity calculation failed: {e}")
-
-    try:
-        # FIXED B-02: Pass regime_ctx for dynamic regime narrative
-        factor_decomp_out = calculate_factor_decomposition(df, regime_ctx=regime_ctx)
-    except Exception as e:
-        logger.warning(f"Factor decomposition calculation failed: {e}")
-
-    try:
-        horizon_analysis_out = calculate_investment_horizons(
-            regime_data=regime_data if isinstance(regime_data, dict) else {"current": "Stagflation"},
-            trend_signals=trend_signals_out,
-            gmo_forecasts=gmo_forecasts_out,
-            options_intelligence=options_intelligence_out
-        )
-    except Exception as e:
-        logger.warning(f"Horizon analysis calculation failed: {e}")
-
-    # FIXED: Calculate Scenario Analysis (BUG 7)
-    scenario_analysis_out = None
-    try:
-        current_regime = regime_data.current if regime_data else "Stagflation"
-        scenarios = _calculate_scenarios(current_regime)
-        scenario_analysis_out = {
-            "currentRegime": current_regime,
-            "scenarios": scenarios,
-            "methodology": "Monte Carlo simulation with regime-conditioned distributions",
-            "lastUpdated": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.warning(f"Scenario analysis calculation failed: {e}")
-        # Return synthetic fallback based on regime
-        current_regime = regime_data.current if regime_data else "Stagflation"
-        scenario_analysis_out = {
-            "currentRegime": current_regime,
-            "scenarios": _calculate_scenarios(current_regime),
-            "methodology": "Fallback: Historical regime estimates",
-            "lastUpdated": datetime.now().isoformat()
-        }
-
-    # FIXED: Calculate Trade Ideas (BUG 5)
-    trade_ideas_out = None
-    try:
-        current_regime = regime_data.current if regime_data else "Stagflation"
-        # Generate trade ideas based on regime and signal stack
-        # FIXED: Clamp sizes to 0-100% range (BUG 2)
-        def clamp_size(val):
-            try:
-                f = float(val)
-                if math.isnan(f) or math.isinf(f):
-                    return 0.0
-                return min(1.0, max(0.0, f))  # Clamp to 0-1 range (will be displayed as 0-100%)
-            except (TypeError, ValueError):
-                return 0.0
-
-        trade_ideas_out = {
-            "ideas": [
-                {
-                    "id": 1,
-                    "ticker": "GLD" if current_regime == "Stagflation" else "SPY",
-                    "direction": "LONG",
-                    "thesis": f"{current_regime} regime favors {'inflation hedges' if current_regime == 'Stagflation' else 'cyclical exposure'}",
-                    "conviction": "MEDIUM",
-                    "category": "regime",
-                    "horizon_days": 90,
-                    "days_open": 0,
-                    "status": "ACTIVE",
-                    "regime_valid": True,
-                    "regime_current": current_regime,
-                    "pnl_pct": 0.0,
-                    "exit_conditions": [],
-                    "kelly_size": clamp_size(0.05),  # 5% position
-                    "suggested_size": clamp_size(0.08),  # 8% position
-                },
-                {
-                    "id": 2,
-                    "ticker": "TLT" if current_regime == "Stagflation" else "XLK",
-                    "direction": "SHORT",
-                    "thesis": f"{current_regime} regime pressures {'bonds via inflation' if current_regime == 'Stagflation' else 'tech via tightening'}",
-                    "conviction": "LOW",
-                    "category": "regime",
-                    "horizon_days": 30,
-                    "days_open": 0,
-                    "status": "ACTIVE",
-                    "regime_valid": True,
-                    "regime_current": current_regime,
-                    "pnl_pct": 0.0,
-                    "exit_conditions": [],
-                    "kelly_size": clamp_size(0.03),  # 3% position
-                    "suggested_size": clamp_size(0.05),  # 5% position
-                }
-            ],
-            "regime": current_regime,
-            "total_ideas": 2,
-            "generated_at": datetime.now().isoformat(),
-            "risk_budget": 0.15,
-            "lastUpdated": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.warning(f"Trade ideas calculation failed: {e}")
-        trade_ideas_out = {"ideas": [], "regime": "Unknown", "total_ideas": 0, "lastUpdated": datetime.now().isoformat()}
-
-    # FIXED: Calculate Morning Brief (BUG 2, BUG 13)
-    morning_brief_out = None
-    try:
-        current_regime = regime_data.current if regime_data else "Stagflation"
-        # Get next high impact event from horizon
-        next_event = None
-        if horizon_analysis_out and horizon_analysis_out.get("next_high_impact"):
-            next_event = horizon_analysis_out["next_high_impact"]
-
-        # FIXED: Guard confidence value
-        try:
-            confidence_raw = regime_data.confidenceScore if regime_data and hasattr(regime_data, 'confidenceScore') else 0.75
-            confidence = float(confidence_raw)
-            if math.isnan(confidence) or math.isinf(confidence):
-                confidence = 0.0
-            confidence = min(1.0, max(0.0, confidence))
-        except (TypeError, ValueError):
-            confidence = 0.0
-
-        morning_brief_out = {
-            "date": datetime.now().strftime("%Y-%m-%d"),
-            "regime": current_regime,
-            "duration_months": regime_data.duration if regime_data and hasattr(regime_data, 'duration') else 1,
-            "confidence": confidence,
-            "headline": f"Macro regime: {current_regime}",
-            "priorities": [
-                {"type": "calendar", "priority": 1, "title": "Monitor FOMC decision", "implication": "Policy pivot signals"},
-                {"type": "tension", "priority": 2, "title": "Watch CPI release", "implication": "Inflation trajectory"},
-                {"type": "signal", "priority": 3, "title": "Track credit spreads", "implication": "Financial stress indicators"},
-            ],
-            "risks": [
-                {"type": "policy", "text": "Policy error: Fed overtightening into slowing growth", "severity": "WARNING"},
-                {"type": "credit", "text": "Credit event: HY spreads widening above 500bps", "severity": "CRITICAL"},
-                {"type": "geopolitical", "text": "Geopolitical escalation: Energy price spike risk", "severity": "WARNING"},
-            ],
-            "conviction_trades": [
-                {"ticker": "GLD", "direction": "LONG", "conviction": "HIGH", "thesis": "Stagflation hedge"},
-                {"ticker": "TLT", "direction": "SHORT", "conviction": "MEDIUM", "thesis": "Inflation pressure on bonds"},
-            ],
-            "position_modifier": 1.0,
-            "model_caution": False,
-            "nextEvent": next_event,
-            "lastUpdated": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.warning(f"Morning brief calculation failed: {e}")
-        morning_brief_out = {
-            "date": datetime.now().strftime("%Y-%m-%d"),
-            "regime": "Unknown",
-            "duration_months": 0,
-            "confidence": 0.0,
-            "headline": "Analysis unavailable",
-            "priorities": [],
-            "risks": [],
-            "conviction_trades": [],
-            "position_modifier": 1.0,
-            "model_caution": True,
-            "lastUpdated": datetime.now().isoformat()
-        }
-
-    # FIXED (BUG 5): Calculate Equity Research matching frontend interface
-    equity_research_out = None
-    try:
-        current_regime = regime_data.current if regime_data else "Stagflation"
-        # Sector recommendations based on regime
-        sector_recs = {
-            "Stagflation": {"overweight": ["Energy", "Materials"], "underweight": ["Technology", "Real Estate"]},
-            "Goldilocks": {"overweight": ["Technology", "Consumer Discretionary"], "underweight": ["Utilities", "Consumer Staples"]},
-            "Reflation": {"overweight": ["Financials", "Industrials"], "underweight": ["Utilities", "Bond Proxies"]},
-            "Slowdown": {"overweight": ["Utilities", "Consumer Staples"], "underweight": ["Cyclicals", "Materials"]}
-        }
-        recs = sector_recs.get(current_regime, sector_recs["Stagflation"])
-
-        # FIXED (BUG D): Match SectorRec interface - signal (not action), confidence, expectedReturn, macroDrivers, weight
-        equity_research_out = {
-            "sectorRotation": {
-                "regime": current_regime,
-                "recommendations": [
-                    {
-                        "sector": s,
-                        "signal": "OVERWEIGHT",
-                        "confidence": 0.75,
-                        "expectedReturn": 8.5,
-                        "macroDrivers": [f"Benefits from {current_regime.lower()} regime"],
-                        "weight": 0.15
-                    }
-                    for s in recs["overweight"]
-                ] + [
-                    {
-                        "sector": s,
-                        "signal": "UNDERWEIGHT",
-                        "confidence": 0.70,
-                        "expectedReturn": -5.2,
-                        "macroDrivers": [f"Hurt by {current_regime.lower()} regime"],
-                        "weight": 0.05
-                    }
-                    for s in recs["underweight"]
-                ],
-                "leader": recs["overweight"][0],
-                "laggard": recs["underweight"][0],
-                "intensity": 0.75
-            },
-            "factorRotation": {
-                "regime": current_regime,
-                "weights": {
-                    "value": 0.30 if current_regime in ["Stagflation", "Reflation"] else 0.20,
-                    "momentum": 0.15 if current_regime == "Goldilocks" else 0.10,
-                    "quality": 0.25,
-                    "growth": 0.20 if current_regime in ["Goldilocks", "Reflation"] else 0.15,
-                    "low_vol": 0.20 if current_regime == "Slowdown" else 0.10
-                },
-                "explanation": {
-                    "thesis": f"{current_regime} regime favors value and quality over growth",
-                    "overweights": [
-                        {"factor": "value", "weight": 0.30 if current_regime in ["Stagflation", "Reflation"] else 0.20}
-                    ]
-                }
-            },
-            "valuation": {  # FIXED: Matches frontend ValuationData interface
-                "regime": current_regime,
-                "currentPE": 21.5,
-                "targetPE": 18.2,
-                "upsidePotential": -15.3,
-                "signal": "ELEVATED" if 21.5 > 20 else "FAIR"
-            },
-            "countryRanking": {
-                "globalRegime": current_regime,
-                "allocation": {
-                    "US": 0.45, "Europe": 0.20, "Japan": 0.15,
-                    "EM": 0.10, "UK": 0.10
-                },
-                "topMarkets": [
-                    {"country": "US", "ticker": "SPY", "score": 0.72},
-                    {"country": "Japan", "ticker": "EWJ", "score": 0.65},
-                    {"country": "UK", "ticker": "EWU", "score": 0.58}
-                ]
-            },
-            "lastUpdated": datetime.now().isoformat(),
-            "note": f"Analysis based on {current_regime} regime indicators"
-        }
-    except Exception as e:
-        logger.warning(f"Equity research calculation failed: {e}")
-        # FIXED: Provide minimal valid structure matching frontend
-        equity_research_out = {
-            "sectorRotation": {"regime": "Stagflation", "recommendations": [], "leader": "", "laggard": "", "intensity": 0},
-            "factorRotation": {"regime": "Stagflation", "weights": {}, "explanation": {}},
-            "valuation": {"regime": "Stagflation", "currentPE": 20.0, "targetPE": 18.0, "upsidePotential": 0, "signal": "NEUTRAL"},
-            "countryRanking": {"globalRegime": "Stagflation", "allocation": {}, "topMarkets": []},
-            "lastUpdated": datetime.now().isoformat()
-        }
-
-    # FIXED: Calculate Economic Calendar (BUG 6, BUG 10)
-    event_calendar_out = None
-    try:
-        # Get events from horizon data or generate fallback
-        events = []
-        if horizon_analysis_out and horizon_analysis_out.get("horizon_events"):
-            for event in horizon_analysis_out["horizon_events"][:10]:
-                evt_name = event.get("event", "")
-                # FIXED (Issue 14): Add realistic prev/forecast values based on event type
-                if "FOMC" in evt_name or "Fed" in evt_name:
-                    prev, fcst = "4.50%", "4.25%"
-                elif "NFP" in evt_name or "Payroll" in evt_name:
-                    prev, fcst = "228K", "185K"
-                elif "CPI" in evt_name:
-                    prev, fcst = "3.2%", "3.1%"
-                elif "GDP" in evt_name:
-                    prev, fcst = "2.8%", "2.5%"
-                else:
-                    prev, fcst = "—", "—"
-                events.append({
-                    "date": event.get("date"),
-                    "event": evt_name,
-                    "importance": event.get("impact", "MEDIUM"),
-                    "time": "08:30" if "NFP" in evt_name else "14:00" if "FOMC" in evt_name else "08:30",
-                    "previous": prev,
-                    "forecast": fcst
-                })
-
-        # FIXED (BUG 10): Generate computed fallback events if none available
-        if not events:
-            from datetime import date, timedelta
-            today = date.today()
-            # Generate next 30 days of known recurring events
-            for i in range(30):
-                d = today + timedelta(days=i)
-                d_str = d.strftime("%Y-%m-%d")
-                # FOMC: check known dates for 2026 (FIXED: add prev/forecast values)
-                if d_str in ["2026-05-07", "2026-06-17", "2026-07-29", "2026-09-16", "2026-11-04", "2026-12-16"]:
-                    events.append({"date": d_str, "event": "FOMC Decision", "importance": "HIGH", "time": "14:00", "previous": "4.50%", "forecast": "4.25%", "actual": None})
-                # NFP: first Friday of each month
-                if d.weekday() == 4 and 1 <= d.day <= 7:
-                    events.append({"date": d_str, "event": "Nonfarm Payrolls", "importance": "HIGH", "time": "08:30", "previous": "228K", "forecast": "185K", "actual": None})
-                # CPI: ~12th of month
-                if d.day == 12:
-                    events.append({"date": d_str, "event": "CPI Release", "importance": "HIGH", "time": "08:30", "previous": "3.2%", "forecast": "3.1%", "actual": None})
-
-        # FIXED (BUG G): Match frontend CalendarEvent interface - upcoming/this_week, release_datetime, event_name
-        calendar_events = []
-        for i, evt in enumerate(events[:10]):
-            calendar_events.append({
-                "id": i + 1,
-                "event_name": evt.get("event", "Economic Release"),
-                "importance": evt.get("importance", "MEDIUM"),
-                "release_datetime": f"{evt.get('date', '')}T{evt.get('time', '08:30')}:00" if evt.get('date') else datetime.now().isoformat(),
-                "time_et": evt.get("time", "08:30"),
-                "actual": evt.get("actual") if evt.get("actual") else None,
-                "forecast": evt.get("forecast") if evt.get("forecast") not in [None] else None,
-                "previous": evt.get("previous") if evt.get("previous") not in [None] else None,
-                "affected_assets": ["SPY", "TLT", "GLD"]
-            })
-
-        event_calendar_out = {
-            "upcoming": calendar_events,
-            "this_week": calendar_events[:5],
-            "blackout_active": False,
-            "minutes_to_next": 1440,
-            "lastUpdated": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.warning(f"Economic calendar calculation failed: {e}")
-        event_calendar_out = {"events": [], "lastUpdated": datetime.now().isoformat()}
-
-    # FIXED: Calculate Risk Analytics (BUG 12)
-    risk_analytics_out = None
-    try:
-        # Use risk parity data if available
-        port_vol = 0.15  # Default 15%
-        if risk_parity_out and hasattr(risk_parity_out, 'portfolioVol'):
-            port_vol = risk_parity_out.portfolioVol or 0.15
-
-        # FIXED (BUG E): Match frontend RiskAnalyticsData interface
-        risk_analytics_out = {
-            "riskAdjustedReturns": {
-                "sharpeRatio": 0.85,
-                "sortinoRatio": 1.12,
-                "calmarRatio": 0.65,
-                "informationRatio": 0.42,
-                "betaVsSpy": 0.75,
-                "var95": round(port_vol * 1.645 / np.sqrt(252), 4),
-                "cvar95": round(port_vol * 2.0 / np.sqrt(252), 4),
-                "annualReturn": 0.08,
-                "annualVolatility": port_vol
-            },
-            "drawdown": {
-                "currentSeverity": "mild",
-                "daysInDrawdown": 0,
-                "recoveryTimeEstimate": "N/A"
-            },
-            "correlation": {
-                "assets": ["SPY", "TLT", "GLD", "HYG"],
-                "matrix3m": [[1.0, -0.3, 0.1, 0.8], [-0.3, 1.0, 0.2, -0.4], [0.1, 0.2, 1.0, 0.1], [0.8, -0.4, 0.1, 1.0]],
-                "diversificationScore": 65,
-                "diversificationRating": "Moderate"
-            },
-            "stressTests": [
-                {"name": "2008 Crisis", "description": "Global financial crisis scenario", "status": "passed"},
-                {"name": "2020 COVID", "description": "Pandemic shock scenario", "status": "passed"},
-                {"name": "2022 Inflation", "description": "Rate hiking cycle scenario", "status": "warning"}
-            ],
-            "benchmark": "60/40 Portfolio",
-            "lastUpdated": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.warning(f"Risk analytics calculation failed: {e}")
-        risk_analytics_out = {
-            "portfolioStats": {"sharpeRatio": 0},
-            "riskMetrics": {"volatility": 0.15},
-            "lastUpdated": datetime.now().isoformat()
-        }
-
-    # FIXED: Calculate date/staleness fields for topbar (BUG-K)
-    latest_date = df.index.max()  # Date of source data (e.g., May 1 from CSV)
-
-    # FIXED: dataAsOf should reflect computation time, not source data time (BUG-K)
-    now = datetime.now()
-    computation_date = now  # When dashboard was computed
-
-    # Stale = only if CACHE is old (>6 hours), not if source data is old
-    cache_timestamp = _DASHBOARD_CACHE.get('timestamp', 0)
-    # FIXED: Handle case where timestamp is 0 (unset/first run) - not stale
-    if cache_timestamp == 0:
-        cache_age_sec = 0
-    else:
-        cache_age_sec = int(time.time() - cache_timestamp)
-    is_stale = cache_age_sec > 21600  # 6 hours
-
-    # Build the dashboard data response
-    dashboard_data = DashboardData(
-        regime=get_regime_data(df),
-        keyMetrics=get_key_metrics(df),
-        signals=get_signals(df),
-        sectorAllocation=get_sector_allocation(df),
-        riskIndicators=get_risk_indicators(df),
-        advancedIndicators=get_advanced_indicators(df),
-        recession=get_recession_data(df),
-        businessLayer=get_business_layer(df, regime_ctx=regime_data),  # FIXED: Pass regime_ctx for fresh data (BUG-C)
-        modelAgreement=get_model_agreement(df, regime_ctx=regime_data),  # BUG-J FIX: Pass regime context
-        transmissionAnalysis=get_transmission_analysis(df),
-        investmentMemo=get_investment_memo(df),
-        dataToWatch=get_data_to_watch(df),
-        metadata=get_metadata(df, mode),
-        nowcast=_sanitize_for_json(nowcast_out),
-        liquidity=_sanitize_for_json(liquidity_out),
-        sentiment=_sanitize_for_json(sentiment_out),
-        valuation=_sanitize_for_json(valuation_out),
-        momentumVeto=_sanitize_for_json(momentum_out),
-        correlationRegime=_sanitize_for_json(correlation_out),
-        signalStack=_sanitize_for_json(signalstack_out),
-        riskParityAllocation=risk_parity_out,
-        regimeTransitions=regime_transitions_out,
-        debtCycle=debt_cycle_out,
-        signalStackV2=signal_stack_v2_out,
-        expectedReturns=expected_returns_out,
-        regimeBacktest=regime_backtest_out,
-        alerts=alerts_out,
-        internationalMacro=international_macro_out,
-        geopoliticalRisk=geopolitical_risk_out,
-        optionsIntelligence=options_intelligence_out,
-        trendSignals=trend_signals_out,
-        factorRotation=factor_rotation_out,
-        # FIXED: Phase 7 data (newsSentiment moved to below with fallback)
-        gmoForecasts=_sanitize_for_json(gmo_forecasts_out),
-        reflexivity=_sanitize_for_json(reflexivity_out),
-        factorDecomposition=_sanitize_for_json(factor_decomp_out),
-        horizonAnalysis=_sanitize_for_json(horizon_analysis_out),
-        # FIXED: ML Signals - sample data for now (matching frontend types)
-        anomalyDetection={
-            "anomalyScore": 0.15,
-            "isAnomaly": False,
-            "anomalousFeatures": [
-                {"feature": "VIX", "currentValue": 25.2, "zscore": 1.8, "interpretation": "Elevated volatility vs historical"},
-                {"feature": "Credit_Spread", "currentValue": 120, "zscore": 1.2, "interpretation": "Wider than expected"}
-            ],
-            "normalFeatures": ["Unemployment", "PMI", "Yield_Curve", "Liquidity", "Dollar_Index"],
-            "severity": "low",
-            "interpretation": "Market conditions within normal parameters",
-            "regimeImplication": "No regime change expected based on current anomalies",
-            "historicalAnalog": None,
-            "lastUpdated": datetime.now().isoformat()
-        },
-        lstmPrediction={
-            "regimeProbability": {"Goldilocks": 0.15, "Reflation": 0.25, "Stagflation": 0.45, "Slowdown": 0.15},
-            "confidence": 0.72,
-            "forecastHorizon": "3 months",
-            "prediction": "Stagflation persists",
-            "lastUpdated": datetime.now().isoformat()
-        },
-        # FIXED: Transform signal stack to EnsembleSignalData format for frontend
-        # FIXED (BUG 5 PERMANENT): Pass current regime for conflict detection
-        ensembleSignal=_transform_signal_stack_to_ensemble(
-            signal_stack_v2_out,
-            current_regime=regime_data.current if regime_data else "Reflation"
-        ) if signal_stack_v2_out else {
-            "ensembleScore": -0.35,
-            "ensembleSignal": "Defensive-Real",
-            "conviction": "HIGH",
-            "agreementRatio": 72,  # FIXED (Fix 10): Return as percentage (0-100), not decimal
-            "signalDispersion": 0.18,
-            "adaptiveWeightingActive": True,
-            "modelBreakdown": [
-                {"model": "Recession Guard", "signal": "Risk-Off", "score": -0.8, "weight": 0.15, "weightedContribution": -0.12},
-                {"model": "Regime Classifier", "signal": "Defensive", "score": -0.5, "weight": 0.15, "weightedContribution": -0.075},
-                {"model": "Debt Cycle", "signal": "Defensive", "score": -0.6, "weight": 0.12, "weightedContribution": -0.072},
-                {"model": "Geopolitical", "signal": "Neutral", "score": -0.1, "weight": 0.08, "weightedContribution": -0.008},
-                {"model": "Liquidity", "signal": "Defensive", "score": -0.4, "weight": 0.10, "weightedContribution": -0.04},
-                {"model": "Options Flow", "signal": "Neutral", "score": 0.05, "weight": 0.10, "weightedContribution": 0.005},
-                {"model": "Trend Following", "signal": "Neutral", "score": 0.0, "weight": 0.10, "weightedContribution": 0.0},
-                {"model": "Sentiment", "signal": "Neutral", "score": -0.1, "weight": 0.08, "weightedContribution": -0.008},
-                {"model": "Momentum", "signal": "Risk-On", "score": 0.3, "weight": 0.07, "weightedContribution": 0.021},
-                {"model": "Valuation", "signal": "Neutral", "score": 0.0, "weight": 0.05, "weightedContribution": 0.0},
-            ],
-            "topContributors": [
-                {"model": "Recession Guard", "contribution": 0.15},
-                {"model": "Debt Cycle", "contribution": 0.12},
-            ],
-            "dissenting": [
-                {"model": "Momentum", "note": "Bullish divergence from trend"},
-            ],
-            "riskBudgetFinal": 0.7,
-            "interpretation": "Recession probability elevated, liquidity contracting. Defensive positioning warranted.",
-            "lastUpdated": datetime.now().isoformat()
-        },
-        # FIXED (Fix 9): Use canonical inception date from module-level constant
-        performanceTracking={
-            # FIXED (Issue 5): Added totalReturn and other missing fields
-            "totalReturn": 8.5,  # Cumulative return since inception
-            "sharpeRatio": 1.2,
-            "maxDrawdown": -8.5,
-            "winRate": 0.65,
-            "monthlyReturn": 0.8,
-            "ytdReturn": 4.2,
-            "benchmark": "S&P 500",
-            "benchmarkReturn": 3.1,
-            "alpha": 1.1,
-            "beta": 0.85,
-            "regimeAccuracy": 0.65,
-            "modelAccuracies": {
-                "Recession Guard": 0.70,
-                "Regime Classifier": 0.75,
-                "Debt Cycle": 0.68,
-                "Liquidity": 0.72,
-                "Trend Following": 0.65
-            },
-            "ensembleCalibration": {
-                "riskOnAccuracy": 0.72,
-                "riskOffAccuracy": 0.68
-            },
-            "trackingPeriod": "YTD 2026",
-            "totalPredictions": 47,
-            "note": "Models showing good calibration in current environment",
-            "lastUpdated": datetime.now().isoformat()
-        },
-        mlSignals={
-            "models": [
-                {"name": "Random Forest", "signal": "HOLD", "confidence": 0.65, "weight": 0.25},
-                {"name": "XGBoost", "signal": "CAUTION", "confidence": 0.72, "weight": 0.30},
-                {"name": "Neural Net", "signal": "DEFENSIVE", "confidence": 0.68, "weight": 0.25},
-                {"name": "SVM", "signal": "HOLD", "confidence": 0.58, "weight": 0.20}
-            ],
-            "aggregateSignal": "DEFENSIVE",
-            "aggregateConfidence": 0.66,
-            "featureImportance": [
-                {"feature": "VIX", "importance": 0.28},
-                {"feature": "Credit Spread", "importance": 0.22},
-                {"feature": "Yield Curve", "importance": 0.18},
-                {"feature": "Liquidity", "importance": 0.15},
-                {"feature": "Momentum", "importance": 0.17}
-            ],
-            "lastUpdated": datetime.now().isoformat()
-        },
-        # FIXED (BUG O): Use fallback if no articles (0 articles from API or None)
-        newsSentiment=news_sentiment_out if (news_sentiment_out and news_sentiment_out.get("overall", {}).get("articleCount", 0) > 0) else {
-            "overall": {
-                "score": -0.25,
-                "label": "Bearish",
-                "momentum": -0.15,
-                "momentumLabel": "Worsening",
-                "articleCount": 1247,
-                "timeWindow": "24h"
-            },
-            "byTheme": {
-                "inflation": {"score": -0.4, "label": "Bearish", "articleCount": 342},
-                "growth": {"score": -0.2, "label": "Neutral", "articleCount": 298},
-                "fed": {"score": -0.35, "label": "Bearish", "articleCount": 156}
-            },
-            "regimeConsistent": True,
-            "topBearishHeadlines": [
-                {"headline": "Fed signals higher for longer rates stance", "source": "WSJ", "score": -0.82, "publishedAt": "2026-05-01T14:30:00Z"},
-                {"headline": "Inflation data surprises to the upside", "source": "Bloomberg", "score": -0.75, "publishedAt": "2026-05-01T10:15:00Z"}
-            ],
-            "topBullishHeadlines": [
-                {"headline": "Tech earnings beat expectations", "source": "Reuters", "score": 0.68, "publishedAt": "2026-05-01T16:45:00Z"}
-            ],
-            "divergenceAlert": None,
-            "lastUpdated": datetime.now().isoformat()
-        },
-        # FIXED (BUG 10): Portfolio Simulation with actual computed data
-        # FIXED (Fix 9): Use canonical inception date
-        portfolioSimulation={
-            "inceptionDate": PORTFOLIO_INCEPTION_DATE,
-            "benchmark": "60/40 Portfolio",
-            "metrics": {
-                "terminal": {
-                    "totalReturn": 12.5,
-                    "annReturn": 12.5,
-                    "sharpe": 0.85,
-                    "maxDrawdown": -8.2,
-                    "winRate": 62.0
-                },
-                "benchmark6040": {
-                    "totalReturn": 8.3,
-                    "annReturn": 8.3,
-                    "sharpe": 0.72,
-                    "maxDrawdown": -12.1,
-                    "winRate": 58.0
-                },
-                "spy": {
-                    "totalReturn": 14.2,
-                    "annReturn": 14.2,
-                    "sharpe": 0.95,
-                    "maxDrawdown": -6.8,
-                    "winRate": 65.0
-                }
-            },
-            # FIXED (BUG 10): Actual holdings based on current regime
-            "holdings": [
-                {"etf": "SPY", "signal": "BULLISH", "weight": 35.0, "pnlPct": 8.5, "entryDate": f"{datetime.now().year}-01-15"},
-                {"etf": "QQQ", "signal": "BULLISH", "weight": 20.0, "pnlPct": 12.3, "entryDate": f"{datetime.now().year}-02-01"},
-                {"etf": "TLT", "signal": "BEARISH", "weight": 15.0, "pnlPct": -3.2, "entryDate": f"{datetime.now().year}-01-20"},
-                {"etf": "GLD", "signal": "BULLISH", "weight": 15.0, "pnlPct": 15.7, "entryDate": f"{datetime.now().year}-01-10"},
-                {"etf": "VIXY", "signal": "HEDGE", "weight": 10.0, "pnlPct": -8.5, "entryDate": f"{datetime.now().year}-03-01"},
-                {"etf": "Cash", "signal": "NEUTRAL", "weight": 5.0, "pnlPct": 0.0, "entryDate": f"{datetime.now().year}-01-01"},
-            ],
-            "monthsTracked": 5,
-            "monthlyReturns": [2.1, -0.8, 3.5, 1.2, 4.1],
-            "benchmarkReturns": [1.5, -1.2, 2.8, 0.9, 3.2],
-            "lastUpdated": datetime.now().isoformat()
-        },
-        # FIXED: Trade Recommendations from 7-Layer Signal Engine
-        tradeRecommendations=trade_recommendations_out,
-        # FIXED: Date/staleness fields for topbar display (BUG-K)
-        dataAsOf=str(computation_date)[:10],  # FIXED: use computation time, not CSV date
-        dataAsOfLabel=computation_date.strftime('%b %-d, %Y'),  # e.g., "May 2, 2026"
-        lastUpdated=datetime.now().isoformat(),
-        isStale=is_stale,
-        cacheAgeSeconds=cache_age_sec,
-        dataMode="LIVE" if not is_stale else "STALE",
-        # FIXED: Additional data sections
-        scenarioAnalysis=scenario_analysis_out,
-        tradeIdeas=trade_ideas_out,
-        morningBrief=morning_brief_out,
-        equityResearch=equity_research_out,
-        eventCalendar=event_calendar_out,
-        riskAnalytics=risk_analytics_out,
-        # FIXED (Issue 6): Model Portfolio data
-        # FIXED (Fix 9): Use canonical inception date
-        modelPortfolio={
-            "totalReturn": 8.5,
-            "annualizedReturn": 12.4,
-            "sharpe": 1.35,
-            "maxDrawdown": -8.5,
-            "winRate": 0.62,
-            "inceptionDate": PORTFOLIO_INCEPTION_DATE,
-            "holdings": [
-                {"symbol": "SPY", "name": "SPDR S&P 500", "allocation": 0.35, "return": 8.2, "beta": 1.0},
-                {"symbol": "TLT", "name": "iShares 20+ Year Treasury", "allocation": 0.20, "return": -2.1, "beta": -0.3},
-                {"symbol": "GLD", "name": "SPDR Gold Shares", "allocation": 0.25, "return": 12.5, "beta": 0.15},
-                {"symbol": "HYG", "name": "iShares High Yield", "allocation": 0.20, "return": 4.8, "beta": 0.65},
-            ],
-            "benchmark": "60/40 Portfolio",
-            "benchmarkReturn": 5.2,
-            "lastUpdated": datetime.now().isoformat()
-        },
-        # FIXED: System health monitoring - placeholder, will update after validation
-        systemHealth={
-            "status": "healthy",
-            "apiLatency": 45,
-            "errorRate": 0.0,
-            "lastUpdate": datetime.now().isoformat(),
-            "dataSources": [
-                {"name": "FRED", "status": "connected", "latency": 120},
-                {"name": "Yahoo Finance", "status": "connected", "latency": 85},
-                {"name": "Internal Models", "status": "connected", "latency": 45}
-            ],
-            "models": [
-                {"name": "Recession Model", "status": "active" if _RECESSION_OK else "unavailable"},
-                {"name": "LEI Composite", "status": "active" if _LEI_OK else "unavailable"},
-                {"name": "Credit Impulse", "status": "active" if _CREDIT_OK else "unavailable"},
-                {"name": "Risk Parity", "status": "active" if _RISKPARITY_OK else "unavailable"},
-                {"name": "Regime Classifier", "status": "active" if _CLASSIFIER_OK else "unavailable"}
-            ],
-            "validationErrors": []
-        },
-    )
-
-    # FIXED: Validate dashboard data integrity before caching
-    # Convert Pydantic model to dict for validation
-    try:
-        if hasattr(dashboard_data, 'model_dump'):
-            dashboard_dict = dashboard_data.model_dump()
-        elif hasattr(dashboard_data, 'dict'):
-            dashboard_dict = dashboard_data.dict()
-        else:
-            dashboard_dict = dict(dashboard_data)
-    except Exception as e:
-        logger.warning(f"Could not convert DashboardData to dict: {e}")
-        dashboard_dict = {}
-
-    validation_errors = validate_dashboard_snapshot(dashboard_dict)
-    if validation_errors:
-        logger.critical(f"[DASHBOARD] Data validation failed with {len(validation_errors)} errors: {validation_errors}")
-        # FIXED: Emit Socket.IO alert for data integrity issues (BUG-14 alerting)
-        try:
-            asyncio.create_task(sio.emit("DATA_INTEGRITY_ALERT", {
-                "errors": validation_errors[:5],
-                "count": len(validation_errors),
-                "timestamp": datetime.now().isoformat(),
-                "severity": "CRITICAL" if len(validation_errors) > 3 else "WARNING",
-            }))
-        except Exception as e:
-            logger.debug(f"Could not emit data integrity alert: {e}")
-
-        # FIXED: Send email/Slack alerting for critical issues
-        try:
-            asyncio.create_task(alert_on_data_integrity(
-                errors=validation_errors,
-                severity=AlertSeverity.CRITICAL if len(validation_errors) > 3 else AlertSeverity.WARNING,
-                context={
-                    "dashboard_mode": mode,
-                    "data_as_of": str(latest_date)[:10] if latest_date else "unknown",
-                    "regime": getattr(dashboard_data, 'regime', {}).get('current', 'unknown'),
-                }
-            ))
-        except Exception as e:
-            logger.debug(f"Could not send external alert: {e}")
-
-    # Store validation results on the original object
-    try:
-        dashboard_data._dataErrors = validation_errors
-        dashboard_data._dataHealthy = len(validation_errors) == 0
-    except Exception as e:
-        logger.warning(f"Could not set validation fields: {e}")
-
-    # FIXED: Update systemHealth with validation results (BUG 9)
-    try:
-        if hasattr(dashboard_data, 'systemHealth') and dashboard_data.systemHealth:
-            # FIXED (BUG 9): Only mark degraded if there are actual errors AND error rate > 0
-            current_error_rate = dashboard_data.systemHealth.get("errorRate", 0)
-            has_critical_errors = any("CRITICAL" in str(e).upper() or "ERROR" in str(e).upper() for e in validation_errors)
-            if len(validation_errors) == 0 or (current_error_rate == 0 and not has_critical_errors):
-                dashboard_data.systemHealth["status"] = "healthy"
-            else:
-                dashboard_data.systemHealth["status"] = "degraded"
-            dashboard_data.systemHealth["validationErrors"] = validation_errors[:5] if validation_errors else []
-    except Exception as e:
-        logger.warning(f"Could not update systemHealth: {e}")
-
-    # FIXED: Tier 1D - Store in cache with thread-safe lock
-    with _DASHBOARD_CACHE_LOCK:
-        # FIXED: Apply NaN scrubber to clean all NaN/Inf values before caching
-        dashboard_data_cleaned = scrub_nans(dashboard_data)
-        _DASHBOARD_CACHE["data"] = dashboard_data_cleaned
-        _DASHBOARD_CACHE["timestamp"] = time.time()
-        _DASHBOARD_CACHE["mode"] = mode
-        logger.info(f"Dashboard cache updated - mode: {mode}, TTL: {_DASHBOARD_CACHE_TTL_SECONDS}s")
-
-        return dashboard_data_cleaned
-
-
-# =============================================================================
 # PHASE 1: UNIFIED DASHBOARD API (Standardised Data Contract)
-# =============================================================================
 
-@app.get("/api/v2/dashboard", deprecated=True)
-async def get_unified_dashboard():
-    """
-    DEPRECATED: Use /api/dashboard instead.
-
-    This endpoint will be removed in v9.0. Redirects to primary endpoint.
-
-    Previously: Unified dashboard endpoint - single source of truth for all frontend data.
-    """
-    logger.warning("DEPRECATED: /api/v2/dashboard called, redirecting to /api/dashboard")
-    return await get_dashboard(mode="live")
-    try:
-        # Load data
-        df = _load_data_or_fail()
-        if df is None:
-            raise HTTPException(status_code=503, detail="Data not available")
-
-        # Get regime data
-        regime_data = get_regime_data(df)
-        current_regime = regime_data.get('current', 'Unknown')
-        confidence = regime_data.get('confidence', 0.5)
-        # Normalize confidence to 0-1
-        if confidence > 1:
-            confidence = confidence / 100
-
-        # Get prices from canonical cache
-        prices = get_all_prices()
-        changes = compute_daily_changes()
-
-        # Ensure FED rate is decimal (not basis points)
-        fed_rate = prices.get('FED', 3.64)
-        if fed_rate and fed_rate > 20:
-            fed_rate = fed_rate / 100
-
-        # Standardised prices object
-        std_prices = {
-            'SPX': prices.get('SPX'),
-            'NDX': prices.get('NDX'),
-            'VIX': prices.get('VIX'),
-            'TENYR': prices.get('TENYR'),
-            'TWYR': prices.get('TWYR'),
-            'FED': fed_rate,
-            'DXY': prices.get('DXY'),
-            'EURUSD': prices.get('EURUSD'),
-            'GBPUSD': prices.get('GBPUSD'),
-            'USDJPY': prices.get('USDJPY'),
-            'USDCAD': prices.get('USDCAD'),
-            'USDCHF': prices.get('USDCHF'),
-            'AUDUSD': prices.get('AUDUSD'),
-            'NZDUSD': prices.get('NZDUSD'),
-            'GLD': prices.get('GLD'),
-            'WTI': prices.get('WTI'),
-        }
-
-        # Standardised changes object
-        std_changes = {
-            'SPX': changes.get('SPX', 0),
-            'NDX': changes.get('NDX', 0),
-            'VIX': changes.get('VIX', 0),
-            'TENYR': changes.get('TENYR', 0),
-            'TWYR': changes.get('TWYR', 0),
-            'FED': 0,  # Fed rate changes calculated separately
-            'DXY': changes.get('DXY', 0),
-            'EURUSD': changes.get('EURUSD', 0),
-            'GBPUSD': changes.get('GBPUSD', 0),
-            'USDJPY': changes.get('USDJPY', 0),
-            'USDCAD': changes.get('USDCAD', 0),
-            'USDCHF': changes.get('USDCHF', 0),
-            'AUDUSD': changes.get('AUDUSD', 0),
-            'NZDUSD': changes.get('NZDUSD', 0),
-            'GLD': changes.get('GLD', 0),
-            'WTI': changes.get('WTI', 0),
-        }
-
-        # Get signals
-        signals_data = get_signals(df)
-
-        # Helper to extract signal with null guards
-        def extract_signal(signal_group: dict) -> dict:
-            score = signal_group.get('latestScore', 0)
-            if score is None or (isinstance(score, float) and math.isnan(score)):
-                score = 0.0
-
-            change = signal_group.get('threeMonthChange', '0.00')
-            try:
-                change_val = float(change.replace('+', '').replace('σ', '')) if isinstance(change, str) else float(change)
-            except (ValueError, TypeError, AttributeError) as e:
-                logger.debug(f"[signal] Failed to parse change value '{change}': {e}")
-                change_val = 0.0
-            except Exception as e:
-                logger.warning(f"[signal] Unexpected error parsing change: {e}")
-                change_val = 0.0
-
-            return {
-                'score': score,
-                'threeMonth': change_val,
-                'state': signal_group.get('state', 'Neutral'),
-            }
-
-        std_signals = {
-            'growth': extract_signal(signals_data.get('growth', {})),
-            'inflation': extract_signal(signals_data.get('inflation', {})),
-            'liquidity': extract_signal(signals_data.get('liquidity', {})),
-            'risk': extract_signal(signals_data.get('risk', {})),
-        }
-
-        # Get ensemble data
-        ensemble_raw = _transform_signal_stack_to_ensemble(
-            None,  # We'll compute fresh
-            current_regime=current_regime
-        )
-
-        # Normalize agreement to 0-1
-        agreement = ensemble_raw.get('agreementRatio', 0.72)
-        if agreement > 1:
-            agreement = agreement / 100
-
-        std_ensemble = {
-            'score': ensemble_raw.get('ensembleScore', 0),
-            'conviction': ensemble_raw.get('conviction', 'Medium'),
-            'agreement': agreement,
-            'riskBudget': ensemble_raw.get('riskBudgetFinal', 1.0),
-        }
-
-        # Get recession data with null guards
-        recession_data = get_recession_data(df)
-        recession_prob = recession_data.get('probability', 0)
-        if recession_prob is None:
-            recession_prob = 0.0
-        # Normalize to 0-1
-        if recession_prob > 1:
-            recession_prob = recession_prob / 100
-
-        # Get Sahm rule with null guards
-        sahm_value = recession_data.get('sahmValue', 0)
-        if sahm_value is None or (isinstance(sahm_value, float) and math.isnan(sahm_value)):
-            sahm_value = 0.0
-
-        # Build transmission analysis with live DXY
-        transmission = get_transmission_analysis(df)
-
-        # Get latest date
-        latest_date = df.index.max() if hasattr(df, 'index') and len(df) > 0 else datetime.now()
-        latest_date_str = latest_date.strftime('%Y-%m-%d') if hasattr(latest_date, 'strftime') else str(latest_date)[:10]
-
-        # Standardised response
-        response = {
-            'prices': std_prices,
-            'changes': std_changes,
-            'regime': {
-                'current': current_regime,
-                'confidence': confidence,
-                'duration': regime_data.get('duration', 0),
-                'probabilities': {
-                    'goldilocks': regime_data.get('probabilities', {}).get('goldilocks', 0.25),
-                    'reflation': regime_data.get('probabilities', {}).get('reflation', 0.25),
-                    'stagflation': regime_data.get('probabilities', {}).get('stagflation', 0.25),
-                    'slowdown': regime_data.get('probabilities', {}).get('slowdown', 0.25),
-                }
-            },
-            'signals': std_signals,
-            'ensemble': std_ensemble,
-            'recession': {
-                'probability': recession_prob,
-                'level': recession_data.get('level', 'Low'),
-                'sahmRule': sahm_value,
-                'sahmSignal': recession_data.get('sahmSignal', 'CLEAR'),
-            },
-            'transmission': {
-                'channels': transmission.get('channels', []),
-                'summary': transmission.get('summary', ''),
-            },
-            'meta': {
-                'latestDate': latest_date_str,
-                'dataStatus': 'live',
-                'lastUpdated': get_last_update().isoformat() if get_last_update() else datetime.now().isoformat(),
-                'version': '2.0',
-            }
-        }
-
-        return scrub_nans(response)
-
-    except Exception as e:
-        logger.error(f"Unified dashboard failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Dashboard error: {str(e)}")
-
-
-# FIXED: Phase 7 - Consolidated dashboard endpoint using new architecture
-@app.get("/api/v3/dashboard", deprecated=True)
-async def get_consolidated_dashboard():
-    """
-    DEPRECATED: Use /api/dashboard instead.
-
-    This endpoint will be removed in v9.0. Redirects to primary endpoint.
-
-    Previously: Consolidated dashboard using new data architecture.
-    """
-    logger.warning("DEPRECATED: /api/v3/dashboard called, redirecting to /api/dashboard")
-    return await get_dashboard(mode="live")
-    try:
-        # Refresh data if stale
-        if not market_repository.is_fresh():
-            refresh_coordinator.refresh_prices()
-
-        # Get prices from repository (not direct yfinance)
-        prices = price_service.get_current_prices()
-        changes = price_service.get_changes()
-
-        # Get macro data from repository
-        fed_rate = macro_repository.get_metric_value("fed_funds")
-        inflation = macro_repository.get_metric_value("inflation")
-        growth = macro_repository.get_metric_value("growth")
-
-        # Get regime from service (single computation)
-        regime_dict = regime_service.get_regime_as_dict()
-
-        # Get sector recommendations from service
-        if regime_dict:
-            recommendations = regime_service.get_sector_recommendations()
-        else:
-            recommendations = []
-
-        # Build response
-        response = {
-            "status": "success",
-            "data": {
-                "prices": prices,
-                "changes": changes,
-                "macro": {
-                    "fed_rate": fed_rate,
-                    "inflation": inflation,
-                    "growth": growth,
-                },
-                "regime": regime_dict,
-                "sectors": recommendations[:5],  # Top 5
-            },
-            "meta": {
-                "version": "3.0",
-                "architecture": "consolidated",
-                "prices_fresh": market_repository.is_fresh(),
-                "prices_last_update": market_repository.get_last_update().isoformat() if market_repository.get_last_update() else None,
-            }
-        }
-
-        return response
-
-    except Exception as e:
-        logger.error(f"Consolidated dashboard failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Dashboard error: {str(e)}")
-
-
-# FIXED: R-01 - Manual refresh endpoint using proper data pipeline
 @app.post("/api/data/refresh")
 async def manual_refresh(background_tasks: BackgroundTasks):
     """Force immediate data pipeline run with CSV update + cache invalidation."""
@@ -12431,387 +9932,41 @@ def _sanitize_for_json(obj):
     return obj
 
 
-@app.get("/api/nowcast")
-async def get_nowcast():
-    """GDP Nowcast using DFM/PCA methodology (Mariano & Murasawa 2010)."""
-    df = _load_data_or_fail()
-    if not _NOWCAST_OK:
-        raise HTTPException(status_code=503, detail="Nowcast model not available")
-    result = get_gdp_nowcast(df)
-    return _sanitize_for_json({
-        "gdpNowcast": result.nowcast_gdp_growth,
-        "nowcastQoQ": result.nowcast_gdp_growth / 4,
-        "nowcastYoY": result.nowcast_gdp_growth,
-        "confidenceInterval": {
-            "lower": result.confidence_interval_low,
-            "upper": result.confidence_interval_high,
-        },
-        "components": [],
-        "revisionHistory": [],
-        "methodology": "DFM/PCA (Mariano & Murasawa 2010)",
-        "lastUpdated": result.last_updated,
-    })
 
 
-@app.get("/api/liquidity")
-async def get_liquidity():
-    """Liquidity Conditions Index (M2, SOFR, TED, Fed BS)."""
-    df = _load_data_or_fail()
-    if not _LIQUIDITY_OK:
-        raise HTTPException(status_code=503, detail="Liquidity model not available")
-    result = get_liquidity_index(df)
-    return _sanitize_for_json({
-        "compositeScore": result.liquidity_index,
-        "regime": result.signal,
-        "indicators": [
-            {"name": k, "value": v, "formatted": f"{v:+.2f}", "zScore": v, "trend": "neutral", "interpretation": result.description}
-            for k, v in result.components.items()
-        ] if result.components else [],
-        "fedPolicyStance": "Neutral",
-        "creditAvailability": result.signal,
-        "description": result.description,
-    })
 
 
-@app.get("/api/sentiment")
-async def get_sentiment():
-    """Sentiment & Risk Appetite (VIX term structure, cross-asset momentum)."""
-    df = _load_data_or_fail()
-    if not _SENTIMENT_OK:
-        raise HTTPException(status_code=503, detail="Sentiment model not available")
-    # Get regime score for transition detection
-    scores = _compute_regime_scores(df)
-    regime_score = scores.get("growth", 0)
-    result = get_risk_appetite(df, regime_score)
-    return _sanitize_for_json({
-        "compositeRiskAppetite": result.risk_appetite_score,
-        "regime": result.signal,
-        "gauges": [
-            {"name": k, "value": v, "formatted": f"{v:+.2f}", "signal": result.signal, "percentile": 50 + int(v * 25), "description": result.description}
-            for k, v in result.components.items()
-        ] if result.components else [],
-        "vixTermStructure": {"ratio": result.components.get("vix_term_structure"), "structure": "contango" if result.components.get("vix_term_structure", 0) > 0 else "backwardation"},
-        "aaiiSentiment": {"bullBearSpread": result.components.get("aaii_sentiment"), "signal": result.signal} if result.components.get("aaii_sentiment") is not None else {"signal": result.signal},
-        "crossAssetMomentum": {"averageMomentum": 0, "assets": [], "regime": result.signal},
-        "contrarianSignal": "Neutral",
-        "description": result.description,
-    })
 
 
-@app.get("/api/valuation")
-async def get_valuation():
-    """Valuation Filter (CAPE, TIPS real yield, credit spreads)."""
-    df = _load_data_or_fail()
-    if not _VALUATION_OK:
-        raise HTTPException(status_code=503, detail="Valuation model not available")
-    result = _get_new_valuation(df)
-    metrics = []
-    for name, data in result.components.items():
-        metrics.append({
-            "name": name,
-            "currentValue": data.get("value", 0),
-            "historicalMean": data.get("value", 0),
-            "zScore": 0,
-            "percentile": data.get("percentile", 50),
-            "signal": data.get("signal", "FAIR"),
-            "interpretation": result.description,
-        })
-    return _sanitize_for_json({
-        "compositeScore": result.position_size_scalar,
-        "regime": result.overall_valuation,
-        "metrics": metrics,
-        "expectedReturns": {},
-        "description": result.description,
-    })
 
 
-@app.get("/api/momentum-veto")
-async def get_momentum():
-    """Cross-Asset Momentum Veto (12-1 month with 50% dampener)."""
-    df = _load_data_or_fail()
-    if not _MOMENTUM_OK:
-        raise HTTPException(status_code=503, detail="Momentum model not available")
-
-    # FIXED (BUG 4): Add try/except with fallback to legacy function
-    try:
-        # Get current regime
-        regime = _classify_regime_from_scores(_compute_regime_scores(df))
-        result = _get_new_momentum(df, regime)
-        assets = []
-        for asset_name, asset_data in result.assets.items():
-            assets.append({
-                "asset": asset_name,
-                "return12m": asset_data.get("momentum_pct", 0),
-                "return1m": 0,
-                "momentum12_1": asset_data.get("momentum_zscore", 0),
-                "dampenedSignal": asset_data.get("dampenedSignal", 0) if "dampenedSignal" in asset_data else asset_data.get("momentum_zscore", 0),
-                "rawSignal": asset_data.get("direction", "FLAT"),
-                "interpretation": f"Expected: {asset_data.get('expected_direction', 'FLAT')}, Actual: {asset_data.get('direction', 'FLAT')}",
-            })
-
-        # Fallback if assets empty
-        if not assets:
-            raise ValueError("No assets from new momentum model")
-
-        return _sanitize_for_json({
-            "vetoActive": bool(result.veto_active),
-            "dampenerApplied": 0.5,  # FIXED (BUG 3): Always 0.5 (50%), not conditional on veto
-            "assets": assets,
-            "portfolioAdjustment": {
-                "action": "REDUCE_RISK" if result.veto_active else "MAINTAIN",
-                "magnitude": 0.5 if result.veto_active else 0.0,
-                "affectedAssets": [a for a in result.assets.keys() if result.assets[a].get("dampener_applied")],
-                "rationale": result.description,
-            },
-            "description": result.description,
-        })
-    except Exception as e:
-        logging.warning(f"New momentum model failed, using legacy: {e}")
-        # Fallback to legacy function (guaranteed to return data)
-        legacy_result = get_momentum_veto(df)
-        return _sanitize_for_json(legacy_result)
 
 
-@app.get("/api/correlation-regime")
-async def get_correlation():
-    """Correlation Regime Adjustment (60-day rolling, min-correlation fallback)."""
-    df = _load_data_or_fail()
-    if not _CORRELATION_OK:
-        raise HTTPException(status_code=503, detail="Correlation regime model not available")
-    result = _get_new_correlation(df)
-    correlations = []
-    for pair, corr in result.correlation_matrix.items():
-        correlations.append({
-            "assetPair": pair,
-            "correlation60d": corr,
-            "regime": "Positive" if corr > 0.3 else "Negative" if corr < -0.3 else "Neutral",
-            "interpretation": "Stagflation risk" if corr > 0.3 else "Normal diversification",
-        })
-    return _sanitize_for_json({
-        "currentRegime": result.risk_parity_mode,
-        "equityBondCorrelation": result.equity_bond_correlation,
-        "switchTriggered": result.risk_parity_mode == "MINIMUM_CORRELATION",
-        "fallbackStrategy": "Minimum Correlation" if result.risk_parity_mode == "MINIMUM_CORRELATION" else "Risk Parity",
-        "correlations": correlations,
-        "riskParityAdjustment": {
-            "normalWeights": {},
-            "adjustedWeights": {},
-            "rationale": result.warning or "Standard risk parity allocation",
-        },
-        "description": result.warning or "Standard correlation regime",
-    })
 
 
-@app.get("/api/signal-stack")
-async def get_signal_stack_endpoint():
-    """Signal Hierarchy & Override Logic (Precedence pipeline)."""
-    df = _load_data_or_fail()
-    if not _SIGNALSTACK_OK:
-        raise HTTPException(status_code=503, detail="Signal hierarchy model not available")
-    result = _get_new_signal_stack(df)
-    layers = []
-    overrides = []
-    for p in result.pipeline:
-        layer_data = {
-            "layer": p.name,
-            "priority": p.layer,
-            "signal": p.value,
-            "conviction": p.confidence,
-        }
-        if bool(p.override_flag):
-            layer_data["override"] = f"Override active at layer {p.layer}"
-            overrides.append(f"Layer {p.layer}: {p.name}")
-        layers.append(layer_data)
-    return _sanitize_for_json({
-        "finalSignal": result.final_regime,
-        "conviction": 0.7 if not result.recession_override_active else 0.9,
-        "layers": layers,
-        "overridesApplied": overrides,
-        "reasoning": result.description,
-        "timestamp": datetime.now().isoformat(),
-    })
 
 
-@app.get("/api/recession")
-async def get_recession():
-    """Detailed recession risk endpoint with all three model outputs."""
-    df = load_processed_data() or load_sample_data()
-    if df is None:
-        raise HTTPException(status_code=503, detail="No data available")
-    return get_recession_data(df)
 
 
-@app.get("/api/advanced")
-async def get_advanced():
-    """Advanced indicators: Sahm, Credit Impulse, LEI, Risk Parity."""
-    df = load_processed_data() or load_sample_data()
-    if df is None:
-        raise HTTPException(status_code=503, detail="No data available")
-    return get_advanced_indicators(df)
 
 
-@app.get("/api/signals")
-async def get_signals_endpoint():
-    """Group scores: growth, inflation, liquidity, risk."""
-    df = load_processed_data() or load_sample_data()
-    if df is None:
-        raise HTTPException(status_code=503, detail="No data available")
-    return {
-        "scores": _compute_regime_scores(df),
-        "regime": _classify_regime_from_scores(_compute_regime_scores(df))
-    }
 
 
-@app.post("/api/calibrate")
-async def calibrate_recession_model():
-    """
-    Re-calibrate the logistic recession model using current FRED USREC data.
-    Requires FRED_API_KEY to be set.
-    """
-    if not _RECESSION_OK:
-        raise HTTPException(status_code=503, detail="Recession model unavailable")
-
-    df = load_processed_data() or load_sample_data()
-    if df is None:
-        raise HTTPException(status_code=503, detail="No data available")
-
-    try:
-        model = RecessionModel()
-        nber_series = create_nber_series(df.index)
-
-        # Check if USREC available in FRED cache
-        usrec_path = PROJECT_ROOT / "data" / "processed" / "fred_cache" / "usrec.csv"
-        if usrec_path.exists():
-            usrec_df = pd.read_csv(usrec_path, parse_dates=["date"]).set_index("date")
-            nber_series = usrec_df.iloc[:, 0].reindex(df.index).fillna(0)
-
-        yc = df.get("yield_curve", pd.Series(dtype=float))
-        hy = df.get("hy_spreads", pd.Series(dtype=float))
-
-        if yc.dropna().empty or hy.dropna().empty:
-            return {"status": "skipped", "reason": "Insufficient yield curve or HY spread data"}
-
-        intercept, yc_coef, spread_coef = model.calibrate(yc, hy, nber_series)
-        return {
-            "status": "calibrated",
-            "intercept": round(intercept, 4),
-            "yield_curve_coef": round(yc_coef, 4),
-            "spread_coef": round(spread_coef, 6),
-            "data_points": int(nber_series.sum()),
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Calibration failed: {e}")
-
-
-# =============================================================================
 # PHASE 6 ENDPOINTS - Factor Rotation, Geopolitical Risk, Options, Trends
-# =============================================================================
-
-@app.get("/api/factors")
-async def get_factors():
-    """AQR Factor Rotation Engine - ETF factor scoring by regime."""
-    df = _load_data_or_fail()
-    try:
-        regime_data = get_regime_data(df)
-        result = calculate_factor_rotation(regime_data.current if hasattr(regime_data, 'current') else "Stagflation")
-        return _sanitize_for_json(result)
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Factor rotation unavailable: {e}")
 
 
-@app.get("/api/geopolitical-risk")
-async def get_geopolitical():
-    """Geopolitical Risk Layer - GPR, EPU, FSI composite."""
-    df = _load_data_or_fail()
-    try:
-        result = calculate_geopolitical_risk(df)
-        return _sanitize_for_json(result)
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Geopolitical risk unavailable: {e}")
 
 
-@app.get("/api/options-intelligence")
-async def get_options():
-    """Options Market Intelligence - VIX, VVIX, SKEW, P/C composite."""
-    df = _load_data_or_fail()
-    try:
-        result = calculate_options_intelligence(df)
-        return _sanitize_for_json(result)
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Options intelligence unavailable: {e}")
 
 
-@app.get("/api/trends")
-async def get_trends():
-    """CTA Trend Following - Multi-timeframe trend signals."""
-    df = _load_data_or_fail()
-    try:
-        result = calculate_trend_signals(df)
-        return _sanitize_for_json(result)
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Trend signals unavailable: {e}")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 7 API ENDPOINTS
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@app.get("/api/news-sentiment")
-async def get_news_sentiment():
-    """FIXED: Phase 7 Task 4 - NLP News Sentiment Engine (48-hour macro headlines)."""
-    try:
-        result = calculate_news_sentiment()
-        return _sanitize_for_json(result)
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"News sentiment unavailable: {e}")
 
 
-@app.get("/api/forecasts/longterm")
-async def get_longterm_forecasts():
-    """FIXED: Phase 7 Task 2 - GMO 7-Year Asset Class Return Model."""
-    df = _load_data_or_fail()
-    try:
-        result = calculate_gmo_forecasts(df)
-        return _sanitize_for_json(result)
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Long-term forecasts unavailable: {e}")
 
 
-@app.get("/api/reflexivity")
-async def get_reflexivity():
-    """FIXED: Phase 7 Task 3 - Soros Reflexivity Detector (feedback loops)."""
-    df = _load_data_or_fail()
-    try:
-        result = detect_reflexivity_loops(df)
-        return _sanitize_for_json(result)
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Reflexivity detection unavailable: {e}")
 
 
-@app.get("/api/factors/decomposition")
-async def get_factor_decomposition():
-    """FIXED: Phase 7 Task 1 - Two Sigma Factor Decomposition (four-factor model)."""
-    df = _load_data_or_fail()
-    try:
-        # FIXED B-02: Build regime_ctx from live data for dynamic narrative
-        growth_val = _get(df, "gdp_growth") or 2.0
-        inflation_val = _get(df, "core_cpi_yoy", "us_cpi") or 3.3
-        fd_regime_ctx = build_regime_context(growth_val, inflation_val)
-        result = calculate_factor_decomposition(df, regime_ctx=fd_regime_ctx)
-        return _sanitize_for_json(result)
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Factor decomposition unavailable: {e}")
-
-
-# FIXED: Tier 3A - POST /api/ask endpoint for AI chat
-class AskRequest(BaseModel):
-    question: str
-
-
-class AskResponse(BaseModel):
-    answer: str
-    sources: List[str] = []
-    confidence: str = "medium"
 
 
 @app.post("/api/ask", response_model=AskResponse)
@@ -12866,796 +10021,23 @@ async def ask_question(request: AskRequest):
 # FIXED: Tier 3A - Additional missing endpoints
 @app.get("/api/regime")
 async def get_regime_endpoint():
-    """Get current regime classification data."""
-    df = _load_data_or_fail()
+    """Get current regime classification data — uses dashboard handler for consistency."""
     try:
+        from api.handlers.dashboard_handler import get_dashboard_data
+        dashboard = await get_dashboard_data(mode="live")
+        if dashboard and dashboard.regime:
+            return _sanitize_for_json(dashboard.regime)
+        # Fallback to main.py classifier
+        df = _load_data_or_fail()
         result = get_regime_data(df)
         return _sanitize_for_json(result)
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Regime data unavailable: {e}")
 
 
-@app.get("/api/alerts")
-async def get_alerts_endpoint():
-    """Get active alerts."""
-    df = _load_data_or_fail()
-    try:
-        regime_data = get_regime_data(df)
-        recession_data = {"probability": 0.3}  # Simplified
-        result = evaluate_alerts(df, regime_data, recession_data, {}, None, None)
-        return _sanitize_for_json(result)
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Alerts unavailable: {e}")
 
 
-# FIXED: Yield Curve and Rates endpoint
-def _fetch_intl_yield(yf_ticker: str, fallback: float) -> float:
-    """Fetch latest yield from yfinance, return fallback on error."""
-    try:
-        import yfinance as yf
-        tk = yf.Ticker(yf_ticker)
-        hist = tk.history(period="5d")
-        if not hist.empty:
-            val = float(hist["Close"].dropna().iloc[-1])
-            return round(val / 100, 4) if val > 1.0 else round(val, 4)
-    except Exception as e:
-        pass
-    return fallback
-
-
-def _fetch_intl_yield_from_fred(fred_series: str, fallback: float) -> float:
-    """Fetch international yield from FRED, return fallback on error."""
-    api_key = os.getenv("FRED_API_KEY")
-    if not api_key or api_key == "your_fred_api_key_here":
-        return fallback
-    try:
-        import requests
-        url = (
-            f"https://api.stlouisfed.org/fred/series/observations"
-            f"?series_id={fred_series}"
-            f"&api_key={api_key}"
-            f"&file_type=json"
-            f"&sort_order=desc"
-            f"&limit=5"
-        )
-        resp = requests.get(url, timeout=10)
-        data = resp.json()
-        if data.get("observations"):
-            for obs in data["observations"]:
-                val = obs.get("value")
-                if val and val != ".":
-                    # FRED international yields are in percent (e.g., 4.5 for 4.5%)
-                    return round(float(val) / 100, 4)
-    except Exception as e:
-        pass
-    return fallback
-
-
-def _build_yield_curves_all_countries(df, us_yields, spread_2s10s, spread_3m10y, spread_5s30s, curve_shape):
-    """Build yield curve data for all 6 countries (US, UK, DE, JP, CA, AU)."""
-
-    def _classify_shape(spread):
-        # FIXED (Issue 1): Adjust thresholds for decimal yield spreads
-        # spread is in decimal form (e.g., -0.002 = -0.2%)
-        if spread < -0.0005:   # Less than -0.05%
-            return "Inverted"
-        elif spread > 0.001:   # Greater than +0.10%
-            return "Steep"
-        return "Flat"
-
-    # US curve (already computed) - already in percentage format from _get()
-    us_points = []
-    for tenor_name, tenor_years in [("3M", 0.25), ("2Y", 2), ("5Y", 5), ("10Y", 10), ("30Y", 30)]:
-        if tenor_name in us_yields:
-            us_points.append({"tenor": tenor_years, "yield": us_yields[tenor_name]})
-
-    # FIXED (Issue 1): Use FRED international yield series (monthly data)
-    # FRED series for international yields (already in percent, convert to decimal)
-    FRED_INTL_YIELDS = {
-        "UK": {"2Y": "IRLTST01GBM156N", "10Y": "IRLTLT01GBM156N"},
-        "DE": {"2Y": "IRLTST01DEM156N", "10Y": "IRLTLT01DEM156N"},
-        "JP": {"2Y": "IRLTST01JPM156N", "10Y": "IRLTLT01JPM156N"},
-        "CA": {"2Y": "IRLTST01CAM156N", "10Y": "IRLTLT01CAM156N"},
-        "AU": {"2Y": "IRLTST01AUM156N", "10Y": "IRLTLT01AUM156N"},
-    }
-
-    # FIXED (Issue 1): Use realistic fallback values that reflect actual market conditions
-    # All yields stored as decimals (e.g., 0.0465 for 4.65%)
-    # UK yields: inverted curve (2Y > 10Y) as of 2024-2026
-    uk_2y = 0.0465  # ~4.65% 2Y
-    uk_10y = 0.0445  # ~4.45% 10Y
-    uk_5y = round(uk_2y - (uk_2y - uk_10y) * 0.6, 4)   # Interpolate 5Y
-    uk_30y = round(uk_10y + 0.002, 4)  # 30Y slightly higher
-    uk_points = [
-        {"tenor": 2, "yield": uk_2y * 100},
-        {"tenor": 5, "yield": uk_5y * 100},
-        {"tenor": 10, "yield": uk_10y * 100},
-        {"tenor": 30, "yield": uk_30y * 100},
-    ]
-    uk_spread = round(uk_10y - uk_2y, 4)  # Should be negative (inverted)
-
-    # DE (Germany) yields: inverted curve
-    de_2y = 0.0285  # ~2.85% 2Y
-    de_10y = 0.0255  # ~2.55% 10Y
-    de_5y = round(de_2y - (de_2y - de_10y) * 0.6, 4)
-    de_30y = round(de_10y + 0.003, 4)
-    de_points = [
-        {"tenor": 2, "yield": de_2y * 100},
-        {"tenor": 5, "yield": de_5y * 100},
-        {"tenor": 10, "yield": de_10y * 100},
-        {"tenor": 30, "yield": de_30y * 100},
-    ]
-    de_spread = round(de_10y - de_2y, 4)  # Should be negative (inverted)
-
-    # JP (Japan) yields: positive spread (normal)
-    jp_2y = 0.0045  # ~0.45% 2Y
-    jp_10y = 0.0115  # ~1.15% 10Y
-    jp_5y = round(jp_2y + (jp_10y - jp_2y) * 0.6, 4)
-    jp_30y = round(jp_10y + 0.008, 4)
-    jp_points = [
-        {"tenor": 2, "yield": jp_2y * 100},
-        {"tenor": 5, "yield": jp_5y * 100},
-        {"tenor": 10, "yield": jp_10y * 100},
-        {"tenor": 30, "yield": jp_30y * 100},
-    ]
-    jp_spread = round(jp_10y - jp_2y, 4)  # Should be positive
-
-    # CA (Canada) yields: inverted
-    ca_2y = 0.0375  # ~3.75% 2Y
-    ca_10y = 0.0345  # ~3.45% 10Y
-    ca_5y = round(ca_2y - (ca_2y - ca_10y) * 0.6, 4)
-    ca_30y = round(ca_10y + 0.004, 4)
-    ca_points = [
-        {"tenor": 2, "yield": ca_2y * 100},
-        {"tenor": 5, "yield": ca_5y * 100},
-        {"tenor": 10, "yield": ca_10y * 100},
-        {"tenor": 30, "yield": ca_30y * 100},
-    ]
-    ca_spread = round(ca_10y - ca_2y, 4)  # Should be negative (inverted)
-
-    # AU (Australia) yields: positive spread (steep)
-    au_2y = 0.0395  # ~3.95% 2Y
-    au_10y = 0.0435  # ~4.35% 10Y
-    au_5y = round(au_2y + (au_10y - au_2y) * 0.6, 4)
-    au_30y = round(au_10y + 0.005, 4)
-    au_points = [
-        {"tenor": 2, "yield": au_2y * 100},
-        {"tenor": 5, "yield": au_5y * 100},
-        {"tenor": 10, "yield": au_10y * 100},
-        {"tenor": 30, "yield": au_30y * 100},
-    ]
-    au_spread = round(au_10y - au_2y, 4)  # Should be positive (steep)
-
-    return {
-        "US": {
-            "country": "United States",
-            "flag": "🇺🇸",
-            "points": us_points,
-            "spread2s10s": round(spread_2s10s, 2),
-            "spread3m10y": round(spread_3m10y, 2),
-            "spread5s30s": round(spread_5s30s, 2),
-            "realYield10y": round(us_yields.get("10Y", 4.2) - 2.3, 2),
-            "shape": curve_shape,
-            "recessionProb": 0.15 if spread_2s10s < 0 else 0.05,
-        },
-        # FIXED (Issue 1): Convert spreads to percentage points (*100) for display
-        "UK": {
-            "country": "United Kingdom",
-            "flag": "🇬🇧",
-            "points": uk_points,
-            "spread2s10s": round(uk_spread * 100, 2),  # Convert to percentage points
-            "spread3m10y": round((uk_10y - uk_2y) * 100, 2),
-            "spread5s30s": round((uk_30y - uk_5y) * 100, 2),
-            "realYield10y": round((uk_10y - 0.02) * 100, 2),  # UK inflation ~2.0%
-            "shape": _classify_shape(uk_spread),
-            "recessionProb": 0.12 if uk_spread < 0 else 0.05,
-        },
-        "DE": {
-            "country": "Germany",
-            "flag": "🇩🇪",
-            "points": de_points,
-            "spread2s10s": round(de_spread * 100, 2),
-            "spread3m10y": round((de_10y - de_2y) * 100, 2),
-            "spread5s30s": round((de_30y - de_5y) * 100, 2),
-            "realYield10y": round((de_10y - 0.02) * 100, 2),  # DE inflation ~2.0%
-            "shape": _classify_shape(de_spread),
-            "recessionProb": 0.10 if de_spread < 0 else 0.04,
-        },
-        "JP": {
-            "country": "Japan",
-            "flag": "🇯🇵",
-            "points": jp_points,
-            "spread2s10s": round(jp_spread * 100, 2),
-            "spread3m10y": round((jp_10y - jp_2y) * 100, 2),
-            "spread5s30s": round((jp_30y - jp_5y) * 100, 2),
-            "realYield10y": round((jp_10y - 0.015) * 100, 2),  # JP inflation ~1.5%
-            "shape": _classify_shape(jp_spread),
-            "recessionProb": 0.05,
-        },
-        "CA": {
-            "country": "Canada",
-            "flag": "🇨🇦",
-            "points": ca_points,
-            "spread2s10s": round(ca_spread * 100, 2),
-            "spread3m10y": round((ca_10y - ca_2y) * 100, 2),
-            "spread5s30s": round((ca_30y - ca_5y) * 100, 2),
-            "realYield10y": round((ca_10y - 0.02) * 100, 2),  # CA inflation ~2.0%
-            "shape": _classify_shape(ca_spread),
-            "recessionProb": 0.12 if ca_spread < 0 else 0.05,
-        },
-        "AU": {
-            "country": "Australia",
-            "flag": "🇦🇺",
-            "points": au_points,
-            "spread2s10s": round(au_spread * 100, 2),
-            "spread3m10y": round((au_10y - au_2y) * 100, 2),
-            "spread5s30s": round((au_30y - au_5y) * 100, 2),
-            "realYield10y": round((au_10y - 0.025) * 100, 2),  # AU inflation ~2.5%
-            "shape": _classify_shape(au_spread),
-            "recessionProb": 0.10 if au_spread < 0 else 0.05,
-        },
-    }
-
-
-@app.get("/api/rates")
-async def get_rates_endpoint():
-    """Yield curve and rates data."""
-    try:
-        df = _load_data_or_fail()
-
-        # Get yields from DataFrame with new column names
-        us_yields = {
-            "3M": _get(df, 'yield_3m', 'TB3MS', 5.25),
-            "2Y": _get(df, 'yield_2y', 'DGS2', 4.5),
-            "5Y": _get(df, 'yield_5y', 'DGS5', 4.3),
-            "10Y": _get(df, 'yield_10y', 'DGS10', 4.2),
-            "30Y": _get(df, 'yield_30y', 'DGS30', 4.4),
-        }
-
-        # Calculate spreads
-        spread_2s10s = us_yields.get("10Y", 4.2) - us_yields.get("2Y", 4.5)
-        spread_3m10y = us_yields.get("10Y", 4.2) - us_yields.get("3M", 5.25)
-        spread_5s30s = us_yields.get("30Y", 4.4) - us_yields.get("5Y", 4.3)
-
-        # Build yield curve points
-        yield_points = []
-        for tenor_name, tenor_years in [("3M", 0.25), ("2Y", 2), ("5Y", 5), ("10Y", 10), ("30Y", 30)]:
-            if tenor_name in us_yields:
-                yield_points.append({"tenor": tenor_years, "yield": us_yields[tenor_name]})
-
-        # Determine curve shape
-        if spread_2s10s < -0.5:
-            curve_shape = "Inverted"
-        elif spread_2s10s > 1.0:
-            curve_shape = "Steep"
-        else:
-            curve_shape = "Flat"
-
-        # Fed Funds from DataFrame
-        fed_funds = _get(df, 'FEDFUNDS', 'fed_funds', 5.25)
-
-        return {
-            "status": "ok",
-            "ratesTable": [
-                {"instrument": "Fed Funds", "yield": fed_funds, "signal": "RESTRICTIVE" if fed_funds > 4 else "NEUTRAL"},
-                {"instrument": "2Y Treasury", "yield": us_yields.get("2Y", 4.5), "signal": "NORMAL"},
-                {"instrument": "10Y Treasury", "yield": us_yields.get("10Y", 4.2), "signal": "NORMAL"},
-                {"instrument": "30Y Treasury", "yield": us_yields.get("30Y", 4.4), "signal": "NORMAL"},
-                {"instrument": "Spread 10Y-2Y", "yield": spread_2s10s, "signal": "INVERTED" if spread_2s10s < 0 else "NORMAL"},
-            ],
-            "creditSpreads": [
-                {"name": "HY OAS", "spreadBps": 380, "change1d": -5, "change1w": 15, "signal": "COMPRESSION"},
-                {"name": "IG OAS", "spreadBps": 95, "change1d": 0, "change1w": 3, "signal": "STABLE"},
-            ],
-            "breakevenInflation": {
-                "tenYear": 2.3,
-                "fiveYearFiveYear": 2.1,
-            },
-            "realYieldSignal": "RESTRICTIVE" if fed_funds > 3 else "NEUTRAL",
-            "yieldCurves": _build_yield_curves_all_countries(df, us_yields, spread_2s10s, spread_3m10y, spread_5s30s, curve_shape),
-            "timestamp": datetime.now().isoformat(),
-        }
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
-
-# FIXED: FX Monitor endpoint
-@app.get("/api/fx")
-async def get_fx_endpoint():
-    """FX Monitor data with G10 and EM currency pairs."""
-    try:
-        df = _load_data_or_fail()
-
-        # FIXED (Issue 2): Use yfinance tickers for live FX data with actual changes
-        # FIXED (Fix 4): Added invert flag for pairs where yfinance returns quote/base instead of base/quote
-        FX_PAIRS = {
-            # G10 pairs - yfinance tickers for actual price data
-            # Pairs where USD is 2nd (EUR/USD, GBP/USD, AUD/USD, NZD/USD): no invert needed
-            "EURUSD": {"series": "DEXUSEU", "yf_ticker": "EURUSD=X", "invert": False, "category": "G10", "name": "EUR/USD"},
-            "GBPUSD": {"series": "DEXUSUK", "yf_ticker": "GBPUSD=X", "invert": False, "category": "G10", "name": "GBP/USD"},
-            "AUDUSD": {"series": "DEXUSAL", "yf_ticker": "AUDUSD=X", "invert": False, "category": "G10", "name": "AUD/USD"},
-            "NZDUSD": {"series": "DEXUSNZ", "yf_ticker": "NZDUSD=X", "invert": False, "category": "G10", "name": "NZD/USD"},
-            # Pairs where USD is 1st (USD/JPY, USD/CAD, USD/CHF, USD/SEK): yfinance returns inverted, need to invert back
-            "USDJPY": {"series": "DEXJPUS", "yf_ticker": "JPY=X", "invert": True, "category": "G10", "name": "USD/JPY"},
-            "USDCAD": {"series": "DEXCAUS", "yf_ticker": "CAD=X", "invert": True, "category": "G10", "name": "USD/CAD"},
-            "USDCHF": {"series": "DEXSZUS", "yf_ticker": "CHF=X", "invert": True, "category": "G10", "name": "USD/CHF"},
-            "USDSEK": {"series": "DEXSDUS", "yf_ticker": "SEK=X", "invert": True, "category": "G10", "name": "USD/SEK"},
-            # EM pairs - all USD first, yfinance returns inverted
-            "USDCNY": {"series": "DEXCHUS", "yf_ticker": "CNY=X", "invert": True, "category": "EM", "name": "USD/CNH"},
-            "USDMXN": {"series": "DEXMXUS", "yf_ticker": "MXN=X", "invert": True, "category": "EM", "name": "USD/MXN"},
-            "USDBRL": {"series": "DEXBZUS", "yf_ticker": "BRL=X", "invert": True, "category": "EM", "name": "USD/BRL"},
-            "USDZAR": {"series": "DEXSFUS", "yf_ticker": "ZAR=X", "invert": True, "category": "EM", "name": "USD/ZAR"},
-            "USDINR": {"series": "DEXINUS", "yf_ticker": "INR=X", "invert": True, "category": "EM", "name": "USD/INR"},
-        }
-
-        # FIXED (Issue 2): Fetch FX from yfinance for actual live prices and changes
-        def _fetch_fx_from_yf(yf_ticker: str) -> tuple:
-            """Fetch FX rate and history from yfinance. Returns (current, prev_day, week_ago, month_ago)."""
-            try:
-                import yfinance as yf
-                tk = yf.Ticker(yf_ticker)
-                hist = tk.history(period="40d")  # Get enough for 1M calc
-                if hist.empty or len(hist) < 2:
-                    return None, None, None, None
-                close = hist["Close"].dropna()
-                current = float(close.iloc[-1])
-                prev_day = float(close.iloc[-2])
-                week_ago = float(close.iloc[-6]) if len(close) >= 6 else prev_day
-                month_ago = float(close.iloc[-22]) if len(close) >= 22 else week_ago
-                return current, prev_day, week_ago, month_ago
-            except Exception as e:
-                logger.debug(f"[FX] yfinance failed for {yf_ticker}: {e}")
-            return None, None, None, None
-
-        def _fetch_fx_from_fred(series_id: str) -> Optional[float]:
-            """Fetch FX rate from FRED API."""
-            api_key = os.getenv("FRED_API_KEY")
-            if not api_key or api_key == "your_fred_api_key_here":
-                return None
-            try:
-                import requests
-                url = (
-                    f"https://api.stlouisfed.org/fred/series/observations"
-                    f"?series_id={series_id}"
-                    f"&api_key={api_key}"
-                    f"&file_type=json"
-                    f"&sort_order=desc"
-                    f"&limit=30"
-                )
-                resp = requests.get(url, timeout=10)
-                data = resp.json()
-                if data.get("observations"):
-                    for obs in data["observations"]:
-                        val = obs.get("value")
-                        if val and val != ".":
-                            return float(val)
-            except Exception as e:
-                logger.debug(f"[FX] Failed to fetch {series_id}: {e}")
-            return None
-
-        def _compute_changes(series: pd.Series) -> dict:
-            """Compute 1D, 1W, 1M changes from a price series."""
-            if series.empty or len(series) < 2:
-                return {"1d": 0.0, "1w": 0.0, "1m": 0.0}
-
-            latest = series.iloc[-1]
-            prev = series.iloc[-2] if len(series) > 1 else latest
-            week_ago = series.iloc[-6] if len(series) > 5 else latest
-            month_ago = series.iloc[-22] if len(series) > 21 else week_ago
-
-            return {
-                "1d": round((latest - prev) / prev * 100, 2) if prev else 0.0,
-                "1w": round((latest - week_ago) / week_ago * 100, 2) if week_ago else 0.0,
-                "1m": round((latest - month_ago) / month_ago * 100, 2) if month_ago else 0.0,
-            }
-
-        # Fetch FX data
-        g10_pairs = []
-        em_pairs = []
-
-        for code, config in FX_PAIRS.items():
-            series_id = config["series"]
-            yf_ticker = config.get("yf_ticker")
-            changes = {"1d": 0.0, "1w": 0.0, "1m": 0.0}  # Default
-            latest = None
-
-            # Try to get from DataFrame first
-            if series_id in df.columns:
-                series = df[series_id].dropna()
-                if not series.empty:
-                    latest = series.iloc[-1]
-                    changes = _compute_changes(series)
-
-            # FIXED (Issue 2): If no DataFrame data, try yfinance for live data with actual changes
-            if latest is None and yf_ticker:
-                current, prev, week, month = _fetch_fx_from_yf(yf_ticker)
-                if current is not None:
-                    # FIXED (Fix 4): Invert yfinance values for pairs where USD is base currency
-                    # yfinance returns JPY=X as JPY/USD (0.0066) but we want USD/JPY (~152)
-                    if config.get("invert", False):
-                        current = 1 / current if current != 0 else 0
-                        prev = 1 / prev if prev and prev != 0 else 0
-                        week = 1 / week if week and week != 0 else 0
-                        month = 1 / month if month and month != 0 else 0
-                    latest = current
-                    # Compute changes from yfinance data (now in correct direction)
-                    changes = {
-                        "1d": round((current - prev) / prev * 100, 2) if prev else 0.0,
-                        "1w": round((current - week) / week * 100, 2) if week else 0.0,
-                        "1m": round((current - month) / month * 100, 2) if month else 0.0,
-                    }
-
-            # FIXED (Issue 2): If still no data, try FRED API as last resort
-            if latest is None:
-                latest = _fetch_fx_from_fred(series_id)
-                if latest is None:
-                    continue  # Skip this pair entirely
-                # FRED only gives latest, no history for changes
-                changes = {"1d": 0.0, "1w": 0.0, "1m": 0.0}
-
-            # Determine signal based on 1M momentum
-            chg_1m = changes["1m"]
-            if chg_1m > 1.0:
-                signal = "LONG"
-            elif chg_1m < -1.0:
-                signal = "SHORT"
-            else:
-                signal = "NEUTRAL"
-
-            # FIXED (BUG 10): FX sanity check with fallback values
-            pair_name = config["name"]
-            dynamic_bounds = _get_all_fx_bounds()
-            sanity_bounds = dynamic_bounds.get(pair_name)
-
-            # Define reasonable fallback values for each pair
-            FALLBACK_FX_RATES = {
-                "EUR/USD": 1.08,
-                "GBP/USD": 1.26,
-                "USD/JPY": 152.5,
-                "AUD/USD": 0.65,
-                "USD/CAD": 1.36,
-                "USD/CHF": 0.91,
-                "NZD/USD": 0.60,
-                "USD/SEK": 10.8,
-                "USD/CNH": 7.24,
-                "USD/MXN": 17.2,
-                "USD/BRL": 5.10,
-                "USD/ZAR": 18.7,
-            }
-
-            if sanity_bounds:
-                lo, hi = sanity_bounds
-                if latest is not None and not (lo <= latest <= hi):
-                    logger.warning(
-                        f"FX sanity fail: {pair_name} = {latest:.4f} "
-                        f"(expected {lo:.2f}–{hi:.2f}) — using fallback"
-                    )
-                    latest = FALLBACK_FX_RATES.get(pair_name, latest)
-
-            if latest is None:
-                latest = FALLBACK_FX_RATES.get(pair_name)
-                signal = "NEUTRAL"
-
-            pair_data = {
-                "pair": pair_name,
-                "spot": round(latest, 4) if latest is not None else None,
-                "change1d": changes["1d"] if latest is not None else 0.0,
-                "change1w": changes["1w"] if latest is not None else 0.0,
-                "change1m": chg_1m if latest is not None else 0.0,
-                "vol1m": abs(chg_1m) * 0.5 + 5.0 if latest is not None else 0.0,  # Approximate vol
-                "trendSignal": signal,
-                "category": config["category"],
-            }
-
-            if config["category"] == "G10":
-                g10_pairs.append(pair_data)
-            else:
-                em_pairs.append(pair_data)
-
-        # FIXED (Issue 2): Fall back to yfinance with real changes if no data
-        if not g10_pairs:
-            g10_fallbacks = [
-                {"yf_ticker": "EURUSD=X", "pair": "EUR/USD", "spot": 1.08},
-                {"yf_ticker": "GBPUSD=X", "pair": "GBP/USD", "spot": 1.26},
-                {"yf_ticker": "JPY=X", "pair": "USD/JPY", "spot": 152.5},
-                {"yf_ticker": "AUDUSD=X", "pair": "AUD/USD", "spot": 0.65},
-                {"yf_ticker": "CAD=X", "pair": "USD/CAD", "spot": 1.36},
-                {"yf_ticker": "CHF=X", "pair": "USD/CHF", "spot": 0.91},
-                {"yf_ticker": "NZDUSD=X", "pair": "NZD/USD", "spot": 0.60},
-            ]
-            for fb in g10_fallbacks:
-                current, prev, week, month = _fetch_fx_from_yf(fb["yf_ticker"])
-                if current:
-                    chg_1d = round((current - prev) / prev * 100, 2) if prev else 0.0
-                    chg_1w = round((current - week) / week * 100, 2) if week else 0.0
-                    chg_1m = round((current - month) / month * 100, 2) if month else 0.0
-                else:
-                    current, chg_1d, chg_1w, chg_1m = fb["spot"], 0.0, 0.0, 0.0
-                signal = "LONG" if chg_1m > 1.0 else "SHORT" if chg_1m < -1.0 else "NEUTRAL"
-                g10_pairs.append({
-                    "pair": fb["pair"], "spot": round(current, 4),
-                    "change1d": chg_1d, "change1w": chg_1w, "change1m": chg_1m,
-                    "vol1m": abs(chg_1m) * 0.5 + 5.0, "trendSignal": signal, "category": "G10"
-                })
-
-        if not em_pairs:
-            em_fallbacks = [
-                {"yf_ticker": "CNY=X", "pair": "USD/CNH", "spot": 7.24},
-                {"yf_ticker": "MXN=X", "pair": "USD/MXN", "spot": 17.2},
-                {"yf_ticker": "BRL=X", "pair": "USD/BRL", "spot": 5.10},
-                {"yf_ticker": "ZAR=X", "pair": "USD/ZAR", "spot": 18.7},
-            ]
-            for fb in em_fallbacks:
-                current, prev, week, month = _fetch_fx_from_yf(fb["yf_ticker"])
-                if current:
-                    chg_1d = round((current - prev) / prev * 100, 2) if prev else 0.0
-                    chg_1w = round((current - week) / week * 100, 2) if week else 0.0
-                    chg_1m = round((current - month) / month * 100, 2) if month else 0.0
-                else:
-                    current, chg_1d, chg_1w, chg_1m = fb["spot"], 0.0, 0.0, 0.0
-                signal = "LONG" if chg_1m > 1.0 else "SHORT" if chg_1m < -1.0 else "NEUTRAL"
-                em_pairs.append({
-                    "pair": fb["pair"], "spot": round(current, 4),
-                    "change1d": chg_1d, "change1w": chg_1w, "change1m": chg_1m,
-                    "vol1m": abs(chg_1m) * 0.5 + 5.0, "trendSignal": signal, "category": "EM"
-                })
-
-        # FIXED (BUG 2): Use cached DXY helper for consistency with topbar
-        dxy_val = _get_dxy_value(df) or 103.0
-        dxy_prev = dxy_val * 0.998  # Approximate
-
-        return {
-            "status": "ok",
-            "fx": {
-                "g10": g10_pairs,
-                "em": em_pairs,
-                "dxy": {
-                    "spot": round(dxy_val, 2),
-                    "change1d": round((dxy_val - dxy_prev) / dxy_prev * 100, 2),
-                }
-            },
-            "timestamp": datetime.now().isoformat(),
-        }
-    except Exception as e:
-        logger.error(f"FX endpoint error: {e}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
-
-# FIXED: Commodities Dashboard endpoint
-@app.get("/api/commodities")
-async def get_commodities_endpoint():
-    """Commodities Dashboard data with Energy, Metals, Agriculture."""
-    try:
-        df = _load_data_or_fail()
-
-        # Get current regime for signal generation
-        regime_data = get_regime_data(df)
-        current_regime = regime_data.regime if hasattr(regime_data, 'regime') else "Neutral"
-
-        # Commodity definitions by category
-        COMMODITIES = {
-            "Energy": {
-                "WTI": {"series": "DCOILWTICO", "name": "WTI Crude", "unit": "$/bbl"},
-                "BRENT": {"series": "DCOILBRENTEU", "name": "Brent Crude", "unit": "$/bbl"},
-                "NATGAS": {"series": "DHHNGSP", "name": "Natural Gas", "unit": "$/MMBtu"},
-            },
-            "Metals": {
-                "GOLD": {"series": "GOLDAMGBD228NLBM", "name": "Gold", "unit": "$/oz"},
-                "SILVER": {"series": "SLVPRUSD", "name": "Silver", "unit": "$/oz"},
-                "COPPER": {"series": "PCOPPUSDM", "name": "Copper", "unit": "$/mt"},
-            },
-            "Agriculture": {
-                "CORN": {"series": "PMAIZMTUSDM", "name": "Corn", "unit": "$/mt"},
-                "WHEAT": {"series": "PWHEAMTUSDM", "name": "Wheat", "unit": "$/mt"},
-                "SOYBEANS": {"series": "PSOYBUSDQ", "name": "Soybeans", "unit": "$/mt"},
-            },
-        }
-
-        def _fetch_commodity_from_fred(series_id: str) -> Optional[list]:
-            """Fetch commodity price from FRED API."""
-            api_key = os.getenv("FRED_API_KEY")
-            if not api_key or api_key == "your_fred_api_key_here":
-                return None
-            try:
-                import requests
-                url = (
-                    f"https://api.stlouisfed.org/fred/series/observations"
-                    f"?series_id={series_id}"
-                    f"&api_key={api_key}"
-                    f"&file_type=json"
-                    f"&sort_order=desc"
-                    f"&limit=90"  # Get ~3 months for change calculations
-                )
-                resp = requests.get(url, timeout=10)
-                data = resp.json()
-                if data.get("observations"):
-                    values = []
-                    for obs in data["observations"][:90]:
-                        val = obs.get("value")
-                        if val and val != ".":
-                            values.append(float(val))
-                    if values:
-                        return values  # Return list for history
-            except Exception as e:
-                logger.debug(f"[COMM] Failed to fetch {series_id}: {e}")
-            return None
-
-        def _compute_commodity_changes(values: list) -> dict:
-            """Compute changes and 52-week percentile."""
-            if not values or len(values) < 2:
-                return {"1d": 0.0, "1m": 0.0, "3m": 0.0, "52w_pct": 50.0}
-
-            latest = values[0]
-            one_day = values[1] if len(values) > 1 else latest
-            one_month = values[21] if len(values) > 21 else values[-1]
-            three_month = values[63] if len(values) > 63 else values[-1]
-
-            # 52-week percentile (approximate from available history)
-            if len(values) > 1:
-                min_val = min(values)
-                max_val = max(values)
-                range_val = max_val - min_val if max_val != min_val else 1
-                percentile = (latest - min_val) / range_val * 100
-            else:
-                percentile = 50.0
-
-            return {
-                "1d": round((latest - one_day) / one_day * 100, 2) if one_day else 0.0,
-                "1m": round((latest - one_month) / one_month * 100, 2) if one_month else 0.0,
-                "3m": round((latest - three_month) / three_month * 100, 2) if three_month else 0.0,
-                "52w_pct": round(percentile, 1),
-            }
-
-        def _get_macro_signal(category: str, regime: str) -> str:
-            """Generate macro signal based on regime and commodity category."""
-            signals = {
-                "Energy": {
-                    "Goldilocks": "NEUTRAL",
-                    "Expansion": "BULLISH",
-                    "Reflation": "BULLISH",
-                    "Stagflation": "BULLISH",
-                    "Slowdown": "BEARISH",
-                },
-                "Metals": {
-                    "Goldilocks": "BULLISH",
-                    "Expansion": "BULLISH",
-                    "Reflation": "BULLISH",
-                    "Stagflation": "BULLISH",
-                    "Slowdown": "BEARISH",
-                },
-                "Agriculture": {
-                    "Goldilocks": "NEUTRAL",
-                    "Expansion": "NEUTRAL",
-                    "Reflation": "BULLISH",
-                    "Stagflation": "BULLISH",
-                    "Slowdown": "NEUTRAL",
-                },
-            }
-            return signals.get(category, {}).get(regime, "NEUTRAL")
-
-        # Build commodity data
-        result = {"energy": [], "metals": [], "agriculture": []}
-
-        for category, commodities in COMMODITIES.items():
-            for symbol, config in commodities.items():
-                series_id = config["series"]
-
-                # Try DataFrame first
-                if series_id in df.columns:
-                    series = df[series_id].dropna()
-                    if not series.empty and len(series) >= 2:
-                        values = series.tail(90).tolist()
-                        values.reverse()  # Most recent first
-                    else:
-                        values = None
-                else:
-                    # Fetch from FRED
-                    values = _fetch_commodity_from_fred(series_id)
-
-                if values:
-                    changes = _compute_commodity_changes(values)
-                    commodity_data = {
-                        "symbol": symbol,
-                        "name": config["name"],
-                        "spot": round(values[0], 2),
-                        "change1d": changes["1d"],
-                        "change1m": changes["1m"],
-                        "change3m": changes["3m"],
-                        "week52Percentile": changes["52w_pct"],
-                        "unit": config["unit"],
-                        "macroSignal": _get_macro_signal(category, current_regime),
-                    }
-
-                    if category == "Energy":
-                        result["energy"].append(commodity_data)
-                    elif category == "Metals":
-                        result["metals"].append(commodity_data)
-                    else:
-                        result["agriculture"].append(commodity_data)
-
-        # Fallbacks if no data
-        if not result["energy"]:
-            result["energy"] = [
-                {"symbol": "WTI", "name": "WTI Crude", "spot": 78.50, "change1d": 0.0, "change1m": 0.0, "change3m": 0.0, "week52Percentile": 45.0, "unit": "$/bbl", "macroSignal": _get_macro_signal("Energy", current_regime)},
-                {"symbol": "BRENT", "name": "Brent Crude", "spot": 82.30, "change1d": 0.0, "change1m": 0.0, "change3m": 0.0, "week52Percentile": 48.0, "unit": "$/bbl", "macroSignal": _get_macro_signal("Energy", current_regime)},
-                {"symbol": "NATGAS", "name": "Natural Gas", "spot": 2.85, "change1d": 0.0, "change1m": 0.0, "change3m": 0.0, "week52Percentile": 35.0, "unit": "$/MMBtu", "macroSignal": _get_macro_signal("Energy", current_regime)},
-            ]
-
-        if not result["metals"]:
-            result["metals"] = [
-                {"symbol": "GOLD", "name": "Gold", "spot": 2350.0, "change1d": 0.0, "change1m": 0.0, "change3m": 0.0, "week52Percentile": 85.0, "unit": "$/oz", "macroSignal": _get_macro_signal("Metals", current_regime)},
-                {"symbol": "SILVER", "name": "Silver", "spot": 27.50, "change1d": 0.0, "change1m": 0.0, "change3m": 0.0, "week52Percentile": 65.0, "unit": "$/oz", "macroSignal": _get_macro_signal("Metals", current_regime)},
-                {"symbol": "COPPER", "name": "Copper", "spot": 9850.0, "change1d": 0.0, "change1m": 0.0, "change3m": 0.0, "week52Percentile": 75.0, "unit": "$/mt", "macroSignal": _get_macro_signal("Metals", current_regime)},
-            ]
-
-        if not result["agriculture"]:
-            result["agriculture"] = [
-                {"symbol": "CORN", "name": "Corn", "spot": 445.0, "change1d": 0.0, "change1m": 0.0, "change3m": 0.0, "week52Percentile": 40.0, "unit": "$/mt", "macroSignal": _get_macro_signal("Agriculture", current_regime)},
-                {"symbol": "WHEAT", "name": "Wheat", "spot": 585.0, "change1d": 0.0, "change1m": 0.0, "change3m": 0.0, "week52Percentile": 55.0, "unit": "$/mt", "macroSignal": _get_macro_signal("Agriculture", current_regime)},
-                {"symbol": "SOYBEANS", "name": "Soybeans", "spot": 1180.0, "change1d": 0.0, "change1m": 0.0, "change3m": 0.0, "week52Percentile": 50.0, "unit": "$/mt", "macroSignal": _get_macro_signal("Agriculture", current_regime)},
-            ]
-
-        # Compute macro signals
-        gold_series = _series(df, "GOLDAMGBD228NLBM", "gold_price")
-        copper_series = _series(df, "PCOPPUSDM", "copper_price")
-
-        copper_gold_ratio = None
-        if not copper_series.empty and not gold_series.empty:
-            copper = copper_series.dropna().iloc[-1] if not copper_series.dropna().empty else None
-            gold = gold_series.dropna().iloc[-1] if not gold_series.dropna().empty else None
-            if copper and gold and gold != 0:
-                copper_gold_ratio = copper / gold
-
-        # Oil trend
-        oil_series = _series(df, "DCOILWTICO", "wti_crude")
-        oil_trend = "neutral"
-        if not oil_series.empty and len(oil_series.dropna()) >= 20:
-            s = oil_series.dropna()
-            if len(s) >= 20:
-                ma20 = s.rolling(20).mean().iloc[-1]
-                latest = s.iloc[-1]
-                if latest > ma20 * 1.05:
-                    oil_trend = "rising"
-                elif latest < ma20 * 0.95:
-                    oil_trend = "falling"
-
-        # Commodity inflation index (simple composite)
-        inflation_score = 50
-        if current_regime == "Reflation":
-            inflation_score = 70
-        elif current_regime == "Stagflation":
-            inflation_score = 85
-        elif current_regime == "Slowdown":
-            inflation_score = 35
-
-        return {
-            "status": "ok",
-            "commodities": result,
-            "macroSignals": {
-                "copperGoldRatio": {
-                    "value": round(copper_gold_ratio, 4) if copper_gold_ratio else 0.0004,
-                    "signal": "RISING" if copper_gold_ratio and copper_gold_ratio > 0.00025 else "FALLING",
-                    "description": "Copper/Gold ratio indicates industrial demand vs safety",
-                },
-                "oilTrend": {
-                    "direction": oil_trend.upper(),
-                    "interpretation": "Bullish for energy" if oil_trend == "rising" else "Bearish for energy" if oil_trend == "falling" else "Neutral",
-                },
-                "commodityInflationIndex": {
-                    "score": inflation_score,
-                    "signal": "ELEVATED" if inflation_score > 60 else "MODERATE" if inflation_score > 40 else "LOW",
-                },
-            },
-            "timestamp": datetime.now().isoformat(),
-        }
-    except Exception as e:
-        logger.error(f"Commodities endpoint error: {e}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
-
-# =============================================================================
 # NEW ENDPOINTS — Calendar Blackout, Earnings Revisions, COT, Horizon
-# =============================================================================
 
 @app.get("/api/calendar/blackout")
 async def get_blackout_calendar():
@@ -14121,205 +10503,10 @@ async def get_economic_calendar():
         return JSONResponse(content={"events": [], "error": str(e)})
 
 
-@app.get("/api/risk/full")
-async def get_full_risk():
-    """Full risk analytics — returns benchmark stats when no portfolio loaded."""
-    try:
-        df = load_processed_data()
-        if df is None:
-            df = load_sample_data()
-
-        # FIXED (BUG 8): Calculate actual risk metrics with error handling
-        risk_data = {
-            "sharpe": None,
-            "sortino": None,
-            "calmar": None,
-            "informationRatio": None,
-            "beta": None,
-            "var95": None,
-            "cvar95": None,
-            "maxDrawdown": None,
-            "status": "Using S&P 500 as benchmark proxy",
-        }
-
-        def safe_sharpe(returns, rf_annual=0.04):
-            """Calculate Sharpe ratio with guards."""
-            if len(returns) < 10:
-                return None
-            excess = returns - rf_annual / 252
-            std = excess.std()
-            if std == 0 or np.isnan(std) or not np.isfinite(std):
-                return None
-            return float(excess.mean() / std * np.sqrt(252))
-
-        def safe_sortino(returns, rf_annual=0.04):
-            """Calculate Sortino ratio (downside deviation)."""
-            if len(returns) < 10:
-                return None
-            excess = returns - rf_annual / 252
-            downside = returns[returns < 0].std()
-            if downside == 0 or np.isnan(downside):
-                return None
-            return float(excess.mean() / downside * np.sqrt(252))
-
-        def safe_var_cvar(returns, percentile=5):
-            """Calculate VaR and CVaR (expected shortfall)."""
-            if len(returns) < 10:
-                return None, None
-            var = np.percentile(returns, percentile)
-            cvar = returns[returns <= var].mean() if len(returns[returns <= var]) > 0 else var
-            # FIXED (BUG 3): Return as decimal (e.g., 0.0125 = 1.25%), NOT as % (1.25)
-            return float(var), float(cvar)
-
-        def safe_max_dd(returns):
-            """Calculate maximum drawdown."""
-            if len(returns) < 10:
-                return None
-            cum_returns = (1 + returns).cumprod()
-            rolling_max = cum_returns.expanding().max()
-            drawdown = (cum_returns - rolling_max) / rolling_max
-            return float(drawdown.min() * 100)  # Return as %
-
-        # Calculate risk metrics from S&P 500 data
-        risk_metrics_calculated = False
-        if df is not None and len(df) > 60:
-            try:
-                spx = df.get('sp500', df.get('SPX', df.get('spx', df.get('SP500'))))
-                if spx is not None and len(spx) > 60:
-                    returns = spx.pct_change().dropna()
-                    if len(returns) >= 30:
-                        risk_data["sharpe"] = safe_sharpe(returns)
-                        risk_data["sortino"] = safe_sortino(returns)
-                        var_95, cvar_95 = safe_var_cvar(returns)
-                        risk_data["var95"] = var_95
-                        risk_data["cvar95"] = cvar_95
-                        risk_data["maxDrawdown"] = safe_max_dd(returns)
-                        risk_data["status"] = f"S&P 500 benchmark ({len(returns)} days)"
-                        risk_metrics_calculated = True
-                        logger.info(f"Risk analytics calculated: Sharpe={risk_data['sharpe']}, VaR95={var_95}")
-            except Exception as e:
-                logger.warning(f"Risk analytics calculation failed: {e}")
-                risk_data["status"] = f"Calculation error: {str(e)[:50]}"
-
-        # FIXED (BUG 3): Format response to match frontend RiskAnalyticsData interface
-        # VaR/CVaR are already in decimal from safe_var_cvar (divided by 100 there)
-        var_95_value = risk_data.get("var95") or 0.0125  # 1.25% as decimal
-        cvar_95_value = risk_data.get("cvar95") or 0.015  # 1.5% as decimal
-        sharpe_val = risk_data.get("sharpe") or 0.85
-
-        response_data = {
-            # Flat fields for backward compatibility
-            **risk_data,
-            # Nested structure expected by frontend
-            "drawdown": {
-                "currentSeverity": "mild" if (risk_data.get("maxDrawdown") or 0) > -5 else "moderate" if (risk_data.get("maxDrawdown") or 0) > -10 else "severe",
-                "daysInDrawdown": 0,
-                "recoveryTimeEstimate": "N/A"
-            },
-            "riskAdjustedReturns": {
-                "sharpeRatio": sharpe_val,
-                "sortinoRatio": risk_data.get("sortino") or sharpe_val * 1.2,
-                "calmarRatio": 0.65,
-                "informationRatio": 0.42,
-                "betaVsSpy": risk_data.get("beta") or 0.75,
-                "var95": var_95_value if var_95_value < 1 else var_95_value / 100,  # FIXED: Already decimal, guard against percent
-                "cvar95": cvar_95_value if cvar_95_value < 1 else cvar_95_value / 100,
-                "annualReturn": 0.08,
-                "annualVolatility": 0.15
-            },
-            "correlation": {
-                "assets": ["SPY", "TLT", "GLD", "HYG"],
-                "matrix3m": [[1.0, -0.3, 0.1, 0.8], [-0.3, 1.0, 0.2, -0.4], [0.1, 0.2, 1.0, 0.1], [0.8, -0.4, 0.1, 1.0]],
-                "diversificationScore": 65,
-                "diversificationRating": "Moderate"
-            },
-            "stressTests": [
-                {"name": "2008 Crisis", "description": "Global financial crisis scenario", "status": "passed"},
-                {"name": "2020 COVID", "description": "Pandemic shock scenario", "status": "passed"},
-                {"name": "2022 Inflation", "description": "Rate hiking cycle scenario", "status": "warning"}
-            ]
-        }
-
-        return JSONResponse(content=scrub_nans(response_data))
-    except Exception as e:
-        logger.error(f"/api/risk/full failed: {e}")
-        return JSONResponse(content={"error": str(e), "status": "error"}, status_code=500)
 
 
-@app.get("/api/trade-ideas")
-async def get_trade_ideas_endpoint():
-    """Trade ideas endpoint for standalone access."""
-    try:
-        df = load_processed_data()
-        if df is None:
-            df = load_sample_data()
-        regime_data = safe_compute(get_regime_data, df, label="trade-ideas-regime")
-        current_regime = regime_data.current if regime_data else "Unknown"
-        ideas = safe_compute(
-            generate_trade_recommendations_data,
-            df, regime_data,
-            label="trade-ideas",
-        )
-        return JSONResponse(content=scrub_nans(ideas or {}))
-    except Exception as e:
-        logger.error(f"Trade ideas endpoint failed: {e}")
-        return JSONResponse(content={"ideas": [], "error": str(e)})
 
 
-@app.get("/api/morning-brief")
-async def get_morning_brief_endpoint():
-    """Morning brief endpoint for standalone access."""
-    try:
-        df = load_processed_data()
-        if df is None:
-            df = load_sample_data()
-        regime = safe_compute(get_regime_data, df, label="morning-brief")
-        signals = safe_compute(get_signals, df, label="morning-brief-signals")
-        current_regime = regime.current if regime else "Unknown"
-
-        # FIXED: Guard confidence value (BUG 3)
-        try:
-            confidence_raw = regime.confidenceScore if regime and hasattr(regime, 'confidenceScore') else 0.75
-            confidence = float(confidence_raw)
-            if math.isnan(confidence) or math.isinf(confidence):
-                confidence = 0.0
-            confidence = min(1.0, max(0.0, confidence))
-        except (TypeError, ValueError):
-            confidence = 0.0
-
-        # FIXED: Ensure priorities is never empty (BUG 3)
-        priorities = [
-            "Monitor upcoming FOMC decision for policy pivot signals",
-            "Watch CPI release for inflation trajectory confirmation",
-            "Track credit spreads for financial stress indicators"
-        ]
-
-        brief = {
-            "date": datetime.now().strftime("%Y-%m-%d"),
-            "regime": current_regime,
-            "duration_months": 1,
-            "confidence": confidence,
-            "headline": f"Macro regime: {current_regime}",
-            "priorities": priorities,
-            "risks": [
-                "Policy error: Fed overtightening into slowing growth",
-                "Credit event: HY spreads widening above 500bps",
-                "Geopolitical escalation: Energy price spike risk"
-            ],
-            "conviction_trades": [
-                {"ticker": "GLD", "direction": "LONG", "conviction": "HIGH", "thesis": "Stagflation hedge"},
-                {"ticker": "TLT", "direction": "SHORT", "conviction": "MEDIUM", "thesis": "Inflation pressure on bonds"}
-            ],
-            "position_modifier": 1.0,
-            "model_caution": False,
-        }
-        return JSONResponse(content=scrub_nans(brief))
-    except Exception as e:
-        logger.error(f"Morning brief failed: {e}")
-        return JSONResponse(content={"date": datetime.now().strftime("%Y-%m-%d"), "regime": "Unknown", "priorities": [], "risks": [], "conviction_trades": [], "error": str(e)})
-
-
-# DEBUG endpoint to verify code reload
 @app.get("/api/test-version")
 async def test_version():
     return {"version": "2026-05-05-reload-test", "twoYearYield_hardcoded": 0.0425}
@@ -14382,179 +10569,13 @@ async def get_market_stream():
 
 
 # FIXED (Fix 8): Canonical prices endpoint - single source of truth
-@app.get("/api/prices")
-async def get_prices():
-    """Canonical price cache - single source of truth for all market prices."""
-    try:
-        # Ensure cache is fresh
-        prices = {
-            "spx": get_cached_price("SPX"),
-            "ndx": get_cached_price("NDX"),
-            "tenYear": get_cached_price("TEN_YEAR"),
-            "twoYear": get_cached_price("TWO_YEAR"),
-            "dxy": get_cached_price("DXY"),
-            "eurusd": get_cached_price("EURUSD"),
-            "gold": get_cached_price("GOLD"),
-            "oil": get_cached_price("OIL"),
-            "fed": get_cached_price("FED"),
-        }
-
-        # Extract values or null
-        result = {
-            "spx": prices["spx"]["price"] if prices["spx"] else None,
-            "spxChg": prices["spx"]["change_pct"] if prices["spx"] else None,
-            "ndx": prices["ndx"]["price"] if prices["ndx"] else None,
-            "ndxChg": prices["ndx"]["change_pct"] if prices["ndx"] else None,
-            "vix": None,  # VIX data not yet cached
-            "tenYear": prices["tenYear"]["price"] if prices["tenYear"] else None,
-            "twoYear": prices["twoYear"]["price"] if prices["twoYear"] else None,
-            "dxy": prices["dxy"]["price"] if prices["dxy"] else None,
-            "dxyChg": prices["dxy"]["change_pct"] if prices["dxy"] else None,
-            "eurusd": prices["eurusd"]["price"] if prices["eurusd"] else None,
-            "eurusdChg": prices["eurusd"]["change_pct"] if prices["eurusd"] else None,
-            "gold": prices["gold"]["price"] if prices["gold"] else None,
-            "goldChg": prices["gold"]["change_pct"] if prices["gold"] else None,
-            "oil": prices["oil"]["price"] if prices["oil"] else None,
-            "oilChg": prices["oil"]["change_pct"] if prices["oil"] else None,
-            "fed": prices["fed"]["price"] if prices["fed"] else None,
-        }
-
-        return scrub_nans(result)
-    except Exception as e:
-        logger.error(f"Prices endpoint failed: {e}")
-        return {"error": str(e)}
-
-
-# =============================================================================
 # BUSINESS LAYER ENDPOINTS (Phase 3D)
-# =============================================================================
-
-@app.get("/api/business/recommendations")
-async def get_business_recommendations():
-    """Get latest investment recommendations from business layer."""
-    try:
-        outputs = load_business_outputs()
-        return {
-            "summary": outputs.get("recommendations"),
-            "expected_returns": outputs.get("expected_returns", []),
-            "position_sizing": outputs.get("position_sizing", []),
-            "signal_scorecard": outputs.get("signal_scorecard", []),
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Business recommendations endpoint failed: {e}")
-        return {"error": str(e), "recommendations": None}
 
 
-@app.get("/api/business/decision-log")
-async def get_decision_log(limit: int = 50) -> Dict[str, Any]:
-    """Get decision log entries for audit trail."""
-    try:
-        log_path = OUTPUTS_DIR / "decision_log.csv"
-        if log_path.exists():
-            df = pd.read_csv(log_path)
-            # Sort by date descending and limit
-            df = df.sort_values("date", ascending=False).head(limit)
-            return {
-                "entries": df.to_dict(orient="records"),
-                "total": len(df),
-                "timestamp": datetime.now().isoformat()
-            }
-        return {"entries": [], "total": 0, "timestamp": datetime.now().isoformat()}
-    except Exception as e:
-        logger.error(f"Decision log endpoint failed: {e}")
-        return {"error": str(e), "entries": []}
 
 
-@app.get("/api/business/ic-pack")
-async def get_ic_pack() -> Dict[str, Any]:
-    """Get latest Investment Committee pack."""
-    try:
-        # Find latest IC pack
-        ic_files = sorted(OUTPUTS_DIR.glob("investment_committee_pack_*.md"))
-        if ic_files:
-            latest = ic_files[-1]
-            with open(latest, "r") as f:
-                content = f.read()
-            return {
-                "content": content,
-                "filename": latest.name,
-                "generated": latest.stat().st_mtime,
-                "timestamp": datetime.now().isoformat()
-            }
-        return {
-            "content": None,
-            "filename": None,
-            "generated": None,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"IC pack endpoint failed: {e}")
-        return {"error": str(e), "content": None}
 
 
-@app.get("/api/business/expected-returns")
-async def get_expected_returns() -> Dict[str, Any]:
-    """Get expected returns by sector/asset."""
-    try:
-        outputs = load_business_outputs()
-        returns = outputs.get("expected_returns", [])
-
-        # Group by asset class
-        by_asset = {}
-        for item in returns:
-            asset = item.get("asset_class", "unknown")
-            if asset not in by_asset:
-                by_asset[asset] = []
-            by_asset[asset].append(item)
-
-        return {
-            "returns": returns,
-            "by_asset_class": by_asset,
-            "count": len(returns),
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Expected returns endpoint failed: {e}")
-        return {"error": str(e), "returns": []}
 
 
-@app.get("/api/business/position-sizing")
-async def get_position_sizing() -> Dict[str, Any]:
-    """Get position sizing recommendations."""
-    try:
-        outputs = load_business_outputs()
-        sizing = outputs.get("position_sizing", [])
 
-        # Calculate total allocation
-        total = sum(item.get("recommended_weight", 0) for item in sizing)
-
-        return {
-            "positions": sizing,
-            "total_weight": total,
-            "count": len(sizing),
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Position sizing endpoint failed: {e}")
-        return {"error": str(e), "positions": []}
-
-
-if __name__ == "__main__":
-    import uvicorn
-    # FIXED: Dynamic port detection — never hardcode
-    port = find_free_port(
-        preferred=int(os.environ.get("API_PORT", 8000))
-    )
-    os.environ["RUNTIME_API_PORT"] = str(port)
-    write_port_file(port)
-    logger.info(f"[MACRO OS] Starting API server on port {port}")
-    # FIXED: Run Socket.IO app instead of FastAPI app
-    uvicorn.run(
-        "api.main:socket_app",
-        host="0.0.0.0",
-        port=port,
-        reload=False,
-        log_level="info",
-        factory=False,
-    )
