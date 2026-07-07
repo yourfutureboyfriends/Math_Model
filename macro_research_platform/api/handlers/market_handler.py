@@ -356,27 +356,28 @@ async def get_prices_data() -> Dict[str, Any]:
 
     result = await _yahoo_provider.fetch_latest_async(['SPX', 'NDX', 'VIX', 'DXY'])
     yf_tickers = {'SPX': '^GSPC', 'NDX': '^NDX', 'VIX': '^VIX', 'DXY': 'DX-Y.NYB'}
+    # Last-resort static fallbacks, used ONLY when neither the live quote nor the
+    # cached daily history is available.
+    static_fallback = {'SPX': 5800.0, 'NDX': 18500.0, 'VIX': 18.0, 'DXY': 104.0}
 
     prices = {}
-    if result.success and result.data:
-        for symbol in ['SPX', 'NDX', 'VIX', 'DXY']:
-            if symbol in result.data:
-                closes = await _fetch_closes(yf_tickers[symbol])
-                change = _pct_change(closes, 1) if closes else None
-                prices[symbol] = {
-                    "price": round(result.data[symbol].price, 2),
-                    "change_pct": change if change is not None else 0.0,
-                }
-
-    # Use fallbacks if needed
-    if 'SPX' not in prices:
-        prices['SPX'] = {"price": 5800.0, "change_pct": 0.5}
-    if 'NDX' not in prices:
-        prices['NDX'] = {"price": 18500.0, "change_pct": 0.8}
-    if 'DXY' not in prices:
-        prices['DXY'] = {"price": 104.0, "change_pct": -0.2}
-    if 'VIX' not in prices:
-        prices['VIX'] = {"price": 18.0, "change_pct": -5.0}
+    for symbol in ['SPX', 'NDX', 'VIX', 'DXY']:
+        # Cached 1y history — stable across the frequent refresh polls even when the
+        # live yf.download quote intermittently rate-limits (which previously flipped
+        # the ticker to a fake 5800). Prefer live quote, fall back to last close.
+        closes = await _fetch_closes(yf_tickers[symbol])
+        live = result.data.get(symbol) if (result.success and result.data) else None
+        if live is not None:
+            price = live.price
+        elif closes:
+            price = closes[-1]
+        else:
+            price = static_fallback[symbol]
+        change = _pct_change(closes, 1) if closes else None
+        prices[symbol] = {
+            "price": round(price, 2),
+            "change_pct": change if change is not None else 0.0,
+        }
 
     return {
         **prices,
