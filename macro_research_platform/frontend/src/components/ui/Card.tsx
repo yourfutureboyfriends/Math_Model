@@ -5,12 +5,14 @@ import { cn } from '@/lib/utils';
 
 interface CardProps {
   title?: string;
+  /** Optional content rendered on the right of the title bar (e.g. a SourceTag). */
+  headerRight?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
   loading?: boolean;
 }
 
-export function Card({ title, children, className, loading }: CardProps) {
+export function Card({ title, headerRight, children, className, loading }: CardProps) {
   return (
     <div
       className={cn(
@@ -18,11 +20,12 @@ export function Card({ title, children, className, loading }: CardProps) {
         className
       )}
     >
-      {title && (
-        <div className="px-3 py-1.5 bg-surface-2 border-b border-border-subtle">
+      {(title || headerRight) && (
+        <div className="px-3 py-1.5 bg-surface-2 border-b border-border-subtle flex items-center justify-between gap-2">
           <h3 className="text-2xs font-medium text-text-tertiary uppercase tracking-wider">
             {title}
           </h3>
+          {headerRight}
         </div>
       )}
       <div className="p-3">
