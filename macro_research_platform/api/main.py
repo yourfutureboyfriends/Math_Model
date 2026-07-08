@@ -8752,6 +8752,95 @@ async def _aio_to_thread(fn, *args):
     return await _aio.to_thread(fn, *args)
 
 
+@app.get("/api/v1/risk/factor-exposure")
+async def risk_factor_exposure_v1(book: Optional[str] = None):
+    """Portfolio factor exposure: OLS betas of each holding to systematic factors,
+    aggregated by net weight, with each factor's contribution to portfolio volatility.
+    Requires positions (Phase 1) — returns available=false with a reason if none."""
+    import numpy as _np
+    from api import portfolio_store
+    from api.handlers.market_handler import _fetch_dated_closes_literal
+    from api.calculations.factor_model import (
+        FACTOR_PROXIES, FACTOR_LABELS, returns_from_closes,
+        estimate_factor_loadings, regression_fit, aggregate_portfolio_loadings,
+        contribution_to_vol,
+    )
+
+    raw = await _aio_to_thread(portfolio_store.list_positions, book)
+    if not raw:
+        return {"available": False, "reason": "No positions configured — add positions first.",
+                "factors": []}
+
+    enriched = await _enrich_positions(raw)
+    positions = enriched["positions"]
+    gross = enriched["summary"]["gross_exposure"] or 0.0
+
+    # Fetch dated closes for every factor proxy and every held symbol.
+    factor_dated = {f: await _fetch_dated_closes_literal(proxy) for f, proxy in FACTOR_PROXIES.items()}
+    common_dates = None
+    for d in factor_dated.values():
+        keys = set(d.keys())
+        common_dates = keys if common_dates is None else (common_dates & keys)
+    common_dates = sorted(common_dates or [])
+    if len(common_dates) < 61:
+        return {"available": False, "reason": "Insufficient factor price history to estimate loadings.",
+                "factors": []}
+
+    def _aligned(dmap, dates):
+        return returns_from_closes([dmap[dt] for dt in dates])
+
+    # Factor volatilities (annualized) over the common grid.
+    factor_full_ret = {f: _aligned(factor_dated[f], common_dates) for f in FACTOR_PROXIES}
+    factor_vol = {f: float(_np.std(r) * (252 ** 0.5)) if len(r) else 0.0 for f, r in factor_full_ret.items()}
+
+    per_position = []
+    position_loadings, net_weights = [], []
+    for p in positions:
+        sym = str(p["symbol"]).upper()
+        pdated = await _fetch_dated_closes_literal(sym)
+        pdates = [dt for dt in common_dates if dt in pdated]
+        loadings = {}
+        r2 = 0.0
+        if len(pdates) >= 61:
+            pos_ret = _aligned(pdated, pdates)
+            fac_ret = {f: _aligned(factor_dated[f], pdates) for f in FACTOR_PROXIES}
+            loadings = estimate_factor_loadings(pos_ret, fac_ret)
+            r2 = regression_fit(pos_ret, fac_ret) if loadings else 0.0
+        mv = p.get("market_value")
+        net_w = (mv / gross) if (isinstance(mv, (int, float)) and gross) else 0.0
+        position_loadings.append(loadings)
+        net_weights.append(net_w)
+        per_position.append({
+            "symbol": sym, "book": p.get("book"), "net_weight": round(net_w, 4),
+            "r_squared": r2, "loadings": {k: round(v, 4) for k, v in loadings.items()},
+            "estimated": bool(loadings),
+        })
+
+    portfolio_loadings = aggregate_portfolio_loadings(position_loadings, net_weights)
+    contrib = contribution_to_vol(portfolio_loadings, factor_vol)
+
+    factors_out = []
+    for f in FACTOR_PROXIES:
+        factors_out.append({
+            "factor": f,
+            "label": FACTOR_LABELS.get(f, f),
+            "proxy": FACTOR_PROXIES[f],
+            "exposure": round(portfolio_loadings.get(f, 0.0), 4),
+            "factor_vol_annual": round(factor_vol.get(f, 0.0), 4),
+            "contribution_to_vol": round(contrib.get(f, 0.0), 4),
+        })
+    factors_out.sort(key=lambda x: abs(x["exposure"]), reverse=True)
+
+    return {
+        "available": True,
+        "book": book or "Firm",
+        "factors": factors_out,
+        "positions": per_position,
+        "observations": len(common_dates) - 1,
+        "computed_at": datetime.now().isoformat(),
+    }
+
+
 @app.get("/api/v1/freshness")
 async def freshness_v1():
     """Per-field data freshness: each key macro input's last release date, age, and

@@ -15,6 +15,7 @@ import {
   SectorAllocationSection,
   FactorRotationSection,
   RiskIndicatorsSection,
+  FactorExposureSection,
   NowcastSection,
   LiquiditySection,
   SentimentSection,
@@ -209,6 +210,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Risk Analytics">
           <Suspense fallback={<SectionSkeleton />}>
             <RiskAnalyticsSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Factor Exposure">
+          <Suspense fallback={<SectionSkeleton />}>
+            <FactorExposureSection />
           </Suspense>
         </ErrorBoundary>
       </div>

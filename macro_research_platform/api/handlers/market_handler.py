@@ -64,6 +64,39 @@ async def _fetch_closes(yf_ticker: str) -> list[float]:
     return closes
 
 
+async def _fetch_dated_closes_literal(ticker: str) -> dict:
+    """{ 'YYYY-MM-DD': close } for a literal ticker's 1y daily history (cached).
+
+    Dated so callers can align multiple series on common trading days before
+    regressing — essential for a correct factor model.
+    """
+    key = f"__dated__:{ticker}"
+    now = _time.time()
+    cached = _HISTORY_CACHE.get(key)
+    if cached and now - cached[0] < _HISTORY_TTL:
+        return cached[1].get("dated", {})
+
+    def _pull():
+        import yfinance as yf
+        hist = yf.Ticker(ticker).history(period="1y", interval="1d")
+        if hist is None or hist.empty:
+            return {}
+        out = {}
+        for ts, close in zip(hist.index, hist["Close"].tolist()):
+            if isinstance(close, (int, float)) and close == close:
+                out[str(ts)[:10]] = float(close)
+        return out
+
+    try:
+        dated = await asyncio.to_thread(_pull)
+    except Exception as e:
+        logger.warning(f"dated history fetch failed for {ticker}: {e}")
+        dated = {}
+    if dated:
+        _HISTORY_CACHE[key] = (now, {"dated": dated})
+    return dated
+
+
 async def _fetch_closes_literal(ticker: str) -> list[float]:
     """1y daily closes for a LITERAL yfinance ticker, bypassing the macro SYMBOL_MAP.
 
