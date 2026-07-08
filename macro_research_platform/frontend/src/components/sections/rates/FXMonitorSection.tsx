@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { SourceTag } from '@/components/ui/SourceTag';
+import { CsvButton } from '@/components/ui/CsvButton';
 import { Table } from '@/components/ui/Table';
 import { cn } from '@/lib/utils';
 import { useMacroStore } from '@/store/macroStore';
@@ -130,7 +131,18 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
   return (
     <Card
       title="FX MONITOR"
-      headerRight={<SourceTag source="Yahoo" timestamp={asOf} staleAfterSeconds={900} />}
+      headerRight={
+        <div className="flex items-center gap-2">
+          <CsvButton
+            filename="fx-monitor"
+            getData={() => ({
+              columns: ['Pair', 'Spot', '1D %', 'Vol 1M'],
+              rows: data.g10.map((f) => [f.pair, f.spot, f.change1d, f.vol1m]),
+            })}
+          />
+          <SourceTag source="Yahoo" timestamp={asOf} staleAfterSeconds={900} />
+        </div>
+      }
     >
       <div className="space-y-4">
         {/* View Toggle + DXY */}

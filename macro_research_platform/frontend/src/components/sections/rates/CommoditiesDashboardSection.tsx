@@ -5,6 +5,7 @@
 import { memo } from 'react';
 import { Card } from '@/components/ui/Card';
 import { SourceTag } from '@/components/ui/SourceTag';
+import { CsvButton } from '@/components/ui/CsvButton';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -115,7 +116,22 @@ export const CommoditiesDashboardSection = memo(function CommoditiesDashboardSec
   return (
     <Card
       title="COMMODITIES DASHBOARD"
-      headerRight={<SourceTag source="Yahoo" timestamp={(data as any)?.lastUpdated} staleAfterSeconds={600} />}
+      headerRight={
+        <div className="flex items-center gap-2">
+          <CsvButton
+            filename="commodities"
+            getData={() => {
+              const c = (data as any)?.commodities || {};
+              const all = [...(c.energy || []), ...(c.metals || []), ...(c.agriculture || [])];
+              return {
+                columns: ['Symbol', 'Name', 'Spot', '1D %', '1M %', '3M %', '52W Percentile'],
+                rows: all.map((x: any) => [x.symbol, x.name, x.spot, x.change1d, x.change1m, x.change3m, x.week52Percentile]),
+              };
+            }}
+          />
+          <SourceTag source="Yahoo" timestamp={(data as any)?.lastUpdated} staleAfterSeconds={600} />
+        </div>
+      }
     >
       <div className="grid grid-cols-3 gap-4">
         {/* Commodities */}

@@ -3,6 +3,7 @@
 
 import { Clock, AlertTriangle } from 'lucide-react';
 import { ComputedTag } from '@/components/ui/ComputedTag';
+import { CsvButton } from '@/components/ui/CsvButton';
 import type { GMOForecastsData } from '@/types';
 import { useMacroStore } from '@/store/macroStore';
 
@@ -72,7 +73,16 @@ export function GMOForecastsSection({ data: dataProp }: GMOForecastsSectionProps
           <span className="section-tag">19</span>
           <h2 className="section-title">GMO 7-Year Forecasts</h2>
         </div>
-        <ComputedTag section="gmoForecasts" />
+        <div className="flex items-center gap-2">
+          <CsvButton
+            filename="gmo-forecasts"
+            getData={() => ({
+              columns: ['Asset Class', 'Ticker', 'Expected Return %', 'Signal'],
+              rows: sortedForecasts.map((f) => [f.assetClass, f.ticker, f.totalExpectedReturn, f.signal]),
+            })}
+          />
+          <ComputedTag section="gmoForecasts" />
+        </div>
       </div>
 
       <div className="space-y-3">

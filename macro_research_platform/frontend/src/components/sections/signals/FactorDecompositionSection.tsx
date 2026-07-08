@@ -4,6 +4,7 @@
 
 import { Target, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { ComputedTag } from '@/components/ui/ComputedTag';
+import { CsvButton } from '@/components/ui/CsvButton';
 import type { FactorDecompositionData } from '@/types';
 import { useMacroStore } from '@/store/macroStore';
 
@@ -43,7 +44,16 @@ export function FactorDecompositionSection({ data: dataProp }: FactorDecompositi
           <span className="section-tag">27</span>
           <h2 className="section-title">Factor Decomposition</h2>
         </div>
-        <ComputedTag section="factorDecomposition" />
+        <div className="flex items-center gap-2">
+          <CsvButton
+            filename="factor-decomposition"
+            getData={() => ({
+              columns: ['Factor', 'Exposure (beta)', 'Contribution %', 't-Stat', 'Significance'],
+              rows: factors.map((f) => [f.factor, f.exposure, f.contribution, f.tStat, f.significance]),
+            })}
+          />
+          <ComputedTag section="factorDecomposition" />
+        </div>
       </div>
 
       <div className="space-y-3">
