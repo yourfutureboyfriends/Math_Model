@@ -8645,6 +8645,20 @@ async def methodology_v1():
     return {"version": "v1", "models": MODELS, "count": len(MODELS)}
 
 
+@app.get("/api/v1/freshness")
+async def freshness_v1():
+    """Per-field data freshness: each key macro input's last release date, age, and
+    FRESH/STALE/CRITICAL status vs its expected cadence. Lets the UI flag an individual
+    stale metric, not just a whole panel."""
+    import asyncio as _aio
+    from api.data_freshness import get_live_freshness
+    try:
+        return await _aio.to_thread(get_live_freshness)
+    except Exception as e:
+        logger.error("[freshness] failed: %s", e)
+        return {"available": False, "reason": str(e)[:160], "series": []}
+
+
 # FIXED: Auth endpoint (previously missing - caused 404)
 from fastapi import Request
 

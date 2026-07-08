@@ -160,3 +160,82 @@ EXPECTED_RELEASES = {
 def get_next_expected_release(series_id: str) -> Optional[datetime]:
     """Get expected next release date for a series."""
     return EXPECTED_RELEASES.get(series_id)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Live per-field freshness (served by /api/v1/freshness)
+# ─────────────────────────────────────────────────────────────────────────────
+# Key macro inputs a PM watches, mapped to a human name and the FRED series whose
+# last-observation date determines freshness. CPI YoY (_PC1) shares dates with the
+# base CPIAUCSL series, so we fetch the date via the base id.
+# (metric, human name, FRED series, max_lag_days). Lags are frequency-appropriate on
+# an observation-date basis: quarterly GDP is naturally ~half a year old by observation
+# date, monthly CPI/fed-funds ~45d, weekly M2 ~20d, daily rates/spreads ~5d.
+_FRESHNESS_SERIES = [
+    ("inflation", "CPI Inflation (YoY)", "CPIAUCSL", 45),
+    ("growth", "GDP Growth (QoQ)", "A191RL1Q225SBEA", 200),
+    ("fed_funds", "Fed Funds Rate", "FEDFUNDS", 45),
+    ("hy_spread", "HY Credit Spread", "BAMLH0A0HYM2", 5),
+    ("two_ten", "2s10s Spread", "T10Y2Y", 5),
+    ("m2", "M2 Money Supply", "M2SL", 20),
+]
+
+_FRESHNESS_CACHE: Dict[str, object] = {"data": None, "ts": 0.0}
+_FRESHNESS_TTL = 300  # seconds
+
+
+def get_live_freshness(force: bool = False) -> Dict:
+    """Fetch each key series' latest observation date from FRED and assess staleness.
+
+    Returns per-metric {metric, name, series_id, last_observation_date, age_days,
+    max_lag_days, status: FRESH|STALE|CRITICAL|UNKNOWN} plus a summary. Cached ~5min.
+    """
+    import time as _time
+    now = _time.time()
+    cached = _FRESHNESS_CACHE.get("data")
+    if not force and cached and now - float(_FRESHNESS_CACHE["ts"]) < _FRESHNESS_TTL:
+        return cached  # type: ignore[return-value]
+
+    try:
+        from api.providers.fred_provider import FREDProvider
+        provider = FREDProvider()
+    except Exception as e:  # pragma: no cover - defensive
+        return {"available": False, "reason": f"FRED provider unavailable: {e}", "series": []}
+
+    out = []
+    for metric, name, series_id, max_lag in _FRESHNESS_SERIES:
+        last_date = None
+        try:
+            obs = provider.fetch_latest(series_id)
+            if obs is not None and obs.date:
+                last_date = datetime.strptime(obs.date[:10], "%Y-%m-%d")
+        except Exception as e:
+            logger.warning("[FRESHNESS] date fetch failed for %s: %s", series_id, e)
+
+        if last_date is None:
+            label, age = "UNKNOWN", None
+        else:
+            age = (datetime.now() - last_date).days
+            label = "CRITICAL" if age > max_lag * 2 else "STALE" if age > max_lag else "FRESH"
+        out.append({
+            "metric": metric,
+            "name": name,
+            "series_id": series_id,
+            "last_observation_date": last_date.date().isoformat() if last_date else None,
+            "age_days": age,
+            "max_lag_days": max_lag,
+            "status": label,
+        })
+
+    fresh = sum(1 for s in out if s["status"] == "FRESH")
+    result = {
+        "available": True,
+        "series": out,
+        "fresh": fresh,
+        "stale": sum(1 for s in out if s["status"] in ("STALE", "CRITICAL")),
+        "total": len(out),
+        "checked_at": datetime.now().isoformat(),
+    }
+    _FRESHNESS_CACHE["data"] = result
+    _FRESHNESS_CACHE["ts"] = now
+    return result

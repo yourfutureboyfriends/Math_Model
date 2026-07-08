@@ -4,6 +4,7 @@
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AnimatedValue } from '@/components/ui';
+import { StaleBadge } from '@/components/ui/StaleBadge';
 import { useMacroStore } from '@/store/macroStore';
 import { fmtSignal, fmtDuration, fmtProbabilityPrecise } from '@/utils/format';
 import type { KeyMetrics } from '@/types';
@@ -41,6 +42,7 @@ function KPICard({
   valueColor,
   numericValue,
   suffix = '',
+  staleMetric,
 }: {
   label: string;
   value: string;
@@ -49,6 +51,7 @@ function KPICard({
   valueColor?: string;
   numericValue?: number;
   suffix?: string;
+  staleMetric?: string;
 }) {
   const getValueColor = () => {
     if (valueColor) return valueColor;
@@ -73,8 +76,9 @@ function KPICard({
 
       {/* Header: Label + Direction */}
       <div className="flex items-center justify-between mb-1">
-        <span className="text-2xs text-text-secondary uppercase tracking-wider">
+        <span className="text-2xs text-text-secondary uppercase tracking-wider flex items-center gap-1">
           {label}
+          {staleMetric && <StaleBadge metric={staleMetric} />}
         </span>
         <div
           className={cn(
@@ -168,6 +172,7 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
           direction={getScoreDirection(growthScore)}
           sparklineData={growthSparkline}
           valueColor={getScoreDirection(growthScore) === 'up' ? 'text-green' : 'text-text-primary'}
+          staleMetric="growth"
         />
 
         <KPICard
@@ -177,6 +182,7 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
           direction={getScoreDirection(inflationScore)}
           sparklineData={inflationSparkline}
           valueColor={getScoreDirection(inflationScore) === 'up' ? 'text-amber' : 'text-green'}
+          staleMetric="inflation"
         />
 
         <KPICard
