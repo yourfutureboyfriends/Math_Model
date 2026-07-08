@@ -8841,6 +8841,190 @@ async def risk_factor_exposure_v1(book: Optional[str] = None):
     }
 
 
+async def _position_return_matrix(book: Optional[str]):
+    """(symbols, market_values, TxN return matrix, enriched) for held positions,
+    date-aligned across names. Returns (None, reason) tuple-ish via ({}, reason)."""
+    import numpy as _np
+    from api import portfolio_store
+    from api.handlers.market_handler import _fetch_dated_closes_literal
+    from api.calculations.factor_model import returns_from_closes
+
+    raw = await _aio_to_thread(portfolio_store.list_positions, book)
+    if not raw:
+        return None, "No positions configured — add positions first.", None
+    enriched = await _enrich_positions(raw)
+    positions = [p for p in enriched["positions"] if p.get("price_available")]
+    if not positions:
+        return None, "No priced positions to compute risk on.", enriched
+
+    dated = {}
+    for p in positions:
+        dated[p["symbol"]] = await _fetch_dated_closes_literal(str(p["symbol"]).upper())
+    common = None
+    for d in dated.values():
+        keys = set(d.keys())
+        common = keys if common is None else (common & keys)
+    common = sorted(common or [])
+    if len(common) < 61:
+        return None, "Insufficient overlapping price history to estimate VaR.", enriched
+
+    cols = []
+    symbols, mvs = [], []
+    for p in positions:
+        r = returns_from_closes([dated[p["symbol"]][dt] for dt in common])
+        cols.append(r)
+        symbols.append(p["symbol"])
+        mvs.append(float(p["market_value"]))
+    R = _np.column_stack(cols)  # (T, n)
+    return {"symbols": symbols, "market_values": mvs, "R": R, "enriched": enriched}, None, enriched
+
+
+@app.get("/api/v1/risk/var")
+async def risk_var_v1(book: Optional[str] = None):
+    """Value-at-Risk (historical, parametric, Monte Carlo) at 95%/99%, 1d & 10d, on
+    actual positions, with VaR contribution by position."""
+    from api.calculations.var_model import (
+        portfolio_pnl_series, historical_var, parametric_var, monte_carlo_var,
+        scale_horizon, component_var_by_position,
+    )
+    data, reason, _ = await _position_return_matrix(book)
+    if data is None:
+        return {"available": False, "reason": reason, "methods": {}}
+    mvs, R, symbols = data["market_values"], data["R"], data["symbols"]
+    pnl = portfolio_pnl_series(mvs, R)
+
+    def block(conf):
+        h = historical_var(pnl, conf)
+        pv = parametric_var(pnl, conf)
+        mc = monte_carlo_var(mvs, R, conf)
+        return {
+            "historical": {"1d": h, "10d": scale_horizon(h, 10)},
+            "parametric": {"1d": pv, "10d": scale_horizon(pv, 10)},
+            "monte_carlo": {"1d": mc, "10d": scale_horizon(mc, 10)},
+        }
+
+    total_1d_hist = historical_var(pnl, 0.95)
+    return {
+        "available": True,
+        "book": book or "Firm",
+        "observations": int(R.shape[0]),
+        "gross_exposure": data["enriched"]["summary"]["gross_exposure"],
+        "var": {"95": block(0.95), "99": block(0.99)},
+        "component_var_95_1d": component_var_by_position(symbols, mvs, R, total_1d_hist),
+        "computed_at": datetime.now().isoformat(),
+    }
+
+
+async def _dollar_factor_exposures(book: Optional[str]):
+    """DExp_f = gross_exposure * portfolio_loading_f ($ P&L per 1.0 factor return)."""
+    fe = await risk_factor_exposure_v1(book)
+    if not fe.get("available"):
+        return None, fe.get("reason")
+    gross = 0.0
+    from api import portfolio_store
+    raw = await _aio_to_thread(portfolio_store.list_positions, book)
+    if raw:
+        gross = (await _enrich_positions(raw))["summary"]["gross_exposure"] or 0.0
+    dexp = {f["factor"]: round(gross * f["exposure"], 2) for f in fe["factors"]}
+    return dexp, None
+
+
+@app.get("/api/v1/risk/stress-test")
+async def risk_stress_get_v1(book: Optional[str] = None):
+    """Apply predefined historical scenarios (2008, 2020, 2013, 2022, 1994) to the
+    current portfolio's dollar factor exposures."""
+    from api.calculations.var_model import STRESS_SCENARIOS, scenario_pnl
+    dexp, reason = await _dollar_factor_exposures(book)
+    if dexp is None:
+        return {"available": False, "reason": reason, "scenarios": []}
+    scenarios = []
+    for key, sc in STRESS_SCENARIOS.items():
+        res = scenario_pnl(dexp, sc["shocks"])
+        scenarios.append({"id": key, "label": sc["label"], "shocks": sc["shocks"],
+                          "total_pnl": res["total_pnl"], "by_factor": res["by_factor"]})
+    scenarios.sort(key=lambda s: s["total_pnl"])
+    return {"available": True, "book": book or "Firm", "dollar_exposures": dexp,
+            "scenarios": scenarios, "computed_at": datetime.now().isoformat()}
+
+
+class StressCustomIn(_PortfolioBaseModel):
+    shocks: Dict[str, float]
+    book: Optional[str] = None
+
+
+@app.post("/api/v1/risk/stress-test")
+async def risk_stress_custom_v1(body: StressCustomIn):
+    """Custom scenario: shock any combination of factors and see estimated P&L."""
+    from api.calculations.var_model import scenario_pnl
+    dexp, reason = await _dollar_factor_exposures(body.book)
+    if dexp is None:
+        return {"available": False, "reason": reason}
+    res = scenario_pnl(dexp, body.shocks)
+    return {"available": True, "shocks": body.shocks, "total_pnl": res["total_pnl"],
+            "by_factor": res["by_factor"]}
+
+
+@app.get("/api/v1/risk/reverse-stress")
+async def risk_reverse_stress_v1(target_loss: float, book: Optional[str] = None):
+    """Reverse stress: the single-factor move that alone would cause target_loss ($)."""
+    from api.calculations.var_model import reverse_stress
+    dexp, reason = await _dollar_factor_exposures(book)
+    if dexp is None:
+        return {"available": False, "reason": reason, "factors": []}
+    return {"available": True, "target_loss": target_loss,
+            "factors": reverse_stress(dexp, target_loss),
+            "computed_at": datetime.now().isoformat()}
+
+
+@app.get("/api/v1/risk/concentration")
+async def risk_concentration_v1(book: Optional[str] = None, limit_pct: float = 0.20):
+    """Single-name and top-5 concentration with limit breaches."""
+    from api import portfolio_store
+    from api.calculations.var_model import concentration
+    raw = await _aio_to_thread(portfolio_store.list_positions, book)
+    if not raw:
+        return {"available": False, "reason": "No positions configured."}
+    enriched = await _enrich_positions(raw)
+    return concentration(enriched["positions"], limit_pct)
+
+
+@app.get("/api/v1/risk/liquidity")
+async def risk_liquidity_v1(book: Optional[str] = None, participation: float = 0.20,
+                            illiquid_days: float = 5.0):
+    """Days-to-liquidate per position from average daily volume; flags illiquid names."""
+    from api import portfolio_store
+    from api.handlers.market_handler import _yahoo_provider
+    from api.calculations.var_model import days_to_liquidate
+    raw = await _aio_to_thread(portfolio_store.list_positions, book)
+    if not raw:
+        return {"available": False, "reason": "No positions configured.", "positions": []}
+
+    def _adv(ticker):
+        try:
+            import yfinance as yf
+            h = yf.Ticker(ticker).history(period="1mo", interval="1d")
+            if h is None or h.empty or "Volume" not in h:
+                return None
+            v = [x for x in h["Volume"].tolist() if isinstance(x, (int, float)) and x == x and x > 0]
+            return float(sum(v) / len(v)) if v else None
+        except Exception:
+            return None
+
+    rows = []
+    for p in raw:
+        sym = str(p["symbol"]).upper()
+        adv = await _aio_to_thread(_adv, sym)
+        dtl = days_to_liquidate(float(p["quantity"]), adv, participation)
+        rows.append({"symbol": sym, "book": p.get("book"), "quantity": p["quantity"],
+                     "avg_daily_volume": round(adv) if adv else None,
+                     "days_to_liquidate": dtl,
+                     "illiquid": bool(dtl is not None and dtl > illiquid_days)})
+    rows.sort(key=lambda r: (r["days_to_liquidate"] is None, -(r["days_to_liquidate"] or 0)))
+    return {"available": True, "book": book or "Firm", "participation": participation,
+            "illiquid_threshold_days": illiquid_days, "positions": rows,
+            "illiquid_count": sum(1 for r in rows if r["illiquid"])}
+
+
 @app.get("/api/v1/freshness")
 async def freshness_v1():
     """Per-field data freshness: each key macro input's last release date, age, and

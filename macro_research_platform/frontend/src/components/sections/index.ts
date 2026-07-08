@@ -174,6 +174,10 @@ export const FactorExposureSection = lazy(() =>
   import('./risk/FactorExposureSection').then(m => ({ default: m.FactorExposureSection }))
 );
 
+export const VaRStressSection = lazy(() =>
+  import('./risk/VaRStressSection').then(m => ({ default: m.VaRStressSection }))
+);
+
 export const COTPositioningSection = lazy(() =>
   import('./risk/COTPositioningSection').then(m => ({ default: m.COTPositioningSection }))
 );

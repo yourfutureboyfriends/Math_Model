@@ -61,6 +61,7 @@ const navigation: NavSection[] = [
       { id: 'risk-indicators', label: 'Risk Indicators', icon: '◆', permission: 'risk_indicators', highlight: true },
       { id: 'risk-analytics', label: 'Risk Analytics', icon: '◆', permission: 'var_drawdown', highlight: true },
       { id: 'factor-exposure', label: 'Factor Exposure', icon: '◆', permission: 'factor_decomp', highlight: true },
+      { id: 'var-stress', label: 'VaR & Stress', icon: '◆', permission: 'var_drawdown', highlight: true },
       { id: 'debt-cycle', label: 'Debt Cycle', icon: '◆', permission: 'debt_cycle' },
       { id: 'advanced', label: 'Advanced Indicators', icon: '◆', permission: 'advanced_indicators' },
       // FIXED (PART 3): Moved from STRATEGY to RISK
