@@ -8776,6 +8776,60 @@ async def _aio_to_thread(fn, *args):
     return await _aio.to_thread(fn, *args)
 
 
+@app.get("/api/v1/portfolio/attribution")
+async def portfolio_attribution_v1(book: Optional[str] = None):
+    """Multi-level performance attribution on the real book:
+    - contribution: each position's / book's dollar P&L (sums to total P&L),
+    - factor: the trailing portfolio return split into systematic (per factor) +
+      idiosyncratic (selection). Requires positions."""
+    import numpy as _np
+    from api import portfolio_store
+    from api.calculations.attribution import (
+        position_contributions, book_rollup, factor_attribution,
+    )
+    raw = await _aio_to_thread(portfolio_store.list_positions, book)
+    if not raw:
+        return {"available": False, "reason": "No positions configured — add positions first."}
+    enriched = await _enrich_positions(raw)
+    positions = enriched["positions"]
+
+    contribution = {
+        "total_unrealized_pnl": enriched["summary"]["total_unrealized_pnl"],
+        "by_position": position_contributions(positions),
+        "by_book": book_rollup(positions),
+    }
+
+    # Factor attribution over the trailing window (best-effort; may be unavailable for
+    # very new books). portfolio_return = Σ net_weight_i * cumulative_return_i.
+    factor = {"available": False, "reason": "insufficient history"}
+    data, _, _ = await _position_return_matrix(book)
+    if data is not None:
+        R, mvs, gross = data["R"], data["market_values"], enriched["summary"]["gross_exposure"] or 0.0
+        cum = _np.prod(1.0 + R, axis=0) - 1.0
+        net_w = _np.array([mv / gross if gross else 0.0 for mv in mvs])
+        port_ret = float(net_w @ cum)
+
+        fe = await risk_factor_exposure_v1(book)
+        if fe.get("available"):
+            from api.handlers.market_handler import _fetch_dated_closes_literal
+            from api.calculations.factor_model import FACTOR_PROXIES
+            loadings = {f["factor"]: f["exposure"] for f in fe["factors"]}
+            fac_ret = {}
+            for fkey, proxy in FACTOR_PROXIES.items():
+                d = await _fetch_dated_closes_literal(proxy)
+                if d:
+                    vals = [d[k] for k in sorted(d)]
+                    fac_ret[fkey] = vals[-1] / vals[0] - 1.0 if vals[0] else 0.0
+            factor = {"available": True, "window": "~1y",
+                      **factor_attribution(loadings, fac_ret, port_ret)}
+
+    return {
+        "available": True, "book": book or "Firm",
+        "contribution": contribution, "factor": factor,
+        "computed_at": datetime.now().isoformat(),
+    }
+
+
 @app.get("/api/v1/risk/factor-exposure")
 async def risk_factor_exposure_v1(book: Optional[str] = None):
     """Portfolio factor exposure: OLS betas of each holding to systematic factors,
