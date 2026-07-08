@@ -8481,36 +8481,26 @@ async def websocket_prices(websocket: WebSocket):
         # Simple heartbeat loop
         import asyncio
         while True:
+            # Build exactly one payload per tick — a price-service failure just
+            # degrades to a heartbeat rather than triggering a second send.
+            payload = {"type": "heartbeat", "timestamp": datetime.now().isoformat()}
             try:
-                # Try to get latest prices from cache if available
-                try:
-                    from api.services.price_service import price_service
-                    prices = price_service.get_latest_prices(["SPY", "QQQ", "IWM", "GLD", "TLT"])
-                    if prices:
-                        await websocket.send_json({
-                            "type": "prices",
-                            "timestamp": datetime.now().isoformat(),
-                            "data": prices
-                        })
-                    else:
-                        # Send heartbeat if no prices
-                        await websocket.send_json({
-                            "type": "heartbeat",
-                            "timestamp": datetime.now().isoformat()
-                        })
-                except Exception as e:
-                    logger.debug(f"[WebSocket] Price service unavailable: {e}")
-                    await websocket.send_json({
-                        "type": "heartbeat",
-                        "timestamp": datetime.now().isoformat()
-                    })
-
-                # Wait 5 seconds between updates
-                await asyncio.sleep(5)
-
+                from api.services.price_service import price_service
+                prices = price_service.get_latest_prices(["SPY", "QQQ", "IWM", "GLD", "TLT"])
+                if prices:
+                    payload = {"type": "prices", "timestamp": datetime.now().isoformat(), "data": prices}
             except Exception as e:
-                logger.warning(f"[WebSocket] Error in price loop: {e}")
-                await asyncio.sleep(5)
+                logger.debug(f"[WebSocket] Price service unavailable: {e}")
+
+            try:
+                await websocket.send_json(payload)
+            except (WebSocketDisconnect, RuntimeError) as e:
+                # Client went away — stop the loop instead of retrying on a closed
+                # socket forever (was spamming "Cannot call send once closed").
+                logger.info(f"[WebSocket] client disconnected, stopping price loop: {e}")
+                break
+
+            await asyncio.sleep(5)
 
     except WebSocketDisconnect:
         logger.info("[WebSocket] Client disconnected from /ws/prices")
