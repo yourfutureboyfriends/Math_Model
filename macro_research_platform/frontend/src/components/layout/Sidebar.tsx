@@ -2,10 +2,11 @@
 // Optimized navigation for PM daily workflow: Morning → Signals → Trades → Risk → Strategy
 
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LogOut, Star } from 'lucide-react';
 import { Logo } from './Logo';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { usePinnedSections } from '@/hooks/usePinnedSections';
 
 interface NavItem {
   id: string;
@@ -150,6 +151,59 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
   // All users see all navigation items; permission-based feature hiding is deprecated
   const filteredNavigation = navigation;
 
+  // Per-user pinned panels for one-click access.
+  const pinKey = user?.username || user?.display_name || 'default';
+  const { pinned, toggle: togglePin, isPinned } = usePinnedSections(pinKey);
+  const itemById: Record<string, NavItem> = Object.fromEntries(
+    navigation.flatMap((s) => s.items).map((i) => [i.id, i])
+  );
+  const pinnedItems = pinned.map((id) => itemById[id]).filter(Boolean) as NavItem[];
+
+  const renderNavItem = (item: NavItem) => {
+    const isActive = activeSection === item.id;
+    const pinnedNow = isPinned(item.id);
+    return (
+      <div key={item.id} className="group relative flex items-center">
+        <button
+          onClick={() => onNavigate?.(item.id)}
+          className={cn(
+            'flex-1 h-7 flex items-center transition-all duration-120 min-w-0',
+            collapsed ? 'justify-center px-0' : 'px-4',
+            isActive
+              ? 'bg-bloomberg-muted text-bloomberg border-l-2 border-bloomberg'
+              : item.highlight
+                ? 'text-amber hover:bg-amber-dim hover:text-amber border-l-2 border-transparent hover:border-amber'
+                : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
+          )}
+        >
+          <span className={cn('font-mono text-xs',
+            isActive ? 'text-bloomberg' : item.highlight ? 'text-amber' : 'text-text-secondary')}>
+            {item.icon}
+          </span>
+          {!collapsed && (
+            <span className={cn('ml-2 text-xs truncate', item.highlight && !isActive && 'font-medium')}>
+              {item.label}
+            </span>
+          )}
+        </button>
+        {!collapsed && (
+          <button
+            onClick={(e) => { e.stopPropagation(); togglePin(item.id); }}
+            title={pinnedNow ? 'Unpin panel' : 'Pin panel'}
+            className={cn(
+              'absolute right-1.5 p-1 transition-opacity',
+              pinnedNow
+                ? 'opacity-100 text-amber'
+                : 'opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-amber'
+            )}
+          >
+            <Star className="w-3 h-3" fill={pinnedNow ? 'currentColor' : 'none'} />
+          </button>
+        )}
+      </div>
+    );
+  };
+
   const handleLogout = async () => {
     await logout();
   };
@@ -175,6 +229,21 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-2">
+        {/* Pinned panels — user's most-watched, one-click access */}
+        {pinnedItems.length > 0 && (
+          <div className="mb-1">
+            {!collapsed && (
+              <div className="px-4 py-1.5 text-2xs text-amber font-medium tracking-wider flex items-center gap-1">
+                <Star className="w-3 h-3" fill="currentColor" /> PINNED
+              </div>
+            )}
+            <div className="space-y-px">
+              {pinnedItems.map(renderNavItem)}
+            </div>
+            <div className="mx-4 my-1.5 border-t border-border-subtle" />
+          </div>
+        )}
+
         {filteredNavigation.map((section) => (
           <div key={section.title} className="mb-1">
             {!collapsed && (
@@ -183,40 +252,7 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
               </div>
             )}
             <div className="space-y-px">
-              {section.items.map((item) => {
-                const isActive = activeSection === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => onNavigate?.(item.id)}
-                    className={cn(
-                      'w-full h-7 flex items-center transition-all duration-120',
-                      collapsed ? 'justify-center px-0' : 'px-4',
-                      isActive
-                        ? 'bg-bloomberg-muted text-bloomberg border-l-2 border-bloomberg'
-                        : item.highlight
-                          ? 'text-amber hover:bg-amber-dim hover:text-amber border-l-2 border-transparent hover:border-amber'
-                          : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
-                    )}
-                  >
-                    <span className={cn(
-                      'font-mono text-xs',
-                      isActive ? 'text-bloomberg' : item.highlight ? 'text-amber' : 'text-text-secondary'
-                    )}>
-                      {item.icon}
-                    </span>
-                    {!collapsed && (
-                      <span className={cn(
-                        "ml-2 text-xs",
-                        item.highlight && !isActive && "font-medium"
-                      )}
-                      >
-                        {item.label}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+              {section.items.map(renderNavItem)}
             </div>
           </div>
         ))}
