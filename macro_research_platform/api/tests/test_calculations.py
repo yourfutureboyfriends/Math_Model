@@ -14,6 +14,7 @@ from api.calculations.models import (
     copper_gold_ratio,
     momentum_12_1,
     ensemble_agreement,
+    risk_parity_weights,
     MODELS,
 )
 
@@ -104,10 +105,48 @@ def test_ensemble_agreement_majority():
     assert ensemble_agreement(["UP", "UP", "DOWN"]) == pytest.approx(2 / 3, abs=1e-4)
 
 
+# ── Risk parity weights ──────────────────────────────────────────────────────
+@pytest.mark.parametrize("vols", [[0.1], [0.1, 0.2], [0.15, 0.15, 0.15], [0.08, 0.2, 0.35, 0.5]])
+def test_risk_parity_weights_sum_to_one_and_bounded(vols):
+    w = risk_parity_weights(vols)
+    assert w, "expected non-empty weights"
+    assert all(0.0 <= x <= 1.0 for x in w), f"weight out of [0,1]: {w}"
+    assert math.isclose(sum(w), 1.0, abs_tol=1e-4), f"weights sum to {sum(w)}"
+
+
+def test_risk_parity_lower_vol_gets_higher_weight():
+    # Asset with the lowest vol should carry the largest weight.
+    w = risk_parity_weights([0.1, 0.2, 0.4])
+    assert w[0] == max(w)
+
+
+def test_risk_parity_rejects_nonpositive_vol():
+    with pytest.raises(ValueError):
+        risk_parity_weights([0.1, 0.0, 0.2])
+
+
 # ── Methodology registry integrity ───────────────────────────────────────────
 def test_methodology_registry_complete():
     ids = {m["id"] for m in MODELS}
-    for required in ("recession_estrella_mishkin", "copper_gold_ratio", "momentum_12_1"):
+    for required in ("recession_estrella_mishkin", "copper_gold_ratio",
+                     "momentum_12_1", "ensemble_agreement", "risk_parity_weights"):
         assert required in ids
     for m in MODELS:
         assert m["formula"] and m["citation"] and "range" in m["output"]
+        lo, hi = m["output"]["range"]
+        assert lo < hi, f"{m['id']} has invalid range [{lo},{hi}]"
+
+
+# ── End-to-end: methodology endpoint via TestClient ──────────────────────────
+def test_methodology_endpoint_end_to_end():
+    """Hit the real /api/v1/methodology through the ASGI app and bounds-check it."""
+    from fastapi.testclient import TestClient
+    from api.main import app
+    with TestClient(app) as client:
+        r = client.get("/api/v1/methodology")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["count"] == len(body["models"]) >= 5
+        for m in body["models"]:
+            lo, hi = m["output"]["range"]
+            assert lo < hi

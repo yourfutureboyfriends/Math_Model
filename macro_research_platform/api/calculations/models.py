@@ -118,6 +118,28 @@ def ensemble_agreement(signals: Sequence[str]) -> float:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Risk parity — inverse-volatility weights
+# ─────────────────────────────────────────────────────────────────────────────
+def risk_parity_weights(volatilities: Sequence[float]) -> List[float]:
+    """Naive risk-parity (inverse-volatility) portfolio weights.
+
+    Formula : w_i = (1/vol_i) / sum_j(1/vol_j).
+    Inputs  : volatilities — per-asset annualised vol (>0), any consistent unit.
+    Units   : weights, dimensionless fractions.
+    Range   : each weight in [0, 1]; weights sum to 1.0. Higher vol -> lower weight.
+    Source  : Equal risk contribution / inverse-vol heuristic (Maillard et al. 2010).
+    """
+    vols = list(volatilities)
+    if not vols:
+        return []
+    if any((v is None or v <= 0) for v in vols):
+        raise ValueError("all volatilities must be positive")
+    inv = [1.0 / v for v in vols]
+    total = sum(inv)
+    return [round(x / total, 6) for x in inv]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Methodology registry (served by /api/v1/methodology)
 # ─────────────────────────────────────────────────────────────────────────────
 MODELS: List[Dict[str, Any]] = [
@@ -161,5 +183,13 @@ MODELS: List[Dict[str, Any]] = [
         "inputs": {"signals": "list of categorical model signals"},
         "output": {"units": "fraction", "range": [0.0, 1.0]},
         "citation": "Majority-vote concordance",
+    },
+    {
+        "id": "risk_parity_weights",
+        "name": "Risk Parity (inverse-volatility) Weights",
+        "formula": "w_i = (1/vol_i) / sum_j(1/vol_j)",
+        "inputs": {"volatilities": "per-asset annualised vol (>0)"},
+        "output": {"units": "fraction", "range": [0.0, 1.0]},
+        "citation": "Maillard, Roncalli & Teiletche (2010)",
     },
 ]
