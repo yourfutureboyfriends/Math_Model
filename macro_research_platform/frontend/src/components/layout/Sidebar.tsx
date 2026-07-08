@@ -104,6 +104,7 @@ const navigation: NavSection[] = [
   {
     title: 'PORTFOLIO',
     items: [
+      { id: 'portfolio-positions', label: 'Positions', icon: '▦', permission: 'portfolio_fit', highlight: true },
       { id: 'trade-ideas', label: 'Trade Ideas', icon: '◆', permission: 'trade_ideas', highlight: true },
       { id: 'trade-recommendations', label: 'Trade Recommendations', icon: '◆', permission: 'trade_recommendations', highlight: true },
       { id: 'scenario-analysis', label: 'Scenario Analysis', icon: '◆', permission: 'master_signal' },

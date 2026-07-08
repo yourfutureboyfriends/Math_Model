@@ -8635,6 +8635,123 @@ async def methodology_v1():
     return {"version": "v1", "models": MODELS, "count": len(MODELS)}
 
 
+from pydantic import BaseModel as _PortfolioBaseModel
+
+
+class PositionIn(_PortfolioBaseModel):
+    symbol: str
+    quantity: float
+    avg_cost: float
+    asset_class: Optional[str] = "Equity"
+    book: Optional[str] = "Macro"
+    strategy_bucket: Optional[str] = None
+    entry_date: Optional[str] = None
+
+
+class PositionUpdate(_PortfolioBaseModel):
+    quantity: Optional[float] = None
+    avg_cost: Optional[float] = None
+    asset_class: Optional[str] = None
+    book: Optional[str] = None
+    strategy_bucket: Optional[str] = None
+    entry_date: Optional[str] = None
+
+
+class BulkPositionsIn(_PortfolioBaseModel):
+    positions: List[PositionIn]
+
+
+async def _enrich_positions(raw_positions: list) -> dict:
+    """Attach live prices, market value, P&L and weights to raw position rows."""
+    import asyncio as _aio
+    from api.handlers.market_handler import _fetch_closes_literal
+    from api.calculations.portfolio import enrich_position, add_weights, portfolio_summary, books_breakdown
+
+    symbols = sorted({str(p["symbol"]).upper() for p in raw_positions if p.get("symbol")})
+    prices: dict = {}
+    if symbols:
+        # Literal tickers (GLD = the ETF), not the dashboard's macro proxies.
+        closes_list = await _aio.gather(*[_fetch_closes_literal(s) for s in symbols])
+        for sym, closes in zip(symbols, closes_list):
+            prices[sym] = closes[-1] if closes else None
+
+    enriched = [enrich_position(p, prices.get(str(p["symbol"]).upper())) for p in raw_positions]
+    add_weights(enriched)
+    return {
+        "positions": enriched,
+        "summary": portfolio_summary(enriched),
+        "books": books_breakdown(enriched),
+        "priced_at": datetime.now().isoformat(),
+    }
+
+
+@app.get("/api/v1/portfolio/positions")
+async def portfolio_positions_v1(book: Optional[str] = None):
+    """Held positions enriched with live market value, unrealized P&L and weights."""
+    from api import portfolio_store
+    try:
+        raw = await _aio_to_thread(portfolio_store.list_positions, book)
+        return await _enrich_positions(raw)
+    except Exception as e:
+        logger.error("[portfolio] list failed: %s", e)
+        raise HTTPException(status_code=503, detail=f"positions unavailable: {str(e)[:160]}")
+
+
+@app.post("/api/v1/portfolio/positions")
+async def portfolio_add_position_v1(pos: PositionIn):
+    from api import portfolio_store
+    try:
+        return await _aio_to_thread(portfolio_store.add_position, pos.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        logger.error("[portfolio] add failed: %s", e)
+        raise HTTPException(status_code=503, detail=str(e)[:160])
+
+
+@app.post("/api/v1/portfolio/positions/bulk")
+async def portfolio_bulk_v1(body: BulkPositionsIn):
+    from api import portfolio_store
+    return await _aio_to_thread(portfolio_store.add_positions_bulk, [p.model_dump() for p in body.positions])
+
+
+@app.put("/api/v1/portfolio/positions/{pos_id}")
+async def portfolio_update_position_v1(pos_id: int, upd: PositionUpdate):
+    from api import portfolio_store
+    updated = await _aio_to_thread(portfolio_store.update_position, pos_id, upd.model_dump(exclude_none=True))
+    if updated is None:
+        raise HTTPException(status_code=404, detail="position not found")
+    return updated
+
+
+@app.delete("/api/v1/portfolio/positions/{pos_id}")
+async def portfolio_delete_position_v1(pos_id: int):
+    from api import portfolio_store
+    ok = await _aio_to_thread(portfolio_store.delete_position, pos_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="position not found")
+    return {"deleted": True, "id": pos_id}
+
+
+@app.get("/api/v1/portfolio/books")
+async def portfolio_books_v1():
+    """List books plus the firm-level aggregate across all positions."""
+    from api import portfolio_store
+    from api.calculations.portfolio import portfolio_summary
+    raw = await _aio_to_thread(portfolio_store.list_positions, None)
+    enriched = (await _enrich_positions(raw))
+    return {
+        "books": portfolio_store.list_books(),
+        "firm": enriched["summary"],
+        "book_breakdown": enriched["books"],
+    }
+
+
+async def _aio_to_thread(fn, *args):
+    import asyncio as _aio
+    return await _aio.to_thread(fn, *args)
+
+
 @app.get("/api/v1/freshness")
 async def freshness_v1():
     """Per-field data freshness: each key macro input's last release date, age, and

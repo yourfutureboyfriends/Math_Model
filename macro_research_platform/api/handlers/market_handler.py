@@ -64,6 +64,35 @@ async def _fetch_closes(yf_ticker: str) -> list[float]:
     return closes
 
 
+async def _fetch_closes_literal(ticker: str) -> list[float]:
+    """1y daily closes for a LITERAL yfinance ticker, bypassing the macro SYMBOL_MAP.
+
+    Position tickers must resolve to themselves (GLD = the GLD ETF, not gold futures),
+    unlike the dashboard's macro proxies. Cached separately from the mapped fetches.
+    """
+    key = f"__literal__:{ticker}"
+    now = _time.time()
+    cached = _HISTORY_CACHE.get(key)
+    if cached and now - cached[0] < _HISTORY_TTL:
+        return cached[1].get("closes", [])
+
+    def _pull():
+        import yfinance as yf
+        hist = yf.Ticker(ticker).history(period="1y", interval="1d")
+        if hist is None or hist.empty:
+            return []
+        return [c for c in hist["Close"].tolist() if isinstance(c, (int, float)) and c == c]
+
+    try:
+        closes = await asyncio.to_thread(_pull)
+    except Exception as e:
+        logger.warning(f"literal history fetch failed for {ticker}: {e}")
+        closes = []
+    if closes:
+        _HISTORY_CACHE[key] = (now, {"closes": closes})
+    return closes
+
+
 def _fred_recent_values(series_id: str, n: int = 8) -> list[float]:
     """Most-recent `n` numeric observations for a FRED series, newest first."""
     from api.config import FRED_API_KEY
