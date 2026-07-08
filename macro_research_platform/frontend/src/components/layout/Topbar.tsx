@@ -3,7 +3,7 @@
 // Row 2: Market ticker strip
 
 import { useState, useEffect, useMemo } from 'react';
-import { Download, Maximize, AlertTriangle, LayoutGrid, RefreshCw } from 'lucide-react';
+import { Download, Maximize, AlertTriangle, LayoutGrid, RefreshCw, FunctionSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMacroStore, selectMeta, selectIsLoading } from '@/store/macroStore';
 import { SystemStatusBadge } from '@/components/SystemStatusBadge';
@@ -32,6 +32,7 @@ interface TopbarProps {
   onRefresh?: () => void;
   onCommandPalette?: () => void;
   onAlertsPanel?: () => void;
+  onModelInfo?: () => void;
   currentRegime?: string;
 }
 
@@ -165,6 +166,7 @@ export function Topbar({
   onRefresh,
   onCommandPalette,
   onAlertsPanel,
+  onModelInfo,
   currentRegime: currentRegimeProp,
 }: TopbarProps) {
   const [downloading, setDownloading] = useState(false);
@@ -378,6 +380,15 @@ export function Topbar({
             title="Export PDF"
           >
             <Download className={cn('w-3.5 h-3.5', downloading && 'animate-pulse')} />
+          </button>
+
+          <button
+            onClick={onModelInfo}
+            className="icon-btn"
+            style={{ width: 26, height: 26 }}
+            title="Model Info & Methodology"
+          >
+            <FunctionSquare className="w-3.5 h-3.5" />
           </button>
 
           <button
