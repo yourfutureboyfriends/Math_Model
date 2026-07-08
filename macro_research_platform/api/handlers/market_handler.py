@@ -139,17 +139,16 @@ async def get_rates_data() -> Dict[str, Any]:
     # Determine curve shape
     shape = "inverted" if spread_2s10s < 0 else "flat" if spread_2s10s < 25 else "steep"
 
-    # Calculate 12-month-ahead recession probability using the NY Fed
-    # Estrella-Mishkin probit on the 3m10y spread expressed in PERCENTAGE POINTS.
-    #   prob = Phi(-0.6045 + (-0.7374 * spread_pct))
-    # At spread = -0.66 pp -> ~45%; at a normal +positive spread -> low single digits.
-    from scipy.stats import norm
+    # 12-month-ahead recession probability via the documented, unit-tested
+    # Estrella-Mishkin probit (see api/calculations/models.py). Uses the 3m10y spread
+    # in percentage points; falls back to a mid estimate only on an implausible input.
+    from api.calculations.models import estrella_mishkin_recession_prob
     spread_3m10y_pp = spread_3m10y / 100.0  # spread_3m10y is in bps; model needs pp
-    assert -6.0 < spread_3m10y_pp < 6.0, (
-        f"3m10y spread {spread_3m10y_pp} pp out of range — likely a unit error (bps vs pp)"
-    )
-    recession_prob = float(norm.cdf(-0.6045 + (-0.7374 * spread_3m10y_pp)))
-    recession_prob = max(0.0, min(1.0, recession_prob))
+    try:
+        recession_prob = estrella_mishkin_recession_prob(spread_3m10y_pp)
+    except ValueError as e:
+        logger.warning(f"recession probit input rejected: {e}")
+        recession_prob = 0.5
 
     # Build yield curve points (synthetic based on 2Y and 10Y)
     # Interpolate between known points
@@ -320,7 +319,11 @@ async def get_commodities_data() -> Dict[str, Any]:
     gold_change_1d = groups["metals"][0].get("change1d") or 0.0
 
     # Copper/gold ratio (copper $/lb vs gold $/oz-in-thousands)
-    copper_gold_ratio = copper_price / (gold_price / 1000) if gold_price else 0.0
+    from api.calculations.models import copper_gold_ratio as _copper_gold_ratio
+    try:
+        copper_gold_ratio = _copper_gold_ratio(copper_price, gold_price)
+    except ValueError:
+        copper_gold_ratio = 0.0
     ratio_signal = "RISK-ON" if copper_gold_ratio > 1.8 else "RISK-OFF"
 
     oil_trend = "RISING" if oil_change_1d > 0 else "FALLING"

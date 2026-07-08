@@ -8637,6 +8637,14 @@ async def health_v1():
     }
 
 
+@app.get("/api/v1/methodology")
+async def methodology_v1():
+    """Human-readable documentation of every core model (formula, inputs, units,
+    output range, citation) so institutional users can audit model logic."""
+    from api.calculations.models import MODELS
+    return {"version": "v1", "models": MODELS, "count": len(MODELS)}
+
+
 # FIXED: Auth endpoint (previously missing - caused 404)
 from fastapi import Request
 
