@@ -187,11 +187,21 @@ def concentration(positions: List[Dict], limit_pct: float = 0.20) -> Dict:
     hhi = round(sum(r["gross_weight"] ** 2 for r in rows), 4)  # Herfindahl index
     breaches = [{"symbol": r["symbol"], "gross_weight": r["gross_weight"], "limit": limit_pct}
                 for r in rows if r["gross_weight"] > limit_pct]
+
+    def _group(key: str):
+        agg: Dict[str, float] = {}
+        for p in valued:
+            agg[p.get(key) or "Unassigned"] = agg.get(p.get(key) or "Unassigned", 0.0) + abs(p["market_value"])
+        return sorted(({"name": k, "gross_weight": round(v / total_gross, 4)} for k, v in agg.items()),
+                      key=lambda r: r["gross_weight"], reverse=True)
+
     return {
         "available": True,
         "largest_name": rows[0]["symbol"], "largest_weight": rows[0]["gross_weight"],
         "top5_concentration": top5, "hhi": hhi, "single_name_limit": limit_pct,
         "breaches": breaches, "positions": rows,
+        "by_asset_class": _group("asset_class"),
+        "by_book": _group("book"),
     }
 
 

@@ -8397,6 +8397,30 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[STARTUP] Could not start dashboard warm loop: {e}")
 
+    async def _risk_warm_loop():
+        # Keep the factor-proxy and held-position price histories warm so the first
+        # load of the factor/VaR/stress panels doesn't wait ~30s on cold fetches.
+        from api.handlers.market_handler import _fetch_dated_closes_literal
+        from api.calculations.factor_model import FACTOR_PROXIES
+        from api import portfolio_store
+        while True:
+            try:
+                syms = set(FACTOR_PROXIES.values())
+                for p in portfolio_store.list_positions(None):
+                    if p.get("symbol"):
+                        syms.add(str(p["symbol"]).upper())
+                for s in syms:
+                    await _fetch_dated_closes_literal(s)
+            except Exception as e:
+                logger.debug(f"[risk warm] {e}")
+            await _asyncio.sleep(480)  # < the 600s history TTL
+
+    try:
+        _asyncio.create_task(_risk_warm_loop())
+        logger.info("[STARTUP] Risk price-history warm loop started")
+    except Exception as e:
+        logger.warning(f"[STARTUP] Could not start risk warm loop: {e}")
+
     yield
 
     # Shutdown: gracefully stop scheduler and remove port file
@@ -8903,14 +8927,17 @@ async def risk_var_v1(book: Optional[str] = None):
             "monte_carlo": {"1d": mc, "10d": scale_horizon(mc, 10)},
         }
 
-    total_1d_hist = historical_var(pnl, 0.95)
+    # Allocate the PARAMETRIC 95% 1d VaR: the Euler/variance decomposition is only
+    # self-consistent against a variance-based total (not the empirical historical one).
+    total_1d_param = parametric_var(pnl, 0.95)
     return {
         "available": True,
         "book": book or "Firm",
         "observations": int(R.shape[0]),
         "gross_exposure": data["enriched"]["summary"]["gross_exposure"],
         "var": {"95": block(0.95), "99": block(0.99)},
-        "component_var_95_1d": component_var_by_position(symbols, mvs, R, total_1d_hist),
+        "component_var_95_1d": component_var_by_position(symbols, mvs, R, total_1d_param),
+        "component_var_basis": "parametric_95_1d",
         "computed_at": datetime.now().isoformat(),
     }
 

@@ -18,8 +18,9 @@ Portfolio daily P&L is `Σ_i market_value_i × return_i,t` (shorts negative), da
 Reported at **95% and 99%**, **1-day and 10-day** (10-day = 1-day × √10, square-root-of-time).
 
 ## VaR contribution
-Euler/marginal allocation: `component_i = VaR × mv_i·cov(r_i, P&L) / var(P&L)`. Components
-sum to total VaR; a hedging short shows a **negative** contribution.
+Euler/marginal allocation of the **parametric** 95% 1-day VaR (variance-based, so the
+decomposition is internally consistent): `component_i = VaR × mv_i·cov(r_i, P&L) / var(P&L)`.
+Components sum to total VaR; a hedging short shows a **negative** contribution.
 
 ## Stress testing
 - **Predefined scenarios** (2008 GFC, 2020 COVID, 2013 Taper, 2022 rate shock, 1994 bond):
