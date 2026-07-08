@@ -209,6 +209,81 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
     (recommendations.longs || recommendations.shorts || recommendations.pair_trades);
 
   if (!recommendations || !hasTradeShape) {
+    // The lighter /api/business/recommendations payload ({summary, expected_returns})
+    // has no longs/shorts, but it IS real data — render it instead of "unavailable".
+    const summaryLite = (recommendations as any)?.summary;
+    const expectedReturns: any[] = (recommendations as any)?.expected_returns || [];
+    if (summaryLite || expectedReturns.length) {
+      const posTone = (p: string) => /high risk|risk-on|aggressive/i.test(p) ? 'text-green'
+        : /defensive|risk-off|low/i.test(p) ? 'text-amber' : 'text-text-primary';
+      const confTone = (c: string) => /high/i.test(c) ? 'text-green' : /low/i.test(c) ? 'text-red' : 'text-amber';
+      return (
+        <div id="trade-recommendations" className="terminal-section">
+          <div className="section-header mb-3">
+            <div className="section-header-left">
+              <span className="section-tag">REC</span>
+              <h2 className="section-title">Trade Recommendations</h2>
+              {summaryLite?.regime && <span className="section-meta">{String(summaryLite.regime).toUpperCase()}</span>}
+            </div>
+          </div>
+          <div className="space-y-3">
+            {summaryLite && (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                <div className="p-2 bg-surface-1 border border-border">
+                  <div className="text-2xs text-text-tertiary uppercase">Conviction</div>
+                  <div className="text-sm font-mono text-text-primary">{summaryLite.conviction ?? '—'}</div>
+                </div>
+                <div className="p-2 bg-surface-1 border border-border">
+                  <div className="text-2xs text-text-tertiary uppercase">Position</div>
+                  <div className={`text-sm font-mono ${posTone(summaryLite.overall_position || '')}`}>{summaryLite.overall_position ?? '—'}</div>
+                </div>
+                <div className="p-2 bg-surface-1 border border-border">
+                  <div className="text-2xs text-text-tertiary uppercase">Risk</div>
+                  <div className="text-2xs font-mono text-text-secondary">{summaryLite.risk_assessment ?? '—'}</div>
+                </div>
+              </div>
+            )}
+            {summaryLite?.key_themes?.length > 0 && (
+              <div className="p-3 bg-surface-1 border border-border">
+                <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Key Themes</div>
+                <ul className="text-xs text-text-secondary space-y-0.5">
+                  {summaryLite.key_themes.map((t: string, i: number) => (
+                    <li key={i} className="flex items-start gap-2"><span className="text-amber">›</span>{t}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {expectedReturns.length > 0 && (
+              <div className="border border-border bg-surface-1 overflow-hidden">
+                <div className="px-3 py-1.5 border-b border-border-subtle bg-surface-2 text-2xs text-text-tertiary uppercase tracking-wider">
+                  Expected 1Y Returns
+                </div>
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border-subtle text-2xs text-text-tertiary uppercase">
+                      <th className="text-left py-2 px-3 font-medium">Asset</th>
+                      <th className="text-right py-2 px-3 font-medium">1Y Return</th>
+                      <th className="text-center py-2 px-3 font-medium">Confidence</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {expectedReturns.map((r, i) => (
+                      <tr key={r.asset ?? i} className="border-b border-border-subtle last:border-0">
+                        <td className="py-2 px-3 text-sm text-text-primary">{r.asset}</td>
+                        <td className={`py-2 px-3 text-right font-mono text-sm ${(r.return_1y ?? 0) >= 0 ? 'text-green' : 'text-red'}`}>
+                          {typeof r.return_1y === 'number' ? `${r.return_1y >= 0 ? '+' : ''}${r.return_1y.toFixed(1)}%` : '—'}
+                        </td>
+                        <td className={`py-2 px-3 text-center text-xs font-mono ${confTone(r.confidence || '')}`}>{r.confidence ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
     return (
       <div id="trade-recommendations" className="terminal-section">
         <div className="flex items-center gap-2 mb-4">

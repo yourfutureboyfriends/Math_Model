@@ -95,21 +95,101 @@ export function EquityResearchSection({ data }: EquityResearchSectionProps) {
 
   const { sectorRotation, factorRotation, valuation, countryRanking } = equityData;
 
-  // The /api/equity-research payload ({regime, sectorRatings, stockPicks}) does not
-  // include the sectorRotation/factorRotation/valuation/countryRanking shape this view
-  // expects. Render explicit unavailability instead of crashing on undefined.regime.
+  // The /api/equity-research payload is {regime, sectorRatings, stockPicks} — a
+  // different shape than the rotation view below. When the rotation shape is absent
+  // but ratings/picks exist, render those real values instead of "unavailable".
+  const sectorRatings: Record<string, string> | undefined = (equityData as any).sectorRatings;
+  const stockPicks: any[] | undefined = (equityData as any).stockPicks;
   if (!sectorRotation && !factorRotation && !valuation && !countryRanking) {
+    if (!sectorRatings && !(stockPicks && stockPicks.length)) {
+      return (
+        <div id="equity-research" className="terminal-section">
+          <div className="flex items-center gap-2 mb-4">
+            <Globe className="w-4 h-4 text-bloomberg" />
+            <h2 className="terminal-section-title">EQUITY RESEARCH</h2>
+          </div>
+          <Card className="bg-surface-1 border-border p-8 text-center">
+            <p className="text-text-secondary text-sm">Equity research data unavailable.</p>
+          </Card>
+        </div>
+      );
+    }
+    const ratingTone = (r: string) => {
+      const s = String(r).toLowerCase();
+      if (s.includes('over') || s.includes('buy')) return 'text-green';
+      if (s.includes('under') || s.includes('sell') || s.includes('avoid')) return 'text-red';
+      return 'text-text-secondary';
+    };
+    const fmtUsd = (v: any) => (typeof v === 'number' && isFinite(v) ? `$${v.toFixed(2)}` : '—');
+    const upside = (p: any) =>
+      typeof p?.target === 'number' && typeof p?.current === 'number' && p.current
+        ? ((p.target / p.current - 1) * 100)
+        : null;
     return (
       <div id="equity-research" className="terminal-section">
-        <div className="flex items-center gap-2 mb-4">
-          <Globe className="w-4 h-4 text-bloomberg" />
-          <h2 className="terminal-section-title">EQUITY RESEARCH</h2>
+        <div className="section-header mb-3">
+          <div className="section-header-left">
+            <span className="section-tag">RES</span>
+            <h2 className="section-title">Equity Research</h2>
+            {(equityData as any).regime && (
+              <span className="section-meta">{String((equityData as any).regime).toUpperCase()}</span>
+            )}
+          </div>
         </div>
-        <Card className="bg-surface-1 border-border p-8 text-center">
-          <p className="text-text-secondary text-sm">
-            Equity research rotation data unavailable in the expected format.
-          </p>
-        </Card>
+        <div className="space-y-3">
+          {sectorRatings && Object.keys(sectorRatings).length > 0 && (
+            <div className="p-3 bg-surface-1 border border-border">
+              <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Sector Ratings</div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {Object.entries(sectorRatings).map(([sector, rating]) => (
+                  <div key={sector} className="flex items-center justify-between px-2 py-1 bg-surface-2 border border-border-subtle">
+                    <span className="text-xs text-text-primary">{sector}</span>
+                    <span className={`text-xs font-mono ${ratingTone(rating)}`}>{rating}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {stockPicks && stockPicks.length > 0 && (
+            <div className="border border-border bg-surface-1 overflow-hidden">
+              <div className="px-3 py-1.5 border-b border-border-subtle bg-surface-2 text-2xs text-text-tertiary uppercase tracking-wider">
+                Stock Picks
+              </div>
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border-subtle text-2xs text-text-tertiary uppercase">
+                    <th className="text-left py-2 px-3 font-medium">Ticker</th>
+                    <th className="text-left py-2 px-3 font-medium">Rating</th>
+                    <th className="text-right py-2 px-3 font-medium">Current</th>
+                    <th className="text-right py-2 px-3 font-medium">Target</th>
+                    <th className="text-right py-2 px-3 font-medium">Upside</th>
+                    <th className="text-left py-2 px-3 font-medium">Thesis</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stockPicks.map((p, i) => {
+                    const up = upside(p);
+                    return (
+                      <tr key={p.ticker ?? i} className="border-b border-border-subtle last:border-0">
+                        <td className="py-2 px-3">
+                          <div className="text-sm font-medium text-text-primary">{p.ticker}</div>
+                          <div className="text-2xs text-text-tertiary">{p.name}</div>
+                        </td>
+                        <td className={`py-2 px-3 text-xs font-mono ${ratingTone(p.rating)}`}>{p.rating}</td>
+                        <td className="py-2 px-3 text-right font-mono text-sm text-text-primary">{fmtUsd(p.current)}</td>
+                        <td className="py-2 px-3 text-right font-mono text-sm text-green">{fmtUsd(p.target)}</td>
+                        <td className={`py-2 px-3 text-right font-mono text-sm ${up != null && up >= 0 ? 'text-green' : 'text-red'}`}>
+                          {up != null ? `${up >= 0 ? '+' : ''}${up.toFixed(1)}%` : '—'}
+                        </td>
+                        <td className="py-2 px-3 text-2xs text-text-secondary max-w-xs">{p.thesis}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
