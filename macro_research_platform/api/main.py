@@ -9052,6 +9052,62 @@ async def risk_liquidity_v1(book: Optional[str] = None, participation: float = 0
             "illiquid_count": sum(1 for r in rows if r["illiquid"])}
 
 
+@app.get("/api/v1/signals/backtest")
+async def signals_backtest_v1(horizon: int = 21):
+    """Walk-forward backtest of price-reconstructable signals on the S&P 500 (5y daily,
+    no look-ahead): momentum (12-1m), trend (200d MA), and VIX vol-regime. Reports hit
+    rate, forward return by state, strategy Sharpe/drawdown and a confusion matrix."""
+    import asyncio as _aio
+    from api.calculations.backtest import (
+        momentum_signal, trend_signal, vol_regime_signal, backtest_signal,
+    )
+
+    def _closes(ticker):
+        try:
+            import yfinance as yf
+            h = yf.Ticker(ticker).history(period="5y", interval="1d")
+            if h is None or h.empty:
+                return [], []
+            dates = [str(d)[:10] for d in h.index]
+            closes = [float(x) for x in h["Close"].tolist()]
+            return dates, closes
+        except Exception as e:
+            logger.warning("[backtest] fetch failed for %s: %s", ticker, e)
+            return [], []
+
+    spx_dates, spx = await _aio.to_thread(_closes, "^GSPC")
+    _, vix = await _aio.to_thread(_closes, "^VIX")
+    if len(spx) < 300:
+        return {"available": False, "reason": "Insufficient S&P 500 history for backtest.",
+                "signals": []}
+
+    scorecards = []
+    for name, label, sig in [
+        ("momentum_12_1", "Price Momentum (12-1m)", momentum_signal(spx)),
+        ("trend_200d", "Trend (200-day MA)", trend_signal(spx)),
+    ]:
+        bt = backtest_signal(spx, sig, horizon)
+        if bt.get("available"):
+            scorecards.append({"id": name, "label": label, **bt})
+    if len(vix) >= 300:
+        n = min(len(spx), len(vix))
+        vsig = vol_regime_signal(vix[-n:])
+        bt = backtest_signal(spx[-n:], vsig, horizon)
+        if bt.get("available"):
+            scorecards.append({"id": "vol_regime", "label": "VIX Vol-Regime", **bt})
+
+    return {
+        "available": True,
+        "universe": "S&P 500 (^GSPC)",
+        "period_days": len(spx),
+        "horizon_days": horizon,
+        "methodology": "Walk-forward: signal at date t uses only data <= t; evaluated "
+                       "against the strictly-forward return over the next `horizon` days.",
+        "signals": scorecards,
+        "computed_at": datetime.now().isoformat(),
+    }
+
+
 @app.get("/api/v1/freshness")
 async def freshness_v1():
     """Per-field data freshness: each key macro input's last release date, age, and

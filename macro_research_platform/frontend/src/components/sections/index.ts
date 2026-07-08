@@ -31,6 +31,10 @@ export { MarketClockSection } from './market/MarketClockSection';
 // Organized by domain for clarity
 
 // Macro Domain
+export const SignalScorecardSection = lazy(() =>
+  import('./signals/SignalScorecardSection').then(m => ({ default: m.SignalScorecardSection }))
+);
+
 export const SignalStackSection = lazy(() =>
   import('./signals/SignalStackSection').then(m => ({ default: m.SignalStackSection }))
 );

@@ -12,6 +12,7 @@ import {
   RegimeSection,
   RegimePlaybookSection,
   SignalStackSection,
+  SignalScorecardSection,
   SectorAllocationSection,
   FactorRotationSection,
   RiskIndicatorsSection,
@@ -154,6 +155,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Signal Stack">
           <Suspense fallback={<SectionSkeleton />}>
             <SignalStackSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Signal Scorecard">
+          <Suspense fallback={<SectionSkeleton />}>
+            <SignalScorecardSection />
           </Suspense>
         </ErrorBoundary>
       </div>
