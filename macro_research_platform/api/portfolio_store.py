@@ -148,3 +148,113 @@ def list_books() -> List[str]:
     with _conn() as conn:
         rows = conn.execute("SELECT DISTINCT book FROM positions ORDER BY book").fetchall()
     return [r["book"] for r in rows if r["book"]]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Trade ideas — lifecycle-tracked suggestions (Phase 6)
+# ─────────────────────────────────────────────────────────────────────────────
+import json as _json
+
+IDEA_STATES = ["Proposed", "Under Review", "Approved", "Executed", "Closed"]
+
+
+def init_ideas_db() -> None:
+    with _conn() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pm_trade_ideas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                direction TEXT DEFAULT 'LONG',
+                thesis TEXT,
+                conviction TEXT DEFAULT 'MEDIUM',
+                state TEXT DEFAULT 'Proposed',
+                rationale TEXT,
+                suggested_size REAL,
+                book TEXT DEFAULT 'Macro',
+                created_by TEXT,
+                created_at TEXT,
+                updated_at TEXT,
+                state_history TEXT
+            )
+            """
+        )
+        conn.commit()
+
+
+def list_trade_ideas(state: Optional[str] = None) -> List[Dict[str, Any]]:
+    init_ideas_db()
+    with _conn() as conn:
+        if state:
+            rows = conn.execute("SELECT * FROM pm_trade_ideas WHERE state = ? ORDER BY id DESC", (state,)).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM pm_trade_ideas ORDER BY id DESC").fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["state_history"] = _json.loads(d.get("state_history") or "[]")
+        except Exception:
+            d["state_history"] = []
+        out.append(d)
+    return out
+
+
+def add_trade_idea(data: Dict[str, Any], user: str = "system") -> Dict[str, Any]:
+    init_ideas_db()
+    symbol = str(data.get("symbol", "")).strip().upper()
+    if not symbol:
+        raise ValueError("symbol is required")
+    now = _now()
+    hist = [{"state": "Proposed", "at": now, "by": user}]
+    row = {
+        "symbol": symbol,
+        "direction": str(data.get("direction", "LONG")).upper(),
+        "thesis": data.get("thesis"),
+        "conviction": str(data.get("conviction", "MEDIUM")).upper(),
+        "state": "Proposed",
+        "rationale": data.get("rationale"),
+        "suggested_size": float(data["suggested_size"]) if data.get("suggested_size") is not None else None,
+        "book": data.get("book", "Macro"),
+        "created_by": user,
+        "created_at": now, "updated_at": now,
+        "state_history": _json.dumps(hist),
+    }
+    cols = list(row.keys())
+    with _conn() as conn:
+        cur = conn.execute(f"INSERT INTO pm_trade_ideas ({','.join(cols)}) VALUES ({','.join('?' for _ in cols)})",
+                           list(row.values()))
+        conn.commit()
+        r = conn.execute("SELECT * FROM pm_trade_ideas WHERE id = ?", (cur.lastrowid,)).fetchone()
+    d = dict(r); d["state_history"] = _json.loads(d["state_history"])
+    return d
+
+
+def transition_trade_idea(idea_id: int, new_state: str, user: str = "system",
+                          note: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    if new_state not in IDEA_STATES:
+        raise ValueError(f"invalid state '{new_state}'")
+    init_ideas_db()
+    with _conn() as conn:
+        r = conn.execute("SELECT * FROM pm_trade_ideas WHERE id = ?", (idea_id,)).fetchone()
+        if not r:
+            return None
+        try:
+            hist = _json.loads(r["state_history"] or "[]")
+        except Exception:
+            hist = []
+        hist.append({"state": new_state, "at": _now(), "by": user, "note": note})
+        conn.execute("UPDATE pm_trade_ideas SET state = ?, updated_at = ?, state_history = ? WHERE id = ?",
+                     (new_state, _now(), _json.dumps(hist), idea_id))
+        conn.commit()
+        r2 = conn.execute("SELECT * FROM pm_trade_ideas WHERE id = ?", (idea_id,)).fetchone()
+    d = dict(r2); d["state_history"] = _json.loads(d["state_history"])
+    return d
+
+
+def delete_trade_idea(idea_id: int) -> bool:
+    init_ideas_db()
+    with _conn() as conn:
+        cur = conn.execute("DELETE FROM pm_trade_ideas WHERE id = ?", (idea_id,))
+        conn.commit()
+        return cur.rowcount > 0

@@ -216,6 +216,23 @@ def days_to_liquidate(quantity: float, avg_daily_volume: Optional[float],
     return round(abs(quantity) / (participation * avg_daily_volume), 2)
 
 
+def suggest_size_for_var(daily_vol: float, price: float, var_limit: float,
+                         conf: float = 0.95, horizon: int = 1) -> Dict[str, float]:
+    """Suggest a position size whose standalone VaR stays within `var_limit` ($).
+
+    Standalone VaR of a notional N ≈ N × z(conf) × daily_vol × √horizon. Solve for the
+    max notional, then shares = notional / price. A conservative (ignores diversification)
+    vol-targeted / VaR-capped size. Returns {max_notional, suggested_shares, daily_vol}.
+    """
+    z = Z.get(round(conf, 2), 1.6448536269514722)
+    denom = z * max(daily_vol, 1e-9) * (horizon ** 0.5)
+    max_notional = var_limit / denom if denom > 0 else 0.0
+    shares = (max_notional / price) if price and price > 0 else 0.0
+    return {"max_notional": round(max_notional, 2),
+            "suggested_shares": int(max(0, shares)),
+            "daily_vol": round(daily_vol, 5)}
+
+
 def reverse_stress(dollar_exposures: Dict[str, float], target_loss: float) -> List[Dict[str, float]]:
     """For a target LOSS (positive $), the single-factor shock that alone causes it.
 

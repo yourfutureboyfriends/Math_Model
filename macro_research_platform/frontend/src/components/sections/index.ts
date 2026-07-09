@@ -136,6 +136,10 @@ export const PositionsSection = lazy(() =>
   import('./equity/PositionsSection').then(m => ({ default: m.PositionsSection }))
 );
 
+export const TradeWorkflowSection = lazy(() =>
+  import('./equity/TradeWorkflowSection').then(m => ({ default: m.TradeWorkflowSection }))
+);
+
 export const PortfolioFitSection = lazy(() =>
   import('./equity/PortfolioFitSection').then(m => ({ default: m.PortfolioFitSection }))
 );

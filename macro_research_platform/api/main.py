@@ -8771,6 +8771,140 @@ async def portfolio_books_v1():
     }
 
 
+async def _risk_snapshot(raw: list) -> dict:
+    """VaR (95% 1d), exposure and concentration for a (possibly hypothetical) raw set."""
+    import numpy as _np
+    from api.calculations.var_model import (
+        portfolio_pnl_series, historical_var, parametric_var, concentration,
+    )
+    data, reason, enriched = await _position_return_matrix(None, raw_positions=raw)
+    enr = enriched or (await _enrich_positions(raw) if raw else {"summary": {}, "positions": []})
+    conc = concentration(enr["positions"]) if enr.get("positions") else {"available": False}
+    if data is None:
+        return {"var_available": False, "reason": reason,
+                "summary": enr.get("summary", {}), "concentration": conc}
+    pnl = portfolio_pnl_series(data["market_values"], data["R"])
+    return {
+        "var_available": True,
+        "var_95_1d": parametric_var(pnl, 0.95),
+        "var_95_1d_hist": historical_var(pnl, 0.95),
+        "summary": data["enriched"]["summary"],
+        "concentration": conc,
+    }
+
+
+class WhatIfIn(_PortfolioBaseModel):
+    symbol: str
+    quantity: float
+    avg_cost: Optional[float] = None      # defaults to current price (entry P&L = 0)
+    book: Optional[str] = "Macro"
+    var_limit: Optional[float] = None     # if set, suggest a size within this VaR budget
+
+
+@app.post("/api/v1/portfolio/what-if")
+async def portfolio_what_if_v1(trade: WhatIfIn):
+    """Pre-trade analysis: projected VaR / exposure / concentration BEFORE vs AFTER
+    adding a proposed trade, plus a VaR-budgeted suggested size."""
+    import numpy as _np
+    from api import portfolio_store
+    from api.handlers.market_handler import _fetch_closes_literal
+    from api.calculations.factor_model import returns_from_closes
+    from api.calculations.var_model import suggest_size_for_var
+
+    current = await _aio_to_thread(portfolio_store.list_positions, None)
+    before = await _risk_snapshot(current)
+
+    sym = trade.symbol.strip().upper()
+    closes = await _fetch_closes_literal(sym)
+    if not closes:
+        return {"available": False, "reason": f"No price history for {sym}."}
+    price = closes[-1]
+    proposed = {"symbol": sym, "quantity": trade.quantity,
+                "avg_cost": trade.avg_cost if trade.avg_cost is not None else price,
+                "book": trade.book or "Macro", "asset_class": "Equity"}
+    after = await _risk_snapshot(current + [proposed])
+
+    daily_vol = float(_np.std(returns_from_closes(closes))) if len(closes) > 2 else 0.0
+    sizing = None
+    if trade.var_limit:
+        sizing = suggest_size_for_var(daily_vol, price, trade.var_limit, 0.95, 1)
+
+    def _delta(a, b):
+        if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+            return round(a - b, 2)
+        return None
+
+    return {
+        "available": True,
+        "proposed": {"symbol": sym, "quantity": trade.quantity, "price": round(price, 2),
+                     "notional": round(trade.quantity * price, 2), "book": trade.book},
+        "before": before, "after": after,
+        "delta": {
+            "var_95_1d": _delta(after.get("var_95_1d"), before.get("var_95_1d")),
+            "gross_exposure": _delta(after.get("summary", {}).get("gross_exposure"),
+                                     before.get("summary", {}).get("gross_exposure")),
+            "net_exposure": _delta(after.get("summary", {}).get("net_exposure"),
+                                   before.get("summary", {}).get("net_exposure")),
+            "largest_weight": _delta(after.get("concentration", {}).get("largest_weight"),
+                                     before.get("concentration", {}).get("largest_weight")),
+        },
+        "sizing": sizing,
+        "computed_at": datetime.now().isoformat(),
+    }
+
+
+class TradeIdeaIn(_PortfolioBaseModel):
+    symbol: str
+    direction: Optional[str] = "LONG"
+    thesis: Optional[str] = None
+    conviction: Optional[str] = "MEDIUM"
+    rationale: Optional[str] = None
+    suggested_size: Optional[float] = None
+    book: Optional[str] = "Macro"
+
+
+class TradeIdeaTransition(_PortfolioBaseModel):
+    state: str
+    note: Optional[str] = None
+
+
+@app.get("/api/v1/portfolio/trade-ideas")
+async def trade_ideas_list_v1(state: Optional[str] = None):
+    from api import portfolio_store
+    ideas = await _aio_to_thread(portfolio_store.list_trade_ideas, state)
+    return {"ideas": ideas, "states": portfolio_store.IDEA_STATES}
+
+
+@app.post("/api/v1/portfolio/trade-ideas")
+async def trade_ideas_add_v1(idea: TradeIdeaIn):
+    from api import portfolio_store
+    try:
+        return await _aio_to_thread(lambda: portfolio_store.add_trade_idea(idea.model_dump(), "admin"))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.post("/api/v1/portfolio/trade-ideas/{idea_id}/transition")
+async def trade_ideas_transition_v1(idea_id: int, body: TradeIdeaTransition):
+    from api import portfolio_store
+    try:
+        updated = await _aio_to_thread(lambda: portfolio_store.transition_trade_idea(idea_id, body.state, "admin", body.note))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if updated is None:
+        raise HTTPException(status_code=404, detail="trade idea not found")
+    return updated
+
+
+@app.delete("/api/v1/portfolio/trade-ideas/{idea_id}")
+async def trade_ideas_delete_v1(idea_id: int):
+    from api import portfolio_store
+    ok = await _aio_to_thread(portfolio_store.delete_trade_idea, idea_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="trade idea not found")
+    return {"deleted": True, "id": idea_id}
+
+
 async def _aio_to_thread(fn, *args):
     import asyncio as _aio
     return await _aio.to_thread(fn, *args)
@@ -8919,15 +9053,16 @@ async def risk_factor_exposure_v1(book: Optional[str] = None):
     }
 
 
-async def _position_return_matrix(book: Optional[str]):
+async def _position_return_matrix(book: Optional[str], raw_positions: Optional[list] = None):
     """(symbols, market_values, TxN return matrix, enriched) for held positions,
-    date-aligned across names. Returns (None, reason) tuple-ish via ({}, reason)."""
+    date-aligned across names. Pass raw_positions to compute on a hypothetical set
+    (e.g. what-if) instead of the persisted book."""
     import numpy as _np
     from api import portfolio_store
     from api.handlers.market_handler import _fetch_dated_closes_literal
     from api.calculations.factor_model import returns_from_closes
 
-    raw = await _aio_to_thread(portfolio_store.list_positions, book)
+    raw = raw_positions if raw_positions is not None else await _aio_to_thread(portfolio_store.list_positions, book)
     if not raw:
         return None, "No positions configured — add positions first.", None
     enriched = await _enrich_positions(raw)

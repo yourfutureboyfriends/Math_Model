@@ -29,6 +29,7 @@ import {
   HorizonTensionSection,
   PortfolioAnalyserSection,
   PositionsSection,
+  TradeWorkflowSection,
   CTATrendSection,
   BusinessLayerSection,
   EnsembleSection,
@@ -414,6 +415,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Positions">
           <Suspense fallback={<SectionSkeleton />}>
             <PositionsSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Trade Workflow">
+          <Suspense fallback={<SectionSkeleton />}>
+            <TradeWorkflowSection />
           </Suspense>
         </ErrorBoundary>
       </div>

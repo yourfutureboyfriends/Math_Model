@@ -8,8 +8,21 @@ import pytest
 from api.calculations.var_model import (
     portfolio_pnl_series, historical_var, parametric_var, monte_carlo_var,
     scale_horizon, component_var_by_position, scenario_pnl, reverse_stress,
-    concentration, days_to_liquidate, STRESS_SCENARIOS,
+    concentration, days_to_liquidate, suggest_size_for_var, STRESS_SCENARIOS,
 )
+
+
+def test_suggest_size_for_var_budget():
+    # daily_vol 2%, price 100, VaR limit $1000 at 95%: max notional = 1000/(1.645*0.02)
+    s = suggest_size_for_var(0.02, 100.0, 1000.0, 0.95, 1)
+    assert s["max_notional"] == pytest.approx(1000 / (1.6448536 * 0.02), rel=1e-3)
+    assert s["suggested_shares"] == int(s["max_notional"] / 100.0)
+
+
+def test_suggest_size_smaller_for_higher_vol():
+    lo = suggest_size_for_var(0.01, 100.0, 1000.0)["max_notional"]
+    hi = suggest_size_for_var(0.04, 100.0, 1000.0)["max_notional"]
+    assert hi < lo  # higher vol -> smaller allowed size
 
 
 def test_portfolio_pnl_series():

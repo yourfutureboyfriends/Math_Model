@@ -9,6 +9,7 @@ export { FactorRotationSection } from './FactorRotationSection';
 export { PerformanceAttributionSection } from './PerformanceAttributionSection';
 export { PortfolioAnalyserSection } from './PortfolioAnalyserSection';
 export { PositionsSection } from './PositionsSection';
+export { TradeWorkflowSection } from './TradeWorkflowSection';
 export { PortfolioFitSection } from './PortfolioFitSection';
 export { PureAlphaSection } from './PureAlphaSection';
 export { SectorAllocationSection } from './SectorAllocationSection';
