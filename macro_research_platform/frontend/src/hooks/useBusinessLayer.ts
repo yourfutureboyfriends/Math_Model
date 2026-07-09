@@ -2,21 +2,10 @@
 // Fetches business outputs: recommendations, decision log, IC pack, expected returns
 
 import { useState, useEffect, useCallback } from 'react';
+import type { BackendRecommendationsResponse } from '@/lib/businessAdapter';
 
-interface Recommendation {
-  asset_class: string;
-  expected_return_score: number;
-  rationale: string;
-  conviction: string;
-}
-
-interface PositionSizing {
-  asset_class: string;
-  recommended_weight: number;
-  min_weight: number;
-  max_weight: number;
-  rationale: string;
-}
+// Re-export backend types for components that need them
+export type { BackendRecommendationsResponse };
 
 interface DecisionLogEntry {
   date: string;
@@ -26,13 +15,8 @@ interface DecisionLogEntry {
   outcome?: string;
 }
 
-interface BusinessRecommendations {
-  summary: string | null;
-  expected_returns: Recommendation[];
-  position_sizing: PositionSizing[];
-  signal_scorecard: unknown[];
-  timestamp: string;
-}
+// Use backend types directly to ensure compatibility
+interface BusinessRecommendations extends BackendRecommendationsResponse {}
 
 interface DecisionLog {
   entries: DecisionLogEntry[];
@@ -111,9 +95,16 @@ export function useBusinessLayer() {
   };
 }
 
+interface ExpectedReturnItem {
+  asset_class: string;
+  expected_return_score: number;
+  conviction?: string;
+  rationale?: string;
+}
+
 // Hook for expected returns only
 export function useExpectedReturns() {
-  const [returns, setReturns] = useState<Recommendation[]>([]);
+  const [returns, setReturns] = useState<ExpectedReturnItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -138,9 +129,17 @@ export function useExpectedReturns() {
   return { returns, loading, error };
 }
 
+interface PositionSizingItem {
+  asset_class: string;
+  recommended_weight: number;
+  min_weight?: number;
+  max_weight?: number;
+  conviction?: string;
+}
+
 // Hook for position sizing only
 export function usePositionSizing() {
-  const [positions, setPositions] = useState<PositionSizing[]>([]);
+  const [positions, setPositions] = useState<PositionSizingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

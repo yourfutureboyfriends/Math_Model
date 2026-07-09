@@ -31,16 +31,16 @@ class ApiClient {
     return response.data;
   }
 
-  // Regime API
+  // Regime API - extracted from dashboard
   async getRegimeData() {
-    const response = await this.client.get('/regime');
-    return response.data;
+    const response = await this.client.get<DashboardData>('/dashboard');
+    return response.data.regime;
   }
 
-  // Metrics API
+  // Metrics API - extracted from dashboard
   async getKeyMetrics() {
-    const response = await this.client.get('/metrics/key');
-    return response.data;
+    const response = await this.client.get<DashboardData>('/dashboard');
+    return response.data.keyMetrics;
   }
 
   // Signals API
@@ -49,15 +49,15 @@ class ApiClient {
     return response.data;
   }
 
-  // Sector Allocation API
+  // Sector Allocation API - extracted from dashboard
   async getSectorAllocation() {
-    const response = await this.client.get('/sectors');
-    return response.data;
+    const response = await this.client.get<DashboardData>('/dashboard');
+    return response.data.sectorAllocation;
   }
 
-  // Risk Indicators API
+  // Risk Indicators API - uses full risk endpoint
   async getRiskIndicators() {
-    const response = await this.client.get('/risk');
+    const response = await this.client.get('/risk/full');
     return response.data;
   }
 
@@ -67,9 +67,9 @@ class ApiClient {
     return response.data;
   }
 
-  // Business Layer API
+  // Business Layer API - uses recommendations endpoint
   async getBusinessLayer() {
-    const response = await this.client.get('/business');
+    const response = await this.client.get('/business/recommendations');
     return response.data;
   }
 
