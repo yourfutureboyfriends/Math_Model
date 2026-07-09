@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Grid3x3, RefreshCw } from 'lucide-react';
 import { CorrelationHeatmap } from '@/components/ui/CorrelationHeatmap';
+import { DataLineagePopover } from '@/components/ui/DataLineagePopover';
 
 const WINDOWS = [30, 90, 252];
 
@@ -47,6 +48,15 @@ export function CorrelationMatrixSection() {
         <div className="section-header-left">
           <span className="section-tag"><Grid3x3 className="w-3 h-3" /></span>
           <h2 className="section-title">Cross-Asset Correlation Matrix</h2>
+          {data && (
+            <DataLineagePopover lineage={{
+              source: data.source,
+              fetched_at: data.as_of,
+              staleness_threshold_seconds: 3600,
+              formula: `Pearson correlation of aligned daily returns over the trailing ${data.window} sessions (${data.observations} obs)`,
+              notes: 'Rows/cols: SPX, NDX, 10Y (TLT), 2Y (SHY), DXY, GLD, WTI, HY (HYG), VIX',
+            }} />
+          )}
         </div>
         <div className="flex items-center gap-2">
           <div className="flex border border-border">

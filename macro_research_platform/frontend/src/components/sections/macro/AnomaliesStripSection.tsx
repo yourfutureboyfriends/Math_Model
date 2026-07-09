@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Activity, RefreshCw } from 'lucide-react';
 import { AnomalyBadge } from '@/components/ui/AnomalyBadge';
+import { DataLineagePopover } from '@/components/ui/DataLineagePopover';
 
 export function AnomaliesStripSection() {
   const [data, setData] = useState<any>(null);
@@ -62,6 +63,12 @@ export function AnomaliesStripSection() {
               <span className="font-mono font-bold text-text-primary tabular-nums">{fmt(m)}</span>
               <AnomalyBadge zScore={m.z_score} isAnomalous={m.is_anomalous} />
               <span className="text-2xs text-text-tertiary">μ {m.historical_mean.toLocaleString()}</span>
+              <DataLineagePopover lineage={{
+                value: m.current, raw_value: m.current, source: `yfinance · ${m.ticker}`,
+                fetched_at: data.as_of, staleness_threshold_seconds: 3600,
+                formula: `z = (current − μ${m.historical_mean}) / σ${m.historical_std} over ${m.observations} obs → ${m.z_score >= 0 ? '+' : ''}${m.z_score}σ`,
+                notes: m.is_anomalous ? 'Flagged: |z| > 2 (outside normal range)' : 'Within 2σ of history',
+              }} />
             </div>
           ))}
           {!flagged.length && (
