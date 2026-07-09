@@ -35,7 +35,7 @@ load_dotenv()
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
@@ -8820,6 +8820,14 @@ class WhatIfIn(_PortfolioBaseModel):
     var_limit: Optional[float] = None     # if set, suggest a size within this VaR budget
 
 
+def _request_user(request: Request) -> str:
+    """Identity for the audit trail. The frontend sends the logged-in user in `X-User`
+    (the demo token is static and carries no identity), so we record who actually acted
+    rather than a hardcoded 'admin'. Falls back to 'system' when no identity is supplied."""
+    u = (request.headers.get("X-User") or "").strip()
+    return u[:64] if u else "system"
+
+
 @app.post("/api/v1/portfolio/what-if")
 async def portfolio_what_if_v1(trade: WhatIfIn):
     """Pre-trade analysis: projected VaR / exposure / concentration BEFORE vs AFTER
@@ -8895,33 +8903,73 @@ async def trade_ideas_list_v1(state: Optional[str] = None):
 
 
 @app.post("/api/v1/portfolio/trade-ideas")
-async def trade_ideas_add_v1(idea: TradeIdeaIn):
+async def trade_ideas_add_v1(idea: TradeIdeaIn, request: Request):
     from api import portfolio_store
+    user = _request_user(request)
     try:
-        return await _aio_to_thread(lambda: portfolio_store.add_trade_idea(idea.model_dump(), "admin"))
+        return await _aio_to_thread(lambda: portfolio_store.add_trade_idea(idea.model_dump(), user))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
 
 @app.post("/api/v1/portfolio/trade-ideas/{idea_id}/transition")
-async def trade_ideas_transition_v1(idea_id: int, body: TradeIdeaTransition):
+async def trade_ideas_transition_v1(idea_id: int, body: TradeIdeaTransition, request: Request):
     from api import portfolio_store
+    user = _request_user(request)
     try:
-        updated = await _aio_to_thread(lambda: portfolio_store.transition_trade_idea(idea_id, body.state, "admin", body.note))
+        updated = await _aio_to_thread(lambda: portfolio_store.transition_trade_idea(idea_id, body.state, user, body.note))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     if updated is None:
         raise HTTPException(status_code=404, detail="trade idea not found")
-    # Record the lifecycle change in the audit decision log.
+    # Record the lifecycle change in the audit decision log, attributed to the acting user.
     try:
         from api import audit_store
         await _aio_to_thread(lambda: audit_store.add_decision(
             action=f"Trade idea → {body.state}", rationale=body.note or f"Transitioned to {body.state}",
-            user="admin", target=f"{updated.get('symbol')} (idea #{idea_id})",
+            user=user, target=f"{updated.get('symbol')} (idea #{idea_id})",
             after_state={"state": body.state}))
     except Exception as e:
         logger.debug(f"[audit] could not log idea transition: {e}")
     return updated
+
+
+@app.get("/api/v1/portfolio/generate-ideas")
+async def portfolio_generate_ideas_v1(book: Optional[str] = None):
+    """Auto-generate trade ideas by mapping the current macro regime's playbook
+    (REGIME_CHARACTERISTICS) onto factor proxies and comparing to the book's live factor
+    exposures. Transparent rules engine — every idea states the regime, factor and reason."""
+    from api.calculations.idea_generation import generate_ideas
+
+    # Current regime from the live dashboard cache.
+    regime_key, regime_name = None, None
+    try:
+        from api.handlers.dashboard_handler import _DASHBOARD_CACHE
+        cached = _DASHBOARD_CACHE.get("live")
+        d = cached[1] if cached else None
+        if d is not None:
+            reg = getattr(d, "regime", None) or {}
+            regime_name = getattr(reg, "current", None) if not isinstance(reg, dict) else reg.get("current")
+            regime_key = (regime_name or "").strip().lower()
+    except Exception as e:
+        logger.debug(f"[generate-ideas] regime lookup failed: {e}")
+    if not regime_key:
+        return {"available": False, "reason": "Current regime unavailable — dashboard not warmed yet.",
+                "ideas": []}
+
+    dexp, reason = await _dollar_factor_exposures(book)
+    if dexp is None:
+        return {"available": False, "reason": reason or "No positions to analyse.",
+                "regime": regime_name, "ideas": []}
+
+    from api import portfolio_store
+    raw = await _aio_to_thread(portfolio_store.list_positions, book)
+    gross = (await _enrich_positions(raw))["summary"]["gross_exposure"] or 0.0 if raw else 0.0
+
+    ideas = generate_ideas(dexp, regime_key, gross_exposure=gross)
+    return {"available": True, "regime": regime_name, "book": book or "Firm",
+            "gross_exposure": round(gross, 2), "dollar_exposures": dexp,
+            "ideas": ideas, "computed_at": datetime.now().isoformat()}
 
 
 @app.delete("/api/v1/portfolio/trade-ideas/{idea_id}")
@@ -9284,11 +9332,12 @@ async def audit_decisions_list_v1(limit: int = 100):
 
 
 @app.post("/api/v1/audit/decisions")
-async def audit_decisions_add_v1(d: DecisionIn):
+async def audit_decisions_add_v1(d: DecisionIn, request: Request):
     from api import audit_store
+    user = _request_user(request)
     try:
         return await _aio_to_thread(lambda: audit_store.add_decision(
-            d.action, d.rationale, "admin", d.target, d.before_state, d.after_state))
+            d.action, d.rationale, user, d.target, d.before_state, d.after_state))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 

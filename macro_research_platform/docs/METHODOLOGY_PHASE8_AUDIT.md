@@ -26,9 +26,13 @@ decision was made.
 ## Assumptions & limitations
 - **Snapshot cadence is 5 min** — sub-minute reconstruction isn't captured; a specific
   intraday moment resolves to the most recent prior snapshot.
-- **Single-user attribution ("admin")** — the app has role-based auth (admin/PM/risk/
-  analyst) but the audit entries are currently stamped with a fixed user; wiring the
-  authenticated session identity into every log entry is a small follow-up.
+- **Session-identity attribution (closed).** Audit entries are now stamped with the
+  *actual* logged-in user. The frontend sends the authenticated username in an `X-User`
+  header on every write (decision log, trade-idea create/transition); the backend records
+  it (`_request_user`), falling back to `system` when no identity is supplied. Verified
+  live: entries logged as `admin` and `pm_alice` appear distinctly in the decision log.
+  (The demo token is static and carries no identity of its own, so identity travels in the
+  header from the client's authenticated session; a signed JWT would harden this further.)
 - **Not built (scoped):** the data-lineage "trace any number to its source/calc path"
   button (partially served today by the Phase-7 source/freshness tags), the scheduled
   automated PDF risk/attribution/IC reports (on-demand HTML/print export exists), and

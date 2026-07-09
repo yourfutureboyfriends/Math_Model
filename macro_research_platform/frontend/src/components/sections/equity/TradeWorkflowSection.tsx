@@ -7,7 +7,8 @@
  * each transition timestamped. Reads /api/v1/portfolio/what-if and /trade-ideas.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { FlaskConical, ClipboardList, ChevronRight, Trash2, Plus } from 'lucide-react';
+import { FlaskConical, ClipboardList, ChevronRight, Trash2, Plus, Sparkles } from 'lucide-react';
+import { actorHeaders } from '../../../lib/actor';
 
 const usd = (v: number | null | undefined) =>
   v == null ? '—' : `${v < 0 ? '-' : ''}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -48,7 +49,7 @@ export function TradeWorkflowSection() {
   const addIdea = async () => {
     if (!form.symbol) return;
     await fetch('/api/v1/portfolio/trade-ideas', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...actorHeaders() },
       body: JSON.stringify({ ...form, symbol: form.symbol.toUpperCase() }),
     });
     setForm({ symbol: '', direction: 'LONG', conviction: 'HIGH', thesis: '' });
@@ -57,11 +58,33 @@ export function TradeWorkflowSection() {
   const nextState = (s: string) => { const i = states.indexOf(s); return i >= 0 && i < states.length - 1 ? states[i + 1] : null; };
   const advance = async (id: number, to: string) => {
     await fetch(`/api/v1/portfolio/trade-ideas/${id}/transition`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state: to }),
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...actorHeaders() }, body: JSON.stringify({ state: to }),
     });
     loadIdeas();
   };
   const removeIdea = async (id: number) => { await fetch(`/api/v1/portfolio/trade-ideas/${id}`, { method: 'DELETE' }); loadIdeas(); };
+
+  // Auto-generated ideas from the current regime playbook vs. live factor exposures.
+  const [gen, setGen] = useState<any>(null);
+  const [genBusy, setGenBusy] = useState(false);
+  const generateIdeas = async () => {
+    setGenBusy(true);
+    try {
+      const r = await fetch('/api/v1/portfolio/generate-ideas');
+      setGen(await r.json());
+    } finally { setGenBusy(false); }
+  };
+  const acceptGenerated = async (g: any) => {
+    await fetch('/api/v1/portfolio/trade-ideas', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...actorHeaders() },
+      body: JSON.stringify({
+        symbol: g.proxy, direction: g.direction,
+        conviction: g.kind === 'REALIGN' ? 'HIGH' : 'MEDIUM',
+        thesis: g.rationale,
+      }),
+    });
+    loadIdeas();
+  };
 
   const d = wfResult?.available ? wfResult.delta : null;
 
@@ -72,6 +95,38 @@ export function TradeWorkflowSection() {
           <span className="section-tag"><FlaskConical className="w-3 h-3" /></span>
           <h2 className="section-title">Trade Workflow &amp; What-If</h2>
         </div>
+      </div>
+
+      {/* Regime-driven idea generation */}
+      <div className="mb-3 p-3 bg-surface-1 border border-border">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="flex items-center gap-1 text-2xs text-text-tertiary uppercase tracking-wider">
+            <Sparkles className="w-3 h-3" /> Regime Idea Generator
+          </span>
+          {gen?.available && <span className="text-2xs text-text-secondary">regime <span className="text-bloomberg font-mono">{gen.regime}</span> · book {gen.book}</span>}
+          <button onClick={generateIdeas} disabled={genBusy}
+            className="ml-auto px-3 py-1 border border-bloomberg-border bg-bloomberg-muted text-bloomberg text-xs hover:bg-bloomberg/20 disabled:opacity-50">
+            {genBusy ? 'Analysing…' : 'Generate'}
+          </button>
+        </div>
+        {gen && !gen.available && <div className="text-2xs text-amber">{gen.reason}</div>}
+        {gen?.available && gen.ideas?.length === 0 && (
+          <div className="text-2xs text-green">Book is aligned with the {gen.regime} playbook — no misalignments to trade.</div>
+        )}
+        {gen?.available && gen.ideas?.length > 0 && (
+          <div className="space-y-1">
+            {gen.ideas.map((g: any) => (
+              <div key={g.factor} className="flex items-center gap-2 p-2 bg-surface-2 border border-border-subtle text-xs">
+                <span className={`font-mono w-12 ${g.direction === 'SHORT' ? 'text-red' : 'text-green'}`}>{g.direction}</span>
+                <span className="font-medium text-text-primary w-12">{g.proxy}</span>
+                <span className={`text-2xs px-1 py-0.5 border ${g.kind === 'REALIGN' ? 'border-red/40 text-red' : 'border-amber/40 text-amber'}`}>{g.kind}</span>
+                <span className="flex-1 text-2xs text-text-tertiary truncate" title={g.rationale}>{g.rationale}</span>
+                <button onClick={() => acceptGenerated(g)} title="Add to trade-idea board"
+                  className="flex items-center gap-1 text-bloomberg hover:text-bloomberg-bright text-2xs whitespace-nowrap"><Plus className="w-3 h-3" /> Add</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">

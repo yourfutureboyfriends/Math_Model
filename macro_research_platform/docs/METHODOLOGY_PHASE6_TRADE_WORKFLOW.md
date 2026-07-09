@@ -33,9 +33,16 @@ giving a basic audit trail (the full point-in-time/decision log is Phase 8).
   new trade against the existing book, so it is deliberately conservative.
 - **What-if VaR is parametric only** (fast) — for a final decision, also check the
   historical/Monte-Carlo VaR on the persisted book after executing.
-- **Idea *generation* is manual here.** The auto-generator (regime × factor-gap × signal
-  consensus → ranked, pre-sized ideas) is scoped but not built; ideas are entered by the
-  PM with a rationale, and the what-if provides the sizing input.
+- **Idea generation (now built).** A **Regime Idea Generator** proposes trades by mapping
+  the platform's own regime playbook (`REGIME_CHARACTERISTICS`: equity / duration /
+  commodity / value / risk-appetite biases) onto the tradable factor proxies, then
+  comparing the *desired* tilt to the book's *live* dollar factor exposures. It emits an
+  idea only where the book is misaligned — **REALIGN** when the exposure leans the wrong
+  way (ranked by the dollar size of the misalignment) or **INITIATE** when a wanted tilt is
+  absent. Each idea carries the regime, factor, proxy ETF, direction and a plain-English
+  rationale, and one click adds it to the idea board. It is a **transparent rules engine,
+  not a black box** — no fabricated conviction scores. `/api/v1/portfolio/generate-ideas`.
+  It does *not* auto-size (run the what-if for that) or blend signal-consensus yet.
 - Prices are end-of-day closes (no intraday / bid-ask).
 
 ## Verification
@@ -43,4 +50,11 @@ Sizing has known-answer unit tests (`test_var_model.py`: `max_notional = L/(z·v
 higher vol → smaller size). Verified live: adding TSLA ×100 moves 95% 1-day VaR
 $1,199 → $2,302 (Δ +$1,103) and, for a $1,500 VaR budget, the system caps the suggestion
 at 81 shares (TSLA daily vol 2.8%). Trade-idea lifecycle verified through
-Proposed → Under Review → Approved with full state history. 170 backend tests pass.
+Proposed → Under Review → Approved with full state history.
+
+The idea generator has 7 known-answer tests (`test_idea_generation.py`: contraction →
+defensive tilts, reflation → pro-cyclical, opposite-sign → REALIGN, flat → INITIATE,
+aligned → skipped, ranked by severity). Verified live: in the current **Expansion** regime
+against the live book it produced 4 ranked ideas — SHORT IWF (book long Growth $100.5k),
+LONG SPY (book short Equity $-93k), LONG MTUM (short Momentum $-31k), SHORT ^VIX (initiate)
+— each added to the board in one click. 199 backend tests pass.

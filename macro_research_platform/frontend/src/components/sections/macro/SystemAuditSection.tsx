@@ -7,7 +7,8 @@
  * Reads /api/v1/audit/{decisions,snapshots}.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollText, History, RefreshCw } from 'lucide-react';
+import { ScrollText, History, RefreshCw, Plus } from 'lucide-react';
+import { actorHeaders, currentActor } from '../../../lib/actor';
 
 const t = (iso?: string) => (iso ? new Date(iso).toLocaleString() : '—');
 
@@ -17,6 +18,10 @@ export function SystemAuditSection() {
   const [dq, setDq] = useState<any>(null);
   const [selected, setSelected] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [action, setAction] = useState('');
+  const [rationale, setRationale] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [logErr, setLogErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,6 +42,21 @@ export function SystemAuditSection() {
   const openSnapshot = async (id: number) => {
     const r = await fetch(`/api/v1/audit/snapshots/${id}`);
     if (r.ok) setSelected(await r.json());
+  };
+
+  const logDecision = async () => {
+    if (!action.trim() || !rationale.trim()) { setLogErr('Action and rationale are required.'); return; }
+    setSaving(true); setLogErr(null);
+    try {
+      const r = await fetch('/api/v1/audit/decisions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...actorHeaders() },
+        body: JSON.stringify({ action: action.trim(), rationale: rationale.trim() }),
+      });
+      if (!r.ok) { setLogErr((await r.json().catch(() => ({})))?.detail || 'Failed to log decision.'); return; }
+      setAction(''); setRationale('');
+      await load();
+    } finally { setSaving(false); }
   };
 
   return (
@@ -72,6 +92,21 @@ export function SystemAuditSection() {
         <div className="border border-border bg-surface-1 overflow-hidden">
           <div className="px-3 py-1.5 border-b border-border-subtle bg-surface-2 text-2xs text-text-tertiary uppercase tracking-wider flex items-center gap-1">
             <ScrollText className="w-3 h-3" /> Decision Log
+            <span className="ml-auto normal-case tracking-normal text-text-tertiary">acting as <span className="text-bloomberg font-mono">{currentActor()}</span></span>
+          </div>
+          {/* Manual decision entry — attributed to the logged-in user via X-User */}
+          <div className="px-3 py-2 border-b border-border-subtle bg-surface-2/40 space-y-1.5">
+            <input value={action} onChange={(e) => setAction(e.target.value)} placeholder="Action (e.g. Override recession model)"
+              className="w-full bg-surface-1 border border-border px-2 py-1 text-xs text-text-primary placeholder:text-text-tertiary focus:border-bloomberg outline-none" />
+            <input value={rationale} onChange={(e) => setRationale(e.target.value)} placeholder="Rationale (required)"
+              className="w-full bg-surface-1 border border-border px-2 py-1 text-xs text-text-primary placeholder:text-text-tertiary focus:border-bloomberg outline-none" />
+            <div className="flex items-center gap-2">
+              <button onClick={logDecision} disabled={saving}
+                className="flex items-center gap-1 px-2 py-1 text-2xs bg-bloomberg-muted text-bloomberg hover:bg-bloomberg hover:text-black disabled:opacity-50">
+                <Plus className="w-3 h-3" /> {saving ? 'Logging…' : 'Log decision'}
+              </button>
+              {logErr && <span className="text-2xs text-red">{logErr}</span>}
+            </div>
           </div>
           <div className="max-h-72 overflow-y-auto">
             {decisions.length === 0 && <div className="p-3 text-2xs text-text-tertiary">No decisions logged yet.</div>}
