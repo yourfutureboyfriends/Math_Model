@@ -42,6 +42,32 @@ Replaces isolated correlation numbers with a real visual matrix.
 
 ---
 
+## ✅ Phase 3 — System-Wide Anomaly Strip — COMPLETE (this session)
+
+Surfaces anomalies proactively instead of waiting to be asked.
+
+**Backend (real, tested, traceable):**
+- `altdata.historical_band()` — rolling mean/std band + z-score of the LATEST value vs its
+  own trailing window; `is_anomalous = |z| > 2`. Pure, **3 known-answer tests** (spike →
+  flagged, normal → not flagged, insufficient → None).
+- `GET /api/v1/anomalies` — scans 9 tracked market metrics (VIX, SPX, NDX, DXY, GLD, WTI,
+  TLT, HYG, SHY), fetched concurrently (~0.8s), returns every metric with
+  `{current, historical_mean, historical_std, z_score, is_anomalous}` **ranked by |z|**;
+  carries `source` + `window`.
+
+**Frontend (reusable primitives):**
+- `AnomalyBadge` (`components/ui/`) — z-score σ badge; amber + warning icon when flagged
+  (icon + number, never color-alone). Drop-in for any metric card (Phase 5A corner badge).
+- `AnomaliesStripSection` — **pinned to the top of the Overview tab**, lists every flagged
+  metric ranked by |z|, collapses to "all within range" (with top deviations for context)
+  when nothing breaches. 3-state bounded load with self-heal retry (Phase 9).
+
+**Verification (live):** the strip flagged **US Dollar +2.1σ (outside 2σ)** in amber at the
+top of Overview, with the DXY value + historical mean shown; ranked scan of all 9 metrics.
+Zero console errors. [screenshot: anomalies strip with flagged USD]
+
+---
+
 ## Pre-existing infrastructure that partially satisfies other phases
 
 These were built in earlier sessions and are live in the app (not part of this session's
@@ -61,7 +87,7 @@ work, but relevant to honest phase accounting):
 |---|---|---|
 | **1 — full lineage layer** | Partial (primitives exist) | The reconciliation loop + per-metric lineage object is a cross-cutting change to **every** metric-producing endpoint and the store — large, high-regression; needs its own pass. |
 | **2 — storytelling / explanation strings** | Not started | Requires each calculation to expose **sub-component contributions** (which series moved, by how much) — a backend change across growth/inflation/liquidity/regime calcs, then an `explanation_text` field + hover attribution. Substantial. |
-| **3 — anomaly strip + badges** | Backend math exists; UI not built | Tractable next: aggregate z-scores into one `/api/v1/anomalies` endpoint + an Anomalies strip + `AnomalyBadge`. Deferred for scope. |
+| **3 — anomaly strip + badges** | ✅ **DONE** (see above) | `/api/v1/anomalies` + `AnomaliesStripSection` + `AnomalyBadge` built, tested, live-verified. Remaining sub-item: per-metric badges composed onto every card (needs Phase-5 card unification). |
 | **4b — regime-conditional correlation** | Not done | Needs historical regime-labelled periods to filter the matrix; the regime history store isn't wired to the correlation endpoint. |
 | **5 — unify MetricCard everywhere** | Not done | Mechanical but wide (dozens of sections); risk of visual regressions without a screenshot pass per section. |
 | **6 — predictive panels** | Not done | Event-vol forecasting needs historical realized-vol-around-events series; regime-transition matrix exists in backend but isn't surfaced as a forward panel. |
@@ -72,6 +98,9 @@ work, but relevant to honest phase accounting):
 ---
 
 ## Recommended next pass (highest value first)
-1. **Phase 3 Anomalies strip** — backend z-score math already exists; wrap into `/api/v1/anomalies` + a pinned strip + `AnomalyBadge`. Small, high-signal.
-2. **Phase 4b** regime-conditional filter on the heatmap (connects regime engine to correlations).
-3. **Phase 1** lineage popover on the existing `SourceTag` (the primitive is already there).
+1. **Phase 4b** regime-conditional filter on the heatmap (connects regime engine to correlations).
+2. **Phase 1** lineage popover on the existing `SourceTag` (the primitive is already there).
+3. **Phase 2** storytelling — expose sub-component contributions from the growth/inflation/
+   liquidity calcs so each score can explain its own move (largest driver).
+
+## Phases complete this project (cumulative): **3, 4** — both real, tested, live-verified.
