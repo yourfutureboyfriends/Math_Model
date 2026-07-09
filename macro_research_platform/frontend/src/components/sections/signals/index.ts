@@ -15,4 +15,5 @@ export { ReflexivitySection } from './ReflexivitySection';
 export { SentimentSection } from './SentimentSection';
 export { SignalStackSection } from './SignalStackSection';
 export { SignalScorecardSection } from './SignalScorecardSection';
+export { AltDataSection } from './AltDataSection';
 export { SignalsSection } from './SignalsSection';

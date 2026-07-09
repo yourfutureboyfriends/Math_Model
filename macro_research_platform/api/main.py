@@ -9241,6 +9241,68 @@ async def risk_liquidity_v1(book: Optional[str] = None, participation: float = 0
             "illiquid_count": sum(1 for r in rows if r["illiquid"])}
 
 
+@app.get("/api/v1/altdata/positioning")
+async def altdata_positioning_v1():
+    """Alternative-data positioning signals: VIX term structure (contango/backwardation),
+    cross-market correlation-breakdown alerts, and credit-spread stress — all from real
+    yfinance/FRED data."""
+    from api.handlers.market_handler import _fetch_dated_closes_literal, _fetch_closes_literal, _fred_recent_values
+    from api.calculations.factor_model import returns_from_closes
+    from api.calculations.altdata import term_structure, correlation_breakdown, zscore, percentile_rank
+
+    # 1) VIX term structure
+    async def _last(t):
+        c = await _fetch_closes_literal(t)
+        return c[-1] if c else None
+    vix9d, vix, vix3m, vix6m = (await _last("^VIX9D"), await _last("^VIX"),
+                                await _last("^VIX3M"), await _last("^VIX6M"))
+    vix_term = term_structure(vix9d, vix, vix3m, vix6m)
+
+    # 2) Cross-market correlation breakdowns
+    pairs = [("SPY", "TLT", "Equity–Duration"), ("SPY", "DX-Y.NYB", "Equity–USD"),
+             ("SPY", "GLD", "Equity–Gold"), ("SPY", "HYG", "Equity–HY Credit")]
+    dated = {}
+    syms = {s for a, b, _ in pairs for s in (a, b)}
+    for s in syms:
+        dated[s] = await _fetch_dated_closes_literal(s)
+    corr_alerts = []
+    for a, b, label in pairs:
+        da, db = dated.get(a, {}), dated.get(b, {})
+        common = sorted(set(da) & set(db))
+        if len(common) < 90:
+            corr_alerts.append({"pair": label, "available": False})
+            continue
+        ra = returns_from_closes([da[d] for d in common])
+        rb = returns_from_closes([db[d] for d in common])
+        res = correlation_breakdown(ra, rb)
+        corr_alerts.append({"pair": label, **res})
+
+    # 3) Credit-spread stress (FRED OAS in %; z-score vs ~1y history)
+    hy = await _aio_to_thread(_fred_recent_values, "BAMLH0A0HYM2", 252)
+    ig = await _aio_to_thread(_fred_recent_values, "BAMLC0A0CM", 252)
+    credit = {"available": False}
+    if hy and ig:
+        hy_bps, ig_bps = hy[0] * 100, ig[0] * 100
+        credit = {
+            "available": True,
+            "hy_oas_bps": round(hy_bps, 1),
+            "ig_oas_bps": round(ig_bps, 1),
+            "hy_ig_spread_bps": round(hy_bps - ig_bps, 1),
+            "hy_zscore": zscore(hy[0], hy),
+            "hy_percentile": percentile_rank(hy[0], hy),
+            "signal": ("stress" if (zscore(hy[0], hy) or 0) > 1 else
+                       "complacent" if (zscore(hy[0], hy) or 0) < -1 else "neutral"),
+        }
+
+    return {
+        "available": True,
+        "vix_term_structure": vix_term,
+        "correlation_alerts": corr_alerts,
+        "credit": credit,
+        "computed_at": datetime.now().isoformat(),
+    }
+
+
 @app.get("/api/v1/signals/backtest")
 async def signals_backtest_v1(horizon: int = 21):
     """Walk-forward backtest of price-reconstructable signals on the S&P 500 (5y daily,

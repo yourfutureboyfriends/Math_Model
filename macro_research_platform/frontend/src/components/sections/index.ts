@@ -35,6 +35,10 @@ export const SignalScorecardSection = lazy(() =>
   import('./signals/SignalScorecardSection').then(m => ({ default: m.SignalScorecardSection }))
 );
 
+export const AltDataSection = lazy(() =>
+  import('./signals/AltDataSection').then(m => ({ default: m.AltDataSection }))
+);
+
 export const SignalStackSection = lazy(() =>
   import('./signals/SignalStackSection').then(m => ({ default: m.SignalStackSection }))
 );
