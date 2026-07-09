@@ -114,7 +114,13 @@ htmlcov/
 # =============================================================================
 .env.local
 .env.*.local
-database/
+# NOTE: do NOT ignore the whole `database/` dir — it is a source package
+# (database/db.py is imported across the app). Ignore only its runtime data:
+database/*.db
+database/*.db.backup.*
+.fuse_hidden*
+# Dead duplicate DB package (0 importers; canonical is top-level database/) — kept out of VCS
+api/database/
 reports/archive/
 backups/
 *.db
