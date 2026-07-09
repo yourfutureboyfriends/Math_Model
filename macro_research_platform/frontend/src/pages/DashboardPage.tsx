@@ -7,6 +7,7 @@ import { SectionSkeleton } from '@/components/ui/SectionSkeleton';
 import { useMacroStore } from '@/store/macroStore';
 import {
   MorningBriefSection,
+  AnomaliesStripSection,
   MasterSignalSection,
   KeyMetricsSection,
   RegimeSection,
@@ -104,6 +105,13 @@ export function DashboardPage() {
       <div id="morning-brief" className="terminal-section">
         <ErrorBoundary sectionName="Morning Brief">
           <MorningBriefSection />
+        </ErrorBoundary>
+      </div>
+
+      {/* ── Anomalies strip (pinned top of Overview) ──────────────────────── */}
+      <div id="anomalies-wrap" className="terminal-section">
+        <ErrorBoundary sectionName="Anomalies">
+          <AnomaliesStripSection />
         </ErrorBoundary>
       </div>
 

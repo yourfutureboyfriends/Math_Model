@@ -20,6 +20,7 @@ export * from './business';
 // ── Critical Sections (Eager Load) ───────────────────────────────────────────
 // These sections are above the fold and load immediately
 export { MorningBriefSection } from './macro/MorningBriefSection';
+export { AnomaliesStripSection } from './macro/AnomaliesStripSection';
 export { MasterSignalSection } from './signals/MasterSignalSection';
 export { KeyMetricsSection } from './macro/KeyMetricsSection';
 export { RegimeSection } from './macro/RegimeSection';

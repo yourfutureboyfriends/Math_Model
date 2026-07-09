@@ -9415,6 +9415,41 @@ async def correlation_matrix_v1(window: int = 90):
             "source": "yfinance (daily closes)", **result}
 
 
+@app.get("/api/v1/anomalies")
+async def anomalies_v1(window: int = 252):
+    """System-wide anomaly scan: for each tracked market metric, z-score the latest value
+    against its own trailing `window`-day history and flag |z| > 2 (outside normal range).
+    Returns every metric ranked by |z_score| so the UI can pin the extremes. Real yfinance
+    closes — traceable via `source`."""
+    from api.handlers.market_handler import _fetch_closes_literal
+    from api.calculations.altdata import historical_band
+
+    window = max(60, min(int(window), 756))
+    # (metric label, literal ticker, unit)
+    metrics = [
+        ("VIX", "^VIX", "idx"), ("S&P 500", "^GSPC", "idx"), ("Nasdaq 100", "^NDX", "idx"),
+        ("US Dollar", "DX-Y.NYB", "idx"), ("Gold", "GC=F", "$"), ("WTI Crude", "CL=F", "$"),
+        ("10Y (TLT)", "TLT", "$"), ("HY Credit (HYG)", "HYG", "$"), ("2Y (SHY)", "SHY", "$"),
+    ]
+    closes_list = await asyncio.gather(*[_fetch_closes_literal(t) for _, t, _ in metrics])
+
+    out = []
+    for (label, ticker, unit), closes in zip(metrics, closes_list):
+        band = historical_band(closes or [], window=window) if closes else None
+        if band is None:
+            continue
+        out.append({"metric": label, "ticker": ticker, "unit": unit, **band})
+    out.sort(key=lambda m: abs(m["z_score"]), reverse=True)
+    return {
+        "available": bool(out),
+        "window": window,
+        "anomaly_count": sum(1 for m in out if m["is_anomalous"]),
+        "metrics": out,
+        "source": "yfinance (daily closes)",
+        "as_of": datetime.now().isoformat(),
+    }
+
+
 @app.get("/api/v1/altdata/positioning")
 async def altdata_positioning_v1():
     """Alternative-data positioning signals: VIX term structure (contango/backwardation),

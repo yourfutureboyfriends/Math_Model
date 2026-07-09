@@ -3761,6 +3761,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/anomalies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Anomalies V1
+         * @description System-wide anomaly scan: for each tracked market metric, z-score the latest value
+         *     against its own trailing `window`-day history and flag |z| > 2 (outside normal range).
+         *     Returns every metric ranked by |z_score| so the UI can pin the extremes. Real yfinance
+         *     closes — traceable via `source`.
+         */
+        get: operations["anomalies_v1_api_v1_anomalies_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/altdata/positioning": {
         parameters: {
             query?: never;
@@ -10266,6 +10289,37 @@ export interface operations {
         };
     };
     correlation_matrix_v1_api_v1_correlation_matrix_get: {
+        parameters: {
+            query?: {
+                window?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    anomalies_v1_api_v1_anomalies_get: {
         parameters: {
             query?: {
                 window?: number;

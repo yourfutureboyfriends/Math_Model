@@ -4,6 +4,7 @@
  */
 
 export { AdvancedIndicatorsSection } from './AdvancedIndicatorsSection';
+export { AnomaliesStripSection } from './AnomaliesStripSection';
 export { DataExplorerSection } from './DataExplorerSection';
 export { DataToWatchSection } from './DataToWatchSection';
 export { DebtCycleSection } from './DebtCycleSection';

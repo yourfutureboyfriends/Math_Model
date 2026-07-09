@@ -7,8 +7,30 @@ import pytest
 
 from api.calculations.altdata import (
     zscore, percentile_rank, term_structure, rolling_correlation, correlation_breakdown,
-    correlation_matrix,
+    correlation_matrix, historical_band,
 )
+
+
+def test_historical_band_flags_spike():
+    # 200 values around 100, then a spike to 160 -> should be anomalous (high z).
+    closes = list(np.full(200, 100.0) + np.random.default_rng(3).normal(0, 1.0, 200))
+    closes.append(160.0)
+    band = historical_band(closes, window=252)
+    assert band is not None
+    assert band["is_anomalous"] is True
+    assert band["z_score"] > 2
+
+
+def test_historical_band_normal_not_flagged():
+    closes = list(np.full(200, 50.0) + np.random.default_rng(4).normal(0, 1.0, 200))
+    band = historical_band(closes, window=252)
+    assert band is not None
+    assert band["is_anomalous"] is False
+    assert abs(band["z_score"]) <= 2
+
+
+def test_historical_band_insufficient_data():
+    assert historical_band([1.0, 2.0, 3.0]) is None
 
 
 def test_correlation_matrix_known_values():

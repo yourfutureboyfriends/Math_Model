@@ -33,6 +33,7 @@ const navigation: NavSection[] = [
   {
     title: 'OVERVIEW',
     items: [
+      { id: 'anomalies', label: 'Anomalies', icon: '◆', permission: 'master_signal' },
       { id: 'master-signal', label: 'Master Ensemble', icon: '◆', permission: 'master_signal', highlight: true },
       { id: 'key-metrics', label: 'Key Metrics', icon: '◆', permission: 'key_metrics' },
       { id: 'regime', label: 'Regime Engine', icon: '◇', permission: 'regime_engine', highlight: true },

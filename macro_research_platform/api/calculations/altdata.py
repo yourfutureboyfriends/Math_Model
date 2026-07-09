@@ -14,6 +14,34 @@ from typing import Dict, List, Sequence, Optional
 import numpy as np
 
 
+def historical_band(closes: Sequence[float], window: int = 252, z_flag: float = 2.0) -> Optional[Dict]:
+    """Rolling mean/std band + z-score of the LATEST value vs its own trailing history.
+
+    Returns {current, historical_mean, historical_std, z_score, is_anomalous, observations}
+    or None if there is too little history. `is_anomalous` is |z| > `z_flag` (default 2σ).
+    """
+    s = np.asarray([c for c in closes if c is not None], dtype=float)
+    s = s[~np.isnan(s)]
+    if s.size < 20:
+        return None
+    hist = s[-window:]
+    current = float(hist[-1])
+    ref = hist[:-1]                       # compare latest against the prior distribution
+    std = float(ref.std(ddof=1))
+    if std == 0:
+        return None
+    mean = float(ref.mean())
+    z = (current - mean) / std
+    return {
+        "current": round(current, 4),
+        "historical_mean": round(mean, 4),
+        "historical_std": round(std, 4),
+        "z_score": round(float(z), 2),
+        "is_anomalous": bool(abs(z) > z_flag),
+        "observations": int(ref.size),
+    }
+
+
 def correlation_matrix(returns_by_asset: "Dict[str, Sequence[float]]", window: int) -> Dict:
     """Full pairwise Pearson correlation matrix over the last `window` aligned returns.
 
