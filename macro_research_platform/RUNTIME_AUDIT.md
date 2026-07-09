@@ -79,6 +79,18 @@ server skips typechecking). Fixed:
 | 16 | `/api/business/{expected-returns,position-sizing}` serve **illustrative (non-live) values** | Capital-market assumptions, not computed from live data. Now schema-valid but not "real data". | ⚠️ documented — needs a real returns model (out of scope this pass) |
 | 17 | Dead frontend hooks | `useExpectedReturns`, `usePositionSizing` in `useBusinessLayer.ts` have **zero consumers** (UI reads `/api/business/recommendations`). | 📌 flagged for Phase 4/5 deletion |
 | 18 | `/api/data-freshness` returns only 1 series | Processed DataFrame has few FRED columns populated; loop finds 1. Not a crash. | ⚠️ data-coverage, low priority |
+| 20 | `/api/health` 6–17s, `/api/signals/yield-curve` ~10s | Slow synchronous/live-data work; health should be sub-second. Also flakes the 5s-timeout integration tests when cold. | ⚠️ MEDIUM perf — deferred (needs profiling) |
+
+## Phase 7 — Regression gate (final, re-verified)
+
+- ✅ Clean backend restart — **0 ERROR/Traceback** in startup log.
+- ✅ Full GET sweep (141 ops) — **zero 500s**; 4 non-200 = correct `method=1` validation 400s.
+- ✅ `pytest api/tests/` — **193 passed** warm (37 integration tests hit the live server).
+- ✅ `npm run build` — ✓ built (1489 modules, ~3.3s), bundle `index` 342 kB / gzip 95 kB.
+- ✅ UI walkthrough — sections render real data, **zero console errors**, no failed requests.
+
+See [CLEANUP_REPORT.md](CLEANUP_REPORT.md) for the full deliverable incl. the honest
+"not done" list (full Phase-6 standardization, node_modules untracking, latency, depcheck).
 
 ### NOT bugs (verified correct)
 `/api/diagnostics/portfolio/{drawdown-analysis,factor-exposure,method-metrics,turnover-analysis}`
