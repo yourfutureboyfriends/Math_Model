@@ -14,7 +14,7 @@ from .models import (
     SignalDetails,
     SignalsData,
     SignalStackLayer,
-    SignalLayerItem,
+    
     SignalStackResult,
     SignalStackData,
     SignalLayer,

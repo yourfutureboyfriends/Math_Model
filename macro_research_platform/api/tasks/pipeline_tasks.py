@@ -14,9 +14,12 @@ from celery_app import app
 
 logger = logging.getLogger(__name__)
 
-# Environment
-FRED_API_KEY = os.getenv("FRED_API_KEY", "")
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://macro:macro_terminal_secure_2024@localhost:5432/macro_terminal")
+# Import from centralized config
+from api.config import FRED_API_KEY, DATABASE_URL
+
+# Fallback for backward compatibility
+if not FRED_API_KEY:
+    FRED_API_KEY = os.getenv("FRED_API_KEY", "")
 
 
 async def get_db_pool():

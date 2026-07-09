@@ -74,9 +74,10 @@ class RecessionProbitModel:
         Shifts recession indicator back by horizon months
         so model predicts recession horizon months ahead.
         """
-        api_key = os.getenv('FRED_API_KEY', '')
+        from api.config import FRED_API_KEY
+        api_key = FRED_API_KEY or os.getenv('FRED_API_KEY', '')
         if not api_key:
-            raise ValueError('FRED_API_KEY not set')
+            raise ValueError('FRED_API_KEY not set in .env or config')
 
         fred = Fred(api_key=api_key)
         raw  = {}

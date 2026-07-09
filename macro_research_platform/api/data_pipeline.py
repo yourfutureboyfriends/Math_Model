@@ -118,9 +118,8 @@ def validate_pipeline_value(metric_name: str, raw_value) -> float:
 
 
 def fetch_all_latest_values() -> dict:
-    from dotenv import load_dotenv
-    load_dotenv()
-    api_key = os.getenv("FRED_API_KEY", "")
+    from api.config import FRED_API_KEY as _config_fred_key
+    api_key = _config_fred_key or os.getenv("FRED_API_KEY", "")
 
     today = date.today().isoformat()
     row   = {"date": today}
