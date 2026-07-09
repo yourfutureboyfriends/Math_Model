@@ -186,6 +186,10 @@ export const CorrelationRegimeSection = lazy(() =>
   import('./risk/CorrelationRegimeSection').then(m => ({ default: m.CorrelationRegimeSection }))
 );
 
+export const CorrelationMatrixSection = lazy(() =>
+  import('./risk/CorrelationMatrixSection').then(m => ({ default: m.CorrelationMatrixSection }))
+);
+
 export const FactorExposureSection = lazy(() =>
   import('./risk/FactorExposureSection').then(m => ({ default: m.FactorExposureSection }))
 );

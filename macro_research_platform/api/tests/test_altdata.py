@@ -7,7 +7,39 @@ import pytest
 
 from api.calculations.altdata import (
     zscore, percentile_rank, term_structure, rolling_correlation, correlation_breakdown,
+    correlation_matrix,
 )
+
+
+def test_correlation_matrix_known_values():
+    rng = np.random.default_rng(0)
+    base = rng.normal(0, 1, 200)
+    data = {
+        "A": base,
+        "B": base,               # identical -> +1.0
+        "C": -base,              # inverse  -> -1.0
+        "D": rng.normal(0, 1, 200),  # independent -> ~0
+    }
+    res = correlation_matrix(data, window=200)
+    assert res["labels"] == ["A", "B", "C", "D"]
+    m = res["matrix"]
+    assert m[0][0] == 1.0                 # diagonal
+    assert m[0][1] == 1.0                 # A vs B identical
+    assert m[0][2] == -1.0                # A vs C inverse
+    assert abs(m[0][3]) < 0.2             # A vs D independent
+
+
+def test_correlation_matrix_respects_window():
+    rng = np.random.default_rng(1)
+    data = {"X": rng.normal(0, 1, 500), "Y": rng.normal(0, 1, 500)}
+    res = correlation_matrix(data, window=90)
+    assert res["observations"] == 90
+    assert res["window"] == 90
+
+
+def test_correlation_matrix_insufficient_data():
+    res = correlation_matrix({"X": [0.1, 0.2], "Y": [0.1, 0.2]}, window=90)
+    assert res["matrix"] == []
 
 
 def test_zscore_at_mean_is_zero():

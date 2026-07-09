@@ -10,8 +10,35 @@ No I/O — series are passed in.
 """
 from __future__ import annotations
 
-from typing import Dict, Sequence, Optional
+from typing import Dict, List, Sequence, Optional
 import numpy as np
+
+
+def correlation_matrix(returns_by_asset: "Dict[str, Sequence[float]]", window: int) -> Dict:
+    """Full pairwise Pearson correlation matrix over the last `window` aligned returns.
+
+    `returns_by_asset` must already be aligned to a common date grid (same length / dates)
+    by the caller. Returns {labels, matrix (list of lists, None where undefined), window,
+    observations}. Cells are rounded to 2 dp; the diagonal is exactly 1.0.
+    """
+    labels: List[str] = list(returns_by_asset.keys())
+    if len(labels) < 2:
+        return {"labels": labels, "matrix": [], "window": window, "observations": 0}
+    arrays = [np.asarray(returns_by_asset[k], dtype=float) for k in labels]
+    n = min(int(window), min(a.size for a in arrays))
+    if n < 3:
+        return {"labels": labels, "matrix": [], "window": window, "observations": n}
+    trimmed = np.vstack([a[-n:] for a in arrays])
+    with np.errstate(invalid="ignore", divide="ignore"):
+        cm = np.corrcoef(trimmed)
+    matrix: List[List[Optional[float]]] = []
+    for i in range(len(labels)):
+        row: List[Optional[float]] = []
+        for j in range(len(labels)):
+            v = cm[i, j]
+            row.append(None if not np.isfinite(v) else (1.0 if i == j else round(float(v), 2)))
+        matrix.append(row)
+    return {"labels": labels, "matrix": matrix, "window": window, "observations": n}
 
 
 def zscore(value: float, series: Sequence[float]) -> Optional[float]:

@@ -20,6 +20,7 @@ import logging
 import threading
 import time
 import math
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -9376,6 +9377,42 @@ async def data_quality_v1():
     overall = "FAIL" if counts["FAIL"] else "WARN" if counts["WARN"] else "PASS"
     return {"available": True, "overall": overall, "counts": counts,
             "series": reports, "checked_at": datetime.now().isoformat()}
+
+
+@app.get("/api/v1/correlation-matrix")
+async def correlation_matrix_v1(window: int = 90):
+    """Full cross-asset Pearson correlation matrix over the last `window` trading days,
+    computed from real aligned daily returns (yfinance). Rows/cols: SPX, NDX, 10Y, 2Y,
+    DXY, GLD, WTI, HY, VIX. `window` is clamped to 20..252."""
+    from api.handlers.market_handler import _fetch_dated_closes_literal
+    from api.calculations.factor_model import returns_from_closes
+    from api.calculations.altdata import correlation_matrix
+
+    window = max(20, min(int(window), 252))
+    # label -> literal ticker (reliable, ETF/index proxies)
+    assets = {"SPX": "^GSPC", "NDX": "^NDX", "10Y": "TLT", "2Y": "SHY",
+              "DXY": "DX-Y.NYB", "GLD": "GC=F", "WTI": "CL=F", "HY": "HYG", "VIX": "^VIX"}
+
+    # Fetch all tickers concurrently (sequential await of 9 feeds blew the 8s UI budget).
+    labels = list(assets.keys())
+    results = await asyncio.gather(*[_fetch_dated_closes_literal(assets[lbl]) for lbl in labels])
+    dated = {lbl: d for lbl, d in zip(labels, results) if d}    # drop empty fetches
+    if len(dated) < 2:
+        return {"available": False, "reason": "Insufficient market data.", "labels": [], "matrix": []}
+
+    # Align every asset to the common set of dates, then compute returns on that grid.
+    common = None
+    for d in dated.values():
+        keys = set(d.keys())
+        common = keys if common is None else (common & keys)
+    common = sorted(common or [])
+    if len(common) < 22:
+        return {"available": False, "reason": "Insufficient overlapping history.", "labels": [], "matrix": []}
+
+    returns_by_asset = {lbl: returns_from_closes([dated[lbl][dt] for dt in common]) for lbl in dated}
+    result = correlation_matrix(returns_by_asset, window)
+    return {"available": bool(result["matrix"]), "as_of": datetime.now().isoformat(),
+            "source": "yfinance (daily closes)", **result}
 
 
 @app.get("/api/v1/altdata/positioning")

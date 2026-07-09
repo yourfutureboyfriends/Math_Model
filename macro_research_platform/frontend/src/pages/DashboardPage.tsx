@@ -50,6 +50,7 @@ import {
   SignalsSection,
   TransmissionSection,
   CorrelationRegimeSection,
+  CorrelationMatrixSection,
   RiskParitySection,
   EquityResearchSection,
   RiskAnalyticsSection,
@@ -271,6 +272,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Correlation Regime">
           <Suspense fallback={<SectionSkeleton />}>
             <CorrelationRegimeSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="correlation-matrix-wrap" className="terminal-section">
+        <ErrorBoundary sectionName="Correlation Matrix">
+          <Suspense fallback={<SectionSkeleton />}>
+            <CorrelationMatrixSection />
           </Suspense>
         </ErrorBoundary>
       </div>

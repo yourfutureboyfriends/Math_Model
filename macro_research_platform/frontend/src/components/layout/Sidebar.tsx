@@ -68,6 +68,7 @@ const navigation: NavSection[] = [
       { id: 'advanced', label: 'Advanced Indicators', icon: '◆', permission: 'advanced_indicators' },
       // FIXED (PART 3): Moved from STRATEGY to RISK
       { id: 'correlation', label: 'Correlation Regime', icon: '◆', permission: 'correlation' },
+      { id: 'correlation-matrix', label: 'Correlation Matrix', icon: '◆', permission: 'correlation' },
       { id: 'factor-decomposition', label: 'Factor Decomposition', icon: '◆', permission: 'factor_decomp' },
       { id: 'risk-parity', label: 'Risk Parity', icon: '◆', permission: 'risk_parity' },
       { id: 'horizon-tension', label: 'Horizon Tensions', icon: '◆', permission: 'horizon_tensions', highlight: true },

@@ -3739,6 +3739,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/correlation-matrix": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Correlation Matrix V1
+         * @description Full cross-asset Pearson correlation matrix over the last `window` trading days,
+         *     computed from real aligned daily returns (yfinance). Rows/cols: SPX, NDX, 10Y, 2Y,
+         *     DXY, GLD, WTI, HY, VIX. `window` is clamped to 20..252.
+         */
+        get: operations["correlation_matrix_v1_api_v1_correlation_matrix_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/altdata/positioning": {
         parameters: {
             query?: never;
@@ -10239,6 +10261,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    correlation_matrix_v1_api_v1_correlation_matrix_get: {
+        parameters: {
+            query?: {
+                window?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

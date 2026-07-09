@@ -6,6 +6,7 @@
 export { AnomalyDetectionSection } from './AnomalyDetectionSection';
 export { COTPositioningSection } from './COTPositioningSection';
 export { CorrelationRegimeSection } from './CorrelationRegimeSection';
+export { CorrelationMatrixSection } from './CorrelationMatrixSection';
 export { FactorExposureSection } from './FactorExposureSection';
 export { VaRStressSection } from './VaRStressSection';
 export { LSTMSection } from './LSTMSection';
