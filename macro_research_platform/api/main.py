@@ -8421,6 +8421,25 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[STARTUP] Could not start risk warm loop: {e}")
 
+    async def _pit_snapshot_loop():
+        # Periodic point-in-time snapshots for the audit "time machine".
+        from api import audit_store
+        await _asyncio.sleep(30)  # let the first dashboard warm complete
+        while True:
+            try:
+                state = await _build_pit_snapshot()
+                if state:
+                    await _asyncio.to_thread(audit_store.add_snapshot, state, "auto")
+            except Exception as e:
+                logger.debug(f"[pit snapshot] {e}")
+            await _asyncio.sleep(300)  # every 5 minutes
+
+    try:
+        _asyncio.create_task(_pit_snapshot_loop())
+        logger.info("[STARTUP] Point-in-time snapshot loop started")
+    except Exception as e:
+        logger.warning(f"[STARTUP] Could not start snapshot loop: {e}")
+
     yield
 
     # Shutdown: gracefully stop scheduler and remove port file
@@ -8893,6 +8912,15 @@ async def trade_ideas_transition_v1(idea_id: int, body: TradeIdeaTransition):
         raise HTTPException(status_code=422, detail=str(e))
     if updated is None:
         raise HTTPException(status_code=404, detail="trade idea not found")
+    # Record the lifecycle change in the audit decision log.
+    try:
+        from api import audit_store
+        await _aio_to_thread(lambda: audit_store.add_decision(
+            action=f"Trade idea → {body.state}", rationale=body.note or f"Transitioned to {body.state}",
+            user="admin", target=f"{updated.get('symbol')} (idea #{idea_id})",
+            after_state={"state": body.state}))
+    except Exception as e:
+        logger.debug(f"[audit] could not log idea transition: {e}")
     return updated
 
 
@@ -9239,6 +9267,88 @@ async def risk_liquidity_v1(book: Optional[str] = None, participation: float = 0
     return {"available": True, "book": book or "Firm", "participation": participation,
             "illiquid_threshold_days": illiquid_days, "positions": rows,
             "illiquid_count": sum(1 for r in rows if r["illiquid"])}
+
+
+class DecisionIn(_PortfolioBaseModel):
+    action: str
+    rationale: str
+    target: Optional[str] = None
+    before_state: Optional[Any] = None
+    after_state: Optional[Any] = None
+
+
+@app.get("/api/v1/audit/decisions")
+async def audit_decisions_list_v1(limit: int = 100):
+    from api import audit_store
+    return {"decisions": await _aio_to_thread(audit_store.list_decisions, limit)}
+
+
+@app.post("/api/v1/audit/decisions")
+async def audit_decisions_add_v1(d: DecisionIn):
+    from api import audit_store
+    try:
+        return await _aio_to_thread(lambda: audit_store.add_decision(
+            d.action, d.rationale, "admin", d.target, d.before_state, d.after_state))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@app.get("/api/v1/audit/snapshots")
+async def audit_snapshots_list_v1(limit: int = 200):
+    from api import audit_store
+    return {"snapshots": await _aio_to_thread(audit_store.list_snapshots, limit)}
+
+
+@app.get("/api/v1/audit/snapshots/{snap_id}")
+async def audit_snapshot_get_v1(snap_id: int):
+    from api import audit_store
+    snap = await _aio_to_thread(audit_store.get_snapshot, snap_id)
+    if snap is None:
+        raise HTTPException(status_code=404, detail="snapshot not found")
+    return snap
+
+
+@app.get("/api/v1/audit/time-machine")
+async def audit_time_machine_v1(at: str):
+    """The system state as it was at (or just before) the given ISO timestamp."""
+    from api import audit_store
+    snap = await _aio_to_thread(audit_store.get_snapshot_at, at)
+    if snap is None:
+        return {"available": False, "reason": "No snapshot at or before that time."}
+    return {"available": True, **snap}
+
+
+async def _build_pit_snapshot() -> dict:
+    """Compact point-in-time state: regime, ensemble, key metrics, portfolio risk."""
+    state: dict = {}
+    try:
+        from api.handlers.dashboard_handler import _DASHBOARD_CACHE
+        cached = _DASHBOARD_CACHE.get("live")
+        d = cached[1] if cached else None
+        if d is not None:
+            reg = getattr(d, "regime", None) or {}
+            ens = getattr(d, "ensemble", None) or {}
+            km = getattr(d, "keyMetrics", None) or {}
+            def g(o, k):
+                return getattr(o, k, None) if not isinstance(o, dict) else o.get(k)
+            state["regime"] = {"current": g(reg, "current"), "confidence": g(reg, "confidenceScore")}
+            state["ensemble"] = {"score": g(ens, "score"), "agreement": g(ens, "agreement"), "mode": g(ens, "mode")}
+            rec = g(km, "recession")
+            state["key_metrics"] = {"recession": (g(rec, "value") if rec else None)}
+    except Exception as e:
+        state["dashboard_error"] = str(e)[:100]
+    try:
+        from api import portfolio_store
+        raw = portfolio_store.list_positions(None)
+        if raw:
+            enr = await _enrich_positions(raw)
+            state["portfolio"] = {"gross_exposure": enr["summary"]["gross_exposure"],
+                                  "net_exposure": enr["summary"]["net_exposure"],
+                                  "total_unrealized_pnl": enr["summary"]["total_unrealized_pnl"],
+                                  "position_count": enr["summary"]["position_count"]}
+    except Exception as e:
+        state["portfolio_error"] = str(e)[:100]
+    return state
 
 
 @app.get("/api/v1/altdata/positioning")

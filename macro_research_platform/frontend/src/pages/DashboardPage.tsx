@@ -36,6 +36,7 @@ import {
   EnsembleSection,
   PerformanceAttributionSection,
   SystemHealthSection,
+  SystemAuditSection,
   DataExplorerSection,
   DataToWatchSection,
   InvestmentMemoSection,
@@ -523,6 +524,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="System Health">
           <Suspense fallback={<SectionSkeleton />}>
             <SystemHealthSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Audit & Compliance">
+          <Suspense fallback={<SectionSkeleton />}>
+            <SystemAuditSection />
           </Suspense>
         </ErrorBoundary>
       </div>

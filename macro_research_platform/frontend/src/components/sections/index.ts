@@ -71,6 +71,10 @@ export const RegimeTransitionSection = lazy(() =>
   import('./macro/RegimeTransitionSection').then(m => ({ default: m.RegimeTransitionSection }))
 );
 
+export const SystemAuditSection = lazy(() =>
+  import('./macro/SystemAuditSection').then(m => ({ default: m.SystemAuditSection }))
+);
+
 export const SystemHealthSection = lazy(() =>
   import('./macro/SystemHealthSection').then(m => ({ default: m.SystemHealthSection }))
 );

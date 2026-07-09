@@ -126,6 +126,7 @@ const navigation: NavSection[] = [
     title: 'SYSTEM',
     items: [
       { id: 'system-health', label: 'System Health', icon: '◆', permission: 'system_health' },
+      { id: 'system-audit', label: 'Audit & Compliance', icon: '◆', permission: 'system_health', highlight: true },
       { id: 'data-explorer', label: 'Data Explorer', icon: '◆', permission: 'system_health' },
     ],
   },
