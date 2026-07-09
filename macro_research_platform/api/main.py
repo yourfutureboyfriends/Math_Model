@@ -8273,8 +8273,10 @@ def get_signal_stack(df: pd.DataFrame) -> Dict[str, Any]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # FIXED: Clear cache on startup to force fresh computation (BUG-K)
-    logger.info("[STARTUP] Clearing dashboard cache to force fresh computation")
+    # Standardize log format across all app modules before anything else logs.
+    from api.logging_config import setup_logging
+    setup_logging()
+    logger.info("Clearing dashboard cache to force fresh computation")
     global _DASHBOARD_CACHE
     _DASHBOARD_CACHE["data"] = None
     _DASHBOARD_CACHE["timestamp"] = 0.0

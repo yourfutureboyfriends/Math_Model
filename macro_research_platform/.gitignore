@@ -132,3 +132,7 @@ backups/
 # =============================================================================
 volumes/
 *.pid
+
+# Generated report outputs (written at runtime, not source)
+outputs/
+reports/archive/
