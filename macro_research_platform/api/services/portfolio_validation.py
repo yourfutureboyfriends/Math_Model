@@ -414,8 +414,10 @@ class PortfolioValidator:
             if metrics:
                 results[method] = metrics.to_dict()
 
-        # Rank by Sharpe ratio
-        sharpes = {m: r.get("sharpe_ratio", -999) for m, r in results.items()}
+        # Rank by Sharpe ratio. .get(key, default) keeps a stored None (default only
+        # applies to a missing key), so coerce None -> sentinel before sorting.
+        sharpes = {m: (r.get("sharpe_ratio") if r.get("sharpe_ratio") is not None else -999.0)
+                   for m, r in results.items()}
         ranked = sorted(sharpes.items(), key=lambda x: x[1], reverse=True)
 
         return {

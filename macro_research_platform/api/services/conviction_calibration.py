@@ -400,8 +400,9 @@ class ConvictionCalibrator:
 
         monotonicity_score = 1.0 - (violations / max(1, len(valid_buckets) - 1))
 
-        # Determine if passed
-        passed = monotonicity_score >= 0.7 and spearman_sharpe > 0
+        # Determine if passed (bool() — spearman_sharpe is a numpy float, so the
+        # comparison yields numpy.bool_ which is not JSON-serializable by FastAPI)
+        passed = bool(monotonicity_score >= 0.7 and spearman_sharpe > 0)
 
         return {
             "test": "monotonicity",

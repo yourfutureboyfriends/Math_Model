@@ -1123,7 +1123,6 @@ async def conviction_history(
     df = conviction_calibrator.get_conviction_history(
         start_date=start_date,
         end_date=end_date,
-        limit=limit
     )
 
     if df.empty:
@@ -1133,7 +1132,8 @@ async def conviction_history(
             "history": [],
         }
 
-    records = df.to_dict('records')
+    # Apply the display limit to the most recent `limit` rows (service returns full history).
+    records = (df.tail(limit) if limit and limit > 0 else df).to_dict('records')
 
     return {
         "timestamp": datetime.utcnow().isoformat(),

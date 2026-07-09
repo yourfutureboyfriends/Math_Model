@@ -9653,7 +9653,9 @@ async def get_data_freshness():
     observation_dates = {}
     statuses = []
 
-    df = load_processed_data() or load_sample_data()
+    df = load_processed_data()
+    if df is None:
+        df = load_sample_data()
     if df is not None:
         for metric_name, contract in CONTRACTS.items():
             if contract.fred_series:
@@ -9691,7 +9693,9 @@ async def get_data_debug():
     Debug endpoint showing data integrity status.
     Returns _dataErrors and _dataHealthy for UI debug panel.
     """
-    df = load_processed_data() or load_sample_data()
+    df = load_processed_data()
+    if df is None:
+        df = load_sample_data()
     if df is None:
         return {"error": "No data available"}
 

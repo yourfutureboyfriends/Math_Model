@@ -533,44 +533,50 @@ async def get_ic_pack_data() -> Dict[str, Any]:
 
 
 async def get_expected_returns_data() -> Dict[str, Any]:
-    """Get expected returns from business layer."""
+    """Get expected returns, conforming to ExpectedReturnsResponse.
+
+    Shape: {returns: [{asset, expectedReturn, confidence, components}], lastUpdated}.
+    Values are capital-market illustrative assumptions (see `components` for the
+    building-block decomposition); confidence reflects estimation uncertainty by asset.
+    """
     logger.info("Fetching expected returns")
-    return {
-        "forecasts": [
-            {"asset": "US Large Cap", "expected_return": 8.0, "volatility": 15.0, "sharpe": 0.53},
-            {"asset": "US Small Cap", "expected_return": 9.0, "volatility": 20.0, "sharpe": 0.45},
-            {"asset": "International Developed", "expected_return": 10.0, "volatility": 18.0, "sharpe": 0.56},
-            {"asset": "Emerging Markets", "expected_return": 12.0, "volatility": 24.0, "sharpe": 0.50},
-            {"asset": "US Bonds", "expected_return": 4.5, "volatility": 8.0, "sharpe": 0.56},
-            {"asset": "TIPS", "expected_return": 3.5, "volatility": 6.0, "sharpe": 0.58},
-        ],
-        "methodology": "Black-Litterman with regime adjustments",
-        "timestamp": datetime.now().isoformat(),
+    # asset -> (real_yield, risk_premium, inflation) building blocks (decimal %)
+    blocks = {
+        "US Large Cap":            {"real_yield": 1.8, "risk_premium": 4.4, "inflation": 1.8},
+        "US Small Cap":            {"real_yield": 1.8, "risk_premium": 5.4, "inflation": 1.8},
+        "International Developed":  {"real_yield": 1.5, "risk_premium": 6.7, "inflation": 1.8},
+        "Emerging Markets":        {"real_yield": 2.0, "risk_premium": 8.2, "inflation": 1.8},
+        "US Bonds":                {"real_yield": 1.8, "risk_premium": 0.9, "inflation": 1.8},
+        "TIPS":                    {"real_yield": 1.7, "risk_premium": 0.0, "inflation": 1.8},
     }
+    conf = {"US Large Cap": "high", "US Small Cap": "medium", "International Developed": "medium",
+            "Emerging Markets": "low", "US Bonds": "high", "TIPS": "high"}
+    returns = [
+        {"asset": a, "expectedReturn": round(sum(c.values()), 2),
+         "confidence": conf[a], "components": c}
+        for a, c in blocks.items()
+    ]
+    return {"returns": returns, "lastUpdated": datetime.now().isoformat()}
 
 
 async def get_position_sizing_data() -> Dict[str, Any]:
-    """Get position sizing recommendations."""
+    """Get position-sizing recommendations, conforming to PositionSizingResponse.
+
+    Shape: {recommendations: [{asset, size, maxSize, confidence}], lastUpdated}.
+    `size` is the regime/risk-adjusted target weight, `maxSize` the position cap,
+    `confidence` a 0-1 conviction.
+    """
     logger.info("Fetching position sizing")
-    return {
-        "allocations": [
-            {"asset": "SPY", "base_allocation": 0.30, "regime_adjusted": 0.25, "risk_adjusted": 0.22},
-            {"asset": "QQQ", "base_allocation": 0.20, "regime_adjusted": 0.15, "risk_adjusted": 0.13},
-            {"asset": "TLT", "base_allocation": 0.20, "regime_adjusted": 0.15, "risk_adjusted": 0.12},
-            {"asset": "GLD", "base_allocation": 0.10, "regime_adjusted": 0.15, "risk_adjusted": 0.18},
-            {"asset": "HYG", "base_allocation": 0.10, "regime_adjusted": 0.10, "risk_adjusted": 0.08},
-            {"asset": "Cash", "base_allocation": 0.10, "regime_adjusted": 0.20, "risk_adjusted": 0.27},
-        ],
-        "leverage": 1.0,
-        "max_position_size": 0.25,
-        "risk_budget": {
-            "equity": 0.60,
-            "rates": 0.20,
-            "credit": 0.10,
-            "commodities": 0.10,
-        },
-        "timestamp": datetime.now().isoformat(),
+    # asset -> (target size, cap, conviction 0-1)
+    rows = {
+        "SPY":  (0.22, 0.30, 0.75), "QQQ": (0.13, 0.25, 0.60), "TLT": (0.12, 0.25, 0.55),
+        "GLD":  (0.18, 0.25, 0.65), "HYG": (0.08, 0.20, 0.50), "Cash": (0.27, 1.00, 0.90),
     }
+    recommendations = [
+        {"asset": a, "size": s, "maxSize": mx, "confidence": cf}
+        for a, (s, mx, cf) in rows.items()
+    ]
+    return {"recommendations": recommendations, "lastUpdated": datetime.now().isoformat()}
 
 
 async def get_scenario_data() -> Dict[str, Any]:
@@ -678,8 +684,18 @@ async def get_equity_research_data() -> Dict[str, Any]:
 
     # Fetch market data for context
     result = await _yahoo.fetch_latest_async(['SPX', 'NDX', 'VIX'])
-    spx = result.data.get('SPX', {}).price if result.success and result.data else 5800
-    vix = result.data.get('VIX', {}).price if result.success and result.data else 18
+
+    def _price(rec, fallback):
+        # rec may be missing (None), a PriceRecord (.price), or a plain dict ('price').
+        if rec is None:
+            return fallback
+        if isinstance(rec, dict):
+            return rec.get("price", fallback)
+        return getattr(rec, "price", fallback)
+
+    ok = bool(result.success and result.data)
+    spx = _price(result.data.get('SPX') if ok else None, 5800)
+    vix = _price(result.data.get('VIX') if ok else None, 18)
 
     # Determine regime context — use identical calculation as dashboard handler
     from api.calculations import (

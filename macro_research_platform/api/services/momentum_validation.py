@@ -379,12 +379,15 @@ class MomentumValidator:
             if metrics:
                 results[period] = metrics.to_dict()
 
-        # Determine winner by Sharpe ratio
+        # Determine winner by Sharpe ratio. .get(key, default) does NOT apply the default
+        # when the stored value is None, so coerce None -> sentinel to keep max() comparable.
         sharpe_comparison = {}
         for period, data in results.items():
-            sharpe_comparison[period] = data.get("sharpe_ratio", -999)
+            sr = data.get("sharpe_ratio")
+            sharpe_comparison[period] = sr if sr is not None else -999.0
 
-        winner = max(sharpe_comparison, key=sharpe_comparison.get) if sharpe_comparison else None
+        winner = (max(sharpe_comparison, key=lambda k: sharpe_comparison[k])
+                  if sharpe_comparison else None)
 
         return {
             "timestamp": datetime.utcnow().isoformat(),
@@ -647,7 +650,7 @@ class MomentumValidator:
         crash_analysis = self.analyze_momentum_crashes()
         recommendations["crash_analysis"] = crash_analysis
 
-        if crash_analysis.get("crash_frequency", 0) > 0.1:
+        if (crash_analysis.get("crash_frequency") or 0) > 0.1:
             recommendations["general_recommendations"].append(
                 "High crash frequency detected - implement momentum timing rules"
             )
@@ -656,7 +659,7 @@ class MomentumValidator:
         factor_analysis = self.carhart_four_factor_analysis()
         recommendations["factor_analysis"] = factor_analysis
 
-        if factor_analysis.get("carhart_alpha", 0) > 0:
+        if (factor_analysis.get("carhart_alpha") or 0) > 0:
             recommendations["general_recommendations"].append(
                 "Positive Carhart alpha indicates genuine momentum effect"
             )
