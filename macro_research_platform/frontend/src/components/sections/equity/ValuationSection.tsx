@@ -101,7 +101,7 @@ export function ValuationSection({ data }: ValuationSectionProps) {
 
         {/* Metrics */}
         <div className="space-y-2">
-          {metrics.map((metric) => (
+          {metrics.map((metric: any) => (
             <div key={metric.name} className="p-2 bg-surface-1 border border-border">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-medium text-text-primary">{metric.name}</span>

@@ -119,7 +119,7 @@ export function GMOForecastsSection({ data: dataProp }: GMOForecastsSectionProps
                       <div>
                         <div className="text-sm font-medium text-text-primary">{forecast.assetClass}</div>
                         <div className="text-2xs text-text-tertiary">{forecast.ticker}</div>
-                        {tensions?.some(t => t.assetClass === forecast.assetClass && t.divergence) && (
+                        {tensions?.some((t: any) => t.assetClass === forecast.assetClass && t.divergence) && (
                           <div className="flex items-center gap-1 mt-1 text-amber">
                             <AlertTriangle className="w-3 h-3" />
                             <span className="text-2xs">Tactical tension</span>

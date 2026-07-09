@@ -3260,6 +3260,551 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/health/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health Sources V1
+         * @description Per-source data-feed health (FRED, market data, database) with response times.
+         *
+         *     A PM needs to know exactly which upstream is degraded. Actively probes each
+         *     dependency (cached ~30s) and reports status/latency/detail per source.
+         */
+        get: operations["health_sources_v1_api_v1_health_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health V1
+         * @description Unified versioned health: analytics status + per-source feed health.
+         */
+        get: operations["health_v1_api_v1_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/methodology": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Methodology V1
+         * @description Human-readable documentation of every core model (formula, inputs, units,
+         *     output range, citation) so institutional users can audit model logic.
+         */
+        get: operations["methodology_v1_api_v1_methodology_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Portfolio Positions V1
+         * @description Held positions enriched with live market value, unrealized P&L and weights.
+         */
+        get: operations["portfolio_positions_v1_api_v1_portfolio_positions_get"];
+        put?: never;
+        /** Portfolio Add Position V1 */
+        post: operations["portfolio_add_position_v1_api_v1_portfolio_positions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/positions/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Portfolio Bulk V1 */
+        post: operations["portfolio_bulk_v1_api_v1_portfolio_positions_bulk_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/positions/{pos_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Portfolio Update Position V1 */
+        put: operations["portfolio_update_position_v1_api_v1_portfolio_positions__pos_id__put"];
+        post?: never;
+        /** Portfolio Delete Position V1 */
+        delete: operations["portfolio_delete_position_v1_api_v1_portfolio_positions__pos_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/books": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Portfolio Books V1
+         * @description List books plus the firm-level aggregate across all positions.
+         */
+        get: operations["portfolio_books_v1_api_v1_portfolio_books_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/what-if": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Portfolio What If V1
+         * @description Pre-trade analysis: projected VaR / exposure / concentration BEFORE vs AFTER
+         *     adding a proposed trade, plus a VaR-budgeted suggested size.
+         */
+        post: operations["portfolio_what_if_v1_api_v1_portfolio_what_if_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/trade-ideas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Trade Ideas List V1 */
+        get: operations["trade_ideas_list_v1_api_v1_portfolio_trade_ideas_get"];
+        put?: never;
+        /** Trade Ideas Add V1 */
+        post: operations["trade_ideas_add_v1_api_v1_portfolio_trade_ideas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/trade-ideas/{idea_id}/transition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trade Ideas Transition V1 */
+        post: operations["trade_ideas_transition_v1_api_v1_portfolio_trade_ideas__idea_id__transition_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/generate-ideas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Portfolio Generate Ideas V1
+         * @description Auto-generate trade ideas by mapping the current macro regime's playbook
+         *     (REGIME_CHARACTERISTICS) onto factor proxies and comparing to the book's live factor
+         *     exposures. Transparent rules engine — every idea states the regime, factor and reason.
+         */
+        get: operations["portfolio_generate_ideas_v1_api_v1_portfolio_generate_ideas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/trade-ideas/{idea_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Trade Ideas Delete V1 */
+        delete: operations["trade_ideas_delete_v1_api_v1_portfolio_trade_ideas__idea_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/attribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Portfolio Attribution V1
+         * @description Multi-level performance attribution on the real book:
+         *     - contribution: each position's / book's dollar P&L (sums to total P&L),
+         *     - factor: the trailing portfolio return split into systematic (per factor) +
+         *       idiosyncratic (selection). Requires positions.
+         */
+        get: operations["portfolio_attribution_v1_api_v1_portfolio_attribution_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/risk/factor-exposure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Risk Factor Exposure V1
+         * @description Portfolio factor exposure: OLS betas of each holding to systematic factors,
+         *     aggregated by net weight, with each factor's contribution to portfolio volatility.
+         *     Requires positions (Phase 1) — returns available=false with a reason if none.
+         */
+        get: operations["risk_factor_exposure_v1_api_v1_risk_factor_exposure_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/risk/var": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Risk Var V1
+         * @description Value-at-Risk (historical, parametric, Monte Carlo) at 95%/99%, 1d & 10d, on
+         *     actual positions, with VaR contribution by position.
+         */
+        get: operations["risk_var_v1_api_v1_risk_var_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/risk/stress-test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Risk Stress Get V1
+         * @description Apply predefined historical scenarios (2008, 2020, 2013, 2022, 1994) to the
+         *     current portfolio's dollar factor exposures.
+         */
+        get: operations["risk_stress_get_v1_api_v1_risk_stress_test_get"];
+        put?: never;
+        /**
+         * Risk Stress Custom V1
+         * @description Custom scenario: shock any combination of factors and see estimated P&L.
+         */
+        post: operations["risk_stress_custom_v1_api_v1_risk_stress_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/risk/reverse-stress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Risk Reverse Stress V1
+         * @description Reverse stress: the single-factor move that alone would cause target_loss ($).
+         */
+        get: operations["risk_reverse_stress_v1_api_v1_risk_reverse_stress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/risk/concentration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Risk Concentration V1
+         * @description Single-name and top-5 concentration with limit breaches.
+         */
+        get: operations["risk_concentration_v1_api_v1_risk_concentration_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/risk/liquidity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Risk Liquidity V1
+         * @description Days-to-liquidate per position from average daily volume; flags illiquid names.
+         */
+        get: operations["risk_liquidity_v1_api_v1_risk_liquidity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audit Decisions List V1 */
+        get: operations["audit_decisions_list_v1_api_v1_audit_decisions_get"];
+        put?: never;
+        /** Audit Decisions Add V1 */
+        post: operations["audit_decisions_add_v1_api_v1_audit_decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audit Snapshots List V1 */
+        get: operations["audit_snapshots_list_v1_api_v1_audit_snapshots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/snapshots/{snap_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Audit Snapshot Get V1 */
+        get: operations["audit_snapshot_get_v1_api_v1_audit_snapshots__snap_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/time-machine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Audit Time Machine V1
+         * @description The system state as it was at (or just before) the given ISO timestamp.
+         */
+        get: operations["audit_time_machine_v1_api_v1_audit_time_machine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-quality": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Data Quality V1
+         * @description Automated data-quality checks: scans key price series for bad ticks (implausible
+         *     day-over-day jumps) and statistical outliers before they propagate into signals/risk.
+         */
+        get: operations["data_quality_v1_api_v1_data_quality_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/altdata/positioning": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Altdata Positioning V1
+         * @description Alternative-data positioning signals: VIX term structure (contango/backwardation),
+         *     cross-market correlation-breakdown alerts, and credit-spread stress — all from real
+         *     yfinance/FRED data.
+         */
+        get: operations["altdata_positioning_v1_api_v1_altdata_positioning_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/signals/backtest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Signals Backtest V1
+         * @description Walk-forward backtest of price-reconstructable signals on the S&P 500 (5y daily,
+         *     no look-ahead): momentum (12-1m), trend (200d MA), and VIX vol-regime. Reports hit
+         *     rate, forward return by state, strategy Sharpe/drawdown and a confusion matrix.
+         */
+        get: operations["signals_backtest_v1_api_v1_signals_backtest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/freshness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Freshness V1
+         * @description Per-field data freshness: each key macro input's last release date, age, and
+         *     FRESH/STALE/CRITICAL status vs its expected cadence. Lets the UI flag an individual
+         *     stale metric, not just a whole panel.
+         */
+        get: operations["freshness_v1_api_v1_freshness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -3715,6 +4260,11 @@ export interface components {
              */
             overrides_active: string[];
         };
+        /** BulkPositionsIn */
+        BulkPositionsIn: {
+            /** Positions */
+            positions: components["schemas"]["PositionIn"][];
+        };
         /**
          * BusinessLayerData
          * @description Business layer data.
@@ -3797,17 +4347,46 @@ export interface components {
             factorRotation?: components["schemas"]["FactorRotationData"] | null;
             internationalMacro?: components["schemas"]["InternationalMacroData"] | null;
             debtCycle?: components["schemas"]["DebtCycleData"] | null;
-            riskIndicators?: components["schemas"]["RiskIndicatorsData"] | null;
-            advancedIndicators?: components["schemas"]["AdvancedIndicatorsData"] | null;
-            modelAgreement?: components["schemas"]["ModelAgreementData"] | null;
-            transmissionAnalysis?: components["schemas"]["TransmissionAnalysisData"] | null;
-            investmentMemo?: components["schemas"]["InvestmentMemoData"] | null;
+            /** Riskindicators */
+            riskIndicators?: {
+                [key: string]: unknown;
+            } | null;
+            /** Advancedindicators */
+            advancedIndicators?: {
+                [key: string]: unknown;
+            } | null;
+            /** Modelagreement */
+            modelAgreement?: {
+                [key: string]: unknown;
+            } | null;
+            /** Transmissionanalysis */
+            transmissionAnalysis?: {
+                [key: string]: unknown;
+            } | null;
+            /** Investmentmemo */
+            investmentMemo?: {
+                [key: string]: unknown;
+            } | null;
             /** Datatowatch */
-            dataToWatch?: components["schemas"]["DataToWatchItem"][] | null;
-            nowcast?: components["schemas"]["NowcastData"] | null;
-            liquidity?: components["schemas"]["LiquidityConditionsData"] | null;
-            sentiment?: components["schemas"]["SentimentRiskData"] | null;
-            valuation?: components["schemas"]["ValuationFilterData"] | null;
+            dataToWatch?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Nowcast */
+            nowcast?: {
+                [key: string]: unknown;
+            } | null;
+            /** Liquidity */
+            liquidity?: {
+                [key: string]: unknown;
+            } | null;
+            /** Sentiment */
+            sentiment?: {
+                [key: string]: unknown;
+            } | null;
+            /** Valuation */
+            valuation?: {
+                [key: string]: unknown;
+            } | null;
             momentumVeto?: components["schemas"]["MomentumVetoData"] | null;
             correlationRegime?: components["schemas"]["CorrelationRegimeData"] | null;
             signalStack?: components["schemas"]["SignalStackData"] | null;
@@ -3902,18 +4481,6 @@ export interface components {
             supportingEvidence?: string | null;
         };
         /**
-         * DataToWatchItem
-         * @description Data to watch item.
-         */
-        DataToWatchItem: {
-            /** Indicator */
-            indicator: string;
-            /** Expectedimpact */
-            expectedImpact: string;
-            /** Nextrelease */
-            nextRelease?: string | null;
-        };
-        /**
          * DebtCycleData
          * @description Long-term debt cycle analysis.
          */
@@ -3953,6 +4520,19 @@ export interface components {
              * @default
              */
             interpretation: string;
+        };
+        /** DecisionIn */
+        DecisionIn: {
+            /** Action */
+            action: string;
+            /** Rationale */
+            rationale: string;
+            /** Target */
+            target?: string | null;
+            /** Before State */
+            before_state?: unknown | null;
+            /** After State */
+            after_state?: unknown | null;
         };
         /**
          * DecisionLogEntry
@@ -4270,20 +4850,6 @@ export interface components {
             interpretation: string;
         };
         /**
-         * InvestmentMemoData
-         * @description Investment memo data.
-         */
-        InvestmentMemoData: {
-            /** Summary */
-            summary: string;
-            /** Keypoints */
-            keyPoints: string[];
-            /** Datatowatch */
-            dataToWatch: components["schemas"]["DataToWatchItem"][];
-            /** Updatedat */
-            updatedAt: string;
-        };
-        /**
          * KeyMetrics
          * @description Key economic metrics.
          */
@@ -4401,26 +4967,6 @@ export interface components {
             direction: string;
             /** Sparklinedata */
             sparklineData: number[];
-        };
-        /**
-         * ModelAgreementData
-         * @description Model agreement data.
-         */
-        ModelAgreementData: {
-            /** Items */
-            items: components["schemas"]["ModelAgreementItem"][];
-            /** Consensus */
-            consensus: number;
-        };
-        /**
-         * ModelAgreementItem
-         * @description Model agreement item.
-         */
-        ModelAgreementItem: {
-            /** Model */
-            model: string;
-            /** Agreement */
-            agreement: number;
         };
         /**
          * MomentumVetoData
@@ -4558,6 +5104,29 @@ export interface components {
             /** Lastupdated */
             lastUpdated: string;
         };
+        /** PositionIn */
+        PositionIn: {
+            /** Symbol */
+            symbol: string;
+            /** Quantity */
+            quantity: number;
+            /** Avg Cost */
+            avg_cost: number;
+            /**
+             * Asset Class
+             * @default Equity
+             */
+            asset_class: string | null;
+            /**
+             * Book
+             * @default Macro
+             */
+            book: string | null;
+            /** Strategy Bucket */
+            strategy_bucket?: string | null;
+            /** Entry Date */
+            entry_date?: string | null;
+        };
         /**
          * PositionSizeData
          * @description Position size data.
@@ -4597,6 +5166,21 @@ export interface components {
             recommendations: components["schemas"]["PositionSizeData"][];
             /** Lastupdated */
             lastUpdated: string;
+        };
+        /** PositionUpdate */
+        PositionUpdate: {
+            /** Quantity */
+            quantity?: number | null;
+            /** Avg Cost */
+            avg_cost?: number | null;
+            /** Asset Class */
+            asset_class?: string | null;
+            /** Book */
+            book?: string | null;
+            /** Strategy Bucket */
+            strategy_bucket?: string | null;
+            /** Entry Date */
+            entry_date?: string | null;
         };
         /**
          * RatesData
@@ -4744,32 +5328,6 @@ export interface components {
             confidence: number;
             /** Divergence */
             divergence: number;
-        };
-        /**
-         * RiskIndicator
-         * @description Risk indicator.
-         */
-        RiskIndicator: {
-            /** Name */
-            name: string;
-            /** Value */
-            value: number;
-            /** Signal */
-            signal: string;
-            /** Weight */
-            weight: number;
-        };
-        /**
-         * RiskIndicatorsData
-         * @description Risk indicators data.
-         */
-        RiskIndicatorsData: {
-            /** Indicators */
-            indicators: components["schemas"]["RiskIndicator"][];
-            /** Compositescore */
-            compositeScore: number;
-            /** Risklevel */
-            riskLevel: string;
         };
         /**
          * RiskParityAllocationData
@@ -5020,6 +5578,15 @@ export interface components {
             liquidity: components["schemas"]["SignalDetails"];
             risk: components["schemas"]["SignalDetails"];
         };
+        /** StressCustomIn */
+        StressCustomIn: {
+            /** Shocks */
+            shocks: {
+                [key: string]: number;
+            };
+            /** Book */
+            book?: string | null;
+        };
         /**
          * TradeIdeaData
          * @description Trade idea data.
@@ -5040,6 +5607,39 @@ export interface components {
             /** Rationale */
             rationale: string;
         };
+        /** TradeIdeaIn */
+        TradeIdeaIn: {
+            /** Symbol */
+            symbol: string;
+            /**
+             * Direction
+             * @default LONG
+             */
+            direction: string | null;
+            /** Thesis */
+            thesis?: string | null;
+            /**
+             * Conviction
+             * @default MEDIUM
+             */
+            conviction: string | null;
+            /** Rationale */
+            rationale?: string | null;
+            /** Suggested Size */
+            suggested_size?: number | null;
+            /**
+             * Book
+             * @default Macro
+             */
+            book: string | null;
+        };
+        /** TradeIdeaTransition */
+        TradeIdeaTransition: {
+            /** State */
+            state: string;
+            /** Note */
+            note?: string | null;
+        };
         /**
          * TradeIdeasResponse
          * @description Trade ideas list response.
@@ -5051,30 +5651,6 @@ export interface components {
             count: number;
             /** Lastupdated */
             lastUpdated: string;
-        };
-        /**
-         * TransmissionAnalysisData
-         * @description Transmission analysis data.
-         */
-        TransmissionAnalysisData: {
-            /** Channels */
-            channels: components["schemas"]["TransmissionChannel"][];
-            /** Primarychannel */
-            primaryChannel: string;
-            /** Lagmonths */
-            lagMonths: number;
-        };
-        /**
-         * TransmissionChannel
-         * @description Transmission channel.
-         */
-        TransmissionChannel: {
-            /** Name */
-            name: string;
-            /** Strength */
-            strength: number;
-            /** Direction */
-            direction: string;
         };
         /**
          * TrendSignal
@@ -5142,6 +5718,22 @@ export interface components {
             zScore: number;
             /** Percentile */
             percentile: number;
+        };
+        /** WhatIfIn */
+        WhatIfIn: {
+            /** Symbol */
+            symbol: string;
+            /** Quantity */
+            quantity: number;
+            /** Avg Cost */
+            avg_cost?: number | null;
+            /**
+             * Book
+             * @default Macro
+             */
+            book: string | null;
+            /** Var Limit */
+            var_limit?: number | null;
         };
         /**
          * YieldCurveData
@@ -8764,6 +9356,945 @@ export interface operations {
         };
     };
     health_check_api_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    health_sources_v1_api_v1_health_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    health_v1_api_v1_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    methodology_v1_api_v1_methodology_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    portfolio_positions_v1_api_v1_portfolio_positions_get: {
+        parameters: {
+            query?: {
+                book?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_add_position_v1_api_v1_portfolio_positions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PositionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_bulk_v1_api_v1_portfolio_positions_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkPositionsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_update_position_v1_api_v1_portfolio_positions__pos_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pos_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PositionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_delete_position_v1_api_v1_portfolio_positions__pos_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pos_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_books_v1_api_v1_portfolio_books_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    portfolio_what_if_v1_api_v1_portfolio_what_if_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WhatIfIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trade_ideas_list_v1_api_v1_portfolio_trade_ideas_get: {
+        parameters: {
+            query?: {
+                state?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trade_ideas_add_v1_api_v1_portfolio_trade_ideas_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TradeIdeaIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trade_ideas_transition_v1_api_v1_portfolio_trade_ideas__idea_id__transition_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                idea_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TradeIdeaTransition"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_generate_ideas_v1_api_v1_portfolio_generate_ideas_get: {
+        parameters: {
+            query?: {
+                book?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trade_ideas_delete_v1_api_v1_portfolio_trade_ideas__idea_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                idea_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portfolio_attribution_v1_api_v1_portfolio_attribution_get: {
+        parameters: {
+            query?: {
+                book?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    risk_factor_exposure_v1_api_v1_risk_factor_exposure_get: {
+        parameters: {
+            query?: {
+                book?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    risk_var_v1_api_v1_risk_var_get: {
+        parameters: {
+            query?: {
+                book?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    risk_stress_get_v1_api_v1_risk_stress_test_get: {
+        parameters: {
+            query?: {
+                book?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    risk_stress_custom_v1_api_v1_risk_stress_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StressCustomIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    risk_reverse_stress_v1_api_v1_risk_reverse_stress_get: {
+        parameters: {
+            query: {
+                target_loss: number;
+                book?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    risk_concentration_v1_api_v1_risk_concentration_get: {
+        parameters: {
+            query?: {
+                book?: string | null;
+                limit_pct?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    risk_liquidity_v1_api_v1_risk_liquidity_get: {
+        parameters: {
+            query?: {
+                book?: string | null;
+                participation?: number;
+                illiquid_days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    audit_decisions_list_v1_api_v1_audit_decisions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    audit_decisions_add_v1_api_v1_audit_decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    audit_snapshots_list_v1_api_v1_audit_snapshots_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    audit_snapshot_get_v1_api_v1_audit_snapshots__snap_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snap_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    audit_time_machine_v1_api_v1_audit_time_machine_get: {
+        parameters: {
+            query: {
+                at: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    data_quality_v1_api_v1_data_quality_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    altdata_positioning_v1_api_v1_altdata_positioning_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    signals_backtest_v1_api_v1_signals_backtest_get: {
+        parameters: {
+            query?: {
+                horizon?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    freshness_v1_api_v1_freshness_get: {
         parameters: {
             query?: never;
             header?: never;

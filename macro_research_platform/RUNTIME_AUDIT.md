@@ -52,6 +52,22 @@ params), 12 slow (>3s, mostly live-data-bound).
 
 **Re-swept all 141 GET ops after fixes: NON-200 = 4 (all correct `method=1` validation 400s), zero 500s, no regressions.**
 
+## Phase 2 — Frontend
+
+### CRITICAL — production build was broken
+`npm run build` failed with 8 TypeScript errors (the app only ran because the Vite dev
+server skips typechecking). Fixed:
+
+| # | File | Error | Fix | Status |
+|---|---|---|---|---|
+| B1 | `ValuationSection.tsx:104` | TS7006 implicit-any `metric` | typed callback param (file already casts to `anyData`) | ✅ FIXED |
+| B2 | `LiquiditySection.tsx:89` | TS7006 implicit-any `indicator` | typed callback param | ✅ FIXED |
+| B3 | `GMOForecastsSection.tsx:122` | TS7006 implicit-any `t` | typed callback param | ✅ FIXED |
+| B4 | `TradeIdeasSection.tsx:93` | TS2339 `asset` not on `TradeIdea` | added optional `asset?` to interface | ✅ FIXED |
+| B5 | `InternationalMacroSection.tsx:40,220,221` | TS2339 `globalSync`/`interpretation` not on `InternationalMacroData` | added optional fields to interface | ✅ FIXED |
+
+**Re-verified:** `npm run build` → `✓ built in 3.52s`, bundle `index` 342 kB (gzip 95 kB).
+
 ### HIGH / notes surfaced during fixes
 | # | Item | Detail | Status |
 |---|---|---|---|

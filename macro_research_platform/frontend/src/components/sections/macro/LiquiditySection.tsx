@@ -86,7 +86,7 @@ export function LiquiditySection({ data }: LiquiditySectionProps) {
 
         {/* Indicators Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {indicators.map((indicator) => (
+          {indicators.map((indicator: any) => (
             <div key={indicator.name} className="p-2 bg-surface-1 border border-border">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-medium text-text-primary">{indicator.name}</span>

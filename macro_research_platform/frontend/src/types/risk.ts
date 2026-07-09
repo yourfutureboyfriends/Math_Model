@@ -130,6 +130,7 @@ export interface AlertsData {
 export interface TradeIdea {
   id: number | string;
   ticker: string;
+  asset?: string;            // optional alias used as a render-key fallback
   direction: 'LONG' | 'SHORT';
   thesis: string;
   entry?: number | null;

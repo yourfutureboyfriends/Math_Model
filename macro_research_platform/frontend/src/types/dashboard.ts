@@ -488,8 +488,10 @@ export interface InternationalMacroData {
     Japan: RegionMacroData;
   };
   globalLiquidityComposite: number;
+  globalSync?: number;          // 0-1 global-cycle synchronization (optional)
   regimeDivergences: RegimeDivergence[];
   fxImplications: FXImplication[];
+  interpretation?: string;      // optional narrative summary
   lastUpdated: string;
 }
 
