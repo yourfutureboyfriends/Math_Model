@@ -50,6 +50,24 @@ shadowed duplicate model classes + 2 zero-consumer hooks (`c03aa31`), stray trac
 - **Safe-accessor pattern** for provider records (units documented in the helper docstring).
 - **Baseline hygiene**: runtime-critical packages that were untracked are now committed, so a
   fresh clone builds; scratch artifacts gitignored.
+- **Logging standardized** (`2a810e4`): new `api/logging_config.setup_logging()` installs one
+  formatter — `time | LEVEL | module | message` — on the root logger at lifespan startup, so
+  every app + third-party log line shares one structure (verified live). `LOG_LEVEL`
+  env-driven. The module name now carries the context that ad-hoc `[PREFIX]` tags used to;
+  removed the only app-code `print()`/`__import__('logging')` hack (DB layer). CLI `__main__`
+  scripts keep `print()` (correct stdout output).
+
+## 4b. Second fresh-clone bug fixed (`2a810e4`)
+The over-broad `database/` gitignore rule hid a **source** package: top-level `database/db.py`
+(1230 lines) is imported by 20 modules as `from database.db` but was untracked — a clone would
+fail. (Phase 0 missed it because gitignored files don't show as untracked.) Narrowed the ignore
+to runtime data only; committed the source. `api/database/` identified as a **dead duplicate**
+(0 importers) and explicitly ignored.
+
+## 4c. Useless files removed (`2a810e4`)
+Deleted dead `api/models_ml/integration_test.py` (209 `print()`s, 0 importers); untracked +
+ignored generated `outputs/` (24 stale reports) and `reports/archive/`; deleted ~28 gitignored
+scratch docs, stray `1` files, and vite `*.timestamp-*.mjs` temp files.
 
 ## 5. Final state (re-verified this session, Phase 7 gate)
 - ✅ Clean backend restart: **0 ERROR/Traceback** in startup log.
@@ -62,7 +80,7 @@ shadowed duplicate model classes + 2 zero-consumer hooks (`c03aa31`), stray trac
 
 | Item | Reason |
 |---|---|
-| **Full Phase 6 standardization** (custom exception classes, one `{data, meta}` envelope across all 175 ops, `black` reformat, docstrings on every function, frontend `<AsyncState>` + one number-formatter) | Large multi-day refactor across ~175 endpoints and ~90 components; high regression risk to do late in one session. The highest-value, lowest-risk slice (imports, response-model integrity, crash classes) was done. **Flagged for a dedicated next pass.** |
+| **Remaining Phase 6** (custom exception classes, one `{data, meta}` envelope across all 175 ops, `black` reformat, docstrings on every function, `~80 F841` unused-local removal, frontend `<AsyncState>` + one number-formatter, ad-hoc `[PREFIX]` tag removal now that logging carries the module name) | Large multi-day refactor across ~175 endpoints / ~90 components; high regression risk late in one session. **Done this pass:** imports (F401), response-model integrity, crash classes, **logging standardization**, dead-code removal. Remainder flagged for a dedicated pass. |
 | **`node_modules/` is committed to git** (309 churn entries; forces `http.postBuffer` on push) | Untracking it (`git rm -r --cached`) is a large, history-affecting change — deliberately deferred; needs a decision on whether to rewrite history vs. a forward-only ignore. |
 | **`~80 F841` unused locals, `black` autoformat** | Not applied — `black`/`F841` autofix would touch hundreds of files and swamp review; low risk, deferred. |
 | **`/api/health` latency (6–17s cold), `/api/signals/yield-curve` ~10s** | Real MEDIUM perf issue (health should be sub-second; also makes the 5s-timeout integration tests flaky when cold). Needs endpoint profiling — out of scope for a bug-fix pass. |
@@ -73,4 +91,5 @@ shadowed duplicate model classes + 2 zero-consumer hooks (`c03aa31`), stray trac
 ## Commits this session (on `fix/macro-os-repair`)
 `757478f` baseline backend + ignore · `b453223` frontend reorg baseline · `b66829e` docs/CI/config ·
 `441f5d5` 12 backend 500s · `840ad81` frontend build · `b134b61` F401 + dict.price ·
-`c03aa31` dead-code deletions.
+`c03aa31` dead-code deletions · `efadba9` audit/inventory/report docs ·
+`2a810e4` track database/ source + standardize logging + remove junk.
