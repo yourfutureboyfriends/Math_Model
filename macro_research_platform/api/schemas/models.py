@@ -777,12 +777,9 @@ class CorrelationRegimeData(BaseModel):
 # METADATA MODELS
 # ══════════════════════════════════════════════════════════════
 
-class DataMetadata(BaseModel):
-    """Data metadata."""
-    lastUpdated: str
-    source: str
-    freshness: str
-    nextUpdate: Optional[str] = None
+# NOTE: the live `DataMetadata` model is defined further below (the quality-metadata
+# shape with latestDate/lastRefreshed/dataStatus/...); the earlier duplicate that this
+# comment replaces was dead — fully shadowed by that later definition.
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1079,12 +1076,8 @@ class MarketData(BaseModel):
     timestamp: str
 
 
-class YieldCurveData(BaseModel):
-    """Yield curve data."""
-    tenYear: float
-    twoYear: float
-    spread: float
-    inversion: bool
+# NOTE: the live `YieldCurveData` model is defined further below; the earlier duplicate
+# here was dead — fully shadowed by that later definition.
 
 
 class FXData(BaseModel):
