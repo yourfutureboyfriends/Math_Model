@@ -9351,6 +9351,28 @@ async def _build_pit_snapshot() -> dict:
     return state
 
 
+@app.get("/api/v1/data-quality")
+async def data_quality_v1():
+    """Automated data-quality checks: scans key price series for bad ticks (implausible
+    day-over-day jumps) and statistical outliers before they propagate into signals/risk."""
+    from api.handlers.market_handler import _fetch_closes_literal
+    from api.calculations.data_quality import quality_report
+
+    # (name, ticker, jump_threshold). VIX legitimately moves 25%+ per day, so it gets a
+    # much wider bad-tick threshold than cash instruments.
+    series = [("S&P 500", "^GSPC", 0.15), ("Nasdaq 100", "^NDX", 0.18), ("VIX", "^VIX", 0.80),
+              ("US Dollar", "DX-Y.NYB", 0.08), ("Gold", "GC=F", 0.15), ("WTI Crude", "CL=F", 0.20),
+              ("10Y (TLT)", "TLT", 0.10), ("HY Credit (HYG)", "HYG", 0.10)]
+    reports = []
+    for name, ticker, jump in series:
+        closes = await _fetch_closes_literal(ticker)
+        reports.append(quality_report(name, closes, jump_threshold=jump))
+    counts = {s: sum(1 for r in reports if r["status"] == s) for s in ("PASS", "WARN", "FAIL", "UNKNOWN")}
+    overall = "FAIL" if counts["FAIL"] else "WARN" if counts["WARN"] else "PASS"
+    return {"available": True, "overall": overall, "counts": counts,
+            "series": reports, "checked_at": datetime.now().isoformat()}
+
+
 @app.get("/api/v1/altdata/positioning")
 async def altdata_positioning_v1():
     """Alternative-data positioning signals: VIX term structure (contango/backwardation),

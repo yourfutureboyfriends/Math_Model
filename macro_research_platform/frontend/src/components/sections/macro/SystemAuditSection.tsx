@@ -14,20 +14,24 @@ const t = (iso?: string) => (iso ? new Date(iso).toLocaleString() : '—');
 export function SystemAuditSection() {
   const [decisions, setDecisions] = useState<any[]>([]);
   const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [dq, setDq] = useState<any>(null);
   const [selected, setSelected] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [dr, sr] = await Promise.all([
+      const [dr, sr, qr] = await Promise.all([
         fetch('/api/v1/audit/decisions').then((r) => r.json()).catch(() => null),
         fetch('/api/v1/audit/snapshots').then((r) => r.json()).catch(() => null),
+        fetch('/api/v1/data-quality').then((r) => r.json()).catch(() => null),
       ]);
       setDecisions(dr?.decisions || []);
       setSnapshots(sr?.snapshots || []);
+      setDq(qr);
     } finally { setLoading(false); }
   }, []);
+  const dqTone = (s: string) => (s === 'PASS' ? 'text-green' : s === 'WARN' ? 'text-amber' : s === 'FAIL' ? 'text-red' : 'text-text-tertiary');
   useEffect(() => { load(); }, [load]);
 
   const openSnapshot = async (id: number) => {
@@ -46,6 +50,22 @@ export function SystemAuditSection() {
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
+
+      {/* Data-quality checks */}
+      {dq?.available && (
+        <div className="mb-3 p-2 bg-surface-1 border border-border flex items-center gap-3 flex-wrap">
+          <span className="text-2xs text-text-tertiary uppercase tracking-wider">Data Quality</span>
+          <span className={`text-xs font-mono font-bold ${dqTone(dq.overall)}`}>{dq.overall}</span>
+          <span className="text-2xs text-text-tertiary">{dq.counts?.PASS}/{dq.series?.length} series clean</span>
+          <div className="flex flex-wrap gap-1">
+            {dq.series?.map((s: any) => (
+              <span key={s.series} title={`${s.series}: ${s.status}${s.jump_count ? ` · ${s.jump_count} bad ticks` : ''}`}
+                className={`inline-block w-2 h-2 rounded-full ${s.status === 'PASS' ? 'bg-green' : s.status === 'WARN' ? 'bg-amber' : s.status === 'FAIL' ? 'bg-red' : 'bg-text-tertiary'}`} />
+            ))}
+          </div>
+          <span className="text-2xs text-text-tertiary ml-auto">Bad-tick / outlier scan on {dq.series?.length} price feeds</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Decision log */}
