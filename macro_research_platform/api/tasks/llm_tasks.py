@@ -11,7 +11,6 @@ from typing import Dict, Any, List, Optional
 
 import feedparser
 import requests
-from bs4 import BeautifulSoup
 from celery_app import app
 
 logger = logging.getLogger(__name__)

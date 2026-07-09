@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from enum import Enum
 
 from api.repository.macro_repository import macro_repository
-from api.data_contracts import CONTRACTS
 from api.services.forecast_tracker import forecast_tracker
 
 logger = logging.getLogger(__name__)

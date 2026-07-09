@@ -7,7 +7,7 @@ recent distribution). Returns structured issues, never mutates the data.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Sequence, Optional
+from typing import Dict, List, Sequence
 import numpy as np
 
 

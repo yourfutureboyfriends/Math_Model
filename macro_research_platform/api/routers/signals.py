@@ -1,5 +1,5 @@
 """Signals endpoints (nowcast, liquidity, sentiment, momentum, factors, etc.)."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from typing import Dict, Any
 import logging
 

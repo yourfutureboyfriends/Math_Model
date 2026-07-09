@@ -130,7 +130,7 @@ class PriceService:
         Check if currently within US market hours.
         Simple check - not exact for holidays.
         """
-        from datetime import datetime, time
+        from datetime import datetime
         now = datetime.utcnow()
 
         # Convert to approximate US Eastern

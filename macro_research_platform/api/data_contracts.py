@@ -2,9 +2,8 @@
 Data Contracts — single source of truth for all metric expectations.
 Every metric must be defined here BEFORE being implemented anywhere.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
-import math
 
 @dataclass
 class MetricContract:

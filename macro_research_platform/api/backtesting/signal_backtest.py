@@ -20,10 +20,9 @@ E. Sector Rotation Strategy Backtest
 import logging
 import sqlite3
 import numpy as np
-import pandas as pd
-from dataclasses import dataclass, asdict
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Any
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Dict, List, Optional, Any
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -146,7 +145,7 @@ class SignalBacktester:
             try:
                 from signalling.hmm_regime import HMMRegimeDetector, prepare_observations
             except ImportError:
-                from ..signalling.hmm_regime import HMMRegimeDetector, prepare_observations
+                pass
 
             # Historical known crisis dates
             crisis_periods = [
@@ -198,7 +197,7 @@ class SignalBacktester:
             try:
                 from signalling.kalman_filter import MacroKalmanFilter
             except ImportError:
-                from ..signalling.kalman_filter import MacroKalmanFilter
+                pass
 
             # Simulated IC results (would compute from actual data)
             # In production, this would:
@@ -330,7 +329,7 @@ class SignalBacktester:
             try:
                 from equity.sector_rotation import SectorRotationEngine
             except ImportError:
-                from ..equity.sector_rotation import SectorRotationEngine
+                pass
 
             # Simulated backtest results
             results = {

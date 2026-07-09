@@ -11,7 +11,6 @@ Handles:
 import logging
 import math
 from typing import Dict, Optional, Any
-from datetime import datetime
 
 from api.providers.yahoo_provider import PriceRecord
 

@@ -106,7 +106,6 @@ class TestDashboardEndpoint:
 
     def test_dashboard_scores_handle_nan(self):
         """Test that NaN values are converted to defaults."""
-        import numpy as np
         scores = Scores(growth=float('nan'), inflation=float('inf'), liquidity=float('-inf'), risk=None)
         assert scores.growth == 50.0
         assert scores.inflation == 50.0
@@ -143,7 +142,6 @@ class TestSignalsEndpoint:
 
     def test_signal_details_validation(self):
         """Test SignalDetails validation."""
-        import numpy as np
         # NaN values should be converted to 0.0
         details = SignalDetails(latestScore=float('nan'), threeMonthChange="0.0", score=float('nan'), threeMonth=0.0, state="Neutral", direction="stable")
         assert details.latestScore == 0.0
@@ -179,7 +177,6 @@ class TestRiskEndpoint:
 
     def test_recession_probability_validation(self):
         """Test that probabilities are clamped to 0-1."""
-        import numpy as np
         # Out of range and NaN values should be handled
         recession = RecessionData(
             probability=1.5,  # Should be clamped to 1.0
@@ -202,7 +199,6 @@ class TestRegimeEndpoint:
 
     def test_regime_data_validation(self):
         """Test RegimeData validation."""
-        import numpy as np
         # Test NaN confidenceScore handling
         regime = RegimeData(
             current="Goldilocks",

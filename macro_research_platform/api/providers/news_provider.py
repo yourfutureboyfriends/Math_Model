@@ -6,7 +6,7 @@ No business logic, no caching, no fallbacks.
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from dataclasses import dataclass
 from datetime import datetime
 

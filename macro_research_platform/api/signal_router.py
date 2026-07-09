@@ -16,12 +16,10 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 import logging
 import pandas as pd
-import numpy as np
 
 from signalling.kalman_filter import MacroKalmanFilter, detect_signal_change
-from signalling.hmm_regime import HMMRegimeDetector, detect_regime_with_hmm, get_regime_transition_summary
+from signalling.hmm_regime import detect_regime_with_hmm
 from signalling.bayesian_aggregator import (
-    BayesianSignalAggregator,
     aggregate_macro_signals,
     generate_aggregator_report,
 )

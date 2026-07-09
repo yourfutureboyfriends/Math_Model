@@ -22,7 +22,6 @@ import numpy as np
 import pandas as pd
 import sqlite3
 import logging
-import os
 import glob
 from datetime import datetime
 from hmmlearn import hmm

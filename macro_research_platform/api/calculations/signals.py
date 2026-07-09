@@ -1,6 +1,5 @@
 """Signal calculations from real market data - no hardcoding."""
-from typing import Tuple, List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from typing import Tuple, List, Dict, Optional
 
 
 def calculate_growth_signal(spx_level: Optional[float], spx_history: List[float]) -> Tuple[float, str, List[float]]:

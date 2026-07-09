@@ -1,5 +1,5 @@
 """Risk handler with real calculated data from market prices."""
-from typing import Dict, Any, List
+from typing import Dict, Any
 from datetime import datetime
 import logging
 

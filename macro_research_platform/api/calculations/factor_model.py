@@ -20,7 +20,7 @@ Factors (proxied by liquid ETFs / indices, returns basis):
 """
 from __future__ import annotations
 
-from typing import Dict, List, Sequence, Optional
+from typing import Dict, List, Sequence
 import numpy as np
 
 FACTOR_PROXIES: Dict[str, str] = {

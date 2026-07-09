@@ -4,7 +4,7 @@
 
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, Dict, Any
 
 import asyncpg
@@ -190,7 +190,6 @@ def check_system_health() -> Dict[str, Any]:
     Runs every minute
     """
     import psutil
-    import time
 
     metrics = {
         "timestamp": datetime.utcnow().isoformat(),

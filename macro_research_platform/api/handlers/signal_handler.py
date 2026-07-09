@@ -9,8 +9,6 @@ from api.handlers.dashboard_handler import get_dashboard_data
 
 # Import shared calculations
 from api.calculations import (
-    calculate_growth_signal,
-    calculate_inflation_signal,
     calculate_liquidity_signal,
     calculate_risk_signal,
     get_regime_characteristics

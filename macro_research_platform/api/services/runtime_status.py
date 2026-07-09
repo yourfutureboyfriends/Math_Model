@@ -9,8 +9,7 @@ Provides real-time system health information including:
 """
 import logging
 import os
-import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 from datetime import datetime
 
 logger = logging.getLogger(__name__)

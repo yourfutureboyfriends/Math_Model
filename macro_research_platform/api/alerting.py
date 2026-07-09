@@ -6,7 +6,6 @@ import logging
 import os
 from typing import List, Dict, Optional
 from datetime import datetime
-import asyncio
 
 logger = logging.getLogger(__name__)
 

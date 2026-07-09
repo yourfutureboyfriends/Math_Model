@@ -27,7 +27,7 @@ import pandas as pd
 import statsmodels.api as sm
 from statsmodels.discrete.discrete_model import Probit
 from fredapi import Fred
-import sqlite3, os, logging
+import os, logging
 from datetime import datetime
 
 logger = logging.getLogger(__name__)

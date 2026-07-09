@@ -22,7 +22,6 @@ Sector Regime Performance (based on historical analysis):
 """
 
 import numpy as np
-import pandas as pd
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime

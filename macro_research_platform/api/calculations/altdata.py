@@ -10,7 +10,7 @@ No I/O — series are passed in.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Sequence, Optional
+from typing import Dict, Sequence, Optional
 import numpy as np
 
 

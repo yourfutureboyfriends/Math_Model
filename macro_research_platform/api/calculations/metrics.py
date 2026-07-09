@@ -1,5 +1,5 @@
 """Advanced metrics calculations - recession, sectors, etc."""
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, Optional
 
 
 def calculate_recession_probability(

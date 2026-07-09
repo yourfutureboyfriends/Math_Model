@@ -1,5 +1,5 @@
 """Regime classification and characteristics - comprehensive, no hardcoding."""
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Tuple, List
 from dataclasses import dataclass
 
 

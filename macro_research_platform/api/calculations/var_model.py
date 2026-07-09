@@ -10,7 +10,7 @@ VaR is reported as a POSITIVE dollar loss number (the amount you could lose).
 """
 from __future__ import annotations
 
-from typing import Dict, List, Sequence, Optional, Tuple
+from typing import Dict, List, Sequence, Optional
 import numpy as np
 
 # One-sided normal quantiles for parametric VaR.

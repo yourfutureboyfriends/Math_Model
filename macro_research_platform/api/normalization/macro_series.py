@@ -11,7 +11,6 @@ Handles:
 import logging
 import math
 from typing import Optional, Dict, Any, List
-from dataclasses import dataclass
 
 from api.providers.fred_provider import FREDObservation
 from api.data_contracts import CONTRACTS

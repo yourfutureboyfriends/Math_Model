@@ -6,14 +6,14 @@
 import json
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, List
-from uuid import UUID, uuid4
+from typing import Optional, List
+from uuid import uuid4
 
 import redis
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
-from database.models import SignalEvent, SignalDirection
+from database.models import SignalEvent
 
 logger = logging.getLogger(__name__)
 

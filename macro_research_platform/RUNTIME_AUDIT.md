@@ -68,6 +68,11 @@ server skips typechecking). Fixed:
 
 **Re-verified:** `npm run build` → `✓ built in 3.52s`, bundle `index` 342 kB (gzip 95 kB).
 
+### CRITICAL — same `dict.price` anti-pattern elsewhere (found during Phase 4/5 re-sweep)
+| # | Endpoint | Root cause | Fix | Status |
+|---|---|---|---|---|
+| 19 | `GET /api/portfolio/attribution` | `result.data.get('SPX', {}).price` at business_handler:767 — intermittent 500 when Yahoo omits a key (same class as #4). | Shared `_rec_price()` helper handling missing/object/dict; applied to all 8 sites (business_handler ×6, market_handler ×2). | ✅ FIXED & RE-VERIFIED (200 ×4) |
+
 ### HIGH / notes surfaced during fixes
 | # | Item | Detail | Status |
 |---|---|---|---|

@@ -35,17 +35,15 @@ Usage:
 """
 
 import logging
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
-from datetime import datetime, timedelta
-from enum import Enum
+from datetime import datetime
 import json
 
 import numpy as np
 import pandas as pd
 
 from database.db import get_db
-from api.services.forecast_tracker import forecast_tracker
 
 logger = logging.getLogger(__name__)
 

@@ -14,7 +14,7 @@ Conventions:
 """
 from __future__ import annotations
 
-from typing import Dict, List, Sequence, Optional, Tuple
+from typing import Dict, List, Sequence
 import numpy as np
 
 BULLISH, BEARISH, NEUTRAL = "BULLISH", "BEARISH", "NEUTRAL"

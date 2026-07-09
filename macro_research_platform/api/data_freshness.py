@@ -6,9 +6,8 @@ FRED API provides release dates via series/observations endpoint.
 """
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional
-import os
 
 logger = logging.getLogger(__name__)
 

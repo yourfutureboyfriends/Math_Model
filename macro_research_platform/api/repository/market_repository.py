@@ -8,10 +8,10 @@ No direct provider calls from services or endpoints.
 import logging
 import threading
 from typing import Dict, Optional, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from api.providers.yahoo_provider import YahooFinanceProvider
-from api.normalization.prices import normalize_prices, calculate_price_changes
+from api.normalization.prices import calculate_price_changes
 from api.validation.prices import validate_price_batch, check_stale_prices
 
 logger = logging.getLogger(__name__)

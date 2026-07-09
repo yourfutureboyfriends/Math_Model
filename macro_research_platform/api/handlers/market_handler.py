@@ -176,8 +176,9 @@ async def get_rates_data() -> Dict[str, Any]:
     ten_yr = None
     two_yr = None
     if result.success and result.data:
-        ten_yr = result.data.get('TENYR', {}).price if 'TENYR' in result.data else None
-        two_yr = result.data.get('TWYR', {}).price if 'TWYR' in result.data else None
+        # getattr guards against a missing key (None) or a dict-shaped record — no crash.
+        ten_yr = getattr(result.data.get('TENYR'), 'price', None)
+        two_yr = getattr(result.data.get('TWYR'), 'price', None)
 
     # Use fallback values if fetch failed
     ten_yr = ten_yr or 4.5

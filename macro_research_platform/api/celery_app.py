@@ -167,7 +167,6 @@ app.conf.beat_schedule = {
 # Signal Handlers
 
 
-from celery import crontab
 
 
 @task_prerun.connect

@@ -15,7 +15,7 @@ rationale, so a PM can see exactly *why* it was proposed. No fabricated convicti
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from api.calculations.regime import REGIME_CHARACTERISTICS
 from api.calculations.factor_model import FACTOR_PROXIES, FACTOR_LABELS

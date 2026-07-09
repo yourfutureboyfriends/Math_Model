@@ -26,8 +26,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime
-from typing import Dict, Optional, Callable, Any, List, Set
-from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, Optional, Any
 
 # Redis imports
 try:

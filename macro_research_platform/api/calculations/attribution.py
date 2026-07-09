@@ -12,7 +12,7 @@ No I/O — enriched positions and realized factor returns are passed in.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 
 
 def position_contributions(positions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

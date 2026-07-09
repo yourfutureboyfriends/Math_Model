@@ -8,7 +8,6 @@ Ensures:
 """
 
 import pytest
-import math
 from datetime import datetime
 
 from api.providers.yahoo_provider import PriceRecord

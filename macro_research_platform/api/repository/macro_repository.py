@@ -8,7 +8,6 @@ import logging
 from typing import Dict, Optional, Any, List
 from datetime import datetime
 
-from api.data_contracts import CONTRACTS
 
 logger = logging.getLogger(__name__)
 

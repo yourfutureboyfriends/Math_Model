@@ -25,8 +25,6 @@ you would train a GBM on historical signal outcomes.
 """
 
 import numpy as np
-import pandas as pd
-from typing import Optional
 
 logger = __import__("logging").getLogger(__name__)
 

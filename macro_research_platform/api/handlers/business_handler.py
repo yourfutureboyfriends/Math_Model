@@ -1,9 +1,24 @@
 """Business handler - business logic for business layer endpoints."""
-from typing import Dict, Any, List
+from typing import Dict, Any, Optional
 from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _rec_price(data: Optional[dict], key: str, fallback=None):
+    """Safely read `.price` from a provider result record.
+
+    A record may be absent, a PriceRecord (`.price`), or a plain dict (`['price']`).
+    `data.get(key, {}).price` crashes on the `{}` default when the key is missing —
+    this guards every such access. Units: same as the provider (index level / price).
+    """
+    rec = (data or {}).get(key)
+    if rec is None:
+        return fallback
+    if isinstance(rec, dict):
+        return rec.get("price", fallback)
+    return getattr(rec, "price", fallback)
 
 
 async def get_trade_ideas_data() -> Dict[str, Any]:
@@ -598,10 +613,10 @@ async def get_scenario_data() -> Dict[str, Any]:
     ten_yr = None
     two_yr = None
     if result.success and result.data:
-        spx = result.data.get('SPX', {}).price if 'SPX' in result.data else None
-        vix = result.data.get('VIX', {}).price if 'VIX' in result.data else None
-        ten_yr = result.data.get('TENYR', {}).price if 'TENYR' in result.data else None
-        two_yr = result.data.get('TWYR', {}).price if 'TWYR' in result.data else None
+        spx = _rec_price(result.data, 'SPX')
+        vix = _rec_price(result.data, 'VIX')
+        ten_yr = _rec_price(result.data, 'TENYR')
+        two_yr = _rec_price(result.data, 'TWYR')
 
     # Fallback values
     spx = spx or 5800
@@ -610,7 +625,7 @@ async def get_scenario_data() -> Dict[str, Any]:
     two_yr = two_yr or 4.2
 
     # Calculate signals using same functions as dashboard for consistency
-    from api.calculations import calculate_growth_signal, calculate_inflation_signal, calculate_liquidity_signal
+    from api.calculations import calculate_growth_signal, calculate_inflation_signal
     spx_history = [spx * (1 - i * 0.015) for i in range(4, -1, -1)]
     growth_score, _, _ = calculate_growth_signal(spx, spx_history)
     inflation_score, _, _ = calculate_inflation_signal(ten_yr, two_yr)
@@ -684,18 +699,9 @@ async def get_equity_research_data() -> Dict[str, Any]:
 
     # Fetch market data for context
     result = await _yahoo.fetch_latest_async(['SPX', 'NDX', 'VIX'])
-
-    def _price(rec, fallback):
-        # rec may be missing (None), a PriceRecord (.price), or a plain dict ('price').
-        if rec is None:
-            return fallback
-        if isinstance(rec, dict):
-            return rec.get("price", fallback)
-        return getattr(rec, "price", fallback)
-
     ok = bool(result.success and result.data)
-    spx = _price(result.data.get('SPX') if ok else None, 5800)
-    vix = _price(result.data.get('VIX') if ok else None, 18)
+    spx = _rec_price(result.data, 'SPX', 5800) if ok else 5800
+    vix = _rec_price(result.data, 'VIX', 18) if ok else 18
 
     # Determine regime context — use identical calculation as dashboard handler
     from api.calculations import (
@@ -758,14 +764,15 @@ async def get_attribution_data() -> Dict[str, Any]:
     Returns factor, sector, and regime attribution data for performance analysis.
     """
     from api.providers import YahooFinanceProvider
-    from api.calculations import classify_regime, get_regime_characteristics
+    from api.calculations import classify_regime
 
     _yahoo = YahooFinanceProvider()
 
     # Fetch current data
     result = await _yahoo.fetch_latest_async(['SPX', 'VIX'])
-    spx = result.data.get('SPX', {}).price if result.success and result.data else 5800
-    vix = result.data.get('VIX', {}).price if result.success and result.data else 18
+    ok = bool(result.success and result.data)
+    spx = _rec_price(result.data, 'SPX', 5800) if ok else 5800
+    vix = _rec_price(result.data, 'VIX', 18) if ok else 18
 
     # Calculate metrics - use same calculation as dashboard for consistency
     from api.calculations import calculate_growth_signal

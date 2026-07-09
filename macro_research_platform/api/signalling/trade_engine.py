@@ -14,13 +14,11 @@ All signals are:
   4. Scaled by a volatility target overlay
 """
 
-import os
 import numpy as np
 import pandas as pd
 import yfinance as yf
 import logging
-from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 

@@ -12,8 +12,8 @@ Rules:
 """
 
 import os
-from typing import Dict, Optional, Any
-from datetime import datetime, timedelta
+from typing import Dict, Optional
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)

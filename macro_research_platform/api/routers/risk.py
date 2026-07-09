@@ -1,6 +1,5 @@
 """Risk endpoints (recession, alerts, risk/full)."""
 from fastapi import APIRouter
-from typing import Dict, Any
 import logging
 
 from api.schemas.models import (

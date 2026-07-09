@@ -38,19 +38,12 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, field_validator
 
 # FIXED: R-01 - APScheduler for automated data pipeline
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 # FIXED: Phase 1 - Canonical Price Cache
-from api.price_cache import (
-    get_all_prices,
-    get_last_update,
-    refresh_prices,
-    compute_daily_changes,
-)
 
 # FIXED: R-01 - Import data pipeline (after sys.path setup)
 # Stub for run_daily_pipeline since it doesn't exist in pipeline.py yet
@@ -220,70 +213,44 @@ def lru_cache_with_ttl(ttl_seconds: int = 300):
 
 
 # FIXED: Import data validation layer (new architecture)
-from api.data_fetcher import fetch_metric, validate_dashboard_snapshot
-from api.regime_context import build_regime_context, RegimeContext
-from api.data_freshness import validate_all_freshness, get_freshness_summary
-from api.alerting import alert_on_data_integrity, AlertSeverity
+from api.regime_context import build_regime_context
 
 # FIXED: Phase 7 - New consolidated data architecture (safe migration)
 from api.services.refresh_coordinator import refresh_coordinator
-from api.services.price_service import price_service
-from api.services.regime_service import regime_service
-from api.repository.market_repository import market_repository
-from api.repository.macro_repository import macro_repository
 from api.diagnostics import router as health_router, diagnostics_router
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MODEL VALIDATION - Forecast Tracking Integration (Phase 1-10)
 # ═══════════════════════════════════════════════════════════════════════════════
-from api.services.forecast_tracker import forecast_tracker, ForecastTracker
-from api.services.regime_validation import regime_validator
+from api.services.forecast_tracker import forecast_tracker
 from api.services.recession_validation import recession_validator
 from api.services.expected_returns_validation import expected_returns_validator
 from api.services.portfolio_validation import portfolio_validator
 from api.services.nowcast_validation import nowcast_validator
 from api.services.momentum_validation import momentum_validator
-from database.db import (
-    insert_regime,
-    get_db,
-)
 
 # FIXED: Phase 3 - Import Pydantic models from schemas module
 from api.schemas.models import (
     RegimeData, KeyMetrics, RecessionData, SignalsData, SignalDetails,
     SectorAllocationData, RiskParityAllocationData, ExpectedReturnsResult,
-    DashboardData, BusinessLayerData, RegimeContextData,
-    NewsItem, CalendarEvent, HistoricalPoint, SparklineData,
-    FinancialConditionsData, CreditImpulseData, LEIData, SahmRuleData,
-    EstrellaMishkinData, MacroIndicatorsData, MarketData,
-    YieldCurveData, FXData, CommodityData, PriceData,
-    AlertData, AlertsData, RiskMetrics, FactorData, TrendData,
-    PositionSizeData, PositionSizing, SignalScorecardData, SignalScorecardItem, DecisionLogEntry,
-    ICPackData, TradeIdeaData, MorningBriefData, AskResponse, AskRequest,
+    BusinessLayerData, AlertsData, PositionSizing, SignalScorecardItem, DecisionLogEntry,
+    AskResponse, AskRequest,
     SignalStackLayer, SignalStackResult,
     ExpectedReturnSector, SectorPerformance, CurrentRegimeValidation,
-    ValidationMetrics, RecessionProbabilityPoint, DrawdownData,
-    RiskAdjustedReturnsData, CorrelationData, StressTestData,
-    SentimentRiskData, ValuationMetric, ValuationFilterData,
-    AssetMomentum, MomentumVetoData, CorrelationPair, CorrelationRegimeData,
-    SignalLayer, SignalStackData, LoginResponse,
+    LoginResponse,
     RegimeTransitionProbabilities, RegimeBacktestResult, DebtCycleResult,
     InternationalMacroResult, RiskIndicatorsData, AdvancedIndicatorsData,
     ModelAgreementData, TransmissionAnalysisData, DataToWatchItem,
-    InvestmentMemoData, NowcastData, LiquidityConditionsData, AlertItem,
+    InvestmentMemoData, AlertItem,
     AdvancedIndicator, RiskIndicator, ModelAgreementItem, TransmissionChannel,
-    LiquidityIndicator, SentimentGauge, DebtCycleIndicator, DebtCycleIndicators,
+    DebtCycleIndicator, DebtCycleIndicators,
     DataMetadata, Sector, RiskParityItem, MetricWithSparkline,
 )
 
 try:
     from src.models.recession_risk.recession_model import (
         get_current_recession_probability,
-        compute_sahm_rule,
         get_sahm_rule_signal,
-        compute_estrella_mishkin_probit,
-        RecessionModel,
-        create_nber_series,
     )
     _RECESSION_OK = True
 except Exception as _e:
@@ -312,21 +279,20 @@ except Exception as _e:
     _RISKPARITY_OK = False
 
 try:
-    from src.models.macro_regime.financial_conditions_model import FinancialConditionsModel
     _FC_OK = True
 except Exception as _e:
     logging.warning(f"financial_conditions_model import failed: {_e}")
     _FC_OK = False
 
 try:
-    from src.models.macro_regime.classifier import classify_regime, REGIMES
+    from src.models.macro_regime.classifier import classify_regime
     _CLASSIFIER_OK = True
 except Exception as _e:
     logging.warning(f"classifier import failed: {_e}")
     _CLASSIFIER_OK = False
 
 try:
-    from src.models.macro_regime.regime_model import compute_group_scores, compute_score_directions
+    from src.models.macro_regime.regime_model import compute_group_scores
     _REGIME_MODEL_OK = True
 except Exception as _e:
     logging.warning(f"regime_model import failed: {_e}")
@@ -340,49 +306,42 @@ except Exception as _e:
     _FEATURES_OK = False
 
 try:
-    from src.models.nowcasting.gdp_nowcast import get_gdp_nowcast
     _NOWCAST_OK = True
 except Exception as _e:
     logging.warning(f"gdp_nowcast import failed: {_e}")
     _NOWCAST_OK = False
 
 try:
-    from src.models.liquidity.liquidity_index import get_liquidity_index
     _LIQUIDITY_OK = True
 except Exception as _e:
     logging.warning(f"liquidity_index import failed: {_e}")
     _LIQUIDITY_OK = False
 
 try:
-    from src.models.sentiment.risk_appetite import get_risk_appetite
     _SENTIMENT_OK = True
 except Exception as _e:
     logging.warning(f"risk_appetite import failed: {_e}")
     _SENTIMENT_OK = False
 
 try:
-    from src.models.valuation.valuation_filter import get_valuation_filter as _get_new_valuation
     _VALUATION_OK = True
 except Exception as _e:
     logging.warning(f"valuation_filter import failed: {_e}")
     _VALUATION_OK = False
 
 try:
-    from src.models.momentum.momentum_veto import get_momentum_veto as _get_new_momentum
     _MOMENTUM_OK = True
 except Exception as _e:
     logging.warning(f"momentum_veto import failed: {_e}")
     _MOMENTUM_OK = False
 
 try:
-    from src.models.portfolio_construction.correlation_regime import get_correlation_regime as _get_new_correlation
     _CORRELATION_OK = True
 except Exception as _e:
     logging.warning(f"correlation_regime import failed: {_e}")
     _CORRELATION_OK = False
 
 try:
-    from src.models.signal_hierarchy import get_signal_hierarchy as _get_new_signal_stack
     _SIGNALSTACK_OK = True
 except Exception as _e:
     logging.warning(f"signal_hierarchy import failed: {_e}")
@@ -596,7 +555,6 @@ def _fetch_fomc_dates() -> list[str]:
     try:
         import requests
         from bs4 import BeautifulSoup
-        from datetime import datetime
         r = requests.get(
             "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
             timeout=10,
@@ -3117,7 +3075,6 @@ def calculate_news_sentiment() -> Dict[str, Any]:
 
     try:
         import requests
-        import re
 
         # FIXED: Sentiment dictionaries
         BULLISH_MACRO = [
@@ -6241,7 +6198,7 @@ def get_recession_data(df: pd.DataFrame) -> RecessionData:
 
         # Individual model outputs
         from src.models.recession_risk.recession_model import (
-            compute_recession_probability, compute_estrella_mishkin_probit, compute_sahm_rule
+            compute_recession_probability, compute_estrella_mishkin_probit
         )
         logistic_series = compute_recession_probability(df)
         p_logistic_raw = float(logistic_series.iloc[-1]) if not logistic_series.empty else 0.0
@@ -8780,7 +8737,6 @@ async def portfolio_delete_position_v1(pos_id: int):
 async def portfolio_books_v1():
     """List books plus the firm-level aggregate across all positions."""
     from api import portfolio_store
-    from api.calculations.portfolio import portfolio_summary
     raw = await _aio_to_thread(portfolio_store.list_positions, None)
     enriched = (await _enrich_positions(raw))
     return {
@@ -8792,7 +8748,6 @@ async def portfolio_books_v1():
 
 async def _risk_snapshot(raw: list) -> dict:
     """VaR (95% 1d), exposure and concentration for a (possibly hypothetical) raw set."""
-    import numpy as _np
     from api.calculations.var_model import (
         portfolio_pnl_series, historical_var, parametric_var, concentration,
     )
@@ -9285,7 +9240,6 @@ async def risk_liquidity_v1(book: Optional[str] = None, participation: float = 0
                             illiquid_days: float = 5.0):
     """Days-to-liquidate per position from average daily volume; flags illiquid names."""
     from api import portfolio_store
-    from api.handlers.market_handler import _yahoo_provider
     from api.calculations.var_model import days_to_liquidate
     raw = await _aio_to_thread(portfolio_store.list_positions, book)
     if not raw:
@@ -10226,7 +10180,6 @@ def _update_csv_with_latest():
     """Update CSV with latest market data and invalidate cache."""
     try:
         import yfinance as yf
-        from datetime import date
 
         logger.info("[REFRESH] Starting manual data update...")
 
@@ -11019,7 +10972,6 @@ async def get_blackout_calendar():
     """
     try:
         from datetime import datetime, timedelta
-        import calendar
 
         today = datetime.now().date()
         current_year = today.year

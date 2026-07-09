@@ -9,7 +9,7 @@ trusting it with capital.
 """
 from __future__ import annotations
 
-from typing import Sequence, Optional, Dict, Any, List
+from typing import Sequence, Dict, Any, List
 from collections import Counter
 
 from scipy.stats import norm

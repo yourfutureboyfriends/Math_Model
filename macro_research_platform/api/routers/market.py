@@ -5,8 +5,6 @@ import logging
 
 from api.schemas.models import (
     RatesData,
-    FXData,
-    PriceData,
 )
 
 logger = logging.getLogger(__name__)

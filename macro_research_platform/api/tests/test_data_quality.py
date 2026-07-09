@@ -3,7 +3,6 @@ Known-answer tests for data-quality checks (Phase 9).
 Run: pytest api/tests/test_data_quality.py
 """
 import numpy as np
-import pytest
 from api.calculations.data_quality import (
     detect_jump_outliers, detect_zscore_outliers, quality_report,
 )
