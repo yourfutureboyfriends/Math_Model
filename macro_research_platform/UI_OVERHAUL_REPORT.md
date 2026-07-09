@@ -68,6 +68,28 @@ Zero console errors. [screenshot: anomalies strip with flagged USD]
 
 ---
 
+## 🟡 Phase 1A — Data-Lineage Popover — BUILT & wired (this session)
+
+The traceability primitive Phase 1 is built on. New reusable `DataLineagePopover`
+(`components/ui/`): an "i" icon that reveals a number's **source feed, last fetch time
+(+ age & live/stale/error status), the calculation formula when derived, and the raw
+upstream value** when it differs from displayed. Flat popover, click-outside/Esc to close.
+
+Wired with **real** lineage into two live panels:
+- **Anomalies strip** — per metric: `source: yfinance · <ticker>`, displayed value, and the
+  z-score derivation `z = (current − μ) / σ over N obs → ±Xσ`.
+- **Correlation matrix header** — source, `Pearson correlation of aligned daily returns`,
+  window/obs.
+
+**Verified live:** popover on the US Dollar anomaly showed `LIVE · yfinance·DX-Y.NYB ·
+100.91 · formula → +2.1σ · flagged`. Zero console errors. [screenshot: open lineage popover]
+
+Still open in Phase 1 (the broad, cross-cutting parts): a lineage object on **every**
+metric app-wide, the live-vs-displayed **reconciliation loop**, and the header **"Data
+Integrity %"** indicator. The primitive + the existing `SourceTag`/`StaleBadge` (staleness
+treatment already live — e.g. the "STALE 70D" badge on Inflation) cover the per-metric
+traceability and staleness pieces; universal wiring is the remaining lift.
+
 ## Pre-existing infrastructure that partially satisfies other phases
 
 These were built in earlier sessions and are live in the app (not part of this session's
@@ -85,7 +107,7 @@ work, but relevant to honest phase accounting):
 
 | Phase | Status | Blocker / reason |
 |---|---|---|
-| **1 — full lineage layer** | Partial (primitives exist) | The reconciliation loop + per-metric lineage object is a cross-cutting change to **every** metric-producing endpoint and the store — large, high-regression; needs its own pass. |
+| **1 — full lineage layer** | 🟡 Popover BUILT + wired (2 panels); staleness live | Remaining: per-metric lineage object on **every** endpoint, the live-vs-displayed reconciliation loop, and the header "Data Integrity %" — cross-cutting, high-regression; own pass. |
 | **2 — storytelling / explanation strings** | Not started | Requires each calculation to expose **sub-component contributions** (which series moved, by how much) — a backend change across growth/inflation/liquidity/regime calcs, then an `explanation_text` field + hover attribution. Substantial. |
 | **3 — anomaly strip + badges** | ✅ **DONE** (see above) | `/api/v1/anomalies` + `AnomaliesStripSection` + `AnomalyBadge` built, tested, live-verified. Remaining sub-item: per-metric badges composed onto every card (needs Phase-5 card unification). |
 | **4b — regime-conditional correlation** | Not done | Needs historical regime-labelled periods to filter the matrix; the regime history store isn't wired to the correlation endpoint. |
@@ -98,9 +120,12 @@ work, but relevant to honest phase accounting):
 ---
 
 ## Recommended next pass (highest value first)
-1. **Phase 4b** regime-conditional filter on the heatmap (connects regime engine to correlations).
-2. **Phase 1** lineage popover on the existing `SourceTag` (the primitive is already there).
-3. **Phase 2** storytelling — expose sub-component contributions from the growth/inflation/
+1. **Phase 2** storytelling — expose sub-component contributions from the growth/inflation/
    liquidity calcs so each score can explain its own move (largest driver).
+2. **Phase 4b** regime-conditional filter on the heatmap (connects regime engine to correlations).
+3. **Phase 1** universal wiring — put the lineage object on every metric + the header
+   "Data Integrity %" reconciliation indicator (the popover primitive is now ready).
 
-## Phases complete this project (cumulative): **3, 4** — both real, tested, live-verified.
+## Cumulative status: **Phase 3 & 4 complete** (real, tested, live-verified); **Phase 1A
+lineage popover built & wired**. Primitives shipped: `CorrelationHeatmap`, `AnomalyBadge`,
+`DataLineagePopover` (+ existing `MetricCard`, `Sparkline`, `SourceTag`, `StaleBadge`).
