@@ -7,9 +7,9 @@ import { fmtChange } from '@/utils/format';
 
 export function MomentumVetoSection() {
   // Use macro store for data and regime context
-  const store = useMacroStore((state) => state);
-  const data = store.momentumVeto;
-  const regime = store.regime;
+  // P3: narrow selectors (avoid whole-store re-render on price ticks)
+  const data = useMacroStore((s) => s.momentumVeto);
+  const regime = useMacroStore((s) => s.regime);
 
   if (!data) {
     return (

@@ -33,9 +33,10 @@ function useSignalStories() {
 
 export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
   // Use macro store for all data - no hardcoded fallbacks
-  const store = useMacroStore((state) => state);
-  const signals = store.signals;
-  const regime = store.regime;
+  // P3: narrow selectors — re-render only when these change, not on every price tick.
+  const signals = useMacroStore((s) => s.signals);
+  const regime = useMacroStore((s) => s.regime);
+  const fullDashboard = useMacroStore((s) => s.fullDashboard);
   const { stories, meta } = useSignalStories();
   const freshness = useFreshness();
   const isStale = (metric: string) => {
@@ -54,7 +55,7 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
   // KeyMetricsSection is rendered without a `data` prop, so fall back to the raw
   // dashboard keyMetrics held in the store. Without this, recession/sparklines
   // defaulted to 0 and the card showed "0.0%" despite the API returning 13%.
-  const km = (data ?? (store.fullDashboard as any)?.keyMetrics) as KeyMetrics | undefined;
+  const km = (data ?? (fullDashboard as any)?.keyMetrics) as KeyMetrics | undefined;
 
   const getScoreDirection = (value: number): 'up' | 'down' | 'neutral' => {
     if (value > 0) return 'up';

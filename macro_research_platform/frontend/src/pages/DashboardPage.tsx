@@ -70,10 +70,13 @@ import {
 } from '@/components/sections';
 
 export function DashboardPage() {
-  // Get store state (populated from backend API)
-  const store = useMacroStore((state) => state);
-  const isLoading = store.meta.dataStatus === 'loading';
-  const isError = store.meta.dataStatus === 'error';
+  // P3: subscribe to ONLY the fields this component reads, so the whole 50-section tree
+  // doesn't re-render on every WebSocket price tick (was `useMacroStore((s) => s)`).
+  const dataStatus = useMacroStore((s) => s.meta.dataStatus);
+  const wsError = useMacroStore((s) => s.wsError);
+  const fetchDashboard = useMacroStore((s) => s.fetchDashboard);
+  const isLoading = dataStatus === 'loading';
+  const isError = dataStatus === 'error';
 
   if (isLoading) {
     return (
@@ -90,9 +93,9 @@ export function DashboardPage() {
       <div className="flex items-center justify-center p-12">
         <div className="text-center space-y-2">
           <p className="text-text-primary font-mono text-sm">Data unavailable — service did not respond in time</p>
-          <p className="text-text-tertiary font-mono text-xs">{store.wsError || 'Backend unreachable'}</p>
+          <p className="text-text-tertiary font-mono text-xs">{wsError || 'Backend unreachable'}</p>
           <button
-            onClick={() => store.fetchDashboard()}
+            onClick={() => fetchDashboard()}
             className="mt-4 px-4 py-2 text-xs font-mono border border-border text-text-secondary hover:text-text-primary hover:border-text-primary transition-colors"
           >
             Retry
