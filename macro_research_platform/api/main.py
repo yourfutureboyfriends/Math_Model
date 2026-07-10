@@ -9497,6 +9497,102 @@ async def signal_attribution_v1():
             "as_of": datetime.now().isoformat()}
 
 
+@app.get("/api/report/generate")
+async def report_generate(type: str = "full", format: str = "pdf"):
+    """Downloadable daily brief assembled from LIVE data: current regime, the four signal
+    scores + one-line explanations, flagged anomalies. `format=pdf` (reportlab) or
+    `format=csv`. Powers the header export button."""
+    from fastapi import Response
+    from datetime import date as _date
+
+    regime, confidence = None, None
+    try:
+        dash = await get_dashboard_data(mode="live")
+        reg = getattr(dash, "regime", None)
+        regime = getattr(reg, "current", None) if reg is not None else None
+        confidence = getattr(reg, "confidenceScore", None) if reg is not None else None
+    except Exception as e:
+        logger.debug(f"[report] dashboard: {e}")
+    try:
+        signals = (await signal_attribution_v1()).get("signals", [])
+    except Exception:
+        signals = []
+    try:
+        flagged = [m for m in (await anomalies_v1()).get("metrics", []) if m.get("is_anomalous")]
+    except Exception:
+        flagged = []
+
+    today = _date.today().isoformat()
+
+    if format == "csv":
+        import io as _io, csv as _csv
+        buf = _io.StringIO()
+        w = _csv.writer(buf)
+        w.writerow(["MACRO OS — Daily Brief", today])
+        w.writerow([])
+        w.writerow(["Regime", regime or "—", f"{round((confidence or 0) * 100)}% confidence"])
+        w.writerow([])
+        w.writerow(["Signal", "Score", "Trend", "Driver", "Explanation"])
+        for s in signals:
+            w.writerow([s.get("signal"), s.get("score"), s.get("trend"), s.get("driver"), s.get("explanation_text")])
+        w.writerow([])
+        w.writerow(["Anomalies (outside 2sigma)", "Value", "z-score"])
+        for m in flagged:
+            w.writerow([m.get("metric"), m.get("current"), m.get("z_score")])
+        return Response(buf.getvalue(), media_type="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="macro_brief_{today}.csv"'})
+
+    import io as _io
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+
+    buf = _io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, topMargin=0.6 * inch, bottomMargin=0.6 * inch)
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle("h1", parent=styles["Title"], fontSize=18, textColor=colors.HexColor("#0d1117"))
+    h2 = ParagraphStyle("h2", parent=styles["Heading2"], fontSize=12, textColor=colors.HexColor("#334155"))
+    bodyst = styles["BodyText"]
+    story = [Paragraph("MACRO OS — Daily Brief", h1),
+             Paragraph(f"{today} · generated {datetime.now().strftime('%H:%M')} UTC", bodyst),
+             Spacer(1, 12),
+             Paragraph(f"Regime: <b>{regime or '—'}</b> ({round((confidence or 0) * 100)}% confidence)", h2),
+             Spacer(1, 8)]
+    if signals:
+        story.append(Paragraph("Signals", h2))
+        rows = [["Signal", "Score", "Trend", "Explanation"]]
+        for s in signals:
+            rows.append([s.get("signal", ""), f"{s.get('score', '')}", s.get("trend", ""),
+                         Paragraph(s.get("explanation_text", ""), bodyst)])
+        t = Table(rows, colWidths=[1.0 * inch, 0.7 * inch, 1.0 * inch, 4.0 * inch])
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0d1117")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
+        story += [t, Spacer(1, 12)]
+    story.append(Paragraph(f"Anomalies (outside 2σ): {len(flagged)}", h2))
+    if flagged:
+        arows = [["Metric", "Value", "z-score"]] + [[m.get("metric", ""), f"{m.get('current', '')}", f"{m.get('z_score', '')}σ"] for m in flagged]
+        at = Table(arows, colWidths=[3.0 * inch, 1.5 * inch, 1.0 * inch])
+        at.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#92400e")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ]))
+        story.append(at)
+    else:
+        story.append(Paragraph("All tracked metrics within their normal historical range.", bodyst))
+    doc.build(story)
+    return Response(buf.getvalue(), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="macro_brief_{today}.pdf"'})
+
+
 @app.get("/api/v1/event-vol")
 async def event_vol_v1():
     """Event-driven volatility forecast (Phase 6A): the next high-impact macro release and,
