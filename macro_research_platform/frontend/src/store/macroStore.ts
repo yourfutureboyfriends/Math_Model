@@ -185,6 +185,11 @@ const defaultSignal: Signal = {
 
 // WebSocket instance (singleton)
 let ws: WebSocket | null = null;
+
+// P4: batch WS price updates — buffer incoming ticks and flush at most every 500ms in a
+// single set(), so a burst of messages coalesces into one re-render instead of N.
+let priceBuffer: Record<string, number> = {};
+let priceFlushTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectTimeout: NodeJS.Timeout | null = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -398,19 +403,22 @@ export const useMacroStore = create<MacroState>()(
           ws.onmessage = (event) => {
             try {
               const update = JSON.parse(event.data);
-              console.log('[MacroStore] WebSocket message:', update.type || 'unknown');
 
-              // Handle price updates
+              // Handle price updates — buffer and flush every 500ms (P4 batching)
               if (update.prices || update.data) {
-                set({
-                  prices: { ...get().prices, ...(update.prices || update.data) },
-                });
+                priceBuffer = { ...priceBuffer, ...(update.prices || update.data) };
+                if (!priceFlushTimer) {
+                  priceFlushTimer = setTimeout(() => {
+                    set({ prices: { ...get().prices, ...priceBuffer } });
+                    priceBuffer = {};
+                    priceFlushTimer = null;
+                  }, 500);
+                }
               }
 
-              // Handle heartbeat
+              // Handle heartbeat (connection alive; no action)
               if (update.type === 'heartbeat') {
-                // Connection is alive, no action needed
-                console.log('[MacroStore] WebSocket heartbeat received');
+                // no-op
               }
 
               // Handle regime changes
