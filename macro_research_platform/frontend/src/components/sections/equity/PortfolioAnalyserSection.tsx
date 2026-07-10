@@ -10,7 +10,21 @@ interface PortfolioAnalyserSectionProps {
 }
 
 export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnalyserSectionProps) {
-  if (!data && !simulationData) return null;
+  if (!data && !simulationData) {
+    return (
+      <div id="portfolio" className="terminal-section">
+        <div className="section-header mb-3">
+          <div className="section-header-left">
+            <span className="section-tag"><PieChart className="w-3 h-3" /></span>
+            <h2 className="section-title">Model Portfolio</h2>
+          </div>
+        </div>
+        <div className="p-4 text-2xs text-text-tertiary">
+          No model-portfolio data — add positions in the Positions panel to populate this view.
+        </div>
+      </div>
+    );
+  }
 
   const formatCurrency = (val: number) => {
     if (Math.abs(val) >= 1e9) return `$${(val / 1e9).toFixed(2)}B`;

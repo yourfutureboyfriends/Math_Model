@@ -21,17 +21,19 @@ interface SystemHealthSectionProps {
 }
 
 export function SystemHealthSection({ data, performanceData }: SystemHealthSectionProps) {
-  // FIXED: Add top-level null guard (Fix 7)
+  // No data prop is threaded here, so show an honest resolved state (not a perpetual
+  // skeleton). Live health is surfaced by the header Data-Integrity indicator and the
+  // Data Providers panel; the model/data status also drives those.
   if (!data) {
     return (
       <section id="system-health" className="terminal-section">
-        <div className="section-header">
+        <div className="section-header mb-3">
           <span className="section-tag">HEALTH</span>
           <h2 className="section-title">System Health</h2>
         </div>
-        <div className="flex items-center gap-2 p-4">
-          <div className="skeleton skeleton-text w-24" />
-          <div className="skeleton skeleton-text w-16" />
+        <div className="p-4 text-2xs text-text-tertiary">
+          Live system status is shown in the header <span className="text-text-secondary">Data Integrity</span> indicator
+          and the <span className="text-text-secondary">Data Providers</span> panel (provider health, fallbacks, rate use).
         </div>
       </section>
     )

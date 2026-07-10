@@ -13,7 +13,20 @@ export function TransmissionSection({ data }: TransmissionSectionProps) {
   const _fullDash = useMacroStore((s) => s.fullDashboard);
   if (!data) data = (_fullDash as any)?.["transmissionAnalysis"] as any;
 
-  if (!data?.channels?.length) return null;
+  // Explicit empty state instead of a blank panel when no channels are computed yet.
+  if (!data?.channels?.length) {
+    return (
+      <div id="transmission" className="terminal-section">
+        <div className="section-header mb-3">
+          <div className="section-header-left">
+            <span className="section-tag"><Zap className="w-3 h-3" /></span>
+            <h2 className="section-title">Policy Transmission</h2>
+          </div>
+        </div>
+        <div className="p-4 text-2xs text-text-tertiary">Transmission-channel data unavailable.</div>
+      </div>
+    );
+  }
 
   const getStatusTag = (status: string) => {
     switch (status.toLowerCase()) {
