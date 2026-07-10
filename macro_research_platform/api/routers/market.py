@@ -6,12 +6,14 @@ import logging
 from api.schemas.models import (
     RatesData,
 )
+from api.utils.cache import ttl_cache
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["market"])
 
 
 @router.get("/api/rates", response_model=RatesData)
+@ttl_cache(30)
 async def get_rates() -> RatesData:
     """Get interest rates data."""
     from api.handlers.market_handler import get_rates_data
@@ -40,6 +42,7 @@ async def get_prices() -> Dict[str, Any]:
 
 
 @router.get("/api/market")
+@ttl_cache(15)
 async def get_market_overview() -> Dict[str, Any]:
     """Consolidated market overview: rates, FX, commodities, prices."""
     from api.handlers.market_handler import get_rates_data, get_fx_data, get_commodities_data, get_prices_data

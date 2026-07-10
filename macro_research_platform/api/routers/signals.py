@@ -23,6 +23,7 @@ from api.schemas.models import (
 )
 
 logger = logging.getLogger(__name__)
+from api.utils.cache import ttl_cache
 router = APIRouter(tags=["signals"])
 
 
@@ -184,6 +185,7 @@ async def calibrate_recession_model() -> Dict[str, Any]:
 
 
 @router.get("/api/signals/yield-curve")
+@ttl_cache(60)
 async def get_yield_curve_signal() -> Dict[str, Any]:
     """Yield curve structure and recession probability signal."""
     from api.handlers.market_handler import get_rates_data

@@ -71,3 +71,32 @@ class TTLCache:
         if self.timestamp is None:
             return None
         return (datetime.now() - self.timestamp).total_seconds()
+
+
+# ── Async endpoint TTL cache decorator (P1 perf) ──────────────────────────────
+import time as _time
+import functools as _functools
+
+_ASYNC_TTL_CACHE = {}   # key -> (expires_at, value)
+
+
+def ttl_cache(seconds: float):
+    """Cache an async endpoint's result for `seconds`, keyed by function name + args.
+
+    For endpoints that re-fetch live FRED/market data on every call (health, cot, rates,
+    market, yield-curve, calendar) this turns repeat calls into instant hits without
+    changing what the data means. TTL should match how often the source actually moves.
+    """
+    def deco(fn):
+        @_functools.wraps(fn)
+        async def wrapper(*args, **kwargs):
+            key = f"{fn.__module__}.{fn.__name__}|{args!r}|{tuple(sorted(kwargs.items()))!r}"
+            now = _time.time()
+            hit = _ASYNC_TTL_CACHE.get(key)
+            if hit is not None and hit[0] > now:
+                return hit[1]
+            value = await fn(*args, **kwargs)
+            _ASYNC_TTL_CACHE[key] = (now + seconds, value)
+            return value
+        return wrapper
+    return deco

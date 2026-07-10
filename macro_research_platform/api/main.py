@@ -21,6 +21,7 @@ import threading
 import time
 import math
 import asyncio
+import functools
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -620,6 +621,12 @@ def _fetch_fred_release_dates(release_id: int, n: int = 8) -> list[str]:
 # Reduces response time from ~4s to <100ms for cached responses
 _EVENT_VOL_CACHE: Dict[str, Any] = {"data": None, "ts": 0.0}
 _DASHBOARD_CACHE: Dict[str, Any] = {"data": None, "timestamp": 0.0, "mode": "live"}
+
+# Reusable async response cache (P1 perf) — see api/utils/cache.py.
+# Endpoints that re-fetch live FRED/market data every call (health, cot, calendar, ...) run
+# 3-8s and saturate the event loop on dashboard mount; a short per-endpoint TTL makes repeat
+# calls instant without changing the data's meaning.
+from api.utils.cache import ttl_cache
 _DASHBOARD_CACHE_LOCK = threading.Lock()
 _DASHBOARD_CACHE_TTL_SECONDS = 300  # 5 minutes
 
@@ -8551,6 +8558,7 @@ async def subscribe_market_data(sid, data):
 
 
 @app.get("/api/health")
+@ttl_cache(30)
 async def health_check():
     df_live = load_processed_data()
     df_sample = load_sample_data() if df_live is None else None
@@ -11353,6 +11361,7 @@ async def get_earnings_revisions():
 
 
 @app.get("/api/cot")
+@ttl_cache(300)
 async def get_cot_data():
     """
     Returns CFTC Commitments of Traders positioning data.
@@ -11585,6 +11594,7 @@ async def get_horizon_risks():
 
 # FIXED: Missing endpoints (BUG 15)
 @app.get("/api/calendar")
+@ttl_cache(600)
 async def get_economic_calendar():
     """
     Economic calendar with FOMC, NFP, and CPI events.
