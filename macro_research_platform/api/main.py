@@ -9452,6 +9452,42 @@ async def signal_attribution_v1():
             "as_of": datetime.now().isoformat()}
 
 
+@app.get("/api/v1/regime-transition")
+async def regime_transition_v1():
+    """Forward-looking regime early-warning (Phase 6B): the empirical next-period transition
+    probabilities from the CURRENT regime, computed from a monthly regime history that is
+    classified from real macro data (the same classifier the dashboard uses)."""
+    from api.calculations.regime import empirical_transition_matrix, forward_outlook
+
+    df = load_processed_data()
+    if df is None:
+        df = load_sample_data()
+    if df is None:
+        return {"available": False, "reason": "No macro data available."}
+    try:
+        rd = await _aio_to_thread(get_regime_data, df)
+    except Exception as e:
+        return {"available": False, "reason": f"regime classification failed: {str(e)[:120]}"}
+
+    regimes = [h.get("regime") for h in (getattr(rd, "history", None) or []) if h.get("regime")]
+    if len(regimes) < 6:
+        return {"available": False, "reason": f"Insufficient regime history ({len(regimes)} months)."}
+
+    matrix = empirical_transition_matrix(regimes)
+    outlook = forward_outlook(matrix, rd.current)
+    return {
+        "available": True,
+        "current_regime": rd.current,
+        "confidence": getattr(rd, "confidenceScore", None),
+        "outlook": outlook,
+        "matrix": matrix,
+        "months_analysed": len(regimes),
+        "source": "monthly regime history classified from real macro data (FRED)",
+        "note": "Probabilities are per monthly step; history is the app's own regime classifier.",
+        "as_of": datetime.now().isoformat(),
+    }
+
+
 @app.get("/api/v1/anomalies")
 async def anomalies_v1(window: int = 252):
     """System-wide anomaly scan: for each tracked market metric, z-score the latest value

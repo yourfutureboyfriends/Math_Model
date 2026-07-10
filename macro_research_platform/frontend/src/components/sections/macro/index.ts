@@ -18,6 +18,7 @@ export { MorningBriefSection } from './MorningBriefSection';
 export { NowcastSection } from './NowcastSection';
 export { RegimeSection } from './RegimeSection';
 export { RegimePlaybookSection } from './RegimePlaybookSection';
+export { RegimeOutlookSection } from './RegimeOutlookSection';
 export { RegimeTransitionSection } from './RegimeTransitionSection';
 export { SystemHealthSection } from './SystemHealthSection';
 export { SystemAuditSection } from './SystemAuditSection';

@@ -3783,6 +3783,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/regime-transition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Regime Transition V1
+         * @description Forward-looking regime early-warning (Phase 6B): the empirical next-period transition
+         *     probabilities from the CURRENT regime, computed from a monthly regime history that is
+         *     classified from real macro data (the same classifier the dashboard uses).
+         */
+        get: operations["regime_transition_v1_api_v1_regime_transition_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/anomalies": {
         parameters: {
             query?: never;
@@ -10342,6 +10364,26 @@ export interface operations {
         };
     };
     signal_attribution_v1_api_v1_signal_attribution_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    regime_transition_v1_api_v1_regime_transition_get: {
         parameters: {
             query?: never;
             header?: never;

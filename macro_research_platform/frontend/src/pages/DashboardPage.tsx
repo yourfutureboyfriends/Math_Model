@@ -46,6 +46,7 @@ import {
   ExpectedReturnsSection,
   InternationalMacroSection,
   RegimeTransitionSection,
+  RegimeOutlookSection,
   MomentumVetoSection,
   ValuationSection,
   NewsSentimentSection,
@@ -435,6 +436,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Regime Transition">
           <Suspense fallback={<SectionSkeleton />}>
             <RegimeTransitionSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="regime-outlook-wrap" className="terminal-section">
+        <ErrorBoundary sectionName="Regime Outlook">
+          <Suspense fallback={<SectionSkeleton />}>
+            <RegimeOutlookSection />
           </Suspense>
         </ErrorBoundary>
       </div>

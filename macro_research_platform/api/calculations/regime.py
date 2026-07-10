@@ -220,3 +220,41 @@ def get_regime_characteristics(regime: str) -> RegimeCharacteristics:
 def get_all_regimes() -> Dict[str, RegimeCharacteristics]:
     """Get all regime definitions."""
     return REGIME_CHARACTERISTICS.copy()
+
+
+# ── Regime transition (Phase 6B) ──────────────────────────────────────────────
+def empirical_transition_matrix(regimes: List[str]) -> Dict:
+    """Count-based P(next | current) from an ordered sequence of regime labels.
+
+    Returns {states, matrix: {from: {to: prob}}, counts, observations, transitions}.
+    Pure — the caller supplies the (real, historically-classified) regime series.
+    """
+    seq = [r for r in regimes if r]
+    states = sorted(set(seq))
+    counts = {a: {b: 0 for b in states} for a in states}
+    for a, b in zip(seq[:-1], seq[1:]):
+        counts[a][b] += 1
+    matrix: Dict[str, Dict[str, float]] = {}
+    for a in states:
+        tot = sum(counts[a].values())
+        matrix[a] = {b: (round(counts[a][b] / tot, 3) if tot else 0.0) for b in states}
+    return {"states": states, "matrix": matrix, "counts": counts,
+            "observations": len(seq), "transitions": max(0, len(seq) - 1)}
+
+
+def forward_outlook(matrix: Dict, current: str) -> Dict:
+    """From the transition matrix, the forward (next-period) probabilities for `current`,
+    ranked, plus the stay probability and implied expected persistence (1/(1-p_stay))."""
+    row = (matrix.get("matrix") or {}).get(current, {})
+    ranked = sorted(row.items(), key=lambda kv: kv[1], reverse=True)
+    stay = float(row.get(current, 0.0))
+    expected = round(1.0 / (1.0 - stay), 1) if 0.0 <= stay < 1.0 else None
+    # Most likely change (highest-probability non-stay target)
+    change = next(({"to": t, "prob": p} for t, p in ranked if t != current), None)
+    return {
+        "current": current,
+        "ranked": [{"regime": t, "prob": p} for t, p in ranked],
+        "stay_prob": round(stay, 3),
+        "expected_persistence_periods": expected,
+        "most_likely_change": change,
+    }

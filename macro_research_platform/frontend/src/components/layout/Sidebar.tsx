@@ -99,6 +99,7 @@ const navigation: NavSection[] = [
       { id: 'reflexivity', label: 'Reflexivity', icon: '◆', permission: 'reflexivity' },
       { id: 'transmission', label: 'Transmission', icon: '◆', permission: 'transmission' },
       { id: 'regime-transition', label: 'Regime Transition', icon: '◆', permission: 'regime_transition' },
+      { id: 'regime-outlook', label: 'Regime Outlook', icon: '◆', permission: 'regime_transition' },
       { id: 'momentum-veto', label: 'Momentum Veto', icon: '◆', permission: 'momentum_veto' },
     ],
   },
