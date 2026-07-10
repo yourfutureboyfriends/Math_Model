@@ -137,13 +137,25 @@ export function CommandPalette({
   // Favorites start empty each session (no persistent storage in sandboxed environment).
   // Destructure only the getter; a future toggle-star feature can add the setter back.
   const [favorites] = useState<string[]>([]);
-  const [recent, setRecent] = useState<string[]>([]);
+  // Recently-used sections persist across reloads (per user) in localStorage.
+  const recentKey = `macroos.recentSections.${(() => { try { return localStorage.getItem('macro_user') || 'default'; } catch { return 'default'; } })()}`;
+  const [recent, setRecent] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(recentKey);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : [];
+    } catch { return []; }
+  });
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Add a section to the in-session recent list (capped at 5)
+  // Add a section to the recent list (capped at 5) and persist it.
   const addToRecent = useCallback((sectionId: string) => {
-    setRecent((prev) => [sectionId, ...prev.filter((id) => id !== sectionId)].slice(0, 5));
-  }, []);
+    setRecent((prev) => {
+      const next = [sectionId, ...prev.filter((id) => id !== sectionId)].slice(0, 5);
+      try { localStorage.setItem(recentKey, JSON.stringify(next)); } catch { /* storage unavailable */ }
+      return next;
+    });
+  }, [recentKey]);
 
   // Phase 7B / 8 — suggested queries surfaced from current anomalies + regime, each
   // carrying an explicit reason it was surfaced (transparent personalization).
