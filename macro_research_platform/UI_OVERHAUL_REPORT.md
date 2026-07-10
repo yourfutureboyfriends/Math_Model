@@ -68,6 +68,34 @@ Zero console errors. [screenshot: anomalies strip with flagged USD]
 
 ---
 
+## ✅ Phase 6B — Regime-Transition Early-Warning — COMPLETE (this session)
+
+Turns the static current-regime label into a forward-looking probability.
+
+**Backend (real, tested):** `regime.empirical_transition_matrix()` + `forward_outlook()` —
+count-based P(next | current) from an ordered regime series, ranked forward probabilities,
+stay probability and implied persistence `1/(1−p_stay)`. Pure, **4 known-answer tests**.
+`GET /api/v1/regime-transition` builds a **monthly regime history via the app's own
+classifier** (`get_regime_data` over real FRED macro data), computes the empirical matrix,
+and returns the current regime's forward outlook.
+
+**Frontend:** `RegimeOutlookSection` — early-warning headline ("X% probability of shifting
+to <regime> next month", amber when ≥25%), stay-prob + expected persistence, ranked
+next-period probability bars, lineage popover. 3-state bounded load with self-heal retry.
+
+**Verification (live):** "Currently **Stagflation** — **20% probability of shifting to
+Slowdown** next month; stay 80%, persistence ≈ 5 months, 24 months analysed" with forward
+bars. Zero console errors. [screenshot: regime outlook with forward bars]
+
+**Honest caveat (shown in-panel):** probabilities are per monthly step and use the
+macro-data regime classifier (4-state), which differs from the live *market* regime label —
+a pre-existing dual-classifier discrepancy, documented rather than hidden.
+
+*Phase 6A (event-driven vol forecasting) remains: needs historical realized-vol-around-events
+series that isn't readily available; scoped for a data pass.*
+
+---
+
 ## 🟡 Phase 5 — Unified MetricCard — CORE DONE (this session)
 
 One standard card composing every primitive, replacing per-tab one-offs.
@@ -136,11 +164,16 @@ Wired with **real** lineage into two live panels:
 **Verified live:** popover on the US Dollar anomaly showed `LIVE · yfinance·DX-Y.NYB ·
 100.91 · formula → +2.1σ · flagged`. Zero console errors. [screenshot: open lineage popover]
 
-Still open in Phase 1 (the broad, cross-cutting parts): a lineage object on **every**
-metric app-wide, the live-vs-displayed **reconciliation loop**, and the header **"Data
-Integrity %"** indicator. The primitive + the existing `SourceTag`/`StaleBadge` (staleness
-treatment already live — e.g. the "STALE 70D" badge on Inflation) cover the per-metric
-traceability and staleness pieces; universal wiring is the remaining lift.
+### Phase 1B — Data Integrity header indicator — DONE
+`DataIntegrityIndicator` in the header shows the **share of tracked metrics within their
+freshness tolerance** ("INTEGRITY 94%"), from the real `/api/v1/freshness` probe — green
+≥90 / amber 70–89 / red <70, with a hover breakdown of the out-of-tolerance metrics.
+Verified live at **INTEGRITY 67%** (CPI stale 70d, M2 critical 70d, 4/6 fresh).
+
+**Phase 1 now covers:** 1A lineage popover (wired to KeyMetrics / anomalies / correlation) ·
+1B integrity % + per-source health · 1C staleness (`StaleBadge` + `MetricCard` dashed-amber).
+Still open (broad): a lineage object on **every** metric app-wide + the live-vs-displayed
+**reconciliation loop** (the visible header indicator and per-metric popovers are done).
 
 ## Pre-existing infrastructure that partially satisfies other phases
 
@@ -172,14 +205,14 @@ work, but relevant to honest phase accounting):
 ---
 
 ## Recommended next pass (highest value first)
-1. **Phase 6** predictive panels — surface the regime-transition probability matrix as a
-   forward "X% chance of Slowdown in 30d" panel; event-vol forecasting off the calendar.
-2. **Phase 5 rollout** — apply the unified `MetricCard` to Commodities / FX / Fixed-Income
-   panels (mechanical, per-section).
-3. **Phase 7** command-palette natural-language routing (registry + fuzzy router).
+1. **Phase 7** command-palette natural-language routing (registry + fuzzy router).
+2. **Phase 6A** event-driven vol forecasting (needs historical realized-vol-around-events data).
+3. **Phase 5 rollout** — apply the unified `MetricCard` to Commodities / FX / Fixed-Income.
 
-## Cumulative status: **Phases 2, 3, 4 complete** (real, tested, live-verified); **Phase 1A
-lineage popover** and **Phase 5 unified card** built & live on KeyMetrics. Primitives shipped:
-`CorrelationHeatmap`, `AnomalyBadge`, `DataLineagePopover`, unified `MetricCard` (+ existing
-`Sparkline`, `SourceTag`, `StaleBadge`). Backend calc modules added: `correlation_matrix`,
-`historical_band`, `storytelling` — all with known-answer tests (205 backend tests pass).
+## Cumulative status: **Phases 2, 3, 4, 6B complete** (real, tested, live-verified); **Phase 1
+complete bar the broad reconciliation loop** (1A popover + 1B integrity % + 1C staleness all
+done); **Phase 5 core** (unified card live on KeyMetrics). Primitives shipped:
+`CorrelationHeatmap`, `AnomalyBadge`, `DataLineagePopover`, `DataIntegrityIndicator`, unified
+`MetricCard`. Backend calc modules added: `correlation_matrix`, `historical_band`,
+`storytelling`, regime `empirical_transition_matrix`/`forward_outlook` — all with known-answer
+tests (**209 backend tests pass**).
