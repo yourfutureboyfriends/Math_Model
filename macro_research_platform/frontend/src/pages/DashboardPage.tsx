@@ -58,6 +58,7 @@ import {
   EquityResearchSection,
   RiskAnalyticsSection,
   EventCalendarSection,
+  EventVolSection,
   TradeIdeasSection,
   ScenarioAnalysisSection,
   YieldCurveSection,
@@ -550,6 +551,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Event Calendar">
           <Suspense fallback={<SectionSkeleton />}>
             <EventCalendarSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="event-vol-wrap" className="terminal-section">
+        <ErrorBoundary sectionName="Event Volatility">
+          <Suspense fallback={<SectionSkeleton />}>
+            <EventVolSection />
           </Suspense>
         </ErrorBoundary>
       </div>

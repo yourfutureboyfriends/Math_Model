@@ -281,5 +281,9 @@ export const EventCalendarSection = lazy(() =>
   import('./market/EventCalendarSection').then(m => ({ default: m.EventCalendarSection }))
 );
 
+export const EventVolSection = lazy(() =>
+  import('./market/EventVolSection').then(m => ({ default: m.EventVolSection }))
+);
+
 // Utility Components
 export { MemoizedSection } from './MemoizedSection';

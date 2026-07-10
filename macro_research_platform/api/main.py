@@ -618,6 +618,7 @@ def _fetch_fred_release_dates(release_id: int, n: int = 8) -> list[str]:
 
 # FIXED: Tier 1D - Dashboard response caching with 5-minute TTL
 # Reduces response time from ~4s to <100ms for cached responses
+_EVENT_VOL_CACHE: Dict[str, Any] = {"data": None, "ts": 0.0}
 _DASHBOARD_CACHE: Dict[str, Any] = {"data": None, "timestamp": 0.0, "mode": "live"}
 _DASHBOARD_CACHE_LOCK = threading.Lock()
 _DASHBOARD_CACHE_TTL_SECONDS = 300  # 5 minutes
@@ -9450,6 +9451,65 @@ async def signal_attribution_v1():
     return {"available": True, "signals": signals,
             "source": "computed from live dashboard inputs (yfinance/FRED)",
             "as_of": datetime.now().isoformat()}
+
+
+@app.get("/api/v1/event-vol")
+async def event_vol_v1():
+    """Event-driven volatility forecast (Phase 6A): the next high-impact macro release and,
+    from real SPX daily closes, how realized volatility has historically behaved in the ±3
+    trading-day window around that event type vs the baseline. Historical event dates are
+    derived from each event's release cadence (surfaced as a caveat)."""
+    from datetime import date, timedelta as _td
+    from api.calculations.event_vol import event_window_vol
+    from api.handlers.market_handler import _fetch_dated_closes_literal
+
+    # The calendar fetch (FOMC/FRED) is slow (~4s) and changes daily, not per-request — cache
+    # the computed result for 10 min so the panel loads instantly and never times out.
+    global _EVENT_VOL_CACHE
+    _now = time.time()
+    if _EVENT_VOL_CACHE.get("data") is not None and _now - _EVENT_VOL_CACHE.get("ts", 0) < 600:
+        return _EVENT_VOL_CACHE["data"]
+
+    def _cache(result):
+        _EVENT_VOL_CACHE["data"] = result
+        _EVENT_VOL_CACHE["ts"] = _now
+        return result
+
+    try:
+        raw = await get_economic_calendar()
+        cal = json.loads(bytes(raw.body)) if hasattr(raw, "body") else raw
+    except Exception as e:
+        return {"available": False, "reason": f"calendar unavailable: {str(e)[:100]}"}
+    events = sorted([e for e in (cal.get("events") or []) if e.get("impact") == "HIGH"],
+                    key=lambda e: e.get("date", ""))
+    if not events:
+        return {"available": False, "reason": "No upcoming high-impact events."}
+
+    nxt = events[0]
+    cadence_days = {"CPI Release": 30, "FOMC Decision": 46, "Nonfarm Payrolls": 30}.get(nxt["event"], 30)
+    try:
+        nd = date.fromisoformat(nxt["date"])
+    except Exception:
+        return {"available": False, "reason": "Bad event date."}
+    past_dates = [(nd - _td(days=cadence_days * i)).isoformat() for i in range(1, 9)]
+
+    spx = await _fetch_dated_closes_literal("^GSPC")
+    if not spx:
+        return {"available": False, "reason": "No SPX price history."}
+    stats = event_window_vol(spx, past_dates, window=3)
+    today = date.today()
+    upcoming = [{**e, "days_away": (date.fromisoformat(e["date"]) - today).days} for e in events[:4]]
+    if not stats.get("available"):
+        return _cache({"available": False, "reason": stats.get("reason"), "next_event": {**nxt, "days_away": (nd - today).days}, "upcoming": upcoming})
+    return _cache({
+        "available": True,
+        "next_event": {**nxt, "days_away": (nd - today).days},
+        "upcoming": upcoming,
+        **stats,
+        "source": "SPX realized vol (yfinance) around cadence-derived historical event windows",
+        "note": "Historical event dates approximated from each event's release cadence; windows are ±3 trading days.",
+        "as_of": datetime.now().isoformat(),
+    })
 
 
 @app.get("/api/v1/regime-transition")

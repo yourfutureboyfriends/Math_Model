@@ -3783,6 +3783,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/event-vol": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Event Vol V1
+         * @description Event-driven volatility forecast (Phase 6A): the next high-impact macro release and,
+         *     from real SPX daily closes, how realized volatility has historically behaved in the ±3
+         *     trading-day window around that event type vs the baseline. Historical event dates are
+         *     derived from each event's release cadence (surfaced as a caveat).
+         */
+        get: operations["event_vol_v1_api_v1_event_vol_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/regime-transition": {
         parameters: {
             query?: never;
@@ -10364,6 +10387,26 @@ export interface operations {
         };
     };
     signal_attribution_v1_api_v1_signal_attribution_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    event_vol_v1_api_v1_event_vol_get: {
         parameters: {
             query?: never;
             header?: never;

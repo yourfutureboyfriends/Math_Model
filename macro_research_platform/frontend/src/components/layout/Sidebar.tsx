@@ -124,6 +124,7 @@ const navigation: NavSection[] = [
       { id: 'investment-memo', label: 'Investment Memo', icon: '◆', permission: 'investment_memo' },
       { id: 'business-layer', label: 'Business Layer', icon: '◆', permission: 'business_layer' },
       { id: 'economic-calendar', label: 'Economic Calendar', icon: '◆', permission: 'economic_calendar' },
+      { id: 'event-vol', label: 'Event Volatility', icon: '◆', permission: 'economic_calendar' },
     ],
   },
   {
