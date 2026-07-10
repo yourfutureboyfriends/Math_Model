@@ -4,6 +4,7 @@
  */
 
 export { AdvancedIndicatorsSection } from './AdvancedIndicatorsSection';
+export { DataProvidersSection } from './DataProvidersSection';
 export { AnomaliesStripSection } from './AnomaliesStripSection';
 export { DataExplorerSection } from './DataExplorerSection';
 export { DataToWatchSection } from './DataToWatchSection';

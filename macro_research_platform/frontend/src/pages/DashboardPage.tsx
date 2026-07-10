@@ -38,6 +38,7 @@ import {
   SignalStorySection,
   PerformanceAttributionSection,
   SystemHealthSection,
+  DataProvidersSection,
   SystemAuditSection,
   DataExplorerSection,
   DataToWatchSection,
@@ -571,6 +572,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="System Health">
           <Suspense fallback={<SectionSkeleton />}>
             <SystemHealthSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="data-providers-wrap" className="terminal-section">
+        <ErrorBoundary sectionName="Data Providers">
+          <Suspense fallback={<SectionSkeleton />}>
+            <DataProvidersSection />
           </Suspense>
         </ErrorBoundary>
       </div>

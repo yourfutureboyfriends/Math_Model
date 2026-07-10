@@ -9497,6 +9497,40 @@ async def signal_attribution_v1():
             "as_of": datetime.now().isoformat()}
 
 
+_PROVIDER_REGISTRY = None
+
+
+def _provider_registry():
+    """Lazily build the multi-provider registry (Universal Data Layer)."""
+    global _PROVIDER_REGISTRY
+    if _PROVIDER_REGISTRY is None:
+        from api.providers.adapters import build_default_registry
+        _PROVIDER_REGISTRY = build_default_registry()
+    return _PROVIDER_REGISTRY
+
+
+@app.get("/api/v1/providers")
+async def providers_status_v1():
+    """Provider health for the data layer: every configured provider, its priority, the asset
+    classes it serves, whether it's currently healthy, how many requests it has served, and how
+    many times a fallback to it was triggered (visible degraded reliance on backups)."""
+    return {"providers": _provider_registry().status(), "as_of": datetime.now().isoformat()}
+
+
+@app.get("/api/v1/quote")
+async def quote_v1(symbol: str, asset_class: str = "equity"):
+    """A single quote routed through the provider registry: the highest-priority healthy
+    provider serves it, falling back automatically on failure. The serving provider is
+    returned in `source` (feeds the lineage popover). Explicit unavailable if all fail."""
+    q = await _aio_to_thread(_provider_registry().get_quote, symbol.strip().upper(), asset_class)
+    if q is None:
+        return {"available": False,
+                "reason": f"Data unavailable — all providers for {asset_class} are currently unreachable for {symbol}."}
+    return {"available": True, "symbol": q.symbol, "price": q.price, "change_pct": q.change_pct,
+            "source": q.source, "asset_class": q.asset_class, "currency": q.currency,
+            "timestamp": q.timestamp.isoformat()}
+
+
 @app.get("/api/report/generate")
 async def report_generate(type: str = "full", format: str = "pdf"):
     """Downloadable daily brief assembled from LIVE data: current regime, the four signal

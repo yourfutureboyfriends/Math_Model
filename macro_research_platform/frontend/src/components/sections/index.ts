@@ -88,6 +88,10 @@ export const SystemHealthSection = lazy(() =>
   import('./macro/SystemHealthSection').then(m => ({ default: m.SystemHealthSection }))
 );
 
+export const DataProvidersSection = lazy(() =>
+  import('./macro/DataProvidersSection').then(m => ({ default: m.DataProvidersSection }))
+);
+
 export const DataExplorerSection = lazy(() =>
   import('./macro/DataExplorerSection').then(m => ({ default: m.DataExplorerSection }))
 );
