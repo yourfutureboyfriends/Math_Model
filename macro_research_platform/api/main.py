@@ -8389,6 +8389,42 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[STARTUP] Could not start risk warm loop: {e}")
 
+    async def _endpoints_warm_loop():
+        # Keep the slow live-data endpoints' TTL caches warm so user requests always hit the
+        # cache and never wait on a cold FRED/yahoo fetch. Each fetch is offloaded to a worker
+        # thread (its own event loop) so the blocking I/O never stalls the main event loop —
+        # this is the piece that stops the dashboard mount-storm saturation. Best-effort:
+        # any failure just leaves that endpoint's own ttl_cache to handle the next request.
+        await _asyncio.sleep(8)  # let the first dashboard warm settle
+        try:
+            from api.routers.market import get_rates, get_market_overview
+            from api.routers.signals import get_yield_curve_signal
+            targets = [health_check, get_cot_data, get_economic_calendar,
+                       get_rates, get_market_overview, get_yield_curve_signal]
+        except Exception as e:
+            logger.warning(f"[warm] could not resolve endpoint targets: {e}")
+            return
+
+        def _run_in_fresh_loop(fn):
+            try:
+                _asyncio.run(fn())
+            except Exception as e:
+                logger.debug(f"[warm] {getattr(fn, '__name__', '?')}: {str(e)[:80]}")
+
+        while True:
+            for fn in targets:
+                try:
+                    await _asyncio.to_thread(_run_in_fresh_loop, fn)
+                except Exception as e:
+                    logger.debug(f"[warm] offload failed: {str(e)[:80]}")
+            await _asyncio.sleep(20)  # < every TTL, so caches never lapse
+
+    try:
+        _asyncio.create_task(_endpoints_warm_loop())
+        logger.info("[STARTUP] Slow-endpoint warm loop started")
+    except Exception as e:
+        logger.warning(f"[STARTUP] Could not start endpoints warm loop: {e}")
+
     async def _pit_snapshot_loop():
         # Periodic point-in-time snapshots for the audit "time machine".
         from api import audit_store
@@ -8558,7 +8594,7 @@ async def subscribe_market_data(sid, data):
 
 
 @app.get("/api/health")
-@ttl_cache(30)
+@ttl_cache(120)
 async def health_check():
     df_live = load_processed_data()
     df_sample = load_sample_data() if df_live is None else None
