@@ -67,7 +67,7 @@ export function CorrelationMatrixSection() {
               </button>
             ))}
           </div>
-          <button onClick={() => load(window)} title="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
+          <button onClick={() => load(window)} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>

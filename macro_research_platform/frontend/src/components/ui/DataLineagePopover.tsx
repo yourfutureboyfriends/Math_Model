@@ -54,6 +54,8 @@ export function DataLineagePopover({ lineage }: { lineage: Lineage }) {
       <button
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
         title="Data lineage"
+        aria-label="Data lineage"
+        aria-expanded={open}
         className={`inline-flex items-center justify-center w-3.5 h-3.5 text-text-tertiary hover:text-bloomberg ${open ? 'text-bloomberg' : ''}`}
       >
         <Info className="w-3 h-3" />

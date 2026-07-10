@@ -43,7 +43,7 @@ export function RegimeOutlookSection() {
           <h2 className="section-title">Regime Transition Outlook</h2>
           {data && <DataLineagePopover lineage={{ source: data.source, fetched_at: data.as_of, formula: `Empirical P(next|current) over ${data.months_analysed} monthly regime classifications`, notes: data.note }} />}
         </div>
-        <button onClick={() => load()} title="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
+        <button onClick={() => load()} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>

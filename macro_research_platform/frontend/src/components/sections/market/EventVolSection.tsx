@@ -42,7 +42,7 @@ export function EventVolSection() {
           <h2 className="section-title">Event Volatility Forecast</h2>
           {data?.source && <DataLineagePopover lineage={{ source: data.source, fetched_at: data.as_of, formula: 'Annualized SPX realized vol in ±3 trading-day windows around the last 8 releases vs full-sample baseline', notes: data.note }} />}
         </div>
-        <button onClick={() => load()} title="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
+        <button onClick={() => load()} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>

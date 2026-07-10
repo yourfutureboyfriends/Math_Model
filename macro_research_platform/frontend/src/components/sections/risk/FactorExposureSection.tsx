@@ -57,7 +57,7 @@ export function FactorExposureSection() {
             <button onClick={() => setMode('vol')}
               className={`px-2 py-0.5 ${mode === 'vol' ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary'}`}>Vol Contribution</button>
           </div>
-          <button onClick={load} title="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
+          <button onClick={load} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>

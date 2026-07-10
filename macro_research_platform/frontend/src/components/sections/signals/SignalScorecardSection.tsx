@@ -44,7 +44,7 @@ export function SignalScorecardSection() {
           <h2 className="section-title">Signal Scorecard</h2>
           {data?.available && <span className="section-meta">{data.period_days}d · S&P 500</span>}
         </div>
-        <button onClick={load} title="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
+        <button onClick={load} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>

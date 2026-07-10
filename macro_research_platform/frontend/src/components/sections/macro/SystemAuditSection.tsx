@@ -66,7 +66,7 @@ export function SystemAuditSection() {
           <span className="section-tag"><ScrollText className="w-3 h-3" /></span>
           <h2 className="section-title">Audit &amp; Compliance</h2>
         </div>
-        <button onClick={load} title="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
+        <button onClick={load} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>

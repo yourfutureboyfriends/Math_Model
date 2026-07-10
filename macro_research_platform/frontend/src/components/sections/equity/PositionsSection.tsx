@@ -122,7 +122,7 @@ export function PositionsSection() {
           <h2 className="section-title">Positions & Portfolio</h2>
           {s && <span className="section-meta">{s.position_count} positions</span>}
         </div>
-        <button onClick={load} title="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
+        <button onClick={load} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
