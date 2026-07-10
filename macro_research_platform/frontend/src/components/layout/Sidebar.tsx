@@ -47,6 +47,7 @@ const navigation: NavSection[] = [
       { id: 'signals', label: 'Signal Interpretation', icon: '◆', permission: 'ml_signals' },
       { id: 'ensemble', label: 'Ensemble', icon: '◆', permission: 'ensemble', highlight: true },
       { id: 'signal-stack', label: 'Signal Stack', icon: '◆', permission: 'signal_stack' },
+      { id: 'signal-story', label: 'Signal Storytelling', icon: '◆', permission: 'signal_stack' },
       { id: 'signal-scorecard', label: 'Signal Scorecard', icon: '◆', permission: 'signal_stack', highlight: true },
       { id: 'alt-data', label: 'Alt-Data Positioning', icon: '◈', permission: 'signal_stack', highlight: true },
       { id: 'sector-allocation', label: 'Sector Allocation', icon: '◆', permission: 'sector_allocation' },

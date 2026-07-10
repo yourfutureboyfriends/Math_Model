@@ -44,6 +44,10 @@ export const SignalStackSection = lazy(() =>
   import('./signals/SignalStackSection').then(m => ({ default: m.SignalStackSection }))
 );
 
+export const SignalStorySection = lazy(() =>
+  import('./signals/SignalStorySection').then(m => ({ default: m.SignalStorySection }))
+);
+
 export const NowcastSection = lazy(() =>
   import('./macro/NowcastSection').then(m => ({ default: m.NowcastSection }))
 );

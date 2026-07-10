@@ -9415,6 +9415,43 @@ async def correlation_matrix_v1(window: int = 90):
             "source": "yfinance (daily closes)", **result}
 
 
+@app.get("/api/v1/signal-attribution")
+async def signal_attribution_v1():
+    """Storytelling layer: for Growth / Inflation / Liquidity / Risk, return the score, its
+    largest driver, a one-line plain-English explanation, and ranked input contributions —
+    computed from the live dashboard inputs (SPX, 10Y, 2Y, DXY, Fed, VIX). Phase 2."""
+    from api.calculations.storytelling import (
+        explain_growth, explain_inflation, explain_liquidity, explain_risk)
+    from api.handlers.market_handler import _fetch_closes_literal
+    from api.handlers.dashboard_handler import get_dashboard_data
+
+    # Live, correctly-normalized inputs from a fresh dashboard computation.
+    km = None
+    try:
+        dash = await get_dashboard_data(mode="live")
+        km = getattr(dash, "keyMetrics", None)
+    except Exception as e:
+        logger.debug(f"[signal-attribution] dashboard read failed: {e}")
+
+    def g(attr, default=None):
+        v = getattr(km, attr, default) if km is not None else default
+        return v if v is not None else default
+
+    # Keep SPX self-consistent: latest close as current, prior closes as history.
+    closes = await _fetch_closes_literal("^GSPC")
+    spx = g("spxLevel") or (closes[-1] if closes else None)
+    spx_hist = closes[-6:-1] if closes and len(closes) >= 6 else (closes[:-1] if closes else None)
+    signals = [
+        explain_growth(spx, spx_hist),
+        explain_inflation(g("tenYearYield"), g("twoYearYield")),
+        explain_liquidity(g("dxy"), g("tenYearYield"), g("fedRate")),
+        explain_risk(g("vix")),
+    ]
+    return {"available": True, "signals": signals,
+            "source": "computed from live dashboard inputs (yfinance/FRED)",
+            "as_of": datetime.now().isoformat()}
+
+
 @app.get("/api/v1/anomalies")
 async def anomalies_v1(window: int = 252):
     """System-wide anomaly scan: for each tracked market metric, z-score the latest value

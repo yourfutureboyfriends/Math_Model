@@ -35,6 +35,7 @@ import {
   CTATrendSection,
   BusinessLayerSection,
   EnsembleSection,
+  SignalStorySection,
   PerformanceAttributionSection,
   SystemHealthSection,
   SystemAuditSection,
@@ -167,6 +168,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Signal Stack">
           <Suspense fallback={<SectionSkeleton />}>
             <SignalStackSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="signal-story-wrap" className="terminal-section">
+        <ErrorBoundary sectionName="Signal Storytelling">
+          <Suspense fallback={<SectionSkeleton />}>
+            <SignalStorySection />
           </Suspense>
         </ErrorBoundary>
       </div>

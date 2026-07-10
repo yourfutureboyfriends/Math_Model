@@ -4,6 +4,7 @@
  */
 
 export { CTATrendSection } from './CTATrendSection';
+export { SignalStorySection } from './SignalStorySection';
 export { EnsembleSection } from './EnsembleSection';
 export { FactorDecompositionSection } from './FactorDecompositionSection';
 export { HorizonTensionSection } from './HorizonTensionSection';
