@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { useMacroStore, selectMeta, selectIsLoading } from '@/store/macroStore';
 import { SystemStatusBadge } from '@/components/SystemStatusBadge';
 import { DataHealthIndicator } from '@/components/DataHealthIndicator';
+import { DataIntegrityIndicator } from '@/components/DataIntegrityIndicator';
 import {
   fmtPriceInt,
   fmtVol,
@@ -341,6 +342,7 @@ export function Topbar({
 
         {/* Mode badge */}
         <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          <DataIntegrityIndicator />
           <DataHealthIndicator />
           <span className="font-mono text-bloomberg bg-bloomberg-muted border border-bloomberg-border px-2 py-0.5"
                 style={{ fontSize: 10, letterSpacing: '0.08em' }}>
