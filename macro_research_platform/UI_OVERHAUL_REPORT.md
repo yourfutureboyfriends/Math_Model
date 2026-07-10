@@ -68,6 +68,32 @@ Zero console errors. [screenshot: anomalies strip with flagged USD]
 
 ---
 
+## 🟡 Phase 5 — Unified MetricCard — CORE DONE (this session)
+
+One standard card composing every primitive, replacing per-tab one-offs.
+
+**The card (`components/ui/MetricCard.tsx`)** now composes: dominant monospace **headline**
+(hierarchy) + inline **sparkline** + **storytelling subtitle** (Phase 2) + **anomaly badge**
+top-right (Phase 3) + **data-lineage "i"** top-right (Phase 1) + **staleness** treatment
+(dashed amber border replaces the card style, Phase 1). All composition props are optional,
+so it's backward-compatible.
+
+**Wired into KeyMetrics** (flagship Overview panel): the Growth / Inflation / Fin-Conditions
+/ Risk / Recession cards now render via `MetricCard`, fed **real** explanations from
+`/api/v1/signal-attribution` (fetched once, indexed by signal), per-metric lineage, and live
+staleness from `useFreshness`.
+
+**Verification (live):** cards show headline + real explanation subtitle (Growth "S&P 500
++0.8% momentum", Inflation "10Y−2Y +27bps 4.54−4.27"), **5 lineage popovers** (open with real
+source/formula), and the **STALE** dashed-amber treatment on Inflation. Zero console errors.
+[screenshot: KeyMetrics with unified cards + STALE + lineage]
+
+**Remaining in Phase 5:** roll the same card out to the other metric panels (Commodities,
+FX Monitor, Fixed Income, …) — mechanical, one section at a time; and the type-scale token
+enforcement / decorative-color audit (5B/5C) app-wide.
+
+---
+
 ## ✅ Phase 2 — Signal Storytelling — COMPLETE (this session)
 
 Every core signal explains its own move instead of just showing a delta.
@@ -137,7 +163,7 @@ work, but relevant to honest phase accounting):
 | **2 — storytelling / explanation strings** | ✅ **DONE** (see above) | `/api/v1/signal-attribution` + `SignalStorySection`: explanation_text + ranked change-attribution for Growth/Inflation/Liquidity/Risk, built/tested/live-verified. Remaining sub-item: render the subtitle inline on the existing KeyMetrics cards (needs Phase-5 card unification). |
 | **3 — anomaly strip + badges** | ✅ **DONE** (see above) | `/api/v1/anomalies` + `AnomaliesStripSection` + `AnomalyBadge` built, tested, live-verified. Remaining sub-item: per-metric badges composed onto every card (needs Phase-5 card unification). |
 | **4b — regime-conditional correlation** | Not done | Needs historical regime-labelled periods to filter the matrix; the regime history store isn't wired to the correlation endpoint. |
-| **5 — unify MetricCard everywhere** | Not done | Mechanical but wide (dozens of sections); risk of visual regressions without a screenshot pass per section. |
+| **5 — unify MetricCard everywhere** | 🟡 Core DONE (card built + live on KeyMetrics) | Remaining: roll the same card out to Commodities/FX/Fixed-Income/etc. (mechanical, per-section) + 5B/5C type-scale token + decorative-color audit app-wide. |
 | **6 — predictive panels** | Not done | Event-vol forecasting needs historical realized-vol-around-events series; regime-transition matrix exists in backend but isn't surfaced as a forward panel. |
 | **7 — command palette NL routing** | Not done | Palette exists; needs a `{keywords,route,filter}` registry + fuzzy router. |
 | **8 — transparent personalization** | N/A | No smart-ordering added, so nothing to explain — compliant by absence. |
@@ -146,15 +172,14 @@ work, but relevant to honest phase accounting):
 ---
 
 ## Recommended next pass (highest value first)
-1. **Phase 5** unify the metric card — compose headline + sparkline + explanation subtitle
-   (Phase 2) + anomaly badge (Phase 3) + lineage icon (Phase 1) into the one `MetricCard`
-   used everywhere. This lands the "remaining sub-item" of Phases 1/2/3 at once.
-2. **Phase 6** predictive panels — surface the regime-transition probability matrix as a
+1. **Phase 6** predictive panels — surface the regime-transition probability matrix as a
    forward "X% chance of Slowdown in 30d" panel; event-vol forecasting off the calendar.
-3. **Phase 4b** regime-conditional filter on the heatmap.
+2. **Phase 5 rollout** — apply the unified `MetricCard` to Commodities / FX / Fixed-Income
+   panels (mechanical, per-section).
+3. **Phase 7** command-palette natural-language routing (registry + fuzzy router).
 
 ## Cumulative status: **Phases 2, 3, 4 complete** (real, tested, live-verified); **Phase 1A
-lineage popover built & wired**. Primitives shipped: `CorrelationHeatmap`, `AnomalyBadge`,
-`DataLineagePopover` (+ existing `MetricCard`, `Sparkline`, `SourceTag`, `StaleBadge`).
-Backend calc modules added: `correlation_matrix`, `historical_band`, `storytelling` — all
-with known-answer tests (205 backend tests pass).
+lineage popover** and **Phase 5 unified card** built & live on KeyMetrics. Primitives shipped:
+`CorrelationHeatmap`, `AnomalyBadge`, `DataLineagePopover`, unified `MetricCard` (+ existing
+`Sparkline`, `SourceTag`, `StaleBadge`). Backend calc modules added: `correlation_matrix`,
+`historical_band`, `storytelling` — all with known-answer tests (205 backend tests pass).
