@@ -1,10 +1,10 @@
-// Phase 8 — Key Metrics Section (Redesigned) + Phase 1E Store Integration
-// Six KPI cards using macroStore data and format library
+// Phase 5 — Key Metrics Section using the unified MetricCard
+// Signal cards now compose headline + sparkline + storytelling subtitle (Phase 2) +
+// data-lineage "i" (Phase 1) + staleness (Phase 1), from the shared MetricCard primitive.
 
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { AnimatedValue } from '@/components/ui';
-import { StaleBadge } from '@/components/ui/StaleBadge';
+import { useEffect, useState } from 'react';
+import { MetricCard } from '@/components/ui/MetricCard';
+import { useFreshness, freshnessFor } from '@/hooks/useFreshness';
 import { useMacroStore } from '@/store/macroStore';
 import { fmtSignal, fmtDuration, fmtProbabilityPrecise } from '@/utils/format';
 import type { KeyMetrics } from '@/types';
@@ -13,109 +13,22 @@ interface KeyMetricsSectionProps {
   data?: KeyMetrics;
 }
 
-// SVG sparkline builder
-function buildSparklinePath(data: number[], width: number, height: number) {
-  if (!data || data.length < 2) return '';
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  const points = data.map((v, i) => {
-    const x = Math.round((i / (data.length - 1)) * width * 10) / 10;
-    const y = Math.round((height - ((v - min) / range) * height) * 10) / 10;
-    return `${x},${y}`;
-  });
-  return `M${points.join('L')}`;
-}
-
-// Parse numeric value from formatted string for animation
-function parseNumericValue(formatted: string): number {
-  const cleaned = formatted.replace(/[$,%]/g, '').replace(/[+-]/g, '');
-  const parsed = parseFloat(cleaned);
-  return isNaN(parsed) ? 0 : parsed;
-}
-
-function KPICard({
-  label,
-  value,
-  direction,
-  sparklineData,
-  valueColor,
-  numericValue,
-  suffix = '',
-  staleMetric,
-}: {
-  label: string;
-  value: string;
-  direction: 'up' | 'down' | 'neutral';
-  sparklineData?: number[];
-  valueColor?: string;
-  numericValue?: number;
-  suffix?: string;
-  staleMetric?: string;
-}) {
-  const getValueColor = () => {
-    if (valueColor) return valueColor;
-    if (direction === 'up') return 'text-green';
-    if (direction === 'down') return 'text-red';
-    return 'text-text-primary';
-  };
-
-  const getDirectionIcon = () => {
-    if (direction === 'up') return <TrendingUp className="w-3 h-3" />;
-    if (direction === 'down') return <TrendingDown className="w-3 h-3" />;
-    return <Minus className="w-3 h-3" />;
-  };
-
-  // Parse numeric value for animation
-  const parsedValue = numericValue ?? parseNumericValue(value);
-
-  return (
-    <div className="relative h-20 bg-surface-1 border border-border p-3 flex flex-col">
-      {/* Top accent line */}
-      <div className="absolute top-0 left-0 right-0 h-px bg-bloomberg" />
-
-      {/* Header: Label + Direction */}
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-2xs text-text-secondary uppercase tracking-wider flex items-center gap-1">
-          {label}
-          {staleMetric && <StaleBadge metric={staleMetric} />}
-        </span>
-        <div
-          className={cn(
-            'flex items-center gap-0.5 text-2xs',
-            direction === 'up' ? 'text-green' : direction === 'down' ? 'text-red' : 'text-text-tertiary'
-          )}
-        >
-          {getDirectionIcon()}
-          <span className="uppercase">{direction}</span>
-        </div>
-      </div>
-
-      {/* Value with animation */}
-      <div className={cn('text-lg font-mono font-bold tabular-nums', getValueColor())}>
-        <AnimatedValue
-          value={parsedValue}
-          decimals={suffix === '%' ? 1 : 2}
-          suffix={suffix}
-          duration={800}
-        />
-      </div>
-
-      {/* Sparkline */}
-      {sparklineData && sparklineData.length > 1 && (
-        <div className="mt-auto">
-          <svg width="80" height="20" className="overflow-visible">
-            <path
-              d={buildSparklinePath(sparklineData, 80, 20)}
-              fill="none"
-              stroke="var(--bloomberg)"
-              strokeWidth="1.5"
-            />
-          </svg>
-        </div>
-      )}
-    </div>
-  );
+/** Fetch the Phase-2 signal explanations once and index them by signal name. */
+function useSignalStories() {
+  const [stories, setStories] = useState<Record<string, any>>({});
+  const [meta, setMeta] = useState<{ source?: string; as_of?: string }>({});
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/v1/signal-attribution').then((r) => r.json()).then((d) => {
+      if (!alive || !d?.signals) return;
+      const map: Record<string, any> = {};
+      d.signals.forEach((s: any) => { map[s.signal] = s; });
+      setStories(map);
+      setMeta({ source: d.source, as_of: d.as_of });
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  return { stories, meta };
 }
 
 export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
@@ -123,6 +36,21 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
   const store = useMacroStore((state) => state);
   const signals = store.signals;
   const regime = store.regime;
+  const { stories, meta } = useSignalStories();
+  const freshness = useFreshness();
+  const isStale = (metric: string) => {
+    const f = freshnessFor(freshness, metric);
+    return !!f && f.status !== 'FRESH' && f.status !== 'UNKNOWN';
+  };
+  // Lineage builder for a signal card (Phase 1), sharing the attribution provenance.
+  const lineageFor = (name: string, value: number) => {
+    const s = stories[name];
+    return {
+      value, source: meta.source || 'computed (yfinance/FRED)', fetched_at: meta.as_of,
+      staleness_threshold_seconds: 900,
+      formula: s ? `Score decomposed into ranked contributions; driver: ${s.driver}` : 'Composite signal score',
+    };
+  };
   // KeyMetricsSection is rendered without a `data` prop, so fall back to the raw
   // dashboard keyMetrics held in the store. Without this, recession/sparklines
   // defaulted to 0 and the card showed "0.0%" despite the API returning 13%.
@@ -163,62 +91,67 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
         </div>
       </div>
 
-      {/* KPI Grid */}
+      {/* KPI Grid — unified MetricCard (Phase 5) */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <KPICard
+        <MetricCard
           label="Growth"
           value={fmtSignal(growthScore) ?? '—'}
-          numericValue={growthScore}
           direction={getScoreDirection(growthScore)}
           sparklineData={growthSparkline}
-          valueColor={getScoreDirection(growthScore) === 'up' ? 'text-green' : 'text-text-primary'}
-          staleMetric="growth"
+          color={getScoreDirection(growthScore) === 'up' ? 'var(--green)' : undefined}
+          explanation={stories.Growth?.explanation_text}
+          lineage={lineageFor('Growth', growthScore)}
+          stale={isStale('growth')}
         />
 
-        <KPICard
+        <MetricCard
           label="Inflation"
           value={fmtSignal(inflationScore) ?? '—'}
-          numericValue={inflationScore}
           direction={getScoreDirection(inflationScore)}
           sparklineData={inflationSparkline}
-          valueColor={getScoreDirection(inflationScore) === 'up' ? 'text-amber' : 'text-green'}
-          staleMetric="inflation"
+          explanation={stories.Inflation?.explanation_text}
+          lineage={lineageFor('Inflation', inflationScore)}
+          stale={isStale('inflation')}
         />
 
-        <KPICard
+        <MetricCard
           label="Fin. Conditions"
           value={fmtSignal(liquidityScore) ?? '—'}
-          numericValue={liquidityScore}
           direction="neutral"
           sparklineData={liquiditySparkline}
+          explanation={stories.Liquidity?.explanation_text}
+          lineage={lineageFor('Liquidity', liquidityScore)}
+          stale={isStale('liquidity')}
         />
 
-        <KPICard
+        <MetricCard
           label="Risk Appetite"
           value={fmtSignal(riskScore) ?? '—'}
-          numericValue={riskScore}
           direction={getScoreDirection(riskScore)}
           sparklineData={riskSparkline}
+          explanation={stories.Risk?.explanation_text}
+          lineage={lineageFor('Risk', riskScore)}
+          stale={isStale('risk')}
         />
 
-        <KPICard
+        <MetricCard
           label="Recession Risk"
           value={km?.recession?.formatted ?? '—'}
-          numericValue={isNaN(km?.recession?.value ?? 0) ? 0 : (km?.recession?.value ?? 0)}
           direction={isNaN(km?.recession?.value ?? 0) ? 'neutral' : ((km?.recession?.value ?? 0) > 15 ? 'down' : 'up')}
           sparklineData={recessionSparkline}
-          valueColor={getRecessionColor(isNaN(km?.recession?.value ?? 0) ? 0 : (km?.recession?.value ?? 0))}
-          suffix="%"
+          color={getRecessionColor(isNaN(km?.recession?.value ?? 0) ? 0 : (km?.recession?.value ?? 0)).replace('text-', 'var(--') + ')'}
+          lineage={{ source: 'ensemble recession model', fetched_at: meta.as_of, formula: 'Estrella-Mishkin probit + Sahm + ensemble' }}
+          stale={isStale('recession')}
         />
 
         {/* Regime Duration - Uses store */}
-        <div className="relative h-20 bg-surface-1 border border-border p-3 flex flex-col">
+        <div className="relative h-full min-h-20 bg-surface-1 border border-border p-3 flex flex-col">
           <div className="absolute top-0 left-0 right-0 h-px bg-bloomberg" />
           <div className="flex items-center justify-between mb-1">
             <span className="text-2xs text-text-secondary uppercase tracking-wider">Duration</span>
             <span className="text-2xs text-text-tertiary uppercase">Current</span>
           </div>
-          <div className="text-lg font-mono font-bold text-text-primary tabular-nums">
+          <div className="text-2xl font-mono font-bold text-text-primary tabular-nums leading-none">
             {regime.duration ? fmtDuration(regime.duration) : '—'}
           </div>
           <div className="mt-auto text-xs text-text-tertiary truncate">
