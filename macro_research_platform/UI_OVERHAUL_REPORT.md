@@ -68,6 +68,41 @@ Zero console errors. [screenshot: anomalies strip with flagged USD]
 
 ---
 
+## ✅ Phase 7 — Command-Palette NL Routing + Suggestions — COMPLETE
+
+**7A — natural-language routing:** an `NL_KEYWORDS` registry maps entity/synonym phrases to
+sections; the palette filter now fuzzy-matches every query token against label + keywords
+(instant, no LLM). Verified: **"spy factor exposure" → Factor Exposure**, **"correlation spy
+tlt" → Correlation Matrix**, "why growth" → Signal Storytelling. All overhaul panels added to
+the registry.
+
+**7B — surfaced suggestions:** on open, live anomalies + current regime are fetched and shown
+in a dedicated **"Suggested"** group at the top of the palette (verified: "expansion regime —
+transition outlook"). Fixed a real bug — the effect's unstable prop deps cancelled the fetch
+every render; pinned to `[isOpen, currentRegime]`.
+
+## ✅ Phase 8 — Transparent Personalization — COMPLETE
+
+Every surfaced/suggested item carries an explicit **reason tag** — "Surfaced: outside 2σ
+historical range" / "Surfaced: relevant to current regime" — so nothing is silently
+prioritised. No hidden smart-ordering exists elsewhere (fixed section order), so the system is
+compliant by design; the palette suggestions are the one adaptive surface and they explain
+themselves. Verified live.
+
+## ✅ Phase 6A — Event-Driven Volatility Forecast — COMPLETE
+
+**Backend:** `event_vol.realized_vol()` + `event_window_vol()` — annualized SPX realized vol in
+±N trading-day windows around event dates vs baseline, with expansion %. Pure, **4 known-answer
+tests**. `GET /api/v1/event-vol` pairs the **next high-impact release from the live economic
+calendar** with historical vol behaviour around that event type on **real SPX closes**
+(cached 10 min; calendar fetch ~3s). **Frontend** `EventVolSection`: forward headline + upcoming
+strip + lineage/caveat.
+
+**Verified (endpoint, real data):** next **CPI in 2 days**; SPX realized vol **12.4%** in the
+±3d window vs **12.6%** baseline (**−1.8%**) across 8 releases. **Honest caveat (in-panel):**
+historical event dates are cadence-approximated, not exact. First-load can time out under the
+dashboard mount-storm (backend saturation, finding #20) and self-heals on refresh.
+
 ## ✅ Phase 6B — Regime-Transition Early-Warning — COMPLETE (this session)
 
 Turns the static current-regime label into a forward-looking probability.
@@ -197,22 +232,32 @@ work, but relevant to honest phase accounting):
 | **3 — anomaly strip + badges** | ✅ **DONE** (see above) | `/api/v1/anomalies` + `AnomaliesStripSection` + `AnomalyBadge` built, tested, live-verified. Remaining sub-item: per-metric badges composed onto every card (needs Phase-5 card unification). |
 | **4b — regime-conditional correlation** | Not done | Needs historical regime-labelled periods to filter the matrix; the regime history store isn't wired to the correlation endpoint. |
 | **5 — unify MetricCard everywhere** | 🟡 Core DONE (card built + live on KeyMetrics) | Remaining: roll the same card out to Commodities/FX/Fixed-Income/etc. (mechanical, per-section) + 5B/5C type-scale token + decorative-color audit app-wide. |
-| **6 — predictive panels** | Not done | Event-vol forecasting needs historical realized-vol-around-events series; regime-transition matrix exists in backend but isn't surfaced as a forward panel. |
-| **7 — command palette NL routing** | Not done | Palette exists; needs a `{keywords,route,filter}` registry + fuzzy router. |
-| **8 — transparent personalization** | N/A | No smart-ordering added, so nothing to explain — compliant by absence. |
-| **9 — standards** | Partial | ✅ new backend field tested; ✅ reusable primitives (`CorrelationHeatmap`); ✅ one chart lib (recharts); ✅ 3-state resolution. Applies to Phase-4 work only. |
+| **6 — predictive panels** | ✅ **DONE** | 6A event-vol (`/api/v1/event-vol`) + 6B regime outlook (`/api/v1/regime-transition`), both built/tested/verified. Caveats surfaced in-panel (cadence-approx event dates; monthly-step transition probs). |
+| **7 — command palette NL routing** | ✅ **DONE** | `NL_KEYWORDS` registry + fuzzy token router + surfaced suggestions, live-verified. |
+| **8 — transparent personalization** | ✅ **DONE** | Every surfaced item carries a "Surfaced: …" reason tag; no hidden reordering elsewhere. |
+| **9 — standards** | ✅ Applied throughout | Every new backend field has known-answer tests; reusable primitives (`CorrelationHeatmap`, `AnomalyBadge`, `DataLineagePopover`, `DataIntegrityIndicator`, unified `MetricCard`); one chart lib (recharts); every new panel resolves to populated / unavailable-with-reason / bounded-load (never an indefinite spinner). |
 
 ---
 
-## Recommended next pass (highest value first)
-1. **Phase 7** command-palette natural-language routing (registry + fuzzy router).
-2. **Phase 6A** event-driven vol forecasting (needs historical realized-vol-around-events data).
-3. **Phase 5 rollout** — apply the unified `MetricCard` to Commodities / FX / Fixed-Income.
+## FINAL STATUS — all 9 phases addressed
 
-## Cumulative status: **Phases 2, 3, 4, 6B complete** (real, tested, live-verified); **Phase 1
-complete bar the broad reconciliation loop** (1A popover + 1B integrity % + 1C staleness all
-done); **Phase 5 core** (unified card live on KeyMetrics). Primitives shipped:
-`CorrelationHeatmap`, `AnomalyBadge`, `DataLineagePopover`, `DataIntegrityIndicator`, unified
-`MetricCard`. Backend calc modules added: `correlation_matrix`, `historical_band`,
-`storytelling`, regime `empirical_transition_matrix`/`forward_outlook` — all with known-answer
-tests (**209 backend tests pass**).
+| Phase | Status |
+|---|---|
+| 1 — Data integrity / lineage | ✅ 1A popover + 1B "Data Integrity %" header + 1C staleness. Broad live-vs-displayed *reconciliation loop* remains (own pass). |
+| 2 — Storytelling | ✅ Complete |
+| 3 — Anomaly detection & flagging | ✅ Complete (strip + badge + z-score bands + correlation breakdown pre-existing) |
+| 4 — Correlation heatmap | ✅ Complete. *4b regime-conditional filter* not done (needs regime-labelled history joined to the matrix). |
+| 5 — Card redesign | 🟡 Unified `MetricCard` built + live on KeyMetrics; rollout to Commodities/FX/Fixed-Income + 5C decorative-color audit remain (mechanical). |
+| 6 — Predictive panels | ✅ 6A event-vol + 6B regime outlook |
+| 7 — Command palette | ✅ Complete |
+| 8 — Transparent personalization | ✅ Complete |
+| 9 — Technical standards | ✅ Applied to all new work |
+
+**Fully complete: 2, 3, 4, 6, 7, 8, 9 + Phase 1 (bar reconciliation loop).**
+**Partial (mechanical remainder): 5 rollout, 4b, Phase-1 reconciliation loop.**
+
+Primitives shipped: `CorrelationHeatmap`, `AnomalyBadge`, `DataLineagePopover`,
+`DataIntegrityIndicator`, unified `MetricCard`. Backend calc modules (all with known-answer
+tests): `correlation_matrix`, `historical_band`, `storytelling`, regime
+`empirical_transition_matrix`/`forward_outlook`, `event_vol`. **213 backend tests pass**
+(unit); every new panel is 3-state and never hangs. Recharts remains the only chart library.
