@@ -68,6 +68,32 @@ Zero console errors. [screenshot: anomalies strip with flagged USD]
 
 ---
 
+## ✅ Phase 2 — Signal Storytelling — COMPLETE (this session)
+
+Every core signal explains its own move instead of just showing a delta.
+
+**Backend (real, tested, traceable):**
+- `api/calculations/storytelling.py` — `explain_growth / inflation / liquidity / risk`:
+  reuse the dashboard signal math (so the score matches), decompose each into **named input
+  contributions**, rank by magnitude, identify the **largest driver**, and emit a one-line
+  `explanation_text`. Pure, **6 known-answer tests**.
+- `GET /api/v1/signal-attribution` — computes all four from **live** dashboard inputs
+  (`get_dashboard_data`: SPX/10Y/2Y/DXY/Fed/VIX). Caught & fixed a data-integrity bug: an
+  early version mixed a stale 5800 SPX level with fresh ~7500 history → bogus −23% momentum;
+  now SPX is kept self-consistent (latest close vs prior closes).
+
+**Frontend:**
+- `SignalStorySection` — per signal: headline score + trend + **one-line explanation
+  subtitle** (2A); click to expand a **ranked change-attribution breakdown** with signed
+  contribution bars and the named driver (2B). `DataLineagePopover` on the header.
+
+**Verification (live, values match the tickers):** Growth +0.8% momentum → 0.52;
+Inflation 10Y−2Y **+27bps (4.54%−4.27%)** → 0.26; Liquidity loose DXY 100.7 → 0.66; Risk
+VIX 15.8 → 0.81. Expanded Growth card showed `driver: SPX recent return` with ranked bars.
+Zero console errors. [screenshot: storytelling panel + expanded attribution]
+
+---
+
 ## 🟡 Phase 1A — Data-Lineage Popover — BUILT & wired (this session)
 
 The traceability primitive Phase 1 is built on. New reusable `DataLineagePopover`
@@ -108,7 +134,7 @@ work, but relevant to honest phase accounting):
 | Phase | Status | Blocker / reason |
 |---|---|---|
 | **1 — full lineage layer** | 🟡 Popover BUILT + wired (2 panels); staleness live | Remaining: per-metric lineage object on **every** endpoint, the live-vs-displayed reconciliation loop, and the header "Data Integrity %" — cross-cutting, high-regression; own pass. |
-| **2 — storytelling / explanation strings** | Not started | Requires each calculation to expose **sub-component contributions** (which series moved, by how much) — a backend change across growth/inflation/liquidity/regime calcs, then an `explanation_text` field + hover attribution. Substantial. |
+| **2 — storytelling / explanation strings** | ✅ **DONE** (see above) | `/api/v1/signal-attribution` + `SignalStorySection`: explanation_text + ranked change-attribution for Growth/Inflation/Liquidity/Risk, built/tested/live-verified. Remaining sub-item: render the subtitle inline on the existing KeyMetrics cards (needs Phase-5 card unification). |
 | **3 — anomaly strip + badges** | ✅ **DONE** (see above) | `/api/v1/anomalies` + `AnomaliesStripSection` + `AnomalyBadge` built, tested, live-verified. Remaining sub-item: per-metric badges composed onto every card (needs Phase-5 card unification). |
 | **4b — regime-conditional correlation** | Not done | Needs historical regime-labelled periods to filter the matrix; the regime history store isn't wired to the correlation endpoint. |
 | **5 — unify MetricCard everywhere** | Not done | Mechanical but wide (dozens of sections); risk of visual regressions without a screenshot pass per section. |
@@ -120,12 +146,15 @@ work, but relevant to honest phase accounting):
 ---
 
 ## Recommended next pass (highest value first)
-1. **Phase 2** storytelling — expose sub-component contributions from the growth/inflation/
-   liquidity calcs so each score can explain its own move (largest driver).
-2. **Phase 4b** regime-conditional filter on the heatmap (connects regime engine to correlations).
-3. **Phase 1** universal wiring — put the lineage object on every metric + the header
-   "Data Integrity %" reconciliation indicator (the popover primitive is now ready).
+1. **Phase 5** unify the metric card — compose headline + sparkline + explanation subtitle
+   (Phase 2) + anomaly badge (Phase 3) + lineage icon (Phase 1) into the one `MetricCard`
+   used everywhere. This lands the "remaining sub-item" of Phases 1/2/3 at once.
+2. **Phase 6** predictive panels — surface the regime-transition probability matrix as a
+   forward "X% chance of Slowdown in 30d" panel; event-vol forecasting off the calendar.
+3. **Phase 4b** regime-conditional filter on the heatmap.
 
-## Cumulative status: **Phase 3 & 4 complete** (real, tested, live-verified); **Phase 1A
+## Cumulative status: **Phases 2, 3, 4 complete** (real, tested, live-verified); **Phase 1A
 lineage popover built & wired**. Primitives shipped: `CorrelationHeatmap`, `AnomalyBadge`,
 `DataLineagePopover` (+ existing `MetricCard`, `Sparkline`, `SourceTag`, `StaleBadge`).
+Backend calc modules added: `correlation_matrix`, `historical_band`, `storytelling` — all
+with known-answer tests (205 backend tests pass).
