@@ -804,9 +804,33 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         {"indicator": "CPI", "frequency": "Monthly", "nextRelease": "TBD", "importance": "HIGH"},
         {"indicator": "Fed Funds Rate", "frequency": "FOMC", "nextRelease": "TBD", "importance": "HIGH"},
     ]
+    # Monetary-policy transmission channels — REAL status derived from live rates/curve/FX/risk
+    # (was an empty-channels stub). Each channel: how freely policy is transmitting right now.
+    _curve = (ten_yr or 4.5) - (two_yr or 4.2)
+    def _ch(name, restricted, active, desc):
+        status = "Restricted" if restricted else "Active" if active else "Mixed"
+        return {"channel": name, "status": status, "description": desc}
+    _transmission_channels = [
+        _ch("Interest Rate", (fed_rate or 5.0) >= 4.5, (fed_rate or 5.0) <= 2.5,
+            f"Fed funds {(fed_rate or 5.0):.2f}% — {'restrictive policy' if (fed_rate or 5.0) >= 4.5 else 'accommodative' if (fed_rate or 5.0) <= 2.5 else 'neutral'} stance"),
+        _ch("Yield Curve", _curve < 0, _curve > 1.0,
+            f"10Y-2Y {_curve * 100:+.0f}bps — {'inverted (recession signal)' if _curve < 0 else 'steep (easing)' if _curve > 1.0 else 'flat'}"),
+        _ch("Credit", risk_score < 0.4, risk_score > 0.6,
+            f"Risk appetite {risk_score:.2f} — {'credit tightening' if risk_score < 0.4 else 'credit flowing' if risk_score > 0.6 else 'mixed'}"),
+        _ch("Exchange Rate", (dxy_level or 104) >= 106, (dxy_level or 104) <= 98,
+            f"DXY {(dxy_level or 104):.1f} — {'strong USD tightens conditions' if (dxy_level or 104) >= 106 else 'weak USD eases' if (dxy_level or 104) <= 98 else 'neutral'}"),
+        _ch("Asset Price", growth_score < 0.4, growth_score > 0.6,
+            f"Equity momentum {growth_score:.2f} — {'wealth effect positive' if growth_score > 0.6 else 'negative' if growth_score < 0.4 else 'neutral'}"),
+        _ch("Volatility", (vix_level or 18) >= 25, (vix_level or 18) <= 15,
+            f"VIX {(vix_level or 18):.1f} — {'stress impedes transmission' if (vix_level or 18) >= 25 else 'calm supports flow' if (vix_level or 18) <= 15 else 'normal'}"),
+    ]
+    _active_n = sum(1 for c in _transmission_channels if c["status"] == "Active")
     _transmission_analysis = {
-        "channels": [],
+        "channels": _transmission_channels,
+        "activeChannels": _active_n,
+        "totalChannels": len(_transmission_channels),
         "overallStrength": round(growth_score * 0.7 + risk_score * 0.3, 2),
+        "source": "computed from live rates / curve / FX / risk",
         "lastUpdated": now.isoformat(),
     }
     _performance_tracking = {

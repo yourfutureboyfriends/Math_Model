@@ -33,6 +33,7 @@ import {
   PositionsSection,
   TradeWorkflowSection,
   CTATrendSection,
+  COTPositioningSection,
   BusinessLayerSection,
   EnsembleSection,
   SignalStorySection,
@@ -214,6 +215,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Factor Rotation">
           <Suspense fallback={<SectionSkeleton />}>
             <FactorRotationSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="COT Positioning">
+          <Suspense fallback={<SectionSkeleton />}>
+            <COTPositioningSection />
           </Suspense>
         </ErrorBoundary>
       </div>
