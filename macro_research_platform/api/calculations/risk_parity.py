@@ -127,6 +127,57 @@ def sixty_forty(labels: Sequence[str]) -> np.ndarray:
     return w / w.sum()
 
 
+def risk_contribution_bands(returns: np.ndarray, n_boot: int = 300,
+                            seed: int = 0) -> Dict:
+    """Phase 2C — "Uncertain Risk Parity" fragility bands.
+
+    Standard RP assumes the covariance is known. It isn't. Resample the return history
+    (block-free bootstrap of rows), recompute inverse-vol weights and each asset's percentage
+    risk contribution each time, and report the distribution. Wide bands = the "equal risk"
+    claim is fragile to estimation error. Shah, "Uncertain Risk Parity."
+    """
+    rng = np.random.default_rng(seed)
+    n_obs, n_assets = returns.shape
+    if n_obs < 20 or n_assets < 2:
+        return {"available": False, "reason": f"{n_obs} obs / {n_assets} assets — too few to bootstrap"}
+
+    rc_samples = np.zeros((n_boot, n_assets))
+    for b in range(n_boot):
+        idx = rng.integers(0, n_obs, n_obs)
+        sample = returns[idx]
+        w = inverse_vol_weights(sample)
+        cov = np.cov(sample, rowvar=False)
+        port_var = float(w @ cov @ w)
+        if port_var <= 0:
+            rc_samples[b] = w
+            continue
+        mrc = cov @ w                          # marginal risk contribution
+        rc = w * mrc / port_var                # % risk contribution, sums to 1
+        rc_samples[b] = rc
+
+    mean = rc_samples.mean(axis=0)
+    lo = np.percentile(rc_samples, 5, axis=0)
+    hi = np.percentile(rc_samples, 95, axis=0)
+    width = hi - lo
+    # "equal risk" target is 1/n each; fragility = how far the 90% band spans relative to target
+    target = 1.0 / n_assets
+    fragility = round(float(width.mean() / target), 2)
+    return {
+        "available": True,
+        "n_boot": n_boot,
+        "target_risk_share": round(target, 3),
+        "per_asset": [
+            {"asset": i, "mean_risk_share": round(float(mean[i]), 3),
+             "p5": round(float(lo[i]), 3), "p95": round(float(hi[i]), 3),
+             "band_width": round(float(width[i]), 3)}
+            for i in range(n_assets)
+        ],
+        "fragility_ratio": fragility,
+        "note": (f"90% risk-contribution bands span ×{fragility} of the equal-risk target on "
+                 f"average — {'wide: the equal-risk claim is estimation-fragile' if fragility > 0.5 else 'reasonably tight'}."),
+    }
+
+
 def backtest(weights: np.ndarray, returns: np.ndarray) -> Dict:
     """Sharpe / Sortino / max drawdown of a static-weight portfolio on `returns`."""
     port = returns @ weights

@@ -49,6 +49,10 @@ import {
   InternationalMacroSection,
   RegimeTransitionSection,
   RegimeOutlookSection,
+  QuadrantsSection,
+  StreamAgreementSection,
+  FactorValidationSection,
+  RiskParityCompareSection,
   MomentumVetoSection,
   ValuationSection,
   NewsSentimentSection,
@@ -227,6 +231,22 @@ export function DashboardPage() {
         </ErrorBoundary>
       </div>
 
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Signal Stream Agreement">
+          <Suspense fallback={<SectionSkeleton />}>
+            <StreamAgreementSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Factor OOS Validation">
+          <Suspense fallback={<SectionSkeleton />}>
+            <FactorValidationSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
       <div id="model-agreement" className="terminal-section">
         <ErrorBoundary sectionName="Model Agreement">
           <Suspense fallback={<SectionSkeleton />}>
@@ -328,6 +348,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Risk Parity">
           <Suspense fallback={<SectionSkeleton />}>
             <RiskParitySection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Risk Parity Comparison">
+          <Suspense fallback={<SectionSkeleton />}>
+            <RiskParityCompareSection />
           </Suspense>
         </ErrorBoundary>
       </div>
@@ -458,6 +486,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Regime Outlook">
           <Suspense fallback={<SectionSkeleton />}>
             <RegimeOutlookSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Four Quadrants">
+          <Suspense fallback={<SectionSkeleton />}>
+            <QuadrantsSection />
           </Suspense>
         </ErrorBoundary>
       </div>

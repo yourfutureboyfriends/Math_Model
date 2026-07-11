@@ -80,6 +80,22 @@ export const RegimeOutlookSection = lazy(() =>
   import('./macro/RegimeOutlookSection').then(m => ({ default: m.RegimeOutlookSection }))
 );
 
+export const QuadrantsSection = lazy(() =>
+  import('./macro/QuadrantsSection').then(m => ({ default: m.QuadrantsSection }))
+);
+
+export const StreamAgreementSection = lazy(() =>
+  import('./signals/StreamAgreementSection').then(m => ({ default: m.StreamAgreementSection }))
+);
+
+export const FactorValidationSection = lazy(() =>
+  import('./signals/FactorValidationSection').then(m => ({ default: m.FactorValidationSection }))
+);
+
+export const RiskParityCompareSection = lazy(() =>
+  import('./risk/RiskParityCompareSection').then(m => ({ default: m.RiskParityCompareSection }))
+);
+
 export const SystemAuditSection = lazy(() =>
   import('./macro/SystemAuditSection').then(m => ({ default: m.SystemAuditSection }))
 );

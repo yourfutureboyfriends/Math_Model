@@ -2,7 +2,8 @@
 
 A research-fidelity round: methodologies from Bridgewater, HRP/CVaR academic work, and AQR's
 discipline, each cited and each reporting **honest** numbers (including where a method does not
-beat the simpler baseline). Delivered Phases 1–2 in full; Phases 3–4 scoped honestly below.
+beat the simpler baseline). **All five phases are now delivered** — backend (pure, tested calc
+modules + endpoints) and frontend (four live panels). Test suite: **254 passing**.
 
 ## Phase 1 — Bridgewater Four Quadrants ✅
 
@@ -44,23 +45,58 @@ Five schemes backtested on the **same real returns** (SPX / TLT / DBC / Gold / H
 - Citations: Risk Parity and its Discontents (SSRN 2025); HRP/CVaR-RP (Brazilian Review of
   Finance 2026); López de Prado (2016) HRP; Shah "Uncertain Risk Parity."
 
-## Phase 5 — methodology page + confidence ✅ (for the shipped work)
-`GET /api/v1/methodology` now returns a `research_citations` block mapping each model change to
-its source **and a Model Confidence rating** (e.g. yield-curve recession model = *high, strong
-OOS evidence*; HRP = *low-medium, ~1yr local backtest only*).
+## Phase 2C — risk-contribution fragility bands ✅
+`risk_contribution_bands()` (**3 tests**) bootstraps the return history (300 resamples),
+recomputes inverse-vol weights + each asset's % risk contribution each time, and reports the 90%
+band + a fragility ratio. Surfaced in the Risk Parity panel. **Honest finding:** inverse-vol RP
+does NOT deliver equal risk — live it hands SPX and HY ~27% of portfolio risk each while
+Commodities gets ~7%. The "equal risk" label is aspirational, and the bands make that visible.
+Citation: Shah, "Uncertain Risk Parity."
 
-## Phases NOT completed this round (honest)
+## Phase 3 — Bridgewater 3-stream signal agreement ✅
+`stream_agreement.py` (**8 tests**) + `GET /api/v1/stream-agreement` + live panel. Live signals
+are reduced to three INDEPENDENT streams — macro drivers, intermarket action, capital flows —
+each risk-on/off/neutral; conviction + a position-sizing multiplier scale with the NUMBER of
+streams that agree, not any single model's confidence.
+- **Live example:** Macro *risk-off*, Intermarket *risk-off*, Capital Flows *risk-on* → 2/3 agree,
+  **conflicted**, size **×0.7** within the VaR budget. A single confident model would have sized
+  up; cross-stream disagreement correctly de-sizes it.
+- COT (external CFTC) is capped so the panel returns within budget; if positioning isn't warm the
+  flows stream degrades to neutral (honest absence, not a fabricated reading).
+- Citation: Bridgewater Associates — macro / intermarket / flows as independent evidence streams.
 
-| Phase | Status | Reason |
+## Phase 4 — factor out-of-sample validation ✅
+`factor_validation.py` (**4 tests**) + `GET /api/v1/factor-validation` + live panel. Each factor's
+exposure is fit in-sample (first half) and its R² measured on the held-out second half; factors
+whose explanatory power collapses out-of-sample are flagged UNSTABLE, and each factor's own max
+drawdown is shown.
+- **Live, honest result:** Quality (R² 0.88→0.92) and Value (0.63→0.47) hold up; **Momentum is
+  flagged UNSTABLE (R² 0.71 in-sample → 0.30 out-of-sample)** — exactly the overfitting signature
+  AQR warns about, surfaced rather than hidden.
+- Citation: AQR — Asness et al., "Fact, Fiction, and Factor Investing."
+
+## Phase 5 — methodology page + confidence ✅
+`GET /api/v1/methodology` returns a `research_citations` block mapping each model change to its
+source **and a Model Confidence rating** (e.g. yield-curve recession = *high, strong OOS
+evidence*; HRP = *low-medium, ~1yr local backtest only*).
+
+## Frontend ✅ (four live panels, verified in the running UI)
+`QuadrantsSection` (macro), `StreamAgreementSection` + `FactorValidationSection` (signals),
+`RiskParityCompareSection` (risk) — each self-fetching with the 3-state load pattern
+(populated / unavailable-with-reason / bounded 8s + retry), registered in the sidebar, and
+confirmed rendering real data with zero console errors.
+
+## Remaining honest caveat (proxy, not a gap)
+| Item | Status | Reason |
 |---|---|---|
-| **1B — surprise vs published consensus** | Proxy only | Uses trailing-trend surprise; wiring true economist-consensus surprises needs a consensus data feed (not available keyless). Documented as a proxy. |
-| **2C — bootstrapped risk-contribution uncertainty bands** | Not built | The "Uncertain Risk Parity" fragility bands (resampled covariance → risk-contribution distribution) are a real next add on top of the shipped `risk_parity` module. |
-| **3 — multi-stream signal agreement (Bridgewater 3-stream)** | Not built | Classifying signals into macro/intermarket/flows + a stream-agreement score that modulates trade-idea sizing is a cross-cutting change to the signal + trade-idea layers. Scoped, not done. |
-| **4 — factor OOS validation (AQR discipline)** | Not built | In-sample vs out-of-sample R² per factor + drawdown context on the factor-exposure model — a self-contained follow-up on the existing factor module. |
-| **Frontend panels** | Backend-first | `/api/v1/quadrants` and `/api/v1/risk-parity-compare` return real data; dedicated panels (quadrant view, RP method toggle with live comparison) are not yet wired — the data + honest numbers exist and are auditable via the endpoints. |
+| **1B — surprise vs *published* consensus** | Proxy | Growth/inflation surprise is measured vs each series' own trailing trend, a consensus proxy. True economist-consensus surprises need a paid consensus feed; documented as a proxy in the endpoint and panel lineage. |
 
 ## Honest bottom line
-Phases 1–2 are real, tested, cited, and report honest numbers. The headline research-fidelity
-point is respected: **the risk-parity comparison does not overstate — it explicitly flags that a
-1-year window cannot confirm the long-horizon RP-vs-60/40 finding the 2025 paper documents.** No
-number was cherry-picked; the ~1yr window is the actual limit of the keyless price history.
+All five phases are real, tested (254 passing), cited, and report honest numbers. The
+research-fidelity point holds throughout — nothing was tuned to look better:
+- The RP comparison **explicitly flags** that a 1-year window cannot confirm the long-horizon
+  RP-vs-60/40 finding the 2025 paper documents.
+- The RP fragility bands **admit** inverse-vol does not actually equalise risk.
+- Factor validation **flags its own Momentum factor as unstable** out-of-sample.
+- The stream-agreement panel **de-sizes** a position when its own streams disagree.
+No number was cherry-picked; the ~1yr window is the actual limit of the keyless price history.

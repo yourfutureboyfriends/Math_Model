@@ -8693,10 +8693,18 @@ async def methodology_v1():
          "citation": "López de Prado (2016) HRP; Brazilian Review of Finance (2026) HRP/CVaR-RP comparison",
          "confidence": "low-medium — ~1yr local backtest only, no long-history validation",
          "note": "HRP clusters the correlation matrix (robust to estimation error); CVaR-RP allocates by tail risk."},
-        {"model": "Factor exposure model",
-         "citation": "AQR — 'Fact, Fiction, and Factor Investing' (evidentiary discipline)",
-         "confidence": "medium — OLS loadings; out-of-sample validation flagged as a follow-up",
-         "note": "Factor timing has long drawdowns (value/momentum); use loadings with drawdown context."},
+        {"model": "Risk-contribution fragility bands (/api/v1/risk-parity-compare)",
+         "citation": "Shah — 'Uncertain Risk Parity'",
+         "confidence": "medium — bootstrap over the available ~1yr window",
+         "note": "Bootstraps inverse-vol risk contributions; live bands show RP does not truly equalise risk (SPX/HY ~27% each vs Commodities ~7%)."},
+        {"model": "Signal stream agreement (/api/v1/stream-agreement)",
+         "citation": "Bridgewater Associates — macro / intermarket / flows as independent evidence streams",
+         "confidence": "medium — heuristic stream classifiers; conviction scales with independent agreement",
+         "note": "Position sizing multiplier scales with the NUMBER of agreeing streams, not any single model's confidence."},
+        {"model": "Factor out-of-sample validation (/api/v1/factor-validation)",
+         "citation": "AQR — Asness et al., 'Fact, Fiction, and Factor Investing'",
+         "confidence": "medium — in/out-of-sample R² split on daily factor-ETF proxies",
+         "note": "Flags factors whose R² collapses out-of-sample; live it flags Momentum (0.71→0.30) as unstable."},
         {"model": "US yield-curve recession model",
          "citation": "Estrella & Mishkin (1998) probit",
          "confidence": "high — strong published out-of-sample evidence"},
@@ -9719,7 +9727,8 @@ async def risk_parity_compare_v1():
     from api.handlers.market_handler import _fetch_dated_closes_literal
     from api.calculations.factor_model import returns_from_closes
     from api.calculations.risk_parity import (
-        inverse_vol_weights, cvar_weights, hrp_weights, return_overlay_weights, sixty_forty, backtest)
+        inverse_vol_weights, cvar_weights, hrp_weights, return_overlay_weights, sixty_forty,
+        backtest, risk_contribution_bands)
 
     # Asset universe + simple capital-market expected returns (%) for the overlay.
     assets = {"SPX Equity": "^GSPC", "US Bonds (TLT)": "TLT", "Commodities (DBC)": "DBC",
@@ -9756,9 +9765,16 @@ async def risk_parity_compare_v1():
         m["beats_6040_sharpe"] = None if name == "60/40 Benchmark" else bool(m["sharpe"] > bench["sharpe"])
         rows.append(m)
 
+    # Phase 2C — bootstrapped risk-contribution fragility bands on the inverse-vol scheme.
+    bands = risk_contribution_bands(rets, n_boot=300)
+    if bands.get("available"):
+        for a in bands["per_asset"]:
+            a["asset"] = labels[a["asset"]]
+
     return {
         "available": True, "universe": labels, "observations": len(common),
         "results": rows,
+        "risk_contribution_uncertainty": bands,
         "note": "Full-sample static weights (a comparison of weighting schemes, not a walk-forward). "
                 "Per 'Risk Parity and its Discontents' (2025), pure risk weighting often does not beat 60/40.",
         "citations": ["Risk Parity and its Discontents (SSRN 2025)",
@@ -9804,6 +9820,142 @@ async def quadrants_v1():
     view["citation"] = "Bridgewater Associates — Four Quadrants / All Weather framework"
     view["as_of"] = datetime.now().isoformat()
     return view
+
+
+@app.get("/api/v1/stream-agreement")
+@ttl_cache(300)
+async def stream_agreement_v1():
+    """Bridgewater 3-stream signal agreement (Phase 3): classify live signals into three
+    INDEPENDENT evidence streams — macro drivers, intermarket action, capital flows — reduce
+    each to risk-on/off/neutral, and return an agreement score + position-sizing multiplier.
+    Conviction scales with the NUMBER of independent streams that agree, not the confidence of
+    any single model. Citation: Bridgewater Associates."""
+    from api.calculations.stream_agreement import (
+        macro_stream, intermarket_stream, flows_stream, stream_agreement)
+    from api.handlers.market_handler import get_rates_data, _credit_spread
+
+    def _norm(x):  # σ-scaled score -> [0,1]
+        return max(0.0, min(1.0, 0.5 + (x or 0.0) / 4.0))
+
+    # --- MACRO stream (heavy feature pipeline) + INTERMARKET/FLOWS externals all run
+    # concurrently, each capped, so the whole panel returns within the frontend's budget.
+    # Anything slow degrades to neutral. COT is the slow one (external CFTC).
+    async def _safe(coro, timeout):
+        try:
+            return await asyncio.wait_for(coro, timeout=timeout)
+        except (asyncio.TimeoutError, Exception):
+            return None
+
+    def _macro_scores():
+        df = load_processed_data()
+        if df is None:
+            df = load_sample_data()
+        return _compute_regime_scores(df) if df is not None else None
+
+    # Macro compute is local — run it threaded but UNCAPPED (it's the core of the panel; a stale
+    # empty is worse than waiting) concurrently with the capped network fetches.
+    scores, rates, hy, cot = await asyncio.gather(
+        _aio_to_thread(_macro_scores),
+        _safe(get_rates_data(), 4.0),
+        _safe(_credit_spread("High Yield", "BAMLH0A0HYM2", 350, 600, 320), 4.0),
+        _safe(get_cot_data(), 5.0),
+    )
+    if not scores:
+        return {"available": False, "reason": "No macro data available."}
+    g, i, l, rsk = scores.get("growth", 0.0), scores.get("inflation", 0.0), scores.get("liquidity", 0.0), scores.get("risk", 0.0)
+    macro = macro_stream(_norm(g), _norm(i), _norm(l))
+
+    curve_pct, hy_bps = None, None
+    if rates:
+        ten, two = rates.get("tenYear"), rates.get("twoYear")
+        curve_pct = (ten - two) if (ten is not None and two is not None) else None
+    if hy:
+        hy_bps = hy.get("spreadBps")
+    intermarket = intermarket_stream(curve_pct, hy_bps, _norm(-rsk))  # lower risk score = more appetite
+
+    # --- FLOWS stream (COT extremes; put/call unavailable keyless -> neutral) ---
+    long_ext = short_ext = None
+    if isinstance(cot, dict):
+        rows = cot.get("contracts", [])
+        long_ext = sum(1 for c in rows if c.get("extreme") and c.get("net_position", 0) > 0)
+        short_ext = sum(1 for c in rows if c.get("extreme") and c.get("net_position", 0) < 0)
+    flows = flows_stream(long_ext, short_ext, None)
+
+    result = stream_agreement(macro, intermarket, flows)
+    result["available"] = True
+    result["inputs"] = {
+        "macro": {"growth": round(g, 2), "inflation": round(i, 2), "liquidity": round(l, 2)},
+        "intermarket": {"curve_2s10s_pct": curve_pct, "hy_spread_bps": hy_bps, "risk_score": round(rsk, 2)},
+        "flows": {"cot_extreme_longs": long_ext, "cot_extreme_shorts": short_ext, "put_call": None},
+    }
+    result["source"] = "macro scores (FRED) + rates/credit (FRED) + CFTC COT"
+    result["citation"] = "Bridgewater Associates — macro / intermarket / flows as independent evidence streams"
+    result["as_of"] = datetime.now().isoformat()
+    return result
+
+
+@app.get("/api/v1/factor-validation")
+@ttl_cache(600)
+async def factor_validation_v1():
+    """Factor out-of-sample validation (Phase 4, AQR discipline): for each macro factor, fit the
+    exposure in-sample, measure R² in- vs out-of-sample, and flag factors whose explanatory power
+    does NOT survive out-of-sample (overfitting). Reports each factor's own max drawdown so tail
+    risk is visible. Citation: AQR 'Fact, Fiction, and Factor Investing'."""
+    import numpy as _np
+    from api.handlers.market_handler import _fetch_dated_closes_literal
+    from api.calculations.factor_model import returns_from_closes
+    from api.calculations.factor_validation import validate_factors
+
+    # Factor proxies (long/short ETF spreads) explaining SPX excess behaviour.
+    asset_t = "^GSPC"
+    factor_defs = {
+        "Value (VLUE)": "VLUE", "Momentum (MTUM)": "MTUM", "Quality (QUAL)": "QUAL",
+        "Size (IWM−SPY)": ("IWM", "SPY"), "LowVol (USMV)": "USMV",
+    }
+    need = {asset_t}
+    for v in factor_defs.values():
+        need.update(v if isinstance(v, tuple) else (v,))
+    dated = await asyncio.gather(*[_fetch_dated_closes_literal(t) for t in need])
+    dmap = {t: d for t, d in zip(need, dated) if d}
+    if asset_t not in dmap:
+        return {"available": False, "reason": "Benchmark history unavailable."}
+
+    def _series(t):
+        d = dmap.get(t)
+        return d if d else None
+
+    # common dates across everything we actually got
+    have = [t for t in need if t in dmap]
+    common = None
+    for t in have:
+        common = set(dmap[t]) if common is None else (common & set(dmap[t]))
+    common = sorted(common or [])
+    if len(common) < 60:
+        return {"available": False, "reason": "Insufficient overlapping history for OOS split."}
+
+    asset_ret = returns_from_closes([dmap[asset_t][dt] for dt in common])
+    factors = {}
+    for name, spec in factor_defs.items():
+        if isinstance(spec, tuple):
+            a, b = spec
+            if a in dmap and b in dmap:
+                ra = _np.asarray(returns_from_closes([dmap[a][dt] for dt in common]))
+                rb = _np.asarray(returns_from_closes([dmap[b][dt] for dt in common]))
+                factors[name] = (ra - rb).tolist()
+        elif spec in dmap:
+            factors[name] = returns_from_closes([dmap[spec][dt] for dt in common])
+
+    if not factors:
+        return {"available": False, "reason": "No factor proxy history available."}
+
+    out = validate_factors(factors, asset_ret)
+    out["available"] = True
+    out["benchmark"] = "S&P 500 (^GSPC) daily returns"
+    out["observations"] = len(common)
+    out["method"] = "Fit exposure on first-half (in-sample); measure R² on held-out second-half (out-of-sample)."
+    out["citation"] = "AQR — Asness et al., 'Fact, Fiction, and Factor Investing'"
+    out["as_of"] = datetime.now().isoformat()
+    return out
 
 
 @app.get("/api/v1/regime-transition")
