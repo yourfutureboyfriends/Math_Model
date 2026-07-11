@@ -92,7 +92,7 @@ export function DebtCycleSection({ data }: DebtCycleSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">10</span>
+          <span className="section-tag">◆</span>
           <h2 className="section-title">Debt Cycle Monitor</h2>
           <span className={cn('section-meta', cycleColors[cyclePosition])}>
             {cyclePosition.toUpperCase()}

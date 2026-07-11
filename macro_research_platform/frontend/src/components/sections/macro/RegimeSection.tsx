@@ -22,7 +22,7 @@ export function RegimeSection({ data }: RegimeSectionProps) {
       <div id="regime" className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
-            <span className="section-tag">04</span>
+            <span className="section-tag">◆</span>
             <h2 className="section-title">Regime Classification</h2>
           </div>
         </div>
@@ -53,7 +53,7 @@ export function RegimeSection({ data }: RegimeSectionProps) {
       <div id="regime" className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
-            <span className="section-tag">04</span>
+            <span className="section-tag">◆</span>
             <h2 className="section-title">Regime Classification</h2>
           </div>
         </div>
@@ -101,7 +101,7 @@ export function RegimeSection({ data }: RegimeSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">04</span>
+          <span className="section-tag">◆</span>
           <h2 className="section-title">Regime Classification</h2>
           <span className="section-meta">
             {fmtRegime(currentRegime).toUpperCase()} · {confidence ? fmtProbability(confidence / 100) : '—'} CONFIDENCE

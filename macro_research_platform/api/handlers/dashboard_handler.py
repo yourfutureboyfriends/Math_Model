@@ -42,6 +42,78 @@ _DASHBOARD_CACHE: dict[str, tuple[float, "DashboardData"]] = {}
 _DASHBOARD_TTL = 60  # seconds
 _DASHBOARD_LOCKS: dict[str, "_dash_asyncio.Lock"] = {}
 
+# Real headline sentiment (RSS fetch is slow + news moves slowly → cache 10 min).
+_NEWS_CACHE: dict = {"articles": None, "ts": 0.0}
+
+
+def _label100(s: float) -> str:
+    if s > 20:
+        return "Bullish"
+    if s > 5:
+        return "Slightly Bullish"
+    if s > -5:
+        return "Neutral"
+    if s > -20:
+        return "Slightly Bearish"
+    return "Bearish"
+
+
+def _build_news_sentiment(regime_name: str, now) -> dict:
+    """Real headline-level sentiment from live RSS news (Reuters/Bloomberg/FT), scored with a
+    finance lexicon. Builds the shape the News Sentiment panel reads: overall, per-theme
+    (inflation/growth/fed), and top bullish/bearish headlines. Falls back to an honest empty
+    shape (never fabricated) if the feeds are unreachable."""
+    import time as _t
+    from api.calculations.news_sentiment import aggregate_sentiment
+
+    if _NEWS_CACHE["articles"] is None or _t.time() - _NEWS_CACHE["ts"] > 600:
+        try:
+            from api.providers.news_provider import NewsProvider
+            res = NewsProvider().fetch_all()
+            arts = ([{"title": a.title, "source": a.source, "url": a.url}
+                     for a in (res.articles or []) if a.title] if res.success else [])
+        except Exception as e:
+            logger.warning("[news] feed fetch failed: %s", e)
+            arts = []
+        _NEWS_CACHE["articles"] = arts
+        _NEWS_CACHE["ts"] = _t.time()
+
+    agg = aggregate_sentiment(_NEWS_CACHE["articles"])   # sentiment in [-1, +1]
+    scored = agg["articles"]
+    overall_score = round(agg["score"] * 100, 1)         # UI uses a -100..100 scale
+
+    themes = {"inflation": ["inflation", "cpi", "price", "prices", "pce"],
+              "growth": ["growth", "gdp", "jobs", "employment", "payroll", "recession", "economy"],
+              "fed": ["fed", "federal reserve", "powell", "rate", "rates", "fomc", "central bank"]}
+    by_theme = {}
+    for t, keys in themes.items():
+        sub = [a for a in scored if any(k in (a.get("title", "").lower()) for k in keys)]
+        if sub:
+            s = round(sum(x["sentiment"] for x in sub) / len(sub) * 100, 1)
+            by_theme[t] = {"score": s, "label": _label100(s), "articleCount": len(sub)}
+
+    def _hl(a):
+        return {"headline": a["title"], "source": a.get("source", "News"), "score": round(a["sentiment"] * 100, 1)}
+    bearish = [_hl(a) for a in scored if a["sentiment"] < -0.15][:5]
+    bullish = [_hl(a) for a in scored if a["sentiment"] > 0.15][:5]
+
+    bullish_regime = (regime_name or "").lower() in ("goldilocks", "expansion", "reflation", "recovery")
+    regime_consistent = (overall_score >= 0) == bullish_regime if scored else None
+
+    return {
+        "overall": {"score": overall_score, "label": agg["overall"], "momentum": 0,
+                    "momentumLabel": agg["trend"], "articleCount": len(scored)},
+        "byTheme": by_theme,
+        "topBearishHeadlines": bearish,
+        "topBullishHeadlines": bullish,
+        "regimeConsistent": regime_consistent,
+        # legacy fields kept so both response shapes remain valid:
+        "overallSentiment": agg["overall"], "score": overall_score, "trend": agg["trend"],
+        "articles": [{"title": a["title"], "source": a.get("source"), "sentiment": a["sentiment"]} for a in scored[:12]],
+        "source": "RSS (Reuters/Bloomberg/FT) + finance-lexicon NLP",
+        "lastUpdated": now.isoformat(),
+    }
+
 
 async def get_dashboard_data(mode: str = "live") -> DashboardData:
     """Return dashboard data, served from a short-TTL cache when fresh."""
@@ -583,22 +655,8 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         "lastUpdated": now.isoformat(),
     }
 
-    # News Sentiment — derived from vix_level
-    if vix_level < 15:
-        _news_sent, _news_score = "Bullish", 0.3
-    elif vix_level < 20:
-        _news_sent, _news_score = "Neutral", 0.0
-    elif vix_level < 25:
-        _news_sent, _news_score = "Cautious", -0.2
-    else:
-        _news_sent, _news_score = "Bearish", -0.4
-    _news_sentiment = {
-        "overallSentiment": _news_sent,
-        "score": round(_news_score, 2),
-        "trend": "Improving" if _news_score > 0 else "Declining" if _news_score < 0 else "Stable",
-        "articles": [],
-        "lastUpdated": now.isoformat(),
-    }
+    # News Sentiment — REAL headline-level sentiment from live RSS news (was a VIX-derived stub).
+    _news_sentiment = _build_news_sentiment(regime_name, now)
 
     # Reflexivity — derived from regime_confidence, regime_name
     _reflexivity_val = 1.0 - regime_confidence

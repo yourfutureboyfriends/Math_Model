@@ -41,7 +41,7 @@ export function FactorRotationSection({ data }: FactorRotationSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">10</span>
+          <span className="section-tag">◆</span>
           <h2 className="section-title">Factor Rotation</h2>
           <span className="section-meta">{data.currentRegime}</span>
         </div>

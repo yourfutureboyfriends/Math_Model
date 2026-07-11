@@ -70,7 +70,7 @@ export function GMOForecastsSection({ data: dataProp }: GMOForecastsSectionProps
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">19</span>
+          <span className="section-tag">◆</span>
           <h2 className="section-title">GMO 7-Year Forecasts</h2>
         </div>
         <div className="flex items-center gap-2">

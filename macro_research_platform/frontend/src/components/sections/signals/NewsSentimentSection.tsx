@@ -53,9 +53,14 @@ export function NewsSentimentSection({ data: dataProp }: NewsSentimentSectionPro
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">33</span>
+          <span className="section-tag"><Newspaper className="w-3 h-3" /></span>
           <h2 className="section-title">News Sentiment</h2>
         </div>
+        {(data as any).source && (
+          <span className="text-2xs text-text-tertiary font-mono" title={(data as any).lastUpdated}>
+            {(data as any).source} · {(data as any).lastUpdated ? new Date((data as any).lastUpdated).toLocaleTimeString() : ''}
+          </span>
+        )}
       </div>
 
       <div className="space-y-3">

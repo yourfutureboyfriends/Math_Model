@@ -38,7 +38,7 @@ export function HorizonTensionSection() {
       <div id="horizon-tension" className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
-            <span className="section-tag">30</span>
+            <span className="section-tag">◆</span>
             <h2 className="section-title">Horizon Tensions</h2>
           </div>
         </div>
@@ -54,7 +54,7 @@ export function HorizonTensionSection() {
       <div id="horizon-tension" className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
-            <span className="section-tag">30</span>
+            <span className="section-tag">◆</span>
             <h2 className="section-title">Horizon Tensions</h2>
             <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>
               — data unavailable
@@ -79,7 +79,7 @@ export function HorizonTensionSection() {
       <div id="horizon-tension" className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
-            <span className="section-tag">30</span>
+            <span className="section-tag">◆</span>
             <h2 className="section-title">Horizon Tensions</h2>
           </div>
         </div>
@@ -130,7 +130,7 @@ export function HorizonTensionSection() {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">30</span>
+          <span className="section-tag">◆</span>
           <h2 className="section-title">Horizon Tensions</h2>
           <span className="section-meta">
             Regime: {regime.current ? regime.current.toUpperCase() : '—'} | Risk density: {risk_density}

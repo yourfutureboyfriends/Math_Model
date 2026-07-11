@@ -49,7 +49,7 @@ export function TransmissionSection({ data }: TransmissionSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">24</span>
+          <span className="section-tag">◆</span>
           <h2 className="section-title">Transmission Analysis</h2>
         </div>
       </div>

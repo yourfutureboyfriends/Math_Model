@@ -20,7 +20,7 @@ export function SentimentSection({ data: dataProp }: SentimentSectionProps) {
       <div id="sentiment" className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
-            <span className="section-tag">18</span>
+            <span className="section-tag">◆</span>
             <h2 className="section-title">Sentiment</h2>
             <span className="section-meta">Regime: {regime.current ? regime.current.toUpperCase() : '—'}</span>
           </div>
@@ -57,7 +57,7 @@ export function SentimentSection({ data: dataProp }: SentimentSectionProps) {
     <div id="sentiment" className="terminal-section">
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">18</span>
+          <span className="section-tag">◆</span>
           <h2 className="section-title">Sentiment</h2>
           <span className="section-meta">Regime: {regime.current ? regime.current.toUpperCase() : '—'}</span>
         </div>

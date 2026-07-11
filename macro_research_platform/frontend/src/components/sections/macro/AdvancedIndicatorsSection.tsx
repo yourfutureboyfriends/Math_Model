@@ -86,7 +86,7 @@ export function AdvancedIndicatorsSection({ data }: AdvancedIndicatorsSectionPro
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">15</span>
+          <span className="section-tag">◆</span>
           <h2 className="section-title">Advanced Indicators</h2>
         </div>
         <ComputedTag section="advancedIndicators" />

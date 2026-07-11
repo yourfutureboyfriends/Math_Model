@@ -16,7 +16,7 @@ export function SignalStackSection() {
       <div id="signal-stack" className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
-            <span className="section-tag">08</span>
+            <span className="section-tag">◆</span>
             <h2 className="section-title">Signal Stack</h2>
           </div>
         </div>
@@ -30,7 +30,7 @@ export function SignalStackSection() {
       <div id="signal-stack" className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
-            <span className="section-tag">08</span>
+            <span className="section-tag">◆</span>
             <h2 className="section-title">Signal Stack</h2>
           </div>
         </div>
@@ -87,7 +87,7 @@ export function SignalStackSection() {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">08</span>
+          <span className="section-tag">◆</span>
           <h2 className="section-title">Signal Stack</h2>
           <span className="section-meta">{sortedLayers.length} layers</span>
         </div>

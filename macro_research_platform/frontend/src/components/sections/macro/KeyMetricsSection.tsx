@@ -87,7 +87,7 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">03</span>
+          <span className="section-tag">◆</span>
           <h2 className="section-title">Key Metrics</h2>
         </div>
       </div>

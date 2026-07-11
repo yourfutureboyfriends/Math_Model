@@ -47,7 +47,7 @@ export function NowcastSection({ data }: NowcastSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">16</span>
+          <span className="section-tag">◆</span>
           <h2 className="section-title">GDP Nowcast</h2>
         </div>
         <ComputedTag section="nowcast" />

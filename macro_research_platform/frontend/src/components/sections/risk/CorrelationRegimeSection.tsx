@@ -14,7 +14,7 @@ export function CorrelationRegimeSection() {
       <div id="correlation" className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
-            <span className="section-tag">26</span>
+            <span className="section-tag">◆</span>
             <h2 className="section-title">Correlation Regime</h2>
           </div>
         </div>
@@ -54,7 +54,7 @@ export function CorrelationRegimeSection() {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">26</span>
+          <span className="section-tag">◆</span>
           <h2 className="section-title">Correlation Regime</h2>
           <span className={`section-meta ${switchTriggered ? 'text-red' : 'text-green'}`}>
             {(currentRegime ?? '').replace(/_/g, ' ').toUpperCase()}

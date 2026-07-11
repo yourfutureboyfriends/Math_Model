@@ -22,7 +22,7 @@ export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicators
       <div id="risk-indicators" className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
-            <span className="section-tag">12</span>
+            <span className="section-tag">◆</span>
             <h2 className="section-title">Risk Indicators</h2>
           </div>
         </div>
@@ -71,7 +71,7 @@ export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicators
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">12</span>
+          <span className="section-tag">◆</span>
           <h2 className="section-title">Risk Indicators</h2>
         </div>
         <ComputedTag section="riskIndicators" />
