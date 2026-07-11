@@ -41,6 +41,7 @@ export function RegimeOutlookSection() {
         <div className="section-header-left">
           <span className="section-tag"><GitBranch className="w-3 h-3" /></span>
           <h2 className="section-title">Regime Transition Outlook</h2>
+          <span className="section-meta">growth×inflation quadrant model</span>
           {data && <DataLineagePopover lineage={{ source: data.source, fetched_at: data.as_of, formula: `Empirical P(next|current) over ${data.months_analysed} monthly regime classifications`, notes: data.note }} />}
         </div>
         <button onClick={() => load()} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
@@ -59,8 +60,8 @@ export function RegimeOutlookSection() {
               {warn && <AlertTriangle className="w-4 h-4 text-amber" />}
               <span className="text-sm text-text-primary">
                 {change
-                  ? <>Currently <span className="font-bold text-bloomberg">{data.current_regime}</span> — <span className={`font-bold font-mono ${warn ? 'text-amber' : 'text-text-primary'}`}>{pctChange}%</span> probability of shifting to <span className="font-bold">{change.to}</span> next month</>
-                  : <>Currently <span className="font-bold text-bloomberg">{data.current_regime}</span> — no recorded transitions</>}
+                  ? <>Current quadrant <span className="font-bold text-bloomberg">{data.current_regime}</span> — <span className={`font-bold font-mono ${warn ? 'text-amber' : 'text-text-primary'}`}>{pctChange}%</span> probability of shifting to <span className="font-bold">{change.to}</span> next month</>
+                  : <>Current quadrant <span className="font-bold text-bloomberg">{data.current_regime}</span> — no recorded transitions</>}
               </span>
             </div>
             <div className="text-2xs text-text-tertiary mt-1">

@@ -1,144 +1,98 @@
-// Phase 8 — Factor Rotation Section (Redesigned)
-// AQR Factor Rotation Engine with terminal aesthetic
-
+// Factor Rotation Section — regime-tilted factor composite scores.
+//
+// Renders the real factorRotation payload the dashboard provides: four factor composite
+// scores (Momentum / Value / Growth / Quality, each 0–1, derived from the live growth /
+// inflation / recession signals), plus the regime interpretation and the rotation signal.
 import { cn } from '@/lib/utils';
-import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import type { FactorRotationData } from '@/types';
+import { TrendingUp } from 'lucide-react';
 import { useMacroStore } from '@/store/macroStore';
 
-interface FactorRotationSectionProps {
-  data?: FactorRotationData;
+interface FactorScore {
+  momentum?: number;
+  value?: number;
+  growth?: number;
+  quality?: number;
+  interpretation?: string;
+  rotationSignal?: string;
 }
 
-export function FactorRotationSection({ data }: FactorRotationSectionProps) {
+const FACTOR_META: { key: keyof FactorScore; label: string; ticker: string }[] = [
+  { key: 'momentum', label: 'Momentum', ticker: 'MTUM' },
+  { key: 'value', label: 'Value', ticker: 'VLUE' },
+  { key: 'growth', label: 'Growth', ticker: 'IWF' },
+  { key: 'quality', label: 'Quality', ticker: 'QUAL' },
+];
+
+function barColor(score: number) {
+  if (score >= 0.66) return 'bg-green';
+  if (score >= 0.5) return 'bg-bloomberg';
+  if (score >= 0.34) return 'bg-amber';
+  return 'bg-red';
+}
+
+function signalTag(score: number) {
+  if (score >= 0.66) return { label: 'OVERWEIGHT', cls: 'text-green' };
+  if (score >= 0.5) return { label: 'SL OVERWEIGHT', cls: 'text-bloomberg' };
+  if (score >= 0.34) return { label: 'NEUTRAL', cls: 'text-text-secondary' };
+  return { label: 'UNDERWEIGHT', cls: 'text-red' };
+}
+
+export function FactorRotationSection({ data: dataProp }: { data?: FactorScore }) {
   const _fullDash = useMacroStore((s) => s.fullDashboard);
-  if (!data) data = (_fullDash as any)?.["factorRotation"] as any;
+  const data: FactorScore | undefined = dataProp ?? (_fullDash as any)?.factorRotation;
 
-  if (!data) return null;
-
-  const getSignalTag = (signal: string) => {
-    switch (signal) {
-      case 'OVERWEIGHT':
-      case 'SLIGHT OVERWEIGHT':
-        return 'signal-tag overweight';
-      case 'UNDERWEIGHT':
-      case 'SLIGHT UNDERWEIGHT':
-        return 'signal-tag underweight';
-      default:
-        return 'signal-tag neutral';
-    }
-  };
-
-  const getScoreBarColor = (score: number) => {
-    if (score >= 0.5) return 'bg-green';
-    if (score >= 0) return 'bg-bloomberg';
-    if (score >= -0.5) return 'bg-amber';
-    return 'bg-red';
-  };
+  const scores = FACTOR_META
+    .map((m) => ({ ...m, score: typeof data?.[m.key] === 'number' ? (data[m.key] as number) : null }))
+    .filter((s) => s.score !== null) as { key: string; label: string; ticker: string; score: number }[];
 
   return (
     <div id="factor-rotation" className="terminal-section">
-      {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">◆</span>
+          <span className="section-tag"><TrendingUp className="w-3 h-3" /></span>
           <h2 className="section-title">Factor Rotation</h2>
-          <span className="section-meta">{data.currentRegime}</span>
+          {data?.rotationSignal && (
+            <span className="section-meta">tilt: <span className="text-bloomberg font-mono">{data.rotationSignal}</span></span>
+          )}
         </div>
       </div>
 
-      <div className="space-y-3">
-        {/* Factor Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {(data.factors ?? []).map((factor) => (
-            <div
-              key={factor.ticker}
-              className="border border-border bg-surface-1 p-3"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <div className="text-base font-mono font-bold text-text-primary">{factor.ticker}</div>
-                  <div className="text-2xs text-text-tertiary">{factor.name}</div>
-                </div>
-                <span className={getSignalTag(factor.signal)}>
-                  {factor.signal.replace('SLIGHT ', 'SL ')}
-                </span>
-              </div>
-
-              {/* Score bar */}
-              <div className="mb-2">
-                <div className="h-1 bg-surface-4 relative">
-                  <div
-                    className={cn('h-full absolute', getScoreBarColor(factor.compositeScore))}
-                    style={{
-                      width: `${Math.min(50, Math.abs(factor.compositeScore) / 1.8 * 50)}%`,
-                      left: factor.compositeScore >= 0 ? '50%' : `${50 - Math.abs(factor.compositeScore) / 1.8 * 50}%`,
-                    }}
-                  />
-                  <div className="absolute top-0 bottom-0 left-1/2 w-px bg-text-tertiary/30" />
-                </div>
-              </div>
-
-              {/* Metrics */}
-              <div className="grid grid-cols-2 gap-2 text-2xs mb-2">
-                <div>
-                  <span className="text-text-tertiary">3M:</span>
-                  <span className={cn('font-mono ml-1', factor.momentum3m >= 0 ? 'text-green' : 'text-red')}>
-                    {factor.momentum3m >= 0 ? '+' : ''}{factor.momentum3m.toFixed(1)}%
-                  </span>
-                </div>
-                <div>
-                  <span className="text-text-tertiary">vs SPY:</span>
-                  <span className={cn('font-mono ml-1', factor.relativeStrength >= 0 ? 'text-green' : 'text-red')}>
-                    {factor.relativeStrength >= 0 ? '+' : ''}{factor.relativeStrength.toFixed(1)}%
-                  </span>
-                </div>
-              </div>
-
-              {/* Rationale */}
-              <p className="text-2xs text-text-secondary">{factor.rationale}</p>
-            </div>
-          ))}
+      {scores.length === 0 ? (
+        <div className="p-3 text-xs text-amber border border-amber/30 bg-amber-dim">
+          Unavailable — factor rotation scores not present in the current dashboard payload.
         </div>
-
-        {/* Top Picks and Avoid */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="p-3 border border-border bg-surface-1">
-            <div className="flex items-center gap-2 mb-2">
-              <ArrowUpRight className="w-3 h-3 text-green" />
-              <span className="text-xs font-medium text-text-primary">Top Picks</span>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {(data.topPicks ?? []).map((ticker) => (
-                <span key={ticker} className="signal-tag bullish text-2xs">
-                  {ticker}
-                </span>
-              ))}
-            </div>
+      ) : (
+        <div className="space-y-3">
+          {data?.interpretation && (
+            <div className="text-2xs text-text-secondary">{data.interpretation}</div>
+          )}
+          <div className="space-y-2">
+            {scores
+              .slice()
+              .sort((a, b) => b.score - a.score)
+              .map((f) => {
+                const tag = signalTag(f.score);
+                return (
+                  <div key={f.key} className="flex items-center gap-2 text-xs">
+                    <span className="w-24 shrink-0">
+                      <span className="font-mono font-bold text-text-primary">{f.ticker}</span>
+                      <span className="text-2xs text-text-tertiary ml-1">{f.label}</span>
+                    </span>
+                    <div className="flex-1 h-2.5 bg-surface-3">
+                      <div className={cn('h-2.5', barColor(f.score))} style={{ width: `${Math.round(f.score * 100)}%` }} />
+                    </div>
+                    <span className="w-10 text-right font-mono tabular-nums text-text-primary">{f.score.toFixed(2)}</span>
+                    <span className={cn('w-28 text-right text-2xs font-medium', tag.cls)}>{tag.label}</span>
+                  </div>
+                );
+              })}
           </div>
-          <div className="p-3 border border-border bg-surface-1">
-            <div className="flex items-center gap-2 mb-2">
-              <ArrowDownRight className="w-3 h-3 text-red" />
-              <span className="text-xs font-medium text-text-primary">Avoid</span>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {(data.avoid ?? []).map((ticker) => (
-                <span key={ticker} className="signal-tag bearish text-2xs">
-                  {ticker}
-                </span>
-              ))}
-            </div>
+          <div className="text-2xs text-text-tertiary">
+            Composite factor scores (0–1) tilted by the current regime; higher = favored. Rotation
+            signal names the leading factor bias.
           </div>
         </div>
-
-        {/* Regime Summary */}
-        <div className="p-3 border border-amber bg-amber-dim">
-          <div className="flex items-start gap-2">
-            <span className="text-xs font-medium text-amber">Note:</span>
-            <p className="text-xs text-text-secondary">{data.regimeFactorSummary}</p>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -962,10 +962,18 @@ def get_regime_data(df: pd.DataFrame) -> RegimeData:
         liquidity_zscore=0.0,  # Will be updated below if available
         confidence=0.8,
     )
-    regime = regime_ctx.regime  # Use the authoritative regime
-
     # Also compute scores for other uses (backward compatibility)
     scores = _compute_regime_scores(df)
+
+    # FIXED (regime consistency): classify the CURRENT regime with the SAME z-score classifier
+    # used to build the monthly history below, instead of build_regime_context on raw levels.
+    # The raw-level path returned "Stagflation" (reading absolute CPI ~4% as high) while every
+    # other panel — dashboard header, /api/regime, scenario — showed the benign strong-growth /
+    # low-inflation regime from the normalized signals. Worse, that raw-level label was then
+    # force-written over the latest history entry (line ~1097), corrupting the transition matrix
+    # the outlook is computed from. Using the same classifier keeps current, history, and the
+    # rest of the app consistent. (regime_ctx retained above for its validation/logging.)
+    regime = _classify_regime_from_scores(scores)
 
     # Confidence: higher when signals agree in direction
     disagreements = sum(1 for v in scores.values() if abs(v) < 0.1)
@@ -9988,8 +9996,11 @@ async def regime_transition_v1():
         "outlook": outlook,
         "matrix": matrix,
         "months_analysed": len(regimes),
+        "taxonomy": "growth×inflation quadrant (Goldilocks / Reflation / Slowdown / Stagflation)",
         "source": "monthly regime history classified from real macro data (FRED)",
-        "note": "Probabilities are per monthly step; history is the app's own regime classifier.",
+        "note": "Probabilities are per monthly step. This panel uses the growth×inflation quadrant "
+                "model, which is a different lens from the headline macro-cycle regime — the current "
+                "quadrant here need not share the same word as the header regime.",
         "as_of": datetime.now().isoformat(),
     }
 
