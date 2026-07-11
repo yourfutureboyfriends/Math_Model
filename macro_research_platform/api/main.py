@@ -8680,7 +8680,29 @@ async def methodology_v1():
     """Human-readable documentation of every core model (formula, inputs, units,
     output range, citation) so institutional users can audit model logic."""
     from api.calculations.models import MODELS
-    return {"version": "v1", "models": MODELS, "count": len(MODELS)}
+    research_citations = [
+        {"model": "Four Quadrants regime classification (/api/v1/quadrants)",
+         "citation": "Bridgewater Associates — Four Quadrants / All Weather framework",
+         "confidence": "medium — surprise proxy uses trailing trend, not published consensus",
+         "note": "Two-axis growth-surprise × inflation-surprise; cross-validated vs 6-regime HMM."},
+        {"model": "Return-overlay Risk Parity (/api/v1/risk-parity-compare)",
+         "citation": "Anon. (2025) 'Risk Parity and its Discontents', SSRN",
+         "confidence": "high finding, exploratory local implementation",
+         "note": "Pure risk weighting generally underperforms 60/40; an expected-return overlay helps."},
+        {"model": "Hierarchical Risk Parity (HRP) & CVaR Risk Parity",
+         "citation": "López de Prado (2016) HRP; Brazilian Review of Finance (2026) HRP/CVaR-RP comparison",
+         "confidence": "low-medium — ~1yr local backtest only, no long-history validation",
+         "note": "HRP clusters the correlation matrix (robust to estimation error); CVaR-RP allocates by tail risk."},
+        {"model": "Factor exposure model",
+         "citation": "AQR — 'Fact, Fiction, and Factor Investing' (evidentiary discipline)",
+         "confidence": "medium — OLS loadings; out-of-sample validation flagged as a follow-up",
+         "note": "Factor timing has long drawdowns (value/momentum); use loadings with drawdown context."},
+        {"model": "US yield-curve recession model",
+         "citation": "Estrella & Mishkin (1998) probit",
+         "confidence": "high — strong published out-of-sample evidence"},
+    ]
+    return {"version": "v1", "models": MODELS, "count": len(MODELS),
+            "research_citations": research_citations}
 
 
 from pydantic import BaseModel as _PortfolioBaseModel
