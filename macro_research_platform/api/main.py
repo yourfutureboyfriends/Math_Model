@@ -9686,6 +9686,104 @@ async def event_vol_v1():
     })
 
 
+@app.get("/api/v1/risk-parity-compare")
+@ttl_cache(600)
+async def risk_parity_compare_v1():
+    """Honest comparison of allocation methods on REAL asset returns (per 'Risk Parity and its
+    Discontents' 2025 + HRP/CVaR-RP research): Traditional RP (inverse-vol), Return-overlay RP,
+    HRP (López de Prado), CVaR-RP, vs a 60/40 benchmark. Reports Sharpe / Sortino / max
+    drawdown for each — including honestly when a method does NOT beat 60/40."""
+    import numpy as _np
+    from api.handlers.market_handler import _fetch_dated_closes_literal
+    from api.calculations.factor_model import returns_from_closes
+    from api.calculations.risk_parity import (
+        inverse_vol_weights, cvar_weights, hrp_weights, return_overlay_weights, sixty_forty, backtest)
+
+    # Asset universe + simple capital-market expected returns (%) for the overlay.
+    assets = {"SPX Equity": "^GSPC", "US Bonds (TLT)": "TLT", "Commodities (DBC)": "DBC",
+              "Gold": "GC=F", "HY Credit (HYG)": "HYG"}
+    cma = {"SPX Equity": 6.0, "US Bonds (TLT)": 4.5, "Commodities (DBC)": 3.0, "Gold": 2.5, "HY Credit (HYG)": 5.0}
+    labels = list(assets.keys())
+    dated = await asyncio.gather(*[_fetch_dated_closes_literal(assets[l]) for l in labels])
+    dmap = {l: d for l, d in zip(labels, dated) if d}
+    if len(dmap) < 3:
+        return {"available": False, "reason": "Insufficient asset history."}
+    common = None
+    for d in dmap.values():
+        common = set(d) if common is None else (common & set(d))
+    common = sorted(common or [])
+    if len(common) < 120:
+        return {"available": False, "reason": "Insufficient overlapping history."}
+    labels = [l for l in labels if l in dmap]
+    rets = _np.column_stack([returns_from_closes([dmap[l][dt] for dt in common]) for l in labels])
+    exp_ret = [cma[l] for l in labels]
+
+    methods = {
+        "60/40 Benchmark": sixty_forty(labels),
+        "Traditional RP (inverse-vol)": inverse_vol_weights(rets),
+        "Return-overlay RP (70/30)": return_overlay_weights(rets, exp_ret, 0.7),
+        "HRP (López de Prado)": hrp_weights(rets),
+        "CVaR Risk Parity": cvar_weights(rets),
+    }
+    rows = []
+    bench = backtest(methods["60/40 Benchmark"], rets)
+    for name, w in methods.items():
+        m = backtest(w, rets)
+        m["method"] = name
+        m["weights"] = {labels[i]: round(float(w[i]) * 100, 1) for i in range(len(labels))}
+        m["beats_6040_sharpe"] = None if name == "60/40 Benchmark" else bool(m["sharpe"] > bench["sharpe"])
+        rows.append(m)
+
+    return {
+        "available": True, "universe": labels, "observations": len(common),
+        "results": rows,
+        "note": "Full-sample static weights (a comparison of weighting schemes, not a walk-forward). "
+                "Per 'Risk Parity and its Discontents' (2025), pure risk weighting often does not beat 60/40.",
+        "citations": ["Risk Parity and its Discontents (SSRN 2025)",
+                      "HRP & CVaR-RP comparison (Brazilian Review of Finance 2026)",
+                      "López de Prado (2016) — Hierarchical Risk Parity"],
+        "as_of": datetime.now().isoformat(),
+    }
+
+
+@app.get("/api/v1/quadrants")
+async def quadrants_v1():
+    """Bridgewater Four Quadrants: classify the environment on growth-surprise × inflation-
+    surprise axes (release vs its own trend, a consensus proxy), with the per-quadrant asset
+    playbook, cross-validated against the app's 6-regime label. Citation: Bridgewater All
+    Weather / Four Quadrants."""
+    from api.calculations.quadrants import surprise_z, quadrant_view
+
+    df = load_processed_data()
+    if df is None:
+        df = load_sample_data()
+    if df is None:
+        return {"available": False, "reason": "No macro data available."}
+    try:
+        g_col, i_col = _get_growth_inflation_cols(df)
+        g_series = df[g_col].dropna().tolist() if g_col in df.columns else []
+        i_series = df[i_col].dropna().tolist() if i_col in df.columns else []
+    except Exception as e:
+        return {"available": False, "reason": f"macro columns unavailable: {str(e)[:80]}"}
+
+    g_surprise = surprise_z(g_series)
+    i_surprise = surprise_z(i_series)
+
+    regime = None
+    try:
+        dash = await get_dashboard_data(mode="live")
+        reg = getattr(dash, "regime", None)
+        regime = getattr(reg, "current", None) if reg is not None else None
+    except Exception:
+        pass
+
+    view = quadrant_view(g_surprise, i_surprise, regime_6=regime)
+    view["source"] = "growth/inflation surprise vs trailing trend (FRED)"
+    view["citation"] = "Bridgewater Associates — Four Quadrants / All Weather framework"
+    view["as_of"] = datetime.now().isoformat()
+    return view
+
+
 @app.get("/api/v1/regime-transition")
 async def regime_transition_v1():
     """Forward-looking regime early-warning (Phase 6B): the empirical next-period transition
