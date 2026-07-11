@@ -444,31 +444,28 @@ async def get_trends_data() -> Dict[str, Any]:
 
 
 async def get_news_sentiment_data() -> Dict[str, Any]:
-    """Sentiment from real VIX data."""
+    """Real headline sentiment (was a VIX-derived stub). Reuses the dashboard's live
+    RSS-scored newsSentiment so the API and the panel share one real source."""
     logger.info("Fetching news sentiment data")
-
     dashboard = await get_dashboard_data(mode="live")
-    vix = dashboard.keyMetrics.vix if dashboard.keyMetrics else None
+    ns = getattr(dashboard, "newsSentiment", None) or {}
+    overall = ns.get("overall") or {}
+    ts = ns.get("lastUpdated", datetime.now().isoformat())
 
-    if vix and vix < 15:
-        sentiment = "Bullish"
-        score = 0.3
-    elif vix and vix < 20:
-        sentiment = "Neutral"
-        score = 0.0
-    elif vix and vix < 25:
-        sentiment = "Cautious"
-        score = -0.2
-    else:
-        sentiment = "Bearish"
-        score = -0.4
+    def _lbl(x: float) -> str:
+        return "Bullish" if x > 0.15 else "Bearish" if x < -0.15 else "Neutral"
 
+    articles = []
+    for a in (ns.get("articles") or [])[:12]:
+        s = float(a.get("sentiment", 0.0) or 0.0)
+        articles.append({"headline": a.get("title") or "", "source": a.get("source") or "News",
+                         "sentiment": _lbl(s), "score": round(s * 100, 1), "timestamp": ts})
     return {
-        "overallSentiment": sentiment,
-        "score": round(score, 2),
-        "trend": "Improving" if score > 0 else "Declining" if score < 0 else "Stable",
-        "articles": [],
-        "lastUpdated": datetime.now().isoformat(),
+        "overallSentiment": overall.get("label", ns.get("overallSentiment", "Neutral")),
+        "score": ns.get("score", overall.get("score", 0.0)),
+        "trend": ns.get("trend", overall.get("momentumLabel", "Stable")),
+        "articles": articles,
+        "lastUpdated": ts,
     }
 
 
