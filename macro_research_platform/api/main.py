@@ -8412,7 +8412,13 @@ async def lifespan(app: FastAPI):
             from api.routers.market import get_rates, get_market_overview
             from api.routers.signals import get_yield_curve_signal
             targets = [health_check, get_cot_data, get_economic_calendar,
-                       get_rates, get_market_overview, get_yield_curve_signal]
+                       get_rates, get_market_overview, get_yield_curve_signal,
+                       # Heavy v1 analytics panels — pre-warm their TTL caches so a fresh
+                       # dashboard load / fast scroll doesn't compute-storm the single backend
+                       # and leave 9 panels showing "Unavailable — Timed out" on first paint.
+                       quadrants_v1, stream_agreement_v1, factor_validation_v1,
+                       risk_parity_compare_v1, regime_transition_v1, event_vol_v1,
+                       correlation_matrix_v1, anomalies_v1, signal_attribution_v1]
         except Exception as e:
             logger.warning(f"[warm] could not resolve endpoint targets: {e}")
             return
@@ -9797,6 +9803,7 @@ async def risk_parity_compare_v1():
 
 
 @app.get("/api/v1/quadrants")
+@ttl_cache(300)
 async def quadrants_v1():
     """Bridgewater Four Quadrants: classify the environment on growth-surprise × inflation-
     surprise axes (release vs its own trend, a consensus proxy), with the per-quadrant asset
@@ -9971,6 +9978,7 @@ async def factor_validation_v1():
 
 
 @app.get("/api/v1/regime-transition")
+@ttl_cache(300)
 async def regime_transition_v1():
     """Forward-looking regime early-warning (Phase 6B): the empirical next-period transition
     probabilities from the CURRENT regime, computed from a monthly regime history that is
