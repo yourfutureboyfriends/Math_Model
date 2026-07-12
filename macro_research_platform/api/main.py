@@ -11570,22 +11570,22 @@ async def ask_question(request: AskRequest):
     Uses current dashboard data to provide context-aware responses.
     """
     try:
-        df = _load_data_or_fail()
+        # Use the canonical, validated dashboard data (single source of truth) instead of the
+        # orphaned get_risk_indicators(), whose RiskIndicator shape no longer matches the schema
+        # (value was a string like "270 bps") and raised a 503 on every /api/ask call — it also
+        # never exposed recessionProbability, so the recession number was always 0.
+        from api.handlers.dashboard_handler import get_dashboard_data
+        dashboard = await get_dashboard_data(mode="live")
 
-        # Get current context
-        regime_data = get_regime_data(df)
-        metrics = get_key_metrics(df)
-        risk = get_risk_indicators(df)
-
-        # Simple rule-based response system
         question_lower = request.question.lower()
 
-        # Build context-aware response
+        km = dashboard.keyMetrics
+        rec = getattr(dashboard, "recession", None)
         context = {
-            "regime": regime_data.current if hasattr(regime_data, 'current') else "Unknown",
-            "growth": metrics.growth.value if hasattr(metrics, 'growth') else 0,
-            "inflation": metrics.inflation.value if hasattr(metrics, 'inflation') else 0,
-            "recession_prob": risk.recessionProbability if hasattr(risk, 'recessionProbability') else 0
+            "regime": dashboard.regime.current if dashboard.regime else "Unknown",
+            "growth": km.growth.value if km and km.growth else 0,
+            "inflation": km.inflation.value if km and km.inflation else 0,
+            "recession_prob": round((rec.probability or 0) * 100, 1) if rec else 0,
         }
 
         # Generate response based on question type
@@ -11602,10 +11602,13 @@ async def ask_question(request: AskRequest):
             answer = f"Based on current macro conditions ({context['regime']} regime), I recommend reviewing the dashboard indicators. Growth: {context['growth']:+.1f}%, Inflation: {context['inflation']:+.1f}%."
             confidence = "medium"
 
+        # AskResponse.confidence is a float 0-1 — map the textual level (schema mismatch that
+        # otherwise 503'd on every call).
+        confidence_num = {"high": 0.85, "medium": 0.6, "low": 0.35}.get(confidence, 0.6)
         return AskResponse(
             answer=answer,
             sources=["FRED Economic Data", "Bridgewater 2-by-2 Regime Classification", "Dashboard Metrics"],
-            confidence=confidence
+            confidence=confidence_num
         )
     except Exception as e:
         logger.error(f"Ask endpoint error: {e}")
