@@ -1100,9 +1100,13 @@ def get_regime_data(df: pd.DataFrame) -> RegimeData:
         while len(history) < 24:
             history.insert(0, {"date": "2023-01-01", "regime": "Goldilocks", "confidence": "70%"})
 
-    # FIXED (BUG 18): Ensure last history entry matches current regime for duration calculation
-    if history and history[-1]["regime"] != regime:
-        history[-1]["regime"] = regime
+    # Current regime = the most recent z-score-classified month, so `current`, the history, and
+    # the transition matrix all use ONE consistent classifier. Previously `current` came from a
+    # raw-level classifier (build_regime_context) while the history used rolling z-scores — the
+    # two disagreed and `current` flip-flopped Stagflation/Slowdown between identical calls. We
+    # now trust the stable z-score history rather than overwriting its latest point.
+    if history:
+        regime = history[-1]["regime"]
 
     # Count consecutive matching entries in history backwards from end
     duration = 0
