@@ -11709,27 +11709,17 @@ async def get_earnings_revisions():
 
         finnhub_key = os.getenv("FINNHUB_API_KEY", "")
         if not finnhub_key:
-            logger.warning("FINNHUB_API_KEY not set, using fallback sector data")
-            # FIXED (BUG P): Return proper sector-level EPS revision data structure
+            # HONEST ABSENCE (was a hardcoded fake sector table stamped with now()): real
+            # per-sector EPS-revision data requires the Finnhub feed, which isn't configured
+            # here. Return structured unavailability so the frontend shows "—" for the EPS
+            # overlay rather than fabricated percentages — the regime-based sector allocation
+            # underneath is real and unaffected.
+            logger.info("FINNHUB_API_KEY not set — earnings-revision overlay unavailable (no fabricated fallback).")
             return {
-                "sectors": {
-                    "Technology": {"eps_revision_pct": 2.5, "direction": "UP", "beats_rate": 68, "macro_signal": "OVERWEIGHT", "divergence": False, "divergence_type": None, "enhanced_sector_score": 0.75, "macro_score": 0.65, "earnings_addon": 0.10},
-                    "Financials": {"eps_revision_pct": 1.8, "direction": "UP", "beats_rate": 62, "macro_signal": "OVERWEIGHT", "divergence": False, "divergence_type": None, "enhanced_sector_score": 0.68, "macro_score": 0.55, "earnings_addon": 0.13},
-                    "Energy": {"eps_revision_pct": -1.2, "direction": "DOWN", "beats_rate": 45, "macro_signal": "UNDERWEIGHT", "divergence": False, "divergence_type": None, "enhanced_sector_score": -0.55, "macro_score": -0.45, "earnings_addon": -0.10},
-                    "Healthcare": {"eps_revision_pct": 0.8, "direction": "UP", "beats_rate": 58, "macro_signal": "NEUTRAL", "divergence": False, "divergence_type": None, "enhanced_sector_score": 0.35, "macro_score": 0.30, "earnings_addon": 0.05},
-                    "Consumer Discretionary": {"eps_revision_pct": -0.5, "direction": "FLAT", "beats_rate": 52, "macro_signal": "NEUTRAL", "divergence": True, "divergence_type": "macro_bullish_earnings_flat", "enhanced_sector_score": 0.15, "macro_score": 0.25, "earnings_addon": -0.10},
-                    "Industrials": {"eps_revision_pct": 1.2, "direction": "UP", "beats_rate": 61, "macro_signal": "OVERWEIGHT", "divergence": False, "divergence_type": None, "enhanced_sector_score": 0.58, "macro_score": 0.48, "earnings_addon": 0.10},
-                    "Materials": {"eps_revision_pct": -0.8, "direction": "FLAT", "beats_rate": 48, "macro_signal": "NEUTRAL", "divergence": False, "divergence_type": None, "enhanced_sector_score": 0.05, "macro_score": 0.10, "earnings_addon": -0.05},
-                    "Utilities": {"eps_revision_pct": -2.1, "direction": "DOWN", "beats_rate": 38, "macro_signal": "UNDERWEIGHT", "divergence": False, "divergence_type": None, "enhanced_sector_score": -0.65, "macro_score": -0.55, "earnings_addon": -0.10},
-                    "Consumer Staples": {"eps_revision_pct": 0.3, "direction": "FLAT", "beats_rate": 54, "macro_signal": "NEUTRAL", "divergence": False, "divergence_type": None, "enhanced_sector_score": 0.20, "macro_score": 0.20, "earnings_addon": 0.00},
-                    "Communication Services": {"eps_revision_pct": 3.2, "direction": "UP", "beats_rate": 71, "macro_signal": "OVERWEIGHT", "divergence": False, "divergence_type": None, "enhanced_sector_score": 0.82, "macro_score": 0.60, "earnings_addon": 0.22},
-                    "Real Estate": {"eps_revision_pct": -1.5, "direction": "DOWN", "beats_rate": 42, "macro_signal": "UNDERWEIGHT", "divergence": False, "divergence_type": None, "enhanced_sector_score": -0.45, "macro_score": -0.35, "earnings_addon": -0.10},
-                },
-                "divergences": [
-                    {"sector": "Consumer Discretionary", "type": "macro_bullish_earnings_flat", "revision_pct": -0.5, "macro_signal": "NEUTRAL"}
-                ],
-                "strongest_positive_revision": "Communication Services",
-                "strongest_negative_revision": "Utilities",
+                "available": False,
+                "reason": "Sector EPS-revision data requires a Finnhub API key (FINNHUB_API_KEY not configured).",
+                "sectors": {},
+                "divergences": [],
                 "updated_at": datetime.now().isoformat(),
             }
 

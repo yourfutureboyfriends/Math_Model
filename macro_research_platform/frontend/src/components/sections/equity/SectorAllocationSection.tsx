@@ -16,7 +16,7 @@ interface EnhancedSector {
   signal: string;
   conviction: string;
   rationale: string;
-  eps_revision_pct: number;
+  eps_revision_pct: number | null;
   direction: 'UP' | 'DOWN' | 'FLAT';
   beats_rate: number;
   divergence: boolean;
@@ -31,6 +31,8 @@ interface Divergence {
 }
 
 interface EarningsData {
+  available?: boolean;
+  reason?: string;
   sectors: Record<string, {
     eps_revision_pct: number;
     direction: 'UP' | 'DOWN' | 'FLAT';
@@ -63,7 +65,13 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
 
   if (!data?.sectors?.length) return null;
 
-  // Merge sector allocation with earnings data
+  // Is the EPS-revision overlay actually available? (Requires the Finnhub feed; when absent the
+  // backend returns available:false with no sectors — we must NOT fabricate a 0.0% in that case.)
+  const epsAvailable = earningsData?.available !== false
+    && !!earningsData?.sectors
+    && Object.keys(earningsData.sectors).length > 0;
+
+  // Merge sector allocation (real, regime-based) with the earnings overlay when present.
   const enhancedSectors: EnhancedSector[] = data.sectors.map(sector => {
     const earnings = earningsData?.sectors?.[sector.name];
     return {
@@ -74,7 +82,7 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
       signal: sector.signal,
       conviction: sector.conviction,
       rationale: sector.rationale,
-      eps_revision_pct: earnings?.eps_revision_pct ?? 0,
+      eps_revision_pct: epsAvailable ? (earnings?.eps_revision_pct ?? null) : null,
       direction: earnings?.direction ?? 'FLAT',
       beats_rate: earnings?.beats_rate ?? 0.5,
       divergence: earnings?.divergence ?? false,
@@ -176,7 +184,9 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
                 <th className="text-left py-2 px-2 text-2xs text-text-tertiary uppercase font-medium">Sector</th>
                 <th className="text-left py-2 px-2 text-2xs text-text-tertiary uppercase font-medium">Signal</th>
                 <th className="text-right py-2 px-2 text-2xs text-text-tertiary uppercase font-medium">Score</th>
-                <th className="text-center py-2 px-2 text-2xs text-text-tertiary uppercase font-medium">EPS Rev</th>
+                <th className="text-center py-2 px-2 text-2xs text-text-tertiary uppercase font-medium" title={epsAvailable ? undefined : (earningsData?.reason || 'EPS-revision feed unavailable')}>
+                  EPS Rev{!epsAvailable && <span className="text-amber ml-0.5" aria-label="feed unavailable">*</span>}
+                </th>
                 <th className="text-center py-2 px-2 text-2xs text-text-tertiary uppercase font-medium">Divergence</th>
                 <th className="text-left py-2 px-2 text-2xs text-text-tertiary uppercase font-medium">Bar</th>
               </tr>
@@ -213,13 +223,17 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
                     )}
                   </td>
                   <td className="py-2 px-2 text-center">
-                    <div className={cn(
-                      'flex items-center justify-center gap-1 text-xs font-mono',
-                      getEpsRevColor(sector.eps_revision_pct)
-                    )}>
-                      {getEpsRevIcon(sector.direction)}
-                      {fmtChange(sector.eps_revision_pct / 100)}
-                    </div>
+                    {sector.eps_revision_pct == null ? (
+                      <span className="text-xs text-text-tertiary" title="EPS-revision feed unavailable">—</span>
+                    ) : (
+                      <div className={cn(
+                        'flex items-center justify-center gap-1 text-xs font-mono',
+                        getEpsRevColor(sector.eps_revision_pct)
+                      )}>
+                        {getEpsRevIcon(sector.direction)}
+                        {fmtChange(sector.eps_revision_pct / 100)}
+                      </div>
+                    )}
                   </td>
                   <td className="py-2 px-2 text-center">
                     {sector.divergence ? (
@@ -248,6 +262,12 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
             </tbody>
           </table>
         </div>
+
+        {!epsAvailable && (
+          <div className="text-2xs text-text-tertiary">
+            <span className="text-amber">*</span> {earningsData?.reason || 'EPS-revision feed unavailable'} — the sector Score/Signal below is the live regime-based allocation and is unaffected.
+          </div>
+        )}
 
         {/* Rationale Section */}
         <div className="p-3 border border-border bg-surface-1">
