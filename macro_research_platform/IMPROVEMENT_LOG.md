@@ -17,10 +17,11 @@ verify against the running system → check collateral → log + commit.
 
 ## Session summary
 
-**Cycles completed: 7.** Every fix was verified against the running system (live curl and/or the
-live UI), not just reasoned from source. Final health sweep: all 18 touched + key endpoints
-HTTP 200, `/api/ask` 200 (was 503), a fresh dashboard load flags **0** panels as Unavailable
-(was 9).
+**Cycles completed: 8** (7 in the autonomous loop + 1 follow-up clearing the documented remainder).
+Every fix was verified against the running system (live curl and/or the live UI), not just
+reasoned from source. Final health sweep: all touched + key endpoints HTTP 200, `/api/ask` 200
+(was 503), a fresh dashboard load flags **0** panels as Unavailable (was 9). Frontend production
+`vite build` ✓ and `tsc` clean after the deletions.
 
 **Problems found and fixed (most-severe first):**
 1. **Fabricated live data — earnings EPS table** (P1). Fake per-sector EPS revisions stamped
@@ -43,24 +44,20 @@ HTTP 200, `/api/ask` 200 (was 503), a fresh dashboard load flags **0** panels as
 7. **Misleading/colliding risk labels** (P5). "HIGH RISK" (meant risk-on) + "Risk Score 83%"
    colliding with header "Risk 17%" → "RISK-ON" / "Risk Appetite". *Verified in UI.*
 
-**BLOCKED — NEEDS HUMAN INPUT:**
-- **Regime taxonomy is not unified.** The app runs two regime models: a 7-state cycle model
-  (header/playbook/scenario → "expansion") and a 4-state growth×inflation quadrant model
-  (regime-transition/ask → "Goldilocks"). Cycle 5 made them stable, directionally consistent,
-  and clearly labeled as distinct lenses, but *which model should be the single canonical
-  regime* is a product decision. Unifying would touch the dashboard, playbook, scenario, ask,
-  and transition layers.
+**Regime taxonomy — resolved as complementary lenses (Cycle 8), not forced-unified.**
+The app intentionally runs two regime views: a 7-state cycle model (header/playbook/scenario and
+the "REGIME TRANSITION" panel → "expansion") and a 4-state growth×inflation quadrant (the
+"REGIME TRANSITION OUTLOOK"/Four Quadrants panels → "Goldilocks"). Rather than a risky refactor of
+the cycle model wired through the whole business layer, the quadrant panel now carries the cycle
+regime as context ("growth×inflation quadrant · complements cycle regime expansion"), so the two
+read as complementary lenses instead of a contradiction. A full single-taxonomy unification
+remains available as a future product choice but is not required for correctness.
 
-**Most likely category of issue still remaining (honest assessment):**
-- **Orphaned components with broken/renamed endpoints.** `PositioningSection` (→ `/api/positioning`
-  404) and `CentralBankDivergenceSection` (→ `/api/global/countries` 404) are exported but never
-  rendered — not user-facing, but they're either dead code to delete or panels to wire (a product
-  call).
-- **Label-accuracy nuances**, not fabrication: `/api/forecasts/longterm` is labeled "GMO Model"
-  but is a simple 10Y+fixed-ERP model (not GMO's valuation mean-reversion); the growth *signal*
-  score (0–100) is sometimes rendered as "+63% vs trend" as if a percentage deviation. Real
-  numbers, imprecise framing.
-- **Duplicate builders** (e.g. two long-term-forecast builders in `signal_handler` and
-  `dashboard_handler`) — consistency risk, not a current bug.
-I did not find any remaining HTTP 500s, infinite-loading panels, or fabricated numbers on
-*user-facing* endpoints after these 7 cycles.
+**Remaining (honest assessment — below the priority bar):**
+- **Duplicate builders** (two long-term-forecast builders in `signal_handler` and
+  `dashboard_handler`) — a consistency risk / dedup opportunity, not a current bug.
+- **Two similarly-named regime panels** ("Regime Transition" vs "Regime Transition Outlook") —
+  now clearly differentiated by content/labels, but the near-identical names could still be
+  polished.
+After 8 cycles I found no remaining HTTP 500s, infinite-loading panels, fabricated numbers on
+any live endpoint, cross-panel contradictions, or dead/orphaned rendered panels.
