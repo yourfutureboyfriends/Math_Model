@@ -194,10 +194,6 @@ export const CommoditiesDashboardSection = lazy(() =>
   import('./rates/CommoditiesDashboardSection').then(m => ({ default: m.CommoditiesDashboardSection }))
 );
 
-export const CentralBankDivergenceSection = lazy(() =>
-  import('./rates/CentralBankDivergenceSection').then(m => ({ default: m.CentralBankDivergenceSection }))
-);
-
 export const FXMonitorSection = lazy(() =>
   import('./rates/FXMonitorSection').then(m => ({ default: m.FXMonitorSection }))
 );
@@ -245,10 +241,6 @@ export const AnomalyDetectionSection = lazy(() =>
 
 export const LSTMSection = lazy(() =>
   import('./risk/LSTMSection').then(m => ({ default: m.LSTMSection }))
-);
-
-export const PositioningSection = lazy(() =>
-  import('./risk/PositioningSection').then(m => ({ default: m.PositioningSection }))
 );
 
 // Signals Domain

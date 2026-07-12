@@ -10001,9 +10001,21 @@ async def regime_transition_v1():
 
     matrix = empirical_transition_matrix(regimes)
     outlook = forward_outlook(matrix, rd.current)
+
+    # The headline macro-cycle regime (the 7-state model shown in the header/playbook/scenario),
+    # surfaced here so the panel reads as a complementary lens rather than a competing claim.
+    cycle_regime = None
+    try:
+        from api.handlers.dashboard_handler import get_dashboard_data
+        dash = await get_dashboard_data(mode="live")
+        cycle_regime = dash.regime.current if getattr(dash, "regime", None) else None
+    except Exception:
+        pass
+
     return {
         "available": True,
         "current_regime": rd.current,
+        "cycle_regime": cycle_regime,
         "confidence": getattr(rd, "confidenceScore", None),
         "outlook": outlook,
         "matrix": matrix,
@@ -10011,8 +10023,8 @@ async def regime_transition_v1():
         "taxonomy": "growth×inflation quadrant (Goldilocks / Reflation / Slowdown / Stagflation)",
         "source": "monthly regime history classified from real macro data (FRED)",
         "note": "Probabilities are per monthly step. This panel uses the growth×inflation quadrant "
-                "model, which is a different lens from the headline macro-cycle regime — the current "
-                "quadrant here need not share the same word as the header regime.",
+                "model — a complementary lens to the headline macro-cycle regime, so the current "
+                "quadrant need not share the same word as the header regime.",
         "as_of": datetime.now().isoformat(),
     }
 
@@ -11601,13 +11613,13 @@ async def ask_question(request: AskRequest):
             answer = f"Current recession probability is {context['recession_prob']:.1f}%. Based on the {context['regime']} regime, we are monitoring labor market conditions and yield curve signals closely."
             confidence = "high" if context['recession_prob'] > 50 else "medium"
         elif "regime" in question_lower or "stagflation" in question_lower:
-            answer = f"The current macro regime is classified as {context['regime']}. Growth is reading {context['growth']:+.1f}% vs trend, with inflation at {context['inflation']:+.1f}%."
+            answer = f"The current macro regime is classified as {context['regime']}. Growth signal reads {context['growth']:.0f}/100, inflation signal {context['inflation']:.0f}/100 (0 = weak, 50 = neutral, 100 = strong)."
             confidence = "high"
         elif "equity" in question_lower or "stock" in question_lower or "bond" in question_lower:
-            answer = f"In the current {context['regime']} regime, typical asset performance varies. Growth at {context['growth']:+.1f}% suggests {'favorable' if context['growth'] > 0 else 'challenging'} conditions for risk assets."
+            answer = f"In the current {context['regime']} regime, typical asset performance varies. The growth signal at {context['growth']:.0f}/100 suggests {'favorable' if context['growth'] > 50 else 'challenging'} conditions for risk assets."
             confidence = "medium"
         else:
-            answer = f"Based on current macro conditions ({context['regime']} regime), I recommend reviewing the dashboard indicators. Growth: {context['growth']:+.1f}%, Inflation: {context['inflation']:+.1f}%."
+            answer = f"Based on current macro conditions ({context['regime']} regime), I recommend reviewing the dashboard indicators. Growth signal {context['growth']:.0f}/100, inflation signal {context['inflation']:.0f}/100."
             confidence = "medium"
 
         # AskResponse.confidence is a float 0-1 — map the textual level (schema mismatch that

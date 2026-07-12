@@ -714,7 +714,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
             {"assetClass": "Emerging Markets", "expectedReturn": round(_eq_ret + 2.5, 1), "volatility": 22.0, "sharpeRatio": round((_eq_ret + 2.5) / 22, 2), "confidence": 0.4},
             {"assetClass": "US Bonds", "expectedReturn": round(_bond_ret, 1), "volatility": 5.0, "sharpeRatio": round(_bond_ret / 5, 2), "confidence": 0.8},
         ],
-        "methodology": f"GMO Model (10Y at {ten_yr:.1f}%)",
+        "methodology": f"Building-block CMA: bond = 10Y yield ({ten_yr:.1f}%), equity = 10Y + 4% ERP (GMO-style, not GMO's valuation model)",
         "asOfDate": now.isoformat(),
         "disclaimer": "Past performance does not guarantee future results.",
         "lastUpdated": now.isoformat(),

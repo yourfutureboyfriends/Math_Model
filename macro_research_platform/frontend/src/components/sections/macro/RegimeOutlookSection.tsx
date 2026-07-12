@@ -41,7 +41,9 @@ export function RegimeOutlookSection() {
         <div className="section-header-left">
           <span className="section-tag"><GitBranch className="w-3 h-3" /></span>
           <h2 className="section-title">Regime Transition Outlook</h2>
-          <span className="section-meta">growth×inflation quadrant model</span>
+          <span className="section-meta">
+            growth×inflation quadrant{data?.cycle_regime ? <> · complements cycle regime <span className="text-text-secondary">{String(data.cycle_regime)}</span></> : ' model'}
+          </span>
           {data && <DataLineagePopover lineage={{ source: data.source, fetched_at: data.as_of, formula: `Empirical P(next|current) over ${data.months_analysed} monthly regime classifications`, notes: data.note }} />}
         </div>
         <button onClick={() => load()} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
