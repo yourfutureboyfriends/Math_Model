@@ -300,10 +300,13 @@ async def get_recommendations_data() -> Dict[str, Any]:
             regime = "goldilocks"
 
     # Determine overall position based on real risk metrics
+    # `risk` here is risk APPETITE (high = benign/risk-on), so a high value means "position
+    # risk-ON", not "the environment is high-risk". Label it as a stance to avoid reading as a
+    # warning (and it collides in tone with the header's complementary "risk level" metric).
     if risk > 0.7 and rec_prob < 0.2:
-        overall_position = "HIGH RISK"
+        overall_position = "RISK-ON"
     elif risk > 0.5 and rec_prob < 0.3:
-        overall_position = "MODERATE RISK"
+        overall_position = "MODERATE RISK-ON"
     elif rec_prob > 0.4 or vix > 30:
         overall_position = "DEFENSIVE"
     else:
@@ -394,7 +397,7 @@ async def get_recommendations_data() -> Dict[str, Any]:
             "conviction": get_conviction(confidence, 0.75, 0.6),
             "overall_position": overall_position,
             "key_themes": themes,
-            "risk_assessment": f"VIX {vix:.1f}, Recession {rec_prob:.0%}, Risk Score {risk:.0%}"
+            "risk_assessment": f"VIX {vix:.1f}, Recession {rec_prob:.0%}, Risk Appetite {risk:.0%}"
         },
         "expected_returns": [
             {"asset": "US Equities", "return_1y": round(equity_return, 1), "confidence": get_conviction(growth, 0.65, 0.45)},
