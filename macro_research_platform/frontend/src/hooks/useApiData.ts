@@ -30,37 +30,45 @@ export function useApiData<T>(
 
   useEffect(() => {
     let cancelled = false;
+    let lastError: Error = new Error('Request failed');
+    const timeoutMs = 12000;
 
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-
+    // One fetch attempt with a bounded timeout (Sweep 5 — no unbounded loading states): a hung
+    // request always resolves rather than spinning forever. Returns true on success.
+    const attempt = async (): Promise<boolean> => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
-        const response = await fetch(endpoint);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
+        const response = await fetch(endpoint, { signal: controller.signal });
+        clearTimeout(timer);
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         const json = await response.json();
-
-        if (!cancelled) {
-          setData(json);
-          setLoading(false);
-        }
+        if (!cancelled) { setData(json); setLoading(false); }
+        return true;
       } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err : new Error(String(err)));
-          setLoading(false);
-        }
+        clearTimeout(timer);
+        if (cancelled) return true;  // unmounted — stop, don't touch state
+        const isAbort = err instanceof DOMException && err.name === 'AbortError';
+        lastError = isAbort ? new Error(`Request timed out after ${timeoutMs / 1000}s`)
+                            : (err instanceof Error ? err : new Error(String(err)));
+        return false;
       }
     };
 
-    fetchData();
-
-    return () => {
-      cancelled = true;
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+      if (await attempt()) return;                    // succeeded first try
+      if (cancelled) return;
+      await new Promise((r) => setTimeout(r, 1500));  // one self-heal retry (matches panel pattern)
+      if (cancelled) return;
+      if (await attempt()) return;
+      if (!cancelled) { setError(lastError); setLoading(false); }
     };
+
+    run();
+
+    return () => { cancelled = true; };
   }, [endpoint, refetchTrigger, ...dependencies]);
 
   const refetch = () => {
