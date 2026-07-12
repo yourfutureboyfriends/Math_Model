@@ -11956,41 +11956,47 @@ async def get_horizon_risks():
                     "days_away": days_away,
                 })
 
-        # Add CPI releases (second Tuesday of each month)
-        for month in range(5, 13):  # May to December 2026
-            try:
-                # Second Tuesday
-                first_day = datetime(2026, month, 1)
-                first_tuesday = first_day + timedelta(days=(1 - first_day.weekday()) % 7)
-                second_tuesday = first_tuesday + timedelta(days=7)
-                if today <= second_tuesday.date() <= horizon_end:
-                    days_away = (second_tuesday.date() - today).days
-                    events.append({
-                        "date": second_tuesday.date().isoformat(),
-                        "event": "US CPI Release",
-                        "impact": "HIGH",
-                        "category": "INFLATION",
-                        "days_away": days_away,
-                    })
-            except Exception as e:
-                pass
+        # CPI releases — SAME source as /api/calendar (FRED release id 10), with the identical
+        # ~12th-of-month fallback. Previously horizon used a "second Tuesday" heuristic while the
+        # calendar used the 12th, so the two panels showed the same CPI release on different dates
+        # (e.g. 07-14 vs 07-12). Now both derive from one source and stay consistent.
+        cpi_dates = _fetch_fred_release_dates(10, n=6)
+        if cpi_dates:
+            for ds in cpi_dates:
+                try:
+                    cd = datetime.fromisoformat(ds).date()
+                except Exception:
+                    continue
+                if today <= cd <= horizon_end:
+                    events.append({"date": cd.isoformat(), "event": "CPI Release", "impact": "HIGH",
+                                   "category": "INFLATION", "days_away": (cd - today).days})
+        else:
+            for month in range(today.month, 13):
+                cd = datetime(2026, month, 12).date()
+                if today <= cd <= horizon_end:
+                    events.append({"date": cd.isoformat(), "event": "CPI Release", "impact": "HIGH",
+                                   "category": "INFLATION", "days_away": (cd - today).days})
 
-        # Add NFP releases (first Friday of each month)
-        for month in range(5, 13):
-            try:
+        # NFP releases — SAME source as /api/calendar (FRED release id 50), fallback to the first
+        # Friday of the month, and the same "Nonfarm Payrolls" label the calendar/event-vol use.
+        nfp_dates = _fetch_fred_release_dates(50, n=6)
+        if nfp_dates:
+            for ds in nfp_dates:
+                try:
+                    nd = datetime.fromisoformat(ds).date()
+                except Exception:
+                    continue
+                if today <= nd <= horizon_end:
+                    events.append({"date": nd.isoformat(), "event": "Nonfarm Payrolls", "impact": "HIGH",
+                                   "category": "LABOR", "days_away": (nd - today).days})
+        else:
+            for month in range(today.month, 13):
                 first_day = datetime(2026, month, 1)
                 first_friday = first_day + timedelta(days=(4 - first_day.weekday()) % 7)
-                if today <= first_friday.date() <= horizon_end:
-                    days_away = (first_friday.date() - today).days
-                    events.append({
-                        "date": first_friday.date().isoformat(),
-                        "event": "NFP Release",
-                        "impact": "HIGH",
-                        "category": "LABOR",
-                        "days_away": days_away,
-                    })
-            except Exception as e:
-                pass
+                nd = first_friday.date()
+                if today <= nd <= horizon_end:
+                    events.append({"date": nd.isoformat(), "event": "Nonfarm Payrolls", "impact": "HIGH",
+                                   "category": "LABOR", "days_away": (nd - today).days})
 
         # Deduplicate by date + event
         seen = set()
