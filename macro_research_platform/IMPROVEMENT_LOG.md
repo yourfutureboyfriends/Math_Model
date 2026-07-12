@@ -12,3 +12,53 @@ verify against the running system → check collateral → log + commit.
 | 4 | **Cross-panel date contradiction**: the same "CPI Release" showed on different dates in different panels — Horizon said 2026-07-14, while Calendar and Event-Vol said 2026-07-12 (and the next one: 08-11 vs 08-12). NFP also had a label mismatch ("NFP Release" vs "Nonfarm Payrolls"). | `/api/horizon` generated economic-release dates with its own heuristics ("second Tuesday" for CPI, "first Friday" for NFP) while `/api/calendar` (and event-vol) used FRED release dates (`_fetch_fred_release_dates`) with a ~12th-of-month CPI fallback — independent generators for the same events. | Rewired `/api/horizon` CPI/NFP to the SAME FRED sources + identical fallbacks + identical event labels the calendar uses. | All three panels now agree exactly: CPI 2026-07-12, NFP 2026-08-07, next CPI 2026-08-12 (curl-verified across `/api/horizon`, `/api/calendar`, `/api/v1/event-vol`). Live UI: Horizon Tensions panel shows "NEXT HIGH-IMPACT EVENT: CPI Release 2026-07-12" (was 07-14), Regime EXPANSION, risk density LOW. Horizon structure intact (8 events, FOMC untouched, sorted). |
 | 3 | **`/api/ask` returned HTTP 503 on every call** (the AI chat backend) — surfaced during Cycle 2's collateral check. | Two stacked schema mismatches: (a) `/api/ask` called the orphaned `get_risk_indicators()`, which builds `RiskIndicator(value="270 bps", level=…, interpretation=…)` while the schema requires `value: float, signal, weight` — so it raised on construction and never exposed `recessionProbability` (recession was always 0); (b) after fixing that, `AskResponse.confidence` is a `float` but the endpoint passed `"high"`/`"medium"`. | (a) Rewired `/api/ask` to pull context from the canonical validated `get_dashboard_data()` (regime, growth, inflation, real recession %); (b) mapped textual confidence → float (high 0.85 / medium 0.6 / low 0.35). | All 4 question branches now HTTP 200: e.g. "current regime?" → *"…classified as expansion. Growth +63.0% vs trend, inflation +25.0%"*, confidence 0.85; recession branch 0.6. Regime now says "expansion" (consistent with app). Collateral: `/api/regime` 200, `/api/dashboard` 200. Frontend `AIChat` consumes only `answer` → now populated. |
 | 1 | `/api/earnings/revisions` returned a **hardcoded fake per-sector EPS table** (Tech +2.5%/68%, Comm +3.2%/71%, …) stamped with `updated_at: now()` — fabricated numbers disguised as live data (priority-1 violation). Surfaced in the Sector Allocation panel's "EPS Rev" column. | With no `FINNHUB_API_KEY` (keyless env) the endpoint's fallback branch returned a static sector dict; the real Finnhub path returns a *different* schema (`{revision_breadth, tickers}`) the frontend can't even consume for sectors — so the fake table was the ONLY source the panel ever used. | Backend: replaced the fabricated fallback with structured absence `{available:false, reason, sectors:{}, divergences:[]}`. Frontend `SectorAllocationSection`: EPS becomes `null` (not `0`) when overlay unavailable → renders "—", header shows `EPS REV*` with a footnote naming the reason; the real regime-based Score/Signal/Bar are untouched. | Backend curl now returns `available:false` + reason (no numbers). Live UI (re-login, observed): every sector shows "—" for EPS Rev, `hasFabricated:false` (no 2.5%/3.2%/-2.1% present), footnote "* Sector EPS-revision data requires a Finnhub API key…" shown, real scores intact (Technology +0.50, Financials +0.30). Regime "EXPANSION" consistent app-wide. |
+
+## Session summary
+
+**Cycles completed: 7.** Every fix was verified against the running system (live curl and/or the
+live UI), not just reasoned from source. Final health sweep: all 18 touched + key endpoints
+HTTP 200, `/api/ask` 200 (was 503), a fresh dashboard load flags **0** panels as Unavailable
+(was 9).
+
+**Problems found and fixed (most-severe first):**
+1. **Fabricated live data — earnings EPS table** (P1). Fake per-sector EPS revisions stamped
+   `now()` → honest absence + "—" in the UI. *Verified: no fabricated %, real scores intact.*
+2. **Fabricated live data — attribution table** (P1). Hardcoded factor/sector/regime attribution
+   on `/api/portfolio/attribution` → structured absence pointing to the real v1 endpoint.
+   *Verified: curl `available:false`, real v1 still 200.*
+3. **`/api/ask` HTTP 503 on every call** (P2). Broken `get_risk_indicators` schema + string
+   confidence → rewired to canonical dashboard data + numeric confidence. *Verified: all 4
+   branches 200.*
+4. **Dashboard mount-storm** (P2, systemic). 9 heavy panels timed out together on load →
+   pre-warmed their caches + added missing `@ttl_cache`. *Verified: 0 flagged panels on fresh
+   load, all serve <4ms warm.*
+5. **Regime contradiction + instability** (P3). Regime-transition showed Stagflation/Slowdown
+   (flip-flopping) vs the app-wide "expansion" → current now derived from the stable z-score
+   history. *Verified: stable Goldilocks ×5 calls, directionally consistent, self-labeled lens.*
+6. **Cross-panel date contradiction** (P3). Same CPI release on 07-14 (Horizon) vs 07-12
+   (Calendar/Event-Vol) → unified Horizon to the same FRED source. *Verified: all 3 agree; UI
+   shows 07-12.*
+7. **Misleading/colliding risk labels** (P5). "HIGH RISK" (meant risk-on) + "Risk Score 83%"
+   colliding with header "Risk 17%" → "RISK-ON" / "Risk Appetite". *Verified in UI.*
+
+**BLOCKED — NEEDS HUMAN INPUT:**
+- **Regime taxonomy is not unified.** The app runs two regime models: a 7-state cycle model
+  (header/playbook/scenario → "expansion") and a 4-state growth×inflation quadrant model
+  (regime-transition/ask → "Goldilocks"). Cycle 5 made them stable, directionally consistent,
+  and clearly labeled as distinct lenses, but *which model should be the single canonical
+  regime* is a product decision. Unifying would touch the dashboard, playbook, scenario, ask,
+  and transition layers.
+
+**Most likely category of issue still remaining (honest assessment):**
+- **Orphaned components with broken/renamed endpoints.** `PositioningSection` (→ `/api/positioning`
+  404) and `CentralBankDivergenceSection` (→ `/api/global/countries` 404) are exported but never
+  rendered — not user-facing, but they're either dead code to delete or panels to wire (a product
+  call).
+- **Label-accuracy nuances**, not fabrication: `/api/forecasts/longterm` is labeled "GMO Model"
+  but is a simple 10Y+fixed-ERP model (not GMO's valuation mean-reversion); the growth *signal*
+  score (0–100) is sometimes rendered as "+63% vs trend" as if a percentage deviation. Real
+  numbers, imprecise framing.
+- **Duplicate builders** (e.g. two long-term-forecast builders in `signal_handler` and
+  `dashboard_handler`) — consistency risk, not a current bug.
+I did not find any remaining HTTP 500s, infinite-loading panels, or fabricated numbers on
+*user-facing* endpoints after these 7 cycles.
