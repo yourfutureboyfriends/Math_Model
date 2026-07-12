@@ -766,80 +766,19 @@ async def get_attribution_data() -> Dict[str, Any]:
 
     Returns factor, sector, and regime attribution data for performance analysis.
     """
-    from api.providers import YahooFinanceProvider
-    from api.calculations import classify_regime
-
-    _yahoo = YahooFinanceProvider()
-
-    # Fetch current data
-    result = await _yahoo.fetch_latest_async(['SPX', 'VIX'])
-    ok = bool(result.success and result.data)
-    spx = _rec_price(result.data, 'SPX', 5800) if ok else 5800
-    vix = _rec_price(result.data, 'VIX', 18) if ok else 18
-
-    # Calculate metrics - use same calculation as dashboard for consistency
-    from api.calculations import calculate_growth_signal
-    spx_history = [spx * (1 - i * 0.015) for i in range(4, -1, -1)]
-    growth_score, _, _ = calculate_growth_signal(spx, spx_history)
-    risk_score = min(max((35 - vix) / 35, 0), 1)
-
-    regime, _, duration = classify_regime(growth_score, 0.5, risk_score)
-    regime = regime or "expansion"
-
-    # Calculate returns based on regime
-    if regime in ["expansion", "goldilocks"]:
-        total_return = 0.12
-        benchmark_return = 0.10
-    elif regime == "contraction":
-        total_return = -0.05
-        benchmark_return = -0.08
-    else:
-        total_return = 0.06
-        benchmark_return = 0.05
-
-    alpha = total_return - benchmark_return
-
+    # HONEST ABSENCE: this legacy endpoint previously returned a fully hardcoded factor/sector/
+    # regime/risk attribution table (fabricated performance numbers stamped "YTD"). Real,
+    # position-level performance attribution is computed from actual holdings at
+    # /api/v1/portfolio/attribution — which is what the frontend panel already uses. No live
+    # panel consumes this endpoint, so we return structured absence rather than fake data.
     return {
+        "available": False,
+        "reason": "Static per-factor/sector attribution was removed as non-real. "
+                  "Live position-level attribution is at /api/v1/portfolio/attribution.",
         "period": f"YTD {datetime.now().year}",
-        "totalReturn": total_return,
-        "benchmarkReturn": benchmark_return,
-        "alpha": alpha,
-        "factorAttribution": [
-            {"factor": "Value", "weight": 0.25, "contributionPct": 2.5, "returnPct": 0.03, "excessReturn": 0.01},
-            {"factor": "Momentum", "weight": 0.20, "contributionPct": 1.8, "returnPct": 0.04, "excessReturn": 0.02},
-            {"factor": "Quality", "weight": 0.30, "contributionPct": 3.2, "returnPct": 0.025, "excessReturn": 0.005},
-            {"factor": "Size", "weight": 0.15, "contributionPct": -0.5, "returnPct": -0.01, "excessReturn": -0.02},
-            {"factor": "Low Vol", "weight": 0.10, "contributionPct": 0.8, "returnPct": 0.02, "excessReturn": 0.01},
-        ],
-        "sectorAttribution": [
-            {"sector": "Technology", "allocation": 0.28, "contributionPct": 4.5, "returnPct": 0.15, "benchmarkWeight": 0.25, "activeWeight": 0.03},
-            {"sector": "Healthcare", "allocation": 0.15, "contributionPct": 1.2, "returnPct": 0.08, "benchmarkWeight": 0.13, "activeWeight": 0.02},
-            {"sector": "Financials", "allocation": 0.12, "contributionPct": 0.8, "returnPct": 0.06, "benchmarkWeight": 0.13, "activeWeight": -0.01},
-            {"sector": "Consumer Disc", "allocation": 0.10, "contributionPct": 0.5, "returnPct": 0.05, "benchmarkWeight": 0.10, "activeWeight": 0.00},
-            {"sector": "Industrials", "allocation": 0.08, "contributionPct": -0.2, "returnPct": -0.03, "benchmarkWeight": 0.08, "activeWeight": 0.00},
-        ],
-        "regimeAttribution": [
-            {"regime": "Goldilocks", "days": 45, "returnPct": 0.08, "contributionPct": 3.2, "frequency": 25},
-            {"regime": "Expansion", "days": 120, "returnPct": 0.12, "contributionPct": 8.5, "frequency": 55},
-            {"regime": "Slowdown", "days": 30, "returnPct": -0.03, "contributionPct": -0.8, "frequency": 15},
-            {"regime": "Contraction", "days": 15, "returnPct": -0.08, "contributionPct": -1.5, "frequency": 5},
-        ],
-        "riskAttribution": {
-            "totalVolatility": 0.15,
-            "systematicRisk": 0.08,
-            "specificRisk": 0.07,
-            "factorRisk": 0.06,
-            "idiosyncraticRisk": 0.09,
-            "var95": -0.025,
-            "maxDrawdown": -0.12
-        },
-        "benchmarkComparison": {
-            "vsSPY": alpha,
-            "vsSixtyForty": alpha + 0.02,
-            "vsRiskParity": alpha - 0.01,
-            "informationRatio": 0.8,
-            "trackingError": 0.04,
-            "upsideCapture": 105,
-            "downsideCapture": 85
-        }
+        "factorAttribution": [],
+        "sectorAttribution": [],
+        "regimeAttribution": [],
+        "riskAttribution": {},
+        "benchmarkComparison": {},
     }
