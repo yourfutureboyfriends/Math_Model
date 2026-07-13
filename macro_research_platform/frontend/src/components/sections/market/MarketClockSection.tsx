@@ -4,6 +4,24 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 
+// 2026 exchange holiday calendars (local YYYY-MM-DD). Maintained annually — no keyless holiday
+// feed exists, so hardcoded per exchange; update each January. Western calendars authoritative;
+// Asian calendars list high-confidence fixed-date closures.
+const HOLIDAYS_2026: Record<string, string[]> = {
+  'New York': ['2026-01-01', '2026-01-19', '2026-02-16', '2026-04-03', '2026-05-25',
+               '2026-06-19', '2026-07-03', '2026-09-07', '2026-11-26', '2026-12-25'],
+  'London': ['2026-01-01', '2026-04-03', '2026-04-06', '2026-05-04', '2026-05-25',
+             '2026-08-31', '2026-12-25', '2026-12-28'],
+  'Frankfurt': ['2026-01-01', '2026-04-03', '2026-04-06', '2026-05-01', '2026-12-24',
+                '2026-12-25', '2026-12-31'],
+  'Tokyo': ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-12', '2026-02-11', '2026-02-23',
+            '2026-04-29', '2026-05-03', '2026-05-04', '2026-05-05', '2026-05-06', '2026-07-20',
+            '2026-08-11', '2026-11-03', '2026-11-23', '2026-12-31'],
+  'Hong Kong': ['2026-01-01', '2026-02-17', '2026-02-18', '2026-02-19', '2026-04-03',
+                '2026-04-06', '2026-05-01', '2026-07-01', '2026-10-01', '2026-12-25'],
+  'Sydney': ['2026-01-01', '2026-01-26', '2026-04-03', '2026-04-06', '2026-12-25', '2026-12-28'],
+};
+
 // Market sessions configuration - module level constant
 const SESSIONS = [
   { name: 'New York',  tz: 'America/New_York',  open: 9.5,  close: 16   },
@@ -13,6 +31,22 @@ const SESSIONS = [
   { name: 'Hong Kong', tz: 'Asia/Hong_Kong',     open: 9.5,  close: 16   },
   { name: 'Frankfurt', tz: 'Europe/Berlin',      open: 9,    close: 17.5 },
 ];
+
+type SessionStatus = 'open' | 'closed' | 'holiday';
+
+// Local calendar date (YYYY-MM-DD) and weekday (0=Sun..6=Sat) in a timezone.
+function getLocalDateInfo(tz: string): { ymd: string; dow: number } {
+  try {
+    const ymd = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date());
+    const wd = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(new Date());
+    const dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wd);
+    return { ymd, dow };
+  } catch {
+    return { ymd: '', dow: 0 };
+  }
+}
 
 // Get current hour in a specific timezone
 function getLocalHour(tz: string): number {
@@ -46,10 +80,18 @@ function getLocalTimeStr(tz: string): string {
   }
 }
 
-// Check if a session is currently open
-function isSessionOpen(open: number, close: number, tz: string): boolean {
+// Full session status: closed on weekends and exchange holidays, else open within hours.
+function getSessionStatus(name: string, open: number, close: number, tz: string): SessionStatus {
+  const { ymd, dow } = getLocalDateInfo(tz);
+  if ((HOLIDAYS_2026[name] ?? []).includes(ymd)) return 'holiday';
+  if (dow === 0 || dow === 6) return 'closed';           // weekend
   const h = getLocalHour(tz);
-  return h >= open && h < close;
+  return h >= open && h < close ? 'open' : 'closed';
+}
+
+// Backwards-compatible boolean helper (open = tradable right now).
+function isSessionOpen(name: string, open: number, close: number, tz: string): boolean {
+  return getSessionStatus(name, open, close, tz) === 'open';
 }
 
 // Calculate progress through the trading day
@@ -83,7 +125,7 @@ export const MarketClockSection: React.FC = () => {
 
   // Count open sessions (with guard for SESSIONS being undefined)
   const openCount = (SESSIONS ?? []).filter(
-    s => isSessionOpen(s.open, s.close, s.tz)
+    s => isSessionOpen(s.name, s.open, s.close, s.tz)
   ).length;
 
   return (
@@ -110,7 +152,8 @@ export const MarketClockSection: React.FC = () => {
       {/* Session grid */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         {SESSIONS.map(session => {
-          const open = isSessionOpen(session.open, session.close, session.tz);
+          const status = getSessionStatus(session.name, session.open, session.close, session.tz);
+          const open = status === 'open';
           const progress = getSessionProgress(session.open, session.close, session.tz);
           const localTime = getLocalTimeStr(session.tz);
 
@@ -129,11 +172,12 @@ export const MarketClockSection: React.FC = () => {
                 </span>
                 <span className={cn(
                   'text-xs font-semibold px-1.5 py-0.5 rounded',
-                  open
-                    ? 'bg-green-dim text-green'
+                  status === 'open' ? 'bg-green-dim text-green'
+                    : status === 'holiday' ? 'bg-amber-dim text-amber'
                     : 'bg-surface-3 text-text-tertiary'
-                )}>
-                  {open ? 'OPEN' : 'CLOSED'}
+                )}
+                title={status === 'holiday' ? `${session.name}: exchange holiday` : undefined}>
+                  {status === 'open' ? 'OPEN' : status === 'holiday' ? 'HOLIDAY' : 'CLOSED'}
                 </span>
               </div>
 
