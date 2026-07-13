@@ -121,13 +121,6 @@ export function DashboardPage() {
         </ErrorBoundary>
       </div>
 
-      {/* ── Anomalies strip (pinned top of Overview) ──────────────────────── */}
-      <div id="anomalies-wrap" className="terminal-section">
-        <ErrorBoundary sectionName="Anomalies">
-          <AnomaliesStripSection />
-        </ErrorBoundary>
-      </div>
-
       {/* ── Overview ──────────────────────────────────────────────────────── */}
       <div id="master-signal" className="terminal-section">
         <ErrorBoundary sectionName="Master Signal">
@@ -138,6 +131,13 @@ export function DashboardPage() {
       <div id="key-metrics" className="terminal-section">
         <ErrorBoundary sectionName="Key Metrics">
           <KeyMetricsSection />
+        </ErrorBoundary>
+      </div>
+
+      {/* ── Anomalies strip (pinned top of Overview) ──────────────────────── */}
+      <div id="anomalies-wrap" className="terminal-section">
+        <ErrorBoundary sectionName="Anomalies">
+          <AnomaliesStripSection />
         </ErrorBoundary>
       </div>
 
@@ -167,15 +167,6 @@ export function DashboardPage() {
         </ErrorBoundary>
       </div>
 
-      {/* ── Signals ───────────────────────────────────────────────────────── */}
-      <div id="signals" className="terminal-section">
-        <ErrorBoundary sectionName="Signals">
-          <Suspense fallback={<SectionSkeleton />}>
-            <SignalsSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
       <div id="ensemble" className="terminal-section">
         <ErrorBoundary sectionName="Ensemble">
           <Suspense fallback={<SectionSkeleton />}>
@@ -192,14 +183,6 @@ export function DashboardPage() {
         </ErrorBoundary>
       </div>
 
-      <div id="signal-story-wrap" className="terminal-section">
-        <ErrorBoundary sectionName="Signal Storytelling">
-          <Suspense fallback={<SectionSkeleton />}>
-            <SignalStorySection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
       <div className="terminal-section">
         <ErrorBoundary sectionName="Signal Scorecard">
           <Suspense fallback={<SectionSkeleton />}>
@@ -208,34 +191,27 @@ export function DashboardPage() {
         </ErrorBoundary>
       </div>
 
+      <div id="signal-story-wrap" className="terminal-section">
+        <ErrorBoundary sectionName="Signal Storytelling">
+          <Suspense fallback={<SectionSkeleton />}>
+            <SignalStorySection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      {/* ── Signals ───────────────────────────────────────────────────────── */}
+      <div id="signals" className="terminal-section">
+        <ErrorBoundary sectionName="Signals">
+          <Suspense fallback={<SectionSkeleton />}>
+            <SignalsSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
       <div className="terminal-section">
         <ErrorBoundary sectionName="Alt-Data Positioning">
           <Suspense fallback={<SectionSkeleton />}>
             <AltDataSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div id="sector-allocation" className="terminal-section">
-        <ErrorBoundary sectionName="Sector Allocation">
-          <Suspense fallback={<SectionSkeleton />}>
-            <SectorAllocationSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div id="factor-rotation" className="terminal-section">
-        <ErrorBoundary sectionName="Factor Rotation">
-          <Suspense fallback={<SectionSkeleton />}>
-            <FactorRotationSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div className="terminal-section">
-        <ErrorBoundary sectionName="COT Positioning">
-          <Suspense fallback={<SectionSkeleton />}>
-            <COTPositioningSection />
           </Suspense>
         </ErrorBoundary>
       </div>
@@ -260,6 +236,30 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Model Agreement">
           <Suspense fallback={<SectionSkeleton />}>
             <ModelAgreementSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="sector-allocation" className="terminal-section">
+        <ErrorBoundary sectionName="Sector Allocation">
+          <Suspense fallback={<SectionSkeleton />}>
+            <SectorAllocationSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="factor-rotation" className="terminal-section">
+        <ErrorBoundary sectionName="Factor Rotation">
+          <Suspense fallback={<SectionSkeleton />}>
+            <FactorRotationSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="COT Positioning">
+          <Suspense fallback={<SectionSkeleton />}>
+            <COTPositioningSection />
           </Suspense>
         </ErrorBoundary>
       </div>
@@ -298,14 +298,6 @@ export function DashboardPage() {
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Factor Exposure">
-          <Suspense fallback={<SectionSkeleton />}>
-            <FactorExposureSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div className="terminal-section">
         <ErrorBoundary sectionName="VaR & Stress">
           <Suspense fallback={<SectionSkeleton />}>
             <VaRStressSection />
@@ -313,18 +305,18 @@ export function DashboardPage() {
         </ErrorBoundary>
       </div>
 
-      <div id="debt-cycle" className="terminal-section">
-        <ErrorBoundary sectionName="Debt Cycle">
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Factor Exposure">
           <Suspense fallback={<SectionSkeleton />}>
-            <DebtCycleSection />
+            <FactorExposureSection />
           </Suspense>
         </ErrorBoundary>
       </div>
 
-      <div id="advanced" className="terminal-section">
-        <ErrorBoundary sectionName="Advanced Indicators">
+      <div id="horizon-tension" className="terminal-section">
+        <ErrorBoundary sectionName="Horizon Tension">
           <Suspense fallback={<SectionSkeleton />}>
-            <AdvancedIndicatorsSection />
+            <HorizonTensionSection />
           </Suspense>
         </ErrorBoundary>
       </div>
@@ -341,6 +333,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Correlation Matrix">
           <Suspense fallback={<SectionSkeleton />}>
             <CorrelationMatrixSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="debt-cycle" className="terminal-section">
+        <ErrorBoundary sectionName="Debt Cycle">
+          <Suspense fallback={<SectionSkeleton />}>
+            <DebtCycleSection />
           </Suspense>
         </ErrorBoundary>
       </div>
@@ -369,19 +369,35 @@ export function DashboardPage() {
         </ErrorBoundary>
       </div>
 
-      <div id="horizon-tension" className="terminal-section">
-        <ErrorBoundary sectionName="Horizon Tension">
+      <div id="advanced" className="terminal-section">
+        <ErrorBoundary sectionName="Advanced Indicators">
           <Suspense fallback={<SectionSkeleton />}>
-            <HorizonTensionSection />
+            <AdvancedIndicatorsSection />
           </Suspense>
         </ErrorBoundary>
       </div>
 
       {/* ── Forecasts ─────────────────────────────────────────────────────── */}
+      <div id="valuation" className="terminal-section">
+        <ErrorBoundary sectionName="Valuation">
+          <Suspense fallback={<SectionSkeleton />}>
+            <ValuationSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
       <div id="nowcast" className="terminal-section">
         <ErrorBoundary sectionName="Nowcast">
           <Suspense fallback={<SectionSkeleton />}>
             <NowcastSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="yield-curve" className="terminal-section">
+        <ErrorBoundary sectionName="Yield Curve">
+          <Suspense fallback={<SectionSkeleton />}>
+            <YieldCurveSection />
           </Suspense>
         </ErrorBoundary>
       </div>
@@ -402,26 +418,132 @@ export function DashboardPage() {
         </ErrorBoundary>
       </div>
 
-      <div id="yield-curve">
-        <ErrorBoundary sectionName="Yield Curve">
-          <Suspense fallback={<SectionSkeleton />}>
-            <YieldCurveSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div id="valuation" className="terminal-section">
-        <ErrorBoundary sectionName="Valuation">
-          <Suspense fallback={<SectionSkeleton />}>
-            <ValuationSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
       <div id="expected-returns" className="terminal-section">
         <ErrorBoundary sectionName="Expected Returns">
           <Suspense fallback={<SectionSkeleton />}>
             <ExpectedReturnsSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="gmo-forecasts" className="terminal-section">
+        <ErrorBoundary sectionName="GMO Forecasts">
+          <Suspense fallback={<SectionSkeleton />}>
+            <GMOForecastsSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="regime-transition" className="terminal-section">
+        <ErrorBoundary sectionName="Regime Transition">
+          <Suspense fallback={<SectionSkeleton />}>
+            <RegimeTransitionSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="regime-outlook-wrap" className="terminal-section">
+        <ErrorBoundary sectionName="Regime Outlook">
+          <Suspense fallback={<SectionSkeleton />}>
+            <RegimeOutlookSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Four Quadrants">
+          <Suspense fallback={<SectionSkeleton />}>
+            <QuadrantsSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="event-vol-wrap" className="terminal-section">
+        <ErrorBoundary sectionName="Event Volatility">
+          <Suspense fallback={<SectionSkeleton />}>
+            <EventVolSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="trade-ideas" className="terminal-section">
+        <ErrorBoundary sectionName="Trade Ideas">
+          <Suspense fallback={<SectionSkeleton />}>
+            <TradeIdeasSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="trade-recommendations" className="terminal-section">
+        <ErrorBoundary sectionName="Trade Recommendations">
+          <Suspense fallback={<SectionSkeleton />}>
+            <TradeRecommendationsSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Trade Workflow">
+          <Suspense fallback={<SectionSkeleton />}>
+            <TradeWorkflowSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="scenario-analysis" className="terminal-section">
+        <ErrorBoundary sectionName="Scenario Analysis">
+          <Suspense fallback={<SectionSkeleton />}>
+            <ScenarioAnalysisSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="momentum-veto" className="terminal-section">
+        <ErrorBoundary sectionName="Momentum Veto">
+          <Suspense fallback={<SectionSkeleton />}>
+            <MomentumVetoSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Positions">
+          <Suspense fallback={<SectionSkeleton />}>
+            <PositionsSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      {/* ── Portfolio ─────────────────────────────────────────────────────── */}
+      <div id="portfolio" className="terminal-section">
+        <ErrorBoundary sectionName="Portfolio Analyser">
+          <Suspense fallback={<SectionSkeleton />}>
+            <PortfolioAnalyserSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="performance-attribution" className="terminal-section">
+        <ErrorBoundary sectionName="Performance Attribution">
+          <Suspense fallback={<SectionSkeleton />}>
+            <PerformanceAttributionSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      {/* ── Equity Research ───────────────────────────────────────────────── */}
+      <div id="equity-research" className="terminal-section">
+        <ErrorBoundary sectionName="Equity Research">
+          <Suspense fallback={<SectionSkeleton />}>
+            <EquityResearchSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div id="business-layer" className="terminal-section">
+        <ErrorBoundary sectionName="Business Layer">
+          <Suspense fallback={<SectionSkeleton />}>
+            <BusinessLayerSection />
           </Suspense>
         </ErrorBoundary>
       </div>
@@ -451,14 +573,6 @@ export function DashboardPage() {
         </ErrorBoundary>
       </div>
 
-      <div id="gmo-forecasts" className="terminal-section">
-        <ErrorBoundary sectionName="GMO Forecasts">
-          <Suspense fallback={<SectionSkeleton />}>
-            <GMOForecastsSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
       <div id="international" className="terminal-section">
         <ErrorBoundary sectionName="International Macro">
           <Suspense fallback={<SectionSkeleton />}>
@@ -483,100 +597,10 @@ export function DashboardPage() {
         </ErrorBoundary>
       </div>
 
-      <div id="regime-transition" className="terminal-section">
-        <ErrorBoundary sectionName="Regime Transition">
+      <div id="economic-calendar" className="terminal-section">
+        <ErrorBoundary sectionName="Event Calendar">
           <Suspense fallback={<SectionSkeleton />}>
-            <RegimeTransitionSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div id="regime-outlook-wrap" className="terminal-section">
-        <ErrorBoundary sectionName="Regime Outlook">
-          <Suspense fallback={<SectionSkeleton />}>
-            <RegimeOutlookSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div className="terminal-section">
-        <ErrorBoundary sectionName="Four Quadrants">
-          <Suspense fallback={<SectionSkeleton />}>
-            <QuadrantsSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div id="momentum-veto" className="terminal-section">
-        <ErrorBoundary sectionName="Momentum Veto">
-          <Suspense fallback={<SectionSkeleton />}>
-            <MomentumVetoSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div className="terminal-section">
-        <ErrorBoundary sectionName="Positions">
-          <Suspense fallback={<SectionSkeleton />}>
-            <PositionsSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div className="terminal-section">
-        <ErrorBoundary sectionName="Trade Workflow">
-          <Suspense fallback={<SectionSkeleton />}>
-            <TradeWorkflowSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div id="trade-ideas" className="terminal-section">
-        <ErrorBoundary sectionName="Trade Ideas">
-          <Suspense fallback={<SectionSkeleton />}>
-            <TradeIdeasSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div id="trade-recommendations" className="terminal-section">
-        <ErrorBoundary sectionName="Trade Recommendations">
-          <Suspense fallback={<SectionSkeleton />}>
-            <TradeRecommendationsSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div id="scenario-analysis" className="terminal-section">
-        <ErrorBoundary sectionName="Scenario Analysis">
-          <Suspense fallback={<SectionSkeleton />}>
-            <ScenarioAnalysisSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      {/* ── Equity Research ───────────────────────────────────────────────── */}
-      <div id="equity-research" className="terminal-section">
-        <ErrorBoundary sectionName="Equity Research">
-          <Suspense fallback={<SectionSkeleton />}>
-            <EquityResearchSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      {/* ── Portfolio ─────────────────────────────────────────────────────── */}
-      <div id="portfolio" className="terminal-section">
-        <ErrorBoundary sectionName="Portfolio Analyser">
-          <Suspense fallback={<SectionSkeleton />}>
-            <PortfolioAnalyserSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div id="performance-attribution" className="terminal-section">
-        <ErrorBoundary sectionName="Performance Attribution">
-          <Suspense fallback={<SectionSkeleton />}>
-            <PerformanceAttributionSection />
+            <EventCalendarSection />
           </Suspense>
         </ErrorBoundary>
       </div>
@@ -593,30 +617,6 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Investment Memo">
           <Suspense fallback={<SectionSkeleton />}>
             <InvestmentMemoSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div id="business-layer" className="terminal-section">
-        <ErrorBoundary sectionName="Business Layer">
-          <Suspense fallback={<SectionSkeleton />}>
-            <BusinessLayerSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div id="economic-calendar" className="terminal-section">
-        <ErrorBoundary sectionName="Event Calendar">
-          <Suspense fallback={<SectionSkeleton />}>
-            <EventCalendarSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
-
-      <div id="event-vol-wrap" className="terminal-section">
-        <ErrorBoundary sectionName="Event Volatility">
-          <Suspense fallback={<SectionSkeleton />}>
-            <EventVolSection />
           </Suspense>
         </ErrorBoundary>
       </div>
