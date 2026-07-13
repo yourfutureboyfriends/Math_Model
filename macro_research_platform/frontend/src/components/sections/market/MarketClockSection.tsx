@@ -1,26 +1,13 @@
 // Section G Panel 1 — Market Clock + Global Equity Monitor
-// Real-time market status with live ticking seconds
+// Real-time market status with live ticking seconds. Holiday calendars are fetched from the
+// backend (/api/market-hours → python-holidays, per-region + any-year, incl. lunar calendars),
+// NOT hardcoded — the live open/closed computation runs client-side against those dates.
 
 import React from 'react';
 import { cn } from '@/lib/utils';
 
-// 2026 exchange holiday calendars (local YYYY-MM-DD). Maintained annually — no keyless holiday
-// feed exists, so hardcoded per exchange; update each January. Western calendars authoritative;
-// Asian calendars list high-confidence fixed-date closures.
-const HOLIDAYS_2026: Record<string, string[]> = {
-  'New York': ['2026-01-01', '2026-01-19', '2026-02-16', '2026-04-03', '2026-05-25',
-               '2026-06-19', '2026-07-03', '2026-09-07', '2026-11-26', '2026-12-25'],
-  'London': ['2026-01-01', '2026-04-03', '2026-04-06', '2026-05-04', '2026-05-25',
-             '2026-08-31', '2026-12-25', '2026-12-28'],
-  'Frankfurt': ['2026-01-01', '2026-04-03', '2026-04-06', '2026-05-01', '2026-12-24',
-                '2026-12-25', '2026-12-31'],
-  'Tokyo': ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-12', '2026-02-11', '2026-02-23',
-            '2026-04-29', '2026-05-03', '2026-05-04', '2026-05-05', '2026-05-06', '2026-07-20',
-            '2026-08-11', '2026-11-03', '2026-11-23', '2026-12-31'],
-  'Hong Kong': ['2026-01-01', '2026-02-17', '2026-02-18', '2026-02-19', '2026-04-03',
-                '2026-04-06', '2026-05-01', '2026-07-01', '2026-10-01', '2026-12-25'],
-  'Sydney': ['2026-01-01', '2026-01-26', '2026-04-03', '2026-04-06', '2026-12-25', '2026-12-28'],
-};
+// Populated at runtime from /api/market-hours (exchange display name -> holiday YYYY-MM-DD list).
+type HolidayMap = Record<string, { dates: Set<string>; names: Record<string, string> }>;
 
 // Market sessions configuration - module level constant
 const SESSIONS = [
@@ -81,17 +68,13 @@ function getLocalTimeStr(tz: string): string {
 }
 
 // Full session status: closed on weekends and exchange holidays, else open within hours.
-function getSessionStatus(name: string, open: number, close: number, tz: string): SessionStatus {
+// `holidayMap` is fetched from /api/market-hours (real per-region calendars, not hardcoded).
+function getSessionStatus(name: string, open: number, close: number, tz: string, holidayMap: HolidayMap): SessionStatus {
   const { ymd, dow } = getLocalDateInfo(tz);
-  if ((HOLIDAYS_2026[name] ?? []).includes(ymd)) return 'holiday';
+  if (holidayMap[name]?.dates.has(ymd)) return 'holiday';
   if (dow === 0 || dow === 6) return 'closed';           // weekend
   const h = getLocalHour(tz);
   return h >= open && h < close ? 'open' : 'closed';
-}
-
-// Backwards-compatible boolean helper (open = tradable right now).
-function isSessionOpen(name: string, open: number, close: number, tz: string): boolean {
-  return getSessionStatus(name, open, close, tz) === 'open';
 }
 
 // Calculate progress through the trading day
@@ -103,12 +86,31 @@ function getSessionProgress(open: number, close: number, tz: string): number {
 
 export const MarketClockSection: React.FC = () => {
   const [tick, setTick] = React.useState(0);
+  const [holidayMap, setHolidayMap] = React.useState<HolidayMap>({});
 
   // Update every second to show live time
   // tick is used to trigger re-renders for live clock
   React.useEffect(() => {
     const timer = setInterval(() => setTick(n => n + 1), 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  // Fetch REAL per-region holiday calendars once (not hardcoded). Live open/closed still runs
+  // client-side against these dates so the clock keeps ticking.
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch('/api/market-hours')
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled || !d?.exchanges) return;
+        const map: HolidayMap = {};
+        for (const ex of d.exchanges) {
+          map[ex.name] = { dates: new Set<string>(ex.holidays ?? []), names: ex.holidayNames ?? {} };
+        }
+        setHolidayMap(map);
+      })
+      .catch(() => { /* fall back to weekend-only detection if unavailable */ });
+    return () => { cancelled = true; };
   }, []);
 
   // Force re-render when tick changes (live clock update)
@@ -125,7 +127,7 @@ export const MarketClockSection: React.FC = () => {
 
   // Count open sessions (with guard for SESSIONS being undefined)
   const openCount = (SESSIONS ?? []).filter(
-    s => isSessionOpen(s.name, s.open, s.close, s.tz)
+    s => getSessionStatus(s.name, s.open, s.close, s.tz, holidayMap) === 'open'
   ).length;
 
   return (
@@ -152,7 +154,7 @@ export const MarketClockSection: React.FC = () => {
       {/* Session grid */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         {SESSIONS.map(session => {
-          const status = getSessionStatus(session.name, session.open, session.close, session.tz);
+          const status = getSessionStatus(session.name, session.open, session.close, session.tz, holidayMap);
           const open = status === 'open';
           const progress = getSessionProgress(session.open, session.close, session.tz);
           const localTime = getLocalTimeStr(session.tz);

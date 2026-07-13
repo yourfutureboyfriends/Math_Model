@@ -11912,6 +11912,56 @@ async def get_cot_data():
         }
 
 
+@app.get("/api/market-hours")
+@ttl_cache(21600)  # 6h — holiday calendars change rarely
+async def get_market_hours():
+    """Per-exchange trading hours + REAL holiday calendars (not hardcoded).
+
+    Holidays come from the `holidays` library, which is per-region and works for ANY year —
+    including lunar-based closures (Hong Kong / Singapore Chinese New Year). The frontend keeps
+    a live-ticking clock and just uses these dates to mark weekends/holidays as closed."""
+    try:
+        import holidays as _hol
+    except Exception as e:
+        return {"available": False, "reason": f"holidays library unavailable: {e}"}
+
+    from datetime import datetime as _dt
+    yr = _dt.now().year
+    years = [yr, yr + 1]  # include next year so a year-rollover still resolves
+
+    # (display name, city, tz, open, close, holidays-lib resolver)
+    exchanges = [
+        ("New York", "NYC", "America/New_York", 9.5, 16.0, lambda y: _hol.financial_holidays("NYSE", years=y)),
+        ("London", "LON", "Europe/London", 8.0, 16.5, lambda y: _hol.country_holidays("GB", years=y)),
+        ("Frankfurt", "FRA", "Europe/Berlin", 9.0, 17.5, lambda y: _hol.country_holidays("DE", years=y)),
+        ("Tokyo", "TKY", "Asia/Tokyo", 9.0, 15.0, lambda y: _hol.country_holidays("JP", years=y)),
+        ("Hong Kong", "HKG", "Asia/Hong_Kong", 9.5, 16.0, lambda y: _hol.country_holidays("HK", years=y)),
+        ("Sydney", "SYD", "Australia/Sydney", 10.0, 16.0, lambda y: _hol.country_holidays("AU", years=y)),
+    ]
+    out = []
+    for name, city, tz, open_h, close_h, resolver in exchanges:
+        dates = {}
+        try:
+            for y in years:
+                for d, label in resolver(y).items():
+                    dates[d.isoformat()] = label
+        except Exception as e:
+            logger.warning(f"[market-hours] holiday calc failed for {name}: {e}")
+        out.append({
+            "name": name, "city": city, "tz": tz,
+            "open": open_h, "close": close_h,
+            "holidays": sorted(dates.keys()),
+            "holidayNames": dates,
+        })
+    return {
+        "available": True,
+        "exchanges": out,
+        "years": years,
+        "source": "python-holidays library (per-region, any-year; incl. lunar calendars)",
+        "as_of": _dt.now().isoformat(),
+    }
+
+
 @app.get("/api/global-markets")
 @ttl_cache(300)
 async def get_global_markets():
