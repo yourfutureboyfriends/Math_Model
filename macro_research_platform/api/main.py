@@ -11912,6 +11912,83 @@ async def get_cot_data():
         }
 
 
+@app.get("/api/global-correlation")
+@ttl_cache(600)
+async def get_global_correlation(window: int = 90):
+    """Cross-market correlation matrix across WORLD equity indices + FX + cross-asset, from real
+    aligned daily returns (yfinance). Answers 'how do these global markets move together'."""
+    from api.handlers.market_handler import _fetch_dated_closes_literal
+    from api.calculations.factor_model import returns_from_closes
+    from api.calculations.altdata import correlation_matrix
+
+    window = max(20, min(int(window), 252))
+    assets = {
+        "S&P500": "^GSPC", "Nasdaq": "^IXIC", "FTSE": "^FTSE", "DAX": "^GDAXI",
+        "EuroStoxx": "^STOXX50E", "Nikkei": "^N225", "HangSeng": "^HSI", "Shanghai": "000001.SS",
+        "ASX200": "^AXJO", "Nifty": "^NSEI",
+        "EURUSD": "EURUSD=X", "USDJPY": "USDJPY=X", "DXY": "DX-Y.NYB",
+        "Gold": "GC=F", "WTI": "CL=F", "UST10Y": "TLT",
+    }
+    labels = list(assets.keys())
+    results = await asyncio.gather(*[_fetch_dated_closes_literal(assets[l]) for l in labels],
+                                   return_exceptions=True)
+    dated = {l: d for l, d in zip(labels, results) if d and not isinstance(d, Exception)}
+    if len(dated) < 2:
+        return {"available": False, "reason": "Insufficient market data.", "labels": [], "matrix": []}
+    common = None
+    for d in dated.values():
+        common = set(d) if common is None else (common & set(d))
+    common = sorted(common or [])
+    if len(common) < 22:
+        return {"available": False, "reason": "Insufficient overlapping history.", "labels": [], "matrix": []}
+    returns_by_asset = {l: returns_from_closes([dated[l][dt] for dt in common]) for l in dated}
+    result = correlation_matrix(returns_by_asset, window)
+    return {"available": bool(result["matrix"]), "as_of": datetime.now().isoformat(),
+            "source": "yfinance (daily closes) — global indices, FX & cross-asset",
+            "window": window, **result}
+
+
+@app.get("/api/fx-rates")
+@ttl_cache(300)
+async def get_fx_rates():
+    """Broad FX board — many pairs grouped by region (G10 majors, Asia, EMEA, LatAm), each with
+    a real live spot + daily % change. Pairs that fail to quote return null, never a fake value."""
+    from api.handlers.market_handler import _fetch_closes_literal, _pct_change
+
+    # group -> [(pair label, yfinance ticker, decimals)]
+    groups = {
+        "g10": [("EUR/USD", "EURUSD=X", 4), ("GBP/USD", "GBPUSD=X", 4), ("USD/JPY", "USDJPY=X", 2),
+                ("USD/CHF", "USDCHF=X", 4), ("USD/CAD", "USDCAD=X", 4), ("AUD/USD", "AUDUSD=X", 4),
+                ("NZD/USD", "NZDUSD=X", 4), ("EUR/GBP", "EURGBP=X", 4), ("EUR/JPY", "EURJPY=X", 2),
+                ("USD/SEK", "USDSEK=X", 3)],
+        "asia": [("USD/CNY", "USDCNY=X", 3), ("USD/INR", "USDINR=X", 2), ("USD/KRW", "USDKRW=X", 1),
+                 ("USD/SGD", "USDSGD=X", 4), ("USD/HKD", "USDHKD=X", 4), ("USD/TWD", "USDTWD=X", 2)],
+        "emea_latam": [("USD/BRL", "USDBRL=X", 3), ("USD/MXN", "USDMXN=X", 3),
+                       ("USD/ZAR", "USDZAR=X", 3), ("USD/TRY", "USDTRY=X", 3)],
+    }
+    flat = [(g, p, t, dp) for g, items in groups.items() for (p, t, dp) in items]
+    closes_list = await asyncio.gather(*[_fetch_closes_literal(t) for _, _, t, _ in flat],
+                                       return_exceptions=True)
+    result = {"g10": [], "asia": [], "emea_latam": []}
+    for (g, pair, ticker, dp), closes in zip(flat, closes_list):
+        if isinstance(closes, Exception) or not closes:
+            result[g].append({"pair": pair, "ticker": ticker, "spot": None, "change1d": None, "available": False})
+        else:
+            result[g].append({"pair": pair, "ticker": ticker, "spot": round(float(closes[-1]), dp),
+                              "change1d": _pct_change(closes, 1), "available": True})
+    dxy_closes = await _fetch_closes_literal("DX-Y.NYB")
+    dxy = {"spot": round(float(dxy_closes[-1]), 2), "change1d": _pct_change(dxy_closes, 1)} if dxy_closes else None
+    n_ok = sum(1 for g in result.values() for x in g if x.get("available"))
+    return {
+        "available": n_ok > 0,
+        "dxy": dxy,
+        **result,
+        "pair_count": n_ok,
+        "source": "Yahoo Finance (yfinance) — live FX closes",
+        "as_of": datetime.now().isoformat(),
+    }
+
+
 @app.get("/api/market-hours")
 @ttl_cache(21600)  # 6h — holiday calendars change rarely
 async def get_market_hours():

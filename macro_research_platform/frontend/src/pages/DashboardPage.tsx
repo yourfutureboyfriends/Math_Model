@@ -73,6 +73,7 @@ import {
   FixedIncomeDashboardSection,
   MarketClockSection,
   GlobalMarketsSection,
+  GlobalCorrelationSection,
   TradeRecommendationsSection,
 } from '@/components/sections';
 
@@ -163,6 +164,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Global Markets">
           <Suspense fallback={<SectionSkeleton />}>
             <GlobalMarketsSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Global Correlations">
+          <Suspense fallback={<SectionSkeleton />}>
+            <GlobalCorrelationSection />
           </Suspense>
         </ErrorBoundary>
       </div>

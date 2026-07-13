@@ -8,6 +8,7 @@ import { CsvButton } from '@/components/ui/CsvButton';
 import { Table } from '@/components/ui/Table';
 import { cn } from '@/lib/utils';
 import { useMacroStore } from '@/store/macroStore';
+import { useApiData } from '@/hooks/useApiData';
 import { fmtFx, fmtChange, fmtVol } from '@/utils/format';
 
 interface FXPair {
@@ -42,30 +43,37 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
   const isLoading = useMacroStore((state) => state.meta.dataStatus === 'loading');
   const asOf = useMacroStore((state) => (state.fullDashboard as any)?.timestamp as string | undefined);
 
-  // Build FX data from store prices
+  // Broad live FX board (20 pairs, region-grouped) — real spots + daily change.
+  const { data: fxApi } = useApiData<any>('/api/fx-rates');
+
+  const toPair = (p: any): FXPair => ({
+    pair: p.pair, spot: p.spot ?? 0, change1d: p.change1d ?? 0, change1w: 0, change1m: 0,
+    vol1m: 0, trendSignal: (p.change1d ?? 0) > 0 ? 'UP' : (p.change1d ?? 0) < 0 ? 'DOWN' : 'NEUTRAL',
+  });
+
+  // Build FX data from store prices (fallback when the fx-rates endpoint isn't loaded yet)
   const buildFXFromStore = (): FXData => {
     const g10: FXPair[] = [
       { pair: 'EUR/USD', spot: prices.EURUSD ?? 0, change1d: (changes.EURUSD ?? 0) * 100, change1w: 0, change1m: 0, vol1m: 8.5, trendSignal: 'NEUTRAL' },
       { pair: 'GBP/USD', spot: prices.GBPUSD ?? 0, change1d: (changes.GBPUSD ?? 0) * 100, change1w: 0, change1m: 0, vol1m: 9.2, trendSignal: 'NEUTRAL' },
       { pair: 'USD/JPY', spot: prices.USDJPY ?? 0, change1d: (changes.USDJPY ?? 0) * 100, change1w: 0, change1m: 0, vol1m: 10.1, trendSignal: 'NEUTRAL' },
-      { pair: 'USD/CHF', spot: prices.USDCHF ?? 0, change1d: (changes.USDCHF ?? 0) * 100, change1w: 0, change1m: 0, vol1m: 9.8, trendSignal: 'NEUTRAL' },
-      { pair: 'USD/CAD', spot: prices.USDCAD ?? 0, change1d: (changes.USDCAD ?? 0) * 100, change1w: 0, change1m: 0, vol1m: 8.9, trendSignal: 'NEUTRAL' },
-      { pair: 'AUD/USD', spot: prices.AUDUSD ?? 0, change1d: (changes.AUDUSD ?? 0) * 100, change1w: 0, change1m: 0, vol1m: 11.2, trendSignal: 'NEUTRAL' },
-      { pair: 'NZD/USD', spot: prices.NZDUSD ?? 0, change1d: (changes.NZDUSD ?? 0) * 100, change1w: 0, change1m: 0, vol1m: 11.8, trendSignal: 'NEUTRAL' },
     ].filter(f => f.spot > 0);
 
     return {
       g10,
       em: propData?.em ?? [],
-      dxy: prices.DXY ? {
-        spot: prices.DXY,
-        change1d: (changes.DXY ?? 0) * 100
-      } : undefined
+      dxy: prices.DXY ? { spot: prices.DXY, change1d: (changes.DXY ?? 0) * 100 } : undefined,
     };
   };
 
-  // Use store data if available, fallback to props
-  const data = buildFXFromStore();
+  // Prefer the live fx-rates board; fall back to store prices while it loads.
+  const data: FXData = fxApi?.available
+    ? {
+        g10: (fxApi.g10 ?? []).filter((p: any) => p.available).map(toPair),
+        em: [...(fxApi.asia ?? []), ...(fxApi.emea_latam ?? [])].filter((p: any) => p.available).map(toPair),
+        dxy: fxApi.dxy ?? undefined,
+      }
+    : buildFXFromStore();
   const majorPairs = data.g10.slice(0, 8);
 
   const fxColumns = [
@@ -224,11 +232,11 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
           />
         )}
 
-        {/* EM FX Summary */}
+        {/* EM FX Summary (Asia + EMEA/LatAm) */}
         <div>
-          <div className="text-2xs text-text-tertiary uppercase mb-2">EM FX</div>
+          <div className="text-2xs text-text-tertiary uppercase mb-2">EM FX · Asia · LatAm</div>
           <div className="grid grid-cols-4 gap-2">
-            {(propData?.em ?? []).slice(0, 4).map(fx => (
+            {(data.em ?? []).slice(0, 8).map(fx => (
               <div
                 key={fx.pair}
                 className="p-2 border border-border-subtle"

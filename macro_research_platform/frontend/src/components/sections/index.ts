@@ -88,6 +88,10 @@ export const GlobalMarketsSection = lazy(() =>
   import('./market/GlobalMarketsSection').then(m => ({ default: m.GlobalMarketsSection }))
 );
 
+export const GlobalCorrelationSection = lazy(() =>
+  import('./market/GlobalCorrelationSection').then(m => ({ default: m.GlobalCorrelationSection }))
+);
+
 export const StreamAgreementSection = lazy(() =>
   import('./signals/StreamAgreementSection').then(m => ({ default: m.StreamAgreementSection }))
 );
