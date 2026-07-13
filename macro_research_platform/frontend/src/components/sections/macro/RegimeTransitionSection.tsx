@@ -48,7 +48,7 @@ export function RegimeTransitionSection({ data: dataProp }: RegimeTransitionSect
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">Regime Transition</h2>
+          <h2 className="section-title">Regime Transition Matrix</h2>
           <span className="section-meta">{currentRegime}</span>
         </div>
       </div>

@@ -35,7 +35,7 @@ const sections = [
   // Regime
   { id: 'regime', label: 'Regime Classification', icon: '🎯', priority: 'high' },
   { id: 'regime-playbook', label: 'Regime Playbook', icon: '📖', priority: 'high' },
-  { id: 'regime-transition', label: 'Regime Transition', icon: '↔️', priority: 'medium' },
+  { id: 'regime-transition', label: 'Transition Matrix', icon: '↔️', priority: 'medium' },
 
   // Signals
   { id: 'signals', label: 'ML Signals', icon: '🤖', priority: 'high' },

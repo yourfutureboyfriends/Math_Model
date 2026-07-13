@@ -40,7 +40,7 @@ export function RegimeOutlookSection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><GitBranch className="w-3 h-3" /></span>
-          <h2 className="section-title">Regime Transition Outlook</h2>
+          <h2 className="section-title">Regime Shift Outlook</h2>
           <span className="section-meta">
             growth×inflation quadrant{data?.cycle_regime ? <> · complements cycle regime <span className="text-text-secondary">{String(data.cycle_regime)}</span></> : ' model'}
           </span>

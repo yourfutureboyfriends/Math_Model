@@ -703,21 +703,10 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         "lastUpdated": now.isoformat(),
     }
 
-    # GMO Long-term Forecasts — derived from ten_yr
-    _bond_ret = ten_yr
-    _eq_ret = _bond_ret + 4.0
+    # Long-term Forecasts — single source of truth shared with signal_handler (api/calculations/cma.py)
+    from api.calculations.cma import longterm_forecasts
     _gmo_forecasts = {
-        "forecasts": [
-            {"assetClass": "US Large Cap", "expectedReturn": round(_eq_ret, 1), "volatility": 15.0, "sharpeRatio": round(_eq_ret / 15, 2), "confidence": 0.6},
-            {"assetClass": "US Small Cap", "expectedReturn": round(_eq_ret + 0.5, 1), "volatility": 18.0, "sharpeRatio": round((_eq_ret + 0.5) / 18, 2), "confidence": 0.5},
-            {"assetClass": "International Developed", "expectedReturn": round(_eq_ret + 1.0, 1), "volatility": 16.0, "sharpeRatio": round((_eq_ret + 1.0) / 16, 2), "confidence": 0.5},
-            {"assetClass": "Emerging Markets", "expectedReturn": round(_eq_ret + 2.5, 1), "volatility": 22.0, "sharpeRatio": round((_eq_ret + 2.5) / 22, 2), "confidence": 0.4},
-            {"assetClass": "US Bonds", "expectedReturn": round(_bond_ret, 1), "volatility": 5.0, "sharpeRatio": round(_bond_ret / 5, 2), "confidence": 0.8},
-        ],
-        "methodology": f"Building-block CMA: bond = 10Y yield ({ten_yr:.1f}%), equity = 10Y + 4% ERP (GMO-style, not GMO's valuation model)",
-        "asOfDate": now.isoformat(),
-        "disclaimer": "Past performance does not guarantee future results.",
-        "lastUpdated": now.isoformat(),
+        **longterm_forecasts(ten_yr, now),
     }
 
     # Advanced Indicators — derived from growth_score, liquidity_score, ten_yr

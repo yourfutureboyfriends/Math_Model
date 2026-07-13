@@ -86,7 +86,7 @@ const navigation: NavSection[] = [
       { id: 'sentiment', label: 'Sentiment', icon: '◆', permission: 'sentiment' },
       { id: 'expected-returns', label: 'Expected Returns', icon: '◆', permission: 'expected_returns', highlight: true },
       { id: 'gmo-forecasts', label: 'GMO 7-Year', icon: '◆', permission: 'gmo_7year' },
-      { id: 'regime-transition', label: 'Regime Transition', icon: '◆', permission: 'regime_transition' },
+      { id: 'regime-transition', label: 'Transition Matrix', icon: '◆', permission: 'regime_transition' },
       { id: 'regime-outlook', label: 'Regime Outlook', icon: '◆', permission: 'regime_transition' },
       { id: 'quadrants', label: 'Four Quadrants', icon: '◆', permission: 'regime_transition' },
       { id: 'event-vol', label: 'Event Volatility', icon: '◆', permission: 'economic_calendar' },

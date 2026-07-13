@@ -476,22 +476,9 @@ async def get_longterm_forecasts_data() -> Dict[str, Any]:
     dashboard = await get_dashboard_data(mode="live")
     ten_yr = dashboard.keyMetrics.tenYearYield if dashboard.keyMetrics else None
 
-    equity_erp = 4.0
-    bond_return = ten_yr if ten_yr else 4.5
-    equity_return = bond_return + equity_erp
-
-    return {
-        "forecasts": [
-            {"assetClass": "US Large Cap", "expectedReturn": round(equity_return, 1), "volatility": 15.0, "sharpeRatio": round(equity_return / 15, 2), "confidence": 0.6},
-            {"assetClass": "US Small Cap", "expectedReturn": round(equity_return + 0.5, 1), "volatility": 18.0, "sharpeRatio": round((equity_return + 0.5) / 18, 2), "confidence": 0.5},
-            {"assetClass": "International Developed", "expectedReturn": round(equity_return + 1.0, 1), "volatility": 16.0, "sharpeRatio": round((equity_return + 1.0) / 16, 2), "confidence": 0.5},
-            {"assetClass": "Emerging Markets", "expectedReturn": round(equity_return + 2.5, 1), "volatility": 22.0, "sharpeRatio": round((equity_return + 2.5) / 22, 2), "confidence": 0.4},
-            {"assetClass": "US Bonds", "expectedReturn": round(bond_return, 1), "volatility": 5.0, "sharpeRatio": round(bond_return / 5, 2), "confidence": 0.8},
-        ],
-        "methodology": f"Building-block CMA: bond = 10Y yield ({ten_yr:.1f}%), equity = 10Y + 4% ERP (GMO-style, not GMO's valuation model)",
-        "asOfDate": datetime.now().isoformat(),
-        "disclaimer": "Past performance does not guarantee future results.",
-    }
+    # Single source of truth (shared with dashboard_handler's gmoForecasts) — see api/calculations/cma.py
+    from api.calculations.cma import longterm_forecasts
+    return longterm_forecasts(ten_yr)
 
 
 async def get_reflexivity_data() -> Dict[str, Any]:
