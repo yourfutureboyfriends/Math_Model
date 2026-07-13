@@ -39,6 +39,7 @@ const navigation: NavSection[] = [
       { id: 'market-clock', label: 'Market Clock', icon: '◆', permission: 'master_signal' },
       { id: 'global-markets', label: 'Global Markets', icon: '◆', permission: 'master_signal' },
       { id: 'global-correlation', label: 'Global Correlations', icon: '◆', permission: 'master_signal' },
+      { id: 'regional-macro', label: 'Regional Macro', icon: '◆', permission: 'master_signal' },
     ],
   },
   {

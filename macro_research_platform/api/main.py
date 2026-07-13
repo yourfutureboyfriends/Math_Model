@@ -11912,6 +11912,42 @@ async def get_cot_data():
         }
 
 
+@app.get("/api/regional-macro")
+@ttl_cache(3600)
+async def get_regional_macro():
+    """Cross-country macro comparison — real per-economy indicators from FRED's OECD series:
+    10Y govt bond yield, harmonized unemployment, CPI YoY. Any series that doesn't resolve is
+    returned as null (shown as '—'), never a fabricated value."""
+    # (region label, FRED OECD country code)
+    countries = [("United States", "US"), ("Euro Area", "EZ"), ("United Kingdom", "GB"),
+                 ("Japan", "JP"), ("Canada", "CA"), ("Australia", "AU")]
+    # indicator -> FRED series template ({cc} = country code)
+    inds = {"tenYear": "IRLTLT01{cc}M156N", "unemployment": "LRHUTTTT{cc}M156S",
+            "cpiYoY": "CPALTT01{cc}M659N"}
+
+    jobs = [(label, cc, key, tmpl.format(cc=cc))
+            for (label, cc) in countries for key, tmpl in inds.items()]
+    values = await asyncio.gather(*[_aio_to_thread(_fetch_fresh_fred_value, sid) for *_, sid in jobs])
+
+    by_region: Dict[str, Dict] = {label: {"region": label, "code": cc} for label, cc in countries}
+    for (label, cc, key, _sid), val in zip(jobs, values):
+        by_region[label][key] = round(val, 2) if isinstance(val, (int, float)) else None
+
+    regions = list(by_region.values())
+    n_ok = sum(1 for r in regions for k in ("tenYear", "unemployment", "cpiYoY") if r.get(k) is not None)
+    return {
+        "available": n_ok > 0,
+        "regions": regions,
+        "indicators": [
+            {"key": "cpiYoY", "label": "CPI YoY", "unit": "%"},
+            {"key": "unemployment", "label": "Unemployment", "unit": "%"},
+            {"key": "tenYear", "label": "10Y Yield", "unit": "%"},
+        ],
+        "source": "FRED (OECD Main Economic Indicators) — per-country series",
+        "as_of": datetime.now().isoformat(),
+    }
+
+
 @app.get("/api/global-correlation")
 @ttl_cache(600)
 async def get_global_correlation(window: int = 90):

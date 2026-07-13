@@ -92,6 +92,10 @@ export const GlobalCorrelationSection = lazy(() =>
   import('./market/GlobalCorrelationSection').then(m => ({ default: m.GlobalCorrelationSection }))
 );
 
+export const RegionalMacroSection = lazy(() =>
+  import('./macro/RegionalMacroSection').then(m => ({ default: m.RegionalMacroSection }))
+);
+
 export const StreamAgreementSection = lazy(() =>
   import('./signals/StreamAgreementSection').then(m => ({ default: m.StreamAgreementSection }))
 );
