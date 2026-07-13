@@ -72,6 +72,7 @@ import {
   CommoditiesDashboardSection,
   FixedIncomeDashboardSection,
   MarketClockSection,
+  GlobalMarketsSection,
   TradeRecommendationsSection,
 } from '@/components/sections';
 
@@ -155,6 +156,14 @@ export function DashboardPage() {
       <div id="market-clock" className="terminal-section">
         <ErrorBoundary sectionName="Market Clock">
           <MarketClockSection />
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Global Markets">
+          <Suspense fallback={<SectionSkeleton />}>
+            <GlobalMarketsSection />
+          </Suspense>
         </ErrorBoundary>
       </div>
 

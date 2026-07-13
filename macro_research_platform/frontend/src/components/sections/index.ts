@@ -84,6 +84,10 @@ export const QuadrantsSection = lazy(() =>
   import('./macro/QuadrantsSection').then(m => ({ default: m.QuadrantsSection }))
 );
 
+export const GlobalMarketsSection = lazy(() =>
+  import('./market/GlobalMarketsSection').then(m => ({ default: m.GlobalMarketsSection }))
+);
+
 export const StreamAgreementSection = lazy(() =>
   import('./signals/StreamAgreementSection').then(m => ({ default: m.StreamAgreementSection }))
 );

@@ -37,6 +37,7 @@ const navigation: NavSection[] = [
       { id: 'regime', label: 'Regime Engine', icon: '◇', permission: 'regime_engine', highlight: true },
       { id: 'regime-playbook', label: 'Regime Playbook', icon: '◇', permission: 'regime_engine', highlight: true },
       { id: 'market-clock', label: 'Market Clock', icon: '◆', permission: 'master_signal' },
+      { id: 'global-markets', label: 'Global Markets', icon: '◆', permission: 'master_signal' },
     ],
   },
   {

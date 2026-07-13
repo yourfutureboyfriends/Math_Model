@@ -11912,6 +11912,53 @@ async def get_cot_data():
         }
 
 
+@app.get("/api/global-markets")
+@ttl_cache(300)
+async def get_global_markets():
+    """Major world equity indices with real level + daily % change (not just US).
+
+    Uses live yfinance closes per index; any index that fails to fetch is returned with a null
+    level + reason rather than a fabricated value."""
+    from api.handlers.market_handler import _fetch_closes_literal, _pct_change
+
+    # (display name, region, yfinance ticker)
+    indices = [
+        ("S&P 500", "US", "^GSPC"),
+        ("Nasdaq", "US", "^IXIC"),
+        ("FTSE 100", "UK", "^FTSE"),
+        ("DAX", "Germany", "^GDAXI"),
+        ("Euro Stoxx 50", "Europe", "^STOXX50E"),
+        ("Nikkei 225", "Japan", "^N225"),
+        ("Hang Seng", "Hong Kong", "^HSI"),
+        ("Shanghai Composite", "China", "000001.SS"),
+        ("ASX 200", "Australia", "^AXJO"),
+        ("Nifty 50", "India", "^NSEI"),
+    ]
+    closes_list = await asyncio.gather(*[_fetch_closes_literal(t) for _, _, t in indices],
+                                       return_exceptions=True)
+    markets = []
+    for (name, region, ticker), closes in zip(indices, closes_list):
+        if isinstance(closes, Exception) or not closes:
+            markets.append({"name": name, "region": region, "ticker": ticker,
+                            "level": None, "change1d": None, "available": False,
+                            "reason": "quote unavailable"})
+            continue
+        markets.append({
+            "name": name, "region": region, "ticker": ticker,
+            "level": round(float(closes[-1]), 2),
+            "change1d": _pct_change(closes, 1),
+            "available": True,
+        })
+    ok = [m for m in markets if m.get("available")]
+    return {
+        "markets": markets,
+        "available": len(ok) > 0,
+        "regions_covered": sorted({m["region"] for m in ok}),
+        "source": "Yahoo Finance (yfinance) — live index closes",
+        "as_of": datetime.now().isoformat(),
+    }
+
+
 @app.get("/api/horizon")
 async def get_horizon_risks():
     """
