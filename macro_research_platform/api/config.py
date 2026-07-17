@@ -2,10 +2,16 @@
 
 import os
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env — walk up from api/ to find the project root .env
+_here = Path(__file__).parent          # .../macro_research_platform/api/
+_project_root = _here.parent           # .../macro_research_platform/
+_dotenv_path = _project_root / ".env"
+load_dotenv(dotenv_path=_dotenv_path, override=False)  # don't stomp real env vars
+# Also try cwd as fallback (legacy behaviour)
+load_dotenv(override=False)
 
 # Base paths
 BASE_DIR = Path(__file__).parent
@@ -20,8 +26,21 @@ for dir_path in [DATA_DIR, CACHE_DIR, REPORTS_DIR]:
 # Database
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///macro_terminal.db")
 
-# JWT Authentication
-JWT_SECRET = os.getenv("JWT_SECRET", "change-this-in-production")
+# ═════════════════════════════════════════════════════════════════════════════
+# SECURITY: JWT Authentication
+# ═════════════════════════════════════════════════════════════════════════════
+
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+IS_TESTING = ENVIRONMENT in ("test", "ci", "testing")
+
+# JWT Secret - MUST be set in production
+_jwt_secret = os.getenv("JWT_SECRET")
+if not _jwt_secret and not IS_TESTING:
+    raise RuntimeError(
+        "JWT_SECRET environment variable must be set in non-test environments. "
+        "Generate a secure secret with: openssl rand -hex 32"
+    )
+JWT_SECRET = _jwt_secret or "test-secret-do-not-use-in-production"
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours (trading day)
 
@@ -48,7 +67,29 @@ POLYGON_KEY = os.getenv("POLYGON_KEY")
 ENABLE_WEBSOCKET = os.getenv("ENABLE_WEBSOCKET", "true").lower() == "true"
 ENABLE_CELERY = os.getenv("ENABLE_CELERY", "true").lower() == "true"
 
+# ═════════════════════════════════════════════════════════════════════════════
+# Phase 5: Runtime Validation & Monitoring Flags
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Runtime validation - validates payload data before returning from handlers
+ENABLE_RUNTIME_VALIDATION = os.getenv("ENABLE_RUNTIME_VALIDATION", "true").lower() == "true"
+
+# Event logging - logs signal, forecast, and risk events to database
+ENABLE_EVENT_LOGGING = os.getenv("ENABLE_EVENT_LOGGING", "true").lower() == "true"
+
+# Diagnostics - enables detailed diagnostics endpoints
+ENABLE_DIAGNOSTICS = os.getenv("ENABLE_DIAGNOSTICS", "true").lower() == "true"
+
+# Audit logging - logs all audit events to AuditLog table
+ENABLE_AUDIT_LOGGING = os.getenv("ENABLE_AUDIT_LOGGING", "true").lower() == "true"
+
+# Provenance tracking - tracks data lineage for all ingested data
+ENABLE_PROVENANCE_TRACKING = os.getenv("ENABLE_PROVENANCE_TRACKING", "false").lower() == "true"
+
+# ═════════════════════════════════════════════════════════════════════════════
 # Role permissions mapping
+# ═════════════════════════════════════════════════════════════════════════════
+
 ROLE_PERMISSIONS: Dict[str, List[str]] = {
     "pm": [
         "master_signal", "key_metrics", "regime_engine",

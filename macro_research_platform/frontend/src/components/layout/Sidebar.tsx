@@ -2,10 +2,11 @@
 // Optimized navigation for PM daily workflow: Morning → Signals → Trades → Risk → Strategy
 
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LogOut, Star } from 'lucide-react';
 import { Logo } from './Logo';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { usePinnedSections } from '@/hooks/usePinnedSections';
 
 interface NavItem {
   id: string;
@@ -22,18 +23,17 @@ interface NavSection {
 
 // UPGRADE-9: Reorganized navigation for hedge fund workflow
 // FIXED (PART 3): Sidebar reorganized per user spec
+// Phase 3 IA redesign — grouped by the trading-day workflow (Brief → Signals → Risk →
+// Forecasts → Decide → Positions → System), not by data category. Key fix: DECIDE (execution)
+// is split out from POSITIONS (holdings/review). All panel ids preserved; see IA_CURRENT.md.
 const navigation: NavSection[] = [
   {
-    title: 'MORNING BRIEF',
+    title: 'BRIEF',
     items: [
       { id: 'morning-brief', label: 'Morning Brief', icon: '☀', permission: 'master_signal', highlight: true },
-    ],
-  },
-  {
-    title: 'OVERVIEW',
-    items: [
       { id: 'master-signal', label: 'Master Ensemble', icon: '◆', permission: 'master_signal', highlight: true },
       { id: 'key-metrics', label: 'Key Metrics', icon: '◆', permission: 'key_metrics' },
+      { id: 'anomalies', label: 'Anomalies', icon: '◆', permission: 'master_signal' },
       { id: 'regime', label: 'Regime Engine', icon: '◇', permission: 'regime_engine', highlight: true },
       { id: 'regime-playbook', label: 'Regime Playbook', icon: '◇', permission: 'regime_engine', highlight: true },
       { id: 'market-clock', label: 'Market Clock', icon: '◆', permission: 'master_signal' },
@@ -42,14 +42,19 @@ const navigation: NavSection[] = [
   {
     title: 'SIGNALS',
     items: [
-      { id: 'signals', label: 'Signal Interpretation', icon: '◆', permission: 'ml_signals' },
+      // Actionable consensus first, raw breakdowns below.
       { id: 'ensemble', label: 'Ensemble', icon: '◆', permission: 'ensemble', highlight: true },
       { id: 'signal-stack', label: 'Signal Stack', icon: '◆', permission: 'signal_stack' },
+      { id: 'signal-scorecard', label: 'Signal Scorecard', icon: '◆', permission: 'signal_stack', highlight: true },
+      { id: 'signal-story', label: 'Signal Storytelling', icon: '◆', permission: 'signal_stack' },
+      { id: 'signals', label: 'Signal Interpretation', icon: '◆', permission: 'ml_signals' },
+      { id: 'alt-data', label: 'Alt-Data Positioning', icon: '◈', permission: 'signal_stack', highlight: true },
+      { id: 'stream-agreement', label: 'Stream Agreement', icon: '◆', permission: 'signal_stack' },
+      { id: 'factor-validation', label: 'Factor OOS Validation', icon: '◆', permission: 'factor_decomp' },
+      { id: 'model-agreement', label: 'Model Agreement', icon: '◆', permission: 'model_agreement' },
       { id: 'sector-allocation', label: 'Sector Allocation', icon: '◆', permission: 'sector_allocation' },
       { id: 'factor-rotation', label: 'Factor Rotation', icon: '◆', permission: 'factor_rotation' },
       { id: 'cot-positioning', label: 'COT Positioning', icon: '◆', permission: 'signal_stack' },
-      // FIXED (PART 3): Moved from STRATEGY to SIGNALS
-      { id: 'model-agreement', label: 'Model Agreement', icon: '◆', permission: 'model_agreement' },
       { id: 'cta-trend', label: 'CTA Trends', icon: '◆', permission: 'cta_trends' },
       { id: 'news-sentiment', label: 'News Sentiment', icon: '◆', permission: 'news_sentiment' },
     ],
@@ -59,66 +64,70 @@ const navigation: NavSection[] = [
     items: [
       { id: 'risk-indicators', label: 'Risk Indicators', icon: '◆', permission: 'risk_indicators', highlight: true },
       { id: 'risk-analytics', label: 'Risk Analytics', icon: '◆', permission: 'var_drawdown', highlight: true },
-      { id: 'debt-cycle', label: 'Debt Cycle', icon: '◆', permission: 'debt_cycle' },
-      { id: 'advanced', label: 'Advanced Indicators', icon: '◆', permission: 'advanced_indicators' },
-      // FIXED (PART 3): Moved from STRATEGY to RISK
+      { id: 'var-stress', label: 'VaR & Stress', icon: '◆', permission: 'var_drawdown', highlight: true },
+      { id: 'factor-exposure', label: 'Factor Exposure', icon: '◆', permission: 'factor_decomp', highlight: true },
+      { id: 'horizon-tension', label: 'Horizon Tensions', icon: '◆', permission: 'horizon_tensions', highlight: true },
       { id: 'correlation', label: 'Correlation Regime', icon: '◆', permission: 'correlation' },
+      { id: 'correlation-matrix', label: 'Correlation Matrix', icon: '◆', permission: 'correlation' },
+      { id: 'debt-cycle', label: 'Debt Cycle', icon: '◆', permission: 'debt_cycle' },
       { id: 'factor-decomposition', label: 'Factor Decomposition', icon: '◆', permission: 'factor_decomp' },
       { id: 'risk-parity', label: 'Risk Parity', icon: '◆', permission: 'risk_parity' },
-      { id: 'horizon-tension', label: 'Horizon Tensions', icon: '◆', permission: 'horizon_tensions', highlight: true },
+      { id: 'risk-parity-compare', label: 'Risk Parity Compare', icon: '◆', permission: 'risk_parity' },
+      { id: 'advanced', label: 'Advanced Indicators', icon: '◆', permission: 'advanced_indicators' },
     ],
   },
   {
     title: 'FORECASTS',
     items: [
+      { id: 'valuation', label: 'Valuation Filter', icon: '◆', permission: 'valuation' },
       { id: 'nowcast', label: 'GDP Nowcast', icon: '◆', permission: 'gdp_nowcast' },
+      { id: 'yield-curve', label: 'Yield Curve', icon: '◆', permission: 'master_signal' },
       { id: 'liquidity', label: 'Liquidity Conditions', icon: '◆', permission: 'liquidity' },
       { id: 'sentiment', label: 'Sentiment', icon: '◆', permission: 'sentiment' },
-      { id: 'yield-curve', label: 'Yield Curve', icon: '◆', permission: 'master_signal' },
-      // FIXED (PART 3): Moved from STRATEGY to FORECASTS
-      { id: 'valuation', label: 'Valuation Filter', icon: '◆', permission: 'valuation' },
+      { id: 'expected-returns', label: 'Expected Returns', icon: '◆', permission: 'expected_returns', highlight: true },
+      { id: 'gmo-forecasts', label: 'GMO 7-Year', icon: '◆', permission: 'gmo_7year' },
+      { id: 'regime-transition', label: 'Regime Transition', icon: '◆', permission: 'regime_transition' },
+      { id: 'regime-outlook', label: 'Regime Outlook', icon: '◆', permission: 'regime_transition' },
+      { id: 'quadrants', label: 'Four Quadrants', icon: '◆', permission: 'regime_transition' },
+      { id: 'event-vol', label: 'Event Volatility', icon: '◆', permission: 'economic_calendar' },
     ],
   },
   {
-    title: 'STRATEGY',
+    title: 'DECIDE',
     items: [
-      { id: 'expected-returns', label: 'Expected Returns', icon: '◆', permission: 'expected_returns', highlight: true },
-      { id: 'gmo-forecasts', label: 'GMO 7-Year', icon: '◆', permission: 'gmo_7year' },
+      // The IA fix: execution/decision surfaces, split out of Portfolio.
+      { id: 'trade-ideas', label: 'Trade Ideas', icon: '◆', permission: 'trade_ideas', highlight: true },
+      { id: 'trade-recommendations', label: 'Trade Recommendations', icon: '◆', permission: 'trade_recommendations', highlight: true },
+      { id: 'trade-workflow', label: 'Trade Workflow', icon: '⚗', permission: 'trade_ideas', highlight: true },
+      { id: 'scenario-analysis', label: 'Scenario Analysis', icon: '◆', permission: 'master_signal' },
+      { id: 'momentum-veto', label: 'Momentum Veto', icon: '◆', permission: 'momentum_veto' },
+    ],
+  },
+  {
+    title: 'POSITIONS',
+    items: [
+      { id: 'portfolio-positions', label: 'Positions', icon: '▦', permission: 'portfolio_fit', highlight: true },
+      { id: 'portfolio', label: 'Model Portfolio', icon: '◆', permission: 'portfolio_fit', highlight: true },
+      { id: 'performance-attribution', label: 'Performance Attribution', icon: '◆', permission: 'performance_tracking', highlight: true },
+      { id: 'equity-research', label: 'Equity Research', icon: '◆', permission: 'equity_research', highlight: true },
+      { id: 'business-layer', label: 'Business Layer', icon: '◆', permission: 'business_layer' },
       { id: 'fx-monitor', label: 'FX Monitor', icon: '◆', permission: 'master_signal' },
       { id: 'commodities-dashboard', label: 'Commodities', icon: '◆', permission: 'master_signal' },
       { id: 'fixed-income-dashboard', label: 'Fixed Income', icon: '◆', permission: 'master_signal' },
       { id: 'international', label: 'International Macro', icon: '◆', permission: 'international_macro' },
       { id: 'reflexivity', label: 'Reflexivity', icon: '◆', permission: 'reflexivity' },
       { id: 'transmission', label: 'Transmission', icon: '◆', permission: 'transmission' },
-      { id: 'regime-transition', label: 'Regime Transition', icon: '◆', permission: 'regime_transition' },
-      { id: 'momentum-veto', label: 'Momentum Veto', icon: '◆', permission: 'momentum_veto' },
-    ],
-  },
-  {
-    title: 'RESEARCH',
-    items: [
-      { id: 'equity-research', label: 'Equity Research', icon: '◆', permission: 'equity_research', highlight: true },
-    ],
-  },
-  {
-    title: 'PORTFOLIO',
-    items: [
-      { id: 'trade-ideas', label: 'Trade Ideas', icon: '◆', permission: 'trade_ideas', highlight: true },
-      { id: 'trade-recommendations', label: 'Trade Recommendations', icon: '◆', permission: 'trade_recommendations', highlight: true },
-      { id: 'scenario-analysis', label: 'Scenario Analysis', icon: '◆', permission: 'master_signal' },
-      { id: 'portfolio', label: 'Model Portfolio', icon: '◆', permission: 'portfolio_fit', highlight: true },
-      // FIXED (PART 3): Moved from RESEARCH to PORTFOLIO
-      { id: 'performance-attribution', label: 'Performance Attribution', icon: '◆', permission: 'performance_tracking', highlight: true },
-      { id: 'data-to-watch', label: 'Data to Watch', icon: '◆', permission: 'investment_memo' },
-      { id: 'investment-memo', label: 'Investment Memo', icon: '◆', permission: 'investment_memo' },
-      { id: 'business-layer', label: 'Business Layer', icon: '◆', permission: 'business_layer' },
-      { id: 'economic-calendar', label: 'Economic Calendar', icon: '◆', permission: 'economic_calendar' },
     ],
   },
   {
     title: 'SYSTEM',
     items: [
+      { id: 'economic-calendar', label: 'Economic Calendar', icon: '◆', permission: 'economic_calendar' },
+      { id: 'data-to-watch', label: 'Data to Watch', icon: '◆', permission: 'investment_memo' },
+      { id: 'investment-memo', label: 'Investment Memo', icon: '◆', permission: 'investment_memo' },
       { id: 'system-health', label: 'System Health', icon: '◆', permission: 'system_health' },
+      { id: 'data-providers', label: 'Data Providers', icon: '◆', permission: 'system_health' },
+      { id: 'system-audit', label: 'Audit & Compliance', icon: '◆', permission: 'system_health', highlight: true },
       { id: 'data-explorer', label: 'Data Explorer', icon: '◆', permission: 'system_health' },
     ],
   },
@@ -150,6 +159,59 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
   // All users see all navigation items; permission-based feature hiding is deprecated
   const filteredNavigation = navigation;
 
+  // Per-user pinned panels for one-click access.
+  const pinKey = user?.username || user?.display_name || 'default';
+  const { pinned, toggle: togglePin, isPinned } = usePinnedSections(pinKey);
+  const itemById: Record<string, NavItem> = Object.fromEntries(
+    navigation.flatMap((s) => s.items).map((i) => [i.id, i])
+  );
+  const pinnedItems = pinned.map((id) => itemById[id]).filter(Boolean) as NavItem[];
+
+  const renderNavItem = (item: NavItem) => {
+    const isActive = activeSection === item.id;
+    const pinnedNow = isPinned(item.id);
+    return (
+      <div key={item.id} className="group relative flex items-center">
+        <button
+          onClick={() => onNavigate?.(item.id)}
+          className={cn(
+            'flex-1 h-7 flex items-center transition-all duration-120 min-w-0',
+            collapsed ? 'justify-center px-0' : 'px-4',
+            isActive
+              ? 'bg-bloomberg-muted text-bloomberg border-l-2 border-bloomberg'
+              : item.highlight
+                ? 'text-amber hover:bg-amber-dim hover:text-amber border-l-2 border-transparent hover:border-amber'
+                : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
+          )}
+        >
+          <span className={cn('font-mono text-xs',
+            isActive ? 'text-bloomberg' : item.highlight ? 'text-amber' : 'text-text-secondary')}>
+            {item.icon}
+          </span>
+          {!collapsed && (
+            <span className={cn('ml-2 text-xs truncate', item.highlight && !isActive && 'font-medium')}>
+              {item.label}
+            </span>
+          )}
+        </button>
+        {!collapsed && (
+          <button
+            onClick={(e) => { e.stopPropagation(); togglePin(item.id); }}
+            title={pinnedNow ? 'Unpin panel' : 'Pin panel'}
+            className={cn(
+              'absolute right-1.5 p-1 transition-opacity',
+              pinnedNow
+                ? 'opacity-100 text-amber'
+                : 'opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-amber'
+            )}
+          >
+            <Star className="w-3 h-3" fill={pinnedNow ? 'currentColor' : 'none'} />
+          </button>
+        )}
+      </div>
+    );
+  };
+
   const handleLogout = async () => {
     await logout();
   };
@@ -175,6 +237,21 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-2">
+        {/* Pinned panels — user's most-watched, one-click access */}
+        {pinnedItems.length > 0 && (
+          <div className="mb-1">
+            {!collapsed && (
+              <div className="px-4 py-1.5 text-2xs text-amber font-medium tracking-wider flex items-center gap-1">
+                <Star className="w-3 h-3" fill="currentColor" /> PINNED
+              </div>
+            )}
+            <div className="space-y-px">
+              {pinnedItems.map(renderNavItem)}
+            </div>
+            <div className="mx-4 my-1.5 border-t border-border-subtle" />
+          </div>
+        )}
+
         {filteredNavigation.map((section) => (
           <div key={section.title} className="mb-1">
             {!collapsed && (
@@ -183,40 +260,7 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
               </div>
             )}
             <div className="space-y-px">
-              {section.items.map((item) => {
-                const isActive = activeSection === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => onNavigate?.(item.id)}
-                    className={cn(
-                      'w-full h-7 flex items-center transition-all duration-120',
-                      collapsed ? 'justify-center px-0' : 'px-4',
-                      isActive
-                        ? 'bg-bloomberg-muted text-bloomberg border-l-2 border-bloomberg'
-                        : item.highlight
-                          ? 'text-amber hover:bg-amber-dim hover:text-amber border-l-2 border-transparent hover:border-amber'
-                          : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
-                    )}
-                  >
-                    <span className={cn(
-                      'font-mono text-xs',
-                      isActive ? 'text-bloomberg' : item.highlight ? 'text-amber' : 'text-text-secondary'
-                    )}>
-                      {item.icon}
-                    </span>
-                    {!collapsed && (
-                      <span className={cn(
-                        "ml-2 text-xs",
-                        item.highlight && !isActive && "font-medium"
-                      )}
-                      >
-                        {item.label}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+              {section.items.map(renderNavItem)}
             </div>
           </div>
         ))}

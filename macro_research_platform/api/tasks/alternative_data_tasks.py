@@ -5,7 +5,7 @@
 
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 
 import requests

@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional, List
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, func, and_
+from sqlalchemy import select, desc
 
 from database.models import Position, PositionPnlHistory, PortfolioSnapshot, PositionStatus
 from audit import log_trade_executed

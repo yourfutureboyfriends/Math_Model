@@ -3,7 +3,6 @@
 # TimescaleDB hypertable for append-only audit logs
 
 
-import json
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional

@@ -51,13 +51,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const data = await response.json();
 
+    const resolvedUser = {
+      username: data.user?.username || data.username || username,
+      role: data.role || data.user?.role || 'user',
+      display_name: data.display_name || data.user?.display_name || username,
+      permissions: data.permissions || data.user?.permissions || ['read'],
+    };
+    // Persist identity so non-React fetches (audit log, trade workflow) can attribute actions.
+    try {
+      localStorage.setItem('macro_user', resolvedUser.username);
+      localStorage.setItem('macro_role', resolvedUser.role);
+    } catch { /* storage unavailable */ }
+
     setAuth({
-      user: {
-        username: data.user?.username || data.username || username,
-        role: data.role || data.user?.role || 'user',
-        display_name: data.display_name || data.user?.display_name || username,
-        permissions: data.permissions || data.user?.permissions || ['read'],
-      },
+      user: resolvedUser,
       token: data.access_token || data.token,
       isAuthenticated: true,
     });
@@ -76,6 +83,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Ignore logout errors
       }
     }
+
+    try {
+      localStorage.removeItem('macro_user');
+      localStorage.removeItem('macro_role');
+    } catch { /* storage unavailable */ }
 
     setAuth({
       user: null,

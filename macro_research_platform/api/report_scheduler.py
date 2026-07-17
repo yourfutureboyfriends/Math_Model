@@ -10,15 +10,13 @@ Scheduled times:
 Keeps last 30 days of reports, purges older ones.
 """
 
-import os
 import json
-import shutil
 import logging
 import threading
 import requests
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Optional, List, Callable
+from typing import Dict, Optional, List
 from dataclasses import dataclass
 
 # Setup logging

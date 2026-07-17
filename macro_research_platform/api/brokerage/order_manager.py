@@ -12,7 +12,7 @@ from enum import Enum
 
 from .alpaca_client import (
     AlpacaClient, OrderSide, OrderType, TimeInForce,
-    Position, Order, Account, get_alpaca_client
+    Order, get_alpaca_client
 )
 
 logger = logging.getLogger(__name__)

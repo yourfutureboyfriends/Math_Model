@@ -1,222 +1,309 @@
-// Section component barrel — Phase 5A Code Splitting
+// Section component barrel — Phase 4 Domain Organization + Phase 5A Code Splitting
+// Components organized by domain: macro, equity, rates, risk, signals, market, business
 // Critical sections load eagerly, rest are lazy-loaded
 // Import sections from this file; never import a section file directly.
 
 import { lazy } from 'react';
 
-// ── Critical Sections (Eager Load) ──────────────────────────────────────────
-// These sections are above the fold and load immediately
-export { MorningBriefSection } from './MorningBriefSection';
-export { MasterSignalSection } from './MasterSignalSection';
-export { KeyMetricsSection } from './KeyMetricsSection';
-export { RegimeSection } from './RegimeSection';
-export { RegimePlaybookSection } from './RegimePlaybookSection';
-export { MarketClockSection } from './MarketClockSection';
+// ── Domain Re-exports ─────────────────────────────────────────────────────────
+// Import from specific domains for tree-shaking benefits
+// Example: import { RegimeSection } from '@/components/sections/macro'
 
-// ── Lazy Loaded Sections ────────────────────────────────────────────────────
+export * from './macro';
+export * from './equity';
+export * from './rates';
+export * from './risk';
+export * from './signals';
+export * from './market';
+export * from './business';
+
+// ── Critical Sections (Eager Load) ───────────────────────────────────────────
+// These sections are above the fold and load immediately
+export { MorningBriefSection } from './macro/MorningBriefSection';
+export { AnomaliesStripSection } from './macro/AnomaliesStripSection';
+export { MasterSignalSection } from './signals/MasterSignalSection';
+export { KeyMetricsSection } from './macro/KeyMetricsSection';
+export { RegimeSection } from './macro/RegimeSection';
+export { RegimePlaybookSection } from './macro/RegimePlaybookSection';
+export { MarketClockSection } from './market/MarketClockSection';
+
+// ── Lazy Loaded Sections ─────────────────────────────────────────────────────
 // These sections are loaded on-demand to reduce initial bundle size
+// Organized by domain for clarity
+
+// Macro Domain
+export const SignalScorecardSection = lazy(() =>
+  import('./signals/SignalScorecardSection').then(m => ({ default: m.SignalScorecardSection }))
+);
+
+export const AltDataSection = lazy(() =>
+  import('./signals/AltDataSection').then(m => ({ default: m.AltDataSection }))
+);
 
 export const SignalStackSection = lazy(() =>
-  import('./SignalStackSection').then(m => ({ default: m.SignalStackSection }))
+  import('./signals/SignalStackSection').then(m => ({ default: m.SignalStackSection }))
 );
 
-export const SectorAllocationSection = lazy(() =>
-  import('./SectorAllocationSection').then(m => ({ default: m.SectorAllocationSection }))
-);
-
-export const FactorRotationSection = lazy(() =>
-  import('./FactorRotationSection').then(m => ({ default: m.FactorRotationSection }))
-);
-
-export const RiskIndicatorsSection = lazy(() =>
-  import('./RiskIndicatorsSection').then(m => ({ default: m.RiskIndicatorsSection }))
+export const SignalStorySection = lazy(() =>
+  import('./signals/SignalStorySection').then(m => ({ default: m.SignalStorySection }))
 );
 
 export const NowcastSection = lazy(() =>
-  import('./NowcastSection').then(m => ({ default: m.NowcastSection }))
+  import('./macro/NowcastSection').then(m => ({ default: m.NowcastSection }))
 );
 
 export const LiquiditySection = lazy(() =>
-  import('./LiquiditySection').then(m => ({ default: m.LiquiditySection }))
-);
-
-export const SentimentSection = lazy(() =>
-  import('./SentimentSection').then(m => ({ default: m.SentimentSection }))
+  import('./macro/LiquiditySection').then(m => ({ default: m.LiquiditySection }))
 );
 
 export const DebtCycleSection = lazy(() =>
-  import('./DebtCycleSection').then(m => ({ default: m.DebtCycleSection }))
+  import('./macro/DebtCycleSection').then(m => ({ default: m.DebtCycleSection }))
 );
 
 export const AdvancedIndicatorsSection = lazy(() =>
-  import('./AdvancedIndicatorsSection').then(m => ({ default: m.AdvancedIndicatorsSection }))
+  import('./macro/AdvancedIndicatorsSection').then(m => ({ default: m.AdvancedIndicatorsSection }))
 );
 
 export const GMOForecastsSection = lazy(() =>
-  import('./GMOForecastsSection').then(m => ({ default: m.GMOForecastsSection }))
-);
-
-export const ReflexivitySection = lazy(() =>
-  import('./ReflexivitySection').then(m => ({ default: m.ReflexivitySection }))
-);
-
-export const FactorDecompositionSection = lazy(() =>
-  import('./FactorDecompositionSection').then(m => ({ default: m.FactorDecompositionSection }))
-);
-
-export const HorizonTensionSection = lazy(() =>
-  import('./HorizonTensionSection').then(m => ({ default: m.HorizonTensionSection }))
-);
-
-export const PortfolioAnalyserSection = lazy(() =>
-  import('./PortfolioAnalyserSection').then(m => ({ default: m.PortfolioAnalyserSection }))
-);
-
-export const CTATrendSection = lazy(() =>
-  import('./CTATrendSection').then(m => ({ default: m.CTATrendSection }))
-);
-
-export const BusinessLayerSection = lazy(() =>
-  import('./BusinessLayerSection').then(m => ({ default: m.BusinessLayerSection }))
-);
-
-export const EnsembleSection = lazy(() =>
-  import('./EnsembleSection').then(m => ({ default: m.EnsembleSection }))
-);
-
-export const PerformanceAttributionSection = lazy(() =>
-  import('./PerformanceAttributionSection').then(m => ({ default: m.PerformanceAttributionSection }))
-);
-
-export const SystemHealthSection = lazy(() =>
-  import('./SystemHealthSection').then(m => ({ default: m.SystemHealthSection }))
-);
-
-export const DataExplorerSection = lazy(() =>
-  import('./DataExplorerSection').then(m => ({ default: m.DataExplorerSection }))
-);
-
-export const DataToWatchSection = lazy(() =>
-  import('./DataToWatchSection').then(m => ({ default: m.DataToWatchSection }))
-);
-
-export const InvestmentMemoSection = lazy(() =>
-  import('./InvestmentMemoSection').then(m => ({ default: m.InvestmentMemoSection }))
-);
-
-export const TransmissionSection = lazy(() =>
-  import('./TransmissionSection').then(m => ({ default: m.TransmissionSection }))
-);
-
-export const ModelAgreementSection = lazy(() =>
-  import('./ModelAgreementSection').then(m => ({ default: m.ModelAgreementSection }))
-);
-
-export const ExpectedReturnsSection = lazy(() =>
-  import('./ExpectedReturnsSection').then(m => ({ default: m.ExpectedReturnsSection }))
-);
-
-export const PureAlphaSection = lazy(() =>
-  import('./PureAlphaSection').then(m => ({ default: m.PureAlphaSection }))
+  import('./macro/GMOForecastsSection').then(m => ({ default: m.GMOForecastsSection }))
 );
 
 export const InternationalMacroSection = lazy(() =>
-  import('./InternationalMacroSection').then(m => ({ default: m.InternationalMacroSection }))
+  import('./macro/InternationalMacroSection').then(m => ({ default: m.InternationalMacroSection }))
 );
 
 export const RegimeTransitionSection = lazy(() =>
-  import('./RegimeTransitionSection').then(m => ({ default: m.RegimeTransitionSection }))
+  import('./macro/RegimeTransitionSection').then(m => ({ default: m.RegimeTransitionSection }))
 );
 
-export const RiskParitySection = lazy(() =>
-  import('./RiskParitySection').then(m => ({ default: m.RiskParitySection }))
+export const RegimeOutlookSection = lazy(() =>
+  import('./macro/RegimeOutlookSection').then(m => ({ default: m.RegimeOutlookSection }))
 );
 
-export const CorrelationRegimeSection = lazy(() =>
-  import('./CorrelationRegimeSection').then(m => ({ default: m.CorrelationRegimeSection }))
+export const QuadrantsSection = lazy(() =>
+  import('./macro/QuadrantsSection').then(m => ({ default: m.QuadrantsSection }))
 );
 
-export const MomentumVetoSection = lazy(() =>
-  import('./MomentumVetoSection').then(m => ({ default: m.MomentumVetoSection }))
+export const StreamAgreementSection = lazy(() =>
+  import('./signals/StreamAgreementSection').then(m => ({ default: m.StreamAgreementSection }))
 );
 
-export const ValuationSection = lazy(() =>
-  import('./ValuationSection').then(m => ({ default: m.ValuationSection }))
+export const FactorValidationSection = lazy(() =>
+  import('./signals/FactorValidationSection').then(m => ({ default: m.FactorValidationSection }))
 );
 
-export const NewsSentimentSection = lazy(() =>
-  import('./NewsSentimentSection').then(m => ({ default: m.NewsSentimentSection }))
+export const RiskParityCompareSection = lazy(() =>
+  import('./risk/RiskParityCompareSection').then(m => ({ default: m.RiskParityCompareSection }))
 );
 
-export const SignalsSection = lazy(() =>
-  import('./SignalsSection').then(m => ({ default: m.SignalsSection }))
+export const SystemAuditSection = lazy(() =>
+  import('./macro/SystemAuditSection').then(m => ({ default: m.SystemAuditSection }))
+);
+
+export const SystemHealthSection = lazy(() =>
+  import('./macro/SystemHealthSection').then(m => ({ default: m.SystemHealthSection }))
+);
+
+export const DataProvidersSection = lazy(() =>
+  import('./macro/DataProvidersSection').then(m => ({ default: m.DataProvidersSection }))
+);
+
+export const DataExplorerSection = lazy(() =>
+  import('./macro/DataExplorerSection').then(m => ({ default: m.DataExplorerSection }))
+);
+
+export const DataToWatchSection = lazy(() =>
+  import('./macro/DataToWatchSection').then(m => ({ default: m.DataToWatchSection }))
+);
+
+export const InvestmentMemoSection = lazy(() =>
+  import('./macro/InvestmentMemoSection').then(m => ({ default: m.InvestmentMemoSection }))
+);
+
+export const TransmissionSection = lazy(() =>
+  import('./macro/TransmissionSection').then(m => ({ default: m.TransmissionSection }))
+);
+
+export const ModelAgreementSection = lazy(() =>
+  import('./macro/ModelAgreementSection').then(m => ({ default: m.ModelAgreementSection }))
+);
+
+// Equity Domain
+export const SectorAllocationSection = lazy(() =>
+  import('./equity/SectorAllocationSection').then(m => ({ default: m.SectorAllocationSection }))
+);
+
+export const FactorRotationSection = lazy(() =>
+  import('./equity/FactorRotationSection').then(m => ({ default: m.FactorRotationSection }))
+);
+
+export const ExpectedReturnsSection = lazy(() =>
+  import('./equity/ExpectedReturnsSection').then(m => ({ default: m.ExpectedReturnsSection }))
+);
+
+export const PureAlphaSection = lazy(() =>
+  import('./equity/PureAlphaSection').then(m => ({ default: m.PureAlphaSection }))
+);
+
+export const PerformanceAttributionSection = lazy(() =>
+  import('./equity/PerformanceAttributionSection').then(m => ({ default: m.PerformanceAttributionSection }))
 );
 
 export const EquityResearchSection = lazy(() =>
-  import('./EquityResearchSection').then(m => ({ default: m.EquityResearchSection }))
-);
-
-export const COTPositioningSection = lazy(() =>
-  import('./COTPositioningSection').then(m => ({ default: m.COTPositioningSection }))
-);
-
-export const RiskAnalyticsSection = lazy(() =>
-  import('./RiskAnalyticsSection').then(m => ({ default: m.RiskAnalyticsSection }))
-);
-
-export const EventCalendarSection = lazy(() =>
-  import('./EventCalendarSection').then(m => ({ default: m.EventCalendarSection }))
+  import('./equity/EquityResearchSection').then(m => ({ default: m.EquityResearchSection }))
 );
 
 export const TradeIdeasSection = lazy(() =>
-  import('./TradeIdeasSection').then(m => ({ default: m.TradeIdeasSection }))
-);
-
-export const ScenarioAnalysisSection = lazy(() =>
-  import('./ScenarioAnalysisSection').then(m => ({ default: m.ScenarioAnalysisSection }))
-);
-
-export const YieldCurveSection = lazy(() =>
-  import('./YieldCurveSection').then(m => ({ default: m.YieldCurveSection }))
-);
-
-export const FXMonitorSection = lazy(() =>
-  import('./FXMonitorSection').then(m => ({ default: m.FXMonitorSection }))
-);
-
-export const CommoditiesDashboardSection = lazy(() =>
-  import('./CommoditiesDashboardSection').then(m => ({ default: m.CommoditiesDashboardSection }))
-);
-
-export const FixedIncomeDashboardSection = lazy(() =>
-  import('./FixedIncomeDashboardSection').then(m => ({ default: m.FixedIncomeDashboardSection }))
+  import('./equity/TradeIdeasSection').then(m => ({ default: m.TradeIdeasSection }))
 );
 
 export const TradeRecommendationsSection = lazy(() =>
-  import('./TradeRecommendationsSection').then(m => ({ default: m.TradeRecommendationsSection }))
+  import('./equity/TradeRecommendationsSection').then(m => ({ default: m.TradeRecommendationsSection }))
 );
 
-// ── Additional Sections (Not in main nav but available) ─────────────────────
-export const AnomalyDetectionSection = lazy(() =>
-  import('./AnomalyDetectionSection').then(m => ({ default: m.AnomalyDetectionSection }))
+export const ValuationSection = lazy(() =>
+  import('./equity/ValuationSection').then(m => ({ default: m.ValuationSection }))
 );
 
-export const CentralBankDivergenceSection = lazy(() =>
-  import('./CentralBankDivergenceSection').then(m => ({ default: m.CentralBankDivergenceSection }))
+export const PortfolioAnalyserSection = lazy(() =>
+  import('./equity/PortfolioAnalyserSection').then(m => ({ default: m.PortfolioAnalyserSection }))
 );
 
-export const LSTMSection = lazy(() =>
-  import('./LSTMSection').then(m => ({ default: m.LSTMSection }))
+export const PositionsSection = lazy(() =>
+  import('./equity/PositionsSection').then(m => ({ default: m.PositionsSection }))
 );
 
-export const PerformanceTrackingSection = lazy(() =>
-  import('./PerformanceTrackingSection').then(m => ({ default: m.PerformanceTrackingSection }))
+export const TradeWorkflowSection = lazy(() =>
+  import('./equity/TradeWorkflowSection').then(m => ({ default: m.TradeWorkflowSection }))
 );
 
 export const PortfolioFitSection = lazy(() =>
-  import('./PortfolioFitSection').then(m => ({ default: m.PortfolioFitSection }))
+  import('./equity/PortfolioFitSection').then(m => ({ default: m.PortfolioFitSection }))
+);
+
+// Rates Domain
+export const YieldCurveSection = lazy(() =>
+  import('./rates/YieldCurveSection').then(m => ({ default: m.YieldCurveSection }))
+);
+
+export const FixedIncomeDashboardSection = lazy(() =>
+  import('./rates/FixedIncomeDashboardSection').then(m => ({ default: m.FixedIncomeDashboardSection }))
+);
+
+export const CommoditiesDashboardSection = lazy(() =>
+  import('./rates/CommoditiesDashboardSection').then(m => ({ default: m.CommoditiesDashboardSection }))
+);
+
+export const CentralBankDivergenceSection = lazy(() =>
+  import('./rates/CentralBankDivergenceSection').then(m => ({ default: m.CentralBankDivergenceSection }))
+);
+
+export const FXMonitorSection = lazy(() =>
+  import('./rates/FXMonitorSection').then(m => ({ default: m.FXMonitorSection }))
+);
+
+// Risk Domain
+export const RiskIndicatorsSection = lazy(() =>
+  import('./risk/RiskIndicatorsSection').then(m => ({ default: m.RiskIndicatorsSection }))
+);
+
+export const RiskParitySection = lazy(() =>
+  import('./risk/RiskParitySection').then(m => ({ default: m.RiskParitySection }))
+);
+
+export const CorrelationRegimeSection = lazy(() =>
+  import('./risk/CorrelationRegimeSection').then(m => ({ default: m.CorrelationRegimeSection }))
+);
+
+export const CorrelationMatrixSection = lazy(() =>
+  import('./risk/CorrelationMatrixSection').then(m => ({ default: m.CorrelationMatrixSection }))
+);
+
+export const FactorExposureSection = lazy(() =>
+  import('./risk/FactorExposureSection').then(m => ({ default: m.FactorExposureSection }))
+);
+
+export const VaRStressSection = lazy(() =>
+  import('./risk/VaRStressSection').then(m => ({ default: m.VaRStressSection }))
+);
+
+export const COTPositioningSection = lazy(() =>
+  import('./risk/COTPositioningSection').then(m => ({ default: m.COTPositioningSection }))
+);
+
+export const RiskAnalyticsSection = lazy(() =>
+  import('./risk/RiskAnalyticsSection').then(m => ({ default: m.RiskAnalyticsSection }))
+);
+
+export const ScenarioAnalysisSection = lazy(() =>
+  import('./risk/ScenarioAnalysisSection').then(m => ({ default: m.ScenarioAnalysisSection }))
+);
+
+export const AnomalyDetectionSection = lazy(() =>
+  import('./risk/AnomalyDetectionSection').then(m => ({ default: m.AnomalyDetectionSection }))
+);
+
+export const LSTMSection = lazy(() =>
+  import('./risk/LSTMSection').then(m => ({ default: m.LSTMSection }))
 );
 
 export const PositioningSection = lazy(() =>
-  import('./PositioningSection').then(m => ({ default: m.PositioningSection }))
+  import('./risk/PositioningSection').then(m => ({ default: m.PositioningSection }))
 );
+
+// Signals Domain
+export const SentimentSection = lazy(() =>
+  import('./signals/SentimentSection').then(m => ({ default: m.SentimentSection }))
+);
+
+export const ReflexivitySection = lazy(() =>
+  import('./signals/ReflexivitySection').then(m => ({ default: m.ReflexivitySection }))
+);
+
+export const FactorDecompositionSection = lazy(() =>
+  import('./signals/FactorDecompositionSection').then(m => ({ default: m.FactorDecompositionSection }))
+);
+
+export const HorizonTensionSection = lazy(() =>
+  import('./signals/HorizonTensionSection').then(m => ({ default: m.HorizonTensionSection }))
+);
+
+export const BusinessLayerSection = lazy(() =>
+  import('./business/BusinessLayerSection').then(m => ({ default: m.BusinessLayerSection }))
+);
+
+export const EnsembleSection = lazy(() =>
+  import('./signals/EnsembleSection').then(m => ({ default: m.EnsembleSection }))
+);
+
+export const CTATrendSection = lazy(() =>
+  import('./signals/CTATrendSection').then(m => ({ default: m.CTATrendSection }))
+);
+
+export const MomentumVetoSection = lazy(() =>
+  import('./signals/MomentumVetoSection').then(m => ({ default: m.MomentumVetoSection }))
+);
+
+export const NewsSentimentSection = lazy(() =>
+  import('./signals/NewsSentimentSection').then(m => ({ default: m.NewsSentimentSection }))
+);
+
+export const SignalsSection = lazy(() =>
+  import('./signals/SignalsSection').then(m => ({ default: m.SignalsSection }))
+);
+
+export const PerformanceTrackingSection = lazy(() =>
+  import('./signals/PerformanceTrackingSection').then(m => ({ default: m.PerformanceTrackingSection }))
+);
+
+// Market Domain
+export const EventCalendarSection = lazy(() =>
+  import('./market/EventCalendarSection').then(m => ({ default: m.EventCalendarSection }))
+);
+
+export const EventVolSection = lazy(() =>
+  import('./market/EventVolSection').then(m => ({ default: m.EventVolSection }))
+);
+
+// Utility Components
+export { MemoizedSection } from './MemoizedSection';

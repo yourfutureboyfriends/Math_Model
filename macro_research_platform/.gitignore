@@ -4,6 +4,34 @@
 __pycache__/
 *.py[cod]
 *$py.class
+
+# =============================================================================
+# Scratch / session artifacts (do not commit — see git history for real docs)
+# =============================================================================
+*_SUMMARY.md
+*_COMPLETE.md
+*_PROGRESS.md
+*_TRIAGE.md
+*_HOTFIX_SUMMARY.md
+FIXES_SUMMARY.md
+FULL_FIX_PLAN_COMPLETE.md
+RELEASE_READINESS_CHECKLIST.md
+SYSTEM_STATE_REPORT.md
+VALIDATION_RESULTS.md
+BUGS.md
+audit_reports/
+audit_reports_v2/
+api/FULL_SYSTEM_AUDIT.md
+api/LIVE_500_TRIAGE.md
+api/LIVE_CONTRACT_GAP_REPORT.md
+api/LOADING_STATE_TRIAGE.md
+api/VALIDATION_INTEGRATION_AUDIT.md
+# stray single-char scratch files
+/1
+frontend/1
+# vite config recompile temp files
+*.timestamp-*.mjs
+frontend/vite.config.ts.timestamp-*.mjs
 *.so
 .Python
 build/
@@ -86,7 +114,13 @@ htmlcov/
 # =============================================================================
 .env.local
 .env.*.local
-database/
+# NOTE: do NOT ignore the whole `database/` dir — it is a source package
+# (database/db.py is imported across the app). Ignore only its runtime data:
+database/*.db
+database/*.db.backup.*
+.fuse_hidden*
+# Dead duplicate DB package (0 importers; canonical is top-level database/) — kept out of VCS
+api/database/
 reports/archive/
 backups/
 *.db
@@ -104,3 +138,7 @@ backups/
 # =============================================================================
 volumes/
 *.pid
+
+# Generated report outputs (written at runtime, not source)
+outputs/
+reports/archive/

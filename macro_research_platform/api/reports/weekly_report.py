@@ -15,11 +15,10 @@ Academic Basis:
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 from dataclasses import dataclass
-from io import BytesIO
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -27,12 +26,9 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    PageBreak, Image, KeepTogether, ListFlowable, ListItem
+    PageBreak
 )
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-from reportlab.graphics.shapes import Drawing
-from reportlab.graphics.charts.barcharts import VerticalBarChart
-from reportlab.graphics.charts.piecharts import Pie
+from reportlab.lib.enums import TA_CENTER
 
 logger = logging.getLogger(__name__)
 

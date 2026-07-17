@@ -3,10 +3,9 @@ UniverseBuilder — discovers all tradeable instruments across major
 global exchanges via Finnhub and enriches them with yfinance fundamentals.
 """
 
-import os, json, time, logging, asyncio
+import os, json, time, logging
 from typing import Optional
-from datetime import datetime, timedelta
-import pandas as pd
+from datetime import datetime
 import yfinance as yf
 
 logger = logging.getLogger(__name__)

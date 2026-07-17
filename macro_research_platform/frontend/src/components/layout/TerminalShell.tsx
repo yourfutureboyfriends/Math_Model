@@ -8,6 +8,7 @@ import { DetailPanel } from './DetailPanel';
 import { CommandPalette } from './CommandPalette';
 import { AlertsPanel } from './AlertsPanel';
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
+import { ModelInfoPanel } from './ModelInfoPanel';
 import { BlackoutBanner } from '../EconomicCalendar';
 import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '../ErrorBoundary';
@@ -46,6 +47,7 @@ export function TerminalShell({
   // FIXED (BUG 2): Ensure sidebar is never undefined/null - always boolean
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
+  const [modelInfoOpen, setModelInfoOpen] = useState(false);
   const keyTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Use external state if provided, otherwise internal
@@ -99,6 +101,7 @@ export function TerminalShell({
         setCommandPaletteOpen(false);
         setAlertsPanelOpen(false);
         setShortcutsHelpOpen(false);
+        setModelInfoOpen(false);
         return;
       }
 
@@ -294,6 +297,7 @@ export function TerminalShell({
         onRefresh={onRefresh}
         onCommandPalette={() => setCommandPaletteOpen(true)}
         onAlertsPanel={() => setAlertsPanelOpen(true)}
+        onModelInfo={() => setModelInfoOpen(true)}
         currentRegime={currentRegime}
       />
 
@@ -359,6 +363,12 @@ export function TerminalShell({
         isOpen={alertsPanelOpen}
         onClose={() => setAlertsPanelOpen(false)}
         onViewSection={handleNavigate}
+      />
+
+      {/* Model Info & Methodology */}
+      <ModelInfoPanel
+        isOpen={modelInfoOpen}
+        onClose={() => setModelInfoOpen(false)}
       />
 
       {/* UPGRADE-6: Keyboard Shortcuts Help */}

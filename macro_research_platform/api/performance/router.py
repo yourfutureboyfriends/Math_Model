@@ -4,10 +4,10 @@ Performance API Router — Expose signal performance metrics
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from datetime import datetime
 
-from .signal_tracker import SignalPerformanceTracker, get_tracker, SIGNAL_MODULES
+from .signal_tracker import get_tracker, SIGNAL_MODULES
 
 router = APIRouter(prefix="/performance", tags=["performance"])
 

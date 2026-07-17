@@ -5,11 +5,11 @@ Reports API Router — Generate and download research reports
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional
 from datetime import datetime
 from pathlib import Path
 
-from .weekly_report import WeeklyResearchReport, generate_weekly_report, ReportData
+from .weekly_report import generate_weekly_report
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 

@@ -1,0 +1,145 @@
+"""
+Alternative-data signal math — pure, tested (Phase 7).
+
+Computes edge signals from data available via yfinance/FRED:
+- VIX term structure (contango/backwardation) — options-implied positioning stress.
+- Cross-market correlation breakdown — rolling correlations vs their own history, flagged
+  when they move beyond normal bounds (an early regime-change tell).
+- Credit-spread stress — z-score / momentum of high-yield and IG OAS.
+No I/O — series are passed in.
+"""
+from __future__ import annotations
+
+from typing import Dict, List, Sequence, Optional
+import numpy as np
+
+
+def historical_band(closes: Sequence[float], window: int = 252, z_flag: float = 2.0) -> Optional[Dict]:
+    """Rolling mean/std band + z-score of the LATEST value vs its own trailing history.
+
+    Returns {current, historical_mean, historical_std, z_score, is_anomalous, observations}
+    or None if there is too little history. `is_anomalous` is |z| > `z_flag` (default 2σ).
+    """
+    s = np.asarray([c for c in closes if c is not None], dtype=float)
+    s = s[~np.isnan(s)]
+    if s.size < 20:
+        return None
+    hist = s[-window:]
+    current = float(hist[-1])
+    ref = hist[:-1]                       # compare latest against the prior distribution
+    std = float(ref.std(ddof=1))
+    if std == 0:
+        return None
+    mean = float(ref.mean())
+    z = (current - mean) / std
+    return {
+        "current": round(current, 4),
+        "historical_mean": round(mean, 4),
+        "historical_std": round(std, 4),
+        "z_score": round(float(z), 2),
+        "is_anomalous": bool(abs(z) > z_flag),
+        "observations": int(ref.size),
+    }
+
+
+def correlation_matrix(returns_by_asset: "Dict[str, Sequence[float]]", window: int) -> Dict:
+    """Full pairwise Pearson correlation matrix over the last `window` aligned returns.
+
+    `returns_by_asset` must already be aligned to a common date grid (same length / dates)
+    by the caller. Returns {labels, matrix (list of lists, None where undefined), window,
+    observations}. Cells are rounded to 2 dp; the diagonal is exactly 1.0.
+    """
+    labels: List[str] = list(returns_by_asset.keys())
+    if len(labels) < 2:
+        return {"labels": labels, "matrix": [], "window": window, "observations": 0}
+    arrays = [np.asarray(returns_by_asset[k], dtype=float) for k in labels]
+    n = min(int(window), min(a.size for a in arrays))
+    if n < 3:
+        return {"labels": labels, "matrix": [], "window": window, "observations": n}
+    trimmed = np.vstack([a[-n:] for a in arrays])
+    with np.errstate(invalid="ignore", divide="ignore"):
+        cm = np.corrcoef(trimmed)
+    matrix: List[List[Optional[float]]] = []
+    for i in range(len(labels)):
+        row: List[Optional[float]] = []
+        for j in range(len(labels)):
+            v = cm[i, j]
+            row.append(None if not np.isfinite(v) else (1.0 if i == j else round(float(v), 2)))
+        matrix.append(row)
+    return {"labels": labels, "matrix": matrix, "window": window, "observations": n}
+
+
+def zscore(value: float, series: Sequence[float]) -> Optional[float]:
+    """Standard score of `value` vs the distribution of `series`. None if degenerate."""
+    s = np.asarray(series, dtype=float)
+    s = s[~np.isnan(s)]
+    if s.size < 5 or s.std(ddof=1) == 0:
+        return None
+    return round((value - s.mean()) / s.std(ddof=1), 2)
+
+
+def percentile_rank(value: float, series: Sequence[float]) -> Optional[float]:
+    """Percentile (0-100) of `value` within `series`."""
+    s = np.asarray(series, dtype=float)
+    s = s[~np.isnan(s)]
+    if s.size < 5:
+        return None
+    return round(float((s < value).mean() * 100.0), 1)
+
+
+def term_structure(vix9d: Optional[float], vix: Optional[float],
+                   vix3m: Optional[float], vix6m: Optional[float]) -> Dict:
+    """VIX term structure and its slope.
+
+    slope = vix3m / vix - 1. In **contango** (slope > 0, longer-dated higher) markets are
+    calm; **backwardation** (slope < 0, spot elevated) signals acute near-term stress.
+    """
+    pts = {"9d": vix9d, "spot": vix, "3m": vix3m, "6m": vix6m}
+    slope = None
+    state = "unknown"
+    if vix and vix3m and vix > 0:
+        slope = round(vix3m / vix - 1.0, 4)
+        state = "backwardation" if slope < -0.02 else "contango" if slope > 0.02 else "flat"
+    return {"points": pts, "slope_3m_spot": slope, "state": state,
+            "interpretation": (
+                "Near-term stress: spot vol above 3-month (backwardation)." if state == "backwardation"
+                else "Calm: 3-month vol above spot (contango)." if state == "contango"
+                else "Flat term structure." if state == "flat" else "Insufficient data.")}
+
+
+def rolling_correlation(a_ret: Sequence[float], b_ret: Sequence[float], window: int = 63) -> np.ndarray:
+    """Trailing `window`-day correlation of two return series (aligned)."""
+    a = np.asarray(a_ret, dtype=float)
+    b = np.asarray(b_ret, dtype=float)
+    n = min(a.size, b.size)
+    a, b = a[-n:], b[-n:]
+    out = np.full(n, np.nan)
+    for t in range(window - 1, n):
+        wa, wb = a[t - window + 1: t + 1], b[t - window + 1: t + 1]
+        if wa.std() > 0 and wb.std() > 0:
+            out[t] = np.corrcoef(wa, wb)[0, 1]
+    return out
+
+
+def correlation_breakdown(a_ret: Sequence[float], b_ret: Sequence[float],
+                          window: int = 63, breach_z: float = 2.0) -> Dict:
+    """Current rolling correlation vs its own trailing distribution.
+
+    Flags a breakdown when the latest correlation is more than `breach_z` std from its
+    history — often an early regime-change signal (e.g. SPY-TLT flipping positive).
+    """
+    corr = rolling_correlation(a_ret, b_ret, window)
+    valid = corr[~np.isnan(corr)]
+    if valid.size < 20:
+        return {"available": False, "reason": "insufficient overlapping history"}
+    current = float(valid[-1])
+    hist = valid[:-1]
+    z = zscore(current, hist)
+    return {
+        "available": True,
+        "current_correlation": round(current, 3),
+        "mean_correlation": round(float(hist.mean()), 3),
+        "zscore": z,
+        "breakdown": bool(z is not None and abs(z) >= breach_z),
+        "window_days": window,
+    }

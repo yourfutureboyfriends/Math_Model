@@ -18,7 +18,6 @@ Metrics:
 - Surprise potential: std dev of estimates (high = uncertainty)
 """
 
-import numpy as np
 import pandas as pd
 from dataclasses import dataclass
 from typing import Dict, List, Optional

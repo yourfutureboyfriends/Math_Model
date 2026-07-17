@@ -97,9 +97,11 @@ export const fmtRateChange = (v: number | null, decimals = 2): string =>
  * Input: 4200.5 -> Output: "4,200.50"
  */
 export const fmtPrice = (v: number | null, decimals = 2): string =>
-  guard(v, (n) =>
-    n.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-  );
+  guard(v, (n) => {
+    const [intPart, decPart] = n.toFixed(decimals).split('.');
+    const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return decPart !== undefined ? `${formattedInt}.${decPart}` : formattedInt;
+  });
 
 /**
  * Format price with no decimals (for indices)

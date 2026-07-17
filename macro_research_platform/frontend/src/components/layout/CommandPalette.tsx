@@ -11,6 +11,8 @@ interface CommandItem {
   category: 'section' | 'action' | 'filter' | 'recent' | 'favorite';
   icon?: React.ReactNode;
   action: () => void;
+  /** Phase 8 — why this item was surfaced (shown as a tag on suggested items). */
+  reason?: string;
 }
 
 interface CommandPaletteProps {
@@ -81,7 +83,43 @@ const sections = [
 
   // System
   { id: 'system-health', label: 'System Health', icon: '🔧', priority: 'medium' },
+
+  // Institutional / overhaul panels
+  { id: 'anomalies', label: 'Anomalies', icon: '📈', priority: 'high' },
+  { id: 'signal-story', label: 'Signal Storytelling', icon: '📖', priority: 'medium' },
+  { id: 'correlation-matrix', label: 'Correlation Matrix', icon: '🔲', priority: 'medium' },
+  { id: 'regime-outlook', label: 'Regime Outlook', icon: '🔮', priority: 'medium' },
+  { id: 'factor-exposure', label: 'Factor Exposure', icon: '🎛️', priority: 'high' },
+  { id: 'var-stress', label: 'VaR & Stress', icon: '🎯', priority: 'high' },
+  { id: 'portfolio-positions', label: 'Positions', icon: '💼', priority: 'high' },
+  { id: 'trade-workflow', label: 'Trade Workflow', icon: '⚗️', priority: 'medium' },
+  { id: 'system-audit', label: 'Audit & Compliance', icon: '📋', priority: 'low' },
 ];
+
+/**
+ * Phase 7A — natural-language routing registry.
+ * Extra searchable keywords per section so entity-style queries ("spy factor exposure",
+ * "correlation spy tlt", "why is growth up", "gold regime") resolve instantly by
+ * fuzzy token match — no LLM call. Keyword strings are matched alongside the label.
+ */
+const NL_KEYWORDS: Record<string, string> = {
+  'correlation-matrix': 'correlation matrix heatmap cross asset pairwise spy tlt gld vix dxy pair',
+  'anomalies': 'anomaly anomalies outlier zscore z-score outside normal range sigma stale flagged',
+  'signal-story': 'why growth inflation liquidity risk explanation driver storytelling attribution contribution',
+  'regime-outlook': 'regime transition probability forward slowdown expansion shift persistence early warning',
+  'factor-exposure': 'spy factor exposure beta risk model loading systematic',
+  'var-stress': 'var value at risk stress test scenario tail loss drawdown',
+  'portfolio-positions': 'position portfolio holdings book pnl exposure',
+  'trade-workflow': 'trade idea what-if pre-trade sizing workflow',
+  'correlation': 'correlation regime breakdown spy tlt gold dxy',
+  'liquidity': 'liquidity dxy dollar financial conditions fed',
+  'valuation': 'valuation expensive cheap pe cape multiple',
+  'expected-returns': 'expected returns forecast capital market assumptions',
+  'risk-analytics': 'risk analytics var stress scenario tail',
+  'regime': 'regime classification goldilocks reflation stagflation slowdown expansion current',
+  'gmo-forecasts': 'gmo forecast 7 year real return asset class',
+  'news-sentiment': 'news sentiment headlines feed',
+};
 
 export function CommandPalette({
   isOpen,
@@ -99,15 +137,66 @@ export function CommandPalette({
   // Favorites start empty each session (no persistent storage in sandboxed environment).
   // Destructure only the getter; a future toggle-star feature can add the setter back.
   const [favorites] = useState<string[]>([]);
-  const [recent, setRecent] = useState<string[]>([]);
+  // Recently-used sections persist across reloads (per user) in localStorage.
+  const recentKey = `macroos.recentSections.${(() => { try { return localStorage.getItem('macro_user') || 'default'; } catch { return 'default'; } })()}`;
+  const [recent, setRecent] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(recentKey);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : [];
+    } catch { return []; }
+  });
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Add a section to the in-session recent list (capped at 5)
+  // Add a section to the recent list (capped at 5) and persist it.
   const addToRecent = useCallback((sectionId: string) => {
-    setRecent((prev) => [sectionId, ...prev.filter((id) => id !== sectionId)].slice(0, 5));
-  }, []);
+    setRecent((prev) => {
+      const next = [sectionId, ...prev.filter((id) => id !== sectionId)].slice(0, 5);
+      try { localStorage.setItem(recentKey, JSON.stringify(next)); } catch { /* storage unavailable */ }
+      return next;
+    });
+  }, [recentKey]);
+
+  // Phase 7B / 8 — suggested queries surfaced from current anomalies + regime, each
+  // carrying an explicit reason it was surfaced (transparent personalization).
+  const [suggestions, setSuggestions] = useState<CommandItem[]>([]);
+  useEffect(() => {
+    if (!isOpen) return;
+    let alive = true;
+    (async () => {
+      const items: CommandItem[] = [];
+      try {
+        const a = await fetch('/api/v1/anomalies').then((r) => r.json());
+        (a?.metrics || []).filter((m: any) => m.is_anomalous).slice(0, 2).forEach((m: any) => {
+          items.push({
+            id: `sugg-anom-${m.ticker}`, category: 'action',
+            label: `${m.metric} ${m.z_score >= 0 ? '+' : ''}${m.z_score}σ — view Anomalies`,
+            reason: 'Surfaced: outside 2σ historical range',
+            icon: <AlertTriangle className="w-4 h-4 text-amber" />,
+            action: () => { addToRecent('anomalies'); onNavigate('anomalies'); onClose(); },
+          } as CommandItem);
+        });
+      } catch { /* ignore */ }
+      items.push({
+        id: 'sugg-regime', category: 'action',
+        label: `${currentRegime} regime — transition outlook`,
+        reason: 'Surfaced: relevant to current regime',
+        icon: <Target className="w-4 h-4 text-bloomberg" />,
+        action: () => { addToRecent('regime-outlook'); onNavigate('regime-outlook'); onClose(); },
+      } as CommandItem);
+      if (alive) setSuggestions(items);
+    })();
+    return () => { alive = false; };
+    // Only re-run when the palette opens or the regime changes; the action closures
+    // intentionally capture the current onNavigate/onClose (stable enough) — including them
+    // in deps re-runs the effect every render and cancels the fetch before it resolves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentRegime]);
 
   const commands: CommandItem[] = [
+    // Phase 7B — surfaced suggestions (only when not searching) at the very top
+    ...(query ? [] : suggestions),
+
     // Favorites (pinned for the session)
     ...favorites
       .filter(id => sections.find(s => s.id === id))
@@ -242,18 +331,29 @@ export function CommandPalette({
     },
   ];
 
-  // UPGRADE-7: Filter commands based on query and active tab
+  // Phase 7A — fuzzy natural-language routing: every query token must appear in the
+  // command's label OR its NL keyword registry, so "spy factor exposure" -> Factor Exposure
+  // and "correlation spy tlt" -> Correlation Matrix. Instant, no LLM.
+  const searchText = (cmd: CommandItem) => {
+    const baseId = cmd.id.replace(/^(fav|recent)-/, '');
+    return `${cmd.label} ${NL_KEYWORDS[baseId] || ''}`.toLowerCase();
+  };
   const filteredCommands = commands.filter((cmd) => {
-    if (query) return cmd.label.toLowerCase().includes(query.toLowerCase());
+    if (query) {
+      const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+      const text = searchText(cmd);
+      return tokens.every((t) => text.includes(t));
+    }
     if (activeTab === 'favorites') return cmd.category === 'favorite';
     if (activeTab === 'recent') return cmd.category === 'recent';
     return true;
   });
 
+  const suggestedCommands = filteredCommands.filter((c) => c.id.startsWith('sugg-'));
   const favoriteCommands = filteredCommands.filter((c) => c.category === 'favorite');
   const recentCommands = filteredCommands.filter((c) => c.category === 'recent');
   const sectionCommands = filteredCommands.filter((c) => c.category === 'section');
-  const actionCommands = filteredCommands.filter((c) => c.category === 'action');
+  const actionCommands = filteredCommands.filter((c) => c.category === 'action' && !c.id.startsWith('sugg-'));
 
   // Reset selection when query or tab changes
   useEffect(() => {
@@ -373,6 +473,21 @@ export function CommandPalette({
 
         {/* Command list */}
         <div className="max-h-[400px] overflow-y-auto">
+          {/* Suggested (Phase 7B) — surfaced from live anomalies + current regime */}
+          {suggestedCommands.length > 0 && !query && (
+            <div>
+              <div className="px-4 py-2 text-2xs text-bloomberg uppercase tracking-wider bg-surface-1 flex items-center gap-2">
+                <Zap className="w-3 h-3" />
+                Suggested
+              </div>
+              <div>
+                {suggestedCommands.map((cmd) => (
+                  <CommandRow key={cmd.id} cmd={cmd} isSelected={filteredCommands.indexOf(cmd) === selectedIndex} />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Favorites */}
           {favoriteCommands.length > 0 && !query && (
             <div>
@@ -519,6 +634,11 @@ function CommandRow({
         <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center">{cmd.icon}</span>
       )}
       <span className="text-sm flex-1">{cmd.label}</span>
+      {cmd.reason && (
+        <span className="text-2xs text-amber/80 font-mono border border-amber/30 px-1 py-0.5 rounded-sm">
+          {cmd.reason}
+        </span>
+      )}
       {cmd.shortcut && (
         <kbd className="px-1.5 py-0.5 text-2xs text-text-tertiary font-mono bg-surface-1 border border-border-subtle rounded">
           {cmd.shortcut}
