@@ -40,6 +40,8 @@ export function PureAlphaSection({ data: dataProp }: PureAlphaSectionProps) {
     }
   };
 
+  const strongRegime = data.regime === 'trending' || data.regime === 'expansion';
+
   // Sort signals by strength and conviction
   const sortedSignals = [...data.signals].sort((a, b) => {
     const strengthOrder = { strong: 3, moderate: 2, weak: 1 };
@@ -76,7 +78,7 @@ export function PureAlphaSection({ data: dataProp }: PureAlphaSectionProps) {
                   }`}>
                     {data.compositeScore.toFixed(2)}
                   </span>
-                  <span className={data.regime === 'expansion' ? 'signal-tag bullish' : 'signal-tag bearish'}>
+                  <span className={strongRegime ? 'signal-tag bullish' : 'signal-tag neutral'}>
                     {data.regime}
                   </span>
                 </div>
@@ -160,18 +162,15 @@ export function PureAlphaSection({ data: dataProp }: PureAlphaSectionProps) {
         </div>
 
         {/* Regime Context */}
-        <div className={`p-3 border ${data.regime === 'expansion' ? 'bg-green-dim border-green' : 'bg-red-dim border-red'}`}>
+        <div className={`p-3 border ${strongRegime ? 'bg-green-dim border-green' : 'bg-surface-1 border-border'}`}>
           <div className="flex items-center gap-2 mb-1">
-            <Zap className={`w-3 h-3 ${data.regime === 'expansion' ? 'text-green' : 'text-red'}`} />
-            <span className={`text-xs font-medium ${data.regime === 'expansion' ? 'text-green' : 'text-red'}`}>
-              Alpha Regime: {data.regime}
+            <Zap className={`w-3 h-3 ${strongRegime ? 'text-green' : 'text-text-tertiary'}`} />
+            <span className={`text-xs font-medium ${strongRegime ? 'text-green' : 'text-text-secondary'}`}>
+              Signal Regime: {data.regime}
             </span>
           </div>
-          <p className="text-xs text-text-secondary">
-            {data.regime === 'expansion'
-              ? 'Factor-based alpha signals are strong. Value, momentum, and carry factors are exhibiting positive risk-adjusted returns.'
-              : 'Factor-based alpha signals are weakening. Defensive positioning recommended. Consider reducing factor exposure.'}
-          </p>
+          {/* Backend-computed description of the current signal set (no canned claims). */}
+          <p className="text-xs text-text-secondary">{data.regimeDescription ?? ''}</p>
         </div>
       </div>
     </div>

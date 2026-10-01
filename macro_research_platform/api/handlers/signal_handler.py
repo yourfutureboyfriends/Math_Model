@@ -17,222 +17,45 @@ from api.calculations import (
 logger = logging.getLogger(__name__)
 
 
-async def get_nowcast_data() -> Dict[str, Any]:
-    """GDP Nowcast using real calculated dashboard data."""
-    logger.info("Fetching nowcast data")
-
+async def _dashboard_section(key: str, label: str) -> Dict[str, Any]:
+    """A section of the live dashboard (computed from real data in dashboard_sections), or
+    503 when its inputs are unavailable — these endpoints no longer derive their own numbers."""
     dashboard = await get_dashboard_data(mode="live")
-    growth = (dashboard.scores.growth / 100) if dashboard.scores else 0.5
+    sec = getattr(dashboard, key, None)
+    if sec is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail=f"{label} unavailable: live inputs missing")
+    return sec.model_dump() if hasattr(sec, "model_dump") else sec
 
-    # GDP nowcast from growth signal
-    gdp_nowcast = -2 + (growth * 7)
 
-    data = {
-        "gdpNowcast": round(gdp_nowcast, 2),
-        "nowcastQoQ": round(gdp_nowcast / 4, 3),
-        "nowcastYoY": round(gdp_nowcast, 2),
-        "confidenceInterval": {
-            "lower": round(gdp_nowcast * 0.8, 2),
-            "upper": round(gdp_nowcast * 1.2, 2),
-        },
-        "components": [
-            {"name": "Equity Momentum", "weight": 0.4, "contribution": round(growth * 0.4, 2), "status": "Active"},
-            {"name": "Yield Curve", "weight": 0.3, "contribution": round((dashboard.scores.liquidity / 100 if dashboard.scores else 0.5) * 0.3, 2), "status": "Active"},
-            {"name": "Credit Spreads", "weight": 0.3, "contribution": round((dashboard.scores.risk / 100 if dashboard.scores else 0.5) * 0.3, 2), "status": "Active"},
-        ],
-        "revisionHistory": [],
-        "methodology": "Real-time market-implied GDP (dashboard-driven)",
-        "lastUpdated": datetime.now().isoformat(),
-    }
-
-    validation = validate_signal_payload({"scores": {"gdp": data["gdpNowcast"]}})
-    if not validation.valid:
-        logger.warning("[signal_handler] Nowcast validation issues", extra={"issues": validation.issues})
-
-    return data
+async def get_nowcast_data() -> Dict[str, Any]:
+    """GDP nowcast — the dashboard's Atlanta Fed GDPNow section (FRED GDPNOW)."""
+    return await _dashboard_section("nowcast", "GDP nowcast (FRED GDPNOW)")
 
 
 async def get_liquidity_data() -> Dict[str, Any]:
-    """Liquidity Conditions from real calculated data."""
-    logger.info("Fetching liquidity data")
-
-    dashboard = await get_dashboard_data(mode="live")
-    liquidity_score = (dashboard.scores.liquidity / 100) if dashboard.scores else 0.5
-    ten_yr = dashboard.keyMetrics.tenYearYield if dashboard.keyMetrics else None
-    two_yr = dashboard.keyMetrics.twoYearYield if dashboard.keyMetrics else None
-    dxy = dashboard.keyMetrics.dxy if dashboard.keyMetrics else None
-
-    # Recalculate with shared module
-    fed_rate = dashboard.keyMetrics.fedRate if dashboard.keyMetrics else None
-    liq_score, liq_trend, _ = calculate_liquidity_signal(dxy, ten_yr, fed_rate)
-    if liq_score is None:
-        liq_score, liq_trend = liquidity_score, "unavailable"
-    spread = (ten_yr - two_yr) if ten_yr and two_yr else 0.3
-
-    regime = "Loose" if liq_score > 0.6 else "Tight" if liq_score < 0.4 else "Neutral"
-
-    data = {
-        "liquidityScore": round(liq_score, 2),
-        "regime": regime,
-        "indicators": [
-            {"name": "DXY", "value": round(1 - liq_score, 2), "status": liq_trend.title(), "contribution": 0.6},
-            {"name": "Yield Spread", "value": round(spread, 2), "status": "Steepening" if spread > 0.5 else "Flattening", "contribution": 0.4},
-        ],
-        "fedPolicyStance": "Hawkish" if ten_yr and ten_yr > 4.5 else "Neutral" if ten_yr and ten_yr > 3.5 else "Dovish",
-        "creditAvailability": "Normal" if liq_score > 0.4 else "Tight",
-        "description": f"Liquidity conditions are {regime.lower()} with {ten_yr:.2f}% 10Y yields." if ten_yr else "Liquidity conditions are neutral.",
-    }
-
-    validation = validate_signal_payload({"scores": {"liquidity": data["liquidityScore"]}})
-    if not validation.valid:
-        logger.warning("[signal_handler] Liquidity validation issues", extra={"issues": validation.issues})
-
-    return data
+    """Liquidity conditions — the dashboard's liquidity section (DXY, curve, Fed funds)."""
+    return await _dashboard_section("liquidity", "Liquidity conditions")
 
 
 async def get_sentiment_data() -> Dict[str, Any]:
-    """Sentiment from real VIX data."""
-    logger.info("Fetching sentiment data")
-
-    dashboard = await get_dashboard_data(mode="live")
-    vix = dashboard.keyMetrics.vix if dashboard.keyMetrics else None
-    risk_score = (dashboard.scores.risk / 100) if dashboard.scores else 0.5
-
-    # Recalculate with shared module
-    risk_appetite, risk_trend, _ = calculate_risk_signal(vix)
-    if risk_appetite is None:
-        risk_appetite, risk_trend = risk_score, "unavailable"
-
-    regime = "Risk-On" if risk_appetite > 0.7 else "Risk-Off" if risk_appetite < 0.4 else "Neutral"
-
-    data = {
-        "compositeScore": round(risk_appetite, 2),
-        "riskLevel": regime,
-        "gauges": [
-            {"name": "VIX", "score": round(vix / 100, 2) if vix else 0.18, "interpretation": "Low volatility"},
-            {"name": "Risk Score", "score": round(risk_score, 2), "interpretation": "Cross-asset risk appetite"},
-        ],
-        "vixTermStructure": {"ratio": 0.95, "structure": "contango" if vix and vix < 25 else "backwardation"},
-        "aaiiSentiment": {"bullBearSpread": round(risk_appetite - 0.5, 2), "signal": "Bullish" if risk_appetite > 0.6 else "Bearish" if risk_appetite < 0.4 else "Neutral"},
-        "crossAssetMomentum": {"averageMomentum": round(risk_score - 0.5, 2), "assets": [{"asset": "SPX", "momentum": risk_score}], "regime": regime},
-        "contrarianSignal": "Bearish" if risk_appetite > 0.8 else "Bullish" if risk_appetite < 0.2 else "Neutral",
-        "description": f"Risk appetite is {regime.lower()} with VIX at {vix:.1f}." if vix else "Risk appetite is neutral.",
-    }
-
-    validation = validate_signal_payload({"scores": {"sentiment": data["compositeScore"]}})
-    if not validation.valid:
-        logger.warning("[signal_handler] Sentiment validation issues", extra={"issues": validation.issues})
-
-    return data
+    """Market-implied sentiment — the dashboard's sentiment section (VIX, VIX3M, momentum)."""
+    return await _dashboard_section("sentiment", "Sentiment")
 
 
 async def get_valuation_data() -> Dict[str, Any]:
-    """Valuation from real market levels."""
-    logger.info("Fetching valuation data")
-
-    dashboard = await get_dashboard_data(mode="live")
-    spx = dashboard.keyMetrics.spxLevel if dashboard.keyMetrics else None
-    ten_yr = dashboard.keyMetrics.tenYearYield if dashboard.keyMetrics else None
-    growth = (dashboard.scores.growth / 100) if dashboard.scores else 0.5
-
-    # Calculate implied valuation
-    earnings_yield = (ten_yr + 1.0) if ten_yr else 5.5
-    implied_pe = 1 / (earnings_yield / 100) if earnings_yield > 0 else 18
-    current_pe = spx / 250 if spx else 23
-
-    pe_zscore = (current_pe - implied_pe) / 3 if implied_pe else 0.5
-
-    if pe_zscore > 1:
-        regime = "EXPENSIVE"
-    elif pe_zscore < -1:
-        regime = "CHEAP"
-    else:
-        regime = "FAIR"
-
-    return {
-        "metrics": [
-            {"name": "Implied P/E", "value": round(current_pe, 1), "zScore": round(pe_zscore, 2), "percentile": int(min(max((pe_zscore + 2) / 4 * 100, 0), 100))},
-            {"name": "Real Yield", "value": round((ten_yr - 2.5) if ten_yr else 2.0, 2), "zScore": round(((ten_yr - 3.5) / 2 if ten_yr else 0.5), 2), "percentile": 80 if ten_yr and ten_yr > 4 else 50},
-        ],
-        "summary": f"Valuations are {regime.lower()} with SPX at {spx:,.0f} and {ten_yr:.2f}% yields." if spx and ten_yr else "Valuations are fair.",
-    }
+    """Valuation — the dashboard's section (SPY trailing P/E, TIPS real yield, yield gap)."""
+    return await _dashboard_section("valuation", "Valuation")
 
 
 async def get_momentum_data() -> Dict[str, Any]:
-    """Cross-Asset Momentum Veto from real data."""
-    logger.info("Fetching momentum data")
-
-    dashboard = await get_dashboard_data(mode="live")
-    growth = (dashboard.scores.growth / 100) if dashboard.scores else 0.5
-    spx = dashboard.keyMetrics.spxLevel if dashboard.keyMetrics else None
-
-    # Realistic annualised momentum: ~18% in expansion (growth=0.63), ~-5% in contraction
-    momentum_12m = (growth - 0.3) * 55.0
-    momentum_1m = (growth - 0.45) * 8.0
-
-    veto_active = growth < 0.3
-    dampener = 0.5 if growth < 0.4 else 1.0
-
-    return {
-        "vetoActive": veto_active,
-        "dampenerApplied": round(dampener, 2),
-        "assets": [
-            {"asset": "SPX", "return12m": round(momentum_12m, 1), "return1m": round(momentum_1m, 2), "momentum12_1": round(growth - 0.5, 2), "dampenedSignal": round((growth - 0.5) * dampener, 2), "rawSignal": "POSITIVE" if growth > 0.5 else "NEGATIVE", "interpretation": f"{'Strong' if growth > 0.6 else 'Weak' if growth < 0.4 else 'Mixed'} momentum"},
-            {"asset": "NDX", "return12m": round(momentum_12m * 1.2, 1), "return1m": round(momentum_1m * 1.2, 2), "momentum12_1": round((growth - 0.5) * 1.2, 2), "dampenedSignal": round((growth - 0.5) * 1.2 * dampener, 2), "rawSignal": "POSITIVE" if growth > 0.5 else "NEGATIVE", "interpretation": "Tech momentum follows broad market"},
-        ],
-        "portfolioAdjustment": {
-            "action": "REDUCE" if veto_active else "MAINTAIN",
-            "magnitude": round((0.5 - growth) * 0.2, 2) if veto_active else 0.0,
-            "affectedAssets": ["SPX", "NDX"] if veto_active else [],
-            "rationale": f"Growth at {growth:.0%} - {'veto active' if veto_active else 'momentum positive'}",
-        },
-        "description": f"Cross-asset momentum is {'negative - veto active' if veto_active else 'positive'} with growth at {growth:.0%}.",
-    }
+    """12-1 momentum veto — the dashboard's section (real SPX / NDX returns)."""
+    return await _dashboard_section("momentumVeto", "Momentum veto")
 
 
 async def get_correlation_data() -> Dict[str, Any]:
-    """Correlation Regime from real data."""
-    logger.info("Fetching correlation data")
-
-    dashboard = await get_dashboard_data(mode="live")
-    regime = dashboard.regime.current or "goldilocks"
-    risk_score = (dashboard.scores.risk / 100) if dashboard.scores else 0.5
-
-    # Get regime characteristics
-    chars = get_regime_characteristics(regime)
-
-    # Calculate correlation based on regime
-    if regime == "goldilocks":
-        equity_bond_corr = -0.3
-        regime_name = "NORMAL"
-    elif regime == "stagflation":
-        equity_bond_corr = 0.2
-        regime_name = "STRESSED"
-    elif regime == "slowdown":
-        equity_bond_corr = -0.5
-        regime_name = "RISK_OFF"
-    else:
-        equity_bond_corr = 0.0
-        regime_name = "MIXED"
-
-    switch_triggered = abs(equity_bond_corr) > 0.4
-
-    return {
-        "currentRegime": regime_name,
-        "equityBondCorrelation": round(equity_bond_corr, 2),
-        "switchTriggered": switch_triggered,
-        "fallbackStrategy": "Risk Parity" if switch_triggered else "Standard",
-        "correlations": [
-            {"assetPair": "SPY-TLT", "correlation60d": round(equity_bond_corr, 2), "regime": "Negative" if equity_bond_corr < 0 else "Positive", "interpretation": "Normal diversification" if equity_bond_corr < 0 else "Reduced diversification"},
-            {"assetPair": "SPY-GLD", "correlation60d": round(-equity_bond_corr * 0.5, 2), "regime": "Negative" if equity_bond_corr > 0 else "Positive", "interpretation": "Gold as hedge"},
-        ],
-        "riskParityAdjustment": {
-            "normalWeights": {"SPY": 0.6, "TLT": 0.4},
-            "adjustedWeights": {"SPY": 0.5, "TLT": 0.5} if switch_triggered else {"SPY": 0.6, "TLT": 0.4},
-            "rationale": f"{regime_name} correlation regime - {'adjust' if switch_triggered else 'standard'} weights",
-        },
-        "description": f"Correlation regime is {regime_name.lower()} with equity/bond correlation at {equity_bond_corr:+.1f} in {regime}.",
-    }
+    """Correlation regime — the dashboard's rolling 60d SPY vs TLT / GLD / DXY section."""
+    return await _dashboard_section("correlationRegime", "Correlation regime")
 
 
 async def get_signal_stack_data() -> Dict[str, Any]:
@@ -395,57 +218,22 @@ async def get_signals_data() -> Dict[str, Any]:
 
 
 async def get_factors_data() -> Dict[str, Any]:
-    """AQR Factor Rotation from real regime data."""
-    logger.info("Fetching factors data")
-
-    dashboard = await get_dashboard_data(mode="live")
-    regime = dashboard.regime.current or "goldilocks"
-    growth = (dashboard.scores.growth / 100) if dashboard.scores else 0.5
-    inflation = (dashboard.scores.inflation / 100) if dashboard.scores else 0.3
-
-    chars = get_regime_characteristics(regime)
-
-    # Calculate factor scores
-    value_score = round(0.4 + (inflation - 0.4) * 0.3, 2) if regime in ["reflation", "stagflation"] else round(0.5 - (inflation - 0.4) * 0.2, 2)
-    momentum_score = round(growth * 0.8, 2)
-    quality_score = round(0.6 + (1 - inflation) * 0.2, 2)
-    lowvol_score = round(0.5 - growth * 0.2, 2)
-
-    # Return primary factor (highest score)
-    scores = {"Value": value_score, "Momentum": momentum_score, "Quality": quality_score, "Low Vol": lowvol_score}
-    primary_factor = max(scores, key=scores.get)
-    primary_score = scores[primary_factor]
-
-    return {
-        "name": primary_factor,
-        "value": primary_score,
-        "zScore": round((primary_score - 0.5) / 0.2, 2),
-        "contribution": round(primary_score * 0.4, 2),
-    }
+    """Leading factor from the dashboard's factor-rotation section (factor ETF 3m return
+    vs SPY, as a percentile of the past year)."""
+    rot = await _dashboard_section("factorRotation", "Factor rotation")
+    scores = {k: rot.get(k) for k in ("momentum", "value", "growth", "quality")
+              if isinstance(rot.get(k), (int, float))}
+    if not scores:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="Factor rotation unavailable: price history missing")
+    leader = max(scores, key=scores.get)
+    return {"name": leader.title(), "value": scores[leader], "scores": scores,
+            "rotationSignal": rot.get("rotationSignal"), "interpretation": rot.get("interpretation")}
 
 
 async def get_trends_data() -> Dict[str, Any]:
-    """CTA Trend Following from real data."""
-    logger.info("Fetching trends data")
-
-    dashboard = await get_dashboard_data(mode="live")
-    growth = (dashboard.scores.growth / 100) if dashboard.scores else 0.5
-
-    short_trend = growth * 0.6
-    medium_trend = growth * 0.8
-    long_trend = growth
-
-    return {
-        "signals": [
-            {"asset": "ES", "direction": "LONG" if growth > 0.5 else "SHORT", "strength": round(short_trend, 2), "timeframe": "10d", "confidence": round(growth, 2)},
-            {"asset": "ES", "direction": "LONG" if growth > 0.5 else "SHORT", "strength": round(medium_trend, 2), "timeframe": "30d", "confidence": round(growth, 2)},
-            {"asset": "NQ", "direction": "LONG" if growth > 0.5 else "SHORT", "strength": round(growth * 1.1, 2), "timeframe": "30d", "confidence": round(growth, 2)},
-            {"asset": "TY", "direction": "SHORT" if growth > 0.5 else "LONG", "strength": round(0.5 - growth * 0.5, 2), "timeframe": "90d", "confidence": round(1 - growth, 2)},
-        ],
-        "aggregateScore": round(growth, 2),
-        "regime": "TRENDING" if growth > 0.5 else "RANGING",
-        "lastUpdated": datetime.now().isoformat(),
-    }
+    """CTA trend signals — the dashboard's time-series momentum section."""
+    return await _dashboard_section("trendSignals", "Trend signals")
 
 
 async def get_news_sentiment_data() -> Dict[str, Any]:
@@ -489,121 +277,74 @@ async def get_longterm_forecasts_data() -> Dict[str, Any]:
 
 
 async def get_reflexivity_data() -> Dict[str, Any]:
-    """Soros Reflexivity from real regime data."""
-    logger.info("Fetching reflexivity data")
-
-    dashboard = await get_dashboard_data(mode="live")
-    regime = dashboard.regime.current or "goldilocks"
-    confidence = dashboard.regime.confidenceScore or 0.75
-
-    reflexivity = 1.0 - confidence
-
-    return {
-        "signals": [
-            {"asset": "SPX", "divergence": round(reflexivity, 2), "feedbackLoop": "Positive" if regime == "goldilocks" else "Negative", "confidence": round(confidence, 2)}
-        ] if reflexivity > 0.3 else [],
-        "aggregateDivergence": round(reflexivity, 2),
-        "regime": regime,
-        "interpretation": f"Reflexivity at {reflexivity:.0%} in {regime} regime (confidence {confidence:.0%}).",
-        "lastUpdated": datetime.now().isoformat(),
-    }
+    """Reflexivity loops — the dashboard's section (z-scores of observed moves)."""
+    return await _dashboard_section("reflexivity", "Reflexivity")
 
 
 async def get_factor_decomposition_data() -> Dict[str, Any]:
-    """Two Sigma Factor Decomposition from real regime."""
-    logger.info("Fetching factor decomposition")
-
-    dashboard = await get_dashboard_data(mode="live")
-    regime = dashboard.regime.current or "goldilocks"
-    growth = (dashboard.scores.growth / 100) if dashboard.scores else 0.5
-    inflation = (dashboard.scores.inflation / 100) if dashboard.scores else 0.3
-
-    return {
-        "asset": "SPX",
-        "rSquared": round(0.85 + growth * 0.1, 2),
-        "factors": [
-            {"factor": "Market", "exposure": 1.0, "contribution": 50, "tStat": 12.5, "significance": "Highly Significant"},
-            {"factor": "Growth", "exposure": round(growth, 2), "contribution": int(growth * 20), "tStat": 3.2, "significance": "Significant"},
-            {"factor": "Value", "exposure": round(1 - inflation, 2), "contribution": int((1 - inflation) * 15), "tStat": 2.1, "significance": "Significant"},
-            {"factor": "Quality", "exposure": 0.5, "contribution": 15, "tStat": 1.8, "significance": "Moderate"},
-            {"factor": "Momentum", "exposure": round(growth * 0.8, 2), "contribution": int(growth * 10), "tStat": 1.5, "significance": "Moderate"},
-        ],
-        "residual": round(0.15 - growth * 0.1, 2),
-        "lastUpdated": datetime.now().isoformat(),
-    }
+    """Factor decomposition — the dashboard's OLS of NDX returns on ETF factor returns."""
+    return await _dashboard_section("factorDecomposition", "Factor decomposition")
 
 
 async def get_geopolitical_data() -> Dict[str, Any]:
-    """Geopolitical Risk from real VIX data."""
-    logger.info("Fetching geopolitical data")
-
-    dashboard = await get_dashboard_data(mode="live")
-    vix = dashboard.keyMetrics.vix if dashboard.keyMetrics else None
-
-    base_vix = 15
-    geo_component = max(0, (vix if vix else 18) - base_vix)
-    geo_score = min(geo_component * 10, 50)
-
-    return {
-        "overallRisk": "LOW" if geo_score < 20 else "MEDIUM" if geo_score < 35 else "HIGH",
-        "score": round(geo_score / 100, 2),
-        "trend": "Rising" if geo_score > 25 else "Stable",
-        "events": [
-            {"region": "Global", "event": "VIX Elevated", "severity": "Medium" if geo_score > 25 else "Low", "probability": round(geo_score / 100, 2), "impact": "Risk-off sentiment", "timeframe": "Near-term"}
-        ] if geo_score > 15 else [],
-        "lastUpdated": datetime.now().isoformat(),
-    }
+    """No geopolitical-risk data source is wired (this used to relabel the VIX as a
+    'geopolitical score'), so report it as unavailable rather than invent one."""
+    from fastapi import HTTPException
+    raise HTTPException(status_code=503,
+                        detail="Geopolitical risk unavailable: no data source configured")
 
 
 async def get_options_data() -> Dict[str, Any]:
-    """Options Intelligence from real VIX."""
-    logger.info("Fetching options data")
-
+    """Options context from observed data: SPX level and the VIX's rank within its past
+    year. Put/call ratio and options flow need a CBOE/OPRA feed, which isn't wired → None."""
+    from api.handlers.market_handler import _fetch_closes
     dashboard = await get_dashboard_data(mode="live")
     vix = dashboard.keyMetrics.vix if dashboard.keyMetrics else None
     spx = dashboard.keyMetrics.spxLevel if dashboard.keyMetrics else None
-
-    if vix and vix < 15:
-        signal = "BULLISH"
-    elif vix and vix < 20:
-        signal = "NEUTRAL"
-    elif vix and vix < 25:
-        signal = "CAUTIOUS"
-    else:
-        signal = "BEARISH"
-
-    iv_rank = int(min(max(((vix if vix else 18) - 10) / 30 * 100, 0), 100))
-
+    vix_hist = await _fetch_closes("^VIX")
+    iv_rank = None
+    if vix is not None and vix_hist:
+        lo, hi = min(vix_hist), max(vix_hist)
+        iv_rank = round((vix - lo) / (hi - lo) * 100, 1) if hi > lo else None
+    sentiment = (None if vix is None else "BULLISH" if vix < 15 else "NEUTRAL" if vix < 20
+                 else "CAUTIOUS" if vix < 25 else "BEARISH")
     return {
         "underlying": "SPX",
-        "currentPrice": round(spx, 2) if spx else 5800.0,
+        "currentPrice": round(spx, 2) if spx is not None else None,
         "impliedVolRank": iv_rank,
-        "putCallRatio": 0.8 if vix and vix < 20 else 1.0 if vix and vix < 25 else 1.2,
+        "impliedVolRankBasis": "VIX vs its 1y high/low (Yahoo ^VIX)",
+        "putCallRatio": None,
         "unusualActivity": [],
-        "keyLevels": {
-            "support": round((spx * 0.95) if spx else 5500, 0),
-            "resistance": round((spx * 1.05) if spx else 6100, 0),
-        },
-        "sentiment": signal,
+        "keyLevels": {},
+        "sentiment": sentiment,
+        "note": "Put/call ratio, flow and strike levels need an options data feed (not configured).",
         "lastUpdated": datetime.now().isoformat(),
     }
 
 
 async def calibrate_recession() -> Dict[str, Any]:
-    """Recession model calibration from real data."""
-    logger.info("Calibrating recession model")
-
+    """Re-fit the recession probit (spread + Fed funds on NBER recessions, FRED) and return
+    its actual coefficients and fit statistics."""
+    import asyncio
+    from api.models_ml.recession_probit import retrain_probit, get_recession_probit
+    try:
+        stats = await asyncio.to_thread(retrain_probit)
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail=f"Probit re-fit failed: {str(e)[:160]}")
+    model = get_recession_probit()
+    params = getattr(getattr(model, "result", None), "params", None)
     dashboard = await get_dashboard_data(mode="live")
-    rec_prob = dashboard.recession.probability if dashboard.recession else 0.15
-    ten_yr = dashboard.keyMetrics.tenYearYield if dashboard.keyMetrics else None
-    two_yr = dashboard.keyMetrics.twoYearYield if dashboard.keyMetrics else None
-    spread = (ten_yr - two_yr) if ten_yr and two_yr else 0.3
-
     return {
         "status": "calibrated",
-        "intercept": round(-2.5 - rec_prob * 2, 2),
-        "yield_curve_coef": round(-0.8 - spread, 2),
-        "spread_coef": round(0.003 + rec_prob * 0.01, 3),
-        "dataPoints": int(12 + rec_prob * 50),
-        "currentProbability": round(rec_prob, 2),
+        "intercept": round(float(params.get("const")), 4) if params is not None and "const" in params else None,
+        "yield_curve_coef": stats.get("coef_spread"),
+        "fed_funds_coef": stats.get("coef_ff"),
+        "pseudo_r2": stats.get("pseudo_r2"),
+        "dataPoints": stats.get("n_obs"),
+        "horizon_months": stats.get("horizon_months"),
+        "currentProbability": round(dashboard.recession.probability, 4) if dashboard.recession else None,
+        "trained_at": stats.get("trained_at"),
     }
+
+

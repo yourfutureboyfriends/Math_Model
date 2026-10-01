@@ -49,6 +49,11 @@ OTHER_FRED = ["DFII10", "GDPNOW", "TOTBKCR", "GDP", "BAMLH0A0HYM2"]
 _PE_CACHE: Dict[str, Any] = {"ts": 0.0, "pe": None}
 _PE_TTL = 3600
 
+# Long monthly history (yfinance period="max") for regime-conditional return estimates.
+MONTHLY_TICKERS = {"SPY": "SPY", "TLT": "TLT", "GLD": "GLD", "DBC": "DBC"}
+_MONTHLY_PX_CACHE: Dict[str, tuple] = {}
+_MONTHLY_PX_TTL = 12 * 3600
+
 
 def rates_fred_ids() -> List[str]:
     return [sid for _, sid in US_TENORS] + ["DFII10"] + [
@@ -60,6 +65,9 @@ class SectionInputs:
     prices: Dict[str, Dict[str, float]] = field(default_factory=dict)   # key -> {date: close}
     fred: Dict[str, DatedSeries] = field(default_factory=dict)
     spy_pe: Optional[float] = None
+    monthly_macro: Any = None                                            # load_monthly_macro() frame
+    monthly_prices: Dict[str, Dict[str, float]] = field(default_factory=dict)  # key -> {YYYY-MM: close}
+    forecast_stats: Optional[List[Dict[str, Any]]] = None                # forecast_history summary
 
     def closes(self, key: str) -> List[float]:
         return ms.closes_of(self.prices.get(key) or {})
@@ -106,17 +114,80 @@ async def load_section_inputs(timeout: float = 30.0) -> SectionInputs:
             return_exceptions=True)
         return {k: r for k, r in zip(keys, res) if isinstance(r, dict) and r}
 
+    async def _optional(fn, *args):
+        try:
+            return await asyncio.to_thread(fn, *args)
+        except Exception as e:
+            logger.warning("[dashboard_sections] %s failed: %s", getattr(fn, "__name__", fn), e)
+            return None
+
+    from api.handlers.macro_inputs import load_monthly_macro
     try:
-        prices, fred, pe = await asyncio.wait_for(
-            asyncio.gather(_prices(), load_fred_series(fred_ids, days=1100), _spy_trailing_pe()),
+        prices, fred, pe, monthly, mpx, fstats = await asyncio.wait_for(
+            asyncio.gather(_prices(), load_fred_series(fred_ids, days=1100), _spy_trailing_pe(),
+                           _optional(load_monthly_macro), _monthly_prices(),
+                           _optional(_forecast_stats_sync)),
             timeout=timeout)
     except asyncio.TimeoutError:
         logger.warning("[dashboard_sections] input fetch timed out after %ss", timeout)
         return SectionInputs()
-    missing = [k for k in keys if k not in prices] + [s for s in fred_ids if not fred.get(s)]
+    missing = ([k for k in keys if k not in prices] + [s for s in fred_ids if not fred.get(s)]
+               + [k for k in MONTHLY_TICKERS if k not in mpx]
+               + (["monthly macro panel"] if monthly is None or getattr(monthly, "empty", True) else []))
     if missing:
         logger.warning("[dashboard_sections] unavailable inputs: %s", ", ".join(missing))
-    return SectionInputs(prices=prices, fred=fred, spy_pe=pe)
+    return SectionInputs(prices=prices, fred=fred, spy_pe=pe, monthly_macro=monthly,
+                         monthly_prices=mpx, forecast_stats=fstats)
+
+
+def _monthly_closes_sync(ticker: str) -> Dict[str, float]:
+    import yfinance as yf
+    hist = yf.Ticker(ticker).history(period="max", interval="1mo")
+    if hist is None or hist.empty:
+        return {}
+    this_month = date.today().strftime("%Y-%m")
+    out = {}
+    for ts, close in zip(hist.index, hist["Close"].tolist()):
+        m = str(ts)[:7]
+        if m != this_month and isinstance(close, (int, float)) and close == close:
+            out[m] = float(close)          # completed months only
+    return out
+
+
+async def _monthly_prices() -> Dict[str, Dict[str, float]]:
+    now = time.time()
+    out: Dict[str, Dict[str, float]] = {}
+
+    async def _one(key: str, ticker: str):
+        hit = _MONTHLY_PX_CACHE.get(key)
+        if hit and now - hit[0] < _MONTHLY_PX_TTL:
+            return key, hit[1]
+        try:
+            data = await asyncio.to_thread(_monthly_closes_sync, ticker)
+        except Exception as e:
+            logger.warning("[dashboard_sections] monthly history %s failed: %s", ticker, e)
+            data = {}
+        if data:
+            _MONTHLY_PX_CACHE[key] = (now, data)
+            return key, data
+        return key, (hit[1] if hit else {})
+
+    for key, data in await asyncio.gather(*[_one(k, t) for k, t in MONTHLY_TICKERS.items()]):
+        if data:
+            out[key] = data
+    return out
+
+
+def _forecast_stats_sync() -> List[Dict[str, Any]]:
+    """Per-model summary of the persisted forecast log (database forecast_history)."""
+    from database.db import get_db
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT model_name, COUNT(*) AS n, COUNT(directional_hit) AS evaluated,
+                   AVG(directional_hit) AS hit_rate, MIN(forecast_date) AS first,
+                   MAX(forecast_date) AS last
+            FROM forecast_history GROUP BY model_name""").fetchall()
+    return [dict(r) for r in rows]
 
 
 def _r(v: Optional[float], nd: int = 4) -> Optional[float]:
@@ -579,4 +650,315 @@ def foreign_curve(cc: str, fred: Dict[str, DatedSeries], today: Optional[str] = 
         "recessionProb": None,   # the probit is estimated on US data only
         "asOf": dates,
         "source": "FRED / OECD MEI (" + ", ".join(ids.values()) + ")",
+    }
+
+
+# ── Reflexivity: feedback loops measured on observed moves ──────────────────────
+
+def _z_of(inp: SectionInputs, key: str, lookback: int, pct: bool = True) -> Optional[Dict[str, float]]:
+    vals = inp.closes(key)
+    return ms.change_zscore(vals, lookback, pct=pct) if vals else None
+
+
+def _trend_word(change: float) -> str:
+    return "rising" if change > 0 else "falling" if change < 0 else "flat"
+
+
+def build_reflexivity(inp: SectionInputs, regime_name: str, now) -> Optional[Dict[str, Any]]:
+    """Self-reinforcing loops (Soros), each read from two observed series: a loop is
+    active when cause and effect have both moved > 1σ (vs their own past year of rolling
+    moves) in the mutually reinforcing direction. Strength = min(|z|)/3, capped at 1."""
+    hy = inp.series("BAMLH0A0HYM2")
+    hy_z = ms.change_zscore(hy.values, 63, pct=False) if hy else None
+    defs = [
+        # id, name, cause (label, z), effect (label, z), reinforcing sign (+1: same direction)
+        ("equity-credit", "Equity prices ↔ credit spreads (collateral loop)",
+         ("S&P 500 3m return", _z_of(inp, "SPX", 63)), ("HY OAS 3m change", hy_z), -1,
+         "Higher equity prices ease credit (tighter spreads), which supports further equity gains — and the reverse in a sell-off.",
+         "Spreads stop moving against equities (either |z| < 1)."),
+        ("vol-deleveraging", "Volatility ↔ deleveraging",
+         ("VIX 1m change", _z_of(inp, "VIX", 21)), ("S&P 500 1m return", _z_of(inp, "SPX", 21)), -1,
+         "Rising volatility forces vol-targeting / risk-parity deleveraging, pushing prices down and volatility up (or a vol-selling melt-up in reverse).",
+         "VIX and equity moves revert inside ±1σ."),
+        ("dollar-conditions", "US dollar ↔ global financial conditions",
+         ("DXY 3m change", _z_of(inp, "DXY", 63)), ("Euro Stoxx 50 3m return", _z_of(inp, "STOXX50", 63)), -1,
+         "A stronger dollar tightens global dollar funding, weighing on non-US risk assets, which pushes capital back into dollars.",
+         "Dollar and non-US equities stop moving in opposite directions."),
+    ]
+    loops = []
+    for lid, name, (cname, cz), (ename, ez), sign, implication, brk in defs:
+        if cz is None or ez is None:
+            continue
+        reinforcing = (cz["z"] * ez["z"] * sign) > 0
+        active = reinforcing and abs(cz["z"]) > 1 and abs(ez["z"]) > 1
+        strength = min(abs(cz["z"]), abs(ez["z"])) / 3.0 if reinforcing else 0.0
+        loops.append({
+            "id": lid, "loop": name, "active": active, "strength": round(min(strength, 1.0), 2),
+            "variables": {"cause": {"name": cname, "trend": _trend_word(cz["change"]), "z": round(cz["z"], 2)},
+                          "effect": {"name": ename, "trend": _trend_word(ez["change"]), "z": round(ez["z"], 2)}},
+            "implication": implication,
+            "interpretation": f"{cname} z {cz['z']:+.2f}, {ename} z {ez['z']:+.2f}"
+                              + (" — reinforcing" if reinforcing else " — not reinforcing"),
+            "breakCondition": brk,
+        })
+    if not loops:
+        return None
+    active = [l for l in loops if l["active"]]
+    inactive = [l for l in loops if not l["active"]]
+    return {
+        "available": True,
+        "activeLoops": active,
+        "inactiveLoops": inactive,
+        "loopCount": {"active": len(active), "inactive": len(inactive)},
+        "reflexivityAlert": bool(active),
+        "alertMessage": ("Active feedback loop: " + "; ".join(l["loop"] for l in active)) if active else None,
+        "regimeImplication": ("Self-reinforcing moves can extend the current regime and make reversals abrupt."
+                              if active else None),
+        "aggregateDivergence": round(max(l["strength"] for l in loops), 2),
+        "regime": regime_name,
+        "interpretation": "Loops measured as z-scores of observed moves vs their own past year.",
+        "lastUpdated": now.isoformat(),
+    }
+
+
+# ── Pure alpha: cross-asset momentum z-scores ───────────────────────────────────
+
+_ALPHA_UNIVERSE = [
+    ("S&P 500", "equity", "SPX"), ("Nasdaq 100", "equity", "NDX"),
+    ("Euro Stoxx 50", "equity", "STOXX50"), ("Nikkei 225", "equity", "N225"),
+    ("Long Treasuries (TLT)", "rates", "TLT"), ("10Y note future", "rates", "TY"),
+    ("Gold", "commodity", "GC"), ("Crude oil", "commodity", "CL"),
+    ("Commodities (DBC)", "commodity", "DBC"), ("US dollar (DXY)", "fx", "DXY"),
+]
+
+
+def build_pure_alpha(inp: SectionInputs, now) -> Optional[Dict[str, Any]]:
+    """Cross-asset signals: each instrument's 3-month return as a z-score vs its own past
+    year of rolling 3-month returns (time-series momentum)."""
+    signals = []
+    for name, cat, key in _ALPHA_UNIVERSE:
+        closes = inp.closes(key)
+        cz = ms.change_zscore(closes, ms.TRADING_DAYS_3M) if closes else None
+        if cz is None:
+            continue
+        z = cz["z"]
+        signals.append({
+            "name": name, "category": cat,
+            "direction": "long" if z > 0 else "short" if z < 0 else "neutral",
+            "zScore": round(z, 2),
+            "percentile": round(cz["percentile"] * 100),
+            "strength": "strong" if abs(z) >= 2 else "moderate" if abs(z) >= 1 else "weak",
+            "confidence": round(min(abs(z), 3.0) / 3.0, 2),
+            "return3m": round(cz["change"], 4),
+        })
+    if not signals:
+        return None
+    intensity = sum(min(abs(s["zScore"]), 3.0) / 3.0 for s in signals) / len(signals)
+    ranked = sorted(signals, key=lambda s: abs(s["zScore"]), reverse=True)
+    ideas = [f"{'Long' if s['zScore'] > 0 else 'Short'} {s['name']}" for s in ranked if abs(s["zScore"]) >= 1][:3]
+    n_strong = sum(1 for s in signals if s["strength"] != "weak")
+    regime = "trending" if intensity >= 0.33 else "quiet"
+    return {
+        "available": True,
+        "signals": signals,
+        "compositeScore": round(intensity, 2),
+        "topIdeas": ideas,
+        "regime": regime,
+        "regimeDescription": (f"{n_strong} of {len(signals)} instruments have a 3-month move beyond 1σ "
+                              f"of their past year; average |z| intensity {intensity:.2f}."),
+        "methodology": "3m return z-scored vs trailing 1y of rolling 3m returns; percentile within that year.",
+        "lastUpdated": now.isoformat(),
+    }
+
+
+# ── Regime transitions & regime-conditional returns (monthly FRED panel) ────────
+
+def _quadrant_labels(inp: SectionInputs) -> Optional[List[tuple]]:
+    df = inp.monthly_macro
+    if df is None or getattr(df, "empty", True) or "growth_yoy" not in df or "cpi_yoy" not in df:
+        return None
+    months = [ts.strftime("%Y-%m") for ts in df.index]
+    hist = ms.quadrant_history(months, df["growth_yoy"].tolist(), df["cpi_yoy"].tolist())
+    return hist or None
+
+
+def build_regime_transitions(inp: SectionInputs, cycle_regime: str, now) -> Optional[Dict[str, Any]]:
+    """Empirical month-to-month transition probabilities between growth×inflation
+    quadrants, classified from FRED industrial production and CPI since 1985."""
+    from api.calculations.regime import empirical_transition_matrix, forward_outlook
+    hist = _quadrant_labels(inp)
+    if not hist or len(hist) < 24:
+        return None
+    seq = [q for _, q in hist]
+    tm = empirical_transition_matrix(seq)
+    current = seq[-1]
+    out = forward_outlook(tm, current)
+    ranked = [r for r in out["ranked"] if r["regime"] != current]
+    first = ranked[0] if ranked else None
+    second = ranked[1] if len(ranked) > 1 else None
+    return {
+        "available": True,
+        "currentRegime": current,
+        "cycleRegime": cycle_regime,
+        "asOfMonth": hist[-1][0],
+        "stayProbability": out["stay_prob"],
+        "expectedPersistenceMonths": out["expected_persistence_periods"],
+        "mostLikelyNext": first["regime"] if first else None,
+        "nextRegimeProbability": first["prob"] if first else None,
+        "secondMostLikely": second["regime"] if second else None,
+        "secondProbability": second["prob"] if second else None,
+        "transitions": tm["matrix"],
+        "monthsAnalysed": tm["observations"],
+        "warning": (f"{first['regime']} is {first['prob']:.0%} likely next month"
+                    if first and first["prob"] >= 0.3 else ""),
+        "taxonomy": "growth×inflation quadrant (3-month direction of INDPRO YoY and CPI YoY) — "
+                    "a complementary lens to the headline cycle regime",
+        "source": "FRED INDPRO, CPIAUCSL (monthly, since 1985)",
+        "lastUpdated": now.isoformat(),
+    }
+
+
+_ER_ASSETS = [("US equities (SPY)", "SPY"), ("Long Treasuries (TLT)", "TLT"),
+              ("Gold (GLD)", "GLD"), ("Commodities (DBC)", "DBC")]
+
+
+def _sixty_forty(mpx: Dict[str, Dict[str, float]]) -> Dict[str, float]:
+    """Monthly-rebalanced 60/40 SPY/TLT index built from the two monthly series."""
+    spy, tlt = mpx.get("SPY") or {}, mpx.get("TLT") or {}
+    months = sorted(set(spy) & set(tlt))
+    level, out = 100.0, {}
+    for i, m in enumerate(months):
+        if i:
+            p = months[i - 1]
+            level *= 1 + 0.6 * (spy[m] / spy[p] - 1) + 0.4 * (tlt[m] / tlt[p] - 1)
+        out[m] = level
+    return out
+
+
+def build_expected_returns(inp: SectionInputs, transitions: Optional[Dict[str, Any]], now):
+    """Historical regime-conditional returns: each asset's annualized mean monthly return
+    in past months that were in the CURRENT quadrant (label lagged 2 months so it was
+    published beforehand). A historical average, not a forecast model."""
+    from api.schemas.models import ExpectedReturnsResult
+    hist = _quadrant_labels(inp)
+    if not hist or not inp.monthly_prices:
+        return ExpectedReturnsResult(sectors=[], weightedPortfolioReturn=None,
+                                     methodology="Unavailable: monthly macro or price history missing",
+                                     lastUpdated=now.isoformat())
+    labels = dict(hist)
+    current = hist[-1][1]
+    by_asset, risk_adj = {}, {}
+    for name, key in _ER_ASSETS:
+        st = ms.conditional_return_stats(inp.monthly_prices.get(key) or {}, labels, current)
+        if st:
+            by_asset[name] = round(st["annualReturn"], 4)
+            if st["returnToVol"] is not None:
+                risk_adj[name] = round(st["returnToVol"], 2)
+    sf = _sixty_forty(inp.monthly_prices)
+    port = ms.conditional_return_stats(sf, labels, current) if sf else None
+    scenarios = []
+    for nxt, prob in sorted(((transitions or {}).get("transitions") or {}).get(current, {}).items(),
+                            key=lambda kv: kv[1], reverse=True):
+        st = ms.conditional_return_stats(sf, labels, nxt) if sf else None
+        if st and prob > 0:
+            scenarios.append({"scenario": nxt, "probability": prob,
+                              "expectedReturn": round(st["annualReturn"], 4),
+                              "confidenceInterval": [round(st["ci95"][0], 4), round(st["ci95"][1], 4)],
+                              "months": st["months"]})
+    return ExpectedReturnsResult(
+        sectors=[],
+        weightedPortfolioReturn=round(port["annualReturn"] * 100, 1) if port else None,
+        currentQuadrant=current,
+        byAssetClass=by_asset,
+        riskAdjustedReturns=risk_adj,
+        next12Months=scenarios,
+        methodology=(f"Historical 60/40 (SPY/TLT) and asset returns in {current} months "
+                     f"({port['months'] if port else 0} months), quadrant read 2 months earlier; "
+                     "scenarios are next-month quadrant probabilities × that quadrant's historical "
+                     "60/40 return (95% CI). Historical averages, not a forecast model."),
+        lastUpdated=now.isoformat(),
+    )
+
+
+# ── Risk parity (inverse volatility) ────────────────────────────────────────────
+
+RP_ASSETS = [("SPY", "US equities"), ("TLT", "Long Treasuries"), ("GLD", "Gold"), ("DBC", "Commodities")]
+# Portfolio volatility target — a policy setting of this allocation, not a market input.
+RP_TARGET_VOL = 0.10
+
+
+def build_risk_parity(inp: SectionInputs, now) -> Dict[str, Any]:
+    """Inverse-60d-vol weights on SPY/TLT/GLD/DBC with the realized portfolio vol,
+    diversification ratio, leverage to the vol target, and a 20-day weight-drift check."""
+    import numpy as np
+    keys = [k for k, _ in RP_ASSETS]
+    al = inp.aligned(*keys)
+    w = ms.inverse_vol_weights(al, 60) if al else None
+    base = {"holdings": [], "totalHoldings": 0, "lastRebalanced": None,
+            "methodology": "Inverse 60-day volatility (naive risk parity): SPY / TLT / GLD / DBC",
+            "regimeAdjustmentActive": False, "targetVolatility": RP_TARGET_VOL,
+            "portfolioVol": None, "portfolioVolatility": None, "diversificationRatio": None,
+            "leverage": None, "rebalancingNeeded": None, "lastUpdated": now.isoformat()}
+    if not w:
+        return base
+    rets = np.column_stack([ms.daily_returns(al[k])[-60:] for k in keys])
+    wv = np.array([w[k] for k in keys])
+    port_vol = float((rets @ wv).std(ddof=1) * np.sqrt(252))
+    vols = {k: ms.annualized_vol(al[k], 60) for k in keys}
+    div = float(sum(w[k] * vols[k] for k in keys) / port_vol) if port_vol > 0 else None
+    w_prev = ms.inverse_vol_weights({k: al[k][:-20] for k in keys}, 60)
+    drift = max(abs(w[k] - w_prev[k]) for k in keys) if w_prev else None
+    holdings = []
+    for k, label in RP_ASSETS:
+        t = ms.trend_signal(al[k], ms.TRADING_DAYS_3M)
+        tstat = t["tStat"] if t else None
+        holdings.append({
+            "ticker": k, "sector": label,
+            "annualisedVol": round(vols[k], 4), "baseWeight": round(w[k], 4),
+            "signalScore": round(tstat, 2) if tstat is not None else 0.0,
+            "signal": t["direction"] if t else "N/A",
+            "conviction": ("High" if tstat is not None and abs(tstat) >= 2 else
+                           "Medium" if tstat is not None and abs(tstat) >= 1 else "Low"),
+            "adjustedWeight": round(w[k], 4),
+            "targetAllocationPct": round(w[k] * 100, 1),
+        })
+    return {**base, "holdings": holdings, "totalHoldings": len(holdings),
+            "portfolioVol": round(port_vol, 4), "portfolioVolatility": round(port_vol, 4),
+            "diversificationRatio": round(div, 2) if div else None,
+            "leverage": round(RP_TARGET_VOL / port_vol, 2) if port_vol > 0 else None,
+            "rebalancingNeeded": (drift > 0.05) if drift is not None else None,
+            "weightDrift20d": round(drift, 4) if drift is not None else None}
+
+
+# ── Performance tracking (persisted forecast log) ───────────────────────────────
+
+MIN_EVALUATED = 20
+
+
+def build_performance_tracking(inp: SectionInputs, now) -> Optional[Dict[str, Any]]:
+    """Forecast-accuracy tracking from the forecast_history table. Accuracy is reported
+    only for models with at least MIN_EVALUATED realized outcomes."""
+    stats = inp.forecast_stats
+    if stats is None:
+        return None
+    total = sum(r["n"] for r in stats)
+    evaluated = sum(r["evaluated"] for r in stats)
+    firsts = [r["first"] for r in stats if r["first"]]
+    lasts = [r["last"] for r in stats if r["last"]]
+    acc = {r["model_name"]: round(r["hit_rate"], 4) for r in stats
+           if r["evaluated"] >= MIN_EVALUATED and r["hit_rate"] is not None}
+    regime_acc = acc.get("regime_threshold")
+    return {
+        "available": True,
+        "trackingPeriod": f"{min(firsts)} → {max(lasts)}" if firsts else None,
+        "totalPredictions": total,
+        "evaluatedPredictions": evaluated,
+        "regimeAccuracy": regime_acc,
+        "modelAccuracies": acc,
+        "ensembleCalibration": None,
+        "weightAdaptations": [],
+        "models": [{"model": r["model_name"], "forecasts": r["n"], "evaluated": r["evaluated"]} for r in stats],
+        "note": (f"{total} forecasts logged, {evaluated} with realized outcomes. Accuracy is shown "
+                 f"for models with ≥{MIN_EVALUATED} evaluated forecasts."),
+        "lastUpdated": now.isoformat(),
     }

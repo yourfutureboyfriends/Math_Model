@@ -358,9 +358,14 @@ class RiskParityAllocationData(BaseModel):
     """Risk parity allocation response."""
     holdings: List[RiskParityItem]
     totalHoldings: int
-    lastRebalanced: str
+    lastRebalanced: Optional[str] = None
     methodology: str
     portfolioVol: Optional[float] = None
+    portfolioVolatility: Optional[float] = None
+    targetVolatility: Optional[float] = None
+    leverage: Optional[float] = None
+    rebalancingNeeded: Optional[bool] = None
+    weightDrift20d: Optional[float] = None
     diversificationRatio: Optional[float] = None
     regimeAdjustmentActive: bool
     lastUpdated: str
@@ -383,8 +388,12 @@ class ExpectedReturnSector(BaseModel):
 
 class ExpectedReturnsResult(BaseModel):
     """Expected returns calculation result."""
-    sectors: List[ExpectedReturnSector]
-    weightedPortfolioReturn: float
+    sectors: List[ExpectedReturnSector] = []
+    weightedPortfolioReturn: Optional[float] = None   # percent; None when unavailable
+    currentQuadrant: Optional[str] = None
+    byAssetClass: Dict[str, float] = {}               # annualized, fractions
+    riskAdjustedReturns: Dict[str, float] = {}        # return / vol
+    next12Months: List[Dict[str, Any]] = []
     methodology: str
     lastUpdated: str
 

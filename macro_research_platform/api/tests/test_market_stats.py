@@ -162,3 +162,98 @@ def test_nowcast_is_gdpnow():
     nc = ds.build_nowcast(ds.SectionInputs(fred={"GDPNOW": s}), NOW)
     assert nc["nowcastQoQ"] == 3.74 and nc["quarter"] == "2026Q3"
     assert nc["nowcastYoY"] is None and nc["confidenceInterval"] is None
+
+
+# ── second batch: reflexivity, pure alpha, transitions, conditional returns, RP ──
+
+def test_change_zscore_flags_outsized_move():
+    calm = [100 + 0.01 * i for i in range(300)]
+    jump = calm + [calm[-1] * 1.2]
+    z = ms.change_zscore(jump, 21)
+    assert z["z"] > 3 and z["change"] > 0.15 and z["percentile"] == 1.0
+    assert ms.change_zscore(calm[:30], 21) is None
+
+
+def test_quadrant_history_names_and_lag():
+    months = [f"2020-{m:02d}" for m in range(1, 9)]
+    growth = [1, 1, 1, 2, 3, 4, 3, 2]       # rising, then falling
+    cpi = [2, 2, 2, 1, 1, 1, 2, 3]          # falling, then rising
+    hist = dict(ms.quadrant_history(months, growth, cpi, lag=3))
+    assert hist["2020-04"] == "Goldilocks"      # g 1→2 up, cpi 2→1 down
+    assert hist["2020-08"] == "Stagflation"     # g 3→2 down, cpi 1→3 up
+    assert "2020-01" not in hist
+
+
+def test_conditional_return_stats_uses_lagged_label():
+    months = [f"{y}-{m:02d}" for y in range(2000, 2006) for m in range(1, 13)]
+    closes, level = {}, 100.0
+    labels = {}
+    for i, m in enumerate(months):
+        labels[m] = "A" if (i // 6) % 2 == 0 else "B"
+        level *= 1.02 if labels.get(months[i - 2], "") == "A" else 0.99
+        closes[m] = level
+    st = ms.conditional_return_stats(closes, labels, "A", label_lag=2)
+    assert st["annualReturn"] == pytest.approx(0.02 * 12, rel=1e-6)
+    assert ms.conditional_return_stats(closes, labels, "missing") is None
+
+
+def test_regime_transitions_and_expected_returns_from_monthly_panel():
+    import pandas as pd
+    idx = pd.date_range("1990-01-01", periods=240, freq="MS")
+    rng = np.random.default_rng(7)
+    df = pd.DataFrame({"growth_yoy": np.cumsum(rng.standard_normal(240)),
+                       "cpi_yoy": np.cumsum(rng.standard_normal(240))}, index=idx)
+    months = [ts.strftime("%Y-%m") for ts in idx]
+    mpx = {k: dict(zip(months, _walk(240, s, vol=0.04))) for s, k in enumerate(["SPY", "TLT", "GLD", "DBC"])}
+    inp = ds.SectionInputs(monthly_macro=df, monthly_prices=mpx)
+    rt = ds.build_regime_transitions(inp, "goldilocks", NOW)
+    row = rt["transitions"][rt["currentRegime"]]
+    assert sum(row.values()) == pytest.approx(1.0, abs=0.01)
+    assert rt["mostLikelyNext"] != rt["currentRegime"]
+    er = ds.build_expected_returns(inp, rt, NOW)
+    assert er.currentQuadrant == rt["currentRegime"]
+    assert er.weightedPortfolioReturn is not None and set(er.byAssetClass) <= {n for n, _ in ds._ER_ASSETS}
+    assert all(0 < s["probability"] <= 1 for s in er.next12Months)
+
+
+def test_new_sections_unavailable_without_inputs():
+    empty = ds.SectionInputs()
+    assert ds.build_reflexivity(empty, "goldilocks", NOW) is None
+    assert ds.build_pure_alpha(empty, NOW) is None
+    assert ds.build_regime_transitions(empty, "goldilocks", NOW) is None
+    assert ds.build_performance_tracking(empty, NOW) is None
+    er = ds.build_expected_returns(empty, None, NOW)
+    assert er.weightedPortfolioReturn is None and er.sectors == []
+    rp = ds.build_risk_parity(empty, NOW)
+    assert rp["holdings"] == [] and rp["portfolioVol"] is None and rp["leverage"] is None
+
+
+def test_risk_parity_weights_and_portfolio_vol():
+    prices = {k: _dated(_walk(150, i, vol=v)) for i, (k, v) in
+              enumerate([("SPY", 0.012), ("TLT", 0.009), ("GLD", 0.008), ("DBC", 0.011)])}
+    rp = ds.build_risk_parity(ds.SectionInputs(prices=prices), NOW)
+    w = {h["ticker"]: h["baseWeight"] for h in rp["holdings"]}
+    assert sum(w.values()) == pytest.approx(1.0, abs=1e-3)
+    assert w["GLD"] > w["SPY"]                     # lower vol → higher weight
+    assert rp["diversificationRatio"] > 1.0        # independent walks diversify
+    assert rp["leverage"] == pytest.approx(ds.RP_TARGET_VOL / rp["portfolioVol"], rel=0.02)
+
+
+def test_reflexivity_loop_activates_on_reinforcing_moves():
+    calm = list(np.linspace(100, 101, 300))
+    spx = _dated(calm[:-21] + [calm[-22] * (1 - 0.01 * k) for k in range(1, 22)])   # sharp fall
+    vix = _dated(calm[:-21] + [calm[-22] * (1 + 0.05 * k) for k in range(1, 22)])   # vol spike
+    out = ds.build_reflexivity(ds.SectionInputs(prices={"SPX": spx, "VIX": vix}), "slowdown", NOW)
+    active = {l["id"] for l in out["activeLoops"]}
+    assert "vol-deleveraging" in active and out["reflexivityAlert"] is True
+
+
+def test_performance_tracking_hides_accuracy_until_enough_evaluated():
+    stats = [{"model_name": "regime_threshold", "n": 1840, "evaluated": 3, "hit_rate": 1.0,
+              "first": "2026-05-05", "last": "2026-10-01"},
+             {"model_name": "regime_hmm", "n": 40, "evaluated": 25, "hit_rate": 0.6,
+              "first": "2026-05-05", "last": "2026-09-01"}]
+    pt = ds.build_performance_tracking(ds.SectionInputs(forecast_stats=stats), NOW)
+    assert pt["regimeAccuracy"] is None                 # only 3 evaluated
+    assert pt["modelAccuracies"] == {"regime_hmm": 0.6}
+    assert pt["totalPredictions"] == 1880 and pt["trackingPeriod"] == "2026-05-05 → 2026-10-01"

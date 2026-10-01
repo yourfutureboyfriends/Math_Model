@@ -209,3 +209,61 @@ def zscore_and_percentile(current: float, history: Sequence[float]
     sd = float(h.std(ddof=1))
     mean = float(h.mean())
     return mean, ((current - mean) / sd if sd > 0 else None), float((h < current).mean() * 100.0)
+
+
+def change_zscore(values: Sequence[float], lookback: int, history: int = TRADING_DAYS_12M,
+                  pct: bool = True) -> Optional[Dict[str, float]]:
+    """Latest `lookback`-period change (pct or absolute) and its z-score vs the trailing
+    `history` observations of the same rolling change."""
+    v = np.asarray(values, dtype=float)
+    if v.size <= lookback + 20:
+        return None
+    ch = (v[lookback:] / v[:-lookback] - 1.0) if pct else (v[lookback:] - v[:-lookback])
+    window = ch[-history:]
+    ref = window[:-1]
+    sd = float(ref.std(ddof=1))
+    if sd == 0:
+        return None
+    current = float(window[-1])
+    return {"change": current, "z": (current - float(ref.mean())) / sd,
+            "percentile": float((ref < current).mean())}
+
+
+def quadrant_history(months: Sequence[str], growth_yoy: Sequence[float],
+                     cpi_yoy: Sequence[float], lag: int = 3) -> List[Tuple[str, str]]:
+    """[(month, quadrant)] from the direction of growth and inflation: the `lag`-month
+    change of each YoY series (rising / falling), named as in api.calculations.quadrants
+    (Reflation, Goldilocks, Stagflation, Deflation). Months with missing data are skipped."""
+    from api.calculations.quadrants import classify_quadrant
+    out = []
+    for i in range(lag, len(months)):
+        g0, g1, c0, c1 = growth_yoy[i - lag], growth_yoy[i], cpi_yoy[i - lag], cpi_yoy[i]
+        if any(x is None or x != x for x in (g0, g1, c0, c1)):
+            continue
+        out.append((months[i], classify_quadrant(g1 - g0, c1 - c0)))
+    return out
+
+
+def conditional_return_stats(monthly_closes: Mapping[str, float],
+                             labels: Mapping[str, str], label: str,
+                             label_lag: int = 2) -> Optional[Dict[str, float]]:
+    """Annualized mean / vol / return-to-vol and 95% CI of an asset's monthly returns in
+    months whose regime label (read `label_lag` months earlier, so it was published
+    before the month began) equals `label`. Keys are 'YYYY-MM' month strings."""
+    months = sorted(monthly_closes)
+    rets = []
+    for i in range(1, len(months)):
+        if i - label_lag < 0:
+            continue
+        lab = labels.get(months[i - label_lag])
+        prev, cur = monthly_closes[months[i - 1]], monthly_closes[months[i]]
+        if lab == label and prev:
+            rets.append(cur / prev - 1.0)
+    if len(rets) < 12:
+        return None
+    r = np.asarray(rets)
+    mean_a, vol_a = float(r.mean() * 12), float(r.std(ddof=1) * np.sqrt(12))
+    half = 1.96 * float(r.std(ddof=1)) / np.sqrt(r.size) * 12
+    return {"annualReturn": mean_a, "annualVol": vol_a,
+            "returnToVol": mean_a / vol_a if vol_a > 0 else None,
+            "ci95": (mean_a - half, mean_a + half), "months": int(r.size)}

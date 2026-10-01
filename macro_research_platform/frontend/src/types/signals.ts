@@ -199,7 +199,9 @@ export interface PureAlphaSignal {
 export interface PureAlphaData {
   signals: PureAlphaSignal[];
   compositeScore: number;
-  regime: 'expansion' | 'contraction' | 'neutral';
+  /** 'trending' / 'quiet' = cross-asset momentum intensity (legacy: expansion/contraction/neutral). */
+  regime: 'trending' | 'quiet' | 'expansion' | 'contraction' | 'neutral';
+  regimeDescription?: string;
   topIdeas: string[];
 }
 

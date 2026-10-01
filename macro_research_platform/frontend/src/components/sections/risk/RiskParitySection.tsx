@@ -14,15 +14,17 @@ export function RiskParitySection({ data: dataProp }: RiskParitySectionProps) {
   if (!data) data = (_fullDash as any)?.riskParityAllocation as any;
   if (!data) return null;
 
-  const formatPercent = (val: number) => `${((val || 0) * 100).toFixed(1)}%`;
+  // Missing values render as '—' (no default vol / leverage is assumed).
+  const formatPercent = (val: number | null | undefined) =>
+    typeof val === 'number' && isFinite(val) ? `${(val * 100).toFixed(1)}%` : '—';
 
   // Handle both old and new data formats
   const holdings = data.holdings || data.assets || [];
-  const targetVolatility = data.targetVolatility || 0.15;
-  const portfolioVolatility = data.portfolioVolatility || data.portfolioVol || 0.15;
-  const leverage = data.leverage || 1.0;
-  const rebalancingNeeded = data.rebalancingNeeded || false;
-  const lastRebalanced = data.lastRebalanced || data.lastUpdated || new Date().toISOString();
+  const targetVolatility: number | null = data.targetVolatility ?? null;
+  const portfolioVolatility: number | null = data.portfolioVolatility ?? data.portfolioVol ?? null;
+  const leverage: number | null = data.leverage ?? null;
+  const rebalancingNeeded: boolean | null = data.rebalancingNeeded ?? null;
+  const lastRebalanced = data.lastRebalanced || data.lastUpdated;
 
   return (
     <div id="risk-parity" className="terminal-section">
@@ -32,7 +34,7 @@ export function RiskParitySection({ data: dataProp }: RiskParitySectionProps) {
           <span className="section-tag">◆</span>
           <h2 className="section-title">Risk Parity</h2>
           <span className="section-meta">
-            {rebalancingNeeded ? 'Rebalance' : 'Balanced'}
+            {rebalancingNeeded == null ? '—' : rebalancingNeeded ? 'Rebalance' : 'Balanced'}
           </span>
         </div>
       </div>
@@ -48,20 +50,22 @@ export function RiskParitySection({ data: dataProp }: RiskParitySectionProps) {
           </div>
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase mb-0.5">Current Vol</div>
-            <div className={`text-base font-mono font-bold ${portfolioVolatility > targetVolatility * 1.1 ? 'text-red' : 'text-green'}`}>
+            <div className={`text-base font-mono font-bold ${portfolioVolatility == null || targetVolatility == null ? 'text-text-secondary' : portfolioVolatility > targetVolatility * 1.1 ? 'text-red' : 'text-green'}`}>
               {formatPercent(portfolioVolatility)}
             </div>
           </div>
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase mb-0.5">Leverage</div>
             <div className="text-base font-mono font-bold text-text-primary">
-              {(leverage || 1).toFixed(2)}x
+              {leverage != null ? `${leverage.toFixed(2)}x` : '—'}
             </div>
           </div>
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase mb-0.5">Status</div>
             <div className="flex items-center gap-1">
-              {rebalancingNeeded ? (
+              {rebalancingNeeded == null ? (
+                <span className="signal-tag neutral">—</span>
+              ) : rebalancingNeeded ? (
                 <>
                   <AlertTriangle className="w-3 h-3 text-red" />
                   <span className="signal-tag bearish">Rebalance</span>

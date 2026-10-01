@@ -32,11 +32,6 @@ export function RegimeTransitionSection({ data: dataProp }: RegimeTransitionSect
       toRegime,
       fromRegime: currentRegime,
       probability: typeof probability === 'number' ? probability : 0,
-      avgReturn: 0,
-      volatility: 0.15,
-      sharpe: 0,
-      maxDrawdown: -0.1,
-      winRate: 0.5
     }));
   } else if (Array.isArray(transitionsData)) {
     fromCurrent = transitionsData.filter((t: any) => t.fromRegime === currentRegime);

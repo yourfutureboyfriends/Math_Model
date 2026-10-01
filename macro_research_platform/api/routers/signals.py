@@ -27,46 +27,30 @@ from api.utils.cache import ttl_cache
 router = APIRouter(tags=["signals"])
 
 
-@router.get("/api/nowcast", response_model=NowcastData)
-async def get_nowcast() -> NowcastData:
-    """
-    GDP Nowcast using DFM/PCA methodology.
-
-    Estimates current quarter GDP growth using dynamic factor models
-    and principal component analysis on high-frequency economic data.
-
-    Returns:
-        Dict containing:
-            - nowcast: Current GDP growth estimate (annualized %)
-            - confidence: Confidence interval (low, high)
-            - components: Contributing factor weights
-            - lastUpdated: Timestamp of calculation
-            - model: "DFM/PCA" methodology identifier
-
-    Examples:
-        >>> GET /api/nowcast
-        {"nowcast": 2.3, "confidence": {"low": 1.8, "high": 2.8}, ...}
-    """
+@router.get("/api/nowcast", response_model=Dict[str, Any])
+async def get_nowcast() -> Dict[str, Any]:
+    """GDP nowcast: Atlanta Fed GDPNow (FRED GDPNOW), real GDP QoQ SAAR for the latest
+    quarter, as served in the dashboard's `nowcast` section. 503 if unavailable."""
     from api.handlers.signal_handler import get_nowcast_data
     return await get_nowcast_data()
 
 
-@router.get("/api/liquidity", response_model=LiquidityConditionsData)
-async def get_liquidity() -> LiquidityConditionsData:
+@router.get("/api/liquidity", response_model=Dict[str, Any])
+async def get_liquidity() -> Dict[str, Any]:
     """Liquidity Conditions Index."""
     from api.handlers.signal_handler import get_liquidity_data
     return await get_liquidity_data()
 
 
-@router.get("/api/sentiment", response_model=SentimentRiskData)
-async def get_sentiment() -> SentimentRiskData:
+@router.get("/api/sentiment", response_model=Dict[str, Any])
+async def get_sentiment() -> Dict[str, Any]:
     """Sentiment & Risk Appetite."""
     from api.handlers.signal_handler import get_sentiment_data
     return await get_sentiment_data()
 
 
-@router.get("/api/valuation", response_model=ValuationFilterData)
-async def get_valuation() -> ValuationFilterData:
+@router.get("/api/valuation", response_model=Dict[str, Any])
+async def get_valuation() -> Dict[str, Any]:
     """Valuation Filter."""
     from api.handlers.signal_handler import get_valuation_data
     return await get_valuation_data()
@@ -121,15 +105,15 @@ async def get_signals() -> SignalsData:
     return await get_signals_data()
 
 
-@router.get("/api/factors", response_model=FactorData)
-async def get_factors() -> FactorData:
+@router.get("/api/factors", response_model=Dict[str, Any])
+async def get_factors() -> Dict[str, Any]:
     """AQR Factor Rotation Engine."""
     from api.handlers.signal_handler import get_factors_data
     return await get_factors_data()
 
 
-@router.get("/api/trends", response_model=TrendsData)
-async def get_trends() -> TrendsData:
+@router.get("/api/trends", response_model=Dict[str, Any])
+async def get_trends() -> Dict[str, Any]:
     """CTA Trend Following."""
     from api.handlers.signal_handler import get_trends_data
     return await get_trends_data()
@@ -149,29 +133,29 @@ async def get_longterm_forecasts() -> LongtermForecastsData:
     return await get_longterm_forecasts_data()
 
 
-@router.get("/api/reflexivity", response_model=ReflexivityData)
-async def get_reflexivity() -> ReflexivityData:
+@router.get("/api/reflexivity", response_model=Dict[str, Any])
+async def get_reflexivity() -> Dict[str, Any]:
     """Soros Reflexivity Detector."""
     from api.handlers.signal_handler import get_reflexivity_data
     return await get_reflexivity_data()
 
 
-@router.get("/api/factors/decomposition", response_model=FactorDecompositionData)
-async def get_factor_decomposition() -> FactorDecompositionData:
+@router.get("/api/factors/decomposition", response_model=Dict[str, Any])
+async def get_factor_decomposition() -> Dict[str, Any]:
     """Two Sigma Factor Decomposition."""
     from api.handlers.signal_handler import get_factor_decomposition_data
     return await get_factor_decomposition_data()
 
 
-@router.get("/api/geopolitical-risk", response_model=GeopoliticalData)
-async def get_geopolitical() -> GeopoliticalData:
+@router.get("/api/geopolitical-risk", response_model=Dict[str, Any])
+async def get_geopolitical() -> Dict[str, Any]:
     """Geopolitical Risk Layer."""
     from api.handlers.signal_handler import get_geopolitical_data
     return await get_geopolitical_data()
 
 
-@router.get("/api/options-intelligence", response_model=OptionsIntelligenceData)
-async def get_options() -> OptionsIntelligenceData:
+@router.get("/api/options-intelligence", response_model=Dict[str, Any])
+async def get_options() -> Dict[str, Any]:
     """Options Market Intelligence."""
     from api.handlers.signal_handler import get_options_data
     return await get_options_data()

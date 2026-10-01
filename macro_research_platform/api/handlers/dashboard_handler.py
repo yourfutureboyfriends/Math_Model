@@ -26,7 +26,8 @@ from api.handlers.dashboard_sections import (
     load_section_inputs, build_momentum_veto, build_correlation_regime, build_debt_cycle,
     build_international_macro, build_factor_rotation, build_nowcast,
     build_factor_decomposition, build_trend_signals, build_sentiment, build_valuation,
-    build_advanced_indicators,
+    build_advanced_indicators, build_reflexivity, build_pure_alpha, build_regime_transitions,
+    build_expected_returns, build_risk_parity, build_performance_tracking,
 )
 
 # Import providers and validation
@@ -644,22 +645,9 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     # News Sentiment — REAL headline-level sentiment from live RSS news (was a VIX-derived stub).
     _news_sentiment = _build_news_sentiment(regime_name, now)
 
-    # Reflexivity — derived from regime_confidence, regime_name
-    _reflexivity_val = 1.0 - regime_confidence
-    _reflexivity = {
-        "signals": [
-            {
-                "asset": "SPX",
-                "divergence": round(_reflexivity_val, 2),
-                "feedbackLoop": "Positive" if regime_name == "goldilocks" else "Negative",
-                "confidence": round(regime_confidence, 2),
-            }
-        ] if _reflexivity_val > 0.3 else [],
-        "aggregateDivergence": round(_reflexivity_val, 2),
-        "regime": regime_name,
-        "interpretation": f"Reflexivity at {_reflexivity_val:.0%} in {regime_name} (confidence {regime_confidence:.0%}).",
-        "lastUpdated": now.isoformat(),
-    }
+    # Reflexivity — feedback loops (equity↔credit, vol↔deleveraging, dollar↔conditions)
+    # measured as z-scores of observed moves.
+    _reflexivity = build_reflexivity(_sections, regime_name, now)
 
     # Factor Decomposition — OLS of Nasdaq-100 returns on ETF factor returns (1y daily).
     _factor_decomp = build_factor_decomposition(_sections, now)
@@ -686,25 +674,13 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         "lastUpdated": now.isoformat(),
     }
 
-    # Build remaining stubs from computed context
-    _regime_transitions = {
-        "currentRegime": regime_name,
-        "mostLikelyNext": "reflation" if regime_name == "goldilocks" else "goldilocks",
-        "nextRegimeProbability": round(0.25 + (1 - regime_confidence) * 0.3, 2),
-        "secondMostLikely": "slowdown",
-        "secondProbability": round(0.15, 2),
-        "warning": "",
-        "lastUpdated": now.isoformat(),
-    }
-    _pure_alpha = {
-        "signals": [],
-        "overallAlpha": round((growth_score - 0.5) * 0.4, 3),
-        "sharpeRatio": round(0.8 + growth_score * 0.6, 2),
-        "lastUpdated": now.isoformat(),
-    }
+    # Regime transitions — empirical quadrant transition matrix (FRED monthly, since 1985).
+    _regime_transitions = build_regime_transitions(_sections, regime_name, now)
+    # Pure alpha — cross-asset 3m momentum z-scores.
+    _pure_alpha = build_pure_alpha(_sections, now)
     _model_agreement = {
-        "agreementScore": round(ensemble.agreement or 0.7, 2),
-        "agreementLabel": "High" if (ensemble.agreement or 0.7) > 0.75 else "Medium",
+        "agreementScore": round(ensemble.agreement, 2),
+        "agreementLabel": "High" if ensemble.agreement > 0.75 else "Medium" if ensemble.agreement >= 0.6 else "Low",
         "disagreements": [],
         "lastUpdated": now.isoformat(),
     }
@@ -731,49 +707,35 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
             f"Fed funds {fed_rate:.2f}% — {'restrictive policy' if fed_rate >= 4.5 else 'accommodative' if fed_rate <= 2.5 else 'neutral'} stance"),
         _ch("Yield Curve", _curve < 0, _curve > 1.0,
             f"10Y-2Y {_curve * 100:+.0f}bps — {'inverted (recession signal)' if _curve < 0 else 'steep (easing)' if _curve > 1.0 else 'flat'}"),
-        _ch("Credit", risk_score < 0.4, risk_score > 0.6,
-            f"Risk appetite {risk_score:.2f} — {'credit tightening' if risk_score < 0.4 else 'credit flowing' if risk_score > 0.6 else 'mixed'}"),
-        _ch("Exchange Rate", (dxy_level or 104) >= 106, (dxy_level or 104) <= 98,
-            f"DXY {(dxy_level or 104):.1f} — {'strong USD tightens conditions' if (dxy_level or 104) >= 106 else 'weak USD eases' if (dxy_level or 104) <= 98 else 'neutral'}"),
+    ]
+    # Credit channel from the ICE BofA US HY OAS (FRED), not the VIX-based risk score.
+    _hy = _sections.series("BAMLH0A0HYM2").latest
+    if _hy is not None:
+        _transmission_channels.append(_ch("Credit", _hy >= 5.0, _hy <= 3.5,
+            f"HY OAS {_hy:.2f}% — {'credit tightening' if _hy >= 5.0 else 'credit flowing' if _hy <= 3.5 else 'mixed'}"))
+    _transmission_channels += [
+        _ch("Exchange Rate", dxy_level >= 106, dxy_level <= 98,
+            f"DXY {dxy_level:.1f} — {'strong USD tightens conditions' if dxy_level >= 106 else 'weak USD eases' if dxy_level <= 98 else 'neutral'}"),
         _ch("Asset Price", growth_score < 0.4, growth_score > 0.6,
             f"Equity momentum {growth_score:.2f} — {'wealth effect positive' if growth_score > 0.6 else 'negative' if growth_score < 0.4 else 'neutral'}"),
-        _ch("Volatility", (vix_level or 18) >= 25, (vix_level or 18) <= 15,
-            f"VIX {(vix_level or 18):.1f} — {'stress impedes transmission' if (vix_level or 18) >= 25 else 'calm supports flow' if (vix_level or 18) <= 15 else 'normal'}"),
+        _ch("Volatility", vix_level >= 25, vix_level <= 15,
+            f"VIX {vix_level:.1f} — {'stress impedes transmission' if vix_level >= 25 else 'calm supports flow' if vix_level <= 15 else 'normal'}"),
     ]
     _active_n = sum(1 for c in _transmission_channels if c["status"] == "Active")
     _transmission_analysis = {
         "channels": _transmission_channels,
         "activeChannels": _active_n,
         "totalChannels": len(_transmission_channels),
-        "overallStrength": round(growth_score * 0.7 + risk_score * 0.3, 2),
+        # Share of channels currently transmitting freely.
+        "overallStrength": round(_active_n / len(_transmission_channels), 2),
         "source": "computed from live rates / curve / FX / risk",
         "lastUpdated": now.isoformat(),
     }
-    _performance_tracking = {
-        "period": "YTD",
-        "totalReturn": round((growth_score - 0.5) * 20, 1),
-        "benchmarkReturn": round((growth_score - 0.5) * 15, 1),
-        "alpha": round((growth_score - 0.5) * 5, 1),
-        "factorAttribution": [],
-        "sectorAttribution": [],
-        "regimeAttribution": [],
-        "riskAttribution": {"totalVolatility": 12.0, "systematicRisk": 8.0, "specificRisk": 4.0,
-                            "factorRisk": 6.0, "idiosyncraticRisk": 4.0, "var95": -2.1, "maxDrawdown": -8.5},
-        "benchmarkComparison": {"vsSPY": round((growth_score - 0.5) * 3, 1), "vsSixtyForty": 1.2,
-                                "vsRiskParity": 0.8, "informationRatio": round(growth_score * 0.8, 2),
-                                "trackingError": 3.5, "upsideCapture": 105.0, "downsideCapture": 85.0},
-        "lastUpdated": now.isoformat(),
-    }
-    # riskParityAllocation = same data as riskParity dict, exposed under the frontend-expected key
-    _risk_parity_dict = {
-        "holdings": [], "totalHoldings": 0, "lastRebalanced": now.isoformat(),
-        "methodology": "RiskParity", "regimeAdjusted": True,
-        "targetVolatility": round(0.08 + (1 - risk_score) * 0.08, 2),
-        "portfolioVolatility": round((1 - risk_score) * 0.15, 2),
-        "diversificationRatio": round(1.2 + risk_score * 0.3, 2),
-        "regimeAdjustmentActive": regime_name in ["goldilocks", "reflation"],
-        "lastUpdated": now.isoformat(),
-    }
+    # Performance tracking — accuracy of the persisted forecast log (database forecast_history).
+    _performance_tracking = build_performance_tracking(_sections, now)
+    # Risk parity — inverse-vol SPY/TLT/GLD/DBC with realized portfolio vol (also exposed
+    # under the frontend-expected riskParityAllocation key).
+    _risk_parity_dict = build_risk_parity(_sections, now)
     # ──────────────────────────────────────────────────────────────────────────
 
     # Build dashboard
@@ -785,16 +747,8 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         signals=signals,
         sectorAllocation=sector_allocation,
         riskParity=_risk_parity_dict,
-        expectedReturns={
-            "sectors": [
-                {"sector": "Technology", "ticker": "XLK", "earningsYield": 4.5, "regimePremium": round(1.0 + (growth_score - 0.5), 1), "expectedReturn": round(8.0 + growth_score * 8, 1), "currentWeight": 0.25, "signal": regime_chars.equity_bias},
-                {"sector": "Healthcare", "ticker": "XLV", "earningsYield": 5.0, "regimePremium": round(0.8 + (1 - recession_data["probability"]), 1), "expectedReturn": round(6.0 + (1 - recession_data["probability"]) * 4, 1), "currentWeight": 0.15, "signal": "Neutral"},
-                {"sector": "Financials", "ticker": "XLF", "earningsYield": round(5.0 + ((ten_yr if ten_yr else 4.5) - 3.0), 1), "regimePremium": round(0.5 + yield_spread, 1), "expectedReturn": round(7.0 + yield_spread * 5, 1), "currentWeight": 0.10, "signal": "Neutral"},
-            ],
-            "weightedPortfolioReturn": round(8.0 + growth_score * 4, 1),
-            "methodology": "Multi-Factor Forecast (Calculated)",
-            "lastUpdated": now.isoformat()
-        },
+        # Historical regime-conditional returns for the current growth×inflation quadrant.
+        expectedReturns=build_expected_returns(_sections, _regime_transitions, now),
         businessLayer=BusinessLayerData(
             recommendations=f"""## Market Outlook
 
