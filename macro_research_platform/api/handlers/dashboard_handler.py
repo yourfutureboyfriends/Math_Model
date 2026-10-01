@@ -21,6 +21,7 @@ from api.calculations import (
     calculate_recession_probability,
     calculate_sector_allocation
 )
+from api.calculations.models import estrella_mishkin_recession_prob
 
 # Import providers and validation
 from api.providers import YahooFinanceProvider
@@ -33,6 +34,10 @@ _yahoo_provider = YahooFinanceProvider()
 
 import time as _dash_time
 import asyncio as _dash_asyncio
+
+
+class DashboardDataUnavailable(RuntimeError):
+    """Core live inputs are missing, so the dashboard can't be computed from real data."""
 
 # The dashboard aggregates many live FRED/yfinance fetches and takes 15-20s cold,
 # which blows past the frontend's 8s timeout on every uncached load. Serve a cached
@@ -128,7 +133,18 @@ async def get_dashboard_data(mode: str = "live") -> DashboardData:
         cached = _DASHBOARD_CACHE.get(mode)
         if cached and _dash_time.time() - cached[0] < _DASHBOARD_TTL:
             return cached[1]
-        data = await _build_dashboard_data(mode)
+        try:
+            data = await _build_dashboard_data(mode)
+        except DashboardDataUnavailable as e:
+            if cached:
+                # Serve the last dashboard built from real data, flagged as stale.
+                logger.warning(f"[dashboard_handler] {e} — serving last good dashboard")
+                stale = cached[1].model_copy(deep=True)
+                stale.metadata.dataStatus = "stale"
+                stale.metadata.validationWarnings = str(e)
+                return stale
+            from fastapi import HTTPException
+            raise HTTPException(status_code=503, detail=str(e))
         _DASHBOARD_CACHE[mode] = (_dash_time.time(), data)
         return data
 
@@ -152,9 +168,9 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     logger.info(f"Building dashboard data (mode: {mode})")
     now = datetime.now()
 
-    # Fetch real market data from Yahoo Finance — run in thread pool with hard timeout
-    # so a blocked proxy/network does NOT freeze the async event loop.
-    price_symbols = ['SPX', 'NDX', 'VIX', 'TENYR', 'TWYR', 'DXY', 'EURUSD', 'GLD', 'WTI']
+    # Live quotes for display. A quote that can't be fetched stays None — the signal
+    # inputs below fall back only to the latest REAL observation, never a made-up level.
+    price_symbols = ['SPX', 'NDX', 'VIX', 'TENYR', 'DXY', 'EURUSD', 'GLD', 'WTI']
 
     prices = {}
     try:
@@ -164,43 +180,120 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
                 prices[symbol] = record.price
             logger.info(f"[dashboard_handler] Fetched {len(prices)} live prices")
         else:
-            logger.warning(f"[dashboard_handler] Price fetch failed: {result.error} — using fallbacks")
+            logger.warning(f"[dashboard_handler] Live price fetch failed: {result.error}")
     except Exception as e:
-        logger.error(f"[dashboard_handler] Error fetching prices: {e} — using fallbacks")
+        logger.error(f"[dashboard_handler] Error fetching prices: {e}")
 
-    # Extract prices (these will be None if fetch failed - calculations handle this)
-    spx_level = prices.get('SPX')
+    # Dated history (Yahoo + FRED) for every signal input — real values at each date.
+    from api.handlers.macro_inputs import load_macro_inputs
+    from api.calculations.signals import GROWTH_HISTORY_OFFSETS
+    inputs = await load_macro_inputs()
+    spx_s, vix_s, dxy_s = inputs["spx"], inputs["vix"], inputs["dxy"]
+    dgs10, dgs2, dgs3mo, dff, sahm_s, be_s = (
+        inputs[k] for k in ("dgs10", "dgs2", "dgs3mo", "dff", "sahm", "breakeven"))
+    # CPI YoY keyed by release date (monthly FRED panel; cached on disk).
+    from api.handlers.macro_inputs import load_monthly_macro, cpi_release_series
+    cpi_s = cpi_release_series(await _dash_asyncio.to_thread(load_monthly_macro))
+
+    spx_level = prices.get('SPX') or spx_s.latest
+    vix_level = prices.get('VIX') or vix_s.latest
+    dxy_level = prices.get('DXY') or dxy_s.latest
+    ten_yr = prices.get('TENYR') or dgs10.latest
     ndx_level = prices.get('NDX')
-    vix_level = prices.get('VIX')
-    ten_yr = prices.get('TENYR')
-    two_yr = prices.get('TWYR')
-    dxy_level = prices.get('DXY')
     gold_level = prices.get('GLD')
     oil_level = prices.get('WTI')
-    eurusd_level = prices.get('EURUSD')  # Was missing - causing EUR/USD to show None
+    eurusd_level = prices.get('EURUSD')
+    # 2Y from FRED DGS2: Yahoo has no 2-year index (^FVX, used before, is the 5-year).
+    two_yr = dgs2.latest
+    fed_rate = round(dff.latest, 2) if dff else None
+    sahm_value = sahm_s.latest
 
-    # Apply hardcoded fallbacks when live prices unavailable (proxy blocked)
-    spx_level = spx_level or 5800.0
-    ndx_level = ndx_level or 19500.0
-    vix_level = vix_level or 18.0
-    ten_yr = ten_yr or 4.50
-    two_yr = two_yr or 4.20
-    dxy_level = dxy_level or 104.0
-    gold_level = gold_level or 3300.0
-    oil_level = oil_level or 78.0
-    eurusd_level = eurusd_level or 1.085
+    required = {
+        "S&P 500 history": spx_s.values if len(spx_s.values) > 127 else None,
+        "VIX": vix_level, "DXY": dxy_level,
+        "10Y yield (FRED DGS10)": dgs10.latest, "2Y yield (FRED DGS2)": two_yr,
+        "3M yield (FRED DGS3MO)": dgs3mo.latest, "Fed funds (FRED DFF)": fed_rate,
+        "Inflation (CPI or 10Y breakeven)": cpi_s.latest if cpi_s else be_s.latest,
+    }
+    missing_inputs = [name for name, v in required.items() if v is None]
+    if missing_inputs:
+        raise DashboardDataUnavailable(
+            "Live inputs unavailable: " + ", ".join(missing_inputs))
 
-    # Generate SPX history for momentum calculation
-    spx_history = [spx_level * (1 - i * 0.015) for i in range(4, -1, -1)] if spx_level else []
+    data_warnings = []
+    if inputs.missing():
+        data_warnings.append("Refresh failed, serving last good data for: " + ", ".join(inputs.missing()))
+    if sahm_value is None:
+        data_warnings.append("Sahm rule (FRED SAHMREALTIME) unavailable")
+    if not cpi_s:
+        data_warnings.append("CPI unavailable — inflation signal uses 10Y breakeven only")
+    if not be_s:
+        data_warnings.append("10Y breakeven (FRED T10YIE) unavailable — inflation signal uses CPI only")
+    _stale_cutoff = (now - timedelta(days=6)).strftime("%Y-%m-%d")
+    for _s in (spx_s, vix_s, dxy_s, dgs10, dgs2, dgs3mo, dff):
+        if _s.latest_date and _s.latest_date < _stale_cutoff:
+            data_warnings.append(f"{_s.name} last observation {_s.latest_date}")
 
-    # Calculate all signals using shared module
-    growth_score, growth_trend, growth_history = calculate_growth_signal(spx_level, spx_history)
-    inflation_score, inflation_trend, inflation_history = calculate_inflation_signal(ten_yr, two_yr)
-    liquidity_score, liquidity_trend, liquidity_history = calculate_liquidity_signal(dxy_level, ten_yr, 4.5)
-    risk_score, risk_trend, risk_history = calculate_risk_signal(vix_level)
+    # Recession model: probit re-fitted on FRED history when available (fits once,
+    # off the event loop), else the published Estrella-Mishkin coefficients.
+    probit = None
+    try:
+        from api.models_ml.recession_probit import get_recession_probit
+        _p = await _dash_asyncio.wait_for(_dash_asyncio.to_thread(get_recession_probit), timeout=20)
+        probit = _p if _p.fitted else None
+    except Exception as e:
+        logger.warning(f"[dashboard_handler] fitted probit unavailable: {e}")
 
-    # Calculate yield spread for recession model
-    yield_spread = (ten_yr - two_yr) if ten_yr and two_yr else 0.3
+    def _recession_prob_at(spread_pp, ff):
+        if spread_pp is None:
+            return None
+        if probit is not None and ff is not None:
+            return probit.predict(spread_pp, ff)["probability"]
+        try:
+            return estrella_mishkin_recession_prob(spread_pp)
+        except ValueError:
+            return None
+
+    # Evaluate every signal at T-4 … Now on S&P trading dates (~3 months span).
+    spx_closes = spx_s.values[:-1] + [spx_level]
+    labels = ["T-4", "T-3", "T-2", "T-1", "Now"]
+    points = []
+    for label, off in zip(labels, GROWTH_HISTORY_OFFSETS):
+        i = len(spx_closes) - 1 - off
+        if i < 0:
+            continue
+        d = spx_s.dates[i]
+        is_now = off == 0
+        ten_d, three_d = dgs10.asof(d), dgs3mo.asof(d)
+        if is_now:
+            ten_d, three_d = dgs10.latest, dgs3mo.latest
+        ff_d = fed_rate if is_now else dff.asof(d)
+        g = calculate_growth_signal(None, spx_closes[:i + 1])[0]
+        inf = calculate_inflation_signal(cpi_s.asof(d), be_s.latest if is_now else be_s.asof(d))[0]
+        liq = calculate_liquidity_signal(dxy_level if is_now else dxy_s.asof(d), ten_d, ff_d)[0]
+        rsk = calculate_risk_signal(vix_level if is_now else vix_s.asof(d))[0]
+        reg = classify_regime(g, inf, liq)[0] if None not in (g, inf, liq) else None
+        spread_3m10y = (ten_d - three_d) if None not in (ten_d, three_d) else None
+        points.append({"label": label, "date": now.strftime("%Y-%m-%d") if is_now else d,
+                       "g": g, "i": inf, "l": liq, "r": rsk, "regime": reg,
+                       "rec": _recession_prob_at(spread_3m10y, ff_d)})
+
+    def _series(key):
+        pts = [p for p in points if p[key] is not None]
+        return [p[key] for p in pts], [p["label"] for p in pts]
+
+    growth_score, growth_trend, _ = calculate_growth_signal(spx_level, spx_s.values[:-1])
+    cpi_now = cpi_s.asof(now.strftime("%Y-%m-%d"))
+    inflation_score, inflation_trend, _ = calculate_inflation_signal(cpi_now, be_s.latest)
+    liquidity_score, liquidity_trend, _ = calculate_liquidity_signal(dxy_level, dgs10.latest, fed_rate)
+    risk_score, risk_trend, _ = calculate_risk_signal(vix_level)
+    growth_history, growth_labels = _series("g")
+    inflation_history, inflation_labels = _series("i")
+    liquidity_history, liquidity_labels = _series("l")
+    risk_history, risk_labels = _series("r")
+
+    # 10Y-2Y spread (both FRED, same date)
+    yield_spread = dgs10.latest - two_yr
 
     # Classify regime using shared module
     regime_name, regime_confidence, regime_duration = classify_regime(
@@ -210,8 +303,14 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     # Get regime characteristics
     regime_chars = get_regime_characteristics(regime_name)
 
-    # Calculate recession probability
-    recession_data = calculate_recession_probability(yield_spread, vix_level, growth_score)
+    # Recession probability from real models (headline = fitted probit, else E-M)
+    spread_3m10y_now = dgs10.latest - dgs3mo.latest
+    recession_data = calculate_recession_probability(
+        spread_3m10y_now, fed_rate, sahm_value,
+        _recession_prob_at(spread_3m10y_now, fed_rate) if probit is not None else None,
+    )
+    recession_history = [{"date": p["date"], "probability": round(p["rec"], 4)}
+                         for p in points if p["rec"] is not None]
 
     # Generate sector allocation
     sector_allocation = calculate_sector_allocation(regime_name, growth_score, inflation_score)
@@ -238,13 +337,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         confidence="High" if regime_confidence > 0.75 else "Medium",
         confidenceScore=regime_confidence,
         duration=regime_duration,
-        history=[
-            {"date": (now - timedelta(days=120)).strftime("%Y-%m-%d"), "regime": "Reflation"},
-            {"date": (now - timedelta(days=90)).strftime("%Y-%m-%d"), "regime": regime_name},
-            {"date": (now - timedelta(days=60)).strftime("%Y-%m-%d"), "regime": regime_name},
-            {"date": (now - timedelta(days=30)).strftime("%Y-%m-%d"), "regime": regime_name},
-            {"date": now.strftime("%Y-%m-%d"), "regime": regime_name},
-        ],
+        history=[{"date": p["date"], "regime": p["regime"]} for p in points if p["regime"]],
         interpretations=[
             {"factor": "Growth", "impact": "Positive" if growth_score > 0.5 else "Neutral", "color": "success" if growth_score > 0.5 else "neutral"},
             {"factor": "Inflation", "impact": "Stable" if 0.3 < inflation_score < 0.7 else "Elevated", "color": "info" if 0.3 < inflation_score < 0.7 else "warning"},
@@ -274,7 +367,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
             direction=growth_trend,
             interpretation=f"Growth signal from SPX momentum: {spx_level:,.0f}" if spx_level else "Growth signal from momentum",
             history=growth_history,
-            historyLabels=["T-4", "T-3", "T-2", "T-1", "Now"]
+            historyLabels=growth_labels
         ),
         inflation=SignalDetails(
             latestScore=inflation_score,
@@ -283,9 +376,12 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
             threeMonth=round(inflation_score - inflation_history[0], 2),
             state="Elevated" if inflation_score > 0.6 else "Moderate" if inflation_score > 0.4 else "Low",
             direction=inflation_trend,
-            interpretation=f"Inflation signal from yield curve ({yield_spread:+.2f}% spread)",
+            interpretation=("Inflation signal from "
+                            + " and ".join(x for x in (
+                                f"CPI {cpi_now:.1f}% YoY" if cpi_now is not None else None,
+                                f"10Y breakeven {be_s.latest:.2f}%" if be_s.latest is not None else None) if x)),
             history=inflation_history,
-            historyLabels=["T-4", "T-3", "T-2", "T-1", "Now"]
+            historyLabels=inflation_labels
         ),
         liquidity=SignalDetails(
             latestScore=liquidity_score,
@@ -296,7 +392,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
             direction=liquidity_trend,
             interpretation=f"Liquidity signal from DXY ({dxy_level:.1f}) and rates" if dxy_level else "Liquidity from rates",
             history=liquidity_history,
-            historyLabels=["T-4", "T-3", "T-2", "T-1", "Now"]
+            historyLabels=liquidity_labels
         ),
         risk=SignalDetails(
             latestScore=risk_score,
@@ -307,7 +403,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
             direction=risk_trend,
             interpretation=f"Risk signal from VIX level ({vix_level:.1f})" if vix_level else "Risk signal from volatility",
             history=risk_history,
-            historyLabels=["T-4", "T-3", "T-2", "T-1", "Now"]
+            historyLabels=risk_labels
         )
     )
 
@@ -321,13 +417,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         sahmSignal=recession_data["sahmSignal"],
         description=f"{recession_data['level']} probability ({recession_data['probability']:.0%})",
         components=recession_data["components"],
-        history=[
-            {"date": (now - timedelta(days=120)).strftime("%Y-%m-%d"), "probability": round(recession_data["probability"] * 0.6, 2)},
-            {"date": (now - timedelta(days=90)).strftime("%Y-%m-%d"), "probability": round(recession_data["probability"] * 0.75, 2)},
-            {"date": (now - timedelta(days=60)).strftime("%Y-%m-%d"), "probability": round(recession_data["probability"] * 0.85, 2)},
-            {"date": (now - timedelta(days=30)).strftime("%Y-%m-%d"), "probability": round(recession_data["probability"] * 0.95, 2)},
-            {"date": now.strftime("%Y-%m-%d"), "probability": recession_data["probability"]},
-        ]
+        history=recession_history,
     )
 
     # Create key metrics
@@ -345,16 +435,6 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         _closes = await _fetch_closes(_t)
         _pc = _pct_change(_closes, 1) if _closes else None
         _chg[_k] = (_pc / 100.0) if _pc is not None else None
-
-    # Live fed funds rate (was hardcoded 4.5 -> stale "FED 4.50%" in the ticker).
-    fed_rate = 4.3
-    try:
-        from api.providers.fred_provider import FREDProvider
-        _obs = FREDProvider().fetch_latest("FEDFUNDS")
-        if _obs is not None:
-            fed_rate = round(_obs.value, 2)
-    except Exception as e:
-        logger.warning(f"[dashboard_handler] FEDFUNDS fetch failed: {e}")
 
     key_metrics = KeyMetrics(
         growth=MetricWithSparkline(
@@ -385,7 +465,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
             value=round(recession_data["probability"] * 100, 1),
             formatted=f"{recession_data['probability'] * 100:.1f}%",
             direction="up" if recession_data["probability"] > 0.3 else "stable",
-            sparklineData=[round(recession_data["probability"] * 100 * (0.6 + 0.1 * i), 1) for i in range(5)]
+            sparklineData=[round(h["probability"] * 100, 1) for h in recession_history]
         ),
         regimeDuration={"current": f"{regime_duration} months", "currentRegime": regime_name},
         spxLevel=spx_level,
@@ -570,12 +650,12 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
 
     # Metadata
     metadata = DataMetadata(
-        latestDate=now.isoformat(),
+        latestDate=spx_s.latest_date or now.isoformat(),
         lastRefreshed=now.isoformat(),
-        dataStatus="current",
+        dataStatus="degraded" if data_warnings else "current",
         daysSinceUpdate=0,
         mode=mode,
-        validationWarnings=None,
+        validationWarnings="; ".join(data_warnings) or None,
         supportingEvidence=f"Fetched {len(prices)} prices. Signals: G={growth_score:.2f}, I={inflation_score:.2f}. Regime: {regime_name} ({regime_confidence:.0%} confidence)"
     )
 
@@ -706,7 +786,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     # Long-term Forecasts — single source of truth shared with signal_handler (api/calculations/cma.py)
     from api.calculations.cma import longterm_forecasts
     _gmo_forecasts = {
-        **longterm_forecasts(ten_yr, now),
+        **longterm_forecasts(ten_yr, now, risk_free=dgs3mo.latest),
     }
 
     # Advanced Indicators — derived from growth_score, liquidity_score, ten_yr
@@ -795,13 +875,13 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     ]
     # Monetary-policy transmission channels — REAL status derived from live rates/curve/FX/risk
     # (was an empty-channels stub). Each channel: how freely policy is transmitting right now.
-    _curve = (ten_yr or 4.5) - (two_yr or 4.2)
+    _curve = yield_spread
     def _ch(name, restricted, active, desc):
         status = "Restricted" if restricted else "Active" if active else "Mixed"
         return {"channel": name, "status": status, "description": desc}
     _transmission_channels = [
-        _ch("Interest Rate", (fed_rate or 5.0) >= 4.5, (fed_rate or 5.0) <= 2.5,
-            f"Fed funds {(fed_rate or 5.0):.2f}% — {'restrictive policy' if (fed_rate or 5.0) >= 4.5 else 'accommodative' if (fed_rate or 5.0) <= 2.5 else 'neutral'} stance"),
+        _ch("Interest Rate", fed_rate >= 4.5, fed_rate <= 2.5,
+            f"Fed funds {fed_rate:.2f}% — {'restrictive policy' if fed_rate >= 4.5 else 'accommodative' if fed_rate <= 2.5 else 'neutral'} stance"),
         _ch("Yield Curve", _curve < 0, _curve > 1.0,
             f"10Y-2Y {_curve * 100:+.0f}bps — {'inverted (recession signal)' if _curve < 0 else 'steep (easing)' if _curve > 1.0 else 'flat'}"),
         _ch("Credit", risk_score < 0.4, risk_score > 0.6,

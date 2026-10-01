@@ -4,7 +4,7 @@ Signal storytelling — explain WHY each composite score is where it is (Phase 2
 Each function reuses the same math as the dashboard signal (so the score matches), then
 decomposes it into named input contributions, identifies the largest driver, and emits a
 one-line, plain-English `explanation_text`. Pure — inputs are already-normalized values
-(percent for yields, index level for SPX/DXY, points for VIX); no I/O.
+(percent for yields/inflation, index level for SPX/DXY, points for VIX); no I/O.
 """
 from __future__ import annotations
 
@@ -32,56 +32,67 @@ def _pack(signal: str, score: float, trend: str, text: str, contributions: List[
             "driver": ranked[0]["input"] if ranked else None}
 
 
+def _unavailable(signal: str, reason: str) -> Dict:
+    return {"signal": signal, "score": None, "trend": "unavailable",
+            "explanation_text": f"{signal} unavailable: {reason}.",
+            "contributions": [], "driver": None}
+
+
 def explain_growth(spx_level: Optional[float], spx_history: Optional[List[float]]) -> Dict:
+    """spx_history: real daily closes, oldest first (excluding spx_level)."""
     score, trend, _ = calculate_growth_signal(spx_level, spx_history or [])
-    lvl = spx_level if spx_level and spx_level > 0 else 5800.0
-    hist = spx_history or [lvl]
-    recent = (lvl - hist[-1]) / hist[-1] if hist and hist[-1] else 0.0
-    trailing = (lvl - hist[0]) / hist[0] if hist and hist[0] else 0.0
+    if score is None:
+        return _unavailable("Growth", "needs ~6 months of daily S&P 500 closes")
+    closes = list(spx_history or []) + ([spx_level] if spx_level else [])
+    last = closes[-1]
+    recent = last / closes[-22] - 1.0          # ~1 month
+    trailing = last / closes[-127] - 1.0       # ~6 months
     contributions = [
-        _contrib("SPX recent return", recent * 100, recent, "%"),
-        _contrib("SPX trailing return", trailing * 100, trailing, "%"),
+        _contrib("SPX 1M return", recent * 100, recent, "%"),
+        _contrib("SPX 6M return", trailing * 100, trailing, "%"),
     ]
-    text = (f"Growth {trend}: S&P 500 {recent * 100:+.1f}% recent momentum "
-            f"(vs {trailing * 100:+.1f}% trailing) → score {score:.2f}.")
+    text = (f"Growth {trend}: S&P 500 {recent * 100:+.1f}% over 1M "
+            f"(vs {trailing * 100:+.1f}% over 6M) → score {score:.2f}.")
     return _pack("Growth", score, trend, text, contributions)
 
 
-def explain_inflation(ten_yr: Optional[float], two_yr: Optional[float]) -> Dict:
-    score, trend, _ = calculate_inflation_signal(ten_yr, two_yr)
-    ten = ten_yr if ten_yr and ten_yr > 0 else 4.5
-    two = two_yr if two_yr and two_yr > 0 else 4.2
-    spread = ten - two
-    contributions = [
-        _contrib("10Y yield", ten, spread),          # steepening (10Y up) lifts the signal
-        _contrib("2Y yield", two, -spread if spread else 0.0),
-    ]
-    text = (f"Inflation signal {trend}: 10Y−2Y curve {spread * 100:+.0f}bps "
-            f"({ten:.2f}% − {two:.2f}%) → score {score:.2f}.")
+def explain_inflation(cpi_yoy: Optional[float], breakeven_10y: Optional[float]) -> Dict:
+    score, trend, _ = calculate_inflation_signal(cpi_yoy, breakeven_10y)
+    if score is None:
+        return _unavailable("Inflation", "CPI and 10Y breakeven both missing")
+    contributions = []
+    if cpi_yoy is not None:
+        contributions.append(_contrib("CPI YoY", cpi_yoy, _clamp((cpi_yoy - 1.0) / 4.0) - 0.5, "%"))
+    if breakeven_10y is not None:
+        contributions.append(_contrib("10Y breakeven", breakeven_10y,
+                                      _clamp((breakeven_10y - 1.5) / 1.5) - 0.5, "%"))
+    parts = [p for p in (f"CPI {cpi_yoy:.1f}% YoY" if cpi_yoy is not None else None,
+                         f"10Y breakeven {breakeven_10y:.2f}%" if breakeven_10y is not None else None) if p]
+    text = f"Inflation {trend}: {' and '.join(parts)} → score {score:.2f}."
     return _pack("Inflation", score, trend, text, contributions)
 
 
 def explain_liquidity(dxy: Optional[float], ten_yr: Optional[float], fed_rate: Optional[float]) -> Dict:
     score, trend, _ = calculate_liquidity_signal(dxy, ten_yr, fed_rate)
-    d = dxy if dxy and dxy > 0 else 104.0
-    ten = ten_yr if ten_yr and ten_yr > 0 else 4.5
-    fed = fed_rate if fed_rate and fed_rate > 0 else 5.0
-    dxy_component = (1.0 - _clamp((d - 90) / 20.0)) * 0.6      # weight 0.6
-    spread = fed - ten
+    if score is None:
+        return _unavailable("Liquidity", "DXY, 10Y yield or Fed funds missing")
+    dxy_component = (1.0 - _clamp((dxy - 90) / 20.0)) * 0.6      # weight 0.6
+    spread = fed_rate - ten_yr
     spread_component = (1.0 - _clamp((spread + 1) / 3.0)) * 0.4  # weight 0.4
     contributions = [
-        _contrib("US Dollar (DXY)", d, dxy_component),
+        _contrib("US Dollar (DXY)", dxy, dxy_component),
         _contrib("Fed−10Y spread", spread, spread_component, "%"),
     ]
     driver = "US Dollar" if dxy_component >= spread_component else "Fed−10Y spread"
-    text = (f"Liquidity {trend}: driven by {driver} — DXY {d:.1f}, Fed−10Y {spread:+.2f}% "
+    text = (f"Liquidity {trend}: driven by {driver} — DXY {dxy:.1f}, Fed−10Y {spread:+.2f}% "
             f"→ score {score:.2f}.")
     return _pack("Liquidity", score, trend, text, contributions)
 
 
 def explain_risk(vix: Optional[float]) -> Dict:
     score, trend, _ = calculate_risk_signal(vix)
-    v = vix if vix and vix > 0 else 18.0
-    contributions = [_contrib("VIX", v, score)]
-    text = f"Risk appetite {trend}: VIX at {v:.1f} → score {score:.2f}."
+    if score is None:
+        return _unavailable("Risk", "VIX missing")
+    contributions = [_contrib("VIX", vix, score)]
+    text = f"Risk appetite {trend}: VIX at {vix:.1f} → score {score:.2f}."
     return _pack("Risk", score, trend, text, contributions)

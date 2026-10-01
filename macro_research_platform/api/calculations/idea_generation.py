@@ -38,11 +38,12 @@ def desired_tilts(regime_key: str) -> Dict[str, int]:
         "credit": bias3.get(rc.risk_appetite, 0),
         "volatility": -bias3.get(rc.risk_appetite, 0),
     }
-    # Value vs growth rotation.
+    # Value vs growth rotation: the value factor is already value-minus-growth (IWD−IWF),
+    # so a growth tilt is a short value-factor position.
     if rc.value_bias == "value":
-        tilts["value"], tilts["growth"] = 1, -1
+        tilts["value"] = 1
     elif rc.value_bias == "growth":
-        tilts["value"], tilts["growth"] = -1, 1
+        tilts["value"] = -1
     # Momentum rotation signal.
     if rc.rotation_signal == "momentum":
         tilts["momentum"] = 1

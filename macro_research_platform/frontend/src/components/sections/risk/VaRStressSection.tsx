@@ -13,7 +13,7 @@ const usd = (v: number | null | undefined) =>
   v == null ? '—' : `${v < 0 ? '-' : ''}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
 const CUSTOM_FACTORS = [
-  ['equity', 'Equity'], ['rates', 'Rates'], ['credit', 'Credit'],
+  ['equity', 'Equity'], ['rates', 'Rates'], ['credit', 'Credit (HY−Tsy)'],
   ['commodity', 'Commodity'], ['usd', 'USD'], ['volatility', 'Vol'],
 ] as const;
 

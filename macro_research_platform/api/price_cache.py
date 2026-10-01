@@ -24,7 +24,6 @@ SYMBOLS = {
     'NDX': '^NDX',
     'VIX': '^VIX',
     'TENYR': '^TNX',
-    'TWYR': '^FVX',
     'DXY': 'DX-Y.NYB',
     'EURUSD': 'EURUSD=X',
     'GBPUSD': 'GBPUSD=X',
@@ -132,7 +131,12 @@ def refresh_prices() -> Dict[str, Optional[float]]:
             _PRICE_CACHE['FED'] = fed_rate
         else:
             # Fallback: try to get from cache or use default
-            _PRICE_CACHE['FED'] = _PRICE_CACHE.get('FED', 3.64)
+            _PRICE_CACHE['FED'] = _PRICE_CACHE.get('FED')  # keep last real value; never a default
+
+        # 2Y Treasury from FRED (Yahoo has no 2-year index; ^FVX is the 5-year).
+        two_yr = _get_fred_rate('DGS2')
+        if two_yr is not None:
+            _PRICE_CACHE['TWYR'] = two_yr
 
         _LAST_UPDATE = datetime.utcnow()
         logger.info(f"Price cache refreshed: {len([v for v in _PRICE_CACHE.values() if v is not None])}/{len(SYMBOLS)} instruments")

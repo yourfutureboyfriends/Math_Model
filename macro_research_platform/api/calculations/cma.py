@@ -13,7 +13,6 @@ from datetime import datetime
 from typing import Dict, Optional
 
 EQUITY_ERP = 4.0          # equity risk premium over the 10Y (percentage points)
-DEFAULT_10Y = 4.5         # fallback when the live 10Y yield is unavailable
 
 # (assetClass, expected-return offset vs US Large Cap equity or None for the bond leg, volatility, confidence)
 _ASSETS = [
@@ -25,31 +24,45 @@ _ASSETS = [
 ]
 
 
-def longterm_forecasts(ten_yr: Optional[float], as_of: Optional[datetime] = None) -> Dict:
+def longterm_forecasts(ten_yr: Optional[float], as_of: Optional[datetime] = None,
+                       risk_free: Optional[float] = None) -> Dict:
     """Build the long-term CMA forecast payload from the 10Y yield.
 
-    `ten_yr` is the 10Y Treasury yield in percent (e.g. 4.6); falls back to DEFAULT_10Y.
-    Returns the same shape both callers previously produced (incl. `lastUpdated`).
+    `ten_yr` is the 10Y Treasury yield in percent (e.g. 4.6). `risk_free` is the cash
+    yield in percent (e.g. 3M T-bill); Sharpe = (expected return − risk_free) / vol, and is
+    None when no risk-free rate is supplied (total return / vol is not a Sharpe ratio).
+    Returns {"available": False, ...} when the 10Y yield is missing — no default yield.
     """
     now = as_of or datetime.now()
-    bond_return = ten_yr if ten_yr else DEFAULT_10Y
+    if ten_yr is None:
+        return {"available": False, "forecasts": [],
+                "reason": "10Y Treasury yield unavailable",
+                "methodology": "Building-block CMA (unavailable: no 10Y yield)",
+                "asOfDate": now.isoformat(),
+                "disclaimer": "Past performance does not guarantee future results.",
+                "lastUpdated": now.isoformat()}
+    bond_return = ten_yr
     equity_return = bond_return + EQUITY_ERP
 
     forecasts = []
     for name, offset, vol, conf in _ASSETS:
         er = bond_return if offset is None else round(equity_return + offset, 1)
+        sharpe = round((er - risk_free) / vol, 2) if (vol and risk_free is not None) else None
         forecasts.append({
             "assetClass": name,
             "expectedReturn": round(er, 1),
             "volatility": vol,
-            "sharpeRatio": round(er / vol, 2) if vol else 0.0,
+            "sharpeRatio": sharpe,
             "confidence": conf,
         })
 
+    rf_txt = f"; Sharpe vs {risk_free:.2f}% cash" if risk_free is not None else ""
     return {
+        "available": True,
         "forecasts": forecasts,
+        "riskFreeRate": risk_free,
         "methodology": f"Building-block CMA: bond = 10Y yield ({bond_return:.1f}%), "
-                       f"equity = 10Y + {EQUITY_ERP:.0f}% ERP (GMO-style, not GMO's valuation model)",
+                       f"equity = 10Y + {EQUITY_ERP:.0f}% ERP (GMO-style, not GMO's valuation model){rf_txt}",
         "asOfDate": now.isoformat(),
         "disclaimer": "Past performance does not guarantee future results.",
         "lastUpdated": now.isoformat(),

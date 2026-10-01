@@ -205,8 +205,11 @@ def lru_cache_with_ttl(ttl_seconds: int = 300):
                     # Expired, remove from cache
                     del cache[key]
                     del timestamps[key]
-            # Compute and cache new value
+            # Compute and cache new value. Empty/None results (a failed fetch) are not
+            # cached, so one network blip doesn't pin an empty answer for the whole TTL.
             result = func(*args, **kwargs)
+            if result is None or (hasattr(result, "__len__") and len(result) == 0):
+                return result
             cache[key] = result
             timestamps[key] = now
             return result
@@ -472,18 +475,6 @@ def _get_dxy_value(df: pd.DataFrame) -> Optional[float]:
         return None
 
 
-# FIXED (BUG 3): Fallback helper for 2Y Treasury yield
-def _fetch_2y_yield_fallback() -> Optional[float]:
-    """Fetch 2Y Treasury yield from yfinance ^IRX (13-week) as proxy."""
-    try:
-        import yfinance as yf
-        t = yf.Ticker("^IRX")
-        h = t.history(period="5d")
-        if len(h) > 0:
-            return float(h["Close"].iloc[-1])
-    except Exception as e:
-        logger.debug(f"2Y yield fallback fetch failed: {e}")
-    return None
 
 
 # FIXED (BUG 1+2 PERMANENT): Dynamic FX sanity bounds from historical data ±4σ
@@ -506,26 +497,6 @@ def _build_fx_sanity_bounds(symbol: str, lookback: str = "2y") -> tuple[float, f
         return (0.0001, 9999.0)
 
 
-# FIXED (BUG 9 PERMANENT): Dynamic column discovery for regime history
-def _get_growth_inflation_cols(df: pd.DataFrame):
-    """Find growth and inflation score columns dynamically."""
-    growth_candidates = [c for c in df.columns if
-        any(k in c.lower() for k in
-            ['growth', 'gdp', 'industrial', 'pmi'])]
-    inflation_candidates = [c for c in df.columns if
-        any(k in c.lower() for k in
-            ['inflation', 'cpi', 'pce', 'price'])]
-
-    if not growth_candidates or not inflation_candidates:
-        raise ValueError(
-            f"Cannot find growth/inflation cols in: "
-            f"{list(df.columns)}"
-        )
-    # Use the first match — log which ones were chosen
-    g_col = growth_candidates[0]
-    i_col = inflation_candidates[0]
-    logger.info(f"Regime history using: growth={g_col}, inflation={i_col}")
-    return g_col, i_col
 
 
 # Cache bounds for 24 hours — recalculate daily
@@ -550,68 +521,100 @@ def _get_all_fx_bounds() -> dict:
     return {pair: _build_fx_sanity_bounds(ticker) for pair, ticker in tickers.items()}
 
 
-# FIXED (BUG 7 PERMANENT): FOMC date scraping from Federal Reserve
+def _parse_fomc_calendar(html: str) -> list[tuple[str, str]]:
+    """(first_day, decision_day) ISO dates for every FOMC meeting on the Fed's calendar page.
+
+    The page groups meetings under "<YEAR> FOMC Meetings" panels; each meeting row has a
+    month cell ("June", or "Apr/May" for a meeting spanning two months) and a day cell
+    ("16-17", "30-1", "17-18*"). The decision is announced on the LAST day. Notation votes
+    are skipped (they are not meetings).
+    """
+    import re
+    from datetime import date as _date
+    from bs4 import BeautifulSoup
+
+    def _month(txt: str) -> int:
+        return datetime.strptime(txt.strip()[:3], "%b").month
+
+    meetings = []
+    soup = BeautifulSoup(html, "html.parser")
+    for panel in soup.select(".panel"):
+        heading = panel.select_one(".panel-heading")
+        ym = re.search(r"(\d{4})\s+FOMC Meetings", heading.get_text(" ", strip=True)) if heading else None
+        if not ym:
+            continue
+        year = int(ym.group(1))
+        for row in panel.select(".fomc-meeting"):
+            mcell, dcell = row.select_one(".fomc-meeting__month"), row.select_one(".fomc-meeting__date")
+            if not mcell or not dcell:
+                continue
+            day_txt = dcell.get_text(" ", strip=True)
+            days = [int(d) for d in re.findall(r"\d+", day_txt)]
+            if not days or "notation" in day_txt.lower():
+                continue
+            months = [m for m in mcell.get_text(strip=True).split("/") if m]
+            try:
+                m_start = _month(months[0])
+                d1, d2 = days[0], days[-1]
+                m_end = _month(months[-1]) if (len(months) > 1 and d2 < d1) else m_start
+                meetings.append((_date(year, m_start, d1).isoformat(), _date(year, m_end, d2).isoformat()))
+            except (ValueError, IndexError):
+                continue
+    return sorted(set(meetings), key=lambda m: m[1])
+
+
 @lru_cache_with_ttl(ttl_seconds=86400)
-def _fetch_fomc_dates() -> list[str]:
-    """Fetch FOMC meeting dates from Federal Reserve website."""
+def _fetch_fomc_meetings() -> list[tuple[str, str]]:
+    """(first_day, decision_day) for every meeting on federalreserve.gov (cached 24h)."""
     try:
         import requests
-        from bs4 import BeautifulSoup
         r = requests.get(
             "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
             timeout=10,
             headers={"User-Agent": "Mozilla/5.0"}
         )
-        soup = BeautifulSoup(r.text, "html.parser")
-        dates = []
-        # Parse all meeting date elements from the page
-        for tag in soup.select(".fomc-meeting__date"):
-            text = tag.get_text(strip=True)
-            # parse "May 6-7, 2026" → "2026-05-07" (last day)
-            parsed = _parse_fomc_date_string(text)
-            if parsed:
-                dates.append(parsed)
-        return sorted(dates)
+        return _parse_fomc_calendar(r.text)
     except Exception as e:
         logger.warning(f"FOMC scrape failed: {e}")
         return []
 
 
-def _parse_fomc_date_string(text: str) -> str | None:
-    """Parse FOMC date strings like 'May 6-7, 2026' to ISO format."""
-    import re
-    from datetime import datetime
-    try:
-        # Match patterns like "May 6-7, 2026" or "June 17-18, 2026"
-        match = re.match(r'([A-Za-z]+)\s+(\d+)(?:-\d+)?,\s*(\d{4})', text)
-        if match:
-            month_str, day, year = match.groups()
-            # Parse using last day of range if present
-            month_num = datetime.strptime(month_str, "%B").month
-            dt = datetime(int(year), month_num, int(day))
-            return dt.strftime("%Y-%m-%d")
-    except Exception as e:
-        pass
-    return None
+def _fetch_fomc_dates() -> list[str]:
+    """FOMC decision dates (last day of each meeting), sorted."""
+    return [end for _, end in _fetch_fomc_meetings()]
 
 
-# FIXED (BUG 7 PERMANENT): FRED release dates for NFP and CPI
-def _fetch_fred_release_dates(release_id: int, n: int = 8) -> list[str]:
-    """Fetch release dates from FRED API."""
+def _fomc_blackout_start(first_day) -> "date":
+    """Fed communications blackout begins the second Saturday before the meeting's first day."""
+    from datetime import timedelta as _td
+    back = (first_day.weekday() - 5) % 7 or 7     # days back to the preceding Saturday
+    return first_day - _td(days=back + 7)
+
+
+# FRED release dates for NFP and CPI
+@lru_cache_with_ttl(ttl_seconds=21600)
+def _fetch_fred_release_dates(release_id: int, n: int = 8, past: bool = False) -> list[str]:
+    """Release dates for a FRED release (CPI = 10, Employment Situation = 50).
+
+    Upcoming dates (default) need include_release_dates_with_no_data=true — without it FRED
+    only returns dates that already have data, so the upcoming list was always empty and
+    every caller silently used its heuristic fallback. past=True returns the most recent
+    `n` past release dates, newest last.
+    """
     try:
         import requests
         from api.config import FRED_API_KEY
         if not FRED_API_KEY:
-            logger.warning("FRED_API_KEY not set, using fallback dates")
+            logger.warning("FRED_API_KEY not set, release dates unavailable")
             return []
-        BASE = "https://api.stlouisfed.org/fred/release/dates"
-        url = (f"{BASE}?release_id={release_id}"
-               f"&api_key={FRED_API_KEY}&file_type=json"
-               f"&sort_order=asc&realtime_start="
-               f"{datetime.now().date().isoformat()}")
-        r = requests.get(url, timeout=8)
-        dates = [d["date"] for d in r.json().get("release_dates", [])]
-        return dates[:n]
+        today = datetime.now().date().isoformat()
+        params = {"release_id": release_id, "api_key": FRED_API_KEY, "file_type": "json",
+                  "include_release_dates_with_no_data": "true", "sort_order": "desc", "limit": 200}
+        r = requests.get("https://api.stlouisfed.org/fred/release/dates", params=params, timeout=8)
+        dates = sorted({d["date"] for d in r.json().get("release_dates", [])})
+        if past:
+            return [d for d in dates if d < today][-n:]
+        return [d for d in dates if d >= today][:n]
     except Exception as e:
         logger.warning(f"FRED release dates failed: {e}")
         return []
@@ -733,80 +736,32 @@ def load_processed_data() -> Optional[pd.DataFrame]:
     if df is None:
         return None
 
-    # FIXED: Patch critical stale values with fresh FRED data
-    # This ensures the three-layer validation architecture is actually used
+    # Patch the latest row with fresh FRED values where available. If FRED can't be
+    # reached (or returns an implausible value) the CSV value is kept as-is — never
+    # replaced with a hardcoded constant.
     last_idx = df.index[-1]
 
-    # BUG-02: Fed Funds - fetch fresh from FRED FEDFUNDS
-    fresh_fed_funds = _fetch_fresh_fred_value("FEDFUNDS")
-    if fresh_fed_funds is not None:
-        # Validate: must be in plausible range for 2026
-        if 2.0 <= fresh_fed_funds <= 6.0:
-            df.loc[last_idx, "us_fed_funds"] = fresh_fed_funds
-            df.loc[last_idx, "fed_funds"] = fresh_fed_funds
-            df.loc[last_idx, "FEDFUNDS"] = fresh_fed_funds
-            logger.info(f"[DATA PATCH] Fed Funds: {fresh_fed_funds:.2f}% (fresh FRED)")
-        else:
-            logger.warning(f"[DATA PATCH] Fed Funds {fresh_fed_funds:.2f}% outside bounds, using fallback 3.64%")
-            df.loc[last_idx, "us_fed_funds"] = 3.64
-            df.loc[last_idx, "fed_funds"] = 3.64
-            df.loc[last_idx, "FEDFUNDS"] = 3.64
-    else:
-        # No FRED access - use hardcoded fallback for Mar/Apr 2026
-        current_fed = df.loc[last_idx, "us_fed_funds"] if "us_fed_funds" in df.columns else 4.68
-        if current_fed > 6.0 or current_fed < 2.0 or pd.isna(current_fed):
-            logger.warning(f"[DATA PATCH] Fed Funds stale ({current_fed}), using fallback 3.64%")
-            df.loc[last_idx, "us_fed_funds"] = 3.64
-            df.loc[last_idx, "fed_funds"] = 3.64
-            df.loc[last_idx, "FEDFUNDS"] = 3.64
+    def _patch(series_id, cols, lo, hi, scale=None):
+        val = _fetch_fresh_fred_value(series_id)
+        if val is None:
+            logger.warning(f"[DATA PATCH] {series_id} unavailable — keeping CSV value")
+            return
+        if scale is not None:
+            val = scale(val)
+        if not (lo <= val <= hi):
+            logger.warning(f"[DATA PATCH] {series_id}={val} outside [{lo}, {hi}] — keeping CSV value")
+            return
+        for c in cols:
+            df.loc[last_idx, c] = val
+        logger.info(f"[DATA PATCH] {series_id}: {val:.2f} (fresh FRED)")
 
-    # BUG-01: Inflation - fetch fresh from FRED CPIAUCSL_PC1 (YoY %)
-    fresh_inflation = _fetch_fresh_fred_value("CPIAUCSL_PC1")
-    if fresh_inflation is not None:
-        # Validate: must be in plausible range
-        if 0 <= fresh_inflation <= 25:
-            df.loc[last_idx, "core_cpi_yoy"] = fresh_inflation
-            df.loc[last_idx, "us_cpi"] = fresh_inflation
-            df.loc[last_idx, "cpi_yoy"] = fresh_inflation
-            logger.info(f"[DATA PATCH] Inflation: {fresh_inflation:.2f}% (fresh FRED)")
-        else:
-            logger.warning(f"[DATA PATCH] Inflation {fresh_inflation:.2f}% outside bounds, using fallback 3.3%")
-            df.loc[last_idx, "core_cpi_yoy"] = 3.3
-            df.loc[last_idx, "us_cpi"] = 3.3
-            df.loc[last_idx, "cpi_yoy"] = 3.3
-    else:
-        # No FRED access - check if current value is stale (too low for 2026)
-        current_cpi = df.loc[last_idx, "core_cpi_yoy"] if "core_cpi_yoy" in df.columns else 2.2
-        if current_cpi < 2.5 or current_cpi > 15 or pd.isna(current_cpi):
-            logger.warning(f"[DATA PATCH] Inflation stale ({current_cpi}), using fallback 3.3%")
-            df.loc[last_idx, "core_cpi_yoy"] = 3.3
-            df.loc[last_idx, "us_cpi"] = 3.3
-            df.loc[last_idx, "cpi_yoy"] = 3.3
-
-    # BUG-04: HY Spreads - fetch fresh from FRED BAMLH0A0HYM2
-    fresh_hy = _fetch_fresh_fred_value("BAMLH0A0HYM2")
-    if fresh_hy is not None:
-        # FRED returns as percent (e.g., 2.83), convert to bps (e.g., 283)
-        hy_bps = fresh_hy * 100 if fresh_hy < 10 else fresh_hy
-        if 50 <= hy_bps <= 2000:
-            df.loc[last_idx, "hy_spreads"] = hy_bps
-            df.loc[last_idx, "high_yield_spread"] = hy_bps
-            df.loc[last_idx, "us_credit"] = hy_bps
-            logger.info(f"[DATA PATCH] HY Spread: {hy_bps:.0f} bps (fresh FRED)")
-        else:
-            logger.warning(f"[DATA PATCH] HY Spread {hy_bps:.0f} bps outside bounds, using fallback 283")
-            df.loc[last_idx, "hy_spreads"] = 283
-            df.loc[last_idx, "high_yield_spread"] = 283
-            df.loc[last_idx, "us_credit"] = 283
-    else:
-        # No FRED access - keep CSV value if present and valid
-        current_hy = df.loc[last_idx, "hy_spreads"] if "hy_spreads" in df.columns else None
-        # FIXED (BUG 10): Only override if truly missing/invalid, not if elevated (600+ is valid stress level)
-        if current_hy is None or pd.isna(current_hy) or current_hy < 50:
-            logger.warning(f"[DATA PATCH] HY Spread missing/invalid ({current_hy}), using fallback 283 bps")
-            df.loc[last_idx, "hy_spreads"] = 283
-            df.loc[last_idx, "high_yield_spread"] = 283
-            df.loc[last_idx, "us_credit"] = 283
+    _patch("FEDFUNDS", ["us_fed_funds", "fed_funds", "FEDFUNDS"], 0.0, 25.0)
+    # Headline and core CPI YoY are separate series (headline was written into core before).
+    _patch("CPIAUCSL_PC1", ["us_cpi", "cpi_yoy"], -5.0, 25.0)
+    _patch("CPILFESL_PC1", ["core_cpi_yoy"], -5.0, 25.0)
+    # FRED reports OAS in percent; columns are in bps.
+    _patch("BAMLH0A0HYM2", ["hy_spreads", "high_yield_spread", "us_credit"], 50.0, 3000.0,
+           scale=lambda v: v * 100 if v < 30 else v)
 
     return df
 
@@ -949,175 +904,61 @@ def _classify_regime_from_scores(scores: Dict[str, float]) -> str:
 
 # Dashboard Section Builders
 
-def get_regime_data(df: pd.DataFrame) -> RegimeData:
-    # FIXED: Use single source of truth for regime classification (BUG-03, BUG-05)
-    # Get actual values (not z-scores) for consistent regime classification
-    growth_val = _get(df, "gdp_growth") or 2.0
-    inflation_val = _get(df, "core_cpi_yoy", "us_cpi") or 3.3
+def _monthly_regime_frame() -> pd.DataFrame:
+    """Full monthly quadrant-regime history from the FRED panel (industrial production YoY,
+    CPI YoY), plus curve/credit z-scores for the liquidity/risk interpretations."""
+    from api.handlers.macro_inputs import load_monthly_macro
+    from api.calculations.regime import quadrant_regime_history
 
-    # Build immutable regime context — THE ONLY regime classifier
-    regime_ctx = build_regime_context(
-        growth_val=growth_val,
-        inflation_val=inflation_val,
-        liquidity_zscore=0.0,  # Will be updated below if available
-        confidence=0.8,
-    )
-    # Also compute scores for other uses (backward compatibility)
-    scores = _compute_regime_scores(df)
+    panel = load_monthly_macro()
+    if panel is None or panel.empty:
+        raise ValueError("Monthly FRED macro data unavailable")
+    hist = quadrant_regime_history(panel["growth_yoy"], panel["cpi_yoy"])
+    if hist.empty:
+        raise ValueError("Insufficient monthly macro history to classify regimes")
 
-    # FIXED (regime consistency): classify the CURRENT regime with the SAME z-score classifier
-    # used to build the monthly history below, instead of build_regime_context on raw levels.
-    # The raw-level path returned "Stagflation" (reading absolute CPI ~4% as high) while every
-    # other panel — dashboard header, /api/regime, scenario — showed the benign strong-growth /
-    # low-inflation regime from the normalized signals. Worse, that raw-level label was then
-    # force-written over the latest history entry (line ~1097), corrupting the transition matrix
-    # the outlook is computed from. Using the same classifier keeps current, history, and the
-    # rest of the app consistent. (regime_ctx retained above for its validation/logging.)
-    regime = _classify_regime_from_scores(scores)
+    def _z(col):
+        if col not in panel:
+            return pd.Series(dtype=float)
+        s = panel[col]
+        r = s.rolling(36, min_periods=24)
+        return ((s - r.mean()) / r.std()).reindex(hist.index)
 
-    # Confidence: higher when signals agree in direction
-    disagreements = sum(1 for v in scores.values() if abs(v) < 0.1)
-    confidence_score = round(max(0.35, min(0.97, 0.9 - disagreements * 0.1)), 2)
+    hist["curve_z"] = _z("curve")
+    hist["credit_z"] = _z("credit")
+    return hist
+
+
+def get_regime_data(df: Optional[pd.DataFrame] = None) -> RegimeData:
+    """Current growth×inflation quadrant regime with its real monthly history.
+
+    Built from the contiguous monthly FRED panel. It used to read the hand-maintained CSV
+    (18-month gap, forward/back-filled), padded short histories with fake "2023-01-01
+    Goldilocks" entries, and sub-sampled every n-th month — which also corrupted the
+    transition matrix computed from it. `df` is accepted for backward compatibility only.
+    """
+    hist = _monthly_regime_frame()
+    last = hist.iloc[-1]
+    regime = str(last["regime"])
+    confidence_score = round(float(last["confidence"]), 2)
     confidence = "High" if confidence_score > 0.7 else "Medium" if confidence_score > 0.45 else "Low"
 
-    # FIXED: Duration - count consecutive months in current regime from history array
-    # Create history array from monthly-resampled data to avoid duplicate dates
-    monthly_df = get_monthly_df(df)
-    # FIXED: Forward-fill to ensure every month has a regime classification
-    monthly_df = monthly_df.ffill().bfill()
+    from api.calculations.regime import current_run_length
+    duration = current_run_length(hist["regime"])        # months, over the full history
 
-    # FIXED (Issue 4): Use 48 months of history to capture more regime variety (not just Goldilocks)
-    # Using longer lookback captures 2022 inflation spike, 2020 COVID, and 2023 recovery
-    if len(monthly_df) >= 48:
-        history_df = monthly_df.tail(48)  # Use 4 years of data for regime variety
-    elif len(monthly_df) >= 24:
-        history_df = monthly_df.tail(24)
-    elif len(monthly_df) >= 6:
-        # Repeat/resample the available data to fill 24 months
-        history_df = monthly_df
-    else:
-        # Use daily data and resample to monthly if monthly is too sparse
-        history_df = get_monthly_df(df.tail(252)) if len(df) >= 60 else df
+    recent = hist.tail(24)
+    history = [{"date": d.strftime("%Y-%m-%d"), "regime": r, "confidence": f"{round(c * 100)}%"}
+               for d, r, c in zip(recent.index, recent["regime"], recent["confidence"])]
 
-    # FIXED (BUG 9 PERMANENT): Use dynamic column discovery for regime history
-    try:
-        g_col, i_col = _get_growth_inflation_cols(history_df)
-    except ValueError as e:
-        logger.warning(f"Dynamic column discovery failed: {e}, using fallbacks")
-        g_col, i_col = 'gdp_growth', 'core_cpi_yoy'
+    def _val(x):
+        return 0.0 if x is None or pd.isna(x) else float(x)
 
-    # FIXED (BUG 1+2+3): Build continuous 24-month monthly history with proper z-score classification
-    from datetime import datetime
-    from dateutil.relativedelta import relativedelta
-
-    def _zscore_for_date(series: pd.Series, target_date, window=24):
-        """Compute z-score using trailing window up to target date."""
-        try:
-            # Get data up to target date
-            subset = series[series.index <= target_date].tail(window)
-            if len(subset) < 6:
-                return 0.0
-            mean = subset.mean()
-            std = subset.std()
-            if std == 0 or np.isnan(std) or std == 0:
-                return 0.0
-            current = float(subset.iloc[-1])
-            return (current - mean) / std
-        except (IndexError, ValueError, TypeError) as e:
-            logger.debug(f"[_zscore_for_date] Calculation failed: {e}")
-            return 0.0
-        except Exception as e:
-            logger.warning(f"[_zscore_for_date] Unexpected error: {e}")
-            return 0.0
-
-    # FIXED (BUG 5): Build history using ACTUAL data dates with rolling z-scores
-    # Use the history_df index dates instead of generating artificial dates
-    history = []
-    g_series = history_df[g_col] if g_col in history_df.columns else None
-    i_series = history_df[i_col] if i_col in history_df.columns else None
-
-    if g_series is not None and i_series is not None:
-        # Iterate through actual data dates (filter to monthly entries only)
-        for idx in range(len(history_df)):
-            date = history_df.index[idx]
-            # FIXED (BUG 6): Skip daily entries - only keep month-end or 1st-of-month dates
-            if date.day not in [1, 28, 29, 30, 31]:
-                continue
-            date_str = date.strftime("%Y-%m-%d")
-
-            try:
-                # Compute rolling z-scores using trailing window (like we did above)
-                start = max(0, idx - 12)  # 12-month rolling window
-                g_window = g_series.iloc[start:idx+1].dropna()
-                i_window = i_series.iloc[start:idx+1].dropna()
-
-                if len(g_window) >= 3 and g_window.std() > 0:
-                    g_z = (g_window.iloc[-1] - g_window.mean()) / g_window.std()
-                else:
-                    g_z = 0.0
-
-                if len(i_window) >= 3 and i_window.std() > 0:
-                    i_z = (i_window.iloc[-1] - i_window.mean()) / i_window.std()
-                else:
-                    i_z = 0.0
-
-                # Classify using SAME logic as current regime
-                month_scores = {"growth": g_z, "inflation": i_z}
-                month_regime = _classify_regime_from_scores(month_scores)
-
-                # Confidence based on data availability
-                confidence_val = min(0.95, max(0.50, 0.60 + 0.10 * abs(g_z) + 0.10 * abs(i_z)))
-                history.append({"date": date_str, "regime": month_regime, "confidence": f"{round(confidence_val*100)}%"})
-            except Exception as e:
-                # Fallback to current regime
-                history.append({"date": date_str, "regime": regime, "confidence": "70%"})
-    else:
-        # Fallback: generate entries with current regime
-        end_date = datetime.now()
-        for month_offset in range(23, -1, -1):
-            month_date = end_date - relativedelta(months=month_offset)
-            date_str = month_date.strftime("%Y-%m-%d")
-            history.append({"date": date_str, "regime": regime, "confidence": "70%"})
-
-    # FIXED (Issue 4): Sample 24 entries evenly from longer history to show regime variety
-    # FIXED (BUG 10): Deduplicate by date before sampling to avoid duplicate "May 2026" entries
-    seen_dates = set()
-    deduped_history = []
-    for entry in sorted(history, key=lambda x: x["date"]):
-        date_key = entry["date"][:7]  # YYYY-MM
-        if date_key not in seen_dates:
-            seen_dates.add(date_key)
-            deduped_history.append(entry)
-    history = deduped_history
-
-    # If we have more than 24 entries, sample evenly to show historical regime transitions
-    if len(history) > 24:
-        # Sample evenly across the full history period
-        step = len(history) // 24
-        history = history[::step][:24]
-    elif len(history) < 24:
-        # Pad with fallbacks if needed
-        while len(history) < 24:
-            history.insert(0, {"date": "2023-01-01", "regime": "Goldilocks", "confidence": "70%"})
-
-    # Current regime = the most recent z-score-classified month, so `current`, the history, and
-    # the transition matrix all use ONE consistent classifier. Previously `current` came from a
-    # raw-level classifier (build_regime_context) while the history used rolling z-scores — the
-    # two disagreed and `current` flip-flopped Stagflation/Slowdown between identical calls. We
-    # now trust the stable z-score history rather than overwriting its latest point.
-    if history:
-        regime = history[-1]["regime"]
-
-    # Count consecutive matching entries in history backwards from end
-    duration = 0
-    for h in reversed(history):
-        if h["regime"] == regime:
-            duration += 1
-        else:
-            break
-
-    # Cap duration at visible history for accuracy
-    duration = min(duration, len(history))
+    scores = {
+        "growth": _val(last["g_z"]),
+        "inflation": _val(last["i_z"]),
+        "liquidity": _val(last["curve_z"]),          # steeper curve = easier conditions
+        "risk": -_val(last["credit_z"]),             # wider credit spreads = risk-off
+    }
 
     # Interpretations from z-scores
     def _dir(score: float, pos_label: str, neg_label: str) -> tuple:
@@ -4911,227 +4752,10 @@ def calculate_international_macro(df: pd.DataFrame, fred_api_key: Optional[str] 
     return result
 
 
-def _clean_sparkline(series: pd.Series, max_identical: int = 3) -> list:
-    """
-    Extract sparkline data with minimal forward-fill artifacts.
-    Removes long runs of identical values that indicate stale data.
-    """
-    if series.empty:
-        return []
-
-    # Get raw values (already dropna from _series)
-    values = series.tail(24).tolist()
-
-    if not values:
-        return []
-
-    # Remove consecutive duplicates beyond max_identical
-    cleaned = []
-    last_val = None
-    streak = 0
-
-    for val in values:
-        if val == last_val:
-            streak += 1
-            if streak <= max_identical:
-                cleaned.append(val)
-            # else skip (don't add more than max_identical consecutive same values)
-        else:
-            streak = 0
-            cleaned.append(val)
-            last_val = val
-
-    # Pad to 24 points if needed (but don't extend with identical values)
-    while len(cleaned) < 24 and cleaned:
-        cleaned.insert(0, cleaned[0])  # Pad at beginning
-
-    return [round(v, 2) for v in cleaned[:24]]
 
 
-def _monthly_sparkline(series: pd.Series) -> list:
-    """
-    Resample daily data to monthly averages for cleaner sparkline.
-    Use this for daily series like VIX.
-    """
-    if series.empty:
-        return []
-
-    try:
-        # Ensure index is datetime
-        if not isinstance(series.index, pd.DatetimeIndex):
-            series.index = pd.to_datetime(series.index)
-
-        # Resample to monthly averages
-        monthly = series.resample('MS').mean().dropna()
-
-        # Get last 24 months
-        return [round(v, 2) for v in monthly.tail(24).tolist()]
-    except Exception as e:
-        # Fallback to raw data
-        return [round(v, 2) for v in series.tail(24).tolist()]
 
 
-def get_key_metrics(df: pd.DataFrame) -> KeyMetrics:
-    scores = _compute_regime_scores(df)
-    regime = _classify_regime_from_scores(scores)
-
-    def _metric(score: float, fmt_fn) -> MetricWithSparkline:
-        return MetricWithSparkline(
-            value=round(score, 3),
-            formatted=fmt_fn(score),
-            direction="up" if score > 0.1 else "down" if score < -0.1 else "neutral",
-            sparklineData=[]
-        )
-
-    def _raw_metric(*cols, formatter, use_monthly: bool = False) -> MetricWithSparkline:
-        series = _series(df, *cols)
-        val = float(series.iloc[-1]) if not series.empty else 0.0
-
-        # Use monthly resampling for daily data (like VIX)
-        if use_monthly:
-            hist = _monthly_sparkline(series)
-        else:
-            hist = _clean_sparkline(series)
-
-        change = val - series.iloc[-4] if len(series) >= 4 else 0.0
-        return MetricWithSparkline(
-            value=round(val, 2),
-            formatted=formatter(val),
-            direction="up" if change > 0 else "down" if change < 0 else "neutral",
-            sparklineData=hist
-        )
-
-    # Recession probability
-    recession_pct = 0.0
-    if _RECESSION_OK:
-        try:
-            recession_pct = get_current_recession_probability(df)
-            # FIXED (BUG 9): Guard against NaN/None
-            if recession_pct is None or (isinstance(recession_pct, float) and (np.isnan(recession_pct) or np.isinf(recession_pct))):
-                recession_pct = 0.0
-            recession_pct = float(recession_pct)
-        except Exception as e:
-            logger.warning(f"Recession probability error: {e}")
-            recession_pct = 0.0
-
-    # FIXED: Use proper growth and inflation series (not index levels)
-    # gdp_growth = QoQ annualised %, core_cpi_yoy = YoY %
-    growth_val = _get(df, "gdp_growth") or 2.0
-    if not (-15 <= growth_val <= 15):  # Hard bounds guard
-        logger.warning(f"[GROWTH] value {growth_val} outside bounds, using fallback")
-        growth_val = 2.0
-
-    inflation_val = _get(df, "core_cpi_yoy", "us_cpi") or 3.3
-    if not (-5 <= inflation_val <= 25):  # Hard bounds guard
-        logger.warning(f"[INFLATION] value {inflation_val} outside bounds, using fallback")
-        inflation_val = 3.3
-
-    # Get cleaned sparklines for growth and inflation
-    growth_series = _series(df, "gdp_growth")
-    inflation_series = _series(df, "core_cpi_yoy")
-
-    # FIXED: Add fields for Topbar ticker (BUG 6)
-    # Get actual market data for ticker strip with hardcoded fallbacks
-
-    # FIXED (BUG 7): Fetch live prices from yfinance for ticker strip
-    _topbar_prices = {}
-    try:
-        import yfinance as yf
-        for _sym in ["^GSPC", "^IXIC", "^TNX", "DX-Y.NYB", "GC=F", "CL=F", "EURUSD=X"]:
-            try:
-                _t = yf.Ticker(_sym)
-                _h = _t.history(period="2d")
-                if len(_h) >= 2:
-                    _latest = float(_h["Close"].iloc[-1])
-                    _prev = float(_h["Close"].iloc[-2])
-                    _change_pct = ((_latest - _prev) / _prev) * 100 if _prev > 0 else 0
-                    _topbar_prices[_sym] = {"price": _latest, "change_pct": _change_pct}
-            except Exception as e:
-                pass
-    except ImportError:
-        pass
-
-    spx_series = _series(df, "spx", "SPX", "sp500", "us_spx")
-    if spx_series.empty:
-        # Use synthetic SPX from available data or fallback
-        spx_level = 4200.0
-    else:
-        spx_level = float(spx_series.iloc[-1])
-
-    vix_val = _get(df, "vix", "us_vix", "VIX") or 20.0
-    ten_year = _get(df, "yield_10y", "us_10y_yield", "DGS10") or 4.5
-    fed_funds = _get(df, "fed_funds", "FEDFUNDS", "us_fed_rate") or 5.25
-    # FIXED (BUG 2): Use cached DXY helper for consistency
-    dxy = _get_dxy_value(df) or 103.0
-    gold = _get(df, "gold", "gold_price", "GOLD") or 2000.0
-    oil = _get(df, "oil", "wti", "crude", "DCOILWTICO") or 75.0
-    # FIXED (BUG 3): Fetch 2Y yield with fallback
-    two_year_yield_val = _get(df, "yield_2y", "us_2y_yield", "DGS2")
-    if two_year_yield_val is None or np.isnan(two_year_yield_val):
-        two_year_yield_val = _fetch_2y_yield_fallback()
-    if two_year_yield_val is None or np.isnan(two_year_yield_val):
-        two_year_yield_val = 4.0  # Reasonable fallback
-
-    return KeyMetrics(
-        growth=MetricWithSparkline(
-            value=round(growth_val, 2),
-            formatted=f"{growth_val:+.1f}%",
-            direction="up" if growth_val > 0.5 else "down" if growth_val < -0.5 else "neutral",
-            sparklineData=_clean_sparkline(growth_series)
-        ),
-        inflation=MetricWithSparkline(
-            value=round(inflation_val, 2),
-            formatted=f"{inflation_val:+.1f}%",
-            direction="up" if inflation_val > 0.5 else "down" if inflation_val < -0.5 else "neutral",
-            sparklineData=_clean_sparkline(inflation_series)
-        ),
-        liquidity=_raw_metric(
-            "yield_10y", "us_10y_yield",
-            # NOTE: This displays 10Y Treasury yield, not a composite FCI.
-            # The ABG (2019) Financial Conditions Impulse is computed separately
-            # in FinancialConditionsModel using multiple components (real yields,
-            # credit spreads, equity momentum, dollar, VIX).
-            formatter=lambda x: f"{x:.2f}% (10Y Yield)"
-        ),
-        risk=_raw_metric(
-            "vix", "us_vix",
-            formatter=lambda x: f"{x:.1f}",
-            use_monthly=True  # VIX is daily, resample to monthly
-        ),
-        recession=MetricWithSparkline(
-            value=round(recession_pct, 1),
-            formatted=f"{recession_pct:.1f}%" if recession_pct is not None and not (isinstance(recession_pct, float) and (np.isnan(recession_pct) or np.isinf(recession_pct))) else "0.0%",
-            direction="up" if recession_pct > 30 else "down" if recession_pct < 15 else "neutral",
-            sparklineData=[]
-        ),
-        regimeDuration={
-            "value": "Live",
-            "delta": regime,
-            "currentRegime": regime
-        },
-        # FIXED: Additional fields for Topbar ticker (camelCase for frontend)
-        spxLevel=round(spx_level, 0),
-        spxChange=0.0,
-        spxChangePct=_topbar_prices.get("^GSPC", {}).get("change_pct", 0.0),
-        ndxLevel=_topbar_prices.get("^IXIC", {}).get("price"),  # FIXED (BUG 7): Live NDX
-        ndxChangePct=_topbar_prices.get("^IXIC", {}).get("change_pct"),  # FIXED (BUG 7)
-        tenYearYield=round(ten_year / 100, 4) if ten_year > 1 else round(ten_year, 4),
-        tenYearChange=0.0,
-        # FIXED (BUG I): Return 2Y yield as decimal (like 10Y) - frontend multiplies by 100
-        twoYearYield=round(two_year_yield_val / 100, 4) if two_year_yield_val > 1 else round(two_year_yield_val, 4) if two_year_yield_val else 0.04,
-        dxy=round(dxy, 2),
-        dxyChangePct=_topbar_prices.get("DX-Y.NYB", {}).get("change_pct"),  # FIXED (BUG 7)
-        eurusd=_topbar_prices.get("EURUSD=X", {}).get("price"),  # FIXED (BUG 7): Live EURUSD
-        eurusdChangePct=_topbar_prices.get("EURUSD=X", {}).get("change_pct"),  # FIXED (BUG 7)
-        gold=_topbar_prices.get("GC=F", {}).get("price", round(gold, 0)),  # FIXED (BUG 7): Live Gold
-        goldChangePct=_topbar_prices.get("GC=F", {}).get("change_pct"),  # FIXED (BUG 7)
-        oil=_topbar_prices.get("CL=F", {}).get("price", round(oil, 2)),  # FIXED (BUG 7): Live Oil
-        oilChangePct=_topbar_prices.get("CL=F", {}).get("change_pct"),  # FIXED (BUG 7)
-        fedRate=round(fed_funds, 4) if fed_funds > 1 else round(fed_funds, 4),
-        # FIXED (BUG 1): Include vix in KeyMetrics return object
-        vix=round(vix_val, 1),
-        vixChange=None,
-    )
 
 
 def get_signals(df: pd.DataFrame) -> SignalsData:
@@ -8143,11 +7767,11 @@ async def lifespan(app: FastAPI):
         # Keep the factor-proxy and held-position price histories warm so the first
         # load of the factor/VaR/stress panels doesn't wait ~30s on cold fetches.
         from api.handlers.market_handler import _fetch_dated_closes_literal
-        from api.calculations.factor_model import FACTOR_PROXIES
+        from api.calculations.factor_model import FACTOR_TICKERS
         from api import portfolio_store
         while True:
             try:
-                syms = set(FACTOR_PROXIES.values())
+                syms = set(FACTOR_TICKERS)
                 for p in portfolio_store.list_positions(None):
                     if p.get("symbol"):
                         syms.add(str(p["symbol"]).upper())
@@ -8377,8 +8001,8 @@ async def subscribe_market_data(sid, data):
 @ttl_cache(120)
 async def health_check():
     df_live = load_processed_data()
-    df_sample = load_sample_data() if df_live is None else None
-    df = df_live if df_live is not None else df_sample
+    # No silent fallback to the synthetic sample dataset — report the live data's state.
+    df = df_live
     model_status = {
         "recession":      _RECESSION_OK,
         "lei":            _LEI_OK,
@@ -8412,7 +8036,7 @@ async def health_check():
 
     return {
         "status": "ok" if df is not None else "error",
-        "mode": "live" if df_live is not None else "sample" if df_sample is not None else "none",
+        "mode": "live" if df_live is not None else "none",
         "models": model_status,
         "data_rows": len(df) if df is not None else 0,
         "analyticalIntegrity": integrity_status,  # FIXED: Now reflects data integrity (BUG-14)
@@ -8835,14 +8459,19 @@ async def portfolio_attribution_v1(book: Optional[str] = None):
         fe = await risk_factor_exposure_v1(book)
         if fe.get("available"):
             from api.handlers.market_handler import _fetch_dated_closes_literal
-            from api.calculations.factor_model import FACTOR_PROXIES
+            from api.calculations.factor_model import (
+                FACTOR_DEFINITIONS, FACTOR_TICKERS, factor_period_return)
             loadings = {f["factor"]: f["exposure"] for f in fe["factors"]}
-            fac_ret = {}
-            for fkey, proxy in FACTOR_PROXIES.items():
-                d = await _fetch_dated_closes_literal(proxy)
-                if d:
-                    vals = [d[k] for k in sorted(d)]
-                    fac_ret[fkey] = vals[-1] / vals[0] - 1.0 if vals[0] else 0.0
+            # Period return per ticker over the same dates the positions span.
+            dated_all = {t: await _fetch_dated_closes_literal(t) for t in FACTOR_TICKERS}
+            dates = data.get("dates") or []
+            tick_ret = {}
+            for t, d in dated_all.items():
+                pts = [d[k] for k in dates if k in d] if dates else [d[k] for k in sorted(d)]
+                if len(pts) >= 2 and pts[0]:
+                    tick_ret[t] = pts[-1] / pts[0] - 1.0
+            fac_ret = {f: r for f in FACTOR_DEFINITIONS
+                       if (r := factor_period_return(tick_ret, f)) is not None}
             factor = {"available": True, "window": "~1y",
                       **factor_attribution(loadings, fac_ret, port_ret)}
 
@@ -8862,9 +8491,9 @@ async def risk_factor_exposure_v1(book: Optional[str] = None):
     from api import portfolio_store
     from api.handlers.market_handler import _fetch_dated_closes_literal
     from api.calculations.factor_model import (
-        FACTOR_PROXIES, FACTOR_LABELS, returns_from_closes,
-        estimate_factor_loadings, regression_fit, aggregate_portfolio_loadings,
-        contribution_to_vol,
+        FACTOR_PROXIES, FACTOR_LABELS, FACTOR_TICKERS, returns_from_closes,
+        build_factor_returns, estimate_factor_loadings, regression_fit,
+        aggregate_portfolio_loadings, contribution_to_vol,
     )
 
     raw = await _aio_to_thread(portfolio_store.list_positions, book)
@@ -8876,10 +8505,10 @@ async def risk_factor_exposure_v1(book: Optional[str] = None):
     positions = enriched["positions"]
     gross = enriched["summary"]["gross_exposure"] or 0.0
 
-    # Fetch dated closes for every factor proxy and every held symbol.
-    factor_dated = {f: await _fetch_dated_closes_literal(proxy) for f, proxy in FACTOR_PROXIES.items()}
+    # Fetch dated closes for every factor ticker (long and short legs) and held symbol.
+    ticker_dated = {t: await _fetch_dated_closes_literal(t) for t in FACTOR_TICKERS}
     common_dates = None
-    for d in factor_dated.values():
+    for d in ticker_dated.values():
         keys = set(d.keys())
         common_dates = keys if common_dates is None else (common_dates & keys)
     common_dates = sorted(common_dates or [])
@@ -8890,8 +8519,11 @@ async def risk_factor_exposure_v1(book: Optional[str] = None):
     def _aligned(dmap, dates):
         return returns_from_closes([dmap[dt] for dt in dates])
 
+    def _factors_on(dates):
+        return build_factor_returns({t: _aligned(ticker_dated[t], dates) for t in FACTOR_TICKERS})
+
     # Factor volatilities (annualized) over the common grid.
-    factor_full_ret = {f: _aligned(factor_dated[f], common_dates) for f in FACTOR_PROXIES}
+    factor_full_ret = _factors_on(common_dates)
     factor_vol = {f: float(_np.std(r) * (252 ** 0.5)) if len(r) else 0.0 for f, r in factor_full_ret.items()}
 
     per_position = []
@@ -8904,7 +8536,7 @@ async def risk_factor_exposure_v1(book: Optional[str] = None):
         r2 = 0.0
         if len(pdates) >= 61:
             pos_ret = _aligned(pdated, pdates)
-            fac_ret = {f: _aligned(factor_dated[f], pdates) for f in FACTOR_PROXIES}
+            fac_ret = _factors_on(pdates)
             loadings = estimate_factor_loadings(pos_ret, fac_ret)
             r2 = regression_fit(pos_ret, fac_ret) if loadings else 0.0
         mv = p.get("market_value")
@@ -8918,7 +8550,7 @@ async def risk_factor_exposure_v1(book: Optional[str] = None):
         })
 
     portfolio_loadings = aggregate_portfolio_loadings(position_loadings, net_weights)
-    contrib = contribution_to_vol(portfolio_loadings, factor_vol)
+    contrib = contribution_to_vol(portfolio_loadings, factor_full_ret)
 
     factors_out = []
     for f in FACTOR_PROXIES:
@@ -8978,7 +8610,8 @@ async def _position_return_matrix(book: Optional[str], raw_positions: Optional[l
         symbols.append(p["symbol"])
         mvs.append(float(p["market_value"]))
     R = _np.column_stack(cols)  # (T, n)
-    return {"symbols": symbols, "market_values": mvs, "R": R, "enriched": enriched}, None, enriched
+    return {"symbols": symbols, "market_values": mvs, "R": R, "dates": common,
+            "enriched": enriched}, None, enriched
 
 
 @app.get("/api/v1/risk/var")
@@ -9038,14 +8671,16 @@ async def _dollar_factor_exposures(book: Optional[str]):
 async def risk_stress_get_v1(book: Optional[str] = None):
     """Apply predefined historical scenarios (2008, 2020, 2013, 2022, 1994) to the
     current portfolio's dollar factor exposures."""
-    from api.calculations.var_model import STRESS_SCENARIOS, scenario_pnl
+    from api.calculations.var_model import STRESS_SCENARIOS, scenario_pnl, to_factor_shocks
     dexp, reason = await _dollar_factor_exposures(book)
     if dexp is None:
         return {"available": False, "reason": reason, "scenarios": []}
     scenarios = []
     for key, sc in STRESS_SCENARIOS.items():
-        res = scenario_pnl(dexp, sc["shocks"])
-        scenarios.append({"id": key, "label": sc["label"], "shocks": sc["shocks"],
+        shocks = to_factor_shocks(sc["shocks"])
+        res = scenario_pnl(dexp, shocks)
+        scenarios.append({"id": key, "label": sc["label"], "shocks": shocks,
+                          "proxy_shocks": sc["shocks"],
                           "total_pnl": res["total_pnl"], "by_factor": res["by_factor"]})
     scenarios.sort(key=lambda s: s["total_pnl"])
     return {"available": True, "book": book or "Firm", "dollar_exposures": dexp,
@@ -9274,7 +8909,7 @@ async def correlation_matrix_v1(window: int = 90):
 async def signal_attribution_v1():
     """Storytelling layer: for Growth / Inflation / Liquidity / Risk, return the score, its
     largest driver, a one-line plain-English explanation, and ranked input contributions —
-    computed from the live dashboard inputs (SPX, 10Y, 2Y, DXY, Fed, VIX). Phase 2."""
+    computed from the live dashboard inputs (SPX, CPI, 10Y breakeven, DXY, 10Y, Fed, VIX). Phase 2."""
     from api.calculations.storytelling import (
         explain_growth, explain_inflation, explain_liquidity, explain_risk)
     from api.handlers.market_handler import _fetch_closes_literal
@@ -9295,10 +8930,13 @@ async def signal_attribution_v1():
     # Keep SPX self-consistent: latest close as current, prior closes as history.
     closes = await _fetch_closes_literal("^GSPC")
     spx = g("spxLevel") or (closes[-1] if closes else None)
-    spx_hist = closes[-6:-1] if closes and len(closes) >= 6 else (closes[:-1] if closes else None)
+    spx_hist = closes[:-1] if closes else None   # full daily history (growth needs ~6M)
+    from api.handlers.macro_inputs import load_macro_inputs, load_monthly_macro, cpi_release_series
+    _cpi_now = cpi_release_series(await _aio_to_thread(load_monthly_macro)).asof(datetime.now().strftime("%Y-%m-%d"))
+    _be_now = (await load_macro_inputs())["breakeven"].latest
     signals = [
         explain_growth(spx, spx_hist),
-        explain_inflation(g("tenYearYield"), g("twoYearYield")),
+        explain_inflation(_cpi_now, _be_now),
         explain_liquidity(g("dxy"), g("tenYearYield"), g("fedRate")),
         explain_risk(g("vix")),
     ]
@@ -9348,6 +8986,7 @@ async def report_generate(type: str = "full", format: str = "pdf"):
     `format=csv`. Powers the header export button."""
     from fastapi import Response
     from datetime import date as _date
+    from api.handlers.dashboard_handler import get_dashboard_data
 
     regime, confidence = None, None
     try:
@@ -9470,12 +9109,23 @@ async def event_vol_v1():
         return {"available": False, "reason": "No upcoming high-impact events."}
 
     nxt = events[0]
-    cadence_days = {"CPI Release": 30, "FOMC Decision": 46, "Nonfarm Payrolls": 30}.get(nxt["event"], 30)
     try:
         nd = date.fromisoformat(nxt["date"])
     except Exception:
         return {"available": False, "reason": "Bad event date."}
-    past_dates = [(nd - _td(days=cadence_days * i)).isoformat() for i in range(1, 9)]
+    # Real historical dates of this event type (FRED release calendar / federalreserve.gov).
+    # Stepping back a fixed 30/46 days drifted off the true release dates within months.
+    today_iso = date.today().isoformat()
+    if nxt["event"] == "FOMC Decision":
+        past_dates = [d for d in await _aio_to_thread(_fetch_fomc_dates) if d < today_iso][-8:]
+    else:
+        rid = {"CPI Release": 10, "Nonfarm Payrolls": 50}.get(nxt["event"])
+        past_dates = (await _aio_to_thread(_fetch_fred_release_dates, rid, 8, True)) if rid else []
+    dates_source = "actual"
+    if not past_dates:
+        cadence_days = {"CPI Release": 30, "FOMC Decision": 46, "Nonfarm Payrolls": 30}.get(nxt["event"], 30)
+        past_dates = [(nd - _td(days=cadence_days * i)).isoformat() for i in range(1, 9)]
+        dates_source = "cadence-approximated"
 
     spx = await _fetch_dated_closes_literal("^GSPC")
     if not spx:
@@ -9490,8 +9140,12 @@ async def event_vol_v1():
         "next_event": {**nxt, "days_away": (nd - today).days},
         "upcoming": upcoming,
         **stats,
-        "source": "SPX realized vol (yfinance) around cadence-derived historical event windows",
-        "note": "Historical event dates approximated from each event's release cadence; windows are ±3 trading days.",
+        "source": f"SPX realized vol (yfinance) around {dates_source} historical event dates",
+        "historical_dates_source": dates_source,
+        "note": ("Historical event dates from the FRED release calendar / federalreserve.gov"
+                 if dates_source == "actual" else
+                 "Historical event dates approximated from the release cadence (calendar source unreachable)")
+                + "; windows are ±3 trading days.",
         "as_of": datetime.now().isoformat(),
     })
 
@@ -9508,14 +9162,14 @@ async def risk_parity_compare_v1():
     from api.calculations.factor_model import returns_from_closes
     from api.calculations.risk_parity import (
         inverse_vol_weights, cvar_weights, hrp_weights, return_overlay_weights, sixty_forty,
-        backtest, risk_contribution_bands)
+        walk_forward_returns, performance_stats, risk_contribution_bands)
 
     # Asset universe + simple capital-market expected returns (%) for the overlay.
     assets = {"SPX Equity": "^GSPC", "US Bonds (TLT)": "TLT", "Commodities (DBC)": "DBC",
               "Gold": "GC=F", "HY Credit (HYG)": "HYG"}
     cma = {"SPX Equity": 6.0, "US Bonds (TLT)": 4.5, "Commodities (DBC)": 3.0, "Gold": 2.5, "HY Credit (HYG)": 5.0}
     labels = list(assets.keys())
-    dated = await asyncio.gather(*[_fetch_dated_closes_literal(assets[l]) for l in labels])
+    dated = await asyncio.gather(*[_fetch_dated_closes_literal(assets[l], period="5y") for l in labels])
     dmap = {l: d for l, d in zip(labels, dated) if d}
     if len(dmap) < 3:
         return {"available": False, "reason": "Insufficient asset history."}
@@ -9523,23 +9177,29 @@ async def risk_parity_compare_v1():
     for d in dmap.values():
         common = set(d) if common is None else (common & set(d))
     common = sorted(common or [])
-    if len(common) < 120:
-        return {"available": False, "reason": "Insufficient overlapping history."}
+    lookback, rebalance = 252, 21
+    if len(common) < lookback + 120:
+        return {"available": False, "reason": "Insufficient overlapping history for a walk-forward test."}
     labels = [l for l in labels if l in dmap]
     rets = _np.column_stack([returns_from_closes([dmap[l][dt] for dt in common]) for l in labels])
     exp_ret = [cma[l] for l in labels]
 
+    # Weight functions are re-run on a trailing window at each rebalance (walk-forward),
+    # so every reported return is out-of-sample.
     methods = {
-        "60/40 Benchmark": sixty_forty(labels),
-        "Traditional RP (inverse-vol)": inverse_vol_weights(rets),
-        "Return-overlay RP (70/30)": return_overlay_weights(rets, exp_ret, 0.7),
-        "HRP (López de Prado)": hrp_weights(rets),
-        "CVaR Risk Parity": cvar_weights(rets),
+        "60/40 Benchmark": lambda r: sixty_forty(labels),
+        "Traditional RP (inverse-vol)": inverse_vol_weights,
+        "Return-overlay RP (70/30)": lambda r: return_overlay_weights(r, exp_ret, 0.7),
+        "HRP (López de Prado)": hrp_weights,
+        "CVaR Risk Parity": cvar_weights,
     }
     rows = []
-    bench = backtest(methods["60/40 Benchmark"], rets)
-    for name, w in methods.items():
-        m = backtest(w, rets)
+    bench = None
+    for name, fn in methods.items():
+        oos, w = walk_forward_returns(rets, fn, lookback=lookback, rebalance=rebalance)
+        m = performance_stats(oos)
+        if bench is None:
+            bench = m
         m["method"] = name
         m["weights"] = {labels[i]: round(float(w[i]) * 100, 1) for i in range(len(labels))}
         m["beats_6040_sharpe"] = None if name == "60/40 Benchmark" else bool(m["sharpe"] > bench["sharpe"])
@@ -9553,9 +9213,12 @@ async def risk_parity_compare_v1():
 
     return {
         "available": True, "universe": labels, "observations": len(common),
+        "out_of_sample_days": len(common) - 1 - lookback,
+        "lookback_days": lookback, "rebalance_days": rebalance,
         "results": rows,
         "risk_contribution_uncertainty": bands,
-        "note": "Full-sample static weights (a comparison of weighting schemes, not a walk-forward). "
+        "note": f"Walk-forward, out-of-sample: weights re-estimated every {rebalance} trading days "
+                f"from the trailing {lookback} days only; 'weights' are the latest estimate. "
                 "Per 'Risk Parity and its Discontents' (2025), pure risk weighting often does not beat 60/40.",
         "citations": ["Risk Parity and its Discontents (SSRN 2025)",
                       "HRP & CVaR-RP comparison (Brazilian Review of Finance 2026)",
@@ -9572,18 +9235,17 @@ async def quadrants_v1():
     playbook, cross-validated against the app's 6-regime label. Citation: Bridgewater All
     Weather / Four Quadrants."""
     from api.calculations.quadrants import surprise_z, quadrant_view
+    from api.handlers.dashboard_handler import get_dashboard_data
 
-    df = load_processed_data()
-    if df is None:
-        df = load_sample_data()
-    if df is None:
-        return {"available": False, "reason": "No macro data available."}
-    try:
-        g_col, i_col = _get_growth_inflation_cols(df)
-        g_series = df[g_col].dropna().tolist() if g_col in df.columns else []
-        i_series = df[i_col].dropna().tolist() if i_col in df.columns else []
-    except Exception as e:
-        return {"available": False, "reason": f"macro columns unavailable: {str(e)[:80]}"}
+    # Contiguous monthly FRED panel (industrial production YoY, CPI YoY). The old CSV
+    # source had an 18-month gap and forward-filled daily rows, and fell back to
+    # synthetic sample data; surprises computed on it were not month-over-trend.
+    from api.handlers.macro_inputs import load_monthly_macro
+    panel = await _aio_to_thread(load_monthly_macro)
+    if panel is None or panel.empty:
+        return {"available": False, "reason": "Monthly FRED macro data unavailable."}
+    g_series = panel["growth_yoy"].dropna().tolist()
+    i_series = panel["cpi_yoy"].dropna().tolist()
 
     g_surprise = surprise_z(g_series)
     i_surprise = surprise_z(i_series)
@@ -9597,7 +9259,8 @@ async def quadrants_v1():
         pass
 
     view = quadrant_view(g_surprise, i_surprise, regime_6=regime)
-    view["source"] = "growth/inflation surprise vs trailing trend (FRED)"
+    view["source"] = "industrial production YoY & CPI YoY surprise vs trailing 12M (FRED)"
+    view["data_as_of"] = panel.dropna(subset=["growth_yoy", "cpi_yoy"]).index[-1].strftime("%Y-%m")
     view["citation"] = "Bridgewater Associates — Four Quadrants / All Weather framework"
     view["as_of"] = datetime.now().isoformat()
     return view
@@ -9629,8 +9292,6 @@ async def stream_agreement_v1():
 
     def _macro_scores():
         df = load_processed_data()
-        if df is None:
-            df = load_sample_data()
         return _compute_regime_scores(df) if df is not None else None
 
     # Macro compute is local — run it threaded but UNCAPPED (it's the core of the panel; a stale
@@ -9747,17 +9408,17 @@ async def regime_transition_v1():
     classified from real macro data (the same classifier the dashboard uses)."""
     from api.calculations.regime import empirical_transition_matrix, forward_outlook
 
-    df = load_processed_data()
-    if df is None:
-        df = load_sample_data()
-    if df is None:
-        return {"available": False, "reason": "No macro data available."}
     try:
-        rd = await _aio_to_thread(get_regime_data, df)
+        rd = await _aio_to_thread(get_regime_data)
     except Exception as e:
         return {"available": False, "reason": f"regime classification failed: {str(e)[:120]}"}
 
-    regimes = [h.get("regime") for h in (getattr(rd, "history", None) or []) if h.get("regime")]
+    # Transitions from the FULL contiguous monthly history (since the late 1980s), not just
+    # the 24 months shown in the timeline.
+    try:
+        regimes = list((await _aio_to_thread(_monthly_regime_frame))["regime"])
+    except Exception as e:
+        return {"available": False, "reason": f"regime history unavailable: {str(e)[:120]}"}
     if len(regimes) < 6:
         return {"available": False, "reason": f"Insufficient regime history ({len(regimes)} months)."}
 
@@ -9783,7 +9444,7 @@ async def regime_transition_v1():
         "matrix": matrix,
         "months_analysed": len(regimes),
         "taxonomy": "growth×inflation quadrant (Goldilocks / Reflation / Slowdown / Stagflation)",
-        "source": "monthly regime history classified from real macro data (FRED)",
+        "source": "monthly quadrant regimes from FRED industrial production YoY & CPI YoY (rolling 36M z-scores)",
         "note": "Probabilities are per monthly step. This panel uses the growth×inflation quadrant "
                 "model — a complementary lens to the headline macro-cycle regime, so the current "
                 "quadrant need not share the same word as the header regime.",
@@ -9938,7 +9599,9 @@ async def signals_backtest_v1(horizon: int = 21):
         "period_days": len(spx),
         "horizon_days": horizon,
         "methodology": "Walk-forward: signal at date t uses only data <= t; evaluated "
-                       "against the strictly-forward return over the next `horizon` days.",
+                       "against the strictly-forward return over the next `horizon` days. "
+                       "`hit_rate` uses overlapping windows; `hit_rate_independent` (with its "
+                       "binomial p-value vs 50%) uses every horizon-th date only.",
         "signals": scorecards,
         "computed_at": datetime.now().isoformat(),
     }
@@ -10058,8 +9721,6 @@ async def get_data_freshness():
     statuses = []
 
     df = load_processed_data()
-    if df is None:
-        df = load_sample_data()
     if df is not None:
         for metric_name, contract in CONTRACTS.items():
             if contract.fred_series:
@@ -10098,8 +9759,6 @@ async def get_data_debug():
     Returns _dataErrors and _dataHealthy for UI debug panel.
     """
     df = load_processed_data()
-    if df is None:
-        df = load_sample_data()
     if df is None:
         return {"error": "No data available"}
 
@@ -10679,8 +10338,6 @@ def _update_csv_with_latest():
 
 def _load_data_or_fail():
     df = load_processed_data()
-    if df is None:
-        df = load_sample_data()
     if df is None:
         raise HTTPException(status_code=503, detail="No data available. Run pipeline first.")
     return df
@@ -11429,26 +11086,20 @@ async def get_blackout_calendar():
         today = datetime.now().date()
         current_year = today.year
 
-        # 2026 FOMC dates (published annually)
-        fomc_dates_2026 = [
-            datetime(2026, 1, 28).date(),
-            datetime(2026, 3, 18).date(),
-            datetime(2026, 5, 7).date(),
-            datetime(2026, 6, 17).date(),
-            datetime(2026, 7, 29).date(),
-            datetime(2026, 9, 16).date(),
-            datetime(2026, 11, 4).date(),
-            datetime(2026, 12, 16).date(),
-        ]
-
-        # Calculate blackout periods (10 days before meeting, ends day after)
+        # Real meeting dates from federalreserve.gov. Blackout runs from the second
+        # Saturday before the meeting's first day through the day after the decision.
+        meetings = [(datetime.fromisoformat(a_).date(), datetime.fromisoformat(b_).date())
+                    for a_, b_ in _fetch_fomc_meetings()]
+        if not meetings:
+            return {"available": False, "reason": "FOMC calendar unavailable (federalreserve.gov unreachable)",
+                    "is_blackout": False, "current_period": None, "next_meeting": None,
+                    "next_blackout_start": None, "all_blackout_periods": [],
+                    "last_updated": datetime.now().isoformat()}
         all_blackout_periods = []
-        for meeting_date in fomc_dates_2026:
-            blackout_start = meeting_date - timedelta(days=10)
-            blackout_end = meeting_date + timedelta(days=1)
+        for first_day, meeting_date in meetings:
             all_blackout_periods.append({
-                "start": blackout_start.isoformat(),
-                "end": blackout_end.isoformat(),
+                "start": _fomc_blackout_start(first_day).isoformat(),
+                "end": (meeting_date + timedelta(days=1)).isoformat(),
                 "meeting_date": meeting_date.isoformat(),
             })
 
@@ -11466,10 +11117,10 @@ async def get_blackout_calendar():
         # Find next meeting and blackout
         next_meeting = None
         next_blackout_start = None
-        for meeting_date in fomc_dates_2026:
-            if meeting_date > today:
+        for first_day, meeting_date in meetings:
+            if meeting_date >= today:
                 next_meeting = meeting_date.isoformat()
-                next_blackout_start = (meeting_date - timedelta(days=10)).isoformat()
+                next_blackout_start = _fomc_blackout_start(first_day).isoformat()
                 break
 
         return {
@@ -11927,17 +11578,11 @@ async def get_horizon_risks():
             except Exception as e:
                 logger.warning(f"Finnhub calendar fetch failed: {e}")
 
-        # Add hardcoded structural events for 2026
-        fomc_dates_2026 = [
-            datetime(2026, 5, 7).date(),
-            datetime(2026, 6, 17).date(),
-            datetime(2026, 7, 29).date(),
-            datetime(2026, 9, 16).date(),
-            datetime(2026, 11, 4).date(),
-            datetime(2026, 12, 16).date(),
-        ]
+        # FOMC decisions from federalreserve.gov (the old hardcoded 2026 list had the
+        # wrong months for half the meetings).
+        fomc_upcoming = [datetime.fromisoformat(d).date() for d in _fetch_fomc_dates()]
 
-        for fomc_date in fomc_dates_2026:
+        for fomc_date in fomc_upcoming:
             if today <= fomc_date <= horizon_end:
                 days_away = (fomc_date - today).days
                 events.append({
@@ -11963,8 +11608,9 @@ async def get_horizon_risks():
                     events.append({"date": cd.isoformat(), "event": "CPI Release", "impact": "HIGH",
                                    "category": "INFLATION", "days_away": (cd - today).days})
         else:
-            for month in range(today.month, 13):
-                cd = datetime(2026, month, 12).date()
+            for k in range(0, 4):
+                y, mth = divmod(today.month - 1 + k, 12)
+                cd = datetime(today.year + y, mth + 1, 12).date()
                 if today <= cd <= horizon_end:
                     events.append({"date": cd.isoformat(), "event": "CPI Release", "impact": "HIGH",
                                    "category": "INFLATION", "days_away": (cd - today).days})
@@ -11982,8 +11628,9 @@ async def get_horizon_risks():
                     events.append({"date": nd.isoformat(), "event": "Nonfarm Payrolls", "impact": "HIGH",
                                    "category": "LABOR", "days_away": (nd - today).days})
         else:
-            for month in range(today.month, 13):
-                first_day = datetime(2026, month, 1)
+            for k in range(0, 4):
+                y, mth = divmod(today.month - 1 + k, 12)
+                first_day = datetime(today.year + y, mth + 1, 1)
                 first_friday = first_day + timedelta(days=(4 - first_day.weekday()) % 7)
                 nd = first_friday.date()
                 if today <= nd <= horizon_end:
@@ -12067,9 +11714,6 @@ async def get_economic_calendar():
             # FOMC: use live scraped dates with fallback
             if d_str in fomc_dates:
                 events.append({"date": d_str, "event": "FOMC Decision", "impact": "HIGH", "category": "MONETARY_POLICY", "source": "federalreserve.gov"})
-            # Fallback hardcoded dates if scraping fails
-            elif not fomc_dates and d_str in ["2026-05-07", "2026-06-17", "2026-07-29", "2026-09-16", "2026-11-04", "2026-12-16"]:
-                events.append({"date": d_str, "event": "FOMC Decision", "impact": "HIGH", "category": "MONETARY_POLICY", "source": "fallback"})
 
             # NFP: use FRED dates with fallback to first Friday
             if d_str in nfp_dates:
@@ -12091,11 +11735,6 @@ async def get_economic_calendar():
 
 
 
-
-
-@app.get("/api/test-version")
-async def test_version():
-    return {"version": "2026-05-05-reload-test", "twoYearYield_hardcoded": 0.0425}
 
 
 # FIXED (PART 1): Market Stream endpoint for live topbar data

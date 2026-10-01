@@ -128,7 +128,8 @@ def scenario_pnl(dollar_exposures: Dict[str, float], shocks: Dict[str, float]) -
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Predefined historical stress scenarios — representative factor RETURNS during the
-# crisis window (equity/size/value/growth/momentum/rates/credit/commodity/usd/vol).
+# crisis window, as PROXY returns: equity=SPY, size=IWM, value=IWD, growth=IWF,
+# momentum=MTUM (convert with to_factor_shocks() before applying to factor exposures).
 # Rates = TLT return (long Treasury: positive when yields fall), Credit = HYG return.
 # These are approximate, representative moves for what-if analysis, not exact replays.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -164,6 +165,34 @@ STRESS_SCENARIOS: Dict[str, Dict[str, Dict[str, float]]] = {
                    "usd": 0.06, "volatility": 0.4},
     },
 }
+
+
+# IEF (7-10y) has roughly 0.45x the duration of TLT (20y+); used to express the HYG−IEF
+# credit factor from the scenarios' TLT ("rates") move.
+_IEF_TO_TLT_DURATION = 0.45
+
+
+def to_factor_shocks(proxy_shocks: Dict[str, float]) -> Dict[str, float]:
+    """Translate scenario proxy returns (SPY, IWM, IWD, IWF, MTUM, TLT, HYG, ... as in
+    STRESS_SCENARIOS) into the factor model's long-short factor returns:
+    size = IWM−SPY, value = IWD−IWF, momentum = MTUM−SPY, credit = HYG−IEF."""
+    s = proxy_shocks
+    eq = s.get("equity", 0.0)
+    out = {"equity": eq}
+    if "size" in s:
+        out["size"] = round(s["size"] - eq, 4)
+    if "value" in s and "growth" in s:
+        out["value"] = round(s["value"] - s["growth"], 4)
+    if "momentum" in s:
+        out["momentum"] = round(s["momentum"] - eq, 4)
+    if "rates" in s:
+        out["rates"] = s["rates"]
+    if "credit" in s:
+        out["credit"] = round(s["credit"] - _IEF_TO_TLT_DURATION * s.get("rates", 0.0), 4)
+    for k in ("commodity", "usd", "volatility"):
+        if k in s:
+            out[k] = s[k]
+    return out
 
 
 def concentration(positions: List[Dict], limit_pct: float = 0.20) -> Dict:

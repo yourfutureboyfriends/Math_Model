@@ -19,7 +19,7 @@ def test_desired_tilts_reflation_is_procyclical():
     assert t["equity"] == 1
     assert t["commodity"] == 1        # commodities as inflation hedge
     assert t["rates"] == -1           # short duration
-    assert t["value"] == 1 and t["growth"] == -1
+    assert t["value"] == 1 and "growth" not in t   # value factor is value-minus-growth
 
 
 def test_desired_tilts_unknown_regime_empty():

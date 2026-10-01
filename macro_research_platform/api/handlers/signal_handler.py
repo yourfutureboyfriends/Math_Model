@@ -63,7 +63,10 @@ async def get_liquidity_data() -> Dict[str, Any]:
     dxy = dashboard.keyMetrics.dxy if dashboard.keyMetrics else None
 
     # Recalculate with shared module
-    liq_score, liq_trend, _ = calculate_liquidity_signal(dxy, ten_yr, 4.5)
+    fed_rate = dashboard.keyMetrics.fedRate if dashboard.keyMetrics else None
+    liq_score, liq_trend, _ = calculate_liquidity_signal(dxy, ten_yr, fed_rate)
+    if liq_score is None:
+        liq_score, liq_trend = liquidity_score, "unavailable"
     spread = (ten_yr - two_yr) if ten_yr and two_yr else 0.3
 
     regime = "Loose" if liq_score > 0.6 else "Tight" if liq_score < 0.4 else "Neutral"
@@ -97,6 +100,8 @@ async def get_sentiment_data() -> Dict[str, Any]:
 
     # Recalculate with shared module
     risk_appetite, risk_trend, _ = calculate_risk_signal(vix)
+    if risk_appetite is None:
+        risk_appetite, risk_trend = risk_score, "unavailable"
 
     regime = "Risk-On" if risk_appetite > 0.7 else "Risk-Off" if risk_appetite < 0.4 else "Neutral"
 
@@ -478,7 +483,9 @@ async def get_longterm_forecasts_data() -> Dict[str, Any]:
 
     # Single source of truth (shared with dashboard_handler's gmoForecasts) — see api/calculations/cma.py
     from api.calculations.cma import longterm_forecasts
-    return longterm_forecasts(ten_yr)
+    from api.handlers.macro_inputs import load_macro_inputs
+    risk_free = (await load_macro_inputs())["dgs3mo"].latest   # 3M T-bill, percent
+    return longterm_forecasts(ten_yr, risk_free=risk_free)
 
 
 async def get_reflexivity_data() -> Dict[str, Any]:

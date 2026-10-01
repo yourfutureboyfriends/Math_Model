@@ -67,9 +67,39 @@ def test_short_position_subtracts_loading():
 
 
 def test_contribution_to_vol_sums_to_one():
-    contrib = contribution_to_vol({"equity": 1.0, "rates": 0.5}, {"equity": 0.15, "rates": 0.08})
-    assert sum(contrib.values()) == pytest.approx(1.0, abs=1e-6)
-    assert all(0.0 <= v <= 1.0 for v in contrib.values())
+    rng = np.random.default_rng(3)
+    fac = {"equity": rng.normal(0, 0.01, 500), "rates": rng.normal(0, 0.006, 500)}
+    contrib = contribution_to_vol({"equity": 1.0, "rates": 0.5}, fac)
+    assert sum(contrib.values()) == pytest.approx(1.0, abs=1e-3)
+    assert contrib["equity"] > contrib["rates"]
+
+
+def test_contribution_to_vol_uses_correlation():
+    # Long equity + long a factor that is -1 correlated with it: the second one hedges.
+    rng = np.random.default_rng(4)
+    eq = rng.normal(0, 0.01, 500)
+    fac = {"equity": eq, "hedge": -eq + rng.normal(0, 0.002, 500)}
+    contrib = contribution_to_vol({"equity": 1.0, "hedge": 0.5}, fac)
+    assert contrib["hedge"] < 0 < contrib["equity"]
+
+
+def test_style_factors_are_long_short_spreads():
+    from api.calculations.factor_model import build_factor_returns, FACTOR_TICKERS
+    t = {k: np.full(5, 0.0) for k in FACTOR_TICKERS}
+    t["SPY"] = np.full(5, 0.01); t["IWM"] = np.full(5, 0.03)
+    t["IWD"] = np.full(5, 0.02); t["IWF"] = np.full(5, 0.005)
+    f = build_factor_returns(t)
+    assert f["size"][0] == pytest.approx(0.02) and f["value"][0] == pytest.approx(0.015)
+    assert "growth" not in f          # value already is value-minus-growth
+
+
+def test_stress_shocks_translate_to_factor_space():
+    from api.calculations.var_model import STRESS_SCENARIOS, to_factor_shocks
+    gfc = to_factor_shocks(STRESS_SCENARIOS["gfc_2008"]["shocks"])
+    assert gfc["equity"] == -0.42
+    assert gfc["size"] == pytest.approx(-0.03)        # IWM -45% vs SPY -42%
+    assert gfc["value"] == pytest.approx(-0.04)       # IWD -44% vs IWF -40%
+    assert gfc["credit"] == pytest.approx(-0.30 - 0.45 * 0.14)
 
 
 def test_factor_proxy_registry():

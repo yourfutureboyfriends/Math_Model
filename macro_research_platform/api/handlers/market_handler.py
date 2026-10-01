@@ -64,13 +64,13 @@ async def _fetch_closes(yf_ticker: str) -> list[float]:
     return closes
 
 
-async def _fetch_dated_closes_literal(ticker: str) -> dict:
-    """{ 'YYYY-MM-DD': close } for a literal ticker's 1y daily history (cached).
+async def _fetch_dated_closes_literal(ticker: str, period: str = "1y") -> dict:
+    """{ 'YYYY-MM-DD': close } for a literal ticker's daily history (cached).
 
     Dated so callers can align multiple series on common trading days before
-    regressing — essential for a correct factor model.
+    regressing — essential for a correct factor model. `period` is a yfinance period.
     """
-    key = f"__dated__:{ticker}"
+    key = f"__dated__:{ticker}" if period == "1y" else f"__dated__:{ticker}:{period}"
     now = _time.time()
     cached = _HISTORY_CACHE.get(key)
     if cached and now - cached[0] < _HISTORY_TTL:
@@ -78,7 +78,7 @@ async def _fetch_dated_closes_literal(ticker: str) -> dict:
 
     def _pull():
         import yfinance as yf
-        hist = yf.Ticker(ticker).history(period="1y", interval="1d")
+        hist = yf.Ticker(ticker).history(period=period, interval="1d")
         if hist is None or hist.empty:
             return {}
         out = {}
@@ -170,48 +170,43 @@ async def get_rates_data() -> Dict[str, Any]:
     """Get interest rates data from Yahoo Finance with yield curve structure."""
     logger.info("Fetching rates data")
 
-    # Fetch treasury yields
-    result = await _yahoo_provider.fetch_latest_async(['TENYR', 'TWYR'])
-
+    # 10Y live from Yahoo (^TNX); 2Y and 3M from FRED — Yahoo has no 2-year index
+    # (^FVX is the 5-year) and Estrella-Mishkin is estimated on the 3M bill, not Fed funds.
+    from api.handlers.macro_inputs import load_macro_inputs
+    inputs = await load_macro_inputs()
+    result = await _yahoo_provider.fetch_latest_async(['TENYR'])
     ten_yr = None
-    two_yr = None
     if result.success and result.data:
-        # getattr guards against a missing key (None) or a dict-shaped record — no crash.
         ten_yr = getattr(result.data.get('TENYR'), 'price', None)
-        two_yr = getattr(result.data.get('TWYR'), 'price', None)
+    ten_yr = ten_yr if ten_yr is not None else inputs["dgs10"].latest
+    two_yr = inputs["dgs2"].latest
+    three_mo = inputs["dgs3mo"].latest
+    fed_funds = inputs["dff"].latest
 
-    # Use fallback values if fetch failed
-    ten_yr = ten_yr or 4.5
-    two_yr = two_yr or 4.2
-
-    # Live effective fed funds rate from FRED (was hardcoded 5.25, which is stale
-    # and falsely inverts the 3m10y curve). Fall back to a plausible level on failure.
-    fed_funds = None
-    try:
-        obs = _fred_provider.fetch_latest("FEDFUNDS")
-        if obs is not None:
-            fed_funds = obs.value
-    except Exception as e:
-        logger.warning(f"FEDFUNDS fetch failed: {e}")
-    fed_funds = fed_funds if fed_funds is not None else 4.3
+    missing = [n for n, v in (("10Y", ten_yr), ("2Y (FRED DGS2)", two_yr),
+                              ("3M (FRED DGS3MO)", three_mo), ("Fed funds (FRED DFF)", fed_funds))
+               if v is None]
+    if missing:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="Rates inputs unavailable: " + ", ".join(missing))
 
     # Calculate spreads
     spread_2s10s = (ten_yr - two_yr) * 100  # Convert to basis points for frontend
-    spread_3m10y = (ten_yr - fed_funds) * 100
+    spread_3m10y = (ten_yr - three_mo) * 100
 
     # Determine curve shape
     shape = "inverted" if spread_2s10s < 0 else "flat" if spread_2s10s < 25 else "steep"
 
     # 12-month-ahead recession probability via the documented, unit-tested
     # Estrella-Mishkin probit (see api/calculations/models.py). Uses the 3m10y spread
-    # in percentage points; falls back to a mid estimate only on an implausible input.
+    # in percentage points; None (not a made-up 0.5) on an implausible input.
     from api.calculations.models import estrella_mishkin_recession_prob
     spread_3m10y_pp = spread_3m10y / 100.0  # spread_3m10y is in bps; model needs pp
     try:
         recession_prob = estrella_mishkin_recession_prob(spread_3m10y_pp)
     except ValueError as e:
         logger.warning(f"recession probit input rejected: {e}")
-        recession_prob = 0.5
+        recession_prob = None
 
     # Build yield curve points (synthetic based on 2Y and 10Y)
     # Interpolate between known points
@@ -252,7 +247,7 @@ async def get_rates_data() -> Dict[str, Any]:
                 "spread5s30s": round(40.0, 1),  # Synthetic
                 "realYield10y": round(real_yield_10y, 2),
                 "shape": shape,
-                "recessionProb": round(recession_prob, 2)
+                "recessionProb": round(recession_prob, 2) if recession_prob is not None else None
             },
             "UK": {
                 "country": "UK",

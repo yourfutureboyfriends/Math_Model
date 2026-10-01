@@ -84,6 +84,7 @@ venv.bak/
 # =============================================================================
 # Real macro data from APIs (cache these, don't commit)
 data/processed/fred_cache/*.csv
+data/processed/fred_cache/*.json
 data/manual/*.csv
 
 # Output files

@@ -6,6 +6,47 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# Regime -> trade playbook. Stops/targets are percentage distances from the LIVE entry
+# price (previously entry prices were hardcoded, e.g. GLD $330 / $195, XLU $75, and SPY/QQQ
+# were "SPX/10" and "SPX/12" — far from the real quotes).
+# (ticker, direction, conviction, thesis, stop_pct, target_pct)
+_TRADE_PLAYBOOK = {
+    "goldilocks": [("SPY", "LONG", "HIGH", "Goldilocks regime — overweight equities", 0.05, 0.08),
+                   ("QQQ", "LONG", "MEDIUM", "Tech momentum in growth regime", 0.06, 0.10)],
+    "expansion": [("SPY", "LONG", "HIGH", "Expansion regime — overweight equities", 0.05, 0.08),
+                  ("XLF", "LONG", "MEDIUM", "Financials benefit from rising rates in expansion", 0.07, 0.095)],
+    "recovery": [("IWM", "LONG", "MEDIUM", "Early-cycle small-cap recovery", 0.07, 0.10),
+                 ("XLF", "LONG", "MEDIUM", "Financials lead early-cycle recoveries", 0.07, 0.095)],
+    "reflation": [("GLD", "LONG", "HIGH", "Reflation — real assets outperform", 0.036, 0.061),
+                  ("SPY", "LONG", "MEDIUM", "Equities benefit from nominal growth", 0.05, 0.06)],
+    "stagflation": [("GLD", "LONG", "HIGH", "Stagflation hedge via gold", 0.045, 0.076),
+                    ("TLT", "SHORT", "MEDIUM", "Inflation pressure on long bonds", 0.054, 0.076)],
+    "slowdown": [("TLT", "LONG", "HIGH", "Flight to quality in slowdown", 0.033, 0.087),
+                 ("XLU", "LONG", "MEDIUM", "Defensive utilities in slowdown", 0.04, 0.093)],
+    "contraction": [("TLT", "LONG", "HIGH", "Duration rallies in contraction", 0.033, 0.087),
+                    ("XLP", "LONG", "MEDIUM", "Defensive staples in contraction", 0.04, 0.07)],
+}
+
+
+async def _regime_trades(regime: str) -> list:
+    """Playbook trades for `regime` with entry = latest real close. Trades whose price
+    can't be fetched are dropped rather than shown with a made-up level."""
+    from api.handlers.market_handler import _fetch_closes_literal
+    out = []
+    for ticker, direction, conviction, thesis, stop_pct, target_pct in _TRADE_PLAYBOOK.get(
+            (regime or "").lower(), []):
+        closes = await _fetch_closes_literal(ticker)
+        if not closes:
+            continue
+        entry = round(float(closes[-1]), 2)
+        sign = 1 if direction == "LONG" else -1
+        out.append({"ticker": ticker, "direction": direction, "conviction": conviction,
+                    "thesis": thesis, "entry": entry,
+                    "stop": round(entry * (1 - sign * stop_pct), 2),
+                    "target": round(entry * (1 + sign * target_pct), 2)})
+    return out
+
+
 def _rec_price(data: Optional[dict], key: str, fallback=None):
     """Safely read `.price` from a provider result record.
 
@@ -29,68 +70,10 @@ async def get_trade_ideas_data() -> Dict[str, Any]:
     from api.handlers.dashboard_handler import get_dashboard_data
     dashboard = await get_dashboard_data(mode="live")
 
-    regime = dashboard.regime.current or "goldilocks"
-    spx_level = dashboard.keyMetrics.spxLevel if dashboard.keyMetrics else None
-
-    # SPY ETF price is approximately SPX index / 10
-    spy_price = round((spx_level / 10) if spx_level else 580.0, 2)
-
-    # Generate trade ideas based on actual regime and prices
-    if regime == "expansion":
-        ideas = [
-            {
-                "asset": "SPY",
-                "direction": "LONG",
-                "entry": spy_price,
-                "stop": round(spy_price * 0.95, 2),
-                "target": round(spy_price * 1.05, 2),
-                "conviction": "HIGH",
-                "rationale": f"Expansion regime - overweight equities. SPX at {(spx_level or 5800):,.0f}, SPY at ${spy_price}."
-            },
-            {
-                "asset": "XLF",
-                "direction": "LONG",
-                "entry": 42.0,
-                "stop": 39.0,
-                "target": 46.0,
-                "conviction": "MEDIUM",
-                "rationale": "Financials benefit from rising rates in expansion"
-            }
-        ]
-    elif regime == "stagflation":
-        ideas = [
-            {
-                "asset": "GLD",
-                "direction": "LONG",
-                "entry": 195.0,
-                "stop": 188.0,
-                "target": 205.0,
-                "conviction": "HIGH",
-                "rationale": "Stagflation hedge - Gold benefits from elevated inflation"
-            },
-            {
-                "asset": "TLT",
-                "direction": "SHORT",
-                "entry": 92.0,
-                "stop": 96.0,
-                "target": 85.0,
-                "conviction": "MEDIUM",
-                "rationale": "Inflation pressure on bonds - real yields elevated"
-            }
-        ]
-    else:
-        # Default ideas for other regimes
-        ideas = [
-            {
-                "asset": "SPY",
-                "direction": "NEUTRAL",
-                "entry": spy_price,
-                "stop": round(spy_price * 0.93, 2),
-                "target": round(spy_price * 1.05, 2),
-                "conviction": "LOW",
-                "rationale": f"Mixed signals in {regime} regime - await clarity"
-            }
-        ]
+    regime = (dashboard.regime.current or "").lower()
+    ideas = [{"asset": t["ticker"], "direction": t["direction"], "entry": t["entry"],
+              "stop": t["stop"], "target": t["target"], "conviction": t["conviction"],
+              "rationale": t["thesis"]} for t in await _regime_trades(regime)]
 
     return {
         "ideas": ideas,
@@ -118,12 +101,10 @@ async def get_morning_brief_data() -> Dict[str, Any]:
     inflation = dashboard.scores.inflation if dashboard.scores else 30
     risk = dashboard.scores.risk if dashboard.scores else 50
 
-    # Get prices — SPX is the index level (~5800), SPY ETF is ~1/10th of SPX (~580)
-    spx = (dashboard.keyMetrics.spxLevel or 5800) if dashboard.keyMetrics else 5800
-    spy_price = round(spx / 10, 2)   # SPY ETF ≈ SPX / 10
-    qqq_price = round(spx / 12, 2)   # QQQ ETF ≈ SPX / 12 (approx)
-    vix = (dashboard.keyMetrics.vix or 18.0) if dashboard.keyMetrics else 18.0
-    ten_yr = (dashboard.keyMetrics.tenYearYield or 4.5) if dashboard.keyMetrics else 4.5
+    km = dashboard.keyMetrics
+    spx = km.spxLevel if km else None
+    vix = km.vix if km else None
+    ten_yr = km.tenYearYield if km else None
 
     # Generate priorities based on actual market data
     priorities = []
@@ -176,55 +157,16 @@ async def get_morning_brief_data() -> Dict[str, Any]:
     risks = []
     if inflation > 50:
         risks.append(f"Inflation elevated at {inflation:.0f}% signal")
-    if risk < 40:
+    if risk < 40 and vix is not None:
         risks.append(f"Risk appetite low — VIX at {vix:.1f}")
     if ten_yr and ten_yr > 4.5:
         risks.append(f"Rates at {ten_yr:.2f}% — duration risk elevated")
 
-    if len(risks) < 3:
-        risks.extend([
-            "Geopolitical tensions — energy price volatility",
-            "Credit stress — HY spreads near 400bps",
-            "Dollar strength — EM pressure",
-        ][:3 - len(risks)])
+    # Only data-backed risks are listed (generic filler such as "HY spreads near 400bps"
+    # was asserted regardless of the actual spread).
 
-    # Generate conviction trades based on regime — use ETF prices not index levels
-    trades = []
-    if regime in ("goldilocks", "expansion"):
-        trades.append({"ticker": "SPY", "direction": "LONG", "conviction": "HIGH",
-                       "thesis": f"{regime.title()} regime — overweight equities",
-                       "entry": spy_price, "stop": round(spy_price * 0.95, 2), "target": round(spy_price * 1.08, 2)})
-        trades.append({"ticker": "QQQ", "direction": "LONG", "conviction": "MEDIUM",
-                       "thesis": "Tech momentum in growth regime",
-                       "entry": qqq_price, "stop": round(qqq_price * 0.94, 2), "target": round(qqq_price * 1.10, 2)})
-    elif regime == "stagflation":
-        trades.append({"ticker": "GLD", "direction": "LONG", "conviction": "HIGH",
-                       "thesis": "Stagflation hedge via gold",
-                       "entry": 330.0, "stop": 315.0, "target": 355.0})
-        trades.append({"ticker": "TLT", "direction": "SHORT", "conviction": "MEDIUM",
-                       "thesis": "Rates pressure bonds in stagflation",
-                       "entry": 92.0, "stop": 97.0, "target": 85.0})
-    elif regime == "slowdown":
-        trades.append({"ticker": "TLT", "direction": "LONG", "conviction": "HIGH",
-                       "thesis": "Flight to quality in slowdown",
-                       "entry": 92.0, "stop": 89.0, "target": 100.0})
-        trades.append({"ticker": "XLU", "direction": "LONG", "conviction": "MEDIUM",
-                       "thesis": "Defensive utilities in slowdown",
-                       "entry": 75.0, "stop": 72.0, "target": 82.0})
-    elif regime == "reflation":
-        trades.append({"ticker": "GLD", "direction": "LONG", "conviction": "HIGH",
-                       "thesis": "Reflation — real assets outperform",
-                       "entry": 330.0, "stop": 318.0, "target": 350.0})
-        trades.append({"ticker": "SPY", "direction": "LONG", "conviction": "MEDIUM",
-                       "thesis": "Equities benefit from nominal growth",
-                       "entry": spy_price, "stop": round(spy_price * 0.95, 2), "target": round(spy_price * 1.06, 2)})
-    else:
-        trades.append({"ticker": "SPY", "direction": "LONG", "conviction": "MEDIUM",
-                       "thesis": f"{regime.title()} regime — broad equity exposure",
-                       "entry": spy_price, "stop": round(spy_price * 0.95, 2), "target": round(spy_price * 1.05, 2)})
-        trades.append({"ticker": "GLD", "direction": "LONG", "conviction": "MEDIUM",
-                       "thesis": "Diversification hedge",
-                       "entry": 330.0, "stop": 318.0, "target": 348.0})
+    # Conviction trades from the shared regime playbook at live ETF prices
+    trades = await _regime_trades(regime)
 
     # Calculate position modifier based on risk score
     position_modifier = risk / 100 if risk else 1.0
@@ -454,19 +396,19 @@ async def get_decision_log_data(limit: int = 50) -> Dict[str, Any]:
     # Entry based on recession probability
     if rec_prob > 0.2:
         entries.append({
-            "timestamp": (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "timestamp": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "recommendationType": "Risk Management",
             "headline": f"Recession probability elevated at {rec_prob:.0%} — review hedges",
             "conviction": "High" if rec_prob > 0.35 else "Medium",
             "suggestedPositionSize": "Reduced",
-            "rationale": f"Estrella-Mishkin model: {rec_prob:.0%} probability",
+            "rationale": f"Recession probit (yield curve + Fed funds): {rec_prob:.0%} 12-month probability",
             "action": "REDUCE",
             "model": "Recession Model",
         })
     # Entry based on growth signal
     if growth > 60:
         entries.append({
-            "timestamp": (now - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "timestamp": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "recommendationType": "Tactical Opportunity",
             "headline": f"Growth signal strong at {growth:.0f}% — cyclical overweight",
             "conviction": "Medium",
@@ -477,7 +419,7 @@ async def get_decision_log_data(limit: int = 50) -> Dict[str, Any]:
         })
     elif growth < 40:
         entries.append({
-            "timestamp": (now - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "timestamp": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "recommendationType": "Risk Reduction",
             "headline": f"Growth signal weak at {growth:.0f}% — reduce cyclical exposure",
             "conviction": "Medium",
@@ -487,7 +429,10 @@ async def get_decision_log_data(limit: int = 50) -> Dict[str, Any]:
             "model": "Growth Signal",
         })
 
+    # Every entry reflects the CURRENT signals (they used to be back-dated 1-3 days, which
+    # presented today's readings as a past decision history).
     return {
+        "basis": "current signals (not a stored history of past decisions)",
         "entries": entries[:limit],
         "count": len(entries[:limit]),
         "total": len(entries),
@@ -603,47 +548,22 @@ async def get_scenario_data() -> Dict[str, Any]:
     Returns probability-weighted expected returns for three scenarios
     based on current regime and macro conditions.
     """
-    from api.calculations import classify_regime, get_regime_characteristics
-    from api.providers import YahooFinanceProvider
+    from api.calculations import get_regime_characteristics
+    from api.handlers.dashboard_handler import get_dashboard_data
 
-    _yahoo = YahooFinanceProvider()
-
-    # Fetch current data
-    result = await _yahoo.fetch_latest_async(['SPX', 'VIX', 'TENYR', 'TWYR'])
-
-    spx = None
-    vix = None
-    ten_yr = None
-    two_yr = None
-    if result.success and result.data:
-        spx = _rec_price(result.data, 'SPX')
-        vix = _rec_price(result.data, 'VIX')
-        ten_yr = _rec_price(result.data, 'TENYR')
-        two_yr = _rec_price(result.data, 'TWYR')
-
-    # Fallback values
-    spx = spx or 5800
-    vix = vix or 18
-    ten_yr = ten_yr or 4.5
-    two_yr = two_yr or 4.2
-
-    # Calculate signals using same functions as dashboard for consistency
-    from api.calculations import calculate_growth_signal, calculate_inflation_signal
-    spx_history = [spx * (1 - i * 0.015) for i in range(4, -1, -1)]
-    growth_score, _, _ = calculate_growth_signal(spx, spx_history)
-    inflation_score, _, _ = calculate_inflation_signal(ten_yr, two_yr)
-    risk_score = min(max((35 - vix) / 35, 0), 1)  # Inverse of VIX
-
-    # Classify regime using same logic as dashboard
-    regime, confidence, _ = classify_regime(growth_score, inflation_score, risk_score)
-    regime = regime or "expansion"
+    # Use the dashboard's regime (real growth/inflation/liquidity inputs) rather than
+    # recomputing it here from fallback values.
+    dashboard = await get_dashboard_data(mode="live")
+    regime = (dashboard.regime.current or "expansion").lower()
+    confidence = dashboard.regime.confidenceScore
+    vix = dashboard.keyMetrics.vix
 
     # Scenario probabilities based on regime confidence and VIX level
-    if vix < 20 and confidence > 0.7:
+    if vix is not None and vix < 20 and confidence > 0.7:
         bull_prob = 0.45
         base_prob = 0.40
         bear_prob = 0.15
-    elif vix > 25 or confidence < 0.5:
+    elif (vix is not None and vix > 25) or confidence < 0.5:
         bull_prob = 0.25
         base_prob = 0.45
         bear_prob = 0.30
@@ -695,31 +615,11 @@ async def get_equity_research_data() -> Dict[str, Any]:
 
     Returns curated equity research with ratings, price targets, and thesis.
     """
-    from api.providers import YahooFinanceProvider
-    from api.calculations import classify_regime
+    from api.handlers.dashboard_handler import get_dashboard_data
 
-    _yahoo = YahooFinanceProvider()
-
-    # Fetch market data for context
-    result = await _yahoo.fetch_latest_async(['SPX', 'NDX', 'VIX'])
-    ok = bool(result.success and result.data)
-    spx = _rec_price(result.data, 'SPX', 5800) if ok else 5800
-    vix = _rec_price(result.data, 'VIX', 18) if ok else 18
-
-    # Determine regime context — use identical calculation as dashboard handler
-    from api.calculations import (
-        calculate_growth_signal, calculate_inflation_signal,
-        calculate_liquidity_signal
-    )
-    ten_yr_eq = 4.5   # fallback yield
-    two_yr_eq = 4.2
-    dxy_eq = 104.0
-    spx_history = [spx * (1 - i * 0.015) for i in range(4, -1, -1)]
-    growth_score, _, _ = calculate_growth_signal(spx, spx_history)
-    inflation_score, _, _ = calculate_inflation_signal(ten_yr_eq, two_yr_eq)
-    liquidity_score, _, _ = calculate_liquidity_signal(dxy_eq, ten_yr_eq, 4.5)
-    regime, _, _ = classify_regime(growth_score, inflation_score, liquidity_score)
-    regime = regime or "expansion"
+    # Regime context — the dashboard's regime, so both views always agree.
+    dashboard = await get_dashboard_data(mode="live")
+    regime = (dashboard.regime.current or "expansion").lower()
 
     # Sector ratings based on regime
     sector_ratings = {

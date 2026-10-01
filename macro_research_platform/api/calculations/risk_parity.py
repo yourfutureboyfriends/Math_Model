@@ -11,12 +11,13 @@ real asset returns, directly addressing the research:
   allocates by recursive bisection; robust to covariance estimation error.
 - CVaR Risk Parity — allocates by tail risk (Conditional VaR) rather than variance.
 
-Backtest reports Sharpe, Sortino, max drawdown honestly (weights are full-sample static — a
-comparison of weighting schemes, not a walk-forward; stated as a caveat).
+Backtest reports Sharpe, Sortino, max drawdown. `walk_forward_returns` gives the honest
+out-of-sample version (weights re-estimated monthly from trailing data only); `backtest`
+on full-sample weights is in-sample and kept for diagnostics.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Sequence
+from typing import Callable, Dict, List, Sequence
 import numpy as np
 
 
@@ -178,13 +179,39 @@ def risk_contribution_bands(returns: np.ndarray, n_boot: int = 300,
     }
 
 
+def walk_forward_returns(returns: np.ndarray, weight_fn: Callable[[np.ndarray], np.ndarray],
+                         lookback: int = 252, rebalance: int = 21):
+    """Out-of-sample portfolio returns: every `rebalance` days, estimate weights from the
+    trailing `lookback` days only, then hold them (rebalanced to target daily) until the
+    next estimate. Returns (daily_returns, latest_weights). No look-ahead: weights used
+    on day t are estimated from days t-lookback .. t-1.
+    """
+    T = returns.shape[0]
+    if T <= lookback:
+        return np.array([]), None
+    out, w = [], None
+    for t in range(lookback, T):
+        if (t - lookback) % rebalance == 0:
+            w = np.asarray(weight_fn(returns[t - lookback:t]), dtype=float)
+        out.append(float(returns[t] @ w))
+    return np.asarray(out), w
+
+
 def backtest(weights: np.ndarray, returns: np.ndarray) -> Dict:
     """Sharpe / Sortino / max drawdown of a static-weight portfolio on `returns`."""
-    port = returns @ weights
+    return performance_stats(returns @ weights)
+
+
+def performance_stats(port: np.ndarray) -> Dict:
+    """Sharpe / Sortino / max drawdown of a daily portfolio return series."""
+    port = np.asarray(port, dtype=float)
     mean, std = port.mean(), port.std(ddof=1)
-    downside = port[port < 0].std(ddof=1) if (port < 0).any() else 1e-9
+    # Downside deviation (target 0): RMS of the negative returns over ALL periods — not
+    # the std of the losing days only, which ignores how often losses occur.
+    downside = float(np.sqrt(np.mean(np.minimum(port, 0.0) ** 2)))
     sharpe = round(float(_ann(mean) / (std * np.sqrt(252))), 2) if std > 0 else 0.0
-    sortino = round(float(_ann(mean) / (downside * np.sqrt(252))), 2) if downside > 0 else 0.0
+    # No losing periods -> Sortino is undefined (infinite), reported as None.
+    sortino = round(float(_ann(mean) / (downside * np.sqrt(252))), 2) if downside > 0 else None
     equity = np.cumprod(1 + port)
     peak = np.maximum.accumulate(equity)
     max_dd = round(float(((equity - peak) / peak).min() * 100), 1)

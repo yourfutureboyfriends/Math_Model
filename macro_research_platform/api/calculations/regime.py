@@ -184,7 +184,9 @@ def classify_regime(growth: float, inflation: float, liquidity: float) -> Tuple[
     elif g_weak and i_low:
         regime = "slowdown"
         confidence = 0.65 + max((0.4 - growth), 0) * 0.4
-    elif l_tight:
+    elif l_tight and not g_strong:
+        # Tight liquidity only signals contraction when growth isn't strong; strong
+        # growth + low inflation + tight liquidity falls through to "expansion".
         regime = "contraction"
         confidence = 0.70 + max((0.3 - liquidity), 0) * 0.5
     elif g_strong and i_low:
@@ -195,20 +197,24 @@ def classify_regime(growth: float, inflation: float, liquidity: float) -> Tuple[
         confidence = 0.70 + (liquidity - 0.6) * 0.4
     else:
         # Mixed signals - use closest match
-        if growth > 0.5 and inflation < 0.5:
+        # Split at the 0.5 midpoints; ties go to the growth-up / inflation-down side
+        # consistently so e.g. growth=0.5, inflation=0.45 is goldilocks, not reflation.
+        if growth >= 0.5 and inflation < 0.5:
             regime = "goldilocks"
-        elif growth < 0.5 and inflation > 0.5:
-            regime = "stagflation"
-        elif growth < 0.5:
-            regime = "slowdown"
-        else:
+        elif growth >= 0.5:
             regime = "reflation"
+        elif inflation >= 0.5:
+            regime = "stagflation"
+        else:
+            regime = "slowdown"
         confidence = 0.60
 
-    # Calculate duration based on signal persistence
-    duration = int(6 + confidence * 18)  # 6-24 months
+    confidence = min(max(confidence, 0.0), 0.95)
 
-    return regime, min(confidence, 0.95), duration
+    # Calculate duration based on signal persistence (from the capped confidence)
+    duration = int(6 + confidence * 18)  # 6-23 months
+
+    return regime, confidence, duration
 
 
 def get_regime_characteristics(regime: str) -> RegimeCharacteristics:
@@ -258,3 +264,44 @@ def forward_outlook(matrix: Dict, current: str) -> Dict:
         "expected_persistence_periods": expected,
         "most_likely_change": change,
     }
+
+
+# ── Monthly quadrant regime history (from real monthly macro data) ────────────
+_QUADRANT_NAMES = {(True, False): "Goldilocks", (True, True): "Reflation",
+                   (False, False): "Slowdown", (False, True): "Stagflation"}
+
+
+def quadrant_regime_history(growth, inflation, z_window: int = 36, z_min: int = 24):
+    """Classify every month into a growth × inflation quadrant.
+
+    growth / inflation: monthly pandas Series (e.g. industrial production YoY, CPI YoY) on a
+    calendar-complete index. Each is converted to a BACKWARD-looking rolling z-score (trailing
+    `z_window` months, no look-ahead); the quadrant is the sign of each z-score (z >= 0 =
+    rising). Months where either input is missing are dropped — never filled.
+
+    Returns a DataFrame indexed by month with columns g_z, i_z, regime, confidence, where
+    confidence = clip(0.60 + 0.10·|g_z| + 0.10·|i_z|, 0.50, 0.95).
+    """
+    import pandas as pd
+
+    def _z(s):
+        r = s.rolling(z_window, min_periods=z_min)
+        return (s - r.mean()) / r.std()
+
+    out = pd.DataFrame({"g_z": _z(growth), "i_z": _z(inflation)}).dropna()
+    out["regime"] = [_QUADRANT_NAMES[(g >= 0, i >= 0)] for g, i in zip(out["g_z"], out["i_z"])]
+    out["confidence"] = (0.60 + 0.10 * out["g_z"].abs() + 0.10 * out["i_z"].abs()).clip(0.50, 0.95)
+    return out
+
+
+def current_run_length(regimes) -> int:
+    """Number of consecutive trailing entries equal to the last one."""
+    seq = list(regimes)
+    if not seq:
+        return 0
+    n = 0
+    for r in reversed(seq):
+        if r != seq[-1]:
+            break
+        n += 1
+    return n

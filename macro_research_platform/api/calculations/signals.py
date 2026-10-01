@@ -1,109 +1,112 @@
-"""Signal calculations from real market data - no hardcoding."""
-from typing import Tuple, List, Dict, Optional
+"""Signal calculations from real market data - no hardcoding.
+
+Every signal returns (score, trend, history). When a required input is missing the
+signal returns (None, "unavailable", []) rather than substituting a made-up default.
+Only `calculate_growth_signal` sees a time series, so it is the only one that returns a
+multi-point history; the scalar signals return just the current point and the caller
+builds real history by evaluating them at past dates.
+"""
+from typing import Tuple, List, Dict, Optional, Sequence
+
+UNAVAILABLE = (None, "unavailable", [])
+
+# Growth momentum lookbacks (trading days) and the offsets at which history is sampled.
+_GROWTH_LOOKBACKS = (63, 126)            # 3m and 6m returns
+GROWTH_HISTORY_OFFSETS = (63, 47, 31, 16, 0)   # T-4 … Now (~3 months span)
+_GROWTH_TREND_OFFSET = 21               # trend = score now vs ~1 month ago
 
 
-def calculate_growth_signal(spx_level: Optional[float], spx_history: List[float]) -> Tuple[float, str, List[float]]:
+def _growth_score_at(closes: Sequence[float], end: int) -> Optional[float]:
+    """Growth score using closes[:end+1]. None if there isn't enough history.
+
+    Momentum = mean of the annualized 3-month and 6-month price returns. Mapped linearly
+    so -20%/yr -> 0.0, +5%/yr -> 0.5, +30%/yr -> 1.0 (clamped).
     """
-    Calculate growth signal from SPX price momentum.
-    Returns (score, trend, history)
+    need = max(_GROWTH_LOOKBACKS)
+    if end < need:
+        return None
+    last = closes[end]
+    annualized = []
+    for lb in _GROWTH_LOOKBACKS:
+        base = closes[end - lb]
+        if not base or base <= 0:
+            return None
+        annualized.append((last / base - 1.0) * (252.0 / lb))
+    momentum = sum(annualized) / len(annualized)
+    return min(max((momentum + 0.20) / 0.50, 0.0), 1.0)
+
+
+def calculate_growth_signal(spx_level: Optional[float], spx_history: Optional[Sequence[float]]) -> Tuple[Optional[float], str, List[float]]:
     """
-    # Handle missing data gracefully
-    if spx_level is None or spx_level <= 0:
-        spx_level = 5800.0  # This is NOT hardcoding - it's a data validation fallback
+    Growth signal from S&P 500 price momentum.
 
-    if not spx_history or len(spx_history) < 2:
-        # Generate synthetic history from current level
-        spx_history = [spx_level * (1 - i * 0.015) for i in range(4, -1, -1)]
+    Args:
+        spx_level: latest price (live quote). If given it is appended after the history.
+        spx_history: real DAILY closes, oldest first, excluding the latest price when
+            spx_level is given. Needs at least 127 points.
 
-    # Calculate returns over different timeframes
-    returns = []
-    for price in spx_history:
-        if price > 0:
-            returns.append((spx_level - price) / price)
+    Returns (score, trend, history). history holds the score sampled at
+    GROWTH_HISTORY_OFFSETS trading days ago (oldest first, only the computable points).
+    """
+    closes = [float(p) for p in (spx_history or []) if p is not None and p == p]
+    if spx_level is not None and spx_level > 0:
+        closes.append(float(spx_level))
+    end = len(closes) - 1
 
-    if not returns:
-        returns = [0.05]  # Default to 5% if calculation fails
+    score = _growth_score_at(closes, end)
+    if score is None:
+        return UNAVAILABLE
 
-    # Weight recent performance more heavily
-    weights = [i + 1 for i in range(len(returns))]
-    weighted_sum = sum(r * w for r, w in zip(reversed(returns), weights))
-    total_weight = sum(weights)
-    momentum = weighted_sum / total_weight if total_weight > 0 else 0.05
-
-    # Normalize to 0-1 scale (typical annual returns -20% to +30%)
-    score = min(max((momentum * 3) + 0.5, 0.0), 1.0)
-
-    # Determine trend
-    if len(returns) >= 2:
-        if returns[-1] > returns[0]:
-            trend = "improving"
-        elif returns[-1] < returns[0]:
-            trend = "deteriorating"
-        else:
-            trend = "stable"
+    prior = _growth_score_at(closes, end - _GROWTH_TREND_OFFSET)
+    if prior is None:
+        trend = "stable"
+    elif score > prior + 0.02:
+        trend = "improving"
+    elif score < prior - 0.02:
+        trend = "deteriorating"
     else:
         trend = "stable"
 
-    # Generate history
     history = []
-    for i in range(5):
-        if i < len(returns):
-            h_score = min(max((returns[i] * 3) + 0.5, 0.0), 1.0)
-            history.append(round(h_score, 2))
-        else:
-            history.append(round(score, 2))
+    for off in GROWTH_HISTORY_OFFSETS:
+        s = _growth_score_at(closes, end - off)
+        if s is not None:
+            history.append(round(s, 2))
 
     return round(score, 2), trend, history
 
 
-def calculate_inflation_signal(ten_yr: Optional[float], two_yr: Optional[float]) -> Tuple[float, str, List[float]]:
+def calculate_inflation_signal(cpi_yoy: Optional[float], breakeven_10y: Optional[float]) -> Tuple[Optional[float], str, List[float]]:
     """
-    Calculate inflation signal from yield curve spread.
-    Steeper curve = higher inflation expectations
+    Inflation signal from realized and expected inflation (percent):
+      - CPI YoY:              1% -> 0.0, 3% -> 0.5, 5% -> 1.0
+      - 10Y breakeven (TIPS): 1.5% -> 0.0, 2.25% -> 0.5, 3.0% -> 1.0
+    Score = mean of the available components (clamped to [0, 1]).
+
+    This replaced the 10Y-2Y curve slope, which is not an inflation measure: the curve can
+    steepen on growth or term premium with inflation falling, and vice versa.
     """
-    # Validate inputs
-    ten_yr = ten_yr if ten_yr and ten_yr > 0 else 4.5
-    two_yr = two_yr if two_yr and two_yr > 0 else 4.2
+    parts = []
+    if cpi_yoy is not None:
+        parts.append(min(max((cpi_yoy - 1.0) / 4.0, 0.0), 1.0))
+    if breakeven_10y is not None:
+        parts.append(min(max((breakeven_10y - 1.5) / 1.5, 0.0), 1.0))
+    if not parts:
+        return UNAVAILABLE
 
-    # Yield curve spread (10Y - 2Y)
-    spread = ten_yr - two_yr
-
-    # Normalize: typical range is -0.5% to +2.5%
-    # Higher spread = higher inflation expectations
-    score = min(max((spread + 0.5) / 3.0, 0.0), 1.0)
-
-    # Trend based on curve steepening/flattening
-    if spread > 1.0:
-        trend = "steepening"
-    elif spread < 0:
-        trend = "inverted"
-    elif spread < 0.5:
-        trend = "flattening"
-    else:
-        trend = "stable"
-
-    # Generate history based on current curve shape
-    base = score
-    history = [
-        round(base - 0.10, 2),
-        round(base - 0.08, 2),
-        round(base - 0.05, 2),
-        round(base - 0.02, 2),
-        round(base, 2)
-    ]
-
-    return round(score, 2), trend, history
+    score = sum(parts) / len(parts)
+    trend = "elevated" if score > 0.6 else "subdued" if score < 0.4 else "contained"
+    return round(score, 2), trend, [round(score, 2)]
 
 
-def calculate_liquidity_signal(dxy: Optional[float], ten_yr: Optional[float], fed_rate: Optional[float]) -> Tuple[float, str, List[float]]:
+def calculate_liquidity_signal(dxy: Optional[float], ten_yr: Optional[float], fed_rate: Optional[float]) -> Tuple[Optional[float], str, List[float]]:
     """
-    Calculate liquidity signal from DXY and rate spread.
-    Lower DXY and wider spreads = looser liquidity
+    Calculate liquidity signal from DXY and the Fed-funds minus 10Y spread.
+    Lower DXY and a lower policy rate vs 10Y = looser liquidity.
+    A 0% policy rate is a valid input (ZIRP), not a missing one.
     """
-    # Validate inputs
-    dxy = dxy if dxy and dxy > 0 else 104.0
-    ten_yr = ten_yr if ten_yr and ten_yr > 0 else 4.5
-    fed_rate = fed_rate if fed_rate and fed_rate > 0 else 5.0
+    if dxy is None or dxy <= 0 or ten_yr is None or fed_rate is None:
+        return UNAVAILABLE
 
     # DXY: 90-110 typical range. Lower = looser global liquidity
     dxy_component = 1.0 - min(max((dxy - 90) / 20.0, 0.0), 1.0)
@@ -112,30 +115,23 @@ def calculate_liquidity_signal(dxy: Optional[float], ten_yr: Optional[float], fe
     spread = fed_rate - ten_yr
     spread_component = 1.0 - min(max((spread + 1) / 3.0, 0.0), 1.0)
 
-    # Combined score (higher = looser liquidity)
     score = (dxy_component * 0.6) + (spread_component * 0.4)
-
-    # Determine trend
     trend = "loose" if score > 0.6 else "tight" if score < 0.4 else "neutral"
 
-    history = [round(score - 0.05 * i, 2) for i in range(4, -1, -1)]
-
-    return round(score, 2), trend, history
+    return round(score, 2), trend, [round(score, 2)]
 
 
-def calculate_risk_signal(vix: Optional[float]) -> Tuple[float, str, List[float]]:
+def calculate_risk_signal(vix: Optional[float]) -> Tuple[Optional[float], str, List[float]]:
     """
     Calculate risk signal from VIX level.
     Lower VIX = higher risk appetite (higher score)
     """
-    # Validate VIX
-    vix = vix if vix and vix > 0 else 18.0
+    if vix is None or vix <= 0:
+        return UNAVAILABLE
 
-    # VIX: 10-40 typical range. Lower VIX = higher risk appetite
-    # Invert so higher score = more risk appetite
+    # VIX: 10-40 typical range. Invert so higher score = more risk appetite
     score = 1.0 - min(max((vix - 10) / 30.0, 0.0), 1.0)
 
-    # Determine trend
     if vix < 15:
         trend = "complacent"
     elif vix < 20:
@@ -145,17 +141,7 @@ def calculate_risk_signal(vix: Optional[float]) -> Tuple[float, str, List[float]
     else:
         trend = "stress"
 
-    # Generate history
-    base = score
-    history = [
-        round(base - 0.08, 2),
-        round(base - 0.06, 2),
-        round(base - 0.04, 2),
-        round(base - 0.02, 2),
-        round(base, 2)
-    ]
-
-    return round(score, 2), trend, history
+    return round(score, 2), trend, [round(score, 2)]
 
 
 def generate_conviction(value: float, threshold_high: float = 0.7, threshold_low: float = 0.4) -> str:

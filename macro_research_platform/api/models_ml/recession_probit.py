@@ -234,8 +234,8 @@ class RecessionProbitModel:
             'probability':     round(prob, 4),
             'probability_pct': round(prob * 100, 1),
             'signal':          signal,
-            'ci_lower':        round(ci_lo, 4),
-            'ci_upper':        round(ci_hi, 4),
+            'ci_lower':        None if np.isnan(ci_lo) else round(ci_lo, 4),
+            'ci_upper':        None if np.isnan(ci_hi) else round(ci_hi, 4),
             'interpretation':  note,
             'inputs': {
                 'yield_spread':   round(spread, 3),
@@ -269,9 +269,11 @@ class RecessionProbitModel:
                 float(np.percentile(probs, 2.5)),
                 float(np.percentile(probs, 97.5)),
             )
-        except Exception:
-            p = self.predict(spread, fed_funds)['probability']
-            return max(0.0, p - 0.06), min(1.0, p + 0.06)
+        except Exception as e:
+            # Don't call predict() here — predict() calls this method, so a persistent
+            # failure would recurse forever. Report the CI as unavailable instead.
+            logger.warning(f'[PROBIT] CI bootstrap failed: {e}')
+            return float('nan'), float('nan')
 
     def _fallback(
         self,
@@ -312,19 +314,25 @@ class RecessionProbitModel:
 # ── Singleton ─────────────────────────────────────────────
 
 _probit: RecessionProbitModel | None = None
+_last_fit_attempt: float = 0.0
+_RETRY_SECONDS = 1800
 
 
 def get_recession_probit() -> RecessionProbitModel:
-    """Return fitted singleton. Fits on first call."""
-    global _probit
-    if _probit is None:
-        _probit = RecessionProbitModel()
-        try:
-            _probit.fit()
-        except Exception as e:
-            logger.error(
-                f'[PROBIT] Startup fit failed: {e}'
-            )
+    """Return the fitted singleton. Fits on first call; if a fit failed (e.g. FRED was
+    unreachable), retries at most every 30 minutes instead of staying unfitted."""
+    global _probit, _last_fit_attempt
+    import time
+    if _probit is not None and (_probit.fitted or time.time() - _last_fit_attempt < _RETRY_SECONDS):
+        return _probit
+    _last_fit_attempt = time.time()
+    model = RecessionProbitModel()
+    try:
+        model.fit()
+    except Exception as e:
+        logger.error(f'[PROBIT] Fit failed (will retry in {_RETRY_SECONDS // 60} min): {e}')
+    if _probit is None or model.fitted:
+        _probit = model
     return _probit
 
 

@@ -430,11 +430,12 @@ class DebtCycleResult(BaseModel):
 
 class RecessionData(BaseModel):
     """Recession probability data."""
-    probability: float
+    # None = model input unavailable (never coerced to a fake 0%).
+    probability: Optional[float] = None
     level: str
-    logisticProb: float
-    emProbitProb: float
-    sahmValue: float
+    logisticProb: Optional[float] = None
+    emProbitProb: Optional[float] = None
+    sahmValue: Optional[float] = None
     sahmSignal: str
     description: str
     components: List[Dict[str, Any]]
@@ -443,16 +444,16 @@ class RecessionData(BaseModel):
     @field_validator('probability', 'logisticProb', 'emProbitProb', mode='before')
     @classmethod
     def validate_probability(cls, v):
-        """Validate probability is 0-1, handle NaN/None."""
+        """Validate probability is 0-1; NaN/None -> None (unavailable)."""
         if v is None:
-            return 0.0
+            return None
         try:
             val = float(v)
             if np.isnan(val) or np.isinf(val):
-                return 0.0
+                return None
             return max(0.0, min(1.0, val))
         except (ValueError, TypeError):
-            return 0.0
+            return None
 
     @field_validator('components', 'history', mode='before')
     @classmethod
@@ -1254,6 +1255,7 @@ class DecisionLogResponse(BaseModel):
     entries: List[DecisionLogEntry]
     count: int
     total: int
+    basis: Optional[str] = None   # what the entries are derived from
 
 
 class ExpectedReturnsResponse(BaseModel):
@@ -1362,7 +1364,7 @@ class AssetClassForecast(BaseModel):
     assetClass: str
     expectedReturn: float
     volatility: float
-    sharpeRatio: float
+    sharpeRatio: Optional[float] = None   # None when no risk-free rate is available
     confidence: float
 
 

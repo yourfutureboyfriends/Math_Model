@@ -75,7 +75,7 @@ class RefreshCoordinator:
 
     # Symbols to refresh
     DEFAULT_SYMBOLS = [
-        "SPX", "NDX", "VIX", "TENYR", "TWYR",
+        "SPX", "NDX", "VIX", "TENYR",
         "DXY", "EURUSD", "GBPUSD", "USDJPY",
         "GLD", "WTI", "SPY", "TLT"
     ]

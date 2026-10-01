@@ -1,89 +1,66 @@
 """Advanced metrics calculations - recession, sectors, etc."""
 from typing import Dict, Any, Optional
 
+from .models import estrella_mishkin_recession_prob, _EM_SLOPE
+
+
+def _recession_level(p: float) -> str:
+    if p > 0.40:
+        return "High"
+    if p > 0.20:
+        return "Moderate"
+    return "Low"
+
 
 def calculate_recession_probability(
-    yield_spread: Optional[float],
-    vix: Optional[float],
-    growth: Optional[float]
+    spread_3m10y_pp: Optional[float],
+    fed_funds: Optional[float] = None,
+    sahm_value: Optional[float] = None,
+    fitted_probit_prob: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
-    Calculate recession probability from market indicators.
+    12-month recession probability from real models only.
+
+    - emProbitProb: Estrella-Mishkin (1998) probit on the 10Y-3M spread (pp).
+    - logisticProb: probit re-fitted on FRED history (spread + Fed funds, Wright 2006),
+      when the fitted model is available; None otherwise.
+    - sahmValue: FRED real-time Sahm rule (SAHMREALTIME); signal at >= 0.50.
+
+    Headline probability = fitted probit if available, else Estrella-Mishkin.
+    Returns probability None (level "Unavailable") when the spread is missing.
     """
-    # Validate inputs
-    yield_spread = yield_spread if yield_spread is not None else 0.3
-    vix = vix if vix and vix > 0 else 18.0
-    growth = growth if growth and growth >= 0 else 0.5
+    em_prob = None
+    if spread_3m10y_pp is not None:
+        try:
+            em_prob = estrella_mishkin_recession_prob(spread_3m10y_pp)
+        except ValueError:
+            em_prob = None
 
-    # Yield curve component
-    if yield_spread < -0.5:
-        spread_prob = 0.35
-        spread_contribution = 0.40
-    elif yield_spread < 0:
-        spread_prob = 0.20
-        spread_contribution = 0.30
-    elif yield_spread < 0.5:
-        spread_prob = 0.10
-        spread_contribution = 0.25
-    else:
-        spread_prob = 0.05
-        spread_contribution = 0.20
-
-    # VIX component
-    if vix > 30:
-        vix_prob = 0.30
-        vix_contribution = 0.30
-    elif vix > 25:
-        vix_prob = 0.20
-        vix_contribution = 0.25
-    elif vix > 20:
-        vix_prob = 0.12
-        vix_contribution = 0.20
-    else:
-        vix_prob = 0.08
-        vix_contribution = 0.15
-
-    # Growth component
-    if growth < 0.3:
-        growth_prob = 0.25
-        growth_contribution = 0.35
-    elif growth < 0.5:
-        growth_prob = 0.15
-        growth_contribution = 0.30
-    else:
-        growth_prob = 0.08
-        growth_contribution = 0.20
-
-    # Combined probability
-    total_prob = (
-        spread_prob * spread_contribution +
-        vix_prob * vix_contribution +
-        growth_prob * growth_contribution
+    headline = fitted_probit_prob if fitted_probit_prob is not None else em_prob
+    sahm_signal = (
+        "Unavailable" if sahm_value is None
+        else "Signal" if sahm_value >= 0.50 else "No Signal"
     )
 
-    # Normalize
-    total_prob = min(max(total_prob * 2.5, 0.05), 0.85)
-
-    # Determine level
-    if total_prob > 0.40:
-        level = "High"
-    elif total_prob > 0.20:
-        level = "Moderate"
-    else:
-        level = "Low"
+    components = []
+    if spread_3m10y_pp is not None:
+        # contribution = the input's term inside the E-M probit index (z units)
+        components.append({"name": "10Y-3M Spread", "value": round(spread_3m10y_pp, 2),
+                           "contribution": round(_EM_SLOPE * spread_3m10y_pp, 3)})
+    if fed_funds is not None:
+        components.append({"name": "Fed Funds", "value": round(fed_funds, 2), "contribution": None})
+    if sahm_value is not None:
+        components.append({"name": "Sahm Rule", "value": round(sahm_value, 2), "contribution": None})
 
     return {
-        "probability": round(total_prob, 2),
-        "level": level,
-        "logisticProb": round(total_prob * 0.9, 2),
-        "emProbitProb": round(total_prob * 1.1, 2),
-        "sahmValue": round(1.0 - growth, 2),
-        "sahmSignal": "Signal" if growth < 0.3 else "No Signal",
-        "components": [
-            {"name": "Yield Curve", "value": round(yield_spread, 2), "contribution": round(spread_contribution * total_prob, 2)},
-            {"name": "Volatility", "value": round(vix, 2), "contribution": round(vix_contribution * total_prob, 2)},
-            {"name": "Growth Momentum", "value": round(growth, 2), "contribution": round(growth_contribution * total_prob, 2)}
-        ]
+        "probability": round(headline, 4) if headline is not None else None,
+        "level": _recession_level(headline) if headline is not None else "Unavailable",
+        "logisticProb": round(fitted_probit_prob, 4) if fitted_probit_prob is not None else None,
+        "emProbitProb": round(em_prob, 4) if em_prob is not None else None,
+        "sahmValue": round(sahm_value, 2) if sahm_value is not None else None,
+        "sahmSignal": sahm_signal,
+        "model": "Fitted probit (FRED)" if fitted_probit_prob is not None else "Estrella-Mishkin probit",
+        "components": components,
     }
 
 
@@ -96,8 +73,8 @@ def calculate_sector_allocation(
     Generate sector allocation based on regime.
     """
     # Validate inputs
-    growth = growth if growth and growth >= 0 else 0.5
-    inflation = inflation if inflation and inflation >= 0 else 0.3
+    growth = growth if growth is not None and growth >= 0 else 0.5
+    inflation = inflation if inflation is not None and inflation >= 0 else 0.3
     regime = regime.lower() if regime else "goldilocks"
 
     # Sector weights by regime (calculated, not hardcoded)
@@ -119,13 +96,11 @@ def calculate_sector_allocation(
         },
         "slowdown": {
             "Technology": 0.18, "Healthcare": 0.22, "Financials": 0.08,
-            "Energy": 0.05, "Utilities": 0.12, "Consumer Staples": 0.15,
-            "Bonds": 0.10
+            "Energy": 0.05, "Utilities": 0.12, "Consumer Staples": 0.15
         },
         "contraction": {
             "Technology": 0.12, "Healthcare": 0.25, "Financials": 0.06,
-            "Energy": 0.04, "Utilities": 0.15, "Consumer Staples": 0.18,
-            "Bonds": 0.10
+            "Energy": 0.04, "Utilities": 0.15, "Consumer Staples": 0.18
         },
         "expansion": {
             "Technology": 0.25, "Healthcare": 0.12, "Financials": 0.15,
@@ -138,7 +113,11 @@ def calculate_sector_allocation(
         }
     }
 
-    weights = regime_weights_map.get(regime, regime_weights_map["goldilocks"])
+    raw = regime_weights_map.get(regime, regime_weights_map["goldilocks"])
+    # Equity sector weights are relative tilts; normalise so the allocation sums to 100%
+    # (the tables above summed to 90% for most regimes).
+    total = sum(raw.values())
+    weights = {k: v / total for k, v in raw.items()}
 
     # Generate sectors with dynamic calculations
     sectors = []

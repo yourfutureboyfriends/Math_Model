@@ -119,11 +119,28 @@ def backtest_signal(
     daily = c[1:] / c[:-1] - 1.0                       # len n-1
     strat = strategy_daily_returns(sig[:daily.size], daily)
 
+    # Overlapping h-day forward returns share h-1 days, so `observations` overstates the
+    # evidence ~h-fold. Score every h-th date too: independent windows, plus a two-sided
+    # binomial test of the directional hit rate against a 50% coin flip.
+    idx = np.arange(0, fwd.size, horizon)
+    sig_ind = [sig_fwd[k] for k in idx]
+    fwd_ind = fwd[idx]
+    n_dir = sum(1 for s_ in sig_ind if _POS.get(s_, 0) != 0)
+    hit_ind = hit_rate(sig_ind, fwd_ind)
+    p_value = None
+    if n_dir:
+        from scipy.stats import binomtest
+        p_value = round(float(binomtest(int(round(hit_ind * n_dir)), n_dir, 0.5).pvalue), 4)
+
     return {
         "available": True,
         "horizon_days": horizon,
         "observations": int(fwd.size),
+        "independent_observations": int(idx.size),
+        "independent_directional": int(n_dir),
         "hit_rate": hit_rate(sig_fwd, fwd),
+        "hit_rate_independent": hit_ind,
+        "hit_rate_p_value": p_value,
         "forward_return_by_state": forward_return_by_state(sig_fwd, fwd),
         "strategy_sharpe": sharpe(strat),
         "strategy_max_drawdown": max_drawdown(strat),

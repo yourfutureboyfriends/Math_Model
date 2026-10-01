@@ -6,41 +6,75 @@ regression of the position's daily returns on the factor daily returns, then agg
 loadings to the portfolio level weighted by position weight. No I/O — factor and
 position return series are passed in; price fetching lives in the API layer.
 
-Factors (proxied by liquid ETFs / indices, returns basis):
-  equity      SPY      broad equity market beta
-  size        IWM      small-cap tilt
-  value       IWD      value tilt
-  growth      IWF      growth tilt
-  momentum    MTUM     cross-sectional momentum factor
-  rates       TLT      long-duration Treasury (rate sensitivity, inverse of yields)
-  credit      HYG      high-yield credit spread sensitivity
-  commodity   DBC      broad commodity beta
-  usd         UUP      US dollar beta
-  volatility  ^VIX     equity volatility beta
+Factors (daily returns; style/credit factors are LONG-SHORT spreads):
+  equity      SPY            broad equity market beta
+  size        IWM − SPY      small-cap minus market
+  value       IWD − IWF      value minus growth
+  momentum    MTUM − SPY     momentum minus market
+  rates       TLT            long-duration Treasury (rate sensitivity, inverse of yields)
+  credit      HYG − IEF      high yield minus duration-similar Treasuries
+  commodity   DBC            broad commodity beta
+  usd         UUP            US dollar beta
+  volatility  ^VIX           equity volatility beta
+
+Why spreads: SPY/IWM/IWD/IWF/MTUM are all long-only equity and ~0.6-0.9 correlated,
+so regressing on them together split market beta arbitrarily (a utilities ETF came out
+with a NEGATIVE market beta, and betas swung 1.5 -> 0.5 between half-years). Spreads
+remove the shared market component so each style loading is identifiable.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
-FACTOR_PROXIES: Dict[str, str] = {
-    "equity": "SPY",
-    "size": "IWM",
-    "value": "IWD",
-    "growth": "IWF",
-    "momentum": "MTUM",
-    "rates": "TLT",
-    "credit": "HYG",
-    "commodity": "DBC",
-    "usd": "UUP",
-    "volatility": "^VIX",
+# factor -> (long ticker, short ticker or None)
+FACTOR_DEFINITIONS: Dict[str, Tuple[str, Optional[str]]] = {
+    "equity": ("SPY", None),
+    "size": ("IWM", "SPY"),
+    "value": ("IWD", "IWF"),
+    "momentum": ("MTUM", "SPY"),
+    "rates": ("TLT", None),
+    "credit": ("HYG", "IEF"),
+    "commodity": ("DBC", None),
+    "usd": ("UUP", None),
+    "volatility": ("^VIX", None),
 }
 
+# Display proxy per factor (e.g. "IWM-SPY").
+FACTOR_PROXIES: Dict[str, str] = {
+    f: (long if short is None else f"{long}-{short}") for f, (long, short) in FACTOR_DEFINITIONS.items()
+}
+
+# Every ticker that must be fetched to build the factors.
+FACTOR_TICKERS: List[str] = sorted({t for pair in FACTOR_DEFINITIONS.values() for t in pair if t})
+
 FACTOR_LABELS: Dict[str, str] = {
-    "equity": "Equity Beta", "size": "Size", "value": "Value", "growth": "Growth",
-    "momentum": "Momentum", "rates": "Rates Duration", "credit": "Credit Spread",
+    "equity": "Equity Beta", "size": "Size (Small−Mkt)", "value": "Value (Val−Gro)",
+    "momentum": "Momentum (Mom−Mkt)", "rates": "Rates Duration", "credit": "Credit (HY−Tsy)",
     "commodity": "Commodity", "usd": "USD", "volatility": "Volatility",
 }
+
+
+def build_factor_returns(ticker_returns: Dict[str, Sequence[float]]) -> Dict[str, np.ndarray]:
+    """Factor return series from aligned per-ticker daily returns (long − short).
+    Factors whose tickers are missing are omitted."""
+    out: Dict[str, np.ndarray] = {}
+    for f, (long, short) in FACTOR_DEFINITIONS.items():
+        if long not in ticker_returns or (short and short not in ticker_returns):
+            continue
+        r = np.asarray(ticker_returns[long], dtype=float)
+        if short:
+            r = r - np.asarray(ticker_returns[short], dtype=float)
+        out[f] = r
+    return out
+
+
+def factor_period_return(ticker_period_returns: Dict[str, float], factor: str) -> Optional[float]:
+    """A factor's return over a window from its tickers' cumulative returns (long − short)."""
+    long, short = FACTOR_DEFINITIONS[factor]
+    if long not in ticker_period_returns or (short and short not in ticker_period_returns):
+        return None
+    return ticker_period_returns[long] - (ticker_period_returns[short] if short else 0.0)
 
 
 def returns_from_closes(closes: Sequence[float]) -> np.ndarray:
@@ -120,16 +154,26 @@ def aggregate_portfolio_loadings(
 
 def contribution_to_vol(
     portfolio_loadings: Dict[str, float],
-    factor_vol: Dict[str, float],
+    factor_returns: Dict[str, Sequence[float]],
 ) -> Dict[str, float]:
-    """Rough per-factor contribution to portfolio volatility, assuming independent
-    factors: contribution_f = (loading_f * factor_vol_f)^2, normalized to sum to 1.
+    """Euler decomposition of systematic variance across factors, using the full factor
+    covariance: contribution_f = b_f · (Σ b)_f / (bᵀ Σ b).
 
-    This is a first-order approximation (ignores factor correlations); a full
-    covariance treatment is part of Phase 3 VaR.
+    Contributions sum to 1. A negative value means the factor is hedging (offsetting
+    other exposures through correlation). `factor_returns` are aligned daily series.
     """
-    raw = {f: (portfolio_loadings.get(f, 0.0) * factor_vol.get(f, 0.0)) ** 2 for f in portfolio_loadings}
-    total = sum(raw.values())
+    names = [f for f in portfolio_loadings if f in factor_returns and len(factor_returns[f]) > 1]
+    if not names:
+        return {f: 0.0 for f in portfolio_loadings}
+    n = min(len(factor_returns[f]) for f in names)
+    R = np.column_stack([np.asarray(factor_returns[f], dtype=float)[-n:] for f in names])
+    cov = np.atleast_2d(np.cov(R, rowvar=False))
+    b = np.array([portfolio_loadings[f] for f in names])
+    total = float(b @ cov @ b)
+    out = {f: 0.0 for f in portfolio_loadings}
     if total <= 0:
-        return {f: 0.0 for f in raw}
-    return {f: round(v / total, 4) for f, v in raw.items()}
+        return out
+    mrc = cov @ b
+    for i, f in enumerate(names):
+        out[f] = round(float(b[i] * mrc[i] / total), 4)
+    return out

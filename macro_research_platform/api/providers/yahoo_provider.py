@@ -56,7 +56,8 @@ class YahooFinanceProvider:
         'NDX': '^NDX',
         'VIX': '^VIX',
         'TENYR': '^TNX',
-        'TWYR': '^FVX',
+        # ^FVX is the 5-YEAR yield. Yahoo has no 2-year index; the 2Y comes from FRED DGS2.
+        'FVYR': '^FVX',
         'DXY': 'DX-Y.NYB',
         'EURUSD': 'EURUSD=X',
         'GBPUSD': 'GBPUSD=X',

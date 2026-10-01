@@ -476,9 +476,11 @@ class RegimeValidator:
                 if len(feature_df) >= 24:
                     hmm_model.fit(feature_df)
                     hmm_sequence = hmm_model.get_historical_sequence(feature_df)
+                    # Index by the sequence's own dates: rows with missing features
+                    # are dropped inside the HMM, so positional slicing would misalign.
                     hmm_regimes = pd.Series(
                         [s['regime'] for s in hmm_sequence],
-                        index=feature_df['date'][:len(hmm_sequence)]
+                        index=pd.to_datetime([s['date'] for s in hmm_sequence])
                     )
                     hmm_trained = True
                 else:

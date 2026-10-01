@@ -1,6 +1,6 @@
 """Known-answer tests for the shared long-term CMA builder (dedup source of truth)."""
 from datetime import datetime
-from api.calculations.cma import longterm_forecasts, EQUITY_ERP, DEFAULT_10Y
+from api.calculations.cma import longterm_forecasts, EQUITY_ERP
 
 
 def _by_name(out):
@@ -19,15 +19,20 @@ def test_equity_is_ten_year_plus_erp():
     assert _by_name(out)["Emerging Markets"]["expectedReturn"] == round(4.6 + EQUITY_ERP + 2.5, 1)
 
 
-def test_sharpe_is_return_over_vol():
-    out = longterm_forecasts(4.6)
+def test_sharpe_is_excess_return_over_vol():
+    out = longterm_forecasts(4.6, risk_free=3.9)
     lc = _by_name(out)["US Large Cap"]
-    assert lc["sharpeRatio"] == round(lc["expectedReturn"] / lc["volatility"], 2)
+    assert lc["sharpeRatio"] == round((lc["expectedReturn"] - 3.9) / lc["volatility"], 2)
 
 
-def test_fallback_when_no_ten_year():
+def test_no_sharpe_without_risk_free():
+    out = longterm_forecasts(4.6)
+    assert all(f["sharpeRatio"] is None for f in out["forecasts"])
+
+
+def test_unavailable_when_no_ten_year():
     out = longterm_forecasts(None)
-    assert _by_name(out)["US Bonds"]["expectedReturn"] == DEFAULT_10Y
+    assert out["available"] is False and out["forecasts"] == []
 
 
 def test_methodology_is_honest_not_gmo_model():

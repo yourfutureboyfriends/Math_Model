@@ -1,7 +1,7 @@
 /**
  * FactorExposureSection — Phase 2 factor risk model.
  *
- * Shows the portfolio's OLS factor loadings (betas to equity/size/value/growth/
+ * Shows the portfolio's OLS factor loadings (betas to equity and long-short size/value/
  * momentum/rates/credit/commodity/USD/vol) with a toggle between raw exposure and each
  * factor's contribution to portfolio volatility, plus a per-position breakdown. Reads
  * /api/v1/risk/factor-exposure, which is computed against the ingested positions.
@@ -40,7 +40,7 @@ export function FactorExposureSection() {
   useEffect(() => { load(); }, [load]);
 
   const factors = data?.factors ?? [];
-  const maxAbs = Math.max(0.01, ...factors.map((f) => (mode === 'exposure' ? Math.abs(f.exposure) : f.contribution_to_vol)));
+  const maxAbs = Math.max(0.01, ...factors.map((f) => Math.abs(mode === 'exposure' ? f.exposure : f.contribution_to_vol)));
 
   return (
     <div id="factor-exposure" className="terminal-section">
@@ -100,7 +100,7 @@ export function FactorExposureSection() {
             <div className="text-2xs text-text-tertiary pt-1 border-t border-border-subtle">
               {mode === 'exposure'
                 ? 'Portfolio beta to each factor (net-weighted OLS loadings, 1y daily returns).'
-                : 'Share of portfolio variance attributable to each factor (independent-factor approximation).'}
+                : 'Share of systematic variance by factor (Euler decomposition with the full factor covariance; negative = hedging).'}
             </div>
           </div>
 

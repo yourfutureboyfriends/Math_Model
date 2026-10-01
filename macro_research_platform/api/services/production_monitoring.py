@@ -119,7 +119,6 @@ class ProductionMonitor:
         "regime_hmm",
         "recession_ensemble",
         "expected_returns",
-        "momentum_factor",
     ]
 
     def __init__(self, thresholds: Optional[Dict[str, float]] = None):
