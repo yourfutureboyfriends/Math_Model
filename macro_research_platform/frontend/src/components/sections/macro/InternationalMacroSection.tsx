@@ -34,10 +34,10 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
     { key: 'Japan', label: 'JP', flag: '🇯🇵', aliases: ['japan', 'asia'] },
   ] as const;
 
-  // Backend exposes globalSync (0-1); use it as the composite when the richer field
-  // is absent so the header shows a real number instead of the 'N/A' placeholder.
-  const globalLiquidity = data.globalLiquidityComposite
-    ?? (typeof data.globalSync === 'number' ? data.globalSync * 100 : undefined);
+  // globalSync is the mean pairwise 60d equity-return correlation across regions — a
+  // synchronisation gauge, not liquidity — so it gets its own row below.
+  const globalLiquidity = data.globalLiquidityComposite;
+  const globalSync: number | undefined = typeof data.globalSync === 'number' ? data.globalSync : undefined;
 
   const getRegimeTag = (regime: string) => {
     if (regime.includes('On') || regime.includes('Expansion')) return 'signal-tag bullish';
@@ -63,7 +63,17 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
       </div>
 
       <div className="space-y-3">
+        {globalSync != null && (
+          <div className="flex items-center justify-between p-2 bg-surface-1 border border-border">
+            <span className="text-2xs text-text-tertiary uppercase tracking-wider">
+              Cross-market sync (avg 60d equity corr)
+            </span>
+            <span className="font-mono text-sm text-text-primary">{globalSync.toFixed(2)}</span>
+          </div>
+        )}
+
         {/* Global Liquidity Summary */}
+        {globalLiquidity != null && (
         <div className="p-3 bg-surface-1 border border-border">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -101,6 +111,7 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
             </div>
           </div>
         </div>
+        )}
 
         {/* Regional Comparison Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
@@ -150,7 +161,7 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
                     </div>
                   )}
 
-                  {region.confidence && (
+                  {typeof region.confidence === 'number' && (
                     <div className="flex items-center justify-between">
                       <span className="text-2xs text-text-tertiary">Conf</span>
                       <div className="w-10 h-1 bg-surface-4">

@@ -21,10 +21,11 @@ export function ValuationSection({ data }: ValuationSectionProps) {
   // metrics instead of crashing on data.regime / data.compositeScore.
   const anyData = data as any;
   const metrics = (anyData.metrics ?? []).map((m: any) => {
-    const z = typeof m.zScore === 'number' ? m.zScore : 0;
+    // A metric without history has no z-score: keep it null (shown as '—'), not 0σ.
+    const z: number | null = typeof m.zScore === 'number' ? m.zScore : null;
     return {
       name: m.name,
-      signal: m.signal ?? (z > 1 ? 'expensive' : z < -1 ? 'cheap' : 'fair'),
+      signal: m.signal ?? (z == null ? 'n/a' : z > 1 ? 'expensive' : z < -1 ? 'cheap' : 'fair'),
       currentValue: m.currentValue ?? m.value,
       historicalMean: m.historicalMean,
       zScore: z,
@@ -32,9 +33,11 @@ export function ValuationSection({ data }: ValuationSectionProps) {
       interpretation: m.interpretation ?? '',
     };
   });
-  const compositeScore = anyData.compositeScore
-    ?? (metrics.length ? metrics.reduce((s: number, m: any) => s + m.zScore, 0) / metrics.length : 0);
-  const regime = anyData.regime ?? (compositeScore > 1 ? 'Expensive' : compositeScore < -1 ? 'Cheap' : 'Fair');
+  const scored = metrics.filter((m: any) => m.zScore != null);
+  const compositeScore: number | null = anyData.compositeScore
+    ?? (scored.length ? scored.reduce((s: number, m: any) => s + m.zScore, 0) / scored.length : null);
+  const regime = anyData.regime ?? (compositeScore == null ? 'N/A'
+    : compositeScore > 1 ? 'Expensive' : compositeScore < -1 ? 'Cheap' : 'Fair');
   const num = (v: any, d = 2) => (typeof v === 'number' && isFinite(v) ? v.toFixed(d) : '—');
 
   const getSignalIcon = (signal: string) => {
@@ -89,8 +92,8 @@ export function ValuationSection({ data }: ValuationSectionProps) {
             <Scale className="w-3 h-3 text-text-secondary" />
             <div>
               <div className="text-2xs text-text-tertiary">Composite Z-Score</div>
-              <div className={`text-xl font-mono font-bold ${compositeScore > 0 ? 'text-green' : compositeScore < 0 ? 'text-red' : 'text-text-secondary'}`}>
-                {compositeScore >= 0 ? '+' : ''}{Number(compositeScore).toFixed(2)}σ
+              <div className={`text-xl font-mono font-bold ${compositeScore == null ? 'text-text-secondary' : compositeScore > 0 ? 'text-green' : compositeScore < 0 ? 'text-red' : 'text-text-secondary'}`}>
+                {compositeScore == null ? '—' : `${compositeScore >= 0 ? '+' : ''}${compositeScore.toFixed(2)}σ`}
               </div>
             </div>
           </div>
@@ -122,8 +125,8 @@ export function ValuationSection({ data }: ValuationSectionProps) {
                 </div>
                 <div>
                   <div className="text-2xs text-text-tertiary">Z-Score</div>
-                  <div className={`font-mono text-xs ${metric.zScore > 0 ? 'text-green' : metric.zScore < 0 ? 'text-red' : 'text-text-tertiary'}`}>
-                    {metric.zScore >= 0 ? '+' : ''}{num(metric.zScore)}σ
+                  <div className={`font-mono text-xs ${metric.zScore == null ? 'text-text-tertiary' : metric.zScore > 0 ? 'text-green' : metric.zScore < 0 ? 'text-red' : 'text-text-tertiary'}`}>
+                    {metric.zScore == null ? '—' : `${metric.zScore >= 0 ? '+' : ''}${num(metric.zScore)}σ`}
                   </div>
                 </div>
               </div>
@@ -144,6 +147,7 @@ export function ValuationSection({ data }: ValuationSectionProps) {
         </div>
 
         {/* Expected Returns */}
+        {data.expectedReturns && Object.keys(data.expectedReturns).length > 0 && (
         <div className="p-3 bg-surface-1 border border-border">
           <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Expected Returns (Annual)</div>
           <div className="grid grid-cols-3 gap-2">
@@ -157,6 +161,7 @@ export function ValuationSection({ data }: ValuationSectionProps) {
             ))}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

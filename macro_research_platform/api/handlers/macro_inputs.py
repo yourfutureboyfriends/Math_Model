@@ -277,3 +277,71 @@ def cpi_release_series(panel) -> DatedSeries:
     released = {(d + pd.offsets.MonthEnd(1) + pd.Timedelta(days=14)).strftime("%Y-%m-%d"): float(v)
                 for d, v in s.items()}
     return DatedSeries.from_mapping("cpi", released)
+
+
+# ── Supplementary FRED series (curve tenors, foreign yields, debt ratios, ...) ──
+# Cached per series (in memory and on disk, like the core inputs) so the dashboard
+# panels that need slow-moving monthly/quarterly series don't refetch them on every
+# build and a restart or FRED outage serves the last real observations.
+_FRED_SERIES_CACHE: Dict[str, tuple] = {}
+_FRED_SERIES_TTL = 3600
+# FRED allows ~120 requests/min per key and answers bursts with 429, so cap concurrency
+# and retry a rate-limited request with backoff.
+_FRED_CONCURRENCY = 4
+
+
+def _fetch_fred_history_sync(series_id: str, days: int) -> DatedSeries:
+    disk_name = f"series_{series_id}_{days}d"
+    fresh = _disk_load(disk_name, max_age=_FRED_SERIES_TTL)
+    if fresh:
+        return DatedSeries(series_id, fresh["dates"], fresh["values"])
+    start = (date.today() - timedelta(days=days)).isoformat()
+    res = _fred().fetch_series(series_id, start_date=start)
+    for pause in (2.0, 5.0):           # back off on FRED 429s (shared per-key limit)
+        if res.success or "rate limit" not in str(res.error).lower():
+            break
+        time.sleep(pause)
+        res = _fred().fetch_series(series_id, start_date=start)
+    if not res.success or not res.data:
+        logger.warning("[macro_inputs] FRED %s failed: %s", series_id, res.error)
+        stale = _disk_load(disk_name)
+        return DatedSeries(series_id, stale["dates"], stale["values"]) if stale else DatedSeries(series_id)
+    out = DatedSeries.from_mapping(series_id, {o.date: o.value for o in res.data})
+    _disk_save(disk_name, {"dates": out.dates, "values": out.values})
+    return out
+
+
+async def load_fred_series(series_ids: List[str], days: int = 1100,
+                           timeout: float = _FETCH_TIMEOUT) -> Dict[str, DatedSeries]:
+    """{series_id: DatedSeries} for arbitrary FRED ids. A series that can't be fetched
+    is empty (or its last good copy) — never a substituted value."""
+    now = time.time()
+    out: Dict[str, DatedSeries] = {}
+    todo = []
+    for sid in dict.fromkeys(series_ids):
+        hit = _FRED_SERIES_CACHE.get(sid)
+        if hit and now - hit[0] < _FRED_SERIES_TTL:
+            out[sid] = hit[1]
+        else:
+            todo.append(sid)
+    if todo:
+        sem = asyncio.Semaphore(_FRED_CONCURRENCY)
+
+        async def _one(sid: str) -> DatedSeries:
+            async with sem:
+                return await asyncio.to_thread(_fetch_fred_history_sync, sid, days)
+
+        try:
+            results = await asyncio.wait_for(asyncio.gather(
+                *[_one(sid) for sid in todo], return_exceptions=True), timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.warning("[macro_inputs] FRED batch timed out after %ss", timeout)
+            results = [DatedSeries(sid) for sid in todo]
+        for sid, res in zip(todo, results):
+            if isinstance(res, DatedSeries) and res:
+                _FRED_SERIES_CACHE[sid] = (now, res)
+                out[sid] = res
+            else:
+                stale = _FRED_SERIES_CACHE.get(sid)
+                out[sid] = stale[1] if stale else DatedSeries(sid)
+    return out

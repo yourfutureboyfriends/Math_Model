@@ -1,8 +1,8 @@
-// Factor Rotation Section — regime-tilted factor composite scores.
+// Factor Rotation Section — factor ETF relative strength.
 //
-// Renders the real factorRotation payload the dashboard provides: four factor composite
-// scores (Momentum / Value / Growth / Quality, each 0–1, derived from the live growth /
-// inflation / recession signals), plus the regime interpretation and the rotation signal.
+// Renders the factorRotation payload: four factor scores (Momentum / Value / Growth /
+// Quality, each 0–1 = percentile of the factor ETF's 3-month return vs SPY within the past
+// year; null when unavailable), plus the leader/laggard rotation signal.
 import { cn } from '@/lib/utils';
 import { TrendingUp } from 'lucide-react';
 import { useMacroStore } from '@/store/macroStore';

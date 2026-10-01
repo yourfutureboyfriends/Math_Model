@@ -31,6 +31,12 @@ export function NowcastSection({ data }: NowcastSectionProps) {
 
   if (!data) return null;
 
+  const anyData = data as any;
+  const ci: any = anyData.confidenceInterval;
+  const isNum = (v: unknown): v is number => typeof v === 'number' && isFinite(v);
+  const fmtSigned = (v: unknown) => (isNum(v) ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}%` : '—');
+  const signColor = (v: unknown) => (isNum(v) ? (v >= 0 ? 'text-green' : 'text-red') : 'text-text-tertiary');
+
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'expanding':
@@ -54,44 +60,40 @@ export function NowcastSection({ data }: NowcastSectionProps) {
       </div>
 
       <div className="space-y-3">
-        {/* Inline Data Row */}
+        {/* Inline Data Row — fields the source doesn't publish render as '—'. */}
         <div className="grid grid-cols-4 gap-3">
           <div className="p-2 bg-surface-1 border border-border">
-            <div className="text-2xs text-text-tertiary uppercase tracking-wider">QoQ Ann</div>
-            <div className={cn(
-              'text-base font-mono font-bold',
-              data.nowcastQoQ >= 0 ? 'text-green' : 'text-red'
-            )}>
-              {data.nowcastQoQ >= 0 ? '+' : ''}{data.nowcastQoQ.toFixed(2)}%
+            <div className="text-2xs text-text-tertiary uppercase tracking-wider">
+              QoQ Ann{anyData.quarter ? ` · ${anyData.quarter}` : ''}
+            </div>
+            <div className={cn('text-base font-mono font-bold', signColor(data.nowcastQoQ))}>
+              {fmtSigned(data.nowcastQoQ)}
             </div>
           </div>
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider">YoY</div>
-            <div className={cn(
-              'text-base font-mono font-bold',
-              data.nowcastYoY >= 0 ? 'text-green' : 'text-red'
-            )}>
-              {data.nowcastYoY >= 0 ? '+' : ''}{data.nowcastYoY.toFixed(2)}%
+            <div className={cn('text-base font-mono font-bold', signColor(data.nowcastYoY))}>
+              {fmtSigned(data.nowcastYoY)}
             </div>
           </div>
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider">95% CI</div>
             <div className="text-base font-mono text-text-primary">
-              {data.confidenceInterval.lower.toFixed(1)} to {data.confidenceInterval.upper.toFixed(1)}%
+              {isNum(ci?.lower) && isNum(ci?.upper)
+                ? `${ci.lower.toFixed(1)} to ${ci.upper.toFixed(1)}%`
+                : '—'}
             </div>
           </div>
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider">RMSE</div>
-            {/* FIXED: BUG-B8 - Handle null/undefined rmse properly */}
             <div className="text-base font-mono text-text-primary">
-              {data.confidenceInterval.rmse !== null && data.confidenceInterval.rmse !== undefined && typeof data.confidenceInterval.rmse === 'number'
-                ? `±${data.confidenceInterval.rmse.toFixed(2)}pp`
-                : '±N/A'}
+              {isNum(ci?.rmse) ? `±${ci.rmse.toFixed(2)}pp` : '—'}
             </div>
           </div>
         </div>
 
         {/* Components */}
+        {(data.components ?? []).length > 0 && (
         <div className="border border-border bg-surface-1">
           <div className="px-3 py-1.5 border-b border-border-subtle bg-surface-2">
             <span className="text-2xs text-text-tertiary uppercase tracking-wider">
@@ -113,6 +115,7 @@ export function NowcastSection({ data }: NowcastSectionProps) {
             ))}
           </div>
         </div>
+        )}
 
         {/* Methodology */}
         <div className="p-2 border border-border bg-surface-1">

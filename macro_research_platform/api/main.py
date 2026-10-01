@@ -2819,7 +2819,7 @@ async def stream_agreement_v1():
     scores, rates, hy, cot = await asyncio.gather(
         _aio_to_thread(_macro_scores),
         _safe(get_rates_data(), 4.0),
-        _safe(_credit_spread("High Yield", "BAMLH0A0HYM2", 350, 600, 320), 4.0),
+        _safe(_credit_spread("High Yield", "BAMLH0A0HYM2", 350, 600), 4.0),
         _safe(get_cot_data(), 5.0),
     )
     if not scores:

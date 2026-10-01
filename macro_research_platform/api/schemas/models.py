@@ -815,37 +815,40 @@ class Scores(BaseModel):
 
 class FactorRotationData(BaseModel):
     """Factor rotation analysis."""
-    momentum: float = 0.5
-    value: float = 0.3
-    growth: float = 0.7
-    quality: float = 0.6
+    # Each 0-1 (percentile of the factor ETF's 3m return vs SPY over the past year);
+    # None when that factor's price history is unavailable.
+    momentum: Optional[float] = None
+    value: Optional[float] = None
+    growth: Optional[float] = None
+    quality: Optional[float] = None
     interpretation: str = ""
-    rotationSignal: str = "Balanced"
+    rotationSignal: Optional[str] = None
 
 
 class RegionMacro(BaseModel):
     """Macro regime for a specific region."""
     region: str
     regime: str
-    confidence: float
-    divergence: float  # Divergence from US regime
+    confidence: Optional[float] = None
+    divergence: Optional[float] = None  # |growth score - US growth score|
 
 
 class InternationalMacroData(BaseModel):
     """International macro regime analysis."""
     regions: List[RegionMacro] = []
-    globalSync: float = 0.65  # 0-1: how synchronized global regimes are
+    globalSync: Optional[float] = None  # mean pairwise 60d equity-return correlation
     interpretation: str = ""
 
 
 class DebtCycleData(BaseModel):
     """Long-term debt cycle analysis."""
-    phase: str = "Expansion"
-    privateDebtGDP: float = 180.0
-    publicDebtGDP: float = 120.0
-    totalDebtGDP: float = 300.0
-    debtServiceRatio: float = 12.5
-    trend: str = "Rising"
+    # BIS credit-to-GDP (%) and Fed household debt-service ratio; None = unavailable.
+    phase: Optional[str] = None
+    privateDebtGDP: Optional[float] = None
+    publicDebtGDP: Optional[float] = None
+    totalDebtGDP: Optional[float] = None
+    debtServiceRatio: Optional[float] = None
+    trend: Optional[str] = None
     interpretation: str = ""
 
 
@@ -1287,15 +1290,18 @@ class YieldCurveData(BaseModel):
     spread3m10y: Optional[float] = None
     spread5s30s: Optional[float] = None
     realYield10y: Optional[float] = None
-    shape: str = "unknown"
+    shape: Optional[str] = None          # None when the spread is unavailable
     recessionProb: Optional[float] = None
+    asOf: Optional[Dict[str, str]] = None   # observation date per tenor (monthly OECD data)
+    source: Optional[str] = None
 
 
 class CreditSpread(BaseModel):
     """Credit spread data."""
     name: str
-    spreadBps: float
-    signal: str
+    spreadBps: Optional[float] = None    # None when FRED is unavailable
+    change1wBps: Optional[float] = None
+    signal: Optional[str] = None
 
 
 class RatesData(BaseModel):
@@ -1303,7 +1309,7 @@ class RatesData(BaseModel):
     # New structure expected by frontend
     yieldCurves: Dict[str, YieldCurveData] = {}
     creditSpreads: List[CreditSpread] = []
-    realYieldSignal: str = "neutral"
+    realYieldSignal: Optional[str] = None
 
     # Legacy fields for backward compatibility
     tenYear: Optional[float] = None

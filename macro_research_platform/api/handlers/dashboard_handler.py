@@ -22,6 +22,12 @@ from api.calculations import (
     calculate_sector_allocation
 )
 from api.calculations.models import estrella_mishkin_recession_prob
+from api.handlers.dashboard_sections import (
+    load_section_inputs, build_momentum_veto, build_correlation_regime, build_debt_cycle,
+    build_international_macro, build_factor_rotation, build_nowcast,
+    build_factor_decomposition, build_trend_signals, build_sentiment, build_valuation,
+    build_advanced_indicators,
+)
 
 # Import providers and validation
 from api.providers import YahooFinanceProvider
@@ -49,6 +55,10 @@ _DASHBOARD_LOCKS: dict[str, "_dash_asyncio.Lock"] = {}
 
 # Real headline sentiment (RSS fetch is slow + news moves slowly → cache 10 min).
 _NEWS_CACHE: dict = {"articles": None, "ts": 0.0}
+
+
+def _r2(v):
+    return round(v, 2) if v is not None else None
 
 
 def _label100(s: float) -> str:
@@ -219,6 +229,9 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     if missing_inputs:
         raise DashboardDataUnavailable(
             "Live inputs unavailable: " + ", ".join(missing_inputs))
+
+    # Price / FRED history for the derived panels, fetched while the core signals compute.
+    _sections_task = _dash_asyncio.create_task(load_section_inputs())
 
     data_warnings = []
     if inputs.missing():
@@ -507,115 +520,40 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         vixChange=_chg.get('VIX'),
     )
 
-    # Calculate factor rotation
-    factor_rotation = FactorRotationData(
-        momentum=round(growth_score * 0.8 + (1 - recession_data["probability"]) * 0.2, 2),
-        value=round(0.4 + (inflation_score - 0.5) * 0.4, 2),
-        growth=round(growth_score, 2),
-        quality=round(0.5 + (1 - recession_data["probability"]) * 0.3, 2),
-        interpretation=f"{regime_name}: {regime_chars.rotation_signal}",
-        rotationSignal=regime_chars.value_bias
-    )
+    # Panels below are computed from observed price / FRED history (see
+    # api/handlers/dashboard_sections.py); a missing input yields None, not a made-up value.
+    _sections = await _sections_task
 
-    # Create ensemble
+    factor_rotation = build_factor_rotation(_sections)
+    momentum_veto = build_momentum_veto(_sections)
+    correlation_regime = build_correlation_regime(_sections)
+    debt_cycle = build_debt_cycle(_sections)
+    international_macro = build_international_macro(
+        _sections, regime_name, regime_confidence, growth_score)
+    _cta_trends = build_trend_signals(_sections, now)
+
+    # Ensemble — vote of the live models (each component is a real signal or model).
     from api.schemas.models import EnsembleData
-    ensemble_score = round((growth_score + (1 - recession_data["probability"]) + risk_score) / 3, 2)
+    _votes = {
+        "Growth (SPX momentum)": growth_score > 0.5,
+        "Risk appetite (VIX)": risk_score > 0.5,
+        "Liquidity (DXY/rates)": liquidity_score > 0.5,
+        "Recession model": recession_data["probability"] < 0.5,
+    }
+    if momentum_veto is not None:
+        _votes["12-1 momentum"] = not momentum_veto.vetoActive
+    if _cta_trends is not None:
+        _votes["CTA trend"] = _cta_trends["aggregateScore"] > 0
+    _n_bull = sum(_votes.values())
+    ensemble_score = round((growth_score + (1 - recession_data["probability"]) + risk_score
+                            + liquidity_score) / 4, 2)
     ensemble = EnsembleData(
         score=ensemble_score,
         conviction="High" if ensemble_score > 0.7 else "Medium" if ensemble_score > 0.5 else "Low",
-        agreement=round(0.7 + abs(growth_score - inflation_score) * 0.3, 2),
+        agreement=round(max(_n_bull, len(_votes) - _n_bull) / len(_votes), 2),
         riskBudget=round(risk_score * 0.8 + 0.1, 2),
         mode="Dynamic",
-        bullishPct=round(ensemble_score * 100, 1),   # e.g. 74% of models bullish
-    )
-
-    # International macro
-    international_macro = InternationalMacroData(
-        regions=[
-            RegionMacro(region="US", regime=regime_name, confidence=regime_confidence, divergence=0.0),
-            RegionMacro(region="Europe", regime="Slowdown" if growth_score < 0.5 else "Goldilocks", confidence=0.70, divergence=0.2),
-            RegionMacro(region="Asia", regime="Expansion" if growth_score > 0.6 else "Slowdown", confidence=0.65, divergence=0.15),
-        ],
-        globalSync=round(growth_score * 0.8 + 0.2, 2),
-        interpretation=f"US in {regime_name}; global divergence based on growth signals"
-    )
-
-    # Debt cycle
-    debt_cycle = DebtCycleData(
-        phase="Expansion" if growth_score > 0.5 else "Late Cycle" if growth_score > 0.3 else "Contraction",
-        privateDebtGDP=round(175.0 + (regime_duration * 0.5), 1),
-        publicDebtGDP=round(115.0 + (inflation_score * 10), 1),
-        totalDebtGDP=round(290.0 + (regime_duration * 0.8), 1),
-        debtServiceRatio=round(12.0 + ((ten_yr if ten_yr else 4.5) - 3.0), 1),
-        trend="Rising" if inflation_score > 0.5 else "Stable",
-        interpretation=f"Debt levels reflect {regime_name} conditions with {(ten_yr if ten_yr else 4.5):.1f}% rates"
-    )
-
-    # Momentum Veto - calculated from growth signal
-    momentum_veto = MomentumVetoData(
-        vetoActive=growth_score < 0.3,
-        dampenerApplied=round(0.5 if growth_score < 0.4 else 1.0, 2),
-        assets=[
-            {
-                "asset": "SPX",
-                # Returns as fractions (0.18 = 18%) to match momentum12_1 and the
-                # frontend's fmtChange convention. growth_score=0.63 → ~18%.
-                "return12m": round((growth_score - 0.3) * 0.55, 4),
-                "return1m": round((growth_score - 0.45) * 0.08, 4),
-                "momentum12_1": round(growth_score - 0.5, 2),
-                "dampenedSignal": round((growth_score - 0.5) * (0.5 if growth_score < 0.4 else 1.0), 2),
-                "rawSignal": "NEGATIVE" if growth_score < 0.3 else "POSITIVE",
-                "interpretation": f"{'VETO' if growth_score < 0.3 else 'PASS'}: Growth at {growth_score:.0%}"
-            },
-            {
-                "asset": "NDX",
-                "return12m": round((growth_score - 0.3) * 0.66, 4),
-                "return1m": round((growth_score - 0.45) * 0.10, 4),
-                "momentum12_1": round((growth_score - 0.5) * 1.2, 2),
-                "dampenedSignal": round((growth_score - 0.5) * 1.2 * (0.5 if growth_score < 0.4 else 1.0), 2),
-                "rawSignal": "NEGATIVE" if growth_score < 0.3 else "POSITIVE",
-                "interpretation": "Tech momentum follows broad market"
-            }
-        ],
-        portfolioAdjustment={
-            "action": "REDUCE" if growth_score < 0.3 else "MAINTAIN",
-            "magnitude": round((0.5 - growth_score) * 0.2, 2) if growth_score < 0.3 else 0.0,
-            "rationale": f"Momentum {'conflict detected' if growth_score < 0.3 else 'aligned with regime'}"
-        },
-        reasoning=f"Growth signal at {growth_score:.0%} - {'veto active' if growth_score < 0.3 else 'no veto required'}"
-    )
-
-    # Correlation Regime - calculated from yield spread
-    correlation_regime = CorrelationRegimeData(
-        currentRegime="POSITIVE" if yield_spread < 0 else "NEGATIVE",
-        switchTriggered=yield_spread < 0,
-        equityBondCorrelation=round(-0.3 if yield_spread < 0 else 0.2, 2),
-        fallbackStrategy="RISK_PARITY_ADJUSTED" if yield_spread < 0 else "STANDARD",
-        correlations=[
-            CorrelationPair(
-                assetPair="SPY-TLT",
-                correlation60d=round(-0.3 if yield_spread < 0 else 0.2, 3),
-                regime="positive" if yield_spread < 0 else "negative",
-                interpretation=f"Equity-bond correlation {'positive' if yield_spread < 0 else 'negative'} with {yield_spread:+.2f}% yield spread"
-            ),
-            CorrelationPair(
-                assetPair="SPY-GLD",
-                correlation60d=round(0.1 if yield_spread < 0 else -0.1, 3),
-                regime="positive" if yield_spread < 0 else "negative",
-                interpretation="Gold correlation with equities"
-            ),
-            CorrelationPair(
-                assetPair="SPY-DXY",
-                correlation60d=round(-0.2 if yield_spread < 0 else 0.0, 3),
-                regime="negative" if yield_spread < 0 else "neutral",
-                interpretation="Dollar correlation with equities"
-            )
-        ],
-        riskParityAdjustment={
-            "normalWeights": {"stocks": 0.6, "bonds": 0.4},
-            "adjustedWeights": {"stocks": 0.5, "bonds": 0.5} if yield_spread < 0 else {"stocks": 0.6, "bonds": 0.4},
-            "rationale": f"{'Reduce equity exposure' if yield_spread < 0 else 'Maintain standard allocation'} due to {yield_spread:+.2f}% yield spread"
-        }
+        bullishPct=round(_n_bull / len(_votes) * 100, 1),
     )
 
     # Signal Stack - constructed from calculated signals
@@ -679,25 +617,8 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
 
     # ── Compute all optional-section data inline (avoids recursive handler calls) ──
 
-    # GDP Nowcast — derived from growth_score, liquidity_score, risk_score
-    _gdp_nowcast = round(-2 + (growth_score * 7), 2)
-    _nowcast = {
-        "gdpNowcast": _gdp_nowcast,
-        "nowcastQoQ": round(_gdp_nowcast / 4, 3),
-        "nowcastYoY": _gdp_nowcast,
-        "confidenceInterval": {
-            "lower": round(_gdp_nowcast * 0.8, 2),
-            "upper": round(_gdp_nowcast * 1.2, 2),
-        },
-        "components": [
-            {"name": "Equity Momentum", "weight": 0.4, "contribution": round(growth_score * 0.4, 2), "status": "Active"},
-            {"name": "Yield Curve", "weight": 0.3, "contribution": round(liquidity_score * 0.3, 2), "status": "Active"},
-            {"name": "Credit Spreads", "weight": 0.3, "contribution": round(risk_score * 0.3, 2), "status": "Active"},
-        ],
-        "revisionHistory": [],
-        "methodology": "Real-time market-implied GDP",
-        "lastUpdated": now.isoformat(),
-    }
+    # GDP Nowcast — Atlanta Fed GDPNow via FRED.
+    _nowcast = build_nowcast(_sections, now)
 
     # Liquidity conditions — derived from liquidity_score, ten_yr, two_yr, dxy_level
     _liq_regime = "Loose" if liquidity_score > 0.6 else "Tight" if liquidity_score < 0.4 else "Neutral"
@@ -714,44 +635,11 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         "lastUpdated": now.isoformat(),
     }
 
-    # Sentiment — derived from vix_level, risk_score
-    _sent_regime = "Risk-On" if risk_score > 0.7 else "Risk-Off" if risk_score < 0.4 else "Neutral"
-    _sentiment = {
-        "compositeScore": round(risk_score, 2),
-        "riskLevel": _sent_regime,
-        "gauges": [
-            {"name": "VIX", "score": round(vix_level / 100, 2), "interpretation": "Low volatility" if vix_level < 20 else "Elevated volatility"},
-            {"name": "Risk Score", "score": round(risk_score, 2), "interpretation": "Cross-asset risk appetite"},
-        ],
-        "vixTermStructure": {"ratio": 0.95, "structure": "contango" if vix_level < 25 else "backwardation"},
-        "aaiiSentiment": {
-            "bullBearSpread": round(risk_score - 0.5, 2),
-            "signal": "Bullish" if risk_score > 0.6 else "Bearish" if risk_score < 0.4 else "Neutral",
-        },
-        "crossAssetMomentum": {
-            "averageMomentum": round(risk_score - 0.5, 2),
-            "assets": [{"asset": "SPX", "momentum": risk_score}],
-            "regime": _sent_regime,
-        },
-        "contrarianSignal": "Bearish" if risk_score > 0.8 else "Bullish" if risk_score < 0.2 else "Neutral",
-        "description": f"Risk appetite is {_sent_regime.lower()} with VIX at {vix_level:.1f}.",
-        "lastUpdated": now.isoformat(),
-    }
+    # Sentiment — VIX level / term structure (^VIX3M) / 1m change, cross-asset 3m momentum.
+    _sentiment = build_sentiment(_sections, vix_level, risk_score, now)
 
-    # Valuation — derived from spx_level, ten_yr, growth_score
-    _earnings_yield = ten_yr + 1.0
-    _implied_pe = 1 / (_earnings_yield / 100) if _earnings_yield > 0 else 18
-    _current_pe = spx_level / 250 if spx_level else 23
-    _pe_zscore = (_current_pe - _implied_pe) / 3
-    _val_regime = "EXPENSIVE" if _pe_zscore > 1 else "CHEAP" if _pe_zscore < -1 else "FAIR"
-    _valuation = {
-        "metrics": [
-            {"name": "Implied P/E", "value": round(_current_pe, 1), "zScore": round(_pe_zscore, 2), "percentile": int(min(max((_pe_zscore + 2) / 4 * 100, 0), 100))},
-            {"name": "Real Yield", "value": round(ten_yr - 2.5, 2), "zScore": round((ten_yr - 3.5) / 2, 2), "percentile": 80 if ten_yr > 4 else 50},
-        ],
-        "summary": f"Valuations are {_val_regime.lower()} with SPX at {spx_level:,.0f} and {ten_yr:.2f}% yields.",
-        "lastUpdated": now.isoformat(),
-    }
+    # Valuation — SPY trailing P/E, 10Y TIPS real yield (z-scored), equity yield gap.
+    _valuation = build_valuation(_sections, now)
 
     # News Sentiment — REAL headline-level sentiment from live RSS news (was a VIX-derived stub).
     _news_sentiment = _build_news_sentiment(regime_name, now)
@@ -773,33 +661,8 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         "lastUpdated": now.isoformat(),
     }
 
-    # Factor Decomposition — derived from regime_name, growth_score, inflation_score
-    _factor_decomp = {
-        "asset": "SPX",
-        "rSquared": round(0.85 + growth_score * 0.1, 2),
-        "factors": [
-            {"factor": "Market", "exposure": 1.0, "contribution": 50, "tStat": 12.5, "significance": "Highly Significant"},
-            {"factor": "Growth", "exposure": round(growth_score, 2), "contribution": int(growth_score * 20), "tStat": 3.2, "significance": "Significant"},
-            {"factor": "Value", "exposure": round(1 - inflation_score, 2), "contribution": int((1 - inflation_score) * 15), "tStat": 2.1, "significance": "Significant"},
-            {"factor": "Quality", "exposure": 0.5, "contribution": 15, "tStat": 1.8, "significance": "Moderate"},
-            {"factor": "Momentum", "exposure": round(growth_score * 0.8, 2), "contribution": int(growth_score * 10), "tStat": 1.5, "significance": "Moderate"},
-        ],
-        "residual": round(0.15 - growth_score * 0.1, 2),
-        "lastUpdated": now.isoformat(),
-    }
-
-    # CTA Trend Signals — derived from growth_score
-    _cta_trends = {
-        "signals": [
-            {"asset": "ES", "direction": "LONG" if growth_score > 0.5 else "SHORT", "strength": round(growth_score * 0.6, 2), "timeframe": "10d", "confidence": round(growth_score, 2)},
-            {"asset": "ES", "direction": "LONG" if growth_score > 0.5 else "SHORT", "strength": round(growth_score * 0.8, 2), "timeframe": "30d", "confidence": round(growth_score, 2)},
-            {"asset": "NQ", "direction": "LONG" if growth_score > 0.5 else "SHORT", "strength": round(growth_score * 1.1, 2), "timeframe": "30d", "confidence": round(growth_score, 2)},
-            {"asset": "TY", "direction": "SHORT" if growth_score > 0.5 else "LONG", "strength": round(0.5 - growth_score * 0.5, 2), "timeframe": "90d", "confidence": round(1 - growth_score, 2)},
-        ],
-        "aggregateScore": round(growth_score, 2),
-        "regime": "TRENDING" if growth_score > 0.5 else "RANGING",
-        "lastUpdated": now.isoformat(),
-    }
+    # Factor Decomposition — OLS of Nasdaq-100 returns on ETF factor returns (1y daily).
+    _factor_decomp = build_factor_decomposition(_sections, now)
 
     # Long-term Forecasts — single source of truth shared with signal_handler (api/calculations/cma.py)
     from api.calculations.cma import longterm_forecasts
@@ -807,51 +670,17 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         **longterm_forecasts(ten_yr, now, risk_free=dgs3mo.latest),
     }
 
-    # Advanced Indicators — derived from growth_score, liquidity_score, ten_yr
-    _sahm_val = round((1 - growth_score) * 0.5, 2)
-    _sahm_sig = "Recession" if _sahm_val > 0.5 else "Neutral" if _sahm_val > 0.3 else "Normal"
-    _credit_imp = round((liquidity_score - 0.5) * 0.2, 2)
-    _lei_val = round(100 + (growth_score - 0.5) * 10, 1)
-    _lei_chg = round((growth_score - 0.5) * 2, 2)
-    _advanced = {
-        "sahmRule": {
-            "value": _sahm_val,
-            "signal": _sahm_sig,
-            "threshold": 0.5,
-            "description": f"Growth-based proxy: {_sahm_val:.2f}",
-        },
-        "creditImpulse": {
-            "value": _credit_imp,
-            "signal": "Positive" if _credit_imp > 0 else "Negative",
-            "description": f"Liquidity signal: {_credit_imp:+.2f}",
-        },
-        "lei": {
-            "value": _lei_val,
-            "change": _lei_chg,
-            "signal": "Improving" if _lei_chg > 0 else "Declining",
-            "components": [
-                {"name": "Growth", "contribution": round((growth_score - 0.5) * 0.5, 2)},
-                {"name": "Liquidity", "contribution": round((liquidity_score - 0.5) * 0.3, 2)},
-                {"name": "Rates", "contribution": round((4.5 - ten_yr) * 0.2, 2)},
-            ],
-        },
-        "riskParity": {
-            "regime": "Normal" if growth_score > 0.4 else "Stress",
-            "allocations": {
-                "stocks": round(0.25 + growth_score * 0.15, 2),
-                "bonds": round(0.35 + (1 - growth_score) * 0.15, 2),
-                "commodities": round(0.2 + (1 - liquidity_score) * 0.1, 2),
-            },
-        },
-        "lastUpdated": now.isoformat(),
-    }
+    # Advanced Indicators — Sahm rule (FRED SAHMREALTIME), credit impulse (FRED bank
+    # credit vs GDP), LEI (no source → unavailable), inverse-vol risk-parity weights.
+    _advanced = build_advanced_indicators(_sections, sahm_s, now)
 
     # Build risk-indicator stub from computed scores (no separate handler yet)
     _risk_indicators = {
         "vix": vix_level,
         "vixState": "Elevated" if (vix_level or 0) > 25 else "Normal",
         "yieldSpread": round(yield_spread, 3),
-        "creditSpread": round(0.8 + (1 - risk_score) * 2.0, 2),
+        # ICE BofA US High Yield OAS (FRED BAMLH0A0HYM2, percent); None if unavailable.
+        "creditSpread": _r2(_sections.series("BAMLH0A0HYM2").latest),
         "riskScore": round(risk_score, 3),
         "riskState": "Risk-Off" if risk_score < 0.35 else "Risk-On" if risk_score > 0.65 else "Neutral",
         "lastUpdated": now.isoformat(),

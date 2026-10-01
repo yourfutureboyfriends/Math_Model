@@ -151,13 +151,13 @@ def _fred_recent_values(series_id: str, n: int = 8) -> list[float]:
         return []
 
 
-async def _credit_spread(name: str, series_id: str, tight_bps: float, wide_bps: float,
-                         fallback_bps: float) -> Dict[str, Any]:
-    """Live ICE BofA OAS credit spread (percent -> bps) with a real 1-week change."""
+async def _credit_spread(name: str, series_id: str, tight_bps: float,
+                         wide_bps: float) -> Dict[str, Any]:
+    """Live ICE BofA OAS credit spread (percent -> bps) with a real 1-week change.
+    None (not a placeholder level) when FRED is unavailable."""
     vals = await asyncio.to_thread(_fred_recent_values, series_id, 8)
     if not vals:
-        return {"name": name, "spreadBps": fallback_bps, "change1wBps": None,
-                "signal": "normal"}
+        return {"name": name, "spreadBps": None, "change1wBps": None, "signal": None}
     spread_bps = round(vals[0] * 100)  # OAS is in percent
     # ~5 trading days ago for the 1-week change; fall back to oldest available.
     prior = vals[5] if len(vals) > 5 else vals[-1]
@@ -208,32 +208,23 @@ async def get_rates_data() -> Dict[str, Any]:
         logger.warning(f"recession probit input rejected: {e}")
         recession_prob = None
 
-    # Build yield curve points (synthetic based on 2Y and 10Y)
-    # Interpolate between known points
-    curve_points = []
-    tenors = [0.25, 0.5, 1, 2, 3, 5, 7, 10, 20, 30]  # in years
-
-    for tenor in tenors:
-        if tenor <= 2:
-            # Interpolate between Fed funds (0) and 2Y
-            yield_val = fed_funds + (two_yr - fed_funds) * (tenor / 2)
-        elif tenor <= 10:
-            # Interpolate between 2Y and 10Y
-            yield_val = two_yr + (ten_yr - two_yr) * ((tenor - 2) / 8)
-        else:
-            # Extrapolate beyond 10Y with a small linear term premium (~1.2bps/yr).
-            # 20Y ~ +0.12pp, 30Y ~ +0.24pp above the 10Y — a realistic long-end slope.
-            yield_val = ten_yr + 0.012 * (tenor - 10)
-        curve_points.append({"tenor": tenor, "yield": round(yield_val, 2)})
-
-    # Real yield (nominal - inflation, assuming 3% inflation)
-    real_yield_10y = ten_yr - 3.0
+    # Real curve points: FRED constant-maturity Treasury yields at every tenor (1M-30Y),
+    # TIPS 10Y real yield, and OECD 3M / 10Y yields for the other countries.
+    from api.handlers.dashboard_sections import (
+        rates_fred_ids, us_curve_points, foreign_curve, FOREIGN_CURVES)
+    from api.handlers.macro_inputs import load_fred_series
+    curve_fred = await load_fred_series(rates_fred_ids())
+    curve_points = us_curve_points(curve_fred)
+    dgs5, dgs30 = curve_fred.get("DGS5"), curve_fred.get("DGS30")
+    spread_5s30s = (dgs30.latest - dgs5.latest) * 100 if (dgs5 and dgs30) else None
+    dfii10 = curve_fred.get("DFII10")
+    real_yield_10y = dfii10.latest if dfii10 else None
 
     # Live ICE BofA OAS credit spreads with real 1-week changes.
     credit_spreads = await asyncio.gather(
-        _credit_spread("Investment Grade", "BAMLC0A0CM", 120, 200, 85),
-        _credit_spread("High Yield", "BAMLH0A0HYM2", 350, 600, 320),
-        _credit_spread("Emerging Markets", "BAMLEMCBPIOAS", 300, 500, 280),
+        _credit_spread("Investment Grade", "BAMLC0A0CM", 120, 200),
+        _credit_spread("High Yield", "BAMLH0A0HYM2", 350, 600),
+        _credit_spread("Emerging Markets", "BAMLEMCBPIOAS", 300, 500),
     )
 
     return {
@@ -244,54 +235,16 @@ async def get_rates_data() -> Dict[str, Any]:
                 "points": curve_points,
                 "spread2s10s": round(spread_2s10s, 1),
                 "spread3m10y": round(spread_3m10y, 1),
-                "spread5s30s": round(40.0, 1),  # Synthetic
-                "realYield10y": round(real_yield_10y, 2),
+                "spread5s30s": round(spread_5s30s, 1) if spread_5s30s is not None else None,
+                "realYield10y": round(real_yield_10y, 2) if real_yield_10y is not None else None,
                 "shape": shape,
                 "recessionProb": round(recession_prob, 2) if recession_prob is not None else None
             },
-            "UK": {
-                "country": "UK",
-                "points": [{"tenor": t, "yield": round(4.0 + t * 0.05, 2)} for t in tenors],
-                "spread2s10s": 35.0,
-                "spread3m10y": 45.0,
-                "shape": "normal",
-                "recessionProb": 0.15
-            },
-            "DE": {
-                "country": "DE",
-                "points": [{"tenor": t, "yield": round(2.5 + t * 0.03, 2)} for t in tenors],
-                "spread2s10s": 25.0,
-                "spread3m10y": 30.0,
-                "shape": "flat",
-                "recessionProb": 0.20
-            },
-            "JP": {
-                "country": "JP",
-                "points": [{"tenor": t, "yield": round(0.5 + t * 0.02, 2)} for t in tenors],
-                "spread2s10s": 15.0,
-                "spread3m10y": 20.0,
-                "shape": "normal",
-                "recessionProb": 0.10
-            },
-            "CA": {
-                "country": "CA",
-                "points": [{"tenor": t, "yield": round(3.8 + t * 0.04, 2)} for t in tenors],
-                "spread2s10s": 30.0,
-                "spread3m10y": 40.0,
-                "shape": "normal",
-                "recessionProb": 0.18
-            },
-            "AU": {
-                "country": "AU",
-                "points": [{"tenor": t, "yield": round(4.2 + t * 0.05, 2)} for t in tenors],
-                "spread2s10s": 40.0,
-                "spread3m10y": 50.0,
-                "shape": "steep",
-                "recessionProb": 0.12
-            }
+            **{cc: foreign_curve(cc, curve_fred) for cc in FOREIGN_CURVES},
         },
         "creditSpreads": list(credit_spreads),
-        "realYieldSignal": "positive" if real_yield_10y > 1.0 else "negative" if real_yield_10y < 0 else "neutral",
+        "realYieldSignal": (None if real_yield_10y is None else
+                            "positive" if real_yield_10y > 1.0 else "negative" if real_yield_10y < 0 else "neutral"),
         # Legacy fields for backward compatibility
         "tenYear": round(ten_yr, 2),
         "twoYear": round(two_yr, 2),
