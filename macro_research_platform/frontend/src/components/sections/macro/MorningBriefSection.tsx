@@ -37,12 +37,12 @@ interface ConvictionTrade {
 interface MorningBriefSectionData {
   date: string;
   regime: string;
-  duration_months: number;
-  confidence: number;
+  duration_months: number | null;
+  confidence: number | null;
   priorities: Priority[];
   risks: Risk[];
   conviction_trades: ConvictionTrade[];
-  position_modifier: number;
+  position_modifier: number | null;
   model_caution: boolean;
 }
 
@@ -59,9 +59,9 @@ export function MorningBriefSection() {
         // Transform API response to component format
         const transformed: MorningBriefSectionData = {
           date: (response as any).date || new Date().toISOString().split('T')[0],
-          regime: (response as any).regime || 'Goldilocks',
-          duration_months: (response as any).duration_months || 1,
-          confidence: (response as any).confidence || 0.75,
+          regime: (response as any).regime ?? 'Unknown',
+          duration_months: (response as any).duration_months ?? null,
+          confidence: (response as any).confidence ?? null,
           priorities: ((response as any).priorities || []).map((p: any, i: number) => ({
             type: 'signal',
             priority: i + 1,
@@ -82,8 +82,8 @@ export function MorningBriefSection() {
             stop: t.stop,
             thesis: t.thesis || t.rationale
           })),
-          position_modifier: (response as any).position_modifier || 1.0,
-          model_caution: (response as any).model_caution || false
+          position_modifier: (response as any).position_modifier ?? null,
+          model_caution: (response as any).model_caution ?? false
         };
         setData(transformed);
       } catch (e) {
@@ -191,7 +191,7 @@ export function MorningBriefSection() {
             </span>
           </div>
           <div className="text-xs text-text-secondary">
-            <span className="font-mono text-text-primary">{duration_months}</span> months ·
+            <span className="font-mono text-text-primary">{duration_months ?? '—'}</span> months ·
             <span className="font-mono text-text-primary">{fmtProbability(typeof confidence === 'number' && isFinite(confidence) ? confidence : null)}</span> confidence
           </div>
           {(typeof position_modifier === 'number' && isFinite(position_modifier) && position_modifier < 1.0) && (

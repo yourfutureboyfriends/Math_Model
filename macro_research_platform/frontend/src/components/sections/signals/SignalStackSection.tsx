@@ -45,7 +45,7 @@ export function SignalStackSection() {
   const layerOutputs = (data as any).layerOutputs || {};
   const layers = (data as any).layers || [];
   const finalSignal = (data as any).finalSignal || (data as any).finalStance || 'NEUTRAL';
-  const conviction = (data as any).conviction || (data as any).riskBudget || 0.5;
+  const conviction = (data as any).conviction ?? (data as any).riskBudget ?? null;
   const overridesApplied = (data as any).overridesApplied || [];
   const reasoning = (data as any).reasoning || (data as any).overrideReason || 'Signal stack active';
   const timestamp = (data as any).timestamp || (data as any).lastUpdated || '';
@@ -76,7 +76,7 @@ export function SignalStackSection() {
         layer: name,
         priority: index + 1,
         signal: output?.ctaSignal || output?.baseStance || output?.regime || name,
-        conviction: output?.confidence || 0.5,
+        conviction: output?.confidence ?? null,
         override: output?.adjustment !== 0 ? `Adjustment: ${output?.adjustment}` : null
       }));
 
@@ -111,7 +111,7 @@ export function SignalStackSection() {
                 Confidence
               </div>
               <div className="text-base font-mono font-bold text-text-primary">
-                <AnimatedValue value={conviction * 100} decimals={0} suffix="%" />
+                {conviction == null ? '—' : <AnimatedValue value={conviction * 100} decimals={0} suffix="%" />}
               </div>
             </div>
           </div>
@@ -121,7 +121,7 @@ export function SignalStackSection() {
             <div className="h-1 bg-surface-4">
               <div
                 className="h-full bg-bloomberg transition-all duration-500"
-                style={{ width: `${conviction * 100}%` }}
+                style={{ width: `${(conviction ?? 0) * 100}%` }}
               />
             </div>
             <div className="flex justify-between text-2xs text-text-tertiary mt-1">
@@ -187,7 +187,7 @@ export function SignalStackSection() {
                         <div
                           className="h-full transition-all"
                           style={{
-                            width: `${(layer.conviction || 0.5) * 100}%`,
+                            width: `${(layer.conviction ?? 0) * 100}%`,
                             backgroundColor:
                               layer.conviction >= 0.7 ? 'var(--green)' :
                               layer.conviction >= 0.4 ? 'var(--amber)' : 'var(--text-tertiary)',
@@ -195,7 +195,7 @@ export function SignalStackSection() {
                         />
                       </div>
                       <span className="text-2xs font-mono text-text-secondary w-6 text-right">
-                        <AnimatedValue value={(layer.conviction || 0.5) * 100} decimals={0} suffix="%" />
+                        {layer.conviction == null ? '—' : <AnimatedValue value={layer.conviction * 100} decimals={0} suffix="%" />}
                       </span>
                     </div>
                   </div>

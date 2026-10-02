@@ -575,7 +575,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                     </div>
                     <div className="text-right min-w-[60px]">
                       <div className="text-sm font-mono text-green">
-                        {formatPositionSize(rec.position_pct || rec.kelly_pct || 0)}
+                        {formatPositionSize(rec.position_pct ?? rec.kelly_pct ?? 0)}
                       </div>
                       <div className="text-xs text-text-secondary">size</div>
                     </div>
@@ -667,7 +667,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                     </div>
                     <div className="text-right min-w-[60px]">
                       <div className="text-sm font-mono text-red">
-                        {formatPositionSize(Math.abs(rec.position_pct || rec.kelly_pct || 0))}
+                        {formatPositionSize(Math.abs(rec.position_pct ?? rec.kelly_pct ?? 0))}
                       </div>
                       <div className="text-xs text-text-secondary">size</div>
                     </div>

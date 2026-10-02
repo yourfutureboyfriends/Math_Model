@@ -151,7 +151,7 @@ REGIME_CHARACTERISTICS = {
 }
 
 
-def classify_regime(growth: float, inflation: float, liquidity: float) -> Tuple[str, float, int]:
+def classify_regime(growth: float, inflation: float, liquidity: float) -> Tuple[str, float, None]:
     """
     Classify macro regime from signal scores.
 
@@ -161,7 +161,9 @@ def classify_regime(growth: float, inflation: float, liquidity: float) -> Tuple[
         liquidity: Liquidity signal 0-1 (higher = looser conditions)
 
     Returns:
-        Tuple of (regime_name, confidence, duration_months)
+        Tuple of (regime_name, confidence, None). The third slot used to be a "duration"
+        computed as 6 + confidence*18 months — not a measurement — so it is no longer
+        produced; callers measure duration from the regime's actual history.
     """
     # Define regime boundaries
     g_strong = growth > 0.6
@@ -210,11 +212,7 @@ def classify_regime(growth: float, inflation: float, liquidity: float) -> Tuple[
         confidence = 0.60
 
     confidence = min(max(confidence, 0.0), 0.95)
-
-    # Calculate duration based on signal persistence (from the capped confidence)
-    duration = int(6 + confidence * 18)  # 6-23 months
-
-    return regime, confidence, duration
+    return regime, confidence, None
 
 
 def get_regime_characteristics(regime: str) -> RegimeCharacteristics:

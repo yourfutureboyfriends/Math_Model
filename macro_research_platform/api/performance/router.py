@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 from datetime import datetime
+import sqlite3
 
 from .signal_tracker import get_tracker, SIGNAL_MODULES
 

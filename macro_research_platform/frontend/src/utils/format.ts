@@ -55,6 +55,14 @@ export function safeRatio(v: number | null | undefined, decimals = 2): string {
 // NEW STANDARDIZED FORMATTERS (Phase 1)
 // ============================================================================
 
+// Prefix "+" to a formatted positive number. A value that rounds to zero gets no sign
+// (never "+0.00" or "-0.00").
+const signed = (fixed: string): string => {
+  const n = parseFloat(fixed);
+  if (n === 0) return fixed.replace(/^-/, '');
+  return n > 0 ? '+' + fixed : fixed;
+};
+
 // Null/NaN guard wrapper
 const guard = (
   v: number | null | undefined,
@@ -83,10 +91,7 @@ export const fmtRate = (v: number | null, decimals = 2): string =>
  * Input: -0.10 -> Output: "-0.10%"
  */
 export const fmtRateChange = (v: number | null, decimals = 2): string =>
-  guard(v, (n) => {
-    const sign = n >= 0 ? '+' : '';
-    return sign + n.toFixed(decimals) + '%';
-  });
+  guard(v, (n) => signed(n.toFixed(decimals)) + '%');
 
 // ============================================================================
 // PRICES (SPX, NDX, GLD, WTI)
@@ -130,9 +135,7 @@ export const fmtFx = (v: number | null, decimals = 4): string =>
  */
 export const fmtChange = (v: number | null, decimals = 2): string =>
   guard(v, (n) => {
-    const pct = (n * 100).toFixed(decimals);
-    const sign = n >= 0 ? '+' : '';
-    return sign + pct + '%';
+    return signed((n * 100).toFixed(decimals)) + '%';
   });
 
 /**
@@ -169,10 +172,7 @@ export const fmtSigma = (v: number | null, decimals = 2): string =>
  * Input: 0.45 -> Output: "+0.45"
  */
 export const fmtSignal = (v: number | null, decimals = 2): string =>
-  guard(v, (n) => {
-    const sign = n >= 0 ? '+' : '';
-    return sign + n.toFixed(decimals);
-  });
+  guard(v, (n) => signed(n.toFixed(decimals)));
 
 // ============================================================================
 // AGREEMENT & CONFIDENCE (percentages 0-1)

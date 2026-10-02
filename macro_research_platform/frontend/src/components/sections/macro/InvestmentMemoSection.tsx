@@ -27,11 +27,11 @@ interface InvestmentMemoSectionProps {
 
 export function InvestmentMemoSection({ data }: InvestmentMemoSectionProps) {
   const _fullDash = useMacroStore((s) => s.fullDashboard);
+  // Hooks before the early return (see rules-of-hooks): data can arrive after mount.
+  const [showDecisionLog, setShowDecisionLog] = useState(false);
   if (!data) data = (_fullDash as any)?.["investmentMemo"] as any;
 
   if (!data) return null;
-
-  const [showDecisionLog, setShowDecisionLog] = useState(false);
 
   const getDecisionIcon = (action: string) => {
     switch (action) {

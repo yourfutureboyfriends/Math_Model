@@ -11,7 +11,7 @@ from typing import Dict, Any, List, Optional
 
 import feedparser
 import requests
-from celery_app import app
+from api.celery_app import app
 
 logger = logging.getLogger(__name__)
 

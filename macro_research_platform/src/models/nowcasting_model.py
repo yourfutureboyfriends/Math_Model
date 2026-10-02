@@ -207,7 +207,7 @@ class NowcastingModel:
 
         # Average over quarter
         # (In production, would align months to quarters properly)
-        quarterly_factors = monthly_factors.resample("Q").mean()
+        quarterly_factors = monthly_factors.resample("QE").mean()
 
         # If we have historical GDP, calibrate
         if quarterly_gdp is not None:

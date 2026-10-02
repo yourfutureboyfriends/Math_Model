@@ -7,6 +7,7 @@ import os
 from datetime import timedelta
 
 from celery import Celery
+from celery.schedules import crontab
 from celery.signals import task_postrun, task_prerun
 
 # Broker and backend configuration
@@ -19,11 +20,11 @@ app = Celery(
     broker=BROKER_URL,
     backend=RESULT_BACKEND,
     include=[
-        "tasks.pipeline_tasks",
-        "tasks.signal_tasks",
-        "tasks.report_tasks",
-        "tasks.alternative_data_tasks",
-        "tasks.llm_tasks",
+        "api.tasks.pipeline_tasks",
+        "api.tasks.signal_tasks",
+        "api.tasks.report_tasks",
+        "api.tasks.alternative_data_tasks",
+        "api.tasks.llm_tasks",
     ],
 )
 
@@ -38,11 +39,11 @@ app.conf.update(
 
     # Task routing
     task_routes={
-        "tasks.pipeline_tasks.*": {"queue": "pipeline"},
-        "tasks.signal_tasks.*": {"queue": "signals"},
-        "tasks.report_tasks.*": {"queue": "reports"},
-        "tasks.alternative_data_tasks.*": {"queue": "pipeline"},
-        "tasks.llm_tasks.*": {"queue": "reports"},
+        "api.tasks.pipeline_tasks.*": {"queue": "pipeline"},
+        "api.tasks.signal_tasks.*": {"queue": "signals"},
+        "api.tasks.report_tasks.*": {"queue": "reports"},
+        "api.tasks.alternative_data_tasks.*": {"queue": "pipeline"},
+        "api.tasks.llm_tasks.*": {"queue": "reports"},
     },
 
     # Task defaults
@@ -73,91 +74,91 @@ app.conf.update(
 app.conf.beat_schedule = {
     # Market data refresh (every 5 minutes during market hours)
     "refresh-market-data": {
-        "task": "tasks.pipeline_tasks.refresh_market_data",
+        "task": "api.tasks.pipeline_tasks.refresh_market_data",
         "schedule": timedelta(minutes=5),
         "options": {"queue": "pipeline"},
     },
 
     # Economic indicators update (every hour)
     "update-economic-indicators": {
-        "task": "tasks.pipeline_tasks.update_economic_indicators",
+        "task": "api.tasks.pipeline_tasks.update_economic_indicators",
         "schedule": timedelta(hours=1),
         "options": {"queue": "pipeline"},
     },
 
     # COT data (weekly, Tuesdays after CFTC release)
     "update-cot-data": {
-        "task": "tasks.pipeline_tasks.update_cot_data",
+        "task": "api.tasks.pipeline_tasks.update_cot_data",
         "schedule": crontab(hour=16, minute=0, day_of_week="tue"),
         "options": {"queue": "pipeline"},
     },
 
     # Vol surface update (every 15 minutes)
     "update-vol-surface": {
-        "task": "tasks.pipeline_tasks.update_vol_surface",
+        "task": "api.tasks.pipeline_tasks.update_vol_surface",
         "schedule": timedelta(minutes=15),
         "options": {"queue": "pipeline"},
     },
 
     # Signal generation (every 30 minutes)
     "generate-signals": {
-        "task": "tasks.signal_tasks.generate_all_signals",
+        "task": "api.tasks.signal_tasks.generate_all_signals",
         "schedule": timedelta(minutes=30),
         "options": {"queue": "signals"},
     },
 
     # Regime classification (every hour)
     "classify-regime": {
-        "task": "tasks.signal_tasks.classify_regime",
+        "task": "api.tasks.signal_tasks.classify_regime",
         "schedule": timedelta(hours=1),
         "options": {"queue": "signals"},
     },
 
     # Daily reports (8 AM ET)
     "generate-daily-report": {
-        "task": "tasks.report_tasks.generate_daily_report",
+        "task": "api.tasks.report_tasks.generate_daily_report",
         "schedule": crontab(hour=8, minute=0),
         "options": {"queue": "reports"},
     },
 
     # Weekly reports (Monday 9 AM ET)
     "generate-weekly-report": {
-        "task": "tasks.report_tasks.generate_weekly_report",
+        "task": "api.tasks.report_tasks.generate_weekly_report",
         "schedule": crontab(hour=9, minute=0, day_of_week="mon"),
         "options": {"queue": "reports"},
     },
 
     # Alternative data (Google Trends - daily)
     "fetch-google-trends": {
-        "task": "tasks.alternative_data_tasks.fetch_google_trends",
+        "task": "api.tasks.alternative_data_tasks.fetch_google_trends",
         "schedule": crontab(hour=10, minute=0),
         "options": {"queue": "pipeline"},
     },
 
     # News sentiment analysis (every 30 minutes)
     "analyze-news-sentiment": {
-        "task": "tasks.llm_tasks.analyze_recent_news",
+        "task": "api.tasks.llm_tasks.analyze_recent_news",
         "schedule": timedelta(minutes=30),
         "options": {"queue": "reports"},
     },
 
     # Regime transition forecasting (daily)
     "forecast-regime-transition": {
-        "task": "tasks.signal_tasks.forecast_regime_transition",
+        "task": "api.tasks.signal_tasks.forecast_regime_transition",
         "schedule": crontab(hour=7, minute=0),
         "options": {"queue": "signals"},
     },
 
     # P&L snapshot (every 5 minutes during market hours)
     "snapshot-portfolio": {
-        "task": "tasks.signal_tasks.snapshot_portfolio",
+        "task": "api.tasks.signal_tasks.snapshot_portfolio",
         "schedule": timedelta(minutes=5),
         "options": {"queue": "signals"},
     },
 
     # System health check (every minute)
     "check-system-health": {
-        "task": "tasks.pipeline_tasks.check_system_health",
+        "task": "api.tasks.pipeline_tasks.check_system_health",
         "schedule": timedelta(minutes=1),
         "options": {"queue": "pipeline"},
     },

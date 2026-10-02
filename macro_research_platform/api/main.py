@@ -47,13 +47,10 @@ from apscheduler.triggers.cron import CronTrigger
 
 # FIXED: Phase 1 - Canonical Price Cache
 
-# FIXED: R-01 - Import data pipeline (after sys.path setup)
-# Stub for run_daily_pipeline since it doesn't exist in pipeline.py yet
-def run_daily_pipeline(cache, lock):
-    """Stub function for daily pipeline refresh."""
-    import logging
-    logging.getLogger(__name__).info("Daily pipeline run requested (stub)")
-    return True
+# R-01: the real data pipeline (fetch FRED + Yahoo, write this month's CSV row, clear
+# cache). A logging-only stub stood in for it, so the scheduler and the manual refresh
+# endpoint did nothing and the CSV went stale.
+from api.data_pipeline import run_daily_pipeline
 
 # FIXED: Socket.IO for real-time updates
 import socketio
@@ -3361,8 +3358,10 @@ async def data_freshness():
         csv_file = PROJECT_ROOT / "data" / "us_economic_data.csv"
         if csv_file.exists():
             df = pd.read_csv(csv_file, index_col=0, parse_dates=True)
-            last_date = df.index.max()
-            age_secs = (datetime.now() - last_date).total_seconds()
+            last_date = df.index.max()     # month of the latest row (the CSV is monthly)
+            # Staleness = time since the pipeline last wrote the file. The index is a month
+            # start, so measuring from it would flag a fresh file as up to 31 days old.
+            age_secs = time.time() - csv_file.stat().st_mtime
         else:
             last_date = None
             age_secs = 999999

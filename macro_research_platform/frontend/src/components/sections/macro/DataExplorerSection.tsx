@@ -12,10 +12,8 @@ interface DataExplorerSectionProps {
 
 export function DataExplorerSection({ data: dataProp }: DataExplorerSectionProps) {
   const _fullDash = useMacroStore((s) => s.fullDashboard);
-  let data = dataProp;
-  if (!data) data = _fullDash as any;
-  if (!data) return null;
-
+  // Hooks must run on every render, before any early return — otherwise the panel throws
+  // "Rendered more hooks than during the previous render" when data arrives after mount.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     metadata: true,
     regime: false,
@@ -30,6 +28,10 @@ export function DataExplorerSection({ data: dataProp }: DataExplorerSectionProps
     investmentMemo: false,
     dataToWatch: false,
   });
+
+  let data = dataProp;
+  if (!data) data = _fullDash as any;
+  if (!data) return null;
 
   const toggle = (key: string) => {
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));

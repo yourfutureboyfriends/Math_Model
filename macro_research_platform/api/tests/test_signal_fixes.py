@@ -84,9 +84,10 @@ def test_midpoint_growth_low_inflation_is_goldilocks():
     assert classify_regime(0.5, 0.45, 0.5)[0] == "goldilocks"
 
 
-def test_duration_respects_cap():
+def test_confidence_capped_and_no_invented_duration():
     _, conf, dur = classify_regime(1.0, 0.0, 1.0)
-    assert conf <= 0.95 and dur <= 24
+    assert conf <= 0.95
+    assert dur is None        # duration is measured from history, not derived from confidence
 
 
 # ── Recession model ──────────────────────────────────────────────────────────

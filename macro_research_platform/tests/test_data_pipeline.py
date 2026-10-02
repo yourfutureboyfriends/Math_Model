@@ -17,7 +17,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from api.data_pipeline import (
     PIPELINE_BOUNDS,
-    PIPELINE_FALLBACKS,
     validate_pipeline_value,
     fetch_fred_value,
 )
@@ -43,10 +42,10 @@ class TestCPIRange:
         assert abs(result - 3.3) < 0.01
 
     def test_index_level_319_rejected(self):
-        """CPI index level (~319) must be rejected → fallback."""
+        """CPI index level (~319) must be rejected (None)."""
         result = validate_pipeline_value("cpi_yoy", 319.0)
         assert result != 319.0
-        assert result == PIPELINE_FALLBACKS["cpi_yoy"]
+        assert result is None  # rejected, never replaced with a default
 
     def test_deflation_minus_5_boundary(self):
         """CPI = -5% at boundary — should pass."""
@@ -61,22 +60,22 @@ class TestCPIRange:
     def test_deflation_below_bounds_rejected(self):
         """CPI < -5% must be rejected."""
         result = validate_pipeline_value("cpi_yoy", -10.0)
-        assert result == PIPELINE_FALLBACKS["cpi_yoy"]
+        assert result is None  # rejected, never replaced with a default
 
     def test_hyperinflation_above_bounds_rejected(self):
         """CPI > 25% must be rejected."""
         result = validate_pipeline_value("cpi_yoy", 50.0)
-        assert result == PIPELINE_FALLBACKS["cpi_yoy"]
+        assert result is None  # rejected, never replaced with a default
 
-    def test_none_returns_fallback(self):
-        """None value must return fallback."""
+    def test_none_is_rejected(self):
+        """None value is rejected (None), not defaulted."""
         result = validate_pipeline_value("cpi_yoy", None)
-        assert result == PIPELINE_FALLBACKS["cpi_yoy"]
+        assert result is None  # rejected, never replaced with a default
 
-    def test_nan_returns_fallback(self):
-        """NaN value must return fallback."""
+    def test_nan_is_rejected(self):
+        """NaN is rejected (None), not defaulted."""
         result = validate_pipeline_value("cpi_yoy", float("nan"))
-        assert result == PIPELINE_FALLBACKS["cpi_yoy"]
+        assert result is None  # rejected, never replaced with a default
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -108,7 +107,7 @@ class TestFedFundsRange:
     def test_extreme_30_percent_rejected(self):
         """30% Fed Funds is implausible and must be rejected."""
         result = validate_pipeline_value("fed_funds", 30.0)
-        assert result == PIPELINE_FALLBACKS["fed_funds"]
+        assert result is None  # rejected, never replaced with a default
 
     def test_zero_rate_passes(self):
         """0% Fed Funds (ZIRP) at boundary — should pass."""
@@ -118,7 +117,7 @@ class TestFedFundsRange:
     def test_negative_rate_rejected(self):
         """Negative Fed Funds must be rejected."""
         result = validate_pipeline_value("fed_funds", -0.5)
-        assert result == PIPELINE_FALLBACKS["fed_funds"]
+        assert result is None  # rejected, never replaced with a default
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -144,7 +143,7 @@ class TestHySpreadsRange:
         """Raw 0.03% (3 bps after ×100) is below hard_min and must be rejected."""
         # This simulates forgetting to multiply by 100
         result = validate_pipeline_value("hy_spread_bps", 3.0)
-        assert result == PIPELINE_FALLBACKS["hy_spread_bps"]
+        assert result is None  # rejected, never replaced with a default
 
     def test_stress_600_bps_passes(self):
         """600 bps stress level must pass through."""
@@ -159,7 +158,7 @@ class TestHySpreadsRange:
     def test_extreme_3000_bps_rejected(self):
         """3000 bps is above hard_max and must be rejected."""
         result = validate_pipeline_value("hy_spread_bps", 3000.0)
-        assert result == PIPELINE_FALLBACKS["hy_spread_bps"]
+        assert result is None  # rejected, never replaced with a default
 
     def test_boundary_50_bps(self):
         """50 bps at lower boundary — should pass."""
@@ -178,36 +177,32 @@ class TestPipelineValidation:
         result = validate_pipeline_value("unknown_metric", 1000.0)
         assert result == 1000.0
 
-    def test_string_value_returns_fallback(self):
-        """String values must return fallback."""
+    def test_string_value_is_rejected(self):
+        """String values are rejected (None)."""
         result = validate_pipeline_value("cpi_yoy", "not_a_number")
-        assert result == PIPELINE_FALLBACKS["cpi_yoy"]
+        assert result is None  # rejected, never replaced with a default
 
-    def test_infinite_value_returns_fallback(self):
-        """Infinite values must return fallback."""
+    def test_infinite_value_is_rejected(self):
+        """Infinite values are rejected (None)."""
         result = validate_pipeline_value("cpi_yoy", float("inf"))
-        assert result == PIPELINE_FALLBACKS["cpi_yoy"]
+        assert result is None  # rejected, never replaced with a default
 
 
 class TestPipelineBoundsCoverage:
-    """All pipeline metrics must have bounds and fallbacks defined."""
+    """Every quantity the pipeline writes must have bounds; there are no default values."""
 
-    def test_all_metrics_have_bounds(self):
-        """Every metric in PIPELINE_FALLBACKS must have bounds."""
-        for metric in PIPELINE_FALLBACKS:
-            assert metric in PIPELINE_BOUNDS, f"{metric} missing from PIPELINE_BOUNDS"
+    def test_every_mapped_series_has_bounds(self):
+        from api.data_pipeline import _FRED_MAP
+        for series, (bound_key, _mult, _cols) in _FRED_MAP.items():
+            assert bound_key in PIPELINE_BOUNDS, f"{series} -> {bound_key} has no bounds"
 
     def test_bounds_are_reasonable(self):
-        """Bounds must have lo < hi."""
         for metric, (lo, hi) in PIPELINE_BOUNDS.items():
-            assert lo < hi, f"{metric} has invalid bounds [{lo}, {hi}]"
+            assert lo < hi, f"{metric} bounds inverted"
 
-    def test_fallbacks_within_bounds(self):
-        """Fallback values must be within hard bounds."""
-        for metric, fallback in PIPELINE_FALLBACKS.items():
-            lo, hi = PIPELINE_BOUNDS[metric]
-            assert lo <= fallback <= hi, \
-                f"{metric} fallback {fallback} outside bounds [{lo}, {hi}]"
+    def test_no_fallback_table(self):
+        import api.data_pipeline as dp
+        assert not hasattr(dp, "PIPELINE_FALLBACKS"), "made-up fallback values must not exist"
 
 
 if __name__ == "__main__":

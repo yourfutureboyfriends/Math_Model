@@ -13,14 +13,17 @@ A professional macro research platform for regime-based investing, portfolio con
 
 ### Backend Setup
 
-```bash
-cd api
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+Run everything from the project root (`macro_research_platform/`) — the API imports the
+`api` and `src` packages from there.
 
-# Start the API
-uvicorn main:app --reload --port 3002
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r api/requirements.txt
+cp .env.example .env       # add FRED_API_KEY
+
+# Start the API (http://localhost:8000)
+uvicorn api.main:socket_app --reload --port 8000
 ```
 
 ### Frontend Setup
@@ -31,7 +34,8 @@ npm install
 npm run dev
 ```
 
-The application will be available at `http://localhost:3000`.
+The application will be available at `http://localhost:5173` (the dev server proxies
+`/api` to the backend). `npm run dev` in the project root starts both together.
 
 ## Architecture
 
@@ -82,8 +86,9 @@ macro_research_platform/
 ### Running Tests
 
 ```bash
-cd api
-pytest
+pytest api/tests --ignore=api/tests/integration   # unit + regression
+pytest tests                                       # includes live checks against :8000
+cd frontend && npx vitest run                      # frontend
 ```
 
 ### Code Style

@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 import asyncpg
 import yfinance as yf
 from fredapi import Fred
-from celery_app import app
+from api.celery_app import app
 
 logger = logging.getLogger(__name__)
 

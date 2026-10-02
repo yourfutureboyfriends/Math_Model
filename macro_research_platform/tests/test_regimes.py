@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.regimes import (
+from src.models.macro_regime.classifier import (
     classify_regime,
     get_regime_history,
     get_regime_colour,

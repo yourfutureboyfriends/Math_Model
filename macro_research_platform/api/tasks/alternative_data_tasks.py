@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 
 import requests
-from celery_app import app
+from api.celery_app import app
 
 logger = logging.getLogger(__name__)
 

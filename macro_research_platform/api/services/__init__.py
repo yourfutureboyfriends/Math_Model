@@ -29,7 +29,7 @@ from .event_logger import (
 )
 from .runtime_status import (
     get_cache_status,
-    get_validation_status,
+    get_validation_status as get_runtime_validation_status,
     get_data_freshness_status,
     get_scheduler_status,
     get_logging_status as get_runtime_logging_status,
@@ -79,7 +79,7 @@ __all__ = [
     "log_validation_event",
     "get_logging_status",
     "get_cache_status",
-    "get_validation_status",
+    "get_runtime_validation_status",
     "get_data_freshness_status",
     "get_scheduler_status",
     "get_runtime_logging_status",

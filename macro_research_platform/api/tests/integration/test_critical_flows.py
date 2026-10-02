@@ -182,7 +182,7 @@ class TestRiskEndpoint:
             probability=1.5,  # Should be clamped to 1.0
             level="High",
             logisticProb=-0.5,  # Should be clamped to 0.0
-            emProbitProb=float('nan'),  # Should be converted to 0.0
+            emProbitProb=float('nan'),  # Should become None (unavailable), not a fake 0%
             sahmValue=0.0,
             sahmSignal="No Signal",
             description="Test",
@@ -191,7 +191,7 @@ class TestRiskEndpoint:
         )
         assert recession.probability == 1.0
         assert recession.logisticProb == 0.0
-        assert recession.emProbitProb == 0.0
+        assert recession.emProbitProb is None
 
 
 class TestRegimeEndpoint:

@@ -311,9 +311,29 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     yield_spread = dgs10.latest - two_yr
 
     # Classify regime using shared module
-    regime_name, regime_confidence, regime_duration = classify_regime(
+    regime_name, regime_confidence, _ = classify_regime(
         growth_score, inflation_score, liquidity_score
     )
+
+    # Measured regime duration: step back through trading days (weekly), re-classifying
+    # with each date's as-of inputs, until the regime differs. Replaces the old
+    # "6 + confidence * 18 months" formula, which was not a measurement at all. If the
+    # price/macro history runs out first, the duration is a lower bound ("N+ months").
+    from datetime import date as _date
+    run_start, duration_bounded = spx_s.dates[-1], False
+    for i in range(len(spx_closes) - 1, -1, -5):
+        d = spx_s.dates[i]
+        g_d = calculate_growth_signal(None, spx_closes[:i + 1])[0]
+        i_d = calculate_inflation_signal(cpi_s.asof(d), be_s.asof(d))[0]
+        l_d = calculate_liquidity_signal(dxy_s.asof(d), dgs10.asof(d), dff.asof(d))[0]
+        if None in (g_d, i_d, l_d):
+            break                                   # history exhausted -> lower bound
+        if classify_regime(g_d, i_d, l_d)[0] != regime_name:
+            duration_bounded = True
+            break
+        run_start = d
+    regime_duration = max(0, round((now.date() - _date.fromisoformat(run_start)).days / 30.44))
+    regime_duration_label = f"{regime_duration}{'' if duration_bounded else '+'} months"
 
     # Get regime characteristics
     regime_chars = get_regime_characteristics(regime_name)
@@ -499,7 +519,8 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
             direction="up" if recession_data["probability"] > 0.3 else "stable",
             sparklineData=[round(h["probability"] * 100, 1) for h in recession_history]
         ),
-        regimeDuration={"current": f"{regime_duration} months", "currentRegime": regime_name},
+        regimeDuration={"current": regime_duration_label, "currentRegime": regime_name,
+                        "measured": "exact" if duration_bounded else "lower bound (history limit)"},
         spxLevel=spx_level,
         spxChange=None,
         spxChangePct=_chg.get('SPX'),

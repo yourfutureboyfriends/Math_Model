@@ -10,7 +10,7 @@ import uuid
 
 import numpy as np
 import pandas as pd
-from celery_app import app
+from api.celery_app import app
 from lightgbm import LGBMClassifier
 from sklearn.model_selection import TimeSeriesSplit
 

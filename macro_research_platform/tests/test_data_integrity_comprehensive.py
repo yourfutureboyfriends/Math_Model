@@ -36,8 +36,7 @@ class TestBug01Inflation:
         fred_mock = MagicMock(return_value=319.0)  # Index level
         result = fetch_metric("inflation", fred_fetch_fn=fred_mock)
         assert result != 319.0, "Index level must be rejected"
-        assert result == CONTRACTS["inflation"].fallback_value, \
-            f"Should fallback to {CONTRACTS['inflation'].fallback_value}, got {result}"
+        assert result is None, f"Rejected value must be unavailable (None), got {result}"
 
     def test_valid_march_2026_inflation(self):
         """March 2026 CPI = 3.3% must pass through."""
@@ -161,8 +160,7 @@ class TestBug04HySpreads:
         """3 bps (= 0.03% raw) is below hard_min=50 and must be rejected."""
         fred_mock = MagicMock(return_value=0.03)  # 0.03% × 100 = 3 bps
         result = fetch_metric("hy_spread", fred_fetch_fn=fred_mock)
-        assert result == CONTRACTS["hy_spread"].fallback_value, \
-            f"3 bps below hard_min, should fallback to {CONTRACTS['hy_spread'].fallback_value}"
+        assert result is None, f"3 bps is below hard_min and must be rejected (None), got {result}"
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -225,7 +223,7 @@ class TestBug07AllWeatherNaN:
         """NaN from any source must never reach the dashboard."""
         fred_mock = MagicMock(return_value=float("nan"))
         result = fetch_metric("vix", fred_fetch_fn=fred_mock)
-        assert math.isfinite(result), "NaN must not propagate"
+        assert result is None or math.isfinite(result), "NaN must not propagate"
 
     def test_all_weather_vol_contract_bounds(self):
         """All Weather vol must have reasonable bounds."""

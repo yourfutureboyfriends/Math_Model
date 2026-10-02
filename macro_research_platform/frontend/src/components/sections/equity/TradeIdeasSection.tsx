@@ -12,7 +12,7 @@ interface Props {
 }
 
 export function TradeIdeasSection({ data }: Props) {
-  const { data: _apiData, loading: _apiLoading } = useApiData<any>("/api/business/trade-ideas");
+  const { data: _apiData, loading: _apiLoading, error: _apiError } = useApiData<any>("/api/business/trade-ideas");
   // Merge API data into prop: prop takes priority
   if (!data) data = _apiData as any;
   if (!data) return (
@@ -20,7 +20,7 @@ export function TradeIdeasSection({ data }: Props) {
       <div className="section-header">
         <span className="section-title">TRADE IDEAS</span>
         <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>
-          — awaiting data
+          {_apiLoading ? '— loading…' : _apiError ? `— unavailable: ${_apiError.message}` : '— awaiting data'}
         </span>
       </div>
     </div>
@@ -84,7 +84,7 @@ export function TradeIdeasSection({ data }: Props) {
         <span className="section-tag">IDEA</span>
         <h2 className="section-title">Trade Ideas</h2>
         <Badge variant="neutral" className="ml-2">
-          {ideas.length} Active · {(data.risk_budget || 1.0) * 100}% Risk Budget
+          {ideas.length} Active{data.risk_budget != null ? ` · ${Math.round(data.risk_budget * 100)}% Risk Budget` : ''}
         </Badge>
       </div>
 

@@ -393,13 +393,14 @@ export function CommandPalette({
           e.preventDefault();
           onClose();
           break;
-        case 'Tab':
+        case 'Tab': {
           e.preventDefault();
           // Cycle through tabs
           const tabs: ('all' | 'favorites' | 'recent')[] = ['all', 'favorites', 'recent'];
           const currentIndex = tabs.indexOf(activeTab);
           setActiveTab(tabs[(currentIndex + 1) % tabs.length]);
           break;
+        }
       }
     },
     [isOpen, filteredCommands, selectedIndex, onClose, activeTab]
