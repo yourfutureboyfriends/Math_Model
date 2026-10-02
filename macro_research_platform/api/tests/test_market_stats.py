@@ -247,3 +247,22 @@ def test_performance_tracking_hides_accuracy_until_enough_evaluated():
     assert pt["regimeAccuracy"] is None                 # only 3 evaluated
     assert pt["modelAccuracies"] == {"regime_hmm": 0.6}
     assert pt["totalPredictions"] == 1880 and pt["trackingPeriod"] == "2026-05-05 → 2026-10-01"
+
+
+# ── data_fetcher: no fallback values ────────────────────────────────────────────
+
+def test_fetch_metric_unavailable_is_none_and_not_cached():
+    from api import data_fetcher as df_mod
+    df_mod._METRIC_CACHE.pop("growth", None)
+    assert df_mod.fetch_metric("growth", fred_fetch_fn=lambda sid: None, force_refresh=True) is None
+    assert "growth" not in df_mod._METRIC_CACHE            # failure not cached → retried
+    assert df_mod.fetch_metric("growth", fred_fetch_fn=lambda sid: float("nan"), force_refresh=True) is None
+    assert df_mod.fetch_metric("growth", fred_fetch_fn=lambda sid: 999.0, force_refresh=True) is None   # out of hard bounds
+    assert df_mod.fetch_metric("growth", fred_fetch_fn=lambda sid: 2.5, force_refresh=True) == 2.5
+    df_mod._METRIC_CACHE.pop("growth", None)
+
+
+def test_contracts_have_no_fallback_values():
+    from api.data_contracts import CONTRACTS, MetricContract
+    assert not hasattr(MetricContract, "fallback_value")
+    assert all(not hasattr(c, "fallback_value") for c in CONTRACTS.values())

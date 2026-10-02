@@ -28,6 +28,14 @@ _TRADE_PLAYBOOK = {
 }
 
 
+# SPDR sector ETFs used for observed sector relative strength.
+SECTOR_ETFS = {"XLK": "Technology", "XLF": "Financials", "XLE": "Energy", "XLV": "Healthcare",
+               "XLI": "Industrials", "XLP": "Consumer Staples", "XLY": "Consumer Discretionary",
+               "XLU": "Utilities", "XLB": "Materials", "XLRE": "Real Estate", "XLC": "Communication"}
+# Per-asset cap of the risk-parity allocation used for position sizing (policy setting).
+POSITION_CAP = 0.40
+
+
 async def _regime_trades(regime: str) -> list:
     """Playbook trades for `regime` with entry = latest real close. Trades whose price
     can't be fetched are dropped rather than shown with a made-up level."""
@@ -496,168 +504,124 @@ async def get_ic_pack_data() -> Dict[str, Any]:
 
 
 async def get_expected_returns_data() -> Dict[str, Any]:
-    """Get expected returns, conforming to ExpectedReturnsResponse.
+    """Expected returns, conforming to ExpectedReturnsResponse.
 
-    Shape: {returns: [{asset, expectedReturn, confidence, components}], lastUpdated}.
-    Values are capital-market illustrative assumptions (see `components` for the
-    building-block decomposition); confidence reflects estimation uncertainty by asset.
+    The same building-block CMA as the dashboard's long-term forecasts
+    (api/calculations/cma.py), anchored to the live 10Y; components split each return into
+    the 10Y TIPS real yield (FRED DFII10), 10Y breakeven inflation (FRED T10YIE) and the
+    remaining risk premium. TIPS = real yield + breakeven. Empty when the inputs are missing.
     """
+    from api.calculations.cma import longterm_forecasts
+    from api.handlers.macro_inputs import load_macro_inputs, load_fred_series
     logger.info("Fetching expected returns")
-    # asset -> (real_yield, risk_premium, inflation) building blocks (decimal %)
-    blocks = {
-        "US Large Cap":            {"real_yield": 1.8, "risk_premium": 4.4, "inflation": 1.8},
-        "US Small Cap":            {"real_yield": 1.8, "risk_premium": 5.4, "inflation": 1.8},
-        "International Developed":  {"real_yield": 1.5, "risk_premium": 6.7, "inflation": 1.8},
-        "Emerging Markets":        {"real_yield": 2.0, "risk_premium": 8.2, "inflation": 1.8},
-        "US Bonds":                {"real_yield": 1.8, "risk_premium": 0.9, "inflation": 1.8},
-        "TIPS":                    {"real_yield": 1.7, "risk_premium": 0.0, "inflation": 1.8},
-    }
-    conf = {"US Large Cap": "high", "US Small Cap": "medium", "International Developed": "medium",
-            "Emerging Markets": "low", "US Bonds": "high", "TIPS": "high"}
-    returns = [
-        {"asset": a, "expectedReturn": round(sum(c.values()), 2),
-         "confidence": conf[a], "components": c}
-        for a, c in blocks.items()
-    ]
+    inputs = await load_macro_inputs()
+    ten, bill, be = inputs["dgs10"].latest, inputs["dgs3mo"].latest, inputs["breakeven"].latest
+    real = (await load_fred_series(["DFII10"])).get("DFII10")
+    real = real.latest if real else None
+    cma = longterm_forecasts(ten, risk_free=bill)
+    if not cma.get("available") or real is None or be is None:
+        return {"returns": [], "lastUpdated": datetime.now().isoformat()}
+
+    def _conf(c):
+        return "high" if c >= 0.7 else "medium" if c >= 0.5 else "low"
+
+    returns = []
+    for f in cma["forecasts"]:
+        er = f["expectedReturn"]
+        returns.append({"asset": f["assetClass"], "expectedReturn": er, "confidence": _conf(f["confidence"]),
+                        "components": {"real_yield": round(real, 2), "inflation": round(be, 2),
+                                       "risk_premium": round(er - real - be, 2)}})
+    returns.append({"asset": "TIPS", "expectedReturn": round(real + be, 2), "confidence": "high",
+                    "components": {"real_yield": round(real, 2), "inflation": round(be, 2), "risk_premium": 0.0}})
     return {"returns": returns, "lastUpdated": datetime.now().isoformat()}
 
 
 async def get_position_sizing_data() -> Dict[str, Any]:
-    """Get position-sizing recommendations, conforming to PositionSizingResponse.
-
-    Shape: {recommendations: [{asset, size, maxSize, confidence}], lastUpdated}.
-    `size` is the regime/risk-adjusted target weight, `maxSize` the position cap,
-    `confidence` a 0-1 conviction.
-    """
+    """Position sizing, conforming to PositionSizingResponse: the dashboard's inverse-vol
+    risk-parity weights (SPY/TLT/GLD/DBC, real 60d volatility). `maxSize` is the per-asset
+    cap of this allocation (a policy setting); `confidence` is the 3m trend t-stat / 3,
+    capped at 1. Empty when price history is unavailable."""
+    from api.handlers.dashboard_handler import get_dashboard_data
     logger.info("Fetching position sizing")
-    # asset -> (target size, cap, conviction 0-1)
-    rows = {
-        "SPY":  (0.22, 0.30, 0.75), "QQQ": (0.13, 0.25, 0.60), "TLT": (0.12, 0.25, 0.55),
-        "GLD":  (0.18, 0.25, 0.65), "HYG": (0.08, 0.20, 0.50), "Cash": (0.27, 1.00, 0.90),
-    }
+    dashboard = await get_dashboard_data(mode="live")
+    rp = dashboard.riskParityAllocation or {}
     recommendations = [
-        {"asset": a, "size": s, "maxSize": mx, "confidence": cf}
-        for a, (s, mx, cf) in rows.items()
+        {"asset": h["ticker"], "size": h["baseWeight"], "maxSize": POSITION_CAP,
+         "confidence": round(min(abs(h.get("signalScore") or 0.0), 3.0) / 3.0, 2)}
+        for h in rp.get("holdings", [])
     ]
     return {"recommendations": recommendations, "lastUpdated": datetime.now().isoformat()}
 
 
 async def get_scenario_data() -> Dict[str, Any]:
-    """Get scenario analysis data for bull/base/bear cases.
-
-    Returns probability-weighted expected returns for three scenarios
-    based on current regime and macro conditions.
-    """
-    from api.calculations import get_regime_characteristics
+    """Scenario analysis from history: next-month growth×inflation quadrant probabilities
+    (empirical transition matrix, FRED since 1985) × the historical annualized 60/40 return
+    in each quadrant, with 95% CIs — the dashboard's expectedReturns.next12Months. Empty
+    scenarios when the monthly history is unavailable."""
     from api.handlers.dashboard_handler import get_dashboard_data
-
-    # Use the dashboard's regime (real growth/inflation/liquidity inputs) rather than
-    # recomputing it here from fallback values.
     dashboard = await get_dashboard_data(mode="live")
-    regime = (dashboard.regime.current or "expansion").lower()
-    confidence = dashboard.regime.confidenceScore
-    vix = dashboard.keyMetrics.vix
-
-    # Scenario probabilities based on regime confidence and VIX level
-    if vix is not None and vix < 20 and confidence > 0.7:
-        bull_prob = 0.45
-        base_prob = 0.40
-        bear_prob = 0.15
-    elif (vix is not None and vix > 25) or confidence < 0.5:
-        bull_prob = 0.25
-        base_prob = 0.45
-        bear_prob = 0.30
-    else:
-        bull_prob = 0.35
-        base_prob = 0.40
-        bear_prob = 0.25
-
-    # Get regime characteristics for context
-    regime_chars = get_regime_characteristics(regime)
-
-    return {
-        "regime": regime,
-        "scenarios": [
-            {
-                "scenario": "Bull Case",
-                "probability": bull_prob,
-                "expectedReturn": 0.15 if regime_chars.equity_bias == "overweight" else 0.10,
-                "confidenceInterval": [0.05, 0.25],
-                "description": f"Strong {regime} conditions persist. Fed policy remains accommodative, earnings growth surprises to the upside.",
-                "trigger": f"VIX stays below 20, {regime} regime extends 6+ months",
-                "regime_shift": "contraction" if regime == "expansion" else "recovery"
-            },
-            {
-                "scenario": "Base Case",
-                "probability": base_prob,
-                "expectedReturn": 0.06,
-                "confidenceInterval": [-0.05, 0.17],
-                "description": f"{regime} continues with typical volatility. Earnings meet expectations, multiples normalize.",
-                "trigger": "Current conditions persist without major shocks",
-                "regime_shift": regime
-            },
-            {
-                "scenario": "Bear Case",
-                "probability": bear_prob,
-                "expectedReturn": -0.12 if regime_chars.equity_bias == "underweight" else -0.08,
-                "confidenceInterval": [-0.25, 0.05],
-                "description": f"Macro deterioration accelerates. Credit stress emerges, earnings miss by 10%+.",
-                "trigger": f"VIX spikes above 30, {regime} regime breaks down",
-                "regime_shift": "contraction"
-            }
-        ],
-        "timestamp": datetime.now().isoformat()
-    }
+    er = dashboard.expectedReturns
+    current = er.currentQuadrant if er else None
+    scenarios = []
+    for sc in (er.next12Months if er else []):
+        q = sc["scenario"]
+        scenarios.append({
+            "scenario": q if q != current else f"{q} (stay)",
+            "probability": sc["probability"],
+            "expectedReturn": sc["expectedReturn"],
+            "confidenceInterval": sc["confidenceInterval"],
+            "description": (f"Historical annualized 60/40 (SPY/TLT) return in {q} months "
+                            f"({sc.get('months')} months since inception of the ETFs)."),
+            "trigger": (f"Growth/inflation quadrant {'stays' if q == current else 'moves to'} {q} "
+                        f"next month (empirical probability {sc['probability']:.0%})."),
+            "regime_shift": q,
+        })
+    return {"regime": (dashboard.regime.current or "").lower() or None,
+            "quadrant": current,
+            "scenarios": scenarios,
+            "methodology": er.methodology if er else None,
+            "timestamp": datetime.now().isoformat()}
 
 
 async def get_equity_research_data() -> Dict[str, Any]:
-    """Get equity research data including stock picks and sector recommendations.
-
-    Returns curated equity research with ratings, price targets, and thesis.
-    """
+    """Sector ratings from observed relative strength: each SPDR sector ETF's 3-month
+    return vs SPY, as a percentile of the past year (≥ 0.66 Overweight, ≤ 0.34 Underweight).
+    No stock picks: no research / price-target source is configured, and invented targets
+    would be presented as research."""
+    import asyncio
+    from api.calculations import market_stats as ms
     from api.handlers.dashboard_handler import get_dashboard_data
+    from api.handlers.market_handler import _fetch_dated_closes_literal
 
-    # Regime context — the dashboard's regime, so both views always agree.
     dashboard = await get_dashboard_data(mode="live")
-    regime = (dashboard.regime.current or "expansion").lower()
-
-    # Sector ratings based on regime
-    sector_ratings = {
-        "expansion": {"Technology": "Overweight", "Financials": "Overweight", "Energy": "Neutral"},
-        "goldilocks": {"Technology": "Overweight", "Healthcare": "Overweight", "Utilities": "Underweight"},
-        "reflation": {"Energy": "Overweight", "Materials": "Overweight", "Technology": "Neutral"},
-        "contraction": {"Utilities": "Overweight", "Healthcare": "Overweight", "Technology": "Underweight"},
-        "slowdown": {"Healthcare": "Overweight", "Consumer Staples": "Overweight", "Energy": "Underweight"},
-    }.get(regime, {"Technology": "Neutral", "Healthcare": "Neutral", "Financials": "Neutral"})
-
-    # Stock picks based on regime
-    stock_picks = {
-        "expansion": [
-            {"ticker": "AAPL", "name": "Apple Inc.", "rating": "Buy", "target": 220, "current": 195, "thesis": "Services growth + AI iPhone cycle"},
-            {"ticker": "NVDA", "name": "NVIDIA Corp.", "rating": "Buy", "target": 950, "current": 875, "thesis": "AI infrastructure demand remains strong"},
-            {"ticker": "MSFT", "name": "Microsoft", "rating": "Buy", "target": 480, "current": 425, "thesis": "Cloud growth + Copilot monetization"},
-        ],
-        "contraction": [
-            {"ticker": "JNJ", "name": "Johnson & Johnson", "rating": "Buy", "target": 180, "current": 165, "thesis": "Defensive healthcare, stable cash flows"},
-            {"ticker": "PG", "name": "Procter & Gamble", "rating": "Buy", "target": 175, "current": 168, "thesis": "Consumer staples resilience"},
-            {"ticker": "KO", "name": "Coca-Cola", "rating": "Hold", "target": 65, "current": 62, "thesis": "Defensive characteristics, pricing power"},
-        ],
-        "goldilocks": [
-            {"ticker": "GOOGL", "name": "Alphabet", "rating": "Buy", "target": 195, "current": 175, "thesis": "Search + Cloud double play"},
-            {"ticker": "AMZN", "name": "Amazon", "rating": "Buy", "target": 200, "current": 185, "thesis": "AWS growth + retail margin expansion"},
-            {"ticker": "META", "name": "Meta", "rating": "Buy", "target": 550, "current": 505, "thesis": "AI efficiency + Reels monetization"},
-        ],
-    }.get(regime, [
-        {"ticker": "SPY", "name": "SPDR S&P 500", "rating": "Hold", "target": 600, "current": 580, "thesis": "Market beta exposure"},
-        {"ticker": "QQQ", "name": "Invesco QQQ", "rating": "Hold", "target": 500, "current": 485, "thesis": "Tech beta exposure"},
-    ])
-
+    regime = (dashboard.regime.current or "").lower() or None
+    tickers = ["SPY"] + list(SECTOR_ETFS)
+    dated = await asyncio.gather(*[_fetch_dated_closes_literal(t) for t in tickers], return_exceptions=True)
+    px = {t: d for t, d in zip(tickers, dated) if isinstance(d, dict) and d}
+    ratings, detail = {}, []
+    if "SPY" in px:
+        for etf, sector in SECTOR_ETFS.items():
+            if etf not in px:
+                continue
+            _, al = ms.align_dated({etf: px[etf], "SPY": px["SPY"]})
+            rs = ms.relative_strength_score(al[etf], al["SPY"])
+            if not rs:
+                continue
+            pct = rs["percentile"]
+            rating = "Overweight" if pct >= 0.66 else "Underweight" if pct <= 0.34 else "Neutral"
+            ratings[sector] = rating
+            detail.append({"sector": sector, "etf": etf, "rating": rating,
+                           "relativeReturn3m": round(rs["relativeReturn"], 4), "percentile": round(pct, 2)})
+    leaders = [d["sector"] for d in sorted(detail, key=lambda d: d["relativeReturn3m"], reverse=True)[:3]]
     return {
         "regime": regime,
-        "sectorRatings": sector_ratings,
-        "stockPicks": stock_picks,
-        "marketCommentary": f"Current {regime} regime supports {'growth-oriented' if regime in ['expansion', 'goldilocks'] else 'defensive'} positioning.",
-        "lastUpdated": datetime.now().isoformat()
+        "sectorRatings": ratings,
+        "sectors": detail,
+        "stockPicks": [],
+        "marketCommentary": (f"3-month sector leaders vs SPY: {', '.join(leaders)}." if leaders
+                             else "Sector price history unavailable."),
+        "methodology": "Sector ETF 3m return minus SPY, percentile within its past year (Yahoo daily closes).",
+        "lastUpdated": datetime.now().isoformat(),
     }
 
 

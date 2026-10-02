@@ -360,17 +360,19 @@ async def _regime_watcher_loop():
             regime_data = None
             current_regime = None
 
+            # The headline regime from the last dashboard built from live data (no
+            # fetch here). Nothing cached yet → nothing to announce; never a regime
+            # computed from default growth/inflation values.
             try:
-                from api.regime_context import build_regime_context
-                from api.data_fetcher import _METRIC_CACHE
-                growth = _METRIC_CACHE.get("growth", (2.0, 0))[0]
-                inflation = _METRIC_CACHE.get("inflation", (3.3, 0))[0]
-                regime_ctx = build_regime_context(growth_val=growth, inflation_val=inflation)
-                current_regime = regime_ctx.regime
-                regime_data = {"regime": current_regime, "confidence": regime_ctx.confidence}
-            except Exception:
-                current_regime = "unknown"
-                regime_data = {"regime": "unknown"}
+                from api.handlers.dashboard_handler import _DASHBOARD_CACHE
+                cached = _DASHBOARD_CACHE.get("live")
+                if cached:
+                    dash = cached[1]
+                    current_regime = dash.regime.current
+                    regime_data = {"regime": current_regime,
+                                   "confidence": dash.regime.confidenceScore}
+            except Exception as e:
+                logging.debug(f"[WebSocket] dashboard regime unavailable: {e}")
 
             if current_regime and current_regime != _last_known_regime:
                 _last_known_regime = current_regime

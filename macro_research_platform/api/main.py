@@ -895,18 +895,19 @@ def get_regime_data(df: Optional[pd.DataFrame] = None) -> RegimeData:
 
 def _get_hy_spread_bps(df: pd.DataFrame) -> float:
     """
-    # FIXED: Unified HY spread source-of-truth with contract-based validation.
-    FRED returns BAMLH0A0HYM2 as percentage (e.g., 2.86).
-    We convert to basis points (e.g., 286) for consistency across the app.
+    Unified HY spread source-of-truth with contract-based validation.
+    FRED returns BAMLH0A0HYM2 as percentage (e.g., 2.86), converted to basis points
+    (e.g., 286). NaN when the series is missing or implausible.
     """
     from api.data_contracts import CONTRACTS
     contract = CONTRACTS["hy_spread"]
 
     hy = _get(df, "hy_spreads", "high_yield_spread", "baa_credit_spread")
 
+    # Unavailable → NaN (every caller guards with np.isnan / `> 0`), never a placeholder level.
     if np.isnan(hy):
-        logger.warning(f"[HY_SPREAD] No data, using fallback {contract.fallback_value}")
-        return contract.fallback_value
+        logger.warning("[HY_SPREAD] No data — unavailable")
+        return float("nan")
 
     # If value < 10, it's likely in percentage format (e.g., 2.86), convert to bps
     if hy < 10:
@@ -914,8 +915,8 @@ def _get_hy_spread_bps(df: pd.DataFrame) -> float:
 
     # Hard bounds check
     if not (contract.hard_min <= hy <= contract.hard_max):
-        logger.warning(f"[HY_SPREAD] {hy} outside bounds [{contract.hard_min}, {contract.hard_max}], using fallback")
-        return contract.fallback_value
+        logger.warning(f"[HY_SPREAD] {hy} outside bounds [{contract.hard_min}, {contract.hard_max}] — rejected")
+        return float("nan")
 
     return float(hy)
 
@@ -1539,18 +1540,16 @@ async def health_check():
         from api.data_fetcher import fetch_metric
         # Wire in the live FRED fetcher — without it fetch_metric has no source and
         # always falls back, spamming "ALL SOURCES FAILED" on every health poll.
-        try:
-            growth = fetch_metric("growth", fred_fetch_fn=_fetch_fresh_fred_value)
-            if not (-15 <= growth <= 15):
-                integrity_errors.append(f"Growth {growth}% out of bounds")
-        except Exception as e:
-            pass
-        try:
-            inflation = fetch_metric("inflation", fred_fetch_fn=_fetch_fresh_fred_value)
-            if not (-5 <= inflation <= 25):
-                integrity_errors.append(f"Inflation {inflation}% out of bounds")
-        except Exception as e:
-            pass
+        for _name, _lo, _hi in (("growth", -15, 15), ("inflation", -5, 25)):
+            try:
+                _v = fetch_metric(_name, fred_fetch_fn=_fetch_fresh_fred_value)
+            except Exception as e:
+                _v = None
+                logger.debug(f"[health] {_name} fetch failed: {e}")
+            if _v is None:
+                integrity_errors.append(f"{_name.title()} unavailable (all sources failed)")
+            elif not (_lo <= _v <= _hi):
+                integrity_errors.append(f"{_name.title()} {_v}% out of bounds")
         if integrity_errors:
             integrity_status = "DEGRADED"
 

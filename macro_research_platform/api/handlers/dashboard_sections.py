@@ -660,8 +660,10 @@ def _z_of(inp: SectionInputs, key: str, lookback: int, pct: bool = True) -> Opti
     return ms.change_zscore(vals, lookback, pct=pct) if vals else None
 
 
-def _trend_word(change: float) -> str:
-    return "rising" if change > 0 else "falling" if change < 0 else "flat"
+def _trend_word(z: float) -> str:
+    """Direction of a move relative to its usual size (the z-score sign), which is what
+    decides whether a loop is reinforcing — so the arrows agree with the activation."""
+    return "rising" if z > 0 else "falling" if z < 0 else "flat"
 
 
 def build_reflexivity(inp: SectionInputs, regime_name: str, now) -> Optional[Dict[str, Any]]:
@@ -673,15 +675,15 @@ def build_reflexivity(inp: SectionInputs, regime_name: str, now) -> Optional[Dic
     defs = [
         # id, name, cause (label, z), effect (label, z), reinforcing sign (+1: same direction)
         ("equity-credit", "Equity prices ↔ credit spreads (collateral loop)",
-         ("S&P 500 3m return", _z_of(inp, "SPX", 63)), ("HY OAS 3m change", hy_z), -1,
+         ("S&P 500 3m return vs past year", _z_of(inp, "SPX", 63)), ("HY OAS 3m change vs past year", hy_z), -1,
          "Higher equity prices ease credit (tighter spreads), which supports further equity gains — and the reverse in a sell-off.",
          "Spreads stop moving against equities (either |z| < 1)."),
         ("vol-deleveraging", "Volatility ↔ deleveraging",
-         ("VIX 1m change", _z_of(inp, "VIX", 21)), ("S&P 500 1m return", _z_of(inp, "SPX", 21)), -1,
+         ("VIX 1m change vs past year", _z_of(inp, "VIX", 21)), ("S&P 500 1m return vs past year", _z_of(inp, "SPX", 21)), -1,
          "Rising volatility forces vol-targeting / risk-parity deleveraging, pushing prices down and volatility up (or a vol-selling melt-up in reverse).",
          "VIX and equity moves revert inside ±1σ."),
         ("dollar-conditions", "US dollar ↔ global financial conditions",
-         ("DXY 3m change", _z_of(inp, "DXY", 63)), ("Euro Stoxx 50 3m return", _z_of(inp, "STOXX50", 63)), -1,
+         ("DXY 3m change vs past year", _z_of(inp, "DXY", 63)), ("Euro Stoxx 50 3m return vs past year", _z_of(inp, "STOXX50", 63)), -1,
          "A stronger dollar tightens global dollar funding, weighing on non-US risk assets, which pushes capital back into dollars.",
          "Dollar and non-US equities stop moving in opposite directions."),
     ]
@@ -694,8 +696,10 @@ def build_reflexivity(inp: SectionInputs, regime_name: str, now) -> Optional[Dic
         strength = min(abs(cz["z"]), abs(ez["z"])) / 3.0 if reinforcing else 0.0
         loops.append({
             "id": lid, "loop": name, "active": active, "strength": round(min(strength, 1.0), 2),
-            "variables": {"cause": {"name": cname, "trend": _trend_word(cz["change"]), "z": round(cz["z"], 2)},
-                          "effect": {"name": ename, "trend": _trend_word(ez["change"]), "z": round(ez["z"], 2)}},
+            "variables": {"cause": {"name": cname, "trend": _trend_word(cz["z"]), "z": round(cz["z"], 2),
+                                    "change": round(cz["change"], 4)},
+                          "effect": {"name": ename, "trend": _trend_word(ez["z"]), "z": round(ez["z"], 2),
+                                     "change": round(ez["change"], 4)}},
             "implication": implication,
             "interpretation": f"{cname} z {cz['z']:+.2f}, {ename} z {ez['z']:+.2f}"
                               + (" — reinforcing" if reinforcing else " — not reinforcing"),
@@ -723,12 +727,13 @@ def build_reflexivity(inp: SectionInputs, regime_name: str, now) -> Optional[Dic
 
 # ── Pure alpha: cross-asset momentum z-scores ───────────────────────────────────
 
+# (display name, category, price key, short label used in trade ideas)
 _ALPHA_UNIVERSE = [
-    ("S&P 500", "equity", "SPX"), ("Nasdaq 100", "equity", "NDX"),
-    ("Euro Stoxx 50", "equity", "STOXX50"), ("Nikkei 225", "equity", "N225"),
-    ("Long Treasuries (TLT)", "rates", "TLT"), ("10Y note future", "rates", "TY"),
-    ("Gold", "commodity", "GC"), ("Crude oil", "commodity", "CL"),
-    ("Commodities (DBC)", "commodity", "DBC"), ("US dollar (DXY)", "fx", "DXY"),
+    ("S&P 500", "equity", "SPX", "S&P 500"), ("Nasdaq 100", "equity", "NDX", "Nasdaq 100"),
+    ("Euro Stoxx 50", "equity", "STOXX50", "Euro Stoxx 50"), ("Nikkei 225", "equity", "N225", "Nikkei"),
+    ("Long Treasuries (TLT)", "rates", "TLT", "TLT"), ("10Y note future", "rates", "TY", "10Y notes"),
+    ("Gold", "commodity", "GC", "gold"), ("Crude oil", "commodity", "CL", "crude"),
+    ("Commodities (DBC)", "commodity", "DBC", "DBC"), ("US dollar (DXY)", "fx", "DXY", "USD"),
 ]
 
 
@@ -736,14 +741,14 @@ def build_pure_alpha(inp: SectionInputs, now) -> Optional[Dict[str, Any]]:
     """Cross-asset signals: each instrument's 3-month return as a z-score vs its own past
     year of rolling 3-month returns (time-series momentum)."""
     signals = []
-    for name, cat, key in _ALPHA_UNIVERSE:
+    for name, cat, key, short in _ALPHA_UNIVERSE:
         closes = inp.closes(key)
         cz = ms.change_zscore(closes, ms.TRADING_DAYS_3M) if closes else None
         if cz is None:
             continue
         z = cz["z"]
         signals.append({
-            "name": name, "category": cat,
+            "name": name, "category": cat, "label": short,
             "direction": "long" if z > 0 else "short" if z < 0 else "neutral",
             "zScore": round(z, 2),
             "percentile": round(cz["percentile"] * 100),
@@ -755,7 +760,7 @@ def build_pure_alpha(inp: SectionInputs, now) -> Optional[Dict[str, Any]]:
         return None
     intensity = sum(min(abs(s["zScore"]), 3.0) / 3.0 for s in signals) / len(signals)
     ranked = sorted(signals, key=lambda s: abs(s["zScore"]), reverse=True)
-    ideas = [f"{'Long' if s['zScore'] > 0 else 'Short'} {s['name']}" for s in ranked if abs(s["zScore"]) >= 1][:3]
+    ideas = [f"{'Long' if s['zScore'] > 0 else 'Short'} {s['label']}" for s in ranked if abs(s["zScore"]) >= 1][:3]
     n_strong = sum(1 for s in signals if s["strength"] != "weak")
     regime = "trending" if intensity >= 0.33 else "quiet"
     return {

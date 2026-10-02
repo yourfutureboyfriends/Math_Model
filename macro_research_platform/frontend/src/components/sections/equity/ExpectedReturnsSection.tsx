@@ -71,7 +71,7 @@ export function ExpectedReturnsSection({ data }: ExpectedReturnsSectionProps) {
         {/* Scenario Analysis */}
         <div className="border border-border bg-surface-1">
           <div className="px-3 py-1.5 border-b border-border-subtle bg-surface-2">
-            <span className="text-2xs text-text-tertiary uppercase tracking-wider">Next 12 Months Scenarios</span>
+            <span className="text-2xs text-text-tertiary uppercase tracking-wider">Scenarios · next-month quadrant × historical annual 60/40 return</span>
           </div>
           <div className="p-2 space-y-3">
             {next12Months.length === 0 ? (
