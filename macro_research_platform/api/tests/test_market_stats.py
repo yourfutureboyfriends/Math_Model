@@ -174,16 +174,6 @@ def test_change_zscore_flags_outsized_move():
     assert ms.change_zscore(calm[:30], 21) is None
 
 
-def test_quadrant_history_names_and_lag():
-    months = [f"2020-{m:02d}" for m in range(1, 9)]
-    growth = [1, 1, 1, 2, 3, 4, 3, 2]       # rising, then falling
-    cpi = [2, 2, 2, 1, 1, 1, 2, 3]          # falling, then rising
-    hist = dict(ms.quadrant_history(months, growth, cpi, lag=3))
-    assert hist["2020-04"] == "Goldilocks"      # g 1→2 up, cpi 2→1 down
-    assert hist["2020-08"] == "Stagflation"     # g 3→2 down, cpi 1→3 up
-    assert "2020-01" not in hist
-
-
 def test_conditional_return_stats_uses_lagged_label():
     months = [f"{y}-{m:02d}" for y in range(2000, 2006) for m in range(1, 13)]
     closes, level = {}, 100.0

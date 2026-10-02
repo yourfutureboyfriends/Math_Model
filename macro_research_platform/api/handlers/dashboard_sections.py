@@ -774,11 +774,15 @@ def build_pure_alpha(inp: SectionInputs, now) -> Optional[Dict[str, Any]]:
 # ── Regime transitions & regime-conditional returns (monthly FRED panel) ────────
 
 def _quadrant_labels(inp: SectionInputs) -> Optional[List[tuple]]:
+    """[(YYYY-MM, quadrant)] from the shared monthly classifier
+    (api.calculations.regime.quadrant_regime_history — the same one /api/v1/regime-transition
+    uses), so both panels agree."""
+    from api.calculations.regime import quadrant_regime_history
     df = inp.monthly_macro
     if df is None or getattr(df, "empty", True) or "growth_yoy" not in df or "cpi_yoy" not in df:
         return None
-    months = [ts.strftime("%Y-%m") for ts in df.index]
-    hist = ms.quadrant_history(months, df["growth_yoy"].tolist(), df["cpi_yoy"].tolist())
+    q = quadrant_regime_history(df["growth_yoy"], df["cpi_yoy"])
+    hist = [(ts.strftime("%Y-%m"), r) for ts, r in zip(q.index, q["regime"])]
     return hist or None
 
 
@@ -811,8 +815,8 @@ def build_regime_transitions(inp: SectionInputs, cycle_regime: str, now) -> Opti
         "monthsAnalysed": tm["observations"],
         "warning": (f"{first['regime']} is {first['prob']:.0%} likely next month"
                     if first and first["prob"] >= 0.3 else ""),
-        "taxonomy": "growth×inflation quadrant (3-month direction of INDPRO YoY and CPI YoY) — "
-                    "a complementary lens to the headline cycle regime",
+        "taxonomy": "growth×inflation quadrant (sign of rolling 36M z-scores of INDPRO YoY and "
+                    "CPI YoY) — a complementary lens to the headline cycle regime",
         "source": "FRED INDPRO, CPIAUCSL (monthly, since 1985)",
         "lastUpdated": now.isoformat(),
     }

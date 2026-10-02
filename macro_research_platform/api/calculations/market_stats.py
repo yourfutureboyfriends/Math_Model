@@ -229,21 +229,6 @@ def change_zscore(values: Sequence[float], lookback: int, history: int = TRADING
             "percentile": float((ref < current).mean())}
 
 
-def quadrant_history(months: Sequence[str], growth_yoy: Sequence[float],
-                     cpi_yoy: Sequence[float], lag: int = 3) -> List[Tuple[str, str]]:
-    """[(month, quadrant)] from the direction of growth and inflation: the `lag`-month
-    change of each YoY series (rising / falling), named as in api.calculations.quadrants
-    (Reflation, Goldilocks, Stagflation, Deflation). Months with missing data are skipped."""
-    from api.calculations.quadrants import classify_quadrant
-    out = []
-    for i in range(lag, len(months)):
-        g0, g1, c0, c1 = growth_yoy[i - lag], growth_yoy[i], cpi_yoy[i - lag], cpi_yoy[i]
-        if any(x is None or x != x for x in (g0, g1, c0, c1)):
-            continue
-        out.append((months[i], classify_quadrant(g1 - g0, c1 - c0)))
-    return out
-
-
 def conditional_return_stats(monthly_closes: Mapping[str, float],
                              labels: Mapping[str, str], label: str,
                              label_lag: int = 2) -> Optional[Dict[str, float]]:
