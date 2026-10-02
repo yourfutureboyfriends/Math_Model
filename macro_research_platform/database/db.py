@@ -977,8 +977,32 @@ def insert_forecast(
     Returns:
         The new forecast ID
     """
+    now = datetime.utcnow()
+    params_json = json.dumps(model_params) if model_params else None
+    features_json = json.dumps(features_used) if features_used else None
     with get_db() as conn:
         cursor = conn.cursor()
+        # One forecast per (model, forecast_date, horizon) per day: callers log on every
+        # request (the regime endpoint produced ~1,850 identical rows), so a repeat on the
+        # same day updates that day's row with the latest prediction instead of inserting.
+        cursor.execute("""
+            SELECT id FROM forecast_history
+            WHERE model_name = ? AND forecast_date = ? AND horizon IS ?
+              AND substr(forecast_timestamp, 1, 10) = ?
+            ORDER BY id DESC LIMIT 1
+        """, (model_name, forecast_date, horizon, now.strftime("%Y-%m-%d")))
+        row = cursor.fetchone()
+        if row:
+            cursor.execute("""
+                UPDATE forecast_history
+                SET forecast_timestamp = ?, predicted_value = ?, predicted_class = ?,
+                    confidence_lower = ?, confidence_upper = ?, model_version = ?,
+                    model_params = ?, features_used = ?
+                WHERE id = ?
+            """, (now.isoformat(), predicted_value, predicted_class, confidence_lower,
+                  confidence_upper, model_version, params_json, features_json, row[0]))
+            conn.commit()
+            return row[0]
         cursor.execute("""
             INSERT INTO forecast_history
             (model_name, forecast_timestamp, forecast_date, horizon,
@@ -987,7 +1011,7 @@ def insert_forecast(
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             model_name,
-            datetime.utcnow().isoformat(),
+            now.isoformat(),
             forecast_date,
             horizon,
             predicted_value,
@@ -995,8 +1019,8 @@ def insert_forecast(
             confidence_lower,
             confidence_upper,
             model_version,
-            json.dumps(model_params) if model_params else None,
-            json.dumps(features_used) if features_used else None
+            params_json,
+            features_json
         ))
         conn.commit()
         return cursor.lastrowid

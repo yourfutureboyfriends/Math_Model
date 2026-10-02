@@ -300,7 +300,10 @@ class PortfolioValidator:
 
                 # Parse weights JSON
                 if not df.empty and 'weights' in df.columns:
-                    df['weights'] = df['weights'].apply(lambda x: json.loads(x) if x else {})
+                    # NULL -> NaN (truthy float) from pandas; only parse real JSON strings.
+                    df['weights'] = df['weights'].apply(
+                        lambda x: json.loads(x) if isinstance(x, str) and x.strip() else
+                        (x if isinstance(x, dict) else {}))
 
                 if len(df) < min_observations:
                     self._logger.warning(

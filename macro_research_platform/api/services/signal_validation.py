@@ -478,10 +478,20 @@ class SignalValidator:
         if 'overrides_active' not in df.columns or 'market_return_1m' not in df.columns:
             return None
 
-        # Parse overrides_active JSON
-        df['has_override'] = df['overrides_active'].apply(
-            lambda x: override_name in json.loads(x) if x else False
-        )
+        # Parse overrides_active JSON. NULL rows arrive from pandas as NaN (a truthy float),
+        # so only parse real strings; an already-decoded list is used as-is.
+        def _overrides(x):
+            if isinstance(x, (list, tuple, set)):
+                return x
+            if isinstance(x, str) and x.strip():
+                try:
+                    v = json.loads(x)
+                    return v if isinstance(v, (list, dict)) else []
+                except ValueError:
+                    return []
+            return []
+
+        df['has_override'] = df['overrides_active'].apply(lambda x: override_name in _overrides(x))
 
         triggered = df[df['has_override'] == True]
 

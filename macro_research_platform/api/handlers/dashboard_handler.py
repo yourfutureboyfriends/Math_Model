@@ -312,6 +312,24 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     recession_history = [{"date": p["date"], "probability": round(p["rec"], 4)}
                          for p in points if p["rec"] is not None]
 
+    # Record today's recession forecast for the validation diagnostics (one row per day —
+    # the logger upserts). Best-effort: a logging failure never affects the dashboard.
+    if recession_data["probability"] is not None:
+        def _log_recession():
+            try:
+                from api.services.recession_validation import recession_validator
+                recession_validator.log_recession_forecast(
+                    date=now.strftime("%Y-%m-%d"), horizon="12M",
+                    components={"logistic": recession_data["logisticProb"],
+                                "probit": recession_data["emProbitProb"], "sahm": None},
+                    blended_probability=recession_data["probability"],
+                    metadata={"model": recession_data.get("model"),
+                              "spread_3m10y_pp": round(spread_3m10y_now, 3),
+                              "fed_funds": fed_rate, "sahm_value": sahm_value})
+            except Exception as e:
+                logger.debug(f"[dashboard_handler] recession forecast log failed: {e}")
+        _dash_asyncio.get_running_loop().run_in_executor(None, _log_recession)
+
     # Generate sector allocation
     sector_allocation = calculate_sector_allocation(regime_name, growth_score, inflation_score)
 

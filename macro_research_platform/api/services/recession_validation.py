@@ -148,6 +148,23 @@ class RecessionValidator:
                     )
                 """)
 
+                # One row per (date, horizon): a repeat log updates it instead of inserting.
+                cursor.execute(
+                    "SELECT id FROM recession_forecast_history WHERE date = ? AND horizon = ? "
+                    "ORDER BY id DESC LIMIT 1", (date, horizon))
+                existing = cursor.fetchone()
+                if existing:
+                    cursor.execute("""
+                        UPDATE recession_forecast_history
+                        SET recorded_at = ?, logistic_prob = ?, probit_prob = ?, sahm_prob = ?,
+                            blended_prob = ?, metadata = ?
+                        WHERE id = ?
+                    """, (datetime.utcnow().isoformat(), components.get('logistic'),
+                          components.get('probit'), components.get('sahm'), blended_probability,
+                          json.dumps(metadata) if metadata else None, existing[0]))
+                    conn.commit()
+                    return existing[0]
+
                 cursor.execute("""
                     INSERT INTO recession_forecast_history (
                         date, recorded_at, horizon,
