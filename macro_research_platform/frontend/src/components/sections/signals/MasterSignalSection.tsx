@@ -92,7 +92,9 @@ export function MasterSignalSection({ data }: MasterSignalSectionProps) {
             {signal}
           </div>
           <div className="text-xs text-text-secondary mt-0.5">
-            {`${modelDots.length} model${modelDots.length === 1 ? '' : 's'} · ${weightingLabel}`}
+            {modelDots.length > 0
+              ? `${modelDots.length} model${modelDots.length === 1 ? '' : 's'} · ${weightingLabel}`
+              : weightingLabel}
           </div>
         </div>
 
