@@ -330,7 +330,10 @@ export interface SectorAllocationData {
 
 export interface Sector {
   name: string;
-  score: number;
+  /** Relative-strength rank vs SPY mapped to -1..+1; null when price data is unavailable. */
+  score: number | null;
+  /** z-score of the sector's 3m return vs SPY within its past year. */
+  z_score?: number | null;
   signal: 'Overweight' | 'Slight Overweight' | 'Neutral' | 'Slight Underweight' | 'Underweight';
   conviction: 'High' | 'Medium' | 'Low';
   rationale: string;

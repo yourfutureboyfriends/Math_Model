@@ -504,35 +504,23 @@ async def get_ic_pack_data() -> Dict[str, Any]:
 
 
 async def get_expected_returns_data() -> Dict[str, Any]:
-    """Expected returns, conforming to ExpectedReturnsResponse.
-
-    The same building-block CMA as the dashboard's long-term forecasts
-    (api/calculations/cma.py), anchored to the live 10Y; components split each return into
-    the 10Y TIPS real yield (FRED DFII10), 10Y breakeven inflation (FRED T10YIE) and the
-    remaining risk premium. TIPS = real yield + breakeven. Empty when the inputs are missing.
-    """
-    from api.calculations.cma import longterm_forecasts
-    from api.handlers.macro_inputs import load_macro_inputs, load_fred_series
+    """Expected returns, conforming to ExpectedReturnsResponse — the dashboard's long-term
+    CMA (gmoForecasts): equities = ETF earnings yield + 10Y breakeven, bonds = 10Y yield.
+    `components` are those building blocks; TIPS = 10Y real yield (FRED DFII10) + breakeven.
+    `confidence` is "unrated" — forecast uncertainty is not modelled. Empty when unavailable."""
+    from api.handlers.dashboard_handler import get_dashboard_data
+    from api.handlers.macro_inputs import load_fred_series
     logger.info("Fetching expected returns")
-    inputs = await load_macro_inputs()
-    ten, bill, be = inputs["dgs10"].latest, inputs["dgs3mo"].latest, inputs["breakeven"].latest
+    dashboard = await get_dashboard_data(mode="live")
+    cma = dashboard.gmoForecasts or {}
+    returns = [{"asset": f["assetClass"], "expectedReturn": f["expectedReturn"],
+                "confidence": "unrated", "components": f.get("components") or {}}
+               for f in cma.get("forecasts", [])]
     real = (await load_fred_series(["DFII10"])).get("DFII10")
-    real = real.latest if real else None
-    cma = longterm_forecasts(ten, risk_free=bill)
-    if not cma.get("available") or real is None or be is None:
-        return {"returns": [], "lastUpdated": datetime.now().isoformat()}
-
-    def _conf(c):
-        return "high" if c >= 0.7 else "medium" if c >= 0.5 else "low"
-
-    returns = []
-    for f in cma["forecasts"]:
-        er = f["expectedReturn"]
-        returns.append({"asset": f["assetClass"], "expectedReturn": er, "confidence": _conf(f["confidence"]),
-                        "components": {"real_yield": round(real, 2), "inflation": round(be, 2),
-                                       "risk_premium": round(er - real - be, 2)}})
-    returns.append({"asset": "TIPS", "expectedReturn": round(real + be, 2), "confidence": "high",
-                    "components": {"real_yield": round(real, 2), "inflation": round(be, 2), "risk_premium": 0.0}})
+    be = cma.get("breakeven")
+    if real and be is not None:
+        returns.append({"asset": "TIPS", "expectedReturn": round(real.latest + be, 2), "confidence": "unrated",
+                        "components": {"real_yield": round(real.latest, 2), "inflation": round(be, 2)}})
     return {"returns": returns, "lastUpdated": datetime.now().isoformat()}
 
 

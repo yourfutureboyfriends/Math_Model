@@ -311,8 +311,8 @@ class SignalScorecardItem(BaseModel):
 class Sector(BaseModel):
     """Sector allocation data."""
     name: str
-    score: float
-    z_score: float
+    score: Optional[float] = None     # relative-strength rank vs SPY, -1..+1
+    z_score: Optional[float] = None   # z-score of the 3m relative return vs its past year
     allocation: float
     rationale: str
     signal: str = "Neutral"
@@ -323,8 +323,8 @@ class SectorAllocationData(BaseModel):
     """Sector allocation response."""
     sectors: List[Sector]
     regime: str
-    confidence: float
-    totalScore: float
+    confidence: Optional[float] = None   # regime classifier confidence
+    totalScore: Optional[float] = None
 
 
 class SectorPerformance(BaseModel):
@@ -1300,6 +1300,8 @@ class YieldCurveData(BaseModel):
     spread5s30s: Optional[float] = None
     realYield10y: Optional[float] = None
     shape: Optional[str] = None          # None when the spread is unavailable
+    spreadShort10y: Optional[float] = None  # overnight-rate–10Y spread (bps) when no fresh 3M
+    shortRate: Optional[str] = None          # label of the short-end point ("3M", "SONIA")
     recessionProb: Optional[float] = None
     asOf: Optional[Dict[str, str]] = None   # observation date per tenor (monthly OECD data)
     source: Optional[str] = None
@@ -1377,15 +1379,21 @@ class NewsSentimentData(BaseModel):
 class AssetClassForecast(BaseModel):
     """Forecast for an asset class."""
     assetClass: str
+    proxy: Optional[str] = None
     expectedReturn: float
-    volatility: float
-    sharpeRatio: Optional[float] = None   # None when no risk-free rate is available
-    confidence: float
+    volatility: Optional[float] = None    # realized vol of the proxy; None if unavailable
+    sharpeRatio: Optional[float] = None   # None when no risk-free rate / vol is available
+    confidence: Optional[float] = None    # forecast uncertainty is not modelled
+    components: Dict[str, float] = {}
 
 
 class LongtermForecastsData(BaseModel):
     """GMO 7-Year Asset Class Return Model."""
+    available: bool = True
+    reason: Optional[str] = None
     forecasts: List[AssetClassForecast]
+    riskFreeRate: Optional[float] = None
+    breakeven: Optional[float] = None
     methodology: str
     asOfDate: str
     disclaimer: str

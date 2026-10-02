@@ -263,17 +263,8 @@ async def get_news_sentiment_data() -> Dict[str, Any]:
 
 
 async def get_longterm_forecasts_data() -> Dict[str, Any]:
-    """GMO 7-Year Model from real valuations."""
-    logger.info("Fetching longterm forecasts")
-
-    dashboard = await get_dashboard_data(mode="live")
-    ten_yr = dashboard.keyMetrics.tenYearYield if dashboard.keyMetrics else None
-
-    # Single source of truth (shared with dashboard_handler's gmoForecasts) — see api/calculations/cma.py
-    from api.calculations.cma import longterm_forecasts
-    from api.handlers.macro_inputs import load_macro_inputs
-    risk_free = (await load_macro_inputs())["dgs3mo"].latest   # 3M T-bill, percent
-    return longterm_forecasts(ten_yr, risk_free=risk_free)
+    """Long-term CMA — the dashboard's gmoForecasts (observed building blocks)."""
+    return await _dashboard_section("gmoForecasts", "Long-term forecasts")
 
 
 async def get_reflexivity_data() -> Dict[str, Any]:

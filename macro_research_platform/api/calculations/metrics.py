@@ -67,15 +67,22 @@ def calculate_recession_probability(
 def calculate_sector_allocation(
     regime: str,
     growth: Optional[float],
-    inflation: Optional[float]
+    inflation: Optional[float],
+    sector_stats: Optional[Dict[str, Dict[str, float]]] = None,
+    confidence: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
-    Generate sector allocation based on regime.
+    Sector allocation: regime playbook weights (a policy table) + observed relative strength.
+
+    `sector_stats` maps playbook sector -> {relativeReturn, percentile, z} of the sector
+    proxy's 3m return vs SPY (see dashboard_sections.build_sector_stats). Each sector's
+    `score` is that rank mapped to -1..+1 (2·percentile − 1) and `z_score` the actual
+    z-score; both are None without price data. `confidence` is the regime classifier's
+    confidence, passed through (None if not supplied) — not derived here.
+    `growth` / `inflation` are accepted for signature compatibility.
     """
-    # Validate inputs
-    growth = growth if growth is not None and growth >= 0 else 0.5
-    inflation = inflation if inflation is not None and inflation >= 0 else 0.3
     regime = regime.lower() if regime else "goldilocks"
+    stats = sector_stats or {}
 
     # Sector weights by regime (calculated, not hardcoded)
     regime_weights_map = {
@@ -119,12 +126,9 @@ def calculate_sector_allocation(
     total = sum(raw.values())
     weights = {k: v / total for k, v in raw.items()}
 
-    # Generate sectors with dynamic calculations
     sectors = []
-    total_score = 0
-
     for sector, weight in weights.items():
-        # Calculate signal based on regime and sector
+        # Playbook stance for the regime (policy, not data)
         if regime in ["goldilocks", "expansion"]:
             signal = "Overweight" if weight > 0.15 else "Neutral"
         elif regime == "reflation":
@@ -136,34 +140,29 @@ def calculate_sector_allocation(
         else:
             signal = "Neutral"
 
-        # Calculate conviction
-        if weight > 0.20:
-            conviction = "High"
-        elif weight > 0.10:
-            conviction = "Medium"
-        else:
-            conviction = "Low"
+        conviction = "High" if weight > 0.20 else "Medium" if weight > 0.10 else "Low"
 
-        # Calculate score
-        score = weight * 2  # Normalize to 0-1 range
-
+        st = stats.get(sector)
+        score = round(2 * st["percentile"] - 1, 2) if st else None
+        z = round(st["z"], 2) if st and st.get("z") is not None else None
+        rationale = f"{regime} playbook weight {weight:.0%}"
+        if st:
+            rationale += (f"; {st.get('etf', sector)} 3m vs SPY {st['relativeReturn']:+.1%} "
+                          f"({st['percentile']:.0%} of past year)")
         sectors.append({
             "name": sector,
-            "score": round(score, 2),
-            "z_score": round((score - 0.4) / 0.15, 2) if score != 0.4 else 0,
+            "score": score,
+            "z_score": z,
             "allocation": round(weight, 2),
-            "rationale": f"{regime} regime positioning",
+            "rationale": rationale,
             "signal": signal,
-            "conviction": conviction
+            "conviction": conviction,
         })
-        total_score += score
 
-    # Calculate confidence from signal strength
-    confidence = 0.7 + abs(growth - inflation) * 0.2
-
+    scored = [x["score"] for x in sectors if x["score"] is not None]
     return {
         "sectors": sectors,
         "regime": regime,
-        "confidence": round(min(confidence, 0.95), 2),
-        "totalScore": round(total_score, 2)
+        "confidence": round(confidence, 2) if confidence is not None else None,
+        "totalScore": round(sum(scored), 2) if scored else None,
     }

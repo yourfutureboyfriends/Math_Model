@@ -31,7 +31,15 @@ PRICE_TICKERS: Dict[str, str] = {
     "MTUM": "MTUM", "VLUE": "VLUE", "IWF": "IWF", "QUAL": "QUAL", "IWM": "IWM", "IWD": "IWD",
     "STOXX50": "^STOXX50E", "FTSE": "^FTSE", "N225": "^N225",
     "ES": "ES=F", "NQ": "NQ=F", "TY": "ZN=F", "GC": "GC=F", "CL": "CL=F",
+    "EFA": "EFA", "EEM": "EEM", "AGG": "AGG",
 }
+# Sector proxies for the sector-allocation playbook (names as in calculate_sector_allocation).
+SECTOR_PROXIES = {"Technology": "XLK", "Healthcare": "XLV", "Financials": "XLF", "Energy": "XLE",
+                  "Utilities": "XLU", "Consumer": "XLY", "Consumer Staples": "XLP",
+                  "Industrials": "XLI", "Materials": "XLB", "Small Cap": "IWM"}
+PRICE_TICKERS.update({etf: etf for etf in SECTOR_PROXIES.values() if etf not in PRICE_TICKERS})
+# ETFs whose trailing P/E feeds the CMA earnings yields.
+PE_TICKERS = ["SPY", "IWM", "EFA", "EEM"]
 
 US_TENORS = [(1 / 12, "DGS1MO"), (0.25, "DGS3MO"), (0.5, "DGS6MO"), (1, "DGS1"), (2, "DGS2"),
              (3, "DGS3"), (5, "DGS5"), (7, "DGS7"), (10, "DGS10"), (20, "DGS20"), (30, "DGS30")]
@@ -39,6 +47,9 @@ US_TENORS = [(1 / 12, "DGS1MO"), (0.25, "DGS3MO"), (0.5, "DGS6MO"), (1, "DGS1"),
 # the UK is GB).
 FOREIGN_CURVES = {cc: {"3M": f"IR3TIB01{oecd}M156N", "10Y": f"IRLTLT01{oecd}M156N"}
                   for cc, oecd in (("UK", "GB"), ("DE", "DE"), ("JP", "JP"), ("CA", "CA"), ("AU", "AU"))}
+# Daily overnight rates used as the short end when the monthly OECD 3M series is stale
+# (the UK 3M interbank series stopped updating in Jan-2026; SONIA is daily from the BoE).
+OVERNIGHT_RATES = {"UK": ("IUDSOIA", "SONIA")}
 # A monthly OECD observation older than this is too stale to show as the current curve.
 FOREIGN_MAX_AGE_DAYS = 120
 
@@ -46,7 +57,7 @@ DEBT_SERIES = {"private": "QUSPAM770A", "public": "QUSGAM770A", "total": "QUSCAM
                "dsr": "TDSP"}
 OTHER_FRED = ["DFII10", "GDPNOW", "TOTBKCR", "GDP", "BAMLH0A0HYM2"]
 
-_PE_CACHE: Dict[str, Any] = {"ts": 0.0, "pe": None}
+_PE_CACHE: Dict[str, tuple] = {}          # ETF -> (ts, trailing P/E)
 _PE_TTL = 3600
 
 # Long monthly history (yfinance period="max") for regime-conditional return estimates.
@@ -57,7 +68,8 @@ _MONTHLY_PX_TTL = 12 * 3600
 
 def rates_fred_ids() -> List[str]:
     return [sid for _, sid in US_TENORS] + ["DFII10"] + [
-        sid for c in FOREIGN_CURVES.values() for sid in c.values()]
+        sid for c in FOREIGN_CURVES.values() for sid in c.values()] + [
+        sid for sid, _ in OVERNIGHT_RATES.values()]
 
 
 @dataclass
@@ -65,6 +77,7 @@ class SectionInputs:
     prices: Dict[str, Dict[str, float]] = field(default_factory=dict)   # key -> {date: close}
     fred: Dict[str, DatedSeries] = field(default_factory=dict)
     spy_pe: Optional[float] = None
+    trailing_pe: Dict[str, float] = field(default_factory=dict)          # ETF -> trailing P/E
     monthly_macro: Any = None                                            # load_monthly_macro() frame
     monthly_prices: Dict[str, Dict[str, float]] = field(default_factory=dict)  # key -> {YYYY-MM: close}
     forecast_stats: Optional[List[Dict[str, Any]]] = None                # forecast_history summary
@@ -82,24 +95,31 @@ class SectionInputs:
         return self.fred.get(sid) or DatedSeries(sid)
 
 
-def _spy_trailing_pe_sync() -> Optional[float]:
+def _trailing_pe_sync(ticker: str) -> Optional[float]:
     import yfinance as yf
-    pe = (yf.Ticker("SPY").info or {}).get("trailingPE")
+    pe = (yf.Ticker(ticker).info or {}).get("trailingPE")
     return float(pe) if isinstance(pe, (int, float)) and pe == pe and pe > 0 else None
 
 
-async def _spy_trailing_pe() -> Optional[float]:
+async def _trailing_pes(tickers: List[str]) -> Dict[str, float]:
+    """{ETF: trailing P/E} from Yahoo (cached 1h; last good value kept on failure)."""
     now = time.time()
-    if _PE_CACHE["pe"] is not None and now - _PE_CACHE["ts"] < _PE_TTL:
-        return _PE_CACHE["pe"]
-    try:
-        pe = await asyncio.wait_for(asyncio.to_thread(_spy_trailing_pe_sync), timeout=10)
-    except Exception as e:
-        logger.warning("[dashboard_sections] SPY trailing P/E unavailable: %s", e)
-        pe = None
-    if pe is not None:
-        _PE_CACHE.update(ts=now, pe=pe)
-    return pe if pe is not None else _PE_CACHE["pe"]
+
+    async def _one(t: str):
+        hit = _PE_CACHE.get(t)
+        if hit and now - hit[0] < _PE_TTL:
+            return t, hit[1]
+        try:
+            pe = await asyncio.wait_for(asyncio.to_thread(_trailing_pe_sync, t), timeout=10)
+        except Exception as e:
+            logger.warning("[dashboard_sections] %s trailing P/E unavailable: %s", t, e)
+            pe = None
+        if pe is not None:
+            _PE_CACHE[t] = (now, pe)
+            return t, pe
+        return t, (hit[1] if hit else None)
+
+    return {t: pe for t, pe in await asyncio.gather(*[_one(t) for t in tickers]) if pe is not None}
 
 
 async def load_section_inputs(timeout: float = 30.0) -> SectionInputs:
@@ -124,7 +144,7 @@ async def load_section_inputs(timeout: float = 30.0) -> SectionInputs:
     from api.handlers.macro_inputs import load_monthly_macro
     try:
         prices, fred, pe, monthly, mpx, fstats = await asyncio.wait_for(
-            asyncio.gather(_prices(), load_fred_series(fred_ids, days=1100), _spy_trailing_pe(),
+            asyncio.gather(_prices(), load_fred_series(fred_ids, days=1100), _trailing_pes(PE_TICKERS),
                            _optional(load_monthly_macro), _monthly_prices(),
                            _optional(_forecast_stats_sync)),
             timeout=timeout)
@@ -136,7 +156,7 @@ async def load_section_inputs(timeout: float = 30.0) -> SectionInputs:
                + (["monthly macro panel"] if monthly is None or getattr(monthly, "empty", True) else []))
     if missing:
         logger.warning("[dashboard_sections] unavailable inputs: %s", ", ".join(missing))
-    return SectionInputs(prices=prices, fred=fred, spy_pe=pe, monthly_macro=monthly,
+    return SectionInputs(prices=prices, fred=fred, spy_pe=pe.get("SPY"), trailing_pe=pe, monthly_macro=monthly,
                          monthly_prices=mpx, forecast_stats=fstats)
 
 
@@ -630,26 +650,48 @@ def us_curve_points(fred: Dict[str, DatedSeries]) -> List[Dict[str, float]]:
 
 def foreign_curve(cc: str, fred: Dict[str, DatedSeries], today: Optional[str] = None) -> Dict[str, Any]:
     """3M interbank and 10Y government yields (OECD MEI, monthly) — the only tenors FRED
-    carries for these countries. Stale or missing observations are left out."""
+    carries for these countries. Stale or missing observations are left out. When the 3M
+    point is stale and a daily overnight rate exists (UK: SONIA), that is used as the
+    short end, labelled as overnight (spreadShort10y), not passed off as a 3M rate."""
     today = today or date.today().isoformat()
     ids = FOREIGN_CURVES[cc]
+
+    def _fresh(s: Optional[DatedSeries]) -> bool:
+        return bool(s) and (date.fromisoformat(today) - date.fromisoformat(s.latest_date)).days <= FOREIGN_MAX_AGE_DAYS
+
     vals, dates = {}, {}
     for label, sid in ids.items():
         s = fred.get(sid)
-        if s and (date.fromisoformat(today) - date.fromisoformat(s.latest_date)).days <= FOREIGN_MAX_AGE_DAYS:
+        if _fresh(s):
             vals[label], dates[label] = s.latest, s.latest_date
     pts = [{"tenor": t, "yield": round(vals[k], 2)} for t, k in ((0.25, "3M"), (10, "10Y")) if k in vals]
     spread = (vals["10Y"] - vals["3M"]) * 100 if len(vals) == 2 else None
+    sources = list(ids.values())
+
+    short_label, short_spread = ("3M" if "3M" in vals else None), None
+    if "3M" not in vals and cc in OVERNIGHT_RATES:
+        sid, name = OVERNIGHT_RATES[cc]
+        on = fred.get(sid)
+        if _fresh(on):
+            pts.insert(0, {"tenor": round(1 / 365, 4), "yield": round(on.latest, 2)})
+            dates[name] = on.latest_date
+            short_label = name
+            sources.append(sid)
+            if "10Y" in vals:
+                short_spread = (vals["10Y"] - on.latest) * 100
+    shape_spread = spread if spread is not None else short_spread
     return {
         "country": cc,
         "points": pts,
         "spread2s10s": None,
         "spread3m10y": round(spread, 1) if spread is not None else None,
-        "shape": (None if spread is None else
-                  "inverted" if spread < 0 else "flat" if spread < 50 else "steep"),
+        "spreadShort10y": round(short_spread, 1) if short_spread is not None else None,
+        "shortRate": short_label,
+        "shape": (None if shape_spread is None else
+                  "inverted" if shape_spread < 0 else "flat" if shape_spread < 50 else "steep"),
         "recessionProb": None,   # the probit is estimated on US data only
         "asOf": dates,
-        "source": "FRED / OECD MEI (" + ", ".join(ids.values()) + ")",
+        "source": "FRED / OECD MEI (" + ", ".join(sources) + ")",
     }
 
 
@@ -971,3 +1013,35 @@ def build_performance_tracking(inp: SectionInputs, now) -> Optional[Dict[str, An
                  f"for models with ≥{MIN_EVALUATED} evaluated forecasts."),
         "lastUpdated": now.isoformat(),
     }
+
+
+# ── Sector relative strength (feeds the sector-allocation playbook) ─────────────
+
+def build_sector_stats(inp: SectionInputs) -> Dict[str, Dict[str, float]]:
+    """{playbook sector: {etf, relativeReturn, percentile, z}} — each sector proxy's 3-month
+    return minus SPY, ranked / z-scored within its own past year."""
+    out = {}
+    for sector, etf in SECTOR_PROXIES.items():
+        al = inp.aligned(etf, "SPY")
+        rs = ms.relative_strength_score(al[etf], al["SPY"]) if al else None
+        if rs:
+            out[sector] = {"etf": etf, **rs}
+    return out
+
+
+# ── Long-term capital-market assumptions ────────────────────────────────────────
+
+def build_cma(inp: SectionInputs, ten_yr: Optional[float], risk_free: Optional[float],
+              breakeven: Optional[float], now) -> Dict[str, Any]:
+    """CMA from observed inputs: ETF earnings yields (100 / trailing P/E), 10Y breakeven,
+    10Y yield and realized 2y daily volatility of each proxy ETF."""
+    from api.calculations.cma import longterm_forecasts, ASSETS
+    ey = {t: 100.0 / pe for t, pe in inp.trailing_pe.items() if pe}
+    vols = {}
+    for _, etf, _ in ASSETS:
+        closes = inp.closes(etf)
+        v = ms.annualized_vol(closes, window=len(closes) - 1) if len(closes) > 250 else None
+        if v is not None:
+            vols[etf] = v * 100
+    return longterm_forecasts(ten_yr, now, risk_free=risk_free, breakeven=breakeven,
+                              earnings_yields=ey, vols=vols)

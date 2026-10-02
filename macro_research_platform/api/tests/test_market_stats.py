@@ -266,3 +266,35 @@ def test_contracts_have_no_fallback_values():
     from api.data_contracts import CONTRACTS, MetricContract
     assert not hasattr(MetricContract, "fallback_value")
     assert all(not hasattr(c, "fallback_value") for c in CONTRACTS.values())
+
+
+# ── third batch: UK short end, CMA inputs, sector stats ─────────────────────────
+
+def test_uk_curve_uses_labelled_sonia_when_3m_is_stale():
+    fred = {"IRLTLT01GBM156N": DatedSeries("a", ["2026-08-01"], [4.99]),
+            "IR3TIB01GBM156N": DatedSeries("b", ["2026-01-01"], [3.71]),       # stale
+            "IUDSOIA": DatedSeries("c", ["2026-09-30"], [3.73])}
+    c = ds.foreign_curve("UK", fred, today="2026-10-01")
+    assert c["spread3m10y"] is None                         # not passed off as a 3M spread
+    assert c["shortRate"] == "SONIA" and c["spreadShort10y"] == pytest.approx(126.0)
+    assert c["points"][0] == {"tenor": round(1 / 365, 4), "yield": 3.73}
+    assert c["shape"] == "steep" and c["asOf"]["SONIA"] == "2026-09-30"
+
+
+def test_build_cma_from_observed_inputs():
+    prices = {k: _dated(_walk(400, i, vol=0.01)) for i, k in enumerate(["SPY", "IWM", "EFA", "EEM", "AGG"])}
+    inp = ds.SectionInputs(prices=prices, trailing_pe={"SPY": 25.0, "EEM": 12.5})
+    out = ds.build_cma(inp, 4.5, 4.0, 2.3, NOW)
+    f = {x["assetClass"]: x for x in out["forecasts"]}
+    assert set(f) == {"US Large Cap", "Emerging Markets", "US Bonds"}      # no P/E → omitted
+    assert f["US Large Cap"]["expectedReturn"] == round(100 / 25 + 2.3, 1)
+    assert 10 < f["US Large Cap"]["volatility"] < 25                     # ≈ 1%/day realized
+    assert f["US Bonds"]["expectedReturn"] == 4.5
+
+
+def test_sector_stats_from_prices():
+    spy = _walk(300, 1)
+    tech = [p * (1 + 0.002 * i) for i, p in enumerate(spy)]               # outperforming
+    stats = ds.build_sector_stats(ds.SectionInputs(prices={"SPY": _dated(spy), "XLK": _dated(tech)}))
+    assert set(stats) == {"Technology"}
+    assert stats["Technology"]["relativeReturn"] > 0 and stats["Technology"]["etf"] == "XLK"

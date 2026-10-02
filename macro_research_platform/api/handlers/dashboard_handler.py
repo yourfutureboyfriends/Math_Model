@@ -28,6 +28,7 @@ from api.handlers.dashboard_sections import (
     build_factor_decomposition, build_trend_signals, build_sentiment, build_valuation,
     build_advanced_indicators, build_reflexivity, build_pure_alpha, build_regime_transitions,
     build_expected_returns, build_risk_parity, build_performance_tracking,
+    build_sector_stats, build_cma,
 )
 
 # Import providers and validation
@@ -345,7 +346,6 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         _dash_asyncio.get_running_loop().run_in_executor(None, _log_recession)
 
     # Generate sector allocation
-    sector_allocation = calculate_sector_allocation(regime_name, growth_score, inflation_score)
 
     # Create regime playbook from characteristics
     playbook = RegimePlaybookData(
@@ -525,6 +525,11 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     # api/handlers/dashboard_sections.py); a missing input yields None, not a made-up value.
     _sections = await _sections_task
 
+    # Sector allocation: regime playbook weights + observed sector relative strength.
+    sector_allocation = calculate_sector_allocation(
+        regime_name, growth_score, inflation_score,
+        sector_stats=build_sector_stats(_sections), confidence=regime_confidence)
+
     factor_rotation = build_factor_rotation(_sections)
     momentum_veto = build_momentum_veto(_sections)
     correlation_regime = build_correlation_regime(_sections)
@@ -652,11 +657,10 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     # Factor Decomposition — OLS of Nasdaq-100 returns on ETF factor returns (1y daily).
     _factor_decomp = build_factor_decomposition(_sections, now)
 
-    # Long-term Forecasts — single source of truth shared with signal_handler (api/calculations/cma.py)
-    from api.calculations.cma import longterm_forecasts
-    _gmo_forecasts = {
-        **longterm_forecasts(ten_yr, now, risk_free=dgs3mo.latest),
-    }
+    # Long-term Forecasts — building-block CMA from observed inputs (ETF earnings yields,
+    # 10Y breakeven, 10Y yield, realized vol); shared by /api/forecasts/longterm and
+    # /api/business/expected-returns.
+    _gmo_forecasts = build_cma(_sections, ten_yr, dgs3mo.latest, be_s.latest, now)
 
     # Advanced Indicators — Sahm rule (FRED SAHMREALTIME), credit impulse (FRED bank
     # credit vs GDP), LEI (no source → unavailable), inverse-vol risk-parity weights.

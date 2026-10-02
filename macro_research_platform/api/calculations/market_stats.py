@@ -134,7 +134,10 @@ def relative_strength_score(asset: Sequence[float], bench: Sequence[float],
     rel = (a[lookback:] / a[:-lookback]) - (b[lookback:] / b[:-lookback])
     window = rel[-history:]
     current = float(window[-1])
-    return {"relativeReturn": current, "percentile": float((window[:-1] < current).mean())}
+    ref = window[:-1]
+    sd = float(ref.std(ddof=1)) if ref.size > 1 else 0.0
+    return {"relativeReturn": current, "percentile": float((ref < current).mean()),
+            "z": (current - float(ref.mean())) / sd if sd > 0 else None}
 
 
 def trend_signal(closes: Sequence[float], lookback: int) -> Optional[Dict[str, float]]:

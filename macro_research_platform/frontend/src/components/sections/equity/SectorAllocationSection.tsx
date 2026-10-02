@@ -10,9 +10,9 @@ import type { SectorAllocationData } from '@/types';
 
 interface EnhancedSector {
   name: string;
-  macro_score: number;
+  macro_score: number | null;
   earnings_addon: number;
-  enhanced_score: number;
+  enhanced_score: number | null;   // relative-strength rank -1..+1; null without price data
   signal: string;
   conviction: string;
   rationale: string;
@@ -115,9 +115,10 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
     return <Minus className="w-3 h-3" />;
   };
 
-  const avgScore = enhancedSectors.reduce((acc, s) => acc + s.enhanced_score, 0) / enhancedSectors.length;
-  const maxScore = Math.max(...enhancedSectors.map(s => s.enhanced_score));
-  const minScore = Math.min(...enhancedSectors.map(s => s.enhanced_score));
+  const scores = enhancedSectors.map(s => s.enhanced_score).filter((v): v is number => v != null);
+  const avgScore: number | null = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+  const maxScore: number | null = scores.length ? Math.max(...scores) : null;
+  const minScore: number | null = scores.length ? Math.min(...scores) : null;
 
   // Check for divergences
   const hasDivergences = (earningsData?.divergences?.length ?? 0) > 0;
@@ -209,7 +210,7 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
                   <td className="py-2 px-2 text-right">
                     <span className={cn(
                       'font-mono text-sm tabular-nums',
-                      sector.enhanced_score > 0 ? 'text-green' : sector.enhanced_score < 0 ? 'text-red' : 'text-text-secondary'
+                      (sector.enhanced_score ?? 0) > 0 ? 'text-green' : (sector.enhanced_score ?? 0) < 0 ? 'text-red' : 'text-text-secondary'
                     )}>
                       {fmtSignal(sector.enhanced_score)}
                     </span>
@@ -247,6 +248,7 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
                   </td>
                   <td className="py-2 px-2 w-24">
                     <div className="h-1.5 bg-surface-4 relative">
+                      {sector.enhanced_score != null && (
                       <div
                         className={cn('h-full absolute', getScoreBarColor(sector.enhanced_score))}
                         style={{
@@ -254,6 +256,7 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
                           left: sector.enhanced_score >= 0 ? '50%' : `${50 - Math.abs(sector.enhanced_score) * 50}%`,
                         }}
                       />
+                      )}
                       <div className="absolute top-0 bottom-0 left-1/2 w-px bg-text-tertiary/30" />
                     </div>
                   </td>
@@ -277,7 +280,7 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
               <div key={sector.name} className="flex items-start gap-2 text-sm">
                 <span className={cn(
                   'w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0',
-                  sector.enhanced_score > 0 ? 'bg-green' : 'bg-red'
+                  sector.enhanced_score == null ? 'bg-text-tertiary' : sector.enhanced_score > 0 ? 'bg-green' : 'bg-red'
                 )} />
                 <span className="text-text-secondary">
                   <span className="text-text-primary font-medium">{sector.name}</span>: {sector.rationale}

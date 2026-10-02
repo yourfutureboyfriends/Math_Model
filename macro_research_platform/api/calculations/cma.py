@@ -1,68 +1,85 @@
 """
 Capital-market-assumption (CMA) building blocks — pure, tested.
 
-Single source of truth for the long-term asset-class return forecasts that were previously
-duplicated verbatim in signal_handler.get_longterm_forecasts_data() and
-dashboard_handler (gmoForecasts). A simple building-block model anchored to the real 10Y
-yield: bond return = 10Y yield, equity return = 10Y + a fixed equity risk premium, with
-per-asset offsets and fixed volatility assumptions.
+Single source of truth for the long-term asset-class return forecasts (dashboard
+gmoForecasts, /api/forecasts/longterm, /api/business/expected-returns). Every building
+block is an observed input supplied by the caller — no fixed premia or volatility tables:
+
+  equity expected return = earnings yield (100 / trailing P/E of the asset's ETF)
+                           + 10Y breakeven inflation            (real yield + inflation)
+  bond expected return   = 10Y Treasury yield
+  volatility             = realized annualized volatility of the asset's ETF
+  Sharpe                 = (expected return − cash yield) / volatility
+
+An asset whose inputs are missing is left out rather than filled with an assumption.
 """
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, Mapping, Optional
 
-EQUITY_ERP = 4.0          # equity risk premium over the 10Y (percentage points)
-
-# (assetClass, expected-return offset vs US Large Cap equity or None for the bond leg, volatility, confidence)
-_ASSETS = [
-    ("US Large Cap", 0.0, 15.0, 0.6),
-    ("US Small Cap", 0.5, 18.0, 0.5),
-    ("International Developed", 1.0, 16.0, 0.5),
-    ("Emerging Markets", 2.5, 22.0, 0.4),
-    ("US Bonds", None, 5.0, 0.8),          # None offset => this is the bond leg (= 10Y yield)
+# (asset class, proxy ETF, kind)
+ASSETS = [
+    ("US Large Cap", "SPY", "equity"),
+    ("US Small Cap", "IWM", "equity"),
+    ("International Developed", "EFA", "equity"),
+    ("Emerging Markets", "EEM", "equity"),
+    ("US Bonds", "AGG", "bond"),
 ]
 
 
 def longterm_forecasts(ten_yr: Optional[float], as_of: Optional[datetime] = None,
-                       risk_free: Optional[float] = None) -> Dict:
-    """Build the long-term CMA forecast payload from the 10Y yield.
+                       risk_free: Optional[float] = None, breakeven: Optional[float] = None,
+                       earnings_yields: Optional[Mapping[str, float]] = None,
+                       vols: Optional[Mapping[str, float]] = None) -> Dict:
+    """Build the long-term CMA payload from observed inputs (all in percent).
 
-    `ten_yr` is the 10Y Treasury yield in percent (e.g. 4.6). `risk_free` is the cash
-    yield in percent (e.g. 3M T-bill); Sharpe = (expected return − risk_free) / vol, and is
-    None when no risk-free rate is supplied (total return / vol is not a Sharpe ratio).
-    Returns {"available": False, ...} when the 10Y yield is missing — no default yield.
+    ten_yr: 10Y Treasury yield. risk_free: cash (3M T-bill) yield. breakeven: 10Y breakeven
+    inflation. earnings_yields: {ETF: 100 / trailing P/E}. vols: {ETF: realized annualized
+    vol}. Returns {"available": False, ...} when nothing can be computed.
     """
     now = as_of or datetime.now()
-    if ten_yr is None:
+    ey, vol = dict(earnings_yields or {}), dict(vols or {})
+    forecasts = []
+    for name, etf, kind in ASSETS:
+        if kind == "bond":
+            if ten_yr is None:
+                continue
+            er, comps = ten_yr, {"yield": round(ten_yr, 2)}
+        else:
+            if etf not in ey or breakeven is None:
+                continue
+            er = ey[etf] + breakeven
+            comps = {"earnings_yield": round(ey[etf], 2), "inflation": round(breakeven, 2)}
+        v = vol.get(etf)
+        sharpe = round((er - risk_free) / v, 2) if (v and risk_free is not None) else None
+        forecasts.append({
+            "assetClass": name,
+            "proxy": etf,
+            "expectedReturn": round(er, 1),
+            "volatility": round(v, 1) if v is not None else None,
+            "sharpeRatio": sharpe,
+            "confidence": None,       # no estimate of forecast uncertainty is modelled
+            "components": comps,
+        })
+
+    if not forecasts:
         return {"available": False, "forecasts": [],
-                "reason": "10Y Treasury yield unavailable",
-                "methodology": "Building-block CMA (unavailable: no 10Y yield)",
+                "reason": "10Y yield, breakeven inflation and ETF valuations unavailable",
+                "methodology": "Building-block CMA (unavailable: no inputs)",
                 "asOfDate": now.isoformat(),
                 "disclaimer": "Past performance does not guarantee future results.",
                 "lastUpdated": now.isoformat()}
-    bond_return = ten_yr
-    equity_return = bond_return + EQUITY_ERP
-
-    forecasts = []
-    for name, offset, vol, conf in _ASSETS:
-        er = bond_return if offset is None else round(equity_return + offset, 1)
-        sharpe = round((er - risk_free) / vol, 2) if (vol and risk_free is not None) else None
-        forecasts.append({
-            "assetClass": name,
-            "expectedReturn": round(er, 1),
-            "volatility": vol,
-            "sharpeRatio": sharpe,
-            "confidence": conf,
-        })
 
     rf_txt = f"; Sharpe vs {risk_free:.2f}% cash" if risk_free is not None else ""
     return {
         "available": True,
         "forecasts": forecasts,
         "riskFreeRate": risk_free,
-        "methodology": f"Building-block CMA: bond = 10Y yield ({bond_return:.1f}%), "
-                       f"equity = 10Y + {EQUITY_ERP:.0f}% ERP (GMO-style, not GMO's valuation model){rf_txt}",
+        "breakeven": breakeven,
+        "methodology": ("Building-block CMA: equity = earnings yield (1/trailing P/E of the ETF) + "
+                        "10Y breakeven inflation; bonds = 10Y Treasury yield; volatility = realized "
+                        f"2y daily vol of the ETF{rf_txt}. Not GMO's valuation model."),
         "asOfDate": now.isoformat(),
         "disclaimer": "Past performance does not guarantee future results.",
         "lastUpdated": now.isoformat(),

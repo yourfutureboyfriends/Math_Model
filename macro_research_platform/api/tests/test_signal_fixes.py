@@ -142,11 +142,21 @@ def test_sector_allocations_sum_to_one_and_have_no_bonds():
         assert all(s["name"] != "Bonds" for s in secs)
 
 
-def test_sector_allocation_zero_growth_is_not_defaulted():
+def test_sector_allocation_confidence_is_passed_through_not_invented():
     from api.calculations.metrics import calculate_sector_allocation
-    lo = calculate_sector_allocation("slowdown", 0.0, 0.9)["confidence"]
-    mid = calculate_sector_allocation("slowdown", 0.5, 0.9)["confidence"]
-    assert lo > mid       # |growth - inflation| is larger at growth=0
+    # Confidence is the regime classifier's, passed in — never derived from growth/inflation.
+    assert calculate_sector_allocation("slowdown", 0.0, 0.9, confidence=0.81)["confidence"] == 0.81
+    assert calculate_sector_allocation("slowdown", 0.0, 0.9)["confidence"] is None
+
+
+def test_sector_scores_come_from_observed_relative_strength():
+    from api.calculations.metrics import calculate_sector_allocation
+    stats = {"Healthcare": {"etf": "XLV", "relativeReturn": 0.03, "percentile": 0.9, "z": 1.4}}
+    out = calculate_sector_allocation("slowdown", 0.3, 0.6, sector_stats=stats)
+    secs = {s["name"]: s for s in out["sectors"]}
+    assert secs["Healthcare"]["score"] == 0.8 and secs["Healthcare"]["z_score"] == 1.4
+    assert secs["Utilities"]["score"] is None and secs["Utilities"]["z_score"] is None
+    assert out["totalScore"] == 0.8
 
 
 # ── Sortino uses downside deviation over all periods ─────────────────────────

@@ -19,6 +19,8 @@ interface YieldCurveData {
   spread2s10s?: number;
   spread3m10y?: number;
   spread5s30s?: number;
+  spreadShort10y?: number | null;
+  shortRate?: string | null;
   realYield10y?: number;
   shape: string;
   recessionProb?: number;
@@ -184,11 +186,19 @@ export function YieldCurveSection() {
           </div>
 
           <div className="p-2 border border-border-subtle bg-surface-2">
-            <div className="text-2xs text-text-tertiary uppercase">3m10y Spread</div>
-            <div className="font-mono font-bold text-text-primary">
-              {curve?.spread3m10y != null ? fmtRate(curve.spread3m10y / 100) : '--'}
+            {/* Without a fresh 3M point (e.g. UK) the short end is an overnight rate (SONIA),
+                labelled as such rather than shown as a 3M spread. */}
+            <div className="text-2xs text-text-tertiary uppercase">
+              {curve?.spread3m10y == null && curve?.spreadShort10y != null
+                ? `${curve.shortRate ?? 'ON'}-10Y Spread` : '3m10y Spread'}
             </div>
-            <div className="text-2xs text-text-tertiary">Recession Predictor</div>
+            <div className="font-mono font-bold text-text-primary">
+              {curve?.spread3m10y != null ? fmtRate(curve.spread3m10y / 100)
+                : curve?.spreadShort10y != null ? fmtRate(curve.spreadShort10y / 100) : '--'}
+            </div>
+            <div className="text-2xs text-text-tertiary">
+              {curve?.spread3m10y == null && curve?.spreadShort10y != null ? 'Overnight vs 10Y' : 'Recession Predictor'}
+            </div>
           </div>
 
           <div className="p-2 border border-border-subtle bg-surface-2">
