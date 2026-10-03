@@ -11,7 +11,7 @@ import { Briefcase, RefreshCw } from 'lucide-react';
 import { actorHeaders } from '@/lib/actor';
 import { fmtPct, fmtPrice, fmtSignal } from '@/utils/format';
 
-type Tab = 'nav' | 'limits' | 'rebalance';
+type Tab = 'nav' | 'limits' | 'rebalance' | 'orders' | 'scorecard';
 
 const usd = (v: number | null | undefined) =>
   v == null ? '—' : `${v < 0 ? '-' : ''}$${fmtPrice(Math.abs(v), 0)}`;
@@ -46,6 +46,15 @@ function NavTab({ ov }: { ov: any }) {
         <Stat label="Net" value={pct(exp.net)} />
         <Stat label="VaR 95% 1d" value={usd(ov?.var95_1d_usd)} />
         <Stat label="Vol target" value={pct(ov?.fund?.vol_target, 0)} />
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+        <Stat label="Cash" value={usd(ov?.cash)} />
+        <Stat label="Realized P&L" value={usd(ov?.realized_pnl)}
+              tone={(ov?.realized_pnl ?? 0) >= 0 ? 'text-green' : 'text-red'} />
+        <Stat label="Commissions" value={usd(ov?.commissions)} />
+        <Stat label="Equity beta $" value={usd(ov?.factor_exposure_usd?.equity)} />
+        <Stat label="Rates beta $" value={usd(ov?.factor_exposure_usd?.rates)} />
+        <Stat label="USD beta $" value={usd(ov?.factor_exposure_usd?.usd)} />
       </div>
 
       <div className="p-3 bg-surface-1 border border-border">
@@ -262,6 +271,239 @@ function RebalanceTab() {
   );
 }
 
+
+const STATE_STYLE: Record<string, string> = {
+  Proposed: 'text-amber', 'Under Review': 'text-amber', Approved: 'text-blue',
+  Executed: 'text-green', Closed: 'text-text-tertiary',
+};
+
+function OrdersTab({ onBooked }: { onBooked: () => void }) {
+  const [orders, setOrders] = useState<any[]>([]);
+  const [mode, setMode] = useState<string>('simulated');
+  const [blotter, setBlotter] = useState<any>(null);
+  const [ticket, setTicket] = useState({ symbol: '', side: 'BUY', quantity: '', book: 'Macro', thesis: '' });
+  const [msg, setMsg] = useState<{ text: string; tone: string } | null>(null);
+  const [notes, setNotes] = useState<Record<number, string>>({});
+
+  const load = useCallback(async () => {
+    const [o, b] = await Promise.all([
+      fetch('/api/v1/orders').then((r) => r.json()).catch(() => null),
+      fetch('/api/v1/blotter?limit=50').then((r) => r.json()).catch(() => null),
+    ]);
+    setOrders(o?.orders ?? []); setMode(o?.execution_mode ?? 'simulated'); setBlotter(b);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const errText = (j: any) => {
+    const d = j?.detail;
+    if (!d) return 'request failed';
+    if (typeof d === 'string') return d;
+    return [d.message, ...(d.reasons ?? []), d.detail].filter(Boolean).join(' · ');
+  };
+
+  const post = async (url: string, body?: any) => {
+    const r = await fetch(url, {
+      method: 'POST', headers: actorHeaders({ 'Content-Type': 'application/json' }),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { ok: r.ok, j: await r.json().catch(() => ({})) };
+  };
+
+  const submit = async () => {
+    const q = Number(ticket.quantity);
+    if (!ticket.symbol.trim() || !q || q <= 0) { setMsg({ text: 'Enter a ticker and a positive quantity', tone: 'text-amber' }); return; }
+    const { ok, j } = await post('/api/v1/orders', { ...ticket, symbol: ticket.symbol.trim().toUpperCase(), quantity: q });
+    setMsg(ok ? { text: `Order #${j.order.id} queued — pre-trade ${j.pretrade.decision}${j.pretrade.reasons?.length ? ': ' + j.pretrade.reasons.join('; ') : ''}`,
+                  tone: j.pretrade.decision === 'BLOCK' ? 'text-red' : j.pretrade.decision === 'WARN' ? 'text-amber' : 'text-green' }
+              : { text: errText(j), tone: 'text-red' });
+    load();
+  };
+
+  const act = async (id: number, action: 'approve' | 'reject' | 'execute') => {
+    const body = action === 'execute' ? undefined : { note: notes[id] || null };
+    const { ok, j } = await post(`/api/v1/orders/${id}/${action}`, body);
+    setMsg(ok ? { text: action === 'execute'
+                    ? `Order #${id} filled: ${j.trade.side} ${j.trade.quantity} ${j.trade.symbol} @ ${fmtPrice(j.trade.price)} (${j.trade.source})`
+                    : `Order #${id} ${action === 'approve' ? 'approved' : 'rejected'}`, tone: 'text-green' }
+              : { text: `Order #${id}: ${errText(j)}`, tone: 'text-red' });
+    load();
+    if (ok && action === 'execute') onBooked();
+  };
+
+  const open = orders.filter((o) => !['Executed', 'Closed'].includes(o.state));
+  const done = orders.filter((o) => ['Executed', 'Closed'].includes(o.state)).slice(0, 10);
+  const input = 'bg-surface-2 border border-border px-2 py-1 text-xs font-mono';
+
+  return (
+    <div className="space-y-3">
+      <div className="p-3 bg-surface-1 border border-border">
+        <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2 flex items-center">
+          Order ticket
+          <span className="ml-auto normal-case tracking-normal">
+            Execution: <span className={mode === 'simulated' ? 'text-amber' : 'text-green'}>{mode === 'simulated' ? 'SIMULATED (last close)' : 'ALPACA PAPER'}</span>
+            {' · '}four-eyes: a different user must approve
+          </span>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <input aria-label="Order ticker" placeholder="Ticker" value={ticket.symbol}
+                 onChange={(e) => setTicket({ ...ticket, symbol: e.target.value })} className={`w-24 ${input}`} />
+          <select aria-label="Order side" value={ticket.side} onChange={(e) => setTicket({ ...ticket, side: e.target.value })}
+                  className={input}>
+            <option>BUY</option><option>SELL</option>
+          </select>
+          <input aria-label="Order quantity" placeholder="Quantity" value={ticket.quantity}
+                 onChange={(e) => setTicket({ ...ticket, quantity: e.target.value })} className={`w-24 ${input}`} />
+          <input aria-label="Order book" placeholder="Book" value={ticket.book}
+                 onChange={(e) => setTicket({ ...ticket, book: e.target.value })} className={`w-24 ${input}`} />
+          <input aria-label="Order thesis" placeholder="Thesis (optional)" value={ticket.thesis}
+                 onChange={(e) => setTicket({ ...ticket, thesis: e.target.value })} className={`flex-1 min-w-40 ${input}`} />
+          <button onClick={submit} className="px-3 py-1 text-xs border border-bloomberg text-bloomberg hover:bg-bloomberg/10">Submit for approval</button>
+        </div>
+        {msg && <div className={`mt-2 text-2xs ${msg.tone}`}>{msg.text}</div>}
+      </div>
+
+      <div className="bg-surface-1 border border-border">
+        <div className="px-3 py-1.5 text-2xs text-text-tertiary uppercase tracking-wider border-b border-border">Open orders ({open.length})</div>
+        {open.length === 0 ? <div className="px-3 py-3 text-xs text-text-secondary">No open orders.</div> : (
+          <table className="w-full text-xs">
+            <tbody>
+              {open.map((o) => (
+                <tr key={o.id} className="border-t border-border-subtle">
+                  <td className="px-3 py-1.5 font-mono text-text-tertiary">#{o.id}</td>
+                  <td className="px-2"><span className={o.side === 'BUY' ? 'text-green' : 'text-red'}>{o.side}</span>{' '}
+                    <span className="font-mono">{o.quantity?.toLocaleString()} {o.symbol}</span>
+                    <span className="text-text-tertiary"> · {o.book}</span></td>
+                  <td className={`px-2 ${STATE_STYLE[o.state] ?? ''}`}>{o.state}</td>
+                  <td className="px-2 text-text-tertiary">by {o.created_by}{o.approved_by ? ` · ok ${o.approved_by}` : ''}</td>
+                  <td className="px-2">
+                    {o.state !== 'Approved' && (
+                      <input aria-label={`Note for order ${o.id}`} placeholder="note" value={notes[o.id] ?? ''}
+                             onChange={(e) => setNotes({ ...notes, [o.id]: e.target.value })} className={`w-32 ${input}`} />
+                    )}
+                  </td>
+                  <td className="px-3 text-right whitespace-nowrap space-x-1">
+                    {o.state !== 'Approved' ? (
+                      <>
+                        <button onClick={() => act(o.id, 'approve')} className="px-2 py-0.5 border border-green/50 text-green hover:bg-green/10">Approve</button>
+                        <button onClick={() => act(o.id, 'reject')} className="px-2 py-0.5 border border-red/50 text-red hover:bg-red/10">Reject</button>
+                      </>
+                    ) : (
+                      <button onClick={() => act(o.id, 'execute')} className="px-2 py-0.5 border border-bloomberg text-bloomberg hover:bg-bloomberg/10">Execute</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-3">
+        <div className="bg-surface-1 border border-border">
+          <div className="px-3 py-1.5 text-2xs text-text-tertiary uppercase tracking-wider border-b border-border flex">
+            Blotter
+            <span className="ml-auto normal-case tracking-normal">
+              Cash {usd(blotter?.cash)} · Realized {usd(blotter?.realized_pnl)} · Comm. {usd(blotter?.commissions)}
+            </span>
+          </div>
+          {!blotter?.trades?.length ? <div className="px-3 py-3 text-xs text-text-secondary">No trades booked yet.</div> : (
+            <table className="w-full text-xs">
+              <thead><tr className="text-text-tertiary text-2xs">
+                <th className="text-left px-3 py-1">Time</th><th className="text-left px-2">Trade</th>
+                <th className="text-right px-2">Price</th><th className="text-right px-2">Realized</th><th className="text-right px-3">Pos after</th></tr></thead>
+              <tbody>
+                {blotter.trades.map((t: any) => (
+                  <tr key={t.id} className="border-t border-border-subtle">
+                    <td className="px-3 py-1 text-text-tertiary font-mono">{String(t.ts).slice(5, 16).replace('T', ' ')}</td>
+                    <td className="px-2"><span className={t.side === 'BUY' ? 'text-green' : 'text-red'}>{t.side}</span>{' '}
+                      <span className="font-mono">{t.quantity.toLocaleString()} {t.symbol}</span>
+                      <span className="text-text-tertiary"> · {t.source}</span></td>
+                    <td className="text-right px-2 font-mono">{fmtPrice(t.price)}</td>
+                    <td className={`text-right px-2 font-mono ${t.realized_pnl >= 0 ? 'text-green' : 'text-red'}`}>{usd(t.realized_pnl)}</td>
+                    <td className="text-right px-3 font-mono">{t.position_after?.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="bg-surface-1 border border-border">
+          <div className="px-3 py-1.5 text-2xs text-text-tertiary uppercase tracking-wider border-b border-border">Recent decisions</div>
+          {done.length === 0 ? <div className="px-3 py-3 text-xs text-text-secondary">None yet.</div> : (
+            <table className="w-full text-xs"><tbody>
+              {done.map((o) => (
+                <tr key={o.id} className="border-t border-border-subtle">
+                  <td className="px-3 py-1 font-mono text-text-tertiary">#{o.id}</td>
+                  <td className="px-2 font-mono">{o.side} {o.quantity?.toLocaleString()} {o.symbol}</td>
+                  <td className={`px-2 ${STATE_STYLE[o.state] ?? ''}`}>{o.state === 'Closed' ? 'Rejected/Closed' : o.state}</td>
+                  <td className="px-3 text-text-tertiary truncate max-w-48">{o.state_history?.[o.state_history.length - 1]?.note ?? ''}</td>
+                </tr>
+              ))}
+            </tbody></table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScorecardTab() {
+  const [sc, setSc] = useState<any>(null);
+  useEffect(() => { fetch('/api/v1/models/scorecard').then((r) => r.json()).then(setSc).catch(() => setSc({})); }, []);
+  if (!sc) return <div className="p-4 text-xs text-text-secondary">Scoring models…</div>;
+  const rt = sc.regime_transition ?? {};
+  const rec = sc.recession ?? {};
+  return (
+    <div className="space-y-3">
+      <div className="p-3 bg-surface-1 border border-border">
+        <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Regime transition model — {rt.method}</div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+          <Stat label="Forecasts" value={String(rt.forecasts ?? '—')} />
+          <Stat label="Hit rate" value={pct(rt.hit_rate)} />
+          <Stat label="Naive 'no change'" value={pct(rt.naive_persistence_hit_rate)} />
+          <Stat label="Skill vs naive" value={pctSigned(rt.skill_vs_naive, 1)}
+                tone={(rt.skill_vs_naive ?? 0) > 0.005 ? 'text-green' : 'text-amber'} />
+          <Stat label="Brier" value={rt.brier == null ? '—' : String(rt.brier)} />
+        </div>
+        {rt.verdict && <div className="mt-2 text-xs text-text-secondary">Verdict: {rt.verdict}</div>}
+      </div>
+      <div className="p-3 bg-surface-1 border border-border">
+        <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Recession model (12-month horizon) — {rec.note}</div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+          <Stat label="Genuine forecasts" value={String(rec.logged_forecasts ?? '—')} />
+          <Stat label="Resolved" value={String(rec.resolved ?? 0)} />
+          <Stat label="Pending" value={String(rec.pending ?? 0)} />
+          <Stat label="First resolves" value={rec.next_resolution ? String(rec.next_resolution).slice(0, 7) : '—'} />
+          <Stat label="Brier" value={rec.brier == null ? 'n/a yet' : String(rec.brier)} />
+        </div>
+        {rec.excluded_non_genuine > 0 && (
+          <div className="mt-2 text-2xs text-text-tertiary">
+            {rec.excluded_non_genuine} logged rows excluded: back-filled or from a retired model — scoring them would score hindsight, not forecasts.
+          </div>
+        )}
+      </div>
+      {Array.isArray(sc.signals) && (
+        <div className="bg-surface-1 border border-border">
+          <div className="px-3 py-1.5 text-2xs text-text-tertiary uppercase tracking-wider border-b border-border">Signals (independent 21-day windows)</div>
+          <table className="w-full text-xs"><tbody>
+            {sc.signals.map((s: any) => (
+              <tr key={s.label} className="border-t border-border-subtle">
+                <td className="px-3 py-1">{s.label}</td>
+                <td className="px-2 text-right font-mono">hit {pct(s.hit_rate_independent)}</td>
+                <td className="px-2 text-right font-mono">n={s.independent}</td>
+                <td className={`px-2 text-right font-mono ${s.p_value != null && s.p_value < 0.05 ? 'text-green' : 'text-amber'}`}>
+                  p={s.p_value ?? '—'}</td>
+                <td className="px-3 text-right font-mono">Sharpe {s.sharpe ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody></table>
+          <div className="px-3 py-1.5 text-2xs text-text-tertiary border-t border-border">p &lt; 0.05 = statistically distinguishable from a coin flip.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FundCockpitSection() {
   const [tab, setTab] = useState<Tab>('nav');
   const [ov, setOv] = useState<any>(null);
@@ -307,8 +549,9 @@ export function FundCockpitSection() {
         </div>
       </div>
 
-      <div className="flex gap-1 mb-3">
-        {([['nav', 'NAV & Track Record'], ['limits', 'Risk Limits & Pre-trade'], ['rebalance', 'Rebalance']] as const).map(([k, label]) => (
+      <div className="flex flex-wrap gap-1 mb-3">
+        {([['nav', 'NAV & Track Record'], ['limits', 'Risk Limits & Pre-trade'], ['rebalance', 'Rebalance'],
+           ['orders', 'Orders & Blotter'], ['scorecard', 'Model Scorecard']] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
                   className={`px-3 py-1 text-xs border ${tab === k ? 'border-bloomberg text-bloomberg bg-bloomberg/10' : 'border-border text-text-secondary hover:text-text-primary'}`}>
             {label}
@@ -322,8 +565,12 @@ export function FundCockpitSection() {
         <NavTab ov={ov} />
       ) : tab === 'limits' ? (
         <LimitsTab limits={limits} onChanged={load} />
-      ) : (
+      ) : tab === 'rebalance' ? (
         <RebalanceTab />
+      ) : tab === 'orders' ? (
+        <OrdersTab onBooked={load} />
+      ) : (
+        <ScorecardTab />
       )}
     </div>
   );

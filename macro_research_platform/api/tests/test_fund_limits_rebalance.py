@@ -131,3 +131,60 @@ def test_rebalance_orders_buy_sell_exit_and_threshold():
     assert "TLT" not in by                                                    # 1 share diff < threshold
     assert by["XYZ"]["action"] == "EXIT" and by["XYZ"]["side"] == "SELL"
     assert out["est_total_cost"] == pytest.approx((100_000 + 5_000) * 10 / 1e4)
+
+
+# ── Blotter accounting ───────────────────────────────────────────────────────
+from api.calculations.blotter import apply_fill, cash_balance, side_to_signed, blotter_totals, commission
+from api.calculations.scorecard import transition_backtest, resolve_recession_forecasts
+
+
+def test_apply_fill_average_cost_and_realized():
+    q, a, r = apply_fill(0, 0, 100, 10.0)                 # open
+    assert (q, a, r) == (100, 10.0, 0.0)
+    q, a, r = apply_fill(q, a, 100, 12.0)                 # add
+    assert q == 200 and a == pytest.approx(11.0) and r == 0
+    q, a, r = apply_fill(q, a, -50, 15.0)                 # partial close
+    assert q == 150 and a == pytest.approx(11.0) and r == pytest.approx(200.0)
+    q, a, r = apply_fill(q, a, -200, 9.0)                 # close 150, flip short 50 @ 9
+    assert q == -50 and a == 9.0 and r == pytest.approx((9 - 11) * 150)
+    q, a, r = apply_fill(q, a, 50, 8.0)                   # cover short at a profit
+    assert q == 0 and a == 0 and r == pytest.approx(50.0)
+
+
+def test_cash_and_nav_identity():
+    positions = [{"quantity": 100, "avg_cost": 50.0}, {"quantity": -20, "avg_cost": 100.0}]
+    cash = cash_balance(1_000_000, positions, realized_pnl=1_500, commissions=25)
+    assert cash == pytest.approx(1_000_000 - (5_000 - 2_000) + 1_500 - 25)
+    # NAV = cash + MV = capital + realized + unrealized - commissions
+    mv = 100 * 55 + (-20) * 90
+    unrealized = 100 * (55 - 50) + (-20) * (90 - 100)
+    assert cash + mv == pytest.approx(1_000_000 + 1_500 + unrealized - 25)
+
+
+def test_side_and_totals():
+    assert side_to_signed("BUY", 10) == 10 and side_to_signed("sell", 10) == -10
+    with pytest.raises(ValueError):
+        side_to_signed("HOLD", 1)
+    t = blotter_totals([{"realized_pnl": 10, "commission": 1, "quantity": -5, "price": 20}])
+    assert t == {"realized_pnl": 10.0, "commissions": 1.0, "traded_notional": 100.0, "trades": 1}
+    assert commission(-100_000, 5) == 50.0
+
+
+# ── Scorecard ────────────────────────────────────────────────────────────────
+def test_transition_backtest_beats_naive_on_alternating_series():
+    seq = ["A", "B"] * 60                                  # always switches
+    bt = transition_backtest(seq, min_train=10)
+    assert bt["hit_rate"] == 1.0 and bt["naive_persistence_hit_rate"] == 0.0
+    assert bt["brier"] < 0.01 and bt["verdict"].startswith("adds skill")
+    flat = transition_backtest(["A"] * 40 + ["B"] * 40, min_train=10)
+    assert flat["skill_vs_naive"] <= 0 and flat["verdict"].startswith("no skill")
+    assert transition_backtest(["A"] * 5, min_train=10) is None
+
+
+def test_recession_forecasts_resolve_only_after_horizon():
+    usrec = {"2020-04-01": 1.0, "2021-01-01": 0.0}
+    fc = [("2019-04-15", 0.8), ("2020-01-10", 0.1), ("2026-09-01", 0.06)]
+    r = resolve_recession_forecasts(fc, usrec, horizon_months=12)
+    assert r["resolved"] == 2 and r["pending"] == 1
+    assert r["brier"] == pytest.approx(((0.8 - 1) ** 2 + (0.1 - 0) ** 2) / 2)
+    assert r["next_resolution"] == "2027-09-01"

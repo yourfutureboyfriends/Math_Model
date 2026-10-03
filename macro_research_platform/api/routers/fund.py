@@ -37,21 +37,64 @@ async def _risk_free(settings: Dict[str, Any]) -> Optional[float]:
     return rf / 100.0 if rf is not None else None
 
 
+async def _factor_dollar_exposures(positions: List[Dict[str, Any]]) -> Dict[str, float]:
+    """$ exposure per factor = Σ market_value_i × beta_i,f (OLS betas on the long-short
+    factor set, ~1y of daily returns). Positions without enough history are skipped."""
+    from api.calculations.factor_model import (
+        FACTOR_TICKERS, build_factor_returns, estimate_factor_loadings, returns_from_closes)
+    from api.handlers.market_handler import _fetch_dated_closes_literal
+
+    priced = [p for p in positions if isinstance(p.get("market_value"), (int, float))]
+    if not priced:
+        return {}
+    tick = {t: await _fetch_dated_closes_literal(t) for t in FACTOR_TICKERS}
+    common = None
+    for d in tick.values():
+        common = set(d) if common is None else common & set(d)
+    common = sorted(common or [])
+    out: Dict[str, float] = {}
+    for p in priced:
+        d = await _fetch_dated_closes_literal(str(p["symbol"]).upper())
+        dates = [x for x in common if x in d]
+        if len(dates) < 61:
+            continue
+        fac = build_factor_returns({t: returns_from_closes([tick[t][x] for x in dates]) for t in FACTOR_TICKERS})
+        betas = estimate_factor_loadings(returns_from_closes([d[x] for x in dates]), fac)
+        for f, b in betas.items():
+            out[f] = out.get(f, 0.0) + p["market_value"] * b
+    return out
+
+
 async def _book_state(raw: List[Dict[str, Any]], settings: Dict[str, Any],
-                      include_liquidity: bool = True) -> Dict[str, Any]:
-    """NAV, exposures and every limit metric for a (possibly hypothetical) set of positions."""
-    from api import fund_store
+                      include_liquidity: bool = True, include_factors: bool = True) -> Dict[str, Any]:
+    """NAV, cash, exposures and every limit metric for a (possibly hypothetical) set of positions."""
+    from api import fund_store, blotter_store
     from api.calculations.fund import compute_nav, exposures_pct_nav, drawdown_from_peak
+    from api.calculations.blotter import blotter_totals, cash_balance
 
     main = _m()
     enriched = await main._enrich_positions(raw) if raw else {"positions": [], "summary": {}}
     summary = enriched.get("summary") or {}
+    totals = blotter_totals(await _thread(blotter_store.list_trades))
+    realized = totals["realized_pnl"] + float(settings.get("realized_pnl") or 0.0)  # + manual adj.
     nav = compute_nav(settings["capital"], summary.get("total_unrealized_pnl", 0.0),
-                      settings.get("realized_pnl") or 0.0)
+                      realized - totals["commissions"])
+    cash = cash_balance(settings["capital"], raw, realized, totals["commissions"])
     exp = exposures_pct_nav(summary, nav)
 
-    mvs = sorted((abs(p["market_value"]) for p in enriched.get("positions", [])
-                  if isinstance(p.get("market_value"), (int, float))), reverse=True)
+    positions = enriched.get("positions", [])
+    by_symbol: Dict[str, float] = {}
+    by_class: Dict[str, float] = {}
+    for p in positions:
+        mv = p.get("market_value")
+        if isinstance(mv, (int, float)):
+            # Net per symbol across rows/books, so one name split over rows can't dodge the limit.
+            s = str(p["symbol"]).upper()
+            by_symbol[s] = by_symbol.get(s, 0.0) + mv
+            c = p.get("asset_class") or "Unassigned"
+            by_class[c] = by_class.get(c, 0.0) + abs(mv)
+    mvs = sorted((abs(v) for v in by_symbol.values()), reverse=True)
+
     risk = await main._risk_snapshot(raw) if raw else {"var_available": False}
     var95 = risk.get("var_95_1d") if risk.get("var_available") else None
 
@@ -67,6 +110,16 @@ async def _book_state(raw: List[Dict[str, Any]], settings: Dict[str, Any],
         except Exception as e:
             logger.warning(f"[fund] liquidity check unavailable: {e}")
 
+    factor_usd: Dict[str, float] = {}
+    if include_factors and positions:
+        try:
+            factor_usd = await asyncio.wait_for(_factor_dollar_exposures(positions), timeout=30)
+        except Exception as e:
+            logger.warning(f"[fund] factor exposure unavailable: {e}")
+
+    def _pct(v):
+        return (abs(v) / nav) if (v is not None and nav) else None
+
     metrics = {
         "gross_exposure": exp["gross"],
         "net_exposure_abs": abs(exp["net"]) if exp["net"] is not None else None,
@@ -75,9 +128,14 @@ async def _book_state(raw: List[Dict[str, Any]], settings: Dict[str, Any],
         "var95_1d": (var95 / nav) if var95 is not None and nav else None,
         "drawdown": abs(dd) if dd is not None else None,
         "liquidity_days": liq_days,
+        "equity_beta_abs": _pct(factor_usd.get("equity")) if factor_usd else (0.0 if not positions else None),
+        "rates_beta_abs": _pct(factor_usd.get("rates")) if factor_usd else (0.0 if not positions else None),
+        "asset_class_max": (max(by_class.values()) / nav) if by_class and nav else (0.0 if nav else None),
     }
-    return {"nav": nav, "summary": summary, "exposures": exp, "metrics": metrics,
-            "var95_1d_usd": var95, "positions": enriched.get("positions", [])}
+    return {"nav": nav, "cash": cash, "realized_pnl": round(realized, 2),
+            "commissions": totals["commissions"], "summary": summary, "exposures": exp,
+            "metrics": metrics, "var95_1d_usd": var95, "positions": positions,
+            "factor_exposure_usd": {k: round(v, 2) for k, v in factor_usd.items()}}
 
 
 # ── Fund settings & NAV ──────────────────────────────────────────────────────
@@ -148,6 +206,10 @@ async def fund_overview():
         "fund": {k: settings[k] for k in ("fund_name", "capital", "base_currency", "inception_date",
                                          "vol_target", "realized_pnl")},
         "nav": state["nav"],
+        "cash": state["cash"],
+        "realized_pnl": state["realized_pnl"],
+        "commissions": state["commissions"],
+        "factor_exposure_usd": state["factor_exposure_usd"],
         "unrealized_pnl": state["summary"].get("total_unrealized_pnl"),
         "exposures": state["exposures"],
         "var95_1d_usd": state["var95_1d_usd"],
@@ -181,7 +243,7 @@ async def take_nav_snapshot() -> Dict[str, Any]:
         "date": date.today().isoformat(), "nav": state["nav"],
         "gross": state["exposures"]["gross"], "net": state["exposures"]["net"],
         "unrealized_pnl": state["summary"].get("total_unrealized_pnl"),
-        "realized_pnl": settings.get("realized_pnl"),
+        "realized_pnl": state["realized_pnl"],
         "var95_1d": state["var95_1d_usd"], "regime": regime, "positions": len(raw),
     })
 
@@ -234,27 +296,37 @@ class PretradeIn(BaseModel):
     book: Optional[str] = "Macro"
 
 
-@router.post("/api/v1/risk/pretrade")
-async def pretrade(body: PretradeIn):
-    """Pre-trade compliance: limit metrics before vs after the trade → PASS / WARN / BLOCK."""
+async def _run_pretrade(symbol: str, quantity: float, book: str) -> Dict[str, Any]:
+    """Limit metrics before vs after adding `quantity` of `symbol` to `book`."""
     from api import fund_store, portfolio_store
-    from api.calculations.limits import merge_limits, pretrade_check
+    from api.calculations.limits import merge_limits
     from api.handlers.market_handler import _fetch_closes_literal
-    sym = body.symbol.strip().upper()
+    sym = symbol.strip().upper()
     closes = await _fetch_closes_literal(sym)
     if not closes:
         raise HTTPException(404, f"No price history for {sym}")
     settings = await _thread(fund_store.get_settings)
     raw = await _thread(portfolio_store.list_positions, None)
-    proposed = {"symbol": sym, "quantity": body.quantity, "avg_cost": closes[-1],
-                "book": body.book or "Macro", "asset_class": "Equity"}
+    proposed = {"symbol": sym, "quantity": quantity, "avg_cost": closes[-1],
+                "book": book or "Macro", "asset_class": "Equity"}
     before, after = await asyncio.gather(_book_state(raw, settings, include_liquidity=False),
                                          _book_state(raw + [proposed], settings, include_liquidity=False))
-    limits = merge_limits(await _thread(fund_store.get_limit_overrides))
+    return _pretrade_result(sym, quantity, closes[-1], before, after,
+                            merge_limits(await _thread(fund_store.get_limit_overrides)))
+
+
+@router.post("/api/v1/risk/pretrade")
+async def pretrade(body: PretradeIn):
+    """Pre-trade compliance: limit metrics before vs after the trade → PASS / WARN / BLOCK."""
+    return await _run_pretrade(body.symbol, body.quantity, body.book or "Macro")
+
+
+def _pretrade_result(sym, quantity, price, before, after, limits):
+    from api.calculations.limits import pretrade_check
     result = pretrade_check(before["metrics"], after["metrics"], limits)
-    return {"trade": {"symbol": sym, "quantity": body.quantity, "price": round(closes[-1], 2),
-                      "notional": round(body.quantity * closes[-1], 2),
-                      "pct_nav": round(body.quantity * closes[-1] / before["nav"], 4) if before["nav"] else None},
+    return {"trade": {"symbol": sym, "quantity": quantity, "price": round(price, 2),
+                      "notional": round(quantity * price, 2),
+                      "pct_nav": round(quantity * price / before["nav"], 4) if before["nav"] else None},
             **result, "nav": before["nav"], "as_of": datetime.now().isoformat()}
 
 
@@ -323,6 +395,8 @@ async def stage_rebalance(body: StageIn, request: Request):
     approval, and record the decision in the audit trail."""
     from api import portfolio_store, audit_store
     user = _m()._request_user(request)
+    from api import blotter_store
+    await _thread(blotter_store.init_db)
     created = []
     for o in body.orders:
         idea = await _thread(lambda o=o: portfolio_store.add_trade_idea({
@@ -331,8 +405,215 @@ async def stage_rebalance(body: StageIn, request: Request):
                       f"{o.get('side')} {o.get('quantity')} @ ~{o.get('price')}",
             "conviction": "MEDIUM", "rationale": "Regime rebalance engine",
             "suggested_size": o.get("quantity"), "book": body.book}, user))
+        await _thread(lambda i=idea, o=o: blotter_store.set_order_fields(
+            i["id"], side=str(o.get("side", "BUY")).upper(), quantity=float(o.get("quantity") or 0)))
         created.append(idea)
     await _thread(lambda: audit_store.add_decision(
         "rebalance_staged", f"{len(created)} rebalance orders staged for approval ({body.book})",
         user=user, target=body.book, after_state={"orders": body.orders}))
     return {"staged": len(created), "ideas": created}
+
+
+# ── Orders: four-eyes approval & execution ───────────────────────────────────
+class OrderIn(BaseModel):
+    symbol: str
+    side: str                      # BUY / SELL
+    quantity: float
+    book: str = "Macro"
+    thesis: Optional[str] = None
+    conviction: str = "MEDIUM"
+
+
+class DecisionNoteIn(BaseModel):
+    note: Optional[str] = None
+
+
+def _order_view(idea: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: idea.get(k) for k in ("id", "symbol", "side", "quantity", "book", "thesis",
+                                     "conviction", "state", "created_by", "approved_by",
+                                     "approval_note", "executed_trade_id", "created_at",
+                                     "updated_at", "state_history")}
+
+
+@router.get("/api/v1/orders")
+async def list_orders(state: Optional[str] = None):
+    from api import blotter_store, portfolio_store
+    await _thread(blotter_store.init_db)
+    ideas = await _thread(portfolio_store.list_trade_ideas, state)
+    return {"orders": [_order_view(i) for i in ideas if i.get("side") and i.get("quantity")],
+            "execution_mode": __import__("api.execution", fromlist=["x"]).execution_mode()}
+
+
+@router.post("/api/v1/orders")
+async def create_order(body: OrderIn, request: Request):
+    """Order ticket: runs pre-trade compliance immediately and queues the order as
+    'Proposed' (a BLOCK is reported but the ticket is still recorded for the audit trail)."""
+    from api import blotter_store, portfolio_store, audit_store
+    from api.calculations.blotter import side_to_signed
+    user = _m()._request_user(request)
+    signed = side_to_signed(body.side, body.quantity)
+    check = await _run_pretrade(body.symbol, signed, body.book)
+    await _thread(blotter_store.init_db)
+    idea = await _thread(lambda: portfolio_store.add_trade_idea({
+        "symbol": body.symbol, "direction": "LONG" if signed > 0 else "SHORT",
+        "thesis": body.thesis or f"{body.side.upper()} {abs(body.quantity):g} {body.symbol.upper()}",
+        "conviction": body.conviction, "rationale": "Order ticket",
+        "suggested_size": abs(body.quantity), "book": body.book}, user))
+    await _thread(lambda: blotter_store.set_order_fields(idea["id"], side=body.side.upper(),
+                                                         quantity=abs(body.quantity)))
+    await _thread(lambda: audit_store.add_decision(
+        "order_created", f"{body.side.upper()} {abs(body.quantity):g} {body.symbol.upper()} "
+                         f"({body.book}) — pre-trade {check['decision']}",
+        user=user, target=f"order:{idea['id']}", after_state={"pretrade": check["decision"]}))
+    return {"order": _order_view(await _thread(blotter_store.get_idea, idea["id"])), "pretrade": check}
+
+
+@router.post("/api/v1/orders/{order_id}/approve")
+async def approve_order(order_id: int, body: DecisionNoteIn, request: Request):
+    """Four-eyes approval: the approver must differ from the order's creator. Compliance is
+    re-run against the CURRENT book: BLOCK refuses; WARN requires a written note."""
+    from api import blotter_store, portfolio_store, audit_store
+    from api.calculations.blotter import side_to_signed
+    user = _m()._request_user(request)
+    o = await _thread(blotter_store.get_idea, order_id)
+    if not o or not o.get("side"):
+        raise HTTPException(404, "order not found")
+    if o["state"] not in ("Proposed", "Under Review"):
+        raise HTTPException(409, f"order is {o['state']}")
+    if user == "system" or user == (o.get("created_by") or ""):
+        raise HTTPException(403, "four-eyes: the approver must be a different, identified user "
+                                 f"than the creator ({o.get('created_by')})")
+    check = await _run_pretrade(o["symbol"], side_to_signed(o["side"], o["quantity"]), o["book"])
+    if check["decision"] == "BLOCK":
+        raise HTTPException(409, {"message": "pre-trade compliance BLOCK", "reasons": check["reasons"]})
+    if check["decision"] == "WARN" and not (body.note or "").strip():
+        raise HTTPException(409, {"message": "soft-limit WARN — approval needs a written note",
+                                  "reasons": check["reasons"]})
+    await _thread(lambda: portfolio_store.transition_trade_idea(order_id, "Approved", user, body.note))
+    await _thread(lambda: blotter_store.set_order_fields(order_id, approved_by=user, approval_note=body.note))
+    await _thread(lambda: audit_store.add_decision(
+        "order_approved", f"Approved order {order_id} ({o['side']} {o['quantity']:g} {o['symbol']}); "
+                          f"pre-trade {check['decision']}" + (f"; note: {body.note}" if body.note else ""),
+        user=user, target=f"order:{order_id}", after_state={"pretrade": check}))
+    return {"order": _order_view(await _thread(blotter_store.get_idea, order_id)), "pretrade": check}
+
+
+@router.post("/api/v1/orders/{order_id}/reject")
+async def reject_order(order_id: int, body: DecisionNoteIn, request: Request):
+    from api import blotter_store, portfolio_store, audit_store
+    user = _m()._request_user(request)
+    o = await _thread(blotter_store.get_idea, order_id)
+    if not o:
+        raise HTTPException(404, "order not found")
+    if o["state"] in ("Executed", "Closed"):
+        raise HTTPException(409, f"order is {o['state']}")
+    if not (body.note or "").strip():
+        raise HTTPException(400, "a rejection reason is required")
+    await _thread(lambda: portfolio_store.transition_trade_idea(order_id, "Closed", user, f"Rejected: {body.note}"))
+    await _thread(lambda: audit_store.add_decision(
+        "order_rejected", f"Rejected order {order_id}: {body.note}", user=user, target=f"order:{order_id}"))
+    return {"order": _order_view(await _thread(blotter_store.get_idea, order_id))}
+
+
+@router.post("/api/v1/orders/{order_id}/execute")
+async def execute_order(order_id: int, request: Request):
+    """Execute an APPROVED order: simulated fill at the latest close (default) or Alpaca PAPER
+    routing when configured; the fill is booked into positions + blotter atomically."""
+    from api import blotter_store, fund_store, portfolio_store, audit_store
+    from api import execution
+    from api.calculations.blotter import side_to_signed, commission
+    from api.handlers.market_handler import _fetch_closes_literal
+    user = _m()._request_user(request)
+    o = await _thread(blotter_store.get_idea, order_id)
+    if not o or not o.get("side"):
+        raise HTTPException(404, "order not found")
+    if o["state"] != "Approved":
+        raise HTTPException(409, f"only Approved orders can be executed (order is {o['state']})")
+    signed = side_to_signed(o["side"], o["quantity"])
+    mode = execution.execution_mode()
+    if mode == "alpaca_paper":
+        fill = await _thread(lambda: execution.alpaca_paper_fill(o["symbol"], signed))
+    else:
+        closes = await _fetch_closes_literal(o["symbol"])
+        fill = execution.simulated_fill(signed, closes[-1] if closes else None)
+    if not fill.filled:
+        await _thread(lambda: audit_store.add_decision(
+            "order_not_filled", f"Order {order_id} not filled ({fill.source}): {fill.detail}",
+            user=user, target=f"order:{order_id}"))
+        raise HTTPException(409, {"message": "not filled", "status": fill.status, "detail": fill.detail,
+                                  "broker_order_id": fill.broker_order_id})
+    settings = await _thread(fund_store.get_settings)
+    comm = commission(signed * fill.price, settings["cost_bps"])
+    trade = await _thread(lambda: blotter_store.book_fill(
+        o["book"], o["symbol"], signed, fill.price, comm, user, fill.source, order_id))
+    await _thread(lambda: portfolio_store.transition_trade_idea(
+        order_id, "Executed", user, f"{fill.source} fill {abs(signed):g} @ {fill.price:.2f}"))
+    await _thread(lambda: audit_store.add_decision(
+        "order_executed", f"Executed order {order_id}: {o['side']} {abs(signed):g} {o['symbol']} @ "
+                          f"{fill.price:.2f} ({fill.source}); realized {trade['realized_pnl']:+.2f}",
+        user=user, target=f"order:{order_id}", after_state=trade))
+    return {"trade": trade, "order": _order_view(await _thread(blotter_store.get_idea, order_id)),
+            "execution_mode": mode}
+
+
+@router.get("/api/v1/blotter")
+async def blotter(book: Optional[str] = None, limit: int = 200):
+    from api import blotter_store, fund_store, portfolio_store
+    from api.calculations.blotter import blotter_totals
+    trades = await _thread(lambda: blotter_store.list_trades(limit, book))
+    settings = await _thread(fund_store.get_settings)
+    raw = await _thread(portfolio_store.list_positions, None)
+    state = await _book_state(raw, settings, include_liquidity=False, include_factors=False)
+    return {"trades": trades, "totals": blotter_totals(await _thread(blotter_store.list_trades)),
+            "cash": state["cash"], "nav": state["nav"], "realized_pnl": state["realized_pnl"],
+            "commissions": state["commissions"]}
+
+
+# ── Model scorecard ──────────────────────────────────────────────────────────
+@router.get("/api/v1/models/scorecard")
+async def model_scorecard():
+    """How the models actually performed: walk-forward regime-transition test on FRED history,
+    recession forecasts scored once their 12-month horizon resolves (FRED USREC), and the
+    signal backtests' independent-window hit rates."""
+    from api.calculations.scorecard import transition_backtest, resolve_recession_forecasts
+    out: Dict[str, Any] = {"as_of": datetime.now().isoformat()}
+
+    try:
+        regimes = list((await _thread(_m()._monthly_regime_frame))["regime"])
+        out["regime_transition"] = transition_backtest(regimes, min_train=60) or {"available": False}
+        out["regime_transition"]["method"] = ("walk-forward: each month's next-regime forecast uses "
+                                              "only the history up to that month")
+    except Exception as e:
+        out["regime_transition"] = {"available": False, "reason": str(e)[:120]}
+
+    try:
+        import sqlite3
+        from database.db import DB_PATH
+        # Score only GENUINE forecasts: logged on the day they were made, by the current
+        # model (its log carries a "model" field). Older rows include back-filled "history"
+        # from a retired heuristic — dated 2018-2027 but all written on one day — which would
+        # be scoring hindsight, not forecasts.
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            rows = conn.execute(
+                "SELECT date, blended_prob FROM recession_forecast_history "
+                "WHERE horizon = '12M' AND substr(recorded_at, 1, 10) = substr(date, 1, 10) "
+                "AND metadata LIKE '%\"model\"%' ORDER BY date").fetchall()
+            excluded = conn.execute(
+                "SELECT COUNT(*) FROM recession_forecast_history WHERE horizon = '12M'").fetchone()[0] - len(rows)
+        from api.handlers.macro_inputs import _fred
+        res = await _thread(lambda: _fred().fetch_series("USREC", start_date="2018-01-01"))
+        usrec = {o.date: o.value for o in (res.data or [])}
+        out["recession"] = {**resolve_recession_forecasts(rows, usrec, 12), "logged_forecasts": len(rows),
+                            "excluded_non_genuine": excluded,
+                            "note": "scored only after the 12-month horizon passes and NBER data is published"}
+    except Exception as e:
+        out["recession"] = {"available": False, "reason": str(e)[:120]}
+
+    try:
+        bt = await _m().signals_backtest_v1()
+        out["signals"] = [{"label": s.get("label"), "hit_rate_independent": s.get("hit_rate_independent"),
+                           "p_value": s.get("hit_rate_p_value"), "independent": s.get("independent_directional"),
+                           "sharpe": s.get("strategy_sharpe")} for s in bt.get("signals", [])]
+    except Exception as e:
+        out["signals"] = {"available": False, "reason": str(e)[:120]}
+    return out

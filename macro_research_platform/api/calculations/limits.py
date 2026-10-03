@@ -22,6 +22,10 @@ DEFAULT_LIMITS: Dict[str, Dict] = {
     "var95_1d":         {"label": "VaR 95% 1-day",           "soft": 0.015, "hard": 0.020, "unit": "% NAV"},
     "drawdown":         {"label": "Drawdown from peak",      "soft": 0.08, "hard": 0.12, "unit": "% NAV"},
     "liquidity_days":   {"label": "Days to liquidate (max)", "soft": 3.0, "hard": 5.0, "unit": "days"},
+    # Factor / sector limits ($ factor exposure as % NAV; see factor_model)
+    "equity_beta_abs":  {"label": "Equity beta (abs)",       "soft": 0.80, "hard": 1.20, "unit": "% NAV"},
+    "rates_beta_abs":   {"label": "Rates duration beta (abs)", "soft": 0.50, "hard": 0.80, "unit": "% NAV"},
+    "asset_class_max":  {"label": "Largest asset class (gross)", "soft": 1.00, "hard": 1.50, "unit": "% NAV"},
 }
 
 _ORDER = {"OK": 0, "WARN": 1, "BREACH": 2}
