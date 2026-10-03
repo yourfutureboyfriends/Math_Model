@@ -79,12 +79,23 @@ async def get_trade_ideas_data() -> Dict[str, Any]:
     dashboard = await get_dashboard_data(mode="live")
 
     regime = (dashboard.regime.current or "").lower()
-    ideas = [{"asset": t["ticker"], "direction": t["direction"], "entry": t["entry"],
-              "stop": t["stop"], "target": t["target"], "conviction": t["conviction"],
-              "rationale": t["thesis"]} for t in await _regime_trades(regime)]
+    ideas = []
+    for t in await _regime_trades(regime):
+        risk = abs(t["entry"] - t["stop"])
+        ideas.append({
+            "asset": t["ticker"], "ticker": t["ticker"],
+            "direction": t["direction"], "entry": t["entry"], "stop": t["stop"],
+            "target": t["target"], "conviction": t["conviction"],
+            "rationale": t["thesis"], "thesis": t["thesis"],
+            "rr": round(abs(t["target"] - t["entry"]) / risk, 2) if risk else None,
+            "category": "regime",
+            # Ideas come from the current regime's playbook, so they are valid for it.
+            "regime_valid": True, "regime_current": regime, "status": "ACTIVE",
+        })
 
     return {
         "ideas": ideas,
+        "regime": regime.title() if regime else None,
         "count": len(ideas),
         "lastUpdated": datetime.now().isoformat(),
     }

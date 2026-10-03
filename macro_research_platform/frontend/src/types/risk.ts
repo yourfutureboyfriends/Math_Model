@@ -140,15 +140,15 @@ export interface TradeIdea {
   kelly_size?: number;
   suggested_size?: number;
   position_size_pct?: number;
-  horizon_days: number;
+  horizon_days?: number | null;
   conviction: 'HIGH' | 'MEDIUM' | 'LOW';
   category: string;
   regime_valid: boolean;
   regime_current: string;
   status: 'ACTIVE' | 'REVIEW';
-  days_open: number;
-  pnl_pct: number;
-  exit_conditions: string[];
+  days_open?: number | null;
+  pnl_pct?: number | null;
+  exit_conditions?: string[];
 }
 
 export interface TradeIdeasData {

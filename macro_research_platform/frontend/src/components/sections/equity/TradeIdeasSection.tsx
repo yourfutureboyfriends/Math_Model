@@ -96,7 +96,7 @@ export function TradeIdeasSection({ data }: Props) {
                 {/* Ticker, direction, conviction level, and category */}
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <span className="font-mono font-bold text-lg text-text-primary">
-                    {idea.direction} {idea.ticker}
+                    {idea.direction} {idea.ticker ?? idea.asset}
                   </span>
                   <span className={`px-2 py-0.5 rounded text-xs font-medium ${getConvictionColor(idea.conviction)}`}>
                     {idea.conviction}
@@ -118,7 +118,7 @@ export function TradeIdeasSection({ data }: Props) {
                 </div>
 
                 {/* Trade thesis */}
-                <p className="text-sm text-text-secondary mb-3">{idea.thesis}</p>
+                <p className="text-sm text-text-secondary mb-3">{idea.thesis ?? (idea as any).rationale}</p>
 
                 {/* Price levels and sizing */}
                 <div className="grid grid-cols-6 gap-3 text-sm mb-3">
@@ -176,18 +176,22 @@ export function TradeIdeasSection({ data }: Props) {
                 )}
 
                 {/* Footer: time metrics and live P&L */}
+                {(idea.horizon_days != null || idea.days_open != null || idea.pnl_pct != null) && (
                 <div className="flex items-center gap-4 text-2xs text-text-tertiary pt-2 border-t border-border-subtle">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {idea.horizon_days}d horizon
-                  </span>
-                  <span>{idea.days_open}d open</span>
-                  {idea.pnl_pct !== 0 && (
+                  {idea.horizon_days != null && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {idea.horizon_days}d horizon
+                    </span>
+                  )}
+                  {idea.days_open != null && <span>{idea.days_open}d open</span>}
+                  {idea.pnl_pct != null && idea.pnl_pct !== 0 && (
                     <span className={idea.pnl_pct >= 0 ? 'text-green' : 'text-red'}>
                       {idea.pnl_pct >= 0 ? '+' : ''}{(typeof idea.pnl_pct === 'number' && isFinite(idea.pnl_pct)) ? idea.pnl_pct.toFixed(1) : '—'}%
                     </span>
                   )}
                 </div>
+                )}
               </div>
 
               <div className="ml-4">

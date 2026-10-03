@@ -1195,6 +1195,14 @@ class TradeIdeaData(BaseModel):
     target: float
     conviction: str
     rationale: str
+    # Fields the Trade Ideas card renders (ticker/thesis alias asset/rationale).
+    ticker: Optional[str] = None
+    thesis: Optional[str] = None
+    rr: Optional[float] = None
+    category: Optional[str] = None
+    regime_valid: Optional[bool] = None
+    regime_current: Optional[str] = None
+    status: Optional[str] = None
 
 
 class MorningBriefData(BaseModel):
@@ -1260,6 +1268,7 @@ class TradeIdeasResponse(BaseModel):
     ideas: List[TradeIdeaData]
     count: int
     lastUpdated: str
+    regime: Optional[str] = None   # regime the playbook ideas were generated for
 
 
 class DecisionLogResponse(BaseModel):

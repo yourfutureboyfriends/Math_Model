@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { AlertTriangle, Target, Calendar, TrendingUp, Shield } from 'lucide-react';
-import { fmtProbability, fmtChange } from '@/utils/format';
+import { fmtProbability } from '@/utils/format';
 import { api } from '@/lib/apiClient';
 
 interface Priority {
@@ -196,7 +196,7 @@ export function MorningBriefSection() {
           </div>
           {(typeof position_modifier === 'number' && isFinite(position_modifier) && position_modifier < 1.0) && (
             <div className="text-2xs text-amber bg-amber-dim px-2 py-1 rounded">
-              Position size: {fmtChange(position_modifier)}
+              Position size: {fmtProbability(position_modifier)} of normal
             </div>
           )}
         </div>
