@@ -20,6 +20,7 @@ import {
   RiskIndicatorsSection,
   FactorExposureSection,
   VaRStressSection,
+  FundCockpitSection,
   NowcastSection,
   LiquiditySection,
   SentimentSection,
@@ -84,8 +85,13 @@ export function DashboardPage() {
   const dataStatus = useMacroStore((s) => s.meta.dataStatus);
   const wsError = useMacroStore((s) => s.wsError);
   const fetchDashboard = useMacroStore((s) => s.fetchDashboard);
-  const isLoading = dataStatus === 'loading';
-  const isError = dataStatus === 'error';
+  // Skeleton / error screens only before the first payload. A background refresh used to
+  // swap all 50 panels for skeletons every minute, unmounting them (lost tab/input state,
+  // scroll reset, every panel refetching).
+  const hasData = useMacroStore((s) => s.fullDashboard !== null);
+  const isLoading = dataStatus === 'loading' && !hasData;
+  const isError = dataStatus === 'error' && !hasData;
+  const refreshFailed = dataStatus === 'error' && hasData;
 
   if (isLoading) {
     return (
@@ -116,6 +122,12 @@ export function DashboardPage() {
 
   return (
     <>
+      {refreshFailed && (
+        <div className="mx-4 mt-2 px-3 py-1.5 text-2xs font-mono border border-amber/40 text-amber bg-amber/5 flex items-center gap-2">
+          Refresh failed — showing the last successful data. {wsError}
+          <button onClick={() => fetchDashboard()} className="ml-auto underline hover:text-text-primary">Retry</button>
+        </div>
+      )}
       {/* ── Morning Brief ─────────────────────────────────────────────────── */}
       <div id="morning-brief" className="terminal-section">
         <ErrorBoundary sectionName="Morning Brief">
@@ -303,6 +315,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Risk Indicators">
           <Suspense fallback={<SectionSkeleton />}>
             <RiskIndicatorsSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Fund Cockpit">
+          <Suspense fallback={<SectionSkeleton />}>
+            <FundCockpitSection />
           </Suspense>
         </ErrorBoundary>
       </div>

@@ -7,7 +7,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { DiagnosticsPanel } from './components/dev/DiagnosticsPanel';
 import { useAuth } from './context/AuthContext';
 import { DashboardPage } from './pages';
-import { useMacroStore, selectMeta, selectIsLoading, selectRegime } from './store/macroStore';
+import { useMacroStore, selectMeta, selectIsLoading, selectRegime, selectFullDashboard } from './store/macroStore';
 
 function App() {
   const { isAuthenticated } = useAuth();
@@ -22,6 +22,10 @@ function App() {
   const isLoading = useMacroStore(selectIsLoading);
   const wsError = useMacroStore((state) => state.wsError);
   const regime = useMacroStore(selectRegime);
+  // True once any dashboard payload has loaded. Background refreshes must not tear the
+  // terminal down: replacing it with a loading/error screen unmounted every panel each
+  // minute (lost tabs and inputs, scroll jumped to top, ~50 panels refetched).
+  const hasData = useMacroStore(selectFullDashboard) !== null;
 
   // Initialize store on mount
   useEffect(() => {
@@ -41,9 +45,11 @@ function App() {
     return () => clearInterval(interval);
   }, [fetchDashboard]);
 
-  // Highlight the active section in the sidebar as the user scrolls
+  // Highlight the active section in the sidebar as the user scrolls. Re-attach once the
+  // terminal is rendered (it used to run once on the login screen and observe nothing).
   useEffect(() => {
-    const sections = document.querySelectorAll('[id]');
+    if (!isAuthenticated || !hasData) return;
+    const sections = document.querySelectorAll('.terminal-section[id], section[id]');
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -54,7 +60,7 @@ function App() {
     );
     sections.forEach((s) => observer.observe(s));
     return () => observer.disconnect();
-  }, []);
+  }, [isAuthenticated, hasData]);
 
   const handleNavigate = (sectionId: string) => {
     const el = document.getElementById(sectionId);
@@ -71,7 +77,7 @@ function App() {
 
   if (!isAuthenticated) return <LoginScreen />;
 
-  if (isLoading) {
+  if (isLoading && !hasData) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
         <div className="text-text-secondary font-mono">Initializing Terminal...</div>
@@ -79,7 +85,7 @@ function App() {
     );
   }
 
-  if (meta.dataStatus === 'error') {
+  if (meta.dataStatus === 'error' && !hasData) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
         <div className="text-center">

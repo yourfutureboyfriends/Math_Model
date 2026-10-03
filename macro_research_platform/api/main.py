@@ -1224,14 +1224,25 @@ async def lifespan(app: FastAPI):
         )
         logger.info("[STARTUP] Scheduled daily_pipeline_06utc at 06:00 UTC")
 
-        # Every 15 min during market hours (13:00-21:00 UTC = 9am-5pm EST)
+        # Once after the US close. The CSV is monthly, so re-running the ~36-request
+        # pipeline every 15 minutes only burned FRED's rate limit.
         _scheduler.add_job(
             func=lambda: run_daily_pipeline(_DASHBOARD_CACHE, _DASHBOARD_CACHE_LOCK),
-            trigger=CronTrigger(hour="13-21", minute="*/15"),
-            id="market_hours_refresh",
+            trigger=CronTrigger(day_of_week="mon-fri", hour=21, minute=15),
+            id="post_close_refresh",
             replace_existing=True,
         )
-        logger.info("[STARTUP] Scheduled market_hours_refresh every 15min 13:00-21:00 UTC")
+        logger.info("[STARTUP] Scheduled post_close_refresh at 21:15 UTC weekdays")
+
+        # Daily NAV snapshot (the fund's track record) after the US close.
+        from api.routers.fund import take_nav_snapshot
+        _scheduler.add_job(
+            func=take_nav_snapshot,
+            trigger=CronTrigger(day_of_week="mon-fri", hour=21, minute=30),
+            id="daily_nav_snapshot",
+            replace_existing=True,
+        )
+        logger.info("[STARTUP] Scheduled daily_nav_snapshot at 21:30 UTC weekdays")
 
         # FIXED: Phase 7 - Add new consolidated data refresh jobs
         # Price refresh every 60 seconds via new provider architecture
@@ -1425,6 +1436,8 @@ app.include_router(market_router)
 app.include_router(signals_router)
 app.include_router(risk_router)
 app.include_router(business_router)
+from api.routers.fund import router as fund_router  # hedge-fund layer: NAV, limits, rebalance
+app.include_router(fund_router)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NATIVE WEBSOCKET ENDPOINTS

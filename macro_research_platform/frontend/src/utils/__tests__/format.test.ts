@@ -16,6 +16,7 @@ import {
   fmtSignal,
   fmtProbability,
   fmtDuration,
+  fmtPct,
 } from '../format';
 
 const DASH = '—';
@@ -159,6 +160,18 @@ describe('format library', () => {
 
     it('formats null as a dash', () => {
       expect(fmtProbability(null)).toBe(DASH);
+    });
+  });
+
+  describe('fmtPct', () => {
+    it('does not clamp exposures above 100% or below 0', () => {
+      expect(fmtPct(1.5)).toBe('150.0%');
+      expect(fmtPct(-0.12)).toBe('-12.0%');
+    });
+
+    it('signs when asked, never "+0.0%" or "-0.0%"', () => {
+      expect(fmtPct(0.0123, 2, true)).toBe('+1.23%');
+      expect(fmtPct(-0.0000001, 1, true)).toBe('0.0%');
     });
   });
 

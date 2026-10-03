@@ -214,6 +214,22 @@ export const fmtProbability = (v: number | null): string =>
  * Format probability with decimals for precision
  * Input: 0.2534 -> Output: "25.34%"
  */
+/**
+ * Format a fraction as a percentage WITHOUT clamping (exposures can exceed 100% or be
+ * negative). Input: 1.5 -> "150.0%", -0.12 -> "-12.0%". signed=true adds "+" to positives.
+ */
+export const fmtPct = (v: number | null, decimals = 1, signed = false): string =>
+  guard(v, (n) => {
+    const fixed = (n * 100).toFixed(decimals);
+    return (signed ? signed_(fixed) : fixed.replace(/^-(0\.?0*)$/, '$1')) + '%';
+  });
+
+const signed_ = (fixed: string): string => {
+  const n = parseFloat(fixed);
+  if (n === 0) return fixed.replace(/^-/, '');
+  return n > 0 ? '+' + fixed : fixed;
+};
+
 export const fmtProbabilityPrecise = (v: number | null, decimals = 1): string =>
   guard(v, (n) => {
     const clamped = Math.max(0, Math.min(1, n));

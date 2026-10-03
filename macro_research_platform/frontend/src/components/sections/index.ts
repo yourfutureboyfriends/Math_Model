@@ -235,6 +235,10 @@ export const VaRStressSection = lazy(() =>
   import('./risk/VaRStressSection').then(m => ({ default: m.VaRStressSection }))
 );
 
+export const FundCockpitSection = lazy(() =>
+  import('./risk/FundCockpitSection').then(m => ({ default: m.FundCockpitSection }))
+);
+
 export const COTPositioningSection = lazy(() =>
   import('./risk/COTPositioningSection').then(m => ({ default: m.COTPositioningSection }))
 );

@@ -9,6 +9,7 @@ export { CorrelationRegimeSection } from './CorrelationRegimeSection';
 export { CorrelationMatrixSection } from './CorrelationMatrixSection';
 export { FactorExposureSection } from './FactorExposureSection';
 export { VaRStressSection } from './VaRStressSection';
+export { FundCockpitSection } from './FundCockpitSection';
 export { LSTMSection } from './LSTMSection';
 export { RiskAnalyticsSection } from './RiskAnalyticsSection';
 export { RiskIndicatorsSection } from './RiskIndicatorsSection';

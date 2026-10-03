@@ -65,6 +65,7 @@ const navigation: NavSection[] = [
   {
     title: 'RISK',
     items: [
+      { id: 'fund-cockpit', label: 'Fund Cockpit', icon: '▣', permission: 'var_drawdown', highlight: true },
       { id: 'risk-indicators', label: 'Risk Indicators', icon: '◆', permission: 'risk_indicators', highlight: true },
       { id: 'risk-analytics', label: 'Risk Analytics', icon: '◆', permission: 'var_drawdown', highlight: true },
       { id: 'var-stress', label: 'VaR & Stress', icon: '◆', permission: 'var_drawdown', highlight: true },
