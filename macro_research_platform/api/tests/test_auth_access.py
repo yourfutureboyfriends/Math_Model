@@ -5,6 +5,9 @@ from fastapi.testclient import TestClient
 
 from api import portfolio_store
 
+# Strong test passwords set on the seeded accounts (defaults are forced to change).
+PW = {u: f"Test-{u.title()}-Pass-2026!" for u in ("admin", "pm", "analyst", "risk", "quant")}
+
 
 @pytest.fixture(scope="module")
 def app_client(tmp_path_factory):
@@ -13,11 +16,16 @@ def app_client(tmp_path_factory):
     mp.setattr(portfolio_store, "_db_path", lambda: path)
     import api.core.auth as auth
     mp.setattr(auth, "get_db_path", lambda: path)
-    auth.init_users_table()
+    from api.core import accounts
+    accounts.invalidate_cache()
+    accounts.migrate()
+    for u, pw in PW.items():                 # seeded accounts start on must-change defaults
+        accounts.set_password(u, pw)
     from api.main import app
     with TestClient(app) as c:
         yield c
     mp.undo()
+    accounts.invalidate_cache()
 
 
 def _login(c, user, pw):
@@ -35,7 +43,7 @@ def test_bad_credentials_are_401_not_200(app_client):
 
 
 def test_good_login_returns_signed_token_and_role(app_client):
-    r = _login(app_client, "risk", "risk123")
+    r = _login(app_client, "risk", PW["risk"])
     j = r.json()
     assert r.status_code == 200 and j["role"] == "risk" and j["access_token"].count(".") == 2
     me = app_client.get("/api/auth/me", headers={"Authorization": f"Bearer {j['access_token']}"}).json()
@@ -60,10 +68,10 @@ def test_forged_x_user_header_is_ignored(app_client):
 
 def test_roles_enforced_on_position_edits(app_client):
     r = app_client.post("/api/v1/portfolio/positions", json={"symbol": "SPY", "quantity": 1, "avg_cost": 100},
-                        headers=_h(app_client, "analyst", "analyst123"))
+                        headers=_h(app_client, "analyst", PW["analyst"]))
     assert r.status_code == 403
     r = app_client.post("/api/v1/portfolio/positions", json={"symbol": "SPY", "quantity": 1, "avg_cost": 100},
-                        headers=_h(app_client, "pm", "pm123"))
+                        headers=_h(app_client, "pm", PW["pm"]))
     assert r.status_code == 200
 
 
@@ -75,7 +83,7 @@ def test_order_four_eyes_and_roles(app_client, monkeypatch):
     monkeypatch.setattr(fund, "_run_pretrade", _fake_pretrade)
 
     pm, risk, analyst = (_h(app_client, *c) for c in
-                         (("pm", "pm123"), ("risk", "risk123"), ("analyst", "analyst123")))
+                         (("pm", PW["pm"]), ("risk", PW["risk"]), ("analyst", PW["analyst"])))
     oid = app_client.post("/api/v1/orders", json={"symbol": "SPY", "side": "BUY", "quantity": 5},
                           headers=pm).json()["order"]["id"]
     assert app_client.post(f"/api/v1/orders/{oid}/approve", json={}, headers=analyst).status_code == 403
@@ -87,7 +95,7 @@ def test_order_four_eyes_and_roles(app_client, monkeypatch):
     assert ok.status_code == 200 and ok.json()["order"]["approved_by"] == "risk"
 
     oid2 = app_client.post("/api/v1/orders", json={"symbol": "SPY", "side": "BUY", "quantity": 5},
-                           headers=_h(app_client, "admin", "admin123")).json()["order"]["id"]
+                           headers=_h(app_client, "admin", PW["admin"])).json()["order"]["id"]
     # admin may approve, but not their own order
     assert app_client.post(f"/api/v1/orders/{oid2}/approve", json={},
-                           headers=_h(app_client, "admin", "admin123")).status_code == 403
+                           headers=_h(app_client, "admin", PW["admin"])).status_code == 403

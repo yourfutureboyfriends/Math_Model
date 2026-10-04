@@ -7,6 +7,9 @@
 // * The signed token is attached to every API request by a single fetch wrapper, so all
 //   panels authenticate without each one handling headers. A 401 from a protected call
 //   ends the session.
+// * Accounts flagged must_change_password (seeded defaults, admin-issued temp passwords) are
+//   held on a change-password screen until they set a new one; the server enforces the same
+//   (403 password_change_required on everything else).
 // * The session survives a page reload (sessionStorage — cleared when the tab closes) until
 //   the token expires.
 
@@ -23,11 +26,13 @@ interface AuthState {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+  mustChangePassword?: boolean;
 }
 
 interface AuthContextType extends AuthState {
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   hasPermission: (permission: string) => boolean;
 }
 
@@ -60,6 +65,7 @@ function loadSession(): AuthState {
 // Current token for the fetch wrapper (module-level so the wrapper is installed once).
 let currentToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;
+let onPasswordChangeRequired: (() => void) | null = null;
 
 function isApiUrl(url: string): boolean {
   try {
@@ -83,6 +89,11 @@ function installFetchWrapper() {
     if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${currentToken}`);
     const res = await original(input, { ...init, headers });
     if (res.status === 401 && !url.includes('/api/auth/login') && onUnauthorized) onUnauthorized();
+    if (res.status === 403 && onPasswordChangeRequired) {
+      res.clone().json().then((b) => {
+        if (b?.code === 'password_change_required') onPasswordChangeRequired?.();
+      }).catch(() => { /* not JSON */ });
+    }
     return res;
   };
 }
@@ -104,6 +115,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('macro_role');
     } catch { /* storage unavailable */ }
     setAuth(EMPTY);
+  }, []);
+
+  const persist = useCallback((next: AuthState) => {
+    currentToken = next.token;
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(next));
+    } catch { /* storage unavailable */ }
+    setAuth(next);
+  }, []);
+
+  useEffect(() => {
+    onPasswordChangeRequired = () => setAuth((a) => {
+      if (!a.isAuthenticated || a.mustChangePassword) return a;
+      const next = { ...a, mustChangePassword: true };
+      try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -138,16 +166,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       display_name: data.display_name || data.user?.display_name || username,
       permissions: data.permissions || data.user?.permissions || [],
     };
-    const next: AuthState = { user: resolvedUser, token, isAuthenticated: true };
-    currentToken = token;
     try {
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(next));
       // Display-only hints for non-React code; the server never trusts these.
       localStorage.setItem('macro_user', resolvedUser.username);
       localStorage.setItem('macro_role', resolvedUser.role);
     } catch { /* storage unavailable */ }
-    setAuth(next);
-  }, []);
+    persist({ user: resolvedUser, token, isAuthenticated: true,
+              mustChangePassword: Boolean(data.must_change_password) });
+  }, [persist]);
+
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    const response = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.access_token) {
+      const d = data.detail;
+      const msg = typeof d === 'string' ? d
+        : d?.problems ? `${d.message}: ${d.problems.join('; ')}` : 'Password change failed';
+      throw new Error(msg);
+    }
+    // The old token was revoked server-side; continue on the fresh one.
+    persist({ ...auth, token: data.access_token, isAuthenticated: true, mustChangePassword: false });
+  }, [auth, persist]);
 
   const logout = useCallback(async () => {
     if (auth.token) {
@@ -165,7 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [auth.user]);
 
   return (
-    <AuthContext.Provider value={{ ...auth, login, logout, hasPermission }}>
+    <AuthContext.Provider value={{ ...auth, login, logout, changePassword, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );

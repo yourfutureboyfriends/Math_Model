@@ -1202,8 +1202,8 @@ async def lifespan(app: FastAPI):
     from api.logging_config import setup_logging
     setup_logging()
     try:
-        from api.core.auth import init_users_table
-        init_users_table()          # users table + default accounts (seeded only if empty)
+        from api.core.accounts import migrate as _migrate_accounts
+        _migrate_accounts()         # users table, security columns, default-password flags
     except Exception as e:
         logger.warning(f"[STARTUP] users table init failed: {e}")
     logger.info("Clearing dashboard cache to force fresh computation")
@@ -1447,6 +1447,8 @@ app.include_router(risk_router)
 app.include_router(business_router)
 from api.routers.fund import router as fund_router  # hedge-fund layer: NAV, limits, rebalance
 app.include_router(fund_router)
+from api.routers.admin import router as admin_router  # user administration (admin role)
+app.include_router(admin_router)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NATIVE WEBSOCKET ENDPOINTS
@@ -3212,7 +3214,6 @@ async def login(request: Request):
     {"success": false}, which the UI treated as a successful login — any credentials got in.)
     """
     from urllib.parse import parse_qs
-    from api.core.auth import authenticate_user, create_access_token
     from api.config import ROLE_PERMISSIONS, ACCESS_TOKEN_EXPIRE_MINUTES
 
     content_type = request.headers.get("content-type", "").lower()
@@ -3230,13 +3231,15 @@ async def login(request: Request):
     if not username or not password:
         return JSONResponse({"success": False, "error": "Username and password required"}, status_code=400)
 
-    user = await authenticate_user(username.strip(), password)
-    if not user:
-        logger.warning(f"[AUTH] failed login for '{username[:64]}'")
-        return JSONResponse({"success": False, "error": "Invalid username or password"}, status_code=401)
+    from api.core import accounts
+    try:
+        user = await _aio_to_thread(accounts.check_login, username.strip(), password)
+    except accounts.LoginError as e:
+        logger.warning(f"[AUTH] failed login for '{username[:64]}': {e.message}")
+        return JSONResponse({"success": False, "error": e.message}, status_code=e.status)
 
     role = user["role"]
-    token = create_access_token({"sub": user["username"], "role": role})
+    token = accounts.issue_token(user)
     perms = ROLE_PERMISSIONS.get(role, [])
     try:
         from api import audit_store
@@ -3248,6 +3251,7 @@ async def login(request: Request):
         "success": True, "access_token": token, "token": token, "token_type": "bearer",
         "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "role": role, "display_name": user["display_name"], "permissions": perms,
+        "must_change_password": bool(user.get("must_change_password")),
         "user": {"username": user["username"], "role": role,
                  "display_name": user["display_name"], "permissions": perms},
     }
@@ -3255,12 +3259,61 @@ async def login(request: Request):
 
 @app.post("/api/auth/logout")
 async def logout(request: Request):
-    """Revoke the presented token for the rest of its lifetime (in-process blacklist)."""
-    from api.core.auth import token_blacklist
-    h = request.headers.get("Authorization") or ""
-    if h.lower().startswith("bearer "):
-        token_blacklist.add(h[7:].strip())
+    """Revoke the presented token for the rest of its lifetime (persisted, survives restarts)."""
+    from api.core.access import current_user
+    from api.core import accounts
+    u = current_user(request)
+    if u:
+        await _aio_to_thread(accounts.revoke, u.get("jti"), u.get("exp"))
     return {"success": True, "message": "Logged out successfully"}
+
+
+class ChangePasswordIn(_PortfolioBaseModel):
+    current_password: str
+    new_password: str
+
+
+@app.post("/api/auth/change-password")
+async def change_password(body: ChangePasswordIn, request: Request):
+    """Change your own password (policy-checked). All your other sessions are signed out;
+    a fresh token is returned for this one."""
+    from api.core.access import current_user
+    from api.core import accounts
+    from api.core.auth import verify_password
+    u = current_user(request)
+    if not u:
+        raise HTTPException(401, "Not authenticated")
+    row = await _aio_to_thread(accounts.get_user, u["username"])
+    if not row or not verify_password(body.current_password, row["hashed_password"]):
+        raise HTTPException(400, "Current password is incorrect")
+    if body.new_password == body.current_password:
+        raise HTTPException(400, "New password must differ from the current one")
+    problems = accounts.password_problems(body.new_password, u["username"])
+    if problems:
+        raise HTTPException(400, {"message": "Password does not meet the policy", "problems": problems})
+    await _aio_to_thread(accounts.set_password, u["username"], body.new_password)
+    await _aio_to_thread(accounts.revoke, u.get("jti"), u.get("exp"))
+    try:
+        from api import audit_store
+        await _aio_to_thread(lambda: audit_store.add_decision(
+            "password_changed", f"{u['username']} changed their password", user=u["username"], target="auth"))
+    except Exception:
+        pass
+    fresh = await _aio_to_thread(accounts.get_user, u["username"])
+    return {"success": True, "access_token": accounts.issue_token(fresh), "must_change_password": False}
+
+
+@app.get("/api/auth/status")
+async def auth_status():
+    """Public: whether the seeded demo credentials still work (the login screen only shows
+    them in that case) and the password policy."""
+    from api.core import accounts
+    return {"default_credentials_active": await _aio_to_thread(accounts.default_credentials_active),
+            "password_policy": {"min_length": accounts.MIN_PASSWORD_LENGTH,
+                                "rules": ["at least 3 of: lowercase, uppercase, digit, symbol",
+                                          "must not contain the username", "not a common/default password"]},
+            "lockout": {"max_failed_attempts": accounts.MAX_FAILED_ATTEMPTS,
+                        "lockout_minutes": accounts.LOCKOUT_SECONDS // 60}}
 
 
 @app.get("/api/auth/me")

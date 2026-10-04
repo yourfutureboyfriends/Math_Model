@@ -2,10 +2,11 @@
 // Optimized navigation for PM daily workflow: Morning → Signals → Trades → Risk → Strategy
 
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, LogOut, Star } from 'lucide-react';
+import { ChevronLeft, ChevronRight, KeyRound, LogOut, Star } from 'lucide-react';
 import { Logo } from './Logo';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { AccountDialog } from '@/components/account/AccountPanels';
 import { usePinnedSections } from '@/hooks/usePinnedSections';
 
 interface NavItem {
@@ -148,6 +149,7 @@ interface SidebarProps {
 export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRegime, collapsed: externalCollapsed, onCollapse }: SidebarProps) {
   const [internalCollapsed, setInternalCollapsed] = useState(false);
   const { user, logout } = useAuth();
+  const [accountOpen, setAccountOpen] = useState(false);
 
   // Use external state if provided, otherwise internal
   const collapsed = externalCollapsed ?? internalCollapsed;
@@ -280,6 +282,14 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
                 {user.role.toUpperCase()} — {user.display_name}
               </span>
             </div>
+            <div className="flex items-center">
+            <button
+              onClick={() => setAccountOpen(true)}
+              className="p-1 text-text-tertiary hover:text-text-primary transition-colors"
+              title={user.role === 'admin' ? 'Account & users' : 'Account'}
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+            </button>
             <button
               onClick={handleLogout}
               className="p-1 text-text-tertiary hover:text-text-primary transition-colors"
@@ -287,7 +297,9 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
             >
               <LogOut className="w-3.5 h-3.5" />
             </button>
+            </div>
           </div>
+          {accountOpen && <AccountDialog onClose={() => setAccountOpen(false)} />}
         </div>
       )}
 

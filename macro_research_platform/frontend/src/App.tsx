@@ -4,13 +4,14 @@
 import { useEffect, useState } from 'react';
 import { TerminalShell } from './components/layout/TerminalShell';
 import { LoginScreen } from './components/LoginScreen';
+import { ChangePasswordScreen } from './components/account/AccountPanels';
 import { DiagnosticsPanel } from './components/dev/DiagnosticsPanel';
 import { useAuth } from './context/AuthContext';
 import { DashboardPage } from './pages';
 import { useMacroStore, selectMeta, selectIsLoading, selectRegime, selectFullDashboard } from './store/macroStore';
 
 function App() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, mustChangePassword } = useAuth();
   const [activeSection, setActiveSection] = useState('master-signal');
 
   // Initialize macro store
@@ -76,6 +77,7 @@ function App() {
   };
 
   if (!isAuthenticated) return <LoginScreen />;
+  if (mustChangePassword) return <ChangePasswordScreen />;
 
   if (isLoading && !hasData) {
     return (

@@ -1,7 +1,8 @@
 // LoginScreen — Dark terminal-style authentication
-// Demo credentials note: "Demo credentials — change before production deployment"
+// The seeded demo accounts are offered only in a dev build AND only while the server
+// reports their default passwords still work; signing in with one forces a password change.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Terminal } from 'lucide-react';
 
@@ -11,6 +12,14 @@ export function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDemo, setShowDemo] = useState(false);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    fetch('/api/auth/status').then((r) => r.json())
+      .then((j) => setShowDemo(Boolean(j.default_credentials_active)))
+      .catch(() => setShowDemo(false));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,10 +115,11 @@ export function LoginScreen() {
             </button>
           </form>
 
-          {/* Demo Credentials */}
+          {/* Demo Credentials (dev build, defaults still active) */}
+          {showDemo && (
           <div className="mt-6 pt-6 border-t border-border">
             <div className="text-xs text-amber mb-3 text-center">
-              Demo credentials — change before production deployment
+              Development accounts — a new password is required at first sign-in
             </div>
             <div className="grid grid-cols-2 gap-2">
               {demoCredentials.map((cred) => (
@@ -126,11 +136,12 @@ export function LoginScreen() {
               ))}
             </div>
           </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="mt-6 text-center text-2xs text-text-tertiary">
-          Protected by JWT authentication • Token expires in 8 hours
+          Signed sessions expire after 8 hours • 5 failed attempts lock the account for 15 min
         </div>
       </div>
     </div>

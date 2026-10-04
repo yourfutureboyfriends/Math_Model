@@ -15,9 +15,18 @@ from fastapi.testclient import TestClient
 
 
 @pytest.fixture(scope="session")
-def client():
+def client(tmp_path_factory):
+    # Users live in a throwaway DB so the suite never touches (or depends on) real accounts.
+    import api.core.auth as auth
+    from api.core import accounts
+    path = str(tmp_path_factory.mktemp("users") / "users.db")
+    mp = pytest.MonkeyPatch()
+    mp.setattr(auth, "get_db_path", lambda: path)
+    accounts.migrate()
+    accounts.set_password("admin", "Regression-Admin-Pass-2026!")
     from api.main import app
-    from api.core.auth import create_access_token
     with TestClient(app) as c:
-        c.headers["Authorization"] = f"Bearer {create_access_token({'sub': 'admin', 'role': 'admin'})}"
+        c.headers["Authorization"] = f"Bearer {accounts.issue_token(accounts.get_user('admin'))}"
         yield c
+    mp.undo()
+    accounts.invalidate_cache()

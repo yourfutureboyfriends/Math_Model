@@ -233,6 +233,10 @@ class TestDataPipeline:
             f"{BASE_URL}/api/data/refresh", timeout=10,
             headers={"Authorization": f"Bearer {login.json()['access_token']}"}
         )
+        if login.json().get("must_change_password"):
+            # Still on a default/temporary password: the server must hold every write.
+            assert r.status_code == 403 and r.json().get("code") == "password_change_required"
+            return
         assert r.status_code == 200, (
             f"Refresh endpoint returned {r.status_code}"
         )
