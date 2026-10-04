@@ -7,6 +7,7 @@ import { Logo } from './Logo';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { AccountDialog } from '@/components/account/AccountPanels';
+import { useDesk } from '@/hooks/useDesk';
 import { usePinnedSections } from '@/hooks/usePinnedSections';
 
 interface NavItem {
@@ -172,6 +173,13 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
     navigation.flatMap((s) => s.items).map((i) => [i.id, i])
   );
   const pinnedItems = pinned.map((id) => itemById[id]).filter(Boolean) as NavItem[];
+  // Role desk: "My Desk" plus the panels this role works from (server-defined).
+  const desk = useDesk(user?.username);
+  const deskItems: NavItem[] = [
+    { id: 'my-desk', label: 'My Desk', icon: '▣', permission: 'master_signal', highlight: true },
+    ...((desk?.focus.panels ?? []).map((id) => itemById[id]).filter(Boolean) as NavItem[]),
+  ];
+  const deskQueue = desk?.queue.filter((i) => i.priority === 'high').length ?? 0;
 
   const renderNavItem = (item: NavItem) => {
     const isActive = activeSection === item.id;
@@ -243,6 +251,22 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-2">
+        {/* Your desk — role-tailored entry points */}
+        <div className="mb-1">
+          {!collapsed && (
+            <div className="px-4 py-1.5 text-2xs text-bloomberg font-medium tracking-wider flex items-center gap-1">
+              YOUR DESK
+              {deskQueue > 0 && (
+                <span className="ml-auto px-1 text-2xs font-mono bg-red text-bg rounded-sm" title="High-priority items in your queue">
+                  {deskQueue}
+                </span>
+              )}
+            </div>
+          )}
+          <div className="space-y-px">{deskItems.map((i) => renderNavItem({ ...i }))}</div>
+          <div className="mx-4 my-1.5 border-t border-border-subtle" />
+        </div>
+
         {/* Pinned panels — user's most-watched, one-click access */}
         {pinnedItems.length > 0 && (
           <div className="mb-1">

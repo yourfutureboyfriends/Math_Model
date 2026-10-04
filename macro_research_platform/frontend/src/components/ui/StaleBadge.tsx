@@ -24,7 +24,10 @@ export function StaleBadge({ metric, className = '' }: StaleBadgeProps): React.R
     ? 'text-red border-red/50 bg-red-dim'
     : 'text-amber border-amber/50 bg-amber-dim';
   const age = f.age_days != null ? `${f.age_days}d` : '';
-  const title = `${f.name}: last release ${f.last_observation_date ?? 'unknown'} · ${age} old (max ${f.max_lag_days}d)`;
+  const title = `${f.name}: latest period ${f.last_observation_date ?? 'unknown'}`
+    + (f.expected_period ? ` · expected ${f.expected_period} by now` : '')
+    + (f.periods_behind ? ` · ${f.periods_behind} period${f.periods_behind > 1 ? 's' : ''} behind` : '')
+    + (f.next_expected_release ? ` · next release ~${f.next_expected_release}` : '');
 
   return (
     <span
@@ -32,7 +35,7 @@ export function StaleBadge({ metric, className = '' }: StaleBadgeProps): React.R
       className={`inline-flex items-center gap-1 text-2xs font-mono px-1 py-0.5 rounded-sm border border-dashed ${tone} ${className}`}
     >
       <span className={`inline-block w-1.5 h-1.5 rounded-full ${critical ? 'bg-red' : 'bg-amber'}`} />
-      {f.status}{age ? ` ${age}` : ''}
+      {f.status === 'CRITICAL' ? 'MISSING' : 'LATE'}{f.periods_behind ? ` ${f.periods_behind}p` : age ? ` ${age}` : ''}
     </span>
   );
 }

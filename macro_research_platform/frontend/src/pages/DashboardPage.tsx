@@ -6,6 +6,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SectionSkeleton } from '@/components/ui/SectionSkeleton';
 import { useMacroStore } from '@/store/macroStore';
 import {
+  MyDeskSection,
   MorningBriefSection,
   AnomaliesStripSection,
   MasterSignalSection,
@@ -128,6 +129,13 @@ export function DashboardPage() {
           <button onClick={() => fetchDashboard()} className="ml-auto underline hover:text-text-primary">Retry</button>
         </div>
       )}
+      {/* ── My Desk: role-tailored queue + key numbers ─────────────────────── */}
+      <div id="my-desk" className="terminal-section">
+        <ErrorBoundary sectionName="My Desk">
+          <MyDeskSection />
+        </ErrorBoundary>
+      </div>
+
       {/* ── Morning Brief ─────────────────────────────────────────────────── */}
       <div id="morning-brief" className="terminal-section">
         <ErrorBoundary sectionName="Morning Brief">

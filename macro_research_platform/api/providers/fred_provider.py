@@ -125,7 +125,7 @@ class FREDProvider:
             # series-id suffix. Translate a trailing _PC1/_PCH/_PCA so ids like
             # "CPIAUCSL_PC1" resolve to CPIAUCSL with units=pc1 instead of 400ing.
             real_series_id, units = series_id, "lin"
-            for suffix, unit in (("_PC1", "pc1"), ("_PCH", "pch"), ("_PCA", "pca")):
+            for suffix, unit in (("_PC1", "pc1"), ("_PCH", "pch"), ("_PCA", "pca"), ("_CHG", "chg")):
                 if series_id.endswith(suffix):
                     real_series_id, units = series_id[: -len(suffix)], unit
                     break

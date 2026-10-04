@@ -1449,6 +1449,8 @@ from api.routers.fund import router as fund_router  # hedge-fund layer: NAV, lim
 app.include_router(fund_router)
 from api.routers.admin import router as admin_router  # user administration (admin role)
 app.include_router(admin_router)
+from api.routers.desk import router as desk_router  # role desk: action queue + key numbers
+app.include_router(desk_router)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NATIVE WEBSOCKET ENDPOINTS

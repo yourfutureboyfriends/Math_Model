@@ -164,35 +164,26 @@ def get_next_expected_release(series_id: str) -> Optional[datetime]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Live per-field freshness (served by /api/v1/freshness)
 # ─────────────────────────────────────────────────────────────────────────────
-# Key macro inputs a PM watches, mapped to a human name and the FRED series whose
-# last-observation date determines freshness. CPI YoY (_PC1) shares dates with the
-# base CPIAUCSL series, so we fetch the date via the base id.
-# (metric, human name, FRED series, max_lag_days). Lags are frequency-appropriate on
-# an observation-date basis: quarterly GDP is naturally ~half a year old by observation
-# date, monthly CPI/fed-funds ~45d, weekly M2 ~20d, daily rates/spreads ~5d.
-_FRESHNESS_SERIES = [
-    ("inflation", "CPI Inflation (YoY)", "CPIAUCSL", 45),
-    ("growth", "GDP Growth (QoQ)", "A191RL1Q225SBEA", 200),
-    ("fed_funds", "Fed Funds Rate", "FEDFUNDS", 45),
-    ("hy_spread", "HY Credit Spread", "BAMLH0A0HYM2", 5),
-    ("two_ten", "2s10s Spread", "T10Y2Y", 5),
-    ("m2", "M2 Money Supply", "M2SL", 20),
-]
-
+# Freshness is graded against each series' release calendar (api/release_calendar.py):
+# "is the latest period that should be published by now present?", not "how old is the
+# observation date". See that module for the states.
 _FRESHNESS_CACHE: Dict[str, object] = {"data": None, "ts": 0.0}
 _FRESHNESS_TTL = 300  # seconds
 
 
-def get_live_freshness(force: bool = False) -> Dict:
-    """Fetch each key series' latest observation date from FRED and assess staleness.
-
-    Returns per-metric {metric, name, series_id, last_observation_date, age_days,
-    max_lag_days, status: FRESH|STALE|CRITICAL|UNKNOWN} plus a summary. Cached ~5min.
-    """
+def get_live_freshness(force: bool = False, today=None) -> Dict:
+    """Latest observation of every model input from FRED, graded against its release
+    calendar. Returns per-series detail (status FRESH|STALE|CRITICAL|UNKNOWN plus the
+    calendar state, expected period, periods behind and next expected release), per-
+    category roll-ups and a summary. Cached ~5 min."""
     import time as _time
+    from concurrent.futures import ThreadPoolExecutor
+    from datetime import date as _date
+    from api.release_calendar import SERIES, assess
+
     now = _time.time()
     cached = _FRESHNESS_CACHE.get("data")
-    if not force and cached and now - float(_FRESHNESS_CACHE["ts"]) < _FRESHNESS_TTL:
+    if not force and today is None and cached and now - float(_FRESHNESS_CACHE["ts"]) < _FRESHNESS_TTL:
         return cached  # type: ignore[return-value]
 
     try:
@@ -201,40 +192,47 @@ def get_live_freshness(force: bool = False) -> Dict:
     except Exception as e:  # pragma: no cover - defensive
         return {"available": False, "reason": f"FRED provider unavailable: {e}", "series": []}
 
-    out = []
-    for metric, name, series_id, max_lag in _FRESHNESS_SERIES:
-        last_date = None
+    def _latest(series_id: str):
         try:
-            obs = provider.fetch_latest(series_id)
+            # limit>1: the newest row can be a "." holiday placeholder.
+            obs = provider.fetch_latest(series_id, limit=10)
             if obs is not None and obs.date:
-                last_date = datetime.strptime(obs.date[:10], "%Y-%m-%d")
+                return datetime.strptime(obs.date[:10], "%Y-%m-%d").date(), obs.value
         except Exception as e:
             logger.warning("[FRESHNESS] date fetch failed for %s: %s", series_id, e)
+        return None, None
 
-        if last_date is None:
-            label, age = "UNKNOWN", None
-        else:
-            age = (datetime.now() - last_date).days
-            label = "CRITICAL" if age > max_lag * 2 else "STALE" if age > max_lag else "FRESH"
-        out.append({
-            "metric": metric,
-            "name": name,
-            "series_id": series_id,
-            "last_observation_date": last_date.date().isoformat() if last_date else None,
-            "age_days": age,
-            "max_lag_days": max_lag,
-            "status": label,
-        })
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        # The display transform (e.g. CPI % YoY) shares observation dates with the base series.
+        latest = list(pool.map(lambda sp: _latest(sp.value_series), SERIES))
 
+    asof = today or _date.today()
+    out = []
+    for spec, (last_date, value) in zip(SERIES, latest):
+        row = assess(spec, last_date, asof)
+        row["latest_value"] = round(value, 3) if isinstance(value, (int, float)) else value
+        out.append(row)
+
+    categories: Dict[str, Dict[str, int]] = {}
+    for r in out:
+        c = categories.setdefault(r["category"], {"total": 0, "fresh": 0})
+        c["total"] += 1
+        c["fresh"] += r["status"] == "FRESH"
+    known = [r for r in out if r["status"] != "UNKNOWN"]
     fresh = sum(1 for s in out if s["status"] == "FRESH")
     result = {
         "available": True,
+        "method": "release-calendar",
         "series": out,
+        "categories": categories,
         "fresh": fresh,
         "stale": sum(1 for s in out if s["status"] in ("STALE", "CRITICAL")),
+        "unknown": len(out) - len(known),
         "total": len(out),
+        "score_pct": round(100 * fresh / len(known)) if known else None,
         "checked_at": datetime.now().isoformat(),
     }
-    _FRESHNESS_CACHE["data"] = result
-    _FRESHNESS_CACHE["ts"] = now
+    if today is None:
+        _FRESHNESS_CACHE["data"] = result
+        _FRESHNESS_CACHE["ts"] = now
     return result

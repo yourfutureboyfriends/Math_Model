@@ -16,6 +16,7 @@ export { KeyMetricsSection } from './KeyMetricsSection';
 export { LiquiditySection } from './LiquiditySection';
 export { ModelAgreementSection } from './ModelAgreementSection';
 export { MorningBriefSection } from './MorningBriefSection';
+export { MyDeskSection } from './MyDeskSection';
 export { NowcastSection } from './NowcastSection';
 export { RegimeSection } from './RegimeSection';
 export { RegimePlaybookSection } from './RegimePlaybookSection';

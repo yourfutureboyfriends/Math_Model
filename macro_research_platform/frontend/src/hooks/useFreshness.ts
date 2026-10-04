@@ -13,14 +13,29 @@ export interface FieldFreshness {
   series_id: string;
   last_observation_date: string | null;
   age_days: number | null;
-  max_lag_days: number;
+  max_lag_days: number | null;
   status: 'FRESH' | 'STALE' | 'CRITICAL' | 'UNKNOWN';
+  /** Release-calendar state: CURRENT | DUE (release window open) | LATE | MISSING_PERIODS | UNAVAILABLE */
+  state?: string;
+  frequency?: 'D' | 'W' | 'M' | 'Q';
+  category?: string;
+  source?: string;
+  expected_period?: string | null;
+  periods_behind?: number | null;
+  next_expected_release?: string | null;
+  latest_value?: number | null;
 }
 
-interface FreshnessResponse {
+export interface FreshnessResponse {
   available: boolean;
   series: FieldFreshness[];
+  categories?: Record<string, { total: number; fresh: number }>;
+  score_pct?: number | null;
+  unknown?: number;
+  checked_at?: string;
 }
+
+export const FREQ_LABEL: Record<string, string> = { D: 'daily', W: 'weekly', M: 'monthly', Q: 'quarterly' };
 
 const REFRESH_MS = 300_000;
 let cache: FreshnessResponse | null = null;
