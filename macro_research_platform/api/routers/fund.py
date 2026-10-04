@@ -160,6 +160,8 @@ async def fund_settings():
 @router.put("/api/v1/fund/settings")
 async def update_fund_settings(body: FundSettingsIn, request: Request):
     from api import fund_store, audit_store
+    from api.core.access import require_roles
+    require_roles(request, {"risk"})
     changes = {k: v for k, v in body.model_dump().items() if v is not None}
     if "capital" in changes and changes["capital"] <= 0:
         raise HTTPException(400, "capital must be positive")
@@ -274,6 +276,8 @@ async def risk_limits():
 @router.put("/api/v1/risk/limits")
 async def update_risk_limits(body: Dict[str, LimitIn], request: Request):
     from api import fund_store, audit_store
+    from api.core.access import require_roles
+    require_roles(request, {"risk"})
     from api.calculations.limits import DEFAULT_LIMITS, merge_limits
     unknown = [k for k in body if k not in DEFAULT_LIMITS]
     if unknown:
@@ -394,6 +398,8 @@ async def stage_rebalance(body: StageIn, request: Request):
     """Send rebalance orders into the trade-idea workflow (state 'Proposed') for PM/risk
     approval, and record the decision in the audit trail."""
     from api import portfolio_store, audit_store
+    from api.core.access import require_roles
+    require_roles(request, {"pm", "quant"})
     user = _m()._request_user(request)
     from api import blotter_store
     await _thread(blotter_store.init_db)
@@ -450,7 +456,8 @@ async def create_order(body: OrderIn, request: Request):
     'Proposed' (a BLOCK is reported but the ticket is still recorded for the audit trail)."""
     from api import blotter_store, portfolio_store, audit_store
     from api.calculations.blotter import side_to_signed
-    user = _m()._request_user(request)
+    from api.core.access import require_roles
+    user = require_roles(request, {"pm", "quant", "analyst"})["username"]
     signed = side_to_signed(body.side, body.quantity)
     check = await _run_pretrade(body.symbol, signed, body.book)
     await _thread(blotter_store.init_db)
@@ -474,13 +481,14 @@ async def approve_order(order_id: int, body: DecisionNoteIn, request: Request):
     re-run against the CURRENT book: BLOCK refuses; WARN requires a written note."""
     from api import blotter_store, portfolio_store, audit_store
     from api.calculations.blotter import side_to_signed
-    user = _m()._request_user(request)
+    from api.core.access import require_roles
+    user = require_roles(request, {"risk"})["username"]       # approval is a risk function
     o = await _thread(blotter_store.get_idea, order_id)
     if not o or not o.get("side"):
         raise HTTPException(404, "order not found")
     if o["state"] not in ("Proposed", "Under Review"):
         raise HTTPException(409, f"order is {o['state']}")
-    if user == "system" or user == (o.get("created_by") or ""):
+    if user == (o.get("created_by") or ""):
         raise HTTPException(403, "four-eyes: the approver must be a different, identified user "
                                  f"than the creator ({o.get('created_by')})")
     check = await _run_pretrade(o["symbol"], side_to_signed(o["side"], o["quantity"]), o["book"])
@@ -501,7 +509,8 @@ async def approve_order(order_id: int, body: DecisionNoteIn, request: Request):
 @router.post("/api/v1/orders/{order_id}/reject")
 async def reject_order(order_id: int, body: DecisionNoteIn, request: Request):
     from api import blotter_store, portfolio_store, audit_store
-    user = _m()._request_user(request)
+    from api.core.access import require_roles
+    user = require_roles(request, {"risk", "pm"})["username"]
     o = await _thread(blotter_store.get_idea, order_id)
     if not o:
         raise HTTPException(404, "order not found")
@@ -523,7 +532,8 @@ async def execute_order(order_id: int, request: Request):
     from api import execution
     from api.calculations.blotter import side_to_signed, commission
     from api.handlers.market_handler import _fetch_closes_literal
-    user = _m()._request_user(request)
+    from api.core.access import require_roles
+    user = require_roles(request, {"pm"})["username"]        # execution desk
     o = await _thread(blotter_store.get_idea, order_id)
     if not o or not o.get("side"):
         raise HTTPException(404, "order not found")

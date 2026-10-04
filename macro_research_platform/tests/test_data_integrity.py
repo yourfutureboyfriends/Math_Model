@@ -222,8 +222,16 @@ class TestDataPipeline:
         )
 
     def test_refresh_endpoint_exists(self):
+        # Writes require a signed-in user. Defaults to the seeded dev admin; override with
+        # MACRO_TEST_USER / MACRO_TEST_PASSWORD.
+        login = requests.post(f"{BASE_URL}/api/auth/login", timeout=10, data={
+            "username": os.getenv("MACRO_TEST_USER", "admin"),
+            "password": os.getenv("MACRO_TEST_PASSWORD", "admin123")})
+        assert login.status_code == 200, f"login failed: {login.status_code}"
+        assert requests.post(f"{BASE_URL}/api/data/refresh", timeout=10).status_code == 401
         r = requests.post(
-            f"{BASE_URL}/api/data/refresh", timeout=10
+            f"{BASE_URL}/api/data/refresh", timeout=10,
+            headers={"Authorization": f"Bearer {login.json()['access_token']}"}
         )
         assert r.status_code == 200, (
             f"Refresh endpoint returned {r.status_code}"

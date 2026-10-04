@@ -1,7 +1,6 @@
 /**
- * actorHeaders — attach the logged-in user to state-changing requests so the backend
- * audit trail records who actually acted (the demo token carries no identity).
- * The username is persisted to localStorage on login by AuthContext.
+ * actorHeaders — kept for call-site compatibility. Identity now comes from the signed JWT
+ * that AuthContext attaches to every API request; the backend ignores X-User.
  */
 export function currentActor(): string {
   try {

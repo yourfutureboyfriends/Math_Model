@@ -1201,6 +1201,11 @@ async def lifespan(app: FastAPI):
     # Standardize log format across all app modules before anything else logs.
     from api.logging_config import setup_logging
     setup_logging()
+    try:
+        from api.core.auth import init_users_table
+        init_users_table()          # users table + default accounts (seeded only if empty)
+    except Exception as e:
+        logger.warning(f"[STARTUP] users table init failed: {e}")
     logger.info("Clearing dashboard cache to force fresh computation")
     global _DASHBOARD_CACHE
     _DASHBOARD_CACHE["data"] = None
@@ -1399,6 +1404,10 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
 )
+
+# Authentication: verify the bearer token on every request (see api/core/access.py).
+from api.core.access import auth_middleware as _auth_middleware
+app.middleware("http")(_auth_middleware)
 
 # FIXED: Global exception handler to catch all unhandled exceptions
 @app.exception_handler(Exception)
@@ -1708,11 +1717,27 @@ async def portfolio_positions_v1(book: Optional[str] = None):
         raise HTTPException(status_code=503, detail=f"positions unavailable: {str(e)[:160]}")
 
 
-@app.post("/api/v1/portfolio/positions")
-async def portfolio_add_position_v1(pos: PositionIn):
-    from api import portfolio_store
+async def _audit_position_edit(request: Request, action: str, rationale: str, before=None, after=None):
     try:
-        return await _aio_to_thread(portfolio_store.add_position, pos.model_dump())
+        from api import audit_store
+        await _aio_to_thread(lambda: audit_store.add_decision(
+            action, rationale, user=_request_user(request), target="positions",
+            before_state=before, after_state=after))
+    except Exception as e:
+        logger.debug(f"[audit] position edit not logged: {e}")
+
+
+@app.post("/api/v1/portfolio/positions")
+async def portfolio_add_position_v1(pos: PositionIn, request: Request):
+    """Manual position entry (e.g. loading an existing book). Trading should go through
+    /api/v1/orders so it is approved and booked in the blotter; manual edits are audited."""
+    from api import portfolio_store
+    from api.core.access import require_roles
+    require_roles(request, {"pm"})
+    try:
+        out = await _aio_to_thread(portfolio_store.add_position, pos.model_dump())
+        await _audit_position_edit(request, "position_added", f"Manual position {out.get('symbol')} {out.get('quantity')}", after=out)
+        return out
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
@@ -1721,26 +1746,38 @@ async def portfolio_add_position_v1(pos: PositionIn):
 
 
 @app.post("/api/v1/portfolio/positions/bulk")
-async def portfolio_bulk_v1(body: BulkPositionsIn):
+async def portfolio_bulk_v1(body: BulkPositionsIn, request: Request):
     from api import portfolio_store
-    return await _aio_to_thread(portfolio_store.add_positions_bulk, [p.model_dump() for p in body.positions])
+    from api.core.access import require_roles
+    require_roles(request, {"pm"})
+    out = await _aio_to_thread(portfolio_store.add_positions_bulk, [p.model_dump() for p in body.positions])
+    await _audit_position_edit(request, "positions_bulk_loaded", f"Bulk load of {len(body.positions)} positions")
+    return out
 
 
 @app.put("/api/v1/portfolio/positions/{pos_id}")
-async def portfolio_update_position_v1(pos_id: int, upd: PositionUpdate):
+async def portfolio_update_position_v1(pos_id: int, upd: PositionUpdate, request: Request):
     from api import portfolio_store
+    from api.core.access import require_roles
+    require_roles(request, {"pm"})
+    before = await _aio_to_thread(portfolio_store.get_position, pos_id)
     updated = await _aio_to_thread(portfolio_store.update_position, pos_id, upd.model_dump(exclude_none=True))
     if updated is None:
         raise HTTPException(status_code=404, detail="position not found")
+    await _audit_position_edit(request, "position_edited", f"Manual edit of position {pos_id}", before, updated)
     return updated
 
 
 @app.delete("/api/v1/portfolio/positions/{pos_id}")
-async def portfolio_delete_position_v1(pos_id: int):
+async def portfolio_delete_position_v1(pos_id: int, request: Request):
     from api import portfolio_store
+    from api.core.access import require_roles
+    require_roles(request, {"pm"})
+    before = await _aio_to_thread(portfolio_store.get_position, pos_id)
     ok = await _aio_to_thread(portfolio_store.delete_position, pos_id)
     if not ok:
         raise HTTPException(status_code=404, detail="position not found")
+    await _audit_position_edit(request, "position_deleted", f"Manual delete of position {pos_id}", before)
     return {"deleted": True, "id": pos_id}
 
 
@@ -1787,11 +1824,11 @@ class WhatIfIn(_PortfolioBaseModel):
 
 
 def _request_user(request: Request) -> str:
-    """Identity for the audit trail. The frontend sends the logged-in user in `X-User`
-    (the demo token is static and carries no identity), so we record who actually acted
-    rather than a hardcoded 'admin'. Falls back to 'system' when no identity is supplied."""
-    u = (request.headers.get("X-User") or "").strip()
-    return u[:64] if u else "system"
+    """Identity for the audit trail: the user verified from the request's JWT (see
+    api/core/access.py). The client-supplied X-User header is not trusted."""
+    from api.core.access import current_user
+    u = current_user(request)
+    return u["username"] if u else "system"
 
 
 @app.post("/api/v1/portfolio/what-if")
@@ -1880,8 +1917,20 @@ async def trade_ideas_add_v1(idea: TradeIdeaIn, request: Request):
 
 @app.post("/api/v1/portfolio/trade-ideas/{idea_id}/transition")
 async def trade_ideas_transition_v1(idea_id: int, body: TradeIdeaTransition, request: Request):
-    from api import portfolio_store
+    from api import portfolio_store, blotter_store
+    from api.core.access import require_roles
     user = _request_user(request)
+    # Orders (ideas with side/quantity) may only be approved/executed through the order
+    # workflow, which enforces four-eyes, re-runs compliance and books the fill.
+    idea = await _aio_to_thread(blotter_store.get_idea, idea_id)
+    if idea and idea.get("side") and body.state in ("Approved", "Executed"):
+        raise HTTPException(status_code=409, detail=(
+            f"Order #{idea_id} must be {'approved' if body.state == 'Approved' else 'executed'} via "
+            f"/api/v1/orders/{idea_id}/{'approve' if body.state == 'Approved' else 'execute'}"))
+    if body.state == "Approved":
+        require_roles(request, {"risk"})
+        if idea and user == (idea.get("created_by") or ""):
+            raise HTTPException(status_code=403, detail="four-eyes: approver must differ from the creator")
     try:
         updated = await _aio_to_thread(lambda: portfolio_store.transition_trade_idea(idea_id, body.state, user, body.note))
     except ValueError as e:
@@ -3154,89 +3203,75 @@ async def freshness_v1():
 from fastapi import Request
 
 
-@app.post("/api/auth/login", response_model=LoginResponse)
+@app.post("/api/auth/login")
 async def login(request: Request):
+    """Verify username/password against the users table (bcrypt) and issue a signed JWT
+    carrying the user and role. Invalid credentials return HTTP 401.
+
+    (This used to accept only demo/demo and answer every other attempt with HTTP 200
+    {"success": false}, which the UI treated as a successful login — any credentials got in.)
     """
-    Authentication endpoint for frontend login.
-    Accepts both form data (x-www-form-urlencoded) and JSON.
-    In production, this should validate against a proper auth service.
-    For demo/development, accepts demo/demo credentials.
-    """
+    from urllib.parse import parse_qs
+    from api.core.auth import authenticate_user, create_access_token
+    from api.config import ROLE_PERMISSIONS, ACCESS_TOKEN_EXPIRE_MINUTES
+
+    content_type = request.headers.get("content-type", "").lower()
+    body = await request.body()
+    username = password = None
     try:
-        # Parse body based on content type
-        content_type = request.headers.get('content-type', '').lower()
-        body = await request.body()
-
-        input_username = None
-        input_password = None
-
-        if 'application/json' in content_type:
-            # JSON body
-            try:
-                data = json.loads(body)
-                input_username = data.get('username')
-                input_password = data.get('password')
-            except json.JSONDecodeError:
-                pass
-        elif 'application/x-www-form-urlencoded' in content_type:
-            # Form data
-            from urllib.parse import parse_qs
-            form_data = parse_qs(body.decode('utf-8'))
-            input_username = form_data.get('username', [None])[0]
-            input_password = form_data.get('password', [None])[0]
+        if "application/json" in content_type:
+            data = json.loads(body or b"{}")
+            username, password = data.get("username"), data.get("password")
         else:
-            # Try to parse as form data by default
-            try:
-                from urllib.parse import parse_qs
-                form_data = parse_qs(body.decode('utf-8'))
-                input_username = form_data.get('username', [None])[0]
-                input_password = form_data.get('password', [None])[0]
-            except Exception as e:
-                pass
+            form = parse_qs(body.decode("utf-8"))
+            username, password = form.get("username", [None])[0], form.get("password", [None])[0]
+    except (ValueError, UnicodeDecodeError):
+        pass
+    if not username or not password:
+        return JSONResponse({"success": False, "error": "Username and password required"}, status_code=400)
 
-        if not input_username or not input_password:
-            return LoginResponse(
-                success=False,
-                error="Username and password required"
-            )
+    user = await authenticate_user(username.strip(), password)
+    if not user:
+        logger.warning(f"[AUTH] failed login for '{username[:64]}'")
+        return JSONResponse({"success": False, "error": "Invalid username or password"}, status_code=401)
 
-        # Demo credentials for development
-        DEMO_USERNAME = os.getenv("DEMO_USERNAME", "demo")
-        DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "demo")
-
-        if input_username == DEMO_USERNAME and input_password == DEMO_PASSWORD:
-            return LoginResponse(
-                success=True,
-                token="demo_token_12345",
-                access_token="demo_token_12345",
-                role="admin",
-                display_name="Demo User",
-                permissions=["read", "write", "admin"],
-                user={
-                    "id": "user_001",
-                    "username": input_username,
-                    "role": "admin",
-                    "display_name": "Demo User",
-                    "permissions": ["read", "write", "admin"]
-                }
-            )
-
-        return LoginResponse(
-            success=False,
-            error="Invalid username or password"
-        )
-    except Exception as e:
-        logger.error(f"Login error: {e}")
-        return LoginResponse(
-            success=False,
-            error=f"Authentication error: {str(e)}"
-        )
+    role = user["role"]
+    token = create_access_token({"sub": user["username"], "role": role})
+    perms = ROLE_PERMISSIONS.get(role, [])
+    try:
+        from api import audit_store
+        await _aio_to_thread(lambda: audit_store.add_decision(
+            "login", f"{user['username']} signed in", user=user["username"], target="auth"))
+    except Exception:
+        pass
+    return {
+        "success": True, "access_token": token, "token": token, "token_type": "bearer",
+        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "role": role, "display_name": user["display_name"], "permissions": perms,
+        "user": {"username": user["username"], "role": role,
+                 "display_name": user["display_name"], "permissions": perms},
+    }
 
 
 @app.post("/api/auth/logout")
-async def logout():
-    """Logout endpoint - clears session/token."""
+async def logout(request: Request):
+    """Revoke the presented token for the rest of its lifetime (in-process blacklist)."""
+    from api.core.auth import token_blacklist
+    h = request.headers.get("Authorization") or ""
+    if h.lower().startswith("bearer "):
+        token_blacklist.add(h[7:].strip())
     return {"success": True, "message": "Logged out successfully"}
+
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request):
+    """The verified identity behind the request's token (401 if none)."""
+    from api.core.access import current_user
+    from api.config import ROLE_PERMISSIONS
+    u = current_user(request)
+    if not u:
+        raise HTTPException(401, "Not authenticated")
+    return {**u, "permissions": ROLE_PERMISSIONS.get(u["role"], [])}
 
 
 @app.get("/api/data-freshness")

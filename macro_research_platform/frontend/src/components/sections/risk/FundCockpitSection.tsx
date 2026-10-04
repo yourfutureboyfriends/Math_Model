@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Briefcase, RefreshCw } from 'lucide-react';
 import { actorHeaders } from '@/lib/actor';
+import { useAuth } from '@/context/AuthContext';
 import { fmtPct, fmtPrice, fmtSignal } from '@/utils/format';
 
 type Tab = 'nav' | 'limits' | 'rebalance' | 'orders' | 'scorecard';
@@ -278,6 +279,11 @@ const STATE_STYLE: Record<string, string> = {
 };
 
 function OrdersTab({ onBooked }: { onBooked: () => void }) {
+  // UI mirrors the server's role rules (the server enforces them regardless).
+  const { user } = useAuth();
+  const role = user?.role ?? '';
+  const canApprove = role === 'risk' || role === 'admin';
+  const canExecute = role === 'pm' || role === 'admin';
   const [orders, setOrders] = useState<any[]>([]);
   const [mode, setMode] = useState<string>('simulated');
   const [blotter, setBlotter] = useState<any>(null);
@@ -376,20 +382,24 @@ function OrdersTab({ onBooked }: { onBooked: () => void }) {
                   <td className={`px-2 ${STATE_STYLE[o.state] ?? ''}`}>{o.state}</td>
                   <td className="px-2 text-text-tertiary">by {o.created_by}{o.approved_by ? ` · ok ${o.approved_by}` : ''}</td>
                   <td className="px-2">
-                    {o.state !== 'Approved' && (
+                    {o.state !== 'Approved' && canApprove && (
                       <input aria-label={`Note for order ${o.id}`} placeholder="note" value={notes[o.id] ?? ''}
                              onChange={(e) => setNotes({ ...notes, [o.id]: e.target.value })} className={`w-32 ${input}`} />
                     )}
                   </td>
                   <td className="px-3 text-right whitespace-nowrap space-x-1">
                     {o.state !== 'Approved' ? (
-                      <>
-                        <button onClick={() => act(o.id, 'approve')} className="px-2 py-0.5 border border-green/50 text-green hover:bg-green/10">Approve</button>
-                        <button onClick={() => act(o.id, 'reject')} className="px-2 py-0.5 border border-red/50 text-red hover:bg-red/10">Reject</button>
-                      </>
-                    ) : (
+                      canApprove ? (
+                        <>
+                          <button onClick={() => act(o.id, 'approve')} disabled={o.created_by === user?.username}
+                                  title={o.created_by === user?.username ? 'Four-eyes: you created this order' : undefined}
+                                  className="px-2 py-0.5 border border-green/50 text-green hover:bg-green/10 disabled:opacity-40">Approve</button>
+                          <button onClick={() => act(o.id, 'reject')} className="px-2 py-0.5 border border-red/50 text-red hover:bg-red/10">Reject</button>
+                        </>
+                      ) : <span className="text-2xs text-text-tertiary">awaiting risk approval</span>
+                    ) : canExecute ? (
                       <button onClick={() => act(o.id, 'execute')} className="px-2 py-0.5 border border-bloomberg text-bloomberg hover:bg-bloomberg/10">Execute</button>
-                    )}
+                    ) : <span className="text-2xs text-text-tertiary">awaiting execution (PM)</span>}
                   </td>
                 </tr>
               ))}
