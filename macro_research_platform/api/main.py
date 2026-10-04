@@ -3919,38 +3919,46 @@ async def get_cot_data():
         }
 
 
+@app.get("/api/v1/global-macro")
+@ttl_cache(900)
+async def get_global_macro_v1():
+    """Developed-markets monitor (Americas, Europe, Asia-Pacific): policy rates and recent
+    central-bank moves, CPI, unemployment, GDP, 10Y/3M yields, equity and FX — each value dated
+    and graded against its release calendar. See api/global_macro.py for sources."""
+    from api.global_macro import build_global_macro
+    return await build_global_macro()
+
+
 @app.get("/api/regional-macro")
-@ttl_cache(3600)
+@ttl_cache(900)
 async def get_regional_macro():
-    """Cross-country macro comparison — real per-economy indicators from FRED's OECD series:
-    10Y govt bond yield, harmonized unemployment, CPI YoY. Any series that doesn't resolve is
-    returned as null (shown as '—'), never a fabricated value."""
-    # (region label, FRED OECD country code)
-    countries = [("United States", "US"), ("Euro Area", "EZ"), ("United Kingdom", "GB"),
-                 ("Japan", "JP"), ("Canada", "CA"), ("Australia", "AU")]
-    # indicator -> FRED series template ({cc} = country code)
-    inds = {"tenYear": "IRLTLT01{cc}M156N", "unemployment": "LRHUTTTT{cc}M156S",
-            "cpiYoY": "CPALTT01{cc}M659N"}
+    """Cross-country comparison (legacy shape) derived from the developed-markets monitor.
 
-    jobs = [(label, cc, key, tmpl.format(cc=cc))
-            for (label, cc) in countries for key, tmpl in inds.items()]
-    values = await asyncio.gather(*[_aio_to_thread(_fetch_fresh_fred_value, sid) for *_, sid in jobs])
-
-    by_region: Dict[str, Dict] = {label: {"region": label, "code": cc} for label, cc in countries}
-    for (label, cc, key, _sid), val in zip(jobs, values):
-        by_region[label][key] = round(val, 2) if isinstance(val, (int, float)) else None
-
-    regions = list(by_region.values())
-    n_ok = sum(1 for r in regions for k in ("tenYear", "unemployment", "cpiYoY") if r.get(k) is not None)
+    It used FRED's mirror of OECD Main Economic Indicators, which stopped updating in early
+    2025 — so UK/Canada CPI from 2025-03 and an August-average US 10Y were shown as current.
+    Every value now carries its period."""
+    from api.global_macro import build_global_macro
+    gm = await build_global_macro()
+    regions = []
+    for r in gm.get("economies", []):
+        if r["code"] not in ("US", "EA", "GB", "JP", "CA", "AU", "CH", "DE", "KR"):
+            continue
+        ten = r["ten_year_live"] if r.get("ten_year_live") else {"value": r["ten_year"]["value"], "date": r["ten_year"]["period"]}
+        regions.append({"region": r["name"], "code": r["code"], "tenYear": ten["value"],
+                        "unemployment": r["unemployment"]["value"], "cpiYoY": r["cpi"]["value"],
+                        "policyRate": r["policy"].get("rate"),
+                        "asOf": {"tenYear": ten.get("date"), "unemployment": r["unemployment"]["period"],
+                                 "cpiYoY": r["cpi"]["period"], "policyRate": r["policy"].get("as_of")}})
     return {
-        "available": n_ok > 0,
+        "available": gm.get("available", False),
         "regions": regions,
         "indicators": [
+            {"key": "policyRate", "label": "Policy rate", "unit": "%"},
             {"key": "cpiYoY", "label": "CPI YoY", "unit": "%"},
             {"key": "unemployment", "label": "Unemployment", "unit": "%"},
             {"key": "tenYear", "label": "10Y Yield", "unit": "%"},
         ],
-        "source": "FRED (OECD Main Economic Indicators) — per-country series",
+        "source": "BIS policy rates; OECD/Eurostat CPI, unemployment, yields; FRED (US) — see /api/v1/global-macro",
         "as_of": datetime.now().isoformat(),
     }
 

@@ -91,6 +91,10 @@ def client(tmp_path, monkeypatch):
         return {"available": True, "regime": "reflation"}
     monkeypatch.setattr(desk_mod, "_fund_block", _fund)
     monkeypatch.setattr(desk_mod, "_macro_block", _macro)
+    import api.main as main_mod
+    async def _gm():
+        return {"recent_policy_moves": []}
+    monkeypatch.setattr(main_mod, "get_global_macro_v1", _gm)
     import api.data_freshness as df
     monkeypatch.setattr(df, "get_live_freshness", lambda force=False, today=None: FRESH)
     from api.main import app

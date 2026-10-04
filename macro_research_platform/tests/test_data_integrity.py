@@ -1,3 +1,4 @@
+import pytest
 """
 Regression tests — run with: pytest tests/test_data_integrity.py -v
 These tests encode real-world values. If any test fails, a known bug
@@ -222,13 +223,15 @@ class TestDataPipeline:
         )
 
     def test_refresh_endpoint_exists(self):
-        # Writes require a signed-in user. Defaults to the seeded dev admin; override with
-        # MACRO_TEST_USER / MACRO_TEST_PASSWORD.
-        login = requests.post(f"{BASE_URL}/api/auth/login", timeout=10, data={
-            "username": os.getenv("MACRO_TEST_USER", "admin"),
-            "password": os.getenv("MACRO_TEST_PASSWORD", "admin123")})
-        assert login.status_code == 200, f"login failed: {login.status_code}"
+        # Unauthenticated writes are always refused.
         assert requests.post(f"{BASE_URL}/api/data/refresh", timeout=10).status_code == 401
+        # The signed-in part needs explicit credentials: never guess a password against a live
+        # server — failed attempts count toward the account lockout.
+        user, pw = os.getenv("MACRO_TEST_USER"), os.getenv("MACRO_TEST_PASSWORD")
+        if not (user and pw):
+            pytest.skip("set MACRO_TEST_USER / MACRO_TEST_PASSWORD to run the signed-in refresh check")
+        login = requests.post(f"{BASE_URL}/api/auth/login", timeout=10, data={"username": user, "password": pw})
+        assert login.status_code == 200, f"login failed: {login.status_code}"
         r = requests.post(
             f"{BASE_URL}/api/data/refresh", timeout=10,
             headers={"Authorization": f"Bearer {login.json()['access_token']}"}

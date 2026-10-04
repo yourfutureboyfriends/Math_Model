@@ -222,7 +222,7 @@ const PANEL_LABEL: Record<string, string> = {
   'factor-exposure': 'Factor Exposure', 'correlation-matrix': 'Correlations', 'risk-indicators': 'Risk Indicators',
   'system-audit': 'Audit', 'morning-brief': 'Morning Brief', regime: 'Regime Engine', 'key-metrics': 'Key Metrics',
   nowcast: 'GDP Nowcast', 'economic-calendar': 'Calendar', 'yield-curve': 'Yield Curve',
-  'regional-macro': 'Regional Macro', 'signal-scorecard': 'Signal Scorecard', 'factor-validation': 'Factor OOS',
+  'regional-macro': 'Developed Mkts', 'signal-scorecard': 'Signal Scorecard', 'factor-validation': 'Factor OOS',
   'model-agreement': 'Model Agreement', 'stream-agreement': 'Stream Agreement', 'regime-transition': 'Transitions',
   'data-explorer': 'Data Explorer', 'system-health': 'System Health', 'data-providers': 'Data Providers',
 };

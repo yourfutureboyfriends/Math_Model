@@ -87,15 +87,20 @@ async def desk(request: Request):
         from api.core import accounts
         return await asyncio.to_thread(accounts.list_users)
 
-    fund, macro, freshness, orders, users = await asyncio.gather(
+    async def _cb_moves():
+        from api.main import get_global_macro_v1
+        return (await get_global_macro_v1()).get("recent_policy_moves", [])
+
+    fund, macro, freshness, orders, users, cb = await asyncio.gather(
         _safe(_fund_block(), "fund"), _safe(_macro_block(), "macro"),
         _safe(asyncio.to_thread(get_live_freshness), "data freshness"),
-        _safe(_orders(), "orders"), _safe(_users(), "users"))
+        _safe(_orders(), "orders"), _safe(_users(), "users"), _safe(_cb_moves(), "global macro"))
     order_list = orders if isinstance(orders, list) else []
     queue = build_queue(role, username, orders=order_list,
                         limits=fund.get("limits") if fund.get("available") else None,
                         freshness=freshness if freshness.get("available") else None,
-                        users=users if isinstance(users, list) else None)
+                        users=users if isinstance(users, list) else None,
+                        cb_moves=cb if isinstance(cb, list) else None)
     counts: Dict[str, int] = {}
     for o in order_list:
         counts[o.get("state") or "?"] = counts.get(o.get("state") or "?", 0) + 1

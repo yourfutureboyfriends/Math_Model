@@ -57,6 +57,7 @@ def build_queue(role: str, username: str, *, orders: List[Dict[str, Any]],
                 limits: Optional[Dict[str, Any]] = None,
                 freshness: Optional[Dict[str, Any]] = None,
                 users: Optional[List[Dict[str, Any]]] = None,
+                cb_moves: Optional[List[Dict[str, Any]]] = None,
                 today: Optional[date] = None) -> List[Dict[str, Any]]:
     today = today or date.today()
     is_admin = role == "admin"
@@ -113,6 +114,14 @@ def build_queue(role: str, username: str, *, orders: List[Dict[str, Any]],
                     q.append(_item("info", "release", f"{s.get('name')} due ~{nxt}",
                                    "scheduled release — expect the models to update", "economic-calendar",
                                    s.get("series_id")))
+
+    # ── Central-bank moves across developed markets (last 14 days) ──────────
+    if cb_moves and (role in ("analyst", "quant", "pm", "risk") or is_admin):
+        recent = [m for m in cb_moves if m.get("date", "") >= (today - timedelta(days=14)).isoformat()]
+        if recent:
+            q.append(_item("info", "cb_move", f"{len(recent)} central-bank move(s) in the last 2 weeks",
+                           ", ".join(f"{m['economy']} {'+' if m['bp'] > 0 else ''}{m['bp']}bp → {m['to']}% ({m['date'][5:]})"
+                                     for m in recent[:5]), "regional-macro"))
 
     # ── Account hygiene (admin) ──────────────────────────────────────────────
     if is_admin and users:
