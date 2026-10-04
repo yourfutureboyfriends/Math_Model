@@ -23,7 +23,7 @@ import math
 import asyncio
 import functools
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -1400,7 +1400,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Macro Research Platform API",
-    description="Institutional-grade macro research backend - Bridgewater / Conference Board methodology",
+    description="Macro research and portfolio management API",
     version="2.0.0",
     lifespan=lifespan,
 )
@@ -1628,7 +1628,7 @@ async def methodology_v1():
     from api.calculations.models import MODELS
     research_citations = [
         {"model": "Four Quadrants regime classification (/api/v1/quadrants)",
-         "citation": "Bridgewater Associates — Four Quadrants / All Weather framework",
+         "citation": "Growth × inflation regime framework; risk parity per Qian (2005)",
          "confidence": "medium — surprise proxy uses trailing trend, not published consensus",
          "note": "Two-axis growth-surprise × inflation-surprise; cross-validated vs 6-regime HMM."},
         {"model": "Return-overlay Risk Parity (/api/v1/risk-parity-compare)",
@@ -1644,11 +1644,11 @@ async def methodology_v1():
          "confidence": "medium — bootstrap over the available ~1yr window",
          "note": "Bootstraps inverse-vol risk contributions; live bands show RP does not truly equalise risk (SPX/HY ~27% each vs Commodities ~7%)."},
         {"model": "Signal stream agreement (/api/v1/stream-agreement)",
-         "citation": "Bridgewater Associates — macro / intermarket / flows as independent evidence streams",
+         "citation": "Independent evidence streams: macro data, intermarket prices, positioning/flows",
          "confidence": "medium — heuristic stream classifiers; conviction scales with independent agreement",
          "note": "Position sizing multiplier scales with the NUMBER of agreeing streams, not any single model's confidence."},
         {"model": "Factor out-of-sample validation (/api/v1/factor-validation)",
-         "citation": "AQR — Asness et al., 'Fact, Fiction, and Factor Investing'",
+         "citation": "Harvey, Liu & Zhu (2016), '...and the Cross-Section of Expected Returns', Review of Financial Studies",
          "confidence": "medium — in/out-of-sample R² split on daily factor-ETF proxies",
          "note": "Flags factors whose R² collapses out-of-sample; live it flags Momentum (0.71→0.30) as unstable."},
         {"model": "US yield-curve recession model",
@@ -2593,9 +2593,9 @@ async def report_generate(type: str = "full", format: str = "pdf"):
         import io as _io, csv as _csv
         buf = _io.StringIO()
         w = _csv.writer(buf)
-        w.writerow(["MACRO OS — Daily Brief", today])
+        w.writerow(["Macro Terminal — Daily Brief", today])
         w.writerow([])
-        w.writerow(["Regime", regime or "—", f"{round((confidence or 0) * 100)}% confidence"])
+        w.writerow(["Regime", regime or "—", f"{round(confidence * 100)}% confidence" if confidence is not None else "confidence n/a"])
         w.writerow([])
         w.writerow(["Signal", "Score", "Trend", "Driver", "Explanation"])
         for s in signals:
@@ -2620,10 +2620,11 @@ async def report_generate(type: str = "full", format: str = "pdf"):
     h1 = ParagraphStyle("h1", parent=styles["Title"], fontSize=18, textColor=colors.HexColor("#0d1117"))
     h2 = ParagraphStyle("h2", parent=styles["Heading2"], fontSize=12, textColor=colors.HexColor("#334155"))
     bodyst = styles["BodyText"]
-    story = [Paragraph("MACRO OS — Daily Brief", h1),
-             Paragraph(f"{today} · generated {datetime.now().strftime('%H:%M')} UTC", bodyst),
+    story = [Paragraph("Macro Terminal — Daily Brief", h1),
+             Paragraph(f"{today} · generated {datetime.now(timezone.utc).strftime('%H:%M')} UTC", bodyst),
              Spacer(1, 12),
-             Paragraph(f"Regime: <b>{regime or '—'}</b> ({round((confidence or 0) * 100)}% confidence)", h2),
+             Paragraph(f"Regime: <b>{regime or '—'}</b>"
+                       + (f" ({round(confidence * 100)}% confidence)" if confidence is not None else ""), h2),
              Spacer(1, 8)]
     if signals:
         story.append(Paragraph("Signals", h2))
@@ -2843,7 +2844,7 @@ async def quadrants_v1():
     view = quadrant_view(g_surprise, i_surprise, regime_6=regime)
     view["source"] = "industrial production YoY & CPI YoY surprise vs trailing 12M (FRED)"
     view["data_as_of"] = panel.dropna(subset=["growth_yoy", "cpi_yoy"]).index[-1].strftime("%Y-%m")
-    view["citation"] = "Bridgewater Associates — Four Quadrants / All Weather framework"
+    view["citation"] = "Growth × inflation regime framework (four quadrants)"
     view["as_of"] = datetime.now().isoformat()
     return view
 
@@ -2913,7 +2914,7 @@ async def stream_agreement_v1():
         "flows": {"cot_extreme_longs": long_ext, "cot_extreme_shorts": short_ext, "put_call": None},
     }
     result["source"] = "macro scores (FRED) + rates/credit (FRED) + CFTC COT"
-    result["citation"] = "Bridgewater Associates — macro / intermarket / flows as independent evidence streams"
+    result["citation"] = "Independent evidence streams: macro data, intermarket prices, positioning/flows"
     result["as_of"] = datetime.now().isoformat()
     return result
 
@@ -2977,7 +2978,7 @@ async def factor_validation_v1():
     out["benchmark"] = "S&P 500 (^GSPC) daily returns"
     out["observations"] = len(common)
     out["method"] = "Fit exposure on first-half (in-sample); measure R² on held-out second-half (out-of-sample)."
-    out["citation"] = "AQR — Asness et al., 'Fact, Fiction, and Factor Investing'"
+    out["citation"] = "Harvey, Liu & Zhu (2016), '...and the Cross-Section of Expected Returns', Review of Financial Studies"
     out["as_of"] = datetime.now().isoformat()
     return out
 
@@ -3640,7 +3641,7 @@ async def ask_question(request: AskRequest):
         confidence_num = {"high": 0.85, "medium": 0.6, "low": 0.35}.get(confidence, 0.6)
         return AskResponse(
             answer=answer,
-            sources=["FRED Economic Data", "Bridgewater 2-by-2 Regime Classification", "Dashboard Metrics"],
+            sources=["FRED Economic Data", "Growth × inflation regime classification", "Dashboard metrics"],
             confidence=confidence_num
         )
     except Exception as e:

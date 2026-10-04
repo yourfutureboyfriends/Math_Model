@@ -574,14 +574,14 @@ export interface DissentingModel {
 export interface EnsembleSignalData {
   ensembleScore: number;
   ensembleSignal: string;
-  conviction: string;
-  agreementRatio: number;
-  signalDispersion: number;
+  conviction: string | null;
+  agreementRatio: number | null;
+  signalDispersion: number | null;
   adaptiveWeightingActive: boolean;
   modelBreakdown: ModelContribution[];
   topContributors: TopContributor[];
   dissenting: DissentingModel[];
-  riskBudgetFinal: number;
+  riskBudgetFinal: number | null;
   interpretation: string;
   lastUpdated: string;
   regimeConflict?: boolean;

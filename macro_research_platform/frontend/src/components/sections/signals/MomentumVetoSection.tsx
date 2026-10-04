@@ -17,7 +17,7 @@ export function MomentumVetoSection() {
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag">◆</span>
-            <h2 className="section-title">Momentum Veto</h2>
+            <h2 className="section-title">Momentum Filter</h2>
             <span className="section-meta">Regime: {regime.current ? regime.current.toUpperCase() : '—'}</span>
           </div>
         </div>
@@ -58,7 +58,7 @@ export function MomentumVetoSection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">Momentum Veto</h2>
+          <h2 className="section-title">Momentum Filter</h2>
           <span className={`section-meta ${vetoActive ? 'text-red' : 'text-green'}`}>
             {vetoActive ? 'VETO' : 'PASS'} | Regime: {regime.current ? regime.current.toUpperCase() : '—'}
           </span>

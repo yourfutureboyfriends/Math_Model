@@ -50,7 +50,7 @@ export function FactorRotationSection({ data: dataProp }: { data?: FactorScore }
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><TrendingUp className="w-3 h-3" /></span>
-          <h2 className="section-title">Factor Rotation</h2>
+          <h2 className="section-title">Factor Performance</h2>
           {data?.rotationSignal && (
             <span className="section-meta">tilt: <span className="text-bloomberg font-mono">{data.rotationSignal}</span></span>
           )}

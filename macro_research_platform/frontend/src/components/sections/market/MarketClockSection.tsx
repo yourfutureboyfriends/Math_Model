@@ -135,7 +135,7 @@ export const MarketClockSection: React.FC = () => {
       {/* Section Header */}
       <div className="section-header">
         <span className="section-tag">CLOCK</span>
-        <h2 className="section-title">Market Clock</h2>
+        <h2 className="section-title">Market Hours</h2>
         <span className="section-meta text-text-secondary text-xs">
           {openCount} session{openCount !== 1 ? 's' : ''} open
         </span>

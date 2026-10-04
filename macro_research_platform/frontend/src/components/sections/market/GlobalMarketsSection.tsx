@@ -40,7 +40,7 @@ export function GlobalMarketsSection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><Globe className="w-3 h-3" /></span>
-          <h2 className="section-title">Global Markets</h2>
+          <h2 className="section-title">Global Equity Markets</h2>
           {data && <DataLineagePopover lineage={{ source: data.source, fetched_at: data.as_of, formula: 'Live index close + 1-day % change per world exchange' }} />}
           {data?.regions_covered && <span className="section-meta">{data.regions_covered.length} regions</span>}
         </div>

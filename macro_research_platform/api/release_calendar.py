@@ -72,6 +72,18 @@ SERIES: List[SeriesSpec] = [
 ]
 
 
+# The BLS Employment Situation (payrolls, unemployment — and the Sahm rule built on it)
+# is published on the first Friday after the reference month ends.
+_FIRST_FRIDAY_SERIES = {"PAYEMS", "UNRATE", "SAHMREALTIME"}
+
+
+def first_friday_after(d: date) -> date:
+    d += timedelta(days=1)
+    while d.weekday() != 4:
+        d += timedelta(days=1)
+    return d
+
+
 # ── Period arithmetic ────────────────────────────────────────────────────────
 def _is_bday(d: date) -> bool:
     return d.weekday() < 5
@@ -183,10 +195,47 @@ def assess(spec: SeriesSpec, last_obs: Optional[date], today: date) -> Dict:
         state = "MISSING_PERIODS"
     status = {"CURRENT": "FRESH", "DUE": "FRESH", "LATE": "STALE", "MISSING_PERIODS": "CRITICAL"}[state]
     nxt = shift_period(last, f, 1)
+    nxt_release = release_due(nxt, spec)
+    if spec.series_id in _FIRST_FRIDAY_SERIES:
+        nxt_release = first_friday_after(period_end(nxt, f))
     # Age tolerance in calendar days from the observation date (for older consumers).
     tol = (_grace_end(release_due(nxt, spec), spec) - last).days
     return {**base, "status": status, "state": state,
             "last_observation_date": last_obs.isoformat(),
             "age_days": (today - last_obs).days, "max_lag_days": tol,
             "expected_period": expected.isoformat(), "periods_behind": behind,
-            "next_expected_release": release_due(nxt, spec).isoformat()}
+            "next_expected_release": nxt_release.isoformat()}
+
+
+# FOMC policy decisions (second day of each scheduled meeting), per the Federal Reserve's
+# published 2026 calendar. Update annually.
+FOMC_DECISIONS = ["2026-01-28", "2026-03-18", "2026-04-29", "2026-06-17", "2026-07-29",
+                  "2026-09-16", "2026-10-28", "2026-12-09"]
+
+_IMPORTANCE = {"fed_funds": "Low", "inflation": "High", "core_pce": "High", "payrolls": "High", "unemployment": "High",
+               "growth": "High", "claims": "Medium", "indpro": "Medium", "m2": "Low", "recession": "Medium"}
+
+
+def upcoming_releases(freshness_rows: List[Dict], today: date, horizon_days: int = 45) -> List[Dict]:
+    """Scheduled data releases in the next `horizon_days`, from each series' release calendar
+    (expected dates — typical lags, not the agencies' exact timetables), plus FOMC decisions."""
+    end = today + timedelta(days=horizon_days)
+    out = []
+    for r in freshness_rows:
+        nxt = r.get("next_expected_release")
+        if r.get("frequency") in ("M", "Q", "W") and nxt and today.isoformat() <= nxt <= end.isoformat():
+            out.append({"indicator": r["name"], "frequency": {"M": "Monthly", "Q": "Quarterly", "W": "Weekly"}[r["frequency"]],
+                        "nextRelease": nxt, "dateBasis": "expected", "importance": _IMPORTANCE.get(r["metric"], "Medium"),
+                        "seriesId": r.get("series_id")})
+    for d in FOMC_DECISIONS:
+        if today.isoformat() <= d <= end.isoformat():
+            out.append({"indicator": "FOMC rate decision", "frequency": "8 per year", "nextRelease": d,
+                        "dateBasis": "scheduled", "importance": "High", "seriesId": "DFEDTARU"})
+    # Weekly series: keep only the next print.
+    seen, dedup = set(), []
+    for row in sorted(out, key=lambda x: x["nextRelease"]):
+        if row["indicator"] in seen:
+            continue
+        seen.add(row["indicator"])
+        dedup.append(row)
+    return dedup

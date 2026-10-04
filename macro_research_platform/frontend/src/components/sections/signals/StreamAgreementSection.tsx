@@ -49,7 +49,7 @@ export function StreamAgreementSection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><Layers className="w-3 h-3" /></span>
-          <h2 className="section-title">Signal Stream Agreement</h2>
+          <h2 className="section-title">Signal Agreement</h2>
           {data && <DataLineagePopover lineage={{ source: data.source, fetched_at: data.as_of, formula: 'Macro / intermarket / flows each reduced to risk-on/off/neutral; conviction scales with independent agreement', notes: data.citation }} />}
         </div>
         <button onClick={() => load()} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">

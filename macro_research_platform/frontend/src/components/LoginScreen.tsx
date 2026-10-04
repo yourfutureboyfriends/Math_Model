@@ -61,7 +61,7 @@ export function LoginScreen() {
             <span className="text-sm text-text-tertiary">v8.0</span>
           </div>
           <p className="text-text-secondary text-sm">
-            Institutional-grade macro research platform
+            Macro research and portfolio management
           </p>
         </div>
 

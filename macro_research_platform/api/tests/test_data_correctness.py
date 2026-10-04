@@ -78,3 +78,18 @@ def test_copper_gold_signal_follows_trend_not_fixed_level():
 def test_usd_base_pairs_are_not_inverted():
     from api.providers.yahoo_provider import YahooFinanceProvider as P
     assert P.SYMBOL_MAP["USDJPY"] == "USDJPY=X" and not P.INVERT_SYMBOLS
+
+
+def test_sector_playbook_tilt_needs_relative_strength_confirmation():
+    from api.calculations.metrics import calculate_sector_allocation
+    stats = {"Financials": {"percentile": 0.14, "z": -0.88, "relativeReturn": -0.071, "etf": "XLF"},
+             "Energy": {"percentile": 0.9, "z": 0.74, "relativeReturn": 0.05, "etf": "XLE"}}
+    out = {s["name"]: s for s in calculate_sector_allocation("reflation", 0.8, 0.6, sector_stats=stats,
+                                                             confidence=0.6)["sectors"]}
+    assert out["Financials"]["playbookStance"] == "Overweight" and out["Financials"]["signal"] == "Neutral"
+    assert out["Energy"]["signal"] == "Overweight"
+
+
+def test_growth_direction_uses_three_month_window():
+    from api.calculations import signals
+    assert signals._GROWTH_TREND_OFFSET == 63

@@ -39,7 +39,7 @@ export function HorizonTensionSection() {
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag">◆</span>
-            <h2 className="section-title">Horizon Tensions</h2>
+            <h2 className="section-title">Horizon Divergence</h2>
           </div>
         </div>
         <div className="p-4 bg-surface-1 border border-border text-center text-text-tertiary">
@@ -55,7 +55,7 @@ export function HorizonTensionSection() {
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag">◆</span>
-            <h2 className="section-title">Horizon Tensions</h2>
+            <h2 className="section-title">Horizon Divergence</h2>
             <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>
               — data unavailable
             </span>
@@ -80,7 +80,7 @@ export function HorizonTensionSection() {
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag">◆</span>
-            <h2 className="section-title">Horizon Tensions</h2>
+            <h2 className="section-title">Horizon Divergence</h2>
           </div>
         </div>
         <div className="p-4 bg-surface-1 border border-border text-center text-text-tertiary">
@@ -131,7 +131,7 @@ export function HorizonTensionSection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">Horizon Tensions</h2>
+          <h2 className="section-title">Horizon Divergence</h2>
           <span className="section-meta">
             Regime: {regime.current ? regime.current.toUpperCase() : '—'} | Risk density: {risk_density}
           </span>

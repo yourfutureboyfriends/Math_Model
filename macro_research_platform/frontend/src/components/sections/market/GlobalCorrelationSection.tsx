@@ -45,7 +45,7 @@ export function GlobalCorrelationSection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><Globe2 className="w-3 h-3" /></span>
-          <h2 className="section-title">Global Market Correlations</h2>
+          <h2 className="section-title">Global Equity Correlations</h2>
           {data && (
             <DataLineagePopover lineage={{
               source: data.source,

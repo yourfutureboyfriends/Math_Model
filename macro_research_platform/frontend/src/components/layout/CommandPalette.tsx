@@ -1,5 +1,6 @@
 // Command Palette — keyboard-driven navigation with per-session favorites and recent history.
 
+import { panelLabel } from '@/lib/panels';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, CornerDownLeft, Star, Clock, Zap, TrendingUp, AlertTriangle, Target } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -28,73 +29,73 @@ interface CommandPaletteProps {
 
 const sections = [
   // Morning & Overview
-  { id: 'morning-brief', label: 'Morning Brief', icon: '🌅', priority: 'high' },
-  { id: 'master-signal', label: 'Master Signal', icon: '◆', priority: 'high' },
-  { id: 'key-metrics', label: 'Key Metrics', icon: '📊', priority: 'high' },
+  { id: 'morning-brief', label: 'Morning Brief', priority: 'high' },
+  { id: 'master-signal', label: 'Master Signal', priority: 'high' },
+  { id: 'key-metrics', label: 'Key Metrics', priority: 'high' },
 
   // Regime
-  { id: 'regime', label: 'Regime Classification', icon: '🎯', priority: 'high' },
-  { id: 'regime-playbook', label: 'Regime Playbook', icon: '📖', priority: 'high' },
-  { id: 'regime-transition', label: 'Transition Matrix', icon: '↔️', priority: 'medium' },
+  { id: 'regime', label: 'Regime Classification', priority: 'high' },
+  { id: 'regime-playbook', label: 'Regime Playbook', priority: 'high' },
+  { id: 'regime-transition', label: 'Transition Matrix', priority: 'medium' },
 
   // Signals
-  { id: 'signals', label: 'ML Signals', icon: '🤖', priority: 'high' },
-  { id: 'ensemble', label: 'Ensemble', icon: '🔀', priority: 'high' },
-  { id: 'signal-stack', label: 'Signal Stack', icon: '📚', priority: 'medium' },
-  { id: 'sector-allocation', label: 'Sector Allocation', icon: '📈', priority: 'medium' },
-  { id: 'factor-rotation', label: 'Factor Rotation', icon: '🔄', priority: 'medium' },
-  { id: 'cot-positioning', label: 'COT Positioning', icon: '📉', priority: 'medium' },
-  { id: 'model-agreement', label: 'Model Agreement', icon: '✓', priority: 'medium' },
+  { id: 'signals', label: 'ML Signals', priority: 'high' },
+  { id: 'ensemble', label: 'Ensemble', priority: 'high' },
+  { id: 'signal-stack', label: 'Signal Stack', priority: 'medium' },
+  { id: 'sector-allocation', label: 'Sector Allocation', priority: 'medium' },
+  { id: 'factor-rotation', label: 'Factor Rotation', priority: 'medium' },
+  { id: 'cot-positioning', label: 'COT Positioning', priority: 'medium' },
+  { id: 'model-agreement', label: 'Model Agreement', priority: 'medium' },
 
   // Risk
-  { id: 'risk-indicators', label: 'Risk Indicators', icon: '⚠️', priority: 'high' },
-  { id: 'risk-analytics', label: 'Risk Analytics', icon: '🛡️', priority: 'high' },
-  { id: 'debt-cycle', label: 'Debt Cycle', icon: '📉', priority: 'medium' },
-  { id: 'advanced', label: 'Advanced Indicators', icon: '🔬', priority: 'low' },
-  { id: 'correlation', label: 'Correlation Regime', icon: '📊', priority: 'medium' },
+  { id: 'risk-indicators', label: 'Risk Indicators', priority: 'high' },
+  { id: 'risk-analytics', label: 'Risk Analytics', priority: 'high' },
+  { id: 'debt-cycle', label: 'Debt Cycle', priority: 'medium' },
+  { id: 'advanced', label: 'Advanced Indicators', priority: 'low' },
+  { id: 'correlation', label: 'Correlation Regime', priority: 'medium' },
 
   // Forecasts
-  { id: 'nowcast', label: 'GDP Nowcast', icon: '📍', priority: 'medium' },
-  { id: 'liquidity', label: 'Liquidity', icon: '💧', priority: 'medium' },
-  { id: 'sentiment', label: 'Sentiment', icon: '😊', priority: 'medium' },
+  { id: 'nowcast', label: 'GDP Nowcast', priority: 'medium' },
+  { id: 'liquidity', label: 'Liquidity', priority: 'medium' },
+  { id: 'sentiment', label: 'Sentiment', priority: 'medium' },
 
   // Strategy
-  { id: 'gmo-forecasts', label: 'GMO 7-Year Forecasts', icon: '🔮', priority: 'medium' },
-  { id: 'valuation', label: 'Valuation', icon: '💰', priority: 'medium' },
-  { id: 'expected-returns', label: 'Expected Returns', icon: '📈', priority: 'high' },
-  { id: 'international', label: 'International Macro', icon: '🌍', priority: 'low' },
-  { id: 'reflexivity', label: 'Reflexivity Monitor', icon: '🪞', priority: 'low' },
-  { id: 'transmission', label: 'Transmission', icon: '📡', priority: 'low' },
-  { id: 'factor-decomposition', label: 'Factor Decomp', icon: '🧮', priority: 'low' },
-  { id: 'risk-parity', label: 'Risk Parity', icon: '⚖️', priority: 'low' },
-  { id: 'momentum-veto', label: 'Momentum Veto', icon: '✋', priority: 'medium' },
-  { id: 'horizon-tension', label: 'Horizon Tensions', icon: '⏳', priority: 'medium' },
-  { id: 'cta-trend', label: 'CTA Trends', icon: '📊', priority: 'low' },
-  { id: 'news-sentiment', label: 'News Sentiment', icon: '📰', priority: 'low' },
-  { id: 'trade-ideas', label: 'Trade Ideas', icon: '💡', priority: 'high' },
+  { id: 'gmo-forecasts', label: 'Long-Run Return Assumptions', priority: 'medium' },
+  { id: 'valuation', label: 'Valuation', priority: 'medium' },
+  { id: 'expected-returns', label: 'Expected Returns', priority: 'high' },
+  { id: 'international', label: 'International Macro', priority: 'low' },
+  { id: 'reflexivity', label: 'Reflexivity Monitor', priority: 'low' },
+  { id: 'transmission', label: 'Transmission', priority: 'low' },
+  { id: 'factor-decomposition', label: 'Factor Decomp', priority: 'low' },
+  { id: 'risk-parity', label: 'Risk Parity', priority: 'low' },
+  { id: 'momentum-veto', label: 'Momentum Veto', priority: 'medium' },
+  { id: 'horizon-tension', label: 'Horizon Tensions', priority: 'medium' },
+  { id: 'cta-trend', label: 'CTA Trends', priority: 'low' },
+  { id: 'news-sentiment', label: 'News Sentiment', priority: 'low' },
+  { id: 'trade-ideas', label: 'Trade Ideas', priority: 'high' },
 
   // Portfolio
-  { id: 'portfolio', label: 'Portfolio Analyser', icon: '💼', priority: 'high' },
-  { id: 'equity-research', label: 'Equity Research', icon: '🔍', priority: 'medium' },
-  { id: 'data-to-watch', label: 'Data to Watch', icon: '👀', priority: 'low' },
-  { id: 'investment-memo', label: 'Investment Memo', icon: '📝', priority: 'low' },
-  { id: 'business-layer', label: 'Business Layer', icon: '🏢', priority: 'low' },
-  { id: 'economic-calendar', label: 'Economic Calendar', icon: '📅', priority: 'medium' },
+  { id: 'portfolio', label: 'Portfolio Analyser', priority: 'high' },
+  { id: 'equity-research', label: 'Equity Research', priority: 'medium' },
+  { id: 'data-to-watch', label: 'Data to Watch', priority: 'low' },
+  { id: 'investment-memo', label: 'Investment Memo', priority: 'low' },
+  { id: 'business-layer', label: 'Business Layer', priority: 'low' },
+  { id: 'economic-calendar', label: 'Economic Calendar', priority: 'medium' },
 
   // System
-  { id: 'system-health', label: 'System Health', icon: '🔧', priority: 'medium' },
+  { id: 'system-health', label: 'System Health', priority: 'medium' },
 
   // Institutional / overhaul panels
-  { id: 'anomalies', label: 'Anomalies', icon: '📈', priority: 'high' },
-  { id: 'signal-story', label: 'Signal Storytelling', icon: '📖', priority: 'medium' },
-  { id: 'correlation-matrix', label: 'Correlation Matrix', icon: '🔲', priority: 'medium' },
-  { id: 'regime-outlook', label: 'Regime Outlook', icon: '🔮', priority: 'medium' },
-  { id: 'factor-exposure', label: 'Factor Exposure', icon: '🎛️', priority: 'high' },
-  { id: 'fund-cockpit', label: 'Fund Cockpit', icon: '💼', priority: 'high' },
-  { id: 'var-stress', label: 'VaR & Stress', icon: '🎯', priority: 'high' },
-  { id: 'portfolio-positions', label: 'Positions', icon: '💼', priority: 'high' },
-  { id: 'trade-workflow', label: 'Trade Workflow', icon: '⚗️', priority: 'medium' },
-  { id: 'system-audit', label: 'Audit & Compliance', icon: '📋', priority: 'low' },
+  { id: 'anomalies', label: 'Anomalies', priority: 'high' },
+  { id: 'signal-story', label: 'Signal Storytelling', priority: 'medium' },
+  { id: 'correlation-matrix', label: 'Correlation Matrix', priority: 'medium' },
+  { id: 'regime-outlook', label: 'Regime Outlook', priority: 'medium' },
+  { id: 'factor-exposure', label: 'Factor Exposure', priority: 'high' },
+  { id: 'fund-cockpit', label: 'Fund Cockpit', priority: 'high' },
+  { id: 'var-stress', label: 'VaR & Stress', priority: 'high' },
+  { id: 'portfolio-positions', label: 'Positions', priority: 'high' },
+  { id: 'trade-workflow', label: 'Trade Workflow', priority: 'medium' },
+  { id: 'system-audit', label: 'Audit & Compliance', priority: 'low' },
 ];
 
 /**
@@ -205,7 +206,7 @@ export function CommandPalette({
       .map(id => sections.find(s => s.id === id)!)
       .map((section) => ({
         id: `fav-${section.id}`,
-        label: section.label,
+        label: panelLabel(section.id, section.label),
         category: 'favorite' as const,
         icon: <Star className="w-4 h-4 text-amber" />,
         action: () => {
@@ -221,7 +222,7 @@ export function CommandPalette({
       .map(id => sections.find(s => s.id === id)!)
       .map((section) => ({
         id: `recent-${section.id}`,
-        label: section.label,
+        label: panelLabel(section.id, section.label),
         category: 'recent' as const,
         icon: <Clock className="w-4 h-4 text-text-tertiary" />,
         action: () => {
@@ -234,9 +235,9 @@ export function CommandPalette({
     // All sections
     ...sections.map((section) => ({
       id: section.id,
-      label: section.label,
+      label: panelLabel(section.id, section.label),
       category: 'section' as const,
-      icon: section.icon ? <span className="text-sm">{section.icon}</span> : null,
+      icon: null,   // no emoji icons: plain, consistent list
       action: () => {
         addToRecent(section.id);
         onNavigate(section.id);
@@ -280,7 +281,7 @@ export function CommandPalette({
     },
     {
       id: 'quick-morning',
-      label: 'Open Morning Brief',
+      label: 'Open Daily Brief',
       shortcut: 'M',
       category: 'action' as const,
       icon: <TrendingUp className="w-4 h-4 text-green" />,

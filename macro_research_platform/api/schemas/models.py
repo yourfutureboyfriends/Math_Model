@@ -317,6 +317,7 @@ class Sector(BaseModel):
     allocation: float
     rationale: str
     signal: str = "Neutral"
+    playbookStance: Optional[str] = None   # regime playbook tilt before the relative-strength check
     conviction: str = "Medium"
 
 
@@ -877,8 +878,12 @@ class EnsembleData(BaseModel):
     conviction: str = "Medium"
     agreement: float = 0.0
     riskBudget: float = 0.5
-    mode: str = "Dynamic"
+    mode: str = "Equal-weight"
     bullishPct: Optional[float] = None   # % of ensemble models bullish (0-100)
+    # The score's actual inputs (equal-weighted) and each model's vote, so the UI shows the
+    # real composition instead of reconstructing it.
+    components: Optional[List[Dict[str, Any]]] = None
+    votes: Optional[List[Dict[str, Any]]] = None
 
     @field_validator('score', 'agreement', 'riskBudget', mode='before')
     @classmethod

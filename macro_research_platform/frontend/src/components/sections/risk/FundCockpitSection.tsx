@@ -542,7 +542,7 @@ export function FundCockpitSection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><Briefcase className="w-3 h-3" /></span>
-          <h2 className="section-title">Fund Cockpit</h2>
+          <h2 className="section-title">Fund Overview</h2>
           {ov?.fund && <span className="section-meta">{ov.fund.fund_name} · {ov.fund.base_currency}</span>}
           {limits?.overall && (
             <span className={`ml-2 px-1.5 border text-2xs font-mono ${STATUS_STYLE[limits.overall]}`}>

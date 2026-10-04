@@ -25,7 +25,10 @@ export function LiquiditySection({ data }: LiquiditySectionProps) {
     name: i.name,
     trend: i.trend ?? i.status ?? 'neutral',
     formatted: i.formatted ?? (i.value != null ? String(i.value) : '—'),
-    zScore: typeof i.zScore === 'number' ? i.zScore : (typeof i.contribution === 'number' ? i.contribution : 0),
+    // A genuine z-score when provided; `contribution` is the component's WEIGHT in the
+    // model score (it was rendered as "+0.60σ").
+    zScore: typeof i.zScore === 'number' ? i.zScore : null,
+    weight: typeof i.contribution === 'number' ? i.contribution : null,
     interpretation: i.interpretation ?? i.status ?? '',
   }));
   const fedPolicyStance = anyData.fedPolicyStance;
@@ -59,7 +62,7 @@ export function LiquiditySection({ data }: LiquiditySectionProps) {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">Liquidity Conditions</h2>
+          <h2 className="section-title">Financial Conditions</h2>
           <span className="section-meta">{data.regime.toUpperCase()}</span>
         </div>
         <ComputedTag section="liquidity" />
@@ -72,9 +75,9 @@ export function LiquiditySection({ data }: LiquiditySectionProps) {
             <div className="flex items-center gap-2">
               <Droplets className="w-3 h-3 text-text-secondary" />
               <div>
-                <div className="text-2xs text-text-tertiary">Composite Score</div>
+                <div className="text-2xs text-text-tertiary">Model score (0–1)</div>
                 <div className={`text-xl font-mono font-bold ${compositeScore > 0 ? 'text-green' : compositeScore < 0 ? 'text-red' : 'text-text-secondary'}`}>
-                  {compositeScore >= 0 ? '+' : ''}{Number(compositeScore).toFixed(2)}σ
+                  {Number(compositeScore).toFixed(2)}
                 </div>
               </div>
             </div>
@@ -94,8 +97,13 @@ export function LiquiditySection({ data }: LiquiditySectionProps) {
               </div>
               <div className="flex items-baseline gap-2 mb-1">
                 <span className="text-base font-mono font-bold text-text-primary">{indicator.formatted}</span>
-                <span className={`text-2xs font-mono ${indicator.zScore > 0 ? 'text-green' : indicator.zScore < 0 ? 'text-red' : 'text-text-tertiary'}`}>
-                  ({indicator.zScore >= 0 ? '+' : ''}{indicator.zScore.toFixed(2)}σ)
+                {indicator.zScore != null && (
+                  <span className={`text-2xs font-mono ${indicator.zScore > 0 ? 'text-green' : indicator.zScore < 0 ? 'text-red' : 'text-text-tertiary'}`}>
+                    ({indicator.zScore >= 0 ? '+' : ''}{indicator.zScore.toFixed(2)}σ)
+                  </span>
+                )}
+                <span className="text-2xs font-mono text-text-tertiary">
+                  {indicator.weight != null ? `${Math.round(indicator.weight * 100)}% of model score` : 'reference index'}
                 </span>
               </div>
               <p className="text-2xs text-text-secondary">{indicator.interpretation}</p>
@@ -108,18 +116,24 @@ export function LiquiditySection({ data }: LiquiditySectionProps) {
           <div className="grid grid-cols-2 gap-2">
             {fedPolicyStance && (
               <div className="p-2 bg-surface-1 border border-border">
-                <div className="text-2xs text-text-tertiary mb-1">Fed Policy</div>
-                <div className={`text-sm font-medium ${fedPolicyStance === 'Restrictive' ? 'text-red' : fedPolicyStance === 'Accommodative' ? 'text-green' : 'text-text-primary'}`}>
+                <div className="text-2xs text-text-tertiary mb-1">Fed policy</div>
+                <div className={`text-sm font-medium ${fedPolicyStance === 'Tightening' ? 'text-red' : fedPolicyStance === 'Easing' ? 'text-green' : 'text-text-primary'}`}>
                   {fedPolicyStance}
                 </div>
+                {anyData.fedLastMove && (
+                  <div className="text-2xs text-text-tertiary font-mono">
+                    Target upper {anyData.fedTargetUpper?.toFixed(2)}% · last move {anyData.fedLastMove.bp > 0 ? '+' : ''}{anyData.fedLastMove.bp}bp on {anyData.fedLastMove.date}
+                  </div>
+                )}
               </div>
             )}
             {creditAvailability && (
               <div className="p-2 bg-surface-1 border border-border">
-                <div className="text-2xs text-text-tertiary mb-1">Credit</div>
-                <div className={`text-sm font-medium ${creditAvailability === 'Tight' ? 'text-red' : creditAvailability === 'Easy' ? 'text-green' : 'text-text-primary'}`}>
+                <div className="text-2xs text-text-tertiary mb-1">Credit availability</div>
+                <div className={`text-sm font-medium ${creditAvailability === 'Tight' ? 'text-red' : creditAvailability === 'Ample' ? 'text-green' : 'text-text-primary'}`}>
                   {creditAvailability}
                 </div>
+                {anyData.hyOas != null && <div className="text-2xs text-text-tertiary font-mono">US HY OAS {anyData.hyOas.toFixed(2)}%</div>}
               </div>
             )}
           </div>

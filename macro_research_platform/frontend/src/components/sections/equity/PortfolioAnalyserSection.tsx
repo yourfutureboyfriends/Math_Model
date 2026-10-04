@@ -254,7 +254,7 @@ export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnal
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">Portfolio Analyser</h2>
+          <h2 className="section-title">Portfolio Analyzer</h2>
         </div>
       </div>
 

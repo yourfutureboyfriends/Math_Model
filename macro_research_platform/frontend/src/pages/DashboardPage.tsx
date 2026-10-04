@@ -151,7 +151,7 @@ export function DashboardPage() {
       </div>
 
       <div id="key-metrics" className="terminal-section">
-        <ErrorBoundary sectionName="Key Metrics">
+        <ErrorBoundary sectionName="Macro Indicators">
           <KeyMetricsSection />
         </ErrorBoundary>
       </div>
@@ -170,19 +170,19 @@ export function DashboardPage() {
       </div>
 
       <div id="regime-playbook" className="terminal-section">
-        <ErrorBoundary sectionName="Regime Playbook">
+        <ErrorBoundary sectionName="Regime Allocation">
           <RegimePlaybookSection />
         </ErrorBoundary>
       </div>
 
       <div id="market-clock" className="terminal-section">
-        <ErrorBoundary sectionName="Market Clock">
+        <ErrorBoundary sectionName="Market Hours">
           <MarketClockSection />
         </ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Global Markets">
+        <ErrorBoundary sectionName="Global Equity Markets">
           <Suspense fallback={<SectionSkeleton />}>
             <GlobalMarketsSection />
           </Suspense>
@@ -214,7 +214,7 @@ export function DashboardPage() {
       </div>
 
       <div id="signal-stack" className="terminal-section">
-        <ErrorBoundary sectionName="Signal Stack">
+        <ErrorBoundary sectionName="Signal Breakdown">
           <Suspense fallback={<SectionSkeleton />}>
             <SignalStackSection />
           </Suspense>
@@ -222,7 +222,7 @@ export function DashboardPage() {
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Signal Scorecard">
+        <ErrorBoundary sectionName="Signal Performance">
           <Suspense fallback={<SectionSkeleton />}>
             <SignalScorecardSection />
           </Suspense>
@@ -230,7 +230,7 @@ export function DashboardPage() {
       </div>
 
       <div id="signal-story-wrap" className="terminal-section">
-        <ErrorBoundary sectionName="Signal Storytelling">
+        <ErrorBoundary sectionName="Signal Attribution">
           <Suspense fallback={<SectionSkeleton />}>
             <SignalStorySection />
           </Suspense>
@@ -247,7 +247,7 @@ export function DashboardPage() {
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Alt-Data Positioning">
+        <ErrorBoundary sectionName="Alternative Data">
           <Suspense fallback={<SectionSkeleton />}>
             <AltDataSection />
           </Suspense>
@@ -255,7 +255,7 @@ export function DashboardPage() {
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Signal Stream Agreement">
+        <ErrorBoundary sectionName="Signal Agreement">
           <Suspense fallback={<SectionSkeleton />}>
             <StreamAgreementSection />
           </Suspense>
@@ -287,7 +287,7 @@ export function DashboardPage() {
       </div>
 
       <div id="factor-rotation" className="terminal-section">
-        <ErrorBoundary sectionName="Factor Rotation">
+        <ErrorBoundary sectionName="Factor Performance">
           <Suspense fallback={<SectionSkeleton />}>
             <FactorRotationSection />
           </Suspense>
@@ -328,7 +328,7 @@ export function DashboardPage() {
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Fund Cockpit">
+        <ErrorBoundary sectionName="Fund Overview">
           <Suspense fallback={<SectionSkeleton />}>
             <FundCockpitSection />
           </Suspense>
@@ -368,7 +368,7 @@ export function DashboardPage() {
       </div>
 
       <div id="correlation" className="terminal-section">
-        <ErrorBoundary sectionName="Correlation Regime">
+        <ErrorBoundary sectionName="Stock–Bond Correlation">
           <Suspense fallback={<SectionSkeleton />}>
             <CorrelationRegimeSection />
           </Suspense>
@@ -416,7 +416,7 @@ export function DashboardPage() {
       </div>
 
       <div id="advanced" className="terminal-section">
-        <ErrorBoundary sectionName="Advanced Indicators">
+        <ErrorBoundary sectionName="Leading Indicators">
           <Suspense fallback={<SectionSkeleton />}>
             <AdvancedIndicatorsSection />
           </Suspense>
@@ -457,7 +457,7 @@ export function DashboardPage() {
       </div>
 
       <div id="sentiment" className="terminal-section">
-        <ErrorBoundary sectionName="Sentiment">
+        <ErrorBoundary sectionName="Market Sentiment">
           <Suspense fallback={<SectionSkeleton />}>
             <SentimentSection />
           </Suspense>
@@ -473,7 +473,7 @@ export function DashboardPage() {
       </div>
 
       <div id="gmo-forecasts" className="terminal-section">
-        <ErrorBoundary sectionName="GMO Forecasts">
+        <ErrorBoundary sectionName="Long-Run Return Assumptions">
           <Suspense fallback={<SectionSkeleton />}>
             <GMOForecastsSection />
           </Suspense>
@@ -521,7 +521,7 @@ export function DashboardPage() {
       </div>
 
       <div id="trade-recommendations" className="terminal-section">
-        <ErrorBoundary sectionName="Trade Recommendations">
+        <ErrorBoundary sectionName="Allocation Recommendations">
           <Suspense fallback={<SectionSkeleton />}>
             <TradeRecommendationsSection />
           </Suspense>
@@ -545,7 +545,7 @@ export function DashboardPage() {
       </div>
 
       <div id="momentum-veto" className="terminal-section">
-        <ErrorBoundary sectionName="Momentum Veto">
+        <ErrorBoundary sectionName="Momentum Filter">
           <Suspense fallback={<SectionSkeleton />}>
             <MomentumVetoSection />
           </Suspense>
@@ -562,7 +562,7 @@ export function DashboardPage() {
 
       {/* ── Portfolio ─────────────────────────────────────────────────────── */}
       <div id="portfolio" className="terminal-section">
-        <ErrorBoundary sectionName="Portfolio Analyser">
+        <ErrorBoundary sectionName="Portfolio Analyzer">
           <Suspense fallback={<SectionSkeleton />}>
             <PortfolioAnalyserSection />
           </Suspense>
@@ -587,7 +587,7 @@ export function DashboardPage() {
       </div>
 
       <div id="business-layer" className="terminal-section">
-        <ErrorBoundary sectionName="Business Layer">
+        <ErrorBoundary sectionName="Strategy Summary">
           <Suspense fallback={<SectionSkeleton />}>
             <BusinessLayerSection />
           </Suspense>
@@ -620,7 +620,7 @@ export function DashboardPage() {
       </div>
 
       <div id="international" className="terminal-section">
-        <ErrorBoundary sectionName="International Macro">
+        <ErrorBoundary sectionName="Regional Equity Regimes">
           <Suspense fallback={<SectionSkeleton />}>
             <InternationalMacroSection />
           </Suspense>
@@ -652,7 +652,7 @@ export function DashboardPage() {
       </div>
 
       <div id="data-to-watch" className="terminal-section">
-        <ErrorBoundary sectionName="Data to Watch">
+        <ErrorBoundary sectionName="Upcoming Releases">
           <Suspense fallback={<SectionSkeleton />}>
             <DataToWatchSection />
           </Suspense>

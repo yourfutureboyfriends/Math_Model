@@ -55,7 +55,9 @@ FOREIGN_MAX_AGE_DAYS = 120
 
 DEBT_SERIES = {"private": "QUSPAM770A", "public": "QUSGAM770A", "total": "QUSCAM770A",
                "dsr": "TDSP"}
-OTHER_FRED = ["DFII10", "GDPNOW", "TOTBKCR", "GDP", "BAMLH0A0HYM2"]
+# NFCI: Chicago Fed National Financial Conditions Index (weekly; < 0 = looser than average).
+# DFEDTARU: FOMC target range upper bound (changes only on policy decisions).
+OTHER_FRED = ["DFII10", "GDPNOW", "TOTBKCR", "GDP", "BAMLH0A0HYM2", "NFCI", "DFEDTARU"]
 
 _PE_CACHE: Dict[str, tuple] = {}          # ETF -> (ts, trailing P/E)
 _PE_TTL = 3600
@@ -791,7 +793,8 @@ def build_pure_alpha(inp: SectionInputs, now) -> Optional[Dict[str, Any]]:
         z = cz["z"]
         signals.append({
             "name": name, "category": cat, "label": short,
-            "direction": "long" if z > 0 else "short" if z < 0 else "neutral",
+            # |z| < 0.5 is noise around the asset's own average: neutral, not long/short.
+            "direction": "neutral" if abs(z) < 0.5 else "long" if z > 0 else "short",
             "zScore": round(z, 2),
             "percentile": round(cz["percentile"] * 100),
             "strength": "strong" if abs(z) >= 2 else "moderate" if abs(z) >= 1 else "weak",

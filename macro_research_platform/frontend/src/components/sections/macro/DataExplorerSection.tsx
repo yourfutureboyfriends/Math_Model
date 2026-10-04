@@ -97,7 +97,7 @@ export function DataExplorerSection({ data: dataProp }: DataExplorerSectionProps
 
         {/* Key Metrics */}
         <div className="border border-border bg-surface-1">
-          <SectionHeader title="Key Metrics" dataKey="keyMetrics" />
+          <SectionHeader title="Macro Indicators" dataKey="keyMetrics" />
           {expanded.keyMetrics && <JsonDisplay data={data.keyMetrics} />}
         </div>
 
@@ -129,14 +129,14 @@ export function DataExplorerSection({ data: dataProp }: DataExplorerSectionProps
 
         {/* Advanced Indicators */}
         <div className="border border-border bg-surface-1">
-          <SectionHeader title="Advanced Indicators" dataKey="advancedIndicators" />
+          <SectionHeader title="Leading Indicators" dataKey="advancedIndicators" />
           {expanded.advancedIndicators && <JsonDisplay data={data.advancedIndicators} />}
         </div>
 
         {/* Business Layer */}
         <div className="border border-border bg-surface-1">
           <SectionHeader
-            title="Business Layer"
+            title="Strategy Summary"
             dataKey="businessLayer"
             count={
               (data.businessLayer?.expectedReturns?.length || 0) +
@@ -161,7 +161,7 @@ export function DataExplorerSection({ data: dataProp }: DataExplorerSectionProps
         {/* Transmission Analysis */}
         <div className="border border-border bg-surface-1">
           <SectionHeader
-            title="Transmission Analysis"
+            title="Policy Transmission"
             dataKey="transmissionAnalysis"
             count={data.transmissionAnalysis?.channels?.length}
           />
@@ -177,7 +177,7 @@ export function DataExplorerSection({ data: dataProp }: DataExplorerSectionProps
         {/* Data to Watch */}
         <div className="border border-border bg-surface-1">
           <SectionHeader
-            title="Data to Watch"
+            title="Upcoming Releases"
             dataKey="dataToWatch"
             count={data.dataToWatch?.length}
           />

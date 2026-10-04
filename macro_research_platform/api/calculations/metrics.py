@@ -145,10 +145,21 @@ def calculate_sector_allocation(
         st = stats.get(sector)
         score = round(2 * st["percentile"] - 1, 2) if st else None
         z = round(st["z"], 2) if st and st.get("z") is not None else None
-        rationale = f"{regime} playbook weight {weight:.0%}"
+        # The playbook tilt is policy; relative strength is data. A tilt the data contradicts
+        # (e.g. "Overweight Financials" while XLF trails the S&P by 7% at a z of -0.9) is
+        # reported as Neutral, with the playbook stance kept alongside for transparency.
+        playbook = signal
+        if z is not None:
+            if playbook == "Overweight" and z < -0.5:
+                signal = "Neutral"
+            elif playbook == "Underweight" and z > 0.5:
+                signal = "Neutral"
+        rationale = f"{regime} playbook: {playbook.lower()}, weight {weight:.0%}"
         if st:
             rationale += (f"; {st.get('etf', sector)} 3m vs SPY {st['relativeReturn']:+.1%} "
                           f"({st['percentile']:.0%} of past year)")
+        if signal != playbook:
+            rationale += " — relative strength does not confirm the playbook tilt"
         sectors.append({
             "name": sector,
             "score": score,
@@ -156,6 +167,7 @@ def calculate_sector_allocation(
             "allocation": round(weight, 2),
             "rationale": rationale,
             "signal": signal,
+            "playbookStance": playbook,
             "conviction": conviction,
         })
 

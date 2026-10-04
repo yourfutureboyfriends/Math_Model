@@ -223,7 +223,7 @@ export function RegimePlaybookSection({ data, currentRegime }: Props) {
       <section id="regime-playbook" className="terminal-section">
         <div className="section-header">
           <span className="section-tag">PLAYBOOK</span>
-          <h2 className="section-title">Regime Playbook</h2>
+          <h2 className="section-title">Regime Allocation</h2>
         </div>
         <div className="p-6 text-text-secondary text-sm bg-surface-1 border border-border">
           No active regime. Await regime classification.
@@ -270,7 +270,7 @@ export function RegimePlaybookSection({ data, currentRegime }: Props) {
     <section id="regime-playbook" className="terminal-section">
       <div className="section-header">
         <span className="section-tag">PLAYBOOK</span>
-        <h2 className="section-title">Regime Playbook</h2>
+        <h2 className="section-title">Regime Allocation</h2>
         <Badge variant="neutral" className="ml-2">{playbook.regime}</Badge>
       </div>
 

@@ -34,14 +34,14 @@ export function DataToWatchSection({ data }: DataToWatchSectionProps) {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">Data to Watch</h2>
+          <h2 className="section-title">Upcoming Releases</h2>
         </div>
       </div>
 
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-xs text-text-secondary">
           <Eye className="w-3 h-3" />
-          <span>Upcoming releases that may impact regime classification</span>
+          <span>Next 45 days. FOMC dates are scheduled; data-release dates are expected from each series&apos; typical publication lag.</span>
         </div>
 
         <div className="border border-border bg-surface-1 overflow-hidden">
@@ -50,8 +50,8 @@ export function DataToWatchSection({ data }: DataToWatchSectionProps) {
               <tr className="border-b border-border-subtle bg-surface-2">
                 <th className="text-left py-2 px-3 text-2xs text-text-tertiary uppercase font-medium">Indicator</th>
                 <th className="text-center py-2 px-3 text-2xs text-text-tertiary uppercase font-medium">Importance</th>
-                <th className="text-left py-2 px-3 text-2xs text-text-tertiary uppercase font-medium">Release</th>
-                <th className="text-left py-2 px-3 text-2xs text-text-tertiary uppercase font-medium">Impact</th>
+                <th className="text-left py-2 px-3 text-2xs text-text-tertiary uppercase font-medium">Release date</th>
+                <th className="text-left py-2 px-3 text-2xs text-text-tertiary uppercase font-medium">Frequency</th>
               </tr>
             </thead>
             <tbody>
@@ -60,16 +60,17 @@ export function DataToWatchSection({ data }: DataToWatchSectionProps) {
                   <td className="py-2 px-3 text-sm font-medium text-text-primary">{item.indicator}</td>
                   <td className="py-2 px-3 text-center">
                     <span className={getImportanceTag(item.importance)}>
-                      {item.importance.charAt(0).toUpperCase()}
+                      {item.importance}
                     </span>
                   </td>
                   <td className="py-2 px-3">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-3 h-3 text-text-tertiary" />
-                      <span className="text-xs text-text-secondary">{item.nextRelease}</span>
+                      <span className="text-xs text-text-secondary font-mono">{item.nextRelease}</span>
+                      {(item as any).dateBasis === 'expected' && <span className="text-2xs text-text-tertiary">(expected)</span>}
                     </div>
                   </td>
-                  <td className="py-2 px-3 text-xs text-text-secondary">{item.expectedImpact}</td>
+                  <td className="py-2 px-3 text-xs text-text-secondary">{(item as any).frequency ?? '—'}</td>
                 </tr>
               ))}
             </tbody>

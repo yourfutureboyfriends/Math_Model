@@ -41,7 +41,7 @@ export function SignalScorecardSection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><Award className="w-3 h-3" /></span>
-          <h2 className="section-title">Signal Scorecard</h2>
+          <h2 className="section-title">Signal Performance</h2>
           {data?.available && <span className="section-meta">{data.period_days}d · S&P 500</span>}
         </div>
         <button onClick={load} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">

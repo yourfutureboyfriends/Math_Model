@@ -50,7 +50,7 @@ export function TransmissionSection({ data }: TransmissionSectionProps) {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">Transmission Analysis</h2>
+          <h2 className="section-title">Policy Transmission</h2>
         </div>
       </div>
 

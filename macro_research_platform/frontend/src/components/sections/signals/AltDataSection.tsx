@@ -33,7 +33,7 @@ export function AltDataSection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><Radar className="w-3 h-3" /></span>
-          <h2 className="section-title">Alt-Data Positioning</h2>
+          <h2 className="section-title">Alternative Data</h2>
         </div>
         <button onClick={load} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -83,7 +83,7 @@ export function AltDataSection() {
               ))}
             </div>
             <div className="text-2xs text-text-tertiary pt-1.5 mt-1 border-t border-border-subtle">
-              ⚠ = correlation &gt; 2σ from its history (potential regime-change tell).
+              Flagged = correlation &gt; 2σ from its history (potential regime-change tell).
             </div>
           </div>
 

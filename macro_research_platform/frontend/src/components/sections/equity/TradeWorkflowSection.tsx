@@ -93,7 +93,7 @@ export function TradeWorkflowSection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><FlaskConical className="w-3 h-3" /></span>
-          <h2 className="section-title">Trade Workflow &amp; What-If</h2>
+          <h2 className="section-title">Pre-Trade Analysis &amp; Order Workflow</h2>
         </div>
       </div>
 

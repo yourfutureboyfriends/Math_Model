@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { AccountDialog } from '@/components/account/AccountPanels';
 import { useDesk } from '@/hooks/useDesk';
+import { panelLabel } from '@/lib/panels';
 import { usePinnedSections } from '@/hooks/usePinnedSections';
 
 interface NavItem {
@@ -30,7 +31,7 @@ interface NavSection {
 // is split out from POSITIONS (holdings/review). All panel ids preserved; see IA_CURRENT.md.
 const navigation: NavSection[] = [
   {
-    title: 'BRIEF',
+    title: 'OVERVIEW',
     items: [
       { id: 'morning-brief', label: 'Morning Brief', icon: '☀', permission: 'master_signal', highlight: true },
       { id: 'master-signal', label: 'Master Ensemble', icon: '◆', permission: 'master_signal', highlight: true },
@@ -91,7 +92,7 @@ const navigation: NavSection[] = [
       { id: 'liquidity', label: 'Liquidity Conditions', icon: '◆', permission: 'liquidity' },
       { id: 'sentiment', label: 'Sentiment', icon: '◆', permission: 'sentiment' },
       { id: 'expected-returns', label: 'Expected Returns', icon: '◆', permission: 'expected_returns', highlight: true },
-      { id: 'gmo-forecasts', label: 'GMO 7-Year', icon: '◆', permission: 'gmo_7year' },
+      { id: 'gmo-forecasts', label: 'Long-Run Return Assumptions', icon: '◆', permission: 'gmo_7year' },
       { id: 'regime-transition', label: 'Transition Matrix', icon: '◆', permission: 'regime_transition' },
       { id: 'regime-outlook', label: 'Regime Outlook', icon: '◆', permission: 'regime_transition' },
       { id: 'quadrants', label: 'Four Quadrants', icon: '◆', permission: 'regime_transition' },
@@ -99,7 +100,7 @@ const navigation: NavSection[] = [
     ],
   },
   {
-    title: 'DECIDE',
+    title: 'TRADING',
     items: [
       // The IA fix: execution/decision surfaces, split out of Portfolio.
       { id: 'trade-ideas', label: 'Trade Ideas', icon: '◆', permission: 'trade_ideas', highlight: true },
@@ -110,7 +111,7 @@ const navigation: NavSection[] = [
     ],
   },
   {
-    title: 'POSITIONS',
+    title: 'PORTFOLIO',
     items: [
       { id: 'portfolio-positions', label: 'Positions', icon: '▦', permission: 'portfolio_fit', highlight: true },
       { id: 'portfolio', label: 'Model Portfolio', icon: '◆', permission: 'portfolio_fit', highlight: true },
@@ -200,11 +201,11 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
         >
           <span className={cn('font-mono text-xs',
             isActive ? 'text-bloomberg' : item.highlight ? 'text-amber' : 'text-text-secondary')}>
-            {item.icon}
+            {item.highlight ? '◆' : '·'}
           </span>
           {!collapsed && (
             <span className={cn('ml-2 text-xs truncate', item.highlight && !isActive && 'font-medium')}>
-              {item.label}
+              {panelLabel(item.id, item.label)}
             </span>
           )}
         </button>
@@ -243,7 +244,7 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
         <Logo currentRegime={currentRegime} />
         {!collapsed && (
           <>
-            <span className="ml-2 font-mono text-sm text-text-secondary">MACRO OS</span>
+            <span className="ml-2 font-mono text-sm text-text-secondary">MACRO TERMINAL</span>
             <span className="ml-1.5 text-2xs text-text-tertiary">v8.0</span>
           </>
         )}
@@ -255,7 +256,7 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
         <div className="mb-1">
           {!collapsed && (
             <div className="px-4 py-1.5 text-2xs text-bloomberg font-medium tracking-wider flex items-center gap-1">
-              YOUR DESK
+              MY DESK
               {deskQueue > 0 && (
                 <span className="ml-auto px-1 text-2xs font-mono bg-red text-bg rounded-sm" title="High-priority items in your queue">
                   {deskQueue}

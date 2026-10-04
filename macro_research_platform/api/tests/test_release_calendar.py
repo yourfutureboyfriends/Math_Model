@@ -73,3 +73,19 @@ def test_ui_metric_keys_are_covered():
     assert {"growth", "inflation", "liquidity", "risk", "recession", "hy_spread", "two_ten", "m2",
             "fed_funds"} <= keys
     assert len(keys) == len(SERIES)
+
+
+def test_jobs_report_is_first_friday():
+    r = assess(SPEC["PAYEMS"], date(2026, 9, 1), SUN)
+    assert r["next_expected_release"] == "2026-11-06"          # first Friday after October ends
+    assert assess(SPEC["UNRATE"], date(2026, 8, 1), date(2026, 9, 20))["next_expected_release"] == "2026-10-02"
+
+
+def test_upcoming_releases_include_fomc_and_skip_daily():
+    from api.release_calendar import upcoming_releases
+    rows = [assess(s, date(2026, 8, 1) if s.frequency in "MQ" else date(2026, 10, 1), SUN) for s in SERIES]
+    up = upcoming_releases(rows, SUN)
+    names = [u["indicator"] for u in up]
+    assert "FOMC rate decision" in names and all(u["nextRelease"] >= "2026-10-04" for u in up)
+    assert not any(u["frequency"] == "Daily" for u in up)
+    assert up == sorted(up, key=lambda u: u["nextRelease"])

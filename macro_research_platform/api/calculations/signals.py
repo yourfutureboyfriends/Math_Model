@@ -13,7 +13,7 @@ UNAVAILABLE = (None, "unavailable", [])
 # Growth momentum lookbacks (trading days) and the offsets at which history is sampled.
 _GROWTH_LOOKBACKS = (63, 126)            # 3m and 6m returns
 GROWTH_HISTORY_OFFSETS = (63, 47, 31, 16, 0)   # T-4 … Now (~3 months span)
-_GROWTH_TREND_OFFSET = 21               # trend = score now vs ~1 month ago
+_GROWTH_TREND_OFFSET = 63               # trend = score now vs ~3 months ago (matches the displayed 3M change)
 
 
 def _growth_score_at(closes: Sequence[float], end: int) -> Optional[float]:

@@ -20,22 +20,24 @@ export function EnsembleSection({ data: dataProp }: EnsembleSectionProps) {
       : backendEnsemble.score < 0.35
       ? 'Bearish / Risk-Off'
       : 'Neutral',
-    conviction: backendEnsemble.conviction ?? 'Medium',
-    agreementRatio: backendEnsemble.agreement ?? 0.7,
-    signalDispersion: 1 - (backendEnsemble.agreement ?? 0.7),
-    adaptiveWeightingActive: backendEnsemble.mode === 'Dynamic',
-    modelBreakdown: [
-      { model: 'Regime', score: (fullDash as any)?.regime?.confidenceScore ?? 0.5, weight: 0.3, weightedContribution: ((fullDash as any)?.regime?.confidenceScore ?? 0.5) * 0.3 },
-      { model: 'Growth',  score: ((fullDash as any)?.scores?.growth ?? 50) / 100, weight: 0.25, weightedContribution: (((fullDash as any)?.scores?.growth ?? 50) / 100) * 0.25 },
-      { model: 'Inflation', score: 1 - ((fullDash as any)?.scores?.inflation ?? 50) / 100, weight: 0.2, weightedContribution: (1 - ((fullDash as any)?.scores?.inflation ?? 50) / 100) * 0.2 },
-      { model: 'Risk',   score: 1 - ((fullDash as any)?.scores?.risk ?? 50) / 100, weight: 0.25, weightedContribution: (1 - ((fullDash as any)?.scores?.risk ?? 50) / 100) * 0.25 },
-    ] as ModelContribution[],
+    conviction: backendEnsemble.conviction ?? null,
+    agreementRatio: backendEnsemble.agreement ?? null,
+    signalDispersion: backendEnsemble.agreement != null ? 1 - backendEnsemble.agreement : null,
+    adaptiveWeightingActive: false,     // weights are fixed and equal (see components)
+    // The backend's actual inputs: an equal-weighted average of four signals. (This used to
+    // be reconstructed here with different weights, regime confidence in place of the
+    // recession model, and risk appetite inverted.)
+    modelBreakdown: ((backendEnsemble.components ?? []) as any[]).map((c) => ({
+      model: c.name, score: c.score, weight: c.weight, weightedContribution: c.contribution,
+    })) as ModelContribution[],
     topContributors: [],
-    dissenting: [],
-    riskBudgetFinal: backendEnsemble.riskBudget ?? 0.5,
-    interpretation: `Ensemble score ${((backendEnsemble.score ?? 0) * 100).toFixed(0)}% bullish. ` +
-      `Agreement ${((backendEnsemble.agreement ?? 0) * 100).toFixed(0)}%. ` +
-      `Mode: ${backendEnsemble.mode ?? 'Dynamic'}.`,
+    dissenting: ((backendEnsemble.votes ?? []) as any[])
+      .filter((v) => v.bullish !== ((backendEnsemble.bullishPct ?? 0) >= 50))
+      .map((v) => ({ model: v.model, score: v.bullish ? 1 : 0, note: v.bullish ? 'votes bullish' : 'votes bearish' })),
+    riskBudgetFinal: backendEnsemble.riskBudget ?? null,
+    interpretation: `Ensemble score ${(backendEnsemble.score ?? 0).toFixed(2)} on a 0–1 scale ` +
+      `(equal-weighted average of the four inputs). ` +
+      `${(backendEnsemble.votes ?? []).filter((v: any) => v.bullish).length} of ${(backendEnsemble.votes ?? []).length} models vote risk-on.`,
     lastUpdated: new Date().toISOString(),
   } : null;
 
@@ -76,7 +78,7 @@ export function EnsembleSection({ data: dataProp }: EnsembleSectionProps) {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">Master Ensemble</h2>
+          <h2 className="section-title">Model Ensemble</h2>
           <span className="section-meta">{data.ensembleSignal.toUpperCase()}</span>
         </div>
       </div>
@@ -116,8 +118,8 @@ export function EnsembleSection({ data: dataProp }: EnsembleSectionProps) {
           </div>
 
           <div className="flex items-center justify-between text-2xs text-text-tertiary">
-            <span>Conviction: {data.conviction}</span>
-            <span className={getAgreementColor(data.agreementRatio)}>
+            <span>Conviction: {data.conviction ?? '—'}</span>
+            <span className={getAgreementColor(data.agreementRatio ?? 0)}>
               Agreement: {(() => {
                 const raw = data?.agreementRatio ?? 0;
                 const pct = raw > 1 ? raw : raw * 100;
@@ -131,16 +133,16 @@ export function EnsembleSection({ data: dataProp }: EnsembleSectionProps) {
         <div className="grid grid-cols-3 gap-2">
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Dispersion</div>
-            <div className="text-base font-mono text-text-primary">{data.signalDispersion.toFixed(3)}</div>
+            <div className="text-base font-mono text-text-primary">{data.signalDispersion != null ? data.signalDispersion.toFixed(3) : '—'}</div>
           </div>
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Risk Budget</div>
-            <div className="text-base font-mono text-text-primary">{data.riskBudgetFinal.toFixed(2)}x</div>
+            <div className="text-base font-mono text-text-primary">{data.riskBudgetFinal != null ? `${data.riskBudgetFinal.toFixed(2)}x` : '—'}</div>
           </div>
           <div className={`p-2 border ${data.adaptiveWeightingActive ? 'bg-amber-dim border-amber' : 'bg-surface-1 border-border'}`}>
-            <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Adaptive</div>
+            <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Weighting</div>
             <div className={`text-base font-mono ${data.adaptiveWeightingActive ? 'text-amber' : 'text-text-primary'}`}>
-              {data.adaptiveWeightingActive ? 'ACTIVE' : 'OFF'}
+              {data.adaptiveWeightingActive ? 'ADAPTIVE' : 'EQUAL'}
             </div>
           </div>
         </div>

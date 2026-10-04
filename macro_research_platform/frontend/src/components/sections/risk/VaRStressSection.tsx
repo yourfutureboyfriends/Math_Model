@@ -56,7 +56,7 @@ export function VaRStressSection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><ShieldAlert className="w-3 h-3" /></span>
-          <h2 className="section-title">Value at Risk & Stress</h2>
+          <h2 className="section-title">VaR & Stress Testing</h2>
           {available && <span className="section-meta">{varData.observations} obs · {varData.book}</span>}
         </div>
         <button onClick={load} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">

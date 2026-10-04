@@ -12,6 +12,7 @@ interface CTATrendSectionProps {
 
 export function CTATrendSection({ data: dataProp }: CTATrendSectionProps) {
   const _fullDash = useMacroStore((s) => s.fullDashboard);
+  const regimeName = useMacroStore((s) => s.regime.current);
   let data = dataProp;
   if (!data) data = (_fullDash as any)?.trendSignals as any;
   if (!data) return null;
@@ -87,7 +88,7 @@ export function CTATrendSection({ data: dataProp }: CTATrendSectionProps) {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">CTA Trend Following</h2>
+          <h2 className="section-title">Trend-Following Signals</h2>
           <span className={`section-meta ${ctaSignal === 'BULLISH' ? 'text-green' : ctaSignal === 'BEARISH' ? 'text-red' : 'text-text-secondary'}`}>
             {ctaSignal}
           </span>
@@ -236,9 +237,8 @@ export function CTATrendSection({ data: dataProp }: CTATrendSectionProps) {
           {/* FIXED: BUG-C2 - Add divergence warning when CTA contradicts macro regime */}
           {(contradictions?.length ?? 0) > 0 && (
             <div className="text-amber text-xs mt-2">
-              ⚠ {contradictions.length} asset(s) contradict Slowdown regime —
-              momentum may be running ahead of macro fundamentals.
-              Consider reducing CTA weight vs macro signal.
+              {contradictions.length} asset(s) trend against the current {regimeName ?? 'macro'} regime —
+              price momentum and macro fundamentals disagree.
             </div>
           )}
         </div>

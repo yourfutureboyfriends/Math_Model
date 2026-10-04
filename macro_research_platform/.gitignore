@@ -41,6 +41,9 @@ downloads/
 eggs/
 .eggs/
 lib/
+# ...but not the frontend's source folder (the rule above is from the Python template and
+# silently excluded frontend/src/lib/*.ts, which the app imports everywhere).
+!frontend/src/lib/
 lib64/
 parts/
 sdist/

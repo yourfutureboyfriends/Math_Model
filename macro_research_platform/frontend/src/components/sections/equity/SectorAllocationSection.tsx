@@ -285,7 +285,7 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
                 <span className="text-text-secondary">
                   <span className="text-text-primary font-medium">{sector.name}</span>: {sector.rationale}
                   {sector.divergence && (
-                    <span className="text-amber ml-1">⚡ Divergence detected</span>
+                    <span className="text-amber ml-1">Divergence</span>
                   )}
                 </span>
               </div>

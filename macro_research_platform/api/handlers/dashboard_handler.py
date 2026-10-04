@@ -594,18 +594,23 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     _n_bull = sum(_votes.values())
     ensemble_score = round((growth_score + (1 - recession_data["probability"]) + risk_score
                             + liquidity_score) / 4, 2)
+    _components = [("Growth signal", growth_score), ("1 − recession probability", 1 - recession_data["probability"]),
+                   ("Risk-appetite signal", risk_score), ("Liquidity signal", liquidity_score)]
     ensemble = EnsembleData(
         score=ensemble_score,
         conviction="High" if ensemble_score > 0.7 else "Medium" if ensemble_score > 0.5 else "Low",
         agreement=round(max(_n_bull, len(_votes) - _n_bull) / len(_votes), 2),
         riskBudget=round(risk_score * 0.8 + 0.1, 2),
-        mode="Dynamic",
+        mode="Equal-weight",   # fixed equal weights — nothing adapts (was labelled "Dynamic")
         bullishPct=round(_n_bull / len(_votes) * 100, 1),
+        components=[{"name": n, "score": round(v, 2), "weight": 0.25, "contribution": round(v * 0.25, 3)}
+                    for n, v in _components],
+        votes=[{"model": k, "bullish": bool(v)} for k, v in _votes.items()],
     )
 
     # Signal Stack - constructed from calculated signals
     # Build reasoning for signal stack
-    signal_stack_reasoning = f"RISK {'ON' if risk_score > 0.5 else 'OFF'} consensus: Growth signal strong at {growth_score:.0%}"
+    signal_stack_reasoning = f"RISK {'ON' if risk_score > 0.5 else 'OFF'} consensus: Growth signal strong ({growth_score:.2f})"
 
     signal_stack = SignalStackData(
         layers=[
@@ -667,18 +672,42 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     # GDP Nowcast — Atlanta Fed GDPNow via FRED.
     _nowcast = build_nowcast(_sections, now)
 
-    # Liquidity conditions — derived from liquidity_score, ten_yr, two_yr, dxy_level
+    # Liquidity / financial conditions. The model score (DXY 60%, Fed funds − 10Y 40%) is
+    # shown next to the standard reference, the Chicago Fed NFCI; Fed stance comes from the
+    # FOMC target's actual moves and credit availability from HY spreads (each was previously
+    # inferred from the 10Y level or from the liquidity score itself).
+    from api.calculations.global_macro import policy_stats as _policy_stats
     _liq_regime = "Loose" if liquidity_score > 0.6 else "Tight" if liquidity_score < 0.4 else "Neutral"
+    _nfci = _sections.series("NFCI")
+    _tgt = _sections.series("DFEDTARU")
+    _fed = _policy_stats(list(zip(_tgt.dates, _tgt.values))) if _tgt else {"available": False}
+    _fed_stance = ({"hiking": "Tightening", "cutting": "Easing"}.get(_fed.get("stance"), "On hold")
+                   if _fed.get("available") else None)
+    _hy = _sections.series("BAMLH0A0HYM2").latest
+    _policy_minus_10y = (fed_rate - dgs10.latest) if (fed_rate is not None and dgs10.latest is not None) else None
+    _dxy_state = "Supportive" if dxy_level < 100 else "Restrictive" if dxy_level > 108 else "Neutral"
+    _nfci_desc = (f"Chicago Fed NFCI {_nfci.latest:+.2f} (week of {_nfci.latest_date}; < 0 = looser than average)"
+                  if _nfci else "NFCI unavailable")
     _liquidity = {
         "liquidityScore": round(liquidity_score, 2),
         "regime": _liq_regime,
         "indicators": [
-            {"name": "DXY", "value": round(dxy_level, 1), "status": liquidity_trend.title(), "contribution": 0.6},
-            {"name": "Yield Spread", "value": round(yield_spread, 2), "status": "Steepening" if yield_spread > 0.5 else "Flattening", "contribution": 0.4},
+            {"name": "Chicago Fed NFCI", "value": round(_nfci.latest, 2) if _nfci else None,
+             "status": (None if not _nfci else "Looser than average" if _nfci.latest < 0 else "Tighter than average"),
+             "contribution": None},
+            {"name": "US Dollar Index (DXY)", "value": round(dxy_level, 1), "status": _dxy_state, "contribution": 0.6},
+            {"name": "Fed funds − 10Y (pp)", "value": round(_policy_minus_10y, 2) if _policy_minus_10y is not None else None,
+             "status": None if _policy_minus_10y is None else ("Restrictive" if _policy_minus_10y > 0 else "Accommodative"),
+             "contribution": 0.4},
         ],
-        "fedPolicyStance": "Hawkish" if ten_yr > 4.5 else "Neutral" if ten_yr > 3.5 else "Dovish",
-        "creditAvailability": "Normal" if liquidity_score > 0.4 else "Tight",
-        "description": f"Liquidity conditions are {_liq_regime.lower()} with {ten_yr:.2f}% 10Y yields.",
+        "fedPolicyStance": _fed_stance,
+        "fedTargetUpper": _fed.get("rate"),
+        "fedLastMove": _fed.get("last_move"),
+        "creditAvailability": (None if _hy is None else "Ample" if _hy < 4.0 else "Normal" if _hy < 6.0 else "Tight"),
+        "hyOas": round(_hy, 2) if _hy is not None else None,
+        "description": (f"Model liquidity score {liquidity_score:.2f} ({_liq_regime.lower()}): DXY {dxy_level:.1f}, "
+                        f"Fed funds − 10Y {_policy_minus_10y:+.2f}pp. {_nfci_desc}."
+                        if _policy_minus_10y is not None else f"Model liquidity score {liquidity_score:.2f}. {_nfci_desc}."),
         "lastUpdated": now.isoformat(),
     }
 
@@ -736,11 +765,15 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         "risks": regime_chars.key_risks if hasattr(regime_chars, 'key_risks') else [],
         "lastUpdated": now.isoformat(),
     }
-    _data_to_watch = [
-        {"indicator": "GDP Growth", "frequency": "Quarterly", "nextRelease": "TBD", "importance": "HIGH"},
-        {"indicator": "CPI", "frequency": "Monthly", "nextRelease": "TBD", "importance": "HIGH"},
-        {"indicator": "Fed Funds Rate", "frequency": "FOMC", "nextRelease": "TBD", "importance": "HIGH"},
-    ]
+    # Upcoming releases from the release calendar (was a fixed list with every date "TBD").
+    try:
+        from api.data_freshness import get_live_freshness
+        from api.release_calendar import upcoming_releases
+        _fr = await _dash_asyncio.to_thread(get_live_freshness)
+        _data_to_watch = upcoming_releases(_fr.get("series", []), now.date())
+    except Exception as _e:
+        logger.warning(f"[dashboard] release calendar unavailable: {_e}")
+        _data_to_watch = []
     # Monetary-policy transmission channels — REAL status derived from live rates/curve/FX/risk
     # (was an empty-channels stub). Each channel: how freely policy is transmitting right now.
     _curve = yield_spread
@@ -800,17 +833,17 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
 Current regime: **{regime_name}** - {regime_chars.description}
 
 ## Key Metrics
-- Growth: {growth_score:.0%}
-- Inflation: {inflation_score:.0%}
-- Liquidity: {liquidity_score:.0%}
-- Risk Appetite: {risk_score:.0%}
+- Growth signal: {growth_score:.2f} (0–1)
+- Inflation signal: {inflation_score:.2f}
+- Liquidity signal: {liquidity_score:.2f}
+- Risk-appetite signal: {risk_score:.2f}
 - Recession Probability: {recession_data['probability']:.0%}
 
 ## Positioning
 {chr(10).join(['- ' + t for t in regime_chars.themes])}
 
 ## Risk Management
-- Position modifier: {regime_chars.position_modifier:.0%}
+- Regime baseline sizing: {regime_chars.position_modifier:.0%} of normal (composite risk budget: {round(risk_score * 0.8 + 0.1, 2):.2f}x)
 - VIX Level: {f'{vix_level:.1f}' if vix_level else 'N/A'}
 - Yield Curve: {yield_spread:+.2f}%
 """,

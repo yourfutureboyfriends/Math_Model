@@ -57,7 +57,7 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">International Macro</h2>
+          <h2 className="section-title">Regional Equity Regimes</h2>
         </div>
         <ComputedTag section="internationalMacro" />
       </div>

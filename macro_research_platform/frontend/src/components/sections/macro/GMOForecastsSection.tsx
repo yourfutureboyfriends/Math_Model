@@ -1,4 +1,4 @@
-// Phase 8 — GMO 7-Year Asset Class Forecasts Section (Redesigned)
+// Long-Run Return Assumptions — building-block capital market assumptions by asset class
 // Long-term return expectations with terminal aesthetic
 
 import { Clock, AlertTriangle } from 'lucide-react';
@@ -71,7 +71,7 @@ export function GMOForecastsSection({ data: dataProp }: GMOForecastsSectionProps
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">GMO 7-Year Forecasts</h2>
+          <h2 className="section-title">Long-Run Return Assumptions</h2>
         </div>
         <div className="flex items-center gap-2">
           <CsvButton
@@ -160,11 +160,8 @@ export function GMOForecastsSection({ data: dataProp }: GMOForecastsSectionProps
         {/* Methodology Disclaimer */}
         <div className="p-3 bg-surface-2 border border-border-subtle">
           <div className="text-2xs text-text-tertiary leading-relaxed">
-            <strong>Methodology:</strong> Based on GMO&apos;s mean-reversion framework.
-            Returns = Current Yield + Valuation Change. Equities use 7-year CAGR from
-            normalized earnings yields minus mean reversion. Bonds use yield minus
-            duration risk. Commodities use production cost vs spot deviation.
-            <span className="text-amber ml-1">Not investment advice.</span>
+            <strong>Methodology:</strong> Building-block capital market assumptions — equities: earnings yield + 10Y breakeven inflation; bonds: current yield. Not a valuation mean-reversion forecast.
+            Volatility is the proxy ETF&apos;s realised 2-year volatility; Sharpe uses the 3M T-bill.
           </div>
         </div>
 

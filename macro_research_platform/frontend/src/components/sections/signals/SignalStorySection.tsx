@@ -44,7 +44,7 @@ export function SignalStorySection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><BookOpen className="w-3 h-3" /></span>
-          <h2 className="section-title">Signal Storytelling</h2>
+          <h2 className="section-title">Signal Attribution</h2>
           {data && <DataLineagePopover lineage={{ source: data.source, fetched_at: data.as_of, staleness_threshold_seconds: 900, formula: 'Each score decomposed into ranked input contributions; largest = driver' }} />}
         </div>
         <button onClick={() => load()} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">

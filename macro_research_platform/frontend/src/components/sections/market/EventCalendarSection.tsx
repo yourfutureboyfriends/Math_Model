@@ -199,7 +199,7 @@ export function EventCalendarSection({ data }: Props) {
               : 'text-text-secondary'
           }`}>
             {countdown.urgent
-              ? `⚡ LIVE NOW — ${nextEvent?.event_name}`
+              ? `Live: ${nextEvent?.event_name}`
               : nextEvent
                 ? `Next: ${nextEvent.event_name} in ${countdown.label}`
                 : 'No upcoming events'}

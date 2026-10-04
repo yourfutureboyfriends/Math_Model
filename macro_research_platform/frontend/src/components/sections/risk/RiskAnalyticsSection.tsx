@@ -175,7 +175,7 @@ export function RiskAnalyticsSection() {
           </div>
           <div className="text-2xs text-text-tertiary">
             {data?.riskAdjustedReturns?.betaVsSpy && data.riskAdjustedReturns.betaVsSpy < 0.5
-              ? 'Low correlation — good for HF'
+              ? 'Low equity beta (< 0.5)'
               : ''}
           </div>
         </div>

@@ -98,7 +98,7 @@ export const BusinessLayerSection = memo(function BusinessLayerSection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">Business Layer</h2>
+          <h2 className="section-title">Strategy Summary</h2>
         </div>
       </div>
 

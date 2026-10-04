@@ -83,13 +83,13 @@ async def get_signal_stack_data() -> Dict[str, Any]:
     # Generate reasoning from layer outputs
     reasons = []
     if growth > 0.6:
-        reasons.append(f"Growth signal strong at {growth:.0%}")
+        reasons.append(f"Growth signal strong ({growth:.2f})")
     if liquidity > 0.6:
-        reasons.append(f"Liquidity loose at {liquidity:.0%}")
+        reasons.append(f"Liquidity loose (signal {liquidity:.2f})")
     elif liquidity < 0.4:
-        reasons.append(f"Liquidity tight at {liquidity:.0%}")
+        reasons.append(f"Liquidity tight (signal {liquidity:.2f})")
     if risk > 0.6:
-        reasons.append(f"Risk appetite high at {risk:.0%}")
+        reasons.append(f"Risk appetite high (signal {risk:.2f})")
 
     reasoning_text = f"{final_signal.replace('_', ' ')} consensus: " + "; ".join(reasons) if reasons else f"{final_signal.replace('_', ' ')} based on composite signal analysis"
 
@@ -165,7 +165,7 @@ async def get_signals_data() -> Dict[str, Any]:
             threeMonth=round(growth_score * 0.1, 2),
             state="Strong" if growth_score > 0.6 else "Moderate" if growth_score > 0.4 else "Weak",
             direction="improving" if growth_score > 0.5 else "stable",
-            interpretation=f"Growth signal at {growth_score:.0%} from SPX momentum",
+            interpretation=f"Growth signal {growth_score:.2f} from S&P 500 momentum",
             history=[round(growth_score - 0.05 * i, 2) for i in range(4, -1, -1)],
             historyLabels=["T-4", "T-3", "T-2", "T-1", "Now"]
         ),
@@ -176,7 +176,7 @@ async def get_signals_data() -> Dict[str, Any]:
             threeMonth=-round(inflation_score * 0.05, 2),
             state="Elevated" if inflation_score > 0.6 else "Moderate" if inflation_score > 0.3 else "Low",
             direction="stable",
-            interpretation=f"Inflation signal at {inflation_score:.0%} from yield curve",
+            interpretation=f"Inflation signal {inflation_score:.2f}",
             history=[round(inflation_score + 0.02 * i, 2) for i in range(4, -1, -1)],
             historyLabels=["T-4", "T-3", "T-2", "T-1", "Now"]
         ),
@@ -187,7 +187,7 @@ async def get_signals_data() -> Dict[str, Any]:
             threeMonth=round(liquidity_score * 0.03, 2),
             state="Loose" if liquidity_score > 0.6 else "Tight" if liquidity_score < 0.4 else "Neutral",
             direction="stable",
-            interpretation=f"Liquidity at {liquidity_score:.0%} from DXY/rates",
+            interpretation=f"Liquidity signal {liquidity_score:.2f} from DXY and policy rate vs 10Y",
             history=[round(liquidity_score - 0.01 * i, 2) for i in range(4, -1, -1)],
             historyLabels=["T-4", "T-3", "T-2", "T-1", "Now"]
         ),
@@ -198,7 +198,7 @@ async def get_signals_data() -> Dict[str, Any]:
             threeMonth=0.0,
             state="High Appetite" if risk_score > 0.6 else "Low Appetite" if risk_score < 0.4 else "Neutral",
             direction="stable",
-            interpretation=f"Risk at {risk_score:.0%} from VIX level",
+            interpretation=f"Risk-appetite signal {risk_score:.2f} from VIX level",
             history=[round(risk_score - 0.02 * i, 2) for i in range(4, -1, -1)],
             historyLabels=["T-4", "T-3", "T-2", "T-1", "Now"]
         )

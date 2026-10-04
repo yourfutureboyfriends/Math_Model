@@ -14,6 +14,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useDesk, type Desk, type DeskLimit, type DeskPrint } from '@/hooks/useDesk';
 import { FREQ_LABEL } from '@/hooks/useFreshness';
 import { fmtPct } from '@/utils/format';
+import { panelLabel } from '@/lib/panels';
 
 const PRIORITY_DOT: Record<string, string> = { high: 'bg-red', medium: 'bg-amber', info: 'bg-text-tertiary' };
 const STATUS_TONE: Record<string, string> = { OK: 'text-green', WARN: 'text-amber', BREACH: 'text-red' };
@@ -215,18 +216,7 @@ function RoleBody({ d }: { d: Desk }) {
   );
 }
 
-const PANEL_LABEL: Record<string, string> = {
-  'fund-cockpit': 'Fund Cockpit', 'trade-ideas': 'Trade Ideas', 'portfolio-positions': 'Positions',
-  'performance-attribution': 'Attribution', 'master-signal': 'Ensemble', 'regime-playbook': 'Playbook',
-  'expected-returns': 'Expected Returns', 'var-stress': 'VaR & Stress', 'risk-analytics': 'Risk Analytics',
-  'factor-exposure': 'Factor Exposure', 'correlation-matrix': 'Correlations', 'risk-indicators': 'Risk Indicators',
-  'system-audit': 'Audit', 'morning-brief': 'Morning Brief', regime: 'Regime Engine', 'key-metrics': 'Key Metrics',
-  nowcast: 'GDP Nowcast', 'economic-calendar': 'Calendar', 'yield-curve': 'Yield Curve',
-  'regional-macro': 'Developed Mkts', 'signal-scorecard': 'Signal Scorecard', 'factor-validation': 'Factor OOS',
-  'model-agreement': 'Model Agreement', 'stream-agreement': 'Stream Agreement', 'regime-transition': 'Transitions',
-  'data-explorer': 'Data Explorer', 'system-health': 'System Health', 'data-providers': 'Data Providers',
-};
-export const deskPanelLabel = (id: string) => PANEL_LABEL[id] ?? id;
+export const deskPanelLabel = (id: string) => panelLabel(id);
 
 export function MyDeskSection() {
   const { user } = useAuth();

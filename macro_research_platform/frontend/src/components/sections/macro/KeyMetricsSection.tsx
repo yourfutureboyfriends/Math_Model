@@ -88,7 +88,7 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">Key Metrics</h2>
+          <h2 className="section-title">Macro Indicators</h2>
         </div>
       </div>
 

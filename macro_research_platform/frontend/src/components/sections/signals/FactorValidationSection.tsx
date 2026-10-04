@@ -35,7 +35,7 @@ export function FactorValidationSection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><FlaskConical className="w-3 h-3" /></span>
-          <h2 className="section-title">Factor OOS Validation (AQR)</h2>
+          <h2 className="section-title">Factor Out-of-Sample Tests</h2>
           {data && <DataLineagePopover lineage={{ source: data.benchmark, fetched_at: data.as_of, formula: data.method, notes: data.citation }} />}
         </div>
         <button onClick={() => load()} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">

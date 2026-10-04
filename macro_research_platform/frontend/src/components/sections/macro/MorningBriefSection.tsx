@@ -101,7 +101,7 @@ export function MorningBriefSection() {
     return (
       <div className="terminal-section">
         <div className="section-header">
-          <span className="section-title">MORNING BRIEF</span>
+          <span className="section-title">DAILY BRIEF</span>
           <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>
             — loading...
           </span>
@@ -114,7 +114,7 @@ export function MorningBriefSection() {
     return (
       <div className="terminal-section">
         <div className="section-header">
-          <span className="section-title">MORNING BRIEF</span>
+          <span className="section-title">DAILY BRIEF</span>
           <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>
             — {error || 'not available'}
           </span>
@@ -171,7 +171,7 @@ export function MorningBriefSection() {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <span className="text-2xs text-amber font-bold uppercase tracking-wider">
-              Morning Brief
+              Daily Brief
             </span>
             <span className="text-text-tertiary text-xs">{date}</span>
           </div>
@@ -196,7 +196,7 @@ export function MorningBriefSection() {
           </div>
           {(typeof position_modifier === 'number' && isFinite(position_modifier) && position_modifier < 1.0) && (
             <div className="text-2xs text-amber bg-amber-dim px-2 py-1 rounded">
-              Position size: {fmtProbability(position_modifier)} of normal
+              Risk budget {position_modifier.toFixed(2)}× (composite model)
             </div>
           )}
         </div>
@@ -270,7 +270,7 @@ export function MorningBriefSection() {
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp className="w-3.5 h-3.5 text-amber" />
               <span className="text-xs font-medium text-text-primary uppercase tracking-wider">
-                Conviction Trades
+                High-Conviction Ideas
               </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">

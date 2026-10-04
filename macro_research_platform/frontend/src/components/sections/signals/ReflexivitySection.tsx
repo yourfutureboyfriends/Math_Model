@@ -93,7 +93,7 @@ export function ReflexivitySection({ data: dataProp }: ReflexivitySectionProps) 
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">Reflexivity Monitor</h2>
+          <h2 className="section-title">Cross-Asset Feedback Loops</h2>
           {data.loopCount?.active > 0 && (
             <span className="section-meta text-red">{data.loopCount.active} ACTIVE</span>
           )}

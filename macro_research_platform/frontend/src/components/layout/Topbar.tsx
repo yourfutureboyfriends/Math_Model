@@ -281,7 +281,7 @@ export function Topbar({
         <div className="flex items-center gap-2 mr-2 shrink-0">
           <span className="font-mono text-bloomberg font-bold tracking-tight" style={{ fontSize: 13 }}>▸</span>
           <span className="font-mono text-text-primary font-bold tracking-tight" style={{ fontSize: 12, letterSpacing: '0.06em' }}>
-            MACRO OS
+            MACRO TERMINAL
           </span>
           <span className="font-mono text-text-tertiary" style={{ fontSize: 10 }}>v8.0</span>
         </div>

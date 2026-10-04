@@ -205,12 +205,15 @@ async def get_morning_brief_data() -> Dict[str, Any]:
     # Conviction trades from the shared regime playbook at live ETF prices
     trades = await _regime_trades(regime)
 
-    # Calculate position modifier based on risk score
-    position_modifier = risk / 100 if risk else 1.0
-    model_caution = confidence < 0.6 or risk < 40
+    # Sizing: the composite model's risk budget — the same figure the ensemble panel shows
+    # (this used to be risk appetite / 100, a second, slightly different number).
+    ens = dashboard.ensemble if isinstance(dashboard.ensemble, dict) else (
+        dashboard.ensemble.model_dump() if dashboard.ensemble is not None else {})
+    position_modifier = ens.get("riskBudget")
+    model_caution = (confidence is not None and confidence < 0.6) or risk < 40
 
-    # Generate summary based on real data
-    summary = f"{regime.title()} regime with growth at {growth:.0f}%, inflation at {inflation:.0f}%."
+    # Signal scores are 0-100 composites, not rates: label them as scores.
+    summary = (f"{regime.title()} regime; growth signal {growth:.0f}/100, inflation signal {inflation:.0f}/100.")
     if spx:
         summary += f" SPX at {spx:,.0f}."
     if vix:
@@ -235,7 +238,7 @@ async def get_morning_brief_data() -> Dict[str, Any]:
         "regime": regime.title(),
         "duration_months": duration,
         "confidence": confidence,
-        "headline": f"Macro regime: {regime.title()} - Growth {growth:.0f}%, Inflation {inflation:.0f}%",
+        "headline": f"Macro regime: {regime.title()} — growth signal {growth:.0f}/100, inflation signal {inflation:.0f}/100",
         "priorities": [{"type": "signal", "priority": i+1, "title": p, "implication": "Action required"} for i, p in enumerate(priorities[:3])],
         "risks": [{"type": "market", "text": r, "severity": "WARNING" if i == 0 else "INFO"} for i, r in enumerate(risks[:3])],
         "conviction_trades": trades,
@@ -295,27 +298,27 @@ async def get_recommendations_data() -> Dict[str, Any]:
     themes = []
     regime_actions = {
         "goldilocks": [
-            f"Growth at {growth:.0%} supports risk assets",
-            f"Inflation stable at {inflation:.0%} - quality over value",
+            f"Growth signal {growth:.2f} supports risk assets",
+            f"Inflation signal stable at {inflation:.2f} — quality over value",
             "Overweight equities, neutral duration"
         ],
         "reflation": [
-            f"Strong growth ({growth:.0%}) with rising inflation ({inflation:.0%})",
+            f"Strong growth (signal {growth:.2f}) with rising inflation (signal {inflation:.2f})",
             "Cyclicals outperform - value over quality",
             "Underweight duration, overweight commodities"
         ],
         "stagflation": [
-            f"Slowing growth ({growth:.0%}) with high inflation ({inflation:.0%})",
+            f"Slowing growth (signal {growth:.2f}) with high inflation (signal {inflation:.2f})",
             "Commodity exposure as inflation hedge",
             "Quality defensives, avoid duration risk"
         ],
         "slowdown": [
-            f"Decelerating growth ({growth:.0%}) with cooling inflation",
+            f"Decelerating growth (signal {growth:.2f}) with cooling inflation",
             "Defensive positioning - quality and low vol",
             "Flight to quality, overweight duration"
         ],
         "contraction": [
-            f"Tight liquidity ({liquidity:.0%}) with elevated recession risk ({rec_prob:.0%})",
+            f"Tight liquidity (signal {liquidity:.2f}) with elevated recession risk ({rec_prob:.0%})",
             "Capital preservation mode",
             "Underweight risk assets, maximum duration"
         ]
@@ -325,7 +328,7 @@ async def get_recommendations_data() -> Dict[str, Any]:
     if regime in regime_actions:
         themes.extend(regime_actions[regime][:2])  # Top 2 themes
     else:
-        themes.append(f"Mixed signals - growth {growth:.0%}, inflation {inflation:.0%}")
+        themes.append(f"Mixed signals — growth {growth:.2f}, inflation {inflation:.2f}")
 
     # Add rate-based theme if applicable
     if ten_yr and ten_yr > 4.5:
@@ -374,7 +377,7 @@ async def get_recommendations_data() -> Dict[str, Any]:
             "conviction": get_conviction(confidence, 0.75, 0.6) if confidence is not None else "Unrated",
             "overall_position": overall_position,
             "key_themes": themes,
-            "risk_assessment": f"VIX {vix:.1f}, Recession {rec_prob:.0%}, Risk Appetite {risk:.0%}"
+            "risk_assessment": f"VIX {vix:.1f}, 12M recession probability {rec_prob:.0%}, Risk Appetite signal {risk:.2f} (0–1)"
         },
         "expected_returns": expected_returns,
         "position_sizing": [
@@ -387,10 +390,10 @@ async def get_recommendations_data() -> Dict[str, Any]:
         "signal_scorecard": [
             {"signal": "Recession Risk", "value": f"{rec_prob:.0%}", "status": "Red" if rec_prob > 0.35 else "Yellow" if rec_prob > 0.2 else "Green"},
             {"signal": "Regime", "value": regime.title(), "status": "Green" if regime in ["goldilocks", "reflation"] else "Yellow" if regime == "slowdown" else "Red"},
-            {"signal": "Growth Momentum", "value": f"{growth:.0%}", "status": "Green" if growth > 0.6 else "Yellow" if growth > 0.4 else "Red"},
-            {"signal": "Inflation Pressure", "value": f"{inflation:.0%}", "status": "Red" if inflation > 0.6 else "Yellow" if inflation > 0.45 else "Green"},
-            {"signal": "Liquidity", "value": f"{liquidity:.0%}", "status": "Green" if liquidity > 0.6 else "Yellow" if liquidity > 0.4 else "Red"},
-            {"signal": "Risk Appetite", "value": f"{risk:.0%}", "status": "Green" if risk > 0.6 else "Yellow" if risk > 0.4 else "Red"},
+            {"signal": "Growth Momentum", "value": f"{growth:.2f}", "status": "Green" if growth > 0.6 else "Yellow" if growth > 0.4 else "Red"},
+            {"signal": "Inflation Pressure", "value": f"{inflation:.2f}", "status": "Red" if inflation > 0.6 else "Yellow" if inflation > 0.45 else "Green"},
+            {"signal": "Liquidity", "value": f"{liquidity:.2f}", "status": "Green" if liquidity > 0.6 else "Yellow" if liquidity > 0.4 else "Red"},
+            {"signal": "Risk Appetite", "value": f"{risk:.2f}", "status": "Green" if risk > 0.6 else "Yellow" if risk > 0.4 else "Red"},
             {"signal": "Volatility", "value": f"VIX {vix:.1f}", "status": "Green" if vix < 20 else "Yellow" if vix < 25 else "Red"},
         ],
         "timestamp": datetime.now().isoformat(),
@@ -439,7 +442,7 @@ async def get_decision_log_data(limit: int = 50) -> Dict[str, Any]:
         entries.append({
             "timestamp": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "recommendationType": "Tactical Opportunity",
-            "headline": f"Growth signal strong at {growth:.0f}% — cyclical overweight",
+            "headline": f"Growth signal strong ({growth:.0f}/100) — cyclical overweight",
             "conviction": "Medium",
             "suggestedPositionSize": "Overweight",
             "rationale": "Growth momentum above trend threshold",
@@ -450,7 +453,7 @@ async def get_decision_log_data(limit: int = 50) -> Dict[str, Any]:
         entries.append({
             "timestamp": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "recommendationType": "Risk Reduction",
-            "headline": f"Growth signal weak at {growth:.0f}% — reduce cyclical exposure",
+            "headline": f"Growth signal weak ({growth:.0f}/100) — reduce cyclical exposure",
             "conviction": "Medium",
             "suggestedPositionSize": "Underweight",
             "rationale": "Growth below trend — defensive tilt warranted",

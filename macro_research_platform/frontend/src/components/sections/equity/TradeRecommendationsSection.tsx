@@ -1,6 +1,6 @@
-// Trade Recommendations Section — v2.0 7-Layer Signal Engine + Phase 1E Store Integration
-// Implements AQR (Value/Momentum/QMJ/BAB/Carry), Bridgewater (Regime), Man AHL (Trend)
-// Papers: Asness et al. (2013, 2014), Frazzini-Pedersen (2014), Hurst-Ooi-Pedersen (2013)
+// Allocation Recommendations — regime-conditioned allocation guidance from
+// /api/business/recommendations (regime, building-block expected returns, rule-based sizing).
+// The extended layer-breakdown view only renders if the backend supplies those fields.
 
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -182,13 +182,13 @@ const FACTOR_COLORS: Record<string, string> = {
 };
 
 const LAYER_COLORS: Record<string, string> = {
-  regime: '#f59e0b',    // Bridgewater - amber
-  value: '#22c55e',     // AQR Value - green
-  momentum: '#3b82f6',  // AQR Momentum - blue
-  quality: '#8b5cf6',   // AQR QMJ - purple
-  bab: '#ec4899',       // AQR BAB - pink
-  carry: '#14b8a6',     // AQR Carry - teal
-  trend: '#f97316',     // Man AHL Trend - orange
+  regime: '#f59e0b',
+  value: '#22c55e',
+  momentum: '#3b82f6',
+  quality: '#8b5cf6',
+  bab: '#ec4899',
+  carry: '#14b8a6',
+  trend: '#f97316',
 };
 
 
@@ -222,7 +222,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
           <div className="section-header mb-3">
             <div className="section-header-left">
               <span className="section-tag">REC</span>
-              <h2 className="section-title">Trade Recommendations</h2>
+              <h2 className="section-title">Allocation Recommendations</h2>
               {summaryLite?.regime && <span className="section-meta">{String(summaryLite.regime).toUpperCase()}</span>}
             </div>
           </div>
@@ -288,7 +288,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
       <div id="trade-recommendations" className="terminal-section">
         <div className="flex items-center gap-2 mb-4">
           <BarChart3 className="w-4 h-4 text-bloomberg" />
-          <h2 className="terminal-section-title">TRADE RECOMMENDATIONS</h2>
+          <h2 className="terminal-section-title">ALLOCATION RECOMMENDATIONS</h2>
         </div>
         <Card className="bg-surface-1 border-border p-8 text-center">
           <p className="text-text-secondary text-sm mb-4">Trade recommendations unavailable</p>
@@ -347,7 +347,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-bloomberg" />
-          <h2 className="terminal-section-title">TRADE RECOMMENDATIONS</h2>
+          <h2 className="terminal-section-title">ALLOCATION RECOMMENDATIONS</h2>
           {meta?.engine_version && (
             <Badge variant="neutral" className="text-2xs font-mono">
               v{meta.engine_version}
@@ -455,7 +455,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
               </div>
               {metaStats.unwind_detected && (
                 <Badge variant="danger" className="text-xs font-mono animate-pulse">
-                  ⚠️ UNWIND DETECTED
+                  Unwind detected
                 </Badge>
               )}
             </div>
@@ -883,39 +883,28 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
       {/* Methodology Panel (v2.0) */}
       {activeTab === 'methodology' && (
         <div className="space-y-4">
-          {/* 7-Layer Signal Framework */}
+          {/* How recommendations are produced — what the backend actually computes. */}
           <Card className="bg-surface-1 border-border">
             <CardHeader className="pb-2">
               <CardTitle className="text-xs font-mono text-text-secondary flex items-center gap-2">
                 <BookOpen className="w-3 h-3" />
-                7-LAYER SIGNAL FRAMEWORK
+                METHODOLOGY
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 {[
-                  { key: 'regime', name: 'Regime Conditioning', source: 'Bridgewater', weight: '25%', desc: 'Probability-weighted regime scores from HMM forward algorithm' },
-                  { key: 'value', name: 'Value Everywhere', source: 'AQR', weight: '20%', desc: 'Cross-asset value signals: real yield, earnings yield, commodity curve' },
-                  { key: 'momentum', name: 'Momentum Everywhere', source: 'AQR', weight: '20%', desc: 'Cross-sectional and time-series momentum at 1M/3M/12M horizons' },
-                  { key: 'quality', name: 'Quality Minus Junk', source: 'AQR', weight: '15%', desc: 'Profitability, stability, growth, payout quality metrics' },
-                  { key: 'bab', name: 'Betting Against Beta', source: 'AQR/Frazzini-Pedersen', weight: '10%', desc: 'Low-beta outperformance with leverage constraints' },
-                  { key: 'carry', name: 'Carry Everywhere', source: 'AQR/Koijen', weight: '5%', desc: 'Yield spread carry adjusted for inflation and FX' },
-                  { key: 'trend', name: 'Trend Following', source: 'Man AHL/Winton', weight: '5%', desc: 'Time-series momentum with vol targeting' },
+                  { key: 'regime', name: 'Macro regime', desc: 'Growth (S&P 500 momentum), inflation (CPI and 10Y breakeven), liquidity (DXY, policy rate vs 10Y) and risk appetite (VIX) signals classify the regime.' },
+                  { key: 'value', name: 'Expected returns', desc: 'Building-block capital market assumptions: equities = earnings yield + 10Y breakeven inflation; bonds = current yield; TIPS = real yield + breakeven.' },
+                  { key: 'momentum', name: 'Position sizing', desc: 'Rule-based target weights for SPY, QQQ, TLT, GLD and a volatility hedge, scaled by the growth, liquidity and inflation signals and the 12-month recession probability.' },
+                  { key: 'quality', name: 'Recession risk', desc: 'Estrella–Mishkin probit on the 10Y–3M spread, a logistic model, and the real-time Sahm rule.' },
+                  { key: 'trend', name: 'Momentum filter', desc: 'Absolute 12-1 month momentum; a negative reading dampens risk-on recommendations.' },
                 ].map((layer) => (
-                  <div key={layer.key} className="flex items-center justify-between p-2 bg-bg border border-border rounded">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: LAYER_COLORS[layer.key] }}
-                      />
-                      <div>
-                        <div className="text-sm font-medium">{layer.name}</div>
-                        <div className="text-xs text-text-secondary">{layer.desc}</div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <Badge variant="neutral" className="text-xs font-mono">{layer.weight}</Badge>
-                      <div className="text-xs text-text-tertiary">{layer.source}</div>
+                  <div key={layer.key} className="flex items-start gap-3 p-2 bg-bg border border-border rounded">
+                    <div className="w-2 h-2 mt-1.5 rounded-full shrink-0" style={{ backgroundColor: LAYER_COLORS[layer.key] }} />
+                    <div>
+                      <div className="text-sm font-medium">{layer.name}</div>
+                      <div className="text-xs text-text-secondary">{layer.desc}</div>
                     </div>
                   </div>
                 ))}
@@ -923,22 +912,22 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
             </CardContent>
           </Card>
 
-          {/* Academic References */}
+          {/* References for the methods above */}
           <Card className="bg-surface-1 border-border">
             <CardHeader className="pb-2">
               <CardTitle className="text-xs font-mono text-text-secondary">
-                ACADEMIC FOUNDATIONS
+                REFERENCES
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                 {[
+                  { paper: 'The Yield Curve as a Predictor of U.S. Recessions', authors: 'Estrella, Mishkin (1998)', journal: 'Review of Economics and Statistics' },
+                  { paper: 'Direct Stimulus Payments to Individuals', authors: 'Sahm (2019)', journal: 'Brookings Institution (Sahm rule)' },
+                  { paper: 'The Equity Risk Premium', authors: 'Grinold, Kroner (2002)', journal: 'Investment Insights (building-block returns)' },
+                  { paper: 'Time Series Momentum', authors: 'Moskowitz, Ooi, Pedersen (2012)', journal: 'Journal of Financial Economics' },
+                  { paper: 'A New Approach to the Economic Analysis of Nonstationary Time Series', authors: 'Hamilton (1989)', journal: 'Econometrica' },
                   { paper: 'Value and Momentum Everywhere', authors: 'Asness, Moskowitz, Pedersen (2013)', journal: 'Journal of Finance' },
-                  { paper: 'Quality Minus Junk', authors: 'Asness, Frazzini, Pedersen (2014)', journal: 'AQR Working Paper' },
-                  { paper: 'Betting Against Beta', authors: 'Frazzini, Pedersen (2014)', journal: 'Journal of Financial Economics' },
-                  { paper: 'A Century of Evidence on Trend', authors: 'Hurst, Ooi, Pedersen (2013)', journal: 'AQR Working Paper' },
-                  { paper: 'Carry (Everywhere)', authors: 'Koijen et al. (2018)', journal: 'Journal of Financial Economics' },
-                  { paper: 'Regime-Switching Models', authors: 'Hamilton (1989)', journal: 'Econometrica' },
                 ].map((ref, i) => (
                   <div key={i} className="p-2 bg-surface-2 rounded">
                     <div className="font-medium text-text-primary">{ref.paper}</div>

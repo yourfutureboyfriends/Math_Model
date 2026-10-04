@@ -114,7 +114,7 @@ export function TerminalShell({
 
       // Single key navigation
       const sectionMap: Record<string, string> = {
-        'm': 'morning-brief',      // M = Morning Brief
+        'm': 'morning-brief',      // M = Daily Brief
         'g': 'master-signal',      // G = Master Signal (existing)
         'k': 'key-metrics',        // K = Key Metrics
         'r': 'regime',             // R = Regime (existing)
@@ -130,7 +130,7 @@ export function TerminalShell({
         'n': 'nowcast',            // N = Nowcast
         'l': 'liquidity',          // L = Liquidity
         'i': 'sentiment',          // I = Sentiment
-        'y': 'gmo-forecasts',     // Y = GMO (Yield forecasts)
+        'y': 'gmo-forecasts',     // Y = long-run return assumptions
         'u': 'valuation',           // U = Valuation
         'x': 'expected-returns',  // X = Expected Returns
         'o': 'portfolio-analyser', // O = Portfolio

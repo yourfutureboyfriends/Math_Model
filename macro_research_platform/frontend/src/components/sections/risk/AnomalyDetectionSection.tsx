@@ -69,7 +69,7 @@ export function AnomalyDetectionSection({ data: dataProp }: AnomalyDetectionSect
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">ML</span>
-          <h2 className="section-title">Anomaly Detection</h2>
+          <h2 className="section-title">Anomaly Monitor</h2>
         </div>
       </div>
 

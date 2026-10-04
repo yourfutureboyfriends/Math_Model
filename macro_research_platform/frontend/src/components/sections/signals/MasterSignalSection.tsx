@@ -86,7 +86,7 @@ export function MasterSignalSection({ data }: MasterSignalSectionProps) {
         {/* Left: Ensemble Signal */}
         <div className="w-44 flex-shrink-0">
           <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-0.5">
-            ENSEMBLE SIGNAL
+            COMPOSITE SIGNAL
           </div>
           <div className={cn('text-xl font-mono font-bold', signalColors.color)}>
             {signal}

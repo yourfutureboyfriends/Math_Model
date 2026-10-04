@@ -83,7 +83,7 @@ export function SignalsSection({ data }: SignalsSectionProps) {
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag">◆</span>
-            <h2 className="section-title">Signal Interpretation</h2>
+            <h2 className="section-title">Signal Detail</h2>
           </div>
         </div>
         <div className="p-8 bg-surface-1 border border-border text-center text-text-secondary">
@@ -99,7 +99,7 @@ export function SignalsSection({ data }: SignalsSectionProps) {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">Signal Interpretation</h2>
+          <h2 className="section-title">Signal Detail</h2>
         </div>
       </div>
 

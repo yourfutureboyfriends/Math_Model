@@ -17,7 +17,7 @@ export function SignalStackSection() {
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag">◆</span>
-            <h2 className="section-title">Signal Stack</h2>
+            <h2 className="section-title">Signal Breakdown</h2>
           </div>
         </div>
         <SkeletonSignalStack rows={8} />
@@ -31,7 +31,7 @@ export function SignalStackSection() {
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag">◆</span>
-            <h2 className="section-title">Signal Stack</h2>
+            <h2 className="section-title">Signal Breakdown</h2>
           </div>
         </div>
         <div className="p-4 text-text-secondary text-sm">
@@ -88,7 +88,7 @@ export function SignalStackSection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">Signal Stack</h2>
+          <h2 className="section-title">Signal Breakdown</h2>
           <span className="section-meta">{sortedLayers.length} layers</span>
         </div>
         <ComputedTag section="signalStack" />

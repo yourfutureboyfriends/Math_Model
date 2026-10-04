@@ -79,7 +79,7 @@ export function ValuationSection({ data }: ValuationSectionProps) {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag">◆</span>
-          <h2 className="section-title">Valuation Filter</h2>
+          <h2 className="section-title">Valuation</h2>
           <span className="section-meta">{String(regime).toUpperCase()}</span>
         </div>
         <ComputedTag section="valuation" />
