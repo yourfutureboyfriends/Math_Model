@@ -1,4 +1,5 @@
 """Risk handler with real calculated data from market prices."""
+import asyncio
 from typing import Dict, Any
 from datetime import datetime
 import logging
@@ -11,53 +12,48 @@ logger = logging.getLogger(__name__)
 
 
 async def get_recession_data() -> Dict[str, Any]:
-    """Detailed recession risk from real calculated dashboard data."""
-    logger.info("Fetching recession data with real calculations")
+    """Recession risk: the dashboard's real model output (logistic, Estrella-Mishkin probit,
+    FRED real-time Sahm rule, logged forecast history) plus the latest FRED indicators.
 
-    # Get real dashboard data
+    This endpoint used to synthesise everything from the headline probability: the
+    logistic/probit numbers were ×0.9/×1.1, the Sahm value ×1.2, the history ×0.7…0.95,
+    unemployment 3.5 + 3×p and credit spreads 150 + 300×p.
+    """
+    logger.info("Serving recession data from the dashboard's models")
     dashboard = await get_dashboard_data(mode="live")
-    rec_prob = dashboard.recession.probability if dashboard.recession else 0.15
-    ten_yr = (dashboard.keyMetrics.tenYearYield or 4.5) if dashboard.keyMetrics else 4.5
-    two_yr = (dashboard.keyMetrics.twoYearYield or 4.2) if dashboard.keyMetrics else 4.2
+    rec = dashboard.recession.model_dump() if dashboard.recession else {}
+    p = rec.get("probability")
 
-    # Calculate yield spread
-    spread = ten_yr - two_yr if ten_yr and two_yr else 0.3
+    from api.handlers.macro_inputs import load_fred_series
+    fred = await load_fred_series(["UNRATE", "BAMLH0A0HYM2", "T10Y2Y", "T10Y3M"])
 
-    # Calculate components from real data
-    yield_contribution = max(0, (0.5 - spread) * 0.1) if spread < 0.5 else 0.02
-    credit_contribution = rec_prob * 0.3
-    unemployment_contribution = rec_prob * 0.2
+    def _latest(sid):
+        s = fred.get(sid)
+        return (round(s.latest, 2), s.latest_date) if s else (None, None)
+
+    unrate, unrate_d = _latest("UNRATE")
+    hy, hy_d = _latest("BAMLH0A0HYM2")
+    c2s10s, c_d = _latest("T10Y2Y")
+    c3m10y, c3_d = _latest("T10Y3M")
+
+    def _band(x, hi, mid):
+        return None if x is None else "High" if x > hi else "Medium" if x > mid else "Low"
 
     data = {
-        "probability": round(rec_prob, 2),
-        "level": "High" if rec_prob > 0.4 else "Moderate" if rec_prob > 0.2 else "Low",
-        "logisticProb": round(rec_prob * 0.9, 2),
-        "emProbitProb": round(rec_prob * 1.1, 2),
-        "sahmValue": round(rec_prob * 1.2, 2),
-        "sahmSignal": "Signal" if rec_prob > 0.3 else "No Signal",
-        "description": f"{'High' if rec_prob > 0.4 else 'Moderate' if rec_prob > 0.2 else 'Low'} recession probability ({rec_prob:.0%}) based on yield curve and market data.",
-        "components": [
-            {"name": "Yield Curve", "value": round(spread, 2), "contribution": round(yield_contribution, 2)},
-            {"name": "Market Risk", "value": round(rec_prob * 100, 1), "contribution": round(credit_contribution, 2)},
-            {"name": "Growth Signal", "value": round((dashboard.scores.growth if dashboard.scores else 50), 1), "contribution": round(unemployment_contribution, 2)},
-        ],
-        "history": [
-            {"date": (datetime.now().replace(month=((datetime.now().month - 4 - 1) % 12) + 1)).strftime("%Y-%m-%d"), "probability": round(rec_prob * 0.7, 2)},
-            {"date": (datetime.now().replace(month=((datetime.now().month - 3 - 1) % 12) + 1)).strftime("%Y-%m-%d"), "probability": round(rec_prob * 0.8, 2)},
-            {"date": (datetime.now().replace(month=((datetime.now().month - 2 - 1) % 12) + 1)).strftime("%Y-%m-%d"), "probability": round(rec_prob * 0.9, 2)},
-            {"date": (datetime.now().replace(month=((datetime.now().month - 1 - 1) % 12) + 1)).strftime("%Y-%m-%d"), "probability": round(rec_prob * 0.95, 2)},
-            {"date": datetime.now().strftime("%Y-%m-%d"), "probability": round(rec_prob, 2)},
-        ],
-        "regime": "High Risk" if rec_prob > 0.4 else "Moderate Risk" if rec_prob > 0.2 else "Low Risk",
+        **rec,
+        "probability": p,
+        "regime": (None if p is None else "High Risk" if p > 0.4 else "Moderate Risk" if p > 0.2 else "Low Risk"),
         "models": {
-            "logistic": {"probability": round(rec_prob * 0.9, 2), "signal": "High" if rec_prob > 0.4 else "Medium" if rec_prob > 0.2 else "Low"},
-            "sahm": {"probability": round(rec_prob * 1.1, 2), "signal": "High" if rec_prob > 0.35 else "Medium" if rec_prob > 0.15 else "Low"},
-            "estrella_mishkin": {"probability": round(rec_prob * (1.2 if spread < 0 else 0.8), 2), "signal": "High" if spread < 0 else "Medium" if spread < 0.5 else "Low"},
+            "logistic": {"probability": rec.get("logisticProb"), "signal": _band(rec.get("logisticProb"), 0.4, 0.2)},
+            "estrella_mishkin": {"probability": rec.get("emProbitProb"), "signal": _band(rec.get("emProbitProb"), 0.4, 0.2)},
+            "sahm": {"value": rec.get("sahmValue"), "signal": rec.get("sahmSignal"),
+                     "note": "FRED SAHMREALTIME (pp); triggers at 0.50"},
         },
         "indicators": {
-            "yield_curve": round(spread, 2),
-            "credit_spreads": int(150 + rec_prob * 300),
-            "unemployment": round(3.5 + rec_prob * 3, 1),
+            "yield_curve_2s10s": c2s10s, "yield_curve_3m10y": c3m10y,
+            "hy_oas_pct": hy, "unemployment_rate": unrate,
+            "as_of": {"T10Y2Y": c_d, "T10Y3M": c3_d, "BAMLH0A0HYM2": hy_d, "UNRATE": unrate_d},
+            "source": "FRED",
         },
         "lastUpdated": datetime.now().isoformat(),
     }
@@ -65,66 +61,20 @@ async def get_recession_data() -> Dict[str, Any]:
     validation = validate_risk_payload(data)
     if not validation.valid:
         logger.warning("[risk_handler] Recession data validation issues", extra={"issues": validation.issues})
-
     log_validation_event("risk_handler.get_recession_data", validation)
-    log_risk_event("recession_probability", data, metadata={"handler": "risk_handler", "models": list(data.get("models", {}).keys())})
-
+    log_risk_event("recession_probability", data, metadata={"handler": "risk_handler", "models": list(data["models"])})
     return data
 
 
 async def get_advanced_indicators() -> Dict[str, Any]:
-    """Advanced indicators from real market data."""
-    logger.info("Fetching advanced indicators with real data")
-
-    # Get real dashboard data
+    """Advanced indicators: the dashboard's real ones (FRED real-time Sahm rule, bank-credit
+    impulse, honest LEI unavailability, inverse-vol risk parity). Previously a "Sahm rule"
+    and "LEI" were invented from the growth score."""
     dashboard = await get_dashboard_data(mode="live")
-    growth = (dashboard.scores.growth / 100) if dashboard.scores else 0.5
-    liquidity = (dashboard.scores.liquidity / 100) if dashboard.scores else 0.5
-    ten_yr = dashboard.keyMetrics.tenYearYield if dashboard.keyMetrics else 4.5
-
-    # Calculate Sahm-like rule from growth score
-    sahm_value = (1 - growth) * 0.5
-    sahm_signal = "Recession" if sahm_value > 0.5 else "Neutral" if sahm_value > 0.3 else "Normal"
-
-    # Calculate credit impulse from liquidity
-    credit_impulse = (liquidity - 0.5) * 0.2
-
-    # Calculate LEI proxy from multiple signals
-    lei_value = 100 + (growth - 0.5) * 10
-    lei_change = (growth - 0.5) * 2
-
-    return {
-        "sahmRule": {
-            "value": round(sahm_value, 2),
-            "signal": sahm_signal,
-            "threshold": 0.5,
-            "description": f"Growth-based proxy: {sahm_value:.2f}",
-        },
-        "creditImpulse": {
-            "value": round(credit_impulse, 2),
-            "signal": "Positive" if credit_impulse > 0 else "Negative",
-            "description": f"Liquidity signal: {credit_impulse:+.2f}",
-        },
-        "lei": {
-            "value": round(lei_value, 1),
-            "change": round(lei_change, 2),
-            "signal": "Improving" if lei_change > 0 else "Declining",
-            "components": [
-                {"name": "Growth", "contribution": round((growth - 0.5) * 0.5, 2)},
-                {"name": "Liquidity", "contribution": round((liquidity - 0.5) * 0.3, 2)},
-                {"name": "Rates", "contribution": round((4.5 - ten_yr) * 0.2, 2) if ten_yr else 0},
-            ],
-        },
-        "riskParity": {
-            "regime": "Normal" if growth > 0.4 else "Stress",
-            "allocations": {
-                "stocks": round(0.25 + growth * 0.15, 2),
-                "bonds": round(0.35 + (1 - growth) * 0.15, 2),
-                "commodities": round(0.2 + (1 - liquidity) * 0.1, 2),
-            },
-        },
-        "lastUpdated": datetime.now().isoformat(),
-    }
+    adv = dashboard.advancedIndicators
+    adv = adv.model_dump() if hasattr(adv, "model_dump") else dict(adv or {})
+    adv.setdefault("lastUpdated", datetime.now().isoformat())
+    return adv
 
 
 async def get_alerts_data() -> Dict[str, Any]:
@@ -133,16 +83,16 @@ async def get_alerts_data() -> Dict[str, Any]:
 
     # Get real dashboard data
     dashboard = await get_dashboard_data(mode="live")
-    rec_prob = dashboard.recession.probability if dashboard.recession else 0.15
-    vix = (dashboard.keyMetrics.vix or 18.0) if dashboard.keyMetrics else 18.0
-    ten_yr = (dashboard.keyMetrics.tenYearYield or 4.5) if dashboard.keyMetrics else 4.5
-    two_yr = (dashboard.keyMetrics.twoYearYield or 4.2) if dashboard.keyMetrics else 4.2
-    spread = ten_yr - two_yr if ten_yr and two_yr else 0.3
+    rec_prob = dashboard.recession.probability
+    vix = dashboard.keyMetrics.vix
+    ten_yr = dashboard.keyMetrics.tenYearYield
+    two_yr = dashboard.keyMetrics.twoYearYield
+    spread = ten_yr - two_yr if ten_yr and two_yr else None
 
     alerts = []
 
     # Generate alerts based on real conditions
-    if spread < 0:
+    if spread is not None and spread < 0:
         alerts.append({
             "id": "alert-yield-curve",
             "type": "Recession",
@@ -200,79 +150,118 @@ async def get_alerts_data() -> Dict[str, Any]:
     }
 
 
+def _prev_day(dated: Dict[str, float], d: str) -> str:
+    """The trading day before `d` in a dated close series."""
+    earlier = [x for x in dated if x < d]
+    return max(earlier) if earlier else d
+
+
 async def get_full_risk_data() -> Dict[str, Any]:
-    """Full risk analytics from real market data."""
-    logger.info("Fetching full risk data with real calculations")
+    """Risk analytics measured from realised daily returns.
 
-    # Get real dashboard data
-    dashboard = await get_dashboard_data(mode="live")
-    growth = (dashboard.scores.growth / 100) if dashboard.scores else 0.5
-    risk_score = (dashboard.scores.risk / 100) if dashboard.scores else 0.5
-    vix = (dashboard.keyMetrics.vix or 18.0) if dashboard.keyMetrics else 18.0
-    ten_yr = (dashboard.keyMetrics.tenYearYield or 4.5) if dashboard.keyMetrics else 4.5
+    Portfolio = the current book (today's positions held over the past year, returns per $
+    of gross exposure); with no positions, a clearly-labelled 60/40 SPY/TLT reference.
+    Benchmark SPY. Correlations: realised 63-day, SPY/TLT/GLD/HYG (+ book names). Stress
+    tests: the factor-based historical scenarios from /api/v1/risk/stress-test.
+    """
+    import numpy as _np
+    from api import main as _m
+    from api.calculations.factor_model import returns_from_closes
+    from api.calculations.risk_analytics import performance_stats, drawdown_stats, correlation_block
+    from api.handlers.market_handler import _fetch_dated_closes_literal
 
-    # Calculate volatility from VIX
-    volatility = vix / 100 if vix else 0.15
+    logger.info("Computing full risk analytics from realised returns")
+    matrix, reason, _ = await _m._position_return_matrix(None)
+    if matrix is not None:
+        mv = _np.array(matrix["market_values"], dtype=float)
+        gross = float(_np.abs(mv).sum()) or 1.0
+        port = list((matrix["R"] @ mv) / gross)
+        dates = matrix["dates"][1:]
+        basis = (f"Current book ({len(mv)} positions), today's weights held over the past "
+                 f"{len(port)} trading days; returns per $ of gross exposure")
+        held = list(matrix["symbols"])
+    else:
+        spy, tlt = await asyncio.gather(_fetch_dated_closes_literal("SPY"), _fetch_dated_closes_literal("TLT"))
+        common = sorted(set(spy) & set(tlt))
+        rs = returns_from_closes([spy[d] for d in common])
+        rt = returns_from_closes([tlt[d] for d in common])
+        port = [0.6 * a + 0.4 * b for a, b in zip(rs, rt)]
+        dates = common[1:]
+        basis = f"REFERENCE 60/40 SPY/TLT portfolio — no positions in the book ({reason})"
+        held = []
 
-    # Calculate returns from growth signal
-    annual_return = growth * 0.10
-    annual_vol = volatility
+    # Benchmark SPY returns on exactly the same days (needs the close before the first day).
+    spy_dated = await _fetch_dated_closes_literal("SPY")
+    bench = None
+    if dates and all(d in spy_dated for d in dates):
+        series = [spy_dated[_prev_day(spy_dated, dates[0])]] + [spy_dated[d] for d in dates]
+        b = list(returns_from_closes(series))
+        bench = b if len(b) == len(port) else None
 
-    # Calculate Sharpe ratio
-    sharpe = (annual_return / annual_vol) if annual_vol > 0 else 0.5
-    sortino = sharpe * 1.2
-    calmar = annual_return / 0.15 if annual_return > 0 else 0.5
+    # Risk-free: the 3M T-bill (FRED DGS3MO).
+    try:
+        from api.handlers.macro_inputs import load_macro_inputs
+        rf = ((await load_macro_inputs())["dgs3mo"].latest or 0.0) / 100.0
+    except Exception:
+        rf = 0.0
 
-    # Calculate drawdown based on VIX
-    max_drawdown = -vix / 2 if vix else -8.5
+    perf = performance_stats(port, bench, rf_annual=rf)
+    dd = drawdown_stats(port)
 
-    # Calculate correlations based on regime
-    equity_bond_corr = -0.3 if growth > 0.5 else 0.1
-    equity_gold_corr = 0.1 if growth > 0.5 else -0.2
+    # Realised correlations: macro proxies + book names.
+    corr_syms = list(dict.fromkeys(["SPY", "TLT", "GLD", "HYG"] + held[:6]))
+    closes = await asyncio.gather(*[_fetch_dated_closes_literal(t) for t in corr_syms])
+    common = None
+    for c in closes:
+        common = set(c) if common is None else common & set(c)
+    common = sorted(common or [])
+    rets = {t: list(returns_from_closes([c[d] for d in common])) for t, c in zip(corr_syms, closes) if c}
+    corr = correlation_block(rets, window=63)
+
+    stress = []
+    try:
+        st = await _m.risk_stress_get_v1(None)
+        if st.get("available"):
+            mv_gross = float(_np.abs(_np.array(matrix["market_values"])).sum()) if matrix is not None else None
+            for sc in st["scenarios"]:
+                by = sc.get("by_factor") or {}
+                worst = min(by.items(), key=lambda kv: kv[1])[0] if by else None
+                stress.append({"name": sc["label"], "description": "Historical factor shocks applied to the book's dollar exposures",
+                               "portfolioPnl": round(sc["total_pnl"], 0),
+                               "portfolioPnlPct": round(sc["total_pnl"] / mv_gross * 100, 2) if mv_gross else None,
+                               "worstComponent": worst, "status": "Historical analog"})
+    except Exception as e:
+        logger.warning(f"[risk_full] stress tests unavailable: {e}")
 
     data = {
-        "sharpe": round(sharpe, 2),
-        "sortino": round(sortino, 2),
-        "calmar": round(calmar, 2),
-        "informationRatio": round(sharpe * 0.8, 2),
-        "beta": round(0.7 + growth * 0.3, 2),
-        "var95": round(volatility * 1.645 / 12**0.5, 4),
-        "cvar95": round(volatility * 2 / 12**0.5, 4),
-        "maxDrawdown": round(max_drawdown, 1),
-        "volatility": round(volatility, 3),
-        "status": f"Using real market data: VIX={vix:.1f}, Growth={growth:.0%}",
+        "basis": basis,
+        "benchmark": "SPY",
+        "riskFreeRate": round(rf * 100, 2),
+        "sharpe": perf.get("sharpeRatio"), "sortino": perf.get("sortinoRatio"),
+        "calmar": perf.get("calmarRatio"), "informationRatio": perf.get("informationRatio"),
+        "beta": perf.get("betaVsSpy"),
+        "var95": -perf["var95"] if perf.get("var95") is not None else None,
+        "cvar95": -perf["cvar95"] if perf.get("cvar95") is not None else None,
+        "maxDrawdown": round(dd["max_drawdown"] * 100, 1),
+        "volatility": perf.get("annualVolatility"),
+        "status": f"Measured from {perf.get('observations', 0)} daily returns",
         "drawdown": {
-            "currentSeverity": "mild" if vix < 20 else "moderate" if vix < 25 else "severe",
-            "daysInDrawdown": int(vix * 2) if vix > 20 else 0,
-            "recoveryTimeEstimate": f"{int(vix / 5)} months" if vix > 20 else "N/A"
+            "currentDrawdown": round(dd["current_drawdown"] * 100, 2),
+            "maxDrawdown12m": round(dd["max_drawdown"] * 100, 2),
+            "currentSeverity": dd["severity"],
+            "daysInDrawdown": dd["days_in_drawdown"],
+            "recoveryTimeEstimate": "not forecast",
         },
         "riskAdjustedReturns": {
-            "sharpeRatio": round(sharpe, 2),
-            "sortinoRatio": round(sortino, 2),
-            "calmarRatio": round(calmar, 2),
-            "informationRatio": round(sharpe * 0.8, 2),
-            "betaVsSpy": round(0.7 + growth * 0.3, 2),
-            "var95": round(volatility * 1.645 / 12**0.5, 4),
-            "cvar95": round(volatility * 2 / 12**0.5, 4),
-            "annualReturn": round(annual_return * 100, 1),
-            "annualVolatility": round(volatility * 100, 1)
+            "sharpeRatio": perf.get("sharpeRatio"), "sortinoRatio": perf.get("sortinoRatio"),
+            "calmarRatio": perf.get("calmarRatio"), "informationRatio": perf.get("informationRatio"),
+            "betaVsSpy": perf.get("betaVsSpy"),
+            "var95": -perf["var95"] if perf.get("var95") is not None else None,
+            "cvar95": -perf["cvar95"] if perf.get("cvar95") is not None else None,
+            "annualReturn": perf.get("annualReturn"), "annualVolatility": perf.get("annualVolatility"),
         },
-        "correlation": {
-            "assets": ["SPY", "TLT", "GLD", "HYG"],
-            "matrix3m": [
-                [1.0, round(equity_bond_corr, 1), round(equity_gold_corr, 1), 0.8],
-                [round(equity_bond_corr, 1), 1.0, 0.2, round(-equity_bond_corr - 0.1, 1)],
-                [round(equity_gold_corr, 1), 0.2, 1.0, 0.1],
-                [0.8, round(-equity_bond_corr - 0.1, 1), 0.1, 1.0]
-            ],
-            "diversificationScore": int(50 + abs(equity_bond_corr) * 50),
-            "diversificationRating": "Moderate" if abs(equity_bond_corr) < 0.5 else "Low"
-        },
-        "stressTests": [
-            {"name": "2008 Crisis", "description": "Global financial crisis scenario", "status": "passed" if growth > 0.3 else "warning"},
-            {"name": "2020 COVID", "description": "Pandemic shock scenario", "status": "passed" if vix < 30 else "warning"},
-            {"name": "2022 Inflation", "description": f"Rate hiking at {(ten_yr or 4.5):.1f}% scenario", "status": "warning" if ten_yr and ten_yr > 4.5 else "passed"}
-        ],
+        "correlation": corr,
+        "stressTests": stress,
         "lastUpdated": datetime.now().isoformat(),
     }
 

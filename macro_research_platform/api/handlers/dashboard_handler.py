@@ -308,7 +308,9 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     risk_history, risk_labels = _series("r")
 
     # 10Y-2Y spread (both FRED, same date)
-    yield_spread = dgs10.latest - two_yr
+    # Same-date spreads (never one series' latest minus another's older print).
+    _c2 = dgs10.last_common(dgs2)
+    yield_spread = (_c2[1] - _c2[2]) if _c2 else dgs10.latest - two_yr
 
     # Classify regime using shared module
     regime_name, regime_confidence, _ = classify_regime(
@@ -339,7 +341,8 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     regime_chars = get_regime_characteristics(regime_name)
 
     # Recession probability from real models (headline = fitted probit, else E-M)
-    spread_3m10y_now = dgs10.latest - dgs3mo.latest
+    _c3 = dgs10.last_common(dgs3mo)
+    spread_3m10y_now = (_c3[1] - _c3[2]) if _c3 else dgs10.latest - dgs3mo.latest
     recession_data = calculate_recession_probability(
         spread_3m10y_now, fed_rate, sahm_value,
         _recession_prob_at(spread_3m10y_now, fed_rate) if probit is not None else None,
@@ -482,11 +485,27 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         'EURUSD': 'EURUSD=X', 'GLD': 'GC=F', 'WTI': 'CL=F',
     }
     # Store as FRACTIONS (0.0007 = 0.07%) to match the frontend's fmtChange convention.
-    _chg = {}
+    # Dated closes, so each change carries the session it belongs to: Yahoo's spot-FX bars
+    # land a day later than equities/DXY (see api/market_dates.py), so on any given morning
+    # EUR/USD's latest complete session can be a day behind the S&P's.
+    from api.handlers.market_handler import _fetch_dated_closes_literal
+    _chg, _chg_asof = {}, {}
+    _spx_closes = None
     for _k, _t in _chg_tickers.items():
-        _closes = await _fetch_closes(_t)
+        _dated = await _fetch_dated_closes_literal(_t)
+        _days = sorted(_dated)
+        _closes = [_dated[d] for d in _days]
+        if _k == 'SPX':
+            _spx_closes = _closes
         _pc = _pct_change(_closes, 1) if _closes else None
         _chg[_k] = (_pc / 100.0) if _pc is not None else None
+        _chg_asof[_k] = _days[-1] if _days else None
+    # Yields move in basis points, not percent: the 10Y's daily change in bp from ^TNX.
+    # (This field used to carry the 2s10s SPREAD, which the UI showed as the 10Y's change.)
+    _tnx = await _fetch_closes('^TNX')
+    ten_yr_change_bp = round((_tnx[-1] - _tnx[-2]) * 100, 1) if _tnx and len(_tnx) >= 2 else None
+    spx_change_pts = (round(_spx_closes[-1] - _spx_closes[-2], 2)
+                      if _spx_closes and len(_spx_closes) >= 2 else None)
 
     key_metrics = KeyMetrics(
         growth=MetricWithSparkline(
@@ -522,12 +541,12 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         regimeDuration={"current": regime_duration_label, "currentRegime": regime_name,
                         "measured": "exact" if duration_bounded else "lower bound (history limit)"},
         spxLevel=spx_level,
-        spxChange=None,
+        spxChange=spx_change_pts,
         spxChangePct=_chg.get('SPX'),
         ndxLevel=ndx_level,
         ndxChangePct=_chg.get('NDX'),
         tenYearYield=ten_yr,
-        tenYearChange=yield_spread,
+        tenYearChange=ten_yr_change_bp,
         twoYearYield=two_yr,
         dxy=dxy_level,
         dxyChangePct=_chg.get('DXY'),
@@ -540,6 +559,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         fedRate=fed_rate,
         vix=vix_level,
         vixChange=_chg.get('VIX'),
+        changeAsOf=_chg_asof,
     )
 
     # Panels below are computed from observed price / FRED history (see

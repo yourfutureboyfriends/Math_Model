@@ -65,10 +65,10 @@ async def get_signal_stack_data() -> Dict[str, Any]:
     from api.schemas.models import SignalStackLayer
 
     dashboard = await get_dashboard_data(mode="live")
-    growth = (dashboard.scores.growth / 100) if dashboard.scores else 0.5
-    inflation = (dashboard.scores.inflation / 100) if dashboard.scores else 0.3
-    liquidity = (dashboard.scores.liquidity / 100) if dashboard.scores else 0.5
-    risk = (dashboard.scores.risk / 100) if dashboard.scores else 0.5
+    growth = (dashboard.scores.growth / 100)
+    inflation = (dashboard.scores.inflation / 100)
+    liquidity = (dashboard.scores.liquidity / 100)
+    risk = (dashboard.scores.risk / 100)
 
     avg_score = (growth + liquidity + risk) / 3
     if avg_score > 0.6:
@@ -95,7 +95,7 @@ async def get_signal_stack_data() -> Dict[str, Any]:
 
     # Build layer outputs for response
     layer_outputs = [
-        {"layer": "Regime", "signal": dashboard.regime.current.upper() if dashboard.regime.current else "EXPANSION", "conviction": round(dashboard.regime.confidenceScore or 0.75, 2)},
+        {"layer": "Regime", "signal": dashboard.regime.current.upper() if dashboard.regime.current else "EXPANSION", "conviction": round(dashboard.regime.confidenceScore, 2)},
         {"layer": "Growth", "signal": "Strong" if growth > 0.6 else "Weak" if growth < 0.4 else "Neutral", "conviction": round(growth, 2)},
         {"layer": "Liquidity", "signal": "Loose" if liquidity > 0.6 else "Tight" if liquidity < 0.4 else "Neutral", "conviction": round(liquidity, 2)},
         {"layer": "Risk", "signal": "High Appetite" if risk > 0.6 else "Low Appetite" if risk < 0.4 else "Neutral", "conviction": round(risk, 2)},
@@ -114,7 +114,7 @@ async def get_signal_stack_data() -> Dict[str, Any]:
         "reasoning": reasoning_text,
         "layerOutputs": layer_outputs,
         "layers": [
-            SignalStackLayer(layer="Regime",    priority=1, signal=dashboard.regime.current.upper() if dashboard.regime.current else "EXPANSION", conviction=round(dashboard.regime.confidenceScore or 0.75, 2)),
+            SignalStackLayer(layer="Regime",    priority=1, signal=dashboard.regime.current.upper() if dashboard.regime.current else "EXPANSION", conviction=round(dashboard.regime.confidenceScore, 2)),
             SignalStackLayer(layer="Growth",    priority=2, signal="Strong" if growth > 0.6 else "Weak" if growth < 0.4 else "Neutral", conviction=round(growth, 2)),
             SignalStackLayer(layer="Inflation", priority=3, signal="Elevated" if inflation > 0.6 else "Low" if inflation < 0.3 else "Neutral", conviction=round(inflation if inflation > 0.5 else 1 - inflation, 2)),
             SignalStackLayer(layer="Liquidity", priority=4, signal="Loose" if liquidity > 0.6 else "Tight" if liquidity < 0.4 else "Neutral", conviction=round(liquidity, 2)),
@@ -148,10 +148,10 @@ async def get_signals_data() -> Dict[str, Any]:
     dashboard = await get_dashboard_data(mode="live")
 
     # Use real scores
-    growth_score = (dashboard.scores.growth / 100) if dashboard.scores else 0.5
-    inflation_score = (dashboard.scores.inflation / 100) if dashboard.scores else 0.3
-    liquidity_score = (dashboard.scores.liquidity / 100) if dashboard.scores else 0.5
-    risk_score = (dashboard.scores.risk / 100) if dashboard.scores else 0.5
+    growth_score = (dashboard.scores.growth / 100)
+    inflation_score = (dashboard.scores.inflation / 100)
+    liquidity_score = (dashboard.scores.liquidity / 100)
+    risk_score = (dashboard.scores.risk / 100)
 
     avg = (growth_score + liquidity_score + risk_score) / 3
     final_signal = "Bullish" if avg > 0.6 else "Bearish" if avg < 0.4 else "Neutral"

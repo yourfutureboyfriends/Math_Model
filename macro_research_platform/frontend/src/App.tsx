@@ -63,6 +63,18 @@ function App() {
     return () => observer.disconnect();
   }, [isAuthenticated, hasData]);
 
+  // Live alert count for the topbar badge (was hard-coded to 0, hiding real alerts).
+  const [alertCount, setAlertCount] = useState(0);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const load = () => fetch('/api/alerts').then((r) => (r.ok ? r.json() : null))
+      .then((j) => j && setAlertCount((j.alerts ?? []).filter((a: any) => a.active !== false && a.id !== 'alert-normal').length))
+      .catch(() => { /* keep last count */ });
+    load();
+    const t = setInterval(load, 300_000);
+    return () => clearInterval(t);
+  }, [isAuthenticated]);
+
   const handleNavigate = (sectionId: string) => {
     const el = document.getElementById(sectionId);
     if (el) {
@@ -111,7 +123,7 @@ function App() {
         dataStatus={meta.dataStatus === 'live' ? 'current' : meta.dataStatus === 'stale' ? 'stale' : 'unknown'}
         mode="LIVE"
         currentRegime={regime.current || undefined}
-        alertCount={0}
+        alertCount={alertCount}
         onRefresh={handleRefresh}
         loading={isLoading}
         activeSection={activeSection}

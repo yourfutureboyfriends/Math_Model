@@ -162,7 +162,7 @@ export const CommoditiesDashboardSection = memo(function CommoditiesDashboardSec
           {/* Gold from store */}
           {goldPrice && (
             <div className="p-3 border border-border-subtle bg-surface-2">
-              <div className="text-2xs text-text-tertiary">Gold (GLD)</div>
+              <div className="text-2xs text-text-tertiary">Gold (COMEX futures)</div>
               <div className="font-mono text-lg">{fmtPrice(goldPrice)}</div>
               <span className={cn(
                 'text-xs',

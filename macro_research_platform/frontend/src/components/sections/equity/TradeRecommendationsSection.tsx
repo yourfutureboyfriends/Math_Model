@@ -256,20 +256,20 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
             {expectedReturns.length > 0 && (
               <div className="border border-border bg-surface-1 overflow-hidden">
                 <div className="px-3 py-1.5 border-b border-border-subtle bg-surface-2 text-2xs text-text-tertiary uppercase tracking-wider">
-                  Expected 1Y Returns
+                  Expected returns · long-run, annualised (building blocks)
                 </div>
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border-subtle text-2xs text-text-tertiary uppercase">
                       <th className="text-left py-2 px-3 font-medium">Asset</th>
-                      <th className="text-right py-2 px-3 font-medium">1Y Return</th>
+                      <th className="text-right py-2 px-3 font-medium">Exp. p.a.</th>
                       <th className="text-center py-2 px-3 font-medium">Confidence</th>
                     </tr>
                   </thead>
                   <tbody>
                     {expectedReturns.map((r, i) => (
                       <tr key={r.asset ?? i} className="border-b border-border-subtle last:border-0">
-                        <td className="py-2 px-3 text-sm text-text-primary">{r.asset}</td>
+                        <td className="py-2 px-3 text-sm text-text-primary" title={r.basis ?? ''}>{r.asset}</td>
                         <td className={`py-2 px-3 text-right font-mono text-sm ${(r.return_1y ?? 0) >= 0 ? 'text-green' : 'text-red'}`}>
                           {typeof r.return_1y === 'number' ? `${r.return_1y >= 0 ? '+' : ''}${r.return_1y.toFixed(1)}%` : '—'}
                         </td>

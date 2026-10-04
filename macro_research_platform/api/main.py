@@ -3144,7 +3144,8 @@ async def signals_backtest_v1(horizon: int = 21):
     def _closes(ticker):
         try:
             import yfinance as yf
-            h = yf.Ticker(ticker).history(period="5y", interval="1d")
+            from api.market_dates import align_frame
+            h = align_frame(ticker, yf.Ticker(ticker).history(period="5y", interval="1d"))
             if h is None or h.empty:
                 return [], []
             dates = [str(d)[:10] for d in h.index]
@@ -3990,12 +3991,24 @@ async def get_global_correlation(window: int = 90):
             "window": window, **result}
 
 
+def _realized_vol(closes, n: int = 21):
+    """Annualised realised volatility (%) of the last `n` daily log returns."""
+    import math
+    if len(closes) < n + 1:
+        return None
+    r = [math.log(closes[i] / closes[i - 1]) for i in range(len(closes) - n, len(closes)) if closes[i - 1] > 0]
+    if len(r) < 2:
+        return None
+    m = sum(r) / len(r)
+    return round(math.sqrt(sum((x - m) ** 2 for x in r) / (len(r) - 1)) * math.sqrt(252) * 100, 2)
+
+
 @app.get("/api/fx-rates")
 @ttl_cache(300)
 async def get_fx_rates():
     """Broad FX board — many pairs grouped by region (G10 majors, Asia, EMEA, LatAm), each with
     a real live spot + daily % change. Pairs that fail to quote return null, never a fake value."""
-    from api.handlers.market_handler import _fetch_closes_literal, _pct_change
+    from api.handlers.market_handler import _fetch_dated_closes_literal, _pct_change
 
     # group -> [(pair label, yfinance ticker, decimals)]
     groups = {
@@ -4008,25 +4021,38 @@ async def get_fx_rates():
         "emea_latam": [("USD/BRL", "USDBRL=X", 3), ("USD/MXN", "USDMXN=X", 3),
                        ("USD/ZAR", "USDZAR=X", 3), ("USD/TRY", "USDTRY=X", 3)],
     }
+    # Dated closes, already re-dated to their New York session (api/market_dates.py), so a
+    # pair's daily change lines up with DXY's and each row says which session it is.
     flat = [(g, p, t, dp) for g, items in groups.items() for (p, t, dp) in items]
-    closes_list = await asyncio.gather(*[_fetch_closes_literal(t) for _, _, t, _ in flat],
-                                       return_exceptions=True)
+    dated_list = await asyncio.gather(*[_fetch_dated_closes_literal(t) for _, _, t, _ in flat],
+                                      return_exceptions=True)
     result = {"g10": [], "asia": [], "emea_latam": []}
-    for (g, pair, ticker, dp), closes in zip(flat, closes_list):
-        if isinstance(closes, Exception) or not closes:
-            result[g].append({"pair": pair, "ticker": ticker, "spot": None, "change1d": None, "available": False})
+    for (g, pair, ticker, dp), dated in zip(flat, dated_list):
+        if isinstance(dated, Exception) or not dated:
+            result[g].append({"pair": pair, "ticker": ticker, "spot": None, "change1d": None,
+                              "as_of": None, "available": False})
         else:
+            days = sorted(dated)
+            closes = [dated[d] for d in days]
+            ch1m = _pct_change(closes, 21)
             result[g].append({"pair": pair, "ticker": ticker, "spot": round(float(closes[-1]), dp),
-                              "change1d": _pct_change(closes, 1), "available": True})
-    dxy_closes = await _fetch_closes_literal("DX-Y.NYB")
-    dxy = {"spot": round(float(dxy_closes[-1]), 2), "change1d": _pct_change(dxy_closes, 1)} if dxy_closes else None
+                              "change1d": _pct_change(closes, 1), "change1w": _pct_change(closes, 5),
+                              "change1m": ch1m, "vol1m": _realized_vol(closes, 21),
+                              "trend": (None if ch1m is None else "UP" if ch1m > 1 else "DOWN" if ch1m < -1 else "FLAT"),
+                              "as_of": days[-1], "available": True})
+    dxy_dated = await _fetch_dated_closes_literal("DX-Y.NYB")
+    dxy = None
+    if dxy_dated:
+        dd = sorted(dxy_dated)
+        dxy = {"spot": round(float(dxy_dated[dd[-1]]), 2),
+               "change1d": _pct_change([dxy_dated[d] for d in dd], 1), "as_of": dd[-1]}
     n_ok = sum(1 for g in result.values() for x in g if x.get("available"))
     return {
         "available": n_ok > 0,
         "dxy": dxy,
         **result,
         "pair_count": n_ok,
-        "source": "Yahoo Finance (yfinance) — live FX closes",
+        "source": "Yahoo Finance daily closes; FX re-dated to the New York session they belong to",
         "as_of": datetime.now().isoformat(),
     }
 

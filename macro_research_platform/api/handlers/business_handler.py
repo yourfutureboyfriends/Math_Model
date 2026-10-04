@@ -1,6 +1,7 @@
 """Business handler - business logic for business layer endpoints."""
 from typing import Dict, Any, Optional
 from datetime import datetime
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -112,13 +113,13 @@ async def get_morning_brief_data() -> Dict[str, Any]:
 
     # Extract regime info
     regime = dashboard.regime.current or "goldilocks"
-    confidence = dashboard.regime.confidenceScore or 0.75
+    confidence = dashboard.regime.confidenceScore
     duration = dashboard.regime.duration or 1
 
     # Get scores
-    growth = dashboard.scores.growth if dashboard.scores else 50
-    inflation = dashboard.scores.inflation if dashboard.scores else 30
-    risk = dashboard.scores.risk if dashboard.scores else 50
+    growth = dashboard.scores.growth
+    inflation = dashboard.scores.inflation
+    risk = dashboard.scores.risk
 
     km = dashboard.keyMetrics
     spx = km.spxLevel if km else None
@@ -174,8 +175,25 @@ async def get_morning_brief_data() -> Dict[str, Any]:
 
     # Generate risks based on actual signals
     risks = []
-    if inflation > 50:
-        risks.append(f"Inflation elevated at {inflation:.0f}% signal")
+    # Inflation: state the actual prints, not the 0-100 signal score (which read as
+    # "inflation at 58%"), and use the dashboard's own band (> 60 = rising).
+    infl_prints = {}
+    try:
+        from api.data_freshness import get_live_freshness
+        fr = await asyncio.to_thread(get_live_freshness)
+        infl_prints = {r["metric"]: r for r in fr.get("series", []) if r.get("latest_value") is not None}
+    except Exception:
+        pass
+    cpi, core = infl_prints.get("inflation"), infl_prints.get("core_pce")
+    above_target = cpi is not None and cpi["latest_value"] > 3.0
+    if inflation is not None and (inflation > 60 or above_target):
+        parts = []
+        if cpi:
+            parts.append(f"CPI {cpi['latest_value']:.1f}% y/y ({cpi['last_observation_date'][:7]})")
+        if core:
+            parts.append(f"core PCE {core['latest_value']:.1f}%")
+        detail = ", ".join(parts) if parts else f"inflation signal {inflation:.0f}/100"
+        risks.append(f"Inflation above the Fed's 2% target — {detail}")
     if risk < 40 and vix is not None:
         risks.append(f"Risk appetite low — VIX at {vix:.1f}")
     if ten_yr and ten_yr > 4.5:
@@ -236,14 +254,14 @@ async def get_recommendations_data() -> Dict[str, Any]:
     dashboard = await get_dashboard_data(mode="live")
 
     regime = dashboard.regime.current or "goldilocks"
-    confidence = dashboard.regime.confidenceScore or 0.75
-    growth = (dashboard.scores.growth / 100) if dashboard.scores else 0.5
-    inflation = (dashboard.scores.inflation / 100) if dashboard.scores else 0.3
-    risk = (dashboard.scores.risk / 100) if dashboard.scores else 0.5
-    liquidity = (dashboard.scores.liquidity / 100) if dashboard.scores else 0.5
-    ten_yr = (dashboard.keyMetrics.tenYearYield or 4.5) if dashboard.keyMetrics else 4.5
-    vix = (dashboard.keyMetrics.vix or 18.0) if dashboard.keyMetrics else 18.0
-    rec_prob = dashboard.recession.probability if dashboard.recession else 0.15
+    confidence = dashboard.regime.confidenceScore
+    growth = (dashboard.scores.growth / 100)
+    inflation = (dashboard.scores.inflation / 100)
+    risk = (dashboard.scores.risk / 100)
+    liquidity = (dashboard.scores.liquidity / 100)
+    ten_yr = dashboard.keyMetrics.tenYearYield
+    vix = dashboard.keyMetrics.vix
+    rec_prob = dashboard.recession.probability
 
     # Calculate regime from signals if not set (backup classification)
     if not regime or regime == "unknown":
@@ -319,17 +337,15 @@ async def get_recommendations_data() -> Dict[str, Any]:
     if vix > 25:
         themes.append(f"Elevated volatility (VIX {vix:.1f}) - reduce position sizes")
 
-    # Calculate expected returns from real signals
-    # Equity ERP = base 4% adjusted for growth and recession risk
-    equity_erp = 4.0 + (growth - 0.5) * 4 - rec_prob * 3
-    equity_return = (ten_yr if ten_yr else 4.5) + equity_erp
-
-    # Bond returns = yield adjusted for rate direction
-    rate_direction = -0.5 if ten_yr and ten_yr > 4.5 else 0.5  # Mean reversion assumption
-    bond_return = (ten_yr if ten_yr else 4.5) + rate_direction
-
-    # Commodity returns = inflation signal adjusted
-    commodity_return = 5.0 + (inflation - 0.4) * 8
+    # Expected returns: the documented building-block model (earnings yield + breakeven
+    # for equities, yield for bonds) — replaces ad-hoc formulas such as International =
+    # US + 0.5% and Gold = 4% + 3×recession prob + 2×inflation score, which had fixed
+    # "High"/"Medium" confidence labels.
+    er = await get_expected_returns_data()
+    expected_returns = [{"asset": r["asset"], "return_1y": r["expectedReturn"], "confidence": "unrated",
+                         "basis": "long-run building blocks: " + ", ".join(
+                             f"{k.replace('_', ' ')} {v}%" for k, v in (r.get("components") or {}).items())}
+                        for r in er.get("returns", [])]
 
     # Calculate position sizing dynamically based on signals
     # SPY: Higher when growth is strong and recession risk is low
@@ -355,18 +371,12 @@ async def get_recommendations_data() -> Dict[str, Any]:
     return {
         "summary": {
             "regime": regime.title(),
-            "conviction": get_conviction(confidence, 0.75, 0.6),
+            "conviction": get_conviction(confidence, 0.75, 0.6) if confidence is not None else "Unrated",
             "overall_position": overall_position,
             "key_themes": themes,
             "risk_assessment": f"VIX {vix:.1f}, Recession {rec_prob:.0%}, Risk Appetite {risk:.0%}"
         },
-        "expected_returns": [
-            {"asset": "US Equities", "return_1y": round(equity_return, 1), "confidence": get_conviction(growth, 0.65, 0.45)},
-            {"asset": "International", "return_1y": round(equity_return + 0.5, 1), "confidence": "Medium"},
-            {"asset": "Bonds", "return_1y": round(bond_return, 1), "confidence": "High"},
-            {"asset": "Commodities", "return_1y": round(commodity_return, 1), "confidence": get_conviction(inflation, 0.6, 0.4)},
-            {"asset": "Gold", "return_1y": round(4.0 + rec_prob * 3 + inflation * 2, 1), "confidence": get_conviction(rec_prob + inflation * 0.5, 0.5, 0.3)},
-        ],
+        "expected_returns": expected_returns,
         "position_sizing": [
             {"asset": "SPY", "target": round(spy_target, 2), "range": f"{int(spy_target*100-5)}-{int(spy_target*100+5)}%", "conviction": get_conviction(growth, 0.65, 0.45)},
             {"asset": "QQQ", "target": round(qqq_target, 2), "range": f"{int(qqq_target*100-5)}-{int(qqq_target*100+5)}%", "conviction": get_conviction(growth * liquidity, 0.45, 0.25)},
@@ -396,7 +406,7 @@ async def get_decision_log_data(limit: int = 50) -> Dict[str, Any]:
     now = datetime.now()
 
     regime = (dashboard.regime.current or "Goldilocks").title() if dashboard.regime else "Goldilocks"
-    rec_prob = dashboard.recession.probability if dashboard.recession else 0.15
+    rec_prob = dashboard.recession.probability
     growth = (dashboard.scores.growth or 50) if dashboard.scores else 50
     inflation = (dashboard.scores.inflation or 30) if dashboard.scores else 30
 
@@ -408,7 +418,7 @@ async def get_decision_log_data(limit: int = 50) -> Dict[str, Any]:
         "headline": f"{regime} regime confirmed — maintain positioning",
         "conviction": "High" if (dashboard.regime.confidenceScore or 0) > 0.7 else "Medium",
         "suggestedPositionSize": "Full",
-        "rationale": f"Regime classifier: {regime} with {(dashboard.regime.confidenceScore or 0.75):.0%} confidence",
+        "rationale": f"Regime classifier: {regime} with {(dashboard.regime.confidenceScore):.0%} confidence",
         "action": "HOLD",
         "model": "Regime Classifier",
     })
@@ -467,9 +477,9 @@ async def get_ic_pack_data() -> Dict[str, Any]:
     now = datetime.now()
 
     regime = (dashboard.regime.current or "Goldilocks").title() if dashboard.regime else "Goldilocks"
-    confidence = dashboard.regime.confidenceScore or 0.75 if dashboard.regime else 0.75
+    confidence = dashboard.regime.confidenceScore
     conviction = "High" if confidence > 0.75 else "Medium" if confidence > 0.5 else "Low"
-    rec_prob = dashboard.recession.probability if dashboard.recession else 0.15
+    rec_prob = dashboard.recession.probability
     growth = (dashboard.scores.growth or 50) if dashboard.scores else 50
     inflation = (dashboard.scores.inflation or 30) if dashboard.scores else 30
 

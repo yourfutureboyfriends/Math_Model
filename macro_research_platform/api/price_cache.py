@@ -27,9 +27,9 @@ SYMBOLS = {
     'DXY': 'DX-Y.NYB',
     'EURUSD': 'EURUSD=X',
     'GBPUSD': 'GBPUSD=X',
-    'USDJPY': 'JPY=X',      # Will be inverted (yfinance gives JPY/USD)
-    'USDCAD': 'CAD=X',      # Will be inverted
-    'USDCHF': 'CHF=X',      # Will be inverted
+    'USDJPY': 'USDJPY=X',   # Yahoo quotes USD/JPY directly (~150) — no inversion
+    'USDCAD': 'USDCAD=X',
+    'USDCHF': 'USDCHF=X',
     'AUDUSD': 'AUDUSD=X',
     'NZDUSD': 'NZDUSD=X',
     'GLD': 'GC=F',
@@ -37,7 +37,7 @@ SYMBOLS = {
 }
 
 # FX pairs that need inversion (yfinance returns quote/base instead of base/quote)
-INVERT_PAIRS = {'USDJPY', 'USDCAD', 'USDCHF'}
+INVERT_PAIRS: set = set()   # Yahoo quotes these USD-base already; inverting gave 0.0063
 
 # Cache storage
 _PRICE_CACHE: Dict[str, Optional[float]] = {}

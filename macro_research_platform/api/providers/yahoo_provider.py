@@ -61,9 +61,9 @@ class YahooFinanceProvider:
         'DXY': 'DX-Y.NYB',
         'EURUSD': 'EURUSD=X',
         'GBPUSD': 'GBPUSD=X',
-        'USDJPY': 'JPY=X',      # yfinance returns JPY/USD, we need USD/JPY
-        'USDCAD': 'CAD=X',      # Same - yfinance returns CAD/USD
-        'USDCHF': 'CHF=X',      # Same - yfinance returns CHF/USD
+        'USDJPY': 'USDJPY=X',   # Yahoo quotes USD/JPY directly (~150) — no inversion
+        'USDCAD': 'USDCAD=X',
+        'USDCHF': 'USDCHF=X',
         'AUDUSD': 'AUDUSD=X',
         'NZDUSD': 'NZDUSD=X',
         'GLD': 'GC=F',
@@ -79,7 +79,7 @@ class YahooFinanceProvider:
     }
 
     # Symbols that need inversion (yfinance returns quote/base)
-    INVERT_SYMBOLS = {'USDJPY', 'USDCAD', 'USDCHF'}
+    INVERT_SYMBOLS: set = set()   # JPY=X/CAD=X/CHF=X already quote USD/xxx; inverting gave 0.0063
 
     def __init__(self):
         self._last_error: Optional[str] = None
@@ -240,8 +240,11 @@ class YahooFinanceProvider:
         try:
             ticker = yf.Ticker(yf_sym)
             hist = ticker.history(period=period, interval=interval)
+            if interval == "1d":
+                from api.market_dates import align_frame
+                hist = align_frame(yf_sym, hist)   # FX bars → their NY session date
 
-            if hist.empty:
+            if hist is None or hist.empty:
                 return None
 
             # Apply inversion if needed

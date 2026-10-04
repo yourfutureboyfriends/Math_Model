@@ -78,7 +78,9 @@ async def _fetch_dated_closes_literal(ticker: str, period: str = "1y") -> dict:
 
     def _pull():
         import yfinance as yf
-        hist = yf.Ticker(ticker).history(period=period, interval="1d")
+        from api.market_dates import align_frame
+        # FX bars are re-dated to their NY session (see api/market_dates.py).
+        hist = align_frame(ticker, yf.Ticker(ticker).history(period=period, interval="1d"))
         if hist is None or hist.empty:
             return {}
         out = {}
@@ -111,7 +113,8 @@ async def _fetch_closes_literal(ticker: str) -> list[float]:
 
     def _pull():
         import yfinance as yf
-        hist = yf.Ticker(ticker).history(period="1y", interval="1d")
+        from api.market_dates import align_frame
+        hist = align_frame(ticker, yf.Ticker(ticker).history(period="1y", interval="1d"))
         if hist is None or hist.empty:
             return []
         return [c for c in hist["Close"].tolist() if isinstance(c, (int, float)) and c == c]
@@ -190,9 +193,14 @@ async def get_rates_data() -> Dict[str, Any]:
         from fastapi import HTTPException
         raise HTTPException(status_code=503, detail="Rates inputs unavailable: " + ", ".join(missing))
 
-    # Calculate spreads
-    spread_2s10s = (ten_yr - two_yr) * 100  # Convert to basis points for frontend
-    spread_3m10y = (ten_yr - three_mo) * 100
+    # Spreads from SAME-DAY FRED yields. Subtracting FRED's 2Y (yesterday) from Yahoo's
+    # live 10Y (today) put a day's 10Y move into the spread (49.7bp vs the official 45).
+    dgs10_s = inputs["dgs10"]
+    c2 = dgs10_s.last_common(inputs["dgs2"])
+    c3 = dgs10_s.last_common(inputs["dgs3mo"])
+    spread_2s10s = (c2[1] - c2[2]) * 100 if c2 else (ten_yr - two_yr) * 100
+    spread_3m10y = (c3[1] - c3[2]) * 100 if c3 else (ten_yr - three_mo) * 100
+    spreads_as_of = c2[0] if c2 else None
 
     # Determine curve shape
     shape = "inverted" if spread_2s10s < 0 else "flat" if spread_2s10s < 25 else "steep"
@@ -216,7 +224,8 @@ async def get_rates_data() -> Dict[str, Any]:
     curve_fred = await load_fred_series(rates_fred_ids())
     curve_points = us_curve_points(curve_fred)
     dgs5, dgs30 = curve_fred.get("DGS5"), curve_fred.get("DGS30")
-    spread_5s30s = (dgs30.latest - dgs5.latest) * 100 if (dgs5 and dgs30) else None
+    c530 = dgs30.last_common(dgs5) if (dgs5 and dgs30) else None
+    spread_5s30s = (c530[1] - c530[2]) * 100 if c530 else None
     dfii10 = curve_fred.get("DFII10")
     real_yield_10y = dfii10.latest if dfii10 else None
 
@@ -238,7 +247,9 @@ async def get_rates_data() -> Dict[str, Any]:
                 "spread5s30s": round(spread_5s30s, 1) if spread_5s30s is not None else None,
                 "realYield10y": round(real_yield_10y, 2) if real_yield_10y is not None else None,
                 "shape": shape,
-                "recessionProb": round(recession_prob, 2) if recession_prob is not None else None
+                "recessionProb": round(recession_prob, 2) if recession_prob is not None else None,
+                "asOf": {"spreads": spreads_as_of} if spreads_as_of else None,
+                "source": "FRED constant-maturity yields (spreads on a common date)",
             },
             **{cc: foreign_curve(cc, curve_fred) for cc in FOREIGN_CURVES},
         },
@@ -274,8 +285,9 @@ async def get_fx_data() -> Dict[str, Any]:
             out[key] = round(spot, dp)
             out[f"{key}Change"] = _pct_change(closes, 1)
         else:
-            out[key] = fallback
-            out[f"{key}Change"] = None  # explicit: daily change unavailable
+            # Unavailable is reported as null — never a hard-coded "typical" level shown as live.
+            out[key] = None
+            out[f"{key}Change"] = None
     return out
 
 
@@ -313,52 +325,31 @@ async def get_commodities_data() -> Dict[str, Any]:
                 "week52Percentile": _percentile_52w(closes, spot),
             }
         else:
-            # No live data — surface the fallback spot but null the changes rather
-            # than inventing them, so the UI can show "--" honestly.
+            # No data: null, never a hard-coded spot (2050 gold was shown with gold at 4,100+).
             row = {
-                "symbol": sym, "name": name, "spot": round(fallback, dp),
+                "symbol": sym, "name": name, "spot": None, "available": False,
                 "change1d": None, "change1m": None, "change3m": None,
                 "week52Percentile": None,
             }
         groups[group].append(row)
-        spot_by_symbol[sym] = row["spot"]
+        if row["spot"] is not None:
+            spot_by_symbol[sym] = row["spot"]
 
-    gold_price = spot_by_symbol.get("GC", 2050.0)
-    copper_price = spot_by_symbol.get("HG", 3.85)
+    from api.calculations.commodity_signals import (
+        copper_gold_signal, oil_trend_signal, broad_commodity_momentum)
+    hg, gc = await asyncio.gather(_fetch_dated_closes_literal("HG=F"), _fetch_dated_closes_literal("GC=F"))
     oil_row = groups["energy"][0]
-    oil_change_1d = oil_row.get("change1d") or 0.0
-    gold_change_1d = groups["metals"][0].get("change1d") or 0.0
-
-    # Copper/gold ratio (copper $/lb vs gold $/oz-in-thousands)
-    from api.calculations.models import copper_gold_ratio as _copper_gold_ratio
-    try:
-        copper_gold_ratio = _copper_gold_ratio(copper_price, gold_price)
-    except ValueError:
-        copper_gold_ratio = 0.0
-    ratio_signal = "RISK-ON" if copper_gold_ratio > 1.8 else "RISK-OFF"
-
-    oil_trend = "RISING" if oil_change_1d > 0 else "FALLING"
-    oil_interpretation = "Supply concerns" if oil_change_1d > 0 else "Demand moderation"
-
-    inflation_score = (gold_change_1d + oil_change_1d) / 2
-    inflation_signal = "RISING" if inflation_score > 0 else "FALLING"
 
     return {
         "commodities": groups,
         "macroSignals": {
-            "copperGoldRatio": {
-                "value": round(copper_gold_ratio, 4),
-                "signal": ratio_signal,
-                "description": "Growth indicator based on copper/gold ratio"
-            },
-            "oilTrend": {
-                "direction": oil_trend,
-                "interpretation": oil_interpretation
-            },
-            "commodityInflationIndex": {
-                "score": round(inflation_score, 2),
-                "signal": inflation_signal
-            }
+            # Judged against the ratio's own history: a fixed 1.8 threshold (set when gold was
+            # ~$2,000) read RISK-OFF permanently once gold doubled.
+            "copperGoldRatio": copper_gold_signal(hg, gc),
+            "oilTrend": oil_trend_signal(oil_row.get("change1m")),
+            # Equal-weight 3M move of the whole basket (was gold+oil's ONE-DAY change).
+            "commodityInflationIndex": broad_commodity_momentum(
+                [r for g in groups.values() for r in g]),
         },
         "lastUpdated": datetime.now().isoformat()
     }
@@ -370,9 +361,6 @@ async def get_prices_data() -> Dict[str, Any]:
 
     result = await _yahoo_provider.fetch_latest_async(['SPX', 'NDX', 'VIX', 'DXY'])
     yf_tickers = {'SPX': '^GSPC', 'NDX': '^NDX', 'VIX': '^VIX', 'DXY': 'DX-Y.NYB'}
-    # Last-resort static fallbacks, used ONLY when neither the live quote nor the
-    # cached daily history is available.
-    static_fallback = {'SPX': 5800.0, 'NDX': 18500.0, 'VIX': 18.0, 'DXY': 104.0}
 
     prices = {}
     for symbol in ['SPX', 'NDX', 'VIX', 'DXY']:
@@ -386,11 +374,11 @@ async def get_prices_data() -> Dict[str, Any]:
         elif closes:
             price = closes[-1]
         else:
-            price = static_fallback[symbol]
+            price = None            # unavailable — not a made-up 5800
         change = _pct_change(closes, 1) if closes else None
         prices[symbol] = {
-            "price": round(price, 2),
-            "change_pct": change if change is not None else 0.0,
+            "price": round(price, 2) if price is not None else None,
+            "change_pct": change,   # None when unknown (0.0 claimed "unchanged")
         }
 
     return {

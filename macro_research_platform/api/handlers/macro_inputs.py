@@ -65,6 +65,15 @@ class DatedSeries:
     def latest_date(self) -> Optional[str]:
         return self.dates[-1] if self.dates else None
 
+    def last_common(self, other: "DatedSeries") -> Optional[tuple]:
+        """(date, self_value, other_value) on the latest date BOTH series have — so a
+        spread is never one series' today minus the other's yesterday."""
+        common = set(self.dates) & set(other.dates)
+        if not common:
+            return None
+        d = max(common)
+        return d, self.values[self.dates.index(d)], other.values[other.dates.index(d)]
+
     def asof(self, d: str) -> Optional[float]:
         """Last observation on or before ISO date `d`, if recent enough."""
         i = bisect_right(self.dates, d) - 1

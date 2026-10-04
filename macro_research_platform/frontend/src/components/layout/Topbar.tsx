@@ -23,7 +23,14 @@ interface TickerItem {
   val: string;
   chg?: string;
   colorClass?: string;
+  /** Session the 1-day change belongs to (instruments close on different days, e.g. FX). */
+  asOf?: string | null;
 }
+
+// Ticker label → keyMetrics.changeAsOf key.
+const ASOF_KEY: Record<string, string> = {
+  SPX: 'SPX', NDX: 'NDX', VIX: 'VIX', DXY: 'DXY', 'EUR/USD': 'EURUSD', GOLD: 'GLD', WTI: 'WTI',
+};
 
 interface TopbarProps {
   latestDate?: string;
@@ -76,7 +83,7 @@ function buildTicker(
       { sym: '2Y', val: '—' },
       { sym: 'DXY', val: '—' },
       { sym: 'EUR/USD', val: '—' },
-      { sym: 'GLD', val: '—' },
+      { sym: 'GOLD', val: '—' },
       { sym: 'WTI', val: '—' },
       { sym: 'FED', val: '—' },
     ];
@@ -109,8 +116,9 @@ function buildTicker(
     {
       sym: '10Y',
       val: fmtRate(prices.TENYR),
-      chg: changes.TENYR != null ? fmtChange(changes.TENYR) : undefined,
-      colorClass: getChangeColor(changes.TENYR),
+      // Yield change in basis points (a % change of a yield is not a meaningful quote).
+      chg: changes.TENYR_BP != null ? `${changes.TENYR_BP > 0 ? '+' : ''}${changes.TENYR_BP.toFixed(1)}bp` : undefined,
+      colorClass: getChangeColor(changes.TENYR_BP),
     },
     {
       sym: '2Y',
@@ -131,7 +139,8 @@ function buildTicker(
       colorClass: getChangeColor(changes.EURUSD),
     },
     {
-      sym: 'GLD',
+      // COMEX gold futures (GC=F), not the GLD ETF (~1/11 the price).
+      sym: 'GOLD',
       val: fmtPriceInt(prices.GLD),
       chg: changes.GLD != null ? fmtChange(changes.GLD) : undefined,
       colorClass: getChangeColor(changes.GLD),
@@ -178,6 +187,8 @@ export function Topbar({
   // Use macro store
   const prices = useMacroStore((state) => state.prices);
   const changes = useMacroStore((state) => state.changes);
+  const changeAsOfRaw = useMacroStore((state) => (state.fullDashboard as any)?.keyMetrics?.changeAsOf as Record<string, string | null> | undefined);
+  const changeAsOf = useMemo(() => changeAsOfRaw ?? {}, [changeAsOfRaw]);
   const regime = useMacroStore((state) => state.regime);
   const meta = useMacroStore(selectMeta);
 
@@ -254,8 +265,9 @@ export function Topbar({
   const dateStr = currentTime.toISOString().split('T')[0];
 
   const ticker = useMemo(
-    () => buildTicker(prices as unknown as Record<string, number | null>, changes, isLoading),
-    [prices, changes, isLoading]
+    () => buildTicker(prices as unknown as Record<string, number | null>, changes, isLoading)
+      .map((t) => ({ ...t, asOf: ASOF_KEY[t.sym] ? changeAsOf[ASOF_KEY[t.sym]] ?? null : null })),
+    [prices, changes, isLoading, changeAsOf]
   );
 
   return (
@@ -434,11 +446,16 @@ export function Topbar({
       {/* ── ROW 2: Market ticker strip (24px) ─────────────────────────────────── */}
       <div className="ticker-strip">
         {ticker.map((item) => (
-          <div key={item.sym} className="ticker-item">
+          <div key={item.sym} className="ticker-item"
+            title={item.asOf ? `1-day change for the ${item.asOf} session` : undefined}>
             <span className="ticker-sym">{item.sym}</span>
             <span className="ticker-val">{item.val}</span>
             {item.chg && (
               <span className={cn('ticker-chg', item.colorClass)}>{item.chg}</span>
+            )}
+            {/* Flag a change from an earlier session than the S&P's, so moves aren't compared across days. */}
+            {item.chg && item.asOf && changeAsOf.SPX && item.asOf < changeAsOf.SPX && (
+              <span className="text-text-tertiary" style={{ fontSize: 9 }}>({item.asOf.slice(5)})</span>
             )}
           </div>
         ))}

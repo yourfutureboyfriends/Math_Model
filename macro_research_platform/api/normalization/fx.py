@@ -20,13 +20,16 @@ logger = logging.getLogger(__name__)
 
 # Canonical FX pairs with expected ranges (USD-base)
 FX_RANGES = {
-    "EURUSD": (0.85, 1.25),    # EUR per USD
-    "GBPUSD": (0.60, 1.00),    # GBP per USD
-    "USDJPY": (100, 160),      # JPY per USD
-    "USDCAD": (1.15, 1.50),    # CAD per USD
-    "USDCHF": (0.80, 1.15),    # CHF per USD
-    "AUDUSD": (0.55, 0.80),    # AUD per USD
-    "NZDUSD": (0.50, 0.75),    # NZD per USD
+    # Wide plausibility bands in market quoting convention (units of quote currency per
+    # 1 base). The old bands had GBPUSD at 0.60-1.00 ("GBP per USD") — the inverse of how
+    # it is quoted — so every real cable print (~1.3) was flagged as bad data.
+    "EURUSD": (0.80, 1.60),    # USD per EUR
+    "GBPUSD": (1.00, 2.10),    # USD per GBP
+    "USDJPY": (70, 250),       # JPY per USD
+    "USDCAD": (0.95, 1.80),    # CAD per USD
+    "USDCHF": (0.55, 1.30),    # CHF per USD
+    "AUDUSD": (0.45, 1.10),    # USD per AUD
+    "NZDUSD": (0.40, 0.95),    # USD per NZD
 }
 
 
@@ -62,8 +65,8 @@ def normalize_fx_rate(pair: str, rate: float) -> Optional[Dict[str, Any]]:
     return {
         "pair": pair,
         "rate": round(float(rate), 6),
-        "base": "USD",
-        "quote": pair.replace("USD", ""),
+        "base": pair[:3],    # EURUSD: base EUR, quote USD (was hard-coded "USD")
+        "quote": pair[3:6],
         "inverted": False,  # Track if we had to invert
     }
 

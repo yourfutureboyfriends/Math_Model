@@ -139,7 +139,8 @@ class KeyMetrics(BaseModel):
     ndxLevel: Optional[float] = None
     ndxChangePct: Optional[float] = None
     tenYearYield: Optional[float] = None
-    tenYearChange: Optional[float] = None
+    tenYearChange: Optional[float] = None   # 10Y yield daily change, basis points
+    changeAsOf: Optional[Dict[str, Optional[str]]] = None  # session date of each 1-day change
     twoYearYield: Optional[float] = None
     dxy: Optional[float] = None
     dxyChangePct: Optional[float] = None
@@ -449,6 +450,11 @@ class RecessionData(BaseModel):
     description: str
     components: List[Dict[str, Any]]
     history: List[Dict[str, Any]]
+    # /api/recession extras: per-model readings and the latest FRED indicators with dates.
+    regime: Optional[str] = None
+    models: Optional[Dict[str, Any]] = None
+    indicators: Optional[Dict[str, Any]] = None
+    lastUpdated: Optional[str] = None
 
     @field_validator('probability', 'logisticProb', 'emProbitProb', mode='before')
     @classmethod

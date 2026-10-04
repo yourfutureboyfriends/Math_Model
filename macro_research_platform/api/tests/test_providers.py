@@ -24,19 +24,16 @@ class TestYahooFinanceProvider:
         # Spot checks
         assert provider.SYMBOL_MAP["SPX"] == "^GSPC"
         assert provider.SYMBOL_MAP["VIX"] == "^VIX"
-        assert provider.SYMBOL_MAP["USDJPY"] == "JPY=X"
+        # Yahoo quotes USD/JPY directly (JPY=X and USDJPY=X both ~150), so no inversion.
+        assert provider.SYMBOL_MAP["USDJPY"] == "USDJPY=X"
 
     def test_invert_symbols_list(self):
         """Test that correct symbols are marked for inversion."""
         provider = YahooFinanceProvider()
 
-        # These should be inverted
-        assert "USDJPY" in provider.INVERT_SYMBOLS
-        assert "USDCAD" in provider.INVERT_SYMBOLS
-        assert "USDCHF" in provider.INVERT_SYMBOLS
-
-        # These should NOT be inverted
-        assert "EURUSD" not in provider.INVERT_SYMBOLS
+        # Yahoo already quotes USD-base pairs as USD/xxx: inverting USDJPY produced 0.0063.
+        for sym in ("USDJPY", "USDCAD", "USDCHF", "EURUSD"):
+            assert sym not in provider.INVERT_SYMBOLS
         assert "GBPUSD" not in provider.INVERT_SYMBOLS
 
     def test_price_record_creation(self):

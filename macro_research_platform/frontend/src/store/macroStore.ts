@@ -296,6 +296,11 @@ export const useMacroStore = create<MacroState>()(
             VIX: data.keyMetrics?.vixChange ?? get().changes.VIX,
             DXY: data.keyMetrics?.dxyChangePct ?? get().changes.DXY,
             EURUSD: data.keyMetrics?.eurusdChangePct ?? get().changes.EURUSD,
+            // Gold/WTI changes were computed server-side but never mapped (ticker showed none).
+            GLD: data.keyMetrics?.goldChangePct ?? get().changes.GLD,
+            WTI: data.keyMetrics?.oilChangePct ?? get().changes.WTI,
+            // Basis points (yields move in bp, not %).
+            TENYR_BP: data.keyMetrics?.tenYearChange ?? get().changes.TENYR_BP,
           },
           regime: {
             current: data.regime.current || null,

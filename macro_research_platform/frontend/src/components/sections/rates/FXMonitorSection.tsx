@@ -11,14 +11,16 @@ import { useMacroStore } from '@/store/macroStore';
 import { useApiData } from '@/hooks/useApiData';
 import { fmtFx, fmtChange, fmtVol } from '@/utils/format';
 
+// Unknown values stay null and render as "--" (never 0, which reads as "unchanged").
 interface FXPair {
   pair: string;
-  spot: number;
-  change1d: number;
-  change1w: number;
-  change1m: number;
-  vol1m: number;
+  spot: number | null;
+  change1d: number | null;
+  change1w: number | null;
+  change1m: number | null;
+  vol1m: number | null;
   trendSignal: string;
+  asOf?: string | null;
 }
 
 interface FXData {
@@ -26,7 +28,8 @@ interface FXData {
   em: FXPair[];
   dxy?: {
     spot: number;
-    change1d: number;
+    change1d: number | null;
+    as_of?: string;
   };
 }
 
@@ -47,22 +50,22 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
   const { data: fxApi } = useApiData<any>('/api/fx-rates');
 
   const toPair = (p: any): FXPair => ({
-    pair: p.pair, spot: p.spot ?? 0, change1d: p.change1d ?? 0, change1w: 0, change1m: 0,
-    vol1m: 0, trendSignal: (p.change1d ?? 0) > 0 ? 'UP' : (p.change1d ?? 0) < 0 ? 'DOWN' : 'NEUTRAL',
+    pair: p.pair, spot: p.spot ?? null, change1d: p.change1d ?? null, change1w: p.change1w ?? null,
+    change1m: p.change1m ?? null, vol1m: p.vol1m ?? null, trendSignal: p.trend ?? '--', asOf: p.as_of,
   });
 
   // Build FX data from store prices (fallback when the fx-rates endpoint isn't loaded yet)
   const buildFXFromStore = (): FXData => {
     const g10: FXPair[] = [
-      { pair: 'EUR/USD', spot: prices.EURUSD ?? 0, change1d: (changes.EURUSD ?? 0) * 100, change1w: 0, change1m: 0, vol1m: 8.5, trendSignal: 'NEUTRAL' },
-      { pair: 'GBP/USD', spot: prices.GBPUSD ?? 0, change1d: (changes.GBPUSD ?? 0) * 100, change1w: 0, change1m: 0, vol1m: 9.2, trendSignal: 'NEUTRAL' },
-      { pair: 'USD/JPY', spot: prices.USDJPY ?? 0, change1d: (changes.USDJPY ?? 0) * 100, change1w: 0, change1m: 0, vol1m: 10.1, trendSignal: 'NEUTRAL' },
-    ].filter(f => f.spot > 0);
+      { pair: 'EUR/USD', spot: prices.EURUSD, change1d: changes.EURUSD != null ? changes.EURUSD * 100 : null, change1w: null, change1m: null, vol1m: null, trendSignal: '--' },
+      { pair: 'GBP/USD', spot: prices.GBPUSD, change1d: changes.GBPUSD != null ? changes.GBPUSD * 100 : null, change1w: null, change1m: null, vol1m: null, trendSignal: '--' },
+      { pair: 'USD/JPY', spot: prices.USDJPY, change1d: changes.USDJPY != null ? changes.USDJPY * 100 : null, change1w: null, change1m: null, vol1m: null, trendSignal: '--' },
+    ].filter(f => f.spot != null && f.spot > 0);
 
     return {
       g10,
       em: propData?.em ?? [],
-      dxy: prices.DXY ? { spot: prices.DXY, change1d: (changes.DXY ?? 0) * 100 } : undefined,
+      dxy: prices.DXY ? { spot: prices.DXY, change1d: changes.DXY != null ? changes.DXY * 100 : null } : undefined,
     };
   };
 
@@ -90,9 +93,9 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
       accessor: (f: FXPair) => (
         <span className={cn(
           'font-mono',
-          f.change1d > 0 ? 'text-green' : f.change1d < 0 ? 'text-red' : 'text-text-secondary'
+          (f.change1d ?? 0) > 0 ? 'text-green' : (f.change1d ?? 0) < 0 ? 'text-red' : 'text-text-secondary'
         )}>
-          {f.change1d ? fmtChange(f.change1d / 100) : '--'}
+          {f.change1d != null ? fmtChange(f.change1d / 100) : '--'}
         </span>
       ),
       align: 'right' as const,
@@ -102,9 +105,9 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
       accessor: (f: FXPair) => (
         <span className={cn(
           'font-mono',
-          f.change1m > 0 ? 'text-green' : f.change1m < 0 ? 'text-red' : 'text-text-secondary'
+          (f.change1m ?? 0) > 0 ? 'text-green' : (f.change1m ?? 0) < 0 ? 'text-red' : 'text-text-secondary'
         )}>
-          {f.change1m ? fmtChange(f.change1m / 100) : '--'}
+          {f.change1m != null ? fmtChange(f.change1m / 100) : '--'}
         </span>
       ),
       align: 'right' as const,
@@ -112,18 +115,18 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
     {
       header: 'Vol(1M)',
       accessor: (f: FXPair) => (
-        <span className="font-mono text-text-secondary">{fmtVol(f.vol1m)}%</span>
+        <span className="font-mono text-text-secondary">{f.vol1m != null ? `${fmtVol(f.vol1m)}%` : '--'}</span>
       ),
       align: 'right' as const,
     },
     {
-      header: 'Signal',
+      header: 'Trend 1M',
       accessor: (f: FXPair) => (
         <span className={cn(
           'text-2xs uppercase',
-          f.trendSignal === 'LONG' && 'text-green',
-          f.trendSignal === 'SHORT' && 'text-red',
-          f.trendSignal === 'NEUTRAL' && 'text-text-secondary'
+          f.trendSignal === 'UP' && 'text-green',
+          f.trendSignal === 'DOWN' && 'text-red',
+          f.trendSignal === 'FLAT' && 'text-text-secondary'
         )}>
           {f.trendSignal}
         </span>
@@ -144,11 +147,11 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
           <CsvButton
             filename="fx-monitor"
             getData={() => ({
-              columns: ['Pair', 'Spot', '1D %', 'Vol 1M'],
-              rows: data.g10.map((f) => [f.pair, f.spot, f.change1d, f.vol1m]),
+              columns: ['Pair', 'Spot', '1D %', '1W %', '1M %', 'Vol 1M %', 'As of'],
+              rows: data.g10.map((f) => [f.pair, f.spot, f.change1d, f.change1w, f.change1m, f.vol1m, f.asOf ?? '']),
             })}
           />
-          <SourceTag source="Yahoo" timestamp={asOf} staleAfterSeconds={900} />
+          <SourceTag source="Yahoo (NY-session dated)" timestamp={asOf} staleAfterSeconds={900} />
         </div>
       }
     >
@@ -186,10 +189,11 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
               <span className="font-mono font-bold">{fmtFx(data.dxy.spot, 2)}</span>
               <span className={cn(
                 'font-mono',
-                data.dxy.change1d > 0 ? 'text-green' : 'text-red'
+                (data.dxy.change1d ?? 0) > 0 ? 'text-green' : (data.dxy.change1d ?? 0) < 0 ? 'text-red' : 'text-text-secondary'
               )}>
-                {fmtChange(data.dxy.change1d / 100)}
+                {data.dxy.change1d != null ? fmtChange(data.dxy.change1d / 100) : '--'}
               </span>
+              {data.dxy.as_of && <span className="text-2xs text-text-tertiary">{data.dxy.as_of}</span>}
             </div>
           )}
         </div>
@@ -204,6 +208,7 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
               >
                 <div className="text-2xs text-text-tertiary uppercase">{fx.pair}</div>
                 <div className="font-mono text-lg">{fmtFx(fx.spot)}</div>
+                {fx.asOf && <div className="text-2xs text-text-tertiary">close {fx.asOf}</div>}
                 <div className="flex items-center justify-between text-xs mt-1">
                   <span className={cn(
                     (fx.change1d ?? 0) > 0 ? 'text-green' : (fx.change1d ?? 0) < 0 ? 'text-red' : 'text-text-secondary'
@@ -212,8 +217,8 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
                   </span>
                   <span className={cn(
                     'text-2xs',
-                    fx.trendSignal === 'LONG' && 'text-green',
-                    fx.trendSignal === 'SHORT' && 'text-red'
+                    fx.trendSignal === 'UP' && 'text-green',
+                    fx.trendSignal === 'DOWN' && 'text-red'
                   )}>
                     {fx.trendSignal}
                   </span>

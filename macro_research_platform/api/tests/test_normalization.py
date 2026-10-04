@@ -86,7 +86,7 @@ class TestFXNormalization:
         assert result is not None
         assert result["pair"] == "EURUSD"
         assert result["rate"] == pytest.approx(1.08, abs=0.001)
-        assert result["base"] == "USD"
+        assert result["base"] == "EUR" and result["quote"] == "USD"   # EURUSD = USD per 1 EUR
 
     def test_normalize_fx_invalid_nan(self):
         """Test that NaN FX rates are rejected."""
@@ -104,12 +104,19 @@ class TestFXNormalization:
 
     def test_fx_ranges_warning(self):
         """Test that out-of-range FX rates trigger warnings."""
-        # USDJPY of 200 should trigger warning (range is 100-160)
-        result = normalize_fx_rate("USDJPY", 200.0)
-
-        # Should still return but logged warning
+        # USDJPY of 300 is outside the plausibility band (70-250): warned, still returned
+        result = normalize_fx_rate("USDJPY", 300.0)
         assert result is not None
-        assert result["rate"] == 200.0
+        assert result["rate"] == 300.0
+
+    def test_fx_ranges_accept_real_market_levels(self, caplog):
+        """Cable ~1.32 and USD/JPY ~158 are normal prints, not bad data."""
+        import logging
+        with caplog.at_level(logging.WARNING):
+            for pair, rate in (("GBPUSD", 1.324), ("USDJPY", 157.8), ("EURUSD", 1.126), ("USDCHF", 0.83)):
+                r = normalize_fx_rate(pair, rate)
+                assert r["base"] == pair[:3] and r["quote"] == pair[3:]
+        assert "outside expected range" not in caplog.text
 
 
 class TestMacroNormalization:

@@ -41,27 +41,21 @@ export function PortfolioFitSection({ data }: Props) {
     if (data) setLoading(false);
   }, [data]);
 
-  const metrics = data?.metrics || {
-    totalReturn: 12.5,
-    sharpeRatio: 1.34,
-    maxDrawdown: -8.2,
-    volatility: 14.3,
-    beta: 0.95,
-    alpha: 2.1,
-    informationRatio: 0.78,
-    trackingError: 3.2,
-  };
-
-  const benchmark = data?.benchmark || {
-    benchmark: 'S&P 500',
-    portfolioReturn: 12.5,
-    benchmarkReturn: 10.2,
-    excessReturn: 2.3,
-    hitRate: 68,
-  };
-
-  const fitScore = data?.fitScore ?? 85;
-  const rating = data?.rating || 'A-';
+  // No invented placeholder metrics: without real data the panel says so (it used to show
+  // a Sharpe of 1.34, rating "A-", etc. whenever the payload was missing).
+  if (!data?.metrics || !data?.benchmark) {
+    return (
+      <Card title="PORTFOLIO FIT">
+        <div className="p-4 text-xs text-text-tertiary font-mono">
+          {loading ? 'Loading…' : 'Portfolio fit metrics unavailable — no performance data supplied.'}
+        </div>
+      </Card>
+    );
+  }
+  const metrics = data.metrics;
+  const benchmark = data.benchmark;
+  const fitScore = data.fitScore ?? null;
+  const rating = data.rating ?? '—';
 
   const getTrendIcon = (value: number) => {
     if (value > 0) return <TrendingUp className="w-4 h-4 text-green" />;
@@ -74,7 +68,7 @@ export function PortfolioFitSection({ data }: Props) {
       <div className="section-header">
         <span className="section-tag">FIT</span>
         <h2 className="section-title">Portfolio Fit</h2>
-        <Badge variant={fitScore >= 80 ? 'success' : fitScore >= 60 ? 'warning' : 'danger'} className="ml-2">
+        <Badge variant={fitScore == null ? 'neutral' : fitScore >= 80 ? 'success' : fitScore >= 60 ? 'warning' : 'danger'} className="ml-2">
           {rating}
         </Badge>
       </div>
