@@ -96,13 +96,13 @@ if st.button("🚀 Start React Dashboard", type="primary"):
 
     **1. Start Backend (Terminal 1):**
     ```bash
-    cd /Users/daltonyuen/Math_Model/macro_research_platform/api
+    cd macro_research_platform/api
     python main.py
     ```
 
     **2. Start Frontend (Terminal 2):**
     ```bash
-    cd /Users/daltonyuen/Math_Model/macro_research_platform/frontend
+    cd macro_research_platform/frontend
     npm install
     npm run dev
     ```

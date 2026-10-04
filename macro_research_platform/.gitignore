@@ -146,3 +146,11 @@ volumes/
 # Generated report outputs (written at runtime, not source)
 outputs/
 reports/archive/
+
+# Generated data snapshots (written by the data pipeline; nothing reads them from git)
+data/raw/live/
+data/processed/live/
+src/data/raw/live/
+
+# Stray Vite dependency cache outside the frontend
+api/.vite/

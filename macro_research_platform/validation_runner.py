@@ -14,7 +14,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Set paths
-PROJECT_ROOT = Path("/Users/daltonyuen/Math_Model/macro_research_platform")
+PROJECT_ROOT = Path(__file__).resolve().parent
 DB_PATH = PROJECT_ROOT / "database" / "macro_platform.db"
 DATA_PATH = PROJECT_ROOT / "data" / "us_economic_data.csv"
 
