@@ -35,6 +35,7 @@ export const PANEL_LABELS: Record<string, string> = {
   'pure-alpha': 'Relative Momentum',
   // Risk
   'fund-cockpit': 'Fund Overview',
+  'cycle-risk': 'Cycle & Systemic Risk',
   'risk-indicators': 'Risk Indicators',
   'risk-analytics': 'Risk Analytics',
   'var-stress': 'VaR & Stress Testing',

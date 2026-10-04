@@ -41,7 +41,7 @@ export function DataToWatchSection({ data }: DataToWatchSectionProps) {
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-xs text-text-secondary">
           <Eye className="w-3 h-3" />
-          <span>Next 45 days. FOMC dates are scheduled; data-release dates are expected from each series&apos; typical publication lag.</span>
+          <span>Next 45 days, from the agencies&apos; published release calendars (via FRED) and the FOMC schedule; “est.” marks a date estimated from the usual publication lag.</span>
         </div>
 
         <div className="border border-border bg-surface-1 overflow-hidden">
@@ -67,7 +67,7 @@ export function DataToWatchSection({ data }: DataToWatchSectionProps) {
                     <div className="flex items-center gap-2">
                       <Calendar className="w-3 h-3 text-text-tertiary" />
                       <span className="text-xs text-text-secondary font-mono">{item.nextRelease}</span>
-                      {(item as any).dateBasis === 'expected' && <span className="text-2xs text-text-tertiary">(expected)</span>}
+                      {(item as any).dateBasis === 'estimated' && <span className="text-2xs text-text-tertiary">(est.)</span>}
                     </div>
                   </td>
                   <td className="py-2 px-3 text-xs text-text-secondary">{(item as any).frequency ?? '—'}</td>

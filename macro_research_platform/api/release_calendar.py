@@ -225,7 +225,7 @@ def upcoming_releases(freshness_rows: List[Dict], today: date, horizon_days: int
         nxt = r.get("next_expected_release")
         if r.get("frequency") in ("M", "Q", "W") and nxt and today.isoformat() <= nxt <= end.isoformat():
             out.append({"indicator": r["name"], "frequency": {"M": "Monthly", "Q": "Quarterly", "W": "Weekly"}[r["frequency"]],
-                        "nextRelease": nxt, "dateBasis": "expected", "importance": _IMPORTANCE.get(r["metric"], "Medium"),
+                        "nextRelease": nxt, "dateBasis": r.get("release_date_basis", "estimated"), "importance": _IMPORTANCE.get(r["metric"], "Medium"),
                         "seriesId": r.get("series_id")})
     for d in FOMC_DECISIONS:
         if today.isoformat() <= d <= end.isoformat():

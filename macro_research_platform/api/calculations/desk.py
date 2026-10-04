@@ -27,13 +27,13 @@ ROLE_FOCUS: Dict[str, Dict[str, Any]] = {
            "panels": ["fund-cockpit", "trade-ideas", "portfolio-positions", "performance-attribution",
                       "master-signal", "regime-playbook", "expected-returns"]},
     "risk": {"title": "Risk Officer",
-             "panels": ["fund-cockpit", "var-stress", "risk-analytics", "factor-exposure",
+             "panels": ["fund-cockpit", "cycle-risk", "var-stress", "risk-analytics", "factor-exposure",
                         "correlation-matrix", "risk-indicators", "system-audit"]},
     "analyst": {"title": "Macro Analyst",
-                "panels": ["morning-brief", "regime", "key-metrics", "nowcast", "economic-calendar",
+                "panels": ["morning-brief", "regime", "cycle-risk", "key-metrics", "nowcast", "economic-calendar",
                            "yield-curve", "regional-macro"]},
     "quant": {"title": "Quant Researcher",
-              "panels": ["signal-scorecard", "factor-validation", "model-agreement", "stream-agreement",
+              "panels": ["signal-scorecard", "cycle-risk", "factor-validation", "model-agreement", "stream-agreement",
                          "regime-transition", "data-explorer", "system-health"]},
     "admin": {"title": "Administrator",
               "panels": ["fund-cockpit", "system-audit", "system-health", "data-providers",
@@ -58,6 +58,7 @@ def build_queue(role: str, username: str, *, orders: List[Dict[str, Any]],
                 freshness: Optional[Dict[str, Any]] = None,
                 users: Optional[List[Dict[str, Any]]] = None,
                 cb_moves: Optional[List[Dict[str, Any]]] = None,
+                cycle: Optional[Dict[str, Any]] = None,
                 today: Optional[date] = None) -> List[Dict[str, Any]]:
     today = today or date.today()
     is_admin = role == "admin"
@@ -122,6 +123,20 @@ def build_queue(role: str, username: str, *, orders: List[Dict[str, Any]],
             q.append(_item("info", "cb_move", f"{len(recent)} central-bank move(s) in the last 2 weeks",
                            ", ".join(f"{m['economy']} {'+' if m['bp'] > 0 else ''}{m['bp']}bp → {m['to']}% ({m['date'][5:]})"
                                      for m in recent[:5]), "regional-macro"))
+
+    # ── Systemic-risk warnings (published indicators) ───────────────────────
+    if cycle and (role in ("risk", "pm", "analyst", "quant") or is_admin):
+        warn = []
+        t, a, n = cycle.get("turbulence") or {}, cycle.get("absorption_ratio") or {}, cycle.get("near_term_forward_spread") or {}
+        if t.get("turbulent"):
+            warn.append(f"turbulence {t.get('avg_20d')} (20d avg) above its 75th percentile")
+        if (a.get("standardized_shift") or 0) >= 1:
+            warn.append(f"absorption-ratio shift +{a['standardized_shift']}σ (markets tightly coupled)")
+        if n.get("value_pp") is not None and n["value_pp"] < 0:
+            warn.append(f"near-term forward spread {n['value_pp']:+.2f}pp (policy easing priced)")
+        if warn:
+            q.append(_item("high" if role in ("risk", "pm") or is_admin else "medium", "systemic",
+                           "Systemic-risk warning", "; ".join(warn), "cycle-risk"))
 
     # ── Account hygiene (admin) ──────────────────────────────────────────────
     if is_admin and users:

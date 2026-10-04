@@ -157,15 +157,23 @@ async def get_dashboard_data(mode: str = "live") -> DashboardData:
                 return stale
             from fastapi import HTTPException
             raise HTTPException(status_code=503, detail=str(e))
-        _DASHBOARD_CACHE[mode] = (_dash_time.time(), data)
+        _DASHBOARD_CACHE[mode] = (_cache_stamp(data), data)
         return data
+
+
+def _cache_stamp(data) -> float:
+    """Cache timestamp. A build that fell back from the fitted recession model is stamped so
+    it expires in ~30s: the next request retries instead of serving the fallback headline
+    (which differs from the fitted model's) for the full TTL."""
+    degraded = getattr(getattr(data, "recession", None), "logisticProb", 0) is None
+    return _dash_time.time() - (max(0, _DASHBOARD_TTL - 30) if degraded else 0)
 
 
 async def warm_dashboard_cache(mode: str = "live") -> None:
     """Pre-compute and cache the dashboard so the first UI load hits a warm cache."""
     try:
         data = await _build_dashboard_data(mode)
-        _DASHBOARD_CACHE[mode] = (_dash_time.time(), data)
+        _DASHBOARD_CACHE[mode] = (_cache_stamp(data), data)
         logger.info("[dashboard_handler] Cache warmed for mode=%s", mode)
     except Exception as e:
         logger.warning("[dashboard_handler] Cache warm failed: %s", e)
@@ -254,7 +262,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     probit = None
     try:
         from api.models_ml.recession_probit import get_recession_probit
-        _p = await _dash_asyncio.wait_for(_dash_asyncio.to_thread(get_recession_probit), timeout=20)
+        _p = await _dash_asyncio.wait_for(_dash_asyncio.to_thread(get_recession_probit), timeout=60)
         probit = _p if _p.fitted else None
     except Exception as e:
         logger.warning(f"[dashboard_handler] fitted probit unavailable: {e}")

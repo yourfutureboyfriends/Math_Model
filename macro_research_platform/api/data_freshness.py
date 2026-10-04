@@ -171,6 +171,38 @@ _FRESHNESS_CACHE: Dict[str, object] = {"data": None, "ts": 0.0}
 _FRESHNESS_TTL = 300  # seconds
 
 
+_RELEASE_CACHE: Dict[str, tuple] = {}
+
+
+def _official_next_release(provider, series_id: str, today) -> Optional[str]:
+    """Next scheduled release date for a series from FRED's release calendar
+    (series/release → release/dates). Cached 12h. None if unavailable."""
+    import time as _t
+    import requests
+    hit = _RELEASE_CACHE.get(series_id)
+    if hit and _t.time() - hit[0] < 12 * 3600:
+        dates = hit[1]
+    else:
+        try:
+            key = getattr(provider, "api_key", None)
+            if not key:
+                return None
+            base = "https://api.stlouisfed.org/fred"
+            rel = requests.get(f"{base}/series/release", params={"series_id": series_id, "api_key": key,
+                                                                "file_type": "json"}, timeout=8).json()["releases"][0]["id"]
+            j = requests.get(f"{base}/release/dates", params={"release_id": rel, "api_key": key, "file_type": "json",
+                                                             "include_release_dates_with_no_data": "true",
+                                                             "sort_order": "desc", "limit": 60}, timeout=8).json()
+            dates = sorted({d["date"] for d in j.get("release_dates", [])})
+            _RELEASE_CACHE[series_id] = (_t.time(), dates)
+        except Exception as e:
+            logger.debug("[FRESHNESS] release calendar for %s unavailable: %s", series_id, e)
+            return None
+    iso = today.isoformat()
+    upcoming = [d for d in dates if d >= iso]
+    return upcoming[0] if upcoming else None
+
+
 def get_live_freshness(force: bool = False, today=None) -> Dict:
     """Latest observation of every model input from FRED, graded against its release
     calendar. Returns per-series detail (status FRESH|STALE|CRITICAL|UNKNOWN plus the
@@ -207,10 +239,19 @@ def get_live_freshness(force: bool = False, today=None) -> Dict:
         latest = list(pool.map(lambda sp: _latest(sp.value_series), SERIES))
 
     asof = today or _date.today()
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        official = list(pool.map(lambda sp: _official_next_release(provider, sp.series_id, asof), SERIES))
     out = []
-    for spec, (last_date, value) in zip(SERIES, latest):
+    for spec, (last_date, value), off in zip(SERIES, latest, official):
         row = assess(spec, last_date, asof)
         row["latest_value"] = round(value, 3) if isinstance(value, (int, float)) else value
+        # Prefer the agency's published release calendar (via FRED) over the lag estimate.
+        # FEDFUNDS sits in the daily H.15 release, whose dates say nothing about when the
+        # monthly average updates — keep the lag estimate for it.
+        if off and spec.frequency != "D" and spec.series_id not in ("FEDFUNDS",):
+            row["next_expected_release"], row["release_date_basis"] = off, "scheduled"
+        elif row.get("next_expected_release"):
+            row["release_date_basis"] = "estimated"
         out.append(row)
 
     categories: Dict[str, Dict[str, int]] = {}

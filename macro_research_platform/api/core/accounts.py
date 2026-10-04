@@ -67,7 +67,11 @@ def migrate() -> None:
         cols = {r["name"] for r in c.execute("PRAGMA table_info(users)")}
         for col, typ in _NEW_COLUMNS.items():
             if col not in cols:
-                c.execute(f"ALTER TABLE users ADD COLUMN {col} {typ}")
+                try:
+                    c.execute(f"ALTER TABLE users ADD COLUMN {col} {typ}")
+                except sqlite3.OperationalError as e:      # concurrent migration added it
+                    if "duplicate column" not in str(e):
+                        raise
         c.execute("CREATE TABLE IF NOT EXISTS revoked_tokens (jti TEXT PRIMARY KEY, exp REAL)")
         c.execute("DELETE FROM revoked_tokens WHERE exp < ?", (time.time(),))
         for r in c.execute("SELECT username, hashed_password FROM users").fetchall():

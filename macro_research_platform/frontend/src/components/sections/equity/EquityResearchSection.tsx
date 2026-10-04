@@ -358,20 +358,9 @@ export function EquityResearchSection({ data }: EquityResearchSectionProps) {
                   <p className="text-sm text-text-secondary mb-4">
                     {factorRotation.explanation?.thesis || 'Factor timing based on macro regime analysis'}
                   </p>
-                  {/* FIXED: BUG-F8 - Show default overweights for Slowdown regime */}
                   {(() => {
-                    // For Slowdown regime, default overweights if not provided
-                    const isSlowdown = factorRotation.regime === 'Slowdown';
-                    const hasOverweights = factorRotation.explanation?.overweights && factorRotation.explanation.overweights.length > 0;
-                    const overweights = hasOverweights
-                      ? (factorRotation.explanation.overweights ?? [])
-                      : isSlowdown
-                        ? [
-                            { factor: 'low_vol', weight: 0.15 },
-                            { factor: 'quality', weight: 0.15 },
-                            { factor: 'value', weight: 0.10 },
-                          ]
-                        : [];
+                    // Only the backend's overweights — no invented defaults per regime.
+                    const overweights = factorRotation.explanation?.overweights ?? [];
 
                     if (overweights.length === 0) return null;
 

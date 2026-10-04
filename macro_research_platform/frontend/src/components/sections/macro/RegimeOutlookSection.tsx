@@ -67,7 +67,7 @@ export function RegimeOutlookSection() {
               </span>
             </div>
             <div className="text-2xs text-text-tertiary mt-1">
-              Stay probability {Math.round((o.stay_prob ?? 0) * 100)}% · expected persistence ≈ {o.expected_persistence_periods ?? '—'} months · {data.months_analysed} months analysed
+              Stay probability {o.stay_prob != null ? `${Math.round(o.stay_prob * 100)}%` : '—'} · expected persistence ≈ {o.expected_persistence_periods ?? '—'} months · {data.months_analysed} months analysed
             </div>
           </div>
 

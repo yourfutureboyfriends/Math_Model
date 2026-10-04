@@ -22,7 +22,26 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+_init_lock = __import__("threading").Lock()
+_initialized: set = set()          # database paths already migrated in this process
+
+
 def init_db() -> None:
+    """Idempotent and safe under concurrency: the check-then-ALTER migration used to race
+    when two requests initialised at once ("duplicate column name")."""
+    from api.portfolio_store import _db_path
+    key = str(_db_path())
+    if key in _initialized:
+        return
+    with _init_lock:
+        if key in _initialized:
+            return
+        _init_db_locked()
+        _initialized.add(key)
+
+
+def _init_db_locked() -> None:
+    import sqlite3 as _sqlite3
     _init_positions()
     init_ideas_db()
     with _conn() as conn:
@@ -49,7 +68,11 @@ def init_db() -> None:
         existing = {r["name"] for r in conn.execute("PRAGMA table_info(pm_trade_ideas)")}
         for col, typ in _ORDER_COLUMNS.items():
             if col not in existing:
-                conn.execute(f"ALTER TABLE pm_trade_ideas ADD COLUMN {col} {typ}")
+                try:
+                    conn.execute(f"ALTER TABLE pm_trade_ideas ADD COLUMN {col} {typ}")
+                except _sqlite3.OperationalError as e:   # another process added it first
+                    if "duplicate column" not in str(e):
+                        raise
         conn.commit()
 
 

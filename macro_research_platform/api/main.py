@@ -1576,7 +1576,9 @@ async def health_check():
         if integrity_errors:
             integrity_status = "DEGRADED"
 
+    from api import fred_guard
     return {
+        "fred_circuit_breaker": fred_guard.status(),
         "status": "ok" if df is not None else "error",
         "mode": "live" if df_live is not None else "none",
         "models": model_status,
@@ -2852,68 +2854,46 @@ async def quadrants_v1():
 @app.get("/api/v1/stream-agreement")
 @ttl_cache(300)
 async def stream_agreement_v1():
-    """Bridgewater 3-stream signal agreement (Phase 3): classify live signals into three
+    """Three-stream signal agreement: classify live signals into three
     INDEPENDENT evidence streams — macro drivers, intermarket action, capital flows — reduce
     each to risk-on/off/neutral, and return an agreement score + position-sizing multiplier.
     Conviction scales with the NUMBER of independent streams that agree, not the confidence of
-    any single model. Citation: Bridgewater Associates."""
+    any single model."""
     from api.calculations.stream_agreement import (
         macro_stream, intermarket_stream, flows_stream, stream_agreement)
-    from api.handlers.market_handler import get_rates_data, _credit_spread
 
-    def _norm(x):  # σ-scaled score -> [0,1]
-        return max(0.0, min(1.0, 0.5 + (x or 0.0) / 4.0))
+    # Inputs are the dashboard's own signals (0-1) and its same-date FRED spreads, so this
+    # panel cannot contradict the rest of the terminal. (It used to run a separate legacy
+    # pipeline on the old CSV — "growth -1.28" while every other panel showed strong growth —
+    # and lost the HY spread to a 4-second fetch timeout.)
+    from api.handlers.dashboard_handler import get_dashboard_data
+    dash, cot = await asyncio.gather(get_dashboard_data(mode="live"),
+                                     asyncio.wait_for(get_cot_data(), timeout=30.0))
+    sc, ri = dash.scores, dash.riskIndicators
+    g, i, l, rsk = sc.growth / 100, sc.inflation / 100, sc.liquidity / 100, sc.risk / 100
+    macro = macro_stream(g, i, l)
+    _ri = ri if isinstance(ri, dict) else (ri.model_dump() if ri is not None else {})
+    curve_pct = _ri.get("yieldSpread")
+    hy_pct = _ri.get("creditSpread")
+    hy_bps = round(hy_pct * 100) if hy_pct is not None else None
+    intermarket = intermarket_stream(curve_pct, hy_bps, rsk)
 
-    # --- MACRO stream (heavy feature pipeline) + INTERMARKET/FLOWS externals all run
-    # concurrently, each capped, so the whole panel returns within the frontend's budget.
-    # Anything slow degrades to neutral. COT is the slow one (external CFTC).
-    async def _safe(coro, timeout):
-        try:
-            return await asyncio.wait_for(coro, timeout=timeout)
-        except (asyncio.TimeoutError, Exception):
-            return None
-
-    def _macro_scores():
-        df = load_processed_data()
-        return _compute_regime_scores(df) if df is not None else None
-
-    # Macro compute is local — run it threaded but UNCAPPED (it's the core of the panel; a stale
-    # empty is worse than waiting) concurrently with the capped network fetches.
-    scores, rates, hy, cot = await asyncio.gather(
-        _aio_to_thread(_macro_scores),
-        _safe(get_rates_data(), 4.0),
-        _safe(_credit_spread("High Yield", "BAMLH0A0HYM2", 350, 600), 4.0),
-        _safe(get_cot_data(), 5.0),
-    )
-    if not scores:
-        return {"available": False, "reason": "No macro data available."}
-    g, i, l, rsk = scores.get("growth", 0.0), scores.get("inflation", 0.0), scores.get("liquidity", 0.0), scores.get("risk", 0.0)
-    macro = macro_stream(_norm(g), _norm(i), _norm(l))
-
-    curve_pct, hy_bps = None, None
-    if rates:
-        ten, two = rates.get("tenYear"), rates.get("twoYear")
-        curve_pct = (ten - two) if (ten is not None and two is not None) else None
-    if hy:
-        hy_bps = hy.get("spreadBps")
-    intermarket = intermarket_stream(curve_pct, hy_bps, _norm(-rsk))  # lower risk score = more appetite
-
-    # --- FLOWS stream (COT extremes; put/call unavailable keyless -> neutral) ---
+    # --- FLOWS stream (COT index extremes; put/call unavailable keyless -> neutral) ---
     long_ext = short_ext = None
-    if isinstance(cot, dict):
-        rows = cot.get("contracts", [])
-        long_ext = sum(1 for c in rows if c.get("extreme") and c.get("net_position", 0) > 0)
-        short_ext = sum(1 for c in rows if c.get("extreme") and c.get("net_position", 0) < 0)
+    if isinstance(cot, dict) and cot.get("contracts"):
+        rows = cot["contracts"]
+        long_ext = sum(1 for c in rows if c.get("extreme_long"))
+        short_ext = sum(1 for c in rows if c.get("extreme_short"))
     flows = flows_stream(long_ext, short_ext, None)
 
     result = stream_agreement(macro, intermarket, flows)
     result["available"] = True
     result["inputs"] = {
-        "macro": {"growth": round(g, 2), "inflation": round(i, 2), "liquidity": round(l, 2)},
-        "intermarket": {"curve_2s10s_pct": curve_pct, "hy_spread_bps": hy_bps, "risk_score": round(rsk, 2)},
+        "macro": {"growth_signal": round(g, 2), "inflation_signal": round(i, 2), "liquidity_signal": round(l, 2)},
+        "intermarket": {"curve_2s10s_pct": curve_pct, "hy_spread_bps": hy_bps, "risk_appetite_signal": round(rsk, 2)},
         "flows": {"cot_extreme_longs": long_ext, "cot_extreme_shorts": short_ext, "put_call": None},
     }
-    result["source"] = "macro scores (FRED) + rates/credit (FRED) + CFTC COT"
+    result["source"] = "Dashboard signals; FRED 2s10s and ICE BofA HY OAS; CFTC COT index"
     result["citation"] = "Independent evidence streams: macro data, intermarket prices, positioning/flows"
     result["as_of"] = datetime.now().isoformat()
     return result
@@ -3658,10 +3638,9 @@ async def get_regime_endpoint():
         dashboard = await get_dashboard_data(mode="live")
         if dashboard and dashboard.regime:
             return _sanitize_for_json(dashboard.regime)
-        # Fallback to main.py classifier
-        df = _load_data_or_fail()
-        result = get_regime_data(df)
-        return _sanitize_for_json(result)
+        # No fallback to the legacy CSV classifier: it could name a different regime than
+        # the rest of the terminal.
+        raise HTTPException(status_code=503, detail="Regime unavailable")
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Regime data unavailable: {e}")
 
@@ -3835,89 +3814,27 @@ async def get_earnings_revisions():
 
 
 @app.get("/api/cot")
-@ttl_cache(300)
+@ttl_cache(3600)
 async def get_cot_data():
-    """
-    Returns CFTC Commitments of Traders positioning data.
-    """
+    """CFTC Commitments of Traders: speculative positioning per contract, selected by CFTC
+    contract code, with the 3-year COT index for extremes (see api/cot.py)."""
+    from api.cot import fetch_cot
     try:
-        import requests
-
-        # CFTC public API endpoint
-        base_url = "https://publicreporting.cftc.gov/resource/6dca-aqww.json"
-
-        contracts = [
-            {"name": "E-MINI S&P 500", "search": "E-MINI S&P 500"},
-            {"name": "10-Year Treasury", "search": "10-YEAR U.S. TREASURY"},
-            {"name": "Euro FX", "search": "EURO FX"},
-            {"name": "Gold", "search": "GOLD"},
-            {"name": "Crude Oil", "search": "CRUDE OIL, LIGHT SWEET"},
-        ]
-
-        contracts_data = []
-        report_date = None
-
-        for contract in contracts:
-            try:
-                # Query CFTC API
-                params = {
-                    "$limit": 5,
-                    "$order": "report_date_as_yyyy_mm_dd DESC",
-                    "$where": f"market_and_exchange_names like '%{contract['search']}%'",
-                }
-                response = requests.get(base_url, params=params, timeout=15)
-
-                if response.status_code == 200:
-                    data = response.json()
-                    if data and len(data) > 0:
-                        latest = data[0]
-                        prior = data[1] if len(data) > 1 else None
-
-                        longs = int(latest.get("noncomm_positions_long_all", 0))
-                        shorts = int(latest.get("noncomm_positions_short_all", 0))
-                        net = longs - shorts
-
-                        # Calculate net change
-                        if prior:
-                            prior_longs = int(prior.get("noncomm_positions_long_all", 0))
-                            prior_shorts = int(prior.get("noncomm_positions_short_all", 0))
-                            prior_net = prior_longs - prior_shorts
-                            net_change = net - prior_net
-                        else:
-                            net_change = 0
-
-                        # Determine if extreme (>1.5 std dev assumption)
-                        extreme = abs(net) > 200000  # Threshold for extreme positioning
-
-                        contracts_data.append({
-                            "name": contract["name"],
-                            "speculator_longs": longs,
-                            "speculator_shorts": shorts,
-                            "net_position": net,
-                            "net_change": net_change,
-                            "positioning": "NET_LONG" if net > 0 else "NET_SHORT",
-                            "extreme": extreme,
-                        })
-
-                        if report_date is None:
-                            report_date = latest.get("report_date_as_yyyy_mm_dd")
-            except Exception as e:
-                logger.warning(f"Failed to fetch COT for {contract['name']}: {e}")
-                continue
-
-        return {
-            "report_date": report_date,
-            "contracts": contracts_data,
-            "last_updated": datetime.now().isoformat(),
-        }
+        return {**(await _aio_to_thread(fetch_cot)), "last_updated": datetime.now().isoformat()}
     except Exception as e:
-        logger.error(f"COT data error: {e}", exc_info=True)
-        return {
-            "error": str(e),
-            "report_date": None,
-            "contracts": [],
-            "last_updated": datetime.now().isoformat(),
-        }
+        logger.error(f"COT data error: {e}")
+        return {"error": str(e)[:200], "report_date": None, "contracts": [],
+                "last_updated": datetime.now().isoformat()}
+
+@app.get("/api/v1/risk/cycle")
+@ttl_cache(3600)
+async def get_cycle_risk_v1():
+    """Cycle & systemic-risk indicators from published research: near-term forward spread
+    (Engstrom & Sharpe), excess bond premium (Gilchrist & Zakrajšek), financial turbulence
+    (Kritzman & Li), absorption ratio (Kritzman et al.) and environmental balance of the book.
+    See api/research_indicators.py."""
+    from api.research_indicators import build_cycle_risk
+    return await build_cycle_risk()
 
 
 @app.get("/api/v1/global-macro")
@@ -4368,57 +4285,31 @@ async def get_economic_calendar():
 # FIXED (PART 1): Market Stream endpoint for live topbar data
 @app.get("/api/market-stream")
 async def get_market_stream():
-    """Live market data stream for topbar ticker - REST fallback for WebSocket."""
+    """Market snapshot for the live-price tiles (REST fallback for the WebSocket).
+
+    Uses the shared dated-close fetch (FX re-dated to its NY session, api/market_dates.py) and
+    FRED for rates. Unavailable values are null. (It previously read rates from the legacy CSV
+    — fed funds came back 0.0 — and fell back to invented 4.2 / 3.8 / 4.5 levels.)"""
+    from api.handlers.market_handler import _fetch_dated_closes_literal
+    from api.handlers.macro_inputs import load_macro_inputs
+    tickers = {"spx": "^GSPC", "ndx": "^NDX", "vix": "^VIX", "gold": "GC=F", "wti": "CL=F",
+               "dxy": "DX-Y.NYB", "eurusd": "EURUSD=X"}
+    closes = await asyncio.gather(*[_fetch_dated_closes_literal(t) for t in tickers.values()])
+    result: Dict[str, Any] = {}
+    for key, dated in zip(tickers, closes):
+        days = sorted(dated or {})
+        result[key] = round(dated[days[-1]], 4 if key == "eurusd" else 2) if days else None
+        result[f"{key}Chg"] = (round((dated[days[-1]] / dated[days[-2]] - 1) * 100, 3)
+                               if len(days) >= 2 else None)
+        result[f"{key}AsOf"] = days[-1] if days else None
+    result["gld"], result["gldChg"] = result["gold"], result["goldChg"]   # legacy key (gold futures)
     try:
-        import yfinance as yf
-
-        tickers = {
-            "spx": "^GSPC",
-            "ndx": "^NDX",
-            "vix": "^VIX",
-            "gld": "GC=F",
-            "wti": "CL=F",
-            "dxy": "DX-Y.NYB",
-            "eurusd": "EURUSD=X",
-        }
-
-        result = {}
-        for key, sym in tickers.items():
-            try:
-                hist = yf.Ticker(sym).history(period="5d")
-                if len(hist) >= 2:
-                    cur = float(hist["Close"].iloc[-1])
-                    prev = float(hist["Close"].iloc[-2])
-                    chg = round((cur - prev) / prev * 100, 3)
-                    result[key] = round(cur, 2)
-                    result[f"{key}Chg"] = chg
-                elif len(hist) == 1:
-                    result[key] = round(float(hist["Close"].iloc[-1]), 2)
-                    result[f"{key}Chg"] = 0.0
-                else:
-                    result[key] = None
-                    result[f"{key}Chg"] = None
-            except Exception as e:
-                logger.debug(f"Market stream {key} failed: {e}")
-                result[key] = None
-                result[f"{key}Chg"] = None
-
-        # 10Y and 2Y yields + Fed rate from FRED/fallback
-        try:
-            df = _load_data_or_fail()
-            result["tenYear"] = safe_float(_get(df, "yield_10y", "DGS10", 4.2))
-            result["twoYear"] = safe_float(_get(df, "yield_2y", "DGS2", 3.8))
-            result["fed"] = safe_float(_get(df, "fed_funds_rate", "DFF", 4.5))
-        except Exception as e:
-            logger.debug(f"Market stream rates failed: {e}")
-            result["tenYear"] = 4.2
-            result["twoYear"] = 3.8
-            result["fed"] = 4.5
-
-        return scrub_nans(result)
+        inp = await load_macro_inputs()
+        result["tenYear"], result["twoYear"], result["fed"] = inp["dgs10"].latest, inp["dgs2"].latest, inp["dff"].latest
     except Exception as e:
-        logger.error(f"Market stream endpoint failed: {e}")
-        return {"error": str(e)}
+        logger.debug(f"Market stream rates failed: {e}")
+        result["tenYear"] = result["twoYear"] = result["fed"] = None
+    return scrub_nans(result)
 
 
 # FIXED (Fix 8): Canonical prices endpoint - single source of truth

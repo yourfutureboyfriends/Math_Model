@@ -139,3 +139,7 @@ CACHE_TTL_MINUTES = {
 SCHEDULER_TIMEZONE = "America/New_York"
 DAILY_PIPELINE_HOUR = 6
 DAILY_PIPELINE_MINUTE = 30
+
+# Back off from FRED as a whole when it refuses requests (see api/fred_guard.py).
+from api import fred_guard as _fred_guard  # noqa: E402
+_fred_guard.install()

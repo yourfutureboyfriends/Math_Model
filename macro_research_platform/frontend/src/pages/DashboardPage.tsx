@@ -7,6 +7,7 @@ import { SectionSkeleton } from '@/components/ui/SectionSkeleton';
 import { useMacroStore } from '@/store/macroStore';
 import {
   MyDeskSection,
+  CycleRiskSection,
   MorningBriefSection,
   AnomaliesStripSection,
   MasterSignalSection,
@@ -332,6 +333,11 @@ export function DashboardPage() {
           <Suspense fallback={<SectionSkeleton />}>
             <FundCockpitSection />
           </Suspense>
+        </ErrorBoundary>
+      </div>
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Cycle & Systemic Risk">
+          <CycleRiskSection />
         </ErrorBoundary>
       </div>
 

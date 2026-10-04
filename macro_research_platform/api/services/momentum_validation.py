@@ -578,32 +578,18 @@ class MomentumValidator:
                 "required": min_observations
             }
 
-        # In practice, would merge with factor returns
-        # For now, compute basic statistics
+        # A Carhart regression needs the Fama-French/Carhart factor series, which are not
+        # wired in. Report the observed return statistics and say the regression is
+        # unavailable — this used to return random "factor betas" and a random R².
         returns = df_valid["realized_return"].astype(float)
-
-        # Placeholder factor betas (would come from actual factor regression)
-        np.random.seed(42)
-        factor_betas = {
-            "market": round(np.random.normal(0.9, 0.2), 4),
-            "smb": round(np.random.normal(0.1, 0.15), 4),
-            "hml": round(np.random.normal(-0.1, 0.15), 4),  # Momentum typically negative on value
-            "mom": round(np.random.normal(0.3, 0.2), 4)     # Positive momentum exposure
-        }
-
-        # Calculate alpha (simplified)
-        mean_return = returns.mean()
-        alpha = mean_return - sum(factor_betas.values()) * mean_return / 4
-
         return {
             "timestamp": datetime.utcnow().isoformat(),
             "formation_period": formation_period,
             "observations": len(df_valid),
-            "factor_betas": factor_betas,
-            "carhart_alpha": round(alpha, 6),
-            "annualized_alpha": round(alpha * 12, 4),
-            "r_squared": round(np.random.uniform(0.3, 0.7), 4),  # Placeholder
-            "interpretation": "Positive alpha indicates momentum effect beyond factor exposures"
+            "available": False,
+            "reason": "Carhart four-factor series not configured; regression not run.",
+            "mean_realized_return": round(float(returns.mean()), 6),
+            "factor_betas": None, "carhart_alpha": None, "r_squared": None,
         }
 
     def get_calibration_recommendations(self) -> Dict[str, Any]:

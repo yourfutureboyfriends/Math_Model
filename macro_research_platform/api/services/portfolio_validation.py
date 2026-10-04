@@ -582,17 +582,11 @@ class PortfolioValidator:
 
         portfolio_returns = df_valid["realized_return"]
 
-        # Default factors if none provided
+        # No factor return series supplied: report that, rather than regressing on random
+        # numbers (this used to generate seeded "synthetic factors" and return their betas).
         if factor_returns is None:
-            # Use synthetic factors
-            np.random.seed(42)
-            n = len(portfolio_returns)
-            factor_returns = {
-                "market": pd.Series(np.random.normal(0.008, 0.04, n)),
-                "value": pd.Series(np.random.normal(0.002, 0.03, n)),
-                "momentum": pd.Series(np.random.normal(0.003, 0.03, n)),
-                "quality": pd.Series(np.random.normal(0.001, 0.02, n))
-            }
+            return {"method": method, "available": False, "observations": len(df_valid),
+                    "reason": "No factor return series supplied for this analysis."}
 
         exposures = {}
         for factor_name, factor_ret in factor_returns.items():

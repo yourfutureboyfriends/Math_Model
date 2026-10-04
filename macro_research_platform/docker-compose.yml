@@ -15,7 +15,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: macro
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-macro_terminal_secure_2024}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env (no default password)}
       POSTGRES_DB: macro_terminal
       TZ: America/New_York
     ports:
@@ -71,7 +71,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://macro:${DB_PASSWORD:-macro_terminal_secure_2024}@timescaledb:5432/macro_terminal
+      - DATABASE_URL=postgresql+asyncpg://macro:${DB_PASSWORD:?Set DB_PASSWORD in .env (no default password)}@timescaledb:5432/macro_terminal
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
@@ -119,7 +119,7 @@ services:
     restart: unless-stopped
     command: celery -A api.celery_app worker --loglevel=info --concurrency=4 -Q pipeline,signals,reports,default
     environment:
-      - DATABASE_URL=postgresql+asyncpg://macro:${DB_PASSWORD:-macro_terminal_secure_2024}@timescaledb:5432/macro_terminal
+      - DATABASE_URL=postgresql+asyncpg://macro:${DB_PASSWORD:?Set DB_PASSWORD in .env (no default password)}@timescaledb:5432/macro_terminal
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
@@ -159,7 +159,7 @@ services:
     restart: unless-stopped
     command: celery -A api.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler
     environment:
-      - DATABASE_URL=postgresql+asyncpg://macro:${DB_PASSWORD:-macro_terminal_secure_2024}@timescaledb:5432/macro_terminal
+      - DATABASE_URL=postgresql+asyncpg://macro:${DB_PASSWORD:?Set DB_PASSWORD in .env (no default password)}@timescaledb:5432/macro_terminal
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2

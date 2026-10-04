@@ -438,69 +438,17 @@ class ExpectedReturnsValidator:
         # Overall RMSE
         total_rmse = np.sqrt((df_valid["forecast_error"] ** 2).mean())
 
-        # Earnings yield error: assume constant 6% error on earnings yield component
-        # (This is an approximation - would need actual forward earnings data)
-        earnings_yield_errors = []
-        regime_premium_errors = []
-        regime_misclass_errors = []
-
-        for _, row in df_valid.iterrows():
-            ey = row.get("earnings_yield")
-            rp = row.get("regime_premium")
-            regime = row.get("regime")
-            error = row["forecast_error"]
-
-            if pd.isna(ey) or pd.isna(rp) or pd.isna(regime):
-                continue
-
-            # Estimate earnings yield error (typical forecast error ~ 1-2%)
-            ey_error = np.random.normal(0, 0.015)  # Simulated
-            earnings_yield_errors.append(ey_error ** 2)
-
-            # Regime premium error: difference between assumed premium and actual
-            # For now, use average premium error
-            rp_error = np.random.normal(0, 0.03)  # Simulated
-            regime_premium_errors.append(rp_error ** 2)
-
-            # Regime misclassification error (if we got the regime wrong)
-            # This would require knowing the actual regime ex-post
-            regime_misclass_errors.append(0)  # Placeholder
-
-        ey_rmse = np.sqrt(np.mean(earnings_yield_errors)) if earnings_yield_errors else 0
-        rp_rmse = np.sqrt(np.mean(regime_premium_errors)) if regime_premium_errors else 0
-        rm_rmse = np.sqrt(np.mean(regime_misclass_errors)) if regime_misclass_errors else 0
-
-        # Unexplained error (residual)
-        total_variance = total_rmse ** 2
-        explained_variance = ey_rmse ** 2 + rp_rmse ** 2 + rm_rmse ** 2
-        unexplained_variance = max(0, total_variance - explained_variance)
-        unexplained_rmse = np.sqrt(unexplained_variance)
-
+        # Only the realized forecast errors are measured. Attributing them to earnings-yield,
+        # regime-premium or misclassification error needs the realized path of each component,
+        # which is not logged — this used to fill the split with random draws ("Simulated").
+        bias = float(df_valid["forecast_error"].mean())
         return {
             "observations": len(df_valid),
             "total_rmse": round(total_rmse, 4),
-            "error_sources": {
-                "earnings_yield_error": {
-                    "rmse": round(ey_rmse, 4),
-                    "pct_of_total": round((ey_rmse / total_rmse) ** 2 * 100, 1) if total_rmse > 0 else 0,
-                    "recommendation": "Use forward earnings estimates instead of trailing"
-                },
-                "regime_premium_error": {
-                    "rmse": round(rp_rmse, 4),
-                    "pct_of_total": round((rp_rmse / total_rmse) ** 2 * 100, 1) if total_rmse > 0 else 0,
-                    "recommendation": "Apply shrinkage toward long-run mean"
-                },
-                "regime_misclassification_error": {
-                    "rmse": round(rm_rmse, 4),
-                    "pct_of_total": round((rm_rmse / total_rmse) ** 2 * 100, 1) if total_rmse > 0 else 0,
-                    "recommendation": "Weight regime premium by regime confidence"
-                },
-                "unexplained_error": {
-                    "rmse": round(unexplained_rmse, 4),
-                    "pct_of_total": round((unexplained_rmse / total_rmse) ** 2 * 100, 1) if total_rmse > 0 else 0,
-                    "recommendation": "Add dividend yield and buyback components"
-                }
-            }
+            "mean_error_bias": round(bias, 4),
+            "error_sources": None,
+            "error_sources_reason": ("Component attribution needs realized earnings-yield and "
+                                     "regime-premium paths, which are not recorded."),
         }
 
     def analyze_by_regime(self) -> Dict[str, Any]:

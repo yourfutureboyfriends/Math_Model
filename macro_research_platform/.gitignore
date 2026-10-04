@@ -154,3 +154,6 @@ src/data/raw/live/
 
 # Stray Vite dependency cache outside the frontend
 api/.vite/
+
+# Persisted model fits and research-indicator caches (regenerated)
+data/processed/*.pkl

@@ -136,7 +136,7 @@ def validate_risk_payload(payload: Dict[str, Any]) -> ValidationResult:
 
         # Validate models section
         if "models" in payload:
-            models = payload["models"]
+            models = payload["models"] or {}
             for model_name, model_data in models.items():
                 if isinstance(model_data, dict) and "probability" in model_data:
                     model_prob = model_data["probability"]

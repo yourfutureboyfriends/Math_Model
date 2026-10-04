@@ -14,6 +14,11 @@ from database.models import Base
 # access to the values within the .ini file in use.
 config = context.config
 
+# Connection string comes from the environment, never from source.
+import os as _os
+if _os.getenv("DATABASE_URL"):
+    config.set_main_option("sqlalchemy.url", _os.environ["DATABASE_URL"])
+
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:

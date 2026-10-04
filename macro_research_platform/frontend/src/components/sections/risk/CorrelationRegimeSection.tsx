@@ -129,7 +129,7 @@ export function CorrelationRegimeSection() {
                 {Object.entries(normalWeights).map(([asset, weight]) => (
                   <div key={asset} className="flex items-center justify-between text-xs">
                     <span className="text-text-secondary capitalize">{asset}</span>
-                    <span className="font-mono text-text-primary">{((weight ?? 0) * 100).toFixed(0)}%</span>
+                    <span className="font-mono text-text-primary">{weight != null ? `${((weight as number) * 100).toFixed(0)}%` : '—'}</span>
                   </div>
                 ))}
               </div>
@@ -142,7 +142,7 @@ export function CorrelationRegimeSection() {
                   <div key={asset} className="flex items-center justify-between text-xs">
                     <span className="text-text-secondary capitalize">{asset}</span>
                     <span className={`font-mono ${switchTriggered && weight !== normalWeights[asset] ? 'text-amber' : 'text-text-primary'}`}>
-                      {((weight ?? 0) * 100).toFixed(0)}%
+                      {weight != null ? `${((weight as number) * 100).toFixed(0)}%` : '—'}
                     </span>
                   </div>
                 ))}

@@ -95,6 +95,9 @@ def client(tmp_path, monkeypatch):
     async def _gm():
         return {"recent_policy_moves": []}
     monkeypatch.setattr(main_mod, "get_global_macro_v1", _gm)
+    async def _cyc():
+        return {"turbulence": {}, "absorption_ratio": {}, "near_term_forward_spread": {}}
+    monkeypatch.setattr(main_mod, "get_cycle_risk_v1", _cyc)
     import api.data_freshness as df
     monkeypatch.setattr(df, "get_live_freshness", lambda force=False, today=None: FRESH)
     from api.main import app
