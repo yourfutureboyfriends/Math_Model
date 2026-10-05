@@ -186,6 +186,14 @@ def update_csv(row: dict) -> bool:
     df = _to_monthly(df)
     month = pd.Timestamp(date.today().replace(day=1))
     new_row = pd.Series({c: row.get(c, float("nan")) for c in df.columns}, name=month, dtype=float)
+    if month in df.index:
+        # A value this run could not fetch (e.g. FRED refusing requests) keeps this month's
+        # earlier observation instead of being blanked. Same month only — never carried
+        # forward from a previous month.
+        kept = int((new_row.isna() & df.loc[month].notna()).sum())
+        new_row = new_row.combine_first(df.loc[month].astype(float))
+        if kept:
+            logger.warning(f"[PIPELINE] {kept} columns not refreshed this run — kept this month's earlier values")
     df = df.drop(month, errors="ignore")
     df = pd.concat([df, new_row.to_frame().T]).sort_index()
     df.index.name = None

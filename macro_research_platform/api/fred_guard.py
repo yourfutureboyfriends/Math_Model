@@ -12,6 +12,12 @@ models).
     already handles by serving cached data) for a cooling-off period;
   * each further refusal while probing doubles the period (5 min → 10 → 20 … capped at 2 h);
   * the first successful response closes it.
+
+It also THROTTLES FRED traffic so the breaker rarely has to open: FRED allows ~120 requests
+per minute per key, and a cold start (warm loops, calendars, model fits in parallel) used to
+fire far more than that within seconds, get 429'd, and lose FRED for five minutes. Requests
+now wait for a slot: at most MAX_CONCURRENT in flight, MIN_INTERVAL apart, and at most
+MAX_PER_MINUTE in any rolling 60s.
 """
 from __future__ import annotations
 
@@ -29,6 +35,31 @@ MAX_COOLDOWN = 7200.0
 _lock = threading.Lock()
 _state: Dict[str, float] = {"open_until": 0.0, "cooldown": BASE_COOLDOWN, "trips": 0}
 _installed = False
+
+MAX_CONCURRENT = 4
+MIN_INTERVAL = 0.3          # seconds between request starts
+MAX_PER_MINUTE = 100        # below FRED's ~120/min per key
+_slots = threading.BoundedSemaphore(MAX_CONCURRENT)
+_starts: list = []          # start times within the last 60s
+_pace_lock = threading.Lock()
+
+
+def _wait_for_slot(now=time.time, sleep=time.sleep) -> float:
+    """Block until a request may start under the pacing rules; returns seconds waited."""
+    waited = 0.0
+    while True:
+        with _pace_lock:
+            t = now()
+            while _starts and t - _starts[0] >= 60:
+                _starts.pop(0)
+            gap = (_starts[-1] + MIN_INTERVAL - t) if _starts else 0.0
+            window = (_starts[0] + 60 - t) if len(_starts) >= MAX_PER_MINUTE else 0.0
+            delay = max(gap, window, 0.0)
+            if delay == 0.0:
+                _starts.append(t)
+                return waited
+        sleep(delay)
+        waited += delay
 
 
 def is_open(now: float | None = None) -> bool:
@@ -61,6 +92,8 @@ def record(status_code: int, now: float | None = None) -> None:
 def reset() -> None:
     with _lock:
         _state.update(open_until=0.0, cooldown=BASE_COOLDOWN, trips=0)
+    with _pace_lock:
+        _starts.clear()
 
 
 def install() -> None:
@@ -77,7 +110,12 @@ def install() -> None:
         if is_open():
             raise requests.exceptions.ConnectionError(
                 f"FRED circuit breaker open (retry in {status()['retry_in_s']}s)")
-        resp = original(self, method, url, *args, **kwargs)
+        with _slots:
+            _wait_for_slot()
+            if is_open():       # opened while this request was queued
+                raise requests.exceptions.ConnectionError(
+                    f"FRED circuit breaker open (retry in {status()['retry_in_s']}s)")
+            resp = original(self, method, url, *args, **kwargs)
         record(resp.status_code)
         return resp
 

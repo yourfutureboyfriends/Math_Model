@@ -3,9 +3,13 @@
  * Verifies that backend responses match expected TypeScript types
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { api } from '@/lib/apiClient';
 import { validateDashboardData, ValidationError } from '@/lib/apiValidation';
+
+// Live backend: a request can land while the server rebuilds a cold cache (startup, or just
+// after the data pipeline invalidated it), which takes longer than vitest's 5s default.
+vi.setConfig({ testTimeout: 30_000 });
 
 describe('API Integration Tests', () => {
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';

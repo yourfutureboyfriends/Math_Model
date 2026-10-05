@@ -1281,6 +1281,32 @@ async def lifespan(app: FastAPI):
         )
         logger.info("[STARTUP] Scheduled consolidated_macro_refresh every 15min")
 
+        # Catch-up: cron jobs only fire while the process is up, so a backend that was down
+        # at 06:00 UTC left the CSV stale until the next day. If it is over 24h old, run the
+        # pipeline once, a few minutes after startup (after the warm-up's FRED requests).
+        _csv = PROJECT_ROOT / "data" / "us_economic_data.csv"
+        _csv_age_h = (time.time() - _csv.stat().st_mtime) / 3600 if _csv.exists() else float("inf")
+        if _csv_age_h > 24:
+            def _catchup(attempt: int = 1):
+                from api import fred_guard
+                if fred_guard.is_open():          # FRED refusing requests: don't run a partial refresh
+                    res = {"csv_updated": False}
+                else:
+                    res = run_daily_pipeline(_DASHBOARD_CACHE, _DASHBOARD_CACHE_LOCK)
+                if (not res.get("csv_updated") or fred_guard.is_open()) and attempt < 8:
+                    logger.warning("[PIPELINE] catch-up attempt %d did not update the CSV — retrying in 15 min", attempt)
+                    _scheduler.add_job(func=_catchup, args=[attempt + 1], trigger="date",
+                                       run_date=datetime.now(timezone.utc) + timedelta(minutes=15),
+                                       id="catchup_pipeline", replace_existing=True)
+            _scheduler.add_job(
+                func=_catchup,
+                trigger="date",
+                run_date=datetime.now(timezone.utc) + timedelta(minutes=3),
+                id="catchup_pipeline",
+                replace_existing=True,
+            )
+            logger.info("[STARTUP] CSV is %.1fh old — catch-up pipeline run scheduled in 3 min", _csv_age_h)
+
     except Exception as e:
         logger.error(f"[STARTUP] Failed to initialize scheduler: {e}")
 
@@ -3307,7 +3333,12 @@ async def auth_status():
     """Public: whether the seeded demo credentials still work (the login screen only shows
     them in that case) and the password policy."""
     from api.core import accounts
-    return {"default_credentials_active": await _aio_to_thread(accounts.default_credentials_active),
+    from api.config import ENVIRONMENT
+    still_default = await _aio_to_thread(accounts.default_credential_accounts)
+    return {"default_credentials_active": bool(still_default),
+            # Which accounts: development only (the login screen lists just those), never
+            # disclosed by a production server.
+            "default_credential_accounts": still_default if ENVIRONMENT == "development" else None,
             "password_policy": {"min_length": accounts.MIN_PASSWORD_LENGTH,
                                 "rules": ["at least 3 of: lowercase, uppercase, digit, symbol",
                                           "must not contain the username", "not a common/default password"]},

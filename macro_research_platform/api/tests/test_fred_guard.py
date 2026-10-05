@@ -45,3 +45,28 @@ def test_in_flight_refusals_do_not_escalate():
         fred_guard.record(403, now=1000.0 + k * 0.01)
     st = fred_guard.status()
     assert st["trips"] == 1 and st["cooldown_s"] == fred_guard.BASE_COOLDOWN * 2
+
+
+def test_throttle_spaces_requests_and_caps_per_minute():
+    from api import fred_guard as g
+    g.reset()
+    clock = {"t": 1000.0}
+    waits = []
+
+    def now():
+        return clock["t"]
+
+    def sleep(d):
+        waits.append(d)
+        clock["t"] += d
+
+    # back-to-back requests are spaced MIN_INTERVAL apart
+    assert g._wait_for_slot(now, sleep) == 0.0
+    assert abs(g._wait_for_slot(now, sleep) - g.MIN_INTERVAL) < 1e-9
+    # never more than MAX_PER_MINUTE starts in any rolling 60s
+    for _ in range(g.MAX_PER_MINUTE * 2):
+        g._wait_for_slot(now, sleep)
+    starts = g._starts
+    assert all(b - a >= g.MIN_INTERVAL - 1e-9 for a, b in zip(starts, starts[1:]))
+    assert len([s for s in starts if starts[-1] - s < 60]) <= g.MAX_PER_MINUTE
+    g.reset()

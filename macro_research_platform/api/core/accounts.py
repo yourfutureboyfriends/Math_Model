@@ -82,11 +82,16 @@ def migrate() -> None:
     invalidate_cache()
 
 
-def default_credentials_active() -> bool:
+def default_credential_accounts() -> List[str]:
+    """Enabled accounts still on their seeded default password."""
     with _conn() as c:
         rows = c.execute("SELECT username, hashed_password FROM users WHERE COALESCE(disabled,0)=0").fetchall()
-    return any(DEFAULT_PASSWORDS.get(r["username"]) and
-               _auth.verify_password(DEFAULT_PASSWORDS[r["username"]], r["hashed_password"]) for r in rows)
+    return [r["username"] for r in rows if DEFAULT_PASSWORDS.get(r["username"]) and
+            _auth.verify_password(DEFAULT_PASSWORDS[r["username"]], r["hashed_password"])]
+
+
+def default_credentials_active() -> bool:
+    return bool(default_credential_accounts())
 
 
 # ── Password policy ──────────────────────────────────────────────────────────

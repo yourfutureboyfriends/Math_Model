@@ -13,11 +13,15 @@ export function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDemo, setShowDemo] = useState(false);
+  const [defaultAccounts, setDefaultAccounts] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     fetch('/api/auth/status').then((r) => r.json())
-      .then((j) => setShowDemo(Boolean(j.default_credentials_active)))
+      .then((j) => {
+        setShowDemo(Boolean(j.default_credentials_active));
+        setDefaultAccounts(Array.isArray(j.default_credential_accounts) ? j.default_credential_accounts : null);
+      })
       .catch(() => setShowDemo(false));
   }, []);
 
@@ -122,7 +126,7 @@ export function LoginScreen() {
               Development accounts — a new password is required at first sign-in
             </div>
             <div className="grid grid-cols-2 gap-2">
-              {demoCredentials.map((cred) => (
+              {demoCredentials.filter((c) => !defaultAccounts || defaultAccounts.includes(c.user)).map((cred) => (
                 <button
                   key={cred.role}
                   onClick={() => fillCredentials(cred.user, cred.pass)}
