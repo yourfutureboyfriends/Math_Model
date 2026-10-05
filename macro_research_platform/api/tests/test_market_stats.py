@@ -278,7 +278,7 @@ def test_uk_curve_uses_labelled_sonia_when_3m_is_stale():
     assert c["spread3m10y"] is None                         # not passed off as a 3M spread
     assert c["shortRate"] == "SONIA" and c["spreadShort10y"] == pytest.approx(126.0)
     assert c["points"][0] == {"tenor": round(1 / 365, 4), "yield": 3.73}
-    assert c["shape"] == "steep" and c["asOf"]["SONIA"] == "2026-09-30"
+    assert c["shape"] == "normal" and c["asOf"]["SONIA"] == "2026-09-30"   # 126bp: 50–150bp
 
 
 def test_build_cma_from_observed_inputs():
