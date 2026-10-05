@@ -48,11 +48,16 @@ class NewsProvider:
     - Filter by relevance
     """
 
+    # Markets/economics feeds that answer keyless (checked 2026-10). The former Reuters agency
+    # and bloomberg.com/feeds/news URLs return 404, and the FT home feed is general news.
     DEFAULT_FEEDS = {
-        "reuters": "https://www.reutersagency.com/feed/?taxonomy=markets",
-        "bloomberg": "https://www.bloomberg.com/feeds/news",
-        "ft": "https://www.ft.com/?format=rss",
+        "Bloomberg Markets": "https://feeds.bloomberg.com/markets/news.rss",
+        "Bloomberg Economics": "https://feeds.bloomberg.com/economics/news.rss",
+        "FT Markets": "https://www.ft.com/markets?format=rss",
+        "CNBC": "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+        "MarketWatch": "https://feeds.content.dowjones.io/public/rss/mw_marketpulse",
     }
+    MAX_AGE_DAYS = 3
 
     def __init__(self):
         self.feeds = self.DEFAULT_FEEDS.copy()
@@ -138,10 +143,19 @@ class NewsProvider:
         all_articles = []
         errors = []
 
-        for feed_name in self.feeds.keys():
-            result = self.fetch_feed(feed_name)
+        from concurrent.futures import ThreadPoolExecutor
+        from datetime import timedelta
+        with ThreadPoolExecutor(max_workers=len(self.feeds) or 1) as pool:
+            results = list(pool.map(self.fetch_feed, self.feeds.keys()))
+        cutoff = datetime.utcnow() - timedelta(days=self.MAX_AGE_DAYS)
+        seen = set()
+        for feed_name, result in zip(self.feeds.keys(), results):
             if result.success:
-                all_articles.extend(result.articles)
+                for a in result.articles:
+                    key = (a.title or "").strip().lower()
+                    if a.published >= cutoff and key and key not in seen:   # recent, de-duplicated
+                        seen.add(key)
+                        all_articles.append(a)
             else:
                 errors.append(f"{feed_name}: {result.error}")
 

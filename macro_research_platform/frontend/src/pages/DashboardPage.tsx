@@ -36,7 +36,7 @@ import {
   ReflexivitySection,
   FactorDecompositionSection,
   HorizonTensionSection,
-  PortfolioAnalyserSection,
+  ModelSleeveSection,
   PositionsSection,
   TradeWorkflowSection,
   CTATrendSection,
@@ -595,10 +595,8 @@ export function DashboardPage() {
 
       {/* ── Portfolio ─────────────────────────────────────────────────────── */}
       <div id="portfolio" className="terminal-section">
-        <ErrorBoundary sectionName="Portfolio Analyzer">
-          <Suspense fallback={<SectionSkeleton />}>
-            <PortfolioAnalyserSection />
-          </Suspense>
+        <ErrorBoundary sectionName="Model Portfolio">
+          <ModelSleeveSection />
         </ErrorBoundary>
       </div>
 

@@ -99,8 +99,15 @@ export function MacroModelSection() {
   const load = useCallback(async () => {
     setBusy(true); setError(null);
     try {
-      const [m, p] = await Promise.all([fetch('/api/v1/model').then((r) => r.json()), fetch('/api/v1/model/params').then((r) => r.json())]);
+      const get = async (u: string) => {
+        const r = await fetch(u);
+        const j = await r.json().catch(() => null);
+        if (!r.ok || !j) throw new Error((typeof j?.detail === 'string' && j.detail) || `HTTP ${r.status}`);
+        return j;
+      };
+      const [m, p] = await Promise.all([get('/api/v1/model'), get('/api/v1/model/params')]);
       if (m.available === false) throw new Error(m.reason);
+      if (!m.state || !m.portfolios) throw new Error('Model response incomplete');
       setData(m); setMeta(p); setParams(m.params);
     } catch (e: any) { setError(e?.message || 'Model unavailable'); }
     finally { setBusy(false); }
@@ -112,7 +119,8 @@ export function MacroModelSection() {
     try {
       const r = await fetch('/api/v1/model/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ params }) });
       const j = await r.json();
-      if (!r.ok) throw new Error(j?.detail || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(typeof j?.detail === 'string' ? j.detail : `HTTP ${r.status}`);
+      if (j.available === false || !j.state) throw new Error(j.reason || 'Model response incomplete');
       setData(j);
     } catch (e: any) { setError(e?.message); } finally { setBusy(false); }
   };

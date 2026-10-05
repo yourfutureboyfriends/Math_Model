@@ -460,15 +460,15 @@ export const useMacroStore = create<MacroState>()(
             });
 
             // Auto-reconnect with exponential backoff
-            if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-              reconnectAttempts++;
-              const delay = getReconnectDelay();
-              console.log(`[MacroStore] Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
-              reconnectTimeout = setTimeout(connect, delay);
-            } else {
-              console.error('[MacroStore] Max reconnect attempts reached, giving up');
+            // After the fast attempts, keep probing slowly instead of giving up: a backend
+            // restart must not leave the terminal on REST-only prices until a page reload.
+            reconnectAttempts++;
+            if (reconnectAttempts === MAX_RECONNECT_ATTEMPTS) {
+              console.warn('[MacroStore] WebSocket unavailable - using REST fallback, retrying every 60s');
               set({ wsError: 'WebSocket unavailable - using REST fallback' });
             }
+            const delay = reconnectAttempts >= MAX_RECONNECT_ATTEMPTS ? 60000 : getReconnectDelay();
+            reconnectTimeout = setTimeout(connect, delay);
           };
 
           ws.onerror = (error) => {

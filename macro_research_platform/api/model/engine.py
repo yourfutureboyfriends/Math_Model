@@ -255,7 +255,16 @@ async def model_orders(result: Dict[str, Any], which: str, sleeve_capital: Optio
                 clipped[sym] = {"model_weight": round(w, 4), "capped_weight": round(cap, 4)}
                 etf_w[sym] = cap
     plan = rebalance_orders(etf_w, sleeve_capital, prices, current)
-    return {**plan, "portfolio": which, "sleeve_capital": round(sleeve_capital, 2), "sleeve_capital_basis": basis,
+    holdings = []
+    for sym in sorted(universe | set(current)):
+        qty = current.get(sym, 0.0)
+        px = prices.get(sym)
+        val = qty * px if px else None
+        holdings.append({"symbol": sym, "quantity": qty, "price": round(px, 2) if px else None,
+                         "market_value": round(val, 2) if val is not None else None,
+                         "weight": round(val / sleeve_capital, 4) if val is not None and sleeve_capital else None,
+                         "target_weight": round(etf_w.get(sym, 0.0), 4)})
+    return {**plan, "holdings": holdings, "portfolio": which, "sleeve_capital": round(sleeve_capital, 2), "sleeve_capital_basis": basis,
             "other_books_market_value": round(other_mv, 2), "book": MODEL_BOOK,
             "single_name_limit": hard, "clipped_by_limits": clipped,
             "target_weights": etf_w, "run_id": result.get("run_id"), "as_of": result["as_of"]}

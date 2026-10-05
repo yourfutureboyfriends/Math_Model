@@ -63,6 +63,21 @@ async def model_runs(limit: int = 50):
     return {"runs": await asyncio.to_thread(list_runs, min(max(limit, 1), 500))}
 
 
+@router.get("/api/v1/model/sleeve")
+async def model_sleeve(portfolio: Literal["strategic", "tactical"] = "strategic"):
+    """Read-only: the model sleeve's holdings (book "Macro Model") against the model's
+    targets, with the drift and the orders that would close it. Nothing is staged."""
+    from api.model.engine import model_orders, run_model
+    result = await run_model(None, user="system")
+    if not result.get("available"):
+        raise HTTPException(503, result.get("reason", "model unavailable"))
+    plan = await model_orders(result, portfolio, None)
+    plan["regime"] = result["regime"]["most_likely"]
+    plan["regime_probability"] = result["regime"]["probabilities"][result["regime"]["most_likely"]]
+    plan["expected_vol"] = result["portfolios"][portfolio]["expected_vol"]
+    return plan
+
+
 @router.post("/api/v1/model/orders/preview")
 async def model_orders_preview(body: OrdersIn, request: Request):
     from api.core.access import require_roles

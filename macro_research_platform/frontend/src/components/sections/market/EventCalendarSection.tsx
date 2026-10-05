@@ -1,10 +1,9 @@
-// Event Calendar / Economic Calendar Section
-// Shows upcoming economic data releases
-// Calendar polish - importance header, styled nulls, ET times, live countdown
+// Economic Calendar — official US release dates (FRED release calendar) and FOMC decisions,
+// with each release's latest print. No consensus forecasts: there is no licensed source here.
 
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface CalendarEvent {
   id: number;
@@ -12,198 +11,157 @@ interface CalendarEvent {
   importance: 'HIGH' | 'MEDIUM' | 'LOW';
   release_datetime: string;
   time_et?: string;
-  actual: string | null;
-  forecast: string | null;
   previous: string | null;
+  previous_period?: string | null;
+  series_id?: string;
   affected_assets?: string[];
+  source?: string;
+}
+
+interface CalendarData {
+  upcoming?: CalendarEvent[];
+  this_week?: CalendarEvent[];
+  blackout_active?: boolean;
+  minutes_to_next?: number | null;
+  sources_failed?: string[];
+  error?: string;
 }
 
 interface Props {
-  data?: {
-    upcoming?: CalendarEvent[];
-    this_week?: CalendarEvent[];
-    blackout_active?: boolean;
-    minutes_to_next?: number;
-  } | null;
+  data?: CalendarData | null;
 }
 
-export function EventCalendarSection({ data }: Props) {
-  const [loading, setLoading] = useState(!data);
-  const [timedOut, setTimedOut] = useState(false);
+const IMP_CLASS: Record<string, string> = {
+  HIGH: 'bg-red-dim text-red',
+  MEDIUM: 'bg-amber-dim text-amber',
+  LOW: 'bg-surface-3 text-text-tertiary',
+};
+
+function countdown(iso: string, now: Date): { label: string; urgent: boolean } {
+  const diffMin = Math.floor((new Date(iso).getTime() - now.getTime()) / 60_000);
+  if (diffMin <= 5) return { label: 'now', urgent: true };
+  if (diffMin < 60) return { label: `${diffMin}m`, urgent: false };
+  const h = Math.floor(diffMin / 60);
+  if (h < 24) return { label: `${h}h ${diffMin % 60}m`, urgent: false };
+  return { label: `${Math.floor(h / 24)}d ${h % 24}h`, urgent: false };
+}
+
+function period(p?: string | null): string {
+  if (!p) return '';
+  const d = new Date(`${p}T00:00:00Z`);
+  return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+}
+
+export function EventCalendarSection({ data: initial }: Props) {
+  const [data, setData] = useState<CalendarData | null>(initial ?? null);
+  const [error, setError] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const [minImp, setMinImp] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('LOW');
   const [now, setNow] = useState(() => new Date());
 
-  useEffect(() => {
-    if (data) setLoading(false);
-  }, [data]);
-
-  // FIXED (BUG 8): Timeout after 10 seconds to prevent infinite loading (Fix 8)
-  useEffect(() => {
-    const t = setTimeout(() => setTimedOut(true), 10000);
-    return () => clearTimeout(t);
-  }, []);
-
-  // Live countdown timer - updates every minute
-  useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Loading state with timeout
-  if (loading && !timedOut) {
-    return (
-      <section id="economic-calendar" className="terminal-section">
-        <div className="section-header">
-          <span className="section-tag">ECO</span>
-          <h2 className="section-title">Economic Calendar</h2>
-          <Badge variant="info" className="ml-2">Loading...</Badge>
-        </div>
-        <Card className="p-4">
-          <div className="h-32 animate-pulse bg-surface-2 rounded" />
-        </Card>
-      </section>
-    );
-  }
-
-  // No data state
-  if (!data || (!data.upcoming?.length && !data.this_week?.length)) {
-    return (
-      <section id="economic-calendar" className="terminal-section">
-        <div className="section-header">
-          <span className="section-tag">ECO</span>
-          <h2 className="section-title">Economic Calendar</h2>
-        </div>
-        <Card className="p-4">
-          <div className="p-6 text-text-secondary text-sm text-center">
-            No upcoming economic events scheduled.
-          </div>
-        </Card>
-      </section>
-    );
-  }
-
-  const events = data.upcoming || data.this_week || [];
-
-  // Importance badge with color coding
-  const ImpBadge = ({ level }: { level: string }) => {
-    const imp = level?.toLowerCase();
-    let colorClass = 'bg-surface-3 text-text-tertiary';
-    if (imp === 'high') colorClass = 'bg-red-dim text-red';
-    if (imp === 'medium') colorClass = 'bg-amber-dim text-amber';
-
-    return (
-      <span className={`inline-flex items-center justify-center w-5 h-5 text-xs font-bold font-mono ${colorClass}`}>
-        {level?.charAt(0) || '—'}
-      </span>
-    );
-  };
-
-  // Styled formatter for null/undefined values
-  const fmtCalVal = (val: string | number | null | undefined) => {
-    if (val === null || val === undefined || val === '') {
-      return <span className="text-text-tertiary">—</span>;
-    }
-    return <span>{val}</span>;
-  };
-
-  // Format date/time with ET label
-  const formatDateTime = (isoDate: string, timeEt?: string) => {
-    if (!isoDate) return { date: '—', time: '—' };
+  const load = useCallback(async () => {
     try {
-      const date = new Date(isoDate);
-      return {
-        // FIXED (BUG 8): Use ISO date format
-        date: date.toISOString().split('T')[0],
-        time: timeEt || date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
-      };
-    } catch {
-      return { date: '—', time: '—' };
+      const r = await fetch('/api/calendar');
+      const j = await r.json();
+      if (!r.ok) throw new Error(typeof j?.detail === 'string' ? j.detail : `HTTP ${r.status}`);
+      setData(j); setError(j.error ?? null);
+    } catch (e: any) {
+      setError(e?.message || 'Calendar unavailable');
     }
-  };
+  }, []);
 
-  // Get countdown to next event
-  const getCountdown = (nextEvent: CalendarEvent | null) => {
-    if (!nextEvent?.release_datetime) return null;
-    const nextDt = new Date(nextEvent.release_datetime);
-    const diffMs = nextDt.getTime() - now.getTime();
-    if (diffMs <= 0) return { label: 'LIVE NOW', urgent: true };
+  useEffect(() => {
+    if (!initial) load();
+    const poll = setInterval(load, 30 * 60_000);
+    const tick = setInterval(() => setNow(new Date()), 60_000);
+    return () => { clearInterval(poll); clearInterval(tick); };
+  }, [initial, load]);
 
-    const diffMin = Math.floor(diffMs / 60_000);
-    const diffH = Math.floor(diffMin / 60);
-    const diffD = Math.floor(diffH / 24);
-    const remH = diffH % 24;
-    const remM = diffMin % 60;
-
-    if (diffMin <= 5) return { label: 'LIVE NOW', urgent: true };
-    if (diffMin < 60) return { label: `${diffMin}m`, urgent: false };
-    if (diffH < 24) return { label: `${diffH}h ${remM}m`, urgent: false };
-    return { label: `${diffD}d ${remH}h`, urgent: false };
-  };
-
-  const nextEvent = events[0] || null;
-  const countdown = getCountdown(nextEvent);
+  const rank = { LOW: 0, MEDIUM: 1, HIGH: 2 } as const;
+  const events = (data?.upcoming ?? []).filter((e) => rank[e.importance] >= rank[minImp]
+    && new Date(e.release_datetime).getTime() > now.getTime() - 60 * 60_000);
+  const shown = showAll ? events : events.slice(0, 10);
+  const next = events.find((e) => new Date(e.release_datetime) > now) ?? null;
+  const cd = next ? countdown(next.release_datetime, now) : null;
 
   return (
     <section id="economic-calendar" className="terminal-section">
       <div className="section-header">
         <span className="section-tag">ECO</span>
         <h2 className="section-title">Economic Calendar</h2>
-        <Badge variant={data.blackout_active ? 'danger' : 'info'} className="ml-2">
-          {data.blackout_active ? 'BLACKOUT' : `${events.length} Events`}
-        </Badge>
+        {data && (
+          <Badge variant={data.blackout_active ? 'danger' : 'info'} className="ml-2">
+            {data.blackout_active ? 'BLACKOUT' : `${events.length} releases · 45 days`}
+          </Badge>
+        )}
+        <div className="ml-auto flex gap-1">
+          {(['LOW', 'MEDIUM', 'HIGH'] as const).map((l) => (
+            <button key={l} onClick={() => setMinImp(l)}
+              className={`px-1.5 py-0.5 text-2xs border ${minImp === l ? 'border-bloomberg text-bloomberg' : 'border-border text-text-tertiary hover:text-text-secondary'}`}>
+              {l === 'LOW' ? 'All' : l === 'MEDIUM' ? 'Med+' : 'High'}
+            </button>
+          ))}
+        </div>
       </div>
 
       <Card className="p-4">
-        <div className="space-y-3">
-          {/* Added Imp column header */}
-          <div className="grid grid-cols-7 text-2xs text-text-tertiary uppercase border-b border-border-subtle pb-2">
-            <span>Date</span>
-            <span>Time</span>
-            <span className="col-span-2">Event</span>
-            <span className="text-center">Imp</span>
-            <span className="text-right">Prev</span>
-            <span className="text-right">Fcst</span>
+        {!data && !error && <div className="h-32 animate-pulse bg-surface-2 rounded" />}
+        {error && !events.length && (
+          <div className="p-4 text-xs text-amber text-center">
+            Calendar unavailable: {error} <button onClick={load} className="ml-2 underline">Retry</button>
           </div>
-          {events.slice(0, 8).map((event) => {
-            const { date, time } = formatDateTime(event.release_datetime, event.time_et);
-            // Color event name by importance
-            const eventNameClass = event.importance === 'HIGH'
-              ? 'text-text-primary font-medium'
-              : event.importance === 'MEDIUM'
-                ? 'text-text-secondary'
-                : 'text-text-tertiary';
-
-            return (
-              <div key={event.id} className="grid grid-cols-7 text-sm py-2 border-b border-border-subtle last:border-0">
-                <span className="text-text-secondary">{date}</span>
-                <span className="text-text-secondary font-mono text-xs">{time}</span>
-                <span className={`col-span-2 ${eventNameClass}`}>
-                  {event.event_name}
-                </span>
-                {/* Importance badge in its own column */}
-                <span className="flex justify-center">
-                  <ImpBadge level={event.importance} />
-                </span>
-                {/* Styled null values */}
-                <span className="text-text-secondary text-right">{fmtCalVal(event.previous)}</span>
-                <span className="text-text-primary text-right">{fmtCalVal(event.forecast)}</span>
+        )}
+        {data && !error && !events.length && (
+          <div className="p-6 text-text-secondary text-sm text-center">No releases in the next 45 days at this importance.</div>
+        )}
+        {events.length > 0 && (
+          <>
+            {cd && next && (
+              <div className={`mb-2 text-xs ${cd.urgent ? 'text-red font-bold' : 'text-text-secondary'}`}>
+                Next: <span className="text-text-primary">{next.event_name}</span> {cd.urgent ? 'releasing now' : `in ${cd.label}`}
               </div>
-            );
-          })}
-        </div>
-
-        {/* Live countdown with urgency indicator */}
-        {countdown && (
-          <div className={`mt-3 text-xs ${
-            countdown.urgent
-              ? 'text-red font-bold animate-pulse'
-              : 'text-text-secondary'
-          }`}>
-            {countdown.urgent
-              ? `Live: ${nextEvent?.event_name}`
-              : nextEvent
-                ? `Next: ${nextEvent.event_name} in ${countdown.label}`
-                : 'No upcoming events'}
-          </div>
+            )}
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle text-left">
+                  <th className="font-normal pb-1.5">Date</th>
+                  <th className="font-normal pb-1.5">ET</th>
+                  <th className="font-normal pb-1.5">Release</th>
+                  <th className="font-normal pb-1.5 text-center">Imp</th>
+                  <th className="font-normal pb-1.5 text-right">Previous</th>
+                  <th className="font-normal pb-1.5 text-right hidden sm:table-cell">Period</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((e) => {
+                  const dt = new Date(e.release_datetime);
+                  const day = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/New_York' });
+                  return (
+                    <tr key={`${e.event_name}-${e.release_datetime}`} className="border-b border-border-subtle last:border-0"
+                      title={[e.source, e.series_id && `headline series ${e.series_id}`, e.affected_assets?.length && `watch ${e.affected_assets.join(', ')}`].filter(Boolean).join(' · ')}>
+                      <td className="py-1.5 text-text-secondary whitespace-nowrap">{day}</td>
+                      <td className="py-1.5 font-mono text-text-tertiary">{e.time_et ?? '—'}</td>
+                      <td className={`py-1.5 ${e.importance === 'HIGH' ? 'text-text-primary font-medium' : 'text-text-secondary'}`}>{e.event_name}</td>
+                      <td className="py-1.5 text-center">
+                        <span className={`inline-flex items-center justify-center w-5 h-5 text-2xs font-bold font-mono ${IMP_CLASS[e.importance]}`}>{e.importance[0]}</span>
+                      </td>
+                      <td className="py-1.5 text-right font-mono text-text-primary">{e.previous ?? <span className="text-text-tertiary">—</span>}</td>
+                      <td className="py-1.5 text-right text-text-tertiary hidden sm:table-cell">{period(e.previous_period)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {events.length > 10 && (
+              <button onClick={() => setShowAll((s) => !s)} className="mt-2 text-2xs text-text-tertiary hover:text-bloomberg">
+                {showAll ? 'Show fewer' : `Show all ${events.length}`}
+              </button>
+            )}
+            <div className="mt-2 text-[10px] text-text-tertiary">
+              Official release dates (FRED release calendar; Federal Reserve FOMC calendar). Previous = latest published print.
+              {data?.sources_failed?.length ? ` Unavailable: ${data.sources_failed.join(', ')}.` : ''}
+            </div>
+          </>
         )}
       </Card>
     </section>

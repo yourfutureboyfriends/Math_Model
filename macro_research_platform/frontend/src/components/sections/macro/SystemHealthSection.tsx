@@ -1,200 +1,139 @@
-// Section H — System Health
-// API latency, error rates, and data freshness monitoring
+// System Health — service status, data-source probes, model availability and data freshness,
+// from /api/health, /api/v1/health/sources and /api/v1/freshness.
 
-import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Activity, AlertCircle, CheckCircle, Clock, Database } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 
-interface SystemHealthSectionProps {
-  data?: {
-    status?: string;
-    apiLatency?: number;
-    errorRate?: number;
-    lastUpdate?: string;
-    dataSources?: { name: string; status: string; latency: number }[];
-  };
-  performanceData?: {
-    averageLatency?: number;
-    p95Latency?: number;
-    uptime?: number | string;
-  };
+interface SourceProbe { status: string; latency_ms: number | null; detail?: string; last_checked?: string }
+interface Health {
+  status?: string;
+  analyticalIntegrity?: string;
+  integrityErrors?: string[];
+  models?: Record<string, boolean>;
+  fred_circuit_breaker?: { open: boolean; retry_in_s: number; trips: number };
 }
+interface Sources { overall: string; sources: Record<string, SourceProbe>; checked_at?: string }
+interface FreshRow { name: string; series_id: string; status: string; state?: string; last_observation_date?: string; next_expected_release?: string; periods_behind?: number }
+interface Freshness { available?: boolean; series?: FreshRow[] }
 
-export function SystemHealthSection({ data, performanceData }: SystemHealthSectionProps) {
-  // No data prop is threaded here, so show an honest resolved state (not a perpetual
-  // skeleton). Live health is surfaced by the header Data-Integrity indicator and the
-  // Data Providers panel; the model/data status also drives those.
-  if (!data) {
-    return (
-      <section id="system-health" className="terminal-section">
-        <div className="section-header mb-3">
-          <span className="section-tag">HEALTH</span>
-          <h2 className="section-title">System Health</h2>
-        </div>
-        <div className="p-4 text-2xs text-text-tertiary">
-          Live system status is shown in the header <span className="text-text-secondary">Data Integrity</span> indicator
-          and the <span className="text-text-secondary">Data Providers</span> panel (provider health, fallbacks, rate use).
-        </div>
-      </section>
-    )
-  }
+const TONE: Record<string, string> = {
+  live: 'text-green', ok: 'text-green', healthy: 'text-green', fresh: 'text-green',
+  degraded: 'text-amber', stale: 'text-amber', warning: 'text-amber',
+  down: 'text-red', error: 'text-red', critical: 'text-red', overdue: 'text-red',
+};
+const tone = (s?: string) => TONE[(s || '').toLowerCase()] ?? 'text-text-secondary';
+const LABEL: Record<string, string> = {
+  recession: 'Recession probit', lei: 'Leading indicators', credit_impulse: 'Credit impulse',
+  risk_parity: 'Risk parity', fin_conditions: 'Financial conditions', classifier: 'Regime classifier',
+};
 
-  const getStatusColor = (status?: string) => {
-    switch (status?.toLowerCase()) {
-      case 'healthy':
-        return 'text-green';
-      case 'degraded':
-        return 'text-amber';
-      case 'critical':
-        return 'text-red';
-      default:
-        return 'text-text-secondary';
-    }
-  };
+export function SystemHealthSection() {
+  const [health, setHealth] = useState<Health | null>(null);
+  const [sources, setSources] = useState<Sources | null>(null);
+  const [fresh, setFresh] = useState<Freshness | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const getStatusIcon = (status?: string) => {
-    switch (status?.toLowerCase()) {
-      case 'healthy':
-        return <CheckCircle className="w-4 h-4 text-green" />;
-      case 'degraded':
-        return <AlertCircle className="w-4 h-4 text-amber" />;
-      case 'critical':
-        return <AlertCircle className="w-4 h-4 text-red" />;
-      default:
-        return <Activity className="w-4 h-4 text-text-tertiary" />;
-    }
-  };
+  const load = useCallback(async () => {
+    setBusy(true);
+    const get = async (u: string) => {
+      const r = await fetch(u);
+      if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`);
+      return r.json();
+    };
+    const [h, s, f] = await Promise.allSettled([get('/api/health'), get('/api/v1/health/sources'), get('/api/v1/freshness')]);
+    if (h.status === 'fulfilled') setHealth(h.value);
+    if (s.status === 'fulfilled') setSources(s.value);
+    if (f.status === 'fulfilled') setFresh(f.value);
+    const failed = [h, s, f].filter((x) => x.status === 'rejected') as PromiseRejectedResult[];
+    setError(failed.length ? failed.map((x) => x.reason?.message).join('; ') : null);
+    setBusy(false);
+  }, []);
 
-  const formatLatency = (ms?: number) => {
-    if (ms === undefined) return '--';
-    if (ms < 100) return `${ms.toFixed(0)}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
-  };
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 60_000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const series = fresh?.series ?? [];
+  const notFresh = series.filter((r) => (r.status || '').toUpperCase() !== 'FRESH');
+  const breaker = health?.fred_circuit_breaker;
 
   return (
-    <section id="system-health" className="terminal-section">
-      <div className="section-header">
+    <section className="terminal-section">
+      <div className="section-header mb-3">
         <span className="section-tag">HEALTH</span>
         <h2 className="section-title">System Health</h2>
-        <Badge variant={data?.status === 'healthy' ? 'success' : 'neutral'} className="ml-2">
-          {data?.status || 'Unknown'}
-        </Badge>
+        {sources && <span className={`ml-2 text-2xs uppercase font-mono ${tone(sources.overall)}`}>{sources.overall}</span>}
+        <button onClick={load} disabled={busy} className="ml-auto p-1 text-text-tertiary hover:text-bloomberg disabled:opacity-50" aria-label="Refresh" title="Refresh">
+          <RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} />
+        </button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Overall Status */}
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            {getStatusIcon(data?.status)}
-            <div>
-              <div className="text-2xs text-text-tertiary uppercase">Status</div>
-              <div className={`font-mono font-medium ${getStatusColor(data?.status)}`}>
-                {data?.status || 'Unknown'}
-              </div>
-            </div>
-          </div>
-        </Card>
+      {error && <div className="mb-2 text-2xs text-amber">Partially unavailable: {error}</div>}
+      {!health && !sources && !error && <div className="h-24 animate-pulse bg-surface-2" />}
 
-        {/* API Latency */}
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <Clock className="w-4 h-4 text-bloomberg" />
-            <div>
-              <div className="text-2xs text-text-tertiary uppercase">API Latency</div>
-              <div className="font-mono font-medium text-text-primary">
-                {formatLatency(data?.apiLatency)}
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+        <div className="border border-border bg-surface-1 p-3">
+          <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Data sources</div>
+          {sources && Object.entries(sources.sources).map(([name, p]) => (
+            <div key={name} className="flex items-baseline justify-between text-xs py-0.5" title={p.detail}>
+              <span className="text-text-secondary capitalize">{name.replace('_', ' ')}</span>
+              <span className="font-mono">
+                <span className={tone(p.status)}>{p.status}</span>
+                <span className="text-text-tertiary"> · {p.latency_ms == null ? '—' : `${p.latency_ms} ms`}</span>
+              </span>
             </div>
-          </div>
-        </Card>
+          ))}
+          {breaker && (
+            <div className="mt-1 pt-1 border-t border-border-subtle text-2xs text-text-tertiary">
+              FRED circuit breaker: <span className={breaker.open ? 'text-red' : 'text-green'}>{breaker.open ? `open, retry in ${Math.round(breaker.retry_in_s)}s` : 'closed'}</span>
+              {breaker.trips > 0 && ` · ${breaker.trips} trips`}
+            </div>
+          )}
+          {sources && Object.values(sources.sources).some((p) => p.status !== 'live') && (
+            <div className="mt-1 text-2xs text-text-tertiary">
+              {Object.entries(sources.sources).filter(([, p]) => p.status !== 'live').map(([n, p]) => `${n}: ${p.detail ?? p.status}`).join(' · ').slice(0, 220)}
+            </div>
+          )}
+        </div>
 
-        {/* Error Rate */}
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <Activity className="w-4 h-4 text-text-secondary" />
-            <div>
-              <div className="text-2xs text-text-tertiary uppercase">Error Rate</div>
-              <div className="font-mono font-medium text-text-primary">
-                {data?.errorRate !== undefined ? `${(data.errorRate * 100).toFixed(2)}%` : '--'}
-              </div>
+        <div className="border border-border bg-surface-1 p-3">
+          <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Models</div>
+          {health?.models && Object.entries(health.models).map(([k, ok]) => (
+            <div key={k} className="flex justify-between text-xs py-0.5">
+              <span className="text-text-secondary">{LABEL[k] ?? k}</span>
+              <span className={`font-mono ${ok ? 'text-green' : 'text-red'}`}>{ok ? 'loaded' : 'unavailable'}</span>
             </div>
-          </div>
-        </Card>
+          ))}
+          {health && (
+            <div className="mt-1 pt-1 border-t border-border-subtle text-2xs text-text-tertiary">
+              Analytical integrity: <span className={tone(health.analyticalIntegrity)}>{health.analyticalIntegrity ?? '—'}</span>
+              {health.integrityErrors?.length ? ` · ${health.integrityErrors.join('; ')}` : ''}
+            </div>
+          )}
+        </div>
 
-        {/* Last Update */}
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <Database className="w-4 h-4 text-text-secondary" />
-            <div>
-              <div className="text-2xs text-text-tertiary uppercase">Last Update</div>
-              <div className="font-mono font-medium text-text-primary">
-                {data?.lastUpdate ? new Date(data.lastUpdate).toLocaleTimeString() : '--'}
+        <div className="border border-border bg-surface-1 p-3">
+          <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Data freshness</div>
+          {fresh && (
+            <>
+              <div className="text-xs text-text-secondary mb-1">
+                <span className="font-mono text-text-primary">{series.length - notFresh.length}/{series.length}</span> series current with their release calendar
               </div>
-            </div>
-          </div>
-        </Card>
+              {notFresh.length === 0 ? (
+                <div className="text-2xs text-green">All inputs up to date.</div>
+              ) : notFresh.slice(0, 6).map((r) => (
+                <div key={r.series_id} className="flex justify-between text-2xs py-0.5">
+                  <span className="text-text-secondary">{r.name}</span>
+                  <span className={`font-mono ${tone(r.status)}`}>{r.status}{r.last_observation_date ? ` · ${r.last_observation_date}` : ''}</span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
       </div>
-
-      {/* Data Sources Table */}
-      {data?.dataSources && data.dataSources.length > 0 && (
-        <Card title="Data Sources" className="mt-4">
-          <div className="space-y-2">
-            {data.dataSources.map((source) => (
-              <div
-                key={source.name}
-                className="flex items-center justify-between p-2 border border-border-subtle bg-surface-2"
-              >
-                <div className="flex items-center gap-2">
-                  {source.status === 'online' ? (
-                    <CheckCircle className="w-3 h-3 text-green" />
-                  ) : (
-                    <AlertCircle className="w-3 h-3 text-red" />
-                  )}
-                  <span className="text-sm text-text-primary">{source.name}</span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <Badge variant={source.status === 'online' ? 'success' : 'danger'}>
-                    {source.status}
-                  </Badge>
-                  <span className="text-xs text-text-tertiary font-mono">
-                    {formatLatency(source.latency)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* Performance Metrics */}
-      {performanceData && (
-        <Card title="Performance Metrics" className="mt-4">
-          <div className="grid grid-cols-3 gap-4">
-            <div className="text-center">
-              <div className="text-2xs text-text-tertiary uppercase mb-1">Avg Latency</div>
-              <div className="font-mono text-lg text-text-primary">
-                {formatLatency(performanceData.averageLatency)}
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xs text-text-tertiary uppercase mb-1">P95 Latency</div>
-              <div className="font-mono text-lg text-text-primary">
-                {formatLatency(performanceData.p95Latency)}
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xs text-text-tertiary uppercase mb-1">Uptime</div>
-              <div className="font-mono text-lg text-text-primary">
-                {performanceData.uptime !== undefined
-                  ? (typeof performanceData.uptime === 'number'
-                      ? `${performanceData.uptime.toFixed(2)}%`
-                      : performanceData.uptime)
-                  : '--'}
-              </div>
-            </div>
-          </div>
-        </Card>
-      )}
     </section>
   );
 }

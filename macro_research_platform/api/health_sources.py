@@ -45,12 +45,21 @@ def _probe_fred() -> Dict[str, Any]:
     import requests
     t0 = time.perf_counter()
     try:
-        r = requests.get(
-            "https://api.stlouisfed.org/fred/series/observations",
-            params={"series_id": "DGS10", "api_key": FRED_API_KEY,
-                    "file_type": "json", "sort_order": "desc", "limit": 1},
-            timeout=(3, 8),
-        )
+        for attempt in range(2):
+            try:
+                r = requests.get(
+                    "https://api.stlouisfed.org/fred/series/observations",
+                    params={"series_id": "DGS10", "api_key": FRED_API_KEY,
+                            "file_type": "json", "sort_order": "desc", "limit": 1},
+                    timeout=(3, 8),
+                )
+                break
+            except requests.exceptions.ReadTimeout:
+                # Connected but no answer in time: slow (e.g. while the app's own startup
+                # burst is in flight), not down. Retry once before reporting.
+                if attempt == 1:
+                    return {"status": "degraded", "latency_ms": round((time.perf_counter() - t0) * 1000),
+                            "detail": "connected, but no response within 8s (twice)"}
         ms = round((time.perf_counter() - t0) * 1000)
         if r.status_code == 200:
             obs = r.json().get("observations") or []

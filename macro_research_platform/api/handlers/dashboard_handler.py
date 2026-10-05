@@ -76,7 +76,7 @@ def _label100(s: float) -> str:
 
 
 def _build_news_sentiment(regime_name: str, now) -> dict:
-    """Real headline-level sentiment from live RSS news (Reuters/Bloomberg/FT), scored with a
+    """Real headline-level sentiment from live RSS markets news (see NewsProvider), scored with a
     finance lexicon. Builds the shape the News Sentiment panel reads: overall, per-theme
     (inflation/growth/fed), and top bullish/bearish headlines. Falls back to an honest empty
     shape (never fabricated) if the feeds are unreachable."""
@@ -127,7 +127,8 @@ def _build_news_sentiment(regime_name: str, now) -> dict:
         # legacy fields kept so both response shapes remain valid:
         "overallSentiment": agg["overall"], "score": overall_score, "trend": agg["trend"],
         "articles": [{"title": a["title"], "source": a.get("source"), "sentiment": a["sentiment"]} for a in scored[:12]],
-        "source": "RSS (Reuters/Bloomberg/FT) + finance-lexicon NLP",
+        "source": "RSS ({}) + finance-lexicon NLP".format(
+            ", ".join(sorted({a.get("source") for a in scored if a.get("source")})) or "no feeds reachable"),
         "lastUpdated": now.isoformat(),
     }
 
@@ -384,12 +385,12 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         keyRisks=[
             f"Fed policy with {ten_yr:.2f}% 10Y yield" if ten_yr else "Fed policy uncertainty",
             f"VIX at {vix_level:.1f} ({'elevated' if vix_level and vix_level > 25 else 'normal'})" if vix_level else "Volatility risk",
-            f"Yield curve {'inverted' if yield_spread < 0 else 'steep'} ({yield_spread:+.2f}%)"
+            f"Yield curve (10Y–2Y) {'inverted' if yield_spread < 0 else 'flat' if yield_spread < 0.5 else 'normal' if yield_spread < 1.5 else 'steep'} ({yield_spread:+.2f}pp)"
         ],
         opportunities=[
             f"{regime_chars.equity_bias.title()} equities in {regime_name}",
-            f"{regime_chars.duration_bias} duration positioning",
-            f"{regime_chars.commodity_bias} commodity exposure"
+            f"{regime_chars.duration_bias.capitalize()} duration positioning",
+            f"{regime_chars.commodity_bias.capitalize()} commodity exposure"
         ],
         positioningGuidance=f"{regime_name}: {regime_chars.description}"
     )
@@ -766,11 +767,18 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         "disagreements": [],
         "lastUpdated": now.isoformat(),
     }
+    _summary = (f"{regime_name.title()} regime ({regime_confidence:.0%} confidence, "
+                f"{regime_duration_label}): {regime_chars.description.lower()}. Growth signal "
+                f"{growth_score:.2f}, inflation signal {inflation_score:.2f}"
+                + (f"; CPI {cpi_now:.1f}% y/y" if cpi_now is not None else "")
+                + (f", 10Y {ten_yr:.2f}%" if ten_yr else "") + ".")
     _investment_memo = {
         "title": f"{regime_name.title()} Regime — Investment Memo",
-        "summary": metadata.supportingEvidence or "",
+        "regimeSummary": _summary,
+        "summary": _summary,
         "keyPoints": [t for t in regime_chars.themes],
-        "risks": regime_chars.key_risks if hasattr(regime_chars, 'key_risks') else [],
+        "risks": list(playbook.keyRisks),
+        "opportunities": list(playbook.opportunities),
         "lastUpdated": now.isoformat(),
     }
     # Upcoming releases from the release calendar (was a fixed list with every date "TBD").

@@ -498,6 +498,17 @@ def _fetch_fred_release_dates(release_id: int, n: int = 8, past: bool = False) -
         return []
 
 
+def _calendar_release_dates(release_id: int, start, end) -> list[str]:
+    """Scheduled dates from the economic calendar's cache (disk, 12h, last good copy on a
+    FRED outage), so every panel shows the same official date. [] if never fetched."""
+    try:
+        from api.econ_calendar import _dates
+        return _dates(release_id, start, end)
+    except Exception as e:
+        logger.warning(f"release dates {release_id} unavailable: {e}")
+        return []
+
+
 # FIXED: Tier 1D - Dashboard response caching with 5-minute TTL
 # Reduces response time from ~4s to <100ms for cached responses
 _EVENT_VOL_CACHE: Dict[str, Any] = {"data": None, "ts": 0.0}
@@ -2708,7 +2719,7 @@ async def event_vol_v1():
     if nxt["event"] == "FOMC Decision":
         past_dates = [d for d in await _aio_to_thread(_fetch_fomc_dates) if d < today_iso][-8:]
     else:
-        rid = {"CPI Release": 10, "Nonfarm Payrolls": 50}.get(nxt["event"])
+        rid = nxt.get("release_id") or {"CPI Release": 10, "Nonfarm Payrolls": 50}.get(nxt["event"])
         past_dates = (await _aio_to_thread(_fetch_fred_release_dates, rid, 8, True)) if rid else []
     dates_source = "actual"
     if not past_dates:
@@ -4146,7 +4157,7 @@ async def get_horizon_risks():
         # ~12th-of-month fallback. Previously horizon used a "second Tuesday" heuristic while the
         # calendar used the 12th, so the two panels showed the same CPI release on different dates
         # (e.g. 07-14 vs 07-12). Now both derive from one source and stay consistent.
-        cpi_dates = _fetch_fred_release_dates(10, n=6)
+        cpi_dates = _calendar_release_dates(10, today, horizon_end)
         if cpi_dates:
             for ds in cpi_dates:
                 try:
@@ -4166,7 +4177,7 @@ async def get_horizon_risks():
 
         # NFP releases — SAME source as /api/calendar (FRED release id 50), fallback to the first
         # Friday of the month, and the same "Nonfarm Payrolls" label the calendar/event-vol use.
-        nfp_dates = _fetch_fred_release_dates(50, n=6)
+        nfp_dates = _calendar_release_dates(50, today, horizon_end)
         if nfp_dates:
             for ds in nfp_dates:
                 try:
@@ -4234,56 +4245,15 @@ async def get_horizon_risks():
 
 # FIXED: Missing endpoints (BUG 15)
 @app.get("/api/calendar")
-@ttl_cache(600)
 async def get_economic_calendar():
-    """
-    Economic calendar with FOMC, NFP, and CPI events.
-    FIXED (BUG 7 PERMANENT): Uses live data from Fed website and FRED API.
-    """
+    """US economic calendar: official release dates (FRED release calendar) for the main
+    releases and FOMC decisions, with each release's latest print. See api/econ_calendar.py."""
+    from api.econ_calendar import get_calendar
     try:
-        from datetime import date, timedelta
-        today = date.today()
-        events = []
-
-        # FIXED (BUG 7): Fetch FOMC dates from Fed website (cached 24h)
-        fomc_dates = _fetch_fomc_dates()
-        logger.info(f"Fetched {len(fomc_dates)} FOMC dates from Federal Reserve")
-
-        # FIXED (BUG 7): Fetch NFP and CPI dates from FRED API
-        # CPI release ID = 10, NFP (Employment Situation) = 50
-        cpi_dates = _fetch_fred_release_dates(10, n=6)
-        nfp_dates = _fetch_fred_release_dates(50, n=6)
-        logger.info(f"Fetched {len(cpi_dates)} CPI dates, {len(nfp_dates)} NFP dates from FRED")
-
-        # Generate next 90 days of events
-        for i in range(90):
-            d = today + timedelta(days=i)
-            d_str = d.strftime("%Y-%m-%d")
-
-            # FOMC: use live scraped dates with fallback
-            if d_str in fomc_dates:
-                events.append({"date": d_str, "event": "FOMC Decision", "impact": "HIGH", "category": "MONETARY_POLICY", "source": "federalreserve.gov"})
-
-            # NFP: use FRED dates with fallback to first Friday
-            if d_str in nfp_dates:
-                events.append({"date": d_str, "event": "Nonfarm Payrolls", "impact": "HIGH", "category": "LABOR", "source": "FRED"})
-            elif not nfp_dates and d.weekday() == 4 and 1 <= d.day <= 7:
-                events.append({"date": d_str, "event": "Nonfarm Payrolls", "impact": "HIGH", "category": "LABOR", "source": "fallback"})
-
-            # CPI: use FRED dates with fallback to ~12th of month
-            if d_str in cpi_dates:
-                events.append({"date": d_str, "event": "CPI Release", "impact": "HIGH", "category": "INFLATION", "source": "FRED"})
-            elif not cpi_dates and d.day == 12:
-                events.append({"date": d_str, "event": "CPI Release", "impact": "HIGH", "category": "INFLATION", "source": "fallback"})
-
-        return JSONResponse(content=scrub_nans({"events": events[:20]}))
+        return JSONResponse(content=scrub_nans(await asyncio.to_thread(get_calendar)))
     except Exception as e:
         logger.error(f"Calendar error: {e}")
-        return JSONResponse(content={"events": [], "error": str(e)})
-
-
-
-
+        return JSONResponse(content={"upcoming": [], "this_week": [], "events": [], "error": str(e)[:200]})
 
 
 # FIXED (PART 1): Market Stream endpoint for live topbar data

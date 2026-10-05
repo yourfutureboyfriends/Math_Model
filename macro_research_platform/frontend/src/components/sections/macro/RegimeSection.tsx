@@ -12,9 +12,13 @@ interface RegimeSectionProps {
   data?: RegimeData;
 }
 
-export function RegimeSection({ data }: RegimeSectionProps) {
-  // Use macro store for live regime data
+export function RegimeSection({ data: dataProp }: RegimeSectionProps) {
+  // Use macro store for live regime data; the full dashboard payload carries the
+  // interpretations the store's summary doesn't keep.
   const regime = useMacroStore((state) => state.regime);
+  const fullRegime = useMacroStore((state) => (state.fullDashboard as any)?.regime) as RegimeData | undefined;
+  const data = dataProp ?? fullRegime;
+  const probs = Object.entries(regime.probabilities ?? {}).filter(([, p]) => p !== null && p !== undefined);
   const isLoading = useMacroStore((state) => state.meta.dataStatus === 'loading');
 
   if (isLoading && !data) {
@@ -154,12 +158,12 @@ export function RegimeSection({ data }: RegimeSectionProps) {
           )}
 
           {/* Regime Probabilities from Store */}
-          {regime.probabilities && (
+          {probs.length > 0 && (
             <div className="mt-3 pt-3 border-t border-border-subtle">
               <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Probabilities</div>
               <div className="grid grid-cols-2 gap-2">
-                {Object.entries(regime.probabilities).map(([key, prob]) => (
-                  prob !== null && (
+                {probs.map(([key, prob]) => (
+                  prob != null && (
                     <div key={key} className="flex items-center justify-between">
                       <span className="text-xs text-text-secondary capitalize">{key}</span>
                       <span className="font-mono text-xs text-text-primary">{fmtProbability(prob)}</span>

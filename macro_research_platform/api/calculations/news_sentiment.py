@@ -17,6 +17,9 @@ POSITIVE = {
     "grow", "optimism", "optimistic", "record", "strong", "strength", "boost", "boosts", "profit",
     "profits", "bullish", "recover", "recovery", "rebound", "outperform", "higher",
     "expand", "expansion", "win", "wins", "ease", "eases", "eased", "cooling", "resilient",
+    "boom", "booming", "climb", "climbs", "climbed", "advance", "advances", "highs", "upbeat",
+    "accelerate", "accelerates", "improve", "improves", "improved", "robust", "solid", "beats",
+    "stimulus", "easing", "cools", "cooled", "relief", "rallied", "jumped", "soared", "rebounds",
 }
 NEGATIVE = {
     "plunge", "plunges", "plunged", "crash", "crashes", "fall", "falls", "fell", "drop", "drops",
@@ -25,6 +28,10 @@ NEGATIVE = {
     "cuts", "layoff", "layoffs", "default", "crisis", "bearish", "loss", "losses", "warn", "warns",
     "warning", "slow", "slowdown", "decline", "declines", "declined", "lower",
     "concern", "concerns", "turmoil", "volatile", "volatility", "hike", "hikes",
+    "slide", "slides", "slid", "lows", "rout", "routs", "slump", "slumped", "tumbled", "sank",
+    "collapse", "collapses", "plummet", "plummets", "shrink", "shrinks", "contraction", "worries",
+    "worry", "risk", "risks", "threat", "threats", "tariff", "tariffs", "shutdown", "stall", "stalls",
+    "stagnate", "falter", "falters", "slowing", "selloff", "panic", "turbulence", "sell", "dumps",
 }
 
 _WORD = re.compile(r"[a-z][a-z\-']+")

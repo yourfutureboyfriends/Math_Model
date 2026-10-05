@@ -14,8 +14,8 @@ export function NewsSentimentSection({ data: dataProp }: NewsSentimentSectionPro
   const _fullDash = useMacroStore((s) => s.fullDashboard);
   let data = dataProp;
   if (!data) data = (_fullDash as any)?.newsSentiment as any;
-  const [showBearish, setShowBearish] = useState(false);
-  const [showBullish, setShowBullish] = useState(false);
+  const [showBearish, setShowBearish] = useState(true);
+  const [showBullish, setShowBullish] = useState(true);
 
   if (!data) return null;
 
