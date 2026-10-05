@@ -23,6 +23,9 @@ interface MetricCardProps {
   value: string;
   direction?: 'up' | 'down' | 'neutral';
   sparklineData?: number[];
+  /** Hover labels and value format for the sparkline readout. */
+  sparklineLabels?: string[];
+  sparklineFormat?: (v: number) => string;
   color?: string;
   /** Phase 2 — one-line explanation of the move, shown as a muted subtitle. */
   explanation?: string;
@@ -38,7 +41,7 @@ interface MetricCardProps {
 }
 
 export function MetricCard({
-  label, value, direction = 'neutral', sparklineData, color,
+  label, value, direction = 'neutral', sparklineData, sparklineLabels, sparklineFormat, color,
   explanation, zScore, isAnomalous, lineage, stale, staleLabel, className,
 }: MetricCardProps) {
   const valueColor = color || getDirectionColor(direction);
@@ -83,7 +86,7 @@ export function MetricCard({
       {/* Inline sparkline */}
       {sparklineData && sparklineData.length > 1 && (
         <div className="mt-2">
-          <Sparkline data={sparklineData} direction={direction} height={28} />
+          <Sparkline data={sparklineData} direction={direction} height={28} labels={sparklineLabels} format={sparklineFormat} />
         </div>
       )}
 

@@ -75,12 +75,18 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
   const liquidityScore = signals.liquidity.score ?? 0;
   const riskScore = signals.risk.score ?? 0;
 
-  // Use data from store only - no hardcoded fallbacks
-  const growthSparkline = km?.growth?.sparklineData ?? [];
-  const inflationSparkline = km?.inflation?.sparklineData ?? [];
-  const liquiditySparkline = km?.liquidity?.sparklineData ?? [];
-  const riskSparkline = km?.risk?.sparklineData ?? [];
+  // Sparklines on the SAME scale as the headline score: the signal histories (0–1). The
+  // keyMetrics sparklines are 0–100 and, for risk, plot risk aversion (100 − appetite),
+  // so the line moved opposite to the "Risk Appetite" number above it.
+  const sig = (fullDashboard as any)?.signals ?? {};
+  const hist = (k: string): number[] => (Array.isArray(sig[k]?.history) ? sig[k].history : []);
+  const histLabels = (k: string): string[] | undefined => sig[k]?.historyLabels;
+  const growthSparkline = hist('growth');
+  const inflationSparkline = hist('inflation');
+  const liquiditySparkline = hist('liquidity');
+  const riskSparkline = hist('risk');
   const recessionSparkline = km?.recession?.sparklineData ?? [];
+  const fmtScore = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}`;
 
   return (
     <div id="key-metrics" className="terminal-section">
@@ -99,6 +105,8 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
           value={fmtSignal(growthScore) ?? '—'}
           direction={getScoreDirection(growthScore)}
           sparklineData={growthSparkline}
+          sparklineLabels={histLabels('growth')}
+          sparklineFormat={fmtScore}
           color={getScoreDirection(growthScore) === 'up' ? 'var(--green)' : undefined}
           explanation={stories.Growth?.explanation_text}
           lineage={lineageFor('Growth', growthScore)}
@@ -110,6 +118,8 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
           value={fmtSignal(inflationScore) ?? '—'}
           direction={getScoreDirection(inflationScore)}
           sparklineData={inflationSparkline}
+          sparklineLabels={histLabels('inflation')}
+          sparklineFormat={fmtScore}
           explanation={stories.Inflation?.explanation_text}
           lineage={lineageFor('Inflation', inflationScore)}
           stale={isStale('inflation')}
@@ -120,6 +130,8 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
           value={fmtSignal(liquidityScore) ?? '—'}
           direction="neutral"
           sparklineData={liquiditySparkline}
+          sparklineLabels={histLabels('liquidity')}
+          sparklineFormat={fmtScore}
           explanation={stories.Liquidity?.explanation_text}
           lineage={lineageFor('Liquidity', liquidityScore)}
           stale={isStale('liquidity')}
@@ -130,6 +142,8 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
           value={fmtSignal(riskScore) ?? '—'}
           direction={getScoreDirection(riskScore)}
           sparklineData={riskSparkline}
+          sparklineLabels={histLabels('risk')}
+          sparklineFormat={fmtScore}
           explanation={stories.Risk?.explanation_text}
           lineage={lineageFor('Risk', riskScore)}
           stale={isStale('risk')}
@@ -140,6 +154,7 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
           value={km?.recession?.formatted ?? '—'}
           direction={isNaN(km?.recession?.value ?? 0) ? 'neutral' : ((km?.recession?.value ?? 0) > 15 ? 'down' : 'up')}
           sparklineData={recessionSparkline}
+          sparklineFormat={(v) => `${v.toFixed(1)}%`}
           color={getRecessionColor(isNaN(km?.recession?.value ?? 0) ? 0 : (km?.recession?.value ?? 0)).replace('text-', 'var(--') + ')'}
           lineage={{ source: 'ensemble recession model', fetched_at: meta.as_of, formula: 'Estrella-Mishkin probit + Sahm + ensemble' }}
           stale={isStale('recession')}

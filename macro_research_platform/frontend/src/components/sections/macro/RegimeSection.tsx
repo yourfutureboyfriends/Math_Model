@@ -3,7 +3,7 @@
 
 import { cn } from '@/lib/utils';
 import { ComputedTag } from '@/components/ui/ComputedTag';
-import { AnimatedValue, SkeletonCard } from '@/components/ui';
+import { SkeletonCard } from '@/components/ui';
 import { useMacroStore } from '@/store/macroStore';
 import { fmtRegime, fmtProbability, fmtDuration } from '@/utils/format';
 import type { RegimeData } from '@/types';
@@ -86,20 +86,6 @@ export function RegimeSection({ data: dataProp }: RegimeSectionProps) {
     return 'bg-surface-2 border-border';
   };
 
-  const getConfidenceBadge = (conf: string | number | null) => {
-    const confStr = typeof conf === 'number' ? (conf > 70 ? 'high' : conf > 40 ? 'medium' : 'low') : String(conf).toLowerCase();
-    switch (confStr) {
-      case 'high':
-        return 'signal-tag bullish';
-      case 'medium':
-        return 'signal-tag warning';
-      case 'low':
-        return 'signal-tag bearish';
-      default:
-        return 'signal-tag neutral';
-    }
-  };
-
   return (
     <div id="regime" className="terminal-section">
       {/* Section Header */}
@@ -149,11 +135,6 @@ export function RegimeSection({ data: dataProp }: RegimeSectionProps) {
                   style={{ width: `${Math.min(100, confidence)}%` }}
                 />
               </div>
-              <div className="text-right mt-1">
-                <span className="font-mono text-xs text-bloomberg">
-                  <AnimatedValue value={confidence} decimals={0} suffix="%" />
-                </span>
-              </div>
             </div>
           )}
 
@@ -195,7 +176,7 @@ export function RegimeSection({ data: dataProp }: RegimeSectionProps) {
                     <td className="py-2 px-3 text-sm text-text-primary">{interp.factor}</td>
                     <td className="py-2 px-3 text-sm text-text-secondary">{interp.impact}</td>
                     <td className="py-2 px-3 text-right">
-                      <span className={getConfidenceBadge(interp.color === 'success' ? 'High' : interp.color === 'warning' ? 'Medium' : 'Low')}>
+                      <span className={interp.color === 'success' ? 'signal-tag bullish' : interp.color === 'danger' ? 'signal-tag bearish' : 'signal-tag neutral'}>
                         {interp.color === 'success' ? 'UP' : interp.color === 'danger' ? 'DOWN' : 'NEUTRAL'}
                       </span>
                     </td>

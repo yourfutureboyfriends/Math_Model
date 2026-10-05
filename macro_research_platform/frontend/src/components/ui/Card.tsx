@@ -21,7 +21,7 @@ export function Card({ title, headerRight, children, className, loading }: CardP
       )}
     >
       {(title || headerRight) && (
-        <div className="px-3 py-1.5 bg-surface-2 border-b border-border-subtle flex items-center justify-between gap-2">
+        <div data-panel-header="" className="px-3 py-1.5 bg-surface-2 border-b border-border-subtle flex items-center justify-between gap-2">
           <h3 className="text-2xs font-medium text-text-tertiary uppercase tracking-wider">
             {title}
           </h3>

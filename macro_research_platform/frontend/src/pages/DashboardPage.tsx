@@ -1,10 +1,11 @@
 // Dashboard Page — Main terminal dashboard with all sections
 // Uses REAL data from macroStore (fetched from backend API)
 
-import { Suspense, useEffect, useRef } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useDesk } from '@/hooks/useDesk';
-import { applyFocus, useFocusMode } from '@/lib/focusMode';
+import { applyFocus, getCollapsed, panelId, saveCollapsed, setDeskPanels, useWorkspace, workspacePanels } from '@/lib/focusMode';
+import { WorkspaceBar } from '@/components/layout/WorkspaceBar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SectionSkeleton } from '@/components/ui/SectionSkeleton';
 import { useMacroStore } from '@/store/macroStore';
@@ -49,7 +50,6 @@ import {
   DataProvidersSection,
   SystemAuditSection,
   DataExplorerSection,
-  DataToWatchSection,
   InvestmentMemoSection,
   ModelAgreementSection,
   ExpectedReturnsSection,
@@ -85,23 +85,39 @@ import {
   TradeRecommendationsSection,
 } from '@/components/sections';
 
+/** Fold a top-level panel to its header (the first .section-header): every node off the
+ *  path from the panel to its header is hidden while folded. */
+function foldPanel(sec: HTMLElement, fold: boolean) {
+  // The panel's own header: the first .section-header, else a card/brief header that leads
+  // the panel (a card header further down belongs to a sub-card, not the panel).
+  let head = sec.querySelector<HTMLElement>('.section-header');
+  if (!head) {
+    const alt = sec.querySelector<HTMLElement>('[data-panel-header]');
+    let leading = !!alt;
+    for (let n = alt; leading && n && n !== sec; n = n.parentElement) leading = n.parentElement?.firstElementChild === n;
+    head = leading ? alt : null;
+  }
+  sec.querySelectorAll<HTMLElement>('[data-fold]').forEach((n) => n.removeAttribute('data-fold'));
+  if (!head) { sec.removeAttribute('data-collapsed'); return; }
+  head.setAttribute('data-panel-head', '');
+  if (!fold) { sec.removeAttribute('data-collapsed'); return; }
+  sec.setAttribute('data-collapsed', '');
+  for (let node: HTMLElement = head; node !== sec && node.parentElement; node = node.parentElement) {
+    for (const sib of Array.from(node.parentElement.children) as HTMLElement[]) {
+      if (sib !== node) sib.setAttribute('data-fold', '');
+    }
+  }
+}
+
 export function DashboardPage() {
-  // Focus mode: show only this role's panels (re-applied as lazy panels mount).
+  // Workspaces: show one navigation group (or the role's focus set) at a time, re-applied
+  // as lazy panels mount. Panels fold to their header on a header click (remembered).
   const rootRef = useRef<HTMLDivElement>(null);
-  const focus = useFocusMode();
+  const ws = useWorkspace();
   const { user } = useAuth();
   const desk = useDesk(user?.username);
-  useEffect(() => {
-    const allowed = focus ? new Set(['my-desk', 'macro-model', 'morning-brief', ...(desk?.focus.panels ?? [])]) : null;
-    const run = () => applyFocus(rootRef.current, allowed);
-    run();
-    if (!rootRef.current) return;
-    let t: ReturnType<typeof setTimeout> | undefined;
-    const obs = new MutationObserver(() => { clearTimeout(t); t = setTimeout(run, 150); });
-    obs.observe(rootRef.current, { childList: true, subtree: true });
-    return () => { obs.disconnect(); clearTimeout(t); };
-  }, [focus, desk]);
-
+  const [collapsed, setCollapsed] = useState<Set<string>>(getCollapsed);
+  const [visibleCount, setVisibleCount] = useState(0);
   // P3: subscribe to ONLY the fields this component reads, so the whole 50-section tree
   // doesn't re-render on every WebSocket price tick (was `useMacroStore((s) => s)`).
   const dataStatus = useMacroStore((s) => s.meta.dataStatus);
@@ -114,6 +130,59 @@ export function DashboardPage() {
   const isLoading = dataStatus === 'loading' && !hasData;
   const isError = dataStatus === 'error' && !hasData;
   const refreshFailed = dataStatus === 'error' && hasData;
+
+
+  useEffect(() => { setDeskPanels(desk?.focus.panels ?? []); }, [desk]);
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const allowed = workspacePanels(ws, desk?.focus.panels ?? []);
+    const run = () => {
+      applyFocus(root, allowed);
+      let n = 0;
+      root.querySelectorAll<HTMLElement>(':scope > .terminal-section').forEach((sec) => {
+        if (!sec.hidden) n++;
+        foldPanel(sec, collapsed.has(panelId(sec) ?? ''));
+      });
+      setVisibleCount(n);
+    };
+    run();
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const obs = new MutationObserver(() => { clearTimeout(t); t = setTimeout(run, 150); });
+    obs.observe(root, { childList: true, subtree: true });
+    return () => { obs.disconnect(); clearTimeout(t); };
+  }, [ws, desk, collapsed, hasData]);
+
+  const toggleFold = useCallback((e: { target: EventTarget }) => {
+    const el = e.target as HTMLElement;
+    const head = el.closest<HTMLElement>('[data-panel-head]');
+    if (!head || el.closest('button, a, input, select, textarea, label, [role="button"], [role="tab"]')) return;
+    let sec: HTMLElement | null = head;
+    while (sec && sec.parentElement !== rootRef.current) sec = sec.parentElement;
+    const id = sec ? panelId(sec) : null;
+    if (!id) return;
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      saveCollapsed(next);
+      return next;
+    });
+  }, []);
+
+  const collapseAll = useCallback((fold: boolean) => {
+    const root = rootRef.current;
+    if (!root) return;
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      root.querySelectorAll<HTMLElement>(':scope > .terminal-section').forEach((sec) => {
+        const id = panelId(sec);
+        if (!id || sec.hidden || id === 'my-desk') return;
+        fold ? next.add(id) : next.delete(id);
+      });
+      saveCollapsed(next);
+      return next;
+    });
+  }, []);
 
   if (isLoading) {
     return (
@@ -143,7 +212,9 @@ export function DashboardPage() {
   }
 
   return (
-    <div ref={rootRef}>
+    <>
+    <WorkspaceBar onCollapseAll={collapseAll} visibleCount={visibleCount} />
+    <div ref={rootRef} onClick={toggleFold}>
       {refreshFailed && (
         <div className="mx-4 mt-2 px-3 py-1.5 text-2xs font-mono border border-amber/40 text-amber bg-amber/5 flex items-center gap-2">
           Refresh failed — showing the last successful data. {wsError}
@@ -682,13 +753,6 @@ export function DashboardPage() {
         </ErrorBoundary>
       </div>
 
-      <div id="data-to-watch" className="terminal-section">
-        <ErrorBoundary sectionName="Upcoming Releases">
-          <Suspense fallback={<SectionSkeleton />}>
-            <DataToWatchSection />
-          </Suspense>
-        </ErrorBoundary>
-      </div>
 
       <div id="investment-memo" className="terminal-section">
         <ErrorBoundary sectionName="Investment Memo">
@@ -732,5 +796,6 @@ export function DashboardPage() {
         </ErrorBoundary>
       </div>
     </div>
+    </>
   );
 }

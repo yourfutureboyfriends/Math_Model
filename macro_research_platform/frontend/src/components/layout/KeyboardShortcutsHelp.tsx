@@ -11,6 +11,14 @@ interface KeyboardShortcutsHelpProps {
 
 const SHORTCUT_CATEGORIES = [
   {
+    name: 'Workspaces',
+    shortcuts: [
+      { key: '[', description: 'Previous workspace', context: '' },
+      { key: ']', description: 'Next workspace', context: '' },
+      { key: 'Click header', description: 'Fold / unfold a panel', context: '' },
+    ],
+  },
+  {
     name: 'Navigation',
     shortcuts: [
       { key: 'M', description: 'Daily Brief', context: '' },

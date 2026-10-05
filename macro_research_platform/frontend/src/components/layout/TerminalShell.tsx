@@ -11,6 +11,7 @@ import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
 import { ModelInfoPanel } from './ModelInfoPanel';
 import { BlackoutBanner } from '../EconomicCalendar';
 import { cn } from '@/lib/utils';
+import { revealPanel } from '@/lib/focusMode';
 import { ErrorBoundary } from '../ErrorBoundary';
 
 interface TerminalShellProps {
@@ -133,7 +134,7 @@ export function TerminalShell({
         'y': 'gmo-forecasts',     // Y = long-run return assumptions
         'u': 'valuation',           // U = Valuation
         'x': 'expected-returns',  // X = Expected Returns
-        'o': 'portfolio-analyser', // O = Portfolio
+        'o': 'portfolio',          // O = Model Portfolio
         'z': 'system-health',      // Z = System Health (instead of H)
         'h': 'horizon-tension',    // H = Horizon Tension
         'w': 'news-sentiment',    // W = News
@@ -145,7 +146,8 @@ export function TerminalShell({
         e.preventDefault();
         const sectionId = sectionMap[key];
         setActiveSection(sectionId);
-        document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
+        if (revealPanel(sectionId)) setTimeout(() => document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' }), 250);
+        else document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
         return;
       }
 
@@ -167,7 +169,8 @@ export function TerminalShell({
         if (numSections[index]) {
           const sectionId = numSections[index];
           setActiveSection(sectionId);
-          document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
+          if (revealPanel(sectionId)) setTimeout(() => document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' }), 250);
+          else document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
         }
         return;
       }
@@ -249,7 +252,6 @@ export function TerminalShell({
         'trade-ideas',
         'portfolio-fit',
         'economic-calendar',
-        'data-to-watch',
         'investment-memo',
         'business-layer',
         'system-health',
@@ -275,10 +277,11 @@ export function TerminalShell({
 
   const handleNavigate = (sectionId: string) => {
     setActiveSection(sectionId);
-    const element = document.getElementById(sectionId);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    // A panel outside the current workspace is hidden: switch to its group first, then
+    // scroll once the workspace has re-rendered.
+    const switched = revealPanel(sectionId);
+    const go = () => document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (switched) setTimeout(go, 250); else go();
     // Call external handler if provided
     externalOnNavigate?.(sectionId);
   };

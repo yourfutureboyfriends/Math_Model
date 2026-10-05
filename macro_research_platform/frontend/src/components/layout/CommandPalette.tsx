@@ -77,7 +77,6 @@ const sections = [
   // Portfolio
   { id: 'portfolio', label: 'Portfolio Analyser', priority: 'high' },
   { id: 'equity-research', label: 'Equity Research', priority: 'medium' },
-  { id: 'data-to-watch', label: 'Data to Watch', priority: 'low' },
   { id: 'investment-memo', label: 'Investment Memo', priority: 'low' },
   { id: 'business-layer', label: 'Business Layer', priority: 'low' },
   { id: 'economic-calendar', label: 'Economic Calendar', priority: 'medium' },

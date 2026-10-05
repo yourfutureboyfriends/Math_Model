@@ -8,6 +8,7 @@
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 :root {
+  --workspace-bar-height: 36px;
   /* ═══════════════════════════════════════════════════════════════════════════════
      TYPOGRAPHY TOKENS
      ═══════════════════════════════════════════════════════════════════════════════ */
@@ -682,9 +683,34 @@ button, a, [role="button"],
     border-left: 2px solid var(--bloomberg);
     background: var(--surface-2);
     position: sticky;
-    top: var(--topbar-height);
+    top: calc(var(--topbar-height) + var(--workspace-bar-height, 0px));
     z-index: 10;
   }
+
+  /* Panel folding: the first header of each dashboard panel toggles it (DashboardPage). */
+  [data-panel-head] {
+    cursor: pointer;
+    padding-right: 26px;
+  }
+  [data-panel-head]:not(.section-header) { position: relative; }
+  [data-panel-head]::after {
+    content: '';
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid var(--text-tertiary);
+    border-bottom: 1.5px solid var(--text-tertiary);
+    transform: translateY(-70%) rotate(45deg);
+    transition: transform 120ms ease, border-color 120ms ease;
+  }
+  [data-panel-head]:hover::after { border-color: var(--text-primary); }
+  [data-collapsed] [data-panel-head]::after { transform: translateY(-40%) rotate(-45deg); }
+  [data-collapsed] [data-panel-head] { border-bottom-color: transparent; }
+  [data-fold] { display: none !important; }
+  /* Jump targets land below the fixed top bar and the workspace tabs. */
+  .terminal-section, section[id] { scroll-margin-top: calc(var(--topbar-height) + var(--workspace-bar-height) + 8px); }
 
   .section-header-left {
     display: flex;
