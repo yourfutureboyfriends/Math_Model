@@ -87,7 +87,15 @@ async def _fetch_dated_closes_literal(ticker: str, period: str = "1y") -> dict:
         for ts, close in zip(hist.index, hist["Close"].tolist()):
             if isinstance(close, (int, float)) and close == close:
                 out[str(ts)[:10]] = float(close)
-        return out
+        from api.market_dates import is_spot_fx, ny_fx_closes
+        if is_spot_fx(ticker):
+            # Recent sessions from hourly bars at the 5pm NY cutoff: daily FX bars are a
+            # session behind, so without this Friday's close is missing until Tuesday.
+            try:
+                out.update(ny_fx_closes(yf.Ticker(ticker).history(period="7d", interval="60m")))
+            except Exception as e:
+                logger.debug(f"hourly FX closes failed for {ticker}: {e}")
+        return dict(sorted(out.items()))
 
     try:
         dated = await asyncio.to_thread(_pull)
@@ -255,6 +263,13 @@ async def get_rates_data() -> Dict[str, Any]:
             **{cc: foreign_curve(cc, curve_fred) for cc in FOREIGN_CURVES},
         },
         "creditSpreads": list(credit_spreads),
+        "ratesTable": _rates_table(curve_fred, fed_funds, real_yield_10y),
+        "breakevenInflation": {
+            "tenYear": (round(curve_fred["T10YIE"].latest, 2) if curve_fred.get("T10YIE") and curve_fred["T10YIE"].latest is not None else None),
+            "fiveYearFiveYear": (round(curve_fred["T5YIFR"].latest, 2) if curve_fred.get("T5YIFR") and curve_fred["T5YIFR"].latest is not None else None),
+            "asOf": curve_fred["T10YIE"].latest_date if curve_fred.get("T10YIE") else None,
+            "source": "FRED T10YIE, T5YIFR",
+        },
         "realYieldSignal": (None if real_yield_10y is None else
                             "positive" if real_yield_10y > 1.0 else "negative" if real_yield_10y < 0 else "neutral"),
         # Legacy fields for backward compatibility
@@ -264,6 +279,27 @@ async def get_rates_data() -> Dict[str, Any]:
         "yieldCurve": shape,
         "lastUpdated": datetime.now().isoformat()
     }
+
+
+def _rates_table(curve_fred, fed_funds, real_yield_10y) -> list:
+    """Key US rates with their 1-month change (FRED, same series as the curve)."""
+    from datetime import date as _date, timedelta as _td
+    month_ago = (_date.today() - _td(days=30)).isoformat()
+    rows = []
+    for label, sid in (("3M T-bill", "DGS3MO"), ("2Y Treasury", "DGS2"), ("5Y Treasury", "DGS5"),
+                       ("10Y Treasury", "DGS10"), ("30Y Treasury", "DGS30"), ("10Y TIPS (real)", "DFII10")):
+        s = curve_fred.get(sid)
+        if not s or s.latest is None:
+            continue
+        prev = s.asof(month_ago)
+        ch = round((s.latest - prev) * 100) if prev is not None else None
+        rows.append({"instrument": label, "yield": round(s.latest, 2), "change1mBps": ch,
+                     "asOf": s.latest_date,
+                     "signal": ("—" if ch is None else "rising" if ch >= 10 else "falling" if ch <= -10 else "stable")})
+    if fed_funds is not None:
+        rows.insert(0, {"instrument": "Fed funds (effective)", "yield": fed_funds, "change1mBps": None,
+                        "asOf": None, "signal": "—"})
+    return rows
 
 
 async def get_fx_data() -> Dict[str, Any]:

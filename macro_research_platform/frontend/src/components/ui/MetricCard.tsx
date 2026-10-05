@@ -46,7 +46,8 @@ export function MetricCard({
 }: MetricCardProps) {
   const valueColor = color || getDirectionColor(direction);
   const DirIcon = direction === 'up' ? TrendingUp : direction === 'down' ? TrendingDown : Minus;
-  const dirTone = direction === 'up' ? 'text-green' : direction === 'down' ? 'text-red' : 'text-text-tertiary';
+  // Movement only: whether up is good depends on the metric (recession risk up is not).
+  const dirTone = direction === 'neutral' ? 'text-text-tertiary' : 'text-text-secondary';
 
   return (
     <div
@@ -86,7 +87,7 @@ export function MetricCard({
       {/* Inline sparkline */}
       {sparklineData && sparklineData.length > 1 && (
         <div className="mt-2">
-          <Sparkline data={sparklineData} direction={direction} height={28} labels={sparklineLabels} format={sparklineFormat} />
+          <Sparkline data={sparklineData} color="var(--chart-line, #3987e5)" height={28} labels={sparklineLabels} format={sparklineFormat} />
         </div>
       )}
 

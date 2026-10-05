@@ -139,7 +139,7 @@ export function EquityResearchSection({ data }: EquityResearchSectionProps) {
         <div className="space-y-3">
           {sectorRatings && Object.keys(sectorRatings).length > 0 && (
             <div className="p-3 bg-surface-1 border border-border">
-              <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Sector Ratings</div>
+              <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Sector Ratings <span className="normal-case">— relative strength: 3M return vs SPY, percentile of the past year (regime-based tilts are in Sector Allocation)</span></div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 {Object.entries(sectorRatings).map(([sector, rating]) => (
                   <div key={sector} className="flex items-center justify-between px-2 py-1 bg-surface-2 border border-border-subtle">

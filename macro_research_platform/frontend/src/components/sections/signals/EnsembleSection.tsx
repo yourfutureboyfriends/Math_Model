@@ -22,7 +22,14 @@ export function EnsembleSection({ data: dataProp }: EnsembleSectionProps) {
       : 'Neutral',
     conviction: backendEnsemble.conviction ?? null,
     agreementRatio: backendEnsemble.agreement ?? null,
-    signalDispersion: backendEnsemble.agreement != null ? 1 - backendEnsemble.agreement : null,
+    // Cross-sectional standard deviation of the component scores (was 1 − vote agreement,
+    // which read 0.000 whenever every vote agreed however far apart the inputs were).
+    signalDispersion: (() => {
+      const xs = ((backendEnsemble.components ?? []) as any[]).map((c) => c.score).filter((v) => typeof v === 'number');
+      if (xs.length < 2) return null;
+      const m = xs.reduce((a, b) => a + b, 0) / xs.length;
+      return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length);
+    })(),
     adaptiveWeightingActive: false,     // weights are fixed and equal (see components)
     // The backend's actual inputs: an equal-weighted average of four signals. (This used to
     // be reconstructed here with different weights, regime confidence in place of the
@@ -36,8 +43,9 @@ export function EnsembleSection({ data: dataProp }: EnsembleSectionProps) {
       .map((v) => ({ model: v.model, score: v.bullish ? 1 : 0, note: v.bullish ? 'votes bullish' : 'votes bearish' })),
     riskBudgetFinal: backendEnsemble.riskBudget ?? null,
     interpretation: `Ensemble score ${(backendEnsemble.score ?? 0).toFixed(2)} on a 0–1 scale ` +
-      `(equal-weighted average of the four inputs). ` +
-      `${(backendEnsemble.votes ?? []).filter((v: any) => v.bullish).length} of ${(backendEnsemble.votes ?? []).length} models vote risk-on.`,
+      `(equal-weighted average of the ${(backendEnsemble.components ?? []).length} inputs below). ` +
+      `Direction vote across ${(backendEnsemble.votes ?? []).length} models (the inputs plus 12-1 momentum and CTA trend): ` +
+      `${(backendEnsemble.votes ?? []).filter((v: any) => v.bullish).length} risk-on.`,
     lastUpdated: new Date().toISOString(),
   } : null;
 
@@ -132,7 +140,7 @@ export function EnsembleSection({ data: dataProp }: EnsembleSectionProps) {
         {/* Stats Grid */}
         <div className="grid grid-cols-3 gap-2">
           <div className="p-2 bg-surface-1 border border-border">
-            <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Dispersion</div>
+            <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1" title="Standard deviation of the component scores">Dispersion (σ of inputs)</div>
             <div className="text-base font-mono text-text-primary">{data.signalDispersion != null ? data.signalDispersion.toFixed(3) : '—'}</div>
           </div>
           <div className="p-2 bg-surface-1 border border-border">

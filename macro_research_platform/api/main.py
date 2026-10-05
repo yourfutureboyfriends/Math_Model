@@ -2350,7 +2350,31 @@ async def risk_concentration_v1(book: Optional[str] = None, limit_pct: float = 0
     if not raw:
         return {"available": False, "reason": "No positions configured."}
     enriched = await _enrich_positions(raw)
-    return concentration(enriched["positions"], limit_pct)
+    out = concentration(enriched["positions"], limit_pct)
+    # Breaches are judged against the fund's risk limits (single name as % of NAV, the same
+    # rule as pre-trade compliance and the Fund Overview). A fixed 20%-of-GROSS cap flagged a
+    # name at 0.5% of NAV as a breach while every other panel showed the limits clean.
+    try:
+        from api import fund_store
+        from api.calculations.fund import compute_nav
+        from api.calculations.limits import merge_limits
+        settings = await _aio_to_thread(fund_store.get_settings)
+        lim = merge_limits(await _aio_to_thread(fund_store.get_limit_overrides))["single_name"]
+        nav = compute_nav(settings["capital"], enriched["summary"].get("total_unrealized_pnl", 0.0), 0.0)
+        mv = {str(p["symbol"]).upper(): abs(p.get("market_value") or 0.0) for p in enriched["positions"]}
+        for row in out.get("positions", []):
+            row["pct_nav"] = round(mv.get(str(row["symbol"]).upper(), 0.0) / nav, 6) if nav else None
+        out["breaches"] = [{"symbol": r["symbol"], "pct_nav": r["pct_nav"], "limit": lim["hard"]}
+                           for r in out.get("positions", []) if (r.get("pct_nav") or 0) > lim["hard"]]
+        out["warnings"] = [{"symbol": r["symbol"], "pct_nav": r["pct_nav"], "limit": lim["soft"]}
+                           for r in out.get("positions", []) if lim["soft"] < (r.get("pct_nav") or 0) <= lim["hard"]]
+        out["single_name_limit"] = lim["hard"]
+        out["limit_basis"] = "% of NAV (fund risk limits)"
+        out["largest_pct_nav"] = max((r.get("pct_nav") or 0 for r in out.get("positions", [])), default=0.0)
+    except Exception as e:
+        logger.warning(f"[concentration] fund limits unavailable, using {limit_pct:.0%} of gross: {e}")
+        out["limit_basis"] = f"{limit_pct:.0%} of gross (fund limits unavailable)"
+    return out
 
 
 @app.get("/api/v1/risk/liquidity")
@@ -3127,21 +3151,33 @@ async def altdata_positioning_v1():
         res = correlation_breakdown(ra, rb)
         corr_alerts.append({"pair": label, **res})
 
-    # 3) Credit-spread stress (FRED OAS in %; z-score vs ~1y history)
-    hy = await _aio_to_thread(_fred_recent_values, "BAMLH0A0HYM2", 252)
-    ig = await _aio_to_thread(_fred_recent_values, "BAMLC0A0CM", 252)
+    # 3) Credit-spread stress. The LEVEL is judged against all the history FRED serves for
+    # the ICE BofA indices (it keeps ~3 years); a 1-year window alone called 310bp "stress"
+    # at a time when it was the 3-year median. The 1-year z-score is reported as the CHANGE.
+    from api.handlers.macro_inputs import _fetch_fred_history_sync
+    hy_hist = await _aio_to_thread(_fetch_fred_history_sync, "BAMLH0A0HYM2", 365 * 4)
+    ig_hist = await _aio_to_thread(_fetch_fred_history_sync, "BAMLC0A0CM", 365 * 4)
     credit = {"available": False}
-    if hy and ig:
-        hy_bps, ig_bps = hy[0] * 100, ig[0] * 100
+    if hy_hist.values and ig_hist.values:
+        hy_all = list(reversed(hy_hist.values))          # newest first, as zscore() expects
+        hy_1y = hy_all[:252]
+        hy_bps, ig_bps = hy_all[0] * 100, ig_hist.values[-1] * 100
+        pct_level = percentile_rank(hy_all[0], hy_all)
+        z_1y = zscore(hy_all[0], hy_1y)
         credit = {
             "available": True,
             "hy_oas_bps": round(hy_bps, 1),
             "ig_oas_bps": round(ig_bps, 1),
             "hy_ig_spread_bps": round(hy_bps - ig_bps, 1),
-            "hy_zscore": zscore(hy[0], hy),
-            "hy_percentile": percentile_rank(hy[0], hy),
-            "signal": ("stress" if (zscore(hy[0], hy) or 0) > 1 else
-                       "complacent" if (zscore(hy[0], hy) or 0) < -1 else "neutral"),
+            "hy_percentile": pct_level,
+            "history_from": hy_hist.dates[0],
+            "hy_zscore": z_1y,
+            "hy_zscore_window": "1y",
+            "as_of": hy_hist.dates[-1],
+            "signal": ("stress" if (pct_level or 0) >= 85 else
+                       "complacent" if (pct_level or 100) <= 15 else
+                       "widening" if (z_1y or 0) > 1.5 else
+                       "tightening" if (z_1y or 0) < -1.5 else "neutral"),
         }
 
     return {
@@ -3178,7 +3214,7 @@ async def signals_backtest_v1(horizon: int = 21):
             return [], []
 
     spx_dates, spx = await _aio.to_thread(_closes, "^GSPC")
-    _, vix = await _aio.to_thread(_closes, "^VIX")
+    vix_dates, vix = await _aio.to_thread(_closes, "^VIX")
     if len(spx) < 300:
         return {"available": False, "reason": "Insufficient S&P 500 history for backtest.",
                 "signals": []}
@@ -3192,9 +3228,13 @@ async def signals_backtest_v1(horizon: int = 21):
         if bt.get("available"):
             scorecards.append({"id": name, "label": label, **bt})
     if len(vix) >= 300:
-        n = min(len(spx), len(vix))
-        vsig = vol_regime_signal(vix[-n:])
-        bt = backtest_signal(spx[-n:], vsig, horizon)
+        # Align on common dates. VIX prints on some NYSE holidays (e.g. Memorial Day), so
+        # trimming both series to the same length from the end shifted VIX ahead of the S&P
+        # returns it was "predicting" — look-ahead that showed +613% / Sharpe 2.6.
+        vmap = dict(zip(vix_dates, vix))
+        common = [(v, c) for d, c in zip(spx_dates, spx) if (v := vmap.get(d)) is not None]
+        vsig = vol_regime_signal([v for v, _ in common])
+        bt = backtest_signal([c for _, c in common], vsig, horizon)
         if bt.get("available"):
             scorecards.append({"id": "vol_regime", "label": "VIX Vol-Regime", **bt})
 
@@ -4227,6 +4267,17 @@ async def get_horizon_risks():
                 if today <= nd <= horizon_end:
                     events.append({"date": nd.isoformat(), "event": "Nonfarm Payrolls", "impact": "HIGH",
                                    "category": "LABOR", "days_away": (nd - today).days})
+
+        # The other releases the Economic Calendar rates HIGH (GDP, core PCE): same official
+        # dates and names, so the two panels list the same high-impact events.
+        from api.econ_calendar import RELEASES as _RELEASES
+        for rid, (name, imp, *_rest) in _RELEASES.items():
+            if imp != "HIGH" or rid in (10, 50):
+                continue
+            for ds in _calendar_release_dates(rid, today, horizon_end):
+                d_ = datetime.fromisoformat(ds).date()
+                events.append({"date": d_.isoformat(), "event": name, "impact": "HIGH",
+                               "category": "GROWTH" if rid == 53 else "INFLATION", "days_away": (d_ - today).days})
 
         # Deduplicate by date + event
         seen = set()

@@ -93,3 +93,19 @@ def test_sector_playbook_tilt_needs_relative_strength_confirmation():
 def test_growth_direction_uses_three_month_window():
     from api.calculations import signals
     assert signals._GROWTH_TREND_OFFSET == 63
+
+
+def test_ny_fx_closes_from_hourly_bars():
+    import pandas as pd
+    from api.market_dates import ny_fx_closes
+    idx = pd.date_range("2026-10-02 14:00", "2026-10-05 18:00", freq="h", tz="America/New_York")
+    bars = pd.DataFrame({"Close": range(len(idx))}, index=idx, dtype=float)
+    out = ny_fx_closes(bars, now=pd.Timestamp("2026-10-05 18:30", tz="America/New_York"))
+    # Friday's close = the 16:00 bar; no weekend sessions; Monday complete after 17:00 NY
+    assert out["2026-10-02"] == float(idx.get_loc(pd.Timestamp("2026-10-02 16:00", tz="America/New_York")))
+    assert "2026-10-03" not in out and "2026-10-04" not in out
+    assert "2026-10-05" in out
+    # Before the cutoff, Monday is still forming
+    early = ny_fx_closes(bars[bars.index < pd.Timestamp("2026-10-05 12:00", tz="America/New_York")],
+                         now=pd.Timestamp("2026-10-05 12:00", tz="America/New_York"))
+    assert "2026-10-05" not in early and "2026-10-02" in early

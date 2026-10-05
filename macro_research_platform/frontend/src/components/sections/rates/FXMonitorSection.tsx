@@ -208,19 +208,15 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
               >
                 <div className="text-2xs text-text-tertiary uppercase">{fx.pair}</div>
                 <div className="font-mono text-lg">{fmtFx(fx.spot)}</div>
-                {fx.asOf && <div className="text-2xs text-text-tertiary">close {fx.asOf}</div>}
+                {fx.asOf && <div className="text-2xs text-text-tertiary">NY close {fx.asOf} · 1D</div>}
                 <div className="flex items-center justify-between text-xs mt-1">
                   <span className={cn(
                     (fx.change1d ?? 0) > 0 ? 'text-green' : (fx.change1d ?? 0) < 0 ? 'text-red' : 'text-text-secondary'
                   )}>
                     {fx.change1d != null ? fmtChange(fx.change1d / 100) : '--'}
                   </span>
-                  <span className={cn(
-                    'text-2xs',
-                    fx.trendSignal === 'UP' && 'text-green',
-                    fx.trendSignal === 'DOWN' && 'text-red'
-                  )}>
-                    {fx.trendSignal}
+                  <span className="text-2xs text-text-tertiary" title="1-month trend: UP / DOWN beyond ±1%">
+                    1M {fx.trendSignal === '--' ? '—' : fx.trendSignal.toLowerCase()}
                   </span>
                 </div>
               </div>
@@ -239,7 +235,7 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
 
         {/* EM FX Summary (Asia + EMEA/LatAm) */}
         <div>
-          <div className="text-2xs text-text-tertiary uppercase mb-2">EM FX · Asia · LatAm</div>
+          <div className="text-2xs text-text-tertiary uppercase mb-2">EM FX · Asia · LatAm <span className="normal-case">— spot and 1-day change (1-month in brackets)</span></div>
           <div className="grid grid-cols-4 gap-2">
             {(data.em ?? []).slice(0, 8).map(fx => (
               <div
@@ -248,11 +244,11 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
               >
                 <div className="text-2xs text-text-tertiary">{fx.pair}</div>
                 <div className="font-mono">{fmtFx(fx.spot, 2)}</div>
-                <div className={cn(
-                  'text-2xs font-mono',
-                  (fx.change1m ?? 0) > 0 ? 'text-green' : (fx.change1m ?? 0) < 0 ? 'text-red' : 'text-text-secondary'
-                )}>
-                  {fx.change1m != null ? fmtChange(fx.change1m / 100) : '--'}
+                <div className="text-2xs font-mono">
+                  <span className={cn((fx.change1d ?? 0) > 0 ? 'text-green' : (fx.change1d ?? 0) < 0 ? 'text-red' : 'text-text-secondary')}>
+                    {fx.change1d != null ? fmtChange(fx.change1d / 100) : '--'}
+                  </span>
+                  <span className="text-text-tertiary"> ({fx.change1m != null ? fmtChange(fx.change1m / 100) : '--'})</span>
                 </div>
               </div>
             ))}

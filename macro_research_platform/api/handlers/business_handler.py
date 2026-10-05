@@ -303,7 +303,7 @@ async def get_recommendations_data() -> Dict[str, Any]:
             "Overweight equities, neutral duration"
         ],
         "reflation": [
-            f"Strong growth (signal {growth:.2f}) with rising inflation (signal {inflation:.2f})",
+            f"Strong growth (signal {growth:.2f}); inflation signal {inflation:.2f}",
             "Cyclicals outperform - value over quality",
             "Underweight duration, overweight commodities"
         ],
@@ -374,7 +374,12 @@ async def get_recommendations_data() -> Dict[str, Any]:
     return {
         "summary": {
             "regime": regime.title(),
-            "conviction": get_conviction(confidence, 0.75, 0.6) if confidence is not None else "Unrated",
+            # Regime-classification confidence, on the same scale as the Signal Regime panel
+            # (High > 75%, Medium >= 50%); 60% read "Low" here and "Medium" there.
+            "conviction": ("Unrated" if confidence is None else "High" if confidence > 0.75
+                           else "Medium" if confidence >= 0.5 else "Low"),
+            "conviction_basis": "regime confidence",
+            "regime_confidence": confidence,
             "overall_position": overall_position,
             "key_themes": themes,
             "risk_assessment": f"VIX {vix:.1f}, 12M recession probability {rec_prob:.0%}, Risk Appetite signal {risk:.2f} (0–1)"

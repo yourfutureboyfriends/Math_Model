@@ -33,19 +33,23 @@ export function ValuationSection({ data }: ValuationSectionProps) {
       interpretation: m.interpretation ?? '',
     };
   });
+  // A composite needs at least two scored inputs; with one (only the real yield has
+  // history) the "composite" was that single z-score relabelled as equity "Expensive".
   const scored = metrics.filter((m: any) => m.zScore != null);
   const compositeScore: number | null = anyData.compositeScore
-    ?? (scored.length ? scored.reduce((s: number, m: any) => s + m.zScore, 0) / scored.length : null);
-  const regime = anyData.regime ?? (compositeScore == null ? 'N/A'
+    ?? (scored.length >= 2 ? scored.reduce((s: number, m: any) => s + m.zScore, 0) / scored.length : null);
+  const regime = anyData.regime ?? (compositeScore == null ? (scored.length === 1 ? 'Single input' : 'N/A')
     : compositeScore > 1 ? 'Expensive' : compositeScore < -1 ? 'Cheap' : 'Fair');
   const num = (v: any, d = 2) => (typeof v === 'number' && isFinite(v) ? v.toFixed(d) : '—');
 
   const getSignalIcon = (signal: string) => {
     switch (signal.toLowerCase()) {
       case 'cheap':
+      case 'bonds cheap':
       case 'attractive':
         return <ArrowDown className="w-3 h-3 text-green" />;
       case 'expensive':
+      case 'bonds rich':
       case 'unattractive':
         return <ArrowUp className="w-3 h-3 text-red" />;
       default:
@@ -56,9 +60,11 @@ export function ValuationSection({ data }: ValuationSectionProps) {
   const getSignalTag = (signal: string) => {
     switch (signal.toLowerCase()) {
       case 'cheap':
+      case 'bonds cheap':
       case 'attractive':
         return 'signal-tag bullish';
       case 'expensive':
+      case 'bonds rich':
       case 'unattractive':
         return 'signal-tag bearish';
       default:
@@ -92,7 +98,7 @@ export function ValuationSection({ data }: ValuationSectionProps) {
             <Scale className="w-3 h-3 text-text-secondary" />
             <div>
               <div className="text-2xs text-text-tertiary">Composite Z-Score</div>
-              <div className={`text-xl font-mono font-bold ${compositeScore == null ? 'text-text-secondary' : compositeScore > 0 ? 'text-green' : compositeScore < 0 ? 'text-red' : 'text-text-secondary'}`}>
+              <div className={`text-xl font-mono font-bold text-text-primary`}>
                 {compositeScore == null ? '—' : `${compositeScore >= 0 ? '+' : ''}${compositeScore.toFixed(2)}σ`}
               </div>
             </div>
@@ -125,7 +131,7 @@ export function ValuationSection({ data }: ValuationSectionProps) {
                 </div>
                 <div>
                   <div className="text-2xs text-text-tertiary">Z-Score</div>
-                  <div className={`font-mono text-xs ${metric.zScore == null ? 'text-text-tertiary' : metric.zScore > 0 ? 'text-green' : metric.zScore < 0 ? 'text-red' : 'text-text-tertiary'}`}>
+                  <div className={`font-mono text-xs ${metric.zScore == null ? 'text-text-tertiary' : 'text-text-primary'}`}>
                     {metric.zScore == null ? '—' : `${metric.zScore >= 0 ? '+' : ''}${num(metric.zScore)}σ`}
                   </div>
                 </div>

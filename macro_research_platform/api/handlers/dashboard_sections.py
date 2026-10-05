@@ -69,7 +69,7 @@ _MONTHLY_PX_TTL = 12 * 3600
 
 
 def rates_fred_ids() -> List[str]:
-    return [sid for _, sid in US_TENORS] + ["DFII10"] + [
+    return [sid for _, sid in US_TENORS] + ["DFII10", "T10YIE", "T5YIFR"] + [
         sid for c in FOREIGN_CURVES.values() for sid in c.values()] + [
         sid for sid, _ in OVERNIGHT_RATES.values()]
 
@@ -572,9 +572,13 @@ def build_valuation(inp: SectionInputs, now) -> Optional[Dict[str, Any]]:
     real = inp.series("DFII10")
     if real:
         mean, z, pct = ms.zscore_and_percentile(real.latest, real.values[:-1])
+        # A high real yield means bonds are CHEAP (and is a headwind for equity multiples) —
+        # the generic "z > 1 = expensive" reading had it backwards.
         metrics.append({"name": "10Y Real Yield (TIPS)", "value": round(real.latest, 2),
                         "historicalMean": _r(mean, 2), "zScore": _r(z, 2),
                         "percentile": _r(pct, 0),
+                        "signal": ("n/a" if z is None else "bonds cheap" if z > 1 else
+                                   "bonds rich" if z < -1 else "fair"),
                         "interpretation": f"FRED DFII10 as of {real.latest_date}, vs. {len(real.values) - 1} prior days"})
     pe = inp.spy_pe
     if pe is not None:
@@ -976,7 +980,9 @@ def build_risk_parity(inp: SectionInputs, now) -> Dict[str, Any]:
             "ticker": k, "sector": label,
             "annualisedVol": round(vols[k], 4), "baseWeight": round(w[k], 4),
             "signalScore": round(tstat, 2) if tstat is not None else 0.0,
-            "signal": t["direction"] if t else "N/A",
+            # 3M trend only — it does not change the risk-parity weight, so it is reported as a
+            # trend (UP/DOWN, FLAT when |t| < 1), not a LONG/SHORT call next to a long allocation.
+            "signal": ("N/A" if tstat is None else "UP" if tstat >= 1 else "DOWN" if tstat <= -1 else "FLAT"),
             "conviction": ("High" if tstat is not None and abs(tstat) >= 2 else
                            "Medium" if tstat is not None and abs(tstat) >= 1 else "Low"),
             "adjustedWeight": round(w[k], 4),

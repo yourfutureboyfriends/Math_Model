@@ -94,7 +94,7 @@ export function RiskParitySection({ data: dataProp }: RiskParitySectionProps) {
                   <th className="text-left py-2 px-3 text-2xs text-text-tertiary uppercase font-medium">Asset</th>
                   <th className="text-right py-2 px-3 text-2xs text-text-tertiary uppercase font-medium">Vol</th>
                   <th className="text-right py-2 px-3 text-2xs text-text-tertiary uppercase font-medium">Base Wgt</th>
-                  <th className="text-right py-2 px-3 text-2xs text-text-tertiary uppercase font-medium">Signal</th>
+                  <th className="text-right py-2 px-3 text-2xs text-text-tertiary uppercase font-medium" title="3-month trend (t-stat ≥ 1); does not change the risk-parity weight">3M Trend</th>
                   <th className="text-right py-2 px-3 text-2xs text-text-tertiary uppercase font-medium">Target %</th>
                 </tr>
               </thead>
@@ -112,7 +112,7 @@ export function RiskParitySection({ data: dataProp }: RiskParitySectionProps) {
                       {((item.baseWeight || 0) * 100).toFixed(1)}%
                     </td>
                     <td className="py-2 px-3 text-right">
-                      <span className={`signal-tag text-2xs ${item.conviction === 'High' ? 'bullish' : item.conviction === 'Medium' ? 'warning' : 'neutral'}`}>
+                      <span className="signal-tag text-2xs neutral" title={`t-stat ${item.signalScore}`}>
                         {item.signal}
                       </span>
                     </td>

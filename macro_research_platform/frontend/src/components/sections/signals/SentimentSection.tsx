@@ -39,11 +39,15 @@ export function SentimentSection({ data: dataProp }: SentimentSectionProps) {
     return 'text-red';
   };
 
+  // The score is linear in VIX (score = 1 − (VIX − 10)/30), so label it with the same VIX
+  // bands as the risk signal (<15 complacent, 15–20 normal, 20–25 elevated, ≥25 stress);
+  // fixed 0–100 bands called VIX 15.5 "Extreme Greed" while other panels said "normal".
   const getRiskAppetiteLabel = (score: number) => {
-    if (score >= 80) return 'Extreme Greed';
-    if (score >= 60) return 'Greed';
-    if (score >= 40) return 'Neutral';
-    if (score >= 20) return 'Fear';
+    const vix = 10 + 30 * (1 - score / 100);
+    if (vix < 12) return 'Extreme Greed';
+    if (vix < 15) return 'Greed (complacent)';
+    if (vix < 20) return 'Neutral';
+    if (vix < 25) return 'Fear';
     return 'Extreme Fear';
   };
 

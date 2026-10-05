@@ -1341,6 +1341,10 @@ class RatesData(BaseModel):
     yieldCurves: Dict[str, YieldCurveData] = {}
     creditSpreads: List[CreditSpread] = []
     realYieldSignal: Optional[str] = None
+    # Key US rates with 1-month change, and market inflation expectations (FRED). Declared
+    # here because the response model drops undeclared keys.
+    ratesTable: List[Dict[str, Any]] = []
+    breakevenInflation: Optional[Dict[str, Any]] = None
 
     # Legacy fields for backward compatibility
     tenYear: Optional[float] = None

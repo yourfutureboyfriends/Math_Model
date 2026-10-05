@@ -69,3 +69,30 @@ def align_frame(ticker: str, hist, today: Optional[date] = None):
     out = hist.loc[keep].copy()
     out.index = pd.DatetimeIndex([pd.Timestamp(d) for d in new if d is not None])
     return out[~out.index.duplicated(keep="last")]
+
+
+def ny_fx_closes(hourly, now=None) -> dict:
+    """{iso_date: close} at the 5pm New York FX cutoff, from hourly bars (completed sessions only).
+
+    Daily Yahoo FX bars lag a session (see above) and the newest one is overwritten with the
+    live price, so on a Monday evening the latest complete daily bar is Thursday's. Hourly bars
+    give each weekday's close directly: the close of the last bar starting before 17:00 NY.
+    A session counts once 17:00 NY has passed (or a later bar exists)."""
+    if hourly is None or getattr(hourly, "empty", True):
+        return {}
+    import pandas as pd
+    idx = hourly.index
+    idx = idx.tz_convert("America/New_York") if idx.tz is not None else idx.tz_localize("UTC").tz_convert("America/New_York")
+    closes = pd.Series(hourly["Close"].to_numpy(), index=idx).dropna()
+    now_ny = (pd.Timestamp.now(tz="America/New_York") if now is None
+              else pd.Timestamp(now).tz_convert("America/New_York"))
+    out = {}
+    for day, grp in closes.groupby(closes.index.date):
+        if pd.Timestamp(day).weekday() >= 5:
+            continue
+        cutoff = pd.Timestamp(day, tz="America/New_York") + pd.Timedelta(hours=17)
+        before = grp[grp.index < cutoff]
+        complete = now_ny >= cutoff or (grp.index >= cutoff).any()
+        if complete and not before.empty:
+            out[day.isoformat()] = float(before.iloc[-1])
+    return out

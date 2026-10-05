@@ -22,6 +22,7 @@ interface Position {
   unrealized_pnl: number | null;
   unrealized_pnl_pct: number | null;
   weight_pct: number | null;
+  net_weight_pct?: number | null;
   price_available: boolean;
 }
 interface Summary {
@@ -216,7 +217,7 @@ export function PositionsSection() {
                 <th className="text-right py-2 px-3 font-medium">Price</th>
                 <th className="text-right py-2 px-3 font-medium">Mkt Value</th>
                 <th className="text-right py-2 px-3 font-medium">Unreal. P&L</th>
-                <th className="text-right py-2 px-3 font-medium">Weight</th>
+                <th className="text-right py-2 px-3 font-medium" title="Share of gross exposure; shorts negative">Weight</th>
                 <th className="py-2 px-2"></th>
               </tr>
             </thead>
@@ -237,7 +238,7 @@ export function PositionsSection() {
                   <td className={`py-2 px-3 text-right font-mono text-sm ${signed(p.unrealized_pnl)}`}>
                     {usd(p.unrealized_pnl)} {p.unrealized_pnl_pct != null && <span className="text-2xs">({pct(p.unrealized_pnl_pct)})</span>}
                   </td>
-                  <td className="py-2 px-3 text-right font-mono text-sm text-text-secondary">{pct(p.weight_pct)}</td>
+                  <td className="py-2 px-3 text-right font-mono text-sm text-text-secondary">{pct(p.net_weight_pct ?? p.weight_pct)}</td>
                   <td className="py-2 px-2 text-center">
                     <button onClick={() => remove(p.id)} title="Close position" className="p-1 text-text-tertiary hover:text-red">
                       <Trash2 className="w-3 h-3" />

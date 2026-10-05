@@ -57,11 +57,6 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
   // defaulted to 0 and the card showed "0.0%" despite the API returning 13%.
   const km = (data ?? (fullDashboard as any)?.keyMetrics) as KeyMetrics | undefined;
 
-  const getScoreDirection = (value: number): 'up' | 'down' | 'neutral' => {
-    if (value > 0) return 'up';
-    if (value < 0) return 'down';
-    return 'neutral';
-  };
 
   const getRecessionColor = (value: number) => {
     if (value > 30) return 'text-red';
@@ -87,6 +82,13 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
   const riskSparkline = hist('risk');
   const recessionSparkline = km?.recession?.sparklineData ?? [];
   const fmtScore = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}`;
+  // Direction = the move over the history window, not the sign of a 0–1 score (which made
+  // every card read "UP"). Moves within ±0.03 (score) / ±0.5pp (recession) are flat.
+  const trend = (xs: number[], tol: number): 'up' | 'down' | 'neutral' => {
+    if (xs.length < 2) return 'neutral';
+    const d = xs[xs.length - 1] - xs[0];
+    return d > tol ? 'up' : d < -tol ? 'down' : 'neutral';
+  };
 
   return (
     <div id="key-metrics" className="terminal-section">
@@ -103,11 +105,11 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
         <MetricCard
           label="Growth"
           value={fmtSignal(growthScore) ?? '—'}
-          direction={getScoreDirection(growthScore)}
+          direction={trend(growthSparkline, 0.03)}
           sparklineData={growthSparkline}
           sparklineLabels={histLabels('growth')}
           sparklineFormat={fmtScore}
-          color={getScoreDirection(growthScore) === 'up' ? 'var(--green)' : undefined}
+          color="var(--text-primary)"
           explanation={stories.Growth?.explanation_text}
           lineage={lineageFor('Growth', growthScore)}
           stale={isStale('growth')}
@@ -116,7 +118,8 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
         <MetricCard
           label="Inflation"
           value={fmtSignal(inflationScore) ?? '—'}
-          direction={getScoreDirection(inflationScore)}
+          direction={trend(inflationSparkline, 0.03)}
+          color="var(--text-primary)"
           sparklineData={inflationSparkline}
           sparklineLabels={histLabels('inflation')}
           sparklineFormat={fmtScore}
@@ -128,7 +131,8 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
         <MetricCard
           label="Fin. Conditions"
           value={fmtSignal(liquidityScore) ?? '—'}
-          direction="neutral"
+          direction={trend(liquiditySparkline, 0.03)}
+          color="var(--text-primary)"
           sparklineData={liquiditySparkline}
           sparklineLabels={histLabels('liquidity')}
           sparklineFormat={fmtScore}
@@ -140,7 +144,8 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
         <MetricCard
           label="Risk Appetite"
           value={fmtSignal(riskScore) ?? '—'}
-          direction={getScoreDirection(riskScore)}
+          direction={trend(riskSparkline, 0.03)}
+          color="var(--text-primary)"
           sparklineData={riskSparkline}
           sparklineLabels={histLabels('risk')}
           sparklineFormat={fmtScore}
@@ -152,7 +157,7 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
         <MetricCard
           label="Recession Risk"
           value={km?.recession?.formatted ?? '—'}
-          direction={isNaN(km?.recession?.value ?? 0) ? 'neutral' : ((km?.recession?.value ?? 0) > 15 ? 'down' : 'up')}
+          direction={trend(recessionSparkline, 0.5)}
           sparklineData={recessionSparkline}
           sparklineFormat={(v) => `${v.toFixed(1)}%`}
           color={getRecessionColor(isNaN(km?.recession?.value ?? 0) ? 0 : (km?.recession?.value ?? 0)).replace('text-', 'var(--') + ')'}

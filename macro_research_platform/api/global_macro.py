@@ -334,7 +334,7 @@ async def build_global_macro(today: Optional[date] = None) -> Dict[str, Any]:
         "recent_policy_moves": moves,
         "sources": sources,
         "notes": ["10Y/3M are OECD monthly averages so cross-country spreads compare the same month; "
-                  "the US live 10Y is shown separately.",
+                  "the US latest daily 10Y close is shown separately.",
                   "Quadrant = real GDP growth vs an assumed trend rate (shown) and CPI vs the "
                   "central bank's target (+0.5pp band).",
                   "Equity USD returns combine the local index with the currency's move vs USD.",

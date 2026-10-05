@@ -60,8 +60,9 @@ class TestBug02FedFunds:
     """Fed Funds must use FRED FEDFUNDS series with post-cut value."""
 
     def test_contract_correct_series(self):
-        """Contract must specify FRED FEDFUNDS series."""
-        assert CONTRACTS["fed_funds"].fred_series == "FEDFUNDS"
+        """Contract must use the FRED effective fed funds rate — DFF (daily), the same series
+        as the dashboard; FEDFUNDS is its monthly average and lags a policy move by a month."""
+        assert CONTRACTS["fed_funds"].fred_series == "DFF"
 
     def test_pre_cut_value_4_68_rejected(self):
         """Pre-cut 4.68% is stale — should be rejected or flagged."""

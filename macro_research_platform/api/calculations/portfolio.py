@@ -24,11 +24,14 @@ def unrealized_pnl(quantity: float, avg_cost: float, price: float) -> float:
     return round((price - avg_cost) * quantity, 2)
 
 
-def unrealized_pnl_pct(avg_cost: float, price: float) -> Optional[float]:
-    """Unrealized return as a fraction: price/avg_cost - 1. None if avg_cost is 0."""
+def unrealized_pnl_pct(avg_cost: float, price: float, quantity: float = 1.0) -> Optional[float]:
+    """Unrealized return on the position as a fraction of its cost basis: price/avg_cost - 1
+    for a long, the negative for a short (a short loses when the price rises). None if
+    avg_cost is 0."""
     if not avg_cost:
         return None
-    return round(price / avg_cost - 1.0, 6)
+    r = price / avg_cost - 1.0
+    return round(-r if quantity < 0 else r, 6)
 
 
 def enrich_position(pos: Dict[str, Any], price: Optional[float]) -> Dict[str, Any]:
@@ -50,7 +53,7 @@ def enrich_position(pos: Dict[str, Any], price: Optional[float]) -> Dict[str, An
         "current_price": round(float(price), 4),
         "market_value": market_value(qty, price),
         "unrealized_pnl": unrealized_pnl(qty, avg_cost, price),
-        "unrealized_pnl_pct": unrealized_pnl_pct(avg_cost, price),
+        "unrealized_pnl_pct": unrealized_pnl_pct(avg_cost, price, qty),
         "price_available": True,
     })
     return out
@@ -70,6 +73,9 @@ def add_weights(positions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for p in positions:
         mv = p.get("market_value")
         p["weight_pct"] = round(_gross(mv) / total_gross, 6) if total_gross else None
+        # Signed share of gross (shorts negative) — what the positions table shows.
+        p["net_weight_pct"] = (round(mv / total_gross, 6)
+                               if total_gross and isinstance(mv, (int, float)) else None)
     return positions
 
 

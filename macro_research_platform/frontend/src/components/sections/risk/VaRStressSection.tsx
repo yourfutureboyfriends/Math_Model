@@ -157,10 +157,12 @@ export function VaRStressSection() {
           {conc?.available && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {[
-                ['Largest Name', `${conc.largest_name} ${(conc.largest_weight * 100).toFixed(0)}%`],
-                ['Top-5 Concentration', `${(conc.top5_concentration * 100).toFixed(0)}%`],
+                ['Largest Name (gross)', `${conc.largest_name} ${(conc.largest_weight * 100).toFixed(0)}%`],
+                ['Top-5 (gross)', `${(conc.top5_concentration * 100).toFixed(0)}%`],
                 ['HHI', conc.hhi.toFixed(2)],
-                ['Limit Breaches', `${conc.breaches.length}`, conc.breaches.length ? 'text-red' : 'text-green'],
+                [`Single-name breaches${conc.single_name_limit != null && conc.limit_basis?.includes('NAV') ? ` (>${(conc.single_name_limit * 100).toFixed(0)}% NAV)` : ''}`,
+                  `${conc.breaches.length}${conc.warnings?.length ? ` · ${conc.warnings.length} warn` : ''}`,
+                  conc.breaches.length ? 'text-red' : conc.warnings?.length ? 'text-amber' : 'text-green'],
               ].map(([label, val, tone]) => (
                 <div key={label as string} className="p-2 bg-surface-1 border border-border">
                   <div className="text-2xs text-text-tertiary uppercase tracking-wider">{label}</div>

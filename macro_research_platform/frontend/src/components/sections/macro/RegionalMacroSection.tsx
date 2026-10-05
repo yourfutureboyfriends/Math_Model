@@ -153,7 +153,7 @@ export function RegionalMacroSection() {
                     <th className="text-right font-normal pb-1 px-1.5">12m Δ</th>
                     <th className="text-right font-normal pb-1 px-1.5" title="Policy rate minus the Fed's">vs Fed</th>
                     <th className="text-right font-normal pb-1 px-1.5" title="OECD monthly average">3M</th>
-                    <th className="text-right font-normal pb-1 px-1.5" title="OECD monthly average (US live shown below the table)">10Y</th>
+                    <th className="text-right font-normal pb-1 px-1.5" title="OECD monthly average (US latest daily close shown below the table)">10Y</th>
                     <th className="text-right font-normal pb-1 px-1.5" title="Same-month 10Y spread to US Treasuries">vs UST</th>
                     <th className="text-right font-normal pb-1 px-1.5" title="10Y minus 3M, same month">Curve</th>
                   </>}
@@ -179,7 +179,7 @@ export function RegionalMacroSection() {
 
           <div className="text-2xs text-text-tertiary space-y-0.5">
             {data.economies.find((e) => e.code === 'US')?.ten_year_live && (
-              <div>US 10Y live: {num(data.economies.find((e) => e.code === 'US')!.ten_year_live!.value)}%
+              <div>US 10Y latest daily close (FRED DGS10): {num(data.economies.find((e) => e.code === 'US')!.ten_year_live!.value)}%
                 ({data.economies.find((e) => e.code === 'US')!.ten_year_live!.date}).</div>
             )}
             {data.notes.map((n) => <div key={n}>{n}</div>)}
@@ -205,7 +205,14 @@ function RegionRows({ region, rows, tab }: { region: string; rows: Economy[]; ta
           <td className="py-1 pr-2 font-sans text-text-primary whitespace-nowrap" title={e.note ?? `${e.cb} · ${e.ccy}`}>
             {e.name} <span className="text-text-tertiary text-2xs">{e.cb}</span>
           </td>
-          {tab === 'macro' && <>
+          {tab === 'macro' && e.note && e.cpi?.value == null && e.unemployment?.value == null && (
+            // No macro coverage (HK peg, SG FX-based policy): say so instead of a row of dashes.
+            <>
+              <td className="text-right px-1.5">{num(e.policy.rate, 2, e.policy.rate != null ? '%' : '')}</td>
+              <td colSpan={7} className="px-1.5 font-sans text-2xs text-text-tertiary">{e.note}</td>
+            </>
+          )}
+          {tab === 'macro' && !(e.note && e.cpi?.value == null && e.unemployment?.value == null) && <>
             <td className="text-right px-1.5" title={e.policy.as_of ? `BIS · ${e.policy.as_of}` : e.policy.reason}>{num(e.policy.rate, 2, e.policy.rate != null ? '%' : '')}</td>
             <td className={`px-1.5 font-sans text-2xs whitespace-nowrap ${e.policy.stance === 'hiking' ? 'text-red' : e.policy.stance === 'cutting' ? 'text-green' : 'text-text-tertiary'}`}
               title={e.policy.last_move ? `Last move ${e.policy.last_move.date}: ${e.policy.last_move.from}% → ${e.policy.last_move.to}%` : undefined}>

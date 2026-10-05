@@ -230,7 +230,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
             {summaryLite && (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 <div className="p-2 bg-surface-1 border border-border">
-                  <div className="text-2xs text-text-tertiary uppercase">Conviction</div>
+                  <div className="text-2xs text-text-tertiary uppercase" title="Confidence of the regime classification">Regime confidence</div>
                   <div className="text-sm font-mono text-text-primary">{summaryLite.conviction ?? '—'}</div>
                 </div>
                 <div className="p-2 bg-surface-1 border border-border">

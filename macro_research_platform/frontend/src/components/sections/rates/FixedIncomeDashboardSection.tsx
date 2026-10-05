@@ -8,11 +8,13 @@ import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 import { useMacroStore } from '@/store/macroStore';
 import { useApiData } from '@/hooks/useApiData';
-import { fmtRate, fmtBps, fmtChange } from '@/utils/format';
+import { fmtRate, fmtBps } from '@/utils/format';
 
 interface RatesTableItem {
   instrument: string;
   yield: number;
+  change1mBps?: number | null;
+  asOf?: string | null;
   signal: string;
 }
 
@@ -20,7 +22,7 @@ interface CreditSpread {
   name: string;
   spreadBps: number;
   change1d?: number;
-  change1w?: number;
+  change1wBps?: number | null;
   signal: string;
 }
 
@@ -28,8 +30,9 @@ interface FixedIncomeData {
   ratesTable: RatesTableItem[];
   creditSpreads: CreditSpread[];
   breakevenInflation: {
-    tenYear?: number;
-    fiveYearFiveYear?: number;
+    tenYear?: number | null;
+    fiveYearFiveYear?: number | null;
+    asOf?: string | null;
   };
   realYieldSignal: string;
 }
@@ -37,32 +40,15 @@ interface FixedIncomeData {
 export function FixedIncomeDashboardSection() {
   const { data, loading } = useApiData<FixedIncomeData>('/api/rates');
 
-  // Use macro store for rates
-  const prices = useMacroStore((state) => state.prices);
   const storeLoading = useMacroStore((state) => state.meta.dataStatus === 'loading');
 
   if (loading || storeLoading) {
     return <div className="h-64 bg-surface-1 border border-border animate-pulse" />;
   }
 
-  // Build rates table with store data where available
-  const buildRatesTable = (): RatesTableItem[] => {
-    const table = data?.ratesTable || [];
-
-    // Replace 10Y and 2Y with store data if available
-    return table.map(item => {
-      if (item.instrument === '10Y Treasury' && prices.TENYR) {
-        return { ...item, yield: prices.TENYR };
-      }
-      if (item.instrument === '2Y Treasury' && prices.TWYR) {
-        return { ...item, yield: prices.TWYR };
-      }
-      if (item.instrument === 'Fed Funds' && prices.FED) {
-        return { ...item, yield: prices.FED };
-      }
-      return item;
-    });
-  };
+  // FRED-dated rows as served (each with its 1-month change). Swapping in live Yahoo yields
+  // here mixed sources and made a row's level disagree with its own change.
+  const buildRatesTable = (): RatesTableItem[] => data?.ratesTable || [];
 
   const ratesColumns = [
     { header: 'Instrument', accessor: (r: RatesTableItem) => r.instrument, align: 'left' as const },
@@ -74,16 +60,17 @@ export function FixedIncomeDashboardSection() {
       align: 'right' as const,
     },
     {
-      header: 'Signal',
-      accessor: (r: RatesTableItem) => {
-        const variant = r.signal === 'INVERTED' ? 'danger' :
-                         r.signal === 'NORMAL' ? 'success' :
-                         r.signal === 'FLAT' ? 'warning' :
-                         r.signal === 'RESTRICTIVE' ? 'warning' :
-                         r.signal === 'USD PREMIUM' ? 'info' :
-                         'neutral';
-        return <Badge variant={variant}>{r.signal}</Badge>;
-      },
+      header: '1M Chg',
+      accessor: (r: RatesTableItem) => (
+        <span className="font-mono text-2xs text-text-secondary">
+          {r.change1mBps == null ? '—' : `${r.change1mBps > 0 ? '+' : ''}${r.change1mBps}bp`}
+        </span>
+      ),
+      align: 'right' as const,
+    },
+    {
+      header: 'Trend',
+      accessor: (r: RatesTableItem) => <Badge variant="neutral">{r.signal}</Badge>,
       align: 'center' as const,
     },
   ];
@@ -102,10 +89,9 @@ export function FixedIncomeDashboardSection() {
       accessor: (c: CreditSpread) => (
         <span className={cn(
           'font-mono text-2xs',
-          c.change1w && c.change1w > 0 ? 'text-red' :
-          c.change1w && c.change1w < 0 ? 'text-green' : 'text-text-secondary'
+          (c.change1wBps ?? 0) > 0 ? 'text-red' : (c.change1wBps ?? 0) < 0 ? 'text-green' : 'text-text-secondary'
         )}>
-          {c.change1w ? fmtChange(c.change1w / 10000) : '--'}
+          {c.change1wBps == null ? '--' : `${c.change1wBps > 0 ? '+' : ''}${Math.round(c.change1wBps)}bp`}
         </span>
       ),
       align: 'right' as const,

@@ -70,14 +70,14 @@ CONTRACTS = {
         typical_min=-200.0, typical_max=200.0,
     ),
     "fed_funds": MetricContract(
-        name="Fed Funds Rate",
-        fred_series="FEDFUNDS",
+        name="Fed Funds Rate (effective, daily)",
+        fred_series="DFF",            # same series as the dashboard; FEDFUNDS is a monthly average
         yf_ticker=None,
         unit="percent",
         multiply_by=1.0,
         hard_min=0.0,  hard_max=25.0,
         typical_min=0.0, typical_max=10.0,
-        description="FRED confirmed 3.64% Mar/Apr 2026. Previous 4.68% was pre-cut value.",
+        description="Effective federal funds rate (FRED DFF), daily.",
     ),
     "m2_yoy": MetricContract(
         name="M2 Money Supply YoY Growth",

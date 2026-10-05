@@ -26,7 +26,7 @@ export function AltDataSection() {
   const cr = data?.credit;
   const alerts = data?.correlation_alerts ?? [];
   const termStateTone = t?.state === 'backwardation' ? 'text-red' : t?.state === 'contango' ? 'text-green' : 'text-text-secondary';
-  const creditTone = cr?.signal === 'stress' ? 'text-red' : cr?.signal === 'complacent' ? 'text-amber' : 'text-text-secondary';
+  const creditTone = cr?.signal === 'stress' ? 'text-red' : cr?.signal === 'complacent' || cr?.signal === 'widening' ? 'text-amber' : 'text-text-secondary';
 
   return (
     <div id="alt-data" className="terminal-section">
@@ -95,12 +95,14 @@ export function AltDataSection() {
                 <div className="flex justify-between"><span className="text-text-secondary">HY OAS</span><span className="font-mono text-text-primary">{cr.hy_oas_bps} bps</span></div>
                 <div className="flex justify-between"><span className="text-text-secondary">IG OAS</span><span className="font-mono text-text-primary">{cr.ig_oas_bps} bps</span></div>
                 <div className="flex justify-between"><span className="text-text-secondary">HY − IG</span><span className="font-mono text-text-primary">{cr.hy_ig_spread_bps} bps</span></div>
-                <div className="flex justify-between"><span className="text-text-secondary">HY z-score</span><span className="font-mono text-text-primary">{cr.hy_zscore ?? '—'}</span></div>
-                <div className="flex justify-between"><span className="text-text-secondary">HY percentile</span><span className="font-mono text-text-primary">{cr.hy_percentile ?? '—'}%</span></div>
+                <div className="flex justify-between"><span className="text-text-secondary">HY change z (vs 1y)</span><span className="font-mono text-text-primary">{cr.hy_zscore ?? '—'}</span></div>
+                <div className="flex justify-between"><span className="text-text-secondary" title={cr.history_from ? `Percentile of the level since ${cr.history_from} (FRED keeps ~3 years of ICE BofA data)` : undefined}>HY level percentile{cr.history_from ? ` (since ${String(cr.history_from).slice(0, 4)})` : ''}</span><span className="font-mono text-text-primary">{cr.hy_percentile ?? '—'}%</span></div>
                 <div className={`text-sm font-mono font-bold pt-1 ${creditTone}`}>{(cr.signal || '').toUpperCase()}</div>
                 <div className="text-2xs text-text-tertiary">
-                  {cr.signal === 'complacent' ? 'Spreads unusually tight — little cushion for shocks.'
-                    : cr.signal === 'stress' ? 'Spreads unusually wide — credit stress building.'
+                  {cr.signal === 'complacent' ? 'Spreads near the tight end of their range — little cushion for shocks.'
+                    : cr.signal === 'stress' ? 'Spreads near the wide end of their range — credit stress.'
+                    : cr.signal === 'widening' ? 'Spreads widening faster than usual over the past year; level unremarkable.'
+                    : cr.signal === 'tightening' ? 'Spreads tightening faster than usual over the past year.'
                     : 'Credit spreads near normal range.'}
                 </div>
               </div>

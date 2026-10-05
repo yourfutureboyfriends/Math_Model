@@ -91,3 +91,13 @@ def test_books_breakdown_groups_by_book():
     assert set(books) == {"Equity", "Macro"}
     assert books["Equity"]["total_unrealized_pnl"] == pytest.approx(13066.0)
     assert books["Macro"]["net_exposure"] == pytest.approx(-37385.5)
+
+
+def test_short_position_return_and_signed_weight():
+    from api.calculations.portfolio import add_weights, enrich_position
+    short = enrich_position({"symbol": "SPY", "quantity": -50, "avg_cost": 700.0}, 774.83)
+    assert short["unrealized_pnl"] < 0 and short["unrealized_pnl_pct"] == pytest.approx(-0.1069, abs=1e-4)
+    long_ = enrich_position({"symbol": "AAPL", "quantity": 150, "avg_cost": 180.0}, 332.89)
+    rows = add_weights([short, long_])
+    assert rows[0]["net_weight_pct"] < 0 < rows[1]["net_weight_pct"]
+    assert rows[0]["weight_pct"] > 0

@@ -274,8 +274,11 @@ async def diagnostics_metrics() -> Dict[str, Any]:
     return {
         "timestamp": datetime.utcnow().isoformat(),
         "prices": prices,
-        "changes": changes,
+        # Change since the previous 60s price refresh (0 when the market is closed) —
+        # not the daily change shown in the terminal.
+        "changes_since_last_refresh": changes,
         "macro": metrics,
+        "macro_note": "Latest FRED observations (e.g. VIX = VIXCLS previous close; fed funds = DFF).",
     }
 
 

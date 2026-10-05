@@ -45,7 +45,7 @@ export function SignalStackSection() {
   const layerOutputs = (data as any).layerOutputs || {};
   const layers = (data as any).layers || [];
   const finalSignal = (data as any).finalSignal || (data as any).finalStance || 'NEUTRAL';
-  const conviction = (data as any).conviction ?? (data as any).riskBudget ?? null;
+  const conviction = (data as any).conviction ?? (data as any).confidence ?? null;   // API field is `confidence` (riskBudget is a sizing multiplier, not a confidence)
   const overridesApplied = (data as any).overridesApplied || [];
   const reasoning = (data as any).reasoning || (data as any).overrideReason || 'Signal stack active';
   const timestamp = (data as any).timestamp || (data as any).lastUpdated || '';
