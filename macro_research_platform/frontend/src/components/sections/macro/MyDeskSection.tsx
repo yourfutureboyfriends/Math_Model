@@ -126,8 +126,10 @@ function MacroTiles({ d }: { d: Desk }) {
   if (!m.available) return null;
   return (
     <>
-      <Tile label="Regime" value={(m.regime ?? '—').toUpperCase()}
-        sub={m.regime_months != null ? `${m.regime_months} months · ${fmtPct(m.regime_confidence ?? null, 0)} conf.` : undefined} />
+      <Tile label="Signal regime" value={(m.regime ?? '—').toUpperCase()}
+        sub={m.model_regime
+          ? `Model: ${m.model_regime} ${fmtPct(m.model_regime_probability ?? null, 0)}`
+          : m.regime_months != null ? `${m.regime_months} months · ${fmtPct(m.regime_confidence ?? null, 0)} conf.` : undefined} />
       <Tile label="Ensemble" value={m.ensemble_score != null ? m.ensemble_score.toFixed(2) : '—'}
         sub={m.conviction ? `${m.conviction} conviction · risk budget ${m.risk_budget?.toFixed(2) ?? '—'}` : undefined}
         className={tone(m.ensemble_score)} />

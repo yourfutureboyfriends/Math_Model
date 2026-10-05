@@ -58,7 +58,18 @@ async def _macro_block() -> Dict[str, Any]:
     from api.handlers.dashboard_handler import get_dashboard_data
     d = (await get_dashboard_data(mode="live")).model_dump()
     reg, rec, ens = d.get("regime") or {}, d.get("recession") or {}, d.get("ensemble") or {}
+    model_regime, model_prob = None, None
+    try:                                     # the systematic model's regime (cached; never blocks)
+        from api.model.engine import _CACHE
+        runs = [v[1] for v in _CACHE.values() if v[1].get("available")]
+        if runs:
+            latest = max(runs, key=lambda r: r["run_at"])
+            model_regime = latest["regime"]["most_likely"]
+            model_prob = latest["regime"]["probabilities"][model_regime]
+    except Exception:
+        pass
     return {"available": True, "regime": reg.get("current"), "regime_confidence": reg.get("confidenceScore"),
+            "model_regime": model_regime, "model_regime_probability": model_prob,
             "regime_months": reg.get("duration"), "recession_probability": rec.get("probability"),
             "sahm": rec.get("sahmValue"), "ensemble_score": ens.get("score"),
             "conviction": ens.get("conviction"), "risk_budget": ens.get("riskBudget")}

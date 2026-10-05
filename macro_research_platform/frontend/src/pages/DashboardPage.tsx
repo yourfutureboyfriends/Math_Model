@@ -1,12 +1,16 @@
 // Dashboard Page — Main terminal dashboard with all sections
 // Uses REAL data from macroStore (fetched from backend API)
 
-import { Suspense } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import { useDesk } from '@/hooks/useDesk';
+import { applyFocus, useFocusMode } from '@/lib/focusMode';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SectionSkeleton } from '@/components/ui/SectionSkeleton';
 import { useMacroStore } from '@/store/macroStore';
 import {
   MyDeskSection,
+  MacroModelSection,
   CycleRiskSection,
   MorningBriefSection,
   AnomaliesStripSection,
@@ -82,6 +86,22 @@ import {
 } from '@/components/sections';
 
 export function DashboardPage() {
+  // Focus mode: show only this role's panels (re-applied as lazy panels mount).
+  const rootRef = useRef<HTMLDivElement>(null);
+  const focus = useFocusMode();
+  const { user } = useAuth();
+  const desk = useDesk(user?.username);
+  useEffect(() => {
+    const allowed = focus ? new Set(['my-desk', 'macro-model', 'morning-brief', ...(desk?.focus.panels ?? [])]) : null;
+    const run = () => applyFocus(rootRef.current, allowed);
+    run();
+    if (!rootRef.current) return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const obs = new MutationObserver(() => { clearTimeout(t); t = setTimeout(run, 150); });
+    obs.observe(rootRef.current, { childList: true, subtree: true });
+    return () => { obs.disconnect(); clearTimeout(t); };
+  }, [focus, desk]);
+
   // P3: subscribe to ONLY the fields this component reads, so the whole 50-section tree
   // doesn't re-render on every WebSocket price tick (was `useMacroStore((s) => s)`).
   const dataStatus = useMacroStore((s) => s.meta.dataStatus);
@@ -123,7 +143,7 @@ export function DashboardPage() {
   }
 
   return (
-    <>
+    <div ref={rootRef}>
       {refreshFailed && (
         <div className="mx-4 mt-2 px-3 py-1.5 text-2xs font-mono border border-amber/40 text-amber bg-amber/5 flex items-center gap-2">
           Refresh failed — showing the last successful data. {wsError}
@@ -134,6 +154,13 @@ export function DashboardPage() {
       <div id="my-desk" className="terminal-section">
         <ErrorBoundary sectionName="My Desk">
           <MyDeskSection />
+        </ErrorBoundary>
+      </div>
+
+      {/* ── Macro Model: the systematic model as one workflow ──────────────── */}
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Macro Model">
+          <MacroModelSection />
         </ErrorBoundary>
       </div>
 
@@ -706,6 +733,6 @@ export function DashboardPage() {
           </Suspense>
         </ErrorBoundary>
       </div>
-    </>
+    </div>
   );
 }

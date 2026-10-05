@@ -16,7 +16,7 @@ const SHORTCUT_CATEGORIES = [
       { key: 'M', description: 'Daily Brief', context: '' },
       { key: 'G', description: 'Composite Signal', context: '' },
       { key: 'K', description: 'Macro Indicators', context: '' },
-      { key: 'R', description: 'Regime Model', context: '' },
+      { key: 'R', description: 'Signal Regime', context: '' },
       { key: 'P', description: 'Regime Allocation', context: '' },
       { key: 'S', description: 'Signal Detail', context: '' },
       { key: 'E', description: 'Model Ensemble', context: '' },
@@ -44,7 +44,7 @@ const SHORTCUT_CATEGORIES = [
     shortcuts: [
       { key: '1', description: 'Daily Brief', context: '' },
       { key: '2', description: 'Composite Signal', context: '' },
-      { key: '3', description: 'Regime Model', context: '' },
+      { key: '3', description: 'Signal Regime', context: '' },
       { key: '4', description: 'Signal Detail', context: '' },
       { key: '5', description: 'Risk Analytics', context: '' },
       { key: '6', description: 'Trade Ideas', context: '' },

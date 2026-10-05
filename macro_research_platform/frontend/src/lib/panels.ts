@@ -7,11 +7,12 @@
 export const PANEL_LABELS: Record<string, string> = {
   // Overview
   'my-desk': 'My Desk',
+  'macro-model': 'Macro Model',
   'morning-brief': 'Daily Brief',
   'master-signal': 'Composite Signal',
   'key-metrics': 'Macro Indicators',
   anomalies: 'Anomaly Monitor',
-  regime: 'Regime Model',
+  regime: 'Signal Regime',
   'regime-playbook': 'Regime Allocation',
   'market-clock': 'Market Hours',
   'global-markets': 'Global Equity Markets',

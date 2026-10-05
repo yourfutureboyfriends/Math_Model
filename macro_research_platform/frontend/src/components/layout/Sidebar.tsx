@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 import { AccountDialog } from '@/components/account/AccountPanels';
 import { useDesk } from '@/hooks/useDesk';
 import { panelLabel } from '@/lib/panels';
+import { setFocusMode, useFocusMode } from '@/lib/focusMode';
 import { usePinnedSections } from '@/hooks/usePinnedSections';
 
 interface NavItem {
@@ -33,6 +34,7 @@ const navigation: NavSection[] = [
   {
     title: 'OVERVIEW',
     items: [
+      { id: 'macro-model', label: 'Macro Model', icon: '◆', permission: 'master_signal', highlight: true },
       { id: 'morning-brief', label: 'Morning Brief', icon: '☀', permission: 'master_signal', highlight: true },
       { id: 'master-signal', label: 'Master Ensemble', icon: '◆', permission: 'master_signal', highlight: true },
       { id: 'key-metrics', label: 'Key Metrics', icon: '◆', permission: 'key_metrics' },
@@ -182,6 +184,7 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
     ...((desk?.focus.panels ?? []).map((id) => itemById[id]).filter(Boolean) as NavItem[]),
   ];
   const deskQueue = desk?.queue.filter((i) => i.priority === 'high').length ?? 0;
+  const focus = useFocusMode();
 
   const renderNavItem = (item: NavItem) => {
     const isActive = activeSection === item.id;
@@ -258,6 +261,11 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
           {!collapsed && (
             <div className="px-4 py-1.5 text-2xs text-bloomberg font-medium tracking-wider flex items-center gap-1">
               MY DESK
+              <button onClick={() => setFocusMode(!focus)}
+                title={focus ? 'Showing only your panels — click to show all' : 'Show only the panels for your role'}
+                className={`ml-2 px-1 border text-2xs font-mono ${focus ? 'border-bloomberg text-bloomberg' : 'border-border-subtle text-text-tertiary hover:text-text-primary'}`}>
+                {focus ? 'FOCUS ON' : 'FOCUS'}
+              </button>
               {deskQueue > 0 && (
                 <span className="ml-auto px-1 text-2xs font-mono bg-red text-bg rounded-sm" title="High-priority items in your queue">
                   {deskQueue}

@@ -1331,6 +1331,7 @@ async def lifespan(app: FastAPI):
         try:
             from api.routers.market import get_rates, get_market_overview
             from api.routers.signals import get_yield_curve_signal
+            from api.routers.model import model_latest as _model_latest   # 40y model + backtest: ~35s cold
             targets = [health_check, get_cot_data, get_economic_calendar,
                        get_rates, get_market_overview, get_yield_curve_signal,
                        # Heavy v1 analytics panels — pre-warm their TTL caches so a fresh
@@ -1338,7 +1339,8 @@ async def lifespan(app: FastAPI):
                        # and leave 9 panels showing "Unavailable — Timed out" on first paint.
                        quadrants_v1, stream_agreement_v1, factor_validation_v1,
                        risk_parity_compare_v1, regime_transition_v1, event_vol_v1,
-                       correlation_matrix_v1, anomalies_v1, signal_attribution_v1]
+                       correlation_matrix_v1, anomalies_v1, signal_attribution_v1,
+                       get_cycle_risk_v1, _model_latest]
         except Exception as e:
             logger.warning(f"[warm] could not resolve endpoint targets: {e}")
             return
@@ -1451,6 +1453,8 @@ from api.routers.admin import router as admin_router  # user administration (adm
 app.include_router(admin_router)
 from api.routers.desk import router as desk_router  # role desk: action queue + key numbers
 app.include_router(desk_router)
+from api.routers.model import router as model_router  # systematic macro model
+app.include_router(model_router)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NATIVE WEBSOCKET ENDPOINTS

@@ -22,6 +22,7 @@ export * from './business';
 export { MorningBriefSection } from './macro/MorningBriefSection';
 export { MyDeskSection } from './macro/MyDeskSection';
 export { CycleRiskSection } from './risk/CycleRiskSection';
+export { MacroModelSection } from './model/MacroModelSection';
 export { AnomaliesStripSection } from './macro/AnomaliesStripSection';
 export { MasterSignalSection } from './signals/MasterSignalSection';
 export { KeyMetricsSection } from './macro/KeyMetricsSection';

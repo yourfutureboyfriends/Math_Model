@@ -24,7 +24,7 @@ PENDING_STATES = ("Proposed", "Under Review")
 # Panels each role starts from (sidebar "YOUR DESK" + quick links), most important first.
 ROLE_FOCUS: Dict[str, Dict[str, Any]] = {
     "pm": {"title": "Portfolio Manager",
-           "panels": ["fund-cockpit", "trade-ideas", "portfolio-positions", "performance-attribution",
+           "panels": ["macro-model", "fund-cockpit", "trade-ideas", "portfolio-positions", "performance-attribution",
                       "master-signal", "regime-playbook", "expected-returns"]},
     "risk": {"title": "Risk Officer",
              "panels": ["fund-cockpit", "cycle-risk", "var-stress", "risk-analytics", "factor-exposure",
@@ -33,7 +33,7 @@ ROLE_FOCUS: Dict[str, Dict[str, Any]] = {
                 "panels": ["morning-brief", "regime", "cycle-risk", "key-metrics", "nowcast", "economic-calendar",
                            "yield-curve", "regional-macro"]},
     "quant": {"title": "Quant Researcher",
-              "panels": ["signal-scorecard", "cycle-risk", "factor-validation", "model-agreement", "stream-agreement",
+              "panels": ["macro-model", "signal-scorecard", "cycle-risk", "factor-validation", "model-agreement", "stream-agreement",
                          "regime-transition", "data-explorer", "system-health"]},
     "admin": {"title": "Administrator",
               "panels": ["fund-cockpit", "system-audit", "system-health", "data-providers",
