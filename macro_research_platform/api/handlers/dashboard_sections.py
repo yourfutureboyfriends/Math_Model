@@ -650,6 +650,13 @@ def us_curve_points(fred: Dict[str, DatedSeries]) -> List[Dict[str, float]]:
     return pts
 
 
+def curve_shape(spread_bp: Optional[float]) -> Optional[str]:
+    """Curve shape from a long-minus-short spread in bp (one rule for every curve and panel)."""
+    if spread_bp is None:
+        return None
+    return "inverted" if spread_bp < 0 else "flat" if spread_bp < 50 else "normal" if spread_bp < 150 else "steep"
+
+
 def foreign_curve(cc: str, fred: Dict[str, DatedSeries], today: Optional[str] = None) -> Dict[str, Any]:
     """3M interbank and 10Y government yields (OECD MEI, monthly) — the only tenors FRED
     carries for these countries. Stale or missing observations are left out. When the 3M
@@ -689,8 +696,7 @@ def foreign_curve(cc: str, fred: Dict[str, DatedSeries], today: Optional[str] = 
         "spread3m10y": round(spread, 1) if spread is not None else None,
         "spreadShort10y": round(short_spread, 1) if short_spread is not None else None,
         "shortRate": short_label,
-        "shape": (None if shape_spread is None else
-                  "inverted" if shape_spread < 0 else "flat" if shape_spread < 50 else "steep"),
+        "shape": curve_shape(shape_spread),
         "recessionProb": None,   # the probit is estimated on US data only
         "asOf": dates,
         "source": "FRED / OECD MEI (" + ", ".join(sources) + ")",

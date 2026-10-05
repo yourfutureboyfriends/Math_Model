@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Cpu, RefreshCw, Settings2, Send } from 'lucide-react';
+import { LineChart } from '@/components/ui/LineChart';
 import { useAuth } from '@/context/AuthContext';
 
 // Categorical slots validated on the dark surface (#0d1117): fixed order, never cycled.
@@ -15,59 +16,6 @@ const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500'];
 const pct = (v: number | null | undefined, d = 1) => (v == null || !Number.isFinite(v) ? '—' : `${(v * 100).toFixed(d)}%`);
 const sgn = (v: number | null | undefined, d = 2) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(d)}`);
 
-type Line = { key: string; label: string; color: string };
-
-function LineChart({ rows, x, lines, height = 160, fmt = (v: number) => v.toFixed(2) }:
-  { rows: any[]; x: string; lines: Line[]; height?: number; fmt?: (v: number) => string }) {
-  const [hover, setHover] = useState<number | null>(null);
-  if (rows.length < 2) return null;
-  const W = 640, H = height, L = 4, R = 104, T = 6, B = 16;
-  const vals = rows.flatMap((r) => lines.map((l) => r[l.key])).filter((v) => typeof v === 'number');
-  const lo = Math.min(...vals), hi = Math.max(...vals);
-  const sx = (i: number) => L + (i / (rows.length - 1)) * (W - L - R);
-  const sy = (v: number) => T + (1 - (v - lo) / (hi - lo || 1)) * (H - T - B);
-  const h = hover != null ? rows[hover] : null;
-  return (
-    <div>
-      <div className="flex flex-wrap gap-3 mb-1">
-        {lines.map((l) => (
-          <span key={l.key} className="inline-flex items-center gap-1 text-2xs text-text-secondary">
-            <span className="w-3 h-0.5" style={{ background: l.color }} />{l.label}
-          </span>
-        ))}
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height }} preserveAspectRatio="none"
-        onMouseLeave={() => setHover(null)}
-        onMouseMove={(e) => {
-          const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
-          const fx = ((e.clientX - r.left) / r.width) * W;
-          setHover(Math.max(0, Math.min(rows.length - 1, Math.round(((fx - L) / (W - L - R)) * (rows.length - 1)))));
-        }}>
-        {lo < 0 && hi > 0 && <line x1={L} x2={W - R} y1={sy(0)} y2={sy(0)} stroke="var(--border-strong)" strokeDasharray="3 3" />}
-        {lines.map((l) => {
-          const d = rows.map((r, i) => (typeof r[l.key] === 'number' ? `${i ? 'L' : 'M'}${sx(i).toFixed(1)},${sy(r[l.key]).toFixed(1)}` : '')).join('');
-          return <path key={l.key} d={d} fill="none" stroke={l.color} strokeWidth={2} vectorEffect="non-scaling-stroke" />;
-        })}
-        {/* End labels, pushed apart so they never overlap (min 11px). */}
-        {(() => {
-          const ends = lines.map((l) => ({ l, v: rows[rows.length - 1][l.key] }))
-            .filter((e) => typeof e.v === 'number').map((e) => ({ ...e, y: sy(e.v) + 3 }))
-            .sort((a, b) => a.y - b.y);
-          for (let k = 1; k < ends.length; k++) if (ends[k].y - ends[k - 1].y < 11) ends[k].y = ends[k - 1].y + 11;
-          return ends.map((e) => (
-            <text key={e.l.key} x={W - R + 4} y={e.y} fontSize={10} fill="var(--text-secondary)">{e.l.label} {fmt(e.v)}</text>
-          ));
-        })()}
-        {h && <line x1={sx(hover!)} x2={sx(hover!)} y1={T} y2={H - B} stroke="var(--border-strong)" />}
-        <text x={L} y={H - 3} fontSize={10} fill="var(--text-tertiary)">{rows[0][x]}</text>
-        <text x={W - R} y={H - 3} fontSize={10} textAnchor="end" fill="var(--text-tertiary)">{rows[rows.length - 1][x]}</text>
-      </svg>
-      <div className="text-[10px] font-mono text-text-tertiary h-3">
-        {h ? `${h[x]} · ${lines.map((l) => `${l.label} ${typeof h[l.key] === 'number' ? fmt(h[l.key]) : '—'}`).join(' · ')}` : ''}
-      </div>
-    </div>
-  );
-}
 
 function Step({ n, title, children, right }: { n: number; title: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
@@ -197,7 +145,8 @@ export function MacroModelSection() {
                   <span className="font-mono text-text-primary">{sgn(data.state.inflation_factor)}σ</span>
                   <span className="text-2xs text-text-tertiary"> · 3M {sgn(data.state.inflation_change_3m)}</span></div>
               </div>
-              <LineChart rows={data.state.history.slice(-60)} x="month" height={130}
+              <LineChart rows={data.state.history.slice(-60)} x="month" height={170} baseline={0}
+                fmt={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}σ`} axisFmt={(v) => `${v.toFixed(1)}σ`}
                 lines={[{ key: 'growth', label: 'Growth', color: SERIES[0] }, { key: 'inflation', label: 'Inflation', color: SERIES[1] }]} />
               <div className="text-[10px] text-text-tertiary">{data.methodology.factors}</div>
             </Step>
@@ -274,7 +223,7 @@ export function MacroModelSection() {
 
           {bt?.available && (
             <Step n={4} title={`Walk-forward backtest ${bt.start} → ${bt.end}`} right={<span className="text-2xs text-text-tertiary">{bt.returns_are}</span>}>
-              <LineChart rows={bt.equity_curve} x="month" height={180} fmt={(v) => `${v.toFixed(2)}×`}
+              <LineChart rows={bt.equity_curve} x="month" height={220} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`} axisFmt={(v) => `${v >= 1 ? v.toFixed(0) : v.toFixed(1)}×`}
                 lines={[{ key: 'model', label: 'Tactical', color: SERIES[0] }, { key: 'strategic', label: 'Strategic', color: SERIES[1] },
                         { key: 'sixty_forty', label: '60/40', color: SERIES[2] }, { key: 'risk_parity', label: 'Risk parity', color: SERIES[3] }]} />
               <div className="overflow-x-auto mt-2">

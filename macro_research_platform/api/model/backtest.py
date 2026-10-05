@@ -112,7 +112,10 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
                      "inflation_direction": _brier("p_i", "base_i", yi),
                      "top_regime_hit_rate": round(float(hit), 3), "months_scored": len(f)}
 
-    curve = (1 + df[["model", "strategic", "sixty_forty", "risk_parity", "equal_weight"]].fillna(0)).cumprod()
+    # Growth of $1 per strategy from its own first month: a benchmark whose assets start later
+    # (60/40 needs both legs) is blank before then, not a flat line of zero returns.
+    cols = ["model", "strategic", "sixty_forty", "risk_parity", "equal_weight"]
+    curve = pd.DataFrame({c: (1 + df[c].fillna(0)).cumprod().where(df[c].notna().cummax()) for c in cols})
     # Does the tactical tilt add value? Paired test on monthly return differences
     # (Sharpe-matched comparison would also be reasonable; this is the simple, transparent one).
     diff = (df["model"] - df["strategic"]).dropna()
@@ -132,7 +135,7 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
         "avg_turnover_monthly": round(float(df["turnover"].mean()), 3),
         "avg_cash": round(float(df["cash"].mean()), 3),
         "forecast_skill": skill,
-        "equity_curve": [{"month": m.strftime("%Y-%m"), **{k: round(float(v), 4) for k, v in row.items()}}
+        "equity_curve": [{"month": m.strftime("%Y-%m"), **{k: (round(float(v), 4) if pd.notna(v) else None) for k, v in row.items()}}
                          for m, row in curve.iterrows()],
         "weights": weights_log[-60:],
         "returns_are": "monthly excess returns over 3-month T-bills",

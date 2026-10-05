@@ -203,7 +203,8 @@ async def get_rates_data() -> Dict[str, Any]:
     spreads_as_of = c2[0] if c2 else None
 
     # Determine curve shape
-    shape = "inverted" if spread_2s10s < 0 else "flat" if spread_2s10s < 25 else "steep"
+    from api.handlers.dashboard_sections import curve_shape
+    shape = curve_shape(spread_2s10s)
 
     # 12-month-ahead recession probability via the documented, unit-tested
     # Estrella-Mishkin probit (see api/calculations/models.py). Uses the 3m10y spread
