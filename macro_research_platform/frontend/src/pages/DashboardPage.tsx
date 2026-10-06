@@ -42,6 +42,7 @@ import {
   StockTimingSection,
   StockBacktestSection,
   PortfoliosSection,
+  StrategyLabSection,
   PositionsSection,
   TradeWorkflowSection,
   CTATrendSection,
@@ -623,6 +624,13 @@ export function DashboardPage() {
       <div id="portfolios" className="terminal-section">
         <ErrorBoundary sectionName="Portfolios">
           <PortfoliosSection />
+        </ErrorBoundary>
+      </div>
+
+      {/* ── Strategy Lab: research models, combination, positions ─────────── */}
+      <div id="strategy-lab" className="terminal-section">
+        <ErrorBoundary sectionName="Strategy Lab">
+          <StrategyLabSection />
         </ErrorBoundary>
       </div>
 

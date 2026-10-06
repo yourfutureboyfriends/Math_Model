@@ -166,5 +166,6 @@ data/processed/global_universe.json
 data/processed/stock_watchlists.json
 data/processed/stock_backtest.json
 data/processed/auto_backtest.json
+data/processed/strategy_lab.json
 data/processed/backtest/
 data/processed/fundamentals/

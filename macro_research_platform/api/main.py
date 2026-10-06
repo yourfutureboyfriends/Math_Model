@@ -1524,6 +1524,8 @@ from api.routers.stock import router as stock_router  # stock entry timing + scr
 app.include_router(stock_router)
 from api.routers.portfolios import router as portfolios_router  # model review, optimiser, auto book
 app.include_router(portfolios_router)
+from api.routers.strategies import router as strategies_router  # Strategy Lab
+app.include_router(strategies_router)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NATIVE WEBSOCKET ENDPOINTS

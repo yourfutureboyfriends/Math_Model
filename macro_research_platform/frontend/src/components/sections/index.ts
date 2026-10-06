@@ -28,6 +28,7 @@ export { StockTimingSection } from './equity/StockTimingSection';
 export { StockIdeasSection } from './equity/StockIdeasSection';
 export { StockBacktestSection } from './equity/StockBacktestSection';
 export { PortfoliosSection } from './equity/PortfoliosSection';
+export { StrategyLabSection } from './model/StrategyLabSection';
 export { AnomaliesStripSection } from './macro/AnomaliesStripSection';
 export { MasterSignalSection } from './signals/MasterSignalSection';
 export { KeyMetricsSection } from './macro/KeyMetricsSection';
