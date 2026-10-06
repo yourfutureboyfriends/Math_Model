@@ -23,7 +23,7 @@ AMERICAS, EUROPE, APAC, MEA = "Americas", "Europe", "Asia-Pacific", "Middle East
 COUNTRIES: Dict[str, Dict[str, Any]] = {
     # ── Developed ────────────────────────────────────────────────────────────
     "US": {"name": "United States", "msci": DM, "region": AMERICAS, "yr": "us",
-           "exch": ["NMS", "NYQ", "NGM", "NCM", "ASE"], "sfx": [""], "bench": "^GSPC", "ccy": "USD", "n": 700},
+           "exch": ["NMS", "NYQ", "NGM", "NCM", "ASE", "BTS"], "sfx": [""], "bench": "^GSPC", "ccy": "USD", "n": 700},
     "CA": {"name": "Canada", "msci": DM, "region": AMERICAS, "yr": "ca", "exch": ["TOR"],
            "sfx": [".TO", ".V", ".NE", ".CN"], "bench": "^GSPTSE", "ccy": "CAD", "n": 150},
     "GB": {"name": "United Kingdom", "msci": DM, "region": EUROPE, "yr": "gb", "exch": ["LSE"],

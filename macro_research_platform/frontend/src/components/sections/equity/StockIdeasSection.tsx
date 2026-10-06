@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Lightbulb, Loader2, RefreshCw, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { marketTag, marketTitle } from '@/lib/marketTag';
 
 const px = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: 2 }));
 const pct = (v: number | null | undefined, d = 0) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);
@@ -26,8 +27,8 @@ export function openStockAnalysis(symbol: string) {
 function MarketTag({ r }: { r: any }) {
   return (
     <span className={cn('px-1 border text-[10px] font-mono whitespace-nowrap', CLASS_TONE[r.market_class] ?? 'border-border text-text-tertiary')}
-      title={`${r.country_name ?? r.country} · ${r.market_class} market · ${r.region}${r.exchange ? ` · ${r.exchange}` : ''}`}>
-      {r.country} · {r.market_class === 'Developed' ? 'DM' : r.market_class === 'Emerging' ? 'EM' : r.market_class === 'Frontier' ? 'FM' : 'SA'}
+      title={marketTitle(r)}>
+      {marketTag(r)}
     </span>
   );
 }

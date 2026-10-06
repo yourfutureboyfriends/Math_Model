@@ -5,6 +5,7 @@
  * live market value / unrealized P&L / weights, and aggregated per book and firm-wide.
  * This is the foundation the risk/attribution/trade features build on.
  */
+import { marketTag, marketTitle } from '@/lib/marketTag';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, Upload, Trash2, RefreshCw, Briefcase } from 'lucide-react';
 
@@ -23,7 +24,7 @@ interface Position {
   unrealized_pnl_pct: number | null;
   weight_pct: number | null;
   net_weight_pct?: number | null;
-  country?: string; country_name?: string; market_class?: string; region?: string;
+  country?: string; country_name?: string; market_class?: string; region?: string; asset_type?: string;
   price_available: boolean;
 }
 interface Summary {
@@ -228,9 +229,7 @@ export function PositionsSection() {
                   <td className="py-2 px-3">
                     <span className="text-sm font-medium text-text-primary">{p.symbol}</span>
                     {p.market_class && (
-                      <span className="ml-1 text-[10px] font-mono text-text-tertiary" title={`${p.country_name ?? p.country} · ${p.market_class} market · ${p.region}`}>
-                        {p.country}·{p.market_class === 'Developed' ? 'DM' : p.market_class === 'Emerging' ? 'EM' : p.market_class === 'Frontier' ? 'FM' : 'SA'}
-                      </span>
+                      <span className="ml-1 text-[10px] font-mono text-text-tertiary" title={marketTitle(p)}>{marketTag(p)}</span>
                     )}
                     <span className="ml-1 text-2xs text-text-tertiary">{p.asset_class}</span>
                   </td>

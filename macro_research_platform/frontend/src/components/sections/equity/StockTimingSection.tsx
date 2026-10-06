@@ -7,6 +7,7 @@ import { Crosshair, Loader2, Search, Star } from 'lucide-react';
 import { LineChart } from '@/components/ui/LineChart';
 import { cn } from '@/lib/utils';
 import { revealPanel } from '@/lib/focusMode';
+import { marketTag, marketTitle } from '@/lib/marketTag';
 
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500'];
 
@@ -170,7 +171,7 @@ export function StockTimingSection() {
                   className="w-full text-left px-2 py-1 hover:bg-surface-3 flex items-baseline gap-2">
                   <span className="font-mono text-xs text-text-primary w-24 shrink-0">{x.symbol}</span>
                   <span className="text-2xs text-text-secondary truncate flex-1">{x.name}</span>
-                  <span className="text-[10px] text-text-tertiary whitespace-nowrap">{x.exchange} · {x.country} · {x.market_class}{x.type === 'ETF' ? ' · ETF' : ''}</span>
+                  <span className="text-[10px] text-text-tertiary whitespace-nowrap">{x.exchange} · {marketTag({ ...x, asset_type: x.type === 'ETF' ? 'ETF' : x.asset_type })}</span>
                 </button>
               ))}
             </div>
@@ -213,7 +214,7 @@ export function StockTimingSection() {
             </div>
             <div className="text-2xs text-text-secondary mt-1">{v?.detail}</div>
             <div className="text-[10px] text-text-tertiary mt-1 font-mono">
-              {data.country_name} ({data.country}) · {data.market_class} market · {data.region}{data.exchange ? ` · ${data.exchange}` : ''} · quoted in {data.currency}
+              {marketTitle(data)}{data.listing_country && data.listing_country !== data.country ? ` (listed in ${data.listing_country})` : ''} · quoted in {data.currency}
               {data.market?.index ? ` · regime vs ${data.market.index}` : ''}
             </div>
           </div>

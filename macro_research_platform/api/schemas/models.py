@@ -251,7 +251,7 @@ class SignalStackLayer(BaseModel):
     layer: str
     priority: int
     signal: str
-    conviction: float
+    conviction: Optional[float] = None   # None when the layer's input is unavailable
     override: Optional[str] = None
 
 

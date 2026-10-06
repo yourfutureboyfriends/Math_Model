@@ -78,3 +78,38 @@ def test_home_market_follows_reporting_currency():
     assert mk.home_country("US", "CNY") == "CN"        # PDD
     assert mk.home_country("US", "EUR") == "US"        # EUR is multi-country: no guess
     assert mk.home_country("US", "USD") == "US"
+
+
+def test_thin_secondary_listing_never_beats_us_line():
+    """Chubb Limited on Xetra, PDD on Mexico's SIC: a foreign corporate form or reporting
+    currency must not hand the company to a market where it barely trades."""
+    fx = {"EUR": 0.9, "MXN": 18.0}
+    q = [
+        {"symbol": "CB", "_country": "US", "currency": "USD", "financialCurrency": "USD", "marketCap": 1.2e11,
+         "regularMarketPrice": 290, "averageDailyVolume3Month": 2e6, "longName": "Chubb Limited", "messageBoardId": "m1"},
+        {"symbol": "AEX.DE", "_country": "DE", "currency": "EUR", "financialCurrency": "USD", "marketCap": 1.1e11,
+         "regularMarketPrice": 260, "averageDailyVolume3Month": 50, "longName": "Chubb Limited", "messageBoardId": "m1"},
+        {"symbol": "PDD", "_country": "US", "currency": "USD", "financialCurrency": "CNY", "marketCap": 1.1e11,
+         "regularMarketPrice": 100, "averageDailyVolume3Month": 8e6, "longName": "PDD Holdings Inc.", "messageBoardId": "m2"},
+        {"symbol": "PDDN.MX", "_country": "MX", "currency": "MXN", "financialCurrency": "CNY", "marketCap": 2e12,
+         "regularMarketPrice": 1800, "averageDailyVolume3Month": 1200, "longName": "PDD Holdings Inc.", "messageBoardId": "m2"},
+        {"symbol": "GE", "_country": "US", "currency": "USD", "financialCurrency": "USD", "marketCap": 3e11,
+         "regularMarketPrice": 300, "averageDailyVolume3Month": 5e6, "longName": "GE Aerospace", "messageBoardId": "m3"},
+        {"symbol": "GE.MX", "_country": "MX", "currency": "MXN", "financialCurrency": "USD", "marketCap": 5.4e12,
+         "regularMarketPrice": 5500, "averageDailyVolume3Month": 1000, "longName": "General Electric Company", "messageBoardId": "m3"},
+    ]
+    out = {r["symbol"]: r for r in gu.dedupe_and_rank(q, fx)}
+    assert set(out) == {"CB", "PDD", "GE"}
+    assert out["CB"]["country"] == "US"
+    assert out["PDD"]["country"] == "CN" and out["PDD"]["listing_country"] == "US"
+
+
+def test_untraded_secondary_line_dropped_even_without_home_listing():
+    """The screener can miss the home line (ALV.DE); Milan's foreign segment must not then
+    turn Allianz into an Italian stock."""
+    fx = {"EUR": 0.9}
+    q = [{"symbol": "1ALV.MI", "_country": "IT", "currency": "EUR", "financialCurrency": "EUR", "marketCap": 1.6e11,
+          "regularMarketPrice": 415, "averageDailyVolume3Month": 2100, "longName": "Allianz SE"},
+         {"symbol": "ENI.MI", "_country": "IT", "currency": "EUR", "financialCurrency": "EUR", "marketCap": 7e10,
+          "regularMarketPrice": 24, "averageDailyVolume3Month": 8e6, "longName": "Eni S.p.A."}]
+    assert [r["symbol"] for r in gu.dedupe_and_rank(q, fx)] == ["ENI.MI"]

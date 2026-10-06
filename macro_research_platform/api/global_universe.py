@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 DATA = Path(__file__).resolve().parent.parent / "data" / "processed"
 FILE = DATA / "global_universe.json"
 MAX_AGE_DAYS = 7
+MIN_TURNOVER = 1e-5        # daily traded value / market cap
 _DR = re.compile(r"\b(DRN|BDR|CDR|DR|NVDR|ADR|GDR|ETF|ETN|FUND|TRUST UNITS?)\b", re.I)
 _SUFFIX_WORDS = re.compile(r"\b(inc|incorporated|corp|corporation|co|company|ltd|limited|plc|ag|se|sa|nv|n\.v|"
                            r"spa|s\.p\.a|ab|asa|a/s|oyj|holdings?|group|the|tbk|bhd|berhad|pcl|kgaa|sab de cv|"
@@ -84,23 +85,47 @@ def dedupe_and_rank(quotes: List[Dict[str, Any]], fx: Dict[str, float]) -> List[
         px = q.get("regularMarketPrice")
         vol = q.get("averageDailyVolume3Month") or 0
         traded = usd((px or 0) * vol, ccy, fx) or 0.0
-        if not mcap:
+        # Under 0.001% of market cap traded a day is a secondary line (Milan's foreign segment,
+        # Xetra lines of Austrian or US companies, Mexico's SIC) or an untradeable float.
+        if not mcap or traded < MIN_TURNOVER * mcap:
             continue
         rows.append({"symbol": q["symbol"], "name": q.get("longName") or q.get("shortName") or q["symbol"],
                      "country": q["_country"], "exchange": q.get("exchange"), "currency": ccy,
-                     "mcap_usd": mcap, "traded_usd": traded, "_fin": q.get("financialCurrency")})
-    # A US listing of a foreign company (ADR) can out-trade its home listing (TSMC); within a
-    # duplicate group the home listing wins over a US one that reports in another currency or
-    # carries a non-US corporate form (plc, N.V., AG, Limited, ...).
-    groups: Dict[str, List[Dict[str, Any]]] = {}
-    for r in rows:
-        groups.setdefault(name_key(r["name"]), []).append(r)
+                     "mcap_usd": mcap, "traded_usd": traded, "_fin": q.get("financialCurrency"),
+                     "_cid": q.get("messageBoardId")})
+    # Duplicate groups: same company id (Yahoo's messageBoardId is shared by every listing of a
+    # company — catches "GE Aerospace" vs "General Electric Company" on Mexico's SIC) or same name.
+    parent = list(range(len(rows)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    first: Dict[Any, int] = {}
+    for i, r in enumerate(rows):
+        for k in (("n", name_key(r["name"])), ("c", r["_cid"])):
+            if not k[1]:
+                continue
+            if k in first:
+                parent[find(i)] = find(first[k])
+            else:
+                first[k] = i
+    groups: Dict[int, List[Dict[str, Any]]] = {}
+    for i, r in enumerate(rows):
+        groups.setdefault(find(i), []).append(r)
+    # A US listing of a foreign company (ADR) can out-trade its home listing (TSMC); the home
+    # listing wins over a US one that reports in another currency or carries a non-US corporate
+    # form (plc, N.V., AG, Limited, ...) — but only a genuine home market, one trading at least
+    # 5% of the US line. A thin secondary line (Chubb on Xetra, PDD on Mexico's SIC) never wins.
     for g in groups.values():
-        if len(g) > 1 and any(r["country"] != "US" for r in g):
-            for r in g:
-                if r["country"] == "US" and (r["_fin"] not in (None, "USD") or _FOREIGN_FORM.search(r["name"])):
-                    r["traded_usd"] = -1.0
-    rows.sort(key=lambda r: -r["traded_usd"])
+        us = [r for r in g if r["country"] == "US"]
+        other = max((r["traded_usd"] for r in g if r["country"] != "US"), default=0.0)
+        for r in us:
+            if (r["_fin"] not in (None, "USD") or _FOREIGN_FORM.search(r["name"])) and other >= 0.05 * r["traded_usd"]:
+                r["traded_usd"] = -1.0
+    best = {gid: max(g, key=lambda r: r["traded_usd"]) for gid, g in groups.items()}
+    rows = sorted(best.values(), key=lambda r: -r["traded_usd"])
     seen_name, seen_size, kept = set(), set(), []
     for r in rows:
         nk = name_key(r["name"])
@@ -127,6 +152,7 @@ def dedupe_and_rank(quotes: List[Dict[str, Any]], fx: Dict[str, float]) -> List[
             r["mcap_usd"] = round(r["mcap_usd"])
             r["traded_usd"] = round(max(r["traded_usd"], 0))
             r.pop("_fin", None)
+            r.pop("_cid", None)
         out.extend(mine)
     return out
 
@@ -159,7 +185,7 @@ def _screen_country(code: str, meta: Dict[str, Any]) -> List[Dict[str, Any]]:
     # are collected.
     want = int(meta["n"] * 1.5) + 10
     out, offset, home = [], 0, 0
-    while home < want and offset < 6000:
+    while (home < want or offset < 2 * want) and offset < 6000:   # sort is loose: read past the cut
         try:
             r = yf.screen(query, offset=offset, size=250, sortField="intradaymarketcap", sortAsc=False)
         except Exception as e:
@@ -175,6 +201,26 @@ def _screen_country(code: str, meta: Dict[str, Any]) -> List[Dict[str, Any]]:
         if len(qs) < 250:
             break
         offset += 250
+        time.sleep(0.2)
+    # Yahoo's market-cap sort is unreliable on exchanges flooded with foreign lines (Allianz
+    # comes back ~1000th on Xetra; Vienna's 7,900 rows are mostly US names). Home listings trade
+    # far more shares than secondary lines, so a volume-sorted pass recovers them; dedupe and
+    # the turnover floor sort out the rest.
+    seen = {q.get("symbol") for q in out}
+    for offset in range(0, max(500, want * 3), 250):
+        try:
+            r = yf.screen(query, offset=offset, size=250, sortField="avgdailyvol3m", sortAsc=False)
+        except Exception as e:
+            logger.warning("[universe] %s volume screen failed: %s", code, e)
+            break
+        qs = r.get("quotes") or []
+        for q in qs:
+            if q.get("symbol") not in seen:
+                q["_country"] = code
+                out.append(q)
+                seen.add(q.get("symbol"))
+        if len(qs) < 250:
+            break
         time.sleep(0.2)
     return out
 
