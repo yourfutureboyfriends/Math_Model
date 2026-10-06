@@ -4,9 +4,11 @@ FRED Data Freshness Validator
 Tracks release dates and validates data is current.
 FRED API provides release dates via series/observations endpoint.
 """
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -203,20 +205,80 @@ def _official_next_release(provider, series_id: str, today) -> Optional[str]:
     return upcoming[0] if upcoming else None
 
 
+_FRESHNESS_SNAPSHOT = Path(__file__).resolve().parents[1] / "data" / "processed" / "live" / "freshness.json"
+_FRESHNESS_STALE_MAX = 24 * 3600
+_FRESHNESS_REFRESH = {"thread": None}
+
+
 def get_live_freshness(force: bool = False, today=None) -> Dict:
     """Latest observation of every model input from FRED, graded against its release
     calendar. Returns per-series detail (status FRESH|STALE|CRITICAL|UNKNOWN plus the
     calendar state, expected period, periods behind and next expected release), per-
-    category roll-ups and a summary. Cached ~5 min."""
+    category roll-ups and a summary.
+
+    Cached ~5 min, stale-while-revalidate: past the TTL (or on a cold start, from the last
+    result on disk) the cached report is returned at once while one background thread
+    re-checks FRED — a cold check is ~3 FRED calls per series and took >20s under the
+    rate limit, timing out the desk. `force` / `today` always compute inline."""
+    import time as _time
+    if force or today is not None:
+        return _compute_live_freshness(today)
+    now = _time.time()
+    cached = _FRESHNESS_CACHE.get("data")
+    if cached and now - float(_FRESHNESS_CACHE["ts"]) < _FRESHNESS_TTL:
+        return cached  # type: ignore[return-value]
+    if not cached:
+        snap = _load_freshness_snapshot()
+        if snap:
+            _FRESHNESS_CACHE["data"], _FRESHNESS_CACHE["ts"] = snap
+            cached = snap[0]
+    if cached and now - float(_FRESHNESS_CACHE["ts"]) < _FRESHNESS_STALE_MAX:
+        _refresh_freshness_in_background()
+        return cached  # type: ignore[return-value]
+    return _compute_live_freshness(None)
+
+
+def _load_freshness_snapshot():
+    try:
+        raw = json.loads(_FRESHNESS_SNAPSHOT.read_text())
+        return raw["data"], float(raw["ts"])
+    except Exception:
+        return None
+
+
+def _save_freshness_snapshot(data: Dict, ts: float) -> None:
+    try:
+        _FRESHNESS_SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _FRESHNESS_SNAPSHOT.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"ts": ts, "data": data}, default=str))
+        tmp.replace(_FRESHNESS_SNAPSHOT)
+    except Exception as e:
+        logger.debug("[FRESHNESS] snapshot save failed: %s", e)
+
+
+def _refresh_freshness_in_background() -> None:
+    import threading
+    t = _FRESHNESS_REFRESH["thread"]
+    if t is not None and t.is_alive():
+        return
+
+    def run():
+        try:
+            _compute_live_freshness(None)
+        except Exception as e:
+            logger.warning("[FRESHNESS] background refresh failed: %s", e)
+    t = threading.Thread(target=run, name="freshness-refresh", daemon=True)
+    _FRESHNESS_REFRESH["thread"] = t
+    t.start()
+
+
+def _compute_live_freshness(today=None) -> Dict:
     import time as _time
     from concurrent.futures import ThreadPoolExecutor
     from datetime import date as _date
     from api.release_calendar import SERIES, assess
 
     now = _time.time()
-    cached = _FRESHNESS_CACHE.get("data")
-    if not force and today is None and cached and now - float(_FRESHNESS_CACHE["ts"]) < _FRESHNESS_TTL:
-        return cached  # type: ignore[return-value]
 
     try:
         from api.providers.fred_provider import FREDProvider
@@ -276,4 +338,6 @@ def get_live_freshness(force: bool = False, today=None) -> Dict:
     if today is None:
         _FRESHNESS_CACHE["data"] = result
         _FRESHNESS_CACHE["ts"] = now
+        if result["unknown"] < result["total"]:          # not a check where FRED answered nothing
+            _save_freshness_snapshot(result, now)
     return result

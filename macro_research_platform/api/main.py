@@ -1327,7 +1327,7 @@ async def lifespan(app: FastAPI):
     # FIXED: Log FRED API key status at startup
     from api.config import FRED_API_KEY
     if FRED_API_KEY:
-        logger.info("[config] FRED_API_KEY loaded: YES (key starts with: %s...)", FRED_API_KEY[:4])
+        logger.info("[config] FRED_API_KEY loaded: YES (%d characters)", len(FRED_API_KEY))   # never log key material
     else:
         logger.warning("[config] FRED_API_KEY loaded: NO — CHECK .env file")
 

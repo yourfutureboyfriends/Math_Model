@@ -19,17 +19,8 @@ _COLUMNS = ["symbol", "asset_class", "quantity", "avg_cost", "entry_date", "book
 
 
 def _db_path() -> str:
-    from api.config import DATABASE_URL
-    path = (DATABASE_URL or "sqlite:///macro_terminal.db").split("sqlite:///", 1)[-1]
-    if not os.path.isabs(path):
-        here = os.path.dirname(os.path.abspath(__file__))  # api/
-        # Prefer an existing db next to the package or its parent.
-        for base in (here, os.path.dirname(here)):
-            candidate = os.path.join(base, path)
-            if os.path.exists(candidate):
-                return candidate
-        return os.path.join(here, path)
-    return path
+    from api.core.app_db import app_db_path
+    return app_db_path()
 
 
 def _conn() -> sqlite3.Connection:

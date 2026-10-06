@@ -20,6 +20,8 @@ def _isolated_dashboard_snapshot(tmp_path_factory):
     from api.handlers import dashboard_handler as dh
     mp = pytest.MonkeyPatch()
     mp.setattr(dh, "_SNAPSHOT_DIR", tmp_path_factory.mktemp("dash_snapshot"))
+    from api import data_freshness as dfr
+    mp.setattr(dfr, "_FRESHNESS_SNAPSHOT", tmp_path_factory.mktemp("fresh_snapshot") / "freshness.json")
     yield
     mp.undo()
 
