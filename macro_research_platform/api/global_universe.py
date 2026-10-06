@@ -104,14 +104,21 @@ def dedupe_and_rank(quotes: List[Dict[str, Any]], fx: Dict[str, float]) -> List[
     seen_name, seen_size, kept = set(), set(), []
     for r in rows:
         nk = name_key(r["name"])
-        # second key catches renamed duplicates: same first word and near-identical USD cap
-        sk = (nk[:6], round(math.log10(r["mcap_usd"]) * 40)) if r["mcap_usd"] > 0 else None
+        # Second key catches a listing whose name is abbreviated differently: the same first
+        # 12 letters AND the same USD market cap (to ~0.6%, as one company's listings are).
+        # A looser key (6 letters, ~6% cap band) merged different banks — Bank of Montreal
+        # with Bank of Nova Scotia, China Construction Bank with another "China…" bank.
+        sk = (nk[:12], round(math.log10(r["mcap_usd"]) * 400)) if r["mcap_usd"] > 0 and len(nk) >= 12 else None
         if (nk and nk in seen_name) or (sk and sk in seen_size):
             continue
         seen_name.add(nk)
         if sk:
             seen_size.add(sk)
         kept.append(r)
+    from api.markets import home_country
+    for r in kept:                     # MSCI home market (H-shares → China, PDD → China, …)
+        r["listing_country"] = r["country"]
+        r["country"] = home_country(r["country"], r.get("_fin"))
     out = []
     for c, meta in COUNTRIES.items():
         mine = sorted([r for r in kept if r["country"] == c], key=lambda r: -r["mcap_usd"])[: meta["n"]]

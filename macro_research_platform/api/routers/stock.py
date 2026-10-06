@@ -121,7 +121,7 @@ def _fetch(sym: str) -> Dict[str, Any]:
     if info:
         try:
             _FUND_DIR.mkdir(parents=True, exist_ok=True)
-            keep = {k: info.get(k) for k in ("shortName", "longName", "sector", "industry", "currency", "exchange",
+            keep = {k: info.get(k) for k in ("shortName", "longName", "sector", "industry", "currency", "financialCurrency", "quoteType", "exchange",
                                              "fullExchangeName", "recommendationMean", "recommendationKey",
                                              "numberOfAnalystOpinions", "targetMeanPrice", "targetHighPrice",
                                              "targetLowPrice", "returnOnEquity", "profitMargins", "debtToEquity",
@@ -194,16 +194,27 @@ async def analyze(sym: str, with_history: bool = True) -> Dict[str, Any]:
     }
     timing = st.timing_component(c, h, l)
     from api.markets import COUNTRIES, benchmark_of, classify
+    from api.markets import home_country
     cls = classify(sym)
-    bench = benchmark_of(cls["country"])
+    if cls["asset_type"] == "Equity" and str(info.get("quoteType") or "").upper() == "ETF":
+        cls["asset_type"] = "ETF"
+    if cls["asset_type"] == "Equity" and cls.get("country"):
+        home = home_country(cls["country"], info.get("financialCurrency"))
+        if home != cls["country"]:
+            listing = cls["country"]
+            cls = {**classify(sym, home), "asset_type": "Equity"}
+            cls["listing_country"] = listing
+    bench = benchmark_of(cls["country"]) if cls.get("country") else "ACWI"
     bench_name = "MSCI ACWI" if bench == "ACWI" else (COUNTRIES.get(cls["country"], {}).get("name", "") + " index")
     if bench == "^GSPC":
         bench_name = "S&P 500"
     quote_ccy = info.get("currency") or cls["home_currency"]
     market, nav, px_to_usd = await asyncio.gather(_market(bench, bench_name), _nav(), _usd_per_unit(quote_ccy))
     setup = st.combine_setup(comps)
+    # An index cannot be bought directly: levels yes, position size no.
     lv = st.levels(price, timing, (comps["high_52w"] or {}).get("high_52w"),
-                   (comps["analysts"] or {}).get("target_mean"), nav, px_to_usd=px_to_usd or 0.0)
+                   (comps["analysts"] or {}).get("target_mean"),
+                   None if cls["asset_type"] == "Index" else nav, px_to_usd=px_to_usd or 0.0)
     v = st.verdict(setup, timing, market, (lv or {}).get("reward_risk"),
                    target_is_consensus=(lv or {}).get("target_basis") == "consensus price target")
     out: Dict[str, Any] = {
@@ -233,6 +244,12 @@ async def analyze(sym: str, with_history: bool = True) -> Dict[str, Any]:
                          "buy": bool(sig[i])} for i in range(tail.start, tail.stop)]
     out["methodology"] = st.__doc__.strip()
     _CACHE[key] = (time.time(), out)
+    if len(_CACHE) > 400:                    # bounded: drop expired, then oldest entries
+        now = time.time()
+        for k in [k for k, v in _CACHE.items() if now - v[0] > _TTL]:
+            _CACHE.pop(k, None)
+        for k, _ in sorted(_CACHE.items(), key=lambda kv: kv[1][0])[: max(0, len(_CACHE) - 300)]:
+            _CACHE.pop(k, None)
     return out
 
 
@@ -293,7 +310,7 @@ async def stock_ideas():
     cur = si.latest()
     stale = (not cur) or (time.time() - _iso_ts(cur.get("as_of")) > 20 * 3600)
     if stale and not si.status()["running"]:
-        asyncio.create_task(si.build_in_background())
+        _spawn(si.build_in_background())
     if not cur:
         return {"available": False, "status": si.status(),
                 "reason": "Building the first list — screening the S&P 500 takes about a minute."}
@@ -304,8 +321,19 @@ async def stock_ideas():
 async def stock_ideas_refresh():
     from api import stock_ideas as si
     if not si.status()["running"]:
-        asyncio.create_task(si.build_in_background())
+        _spawn(si.build_in_background())
     return {"started": True, "status": si.status()}
+
+
+_TASKS: set = set()
+
+
+def _spawn(coro) -> None:
+    """Start a background task and keep a reference until it finishes (asyncio only holds
+    weak references, so an unreferenced task can be garbage-collected mid-run)."""
+    t = asyncio.create_task(coro)
+    _TASKS.add(t)
+    t.add_done_callback(_TASKS.discard)
 
 
 def _iso_ts(s: Optional[str]) -> float:

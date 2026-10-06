@@ -264,7 +264,9 @@ async def get_recommendations_data() -> Dict[str, Any]:
     liquidity = (dashboard.scores.liquidity / 100)
     ten_yr = dashboard.keyMetrics.tenYearYield
     vix = dashboard.keyMetrics.vix
-    rec_prob = dashboard.recession.probability
+    rec_known = dashboard.recession.probability is not None
+    # Unavailable recession model (e.g. FRED down): sizing treats it as 0 and every text says n/a.
+    rec_prob = dashboard.recession.probability if rec_known else 0.0
 
     # Calculate regime from signals if not set (backup classification)
     if not regime or regime == "unknown":
@@ -289,7 +291,7 @@ async def get_recommendations_data() -> Dict[str, Any]:
         overall_position = "RISK-ON"
     elif risk > 0.5 and rec_prob < 0.3:
         overall_position = "MODERATE RISK-ON"
-    elif rec_prob > 0.4 or vix > 30:
+    elif rec_prob > 0.4 or (vix or 0) > 30:
         overall_position = "DEFENSIVE"
     else:
         overall_position = "BALANCED"
@@ -318,7 +320,7 @@ async def get_recommendations_data() -> Dict[str, Any]:
             "Flight to quality, overweight duration"
         ],
         "contraction": [
-            f"Tight liquidity (signal {liquidity:.2f}) with elevated recession risk ({rec_prob:.0%})",
+            f"Tight liquidity (signal {liquidity:.2f}) with elevated recession risk ({rec_prob:.0%})" if rec_known else f"Tight liquidity (signal {liquidity:.2f})",
             "Capital preservation mode",
             "Underweight risk assets, maximum duration"
         ]
@@ -337,7 +339,7 @@ async def get_recommendations_data() -> Dict[str, Any]:
         themes.append(f"Low rates at {ten_yr:.2f}% - favor duration and growth")
 
     # Add VIX-based theme
-    if vix > 25:
+    if (vix or 0) > 25:
         themes.append(f"Elevated volatility (VIX {vix:.1f}) - reduce position sizes")
 
     # Expected returns: the documented building-block model (earnings yield + breakeven
@@ -382,7 +384,7 @@ async def get_recommendations_data() -> Dict[str, Any]:
             "regime_confidence": confidence,
             "overall_position": overall_position,
             "key_themes": themes,
-            "risk_assessment": f"VIX {vix:.1f}, 12M recession probability {rec_prob:.0%}, Risk Appetite signal {risk:.2f} (0–1)"
+            "risk_assessment": f"VIX {f'{vix:.1f}' if vix is not None else 'n/a'}, 12M recession probability {f'{rec_prob:.0%}' if rec_known else 'n/a'}, Risk Appetite signal {risk:.2f} (0–1)"
         },
         "expected_returns": expected_returns,
         "position_sizing": [
@@ -390,16 +392,18 @@ async def get_recommendations_data() -> Dict[str, Any]:
             {"asset": "QQQ", "target": round(qqq_target, 2), "range": f"{int(qqq_target*100-5)}-{int(qqq_target*100+5)}%", "conviction": get_conviction(growth * liquidity, 0.45, 0.25)},
             {"asset": "TLT", "target": round(tlt_target, 2), "range": "5-20%", "conviction": get_conviction(1 - growth + (ten_yr - 4.0) * 0.2 if ten_yr else 0.5, 0.6, 0.4)},
             {"asset": "GLD", "target": round(gld_target, 2), "range": f"{int(gld_target*100-2)}-{int(gld_target*100+5)}%", "conviction": get_conviction(inflation + rec_prob * 0.5, 0.6, 0.4)},
-            {"asset": "VIX Hedge", "target": round(0.02 + rec_prob * 0.05, 2), "range": "2-7%", "conviction": get_conviction(rec_prob + (vix - 20) * 0.01, 0.4, 0.2)},
+            {"asset": "VIX Hedge", "target": round(0.02 + rec_prob * 0.05, 2), "range": "2-7%", "conviction": get_conviction(rec_prob + ((vix if vix is not None else 20) - 20) * 0.01, 0.4, 0.2)},
         ],
         "signal_scorecard": [
-            {"signal": "Recession Risk", "value": f"{rec_prob:.0%}", "status": "Red" if rec_prob > 0.35 else "Yellow" if rec_prob > 0.2 else "Green"},
+            {"signal": "Recession Risk", "value": f"{rec_prob:.0%}" if rec_known else "n/a",
+             "status": "Grey" if not rec_known else "Red" if rec_prob > 0.35 else "Yellow" if rec_prob > 0.2 else "Green"},
             {"signal": "Regime", "value": regime.title(), "status": "Green" if regime in ["goldilocks", "reflation"] else "Yellow" if regime == "slowdown" else "Red"},
             {"signal": "Growth Momentum", "value": f"{growth:.2f}", "status": "Green" if growth > 0.6 else "Yellow" if growth > 0.4 else "Red"},
             {"signal": "Inflation Pressure", "value": f"{inflation:.2f}", "status": "Red" if inflation > 0.6 else "Yellow" if inflation > 0.45 else "Green"},
             {"signal": "Liquidity", "value": f"{liquidity:.2f}", "status": "Green" if liquidity > 0.6 else "Yellow" if liquidity > 0.4 else "Red"},
             {"signal": "Risk Appetite", "value": f"{risk:.2f}", "status": "Green" if risk > 0.6 else "Yellow" if risk > 0.4 else "Red"},
-            {"signal": "Volatility", "value": f"VIX {vix:.1f}", "status": "Green" if vix < 20 else "Yellow" if vix < 25 else "Red"},
+            {"signal": "Volatility", "value": f"VIX {vix:.1f}" if vix is not None else "VIX n/a",
+             "status": "Grey" if vix is None else "Green" if vix < 20 else "Yellow" if vix < 25 else "Red"},
         ],
         "timestamp": datetime.now().isoformat(),
     }
@@ -413,10 +417,11 @@ async def get_decision_log_data(limit: int = 50) -> Dict[str, Any]:
     dashboard = await get_dashboard_data(mode="live")
     now = datetime.now()
 
-    regime = (dashboard.regime.current or "Goldilocks").title() if dashboard.regime else "Goldilocks"
-    rec_prob = dashboard.recession.probability
+    regime = (dashboard.regime.current or "Unclassified").title() if dashboard.regime else "Unclassified"
+    rec_known = dashboard.recession.probability is not None
+    # Unavailable recession model (e.g. FRED down): sizing treats it as 0 and every text says n/a.
+    rec_prob = dashboard.recession.probability if rec_known else 0.0
     growth = (dashboard.scores.growth or 50) if dashboard.scores else 50
-    inflation = (dashboard.scores.inflation or 30) if dashboard.scores else 30
 
     entries = []
     # Entry based on current regime
@@ -426,12 +431,13 @@ async def get_decision_log_data(limit: int = 50) -> Dict[str, Any]:
         "headline": f"{regime} regime confirmed — maintain positioning",
         "conviction": "High" if (dashboard.regime.confidenceScore or 0) > 0.7 else "Medium",
         "suggestedPositionSize": "Full",
-        "rationale": f"Regime classifier: {regime} with {(dashboard.regime.confidenceScore):.0%} confidence",
+        "rationale": f"Regime classifier: {regime}" + (f" with {dashboard.regime.confidenceScore:.0%} confidence"
+                                                        if dashboard.regime.confidenceScore is not None else ""),
         "action": "HOLD",
         "model": "Regime Classifier",
     })
     # Entry based on recession probability
-    if rec_prob > 0.2:
+    if rec_known and rec_prob > 0.2:
         entries.append({
             "timestamp": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "recommendationType": "Risk Management",
@@ -484,10 +490,13 @@ async def get_ic_pack_data() -> Dict[str, Any]:
     dashboard = await get_dashboard_data(mode="live")
     now = datetime.now()
 
-    regime = (dashboard.regime.current or "Goldilocks").title() if dashboard.regime else "Goldilocks"
+    regime = (dashboard.regime.current or "Unclassified").title() if dashboard.regime else "Unclassified"
     confidence = dashboard.regime.confidenceScore
-    conviction = "High" if confidence > 0.75 else "Medium" if confidence > 0.5 else "Low"
-    rec_prob = dashboard.recession.probability
+    conviction = ("Unrated" if confidence is None else
+                  "High" if confidence > 0.75 else "Medium" if confidence > 0.5 else "Low")
+    rec_known = dashboard.recession.probability is not None
+    # Unavailable recession model (e.g. FRED down): sizing treats it as 0 and every text says n/a.
+    rec_prob = dashboard.recession.probability if rec_known else 0.0
     growth = (dashboard.scores.growth or 50) if dashboard.scores else 50
     inflation = (dashboard.scores.inflation or 30) if dashboard.scores else 30
 
@@ -496,13 +505,13 @@ async def get_ic_pack_data() -> Dict[str, Any]:
 
 ## Executive Summary
 - Current Regime: {regime}
-- Conviction: {conviction} ({confidence:.0%})
+- Conviction: {conviction} ({f"{confidence:.0%}" if confidence is not None else "n/a"})
 - Overall Position: {"High Risk" if growth > 60 else "Moderate Risk" if growth > 40 else "Defensive"}
-- Recession Probability: {rec_prob:.0%}
+- Recession Probability: {f"{rec_prob:.0%}" if rec_known else "n/a"}
 
 ## Key Charts
 1. Regime Classification — {regime} (Duration: {dashboard.regime.duration or 1} months)
-2. Recession Probability — {rec_prob:.0%} ({("High" if rec_prob > 0.4 else "Moderate" if rec_prob > 0.2 else "Low")})
+2. Recession Probability — {f"{rec_prob:.0%}" if rec_known else "n/a"} ({("n/a" if not rec_known else "High" if rec_prob > 0.4 else "Moderate" if rec_prob > 0.2 else "Low")})
 3. Risk Parity Allocation
 
 ## Signal Scorecard

@@ -12,6 +12,7 @@ currency before any FX conversion.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Optional
 
 DM, EM, FM, SA = "Developed", "Emerging", "Frontier", "Standalone"
@@ -128,6 +129,27 @@ COUNTRIES: Dict[str, Dict[str, Any]] = {
 # Minor-unit quote currencies (Yahoo codes) → (major currency, divisor)
 MINOR_UNITS = {"GBp": ("GBP", 100.0), "GBX": ("GBP", 100.0), "ZAc": ("ZAR", 100.0), "ILA": ("ILS", 100.0)}
 
+# Reporting currency → home country, for currencies used by exactly one covered market.
+# MSCI assigns a company to its home market, not its listing venue: Chinese companies listed
+# in Hong Kong (H-shares, Tencent) are MSCI China; a US-listed company reporting in CNY/TWD/
+# INR (PDD, ADRs without a home listing) belongs to that market.
+_ccy_count: Dict[str, int] = {}
+for _m in COUNTRIES.values():
+    _ccy_count[_m["ccy"]] = _ccy_count.get(_m["ccy"], 0) + 1
+CCY_HOME = {m["ccy"]: c for c, m in COUNTRIES.items() if _ccy_count[m["ccy"]] == 1 and m["ccy"] != "USD"}
+
+
+def home_country(listing_country: str, financial_ccy: Optional[str]) -> str:
+    """Country MSCI would assign: the reporting currency's market when the company reports in
+    a single-country currency other than its listing market's (US and Hong Kong listings)."""
+    if listing_country in ("US", "HK") and financial_ccy in CCY_HOME:
+        home = CCY_HOME[financial_ccy]
+        if listing_country == "HK" and home != "CN":
+            return listing_country
+        return home
+    return listing_country
+
+
 _SUFFIX = sorted(((s, c) for c, m in COUNTRIES.items() for s in m["sfx"] if s), key=lambda x: -len(x[0]))
 
 
@@ -147,10 +169,38 @@ def country_of(symbol: str) -> str:
     return "US"
 
 
+_CRYPTO = re.compile(r"^[A-Z0-9]{2,10}-(USD|USDT|USDC|EUR|GBP|BTC|ETH)$")
+
+
+def asset_type(symbol: str) -> str:
+    """Instrument type from the Yahoo ticker form (ETFs are recognised later from quote data)."""
+    s = (symbol or "").upper()
+    if s.endswith("=X"):
+        return "Currency"
+    if s.endswith("=F"):
+        return "Future"
+    if s.startswith("^"):
+        return "Index"
+    if _CRYPTO.match(s):
+        return "Crypto"
+    return "Equity"
+
+
 def classify(symbol: str, country: Optional[str] = None) -> Dict[str, Any]:
+    """Market classification of a listing. Currencies, futures, crypto and indices are not
+    country equity listings, so they carry no MSCI market class (an index takes its home
+    country when it is a known benchmark)."""
+    kind = asset_type(symbol)
+    if kind != "Equity" and not country:
+        home = next((c for c, m in COUNTRIES.items() if m.get("bench") == (symbol or "").upper()), None) \
+            if kind == "Index" else None
+        m = COUNTRIES.get(home, {}) if home else {}
+        return {"asset_type": kind, "country": home, "country_name": m.get("name") or kind,
+                "market_class": m.get("msci") if home else "n/a", "region": m.get("region", "Global") if home else "Global",
+                "benchmark": None, "home_currency": m.get("ccy")}
     c = country or country_of(symbol)
     m = COUNTRIES.get(c, {})
-    return {"country": c, "country_name": m.get("name", c), "market_class": m.get("msci", "Unclassified"),
+    return {"asset_type": kind, "country": c, "country_name": m.get("name", c), "market_class": m.get("msci", "Unclassified"),
             "region": m.get("region", "Other"), "benchmark": m.get("bench"), "home_currency": m.get("ccy")}
 
 

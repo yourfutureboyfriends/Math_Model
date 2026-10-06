@@ -51,3 +51,30 @@ def test_classification_by_suffix():
 
 def test_accents_folded():
     assert gu.name_key("Nestlé S.A.") == gu.name_key("Nestle SA")
+
+
+def test_non_equity_instruments_have_no_market_class():
+    assert mk.classify("EURUSD=X")["asset_type"] == "Currency" and mk.classify("EURUSD=X")["market_class"] == "n/a"
+    assert mk.classify("BTC-USD")["asset_type"] == "Crypto"
+    assert mk.classify("GC=F")["asset_type"] == "Future"
+    idx = mk.classify("^N225")
+    assert idx["asset_type"] == "Index" and idx["country"] == "JP"
+    assert mk.classify("BRK-B")["asset_type"] == "Equity" and mk.classify("BRK-B")["country"] == "US"
+
+
+def test_similar_names_are_not_merged():
+    fx = {"CAD": 1.4}
+    q = [{"symbol": "BMO.TO", "_country": "CA", "currency": "CAD", "marketCap": 1.40e11, "regularMarketPrice": 190,
+          "averageDailyVolume3Month": 2e6, "longName": "Bank of Montreal"},
+         {"symbol": "BNS.TO", "_country": "CA", "currency": "CAD", "marketCap": 1.45e11, "regularMarketPrice": 100,
+          "averageDailyVolume3Month": 5e6, "longName": "The Bank of Nova Scotia"}]
+    assert {r["symbol"] for r in gu.dedupe_and_rank(q, fx)} == {"BMO.TO", "BNS.TO"}
+
+
+def test_home_market_follows_reporting_currency():
+    assert mk.home_country("HK", "CNY") == "CN"        # H-share / Tencent → MSCI China
+    assert mk.home_country("HK", "USD") == "HK"        # AIA reports USD → Hong Kong
+    assert mk.home_country("HK", "TWD") == "HK"        # only CNY reassigns HK listings
+    assert mk.home_country("US", "CNY") == "CN"        # PDD
+    assert mk.home_country("US", "EUR") == "US"        # EUR is multi-country: no guess
+    assert mk.home_country("US", "USD") == "US"

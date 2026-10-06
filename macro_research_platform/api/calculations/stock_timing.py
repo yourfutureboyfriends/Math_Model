@@ -205,10 +205,15 @@ def market_component(index: np.ndarray, vix_last: Optional[float], name: str = "
 
 
 # ── Combine ──────────────────────────────────────────────────────────────────
+PRICE_COMPONENTS = ("trend", "momentum")
+
+
 def combine_setup(components: Dict[str, Optional[Dict[str, Any]]]) -> Optional[float]:
-    avail = {k: w for k, w in SETUP_WEIGHTS.items() if components.get(k)}
-    if not avail:
+    """Weighted set-up score. The price evidence (trend and momentum, which need ~1 year of
+    history) is required: fundamentals alone do not make a timing call."""
+    if not all(components.get(k) for k in PRICE_COMPONENTS):
         return None
+    avail = {k: w for k, w in SETUP_WEIGHTS.items() if components.get(k)}
     tot = sum(avail.values())
     return round(sum(components[k]["score"] * w for k, w in avail.items()) / tot, 3)
 
@@ -218,7 +223,8 @@ def verdict(setup: Optional[float], timing: Optional[Dict], market: Optional[Dic
     """`reward_risk` gates a BUY only when the target is an external estimate (consensus);
     a 2R projection has reward:risk 2 by construction."""
     if setup is None:
-        return {"code": "N/A", "label": "Insufficient data", "detail": ""}
+        return {"code": "N/A", "label": "Insufficient price history",
+                "detail": "Trend and momentum need about a year of daily prices; no timing call without them."}
     t = timing["score"] if timing else 0.0
     if setup >= BUY_SETUP:
         if market and not market["ok"]:

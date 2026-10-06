@@ -95,14 +95,15 @@ async def get_signal_stack_data() -> Dict[str, Any]:
 
     # Build layer outputs for response
     layer_outputs = [
-        {"layer": "Regime", "signal": dashboard.regime.current.upper() if dashboard.regime.current else "EXPANSION", "conviction": round(dashboard.regime.confidenceScore, 2)},
+        {"layer": "Regime", "signal": dashboard.regime.current.upper() if dashboard.regime.current else "UNCLASSIFIED",
+         "conviction": round(dashboard.regime.confidenceScore, 2) if dashboard.regime.confidenceScore is not None else None},
         {"layer": "Growth", "signal": "Strong" if growth > 0.6 else "Weak" if growth < 0.4 else "Neutral", "conviction": round(growth, 2)},
         {"layer": "Liquidity", "signal": "Loose" if liquidity > 0.6 else "Tight" if liquidity < 0.4 else "Neutral", "conviction": round(liquidity, 2)},
         {"layer": "Risk", "signal": "High Appetite" if risk > 0.6 else "Low Appetite" if risk < 0.4 else "Neutral", "conviction": round(risk, 2)},
     ]
 
     # Determine active layer (highest conviction)
-    active_layer = max(layer_outputs, key=lambda x: x["conviction"])["layer"]
+    active_layer = max(layer_outputs, key=lambda x: x["conviction"] if x["conviction"] is not None else -1)["layer"]
 
     data = {
         "finalStance": final_signal,

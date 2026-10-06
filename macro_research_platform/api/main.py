@@ -524,6 +524,9 @@ _DASHBOARD_CACHE_TTL_SECONDS = 300  # 5 minutes
 
 # FIXED: R-01 - APScheduler for automated data pipeline
 _scheduler = AsyncIOScheduler(timezone="UTC")
+# Strong references to long-running startup tasks (asyncio keeps only weak ones, so an
+# unreferenced warm loop can be garbage-collected and silently stop).
+_BACKGROUND_TASKS: set = set()
 
 PROJECT_ROOT = _ROOT
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed" / "live"
@@ -1340,7 +1343,7 @@ async def lifespan(app: FastAPI):
             await _asyncio.sleep(45)
 
     try:
-        _asyncio.create_task(_dashboard_warm_loop())
+        _BACKGROUND_TASKS.add(_asyncio.create_task(_dashboard_warm_loop()))
         logger.info("[STARTUP] Dashboard cache warm loop started")
     except Exception as e:
         logger.warning(f"[STARTUP] Could not start dashboard warm loop: {e}")
@@ -1364,7 +1367,7 @@ async def lifespan(app: FastAPI):
             await _asyncio.sleep(480)  # < the 600s history TTL
 
     try:
-        _asyncio.create_task(_risk_warm_loop())
+        _BACKGROUND_TASKS.add(_asyncio.create_task(_risk_warm_loop()))
         logger.info("[STARTUP] Risk price-history warm loop started")
     except Exception as e:
         logger.warning(f"[STARTUP] Could not start risk warm loop: {e}")
@@ -1408,7 +1411,7 @@ async def lifespan(app: FastAPI):
             await _asyncio.sleep(20)  # < every TTL, so caches never lapse
 
     try:
-        _asyncio.create_task(_endpoints_warm_loop())
+        _BACKGROUND_TASKS.add(_asyncio.create_task(_endpoints_warm_loop()))
         logger.info("[STARTUP] Slow-endpoint warm loop started")
     except Exception as e:
         logger.warning(f"[STARTUP] Could not start endpoints warm loop: {e}")
@@ -1427,7 +1430,7 @@ async def lifespan(app: FastAPI):
             await _asyncio.sleep(300)  # every 5 minutes
 
     try:
-        _asyncio.create_task(_pit_snapshot_loop())
+        _BACKGROUND_TASKS.add(_asyncio.create_task(_pit_snapshot_loop()))
         logger.info("[STARTUP] Point-in-time snapshot loop started")
     except Exception as e:
         logger.warning(f"[STARTUP] Could not start snapshot loop: {e}")

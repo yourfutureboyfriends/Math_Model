@@ -107,3 +107,9 @@ def test_no_consensus_target_uses_2r_and_skips_rr_gate():
     lv = st.levels(100.0, timing, high_52w=101.0, target_mean=None, nav=None)
     assert lv["target_basis"].startswith("2R") and lv["reward_risk"] == pytest.approx(2.0)
     assert st.verdict(0.6, {"score": 0.3}, {"ok": True}, 1.2, target_is_consensus=False)["code"] == "BUY"
+
+
+def test_setup_requires_price_evidence():
+    comps = {"trend": None, "momentum": None, "analysts": {"score": 0.9}, "quality": {"score": 0.9}}
+    assert st.combine_setup(comps) is None
+    assert st.verdict(None, None, None)["code"] == "N/A"

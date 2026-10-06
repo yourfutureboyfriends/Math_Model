@@ -380,16 +380,29 @@ async def build_ideas() -> Dict[str, Any]:
     }
     state["changes"] = diff_runs({"buy": [{"symbol": x} for x in prev_buy]} if prev_buy is not None else None, state)
     # Track record in USD vs MSCI ACWI (log once per day; latest run of the day wins).
+    # Today's USD-per-unit, from each idea's own quote currency (recorded when suggested).
+    # A symbol with no known currency gets None (local-currency return), never a rate of
+    # 1.0 against a stored yen rate.
+    ccy_of = {s_: (meta.get(s_) or {}).get("currency") for s_ in last_px}
+    for run in _read_json(LOG_FILE, []):
+        for i in run.get("buy", []):
+            if i.get("ccy") and not ccy_of.get(i["symbol"]):
+                ccy_of[i["symbol"]] = i["ccy"]
+    for e in enriched:
+        ccy_of[e["symbol"]] = e.get("currency") or ccy_of.get(e["symbol"])
     usd_now = {}
     for s_, p in last_px.items():
-        q = (meta.get(s_) or {}).get("currency")
+        q = ccy_of.get(s_)
+        if not q:
+            usd_now[s_] = None
+            continue
         major, div = minor_unit_factor(q)
         rate = 1.0 if major == "USD" else fx.get(major)
         usd_now[s_] = (1.0 / rate) / div if rate else None
     log = _read_json(LOG_FILE, [])
     log = [r for r in log if r.get("date") != state["date"]] + [{
         "date": state["date"], "spx": bench_now, "benchmark": "ACWI",
-        "buy": [{"symbol": b["symbol"], "price": b["price"], "usd": b.get("px_to_usd")} for b in buy]}]
+        "buy": [{"symbol": b["symbol"], "price": b["price"], "usd": b.get("px_to_usd"), "ccy": b.get("currency")} for b in buy]}]
     state["track_record"] = track_record(log, last_px, bench_now, usd_now=usd_now)
     with _lock:
         DATA.mkdir(parents=True, exist_ok=True)

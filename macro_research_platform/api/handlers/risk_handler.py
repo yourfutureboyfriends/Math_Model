@@ -102,7 +102,7 @@ async def get_alerts_data() -> Dict[str, Any]:
             "active": True,
         })
 
-    if rec_prob > 0.3:
+    if rec_prob is not None and rec_prob > 0.3:
         alerts.append({
             "id": "alert-recession",
             "type": "Recession",
@@ -112,7 +112,7 @@ async def get_alerts_data() -> Dict[str, Any]:
             "active": True,
         })
 
-    if vix > 25:
+    if vix is not None and vix > 25:
         alerts.append({
             "id": "alert-vix",
             "type": "Volatility",
