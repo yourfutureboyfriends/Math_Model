@@ -2,6 +2,7 @@
 // Shows speculative positioning extremes with contrarian signals
 
 import { TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react';
+import { BarList } from '@/components/ui/BarList';
 import { cn } from '@/lib/utils';
 import { useMacroStore } from '@/store/macroStore';
 import { useApiData } from '@/hooks/useApiData';
@@ -99,7 +100,8 @@ export function COTPositioningSection() {
     }
   };
 
-  const getChangeIcon = (change: number) => {
+  const getChangeIcon = (change: number | null) => {
+    if (change == null) return null;
     if (change > 0) return <TrendingUp className="w-3 h-3 text-green" />;
     if (change < 0) return <TrendingDown className="w-3 h-3 text-red" />;
     return <Minus className="w-3 h-3 text-text-tertiary" />;
@@ -110,11 +112,12 @@ export function COTPositioningSection() {
     contract: c.name || c.contract || 'Unknown',
     asset_etf: c.asset_etf || (c.name?.includes('S&P') ? 'SPY' : c.name?.includes('Treasury') ? 'IEF' : c.name?.includes('Gold') ? 'GLD' : c.name?.includes('Euro') ? 'FXE' : c.name?.includes('Oil') ? 'USO' : '—'),
     net_position: c.net_position ?? 0,
-    net_change: c.net_change ?? c.net_change_wk ?? 0,
+    // Missing values stay missing (shown as —): never a made-up 0, ratio or median rank.
+    net_change: c.net_change ?? c.net_change_wk ?? null,
     extreme_long: c.extreme_long || (c.positioning === 'NET_LONG' && c.extreme) || false,
     extreme_short: c.extreme_short || (c.positioning === 'NET_SHORT' && c.extreme) || false,
-    net_speculative_pct: c.net_speculative_pct ?? (c.net_position ? (c.net_position / 100000) * 100 : 0),
-    percentile_rank: c.percentile_rank ?? 50,
+    net_speculative_pct: c.net_speculative_pct ?? null,
+    percentile_rank: c.percentile_rank ?? null,
     contrarian_signal: c.contrarian_signal || 'NEUTRAL',
   }));
 
@@ -155,6 +158,18 @@ export function COTPositioningSection() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Net speculative positioning, diverging */}
+        {normalizedContracts.some((c) => c.net_speculative_pct != null) && (
+          <div className="p-3 bg-surface-1 border border-border">
+            <BarList title="Speculators' net position, % of open interest (extremes flagged)" diverging labelWidth="9rem"
+              fmt={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`}
+              data={[...normalizedContracts].sort((a, b) => (b.net_speculative_pct ?? -1e9) - (a.net_speculative_pct ?? -1e9))
+                .map((c) => ({ label: c.contract, value: c.net_speculative_pct,
+                               sub: c.extreme_long || c.extreme_short ? 'extreme' : undefined,
+                               note: `net ${c.net_position.toLocaleString()} contracts` }))} />
           </div>
         )}
 
@@ -230,11 +245,11 @@ export function COTPositioningSection() {
                       {getChangeIcon(contract.net_change)}
                       <span className={cn(
                         'text-xs font-mono',
-                        contract.net_change > 0 ? 'text-green' :
-                        contract.net_change < 0 ? 'text-red' :
+                        (contract.net_change ?? 0) > 0 ? 'text-green' :
+                        (contract.net_change ?? 0) < 0 ? 'text-red' :
                         'text-text-tertiary'
                       )}>
-                        {contract.net_change > 0 ? '+' : ''}
+                        {(contract.net_change ?? 0) > 0 ? '+' : ''}
                         {contract.net_change != null ? fmtPriceInt(contract.net_change) : '—'}
                       </span>
                     </div>

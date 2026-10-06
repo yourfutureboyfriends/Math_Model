@@ -7,6 +7,7 @@
  * concentration}. Shows explicit "no positions" state when the book is empty.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { BarList } from '@/components/ui/BarList';
 import { ShieldAlert, RefreshCw } from 'lucide-react';
 
 const usd = (v: number | null | undefined) =>
@@ -102,14 +103,11 @@ export function VaRStressSection() {
               </tbody>
             </table>
             {varData.component_var_95_1d?.length > 0 && (
-              <div className="px-3 py-2 border-t border-border-subtle text-2xs">
-                <span className="text-text-tertiary uppercase tracking-wider">VaR contribution (95% 1d): </span>
-                {varData.component_var_95_1d.map((c: any) => (
-                  <span key={c.symbol} className="ml-2 font-mono">
-                    {c.symbol} <span className={c.component_var >= 0 ? 'text-red' : 'text-green'}>{usd(c.component_var)}</span>
-                    <span className="text-text-tertiary"> ({(c.pct_of_var * 100).toFixed(0)}%)</span>
-                  </span>
-                ))}
+              <div className="px-3 py-2 border-t border-border-subtle">
+                <BarList title="VaR contribution (95% 1d) — positive adds risk, negative hedges" diverging labelWidth="5rem"
+                  posColor="#e66767" negColor="#199e70" fmt={(v) => usd(v)}
+                  data={[...varData.component_var_95_1d].sort((a: any, b: any) => b.component_var - a.component_var)
+                    .map((c: any) => ({ label: c.symbol, value: c.component_var, sub: `${(c.pct_of_var * 100).toFixed(0)}%` }))} />
               </div>
             )}
           </div>

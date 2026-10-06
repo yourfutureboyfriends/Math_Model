@@ -2,6 +2,9 @@
 // targets, drift and the orders that would close it. Read-only; staging is in Macro Model.
 
 import { useCallback, useEffect, useState } from 'react';
+import { Donut } from '@/components/ui/Donut';
+import { BarList } from '@/components/ui/BarList';
+import { openChart } from '@/components/ui/ChartModal';
 import { PieChart, RefreshCw } from 'lucide-react';
 
 interface Holding {
@@ -90,6 +93,19 @@ export function ModelSleeveSection() {
             <div><div className="text-2xs text-text-tertiary">Largest drift</div><div className={`font-mono ${maxDrift > 0.02 ? 'text-amber' : 'text-text-primary'}`}>{pct(maxDrift)}</div></div>
             <div><div className="text-2xs text-text-tertiary">To rebalance</div><div className="font-mono text-text-primary">{data.order_count} orders · {usd(data.turnover)}</div></div>
           </div>
+          <div className="grid gap-2 md:grid-cols-2 mb-3">
+            <div className="px-3 py-2 bg-surface-2/40 border border-border-subtle">
+              <Donut title={`${which === 'strategic' ? 'Strategic' : 'Tactical'} target allocation`} fmt={(v) => pct(v)}
+                centerValue={pct(data.expected_vol)} centerLabel="expected vol"
+                data={[...rows.map((h) => ({ label: h.symbol, value: h.target_weight })), { label: 'Cash', value: Math.max(0, targetCash) }]}
+                colorFor={(l, i) => (l === 'Cash' ? '#5b6270' : ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'][i % 8])} />
+            </div>
+            <div className="px-3 py-2 bg-surface-2/40 border border-border-subtle">
+              <BarList title="Drift from target (held − target)" diverging fmt={(v) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`} labelWidth="4rem"
+                data={[...rows].sort((a, b) => Math.abs((b.weight ?? 0) - b.target_weight) - Math.abs((a.weight ?? 0) - a.target_weight)).slice(0, 8)
+                  .map((h) => ({ label: h.symbol, value: (h.weight ?? 0) - h.target_weight }))} />
+            </div>
+          </div>
           {invested === 0 && (
             <div className="mb-2 text-2xs text-text-tertiary">
               The model sleeve holds no positions yet. Targets below are what the {which} portfolio would hold; stage the orders from the Macro Model panel.
@@ -111,7 +127,7 @@ export function ModelSleeveSection() {
                 const drift = (h.weight ?? 0) - h.target_weight;
                 return (
                   <tr key={h.symbol} className="border-t border-border-subtle">
-                    <td className="py-0.5 text-text-primary">{h.symbol}</td>
+                    <td className="py-0.5"><button type="button" onClick={() => openChart(h.symbol)} className="text-text-primary hover:text-bloomberg">{h.symbol}</button></td>
                     <td className="text-right">{h.quantity.toLocaleString()}</td>
                     <td className="text-right">{usd(h.market_value)}</td>
                     <td className="text-right">{pct(h.weight)}</td>

@@ -1,7 +1,8 @@
 // Phase 8 — Expected Returns Section (Redesigned)
 // Forward-looking return projections with terminal aesthetic
 
-import { Target, AlertCircle } from 'lucide-react';
+import { Target } from 'lucide-react';
+import { BarList } from '@/components/ui/BarList';
 import type { ExpectedReturnsData } from '@/types';
 import { useMacroStore } from '@/store/macroStore';
 
@@ -121,68 +122,25 @@ export function ExpectedReturnsSection({ data }: ExpectedReturnsSectionProps) {
           </div>
         </div>
 
-        {/* Returns by Asset Class */}
+        {/* Returns by asset class (diverging around zero) and risk-adjusted */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="p-3 bg-surface-1 border border-border">
-            <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">
-              By Asset Class
-            </div>
-            <div className="space-y-1.5">
-              {Object.entries(byAssetClass).length === 0 ? (
-                <div className="text-xs text-text-secondary italic">No asset class data</div>
-              ) : (
-                Object.entries(byAssetClass)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([asset, ret]) => (
-                    <div key={asset} className="flex items-center justify-between">
-                      <span className="text-xs text-text-secondary">{asset}</span>
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 h-1 bg-surface-4 relative">
-                          <div
-                            className={`absolute top-0 bottom-0 ${ret >= 0 ? 'bg-green right-1/2' : 'bg-red left-1/2'}`}
-                            style={{ width: `${Math.min(50, Math.abs(ret) * 100)}%` }}
-                          />
-                          <div className="absolute top-0 bottom-0 left-1/2 w-px bg-text-tertiary/30" />
-                        </div>
-                        <span className={`font-mono text-xs w-12 text-right ${ret >= 0 ? 'text-green' : 'text-red'}`}>
-                          {ret >= 0 ? '+' : ''}{(ret * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                    </div>
-                  ))
-              )}
-            </div>
+            {Object.keys(byAssetClass).length === 0 ? (
+              <div className="text-xs text-text-secondary italic">No asset class data</div>
+            ) : (
+              <BarList title="Expected return by asset class" diverging labelWidth="7rem"
+                fmt={(v) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`}
+                data={Object.entries(byAssetClass).sort((a, b) => b[1] - a[1]).map(([asset, ret]) => ({ label: asset, value: ret }))} />
+            )}
           </div>
-
           <div className="p-3 bg-surface-1 border border-border">
-            <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2 flex items-center gap-1">
-              <AlertCircle className="w-3 h-3" />
-              Risk-Adjusted
-            </div>
-            <div className="space-y-1.5">
-              {Object.entries(riskAdjustedReturns).length === 0 ? (
-                <div className="text-xs text-text-secondary italic">No risk-adjusted data</div>
-              ) : (
-                Object.entries(riskAdjustedReturns)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([asset, ret]) => (
-                    <div key={asset} className="flex items-center justify-between">
-                      <span className="text-xs text-text-secondary">{asset}</span>
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 h-1 bg-surface-4">
-                          <div
-                            className="h-full bg-amber"
-                            style={{ width: `${Math.min(100, Math.abs(ret) * 50)}%` }}
-                          />
-                        </div>
-                        <span className={`font-mono text-xs w-10 text-right ${ret >= 0 ? 'text-amber' : 'text-red'}`}>
-                          {ret.toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-              )}
-            </div>
+            {Object.keys(riskAdjustedReturns).length === 0 ? (
+              <div className="text-xs text-text-secondary italic">No risk-adjusted data</div>
+            ) : (
+              <BarList title="Risk-adjusted (return per unit of volatility)" diverging labelWidth="7rem"
+                fmt={(v) => v.toFixed(2)}
+                data={Object.entries(riskAdjustedReturns).sort((a, b) => b[1] - a[1]).map(([asset, ret]) => ({ label: asset, value: ret }))} />
+            )}
           </div>
         </div>
       </div>

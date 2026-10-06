@@ -2,6 +2,8 @@
 // Bull/Base/Bear scenario outcomes with probability-weighted expected returns
 
 import { Card } from '@/components/ui/Card';
+import { RangePlot } from '@/components/ui/RangePlot';
+import { Donut } from '@/components/ui/Donut';
 import { Badge } from '@/components/ui/Badge';
 import { TrendingUp, TrendingDown, Minus, AlertTriangle, Target } from 'lucide-react';
 import { useApiData } from '@/hooks/useApiData';
@@ -90,6 +92,23 @@ export function ScenarioAnalysisSection({ data }: Props) {
             <div className="text-2xs text-text-tertiary uppercase mb-1">Scenarios Analyzed</div>
             <div className="text-lg font-mono font-bold text-text-primary">{scenarios.length}</div>
           </div>
+        </div>
+      </div>
+
+      {/* Outcomes with their 95% intervals, and how likely each is */}
+      <div className="grid gap-3 lg:grid-cols-3 mb-4">
+        <div className="p-3 bg-surface-1 border border-border lg:col-span-2">
+          <RangePlot title="Expected return and 95% interval by scenario" labelWidth="10rem"
+            fmt={(v) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`}
+            data={[...scenarios].sort((a, b) => b.expectedReturn - a.expectedReturn).map((sc) => ({
+              label: sc.scenario, value: sc.expectedReturn, lo: sc.confidenceInterval[0], hi: sc.confidenceInterval[1],
+              note: `${(sc.probability * 100).toFixed(0)}% probability — ${sc.description}`,
+            }))} />
+        </div>
+        <div className="p-3 bg-surface-1 border border-border">
+          <Donut title="Scenario probabilities" fmt={(v) => `${(v * 100).toFixed(0)}%`}
+            centerValue={`${weightedReturn > 0 ? '+' : ''}${(weightedReturn * 100).toFixed(1)}%`} centerLabel="weighted"
+            data={scenarios.map((sc) => ({ label: sc.scenario, value: sc.probability }))} />
         </div>
       </div>
 
