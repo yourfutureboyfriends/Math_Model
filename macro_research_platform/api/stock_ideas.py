@@ -144,7 +144,7 @@ def diff_runs(prev: Optional[Dict], cur: Dict) -> Dict[str, List[str]]:
 
 
 def track_record(log: List[Dict[str, Any]], prices: Dict[str, float], spx_now: Optional[float],
-                 min_age_days: int = 5) -> Dict[str, Any]:
+                 min_age_days: int = 5, usd_now: Optional[Dict[str, Optional[float]]] = None) -> Dict[str, Any]:
     """Return since each logged BUY idea vs the S&P 500 over the same period. Only ideas at
     least `min_age_days` old count; each symbol counts once per run."""
     today = date.today()
@@ -156,7 +156,7 @@ def track_record(log: List[Dict[str, Any]], prices: Dict[str, float], spx_now: O
         for idea in run.get("buy", []):
             p0, p1 = idea.get("price"), prices.get(idea["symbol"])
             if p0 and p1 and spx_now:
-                r = p1 / p0 - 1
+                r = usd_return(p0, idea.get("usd"), p1, (usd_now or {}).get(idea["symbol"]))
                 b = spx_now / run["spx"] - 1
                 rows.append({"date": run["date"], "symbol": idea["symbol"], "return": round(r, 4),
                              "spx_return": round(b, 4), "excess": round(r - b, 4)})
@@ -211,12 +211,83 @@ def _read_json(p: Path, default):
 
 
 # ── Build ────────────────────────────────────────────────────────────────────
+WATCHLIST_FILE = DATA / "stock_watchlists.json"
+# Stage-2 slots per MSCI class (and at most STAGE2_PER_COUNTRY per country), so the full
+# model looks at the strongest set-ups across markets rather than only the largest market.
+STAGE2_QUOTA = {"Developed": 50, "Emerging": 34, "Frontier": 4, "Standalone": 3, "Unclassified": 6}
+STAGE2_PER_COUNTRY = 7
+LIST_PER_COUNTRY = 6
+LIST_PER_SECTOR = 5
+LIST_MAX = 60
+
+
+def watchlist_symbols() -> List[str]:
+    wl = _read_json(WATCHLIST_FILE, {})
+    return sorted({s for syms in wl.values() for s in syms})
+
+
+def _chunks(xs: List[str], n: int):
+    for i in range(0, len(xs), n):
+        yield xs[i:i + n]
+
+
+def _download(symbols: List[str]):
+    """Daily OHLC for many symbols, in chunks (Yahoo bulk endpoint)."""
+    import pandas as pd
+    import yfinance as yf
+    frames = []
+    for part in _chunks(symbols, 400):
+        try:
+            frames.append(yf.download(part, period="2y", interval="1d", auto_adjust=True,
+                                      group_by="ticker", threads=True, progress=False))
+        except Exception as e:
+            logger.warning("[ideas] download chunk failed: %s", e)
+    return pd.concat(frames, axis=1) if frames else None
+
+
+def cap_by(rows: List[Dict], key: str, limit: int, caps: Dict[str, int]) -> List[Dict]:
+    """Best rows by `key` with at most caps[field] rows sharing each value of `field`."""
+    out, used = [], {f: {} for f in caps}
+    for r in sorted(rows, key=lambda r: -(r.get(key) or -9)):
+        # A missing value (e.g. no sector while fundamentals are unavailable) is not a group:
+        # capping all of them together as "Other" cut most non-US ideas.
+        if any(r.get(f) and used[f].get(r[f], 0) >= n for f, n in caps.items()):
+            continue
+        for f in caps:
+            if r.get(f):
+                used[f][r[f]] = used[f].get(r[f], 0) + 1
+        out.append(r)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def usd_return(p0: float, fx0: Optional[float], p1: float, fx1: Optional[float]) -> float:
+    """Return in USD from local prices and USD-per-unit rates at both dates."""
+    if fx0 and fx1:
+        return (p1 * fx1) / (p0 * fx0) - 1
+    return p1 / p0 - 1
+
+
 async def build_ideas() -> Dict[str, Any]:
+    from api import global_universe as gu
+    from api.markets import classify, minor_unit_factor
     from api.routers.stock import analyze
     t0 = time.time()
-    universe = await asyncio.to_thread(load_universe)
-    syms = sorted(universe)
-    df = await asyncio.to_thread(_bulk_prices, syms)
+    uni = await asyncio.to_thread(gu.load)
+    meta = {s["symbol"]: s for s in uni.get("stocks", [])}
+    if not meta:                                         # fall back to the S&P 500
+        meta = {s: {"symbol": s, "sector": sec, **classify(s, "US")} for s, sec in (await asyncio.to_thread(load_universe)).items()}
+    watch = await asyncio.to_thread(watchlist_symbols)
+    for w in watch:
+        meta.setdefault(w, {"symbol": w, **classify(w)})
+    fx = uni.get("fx") or {}
+    try:
+        fx = await asyncio.to_thread(gu.fx_rates)        # today's rates for the USD track record
+    except Exception:
+        pass
+    syms = sorted(meta)
+    df = await asyncio.to_thread(_download, syms + ["ACWI"])
     snaps, last_px = [], {}
     for s in syms:
         try:
@@ -229,17 +300,27 @@ async def build_ideas() -> Dict[str, Any]:
         last_px[s] = float(c[-1])
         snap = price_snapshot(c, h, l)
         if snap:
-            snaps.append({"symbol": s, "sector": universe.get(s), "price": round(float(c[-1]), 2), **snap})
+            m = meta[s]
+            snaps.append({"symbol": s, "name": m.get("name"), "sector": m.get("sector"),
+                          "country": m.get("country"), "country_name": m.get("country_name"),
+                          "market_class": m.get("market_class"), "region": m.get("region"),
+                          "currency": m.get("currency"), "mcap_usd": m.get("mcap_usd"),
+                          "price": round(float(c[-1]), 4), **snap})
     try:
-        spx = df["^GSPC"]["Close"].dropna()
-        spx_now = float(spx.iloc[-1])
+        acwi = df["ACWI"]["Close"].dropna()
+        bench_now = float(acwi.iloc[-1])
     except Exception:
-        spx_now = None
-    # Stage 2: full model on the strongest price set-ups (sector-capped so one hot sector
-    # cannot take every slot).
-    cands = diversify([r for r in snaps if (r["price_setup"] or -9) >= st.BUY_SETUP],
-                      "price_setup", STAGE2_CANDIDATES, per_sector=8)
-    sem = asyncio.Semaphore(5)
+        acwi, bench_now = None, None
+
+    # Stage 2: strongest price set-ups per MSCI class, capped per country; plus the watchlist.
+    strong = [r for r in snaps if (r["price_setup"] or -9) >= st.BUY_SETUP]
+    cands: List[Dict] = []
+    for cls, quota in STAGE2_QUOTA.items():
+        cands += cap_by([r for r in strong if (r.get("market_class") or "Unclassified") == cls],
+                        "price_setup", quota, {"country": STAGE2_PER_COUNTRY})
+    have = {r["symbol"] for r in cands}
+    cands += [r for r in snaps if r["symbol"] in watch and r["symbol"] not in have][:20]
+    sem = asyncio.Semaphore(6)
 
     async def full(r):
         async with sem:
@@ -252,46 +333,64 @@ async def build_ideas() -> Dict[str, Any]:
         if not a.get("available"):
             continue
         lv = a.get("levels") or {}
+        why = rationale(a)
         enriched.append({
-            "symbol": r["symbol"], "name": a.get("name"), "sector": r["sector"], "price": a["price"],
+            "symbol": r["symbol"],
+            # analyze() falls back to the ticker when fundamentals are unavailable; the
+            # universe (screener) has the company name.
+            "name": a.get("name") if a.get("name") and a.get("name") != r["symbol"] else (r.get("name") or r["symbol"]),
+            "sector": a.get("sector") or r.get("sector"),
+            "country": a.get("country"), "country_name": a.get("country_name"), "market_class": a.get("market_class"),
+            "region": a.get("region"), "currency": a.get("currency"), "exchange": a.get("exchange"),
+            "mcap_usd": r.get("mcap_usd"), "price": a["price"], "px_to_usd": a.get("px_to_usd"),
             "setup_score": a["setup_score"], "timing_score": (a.get("timing") or {}).get("score"),
             "timing_state": (a.get("timing") or {}).get("state"),
             "verdict": a["verdict"]["code"], "verdict_label": a["verdict"]["label"],
-            **{"rationale": (rr := rationale(a))["pros"], "risks": rr["cons"]},
+            "market_ok": (a.get("market") or {}).get("ok"),
+            "rationale": why["pros"], "risks": why["cons"], "watchlist": r["symbol"] in watch,
             "entry_low": lv.get("entry_low"), "entry_high": lv.get("entry_high"), "stop": lv.get("stop"),
             "target": lv.get("target"), "target_basis": lv.get("target_basis"), "reward_risk": lv.get("reward_risk"),
-            "shares": lv.get("shares"), "pct_nav": lv.get("pct_nav"),
+            "shares": lv.get("shares"), "pct_nav": lv.get("pct_nav"), "notional_usd": lv.get("notional"),
             "upside": ((a.get("components") or {}).get("analysts") or {}).get("upside"),
         })
-    buy = diversify([e for e in enriched if e["verdict"] == "BUY"], "setup_score", MAX_BUY)
-    pullback = diversify([e for e in enriched if e["verdict"] == "WAIT"], "setup_score", MAX_PULLBACK)
-    market = st.market_component(df["^GSPC"]["Close"].dropna().to_numpy(dtype=float), None) if spx_now else None
+    caps = {"country": LIST_PER_COUNTRY, "sector": LIST_PER_SECTOR}
+    buy = cap_by([e for e in enriched if e["verdict"] == "BUY"], "setup_score", LIST_MAX, caps)
+    pullback = cap_by([e for e in enriched if e["verdict"] in ("WAIT", "BUY_SMALL")], "setup_score", LIST_MAX, caps)
+    watch_rows = [e for e in enriched if e["watchlist"]]
+    market = st.market_component(acwi.to_numpy(dtype=float), None, "MSCI ACWI") if acwi is not None else None
+
     prev = _read_json(STATE_FILE, None)
-    # "What changed" compares with the previous trading day's list (a same-day rebuild keeps
-    # comparing with that day, not with this morning's run).
     if prev and prev.get("date") != date.today().isoformat():
-        prev_buy = [b["symbol"] for b in prev.get("buy", [])]
-        prev_date = prev.get("date")
+        prev_buy, prev_date = [b["symbol"] for b in prev.get("buy", [])], prev.get("date")
     else:
-        prev_buy = (prev or {}).get("previous_buy")
-        prev_date = (prev or {}).get("previous_date")
+        prev_buy, prev_date = (prev or {}).get("previous_buy"), (prev or {}).get("previous_date")
     state = {
         "available": True, "as_of": datetime.now(timezone.utc).isoformat(timespec="minutes"),
-        "date": date.today().isoformat(), "universe": "S&P 500", "universe_size": len(syms),
-        "screened": len(snaps), "stage2": len(enriched), "build_seconds": round(time.time() - t0, 1),
-        "market": market, "buy": buy, "pullback": pullback,
-        "sector_counts": _sector_counts(snaps),
-        # Market breadth: share of the index above its 200-day average.
-        "breadth_above_200d": round(float(np.mean([s_["above_200d"] for s_ in snaps])), 3) if snaps else None,
+        "date": date.today().isoformat(), "universe": "Global (MSCI DM + EM + frontier)",
+        "universe_size": len(syms), "screened": len(snaps), "stage2": len(enriched),
+        "build_seconds": round(time.time() - t0, 1), "market": market,
+        "stage2_verdicts": {v: sum(1 for e in enriched if e["verdict"] == v) for v in sorted({e["verdict"] for e in enriched})},
+        "fundamentals_coverage": round(sum(1 for e in enriched if e.get("upside") is not None) / len(enriched), 3) if enriched else None,
+        "buy": buy, "pullback": pullback, "watchlist": watch_rows,
+        "by_class": _group_stats(snaps, "market_class"), "by_region": _group_stats(snaps, "region"),
+        "by_country": _group_stats(snaps, "country", name_field="country_name"),
+        "sector_counts": _sector_counts([x for x in snaps if x.get("sector")]),
+        "breadth_above_200d": round(float(np.mean([x["above_200d"] for x in snaps])), 3) if snaps else None,
         "previous_buy": prev_buy, "previous_date": prev_date,
     }
     state["changes"] = diff_runs({"buy": [{"symbol": x} for x in prev_buy]} if prev_buy is not None else None, state)
-    # Log once per day (latest run of the day wins) for the track record.
+    # Track record in USD vs MSCI ACWI (log once per day; latest run of the day wins).
+    usd_now = {}
+    for s_, p in last_px.items():
+        q = (meta.get(s_) or {}).get("currency")
+        major, div = minor_unit_factor(q)
+        rate = 1.0 if major == "USD" else fx.get(major)
+        usd_now[s_] = (1.0 / rate) / div if rate else None
     log = _read_json(LOG_FILE, [])
     log = [r for r in log if r.get("date") != state["date"]] + [{
-        "date": state["date"], "spx": spx_now,
-        "buy": [{"symbol": b["symbol"], "price": b["price"]} for b in buy]}]
-    state["track_record"] = track_record(log, last_px, spx_now)
+        "date": state["date"], "spx": bench_now, "benchmark": "ACWI",
+        "buy": [{"symbol": b["symbol"], "price": b["price"], "usd": b.get("px_to_usd")} for b in buy]}]
+    state["track_record"] = track_record(log, last_px, bench_now, usd_now=usd_now)
     with _lock:
         DATA.mkdir(parents=True, exist_ok=True)
         STATE_FILE.write_text(json.dumps(state, default=str))
@@ -299,6 +398,19 @@ async def build_ideas() -> Dict[str, Any]:
     logger.info("[ideas] %d screened, %d analysed, %d buy / %d pullback in %.0fs",
                 len(snaps), len(enriched), len(buy), len(pullback), time.time() - t0)
     return state
+
+
+def _group_stats(snaps: List[Dict], field: str, name_field: Optional[str] = None) -> List[Dict[str, Any]]:
+    by: Dict[str, List[Dict]] = {}
+    for x in snaps:
+        by.setdefault(x.get(field) or "Other", []).append(x)
+    out = []
+    for k, v in by.items():
+        out.append({"key": k, "name": (v[0].get(name_field) if name_field else k) or k, "names": len(v),
+                    "above_200d": round(float(np.mean([x["above_200d"] for x in v])), 3),
+                    "strong": sum(1 for x in v if (x["price_setup"] or -9) >= st.BUY_SETUP),
+                    "avg_setup": round(float(np.mean([x["price_setup"] or 0 for x in v])), 3)})
+    return sorted(out, key=lambda r: -r["avg_setup"])
 
 
 def _sector_counts(snaps: List[Dict]) -> List[Dict[str, Any]]:

@@ -3,7 +3,7 @@
 // rules on that stock, and a ranked scan of a watchlist. Method: api/calculations/stock_timing.py.
 
 import { useCallback, useEffect, useState } from 'react';
-import { Crosshair, Loader2, Search } from 'lucide-react';
+import { Crosshair, Loader2, Search, Star } from 'lucide-react';
 import { LineChart } from '@/components/ui/LineChart';
 import { cn } from '@/lib/utils';
 import { revealPanel } from '@/lib/focusMode';
@@ -57,6 +57,35 @@ export function StockTimingSection() {
   const [held, setHeld] = useState<string[]>([]);
   const [scan, setScan] = useState<any>(null);
   const [scanning, setScanning] = useState(false);
+  const [suggest, setSuggest] = useState<any[]>([]);
+  const [showSuggest, setShowSuggest] = useState(false);
+  const [watch, setWatch] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch('/api/v1/stock/watchlist').then((r) => r.json())
+      .then((j) => setWatch((j.symbols ?? []).map((x: any) => x.symbol))).catch(() => {});
+  }, []);
+
+  // Search any listed stock worldwide by name or ticker (debounced).
+  useEffect(() => {
+    const q = symbol.trim();
+    if (q.length < 2 || !showSuggest) { setSuggest([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/v1/stock/search?q=${encodeURIComponent(q)}`);
+        const j = await r.json();
+        setSuggest(j.results ?? []);
+      } catch { setSuggest([]); }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [symbol, showSuggest]);
+
+  const toggleWatch = async (sym: string) => {
+    const next = watch.includes(sym) ? watch.filter((s) => s !== sym) : [...watch, sym];
+    setWatch(next);
+    await fetch('/api/v1/stock/watchlist', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols: next }) }).catch(() => {});
+  };
 
   useEffect(() => {
     fetch('/api/v1/portfolio/positions').then((r) => r.json())
@@ -67,7 +96,7 @@ export function StockTimingSection() {
   const analyze = useCallback(async (sym: string) => {
     const s = sym.trim().toUpperCase();
     if (!s) return;
-    setSymbol(s); setBusy(true); setError(null);
+    setSymbol(s); setBusy(true); setError(null); setShowSuggest(false); setSuggest([]);
     try {
       const r = await fetch(`/api/v1/stock/timing?symbol=${encodeURIComponent(s)}`);
       const j = await r.json().catch(() => null);
@@ -120,11 +149,32 @@ export function StockTimingSection() {
         </div>
       </div>
 
-      <form onSubmit={(e) => { e.preventDefault(); analyze(symbol); }} className="flex flex-wrap items-center gap-2 mb-3">
-        <div className="flex items-center border border-border bg-bg">
-          <Search className="w-3.5 h-3.5 ml-2 text-text-tertiary" />
-          <input value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} placeholder="Ticker, e.g. NVDA"
-            aria-label="Ticker" className="w-36 bg-transparent px-2 py-1 font-mono text-xs text-text-primary outline-none" />
+      <form onSubmit={(e) => {
+        e.preventDefault();
+        // A name ("toyota") resolves to the top search match; a ticker is used as typed.
+        const exact = suggest.find((x) => x.symbol === symbol.trim().toUpperCase());
+        analyze(exact ? exact.symbol : (/\s|[a-z]{4,}/.test(symbol.trim()) && suggest[0] ? suggest[0].symbol : symbol));
+      }} className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="relative">
+          <div className="flex items-center border border-border bg-bg">
+            <Search className="w-3.5 h-3.5 ml-2 text-text-tertiary" />
+            <input value={symbol} onChange={(e) => { setSymbol(e.target.value); setShowSuggest(true); }}
+              onBlur={() => setTimeout(() => setShowSuggest(false), 200)} onFocus={() => setShowSuggest(true)}
+              placeholder="Ticker or name — any market" aria-label="Ticker or company name"
+              className="w-56 bg-transparent px-2 py-1 font-mono text-xs text-text-primary outline-none" />
+          </div>
+          {showSuggest && suggest.length > 0 && (
+            <div className="absolute z-20 mt-0.5 w-[26rem] max-h-72 overflow-y-auto bg-surface-2 border border-border shadow-lg">
+              {suggest.map((x) => (
+                <button type="button" key={x.symbol} onMouseDown={(e) => { e.preventDefault(); analyze(x.symbol); }}
+                  className="w-full text-left px-2 py-1 hover:bg-surface-3 flex items-baseline gap-2">
+                  <span className="font-mono text-xs text-text-primary w-24 shrink-0">{x.symbol}</span>
+                  <span className="text-2xs text-text-secondary truncate flex-1">{x.name}</span>
+                  <span className="text-[10px] text-text-tertiary whitespace-nowrap">{x.exchange} · {x.country} · {x.market_class}{x.type === 'ETF' ? ' · ETF' : ''}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <button type="submit" disabled={busy || !symbol.trim()} className="px-3 py-1 text-xs bg-bloomberg text-bg disabled:opacity-50 inline-flex items-center gap-1">
           {busy && <Loader2 className="w-3 h-3 animate-spin" />}Analyse
@@ -143,7 +193,7 @@ export function StockTimingSection() {
       {error && <div className="mb-2 p-2 text-xs text-amber border border-amber/30">{error}</div>}
       {!data && !error && !scan && (
         <div className="p-4 text-2xs text-text-tertiary border border-border-subtle">
-          Enter a ticker to see whether trend, momentum, earnings, the sell-side and quality support buying it, whether the
+          Search any listed stock (any exchange, by name or ticker) to see whether trend, momentum, earnings, the sell-side and quality support buying it, whether the
           entry is stretched, and the entry zone, stop, target and size — or scan a watchlist of large caps and your holdings.
         </div>
       )}
@@ -155,9 +205,17 @@ export function StockTimingSection() {
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="text-lg font-mono font-bold">{v?.label}</span>
               <span className="text-xs text-text-secondary">{data.name} · {data.symbol}{data.sector ? ` · ${data.sector}` : ''}</span>
+              <button type="button" onClick={() => toggleWatch(data.symbol)} title={watch.includes(data.symbol) ? 'Remove from watchlist' : 'Add to watchlist (always analysed in Stock Ideas)'}
+                className={watch.includes(data.symbol) ? 'text-amber' : 'text-text-tertiary hover:text-amber'} aria-label="Toggle watchlist">
+                <Star className="w-3.5 h-3.5" fill={watch.includes(data.symbol) ? 'currentColor' : 'none'} />
+              </button>
               <span className="ml-auto font-mono text-sm text-text-primary">{px(data.price)} <span className="text-2xs text-text-tertiary">{data.currency} · close {data.as_of}</span></span>
             </div>
             <div className="text-2xs text-text-secondary mt-1">{v?.detail}</div>
+            <div className="text-[10px] text-text-tertiary mt-1 font-mono">
+              {data.country_name} ({data.country}) · {data.market_class} market · {data.region}{data.exchange ? ` · ${data.exchange}` : ''} · quoted in {data.currency}
+              {data.market?.index ? ` · regime vs ${data.market.index}` : ''}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
@@ -185,6 +243,9 @@ export function StockTimingSection() {
                   {lv.shares != null && <>
                     <span className="text-text-tertiary">Size</span><span className="font-mono text-right text-text-primary">{lv.shares.toLocaleString()} sh</span>
                     <span className="text-text-tertiary">Notional</span><span className="font-mono text-right text-text-primary">${Math.round(lv.notional).toLocaleString()} ({pct(lv.pct_nav)} NAV)</span>
+                    {data.currency && data.currency !== 'USD' && lv.notional_local != null && <>
+                      <span className="text-text-tertiary">Local</span><span className="font-mono text-right text-text-secondary">{Math.round(lv.notional_local).toLocaleString()} {data.currency}</span>
+                    </>}
                     <span className="text-text-tertiary">Risk to stop</span><span className="font-mono text-right text-text-primary">${Math.round(lv.risk_usd).toLocaleString()}</span>
                   </>}
                   <span className="col-span-2 text-[10px] text-text-tertiary mt-1">Stop: {lv.stop_basis}. Target: {lv.target_basis}. {lv.sizing_basis}.</span>

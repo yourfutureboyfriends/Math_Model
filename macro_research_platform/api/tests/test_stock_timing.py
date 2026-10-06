@@ -92,3 +92,18 @@ def test_evaluate_signal_counts_non_overlapping():
     sig[300:320] = 1                                          # 20 consecutive days
     ev = st.evaluate_signal(c, sig, horizons=(21,))
     assert ev["21d"]["signals"] == 1 and ev["21d"]["hit_rate"] == 1.0
+
+
+def test_sizing_converts_quote_currency_to_usd():
+    timing = {"score": 0.3, "atr14": 20.0, "sma20": 980.0}          # a London stock in pence
+    usd_lv = st.levels(1000.0, timing, None, 1200.0, nav=10_000_000, px_to_usd=0.01 / 0.75)
+    # risk to stop = 0.5% of NAV in USD regardless of quote unit
+    assert usd_lv["risk_usd"] == pytest.approx(50_000, rel=0.01)
+    assert usd_lv["pct_nav"] <= 0.10 and usd_lv["notional_local"] > usd_lv["notional"]
+
+
+def test_no_consensus_target_uses_2r_and_skips_rr_gate():
+    timing = {"score": 0.3, "atr14": 2.0, "sma20": 98.0}
+    lv = st.levels(100.0, timing, high_52w=101.0, target_mean=None, nav=None)
+    assert lv["target_basis"].startswith("2R") and lv["reward_risk"] == pytest.approx(2.0)
+    assert st.verdict(0.6, {"score": 0.3}, {"ok": True}, 1.2, target_is_consensus=False)["code"] == "BUY"

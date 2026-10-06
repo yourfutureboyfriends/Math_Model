@@ -42,6 +42,9 @@ def enrich_position(pos: Dict[str, Any], price: Optional[float]) -> Dict[str, An
     qty = float(pos.get("quantity") or 0.0)
     avg_cost = float(pos.get("avg_cost") or 0.0)
     out = dict(pos)
+    from api.markets import classify          # market class / region / country of the listing
+    out.update({k: v for k, v in classify(str(pos.get("symbol") or "")).items()
+                if k in ("country", "country_name", "market_class", "region")})
     if price is None:
         out.update({
             "current_price": None, "market_value": None,

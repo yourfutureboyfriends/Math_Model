@@ -3,14 +3,18 @@ screener over a watchlist. Method and sources: api/calculations/stock_timing.py.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
+import threading
 import time
+from pathlib import Path
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 
 from api.calculations import stock_timing as st
 
@@ -33,6 +37,45 @@ def _norm(sym: str) -> str:
     return s
 
 
+# Yahoo's fundamentals endpoints (info, rating changes, earnings) rate-limit an IP quickly:
+# one request at a time, spaced, a 10-minute pause after a refusal, and a 24h disk cache
+# (fundamentals barely move intraday) so a global screen does not hammer them.
+_FUND_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "processed" / "fundamentals"
+_FUND_TTL = 24 * 3600
+_yf_lock = threading.Lock()
+_yf_state = {"last": 0.0, "paused_until": 0.0}
+_YF_SPACING = 0.6
+
+
+def _yf_call(fn):
+    """Run one fundamentals request under the throttle; None while paused or on refusal."""
+    if time.time() < _yf_state["paused_until"]:
+        return None
+    with _yf_lock:
+        wait = _yf_state["last"] + _YF_SPACING - time.time()
+        if wait > 0:
+            time.sleep(wait)
+        _yf_state["last"] = time.time()
+    try:
+        return fn()
+    except Exception as e:
+        msg = str(e)
+        if "Too Many Requests" in msg or "Rate limited" in msg or "Invalid Crumb" in msg or "401" in msg:
+            _yf_state["paused_until"] = time.time() + 600
+            logger.warning("[stock] Yahoo fundamentals refused (%s) — pausing 10 min, using cached data", msg[:60])
+        else:
+            logger.debug("[stock] fundamentals call failed: %s", msg[:100])
+        return None
+
+
+def _fund_cache(sym: str) -> Optional[Dict[str, Any]]:
+    try:
+        d = json.loads((_FUND_DIR / f"{sym.replace('/', '_')}.json").read_text())
+        return d
+    except Exception:
+        return None
+
+
 def _fetch(sym: str) -> Dict[str, Any]:
     """Prices (10y daily), fundamentals, rating changes and earnings for one symbol."""
     import yfinance as yf
@@ -41,14 +84,15 @@ def _fetch(sym: str) -> Dict[str, Any]:
     if hist is None or hist.empty:
         raise ValueError("no price history")
     hist = hist.dropna(subset=["Close"])
+    cached = _fund_cache(sym)
+    if cached and time.time() - cached.get("saved_at", 0) < _FUND_TTL:
+        return {"hist": hist, "info": cached.get("info", {}), "revisions": cached.get("revisions", []),
+                "earnings": cached.get("earnings", []), "fundamentals_as_of": cached.get("saved_at")}
     info: Dict[str, Any] = {}
-    try:
-        info = t.info or {}
-    except Exception as e:
-        logger.debug("[stock] info failed for %s: %s", sym, e)
+    info = _yf_call(lambda: t.info) or {}
     revisions: List[Dict[str, Any]] = []
     try:
-        ud = t.upgrades_downgrades
+        ud = _yf_call(lambda: t.upgrades_downgrades) if info else None
         if ud is not None and not ud.empty:
             for ts, r in ud.head(60).iterrows():
                 cur, prior = r.get("currentPriceTarget"), r.get("priorPriceTarget")
@@ -64,7 +108,7 @@ def _fetch(sym: str) -> Dict[str, Any]:
         logger.debug("[stock] rating changes failed for %s: %s", sym, e)
     earnings: List[Dict[str, Any]] = []
     try:
-        ed = t.earnings_dates
+        ed = _yf_call(lambda: t.earnings_dates) if info else None
         if ed is not None and not ed.empty:
             for ts, r in ed.iterrows():
                 s = r.get("Surprise(%)")
@@ -74,15 +118,44 @@ def _fetch(sym: str) -> Dict[str, Any]:
                                  "surprise_pct": None if s != s or s is None else float(s)})
     except Exception as e:
         logger.debug("[stock] earnings failed for %s: %s", sym, e)
-    return {"hist": hist, "info": info, "revisions": revisions, "earnings": earnings}
+    if info:
+        try:
+            _FUND_DIR.mkdir(parents=True, exist_ok=True)
+            keep = {k: info.get(k) for k in ("shortName", "longName", "sector", "industry", "currency", "exchange",
+                                             "fullExchangeName", "recommendationMean", "recommendationKey",
+                                             "numberOfAnalystOpinions", "targetMeanPrice", "targetHighPrice",
+                                             "targetLowPrice", "returnOnEquity", "profitMargins", "debtToEquity",
+                                             "trailingPE", "forwardPE", "priceToBook", "beta", "marketCap")}
+            (_FUND_DIR / f"{sym.replace('/', '_')}.json").write_text(json.dumps(
+                {"saved_at": time.time(), "info": keep, "revisions": revisions, "earnings": earnings}, default=str))
+        except Exception as e:
+            logger.debug("[stock] fundamentals cache write failed: %s", e)
+    elif cached:                               # refused / paused: last good copy, any age
+        return {"hist": hist, "info": cached.get("info", {}), "revisions": cached.get("revisions", []),
+                "earnings": cached.get("earnings", []), "fundamentals_as_of": cached.get("saved_at")}
+    return {"hist": hist, "info": info, "revisions": revisions, "earnings": earnings,
+            "fundamentals_as_of": time.time() if info else None}
 
 
-async def _market() -> Dict[str, Any]:
+async def _market(bench: str = "^GSPC", name: str = "S&P 500") -> Optional[Dict[str, Any]]:
+    """Regime of the stock's HOME market (its benchmark index) plus global VIX."""
     from api.handlers.market_handler import _fetch_dated_closes_literal
-    spx, vix = await asyncio.gather(_fetch_dated_closes_literal("^GSPC"), _fetch_dated_closes_literal("^VIX"))
-    spx_c = np.array([spx[d] for d in sorted(spx)]) if spx else np.array([])
+    idx, vix = await asyncio.gather(_fetch_dated_closes_literal(bench), _fetch_dated_closes_literal("^VIX"))
+    c = np.array([idx[d] for d in sorted(idx)]) if idx else np.array([])
     vix_last = vix[max(vix)] if vix else None
-    return st.market_component(spx_c, vix_last) if spx_c.size else None
+    return st.market_component(c, vix_last, name) if c.size else None
+
+
+async def _usd_per_unit(quote_ccy: Optional[str]) -> Optional[float]:
+    """USD value of one unit of the quote currency (pence, cents and agorot handled)."""
+    from api.handlers.market_handler import _fetch_dated_closes_literal
+    from api.markets import fx_ticker, minor_unit_factor
+    major, div = minor_unit_factor(quote_ccy)
+    if major == "USD":
+        return 1.0 / div
+    fx = await _fetch_dated_closes_literal(fx_ticker(major))
+    rate = fx[max(fx)] if fx else None
+    return (1.0 / rate) / div if rate else None
 
 
 async def _nav() -> Optional[float]:
@@ -120,14 +193,23 @@ async def analyze(sym: str, with_history: bool = True) -> Dict[str, Any]:
         "quality": st.quality_component(info),
     }
     timing = st.timing_component(c, h, l)
-    market, nav = await asyncio.gather(_market(), _nav())
+    from api.markets import COUNTRIES, benchmark_of, classify
+    cls = classify(sym)
+    bench = benchmark_of(cls["country"])
+    bench_name = "MSCI ACWI" if bench == "ACWI" else (COUNTRIES.get(cls["country"], {}).get("name", "") + " index")
+    if bench == "^GSPC":
+        bench_name = "S&P 500"
+    quote_ccy = info.get("currency") or cls["home_currency"]
+    market, nav, px_to_usd = await asyncio.gather(_market(bench, bench_name), _nav(), _usd_per_unit(quote_ccy))
     setup = st.combine_setup(comps)
     lv = st.levels(price, timing, (comps["high_52w"] or {}).get("high_52w"),
-                   (comps["analysts"] or {}).get("target_mean"), nav)
-    v = st.verdict(setup, timing, market, (lv or {}).get("reward_risk"))
+                   (comps["analysts"] or {}).get("target_mean"), nav, px_to_usd=px_to_usd or 0.0)
+    v = st.verdict(setup, timing, market, (lv or {}).get("reward_risk"),
+                   target_is_consensus=(lv or {}).get("target_basis") == "consensus price target")
     out: Dict[str, Any] = {
         "symbol": sym, "available": True, "name": info.get("shortName") or info.get("longName") or sym,
-        "sector": info.get("sector"), "currency": info.get("currency"),
+        "sector": info.get("sector"), "currency": quote_ccy, "exchange": info.get("fullExchangeName") or info.get("exchange"),
+        **cls, "px_to_usd": px_to_usd,
         "price": round(price, 2), "as_of": dates[-1],
         "setup_score": setup, "timing": timing, "market": market, "verdict": v,
         "components": comps, "weights": st.SETUP_WEIGHTS, "levels": lv,
@@ -168,9 +250,10 @@ async def stock_screen(symbols: Optional[str] = None):
     else:
         syms = list(DEFAULT_UNIVERSE)
         try:
-            from api import portfolio_store
+            from api import portfolio_store, stock_ideas as si
             held = await asyncio.to_thread(portfolio_store.list_positions, None)
             syms += [str(p["symbol"]).upper() for p in held if _SYMBOL.match(str(p["symbol"]).upper())]
+            syms += si.watchlist_symbols()
         except Exception:
             pass
         syms = list(dict.fromkeys(syms))
@@ -183,6 +266,8 @@ async def stock_screen(symbols: Optional[str] = None):
             return {"symbol": s, "available": False, "reason": r.get("reason")}
         comps = r["components"]
         return {"symbol": s, "available": True, "name": r["name"], "sector": r["sector"], "price": r["price"],
+                "country": r.get("country"), "market_class": r.get("market_class"), "region": r.get("region"),
+                "currency": r.get("currency"),
                 "setup_score": r["setup_score"], "timing_score": (r["timing"] or {}).get("score"),
                 "timing_state": (r["timing"] or {}).get("state"), "verdict": r["verdict"]["code"],
                 "verdict_label": r["verdict"]["label"],
@@ -228,3 +313,98 @@ def _iso_ts(s: Optional[str]) -> float:
         return datetime.fromisoformat(s).timestamp() if s else 0.0
     except ValueError:
         return 0.0
+
+
+# ── Search & watchlist ───────────────────────────────────────────────────────
+_SEARCH_CACHE: Dict[str, tuple] = {}
+
+
+@router.get("/api/v1/stock/search")
+async def stock_search(q: str):
+    """Find any listed stock worldwide by name or ticker (Yahoo search), classified by
+    market (MSCI class, region, country) and flagged when it is in the screened universe."""
+    from api import global_universe as gu
+    from api.markets import classify
+    query = (q or "").strip()
+    if not 1 <= len(query) <= 40:
+        raise HTTPException(400, "query must be 1–40 characters")
+    key = query.lower()
+    hit = _SEARCH_CACHE.get(key)
+    if hit and time.time() - hit[0] < 86400:
+        return hit[1]
+
+    def _search():
+        # Search is a different Yahoo endpoint from fundamentals: its own spacing, and it does
+        # not trip or honour the fundamentals pause.
+        import yfinance as yf
+        try:
+            with _yf_lock:
+                time.sleep(max(0.0, _yf_state["last"] + _YF_SPACING - time.time()))
+                _yf_state["last"] = time.time()
+            return yf.Search(query, max_results=12).quotes or []
+        except Exception as e:
+            logger.debug("[stock] search failed: %s", e)
+            return []
+
+    stocks = (await asyncio.to_thread(gu.load, 7, False)).get("stocks", [])
+    uni = {s["symbol"] for s in stocks}
+    # 1) the screened universe, matched locally (instant, works when Yahoo is throttled)
+    ql = gu._fold(key)
+    local = [s for s in stocks if s["symbol"].lower() == ql or s["symbol"].lower().startswith(ql + ".")
+             or ql in gu._fold(s.get("name") or "")]
+    local.sort(key=lambda s: (s["symbol"].lower() != ql, -(s.get("mcap_usd") or 0)))
+    rows = [{"symbol": s["symbol"], "name": s.get("name"), "exchange": s.get("exchange"), "type": "EQUITY",
+             "sector": s.get("sector"), "in_universe": True, **classify(s["symbol"], s.get("country"))}
+            for s in local[:8]]
+    seen = {r["symbol"] for r in rows}
+    # 2) anything else listed (any exchange Yahoo covers)
+    quotes = await asyncio.to_thread(_search)
+    for x in quotes:
+        if str(x.get("symbol") or "") in seen:
+            continue
+        if x.get("quoteType") not in ("EQUITY", "ETF"):
+            continue
+        sym = str(x.get("symbol") or "")
+        rows.append({"symbol": sym, "name": x.get("longname") or x.get("shortname") or sym,
+                     "exchange": x.get("exchDisp") or x.get("exchange"), "type": x.get("quoteType"),
+                     "sector": x.get("sectorDisp") or x.get("sector"), "in_universe": sym in uni, **classify(sym)})
+    out = {"query": query, "results": rows}
+    if rows:
+        _SEARCH_CACHE[key] = (time.time(), out)
+    return out
+
+
+class WatchlistIn(BaseModel):
+    symbols: List[str]
+
+
+def _user(request: Request) -> str:
+    from api.core.access import current_user
+    u = current_user(request)
+    if not u:
+        raise HTTPException(401, "Authentication required")
+    return u["username"]
+
+
+@router.get("/api/v1/stock/watchlist")
+async def get_watchlist(request: Request):
+    from api import stock_ideas as si
+    from api.markets import classify
+    wl = si._read_json(si.WATCHLIST_FILE, {})
+    syms = wl.get(_user(request), [])
+    return {"symbols": [{"symbol": s, **classify(s)} for s in syms]}
+
+
+@router.put("/api/v1/stock/watchlist")
+async def put_watchlist(body: WatchlistIn, request: Request):
+    """Replace the caller's watchlist (max 100). Watchlist names are always fully analysed in
+    the next Stock Ideas build, whatever market they trade in."""
+    from api import stock_ideas as si
+    user = _user(request)
+    syms = list(dict.fromkeys(_norm(s) for s in body.symbols))[:100]
+    with si._lock:
+        wl = si._read_json(si.WATCHLIST_FILE, {})
+        wl[user] = syms
+        si.DATA.mkdir(parents=True, exist_ok=True)
+        si.WATCHLIST_FILE.write_text(json.dumps(wl))
+    return {"symbols": syms}

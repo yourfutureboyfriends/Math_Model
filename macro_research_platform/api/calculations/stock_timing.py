@@ -191,15 +191,16 @@ def timing_component(c: np.ndarray, h: np.ndarray, l: np.ndarray) -> Optional[Di
             "evidence": f"{dist:+.1f} ATR from the 20-day average, RSI(14) {r:.0f} — {state}"}
 
 
-def market_component(spx: np.ndarray, vix_last: Optional[float]) -> Optional[Dict[str, Any]]:
-    s200 = sma(spx, 200)
+def market_component(index: np.ndarray, vix_last: Optional[float], name: str = "S&P 500") -> Optional[Dict[str, Any]]:
+    """Home-market trend (index vs its 200-day average) and global risk appetite (VIX < 25)."""
+    s200 = sma(index, 200)
     if s200 is None:
         return None
-    up = float(spx[-1]) > s200
+    up = float(index[-1]) > s200
     calm = vix_last is None or vix_last < 25
     ok = up and calm
-    return {"ok": ok, "spx_above_200d": up, "vix": vix_last,
-            "evidence": f"S&P 500 {'above' if up else 'below'} its 200-day average; VIX "
+    return {"ok": ok, "spx_above_200d": up, "index_above_200d": up, "index": name, "vix": vix_last,
+            "evidence": f"{name} {'above' if up else 'below'} its 200-day average; VIX "
                         f"{'n/a' if vix_last is None else f'{vix_last:.1f}'}"}
 
 
@@ -213,7 +214,9 @@ def combine_setup(components: Dict[str, Optional[Dict[str, Any]]]) -> Optional[f
 
 
 def verdict(setup: Optional[float], timing: Optional[Dict], market: Optional[Dict],
-            reward_risk: Optional[float] = None) -> Dict[str, str]:
+            reward_risk: Optional[float] = None, target_is_consensus: bool = True) -> Dict[str, str]:
+    """`reward_risk` gates a BUY only when the target is an external estimate (consensus);
+    a 2R projection has reward:risk 2 by construction."""
     if setup is None:
         return {"code": "N/A", "label": "Insufficient data", "detail": ""}
     t = timing["score"] if timing else 0.0
@@ -224,7 +227,7 @@ def verdict(setup: Optional[float], timing: Optional[Dict], market: Optional[Dic
         if t <= EXTENDED_TIMING:
             return {"code": "WAIT", "label": "Buy candidate — wait for a pullback",
                     "detail": "Set-up is strong but the price is stretched; enter in the zone below."}
-        if reward_risk is not None and reward_risk < MIN_REWARD_RISK:
+        if target_is_consensus and reward_risk is not None and reward_risk < MIN_REWARD_RISK:
             return {"code": "WAIT", "label": "Buy candidate — limited upside at this price",
                     "detail": f"Reward:risk to the target is {reward_risk:.1f} (< {MIN_REWARD_RISK}); wait for a "
                               "lower entry or a higher target."}
@@ -236,7 +239,10 @@ def verdict(setup: Optional[float], timing: Optional[Dict], market: Optional[Dic
 
 
 def levels(price: float, timing: Optional[Dict], high_52w: Optional[float], target_mean: Optional[float],
-           nav: Optional[float], risk_per_trade: float = 0.005, max_position_pct: float = 0.10) -> Optional[Dict]:
+           nav: Optional[float], risk_per_trade: float = 0.005, max_position_pct: float = 0.10,
+           px_to_usd: float = 1.0) -> Optional[Dict]:
+    """Levels are in the stock's quote currency; `px_to_usd` converts one quote unit to USD
+    (e.g. pence → USD for London) so the size is measured against the USD NAV."""
     if not timing:
         return None
     a, s20 = timing["atr14"], timing["sma20"]
@@ -247,21 +253,26 @@ def levels(price: float, timing: Optional[Dict], high_52w: Optional[float], targ
     lo, hi = min(lo, hi), max(lo, hi)
     entry = (lo + hi) / 2
     stop = entry - 2.5 * a
-    target = target_mean if isinstance(target_mean, (int, float)) and target_mean > entry else \
-        (high_52w if high_52w and high_52w > entry else entry + 3 * a)
+    if isinstance(target_mean, (int, float)) and target_mean > 0:
+        target, basis = target_mean, "consensus price target"
+    else:
+        # No sell-side target (most stocks outside the US): a 2R projection — twice the risk
+        # to the stop — the usual objective for a trend entry without an external estimate.
+        target, basis = entry + 2 * (entry - stop), "2R projection (no consensus target)"
     rr = (target - entry) / (entry - stop) if entry > stop else None
     out = {"entry_low": round(lo, 2), "entry_high": round(hi, 2), "entry": round(entry, 2),
            "stop": round(stop, 2), "target": round(target, 2),
-           "target_basis": "consensus price target" if target == target_mean else
-                           "52-week high" if target == high_52w else "3×ATR",
+           "target_basis": basis, "high_52w": round(high_52w, 2) if high_52w else None,
            "reward_risk": round(rr, 2) if rr is not None else None,
            "stop_basis": "2.5 × ATR(14) below entry"}
-    if nav and entry > stop:
-        shares_risk = (risk_per_trade * nav) / (entry - stop)
-        shares_cap = (max_position_pct * nav) / entry
+    if nav and entry > stop and px_to_usd > 0:
+        shares_risk = (risk_per_trade * nav) / ((entry - stop) * px_to_usd)
+        shares_cap = (max_position_pct * nav) / (entry * px_to_usd)
         shares = int(max(0, min(shares_risk, shares_cap)))
-        out.update({"shares": shares, "notional": round(shares * entry, 2),
-                    "pct_nav": round(shares * entry / nav, 4), "risk_usd": round(shares * (entry - stop), 2),
+        out.update({"shares": shares, "notional": round(shares * entry * px_to_usd, 2),
+                    "notional_local": round(shares * entry, 2), "px_to_usd": px_to_usd,
+                    "pct_nav": round(shares * entry * px_to_usd / nav, 4),
+                    "risk_usd": round(shares * (entry - stop) * px_to_usd, 2),
                     "sizing_basis": f"{risk_per_trade:.1%} of NAV at risk to the stop, capped at {max_position_pct:.0%} of NAV"})
     return out
 

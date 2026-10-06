@@ -49,3 +49,9 @@ def test_price_snapshot_uptrend():
     c = 100 * np.exp(np.cumsum(rng.normal(0.001, 0.01, 400)))
     snap = si.price_snapshot(c, c * 1.01, c * 0.99)
     assert snap["above_200d"] and snap["price_setup"] > 0.35
+
+
+def test_cap_by_does_not_group_missing_values():
+    rows = [{"symbol": f"X{i}", "country": "JP", "sector": None, "s": 1 - i / 100} for i in range(8)]
+    out = si.cap_by(rows, "s", 20, {"country": 6, "sector": 2})
+    assert len(out) == 6                                   # country cap applies, missing sector does not

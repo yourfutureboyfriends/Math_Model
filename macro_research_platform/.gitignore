@@ -162,3 +162,6 @@ data/processed/*.pkl
 data/processed/stock_ideas.json
 data/processed/stock_ideas_log.json
 data/processed/sp500_universe.json
+data/processed/global_universe.json
+data/processed/stock_watchlists.json
+data/processed/fundamentals/

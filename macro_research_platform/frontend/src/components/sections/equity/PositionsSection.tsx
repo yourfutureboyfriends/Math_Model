@@ -23,6 +23,7 @@ interface Position {
   unrealized_pnl_pct: number | null;
   weight_pct: number | null;
   net_weight_pct?: number | null;
+  country?: string; country_name?: string; market_class?: string; region?: string;
   price_available: boolean;
 }
 interface Summary {
@@ -226,6 +227,11 @@ export function PositionsSection() {
                 <tr key={p.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-3">
                   <td className="py-2 px-3">
                     <span className="text-sm font-medium text-text-primary">{p.symbol}</span>
+                    {p.market_class && (
+                      <span className="ml-1 text-[10px] font-mono text-text-tertiary" title={`${p.country_name ?? p.country} · ${p.market_class} market · ${p.region}`}>
+                        {p.country}·{p.market_class === 'Developed' ? 'DM' : p.market_class === 'Emerging' ? 'EM' : p.market_class === 'Frontier' ? 'FM' : 'SA'}
+                      </span>
+                    )}
                     <span className="ml-1 text-2xs text-text-tertiary">{p.asset_class}</span>
                   </td>
                   <td className="py-2 px-3 text-xs text-text-secondary">{p.book}</td>

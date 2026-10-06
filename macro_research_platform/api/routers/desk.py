@@ -160,7 +160,7 @@ async def desk(request: Request):
             new = ideas["changes"]["new"]
             idea_items.append({"priority": "medium", "kind": "ideas", "target": "stock-ideas", "ref": new,
                                "title": f"{len(new)} new buy idea{'s' if len(new) > 1 else ''}: {', '.join(new[:5])}{'…' if len(new) > 5 else ''}",
-                               "detail": "S&P 500 screen → full entry model; see Stock Ideas"})
+                               "detail": "Global screen (DM + EM + frontier) → full entry model; see Stock Ideas"})
     except Exception as e:
         logger.debug("[desk] stock ideas unavailable: %s", e)
     queue = sorted(queue + idea_items, key=lambda i: PRIORITY_ORDER.get(i.get("priority"), 9))
