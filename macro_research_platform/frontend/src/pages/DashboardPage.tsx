@@ -41,6 +41,7 @@ import {
   StockIdeasSection,
   StockTimingSection,
   StockBacktestSection,
+  PortfoliosSection,
   PositionsSection,
   TradeWorkflowSection,
   CTATrendSection,
@@ -618,6 +619,13 @@ export function DashboardPage() {
           </Suspense>
         </ErrorBoundary>
       </div>
+      {/* ── Portfolios: my picks, auto (paper) book, optimiser ────────────── */}
+      <div id="portfolios" className="terminal-section">
+        <ErrorBoundary sectionName="Portfolios">
+          <PortfoliosSection />
+        </ErrorBoundary>
+      </div>
+
       {/* ── Stock ideas (system suggestions) ──────────────────────────────── */}
       <div id="stock-ideas" className="terminal-section">
         <ErrorBoundary sectionName="Stock Ideas">

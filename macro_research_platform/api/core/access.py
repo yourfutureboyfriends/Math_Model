@@ -30,6 +30,7 @@ PASSWORD_CHANGE_ALLOWED = {"/api/auth/me", "/api/auth/change-password", "/api/au
 SENSITIVE_READ_PREFIXES = (
     "/api/v1/portfolio", "/api/v1/fund", "/api/v1/orders", "/api/v1/blotter",
     "/api/v1/risk/", "/api/v1/audit", "/api/portfolio", "/api/admin", "/api/v1/desk",
+    "/api/v1/auto",
 )
 # Market-level risk views that don't expose the book.
 OPEN_RISK_READS = {"/api/v1/risk-parity-compare"}

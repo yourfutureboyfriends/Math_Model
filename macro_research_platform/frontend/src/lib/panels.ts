@@ -21,6 +21,7 @@ export const PANEL_LABELS: Record<string, string> = {
   'stock-ideas': 'Stock Ideas',
   'stock-timing': 'Stock Entry Signals',
   'stock-backtest': 'Entry Model Backtest',
+  portfolios: 'Portfolios',
   // Signals
   ensemble: 'Model Ensemble',
   'signal-stack': 'Signal Breakdown',
