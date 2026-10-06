@@ -4,12 +4,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Crosshair, Loader2, Search, Star } from 'lucide-react';
-import { LineChart } from '@/components/ui/LineChart';
+import { PriceChart } from '@/components/ui/PriceChart';
 import { cn } from '@/lib/utils';
 import { revealPanel } from '@/lib/focusMode';
 import { marketTag, marketTitle } from '@/lib/marketTag';
 
-const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500'];
 
 const COMPONENTS: { key: string; label: string; source: string }[] = [
   { key: 'trend', label: 'Trend', source: 'Faber (2007); Hurst, Ooi & Pedersen — AQR (2017)' },
@@ -287,10 +286,9 @@ export function StockTimingSection() {
           {/* Chart */}
           {data.chart && (
             <div className="p-3 bg-surface-1 border border-border">
-              <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Price, 50/200-day averages and plan levels (1 year)</div>
-              <LineChart rows={data.chart} x="date" height={220} refs={refs}
-                lines={[{ key: 'close', label: data.symbol, color: SERIES[0] }, { key: 'sma50', label: '50-day', color: SERIES[3] }, { key: 'sma200', label: '200-day', color: SERIES[1] }]}
-                fmt={(x) => x.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
+              <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Price, moving averages, plan levels{data.chart.some((r: any) => r.buy) ? ' and past BUY signal starts (▲, daily bars)' : ''}</div>
+              <PriceChart symbol={data.symbol} refs={refs}
+                markers={Object.fromEntries(data.chart.filter((r: any, i: number) => r.buy && !data.chart[i - 1]?.buy).map((r: any) => [r.date, true]))} />
             </div>
           )}
 

@@ -73,7 +73,84 @@ function monthTicks(labels: string[], maxTicks: number): { i: number; text: stri
     .map(({ l, i }) => ({ i, text: `${MONTHS[Number(l.slice(5)) - 1]} ${l.slice(2, 4)}` }));
 }
 
-export function LineChart({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2), axisFmt, log = false, baseline, refs = NO_REFS }: Props) {
+// ── Period / interval controls ───────────────────────────────────────────────
+// Charts whose x values are dates get period presets and (for daily data) daily / weekly /
+// monthly resampling. Growth-of-1 series (baseline 1) are re-based to 1 at the start of the
+// chosen period so the lines stay comparable; other series are shown as is.
+const RANGES: { key: string; label: string; days: number }[] = [
+  { key: '1m', label: '1M', days: 31 }, { key: '3m', label: '3M', days: 92 }, { key: '6m', label: '6M', days: 183 },
+  { key: 'ytd', label: 'YTD', days: -1 }, { key: '1y', label: '1Y', days: 366 }, { key: '3y', label: '3Y', days: 1096 },
+  { key: '5y', label: '5Y', days: 1827 }, { key: '10y', label: '10Y', days: 3653 }, { key: 'all', label: 'All', days: 0 },
+];
+const isDaily = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+const isMonthly = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}$/.test(v);
+
+export function LineChart(props: Props & { controls?: boolean }) {
+  const { rows, x, controls = true, lines, baseline } = props;
+  const first = rows[0]?.[x], last = rows[rows.length - 1]?.[x];
+  const daily = isDaily(first) && isDaily(last);
+  const monthly = isMonthly(first) && isMonthly(last);
+  const enabled = controls && rows.length > 24 && (daily || monthly);
+  const [range, setRange] = useState('all');
+  const [freq, setFreq] = useState<'D' | 'W' | 'M'>('D');
+
+  const view = useMemo(() => {
+    if (!enabled) return rows;
+    const end = new Date(`${String(last).slice(0, 7)}${monthly ? '-28' : String(last).slice(7)}T00:00:00`);
+    const r = RANGES.find((q) => q.key === range)!;
+    let cutoff: string | null = null;
+    if (r.days > 0) cutoff = new Date(end.getTime() - r.days * 864e5).toISOString().slice(0, monthly ? 7 : 10);
+    if (r.days === -1) cutoff = `${end.getFullYear()}-01${monthly ? '' : '-01'}`;
+    let out = cutoff ? rows.filter((row) => String(row[x]) >= cutoff!) : rows;
+    if (daily && freq !== 'D') {
+      const keyOf = (d: string) => {
+        if (freq === 'M') return d.slice(0, 7);
+        const t = new Date(`${d}T00:00:00`);
+        const monday = new Date(t.getTime() - ((t.getDay() + 6) % 7) * 864e5);
+        return monday.toISOString().slice(0, 10);
+      };
+      const lastOf = new Map<string, Record<string, any>>();
+      out.forEach((row) => lastOf.set(keyOf(String(row[x])), row));         // period's last observation
+      out = Array.from(lastOf.values());
+    }
+    if (baseline === 1 && out.length && out !== rows) {                       // re-base growth-of-1 lines
+      const base = out[0];
+      out = out.map((row) => {
+        const o: Record<string, any> = { ...row };
+        lines.forEach((l) => { const b = Number(base[l.key]); const v = Number(row[l.key]); if (b > 0 && Number.isFinite(v)) o[l.key] = v / b; });
+        return o;
+      });
+    }
+    return out;
+  }, [enabled, rows, x, range, freq, daily, monthly, last, baseline, lines]);
+
+  if (!enabled) return <LineChartCore {...props} />;
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-1.5 mb-1">
+        <div className="flex border border-border" role="group" aria-label="Period">
+          {RANGES.map((q) => (
+            <button key={q.key} onClick={() => setRange(q.key)} aria-pressed={range === q.key}
+              className={`px-1.5 py-0.5 text-[10px] font-mono ${range === q.key ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary'}`}>{q.label}</button>
+          ))}
+        </div>
+        {daily && (
+          <div className="flex border border-border" role="group" aria-label="Interval">
+            {([['D', 'Daily'], ['W', 'Weekly'], ['M', 'Monthly']] as const).map(([k, l]) => (
+              <button key={k} onClick={() => setFreq(k)} aria-pressed={freq === k}
+                className={`px-1.5 py-0.5 text-[10px] font-mono ${freq === k ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary'}`}>{l}</button>
+            ))}
+          </div>
+        )}
+        {baseline === 1 && range !== 'all' && <span className="text-[10px] text-text-tertiary">re-based to 1 at the start of the period</span>}
+      </div>
+      {view.length > 1 ? <LineChartCore {...props} rows={view} />
+        : <div className="text-2xs text-text-tertiary p-3">No data in this period.</div>}
+    </div>
+  );
+}
+
+function LineChartCore({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2), axisFmt, log = false, baseline, refs = NO_REFS }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [W, setW] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
