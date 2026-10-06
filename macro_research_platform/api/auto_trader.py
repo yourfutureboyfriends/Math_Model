@@ -19,7 +19,10 @@ Rules — the live model with the variant the backtest supported (api/stock_back
   * Costs: half the class round-trip (stock_backtest.COST_BY_CLASS) per side.
   * Risk scaling (applied to every new position's risk):
       - drawdown control, Grossman & Zhou (1993): risk ∝ the surplus over a floor at
-        (1 − max_drawdown) × peak equity — full size at the peak, zero at the limit;
+        (1 − max_drawdown) × peak equity — full size at the peak, zero at the limit. The
+        peak is the rolling `peak_days` high (re-arms after a recovery period): in the
+        backtest the all-time peak held risk at ~56% of normal for years after a drawdown
+        (Sharpe 0.80) vs ~72% and Sharpe 1.06 with a one-year peak, same 15% limit;
       - volatility targeting, Moreira & Muir (2017), Harvey et al. (2018): × min(1,
         vol_target / the book's realised 20-day volatility), so size falls when markets are
         turbulent (when left-tail losses cluster).
@@ -54,6 +57,7 @@ DEFAULTS: Dict[str, Any] = {
     "max_drawdown": 0.15,
     "vol_target": 0.12,
     "max_per_sector": 3,
+    "peak_days": 252,
     "exclude_frontier": True,
     "max_hold": bt.MAX_HOLD,
     "target_r": bt.TARGET_R,
@@ -122,7 +126,7 @@ def validate_settings(changes: Dict[str, Any]) -> Dict[str, Any]:
     bounds = {"capital": (1_000, 1e9), "max_positions": (1, 50), "risk_per_trade": (0.0005, 0.03),
               "max_position": (0.01, 0.5), "max_gross": (0.1, 1.0), "max_drawdown": (0.02, 0.6),
               "max_hold": (5, 252), "target_r": (0.5, 10), "vol_target": (0.02, 0.5),
-              "max_per_sector": (1, 50)}
+              "max_per_sector": (1, 50), "peak_days": (20, 5000)}
     out: Dict[str, Any] = {}
     for k, v in changes.items():
         if k not in DEFAULTS or v is None:
@@ -134,7 +138,7 @@ def validate_settings(changes: Dict[str, Any]) -> Dict[str, Any]:
             v = float(v)
             if not (lo <= v <= hi):
                 raise ValueError(f"{k} must be between {lo} and {hi}")
-            out[k] = int(v) if k in ("max_positions", "max_hold", "max_per_sector") else v
+            out[k] = int(v) if k in ("max_positions", "max_hold", "max_per_sector", "peak_days") else v
     return out
 
 
@@ -172,6 +176,18 @@ def reset(capital: Optional[float] = None) -> None:
 
 
 # ── Pure rules (tested) ──────────────────────────────────────────────────────
+def signal_risk(idea: Dict[str, Any]) -> Optional[float]:
+    """Risk per share = 2.5 × ATR(14), recovered exactly from the idea's levels (its stop is
+    2.5 × ATR below the midpoint of the entry zone) — the same distance the backtest uses.
+    Falls back to price − stop when the zone is missing."""
+    lo, hi, stop, price = idea.get("entry_low"), idea.get("entry_high"), idea.get("stop"), idea.get("price")
+    if all(isinstance(x, (int, float)) for x in (lo, hi, stop)) and (lo + hi) / 2 > stop:
+        return (lo + hi) / 2 - stop
+    if isinstance(price, (int, float)) and isinstance(stop, (int, float)) and price > stop:
+        return price - stop
+    return None
+
+
 def candidate_orders(ideas: Sequence[Dict[str, Any]], held: set, pending: set, slots: int,
                      exclude_frontier: bool = True, sector_counts: Optional[Dict[str, int]] = None,
                      max_per_sector: int = 99) -> List[Dict[str, Any]]:
@@ -337,7 +353,8 @@ async def run(force: bool = False, today: Optional[str] = None) -> Dict[str, Any
 
             # Risk scaling: Grossman-Zhou drawdown control × volatility targeting.
             history = [r["equity"] for r in c.execute("SELECT equity FROM auto_nav WHERE date < ? ORDER BY date", (today,))]
-            peak = max([equity, s["capital"]] + history)
+            recent = history[-int(s["peak_days"]):]
+            peak = max([equity] + recent + ([s["capital"]] if len(history) < int(s["peak_days"]) else []))
             dd_mult = drawdown_multiplier(equity, peak, s["max_drawdown"])
             vol_mult, book_vol = vol_multiplier(history + [equity], s["vol_target"])
             risk_scale = dd_mult * vol_mult
@@ -433,7 +450,8 @@ async def run(force: bool = False, today: Optional[str] = None) -> Dict[str, Any
                     c.execute("""INSERT INTO auto_orders(symbol, name, created_at, created_date, status, signal_price,
                                  signal_stop, risk, currency, market_class, country, sector, setup)
                                  VALUES(?,?,?,?, 'pending', ?,?,?,?,?,?,?,?)""",
-                              (i["symbol"], i.get("name"), _now(), today, i["price"], i["stop"], i["price"] - i["stop"],
+                              (i["symbol"], i.get("name"), _now(), today, i["price"], i["price"] - signal_risk(i),
+                               signal_risk(i),
                                i.get("currency") or "USD", i.get("market_class"), i.get("country"), i.get("sector"),
                                i.get("setup_score")))
                     summary["ordered"].append(i["symbol"])
@@ -521,7 +539,8 @@ async def status() -> Dict[str, Any]:
                  days_held=len([d for d in (b[0] if b else []) if d >= p["entry_date"]]))
     equity = cash + invested
     rs = [p["r_multiple"] for p in closed if p["r_multiple"] is not None]
-    peak = max([equity, s["capital"]] + [n["equity"] for n in nav])
+    eqs = [n["equity"] for n in nav]
+    peak = max([equity] + eqs[-int(s["peak_days"]):] + ([s["capital"]] if len(eqs) < int(s["peak_days"]) else []))
     dd_mult = drawdown_multiplier(equity, peak, s["max_drawdown"])
     vol_mult, book_vol = vol_multiplier([n["equity"] for n in nav] + [equity], s["vol_target"])
     stats = {

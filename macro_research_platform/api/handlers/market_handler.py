@@ -231,7 +231,18 @@ async def get_rates_data() -> Dict[str, Any]:
         rates_fred_ids, us_curve_points, foreign_curve, FOREIGN_CURVES)
     from api.handlers.macro_inputs import load_fred_series
     curve_fred = await load_fred_series(rates_fred_ids())
-    curve_points = us_curve_points(curve_fred)
+    from api.handlers.dashboard_sections import us_curve_date
+    curve_date = us_curve_date(curve_fred)
+    curve_points = us_curve_points(curve_fred, curve_date)
+    # Spreads from the same single-date curve the chart shows (they must agree with its points).
+    _c = {sid: curve_fred[sid].asof(curve_date) for sid in ("DGS10", "DGS2", "DGS3MO")
+          if curve_date and curve_fred.get(sid)}
+    if _c.get("DGS10") is not None and _c.get("DGS2") is not None:
+        spread_2s10s = (_c["DGS10"] - _c["DGS2"]) * 100
+        spreads_as_of = curve_date
+        shape = curve_shape(spread_2s10s)
+    if _c.get("DGS10") is not None and _c.get("DGS3MO") is not None:
+        spread_3m10y = (_c["DGS10"] - _c["DGS3MO"]) * 100
     dgs5, dgs30 = curve_fred.get("DGS5"), curve_fred.get("DGS30")
     c530 = dgs30.last_common(dgs5) if (dgs5 and dgs30) else None
     spread_5s30s = (c530[1] - c530[2]) * 100 if c530 else None

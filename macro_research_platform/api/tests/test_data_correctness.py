@@ -109,3 +109,15 @@ def test_ny_fx_closes_from_hourly_bars():
     early = ny_fx_closes(bars[bars.index < pd.Timestamp("2026-10-05 12:00", tz="America/New_York")],
                          now=pd.Timestamp("2026-10-05 12:00", tz="America/New_York"))
     assert "2026-10-05" not in early and "2026-10-02" in early
+
+
+def test_us_curve_points_share_one_date():
+    """FRED publishes tenors at different times; a curve mixing today's 10Y with yesterday's
+    2Y disagreed with its own 2s10s (47bp vs 45bp)."""
+    from api.handlers.dashboard_sections import us_curve_date, us_curve_points
+    from api.handlers.macro_inputs import DatedSeries
+    fred = {"DGS2": DatedSeries("DGS2", ["2026-10-01", "2026-10-02"], [4.80, 4.83]),
+            "DGS10": DatedSeries("DGS10", ["2026-10-01", "2026-10-02", "2026-10-05"], [5.25, 5.28, 5.40])}
+    assert us_curve_date(fred) == "2026-10-02"
+    pts = {p["tenor"]: p["yield"] for p in us_curve_points(fred)}
+    assert pts[10] == 5.28 and pts[2] == 4.83

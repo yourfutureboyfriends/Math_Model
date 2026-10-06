@@ -645,12 +645,23 @@ def build_advanced_indicators(inp: SectionInputs, sahm: DatedSeries, now) -> Dic
 
 # ── Yield curves (used by /api/rates) ───────────────────────────────────────────
 
-def us_curve_points(fred: Dict[str, DatedSeries]) -> List[Dict[str, float]]:
+def us_curve_date(fred: Dict[str, DatedSeries]) -> Optional[str]:
+    """The latest date on which every available tenor has been published. FRED releases the
+    tenors at different times, so taking each series' own latest value mixes days (a fresh
+    10Y against yesterday's 2Y) and the curve's spreads no longer match its points."""
+    dates = [fred[sid].latest_date for _, sid in US_TENORS if fred.get(sid)]
+    return min(dates) if dates else None
+
+
+def us_curve_points(fred: Dict[str, DatedSeries], as_of: Optional[str] = None) -> List[Dict[str, float]]:
+    """US Treasury curve, every tenor on the same date (`us_curve_date` by default)."""
+    d = as_of or us_curve_date(fred)
     pts = []
     for tenor, sid in US_TENORS:
         s = fred.get(sid)
-        if s:
-            pts.append({"tenor": round(tenor, 4), "yield": round(s.latest, 2)})
+        v = s.asof(d) if (s and d) else None
+        if v is not None:
+            pts.append({"tenor": round(tenor, 4), "yield": round(v, 2)})
     return pts
 
 

@@ -113,3 +113,15 @@ def test_disabled_book_does_not_trade(book):
     assert asyncio.run(at.run(today="2026-03-02"))["ran"] is False
     with pytest.raises(ValueError):
         at.update_settings({"risk_per_trade": 0.5})          # outside the allowed range
+
+
+def test_rolling_peak_rearms_drawdown_control(book):
+    """After a year below an old high the book is sized from the recent peak, not the old one."""
+    from api import auto_trader as a
+    with a._db() as c:
+        c.execute("INSERT INTO auto_nav(date, equity, cash, invested, positions) VALUES('2024-01-01', 200000, 0, 0, 0)")
+        for k in range(300):
+            c.execute("INSERT INTO auto_nav(date, equity, cash, invested, positions) VALUES(?, 100000, 0, 0, 0)",
+                      (f"2025-{k:04d}",))
+    st = asyncio.run(a.status())
+    assert st["risk"]["drawdown_multiplier"] == 1.0          # all-time peak (200k) would give 0

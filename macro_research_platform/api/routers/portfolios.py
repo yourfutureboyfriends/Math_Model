@@ -139,3 +139,37 @@ async def auto_close(pos_id: int, request: Request):
         raise HTTPException(503, str(e))
     await asyncio.to_thread(_audit, user, "auto_close", f"Closed auto position {pos_id}: {res}")
     return res
+
+
+@router.get("/api/v1/auto/backtest")
+async def auto_backtest():
+    """The auto book's rules backtested (with ablations, a random-stock control, the Deflated
+    Sharpe Ratio and a live-performance expectation) and the live book compared with it."""
+    from api import auto_backtest as ab, auto_trader
+    cur = await asyncio.to_thread(ab.latest)
+    if not cur:
+        if not ab.status()["running"]:
+            _BG.add(t := asyncio.get_running_loop().create_task(ab.run_in_background()))
+            t.add_done_callback(_BG.discard)
+        return {"available": False, "status": ab.status(),
+                "reason": "Running the first backtest of the auto book (about a minute with cached prices)."}
+    live = await auto_trader.status()
+    cur = {k: v for k, v in cur.items() if k not in ("live_daily_returns", "live_trade_r")} | \
+          {"live_vs_backtest": await asyncio.to_thread(ab.live_vs_backtest, cur, live)}
+    s = live["settings"]
+    stale = any(cur["rules"].get(k) != s.get(k) for k in ("risk_per_trade", "max_positions", "max_drawdown", "vol_target"))
+    return {**cur, "status": ab.status(), "rules_changed": stale}
+
+
+@router.post("/api/v1/auto/backtest/run")
+async def auto_backtest_run(request: Request):
+    from api import auto_backtest as ab
+    from api.core.access import require_roles
+    require_roles(request, {"pm"})
+    if not ab.status()["running"]:
+        _BG.add(t := asyncio.get_running_loop().create_task(ab.run_in_background()))
+        t.add_done_callback(_BG.discard)
+    return {"started": True, "status": ab.status()}
+
+
+_BG: set = set()

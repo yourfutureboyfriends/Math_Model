@@ -7,9 +7,11 @@
 //   * Optimiser: six weighting methods on either book or any tickers, ranked walk-forward.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, Briefcase, Loader2, Play, Plus, RefreshCw, Scale, X } from 'lucide-react';
+import { Bot, Briefcase, CheckCircle2, FlaskConical, Loader2, MinusCircle, Play, Plus, RefreshCw, Scale, X, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
+import { Donut } from '@/components/ui/Donut';
+import { stableColors } from '@/lib/chartPalette';
 import { openStockAnalysis } from './StockIdeasSection';
 
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#8a63d2', '#d0457a', '#6b7280'];
@@ -25,6 +27,12 @@ async function getJSON(url: string, init?: RequestInit) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(typeof j?.detail === 'string' ? j.detail : j?.detail?.message || `HTTP ${r.status}`);
   return j;
+}
+
+function groupSum(rows: any[], key: (r: any) => string, val: (r: any) => number) {
+  const m = new Map<string, number>();
+  rows.forEach((r) => { const k = key(r) || '—'; m.set(k, (m.get(k) ?? 0) + Math.max(0, val(r) || 0)); });
+  return Array.from(m, ([label, value]) => ({ label, value }));
 }
 
 function Tile({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: string }) {
@@ -98,6 +106,21 @@ function MyPortfolio() {
             <Tile label="Hold / add" value={String(counts.add ?? 0)} tone="text-green" />
             <Tile label="Hold" value={String(['hold_extended', 'hold_riskoff', 'watch', 'hold_short', 'watch_short'].reduce((n, k) => n + (counts[k] ?? 0), 0))} />
           </div>
+          <div className="grid gap-2 md:grid-cols-3">
+            <div className="px-3 py-2 bg-surface-1 border border-border">
+              <Donut title="Exposure by holding (gross)" centerValue={usd(data.gross_usd)} centerLabel="gross" fmt={(x) => usd(x)}
+                data={rows.map((r) => ({ label: r.side === 'Short' ? `${r.symbol} (short)` : r.symbol, value: Math.abs(r.market_value_usd ?? 0) }))} />
+            </div>
+            <div className="px-3 py-2 bg-surface-1 border border-border">
+              <Donut title="By country" fmt={(x) => usd(x)} centerValue={String(new Set(rows.map((r) => r.country)).size)} centerLabel="countries"
+                data={groupSum(rows, (r) => r.country, (r) => Math.abs(r.market_value_usd ?? 0))} />
+            </div>
+            <div className="px-3 py-2 bg-surface-1 border border-border">
+              <Donut title="Model view, by exposure" fmt={(x) => usd(x)} centerValue={String(rows.length)} centerLabel="holdings"
+                colorFor={(l) => (l.startsWith('Exit') || l.startsWith('Cover') ? '#e66767' : l === 'Hold / add' || l === 'Hold short' ? '#199e70' : l.startsWith('No') ? '#5b6270' : '#c98500')}
+                data={groupSum(rows, (r) => r.action_label, (r) => Math.abs(r.market_value_usd ?? 0))} />
+            </div>
+          </div>
           <div className="overflow-x-auto border border-border">
             <table className="w-full text-2xs font-mono">
               <thead className="bg-surface-1"><tr className="text-text-tertiary text-left">
@@ -138,7 +161,7 @@ function MyPortfolio() {
 }
 
 // ── Auto Portfolio ────────────────────────────────────────────────────────────
-function AutoPortfolio() {
+function AutoLive() {
   const [data, setData] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -217,6 +240,28 @@ function AutoPortfolio() {
         <Tile label="Risk scale" value={pct(risk.scale, 0)} sub={`per trade ${pct(risk.effective_risk_per_trade, 2)}`} />
         <Tile label="Closed trades" value={String(st.closed_trades ?? 0)} sub={`hit ${pct(st.hit_rate, 0)} · avg ${st.avg_r == null ? '—' : `${st.avg_r >= 0 ? '+' : ''}${st.avg_r.toFixed(2)}R`}`} />
       </div>
+
+      {data.positions.length === 0 ? (
+        <div className="px-3 py-2 bg-surface-1 border border-border text-2xs text-text-tertiary">
+          Allocation, sector and country charts appear once orders fill{data.pending.length ? ` — ${data.pending.length} order${data.pending.length === 1 ? '' : 's'} waiting for the next open` : ''}.
+        </div>
+      ) : (
+      <div className="grid gap-2 md:grid-cols-3">
+        <div className="px-3 py-2 bg-surface-1 border border-border">
+          <Donut title="Allocation" centerValue={pct(data.gross, 0)} centerLabel="invested" fmt={(x) => usd(x)}
+            colorFor={(l, i) => (l === 'Cash' ? '#5b6270' : SERIES[i % SERIES.length])}
+            data={[...data.positions.map((p: any) => ({ label: p.symbol, value: p.market_value_usd ?? 0 })), { label: 'Cash', value: Math.max(0, data.cash) }]} />
+        </div>
+        <div className="px-3 py-2 bg-surface-1 border border-border">
+          <Donut title="By sector" fmt={(x) => usd(x)} centerValue={String(data.positions.length)} centerLabel="positions"
+            data={groupSum(data.positions, (p) => p.sector ?? 'Unknown', (p) => p.market_value_usd ?? 0)} />
+        </div>
+        <div className="px-3 py-2 bg-surface-1 border border-border">
+          <Donut title="By country" fmt={(x) => usd(x)} centerValue={String(new Set(data.positions.map((p: any) => p.country)).size)} centerLabel="countries"
+            data={groupSum(data.positions, (p) => p.country, (p) => p.market_value_usd ?? 0)} />
+        </div>
+      </div>
+      )}
 
       {navRows.length > 1 && (
         <div className="px-3 py-2 bg-surface-1 border border-border">
@@ -298,6 +343,167 @@ function AutoPortfolio() {
         Risk scales with the drawdown surplus (Grossman &amp; Zhou 1993) and to a {pct(s?.vol_target, 0)} volatility target (Moreira &amp; Muir 2017; Harvey et al. 2018).
         Virtual capital, separate from the fund's positions and NAV.
       </div>
+    </div>
+  );
+}
+
+// ── Auto book: backtest & research ────────────────────────────────────────────
+const FTONE: Record<string, { cls: string; Icon: typeof CheckCircle2 }> = {
+  good: { cls: 'border-green/40 text-green', Icon: CheckCircle2 },
+  bad: { cls: 'border-red/40 text-red', Icon: XCircle },
+  neutral: { cls: 'border-border text-text-tertiary', Icon: MinusCircle },
+};
+const CURVE_KEYS: [string, string][] = [['live', 'Live rules'], ['no_overlays', 'No overlays'], ['alltime_peak', 'All-time-peak DD control'], ['control', 'Random stocks']];
+
+function AutoBacktest() {
+  const [data, setData] = useState<any>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    try { setData(await getJSON('/api/v1/auto/backtest')); setErr(null); } catch (e: any) { setErr(e.message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!data?.status?.running && data?.available !== false) return;
+    const t = setInterval(load, 8000);
+    return () => clearInterval(t);
+  }, [data?.status?.running, data?.available, load]);
+  const rerun = async () => {
+    try { await getJSON('/api/v1/auto/backtest/run', { method: 'POST' }); setData((d: any) => ({ ...(d ?? {}), status: { running: true } })); }
+    catch (e: any) { setErr(e.message); }
+  };
+
+  if (!data) return err ? <div className="p-2 text-xs text-amber border border-amber/30">{err}</div>
+    : <div className="p-3 text-xs text-text-secondary flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" />Loading…</div>;
+  if (!data.available) return <div className="p-3 text-xs text-text-secondary border border-border-subtle flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" />{data.reason} {data.status?.stage ? `(${data.status.stage})` : ''}</div>;
+
+  const v: any[] = data.variants ?? [];
+  const live = v.find((x) => x.key === 'live');
+  const lvb = data.live_vs_backtest ?? {};
+  const d = data.deflated_sharpe ?? {};
+  const mix = live?.trades?.exit_mix ?? {};
+  const years: [string, number][] = Object.entries(live?.performance?.years ?? {}) as any;
+  const maxAbs = Math.max(0.01, ...years.map(([, x]) => Math.abs(x)));
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-surface-1 border border-border text-2xs">
+        <span className="text-text-secondary">{data.sample?.stocks} stocks · {data.sample?.start?.slice(0, 4)}–{data.sample?.end?.slice(0, 4)} ({data.sample?.years}y) · the auto book's current rules, daily, next-open fills, after costs</span>
+        {data.rules_changed && <span className="text-amber">settings changed since this run — re-run to update</span>}
+        <button onClick={rerun} disabled={data.status?.running} className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 border border-border text-text-secondary hover:text-bloomberg disabled:opacity-60">
+          {data.status?.running ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}{data.status?.running ? `${data.status.stage ?? 'Running'}…` : 'Re-run'}
+        </button>
+      </div>
+
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {(data.findings ?? []).map((f: any) => {
+          const t = FTONE[f.tone] ?? FTONE.neutral;
+          return (
+            <div key={f.title} className={cn('px-3 py-2 border bg-surface-1', t.cls)}>
+              <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wide"><t.Icon className="w-3 h-3" />{f.title}</div>
+              <div className="text-xs text-text-secondary mt-1 leading-snug">{f.text}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid gap-2 lg:grid-cols-3">
+        <div className="px-3 py-2 bg-surface-1 border border-border lg:col-span-2">
+          <div className="text-2xs text-text-tertiary mb-1">Growth of 1 — local-currency (FX-hedged) returns, log scale</div>
+          <LineChart rows={data.curve ?? []} x="date" height={230} log baseline={1} fmt={(x) => `${x.toFixed(2)}×`}
+            axisFmt={(x) => `${x >= 1 ? x.toFixed(x >= 10 ? 0 : 1) : x.toFixed(2)}×`}
+            lines={CURVE_KEYS.map(([k, l], i) => ({ key: k, label: l, color: SERIES[i] }))} />
+        </div>
+        <div className="space-y-2">
+          <div className="px-3 py-2 bg-surface-1 border border-border">
+            <Donut title="How live-rule trades exit" size={112}
+              data={[{ label: 'Target (2R)', value: mix.target ?? 0 }, { label: 'Stop', value: mix.stop ?? 0 }, { label: 'Time stop', value: mix.time ?? 0 }]}
+              centerValue={String(live?.trades?.trades ?? '')} centerLabel="trades" fmt={(x) => `${(x * 100).toFixed(0)}%`} />
+          </div>
+          <div className="px-3 py-2 bg-surface-1 border border-border text-2xs space-y-1">
+            <div className="uppercase tracking-wide text-[10px] text-text-tertiary">Overfitting check</div>
+            <div>Deflated Sharpe <span className="font-mono text-text-primary">{d.dsr == null ? '—' : pct(d.dsr, 1)}</span> <span className="text-text-tertiary">({d.trials} trials; ≥ 95% significant)</span></div>
+            <div className="text-text-tertiary">Return skew {num(d.skew)} · kurtosis {num(d.kurtosis, 1)} — fat tails are priced in.</div>
+            <div className="uppercase tracking-wide text-[10px] text-text-tertiary pt-1">Expect live</div>
+            <div><span className="font-mono text-text-primary">{spct(data.expectation?.cagr_range?.[0])} to {spct(data.expectation?.cagr_range?.[1])}</span> a year <span className="text-text-tertiary">vs backtest {spct(live?.performance?.cagr)}</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-3 py-2 bg-surface-1 border border-border">
+        <div className="text-2xs text-text-tertiary mb-1">Live book vs backtest</div>
+        {lvb.status === 'too early' ? (
+          <div className="text-xs text-text-secondary">Too early to judge — {lvb.days} trading day{lvb.days === 1 ? '' : 's'} live. After about a month the paper book's return is placed in the backtest's range for the same horizon.</div>
+        ) : (
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
+            <span>Live {lvb.days} days: <span className={cn('font-mono', (lvb.live_return ?? 0) >= 0 ? 'text-green' : 'text-red')}>{spct(lvb.live_return, 2)}</span></span>
+            <span className="text-text-secondary">Backtest range for {lvb.days} days: {spct(lvb.backtest_range?.p5)} … {spct(lvb.backtest_range?.p50)} … {spct(lvb.backtest_range?.p95)} (5th / median / 95th)</span>
+            <span className={lvb.status === 'in line' ? 'text-green' : 'text-amber'}>{lvb.where} — {lvb.status}</span>
+          </div>
+        )}
+        {lvb.trades && (
+          <div className="text-2xs text-text-tertiary mt-1">
+            Trades — backtest: hit {pct(lvb.trades.backtest_hit_rate, 0)}, avg {num(lvb.trades.backtest_avg_r)}R · live: {lvb.trades.live_trades} closed
+            {lvb.trades.live_trades ? `, hit ${pct(lvb.trades.live_hit_rate, 0)}, avg ${num(lvb.trades.live_avg_r)}R` : ''}
+            {lvb.trades.z != null ? ` (z = ${num(lvb.trades.z)} vs backtest)` : ''}
+          </div>
+        )}
+      </div>
+
+      <div className="overflow-x-auto border border-border">
+        <table className="w-full text-2xs font-mono">
+          <thead className="bg-surface-1"><tr className="text-text-tertiary text-left">
+            <th className="font-normal font-sans px-2 py-1">Variant</th><th className="font-normal text-right px-2">CAGR</th><th className="font-normal text-right px-2">Sharpe</th>
+            <th className="font-normal text-right px-2">Sortino</th><th className="font-normal text-right px-2">Max DD</th><th className="font-normal text-right px-2">Calmar</th>
+            <th className="font-normal text-right px-2 border-l border-border">Trades/yr</th><th className="font-normal text-right px-2">Hit</th><th className="font-normal text-right px-2">Avg R</th>
+            <th className="font-normal text-right px-2">PF</th><th className="font-normal text-right px-2">Gross</th><th className="font-normal text-right px-2">Risk scale</th>
+          </tr></thead>
+          <tbody>{v.map((x) => (
+            <tr key={x.key} className={cn('border-t border-border-subtle', x.key === 'live' && 'bg-bloomberg/5')}>
+              <td className="px-2 py-1 font-sans text-text-primary">{x.label}</td>
+              <td className={cn('text-right px-2', (x.performance.cagr ?? 0) >= 0 ? 'text-green' : 'text-red')}>{spct(x.performance.cagr)}</td>
+              <td className="text-right px-2">{num(x.performance.sharpe)}</td><td className="text-right px-2">{num(x.performance.sortino)}</td>
+              <td className="text-right px-2 text-red">{pct(x.performance.max_drawdown, 0)}</td><td className="text-right px-2">{num(x.performance.calmar)}</td>
+              <td className="text-right px-2 border-l border-border">{num(x.trades.per_year, 0)}</td><td className="text-right px-2">{pct(x.trades.hit_rate, 0)}</td>
+              <td className="text-right px-2">{num(x.trades.avg_r)}</td><td className="text-right px-2">{num(x.trades.profit_factor)}</td>
+              <td className="text-right px-2 text-text-secondary">{pct(x.avg_gross, 0)}</td><td className="text-right px-2 text-text-secondary">{pct(x.avg_risk_scale, 0)}</td>
+            </tr>))}</tbody>
+        </table>
+      </div>
+
+      <div className="px-3 py-2 bg-surface-1 border border-border">
+        <div className="text-2xs text-text-tertiary mb-1">Live rules — calendar-year returns</div>
+        <div className="flex items-end gap-1 h-24" role="img" aria-label="Calendar-year returns">
+          {years.map(([y, r]) => (
+            <div key={y} className="flex-1 flex flex-col items-center justify-end h-full group" title={`${y}: ${spct(r)}`}>
+              <div className="w-full flex flex-col justify-end h-1/2">{r >= 0 && <div className="w-full max-w-[18px] mx-auto rounded-t-sm bg-[#199e70]" style={{ height: `${(r / maxAbs) * 100}%` }} />}</div>
+              <div className="w-full flex flex-col justify-start h-1/2 border-t border-border">{r < 0 && <div className="w-full max-w-[18px] mx-auto rounded-b-sm bg-[#e66767]" style={{ height: `${(-r / maxAbs) * 100}%` }} />}</div>
+              <div className="text-[9px] text-text-tertiary mt-0.5">{y.slice(2)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="text-[10px] text-text-tertiary leading-relaxed">
+        Research basis: stops on momentum entries (Han, Zhou &amp; Zhu 2016; Kaminski &amp; Lo 2014); regime gate against momentum crashes in panic states (Daniel &amp; Moskowitz 2016);
+        drawdown control (Grossman &amp; Zhou 1993); volatility targeting (Moreira &amp; Muir 2017; Harvey et al. 2018); overfitting — Deflated Sharpe (Bailey &amp; López de Prado 2014);
+        live decay (McLean &amp; Pontiff 2016); institutional costs (Frazzini, Israel &amp; Moskowitz 2018). Sample = today's largest stocks (survivorship flatters absolute returns — compare variants, not levels).
+      </div>
+    </div>
+  );
+}
+
+function AutoPortfolio() {
+  const [view, setView] = useState<'live' | 'backtest'>('live');
+  return (
+    <div className="space-y-2">
+      <div className="flex border border-border w-fit" role="tablist" aria-label="Auto book view">
+        {([['live', 'Live book', Bot], ['backtest', 'Backtest & research', FlaskConical]] as const).map(([k, l, Icon]) => (
+          <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)}
+            className={cn('inline-flex items-center gap-1 px-2.5 py-0.5 text-2xs', view === k ? 'bg-surface-3 text-text-primary' : 'text-text-secondary hover:text-text-primary')}>
+            <Icon className="w-3 h-3" />{l}
+          </button>
+        ))}
+      </div>
+      {view === 'live' ? <AutoLive /> : <AutoBacktest />}
     </div>
   );
 }
@@ -389,6 +595,23 @@ function Optimiser() {
               <div className="text-2xs text-text-tertiary mb-1">Walk-forward growth of 1 (out of sample, after costs, USD)</div>
               <LineChart rows={data.curve} x="date" height={200} baseline={1} fmt={(v) => `${v.toFixed(2)}×`}
                 lines={methods.slice(0, 7).map((m, i) => ({ key: m.method, label: m.label.split(' (')[0], color: SERIES[i % SERIES.length] }))} />
+            </div>
+          )}
+          {best && (
+            <div className="grid gap-2 md:grid-cols-2">
+              {data.current && (
+                <div className="px-3 py-2 bg-surface-1 border border-border">
+                  <Donut title="Current weights" centerValue={pct(data.current.vol, 1)} centerLabel="volatility"
+                    colorFor={stableColors(data.symbols)} fmt={(x) => pct(x, 1)}
+                    data={data.symbols.map((sym: string) => ({ label: sym, value: data.current.weights[sym] ?? 0 }))} />
+                </div>
+              )}
+              <div className="px-3 py-2 bg-surface-1 border border-border">
+                <Donut title={`Proposed — ${methods.find((m) => m.method === best)?.label ?? ''}`}
+                  centerValue={pct(methods.find((m) => m.method === best)?.vol, 1)} centerLabel="volatility"
+                  colorFor={stableColors(data.symbols)} fmt={(x) => pct(x, 1)}
+                  data={data.symbols.map((sym: string) => ({ label: sym, value: methods.find((m) => m.method === best)?.weights[sym] ?? 0 }))} />
+              </div>
             </div>
           )}
           <div className="overflow-x-auto border border-border">
