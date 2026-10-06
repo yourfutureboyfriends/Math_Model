@@ -89,17 +89,19 @@ def validate_signal_payload(payload: Dict[str, Any]) -> ValidationResult:
             if sig_val is not None and (not isinstance(sig_val, (int, float)) or sig_val < -1 or sig_val > 1):
                 issues.append(f"Signal value must be between -1 and 1, got: {sig_val}")
 
-        # Check conviction range
-        if "conviction" in payload:
-            conv = payload["conviction"]
-            if conv is not None and (not isinstance(conv, (int, float)) or conv < 0 or conv > 1):
-                issues.append(f"Conviction must be between 0 and 1, got: {conv}")
+        # Check conviction / confidence range
+        for key in ("conviction", "confidence"):
+            if key in payload:
+                conv = payload[key]
+                if conv is not None and (not isinstance(conv, (int, float)) or conv < 0 or conv > 1):
+                    issues.append(f"{key.capitalize()} must be between 0 and 1, got: {conv}")
 
-        # Check final signal enum
+        # Check final signal enum: direction (Bullish/Bearish/Neutral) or the signal stack's
+        # stance (RISK_ON/RISK_OFF/NEUTRAL), any case.
         if "finalSignal" in payload:
             signal = payload["finalSignal"]
-            valid_signals = ["Bullish", "Bearish", "Neutral", "bullish", "bearish", "neutral"]
-            if signal and signal not in valid_signals:
+            valid_signals = {"bullish", "bearish", "neutral", "risk_on", "risk_off"}
+            if signal and str(signal).lower() not in valid_signals:
                 issues.append(f"Invalid signal value: {signal}")
 
         # Check scores if present

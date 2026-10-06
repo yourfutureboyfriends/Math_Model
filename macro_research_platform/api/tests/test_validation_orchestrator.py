@@ -287,3 +287,11 @@ class TestGetValidationStatus:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_signal_stack_stances_are_valid_and_confidence_is_range_checked():
+    """The signal stack emits RISK_ON/RISK_OFF/NEUTRAL; every response used to be flagged."""
+    for sig in ("RISK_ON", "RISK_OFF", "NEUTRAL", "Bullish", "bearish"):
+        assert validate_signal_payload({"finalSignal": sig, "confidence": 0.8}).valid, sig
+    assert not validate_signal_payload({"finalSignal": "MAYBE"}).valid
+    assert not validate_signal_payload({"finalSignal": "RISK_ON", "confidence": 1.7}).valid

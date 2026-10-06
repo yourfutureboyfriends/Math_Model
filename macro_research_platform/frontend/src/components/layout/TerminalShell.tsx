@@ -53,7 +53,12 @@ export function TerminalShell({
 
   // Use external state if provided, otherwise internal
   const activeSection = externalActiveSection ?? internalActiveSection;
-  const setActiveSection = externalActiveSection ? () => {} : setInternalActiveSection;
+  // Stable setter (listeners registered once must not hold a stale one); a no-op while the
+  // parent controls the active section.
+  const controlled = externalActiveSection != null;
+  const setActiveSection = useCallback((id: string) => {
+    if (!controlled) setInternalActiveSection(id);
+  }, [controlled]);
 
   // UPGRADE-6: Enhanced Keyboard Shortcuts — Analyst Workflow
   const handleKeyDown = useCallback(
@@ -200,7 +205,7 @@ export function TerminalShell({
         clearTimeout(keyTimeoutRef.current);
       }
     },
-    [activeSection, onRefresh]
+    [activeSection, onRefresh, setActiveSection]
   );
 
   useEffect(() => {
@@ -273,7 +278,7 @@ export function TerminalShell({
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [setActiveSection]);
 
   const handleNavigate = (sectionId: string) => {
     setActiveSection(sectionId);

@@ -27,9 +27,13 @@ export function useApiData<T>(
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
   const [refetchTrigger, setRefetchTrigger] = useState<number>(0);
+  // One stable dependency instead of spreading a caller array (whose length may change
+  // between renders, which React does not allow).
+  const depKey = JSON.stringify(dependencies);
 
   useEffect(() => {
     let cancelled = false;
+    let inflight: AbortController | null = null;
     let lastError: Error = new Error('Request failed');
     const timeoutMs = 12000;
 
@@ -37,6 +41,7 @@ export function useApiData<T>(
     // request always resolves rather than spinning forever. Returns true on success.
     const attempt = async (): Promise<boolean> => {
       const controller = new AbortController();
+      inflight = controller;
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const response = await fetch(endpoint, { signal: controller.signal });
@@ -68,8 +73,8 @@ export function useApiData<T>(
 
     run();
 
-    return () => { cancelled = true; };
-  }, [endpoint, refetchTrigger, ...dependencies]);
+    return () => { cancelled = true; inflight?.abort(); };   // stop the request, not just ignore it
+  }, [endpoint, refetchTrigger, depKey]);
 
   const refetch = () => {
     setRefetchTrigger(prev => prev + 1);

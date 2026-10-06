@@ -338,19 +338,33 @@ async def load_fred_series(series_ids: List[str], days: int = 1100,
 
         async def _one(sid: str) -> DatedSeries:
             async with sem:
-                return await asyncio.to_thread(_fetch_fred_history_sync, sid, days)
+                res = await asyncio.to_thread(_fetch_fred_history_sync, sid, days)
+            if res:                        # cached even if it lands after the batch deadline
+                _FRED_SERIES_CACHE[sid] = (time.time(), res)
+            return res
 
-        try:
-            results = await asyncio.wait_for(asyncio.gather(
-                *[_one(sid) for sid in todo], return_exceptions=True), timeout=timeout)
-        except asyncio.TimeoutError:
-            logger.warning("[macro_inputs] FRED batch timed out after %ss", timeout)
-            results = [DatedSeries(sid) for sid in todo]
-        for sid, res in zip(todo, results):
+        tasks = {sid: asyncio.ensure_future(_one(sid)) for sid in todo}
+        _done, pending = await asyncio.wait(tasks.values(), timeout=timeout)
+        if pending:
+            # Keep what finished; the rest keep running in the background (and fill the cache
+            # for the next request) while this one falls back to the last good copy.
+            logger.warning("[macro_inputs] FRED batch: %d of %d series not back within %ss — using last good copies",
+                           len(pending), len(todo), timeout)
+            _PENDING_FRED.update(pending)
+            for t in pending:
+                t.add_done_callback(_PENDING_FRED.discard)
+        for sid, t in tasks.items():
+            res = t.result() if t.done() and not t.cancelled() and t.exception() is None else None
             if isinstance(res, DatedSeries) and res:
-                _FRED_SERIES_CACHE[sid] = (now, res)
                 out[sid] = res
-            else:
-                stale = _FRED_SERIES_CACHE.get(sid)
-                out[sid] = stale[1] if stale else DatedSeries(sid)
+                continue
+            stale = _FRED_SERIES_CACHE.get(sid)
+            if stale:
+                out[sid] = stale[1]
+                continue
+            disk = _disk_load(f"series_{sid}_{days}d")          # any age: real, if older, data
+            out[sid] = DatedSeries(sid, disk["dates"], disk["values"]) if disk else DatedSeries(sid)
     return out
+
+
+_PENDING_FRED: set = set()     # strong references to fetches still running past a deadline

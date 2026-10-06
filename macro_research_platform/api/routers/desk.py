@@ -24,8 +24,9 @@ async def _safe(coro, label: str, timeout: float = 20.0):
     try:
         return await asyncio.wait_for(coro, timeout)
     except Exception as e:
-        logger.warning("[desk] %s unavailable: %s", label, e)
-        return {"available": False, "reason": f"{label} unavailable"}
+        why = "timed out" if isinstance(e, asyncio.TimeoutError) else f"{type(e).__name__}: {e}"
+        logger.warning("[desk] %s unavailable (%s)", label, why)
+        return {"available": False, "reason": f"{label} unavailable ({why})"}
 
 
 async def _fund_block() -> Dict[str, Any]:
