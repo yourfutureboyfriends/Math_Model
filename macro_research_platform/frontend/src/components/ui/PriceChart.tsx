@@ -54,8 +54,10 @@ function niceTicks(lo: number, hi: number, count: number): number[] {
 }
 
 function fmtPx(v: number): string {
+  // Precision follows the price level: FX (1.1234) and sub-$10 prices need 4-5 decimals.
   const a = Math.abs(v);
-  return v.toLocaleString(undefined, { minimumFractionDigits: a >= 1000 ? 0 : 2, maximumFractionDigits: a >= 1000 ? 0 : a < 1 ? 4 : 2 });
+  const dp = a >= 1000 ? 0 : a >= 10 ? 2 : a >= 1 ? 4 : 5;
+  return v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
 }
 function fmtVol(v: number): string {
   return v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}K` : String(Math.round(v));

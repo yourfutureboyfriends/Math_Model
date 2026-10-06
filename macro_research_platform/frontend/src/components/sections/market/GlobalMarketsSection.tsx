@@ -6,6 +6,7 @@
  * indices that fail to quote render an explicit "n/a" rather than a fabricated value.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { openChart } from '@/components/ui/ChartModal';
 import { Globe, RefreshCw } from 'lucide-react';
 import { DataLineagePopover } from '@/components/ui/DataLineagePopover';
 
@@ -58,7 +59,8 @@ export function GlobalMarketsSection() {
             const up = (m.change1d ?? 0) >= 0;
             const na = !m.available || m.level == null;
             return (
-              <div key={m.ticker} className="p-2 border border-border-subtle bg-surface-1">
+              <button key={m.ticker} type="button" onClick={() => openChart(m.ticker, `${m.name} · ${m.region}`)} title={`Chart ${m.name}`}
+                className="p-2 border border-border-subtle bg-surface-1 text-left hover:border-bloomberg/60 transition-colors">
                 <div className="text-2xs text-text-tertiary uppercase tracking-wider truncate" title={`${m.name} · ${m.region}`}>{m.region}</div>
                 <div className="text-xs text-text-secondary truncate">{m.name}</div>
                 {na ? (
@@ -73,7 +75,7 @@ export function GlobalMarketsSection() {
                     </div>
                   </>
                 )}
-              </div>
+              </button>
             );
           })}
         </div>

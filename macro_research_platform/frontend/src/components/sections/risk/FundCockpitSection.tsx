@@ -7,6 +7,8 @@
  * logged-in user (X-User) so the audit trail records who acted.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { LineChart } from '@/components/ui/LineChart';
+import { BarList } from '@/components/ui/BarList';
 import { Briefcase, RefreshCw } from 'lucide-react';
 import { actorHeaders } from '@/lib/actor';
 import { useAuth } from '@/context/AuthContext';
@@ -56,6 +58,36 @@ function NavTab({ ov }: { ov: any }) {
         <Stat label="Equity beta $" value={usd(ov?.factor_exposure_usd?.equity)} />
         <Stat label="Rates beta $" value={usd(ov?.factor_exposure_usd?.rates)} />
         <Stat label="USD beta $" value={usd(ov?.factor_exposure_usd?.usd)} />
+      </div>
+
+      <div className="grid gap-2 lg:grid-cols-3">
+        <div className="px-3 py-2 bg-surface-1 border border-border lg:col-span-2">
+          {(tr?.history?.length ?? 0) >= 20 ? (
+            <>
+              <div className="text-2xs text-text-tertiary mb-1">NAV — recorded daily after the US close</div>
+              <LineChart rows={tr.history.map((h: any) => ({ date: h.date, nav: h.nav }))} x="date" height={190}
+                fmt={(v) => usd(v)} axisFmt={(v) => usd(v)} lines={[{ key: 'nav', label: 'NAV', color: '#3987e5' }]} />
+            </>
+          ) : pf?.dates?.length > 20 ? (
+            <>
+              <div className="text-2xs text-amber mb-1">Pro-forma NAV — today's book held through history (hypothetical, not a track record)</div>
+              <LineChart rows={pf.dates.map((d: string, i: number) => ({ date: d, nav: pf.nav[i] }))} x="date" height={190}
+                fmt={(v) => usd(v)} axisFmt={(v) => usd(v)} lines={[{ key: 'nav', label: 'Pro-forma NAV', color: '#c98500' }]} />
+            </>
+          ) : (
+            <div className="text-xs text-text-tertiary py-6 text-center">The NAV chart appears after 20 daily snapshots.</div>
+          )}
+        </div>
+        <div className="px-3 py-2 bg-surface-1 border border-border">
+          <BarList title="Factor exposure ($ per 1σ factor move)" diverging fmt={(v) => usd(v)} labelWidth="4.5rem"
+            data={[{ label: 'Equity', value: ov?.factor_exposure_usd?.equity ?? null },
+                   { label: 'Rates', value: ov?.factor_exposure_usd?.rates ?? null },
+                   { label: 'USD', value: ov?.factor_exposure_usd?.usd ?? null }]} />
+          <div className="mt-3">
+            <BarList title="Exposure (share of NAV)" fmt={(v) => pct(v)} labelWidth="4.5rem" max={Math.max(1, Math.abs(exp.gross ?? 0))}
+              data={[{ label: 'Gross', value: exp.gross ?? null }, { label: 'Net', value: exp.net ?? null, color: (exp.net ?? 0) < 0 ? '#e66767' : '#199e70' }]} />
+          </div>
+        </div>
       </div>
 
       <div className="p-3 bg-surface-1 border border-border">

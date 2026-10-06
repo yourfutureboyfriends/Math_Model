@@ -3,6 +3,7 @@
 // REFACTORED: Now uses useApiData hook instead of direct fetch()
 
 import { memo } from 'react';
+import { openChart } from '@/components/ui/ChartModal';
 import { Card } from '@/components/ui/Card';
 import { SourceTag } from '@/components/ui/SourceTag';
 import { CsvButton } from '@/components/ui/CsvButton';
@@ -90,11 +91,11 @@ export const CommoditiesDashboardSection = memo(function CommoditiesDashboardSec
   const goldChange = changes.GLD;
 
   const renderCommodityRow = (commodities: Commodity[]) => (
-    <div className="grid grid-cols-4 gap-2">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
       {commodities.slice(0, 4).map(c => (
-        <div
-          key={c.symbol}
-          className="p-2 border border-border-subtle bg-surface-2"
+        <button
+          key={c.symbol} type="button" onClick={() => openChart(`${c.symbol}=F`, `${c.name} (front-month future)`)} title={`Chart ${c.name}`}
+          className="p-2 border border-border-subtle bg-surface-2 text-left hover:border-bloomberg/60 transition-colors"
         >
           <div className="text-2xs text-text-tertiary truncate">{c.name}</div>
           <div className="font-mono">{fmtPrice(c.spot, 2)}</div>
@@ -108,7 +109,7 @@ export const CommoditiesDashboardSection = memo(function CommoditiesDashboardSec
               52W: {c.week52Percentile != null ? fmtProbability(c.week52Percentile / 100) : '--'}
             </span>
           </div>
-        </div>
+        </button>
       ))}
     </div>
   );

@@ -9,6 +9,7 @@ import { LineChart } from '@/components/ui/LineChart';
 import { Donut } from '@/components/ui/Donut';
 import { CorrelationHeatmap } from '@/components/ui/CorrelationHeatmap';
 import { CATEGORICAL } from '@/lib/chartPalette';
+import { openChart } from '@/components/ui/ChartModal';
 
 const PRIMARY = ['trend', 'sector_momentum', 'low_vol', 'residual_momentum', 'auto_book'];
 const SHORT: Record<string, string> = {
@@ -179,7 +180,7 @@ export function StrategyLabSection() {
                   </tr></thead>
                   <tbody>{positions.map((p) => (
                     <tr key={p.symbol} className="border-t border-border-subtle">
-                      <td className="px-2 py-1"><span className="text-text-primary">{p.symbol}</span> <span className="font-sans text-text-tertiary">{p.name ?? ''}{p.country ? ` · ${p.country}` : ''}</span></td>
+                      <td className="px-2 py-1"><button type="button" onClick={() => openChart(p.symbol, p.name)} className="text-text-primary hover:text-bloomberg">{p.symbol}</button> <span className="font-sans text-text-tertiary">{p.name ?? ''}{p.country ? ` · ${p.country}` : ''}</span></td>
                       <td className={cn('px-2 font-sans', p.side === 'Long' ? 'text-green' : 'text-red')}>{p.side}</td>
                       <td className="text-right px-2">{pct(Math.abs(p.weight), 1)}</td>
                     </tr>))}

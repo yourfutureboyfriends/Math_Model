@@ -6,6 +6,7 @@ import { TerminalShell } from './components/layout/TerminalShell';
 import { LoginScreen } from './components/LoginScreen';
 import { ChangePasswordScreen } from './components/account/AccountPanels';
 import { DiagnosticsPanel } from './components/dev/DiagnosticsPanel';
+import { ChartModal } from './components/ui/ChartModal';
 import { useAuth } from './context/AuthContext';
 import { DashboardPage } from './pages';
 import { useMacroStore, selectMeta, selectIsLoading, selectRegime, selectFullDashboard } from './store/macroStore';
@@ -131,6 +132,9 @@ function App() {
       >
         <DashboardPage />
       </TerminalShell>
+
+      {/* Click-to-chart: any panel opens a full interactive chart (openChart) */}
+      <ChartModal />
 
       {/* Developer diagnostics panel (dev mode only) */}
       {import.meta.env.DEV && <DiagnosticsPanel />}

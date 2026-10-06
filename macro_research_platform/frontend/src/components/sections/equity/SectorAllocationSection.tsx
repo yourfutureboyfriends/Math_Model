@@ -6,6 +6,8 @@ import { Zap, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { useMacroStore } from '@/store/macroStore';
 import { useApiData } from '@/hooks/useApiData';
 import { fmtSignal, fmtChange } from '@/utils/format';
+import { BarList } from '@/components/ui/BarList';
+import { KpiStrip } from '@/components/ui/KpiStrip';
 import type { SectorAllocationData } from '@/types';
 
 interface EnhancedSector {
@@ -161,20 +163,24 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
           </div>
         )}
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="p-2 bg-surface-1 border border-border">
-            <div className="text-2xs text-text-tertiary uppercase tracking-wider">Avg Score</div>
-            <div className="text-base font-mono font-bold text-text-primary">{fmtSignal(avgScore)}</div>
+        {/* Ranking + stance counts */}
+        <div className="grid gap-2 lg:grid-cols-3">
+          <div className="px-3 py-2 bg-surface-1 border border-border lg:col-span-2">
+            <BarList title="Sector scores, ranked (relative strength in this regime)" diverging max={1} labelWidth="9rem"
+              fmt={(v) => fmtSignal(v)}
+              data={[...enhancedSectors].sort((a, b) => (b.enhanced_score ?? -9) - (a.enhanced_score ?? -9)).map((sct) => ({
+                label: sct.name, value: sct.enhanced_score, note: `${sct.signal} · ${sct.conviction} conviction — ${sct.rationale}`,
+                color: sct.signal.includes('Overweight') ? '#199e70' : sct.signal.includes('Underweight') ? '#e66767' : '#6b7280',
+              }))} />
           </div>
-          <div className="p-2 bg-surface-1 border border-border">
-            <div className="text-2xs text-text-tertiary uppercase tracking-wider">Max</div>
-            <div className="text-base font-mono font-bold text-green">{fmtSignal(maxScore)}</div>
-          </div>
-          <div className="p-2 bg-surface-1 border border-border">
-            <div className="text-2xs text-text-tertiary uppercase tracking-wider">Min</div>
-            <div className="text-base font-mono font-bold text-red">{fmtSignal(minScore)}</div>
-          </div>
+          <KpiStrip compact items={[
+            { label: 'Overweight', value: String(enhancedSectors.filter((x) => x.signal.includes('Overweight')).length), tone: 'up',
+              sub: enhancedSectors.filter((x) => x.signal.includes('Overweight')).map((x) => x.name).slice(0, 3).join(', ') || '—' },
+            { label: 'Neutral', value: String(enhancedSectors.filter((x) => !x.signal.includes('weight')).length) },
+            { label: 'Underweight', value: String(enhancedSectors.filter((x) => x.signal.includes('Underweight')).length), tone: 'down',
+              sub: enhancedSectors.filter((x) => x.signal.includes('Underweight')).map((x) => x.name).slice(0, 3).join(', ') || '—' },
+            { label: 'Average score', value: fmtSignal(avgScore), sub: `range ${fmtSignal(minScore)} to ${fmtSignal(maxScore)}` },
+          ]} />
         </div>
 
         {/* Sector Table with EPS Revisions */}

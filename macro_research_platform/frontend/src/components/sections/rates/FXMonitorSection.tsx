@@ -2,6 +2,7 @@
 // G10 FX dashboard using macroStore for live prices
 
 import { useState } from 'react';
+import { openChart, fxTicker } from '@/components/ui/ChartModal';
 import { Card } from '@/components/ui/Card';
 import { SourceTag } from '@/components/ui/SourceTag';
 import { CsvButton } from '@/components/ui/CsvButton';
@@ -200,11 +201,11 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
 
         {/* Grid View */}
         {view === 'grid' && (
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {majorPairs.map(fx => (
-              <div
-                key={fx.pair}
-                className="p-3 border border-border-subtle bg-surface-2"
+              <button
+                key={fx.pair} type="button" onClick={() => openChart(fxTicker(fx.pair), fx.pair)} title={`Chart ${fx.pair}`}
+                className="p-3 border border-border-subtle bg-surface-2 text-left hover:border-bloomberg/60 transition-colors"
               >
                 <div className="text-2xs text-text-tertiary uppercase">{fx.pair}</div>
                 <div className="font-mono text-lg">{fmtFx(fx.spot)}</div>
@@ -219,7 +220,7 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
                     1M {fx.trendSignal === '--' ? '—' : fx.trendSignal.toLowerCase()}
                   </span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -236,11 +237,11 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
         {/* EM FX Summary (Asia + EMEA/LatAm) */}
         <div>
           <div className="text-2xs text-text-tertiary uppercase mb-2">EM FX · Asia · LatAm <span className="normal-case">— spot and 1-day change (1-month in brackets)</span></div>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {(data.em ?? []).slice(0, 8).map(fx => (
-              <div
-                key={fx.pair}
-                className="p-2 border border-border-subtle"
+              <button
+                key={fx.pair} type="button" onClick={() => openChart(fxTicker(fx.pair), fx.pair)} title={`Chart ${fx.pair}`}
+                className="p-2 border border-border-subtle text-left hover:border-bloomberg/60 transition-colors"
               >
                 <div className="text-2xs text-text-tertiary">{fx.pair}</div>
                 <div className="font-mono">{fmtFx(fx.spot, 2)}</div>
@@ -250,7 +251,7 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
                   </span>
                   <span className="text-text-tertiary"> ({fx.change1m != null ? fmtChange(fx.change1m / 100) : '--'})</span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
