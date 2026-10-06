@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import math
 import logging
 import threading
 import time
@@ -66,6 +67,8 @@ def price_snapshot(c: np.ndarray, h: np.ndarray, l: np.ndarray) -> Optional[Dict
     if not all(comps.values()):
         return None
     setup = st.combine_setup(comps)
+    if setup is None or not np.isfinite(setup):
+        return None
     timing = st.timing_component(c, h, l)
     return {"price_setup": setup, "timing": timing["score"] if timing else None,
             "timing_state": timing["state"] if timing else None,
@@ -417,13 +420,16 @@ def _group_stats(snaps: List[Dict], field: str, name_field: Optional[str] = None
     by: Dict[str, List[Dict]] = {}
     for x in snaps:
         by.setdefault(x.get(field) or "Other", []).append(x)
+    def fin(x) -> bool:
+        return isinstance(x, (int, float)) and math.isfinite(x)
     out = []
     for k, v in by.items():
+        setups = [x["price_setup"] for x in v if fin(x.get("price_setup"))]
         out.append({"key": k, "name": (v[0].get(name_field) if name_field else k) or k, "names": len(v),
-                    "above_200d": round(float(np.mean([x["above_200d"] for x in v])), 3),
-                    "strong": sum(1 for x in v if (x["price_setup"] or -9) >= st.BUY_SETUP),
-                    "avg_setup": round(float(np.mean([x["price_setup"] or 0 for x in v])), 3)})
-    return sorted(out, key=lambda r: -r["avg_setup"])
+                    "above_200d": round(float(np.mean([bool(x["above_200d"]) for x in v])), 3),
+                    "strong": sum(1 for x in setups if x >= st.BUY_SETUP),
+                    "avg_setup": round(float(np.mean(setups)), 3) if setups else None})
+    return sorted(out, key=lambda r: -(r["avg_setup"] if r["avg_setup"] is not None else -9))
 
 
 def _sector_counts(snaps: List[Dict]) -> List[Dict[str, Any]]:

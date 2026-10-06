@@ -55,3 +55,16 @@ def test_cap_by_does_not_group_missing_values():
     rows = [{"symbol": f"X{i}", "country": "JP", "sector": None, "s": 1 - i / 100} for i in range(8)]
     out = si.cap_by(rows, "s", 20, {"country": 6, "sector": 2})
     assert len(out) == 6                                   # country cap applies, missing sector does not
+
+
+def test_gappy_price_series_gives_no_nan_score():
+    """A price series with gaps (thin frontier listings) must not produce a NaN set-up,
+    which made /api/v1/stock/ideas fail JSON encoding."""
+    import numpy as np
+    from api import stock_ideas as si
+    c = np.linspace(50, 80, 400)
+    c[150] = np.nan
+    snap = si.price_snapshot(c, c * 1.01, c * 0.99)
+    assert snap is None or np.isfinite(snap["price_setup"])
+    rows = si._group_stats([{"country": "LT", "price_setup": float("nan"), "above_200d": True}], "country")
+    assert rows[0]["avg_setup"] is None

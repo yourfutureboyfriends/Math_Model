@@ -40,6 +40,7 @@ import {
   ModelSleeveSection,
   StockIdeasSection,
   StockTimingSection,
+  StockBacktestSection,
   PositionsSection,
   TradeWorkflowSection,
   CTATrendSection,
@@ -628,6 +629,13 @@ export function DashboardPage() {
       <div id="stock-timing" className="terminal-section">
         <ErrorBoundary sectionName="Stock Entry Signals">
           <StockTimingSection />
+        </ErrorBoundary>
+      </div>
+
+      {/* ── Entry model backtest ──────────────────────────────────────────── */}
+      <div id="stock-backtest" className="terminal-section">
+        <ErrorBoundary sectionName="Entry Model Backtest">
+          <StockBacktestSection />
         </ErrorBoundary>
       </div>
 

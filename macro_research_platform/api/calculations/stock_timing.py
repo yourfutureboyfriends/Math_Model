@@ -89,7 +89,7 @@ def momentum_component(c: np.ndarray) -> Optional[Dict[str, Any]]:
     r12_1 = float(c[-22] / c[-253] - 1)
     rets = np.diff(np.log(c[-253:]))
     vol = float(rets.std(ddof=1) * math.sqrt(252))
-    if vol <= 0:
+    if not (math.isfinite(vol) and math.isfinite(r12_1)) or vol <= 0:   # gaps in the price series
         return None
     sharpe_like = r12_1 / vol
     return {"score": round(math.tanh(sharpe_like), 3), "return_12_1": round(r12_1, 4), "volatility": round(vol, 4),
@@ -284,35 +284,44 @@ def levels(price: float, timing: Optional[Dict], high_52w: Optional[float], targ
 
 
 # ── Historical test of the price-based rules (no look-ahead) ─────────────────
-def price_signal_history(c: np.ndarray, h: np.ndarray, l: np.ndarray) -> np.ndarray:
-    """1 on days the price-only rules say BUY (trend+momentum+52w setup ≥ BUY_SETUP and the
-    entry not extended), else 0. Each day uses only data up to that day."""
-    n = c.size
-    sig = np.zeros(n)
-    if n < 260:
-        return sig
+def signal_frame(c: np.ndarray, h: np.ndarray, l: np.ndarray):
+    """Day-by-day price-only set-up and entry-timing scores — the same formulas as
+    trend/momentum/high52/timing_component, vectorised. Row i uses data up to day i only.
+    Columns: setup, timing, atr (NaN until enough history)."""
     import pandas as pd
-    s = pd.Series(c)
+    s = pd.Series(np.asarray(c, dtype=float))
+    h, l = np.asarray(h, dtype=float), np.asarray(l, dtype=float)
     s50, s200, s20 = s.rolling(50).mean(), s.rolling(200).mean(), s.rolling(20).mean()
     logr = np.log(s).diff()
     vol = logr.rolling(252).std() * math.sqrt(252)
     r12_1 = s.shift(21) / s.shift(252) - 1
     hi252 = s.rolling(252, min_periods=200).max()
-    tr = np.maximum(h[1:] - l[1:], np.maximum(abs(h[1:] - c[:-1]), abs(l[1:] - c[:-1])))
+    cv = s.to_numpy()
+    tr = np.maximum(h[1:] - l[1:], np.maximum(abs(h[1:] - cv[:-1]), abs(l[1:] - cv[:-1])))
     atr14 = pd.Series(np.concatenate([[np.nan], tr])).rolling(14).mean()
     d = s.diff()
     up, dn = d.clip(lower=0), (-d).clip(lower=0)
     rs = up.ewm(alpha=1 / 14, adjust=False).mean() / dn.ewm(alpha=1 / 14, adjust=False).mean()
     rsi14 = 100 - 100 / (1 + rs)
-    trend = np.where(s > s200, np.where(s50 > s200, 1.0, 0.5), np.where(s50 > s200, -0.25, -1.0))
+    trend = pd.Series(np.where(s > s200, np.where(s50 > s200, 1.0, 0.5), np.where(s50 > s200, -0.25, -1.0)))
+    trend[s200.isna()] = np.nan
     mom = np.tanh(r12_1 / vol)
     high = ((s / hi252 - 0.85) / 0.15).clip(-1, 1)
     w = SETUP_WEIGHTS
     setup = (w["trend"] * trend + w["momentum"] * mom + w["high_52w"] * high) / (w["trend"] + w["momentum"] + w["high_52w"])
     dist = (s - s20) / atr14
     timing = (((-(dist - 0.75) / 1.75).clip(-1, 1)) + ((55 - rsi14) / 20).clip(-1, 1)) / 2
-    setup = pd.Series(setup)
-    ok = (setup >= BUY_SETUP) & (timing > EXTENDED_TIMING) & setup.notna() & timing.notna()
+    return pd.DataFrame({"setup": setup, "timing": timing, "atr": atr14})
+
+
+def price_signal_history(c: np.ndarray, h: np.ndarray, l: np.ndarray) -> np.ndarray:
+    """1 on days the price-only rules say BUY (trend+momentum+52w setup ≥ BUY_SETUP and the
+    entry not extended), else 0. Each day uses only data up to that day."""
+    n = c.size
+    if n < 260:
+        return np.zeros(n)
+    f = signal_frame(c, h, l)
+    ok = (f["setup"] >= BUY_SETUP) & (f["timing"] > EXTENDED_TIMING) & f["setup"].notna() & f["timing"].notna()
     sig = ok.to_numpy().astype(float)
     sig[:260] = 0
     return sig

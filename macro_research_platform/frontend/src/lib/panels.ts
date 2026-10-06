@@ -20,6 +20,7 @@ export const PANEL_LABELS: Record<string, string> = {
   'regional-macro': 'Global Macro',
   'stock-ideas': 'Stock Ideas',
   'stock-timing': 'Stock Entry Signals',
+  'stock-backtest': 'Entry Model Backtest',
   // Signals
   ensemble: 'Model Ensemble',
   'signal-stack': 'Signal Breakdown',

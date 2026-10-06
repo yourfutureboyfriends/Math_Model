@@ -26,6 +26,7 @@ export { MacroModelSection } from './model/MacroModelSection';
 export { ModelSleeveSection } from './model/ModelSleeveSection';
 export { StockTimingSection } from './equity/StockTimingSection';
 export { StockIdeasSection } from './equity/StockIdeasSection';
+export { StockBacktestSection } from './equity/StockBacktestSection';
 export { AnomaliesStripSection } from './macro/AnomaliesStripSection';
 export { MasterSignalSection } from './signals/MasterSignalSection';
 export { KeyMetricsSection } from './macro/KeyMetricsSection';

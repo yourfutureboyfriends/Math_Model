@@ -150,7 +150,7 @@ export function StockIdeasSection() {
                 <table className="w-full"><thead><tr className="text-text-tertiary text-left font-sans"><th className="font-normal">Strongest markets</th><th className="font-normal text-right">Stocks</th><th className="font-normal text-right">&gt; 200d</th><th className="font-normal text-right">Avg set-up</th></tr></thead>
                   <tbody>{(data.by_country ?? []).filter((g: any) => g.names >= 8).slice(0, 10).map((g: any) => (
                     <tr key={g.key} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2" onClick={() => { setCls('All'); setRegion('All'); setCountry(g.key); }}>
-                      <td className="font-sans text-text-secondary">{g.name}</td><td className="text-right">{g.names}</td><td className="text-right">{pct(g.above_200d)}</td><td className="text-right">{g.avg_setup?.toFixed(2)}</td></tr>))}</tbody></table>
+                      <td className="font-sans text-text-secondary">{g.name}</td><td className="text-right">{g.names}</td><td className="text-right">{pct(g.above_200d)}</td><td className="text-right">{g.avg_setup == null ? '—' : g.avg_setup.toFixed(2)}</td></tr>))}</tbody></table>
               </div>
             )}
           </div>

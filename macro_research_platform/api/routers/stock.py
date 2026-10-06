@@ -325,6 +325,28 @@ async def stock_ideas_refresh():
     return {"started": True, "status": si.status()}
 
 
+@router.get("/api/v1/stock/backtest")
+async def stock_backtest():
+    """Walk-forward backtest of the entry model on the global universe (model vs control
+    variants, trade statistics, portfolio curve). Starts the first run when none exists."""
+    from api import stock_backtest as sb
+    cur = sb.latest()
+    if not cur and not sb.status()["running"]:
+        _spawn(sb.run_in_background())
+    if not cur:
+        return {"available": False, "status": sb.status(),
+                "reason": "Running the first backtest — downloading ~20 years of prices takes several minutes."}
+    return {**cur, "status": sb.status()}
+
+
+@router.post("/api/v1/stock/backtest/run")
+async def stock_backtest_run():
+    from api import stock_backtest as sb
+    if not sb.status()["running"]:
+        _spawn(sb.run_in_background())
+    return {"started": True, "status": sb.status()}
+
+
 _TASKS: set = set()
 
 
