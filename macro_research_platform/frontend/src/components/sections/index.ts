@@ -24,6 +24,7 @@ export { MyDeskSection } from './macro/MyDeskSection';
 export { CycleRiskSection } from './risk/CycleRiskSection';
 export { MacroModelSection } from './model/MacroModelSection';
 export { ModelSleeveSection } from './model/ModelSleeveSection';
+export { StockTimingSection } from './equity/StockTimingSection';
 export { AnomaliesStripSection } from './macro/AnomaliesStripSection';
 export { MasterSignalSection } from './signals/MasterSignalSection';
 export { KeyMetricsSection } from './macro/KeyMetricsSection';

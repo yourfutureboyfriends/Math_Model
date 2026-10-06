@@ -34,7 +34,7 @@ export const navigation: NavSection[] = [
       { id: 'market-clock', label: 'Market Clock', icon: '◆', permission: 'master_signal' },
       { id: 'global-markets', label: 'Global Markets', icon: '◆', permission: 'master_signal' },
       { id: 'global-correlation', label: 'Global Correlations', icon: '◆', permission: 'master_signal' },
-      { id: 'regional-macro', label: 'Developed Markets', icon: '◈', permission: 'master_signal', highlight: true },
+      { id: 'regional-macro', label: 'Global Macro', icon: '◈', permission: 'master_signal', highlight: true },
     ],
   },
   {
@@ -96,6 +96,7 @@ export const navigation: NavSection[] = [
     title: 'TRADING',
     items: [
       // The IA fix: execution/decision surfaces, split out of Portfolio.
+      { id: 'stock-timing', label: 'Stock Entry Signals', icon: '◆', permission: 'trade_ideas', highlight: true },
       { id: 'trade-ideas', label: 'Trade Ideas', icon: '◆', permission: 'trade_ideas', highlight: true },
       { id: 'trade-recommendations', label: 'Trade Recommendations', icon: '◆', permission: 'trade_recommendations', highlight: true },
       { id: 'trade-workflow', label: 'Trade Workflow', icon: '⚗', permission: 'trade_ideas', highlight: true },

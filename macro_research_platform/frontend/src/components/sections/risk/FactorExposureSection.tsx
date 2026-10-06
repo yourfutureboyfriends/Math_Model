@@ -94,12 +94,15 @@ export function FactorExposureSection() {
                   <span className={`w-16 text-right font-mono ${mode === 'exposure' ? (pos ? 'text-green' : 'text-red') : 'text-text-primary'}`}>
                     {mode === 'exposure' ? `${pos ? '+' : ''}${val.toFixed(2)}` : `${(val * 100).toFixed(0)}%`}
                   </span>
+                  <span className="w-20 text-right font-mono text-2xs text-text-tertiary" title="Return impact of a 1σ (annual) move in the factor">
+                    {mode === 'exposure' && f.factor_vol_annual ? `${(f.exposure * f.factor_vol_annual * 100) >= 0 ? '+' : ''}${(f.exposure * f.factor_vol_annual * 100).toFixed(1)}%/σ` : ''}
+                  </span>
                 </div>
               );
             })}
             <div className="text-2xs text-text-tertiary pt-1 border-t border-border-subtle">
               {mode === 'exposure'
-                ? 'Portfolio beta to each factor (net-weighted OLS loadings, 1y daily returns).'
+                ? 'Portfolio beta to each factor (net-weighted OLS loadings, 1y daily returns). Equity and rates are total betas; other factors are orthogonalized to them, so they measure exposure beyond market and duration. %/σ = impact of a one-standard-deviation annual factor move.'
                 : 'Share of systematic variance by factor (Euler decomposition with the full factor covariance; negative = hedging).'}
             </div>
           </div>

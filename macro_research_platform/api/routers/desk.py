@@ -75,6 +75,29 @@ async def _macro_block() -> Dict[str, Any]:
             "conviction": ens.get("conviction"), "risk_budget": ens.get("riskBudget")}
 
 
+def recession_models(macro: Dict[str, Any], cycle: Dict[str, Any], rates: Dict[str, Any]) -> Dict[str, Any]:
+    """12-month US recession probability from each model, with the range and median."""
+    rows = []
+
+    def add(name, value, basis):
+        if isinstance(value, (int, float)):
+            rows.append({"model": name, "probability": round(float(value), 4), "basis": basis})
+
+    add("Composite", macro.get("recession_probability"), "platform recession ensemble")
+    add("Yield curve (10Y–3M)", ((rates.get("yieldCurves") or {}).get("US") or {}).get("recessionProb"),
+        "probit, Estrella & Mishkin (1998)")
+    add("Near-term forward spread", (cycle.get("near_term_forward_spread") or {}).get("recession_probability_12m"),
+        "probit, Engstrom & Sharpe (2019)")
+    add("Excess bond premium", (cycle.get("excess_bond_premium") or {}).get("fed_recession_probability_12m"),
+        "Federal Reserve, Gilchrist & Zakrajšek (2012)")
+    if not rows:
+        return {"models": []}
+    ps = sorted(r["probability"] for r in rows)
+    mid = len(ps) // 2
+    median = ps[mid] if len(ps) % 2 else (ps[mid - 1] + ps[mid]) / 2
+    return {"models": rows, "min": ps[0], "max": ps[-1], "median": round(median, 4)}
+
+
 @router.get("/api/v1/desk")
 async def desk(request: Request):
     from api.core.access import current_user
@@ -106,11 +129,21 @@ async def desk(request: Request):
         from api.main import get_cycle_risk_v1
         return await get_cycle_risk_v1()
 
-    fund, macro, freshness, orders, users, cb, cyc = await asyncio.gather(
+    async def _rates():
+        from api.routers.market import get_rates
+        r = await get_rates()
+        return r.model_dump() if hasattr(r, "model_dump") else r
+
+    fund, macro, freshness, orders, users, cb, cyc, rates = await asyncio.gather(
         _safe(_fund_block(), "fund"), _safe(_macro_block(), "macro"),
         _safe(asyncio.to_thread(get_live_freshness), "data freshness"),
         _safe(_orders(), "orders"), _safe(_users(), "users"), _safe(_cb_moves(), "global macro"),
-        _safe(_cycle(), "cycle risk", timeout=60.0))
+        _safe(_cycle(), "cycle risk", timeout=60.0), _safe(_rates(), "rates"))
+    # Every recession model the platform runs, side by side, so the four numbers shown on
+    # different panels read as one view with a range rather than as contradictions.
+    if macro.get("available"):
+        macro["recession_models"] = recession_models(macro, cyc if isinstance(cyc, dict) else {},
+                                                     rates if isinstance(rates, dict) else {})
     order_list = orders if isinstance(orders, list) else []
     queue = build_queue(role, username, orders=order_list,
                         limits=fund.get("limits") if fund.get("available") else None,

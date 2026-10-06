@@ -105,3 +105,22 @@ def test_stress_shocks_translate_to_factor_space():
 def test_factor_proxy_registry():
     assert FACTOR_PROXIES["equity"] == "SPY"
     assert len(FACTOR_PROXIES) >= 8
+
+
+def test_non_core_factors_are_orthogonal_to_equity_and_rates():
+    from api.calculations.factor_model import orthogonalize_factors
+    rng = np.random.default_rng(0)
+    eq, rt = rng.normal(0, 0.01, 500), rng.normal(0, 0.008, 500)
+    credit = 0.4 * eq - 0.6 * rt + rng.normal(0.0002, 0.003, 500)
+    f = orthogonalize_factors({"equity": eq, "rates": rt, "credit": credit})
+    assert abs(np.corrcoef(f["credit"], eq)[0, 1]) < 1e-8 and abs(np.corrcoef(f["credit"], rt)[0, 1]) < 1e-8
+    assert f["credit"].mean() == pytest.approx(credit.mean())
+    assert np.array_equal(f["equity"], eq)
+
+
+def test_scenario_shocks_map_into_orthogonal_space():
+    from api.calculations.factor_model import orthogonal_shocks
+    betas = {"credit": {"equity": 0.4, "rates": -0.6}}
+    out = orthogonal_shocks({"equity": -0.4, "rates": 0.1, "credit": -0.3}, betas)
+    # credit beyond what equity/rates imply: -0.3 - (0.4*-0.4 + -0.6*0.1) = -0.08
+    assert out["credit"] == pytest.approx(-0.08) and out["equity"] == -0.4

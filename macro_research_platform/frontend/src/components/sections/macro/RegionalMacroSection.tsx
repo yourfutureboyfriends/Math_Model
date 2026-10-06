@@ -1,5 +1,5 @@
 /**
- * Developed Markets monitor — Americas, Europe and Asia-Pacific side by side.
+ * Global Macro monitor — Americas, Europe, Asia-Pacific and emerging markets side by side.
  *
  * Reads /api/v1/global-macro: BIS policy rates (and every central-bank move in the last
  * 120 days), OECD/Eurostat CPI, unemployment, GDP and yields, Yahoo equity indices and FX.
@@ -88,8 +88,8 @@ export function RegionalMacroSection() {
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><Globe className="w-3 h-3" /></span>
-          <h2 className="section-title">Developed Markets</h2>
-          <span className="text-2xs text-text-tertiary">Americas · Europe · Asia-Pacific</span>
+          <h2 className="section-title">Global Macro</h2>
+          <span className="text-2xs text-text-tertiary">Americas · Europe · Asia-Pacific · Emerging markets</span>
         </div>
         <button onClick={load} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />

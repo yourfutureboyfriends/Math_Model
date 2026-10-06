@@ -39,6 +39,7 @@ export interface Desk {
   macro: {
     available: boolean; regime?: string; regime_confidence?: number | null; regime_months?: number | null;
     recession_probability?: number | null; sahm?: number | null; ensemble_score?: number | null;
+    recession_models?: { models: { model: string; probability: number; basis: string }[]; min?: number; max?: number; median?: number };
     model_regime?: string | null; model_regime_probability?: number | null;
     conviction?: string | null; risk_budget?: number | null;
   };

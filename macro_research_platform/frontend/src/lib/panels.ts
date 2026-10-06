@@ -17,7 +17,8 @@ export const PANEL_LABELS: Record<string, string> = {
   'market-clock': 'Market Hours',
   'global-markets': 'Global Equity Markets',
   'global-correlation': 'Global Equity Correlations',
-  'regional-macro': 'Developed Markets',
+  'regional-macro': 'Global Macro',
+  'stock-timing': 'Stock Entry Signals',
   // Signals
   ensemble: 'Model Ensemble',
   'signal-stack': 'Signal Breakdown',

@@ -1492,6 +1492,8 @@ from api.routers.desk import router as desk_router  # role desk: action queue + 
 app.include_router(desk_router)
 from api.routers.model import router as model_router  # systematic macro model
 app.include_router(model_router)
+from api.routers.stock import router as stock_router  # stock entry timing + screener
+app.include_router(stock_router)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NATIVE WEBSOCKET ENDPOINTS
@@ -2301,8 +2303,11 @@ async def risk_stress_get_v1(book: Optional[str] = None):
     if dexp is None:
         return {"available": False, "reason": reason, "scenarios": []}
     scenarios = []
+    from api.calculations.factor_model import orthogonal_shocks
     for key, sc in STRESS_SCENARIOS.items():
-        shocks = to_factor_shocks(sc["shocks"])
+        # Exposures are to orthogonalized factors (factor_model.orthogonalize_factors), so the
+        # scenario's raw moves are mapped into that space before applying them.
+        shocks = orthogonal_shocks(to_factor_shocks(sc["shocks"]))
         res = scenario_pnl(dexp, shocks)
         scenarios.append({"id": key, "label": sc["label"], "shocks": shocks,
                           "proxy_shocks": sc["shocks"],
@@ -2324,7 +2329,8 @@ async def risk_stress_custom_v1(body: StressCustomIn):
     dexp, reason = await _dollar_factor_exposures(body.book)
     if dexp is None:
         return {"available": False, "reason": reason}
-    res = scenario_pnl(dexp, body.shocks)
+    from api.calculations.factor_model import orthogonal_shocks
+    res = scenario_pnl(dexp, orthogonal_shocks(body.shocks))
     return {"available": True, "shocks": body.shocks, "total_pnl": res["total_pnl"],
             "by_factor": res["by_factor"]}
 

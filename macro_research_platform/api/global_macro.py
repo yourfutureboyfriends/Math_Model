@@ -1,5 +1,6 @@
 """
-Developed-markets macro monitor: Americas, Europe and Asia-Pacific on one page, from
+Global macro monitor: Americas, Europe, Asia-Pacific and the major emerging markets (China,
+India, Brazil, Mexico, Indonesia, South Africa, Turkey) on one page, from
 official sources, every value dated and graded against its release calendar.
 
 Sources (all free, no keys):
@@ -81,12 +82,31 @@ ECONOMIES: List[Dict[str, Any]] = [
     {"code": "SG", "name": "Singapore", "region": "Asia-Pacific", "oecd": None, "bis": None,
      "cb": "MAS", "target": None, "index": "^STI", "index_name": "STI", "fx": "USDSGD=X", "usd_base": True, "ccy": "SGD",
      "note": "MAS steers the exchange rate, not a policy rate; no OECD macro coverage"},
+    # Emerging markets: OECD covers CPI and GDP for the G20 non-members (unemployment only
+    # for Mexico and Turkey); BIS has every policy rate. Targets are the central banks'
+    # stated inflation targets (point or midpoint).
+    {"code": "CN", "name": "China", "region": "Emerging markets", "oecd": "CHN", "bis": "CN",
+     "cb": "PBoC", "target": 2.0, "index": "000001.SS", "index_name": "Shanghai Composite", "fx": "USDCNY=X", "usd_base": True, "ccy": "CNY",
+     "note": "Policy rate = BIS series for China (1-year loan prime rate); CPI target 'around 2%' (2025 NPC work report)"},
+    {"code": "IN", "name": "India", "region": "Emerging markets", "oecd": "IND", "bis": "IN",
+     "cb": "RBI", "target": 4.0, "index": "^NSEI", "index_name": "Nifty 50", "fx": "USDINR=X", "usd_base": True, "ccy": "INR"},
+    {"code": "BR", "name": "Brazil", "region": "Emerging markets", "oecd": "BRA", "bis": "BR",
+     "cb": "BCB", "target": 3.0, "index": "^BVSP", "index_name": "Ibovespa", "fx": "USDBRL=X", "usd_base": True, "ccy": "BRL"},
+    {"code": "MX", "name": "Mexico", "region": "Emerging markets", "oecd": "MEX", "bis": "MX",
+     "cb": "Banxico", "target": 3.0, "index": "^MXX", "index_name": "S&P/BMV IPC", "fx": "USDMXN=X", "usd_base": True, "ccy": "MXN"},
+    {"code": "ID", "name": "Indonesia", "region": "Emerging markets", "oecd": "IDN", "bis": "ID",
+     "cb": "BI", "target": 2.5, "index": "^JKSE", "index_name": "Jakarta Composite", "fx": "USDIDR=X", "usd_base": True, "ccy": "IDR"},
+    {"code": "ZA", "name": "South Africa", "region": "Emerging markets", "oecd": "ZAF", "bis": "ZA",
+     "cb": "SARB", "target": 3.0, "index": "^J203.JO", "index_name": "JSE All Share", "fx": "USDZAR=X", "usd_base": True, "ccy": "ZAR"},
+    {"code": "TR", "name": "Turkey", "region": "Emerging markets", "oecd": "TUR", "bis": "TR",
+     "cb": "CBRT", "target": 5.0, "index": "XU100.IS", "index_name": "BIST 100", "fx": "USDTRY=X", "usd_base": True, "ccy": "TRY"},
 ]
-REGIONS = ("Americas", "Europe", "Asia-Pacific")
+REGIONS = ("Americas", "Europe", "Asia-Pacific", "Emerging markets")
 # Long-run potential growth (% y/y), used only to label a growth quadrant. Round, consensus-
 # style figures — an assumption shown with the result, not a measured value.
 TREND_GROWTH = {"US": 2.0, "CA": 1.8, "EA": 1.2, "DE": 1.0, "FR": 1.1, "IT": 0.7, "ES": 1.7, "NL": 1.4,
-                "GB": 1.4, "CH": 1.6, "SE": 1.9, "NO": 1.6, "JP": 0.6, "AU": 2.4, "NZ": 2.2, "KR": 2.0}
+                "GB": 1.4, "CH": 1.6, "SE": 1.9, "NO": 1.6, "JP": 0.6, "AU": 2.4, "NZ": 2.2, "KR": 2.0,
+                "CN": 4.5, "IN": 6.5, "BR": 2.0, "MX": 2.0, "ID": 5.0, "ZA": 1.0, "TR": 3.5}
 
 
 # ── HTTP + cache ─────────────────────────────────────────────────────────────
@@ -169,8 +189,12 @@ def _fetch_all(today: date) -> Dict[str, Any]:
                            "G1": _eurostat("namq_10_gdp", {"geo": "EA20", "unit": "CLV_PCH_PRE", "s_adj": "SCA",
                                                             "na_item": "B1GQ", "sinceTimePeriod": q_start})},
     }
+    # Cache key includes the economy list, so adding a country refetches instead of serving a
+    # cached response that lacks it for up to the cache TTL.
+    import hashlib
+    tag = hashlib.sha1(",".join(e["code"] for e in ECONOMIES).encode()).hexdigest()[:8]
     with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
-        futures = {k: pool.submit(_cached, k, fn) for k, fn in jobs.items()}
+        futures = {k: pool.submit(_cached, f"{k}_{tag}", fn) for k, fn in jobs.items()}
         return {k: f.result() for k, f in futures.items()}
 
 

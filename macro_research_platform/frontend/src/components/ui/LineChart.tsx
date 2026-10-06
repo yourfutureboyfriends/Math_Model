@@ -15,9 +15,11 @@ interface Props {
   axisFmt?: (v: number) => string;  // y-axis tick format (defaults to fmt)
   log?: boolean;                     // log y scale (values must be > 0)
   baseline?: number;                 // dashed reference line (e.g. 0, or 1 for growth of $1)
+  refs?: { value: number; label: string; color?: string }[];   // labelled horizontal levels
 }
 
 const FONT = 10;
+const NO_REFS: { value: number; label: string; color?: string }[] = [];
 const CHAR_W = 6.1;                  // monospace advance at 10px
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -44,6 +46,13 @@ function logTicks(lo: number, hi: number): number[] {
 }
 
 function monthTicks(labels: string[], maxTicks: number): { i: number; text: string }[] {
+  if (labels.length && labels.every((l) => /^\d{4}-\d{2}-\d{2}$/.test(l))) {
+    // Daily data: tick the first trading day of every k-th month.
+    const firsts = labels.map((l, i) => ({ m: l.slice(0, 7), i })).filter((x, k, a) => k === 0 || a[k - 1].m !== x.m);
+    const step = Math.max(1, Math.ceil(firsts.length / Math.max(1, maxTicks)));
+    return firsts.filter((_, k) => k % step === 0 && (k > 0 || firsts.length < 3))
+      .map(({ m, i }) => ({ i, text: `${MONTHS[Number(m.slice(5)) - 1]} ${m.slice(2, 4)}` }));
+  }
   const isMonth = labels.every((l) => /^\d{4}-\d{2}$/.test(l));
   const n = labels.length;
   if (!isMonth) {
@@ -64,7 +73,7 @@ function monthTicks(labels: string[], maxTicks: number): { i: number; text: stri
     .map(({ l, i }) => ({ i, text: `${MONTHS[Number(l.slice(5)) - 1]} ${l.slice(2, 4)}` }));
 }
 
-export function LineChart({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2), axisFmt, log = false, baseline }: Props) {
+export function LineChart({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2), axisFmt, log = false, baseline, refs = NO_REFS }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [W, setW] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
@@ -82,8 +91,9 @@ export function LineChart({ rows, x, lines, height = 180, fmt = (v) => v.toFixed
     if (rows.length < 2 || W === 0) return null;
     const vals = rows.flatMap((r) => lines.map((l) => r[l.key])).filter((v): v is number => typeof v === 'number' && (!log || v > 0));
     if (!vals.length) return null;
-    let lo = Math.min(...vals, ...(baseline !== undefined ? [baseline] : []));
-    let hi = Math.max(...vals, ...(baseline !== undefined ? [baseline] : []));
+    const extra = [...(baseline !== undefined ? [baseline] : []), ...refs.map((r) => r.value)];
+    let lo = Math.min(...vals, ...extra);
+    let hi = Math.max(...vals, ...extra);
     if (lo === hi) { lo -= 1; hi += 1; }
     let yt: number[];
     if (log) {
@@ -115,7 +125,7 @@ export function LineChart({ rows, x, lines, height = 180, fmt = (v) => v.toFixed
     for (let k = ends.length - 2; k >= 0; k--) if (ends[k + 1].y - ends[k].y < gap) ends[k].y = ends[k + 1].y - gap;
     const xt = monthTicks(rows.map((r) => String(r[x])), Math.max(2, Math.floor((W - L - R) / 70)));
     return { L, R, T, B, sx, sy, yt, xt, ends, af };
-  }, [rows, lines, W, height, log, baseline, fmt, axisFmt, x]);
+  }, [rows, lines, W, height, log, baseline, refs, fmt, axisFmt, x]);
 
   const legend = (
     <div className="flex flex-wrap gap-x-3 gap-y-1 mb-1">
@@ -152,6 +162,15 @@ export function LineChart({ rows, x, lines, height = 180, fmt = (v) => v.toFixed
             {baseline !== undefined && (
               <line x1={geo.L} x2={W - geo.R} y1={geo.sy(baseline)} y2={geo.sy(baseline)} stroke="var(--text-tertiary)" strokeDasharray="3 3" />
             )}
+            {refs.map((r) => (
+              <g key={r.label}>
+                <line x1={geo.L} x2={W - geo.R} y1={geo.sy(r.value)} y2={geo.sy(r.value)}
+                  stroke={r.color ?? 'var(--text-tertiary)'} strokeDasharray="4 3" strokeWidth={1} />
+                <text x={geo.L + 4} y={geo.sy(r.value) - 3} fontSize={10} fill={r.color ?? 'var(--text-tertiary)'} className="font-mono">
+                  {r.label} {fmt(r.value)}
+                </text>
+              </g>
+            ))}
             {/* x axis */}
             <line x1={geo.L} x2={W - geo.R} y1={height - geo.B} y2={height - geo.B} stroke="var(--border)" />
             {geo.xt.map(({ i, text }) => (

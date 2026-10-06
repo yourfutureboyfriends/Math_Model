@@ -66,6 +66,52 @@ def build_factor_returns(ticker_returns: Dict[str, Sequence[float]]) -> Dict[str
         if short:
             r = r - np.asarray(ticker_returns[short], dtype=float)
         out[f] = r
+    return orthogonalize_factors(out)
+
+
+CORE_FACTORS = ("equity", "rates")
+
+
+def orthogonalize_factors(factors: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    """Residualize every non-core factor on the core ones (equity, rates).
+
+    The credit spread (HYG−IEF) is ~0.4 correlated with equity and ~−0.6 with rates, the USD
+    and commodity factors also load on both — so one regression split the market and duration
+    betas arbitrarily between them (gold came out with equity 0.93 / credit −2.46 / rates
+    −0.46). With the others orthogonalized, the equity and rates loadings are each position's
+    TOTAL market and duration betas, and the rest measure exposure beyond them."""
+    core = [k for k in CORE_FACTORS if k in factors]
+    if not core:
+        return factors
+    n = min(len(factors[k]) for k in factors)
+    out = {k: np.asarray(v, dtype=float)[-n:] for k, v in factors.items()}
+    Xc = np.column_stack([out[k] - out[k].mean() for k in core])   # demeaned core factors
+    betas: Dict[str, Dict[str, float]] = {}
+    for k in factors:
+        if k in core:
+            continue
+        y = out[k]
+        b, *_ = np.linalg.lstsq(Xc, y - y.mean(), rcond=None)
+        out[k] = y - Xc @ b                    # residual keeps the factor's own mean
+        betas[k] = {c: float(b[i]) for i, c in enumerate(core)}
+    ORTHO_BETAS.clear()
+    ORTHO_BETAS.update(betas)
+    return out
+
+
+# Coefficients of the latest orthogonalization (non-core factor on the core factors), so a
+# scenario expressed in raw factor moves can be mapped into the same orthogonal space.
+ORTHO_BETAS: Dict[str, Dict[str, float]] = {}
+
+
+def orthogonal_shocks(shocks: Dict[str, float], betas: Optional[Dict[str, Dict[str, float]]] = None) -> Dict[str, float]:
+    """Raw factor shocks -> shocks of the orthogonalized factors: each non-core shock minus
+    the part implied by the equity and rates shocks."""
+    betas = ORTHO_BETAS if betas is None else betas
+    out = dict(shocks)
+    for k, b in betas.items():
+        if k in out:
+            out[k] = round(out[k] - sum(coef * shocks.get(c, 0.0) for c, coef in b.items()), 4)
     return out
 
 
