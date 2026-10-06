@@ -32,6 +32,7 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA foreign_keys=ON")
     try:
+        _ensure_schema(conn)
         yield conn
         conn.commit()
     except Exception:
@@ -41,9 +42,48 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
+# ── Schema ───────────────────────────────────────────────────────────────────
+# Tables are created on the first connection to each database file (not only when the app's
+# start-up calls init_db), so a read never meets "no such table" on a fresh install, a new
+# DB path or a test DB. Modules that own a table register its DDL with register_schema at
+# import; it is applied the same way.
+_SCHEMAS: List[str] = []
+_ENSURED: set = set()
+_ENSURE_LOCK = threading.Lock()
+
+
+def register_schema(ddl: str) -> None:
+    """Declare a module-owned table (CREATE TABLE / INDEX IF NOT EXISTS ...)."""
+    with _ENSURE_LOCK:
+        if ddl not in _SCHEMAS:
+            _SCHEMAS.append(ddl)
+            _ENSURED.clear()
+
+
+def _ensure_schema(conn: sqlite3.Connection) -> None:
+    key = (str(DB_PATH), len(_SCHEMAS))
+    if key in _ENSURED:
+        return
+    with _ENSURE_LOCK:
+        if key in _ENSURED:
+            return
+        _create_core_tables(conn)
+        for ddl in _SCHEMAS:
+            conn.executescript(ddl)
+        conn.commit()
+        _ENSURED.add(key)
+
+
 def init_db() -> None:
-    """Initialize database schema. Safe to re-run (IF NOT EXISTS)."""
-    with get_db() as conn:
+    """Initialize the database schema (also done lazily by get_db). Safe to re-run."""
+    with get_db():
+        pass
+    logger.info("[DB] Database initialized successfully")
+
+
+def _create_core_tables(conn: sqlite3.Connection) -> None:
+    """Core platform tables. Safe to re-run (IF NOT EXISTS)."""
+    if True:
         cursor = conn.cursor()
 
         # Regime history (replaces in-memory REGIME_HISTORY list)
@@ -332,7 +372,6 @@ def init_db() -> None:
         """)
 
         conn.commit()
-        logger.info("[DB] Database initialized successfully")
 
 
 def cleanup_old_logs(days: int = 30) -> None:

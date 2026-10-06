@@ -10,7 +10,7 @@ import importlib.util
 from datetime import datetime
 
 # Add api directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))   # project root, not api/
 
 
 def load_module_directly(module_path, module_name):

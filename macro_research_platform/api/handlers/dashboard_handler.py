@@ -54,6 +54,13 @@ class DashboardDataUnavailable(RuntimeError):
 _DASHBOARD_CACHE: dict[str, tuple[float, "DashboardData"]] = {}
 _DASHBOARD_TTL = 60  # seconds
 _DASHBOARD_LOCKS: dict[str, "_dash_asyncio.Lock"] = {}
+# Stale-while-revalidate: past the TTL the cached dashboard is served at once while one
+# background task rebuilds it, so no request waits on a 5-25s build. A cold process serves
+# the last good build from disk (flagged as a snapshot). Older than this → build inline.
+_DASHBOARD_STALE_MAX = 6 * 3600
+_DASHBOARD_FLAG_AFTER = 600   # a cached copy older than this is flagged stale
+_SNAPSHOT_DIR = __import__("pathlib").Path(__file__).resolve().parents[2] / "data" / "processed" / "live"
+_REFRESHING: dict[str, "_dash_asyncio.Task"] = {}
 
 # Real headline sentiment (RSS fetch is slow + news moves slowly → cache 10 min).
 _NEWS_CACHE: dict = {"articles": None, "ts": 0.0}
@@ -133,11 +140,84 @@ def _build_news_sentiment(regime_name: str, now) -> dict:
     }
 
 
+def _snapshot_path(mode: str):
+    return _SNAPSHOT_DIR / f"dashboard_{mode}.json"
+
+
+def _save_snapshot(mode: str, ts: float, data: "DashboardData") -> None:
+    """Persist the last good build atomically (write a temp file, then rename)."""
+    try:
+        import json as _json
+        _SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = _snapshot_path(mode).with_suffix(".tmp")
+        tmp.write_text(_json.dumps({"ts": ts, "data": _json.loads(data.model_dump_json())}))
+        tmp.replace(_snapshot_path(mode))
+    except Exception as e:
+        logger.warning("[dashboard_handler] snapshot save failed: %s", e)
+
+
+def _load_snapshot(mode: str):
+    """(timestamp, DashboardData) of the last good build on disk, flagged as a snapshot."""
+    try:
+        import json as _json
+        raw = _json.loads(_snapshot_path(mode).read_text())
+        data = DashboardData.model_validate(raw["data"])
+        built = datetime.fromtimestamp(raw["ts"]).strftime("%H:%M")
+        data.metadata.dataStatus = "stale"
+        data.metadata.validationWarnings = f"Warming up — showing the snapshot from {built} until the live build finishes"
+        return float(raw["ts"]), data
+    except Exception:
+        return None
+
+
+def _refresh_in_background(mode: str) -> None:
+    """One background rebuild per mode at a time (a strong reference keeps it alive)."""
+    t = _REFRESHING.get(mode)
+    if t and not t.done():
+        return
+    _REFRESHING[mode] = _dash_asyncio.get_running_loop().create_task(_refresh(mode))
+
+
+async def _refresh(mode: str) -> None:
+    lock = _DASHBOARD_LOCKS.setdefault(mode, _dash_asyncio.Lock())
+    async with lock:
+        cached = _DASHBOARD_CACHE.get(mode)
+        if cached and _dash_time.time() - cached[0] < _DASHBOARD_TTL:
+            return
+        try:
+            data = await _build_dashboard_data(mode)
+        except Exception as e:                      # keep serving the last good dashboard
+            logger.warning("[dashboard_handler] background refresh failed: %s", e)
+            return
+        _store(mode, data)
+
+
+def _store(mode: str, data: "DashboardData") -> None:
+    ts = _cache_stamp(data)
+    _DASHBOARD_CACHE[mode] = (ts, data)
+    if getattr(getattr(data, "recession", None), "logisticProb", 0) is not None:   # not a degraded build
+        _save_snapshot(mode, _dash_time.time(), data)
+
+
 async def get_dashboard_data(mode: str = "live") -> DashboardData:
-    """Return dashboard data, served from a short-TTL cache when fresh."""
+    """Return dashboard data: fresh from cache; past the TTL, the cached copy at once while a
+    background task rebuilds; on a cold start, the last good build from disk."""
     now_ts = _dash_time.time()
     cached = _DASHBOARD_CACHE.get(mode)
     if cached and now_ts - cached[0] < _DASHBOARD_TTL:
+        return cached[1]
+    if cached is None:
+        cached = _load_snapshot(mode)
+        if cached:
+            _DASHBOARD_CACHE.setdefault(mode, cached)
+    if cached and now_ts - cached[0] < _DASHBOARD_STALE_MAX:
+        _refresh_in_background(mode)
+        if now_ts - cached[0] > _DASHBOARD_FLAG_AFTER and cached[1].metadata.dataStatus != "stale":
+            old = cached[1].model_copy(deep=True)       # refreshes are failing: say so
+            old.metadata.dataStatus = "stale"
+            old.metadata.validationWarnings = (f"Live refresh failing — showing the build from "
+                                               f"{datetime.fromtimestamp(cached[0]).strftime('%H:%M')}")
+            return old
         return cached[1]
 
     lock = _DASHBOARD_LOCKS.setdefault(mode, _dash_asyncio.Lock())
@@ -158,7 +238,7 @@ async def get_dashboard_data(mode: str = "live") -> DashboardData:
                 return stale
             from fastapi import HTTPException
             raise HTTPException(status_code=503, detail=str(e))
-        _DASHBOARD_CACHE[mode] = (_cache_stamp(data), data)
+        _store(mode, data)
         return data
 
 
@@ -174,7 +254,7 @@ async def warm_dashboard_cache(mode: str = "live") -> None:
     """Pre-compute and cache the dashboard so the first UI load hits a warm cache."""
     try:
         data = await _build_dashboard_data(mode)
-        _DASHBOARD_CACHE[mode] = (_cache_stamp(data), data)
+        _store(mode, data)
         logger.info("[dashboard_handler] Cache warmed for mode=%s", mode)
     except Exception as e:
         logger.warning("[dashboard_handler] Cache warm failed: %s", e)

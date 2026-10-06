@@ -40,7 +40,27 @@ import json
 import numpy as np
 import pandas as pd
 
-from database.db import get_db
+from database.db import get_db, register_schema
+
+# Declared at import so reads work before the first write (fresh DB → empty table, not
+# "no such table"); see database.db.register_schema.
+_MOMENTUM_SIGNAL_HISTORY_DDL = """
+    CREATE TABLE IF NOT EXISTS momentum_signal_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        sector TEXT NOT NULL,
+        formation_period TEXT NOT NULL,
+        momentum_score REAL NOT NULL,
+        lookback_return REAL,
+        regime TEXT,
+        realized_return REAL,
+        realized_alpha REAL,
+        carhart_alpha REAL,
+        metadata TEXT
+    );
+"""
+register_schema(_MOMENTUM_SIGNAL_HISTORY_DDL)
 
 logger = logging.getLogger(__name__)
 
@@ -148,22 +168,7 @@ class MomentumValidator:
                 cursor = conn.cursor()
 
                 # Ensure momentum_signal_history table exists
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS momentum_signal_history (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        date TEXT NOT NULL,
-                        recorded_at TEXT NOT NULL,
-                        sector TEXT NOT NULL,
-                        formation_period TEXT NOT NULL,
-                        momentum_score REAL NOT NULL,
-                        lookback_return REAL,
-                        regime TEXT,
-                        realized_return REAL,
-                        realized_alpha REAL,
-                        carhart_alpha REAL,
-                        metadata TEXT
-                    )
-                """)
+                cursor.execute(_MOMENTUM_SIGNAL_HISTORY_DDL)
 
                 cursor.execute("""
                     INSERT INTO momentum_signal_history (

@@ -40,7 +40,39 @@ import json
 import numpy as np
 import pandas as pd
 
-from database.db import get_db
+from database.db import get_db, register_schema
+
+# Declared at import so reads work before the first write (fresh DB → empty table, not
+# "no such table"); see database.db.register_schema.
+_SIGNAL_STACK_HISTORY_DDL = """
+    CREATE TABLE IF NOT EXISTS signal_stack_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        layer_1_value TEXT,
+        layer_1_confidence REAL,
+        layer_2_value TEXT,
+        layer_2_confidence REAL,
+        layer_3_value TEXT,
+        layer_3_confidence REAL,
+        layer_4_value TEXT,
+        layer_4_confidence REAL,
+        layer_5_value TEXT,
+        layer_5_confidence REAL,
+        layer_6_value TEXT,
+        layer_6_confidence REAL,
+        layer_7_value TEXT,
+        layer_7_confidence REAL,
+        layer_8_value TEXT,
+        layer_8_confidence REAL,
+        final_signal TEXT,
+        risk_budget REAL,
+        overrides_active TEXT,
+        market_return_1m REAL,
+        metadata TEXT
+    );
+"""
+register_schema(_SIGNAL_STACK_HISTORY_DDL)
 
 logger = logging.getLogger(__name__)
 
@@ -161,34 +193,7 @@ class SignalValidator:
                 cursor = conn.cursor()
 
                 # Ensure signal_stack_history table exists
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS signal_stack_history (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        date TEXT NOT NULL,
-                        recorded_at TEXT NOT NULL,
-                        layer_1_value TEXT,
-                        layer_1_confidence REAL,
-                        layer_2_value TEXT,
-                        layer_2_confidence REAL,
-                        layer_3_value TEXT,
-                        layer_3_confidence REAL,
-                        layer_4_value TEXT,
-                        layer_4_confidence REAL,
-                        layer_5_value TEXT,
-                        layer_5_confidence REAL,
-                        layer_6_value TEXT,
-                        layer_6_confidence REAL,
-                        layer_7_value TEXT,
-                        layer_7_confidence REAL,
-                        layer_8_value TEXT,
-                        layer_8_confidence REAL,
-                        final_signal TEXT,
-                        risk_budget REAL,
-                        overrides_active TEXT,
-                        market_return_1m REAL,
-                        metadata TEXT
-                    )
-                """)
+                cursor.execute(_SIGNAL_STACK_HISTORY_DDL)
 
                 cursor.execute("""
                     INSERT INTO signal_stack_history (

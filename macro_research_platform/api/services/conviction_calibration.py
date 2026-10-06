@@ -40,7 +40,31 @@ import json
 
 import pandas as pd
 
-from database.db import get_db
+from database.db import get_db, register_schema
+
+# Declared at import so reads work before the first write (fresh DB → empty table, not
+# "no such table"); see database.db.register_schema.
+_CONVICTION_HISTORY_DDL = """
+    CREATE TABLE IF NOT EXISTS conviction_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        conviction_score REAL NOT NULL,
+        regime_confidence REAL,
+        recession_agreement REAL,
+        signal_dispersion REAL,
+        momentum_confirmation REAL,
+        volatility_stability REAL,
+        risk_budget REAL,
+        forecast_horizon TEXT,
+        realized_return_1m REAL,
+        realized_return_3m REAL,
+        realized_return_6m REAL,
+        realized_return_12m REAL,
+        metadata TEXT
+    );
+"""
+register_schema(_CONVICTION_HISTORY_DDL)
 
 logger = logging.getLogger(__name__)
 
@@ -126,26 +150,7 @@ class ConvictionCalibrator:
                 cursor = conn.cursor()
 
                 # Ensure conviction_history table exists
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS conviction_history (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        date TEXT NOT NULL,
-                        recorded_at TEXT NOT NULL,
-                        conviction_score REAL NOT NULL,
-                        regime_confidence REAL,
-                        recession_agreement REAL,
-                        signal_dispersion REAL,
-                        momentum_confirmation REAL,
-                        volatility_stability REAL,
-                        risk_budget REAL,
-                        forecast_horizon TEXT,
-                        realized_return_1m REAL,
-                        realized_return_3m REAL,
-                        realized_return_6m REAL,
-                        realized_return_12m REAL,
-                        metadata TEXT
-                    )
-                """)
+                cursor.execute(_CONVICTION_HISTORY_DDL)
 
                 cursor.execute("""
                     INSERT INTO conviction_history (

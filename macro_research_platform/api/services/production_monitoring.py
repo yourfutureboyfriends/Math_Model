@@ -36,7 +36,25 @@ import statistics
 import numpy as np
 import pandas as pd
 
-from database.db import get_db
+from database.db import get_db, register_schema
+
+# Declared at import so reads work before the first write (fresh DB → empty table, not
+# "no such table"); see database.db.register_schema.
+_PRODUCTION_PREDICTIONS_DDL = """
+    CREATE TABLE IF NOT EXISTS production_predictions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        model TEXT NOT NULL,
+        prediction TEXT,
+        confidence REAL,
+        inputs TEXT,
+        latency_ms REAL,
+        realized_outcome TEXT,
+        prediction_error REAL,
+        metadata TEXT
+    );
+"""
+register_schema(_PRODUCTION_PREDICTIONS_DDL)
 
 logger = logging.getLogger(__name__)
 
@@ -153,20 +171,7 @@ class ProductionMonitor:
                 cursor = conn.cursor()
 
                 # Ensure production_predictions table exists
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS production_predictions (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        timestamp TEXT NOT NULL,
-                        model TEXT NOT NULL,
-                        prediction TEXT,
-                        confidence REAL,
-                        inputs TEXT,
-                        latency_ms REAL,
-                        realized_outcome TEXT,
-                        prediction_error REAL,
-                        metadata TEXT
-                    )
-                """)
+                cursor.execute(_PRODUCTION_PREDICTIONS_DDL)
 
                 cursor.execute("""
                     INSERT INTO production_predictions (

@@ -46,7 +46,27 @@ import json
 import numpy as np
 import pandas as pd
 
-from database.db import get_db
+from database.db import get_db, register_schema
+
+# Declared at import so reads work before the first write (fresh DB → empty table, not
+# "no such table"); see database.db.register_schema.
+_PORTFOLIO_ALLOCATION_HISTORY_DDL = """
+    CREATE TABLE IF NOT EXISTS portfolio_allocation_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        method TEXT NOT NULL,
+        regime TEXT,
+        weights TEXT NOT NULL,
+        risk_budget REAL,
+        concentration_hhi REAL,
+        realized_return REAL,
+        turnover REAL,
+        transaction_costs REAL,
+        metadata TEXT
+    );
+"""
+register_schema(_PORTFOLIO_ALLOCATION_HISTORY_DDL)
 
 logger = logging.getLogger(__name__)
 
@@ -150,22 +170,7 @@ class PortfolioValidator:
                 cursor = conn.cursor()
 
                 # Ensure portfolio_allocation_history table exists
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS portfolio_allocation_history (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        date TEXT NOT NULL,
-                        recorded_at TEXT NOT NULL,
-                        method TEXT NOT NULL,
-                        regime TEXT,
-                        weights TEXT NOT NULL,
-                        risk_budget REAL,
-                        concentration_hhi REAL,
-                        realized_return REAL,
-                        turnover REAL,
-                        transaction_costs REAL,
-                        metadata TEXT
-                    )
-                """)
+                cursor.execute(_PORTFOLIO_ALLOCATION_HISTORY_DDL)
 
                 # Calculate concentration (HHI)
                 hhi = sum(w**2 for w in weights.values())

@@ -43,7 +43,30 @@ import json
 import numpy as np
 import pandas as pd
 
-from database.db import get_db
+from database.db import get_db, register_schema
+
+# Declared at import so reads work before the first write (fresh DB → empty table, not
+# "no such table"); see database.db.register_schema.
+_EXPECTED_RETURNS_HISTORY_DDL = """
+    CREATE TABLE IF NOT EXISTS expected_returns_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        sector TEXT NOT NULL,
+        expected_return REAL NOT NULL,
+        earnings_yield REAL,
+        regime_premium REAL,
+        regime TEXT,
+        confidence REAL,
+        realized_return REAL,
+        forecast_error REAL,
+        absolute_error REAL,
+        squared_error REAL,
+        directional_hit INTEGER,
+        metadata TEXT
+    );
+"""
+register_schema(_EXPECTED_RETURNS_HISTORY_DDL)
 
 logger = logging.getLogger(__name__)
 
@@ -159,25 +182,7 @@ class ExpectedReturnsValidator:
                 cursor = conn.cursor()
 
                 # Ensure expected_returns_history table exists
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS expected_returns_history (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        date TEXT NOT NULL,
-                        recorded_at TEXT NOT NULL,
-                        sector TEXT NOT NULL,
-                        expected_return REAL NOT NULL,
-                        earnings_yield REAL,
-                        regime_premium REAL,
-                        regime TEXT,
-                        confidence REAL,
-                        realized_return REAL,
-                        forecast_error REAL,
-                        absolute_error REAL,
-                        squared_error REAL,
-                        directional_hit INTEGER,
-                        metadata TEXT
-                    )
-                """)
+                cursor.execute(_EXPECTED_RETURNS_HISTORY_DDL)
 
                 cursor.execute("""
                     INSERT INTO expected_returns_history (

@@ -43,7 +43,30 @@ import json
 import numpy as np
 import pandas as pd
 
-from database.db import get_db
+from database.db import get_db, register_schema
+
+# Declared at import so reads work before the first write (fresh DB → empty table, not
+# "no such table"); see database.db.register_schema.
+_RECESSION_FORECAST_HISTORY_DDL = """
+    CREATE TABLE IF NOT EXISTS recession_forecast_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        horizon TEXT NOT NULL,
+        logistic_prob REAL,
+        probit_prob REAL,
+        sahm_prob REAL,
+        blended_prob REAL NOT NULL,
+        weights_logistic REAL,
+        weights_probit REAL,
+        weights_sahm REAL,
+        realized_recession INTEGER,
+        realized_date TEXT,
+        lead_time_months REAL,
+        metadata TEXT
+    );
+"""
+register_schema(_RECESSION_FORECAST_HISTORY_DDL)
 
 logger = logging.getLogger(__name__)
 
@@ -128,25 +151,7 @@ class RecessionValidator:
                 cursor = conn.cursor()
 
                 # Ensure recession_forecast_history table exists
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS recession_forecast_history (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        date TEXT NOT NULL,
-                        recorded_at TEXT NOT NULL,
-                        horizon TEXT NOT NULL,
-                        logistic_prob REAL,
-                        probit_prob REAL,
-                        sahm_prob REAL,
-                        blended_prob REAL NOT NULL,
-                        weights_logistic REAL,
-                        weights_probit REAL,
-                        weights_sahm REAL,
-                        realized_recession INTEGER,
-                        realized_date TEXT,
-                        lead_time_months REAL,
-                        metadata TEXT
-                    )
-                """)
+                cursor.execute(_RECESSION_FORECAST_HISTORY_DDL)
 
                 # One row per (date, horizon): a repeat log updates it instead of inserting.
                 cursor.execute(

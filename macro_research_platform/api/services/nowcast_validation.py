@@ -40,7 +40,32 @@ import json
 import numpy as np
 import pandas as pd
 
-from database.db import get_db
+from database.db import get_db, register_schema
+
+# Declared at import so reads work before the first write (fresh DB → empty table, not
+# "no such table"); see database.db.register_schema.
+_NOWCAST_HISTORY_DDL = """
+    CREATE TABLE IF NOT EXISTS nowcast_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        variable TEXT NOT NULL,
+        nowcast_value REAL NOT NULL,
+        vintage TEXT NOT NULL,
+        predictors TEXT,
+        confidence_lower REAL,
+        confidence_upper REAL,
+        regime TEXT,
+        realized_value REAL,
+        realized_vintage TEXT,
+        forecast_error REAL,
+        absolute_error REAL,
+        squared_error REAL,
+        revision_impact REAL,
+        metadata TEXT
+    );
+"""
+register_schema(_NOWCAST_HISTORY_DDL)
 
 logger = logging.getLogger(__name__)
 
@@ -146,27 +171,7 @@ class NowcastValidator:
                 cursor = conn.cursor()
 
                 # Ensure nowcast_history table exists
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS nowcast_history (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        date TEXT NOT NULL,
-                        recorded_at TEXT NOT NULL,
-                        variable TEXT NOT NULL,
-                        nowcast_value REAL NOT NULL,
-                        vintage TEXT NOT NULL,
-                        predictors TEXT,
-                        confidence_lower REAL,
-                        confidence_upper REAL,
-                        regime TEXT,
-                        realized_value REAL,
-                        realized_vintage TEXT,
-                        forecast_error REAL,
-                        absolute_error REAL,
-                        squared_error REAL,
-                        revision_impact REAL,
-                        metadata TEXT
-                    )
-                """)
+                cursor.execute(_NOWCAST_HISTORY_DDL)
 
                 ci_lower = confidence_interval[0] if confidence_interval else None
                 ci_upper = confidence_interval[1] if confidence_interval else None
