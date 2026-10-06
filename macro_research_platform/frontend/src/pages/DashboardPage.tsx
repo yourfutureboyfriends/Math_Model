@@ -38,6 +38,7 @@ import {
   FactorDecompositionSection,
   HorizonTensionSection,
   ModelSleeveSection,
+  StockIdeasSection,
   StockTimingSection,
   PositionsSection,
   TradeWorkflowSection,
@@ -616,6 +617,13 @@ export function DashboardPage() {
           </Suspense>
         </ErrorBoundary>
       </div>
+      {/* ── Stock ideas (system suggestions) ──────────────────────────────── */}
+      <div id="stock-ideas" className="terminal-section">
+        <ErrorBoundary sectionName="Stock Ideas">
+          <StockIdeasSection />
+        </ErrorBoundary>
+      </div>
+
       {/* ── Stock entry signals ───────────────────────────────────────────── */}
       <div id="stock-timing" className="terminal-section">
         <ErrorBoundary sectionName="Stock Entry Signals">

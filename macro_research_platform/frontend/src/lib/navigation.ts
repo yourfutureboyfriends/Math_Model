@@ -96,6 +96,7 @@ export const navigation: NavSection[] = [
     title: 'TRADING',
     items: [
       // The IA fix: execution/decision surfaces, split out of Portfolio.
+      { id: 'stock-ideas', label: 'Stock Ideas', icon: '◆', permission: 'trade_ideas', highlight: true },
       { id: 'stock-timing', label: 'Stock Entry Signals', icon: '◆', permission: 'trade_ideas', highlight: true },
       { id: 'trade-ideas', label: 'Trade Ideas', icon: '◆', permission: 'trade_ideas', highlight: true },
       { id: 'trade-recommendations', label: 'Trade Recommendations', icon: '◆', permission: 'trade_recommendations', highlight: true },

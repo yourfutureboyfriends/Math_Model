@@ -197,3 +197,34 @@ async def stock_screen(symbols: Optional[str] = None):
     return {"available": bool(ok), "as_of": datetime.now().isoformat(timespec="minutes"),
             "rows": ok, "unavailable": [r for r in rows if not r["available"]],
             "counts": {k: sum(1 for r in ok if r["verdict"] == k) for k in order}}
+
+
+@router.get("/api/v1/stock/ideas")
+async def stock_ideas():
+    """System-generated stock suggestions (S&P 500 screen → full model on the best set-ups).
+    Returns the latest list immediately; starts a rebuild in the background when it is older
+    than a day or missing."""
+    from api import stock_ideas as si
+    cur = si.latest()
+    stale = (not cur) or (time.time() - _iso_ts(cur.get("as_of")) > 20 * 3600)
+    if stale and not si.status()["running"]:
+        asyncio.create_task(si.build_in_background())
+    if not cur:
+        return {"available": False, "status": si.status(),
+                "reason": "Building the first list — screening the S&P 500 takes about a minute."}
+    return {**cur, "status": si.status(), "stale": stale}
+
+
+@router.post("/api/v1/stock/ideas/refresh")
+async def stock_ideas_refresh():
+    from api import stock_ideas as si
+    if not si.status()["running"]:
+        asyncio.create_task(si.build_in_background())
+    return {"started": True, "status": si.status()}
+
+
+def _iso_ts(s: Optional[str]) -> float:
+    try:
+        return datetime.fromisoformat(s).timestamp() if s else 0.0
+    except ValueError:
+        return 0.0

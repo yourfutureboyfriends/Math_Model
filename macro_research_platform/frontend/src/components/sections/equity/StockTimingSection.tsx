@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Crosshair, Loader2, Search } from 'lucide-react';
 import { LineChart } from '@/components/ui/LineChart';
 import { cn } from '@/lib/utils';
+import { revealPanel } from '@/lib/focusMode';
 
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500'];
 
@@ -77,6 +78,19 @@ export function StockTimingSection() {
       setError(e?.message || 'Unavailable'); setData(null);
     } finally { setBusy(false); }
   }, []);
+
+  // Opened from Stock Ideas (or anywhere) via a 'stock-analyse' event.
+  useEffect(() => {
+    const h = (e: Event) => {
+      const sym = String((e as CustomEvent).detail || '');
+      if (!sym) return;
+      const reveal = revealPanel('stock-timing');
+      setTimeout(() => document.getElementById('stock-timing')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), reveal ? 300 : 50);
+      analyze(sym);
+    };
+    window.addEventListener('stock-analyse', h);
+    return () => window.removeEventListener('stock-analyse', h);
+  }, [analyze]);
 
   const runScan = async () => {
     setScanning(true);

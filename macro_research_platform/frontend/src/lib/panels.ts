@@ -18,6 +18,7 @@ export const PANEL_LABELS: Record<string, string> = {
   'global-markets': 'Global Equity Markets',
   'global-correlation': 'Global Equity Correlations',
   'regional-macro': 'Global Macro',
+  'stock-ideas': 'Stock Ideas',
   'stock-timing': 'Stock Entry Signals',
   // Signals
   ensemble: 'Model Ensemble',

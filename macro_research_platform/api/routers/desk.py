@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Request
 
-from api.calculations.desk import ROLE_FOCUS, build_queue
+from api.calculations.desk import PRIORITY_ORDER, ROLE_FOCUS, build_queue
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["desk"])
@@ -151,6 +151,19 @@ async def desk(request: Request):
                         users=users if isinstance(users, list) else None,
                         cb_moves=cb if isinstance(cb, list) else None,
                         cycle=cyc if isinstance(cyc, dict) and "turbulence" in cyc else None)
+    idea_items = []
+    try:                                   # new system stock ideas today → queue item
+        from api import stock_ideas as si
+        ideas = si.latest()
+        if ideas and ideas.get("date") == date.today().isoformat() and (ideas.get("changes") or {}).get("new") \
+                and role in ("pm", "analyst", "quant", "admin"):
+            new = ideas["changes"]["new"]
+            idea_items.append({"priority": "medium", "kind": "ideas", "target": "stock-ideas", "ref": new,
+                               "title": f"{len(new)} new buy idea{'s' if len(new) > 1 else ''}: {', '.join(new[:5])}{'…' if len(new) > 5 else ''}",
+                               "detail": "S&P 500 screen → full entry model; see Stock Ideas"})
+    except Exception as e:
+        logger.debug("[desk] stock ideas unavailable: %s", e)
+    queue = sorted(queue + idea_items, key=lambda i: PRIORITY_ORDER.get(i.get("priority"), 9))
     counts: Dict[str, int] = {}
     for o in order_list:
         counts[o.get("state") or "?"] = counts.get(o.get("state") or "?", 0) + 1

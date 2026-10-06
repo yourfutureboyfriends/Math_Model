@@ -157,3 +157,8 @@ api/.vite/
 
 # Persisted model fits and research-indicator caches (regenerated)
 data/processed/*.pkl
+
+# Stock ideas runtime state (rebuilt after each US close) and the cached S&P 500 list
+data/processed/stock_ideas.json
+data/processed/stock_ideas_log.json
+data/processed/sp500_universe.json

@@ -1281,6 +1281,17 @@ async def lifespan(app: FastAPI):
         )
         logger.info("[STARTUP] Scheduled consolidated_macro_refresh every 15min")
 
+        # Stock ideas: rescreen the S&P 500 after the US close (an async job on the asyncio
+        # scheduler). The ideas endpoint also rebuilds on demand when the list is stale.
+        from api.stock_ideas import build_in_background as _ideas_build
+        _scheduler.add_job(
+            func=_ideas_build,
+            trigger=CronTrigger(day_of_week="mon-fri", hour=21, minute=45),
+            id="stock_ideas_post_close",
+            replace_existing=True,
+        )
+        logger.info("[STARTUP] Scheduled stock_ideas_post_close at 21:45 UTC weekdays")
+
         # Catch-up: cron jobs only fire while the process is up, so a backend that was down
         # at 06:00 UTC left the CSV stale until the next day. If it is over 24h old, run the
         # pipeline once, a few minutes after startup (after the warm-up's FRED requests).
