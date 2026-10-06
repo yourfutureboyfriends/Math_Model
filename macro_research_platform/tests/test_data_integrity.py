@@ -11,10 +11,20 @@ from unittest.mock import MagicMock
 
 BASE_URL = os.getenv("MACRO_API_URL", "http://localhost:8000")
 
-def get_dashboard():
-    r = requests.get(f"{BASE_URL}/api/dashboard", timeout=15)
-    assert r.status_code == 200, f"Dashboard returned {r.status_code}"
-    return r.json()
+def get_dashboard(warmup_wait: float = 120.0):
+    """The live dashboard. Right after a restart the server serves its saved snapshot
+    (flagged "Warming up") until the live build lands; wait that out rather than judge the
+    snapshot. A dashboard that is stale for any other reason is returned as is."""
+    import time
+    deadline = time.time() + warmup_wait
+    while True:
+        r = requests.get(f"{BASE_URL}/api/dashboard", timeout=15)
+        assert r.status_code == 200, f"Dashboard returned {r.status_code}"
+        d = r.json()
+        warn = ((d.get("metadata") or {}).get("validationWarnings") or "")
+        if not warn.startswith("Warming up") or time.time() > deadline:
+            return d
+        time.sleep(3)
 
 def safe_float(v):
     try:
