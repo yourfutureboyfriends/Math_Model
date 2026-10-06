@@ -39,7 +39,7 @@ import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from api.core.json_safe import SafeJSONResponse as JSONResponse  # NaN-safe
 
 # FIXED: R-01 - APScheduler for automated data pipeline
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -1451,7 +1451,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         pass
 
+from api.core.json_safe import SafeJSONResponse
+
 app = FastAPI(
+    default_response_class=SafeJSONResponse,   # NaN/Inf → null on every route (api/core/json_safe.py)
     title="Macro Research Platform API",
     description="Macro research and portfolio management API",
     version="2.0.0",

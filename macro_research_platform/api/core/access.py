@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import Iterable, Optional
 
 from fastapi import HTTPException, Request
-from fastapi.responses import JSONResponse
+from api.core.json_safe import SafeJSONResponse as JSONResponse  # NaN-safe
 from jose import JWTError, jwt
 
 from api.config import JWT_ALGORITHM, JWT_SECRET
