@@ -82,17 +82,10 @@ def test_dashboard_contract():
     print("API CONTRACT TEST — Dashboard Endpoint")
     print("=" * 60)
 
-    try:
-        r = requests.get(f"{BASE}/api/dashboard", timeout=30)
-    except requests.exceptions.ConnectionError:
-        print(f"\n❌ FAILED: Cannot connect to {BASE}")
-        print("   Is the backend running?")
-        sys.exit(1)
-
-    if r.status_code != 200:
-        print(f"\n❌ FAILED: Dashboard returned {r.status_code}")
-        print(f"   Response: {r.text[:200]}")
-        sys.exit(1)
+    # An unreachable dev server propagates as ConnectionError (reported as a skip by
+    # tests/conftest.py); sys.exit here used to abort the whole pytest run instead.
+    r = requests.get(f"{BASE}/api/dashboard", timeout=30)
+    assert r.status_code == 200, f"Dashboard returned {r.status_code}: {r.text[:200]}"
 
     data = r.json()
     failures = []
