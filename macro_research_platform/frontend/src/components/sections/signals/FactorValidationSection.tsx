@@ -29,6 +29,7 @@ export function FactorValidationSection() {
   useEffect(() => { load(); }, [load]);
 
   const factors = (data?.factors || []).filter((f: any) => f.available);
+  const r2Max = Math.max(0.01, ...factors.flatMap((f: any) => [f.in_sample_r2 ?? 0, f.out_of_sample_r2 ?? 0]));
 
   return (
     <div id="factor-validation" className="terminal-section">
@@ -51,6 +52,7 @@ export function FactorValidationSection() {
           {/* column header */}
           <div className="flex items-center gap-2 text-2xs text-text-tertiary uppercase tracking-wider px-2">
             <span className="flex-1">Factor</span>
+            <span className="w-28 hidden sm:block" title="In-sample (grey) vs out-of-sample (blue / amber) R²">IS vs OOS</span>
             <span className="w-14 text-right">R² IS</span>
             <span className="w-14 text-right">R² OOS</span>
             <span className="w-14 text-right">Max DD</span>
@@ -60,6 +62,10 @@ export function FactorValidationSection() {
               <span className="flex-1 flex items-center gap-1.5 text-text-secondary">
                 {f.unstable ? <AlertTriangle className="w-3 h-3 text-amber" /> : <CheckCircle2 className="w-3 h-3 text-green" />}
                 {f.factor}
+              </span>
+              <span className="w-28 hidden sm:flex flex-col gap-0.5" aria-hidden="true">
+                <span className="h-1.5 rounded-r-sm bg-text-tertiary/60" style={{ width: `${Math.max(0, (f.in_sample_r2 ?? 0) / r2Max) * 100}%` }} />
+                <span className={`h-1.5 rounded-r-sm ${f.unstable ? 'bg-amber' : 'bg-bloomberg'}`} style={{ width: `${Math.max(0, (f.out_of_sample_r2 ?? 0) / r2Max) * 100}%` }} />
               </span>
               <span className="w-14 text-right font-mono text-text-primary tabular-nums">{f.in_sample_r2?.toFixed(2)}</span>
               <span className={`w-14 text-right font-mono tabular-nums ${f.unstable ? 'text-amber' : 'text-text-primary'}`}>{f.out_of_sample_r2?.toFixed(2)}</span>

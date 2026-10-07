@@ -61,7 +61,7 @@ export function NowcastSection({ data }: NowcastSectionProps) {
 
       <div className="space-y-3">
         {/* Inline Data Row — fields the source doesn't publish render as '—'. */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider">
               QoQ Ann{anyData.quarter ? ` · ${anyData.quarter}` : ''}

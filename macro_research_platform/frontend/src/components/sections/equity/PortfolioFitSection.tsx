@@ -151,7 +151,7 @@ export function PortfolioFitSection({ data }: Props) {
         {loading ? (
           <div className="h-16 animate-pulse bg-surface-2 rounded" />
         ) : (
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <div className="text-2xs text-text-tertiary uppercase">Portfolio</div>
               <div className="text-xl font-mono font-bold text-green">

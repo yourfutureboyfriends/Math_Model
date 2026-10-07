@@ -220,7 +220,7 @@ export function RiskAnalyticsSection() {
 
   const renderDrawdownTab = () => (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="p-3 border border-border-subtle bg-surface-2">
           <div className="text-2xs text-text-tertiary uppercase">Current Drawdown</div>
           <div className={cn(
@@ -400,7 +400,7 @@ export function RiskAnalyticsSection() {
               </div>
 
               {/* Asset Shocks Grid */}
-              <div className="grid grid-cols-6 gap-2 mb-2">
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mb-2">
                 <div className="text-center p-1.5 bg-surface-3">
                   <div className="text-2xs text-text-tertiary">SPY</div>
                   <div className={cn(
@@ -489,7 +489,7 @@ export function RiskAnalyticsSection() {
     return (
       <div className="space-y-4">
         {/* Portfolio VaR Summary */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="p-3 border border-border-subtle bg-surface-2">
             <div className="text-2xs text-text-tertiary uppercase">Portfolio VaR 95%</div>
             <div className="font-mono text-lg font-bold text-red">

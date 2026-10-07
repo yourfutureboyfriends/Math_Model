@@ -198,7 +198,7 @@ export function YieldCurveSection() {
         </div>
 
         {/* Key Metrics - FIXED (BUG 2): Use != null check instead of truthy to allow 0 values */}
-        <div className="grid grid-cols-4 gap-3 text-xs">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
           <div className="p-2 border border-border-subtle bg-surface-2">
             <div className="text-2xs text-text-tertiary uppercase">2s10s Spread</div>
             <div className={cn(

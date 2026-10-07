@@ -134,7 +134,7 @@ export const CommoditiesDashboardSection = memo(function CommoditiesDashboardSec
         </div>
       }
     >
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Commodities */}
         <div className="col-span-2 space-y-4">
           {/* Energy */}

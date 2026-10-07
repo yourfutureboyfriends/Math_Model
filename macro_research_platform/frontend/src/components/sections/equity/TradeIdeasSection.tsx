@@ -121,7 +121,7 @@ export function TradeIdeasSection({ data }: Props) {
                 <p className="text-sm text-text-secondary mb-3">{idea.thesis ?? (idea as any).rationale}</p>
 
                 {/* Price levels and sizing */}
-                <div className="grid grid-cols-6 gap-3 text-sm mb-3">
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-3 text-sm mb-3">
                   {idea.entry && (
                     <div>
                       <div className="text-2xs text-text-tertiary uppercase">Entry</div>

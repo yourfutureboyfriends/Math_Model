@@ -169,7 +169,7 @@ export function HorizonTensionSection() {
         )}
 
         {/* Event Summary by Timeframe */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <div className="p-2 bg-surface-1 border border-border text-center">
             <div className="text-2xs text-text-tertiary uppercase">Short (7d)</div>
             <div className="text-lg font-mono text-text-primary">{shortTermEvents.length}</div>

@@ -406,7 +406,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
       )}
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-4 gap-2 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
         <Card className="bg-surface-1 border-border p-3">
           <div className="text-xs text-text-secondary mb-1">LONGS</div>
           <div className="text-lg font-mono text-green">{summary.long_count}</div>
@@ -585,7 +585,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
 
                 {showDetails === rec.ticker && (
                   <div className="mt-3 pt-3 border-t border-border">
-                    <div className="grid grid-cols-4 gap-2 text-xs mb-2">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs mb-2">
                       <div><span className="text-text-secondary">Sector:</span> {rec.sector || 'N/A'}</div>
                       <div><span className="text-text-secondary">Factor:</span> <span style={{ color: FACTOR_COLORS[rec.factor || 'value'] }}>{rec.factor || 'N/A'}</span></div>
                       <div><span className="text-text-secondary">Mkt Cap:</span> {fmtMagnitude(rec.market_cap)}</div>
@@ -677,7 +677,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
 
                 {showDetails === rec.ticker && (
                   <div className="mt-3 pt-3 border-t border-border">
-                    <div className="grid grid-cols-4 gap-2 text-xs mb-2">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs mb-2">
                       <div><span className="text-text-secondary">Sector:</span> {rec.sector || 'N/A'}</div>
                       <div><span className="text-text-secondary">Factor:</span> <span style={{ color: FACTOR_COLORS[rec.factor || 'value'] }}>{rec.factor || 'N/A'}</span></div>
                       <div><span className="text-text-secondary">Mkt Cap:</span> {fmtMagnitude(rec.market_cap)}</div>

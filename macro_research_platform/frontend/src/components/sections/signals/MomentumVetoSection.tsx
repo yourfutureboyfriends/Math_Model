@@ -2,6 +2,7 @@
 // Momentum veto using format library
 
 import { Zap, TrendingDown, TrendingUp, CheckCircle } from 'lucide-react';
+import { BarList } from '@/components/ui/BarList';
 import { useMacroStore } from '@/store/macroStore';
 import { fmtChange } from '@/utils/format';
 
@@ -100,6 +101,17 @@ export function MomentumVetoSection() {
           )}
           <p className="text-2xs text-text-tertiary">{portfolioRationale}</p>
         </div>
+
+        {/* Ranked 12-1 momentum across assets */}
+        {assets.some((a: any) => typeof a?.momentum12_1 === 'number') && (
+          <div className="p-3 bg-surface-1 border border-border mb-3">
+            <BarList title="12-1 month momentum, ranked (negative = veto pressure)" diverging labelWidth="7rem"
+              fmt={(v) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`}
+              data={[...assets].filter((a: any) => typeof a?.momentum12_1 === 'number')
+                .sort((a: any, b: any) => b.momentum12_1 - a.momentum12_1)
+                .map((a: any) => ({ label: a.asset, value: a.momentum12_1, note: (a.rawSignal ?? '').replace(/_/g, ' ') }))} />
+          </div>
+        )}
 
         {/* Asset Momentum Grid */}
         <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Asset Momentum (12-1 month)</div>

@@ -7,6 +7,7 @@
  * /api/v1/signals/backtest. Builds trust in signals by showing their real history.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { BarList } from '@/components/ui/BarList';
 import { Award, RefreshCw } from 'lucide-react';
 
 interface StateStat { avg_forward_return: number; count: number; }
@@ -79,21 +80,13 @@ export function SignalScorecardSection() {
                     </div>
                   ))}
                 </div>
-                {/* Forward return by state */}
-                <div className="space-y-0.5 text-2xs">
-                  {(['BULLISH', 'BEARISH', 'NEUTRAL'] as const).map((st) => {
-                    const d = s.forward_return_by_state[st];
-                    if (!d) return null;
-                    return (
-                      <div key={st} className="flex items-center justify-between">
-                        <span className={st === 'BULLISH' ? 'text-green' : st === 'BEARISH' ? 'text-red' : 'text-text-tertiary'}>{st}</span>
-                        <span className="font-mono text-text-secondary">
-                          {pct(d.avg_forward_return)} avg fwd <span className="text-text-tertiary">({d.count})</span>
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                {/* Forward return by state — a working signal separates bullish from bearish */}
+                <BarList diverging labelWidth="4.5rem" fmt={(v) => pct(v)}
+                  data={(['BULLISH', 'NEUTRAL', 'BEARISH'] as const).filter((st) => s.forward_return_by_state[st]).map((st) => ({
+                    label: st.charAt(0) + st.slice(1).toLowerCase(), value: s.forward_return_by_state[st]!.avg_forward_return,
+                    sub: `n=${s.forward_return_by_state[st]!.count}`,
+                    note: `${s.horizon_days}-day forward return after ${st.toLowerCase()} readings`,
+                  }))} />
               </div>
             ))}
           </div>

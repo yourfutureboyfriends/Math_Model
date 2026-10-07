@@ -166,7 +166,7 @@ export function GMOForecastsSection({ data: dataProp }: GMOForecastsSectionProps
         </div>
 
         {/* Signal distribution */}
-        <div className="grid grid-cols-5 gap-1 text-center">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-1 text-center">
           <div className="p-2 bg-surface-1 border border-green/30">
             <div className="text-sm font-mono font-bold text-green">{summary?.strongBuy || 0}</div>
             <div className="text-2xs text-text-tertiary">Strong Buy</div>

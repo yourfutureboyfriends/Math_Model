@@ -405,7 +405,7 @@ export function RegimePlaybookSection({ data, currentRegime }: Props) {
           return (
             <>
               {col && (
-                <div className="grid grid-cols-3 gap-4 text-center mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center mb-3">
                   <div><div className="text-2xs text-text-tertiary uppercase">History in this regime</div>
                     <div className="font-mono text-lg font-bold text-text-primary">{hist.months[col] ?? '—'} months</div></div>
                   <div><div className="text-2xs text-text-tertiary uppercase">Best asset</div>

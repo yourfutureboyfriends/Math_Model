@@ -156,7 +156,7 @@ export function ValuationSection({ data }: ValuationSectionProps) {
         {data.expectedReturns && Object.keys(data.expectedReturns).length > 0 && (
         <div className="p-3 bg-surface-1 border border-border">
           <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Expected Returns (Annual)</div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
             {Object.entries(data.expectedReturns ?? {}).map(([asset, ret]) => (
               <div key={asset} className="text-center p-2 bg-surface-2">
                 <div className="text-2xs text-text-tertiary capitalize">{asset}</div>

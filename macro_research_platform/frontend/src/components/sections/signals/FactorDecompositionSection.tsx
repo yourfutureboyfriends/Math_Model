@@ -3,6 +3,7 @@
 // exposure, contribution, tStat, significance}]}) as a real exposure table.
 
 import { Target, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { RangePlot } from '@/components/ui/RangePlot';
 import { ComputedTag } from '@/components/ui/ComputedTag';
 import { CsvButton } from '@/components/ui/CsvButton';
 import type { FactorDecompositionData } from '@/types';
@@ -90,6 +91,19 @@ export function FactorDecompositionSection({ data: dataProp }: FactorDecompositi
                 β {(dominant.exposure ?? 0) > 0 ? '+' : ''}{num(dominant.exposure)}
               </span>
             </div>
+          </div>
+        )}
+
+        {/* Betas with 95% intervals (SE = β / t): significant when the interval excludes 0 */}
+        {factors.some((f) => typeof f.exposure === 'number' && typeof f.tStat === 'number' && f.tStat !== 0) && (
+          <div className="p-3 bg-surface-1 border border-border">
+            <RangePlot title="Factor exposure (β) with 95% confidence interval" labelWidth="8rem" fmt={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}`}
+              data={factors.filter((f) => typeof f.exposure === 'number' && typeof f.tStat === 'number' && f.tStat !== 0)
+                .map((f) => {
+                  const se = Math.abs((f.exposure as number) / (f.tStat as number));
+                  return { label: String(f.factor), value: f.exposure as number, lo: (f.exposure as number) - 1.96 * se,
+                           hi: (f.exposure as number) + 1.96 * se, note: `t = ${num(f.tStat, 1)} · ${f.significance ?? ''}` };
+                })} />
           </div>
         )}
 

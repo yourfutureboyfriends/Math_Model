@@ -125,7 +125,7 @@ export function ReflexivitySection({ data: dataProp }: ReflexivitySectionProps) 
         {data.activeLoops && data.activeLoops.length > 0 && (
           <div>
             <div className="text-2xs text-red uppercase tracking-wider mb-2">
-              Active Loops ({data.loopCount?.active || 0})
+              Active Loops ({data.loopCount?.active ?? data.activeLoops.length})
             </div>
             <div className="space-y-2">
               {(data.activeLoops ?? []).map((loop) => (
@@ -139,13 +139,16 @@ export function ReflexivitySection({ data: dataProp }: ReflexivitySectionProps) 
         {data.inactiveLoops && data.inactiveLoops.length > 0 && (
           <div>
             <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">
-              Inactive Loops ({data.loopCount?.inactive || 0})
+              Inactive Loops ({data.loopCount?.inactive ?? data.inactiveLoops.length})
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {data.inactiveLoops.slice(0, 4).map((loop) => (
                 <LoopCard key={loop.id} loop={loop} active={false} />
               ))}
             </div>
+            {data.inactiveLoops.length > 4 && (
+              <div className="text-2xs text-text-tertiary mt-1">+{data.inactiveLoops.length - 4} more inactive loops not shown</div>
+            )}
           </div>
         )}
       </div>

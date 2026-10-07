@@ -138,7 +138,7 @@ export function EnsembleSection({ data: dataProp }: EnsembleSectionProps) {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1" title="Standard deviation of the component scores">Dispersion (σ of inputs)</div>
             <div className="text-base font-mono text-text-primary">{data.signalDispersion != null ? data.signalDispersion.toFixed(3) : '—'}</div>
