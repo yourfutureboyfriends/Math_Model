@@ -43,10 +43,10 @@ export function PerformanceTrackingSection({ data: dataProp }: PerformanceTracki
   const accuracyData = Object.entries(data.modelAccuracies || {})
     .map(([model, accuracy]) => ({
       model,
-      accuracy: (accuracy || 0) * 100,
+      accuracy: accuracy == null ? null : accuracy * 100,
       colorClass: getAccuracyColor(accuracy)
     }))
-    .sort((a, b) => b.accuracy - a.accuracy);
+    .sort((a, b) => (b.accuracy ?? -1) - (a.accuracy ?? -1));
 
   return (
     <div id="performance" className="terminal-section">
@@ -122,10 +122,10 @@ export function PerformanceTrackingSection({ data: dataProp }: PerformanceTracki
                   <span className="text-xs text-text-primary">{item.model.slice(0, 12)}</span>
                   <div className="flex items-center gap-2">
                     <div className="w-16 h-1 bg-surface-4">
-                      <div className={`h-full ${item.colorClass.replace('text-', 'bg-')}`} style={{ width: `${Math.min(100, item.accuracy)}%` }} />
+                      <div className={`h-full ${item.colorClass.replace('text-', 'bg-')}`} style={{ width: `${Math.min(100, item.accuracy ?? 0)}%` }} />
                     </div>
                     <span className={`font-mono text-xs w-12 text-right ${item.colorClass}`}>
-                      {item.accuracy.toFixed(0)}%
+                      {item.accuracy == null ? '—' : `${item.accuracy.toFixed(0)}%`}
                     </span>
                   </div>
                 </div>

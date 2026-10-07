@@ -87,12 +87,10 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
                 </div>
               </div>
             </div>
-            <span className={getLiquidityTag(globalLiquidity ?? 50)}>
-              {(globalLiquidity ?? 50) > 50
-                ? 'Accommodative'
-                : (globalLiquidity ?? 50) < 30
-                  ? 'Tight'
-                  : 'Neutral'}
+            <span className={globalLiquidity == null ? 'signal-tag neutral' : getLiquidityTag(globalLiquidity)}>
+              {globalLiquidity == null ? 'n/a'
+                : globalLiquidity > 50 ? 'Accommodative'
+                : globalLiquidity < 30 ? 'Tight' : 'Neutral'}
             </span>
           </div>
 
@@ -101,7 +99,7 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
             <div className="h-1 bg-surface-4 relative">
               <div
                 className="absolute top-0 bottom-0 bg-bloomberg"
-                style={{ width: `${globalLiquidity ?? 50}%` }}
+                style={{ width: `${globalLiquidity ?? 0}%` }}
               />
             </div>
             <div className="flex justify-between text-2xs text-text-tertiary mt-1">

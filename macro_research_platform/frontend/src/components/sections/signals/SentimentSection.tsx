@@ -79,11 +79,11 @@ export function SentimentSection({ data: dataProp }: SentimentSectionProps) {
           <div className="w-full bg-surface-3 h-1">
             <div
               className="bg-gradient-to-r from-red via-amber to-green h-1 transition-all"
-              style={{ width: `${Math.min(100, Math.max(0, data.compositeRiskAppetite ?? 50))}%` }}
+              style={{ width: `${data.compositeRiskAppetite == null ? 0 : Math.min(100, Math.max(0, data.compositeRiskAppetite))}%` }}
             />
           </div>
           <div className="mt-2 text-xs text-text-secondary">
-            {getRiskAppetiteLabel(data.compositeRiskAppetite ?? 50)}
+            {data.compositeRiskAppetite == null ? 'Risk appetite unavailable' : getRiskAppetiteLabel(data.compositeRiskAppetite)}
             <span className="text-text-tertiary ml-2">— {data.regime || 'Unknown'} regime</span>
           </div>
         </div>

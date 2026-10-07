@@ -46,7 +46,8 @@ export function NewsSentimentSection({ data: dataProp }: NewsSentimentSectionPro
     return <Minus className="w-3 h-3 text-text-tertiary" />;
   };
 
-  const overallPosition = ((data.overall?.score || 0) + 100) / 2;
+  const overallScore = data.overall?.score ?? null;          // null = no scored headlines
+  const overallPosition = overallScore == null ? null : (overallScore + 100) / 2;
 
   return (
     <div id="news-sentiment" className="terminal-section">
@@ -80,16 +81,18 @@ export function NewsSentimentSection({ data: dataProp }: NewsSentimentSectionPro
           {/* Gauge bar */}
           <div className="relative h-2 bg-surface-4 mb-2">
             <div className="absolute inset-0 bg-gradient-to-r from-red via-text-tertiary to-green" />
-            <div
-              className="absolute top-0 bottom-0 w-0.5 bg-text-tertiary z-10"
-              style={{ left: `${overallPosition}%` }}
-            />
+            {overallPosition != null && (
+              <div
+                className="absolute top-0 bottom-0 w-0.5 bg-text-tertiary z-10"
+                style={{ left: `${overallPosition}%` }}
+              />
+            )}
           </div>
 
           <div className="flex items-center justify-between">
             <div className="flex items-baseline gap-2">
-              <span className={`text-xl font-bold font-mono ${getSentimentColor(data.overall?.score || 0)}`}>
-                {data.overall?.score?.toFixed(1) || '0.0'}
+              <span className={`text-xl font-bold font-mono ${overallScore == null ? 'text-text-secondary' : getSentimentColor(overallScore)}`}>
+                {overallScore == null ? '—' : overallScore.toFixed(1)}
               </span>
               <span className={getSentimentTag(data.overall?.label || 'Neutral')}>
                 {data.overall?.label}

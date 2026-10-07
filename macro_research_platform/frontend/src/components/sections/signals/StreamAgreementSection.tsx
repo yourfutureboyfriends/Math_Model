@@ -42,7 +42,7 @@ export function StreamAgreementSection() {
   useEffect(() => { load(); }, [load]);
 
   const streams = data?.streams || {};
-  const score = data ? Math.round((data.agreement_score || 0) * 100) : 0;
+  const score = data?.agreement_score != null ? Math.round(data.agreement_score * 100) : 0;   // bar only; no score → empty bar
 
   return (
     <div id="stream-agreement" className="terminal-section">

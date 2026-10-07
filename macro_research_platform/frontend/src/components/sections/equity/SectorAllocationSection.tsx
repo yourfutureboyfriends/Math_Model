@@ -20,7 +20,7 @@ interface EnhancedSector {
   rationale: string;
   eps_revision_pct: number | null;
   direction: 'UP' | 'DOWN' | 'FLAT';
-  beats_rate: number;
+  beats_rate: number | null;
   divergence: boolean;
   divergence_type: string | null;
 }
@@ -86,7 +86,7 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
       rationale: sector.rationale,
       eps_revision_pct: epsAvailable ? (earnings?.eps_revision_pct ?? null) : null,
       direction: earnings?.direction ?? 'FLAT',
-      beats_rate: earnings?.beats_rate ?? 0.5,
+      beats_rate: earnings?.beats_rate ?? null,
       divergence: earnings?.divergence ?? false,
       divergence_type: earnings?.divergence_type ?? null,
     };

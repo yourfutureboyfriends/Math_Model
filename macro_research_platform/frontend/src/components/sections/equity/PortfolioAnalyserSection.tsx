@@ -266,15 +266,15 @@ export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnal
               <PieChart className="w-3 h-3 text-text-secondary" />
               <span className="text-2xs text-text-tertiary uppercase">Total Value</span>
             </div>
-            <div className="text-base font-mono font-bold text-text-primary">{formatCurrency(data?.totalValue || 0)}</div>
+            <div className="text-base font-mono font-bold text-text-primary">{data?.totalValue != null ? formatCurrency(data.totalValue) : '—'}</div>
           </div>
           <div className="p-2 bg-surface-1 border border-border">
             <div className="flex items-center gap-2 mb-1">
-              {data && data.dayPnl >= 0 ? <TrendingUp className="w-3 h-3 text-green" /> : <TrendingDown className="w-3 h-3 text-red" />}
+              {data?.dayPnl != null && data.dayPnl >= 0 ? <TrendingUp className="w-3 h-3 text-green" /> : <TrendingDown className="w-3 h-3 text-red" />}
               <span className="text-2xs text-text-tertiary uppercase">Day P&L</span>
             </div>
-            <div className={`text-base font-mono font-bold ${data && data.dayPnl >= 0 ? 'text-green' : 'text-red'}`}>
-              {data && data.dayPnl >= 0 ? '+' : ''}{(data?.dayPnl || 0).toFixed(2)}%
+            <div className={`text-base font-mono font-bold ${data?.dayPnl == null ? 'text-text-secondary' : data.dayPnl >= 0 ? 'text-green' : 'text-red'}`}>
+              {data?.dayPnl != null ? `${data.dayPnl >= 0 ? '+' : ''}${data.dayPnl.toFixed(2)}%` : '—'}
             </div>
           </div>
           <div className="p-2 bg-surface-1 border border-border">
@@ -282,8 +282,8 @@ export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnal
               <Target className="w-3 h-3 text-text-secondary" />
               <span className="text-2xs text-text-tertiary uppercase">Total Return</span>
             </div>
-            <div className={`text-base font-mono font-bold ${data && data.totalReturn >= 0 ? 'text-green' : 'text-red'}`}>
-              {data && data.totalReturn >= 0 ? '+' : ''}{((data?.totalReturn || 0) * 100).toFixed(1)}%
+            <div className={`text-base font-mono font-bold ${data?.totalReturn == null ? 'text-text-secondary' : data.totalReturn >= 0 ? 'text-green' : 'text-red'}`}>
+              {data?.totalReturn != null ? `${data.totalReturn >= 0 ? '+' : ''}${(data.totalReturn * 100).toFixed(1)}%` : '—'}
             </div>
           </div>
           <div className="p-2 bg-surface-1 border border-border">
@@ -291,8 +291,8 @@ export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnal
               <Scale className="w-3 h-3 text-text-secondary" />
               <span className="text-2xs text-text-tertiary uppercase">Sharpe</span>
             </div>
-            <div className={`text-base font-mono font-bold ${data && data.sharpe > 1 ? 'text-green' : data && data.sharpe > 0 ? 'text-amber' : 'text-red'}`}>
-              {(data?.sharpe || 0).toFixed(2)}
+            <div className={`text-base font-mono font-bold ${data?.sharpe == null ? 'text-text-secondary' : data.sharpe > 1 ? 'text-green' : data.sharpe > 0 ? 'text-amber' : 'text-red'}`}>
+              {data?.sharpe != null ? data.sharpe.toFixed(2) : '—'}
             </div>
           </div>
         </div>
@@ -305,19 +305,19 @@ export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnal
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="text-center">
               <div className="text-2xs text-text-tertiary mb-0.5">Volatility</div>
-              <div className="text-sm font-mono font-bold text-text-primary">{((data?.volatility || 0) * 100).toFixed(1)}%</div>
+              <div className="text-sm font-mono font-bold text-text-primary">{data?.volatility != null ? `${(data.volatility * 100).toFixed(1)}%` : '—'}</div>
             </div>
             <div className="text-center">
               <div className="text-2xs text-text-tertiary mb-0.5">Max Drawdown</div>
-              <div className="text-sm font-mono font-bold text-red">{((data?.maxDrawdown || 0) * 100).toFixed(1)}%</div>
+              <div className="text-sm font-mono font-bold text-red">{data?.maxDrawdown != null ? `${(data.maxDrawdown * 100).toFixed(1)}%` : '—'}</div>
             </div>
             <div className="text-center">
               <div className="text-2xs text-text-tertiary mb-0.5">Beta</div>
-              <div className="text-sm font-mono font-bold text-text-primary">{(data?.beta || 0).toFixed(2)}</div>
+              <div className="text-sm font-mono font-bold text-text-primary">{data?.beta != null ? data.beta.toFixed(2) : '—'}</div>
             </div>
             <div className="text-center">
               <div className="text-2xs text-text-tertiary mb-0.5">Corr</div>
-              <div className="text-sm font-mono font-bold text-text-primary">{((data?.correlationToBenchmark || 0) * 100).toFixed(0)}%</div>
+              <div className="text-sm font-mono font-bold text-text-primary">{data?.correlationToBenchmark != null ? `${(data.correlationToBenchmark * 100).toFixed(0)}%` : '—'}</div>
             </div>
           </div>
         </div>

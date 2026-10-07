@@ -136,7 +136,7 @@ export function RiskParitySection({ data: dataProp }: RiskParitySectionProps) {
                       </span>
                     </td>
                     <td className="py-2 px-3 text-right font-mono text-xs text-bloomberg">
-                      {item.targetAllocationPct?.toFixed(1) || ((item.adjustedWeight || 0) * 100).toFixed(1)}%
+                      {item.targetAllocationPct != null ? `${item.targetAllocationPct.toFixed(1)}%` : item.adjustedWeight != null ? `${(item.adjustedWeight * 100).toFixed(1)}%` : '—'}
                     </td>
                   </tr>
                 ))}

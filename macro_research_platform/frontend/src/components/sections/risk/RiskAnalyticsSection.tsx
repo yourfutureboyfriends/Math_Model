@@ -3,6 +3,7 @@
 // REFACTORED: Now uses useApiData hook instead of direct fetch()
 
 import { useState } from 'react';
+import { CorrelationHeatmap } from '@/components/ui/CorrelationHeatmap';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
@@ -137,7 +138,7 @@ export function RiskAnalyticsSection() {
 
   const renderReturnsTab = () => (
     <div className="space-y-4">
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="p-3 border border-border-subtle bg-surface-2">
           <div className="text-2xs text-text-tertiary uppercase">Sharpe</div>
           <div className={cn(
@@ -167,7 +168,19 @@ export function RiskAnalyticsSection() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="p-3 border border-border-subtle bg-surface-2">
+          <div className="text-2xs text-text-tertiary uppercase">Annual return</div>
+          <div className={cn('font-mono text-lg', ((data?.riskAdjustedReturns as any)?.annualReturn ?? 0) >= 0 ? 'text-green' : 'text-red')}>
+            {(data?.riskAdjustedReturns as any)?.annualReturn != null ? fmtChange((data!.riskAdjustedReturns as any).annualReturn / 100) : '--'}
+          </div>
+        </div>
+        <div className="p-3 border border-border-subtle bg-surface-2">
+          <div className="text-2xs text-text-tertiary uppercase">Annual volatility</div>
+          <div className="font-mono text-lg">
+            {(data?.riskAdjustedReturns as any)?.annualVolatility != null ? `${(data!.riskAdjustedReturns as any).annualVolatility.toFixed(1)}%` : '--'}
+          </div>
+        </div>
         <div className="p-3 border border-border-subtle bg-surface-2">
           <div className="text-2xs text-text-tertiary uppercase">Beta vs SPY</div>
           <div className="font-mono text-lg">
@@ -234,7 +247,7 @@ export function RiskAnalyticsSection() {
         <div className="p-3 border border-border-subtle bg-surface-2">
           <div className="text-2xs text-text-tertiary uppercase">Days in DD</div>
           <div className="font-mono text-lg">
-            {data?.drawdown?.daysInDrawdown || 0}
+            {data?.drawdown?.daysInDrawdown ?? '—'}
           </div>
           <div className="text-2xs text-text-tertiary">
             Est. recovery: {data?.drawdown?.recoveryTimeEstimate}
@@ -286,30 +299,13 @@ export function RiskAnalyticsSection() {
         </div>
       )}
 
-      {/* Simplified correlation matrix display */}
-      <div className="grid grid-cols-10 gap-0.5">
-        {data?.correlation?.assets?.map((asset) => (
-          <div key={asset} className="text-center text-2xs text-text-tertiary p-1">
-            {asset}
-          </div>
-        ))}
-        {data?.correlation?.matrix3m?.map((row, i) =>
-          row.map((corr, j) => (
-            <div
-              key={`${i}-${j}`}
-              className={cn(
-                'p-1 text-center text-xs font-mono',
-                i === j ? 'bg-surface-3' :
-                Math.abs(corr) > 0.7 ? 'bg-red-dim text-red border border-red/50' :
-                Math.abs(corr) > 0.5 ? 'bg-amber-dim text-amber' :
-                'bg-green-dim/30'
-              )}
-            >
-              <Correlation value={corr} />
-            </div>
-          ))
-        )}
-      </div>
+      {/* Correlation matrix — labelled rows and columns, any number of assets */}
+      {(data?.correlation?.assets?.length ?? 0) > 1 && (
+        <div>
+          <div className="text-2xs text-text-tertiary mb-1">{(data?.correlation as any)?.window_days ?? 63}-day correlation of daily returns</div>
+          <CorrelationHeatmap labels={data!.correlation!.assets!} matrix={data!.correlation!.matrix3m ?? []} />
+        </div>
+      )}
     </div>
   );
 
