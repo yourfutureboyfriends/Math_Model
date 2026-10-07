@@ -210,7 +210,7 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
                   <td className="py-2 px-2 text-sm text-text-primary">{sector.name}</td>
                   <td className="py-2 px-2">
                     <span className={getSignalTag(sector.signal)}>
-                      {sector.signal.replace('Slight ', 'SL ')}
+                      {sector.signal}
                     </span>
                   </td>
                   <td className="py-2 px-2 text-right">

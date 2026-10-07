@@ -54,7 +54,7 @@ interface CommoditiesResponse {
 
 export const CommoditiesDashboardSection = memo(function CommoditiesDashboardSection() {
   // REFACTORED: Use useApiData hook instead of direct fetch()
-  const { data, loading: apiLoading, error: apiError } = useApiData<CommoditiesResponse>('/api/commodities');
+  const { data, loading: apiLoading, error: apiError } = useApiData<CommoditiesResponse>('/api/commodities', [], { refreshMs: 300_000 });
 
   // Use macro store for GLD/WTI prices
   const prices = useMacroStore((state) => state.prices);

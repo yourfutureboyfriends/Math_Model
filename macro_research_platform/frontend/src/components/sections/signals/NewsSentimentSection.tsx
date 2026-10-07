@@ -104,52 +104,26 @@ export function NewsSentimentSection({ data: dataProp }: NewsSentimentSectionPro
           </div>
         </div>
 
-        {/* Theme breakdown */}
+        {/* Theme breakdown — score is null when fewer than 3 headlines mention the theme */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          {data.byTheme?.inflation && (
-            <div className="p-2 bg-surface-1 border border-border text-center">
-              <div className="text-2xs text-text-tertiary mb-1">Inflation</div>
-              <div className={`text-base font-bold font-mono ${getSentimentColor(data.byTheme.inflation.score)}`}>
-                {data.byTheme.inflation.score.toFixed(1)}
+          {(['inflation', 'growth', 'fed'] as const).map((k) => {
+            const t = (data.byTheme as any)?.[k] as { score: number | null; label: string; articleCount: number } | undefined;
+            if (!t) return null;
+            return (
+              <div key={k} className="p-2 bg-surface-1 border border-border text-center">
+                <div className="text-2xs text-text-tertiary mb-1 capitalize">{k === 'fed' ? 'Fed' : k}</div>
+                <div className={`text-base font-bold font-mono ${t.score == null ? 'text-text-tertiary' : getSentimentColor(t.score)}`}>
+                  {t.score == null ? '—' : t.score.toFixed(1)}
+                </div>
+                <span className={t.score == null ? 'signal-tag neutral' : getSentimentTag(t.label)}>
+                  {t.label.replace('Slightly ', 'S-')}
+                </span>
+                <div className="text-2xs text-text-tertiary mt-1">
+                  {t.articleCount} headline{t.articleCount === 1 ? '' : 's'}
+                </div>
               </div>
-              <span className={getSentimentTag(data.byTheme.inflation.label)}>
-                {data.byTheme.inflation.label.replace('Slightly ', 'S-')}
-              </span>
-              <div className="text-2xs text-text-tertiary mt-1">
-                {data.byTheme.inflation.articleCount}
-              </div>
-            </div>
-          )}
-
-          {data.byTheme?.growth && (
-            <div className="p-2 bg-surface-1 border border-border text-center">
-              <div className="text-2xs text-text-tertiary mb-1">Growth</div>
-              <div className={`text-base font-bold font-mono ${getSentimentColor(data.byTheme.growth.score)}`}>
-                {data.byTheme.growth.score.toFixed(1)}
-              </div>
-              <span className={getSentimentTag(data.byTheme.growth.label)}>
-                {data.byTheme.growth.label.replace('Slightly ', 'S-')}
-              </span>
-              <div className="text-2xs text-text-tertiary mt-1">
-                {data.byTheme.growth.articleCount}
-              </div>
-            </div>
-          )}
-
-          {data.byTheme?.fed && (
-            <div className="p-2 bg-surface-1 border border-border text-center">
-              <div className="text-2xs text-text-tertiary mb-1">Fed</div>
-              <div className={`text-base font-bold font-mono ${getSentimentColor(data.byTheme.fed.score)}`}>
-                {data.byTheme.fed.score.toFixed(1)}
-              </div>
-              <span className={getSentimentTag(data.byTheme.fed.label)}>
-                {data.byTheme.fed.label.replace('Slightly ', 'S-')}
-              </span>
-              <div className="text-2xs text-text-tertiary mt-1">
-                {data.byTheme.fed.articleCount}
-              </div>
-            </div>
-          )}
+            );
+          })}
         </div>
 
         {/* Regime consistency */}

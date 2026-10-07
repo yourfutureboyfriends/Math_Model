@@ -48,7 +48,7 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
   const asOf = useMacroStore((state) => (state.fullDashboard as any)?.timestamp as string | undefined);
 
   // Broad live FX board (20 pairs, region-grouped) — real spots + daily change.
-  const { data: fxApi } = useApiData<any>('/api/fx-rates');
+  const { data: fxApi } = useApiData<any>('/api/fx-rates', [], { refreshMs: 300_000 });
 
   const toPair = (p: any): FXPair => ({
     pair: p.pair, spot: p.spot ?? null, change1d: p.change1d ?? null, change1w: p.change1w ?? null,

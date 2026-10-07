@@ -38,7 +38,7 @@ interface FixedIncomeData {
 }
 
 export function FixedIncomeDashboardSection() {
-  const { data, loading } = useApiData<FixedIncomeData>('/api/rates');
+  const { data, loading } = useApiData<FixedIncomeData>('/api/rates', [], { refreshMs: 300_000 });
 
   const storeLoading = useMacroStore((state) => state.meta.dataStatus === 'loading');
 

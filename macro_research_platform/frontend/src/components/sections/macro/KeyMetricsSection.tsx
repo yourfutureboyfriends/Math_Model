@@ -101,7 +101,7 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
       </div>
 
       {/* KPI Grid — unified MetricCard (Phase 5) */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <MetricCard
           label="Growth"
           value={fmtSignal(growthScore) ?? '—'}
@@ -173,7 +173,10 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
             <span className="text-2xs text-text-tertiary uppercase">Current</span>
           </div>
           <div className="text-2xl font-mono font-bold text-text-primary tabular-nums leading-none">
-            {regime.duration ? fmtDuration(regime.duration) : '—'}
+            {regime.duration ? (() => {   // big number, small unit — "6 months" wrapped in narrow cards
+              const [n, ...unit] = fmtDuration(regime.duration).split(' ');
+              return <>{n}{unit.length > 0 && <span className="ml-1 text-xs font-normal text-text-tertiary">{unit.join(' ')}</span>}</>;
+            })() : '—'}
           </div>
           <div className="mt-auto text-xs text-text-tertiary truncate">
             {regime.confidence ? fmtProbabilityPrecise(regime.confidence, 0) + ' confidence' : '—'}

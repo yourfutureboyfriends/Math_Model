@@ -24,21 +24,27 @@ POSITIVE = {
 NEGATIVE = {
     "plunge", "plunges", "plunged", "crash", "crashes", "fall", "falls", "fell", "drop", "drops",
     "slump", "slumps", "sink", "sinks", "tumble", "tumbles", "miss", "misses", "downgrade",
-    "downgraded", "recession", "fear", "fears", "selloff", "sell-off", "weak", "weakness", "cut",
-    "cuts", "layoff", "layoffs", "default", "crisis", "bearish", "loss", "losses", "warn", "warns",
+    "downgraded", "recession", "fear", "fears", "selloff", "sell-off", "weak", "weakness", "layoff", "layoffs", "default", "crisis", "bearish", "loss", "losses", "warn", "warns",
     "warning", "slow", "slowdown", "decline", "declines", "declined", "lower",
     "concern", "concerns", "turmoil", "volatile", "volatility", "hike", "hikes",
     "slide", "slides", "slid", "lows", "rout", "routs", "slump", "slumped", "tumbled", "sank",
     "collapse", "collapses", "plummet", "plummets", "shrink", "shrinks", "contraction", "worries",
     "worry", "risk", "risks", "threat", "threats", "tariff", "tariffs", "shutdown", "stall", "stalls",
     "stagnate", "falter", "falters", "slowing", "selloff", "panic", "turbulence", "sell", "dumps",
+    # geopolitical / event risk — without these, "attacks ... as oil flows rise" scored bullish
+    "attack", "attacks", "war", "wars", "conflict", "invasion", "missile", "missiles", "sanction",
+    "sanctions", "escalate", "escalates", "escalation", "tension", "tensions", "unrest", "outbreak",
+    "pandemic", "ebola", "bankruptcy", "bankrupt", "fraud", "probe", "strike", "strikes", "embargo",
 }
 
 _WORD = re.compile(r"[a-z][a-z\-']+")
 
 
 def score_headline(text: str) -> float:
-    """Sentiment of a headline in [-1, +1]: (pos - neg) / (pos + neg). 0 if no signal words."""
+    """Sentiment of a headline in (-1, +1): (pos - neg) / (pos + neg + 1). 0 if no signal words.
+
+    The +1 shrinks thin evidence: a single matched word scores ±0.5, not a saturated ±1 —
+    one lexicon hit in a headline is weak evidence, several agreeing hits approach ±1."""
     if not text:
         return 0.0
     words = _WORD.findall(text.lower())
@@ -46,7 +52,7 @@ def score_headline(text: str) -> float:
     neg = sum(1 for w in words if w in NEGATIVE)
     if pos + neg == 0:
         return 0.0
-    return round((pos - neg) / (pos + neg), 3)
+    return round((pos - neg) / (pos + neg + 1), 3)
 
 
 def _label(score: float) -> str:

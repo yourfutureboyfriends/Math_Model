@@ -55,7 +55,17 @@ export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicators
   // riskScore, riskState}. Map it onto the shape this view renders (compositeScore,
   // regime label, indicators table) so it shows the real values instead of crashing.
   const anyData = data as any;
+  // Legacy payloads carry a 0–10 compositeScore (high = more risk); the live one carries
+  // riskScore, a 0–1 risk-APPETITE score (high = risk-on). Label and colour each correctly.
+  const isAppetite = anyData.compositeScore == null && anyData.riskScore != null;
   const compositeScore: number | null = anyData.compositeScore ?? anyData.riskScore ?? null;   // missing ≠ 0 ("no risk")
+  const scoreColor = (v: number) => isAppetite
+    ? (v > 0.65 ? 'text-green' : v < 0.35 ? 'text-red' : 'text-amber')
+    : getCompositeColor(v);
+  const regimeTag = (label: string) => {
+    const l = label.toLowerCase();
+    return /risk-on/.test(l) ? 'signal-tag bullish' : /risk-off/.test(l) ? 'signal-tag bearish' : getRiskTag(l);
+  };
   const regimeLabel = anyData.regime ?? anyData.riskState ?? 'Unknown';
   const indicators = (anyData.indicators?.length ? anyData.indicators : [
     anyData.vix != null && { name: 'VIX', value: Number(anyData.vix).toFixed(1),
@@ -121,13 +131,13 @@ export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicators
             <div className="flex items-center gap-2">
               <Shield className="w-4 h-4 text-text-secondary" />
               <div>
-                <div className="text-2xs text-text-tertiary uppercase tracking-wider">Composite Risk</div>
-                <div className={cn('text-xl font-mono font-bold', compositeScore == null ? 'text-text-tertiary' : getCompositeColor(compositeScore))}>
+                <div className="text-2xs text-text-tertiary uppercase tracking-wider">{isAppetite ? 'Risk appetite (0–1, high = risk-on)' : 'Composite Risk'}</div>
+                <div className={cn('text-xl font-mono font-bold', compositeScore == null ? 'text-text-tertiary' : scoreColor(compositeScore))}>
                   {compositeScore == null ? '—' : <AnimatedValue value={compositeScore} decimals={2} />}
                 </div>
               </div>
             </div>
-            <span className={getRiskTag(String(regimeLabel).toLowerCase())}>
+            <span className={regimeTag(String(regimeLabel))}>
               {String(regimeLabel).toUpperCase()}
             </span>
           </div>
@@ -162,8 +172,8 @@ export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicators
         )}
 
         {/* Warning */}
-        <div className="flex items-start gap-2 p-2 bg-red-dim border border-red">
-          <AlertTriangle className="w-3 h-3 text-red flex-shrink-0 mt-0.5" />
+        <div className="flex items-start gap-2 p-2 bg-surface-1 border border-border-subtle">
+          <AlertTriangle className="w-3 h-3 text-text-tertiary flex-shrink-0 mt-0.5" />
           <p className="text-2xs text-text-secondary">
             Risk indicators are based on current market conditions. Always consider multiple signals before making investment decisions.
           </p>

@@ -31,8 +31,9 @@ export function DebtCycleSection({ data }: DebtCycleSectionProps) {
     anyData.cyclePosition ?? phaseToPosition[anyData.phase] ?? 'Mid Cycle';
   const severity: string =
     anyData.severity ?? (anyData.trend === 'Rising' ? 'moderate' : anyData.trend === 'Falling' ? 'mild' : 'moderate');
-  const cycleScore: number =
-    anyData.cycleScore ?? ({ 'Early Expansion': 3, 'Mid Cycle': 1, 'Late Cycle': -1, 'Deleveraging': -3 }[cyclePosition] ?? 0);
+  // Only a model-supplied score is shown — re-encoding the phase label as a number (Mid → +1)
+  // added nothing the progression bar doesn't already say.
+  const cycleScore: number | null = typeof anyData.cycleScore === 'number' ? anyData.cycleScore : null;
   const implication: string | undefined = anyData.implication ?? anyData.interpretation;
 
   const cyclePositions: CyclePosition[] = ['Early Expansion', 'Mid Cycle', 'Late Cycle', 'Deleveraging'];
@@ -163,7 +164,7 @@ export function DebtCycleSection({ data }: DebtCycleSectionProps) {
         </div>
 
         {/* Cycle Score */}
-        <div className="p-3 bg-surface-1 border border-border">
+        {cycleScore != null && <div className="p-3 bg-surface-1 border border-border">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-medium text-text-primary">Cycle Score</span>
             <span
@@ -179,7 +180,7 @@ export function DebtCycleSection({ data }: DebtCycleSectionProps) {
           <div className="h-1 bg-surface-4 relative">
             <div
               className="absolute top-0 bottom-0 bg-bloomberg"
-              style={{ width: `${((cycleScore + 5) / 10) * 100}%` }}
+              style={{ width: `${Math.max(0, Math.min(100, ((cycleScore + 5) / 10) * 100))}%` }}
             />
             <div className="absolute top-0 bottom-0 left-1/2 w-px bg-text-tertiary/30" />
           </div>
@@ -187,7 +188,7 @@ export function DebtCycleSection({ data }: DebtCycleSectionProps) {
             <span>Deleveraging</span>
             <span>Expansion</span>
           </div>
-        </div>
+        </div>}
 
         {/* Historical Analog */}
         {data.historicalAnalog && (

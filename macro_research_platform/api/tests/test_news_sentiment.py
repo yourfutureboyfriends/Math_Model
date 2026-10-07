@@ -36,3 +36,17 @@ def test_aggregate_labels_and_counts():
 def test_aggregate_empty():
     agg = aggregate_sentiment([])
     assert agg["overall"] == "Neutral" and agg["articles"] == []
+
+
+def test_single_word_is_not_saturated():
+    # one lexicon hit is weak evidence: +/-0.5, never a full +/-1
+    assert score_headline("Stocks rally") == 0.5
+    assert score_headline("Shares fall") == -0.5
+
+
+def test_geopolitical_risk_is_negative():
+    assert score_headline("Iran Ramps Up Ship Attacks in Hormuz as Oil Flows Rise, Ebola Spreads") < 0
+
+
+def test_cut_is_not_bearish_by_itself():
+    assert score_headline("Fed cuts rates") == 0.0

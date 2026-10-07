@@ -164,7 +164,7 @@ export function EnsembleSection({ data: dataProp }: EnsembleSectionProps) {
             <div className="p-2 space-y-1">
               {chartData.map((entry) => (
                 <div key={entry.model} className="flex items-center justify-between">
-                  <span className="text-xs text-text-primary w-24 truncate">{entry.model}</span>
+                  <span className="text-xs text-text-primary w-44 shrink-0 truncate" title={entry.model}>{entry.model}</span>
                   <div className="flex-1 mx-2">
                     <div className="h-1 bg-surface-4 relative">
                       <div

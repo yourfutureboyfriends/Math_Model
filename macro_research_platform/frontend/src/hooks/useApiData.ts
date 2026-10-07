@@ -14,6 +14,9 @@ interface UseApiDataResult<T> {
  *
  * @param endpoint - API endpoint (e.g., '/api/risk/full')
  * @param dependencies - Re-fetch when these change
+ * @param options.refreshMs - Optional silent re-poll interval (only while the tab is visible).
+ *   Without it the data is fetched once per mount, so a live-market panel would sit on its
+ *   page-load snapshot and (correctly) turn STALE.
  * @returns Object with data, loading, error, refetch
  *
  * @example
@@ -21,8 +24,10 @@ interface UseApiDataResult<T> {
  */
 export function useApiData<T>(
   endpoint: string,
-  dependencies: any[] = []
+  dependencies: any[] = [],
+  options: { refreshMs?: number } = {}
 ): UseApiDataResult<T> {
+  const refreshMs = options.refreshMs ?? 0;
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<Error | null>(null);
@@ -73,8 +78,13 @@ export function useApiData<T>(
 
     run();
 
-    return () => { cancelled = true; inflight?.abort(); };   // stop the request, not just ignore it
-  }, [endpoint, refetchTrigger, depKey]);
+    // Background refresh: no loading flicker, and a failed poll keeps the last good data.
+    const poll = refreshMs > 0
+      ? setInterval(() => { if (document.visibilityState === 'visible') void attempt(); }, refreshMs)
+      : null;
+
+    return () => { cancelled = true; inflight?.abort(); if (poll) clearInterval(poll); };   // stop the request, not just ignore it
+  }, [endpoint, refetchTrigger, depKey, refreshMs]);
 
   const refetch = () => {
     setRefetchTrigger(prev => prev + 1);

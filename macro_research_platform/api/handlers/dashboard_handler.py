@@ -90,21 +90,28 @@ def _build_news_sentiment(regime_name: str, now) -> dict:
     import time as _t
     from api.calculations.news_sentiment import aggregate_sentiment
 
-    if _NEWS_CACHE["articles"] is None or _t.time() - _NEWS_CACHE["ts"] > 600:
+    # A failed/empty fetch is retried after 60s (not the full 10 min), and never replaces
+    # the last good set of headlines.
+    _ttl = 600 if _NEWS_CACHE["articles"] else 60
+    if _NEWS_CACHE["articles"] is None or _t.time() - _NEWS_CACHE["ts"] > _ttl:
         try:
             from api.providers.news_provider import NewsProvider
             res = NewsProvider().fetch_all()
             arts = ([{"title": a.title, "source": a.source, "url": a.url}
                      for a in (res.articles or []) if a.title] if res.success else [])
+            if not res.success:
+                logger.warning("[news] no headlines: %s", (res.error or "")[:300])
         except Exception as e:
             logger.warning("[news] feed fetch failed: %s", e)
             arts = []
-        _NEWS_CACHE["articles"] = arts
+        if arts or not _NEWS_CACHE["articles"]:
+            _NEWS_CACHE["articles"] = arts
         _NEWS_CACHE["ts"] = _t.time()
 
     agg = aggregate_sentiment(_NEWS_CACHE["articles"])   # sentiment in [-1, +1]
     scored = agg["articles"]
-    overall_score = round(agg["score"] * 100, 1)         # UI uses a -100..100 scale
+    # UI uses a -100..100 scale; with no headlines there is no reading (not a neutral 0).
+    overall_score = round(agg["score"] * 100, 1) if scored else None
 
     themes = {"inflation": ["inflation", "cpi", "price", "prices", "pce"],
               "growth": ["growth", "gdp", "jobs", "employment", "payroll", "recession", "economy"],
@@ -113,6 +120,10 @@ def _build_news_sentiment(regime_name: str, now) -> dict:
     for t, keys in themes.items():
         sub = [a for a in scored if any(k in (a.get("title", "").lower()) for k in keys)]
         if sub:
+            # Fewer than 3 headlines is not a theme reading (1 headline used to show "100 BULLISH").
+            if len(sub) < 3:
+                by_theme[t] = {"score": None, "label": "Too few", "articleCount": len(sub)}
+                continue
             s = round(sum(x["sentiment"] for x in sub) / len(sub) * 100, 1)
             by_theme[t] = {"score": s, "label": _label100(s), "articleCount": len(sub)}
 
@@ -122,17 +133,20 @@ def _build_news_sentiment(regime_name: str, now) -> dict:
     bullish = [_hl(a) for a in scored if a["sentiment"] > 0.15][:5]
 
     bullish_regime = (regime_name or "").lower() in ("goldilocks", "expansion", "reflation", "recovery")
-    regime_consistent = (overall_score >= 0) == bullish_regime if scored else None
+    # Diverges only when sentiment clearly opposes the regime (beyond the ±15 neutral band);
+    # a near-zero reading (e.g. -1.4) is not a divergence.
+    regime_consistent = (None if not scored else
+                         not ((bullish_regime and overall_score < -15) or (not bullish_regime and overall_score > 15)))
 
     return {
-        "overall": {"score": overall_score, "label": agg["overall"], "momentum": 0,
+        "overall": {"score": overall_score, "label": agg["overall"] if scored else "No data", "momentum": None,
                     "momentumLabel": agg["trend"], "articleCount": len(scored)},
         "byTheme": by_theme,
         "topBearishHeadlines": bearish,
         "topBullishHeadlines": bullish,
         "regimeConsistent": regime_consistent,
         # legacy fields kept so both response shapes remain valid:
-        "overallSentiment": agg["overall"], "score": overall_score, "trend": agg["trend"],
+        "overallSentiment": agg["overall"] if scored else "No data", "score": overall_score, "trend": agg["trend"],
         "articles": [{"title": a["title"], "source": a.get("source"), "sentiment": a["sentiment"]} for a in scored[:12]],
         "source": "RSS ({}) + finance-lexicon NLP".format(
             ", ".join(sorted({a.get("source") for a in scored if a.get("source")})) or "no feeds reachable"),

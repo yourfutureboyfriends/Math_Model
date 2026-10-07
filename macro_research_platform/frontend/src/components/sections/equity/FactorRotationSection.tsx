@@ -32,7 +32,7 @@ function barColor(score: number) {
 
 function signalTag(score: number) {
   if (score >= 0.66) return { label: 'OVERWEIGHT', cls: 'text-green' };
-  if (score >= 0.5) return { label: 'SL OVERWEIGHT', cls: 'text-bloomberg' };
+  if (score >= 0.5) return { label: 'SLIGHT OVERWEIGHT', cls: 'text-bloomberg' };
   if (score >= 0.34) return { label: 'NEUTRAL', cls: 'text-text-secondary' };
   return { label: 'UNDERWEIGHT', cls: 'text-red' };
 }
