@@ -10,6 +10,7 @@ const PATTERNS: [RegExp, string][] = [
   [/\|\|\s*0\)\.toFixed/, '(x || 0).toFixed — prints 0 for missing'],
   [/\|\|\s*0\)\s*\*\s*100\)\.toFixed/, '((x || 0) * 100).toFixed — prints 0% for missing'],
   [/\?\?\s*0\.5,\s*$/m, '?? 0.5 default for a rate'],
+  [/(^\s*|>)\+\{[\w.?]+\.toFixed/, 'hard-coded "+" before a number (shows "+-3.2%" for a loss)'],
 ];
 
 function files(dir: string): string[] {

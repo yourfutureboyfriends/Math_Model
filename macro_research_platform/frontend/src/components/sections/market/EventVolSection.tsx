@@ -6,6 +6,7 @@
  * event dates are cadence-derived (caveat surfaced). Reads /api/v1/event-vol. 3-state load.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { BarList } from '@/components/ui/BarList';
 import { CalendarClock, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react';
 import { DataLineagePopover } from '@/components/ui/DataLineagePopover';
 
@@ -71,6 +72,15 @@ export function EventVolSection() {
               <div className="text-2xs text-amber mt-1">{reason || 'Insufficient window history for this event.'}</div>
             )}
           </div>
+
+          {typeof data.event_vol === 'number' && typeof data.baseline_vol === 'number' && (
+            <div className="p-3 border border-border bg-surface-1">
+              <BarList title={`SPX realised volatility: ±${data.window}-day window around ${ne.event} vs normal days`} labelWidth="9rem"
+                fmt={(v) => pct(v)} max={Math.max(data.event_vol, data.baseline_vol) * 1.1}
+                data={[{ label: `Around ${ne.event}`, value: data.event_vol, color: expands ? '#c98500' : '#199e70' },
+                       { label: 'Baseline', value: data.baseline_vol, color: '#6b7280' }]} />
+            </div>
+          )}
 
           {/* Upcoming high-impact events */}
           {data.upcoming?.length > 0 && (

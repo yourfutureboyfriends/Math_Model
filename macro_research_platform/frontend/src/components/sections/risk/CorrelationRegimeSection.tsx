@@ -2,6 +2,7 @@
 // Correlation regime monitor with terminal aesthetic
 
 import { GitBranch, AlertTriangle, Link2, Unlink } from 'lucide-react';
+import { BarList } from '@/components/ui/BarList';
 import { ComputedTag } from '@/components/ui/ComputedTag';
 import { useMacroStore } from '@/store/macroStore';
 
@@ -97,19 +98,27 @@ export function CorrelationRegimeSection() {
           <div className="px-3 py-1.5 border-b border-border-subtle bg-surface-2">
             <span className="text-2xs text-text-tertiary uppercase tracking-wider">60-Day Rolling Correlations</span>
           </div>
+          {correlations.filter((c: any) => typeof c?.correlation60d === 'number').length > 1 && (
+            <div className="p-2 border-b border-border-subtle">
+              <BarList title="60-day correlation by pair, ranked" diverging max={1} labelWidth="8rem" fmt={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}`}
+                data={correlations.filter((c: any) => typeof c?.correlation60d === 'number')
+                  .sort((a: any, b: any) => b.correlation60d - a.correlation60d)
+                  .map((c: any) => ({ label: c.assetPair, value: c.correlation60d, note: c.regime }))} />
+            </div>
+          )}
           <div className="p-2 space-y-2">
             {correlations.map((corr) => (
               <div key={corr?.assetPair ?? 'unknown'} className="p-2 border border-border-subtle bg-surface-2">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-medium text-text-primary">{corr?.assetPair ?? 'Unknown'}</span>
-                  {getCorrelationIcon(corr?.correlation60d ?? 0)}
+                  {corr?.correlation60d != null && getCorrelationIcon(corr.correlation60d)}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-base font-mono font-bold ${getCorrelationColor(corr?.correlation60d ?? 0)}`}>
-                    {(corr?.correlation60d ?? 0) > 0 ? '+' : ''}{(corr?.correlation60d ?? 0).toFixed(3)}
+                  <span className={`text-base font-mono font-bold ${corr?.correlation60d == null ? 'text-text-tertiary' : getCorrelationColor(corr.correlation60d)}`}>
+                    {corr?.correlation60d == null ? '—' : `${corr.correlation60d > 0 ? '+' : ''}${corr.correlation60d.toFixed(3)}`}
                   </span>
                   <span className={getRegimeTag(corr?.regime ?? 'neutral')}>
-                    {corr?.regime ?? 'neutral'}
+                    {corr?.regime ?? 'n/a'}
                   </span>
                 </div>
                 <p className="text-2xs text-text-secondary mt-1">{corr?.interpretation ?? ''}</p>

@@ -73,7 +73,7 @@ export function PortfolioFitSection({ data }: Props) {
         </Badge>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="p-4">
           <h3 className="text-xs text-text-secondary uppercase mb-3">Performance Metrics</h3>
           {loading ? (
@@ -154,14 +154,14 @@ export function PortfolioFitSection({ data }: Props) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <div className="text-2xs text-text-tertiary uppercase">Portfolio</div>
-              <div className="text-xl font-mono font-bold text-green">
-                +{benchmark.portfolioReturn.toFixed(1)}%
+              <div className={`text-xl font-mono font-bold ${benchmark.portfolioReturn >= 0 ? 'text-green' : 'text-red'}`}>
+                {benchmark.portfolioReturn > 0 ? '+' : ''}{benchmark.portfolioReturn.toFixed(1)}%
               </div>
             </div>
             <div>
               <div className="text-2xs text-text-tertiary uppercase">Benchmark</div>
               <div className="text-xl font-mono font-bold text-text-primary">
-                +{benchmark.benchmarkReturn.toFixed(1)}%
+                {benchmark.benchmarkReturn > 0 ? '+' : ''}{benchmark.benchmarkReturn.toFixed(1)}%
               </div>
             </div>
             <div>

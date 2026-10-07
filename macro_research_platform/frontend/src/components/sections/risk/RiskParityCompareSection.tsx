@@ -7,6 +7,7 @@
  * caveat surfaced. Reads /api/v1/risk-parity-compare.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { BarList } from '@/components/ui/BarList';
 import { Scale, RefreshCw } from 'lucide-react';
 import { DataLineagePopover } from '@/components/ui/DataLineagePopover';
 
@@ -50,6 +51,10 @@ export function RiskParityCompareSection() {
 
       {data && rows.length > 0 && (
         <div className="space-y-3">
+          <BarList title="Sharpe ratio by method (benchmark: 60/40)" labelWidth="11rem" fmt={(v) => v.toFixed(2)}
+            data={[...rows].filter((r: any) => typeof r.sharpe === 'number').sort((a: any, b: any) => b.sharpe - a.sharpe)
+              .map((r: any) => ({ label: r.method, value: r.sharpe, color: r.beats_6040_sharpe === null ? '#c98500' : r.beats_6040_sharpe ? '#199e70' : '#6b7280',
+                                  note: `max drawdown ${r.max_drawdown_pct}%` }))} />
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>

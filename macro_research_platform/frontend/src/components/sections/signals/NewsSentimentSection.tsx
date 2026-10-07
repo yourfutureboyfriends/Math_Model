@@ -216,7 +216,7 @@ export function NewsSentimentSection({ data: dataProp }: NewsSentimentSectionPro
                     <div className="text-xs text-text-secondary mb-0.5">{headline.headline}</div>
                     <div className="flex items-center justify-between text-2xs">
                       <span className="text-text-tertiary">{headline.source}</span>
-                      <span className="font-mono text-green">+{headline.score.toFixed(0)}</span>
+                      <span className="font-mono text-green">{headline.score > 0 ? "+" : ""}{headline.score.toFixed(0)}</span>
                     </div>
                   </div>
                 ))
