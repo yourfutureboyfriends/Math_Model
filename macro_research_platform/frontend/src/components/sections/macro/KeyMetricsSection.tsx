@@ -44,7 +44,7 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
     return !!f && f.status !== 'FRESH' && f.status !== 'UNKNOWN';
   };
   // Lineage builder for a signal card (Phase 1), sharing the attribution provenance.
-  const lineageFor = (name: string, value: number) => {
+  const lineageFor = (name: string, value: number | null) => {
     const s = stories[name];
     return {
       value, source: meta.source || 'computed (yfinance/FRED)', fetched_at: meta.as_of,
@@ -65,10 +65,10 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
   };
 
   // Format signal scores using format library
-  const growthScore = signals.growth.score ?? 0;
-  const inflationScore = signals.inflation.score ?? 0;
-  const liquidityScore = signals.liquidity.score ?? 0;
-  const riskScore = signals.risk.score ?? 0;
+  const growthScore = signals.growth.score ?? null;          // missing ≠ 0 (shown as —)
+  const inflationScore = signals.inflation.score ?? null;
+  const liquidityScore = signals.liquidity.score ?? null;
+  const riskScore = signals.risk.score ?? null;
 
   // Sparklines on the SAME scale as the headline score: the signal histories (0–1). The
   // keyMetrics sparklines are 0–100 and, for risk, plot risk aversion (100 − appetite),

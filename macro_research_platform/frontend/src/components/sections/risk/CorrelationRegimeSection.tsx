@@ -27,7 +27,7 @@ export function CorrelationRegimeSection() {
   // Safe destructuring with defaults
   const currentRegime = data?.currentRegime ?? 'STANDARD';
   const switchTriggered = data?.switchTriggered ?? false;
-  const equityBondCorrelation = data?.equityBondCorrelation ?? 0;
+  const equityBondCorrelation: number | null = data?.equityBondCorrelation ?? null;
   const fallbackStrategy = data?.fallbackStrategy ?? 'STANDARD';
   const correlations = data?.correlations ?? [];
   const normalWeights = data?.riskParityAdjustment?.normalWeights ?? {};
@@ -79,8 +79,8 @@ export function CorrelationRegimeSection() {
             </div>
             <div className="text-right">
               <div className="text-2xs text-text-tertiary">Equity-Bond ρ</div>
-              <div className={`text-base font-mono ${getCorrelationColor(equityBondCorrelation)}`}>
-                {equityBondCorrelation.toFixed(3)}
+              <div className={`text-base font-mono ${equityBondCorrelation == null ? 'text-text-tertiary' : getCorrelationColor(equityBondCorrelation)}`}>
+                {equityBondCorrelation == null ? '—' : equityBondCorrelation.toFixed(3)}
               </div>
             </div>
           </div>

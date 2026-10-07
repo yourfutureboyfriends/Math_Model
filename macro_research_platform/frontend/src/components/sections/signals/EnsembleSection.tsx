@@ -127,12 +127,12 @@ export function EnsembleSection({ data: dataProp }: EnsembleSectionProps) {
 
           <div className="flex items-center justify-between text-2xs text-text-tertiary">
             <span>Conviction: {data.conviction ?? '—'}</span>
-            <span className={getAgreementColor(data.agreementRatio ?? 0)}>
-              Agreement: {(() => {
-                const raw = data?.agreementRatio ?? 0;
+            <span className={data.agreementRatio == null ? 'text-text-tertiary' : getAgreementColor(data.agreementRatio)}>
+              Agreement: {data.agreementRatio == null ? '—' : `${(() => {
+                const raw = data.agreementRatio as number;
                 const pct = raw > 1 ? raw : raw * 100;
                 return Math.min(100, Math.max(0, Math.round(pct)));
-              })()}%
+              })()}%`}
             </span>
           </div>
         </div>

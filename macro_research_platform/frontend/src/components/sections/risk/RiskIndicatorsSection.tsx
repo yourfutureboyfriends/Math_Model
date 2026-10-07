@@ -55,7 +55,7 @@ export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicators
   // riskScore, riskState}. Map it onto the shape this view renders (compositeScore,
   // regime label, indicators table) so it shows the real values instead of crashing.
   const anyData = data as any;
-  const compositeScore = anyData.compositeScore ?? anyData.riskScore ?? 0;
+  const compositeScore: number | null = anyData.compositeScore ?? anyData.riskScore ?? null;   // missing ≠ 0 ("no risk")
   const regimeLabel = anyData.regime ?? anyData.riskState ?? 'Unknown';
   const indicators = (anyData.indicators?.length ? anyData.indicators : [
     anyData.vix != null && { name: 'VIX', value: Number(anyData.vix).toFixed(1),
@@ -122,8 +122,8 @@ export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicators
               <Shield className="w-4 h-4 text-text-secondary" />
               <div>
                 <div className="text-2xs text-text-tertiary uppercase tracking-wider">Composite Risk</div>
-                <div className={cn('text-xl font-mono font-bold', getCompositeColor(compositeScore))}>
-                  <AnimatedValue value={compositeScore} decimals={2} />
+                <div className={cn('text-xl font-mono font-bold', compositeScore == null ? 'text-text-tertiary' : getCompositeColor(compositeScore))}>
+                  {compositeScore == null ? '—' : <AnimatedValue value={compositeScore} decimals={2} />}
                 </div>
               </div>
             </div>

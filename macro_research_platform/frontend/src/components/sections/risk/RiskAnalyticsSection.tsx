@@ -476,7 +476,7 @@ export function RiskAnalyticsSection() {
   // Position-Level Risk Contribution
   const renderPositionsTab = () => {
     const positions = data?.positions || [];
-    const totalVar = data?.totalPortfolioVar || 0;
+    const totalVar: number | null = data?.totalPortfolioVar ?? null;
 
     if (positions.length === 0) {
       return (
@@ -493,7 +493,7 @@ export function RiskAnalyticsSection() {
           <div className="p-3 border border-border-subtle bg-surface-2">
             <div className="text-2xs text-text-tertiary uppercase">Portfolio VaR 95%</div>
             <div className="font-mono text-lg font-bold text-red">
-              -{fmtPriceInt(totalVar)}
+              {totalVar == null ? '—' : `-${fmtPriceInt(totalVar)}`}
             </div>
           </div>
           <div className="p-3 border border-border-subtle bg-surface-2">

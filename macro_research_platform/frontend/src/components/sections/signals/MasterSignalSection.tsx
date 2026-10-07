@@ -29,10 +29,12 @@ export function MasterSignalSection({ data }: MasterSignalSectionProps) {
   }
 
   // Prioritize store data, fallback to props
-  const score = ensemble.score ?? data?.ensembleScore ?? 0;
+  // Missing inputs stay missing: a 0 score reads "neutral", a 1.0x budget "full risk".
+  const scoreRaw: number | null = ensemble.score ?? data?.ensembleScore ?? null;
+  const score = scoreRaw ?? 0;                                  // for geometry only
   const conviction = ensemble.conviction ?? data?.conviction ?? 'neutral';
-  const agreement = ensemble.agreement ?? data?.agreementRatio ?? 0;
-  const riskBudget = ensemble.riskBudget ?? data?.riskBudgetFinal ?? 1.0;
+  const agreement: number | null = ensemble.agreement ?? data?.agreementRatio ?? null;
+  const riskBudget: number | null = ensemble.riskBudget ?? data?.riskBudgetFinal ?? null;
   // Prefer the live ensemble mode ("Dynamic"/"Adaptive") from the store; fall back
   // to the legacy adaptiveWeightingActive prop.
   const weightingLabel =
@@ -47,7 +49,7 @@ export function MasterSignalSection({ data }: MasterSignalSectionProps) {
     return 'Neutral';
   };
 
-  const signal = data?.ensembleSignal ?? getSignalFromScore(score);
+  const signal = data?.ensembleSignal ?? (scoreRaw == null ? 'Unavailable' : getSignalFromScore(scoreRaw));
 
   const getSignalColor = (sig: string) => {
     if (sig.includes('Strong Bullish') || sig.includes('Risk-On')) {
@@ -122,13 +124,13 @@ export function MasterSignalSection({ data }: MasterSignalSectionProps) {
             </div>
 
             {/* Position marker */}
-            <div
+            {scoreRaw != null && <div
               className={cn(
                 'absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-surface-2 transition-all duration-500',
                 score > 0 ? 'bg-green' : 'bg-red'
               )}
               style={{ left: `${Math.max(0, Math.min(100, scalePosition))}%`, transform: `translate(-50%, -50%)` }}
-            />
+            />}
           </div>
 
           <div className="flex items-center justify-between text-xs mt-2">
@@ -164,14 +166,16 @@ export function MasterSignalSection({ data }: MasterSignalSectionProps) {
             </div>
             <div className={cn(
               'text-sm font-mono font-bold',
-              agreement >= 0.8 ? 'text-green' : agreement >= 0.6 ? 'text-amber' : 'text-red'
+              agreement == null ? 'text-text-tertiary' : agreement >= 0.8 ? 'text-green' : agreement >= 0.6 ? 'text-amber' : 'text-red'
             )}>
-              <AnimatedValue
-                value={agreement * 100}
-                decimals={0}
-                suffix="%"
-                colorize={false}
-              />
+              {agreement == null ? '—' : (
+                <AnimatedValue
+                  value={agreement * 100}
+                  decimals={0}
+                  suffix="%"
+                  colorize={false}
+                />
+              )}
             </div>
           </div>
 
@@ -181,7 +185,7 @@ export function MasterSignalSection({ data }: MasterSignalSectionProps) {
               RISK BUDGET
             </div>
             <div className="text-sm font-mono font-bold text-text-primary">
-              <AnimatedValue value={riskBudget} decimals={2} suffix="x" colorize={false} />
+              {riskBudget == null ? '—' : <AnimatedValue value={riskBudget} decimals={2} suffix="x" colorize={false} />}
             </div>
           </div>
 

@@ -11,6 +11,8 @@ const PATTERNS: [RegExp, string][] = [
   [/\|\|\s*0\)\s*\*\s*100\)\.toFixed/, '((x || 0) * 100).toFixed — prints 0% for missing'],
   [/\?\?\s*0\.5,\s*$/m, '?? 0.5 default for a rate'],
   [/(^\s*|>)\+\{[\w.?]+\.toFixed/, 'hard-coded "+" before a number (shows "+-3.2%" for a loss)'],
+  [/const \w*(score|Score|ratio|Ratio|probability|Probability|correlation|Correlation|budget|Budget|agreement|Agreement)\w*\s*=\s*[^;]*(\?\?|\|\|)\s*(0|1\.0|0\.5)\s*;/,
+   'a missing reading defaulted to 0 / 1.0 / 0.5 (reads as neutral, full or no risk)'],
 ];
 
 function files(dir: string): string[] {
@@ -26,7 +28,7 @@ describe('panels never fabricate values for missing data', () => {
     for (const f of files(ROOT)) {
       const lines = readFileSync(f, 'utf8').split('\n');
       lines.forEach((line, i) => {
-        if (line.trim().startsWith('//')) return;
+        if (line.trim().startsWith('//') || line.includes('geometry only')) return;   // explicit opt-out: value never displayed
         for (const [re, why] of PATTERNS) if (re.test(line)) hits.push(`${f.replace(ROOT, 'sections')}:${i + 1} ${why}`);
       });
     }

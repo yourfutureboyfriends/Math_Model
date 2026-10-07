@@ -81,7 +81,7 @@ export function MomentumVetoSection() {
             </div>
             <div className="text-right">
               <div className="text-2xs text-text-tertiary">Dampener</div>
-              <div className="text-sm font-mono text-text-primary">{(typeof dampenerApplied === 'number' && isFinite(dampenerApplied)) ? Math.round(dampenerApplied * 100) : 0}%</div>
+              <div className="text-sm font-mono text-text-primary">{(typeof data?.dampenerApplied === 'number' && isFinite(data.dampenerApplied)) ? `${Math.round(data.dampenerApplied * 100)}%` : '—'}</div>
             </div>
           </div>
         </div>

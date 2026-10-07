@@ -21,7 +21,7 @@ export function LiquiditySection({ data }: LiquiditySectionProps) {
   // contribution}]}; map it onto the shape this view renders (compositeScore,
   // indicators with trend/formatted/zScore) so real values show instead of crashing.
   const anyData = data as any;
-  const compositeScore = anyData.compositeScore ?? anyData.liquidityScore ?? 0;
+  const compositeScore: number | null = anyData.compositeScore ?? anyData.liquidityScore ?? null;
   const indicators = (anyData.indicators ?? []).map((i: any) => ({
     name: i.name,
     trend: i.trend ?? i.status ?? 'neutral',
@@ -77,8 +77,8 @@ export function LiquiditySection({ data }: LiquiditySectionProps) {
               <Droplets className="w-3 h-3 text-text-secondary" />
               <div>
                 <div className="text-2xs text-text-tertiary">Model score (0–1)</div>
-                <div className={`text-xl font-mono font-bold ${compositeScore > 0 ? 'text-green' : compositeScore < 0 ? 'text-red' : 'text-text-secondary'}`}>
-                  {Number(compositeScore).toFixed(2)}
+                <div className={`text-xl font-mono font-bold ${compositeScore == null ? 'text-text-tertiary' : compositeScore > 0 ? 'text-green' : compositeScore < 0 ? 'text-red' : 'text-text-secondary'}`}>
+                  {compositeScore == null ? '—' : Number(compositeScore).toFixed(2)}
                 </div>
               </div>
             </div>

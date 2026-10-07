@@ -17,7 +17,7 @@ export function RegimeTransitionSection({ data: dataProp }: RegimeTransitionSect
 
   const currentRegime = data.currentRegime || 'Unknown';
   const mostLikelyNext = data.mostLikelyNext || 'Unknown';
-  const nextRegimeProbability = data.nextRegimeProbability || 0;
+  const nextRegimeProbability: number | null = data.nextRegimeProbability ?? null;
   const secondMostLikely = data.secondMostLikely || 'Unknown';
   const warning = data.warning || '';
 
@@ -123,7 +123,7 @@ export function RegimeTransitionSection({ data: dataProp }: RegimeTransitionSect
               Next Regime Probability
             </div>
             <div className="text-2xl font-mono font-bold text-bloomberg">
-              {(nextRegimeProbability * 100).toFixed(0)}%
+              {nextRegimeProbability == null ? '—' : `${(nextRegimeProbability * 100).toFixed(0)}%`}
             </div>
             <div className="text-xs text-text-secondary mt-1">{mostLikelyNext}</div>
           </div>
