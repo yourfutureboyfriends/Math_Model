@@ -89,9 +89,9 @@ export function FixedIncomeDashboardSection() {
       accessor: (c: CreditSpread) => (
         <span className={cn(
           'font-mono text-2xs',
-          (c.change1wBps ?? 0) > 0 ? 'text-red' : (c.change1wBps ?? 0) < 0 ? 'text-green' : 'text-text-secondary'
+          Math.round(c.change1wBps ?? 0) > 0 ? 'text-red' : Math.round(c.change1wBps ?? 0) < 0 ? 'text-green' : 'text-text-secondary'
         )}>
-          {c.change1wBps == null ? '--' : `${c.change1wBps > 0 ? '+' : ''}${Math.round(c.change1wBps)}bp`}
+          {c.change1wBps == null ? '--' : `${Math.round(c.change1wBps) > 0 ? '+' : ''}${Math.round(c.change1wBps) || 0}bp`}
         </span>
       ),
       align: 'right' as const,

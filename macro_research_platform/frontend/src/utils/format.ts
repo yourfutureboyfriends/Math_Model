@@ -121,8 +121,10 @@ export const fmtPriceInt = (v: number | null): string =>
  * Format FX rate
  * Input: 1.1750 -> Output: "1.1750"
  */
-export const fmtFx = (v: number | null, decimals = 4): string =>
-  guard(v, (n) => n.toFixed(decimals));
+// Market quoting convention: 4 dp for pairs near 1 (EUR/USD 1.1264), 2 dp for large
+// quotes (USD/JPY 158.07, USD/INR 83.12) unless the caller fixes the precision.
+export const fmtFx = (v: number | null, decimals?: number): string =>
+  guard(v, (n) => n.toFixed(decimals ?? (Math.abs(n) >= 20 ? 2 : 4)));
 
 // ============================================================================
 // CHANGES (percent change)

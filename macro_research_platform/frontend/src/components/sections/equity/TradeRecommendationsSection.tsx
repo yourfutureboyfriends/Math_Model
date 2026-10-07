@@ -253,7 +253,11 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                 </ul>
               </div>
             )}
-            {expectedReturns.length > 0 && (
+            {expectedReturns.length > 0 && (() => {
+              // The building-block model leaves every row "unrated" — a column of identical
+              // placeholders says nothing, so it only appears when some row carries a rating.
+              const rated = expectedReturns.some((r) => r.confidence && !/^unrated$/i.test(r.confidence));
+              return (
               <div className="border border-border bg-surface-1 overflow-hidden">
                 <div className="px-3 py-1.5 border-b border-border-subtle bg-surface-2 text-2xs text-text-tertiary uppercase tracking-wider">
                   Expected returns · long-run, annualised (building blocks)
@@ -263,7 +267,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                     <tr className="border-b border-border-subtle text-2xs text-text-tertiary uppercase">
                       <th className="text-left py-2 px-3 font-medium">Asset</th>
                       <th className="text-right py-2 px-3 font-medium">Exp. p.a.</th>
-                      <th className="text-center py-2 px-3 font-medium">Confidence</th>
+                      {rated && <th className="text-center py-2 px-3 font-medium">Confidence</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -273,13 +277,14 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                         <td className={`py-2 px-3 text-right font-mono text-sm ${(r.return_1y ?? 0) >= 0 ? 'text-green' : 'text-red'}`}>
                           {typeof r.return_1y === 'number' ? `${r.return_1y >= 0 ? '+' : ''}${r.return_1y.toFixed(1)}%` : '—'}
                         </td>
-                        <td className={`py-2 px-3 text-center text-xs font-mono ${confTone(r.confidence || '')}`}>{r.confidence ?? '—'}</td>
+                        {rated && <td className={`py-2 px-3 text-center text-xs font-mono ${confTone(r.confidence || '')}`}>{r.confidence ?? '—'}</td>}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            )}
+              );
+            })()}
           </div>
         </div>
       );

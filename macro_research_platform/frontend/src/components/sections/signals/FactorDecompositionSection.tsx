@@ -128,7 +128,7 @@ export function FactorDecompositionSection({ data: dataProp }: FactorDecompositi
                       {(f.exposure ?? 0) > 0 ? '+' : ''}{num(f.exposure)}
                     </td>
                     <td className="py-2 px-3 text-right font-mono text-sm text-text-primary">
-                      {typeof f.contribution === 'number' ? `${f.contribution.toFixed(0)}%` : '—'}
+                      {typeof f.contribution === 'number' ? `${Math.round(f.contribution) || 0}%` : '—'}
                     </td>
                     <td className="py-2 px-3 text-right font-mono text-sm text-text-secondary">{num(f.tStat, 1)}</td>
                     <td className="py-2 px-3 text-center">

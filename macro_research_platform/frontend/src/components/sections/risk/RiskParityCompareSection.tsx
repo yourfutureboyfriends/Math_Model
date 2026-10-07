@@ -68,12 +68,13 @@ export function RiskParityCompareSection() {
               </thead>
               <tbody>
                 {rows.map((r: any) => {
+                  const num = (v: any) => (typeof v === 'number' ? v.toFixed(2) : '—');
                   const bench = r.beats_6040_sharpe === null;
                   return (
                     <tr key={r.method} className={`border-t border-border-subtle ${bench ? 'text-bloomberg' : 'text-text-primary'}`}>
                       <td className="py-1 pr-2">{r.method}</td>
-                      <td className="py-1 text-right font-mono tabular-nums">{r.sharpe}</td>
-                      <td className="py-1 text-right font-mono tabular-nums">{r.sortino}</td>
+                      <td className="py-1 text-right font-mono tabular-nums">{num(r.sharpe)}</td>
+                      <td className="py-1 text-right font-mono tabular-nums">{num(r.sortino)}</td>
                       <td className="py-1 text-right font-mono tabular-nums text-red">{r.max_drawdown_pct}%</td>
                       <td className="py-1 text-right font-mono">
                         {bench ? <span className="text-text-tertiary">—</span>

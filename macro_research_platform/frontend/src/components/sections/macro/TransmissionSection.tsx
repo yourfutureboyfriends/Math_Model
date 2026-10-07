@@ -89,9 +89,20 @@ export function TransmissionSection({ data }: TransmissionSectionProps) {
           <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">
             Summary
           </div>
-          <p className="text-xs text-text-primary">{data.summary}</p>
+          <p className="text-xs text-text-primary">{data.summary || channelSummary(data.channels as any[])}</p>
         </div>
       </div>
     </div>
   );
+}
+
+// Backend sends no summary text — derive one from the channel statuses (no invented narrative).
+function channelSummary(channels: Array<{ channel?: string; name?: string; status?: string }>): string {
+  const by = (re: RegExp) => channels.filter((c) => re.test(String(c.status ?? ''))).map((c) => c.channel ?? c.name ?? '?');
+  const active = by(/active|normal/i), blocked = by(/headwind|restrict|blocked|impaired/i);
+  const parts = [`${active.length} of ${channels.length} channels transmitting${active.length ? ` (${active.join(', ')})` : ''}`];
+  if (blocked.length) parts.push(`${blocked.length} restricted (${blocked.join(', ')})`);
+  const rest = channels.length - active.length - blocked.length;
+  if (rest) parts.push(`${rest} mixed`);
+  return parts.join('; ') + '.';
 }

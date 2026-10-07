@@ -111,7 +111,7 @@ export function AdvancedIndicatorsSection({ data }: AdvancedIndicatorsSectionPro
 
             <div className="flex items-baseline gap-2 mb-1">
               <span className="text-lg font-mono font-bold text-text-primary">
-                {indicator.value}
+                {typeof indicator.value === 'number' ? indicator.value.toFixed(2) : indicator.value}
               </span>
               <span className={cn('text-sm', getTrendColor(indicator.trend))}>
                 {getTrendSymbol(indicator.trend)}
