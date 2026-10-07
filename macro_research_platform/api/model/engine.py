@@ -33,6 +33,39 @@ MODEL_VERSION = "1.0"
 MODEL_BOOK = "Macro Model"
 _CACHE: Dict[str, tuple] = {}
 _TTL = 6 * 3600
+# A cold run takes minutes (FRED + Yahoo history, then the fit and the backtest). The model
+# is monthly, so the last result on disk is served at once after a restart (flagged) while
+# one background task recomputes it.
+_SNAPSHOT_DIR = __import__("pathlib").Path(__file__).resolve().parents[2] / "data" / "processed" / "live"
+_SNAPSHOT_MAX_AGE = 3 * 86400
+_REFRESHING: Dict[str, "asyncio.Task"] = {}
+
+
+def _snapshot_path(key: str):
+    return _SNAPSHOT_DIR / f"model_{key}.json"
+
+
+def _save_snapshot(key: str, result: Dict[str, Any]) -> None:
+    try:
+        _SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = _snapshot_path(key).with_suffix(".tmp")
+        tmp.write_text(json.dumps({"ts": time.time(), "result": result}, default=str))
+        tmp.replace(_snapshot_path(key))
+    except Exception as e:
+        logger.debug("[model] snapshot save failed: %s", e)
+
+
+def _load_snapshot(key: str) -> Optional[Dict[str, Any]]:
+    try:
+        raw = json.loads(_snapshot_path(key).read_text())
+    except Exception:
+        return None
+    if time.time() - float(raw.get("ts", 0)) > _SNAPSHOT_MAX_AGE:
+        return None
+    out = dict(raw["result"])
+    out["snapshot"] = {"saved_at": datetime.fromtimestamp(raw["ts"], timezone.utc).strftime("%Y-%m-%dT%H:%M+00:00"),
+                       "note": "Last computed run, served while the model recomputes after a restart."}
+    return out
 
 
 def _blocks() -> Dict[str, str]:
@@ -103,6 +136,14 @@ async def run_model(params: Optional[Dict] = None, user: str = "system", persist
     p = ModelParams.from_dict(params)
     key = params_hash(p)
     hit = _CACHE.get(key)
+    if not hit and not force:
+        snap = _load_snapshot(key)
+        if snap:
+            t = _REFRESHING.get(key)
+            if t is None or t.done():
+                _REFRESHING[key] = asyncio.get_running_loop().create_task(
+                    run_model(params, user=user, persist=persist, force=True))
+            return snap
     if hit and not force and time.time() - hit[0] < _TTL:
         cached = hit[1]
         if persist and cached.get("available") and not cached.get("run_id"):
@@ -177,6 +218,8 @@ async def run_model(params: Optional[Dict] = None, user: str = "system", persist
         },
     }
     _CACHE[key] = (time.time(), result)
+    if result.get("available"):
+        await asyncio.to_thread(_save_snapshot, key, result)
     if persist:
         try:
             result["run_id"] = await asyncio.to_thread(save_run, result, user)

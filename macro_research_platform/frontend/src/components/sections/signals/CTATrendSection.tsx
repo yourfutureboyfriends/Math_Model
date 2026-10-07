@@ -2,6 +2,8 @@
 // Multi-timeframe trend signals with terminal aesthetic
 
 import { TrendingUp, TrendingDown, Minus, AlertTriangle, Activity, ArrowRightLeft } from 'lucide-react';
+import { HeatGrid } from '@/components/ui/HeatGrid';
+import { openChart } from '@/components/ui/ChartModal';
 import { ComputedTag } from '@/components/ui/ComputedTag';
 import type { TrendSignalsData } from '@/types';
 import { useMacroStore } from '@/store/macroStore';
@@ -146,6 +148,21 @@ export function CTATrendSection({ data: dataProp }: CTATrendSectionProps) {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Returns by horizon — agreement across 1M / 3M / 12M is the trend signal */}
+        {(assets ?? []).length > 0 && (
+          <div className="p-3 bg-surface-1 border border-border">
+            <HeatGrid title="Return by horizon (%, click an asset to chart it; amber = horizons disagree)" columns={['1M', '3M', '12M']} labelWidth="7rem"
+              fmt={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}`}
+              rows={(assets ?? []).map((a: any) => {
+                const num = (x: any) => (typeof x === 'number' && isFinite(x) ? x : null);
+                const t = String(a.ticker);
+                const yahoo = t === 'DXY' ? 'DX-Y.NYB' : /^[A-Z]{1,3}$/.test(t) ? `${t}=F` : t;
+                return { label: t, sub: a.name, highlight: !!a.contradiction, onClick: () => openChart(yahoo, a.name),
+                         values: [num(a.signals?.fast?.return), num(a.signals?.medium?.return), num(a.signals?.slow?.return)] };
+              })} />
           </div>
         )}
 

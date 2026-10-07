@@ -2,6 +2,8 @@
 // Risk-balanced allocation with terminal aesthetic
 
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { Donut } from '@/components/ui/Donut';
+import { BarList } from '@/components/ui/BarList';
 import { useMacroStore } from '@/store/macroStore';
 
 interface RiskParitySectionProps {
@@ -80,6 +82,23 @@ export function RiskParitySection({ data: dataProp }: RiskParitySectionProps) {
           </div>
         </div>
 
+        {/* Weight vs volatility: risk parity weights each asset ∝ 1 / volatility */}
+        {holdings.length > 1 && (
+          <div className="grid gap-2 md:grid-cols-2">
+            <div className="p-3 bg-surface-1 border border-border">
+              <Donut title="Target allocation" fmt={(v) => `${v.toFixed(1)}%`}
+                centerValue={formatPercent(portfolioVolatility)} centerLabel="portfolio vol"
+                data={holdings.map((h: any) => ({ label: h.ticker || h.asset, value: h.targetAllocationPct ?? (h.adjustedWeight ?? 0) * 100 }))} />
+            </div>
+            <div className="p-3 bg-surface-1 border border-border">
+              <BarList title="Annualised volatility — the higher, the smaller the weight" color="#c98500" labelWidth="4.5rem"
+                fmt={(v) => `${(v * 100).toFixed(1)}%`}
+                data={[...holdings].sort((a: any, b: any) => (b.annualisedVol ?? b.volatility ?? 0) - (a.annualisedVol ?? a.volatility ?? 0))
+                  .map((h: any) => ({ label: h.ticker || h.asset, value: h.annualisedVol ?? h.volatility ?? null }))} />
+            </div>
+          </div>
+        )}
+
         {/* Holdings Table */}
         {holdings.length > 0 && (
           <div className="border border-border bg-surface-1 overflow-hidden">
@@ -106,10 +125,10 @@ export function RiskParitySection({ data: dataProp }: RiskParitySectionProps) {
                       <div className="text-2xs text-text-tertiary">{item.sector}</div>
                     </td>
                     <td className="py-2 px-3 text-right font-mono text-xs text-text-secondary">
-                      {((item.annualisedVol || item.volatility || 0) * 100).toFixed(1)}%
+                      {formatPercent(item.annualisedVol ?? item.volatility ?? null)}
                     </td>
                     <td className="py-2 px-3 text-right font-mono text-xs text-text-secondary">
-                      {((item.baseWeight || 0) * 100).toFixed(1)}%
+                      {formatPercent(item.baseWeight ?? null)}
                     </td>
                     <td className="py-2 px-3 text-right">
                       <span className="signal-tag text-2xs neutral" title={`t-stat ${item.signalScore}`}>

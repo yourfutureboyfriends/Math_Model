@@ -234,6 +234,15 @@ async def get_rates_data() -> Dict[str, Any]:
     from api.handlers.dashboard_sections import us_curve_date
     curve_date = us_curve_date(curve_fred)
     curve_points = us_curve_points(curve_fred, curve_date)
+    # Earlier curves on the same single-date basis (shows steepening / flattening / shifts).
+    curve_history = {}
+    if curve_date:
+        from datetime import date as _d, timedelta as _td
+        for label, days in (("1M ago", 30), ("1Y ago", 365)):
+            past = (_d.fromisoformat(curve_date) - _td(days=days)).isoformat()
+            pts = us_curve_points(curve_fred, past)
+            if len(pts) >= len(curve_points) - 1 and pts:
+                curve_history[label] = {"date": past, "points": pts}
     # Spreads from the same single-date curve the chart shows (they must agree with its points).
     _c = {sid: curve_fred[sid].asof(curve_date) for sid in ("DGS10", "DGS2", "DGS3MO")
           if curve_date and curve_fred.get(sid)}
@@ -262,6 +271,7 @@ async def get_rates_data() -> Dict[str, Any]:
             "US": {
                 "country": "US",
                 "points": curve_points,
+                "history": curve_history or None,
                 "spread2s10s": round(spread_2s10s, 1),
                 "spread3m10y": round(spread_3m10y, 1),
                 "spread5s30s": round(spread_5s30s, 1) if spread_5s30s is not None else None,

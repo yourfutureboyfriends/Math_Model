@@ -24,6 +24,7 @@ interface YieldCurveData {
   realYield10y?: number;
   shape: string;
   recessionProb?: number;
+  history?: Record<string, { date: string; points: YieldPoint[] }> | null;
 }
 
 interface FixedIncomeData {
@@ -54,7 +55,12 @@ const KEY_TENORS = new Set([0.25, 2, 10, 30]);
 
 /** Yield curve in real pixels: sqrt maturity axis (short end readable), y-axis fitted to the
  *  data in 25/50bp steps, labels at key tenors, hover readout for any point. */
-function CurveChart({ points }: { points: YieldPoint[] }) {
+const PAST_STYLE: Record<string, { color: string; dash: string; width: number }> = {
+  '1M ago': { color: '#9aa4b2', dash: '5 4', width: 1.5 },
+  '1Y ago': { color: '#5b6270', dash: '2 3', width: 1.25 },
+};
+
+function CurveChart({ points, history }: { points: YieldPoint[]; history?: Record<string, { date: string; points: YieldPoint[] }> | null }) {
   const ref = useRef<HTMLDivElement>(null);
   const [W, setW] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
@@ -68,7 +74,8 @@ function CurveChart({ points }: { points: YieldPoint[] }) {
   }, []);
 
   const H = 200, L = 46, R = 16, T = 18, B = 24;
-  const ys = points.map((p) => p.yield);
+  const past = Object.entries(history ?? {});
+  const ys = [...points, ...past.flatMap(([, h]) => h.points)].map((p) => p.yield);
   const span = Math.max(...ys) - Math.min(...ys);
   const step = span > 2 ? 0.5 : span > 0.8 ? 0.25 : 0.1;
   const lo = Math.floor((Math.min(...ys) - step * 0.3) / step) * step;
@@ -103,6 +110,11 @@ function CurveChart({ points }: { points: YieldPoint[] }) {
           {xl.map((p) => (
             <text key={p.tenor} x={sx(p.tenor)} y={H - 7} fontSize={10} textAnchor="middle" fill="var(--text-tertiary)" className="font-mono">{tenorLabel(p.tenor)}</text>
           ))}
+          {past.map(([label, h]) => (
+            <path key={label} d={h.points.map((p, i) => `${i ? 'L' : 'M'}${sx(p.tenor).toFixed(1)},${sy(p.yield).toFixed(1)}`).join('')}
+              fill="none" stroke={PAST_STYLE[label]?.color ?? '#6b7280'} strokeWidth={PAST_STYLE[label]?.width ?? 1.25}
+              strokeDasharray={PAST_STYLE[label]?.dash ?? '4 3'} strokeLinejoin="round" />
+          ))}
           <path d={points.map((p, i) => `${i ? 'L' : 'M'}${sx(p.tenor).toFixed(1)},${sy(p.yield).toFixed(1)}`).join('')}
             fill="none" stroke="var(--bloomberg)" strokeWidth={2} strokeLinejoin="round" />
           {points.map((p, i) => (
@@ -120,6 +132,22 @@ function CurveChart({ points }: { points: YieldPoint[] }) {
         <div className="pointer-events-none absolute top-0 px-2 py-1 bg-surface-3/95 border border-border text-2xs font-mono shadow-lg"
           style={sx(hp.tenor) > W * 0.6 ? { right: W - sx(hp.tenor) + 8 } : { left: sx(hp.tenor) + 8 }}>
           <span className="text-text-tertiary">{tenorLabel(hp.tenor)}</span> <span className="text-text-primary">{hp.yield.toFixed(2)}%</span>
+          {past.map(([label, h]) => {
+            const q = h.points.find((x) => Math.abs(x.tenor - hp.tenor) < 1e-6);
+            if (!q) return null;
+            const d = Math.round((hp.yield - q.yield) * 100);
+            return <div key={label} className="text-text-tertiary">vs {label}: <span className={d >= 0 ? 'text-red' : 'text-green'}>{d >= 0 ? '+' : ''}{d}bp</span></div>;
+          })}
+        </div>
+      )}
+      {past.length > 0 && W > 0 && (
+        <div className="absolute top-0 right-4 flex gap-3 text-[10px] text-text-tertiary pointer-events-none">
+          <span className="flex items-center gap-1"><span className="inline-block w-4 h-0.5 bg-bloomberg" />Today</span>
+          {past.map(([label, h]) => (
+            <span key={label} className="flex items-center gap-1" title={h.date}>
+              <svg width="16" height="4"><line x1="0" x2="16" y1="2" y2="2" stroke={PAST_STYLE[label]?.color} strokeWidth={1.5} strokeDasharray={PAST_STYLE[label]?.dash} /></svg>{label}
+            </span>
+          ))}
         </div>
       )}
     </div>
@@ -164,7 +192,7 @@ export function YieldCurveSection() {
         {/* Yield Curve Chart */}
         <div className="border border-border-subtle bg-surface-2 p-3">
           {curve && curve.points.length >= 2
-            ? <CurveChart points={curve.points} />
+            ? <CurveChart points={curve.points} history={curve.history} />
             : <div className="h-40 flex items-center justify-center text-2xs text-text-tertiary">No curve data for {selectedCountry}</div>}
           {curve && <div className="mt-1 text-[10px] text-text-tertiary">{(curve as any).source}</div>}
         </div>

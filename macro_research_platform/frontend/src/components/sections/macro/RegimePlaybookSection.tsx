@@ -1,7 +1,9 @@
 // Regime Playbook — Tactical Allocation Guide
 // Shows regime-specific recommendations: asset bias, factor preferences, risk guidelines
 
+import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
+import { HeatGrid } from '@/components/ui/HeatGrid';
 import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 import { TrendingUp, TrendingDown, Minus, Target, AlertTriangle, Clock, History } from 'lucide-react';
@@ -200,6 +202,20 @@ const DEFAULT_PLAYBOOKS: Record<string, RegimePlaybookData> = {
 export function RegimePlaybookSection({ data, currentRegime }: Props) {
   const storeRegime = useMacroStore((s) => s.regime);
   const fullDash = useMacroStore((s) => s.fullDashboard);
+  // Real history: annualised mean return of each asset class in each regime, from the
+  // systematic macro model (monthly data since the 1980s) — not hand-entered figures.
+  const [hist, setHist] = useState<{ assets: string[]; regimes: string[]; returns: Record<string, Record<string, number>>; months: Record<string, number> } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/v1/model').then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (cancelled || !j?.expected_returns) return;
+      const assets = Object.keys(j.expected_returns);
+      const regimes = Object.keys(j.expected_returns[assets[0]]?.by_regime ?? {});
+      setHist({ assets, regimes, returns: Object.fromEntries(assets.map((a) => [a, j.expected_returns[a].by_regime])),
+                months: j.regime?.observations_per_regime ?? {} });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // Resolve regime name: prop > store
   const resolvedRegime = currentRegime || storeRegime.current || '';
@@ -215,8 +231,7 @@ export function RegimePlaybookSection({ data, currentRegime }: Props) {
     data ||
     (backendPlaybook?.assetAllocation ? backendPlaybook : null) ||
     DEFAULT_PLAYBOOKS[regimeKey] ||
-    DEFAULT_PLAYBOOKS['Goldilocks'] ||
-    null;
+    null;                      // unknown regime → say so, never another regime's playbook
 
   if (!playbook) {
     return (
@@ -376,47 +391,37 @@ export function RegimePlaybookSection({ data, currentRegime }: Props) {
         </Card>
       </div>
 
-      {/* Historical Performance */}
+      {/* Historical performance — computed, not hand-entered */}
       <div className="mt-4 p-4 border border-border bg-surface-1">
         <div className="flex items-center gap-2 mb-3">
           <History className="w-4 h-4 text-text-secondary" />
-          <span className="text-sm font-medium text-text-secondary">HISTORICAL PERFORMANCE IN {playbook.regime.toUpperCase()}</span>
+          <span className="text-sm font-medium text-text-secondary">HISTORICAL RETURNS BY REGIME</span>
+          <span className="text-2xs text-text-tertiary">annualised mean, monthly data — systematic macro model</span>
         </div>
-        <div className="grid grid-cols-5 gap-4 text-center">
-          <div>
-            <div className="text-2xs text-text-tertiary uppercase">Avg Return</div>
-            <div className={cn(
-              'font-mono text-lg font-bold',
-              playbook.historicalPerformance.avgReturn >= 0 ? 'text-green' : 'text-red'
-            )}>
-              {playbook.historicalPerformance.avgReturn > 0 ? '+' : ''}{playbook.historicalPerformance.avgReturn}%
-            </div>
-          </div>
-          <div>
-            <div className="text-2xs text-text-tertiary uppercase">Win Rate</div>
-            <div className="font-mono text-lg font-bold text-text-primary">
-              {playbook.historicalPerformance.winRate}%
-            </div>
-          </div>
-          <div>
-            <div className="text-2xs text-text-tertiary uppercase">Avg Duration</div>
-            <div className="font-mono text-lg font-bold text-text-primary">
-              {playbook.historicalPerformance.avgDuration}mo
-            </div>
-          </div>
-          <div>
-            <div className="text-2xs text-text-tertiary uppercase">Best Asset</div>
-            <div className="font-mono text-sm font-bold text-green">
-              {playbook.historicalPerformance.bestAsset}
-            </div>
-          </div>
-          <div>
-            <div className="text-2xs text-text-tertiary uppercase">Worst Asset</div>
-            <div className="font-mono text-sm font-bold text-red">
-              {playbook.historicalPerformance.worstAsset}
-            </div>
-          </div>
-        </div>
+        {hist ? (() => {
+          const col = hist.regimes.find((r) => r.toLowerCase().startsWith(playbook.regime.toLowerCase().slice(0, 5)))
+            ?? (playbook.regime === 'Slowdown' ? hist.regimes.find((r) => r.toLowerCase().includes('slowdown')) : undefined);
+          const ranked = col ? [...hist.assets].sort((a, b) => hist.returns[b][col] - hist.returns[a][col]) : [];
+          return (
+            <>
+              {col && (
+                <div className="grid grid-cols-3 gap-4 text-center mb-3">
+                  <div><div className="text-2xs text-text-tertiary uppercase">History in this regime</div>
+                    <div className="font-mono text-lg font-bold text-text-primary">{hist.months[col] ?? '—'} months</div></div>
+                  <div><div className="text-2xs text-text-tertiary uppercase">Best asset</div>
+                    <div className="font-mono text-sm font-bold text-green">{ranked[0]} {(hist.returns[ranked[0]][col] * 100).toFixed(1)}%</div></div>
+                  <div><div className="text-2xs text-text-tertiary uppercase">Worst asset</div>
+                    <div className="font-mono text-sm font-bold text-red">{ranked[ranked.length - 1]} {(hist.returns[ranked[ranked.length - 1]][col] * 100).toFixed(1)}%</div></div>
+                </div>
+              )}
+              <HeatGrid labelWidth="10rem" fmt={(v) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`}
+                columns={hist.regimes.map((r) => (r === col ? `▸ ${r}` : r))}
+                rows={(col ? ranked : hist.assets).map((a) => ({ label: a, values: hist.regimes.map((r) => hist.returns[a][r] ?? null) }))} />
+              {!col && <div className="text-2xs text-text-tertiary mt-2">The macro model has no {playbook.regime} regime; all four of its regimes are shown.</div>}
+            </>
+          );
+        })() : <div className="text-xs text-text-tertiary">Loading historical returns…</div>}
+        <div className="text-[10px] text-text-tertiary mt-2">The allocation, factor and risk guidance above are rules of thumb for the regime; the returns here are measured history.</div>
       </div>
     </section>
   );

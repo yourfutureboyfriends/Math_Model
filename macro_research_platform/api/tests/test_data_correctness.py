@@ -121,3 +121,12 @@ def test_us_curve_points_share_one_date():
     assert us_curve_date(fred) == "2026-10-02"
     pts = {p["tenor"]: p["yield"] for p in us_curve_points(fred)}
     assert pts[10] == 5.28 and pts[2] == 4.83
+
+
+def test_us_curve_points_as_of_a_past_date():
+    from api.handlers.dashboard_sections import us_curve_points
+    from api.handlers.macro_inputs import DatedSeries
+    fred = {"DGS2": DatedSeries("DGS2", ["2025-09-30", "2025-10-01", "2026-10-02"], [3.8, 3.9, 4.83]),
+            "DGS10": DatedSeries("DGS10", ["2025-09-30", "2025-10-01", "2026-10-02"], [4.1, 4.2, 5.28])}
+    pts = {p["tenor"]: p["yield"] for p in us_curve_points(fred, "2025-10-01")}
+    assert pts == {2: 3.9, 10: 4.2}

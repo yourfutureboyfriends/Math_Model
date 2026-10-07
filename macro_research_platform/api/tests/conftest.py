@@ -22,6 +22,8 @@ def _isolated_dashboard_snapshot(tmp_path_factory):
     mp.setattr(dh, "_SNAPSHOT_DIR", tmp_path_factory.mktemp("dash_snapshot"))
     from api import data_freshness as dfr
     mp.setattr(dfr, "_FRESHNESS_SNAPSHOT", tmp_path_factory.mktemp("fresh_snapshot") / "freshness.json")
+    from api.model import engine as me
+    mp.setattr(me, "_SNAPSHOT_DIR", tmp_path_factory.mktemp("model_snapshot"))
     yield
     mp.undo()
 

@@ -1325,6 +1325,8 @@ class YieldCurveData(BaseModel):
     recessionProb: Optional[float] = None
     asOf: Optional[Dict[str, str]] = None   # observation date per tenor (monthly OECD data)
     source: Optional[str] = None
+    # The same curve at earlier dates, e.g. {"1M ago": {"date": ..., "points": [...]}}
+    history: Optional[Dict[str, Dict[str, Any]]] = None
 
 
 class CreditSpread(BaseModel):
