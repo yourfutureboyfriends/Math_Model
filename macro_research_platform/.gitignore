@@ -130,6 +130,7 @@ backups/
 *.db
 *.db-journal
 *.db-wal
+*.db-shm
 
 # =============================================================================
 # Dynamic Port Detection (generated at runtime)
