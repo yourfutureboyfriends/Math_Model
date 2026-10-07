@@ -8,6 +8,7 @@
  * stopped updating in early 2025.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { BarList } from '@/components/ui/BarList';
 import { Globe, RefreshCw } from 'lucide-react';
 
 type Cell = { value: number | null; period: string | null; source: string; state: string; status: string;
@@ -132,6 +133,23 @@ export function RegionalMacroSection() {
               ))}
             </div>
           </div>
+
+          {tab === 'macro' && rows.some((e) => e.real_policy_rate != null) && (
+            <div className="grid gap-2 lg:grid-cols-2">
+              <div className="p-3 bg-surface-1 border border-border">
+                <BarList title="Real policy rate (policy − CPI): positive = restrictive" diverging labelWidth="7.5rem"
+                  fmt={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`}
+                  data={rows.filter((e) => e.real_policy_rate != null).sort((a, b) => (b.real_policy_rate ?? 0) - (a.real_policy_rate ?? 0))
+                    .map((e) => ({ label: e.name, value: e.real_policy_rate, sub: e.cb }))} />
+              </div>
+              <div className="p-3 bg-surface-1 border border-border">
+                <BarList title="Inflation vs target (CPI − target): positive = above target" diverging labelWidth="7.5rem"
+                  posColor="#e66767" negColor="#3987e5" fmt={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}pp`}
+                  data={rows.filter((e) => e.inflation_gap != null).sort((a, b) => (b.inflation_gap ?? 0) - (a.inflation_gap ?? 0))
+                    .map((e) => ({ label: e.name, value: e.inflation_gap }))} />
+              </div>
+            </div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full text-xs font-mono tabular-nums">

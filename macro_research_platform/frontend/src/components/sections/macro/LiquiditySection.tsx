@@ -2,6 +2,7 @@
 // Liquidity conditions with terminal aesthetic
 
 import { Droplets, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Donut } from '@/components/ui/Donut';
 import { ComputedTag } from '@/components/ui/ComputedTag';
 import type { LiquidityConditionsData } from '@/types';
 import { useMacroStore } from '@/store/macroStore';
@@ -88,6 +89,12 @@ export function LiquiditySection({ data }: LiquiditySectionProps) {
         </div>
 
         {/* Indicators Grid */}
+        {indicators.filter((x: any) => x.weight != null).length > 1 && (
+          <div className="p-3 bg-surface-1 border border-border mb-2">
+            <Donut title="What drives the liquidity score (component weights)" fmt={(v) => `${(v * 100).toFixed(0)}%`}
+              data={indicators.filter((x: any) => x.weight != null).map((x: any) => ({ label: x.name, value: Math.abs(x.weight), sub: x.formatted }))} />
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {indicators.map((indicator: any) => (
             <div key={indicator.name} className="p-2 bg-surface-1 border border-border">

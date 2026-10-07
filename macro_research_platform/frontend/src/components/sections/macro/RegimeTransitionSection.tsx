@@ -2,6 +2,7 @@
 // Historical regime transition analysis with terminal aesthetic
 
 import { Shuffle, ArrowRight, BarChart3, Target } from 'lucide-react';
+import { HeatGrid } from '@/components/ui/HeatGrid';
 import { useMacroStore } from '@/store/macroStore';
 
 interface RegimeTransitionSectionProps {
@@ -158,47 +159,13 @@ interface TransitionMatrixGridProps {
 
 function TransitionMatrixGrid({ matrix, current }: TransitionMatrixGridProps) {
   const regimes = Object.keys(matrix);
-
+  // Rows = from, columns = to; probability per cell (one hue, intensity ∝ probability).
   return (
-    <table className="w-full text-xs">
-      <thead>
-        <tr>
-          <th className="p-1.5 text-left text-2xs text-text-tertiary">From / To</th>
-          {regimes.map((r) => (
-            <th key={r} className="p-1.5 text-center text-2xs text-text-tertiary">
-              {r.slice(0, 4)}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {regimes.map((from) => (
-          <tr key={from} className={from === current ? 'bg-bloomberg-dim' : ''}>
-            <td className="p-1.5 font-medium text-text-primary">{from.slice(0, 8)}</td>
-            {regimes.map((to) => {
-              const prob = matrix[from]?.[to] || 0;
-              return (
-                <td key={to} className="p-1.5 text-center">
-                  <div
-                    className="py-0.5 px-1 font-mono text-2xs"
-                    style={{
-                      backgroundColor:
-                        prob > 0.5
-                          ? 'rgba(0, 212, 170, 0.3)'
-                          : prob > 0.2
-                            ? 'rgba(0, 212, 170, 0.1)'
-                            : 'transparent',
-                      color: prob > 0.3 ? 'var(--bloomberg)' : 'var(--text-tertiary)',
-                    }}
-                  >
-                    {(prob * 100).toFixed(0)}%
-                  </div>
-                </td>
-              );
-            })}
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <HeatGrid columns={regimes.map((r) => `→ ${r}`)} scale={1} labelWidth="8rem"
+      fmt={(v) => `${(v * 100).toFixed(0)}%`}
+      rows={regimes.map((from) => ({
+        label: from, sub: from === current ? 'current' : undefined, highlight: from === current,
+        values: regimes.map((to) => (typeof matrix[from]?.[to] === 'number' ? matrix[from][to] : null)),
+      }))} />
   );
 }

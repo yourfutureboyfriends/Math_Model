@@ -68,12 +68,13 @@ export function AdvancedIndicatorsSection({ data }: AdvancedIndicatorsSectionPro
   const indicators = rawIndicators
     .filter(([, v]) => v)
     .map(([name, v]) => {
-      const status = v.status ?? v.signal ?? v.regime ?? 'Neutral';
+      const status = v.status ?? v.signal ?? v.regime ?? 'n/a';      // never an invented 'Neutral'
       let value: any = v.value;
       let description: string = v.description ?? '';
       if (name === 'Risk Parity' && v.allocations) {
         const a = v.allocations;
-        value = `S${Math.round((a.stocks ?? 0) * 100)}/B${Math.round((a.bonds ?? 0) * 100)}/C${Math.round((a.commodities ?? 0) * 100)}`;
+        const pc = (x: any) => (typeof x === 'number' ? Math.round(x * 100) : '—');
+        value = `S${pc(a.stocks)}/B${pc(a.bonds)}/C${pc(a.commodities)}`;
         description = description || `Regime: ${v.regime ?? '—'}`;
       }
       const trend = v.trend ?? (typeof v.change === 'number'
@@ -93,7 +94,7 @@ export function AdvancedIndicatorsSection({ data }: AdvancedIndicatorsSectionPro
       </div>
 
       {/* 2x2 Grid */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {indicators.map(({ key, data: indicator }) => (
           <div
             key={key}

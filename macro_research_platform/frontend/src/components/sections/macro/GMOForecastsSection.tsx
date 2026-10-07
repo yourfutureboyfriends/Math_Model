@@ -37,19 +37,23 @@ export function GMOForecastsSection({ data: dataProp }: GMOForecastsSectionProps
   const signalFor = (r: number) =>
     r >= 8 ? 'STRONG BUY' : r >= 5 ? 'BUY' : r >= 2 ? 'NEUTRAL' : r >= 0 ? 'AVOID' : 'STRONG AVOID';
   const forecasts = (anyData.forecasts ?? []).map((f: any) => {
-    const ret = f.totalExpectedReturn ?? f.expectedReturn ?? 0;
+    const ret: number | null = f.totalExpectedReturn ?? f.expectedReturn ?? null;   // missing stays missing
     return {
       ticker: f.ticker ?? f.assetClass,
       assetClass: f.assetClass,
       totalExpectedReturn: ret,
-      signal: f.signal ?? signalFor(ret),
+      signal: f.signal ?? (ret == null ? 'N/A' : signalFor(ret)),
+      components: (f.components ?? {}) as Record<string, number>,
       gmoNote: f.gmoNote ?? (f.volatility != null
         ? `Vol ${Number(f.volatility).toFixed(1)}%${f.sharpeRatio != null ? ` · Sharpe ${Number(f.sharpeRatio).toFixed(2)}` : ''}`
         : ''),
     };
   });
   const summary = anyData.summary ?? {
-    avgExpectedReturn: forecasts.length ? forecasts.reduce((s: number, f: any) => s + f.totalExpectedReturn, 0) / forecasts.length : 0,
+    avgExpectedReturn: (() => {
+      const xs = forecasts.map((f: any) => f.totalExpectedReturn).filter((x: any) => typeof x === 'number');
+      return xs.length ? xs.reduce((a: number, b: number) => a + b, 0) / xs.length : null;
+    })(),
     strongBuy: forecasts.filter((f: any) => f.signal === 'STRONG BUY').length,
     buy: forecasts.filter((f: any) => f.signal === 'BUY').length,
     neutral: forecasts.filter((f: any) => f.signal === 'NEUTRAL').length,
@@ -60,10 +64,13 @@ export function GMOForecastsSection({ data: dataProp }: GMOForecastsSectionProps
 
   // Sort by expected return descending
   const sortedForecasts = [...forecasts].sort(
-    (a, b) => (b.totalExpectedReturn || 0) - (a.totalExpectedReturn || 0)
+    (a, b) => (b.totalExpectedReturn ?? -1e9) - (a.totalExpectedReturn ?? -1e9)
   );
 
-  const maxReturn = Math.max(...sortedForecasts.map((f) => Math.abs(f.totalExpectedReturn || 0)), 1);
+  const maxReturn = Math.max(...sortedForecasts.map((f) => Math.abs(f.totalExpectedReturn ?? 0)), 1);
+  const COMPONENT_COLORS: Record<string, string> = { earnings_yield: '#3987e5', inflation: '#c98500', yield: '#199e70', current_yield: '#199e70', growth: '#d55181', valuation: '#9085e9' };
+  const componentLabel = (k: string) => k.replace(/_/g, ' ');
+  const componentKeys = Array.from(new Set(forecasts.flatMap((f: any) => Object.keys(f.components ?? {})))) as string[];
 
   return (
     <div id="gmo-forecasts" className="terminal-section">
@@ -93,9 +100,18 @@ export function GMOForecastsSection({ data: dataProp }: GMOForecastsSectionProps
             <span className="text-xs text-text-secondary">Average Expected Return</span>
           </div>
           <div className="font-mono text-sm text-text-primary">
-            {summary?.avgExpectedReturn > 0 ? '+' : ''}{summary?.avgExpectedReturn?.toFixed(1) || '0.0'}%
+            {summary?.avgExpectedReturn == null ? '—' : `${summary.avgExpectedReturn > 0 ? '+' : ''}${summary.avgExpectedReturn.toFixed(1)}%`}
           </div>
         </div>
+
+        {componentKeys.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3 text-[10px] text-text-tertiary px-1">
+            <span>Building blocks:</span>
+            {componentKeys.map((k) => (
+              <span key={k} className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-sm" style={{ background: COMPONENT_COLORS[k] ?? '#6b7280' }} />{componentLabel(k)}</span>
+            ))}
+          </div>
+        )}
 
         {/* Forecast table */}
         <div className="border border-border bg-surface-1 overflow-hidden">
@@ -109,10 +125,8 @@ export function GMOForecastsSection({ data: dataProp }: GMOForecastsSectionProps
             </thead>
             <tbody>
               {sortedForecasts.map((forecast) => {
-                const return_pct = forecast.totalExpectedReturn || 0;
-                const bar_width = Math.min(100, (Math.abs(return_pct) / Math.max(maxReturn, 8)) * 100);
-                const is_positive = return_pct >= 0;
-
+                const return_pct: number | null = forecast.totalExpectedReturn;
+                const comps = Object.entries(forecast.components ?? {}).filter(([, v]) => typeof v === 'number' && (v as number) > 0) as [string, number][];
                 return (
                   <tr key={forecast.ticker} className="border-b border-border-subtle last:border-0">
                     <td className="py-2 px-3">
@@ -129,25 +143,24 @@ export function GMOForecastsSection({ data: dataProp }: GMOForecastsSectionProps
                     </td>
                     <td className="py-2 px-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-16 h-1 bg-surface-4 relative">
-                          <div
-                            className={`absolute top-0 bottom-0 ${is_positive ? 'bg-green right-1/2' : 'bg-red left-1/2'}`}
-                            style={{
-                              width: `${bar_width / 2}%`,
-                              [is_positive ? 'right' : 'left']: '50%'
-                            }}
-                          />
-                          <div className="absolute top-0 bottom-0 left-1/2 w-px bg-text-tertiary/30" />
+                        {/* Building blocks stacked to the total (scale shared across assets) */}
+                        <div className="w-32 h-2 bg-surface-3 flex overflow-hidden rounded-sm" aria-hidden="true"
+                          title={comps.map(([k, v]) => `${componentLabel(k)} ${v.toFixed(1)}%`).join(' + ')}>
+                          {comps.length > 0
+                            ? comps.map(([k, v]) => (
+                                <div key={k} style={{ width: `${(v / Math.max(maxReturn, 8)) * 100}%`, background: COMPONENT_COLORS[k] ?? '#6b7280' }} />
+                              ))
+                            : return_pct != null && return_pct > 0 && <div style={{ width: `${(return_pct / Math.max(maxReturn, 8)) * 100}%`, background: '#199e70' }} />}
                         </div>
-                        <span className={`font-mono text-sm ${is_positive ? 'text-green' : 'text-red'}`}>
-                          {return_pct > 0 ? '+' : ''}{return_pct.toFixed(1)}%
+                        <span className={`font-mono text-sm ${return_pct == null ? 'text-text-tertiary' : return_pct >= 0 ? 'text-green' : 'text-red'}`}>
+                          {return_pct == null ? '—' : `${return_pct > 0 ? '+' : ''}${return_pct.toFixed(1)}%`}
                         </span>
                       </div>
                       <p className="text-2xs text-text-secondary mt-1">{forecast.gmoNote}</p>
                     </td>
                     <td className="py-2 px-3 text-center">
                       <span className={getSignalTag(forecast.signal)}>
-                        {forecast.signal.replace('STRONG ', 'S-')}
+                        {String(forecast.signal).replace('STRONG ', 'S-')}
                       </span>
                     </td>
                   </tr>
