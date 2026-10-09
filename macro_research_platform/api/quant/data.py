@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 CACHE = Path(__file__).resolve().parent.parent.parent / "data" / "processed" / "quant" / "ohlcv"
 MAX_AGE_S = 18 * 3600
 MAX_SYMBOLS = 80
-_SYMBOL = re.compile(r"^[A-Z0-9][A-Z0-9.\-^=]{0,14}$")
+_SYMBOL = re.compile(r"^\^?[A-Z0-9][A-Z0-9.\-^=]{0,14}$")
 _lock = threading.Lock()
 
 PRESETS: Dict[str, Dict] = {

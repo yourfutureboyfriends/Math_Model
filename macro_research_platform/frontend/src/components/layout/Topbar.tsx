@@ -3,6 +3,7 @@
 // Row 2: Market ticker strip
 
 import { setHubMode, useHubMode } from '@/lib/hubMode';
+import { DAY_END, DAY_START, setThemeSetting, useTheme, type ThemeSetting } from '@/lib/theme';
 import { useState, useEffect, useMemo } from 'react';
 import { Download, Maximize, AlertTriangle, LayoutGrid, RefreshCw, FunctionSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -169,6 +170,20 @@ const FN_KEYS = [
   { n: 'F7', label: 'SYSTEM',    section: 'system-health' },
 ];
 
+function ThemeToggle() {
+  const { setting, theme } = useTheme();
+  const next: Record<ThemeSetting, ThemeSetting> = { auto: 'light', light: 'dark', dark: 'auto' };
+  const label = setting === 'auto' ? `Auto (${theme})` : setting === 'light' ? 'Light' : 'Dark';
+  return (
+    <button onClick={() => setThemeSetting(next[setting])} aria-label={`Theme: ${label}. Click to change.`}
+      title={`Theme: ${label}. Auto = light ${String(DAY_START).padStart(2, '0')}:00–${DAY_END}:00 your time, dark otherwise. Click to cycle Auto → Light → Dark.`}
+      className="h-6 px-1.5 inline-flex items-center gap-1 border border-border text-[10px] font-mono uppercase text-text-tertiary hover:text-text-primary shrink-0">
+      <span aria-hidden="true">{theme === 'light' ? '☀' : '☾'}</span>
+      <span className="hidden md:inline">{setting === 'auto' ? 'Auto' : setting}</span>
+    </button>
+  );
+}
+
 function ModeSwitch() {
   const mode = useHubMode();
   return (
@@ -301,6 +316,7 @@ export function Topbar({
             TERMINAL
           </span>
           <ModeSwitch />
+          <ThemeToggle />
         </div>
 
         <div className="topbar-divider" />

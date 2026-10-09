@@ -1317,6 +1317,11 @@ async def lifespan(app: FastAPI):
         )
         logger.info("[STARTUP] Scheduled macro_trader_run at 22:35 UTC weekdays")
 
+        # Markets price alerts: evaluated every 5 minutes for all users.
+        from api.marketdata.usertools import check_alerts as _check_alerts
+        _scheduler.add_job(func=_check_alerts, trigger="interval", minutes=5, id="mkt_price_alerts", replace_existing=True)
+        logger.info("[STARTUP] Scheduled mkt_price_alerts every 5 minutes")
+
         # Catch-up: cron jobs only fire while the process is up, so a backend that was down
         # at 06:00 UTC left the CSV stale until the next day. If it is over 24h old, run the
         # pipeline once, a few minutes after startup (after the warm-up's FRED requests).

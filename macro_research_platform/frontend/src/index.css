@@ -2,6 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══ THEME CHANNELS (lib/theme.ts sets data-theme on <html>) ═══════════════════
+   Colours are "R G B" channels so Tailwind opacity modifiers (bg-bloomberg/50) work. */
+:root, :root[data-theme="dark"] {
+  --c-bg: 6 9 12;
+  --c-surface-1: 13 17 23;
+  --c-surface-2: 19 25 32;
+  --c-surface-3: 26 34 48;
+  --c-surface-4: 30 39 54;
+  --c-border: 30 45 61;
+  --c-border-subtle: 21 31 46;
+  --c-border-strong: 42 63 85;
+  --c-text-primary: 232 237 242;
+  --c-text-secondary: 136 149 164;
+  --c-text-tertiary: 106 118 134;
+  --c-text-inverse: 9 12 15;
+  --c-bloomberg: 240 112 48;
+  --c-green: 34 197 94;
+  --c-red: 239 68 68;
+  --c-amber: 245 158 11;
+  --c-blue: 59 130 246;
+  --c-purple: 168 85 247;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --c-bg: 243 245 248;
+  --c-surface-1: 255 255 255;
+  --c-surface-2: 247 248 250;
+  --c-surface-3: 236 239 243;
+  --c-surface-4: 226 231 237;
+  --c-border: 214 220 228;
+  --c-border-subtle: 230 234 239;
+  --c-border-strong: 176 186 199;
+  --c-text-primary: 15 23 42;
+  --c-text-secondary: 71 85 105;
+  --c-text-tertiary: 100 113 130;
+  --c-text-inverse: 255 255 255;
+  --c-bloomberg: 200 80 18;
+  --c-green: 21 128 61;
+  --c-red: 200 30 30;
+  --c-amber: 161 98 7;
+  --c-blue: 29 78 216;
+  --c-purple: 109 40 217;
+  color-scheme: light;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════════
    TERMINAL DESIGN TOKENS — Institutional Trading Terminal
    Bloomberg Terminal × Linear × Vercel Dashboard
@@ -45,23 +90,23 @@
   /* ═══════════════════════════════════════════════════════════════════════════════
      BLOOMBERG ORANGE — primary terminal accent
      ═══════════════════════════════════════════════════════════════════════════════ */
-  --bloomberg:        #f07030;
-  --bloomberg-dim:    rgba(240, 112, 48, 0.15);
-  --bloomberg-muted:  rgba(240, 112, 48, 0.08);
-  --bloomberg-border: rgba(240, 112, 48, 0.30);
+  --bloomberg:        rgb(var(--c-bloomberg));
+  --bloomberg-dim:    rgb(var(--c-bloomberg) / 0.15);
+  --bloomberg-muted:  rgb(var(--c-bloomberg) / 0.08);
+  --bloomberg-border: rgb(var(--c-bloomberg) / 0.30);
   --bloomberg-hover:  rgba(240, 112, 48, 0.20);
 
   /* ═══════════════════════════════════════════════════════════════════════════════
      SURFACES — preserve teal, add amber palette
      ═══════════════════════════════════════════════════════════════════════════════ */
-  --bg:              #06090c;
-  --surface-1:       #0d1117;
-  --surface-2:       #131920;
-  --surface-3:       #1a2230;
-  --surface-4:       #1e2736;
-  --border:          #1e2d3d;
-  --border-subtle:   #151f2e;
-  --border-strong:   #2a3f55;
+  --bg:              rgb(var(--c-bg));
+  --surface-1:       rgb(var(--c-surface-1));
+  --surface-2:       rgb(var(--c-surface-2));
+  --surface-3:       rgb(var(--c-surface-3));
+  --surface-4:       rgb(var(--c-surface-4));
+  --border:          rgb(var(--c-border));
+  --border-subtle:   rgb(var(--c-border-subtle));
+  --border-strong:   rgb(var(--c-border-strong));
 
   /* Amber Terminal colors — dual palette support */
   --color-bg:          #0a0a0a;
@@ -73,10 +118,10 @@
   --color-border-dim:  rgba(255,255,255,0.03);
 
   /* Text hierarchy */
-  --text-primary:    #e8edf2;
-  --text-secondary:  #8895a4;
-  --text-tertiary:   #4a5568;
-  --text-inverse:    #090c0f;
+  --text-primary:    rgb(var(--c-text-primary));
+  --text-secondary:  rgb(var(--c-text-secondary));
+  --text-tertiary:   rgb(var(--c-text-tertiary));
+  --text-inverse:    rgb(var(--c-text-inverse));
   --color-text:        #e8e6e1;
   --color-text-muted:  #7a7870;
   --color-text-faint:  #3d3d3a;
@@ -101,16 +146,16 @@
   --color-caution:     #f59e0b;
 
   /* Semantic colours */
-  --green:           #22c55e;
-  --green-dim:       rgba(34, 197, 94, 0.12);
-  --red:             #ef4444;
-  --red-dim:         rgba(239, 68, 68, 0.12);
-  --amber:           #f59e0b;
-  --amber-dim:       rgba(245, 158, 11, 0.12);
-  --blue:            #3b82f6;
-  --blue-dim:        rgba(59, 130, 246, 0.12);
-  --purple:          #a855f7;
-  --purple-dim:      rgba(168, 85, 247, 0.12);
+  --green:           rgb(var(--c-green));
+  --green-dim:       rgb(var(--c-green) / 0.12);
+  --red:             rgb(var(--c-red));
+  --red-dim:         rgb(var(--c-red) / 0.12);
+  --amber:           rgb(var(--c-amber));
+  --amber-dim:       rgb(var(--c-amber) / 0.12);
+  --blue:            rgb(var(--c-blue));
+  --blue-dim:        rgb(var(--c-blue) / 0.12);
+  --purple:          rgb(var(--c-purple));
+  --purple-dim:      rgb(var(--c-purple) / 0.12);
 
   /* Legacy aliases for compatibility */
   --terminal-bg: var(--bg);
@@ -812,14 +857,14 @@ button, a, [role="button"],
   .ticker-chg-pos {
     font-family: var(--font-data);
     font-size: 10px;
-    color: #22c55e;
+    color: rgb(var(--c-green));
     font-variant-numeric: tabular-nums;
   }
 
   .ticker-chg-neg {
     font-family: var(--font-data);
     font-size: 10px;
-    color: #ef4444;
+    color: rgb(var(--c-red));
     font-variant-numeric: tabular-nums;
   }
 
@@ -846,7 +891,7 @@ button, a, [role="button"],
   }
 
   .session-badge.open {
-    color: #22c55e;
+    color: rgb(var(--c-green));
     border-color: rgba(34, 197, 94, 0.30);
     background: rgba(34, 197, 94, 0.08);
   }

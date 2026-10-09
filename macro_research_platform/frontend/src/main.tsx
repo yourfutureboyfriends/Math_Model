@@ -4,6 +4,9 @@ import App from './App'
 import { AuthProvider } from './context/AuthContext'
 import { resolveApiBase } from './lib/apiPort'
 import './index.css'
+import { initTheme } from './lib/theme'
+
+initTheme()   // before first paint: no dark→light flash
 
 async function bootstrap() {
   // Resolve API port BEFORE mounting React

@@ -446,6 +446,25 @@ def usd_to_local(region: str) -> float:
         raise Upstream(f"FX rate for {ccy} unavailable: {e}")
 
 
+def to_usd(amount: Optional[float], ccy: Optional[str]) -> Optional[float]:
+    """Convert an amount in `ccy` to USD. Yahoo's `marketCap` for pence-quoted London lines
+    (GBp) is already in pounds, so GBp/GBX amounts are treated as GBP here."""
+    if amount is None or not ccy:
+        return None
+    major = "GBP" if ccy in ("GBp", "GBX") else ccy.upper()
+    if major == "USD":
+        return amount
+
+    def fetch():
+        import yfinance as yf
+        c = yf.download(f"{major}USD=X", period="5d", interval="1d", progress=False, auto_adjust=False)["Close"].dropna()
+        return float(c.iloc[-1].iloc[0] if hasattr(c.iloc[-1], "iloc") else c.iloc[-1])
+    try:
+        return amount * _cached(f"usdper:{major}", 3600, fetch)
+    except Exception:
+        return None
+
+
 def _is_secondary_line(symbol: str) -> bool:
     """LSE codes like 0YG8.L / 0MTP.L are foreign shares on London's international lines."""
     base, _, suffix = symbol.partition(".")

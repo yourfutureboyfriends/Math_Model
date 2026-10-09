@@ -90,6 +90,6 @@ export function ErrorBox({ msg }: { msg: string | null }) {
 }
 
 export const TYPE_COLOR: Record<string, string> = {
-  Stock: 'text-blue-400', ETF: 'text-emerald-400', Fund: 'text-teal-400', Index: 'text-amber', FX: 'text-sky-400',
-  Crypto: 'text-orange-400', Future: 'text-purple-400', Option: 'text-pink-400',
+  Stock: 'text-blue', ETF: 'text-green', Fund: 'text-green', Index: 'text-amber', FX: 'text-purple',
+  Crypto: 'text-bloomberg', Future: 'text-purple', Option: 'text-red',
 };

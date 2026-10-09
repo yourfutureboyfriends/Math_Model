@@ -7,59 +7,47 @@ import { cn } from '@/lib/utils';
 import { PriceChart } from '@/components/ui/PriceChart';
 import { Chg, ErrorBox, fmtBig, fmtPct, fmtPrice, Loading, Panel, TYPE_COLOR, useJSON } from './shared';
 
-const TABS = [['overview', 'Overview'], ['financials', 'Financials'], ['news', 'News & filings']] as const;
 
-export function TickerView({ symbol }: { symbol: string }) {
-  const [tab, setTab] = useState<(typeof TABS)[number][0]>('overview');
-  const q = useJSON<any>(`/api/v1/mkt/quote/${encodeURIComponent(symbol)}`, 60_000);
-  if (q.loading && !q.data) return <Loading label={`Loading ${symbol}…`} />;
-  if (q.error && !q.data) return <ErrorBox msg={q.error} />;
-  const d = q.data;
-  if (!d) return null;
-  const isEquity = d.type === 'Stock';
+export function useQuote(symbol: string) {
+  return useJSON<any>(`/api/v1/mkt/quote/${encodeURIComponent(symbol)}`, 60_000);
+}
+
+export function QuoteHeader({ d }: { d: any }) {
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold text-text-primary truncate">{d.name}</h1>
-            <span className={cn('text-2xs font-mono px-1.5 border border-border', TYPE_COLOR[d.type])}>{d.type}</span>
-          </div>
-          <div className="text-2xs text-text-tertiary font-mono">{d.symbol} · {d.exchange}{d.currency ? ` · ${d.currency}` : ''}
-            {d.market_state && <> · {d.market_state === 'REGULAR' ? <span className="text-green">market open</span> : d.market_state.toLowerCase()}</>}
-            {d.delay_minutes ? ` · ${d.delay_minutes}-min delayed` : ''}</div>
+    <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold text-text-primary truncate">{d.name}</h1>
+          <span className={cn('text-2xs font-mono px-1.5 py-0.5 border border-border', TYPE_COLOR[d.type])}>{d.type}</span>
         </div>
-        <div>
-          <div className="text-2xl font-mono text-text-primary tabular-nums">{fmtPrice(d.price, d.type)}</div>
-          <div className="text-xs font-mono">{d.change == null ? '—' : <span className={d.change >= 0 ? 'text-green' : 'text-red'}>{d.change >= 0 ? '+' : ''}{fmtPrice(d.change, d.type)}</span>} <Chg v={d.change_pct} /></div>
-        </div>
-        <dl className="grid grid-cols-3 sm:grid-cols-6 gap-x-4 gap-y-1 text-2xs">
-          {[['Open', fmtPrice(d.open, d.type)], ['Day range', d.day_low != null ? `${fmtPrice(d.day_low, d.type)}–${fmtPrice(d.day_high, d.type)}` : '—'],
-            ['52-wk range', d.week52_low != null ? `${fmtPrice(d.week52_low, d.type)}–${fmtPrice(d.week52_high, d.type)}` : '—'],
-            ['Volume', fmtBig(d.volume)], ['Avg volume', fmtBig(d.avg_volume)], ['Market cap', fmtBig(d.market_cap, d.currency)]].map(([k, v]) => (
-            <div key={k}><dt className="text-text-tertiary">{k}</dt><dd className="font-mono text-text-primary">{v}</dd></div>
-          ))}
-        </dl>
+        <div className="text-2xs text-text-tertiary font-mono mt-0.5">{d.symbol} · {d.exchange}{d.currency ? ` · ${d.currency}` : ''}
+          {d.market_state && <> · {d.market_state === 'REGULAR' ? <span className="text-green">market open</span> : d.market_state.toLowerCase()}</>}
+          {d.delay_minutes ? ` · ${d.delay_minutes}-min delayed` : ''}</div>
       </div>
-
-      <div className="bg-surface-1 border border-border p-2">
-        <PriceChart key={symbol} symbol={symbol} height={360} />
+      <div>
+        <div className="text-3xl font-mono text-text-primary tabular-nums leading-none">{fmtPrice(d.price, d.type)}</div>
+        <div className="text-sm font-mono mt-1">{d.change == null ? '—' : <span className={d.change >= 0 ? 'text-green' : 'text-red'}>{d.change >= 0 ? '+' : ''}{fmtPrice(d.change, d.type)}</span>} <Chg v={d.change_pct} /></div>
       </div>
-
-      <div className="flex border border-border w-fit" role="tablist" aria-label="Workstation">
-        {TABS.filter(([k]) => k !== 'financials' || isEquity).map(([k, l]) => (
-          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
-            className={cn('px-3 py-1 text-2xs', tab === k ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary')}>{l}</button>
+      <dl className="grid grid-cols-3 sm:grid-cols-6 gap-x-5 gap-y-1 text-2xs">
+        {[['Open', fmtPrice(d.open, d.type)], ['Day range', d.day_low != null ? `${fmtPrice(d.day_low, d.type)} – ${fmtPrice(d.day_high, d.type)}` : '—'],
+          ['52-week range', d.week52_low != null ? `${fmtPrice(d.week52_low, d.type)} – ${fmtPrice(d.week52_high, d.type)}` : '—'],
+          ['Volume', fmtBig(d.volume)], ['Avg volume', fmtBig(d.avg_volume)], ['Market cap', fmtBig(d.market_cap, d.currency)]].map(([k, v]) => (
+          <div key={k}><dt className="text-text-tertiary">{k}</dt><dd className="font-mono text-text-primary">{v}</dd></div>
         ))}
-      </div>
-      {tab === 'overview' && <Profile symbol={symbol} />}
-      {tab === 'financials' && isEquity && <Financials symbol={symbol} />}
-      {tab === 'news' && <News symbol={symbol} />}
+      </dl>
     </div>
   );
 }
 
-function Profile({ symbol }: { symbol: string }) {
+export function Chart({ symbol, height = 380 }: { symbol: string; height?: number }) {
+  return (
+    <div className="bg-surface-1 border border-border p-2">
+      <PriceChart key={symbol} symbol={symbol} height={height} />
+    </div>
+  );
+}
+
+export function Profile({ symbol }: { symbol: string }) {
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/profile/${encodeURIComponent(symbol)}`);
   if (loading && !data) return <Loading />;
   if (error) return <ErrorBox msg={error} />;
@@ -105,7 +93,7 @@ const ROWS: [string, string][] = [['revenue', 'Revenue'], ['gross_profit', 'Gros
   ['free_cash_flow', 'Free cash flow'], ['total_assets', 'Total assets'], ['total_liabilities', 'Total liabilities'], ['equity', 'Equity'],
   ['cash', 'Cash'], ['long_term_debt', 'Long-term debt']];
 
-function Financials({ symbol }: { symbol: string }) {
+export function Financials({ symbol }: { symbol: string }) {
   const [period, setPeriod] = useState<'annual' | 'quarterly'>('annual');
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/statements/${encodeURIComponent(symbol)}`);
   if (loading && !data) return <Loading label="Loading statements…" />;
@@ -164,7 +152,7 @@ function Financials({ symbol }: { symbol: string }) {
   );
 }
 
-function News({ symbol }: { symbol: string }) {
+export function News({ symbol }: { symbol: string }) {
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/news/${encodeURIComponent(symbol)}`, 900_000);
   if (loading && !data) return <Loading label="Loading news…" />;
   if (error) return <ErrorBox msg={error} />;
