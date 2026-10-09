@@ -168,3 +168,67 @@ def test_journal_pnl_and_stats(db):
     assert j["stats"]["closed"] == 2 and j["stats"]["win_rate"] == pytest.approx(0.5) and j["stats"]["open"] == 1
     with pytest.raises(ValueError):
         usertools.create_journal("ann", {"side": "sideways"})
+
+
+def test_dcf_stable_growth_wacc_converges_to_market_beta():
+    """Damodaran: in stable growth beta is bounded to 0.8–1.2, and the rate moves to it over the fade."""
+    from api.marketdata import dcf
+    lo = dcf.value(_inp(beta=0.3), growth=0.05, terminal_growth=0.03, years=10, erp=0.05)
+    a = lo["assumptions"]
+    assert a["beta_terminal"] == 0.8
+    assert a["discount_terminal"] > a["discount"]                  # low-beta firm: rate rises toward the market's
+    rates = [r["discount_rate"] for r in lo["projection"]]
+    assert rates[0] == pytest.approx(a["discount"]) and rates[-1] == pytest.approx(a["discount_terminal"])
+    assert all(b >= x - 1e-12 for x, b in zip(rates, rates[1:]))  # monotone fade
+    hi = dcf.value(_inp(beta=2.0), growth=0.05, terminal_growth=0.03, years=10, erp=0.05)["assumptions"]
+    assert hi["beta_terminal"] == 1.2 and hi["discount_terminal"] < hi["discount"]
+
+
+def test_dcf_growth_path_holds_analyst_years_then_fades_to_terminal():
+    from api.marketdata import dcf
+    v = dcf.value(_inp(growth=0.20, growth_y1=0.30), terminal_growth=0.04, years=10, discount=0.09)
+    g = [r["growth"] for r in v["projection"]]
+    assert g[0] == pytest.approx(0.30) and g[1] == pytest.approx(0.20) and g[2] == pytest.approx(0.20)
+    assert g[-1] == pytest.approx(0.04)
+    assert all(b <= a + 1e-12 for a, b in zip(g[2:], g[3:]))
+
+
+def test_dcf_terminal_growth_defaults_to_risk_free():
+    from api.marketdata import dcf
+    v = dcf.value(_inp(risk_free=0.045), years=10, erp=0.05)
+    assert v["assumptions"]["terminal_growth"] == pytest.approx(0.045)
+
+
+def test_dcf_bridge_adds_stakes_and_uses_industrial_debt_only():
+    from api.marketdata import dcf
+    base = dcf.value(_inp(), years=5, discount=0.09, terminal_growth=0.02)
+    more = dcf.value(_inp(investments=300.0, debt=400.0, captive_finance_receivables=600.0), years=5, discount=0.09, terminal_growth=0.02)
+    # +300 of stakes and 600 less debt → equity value up by exactly 900
+    assert more["equity_value"] - base["equity_value"] == pytest.approx(900.0)
+    assert more["bridge"]["investments"] == 300.0
+
+
+def test_dcf_converts_value_to_trading_currency_by_market_cap(monkeypatch):
+    """USD-reporting firm traded in pence: value per traded share scales with market cap, so
+    GBp units and ADR ratios come out right."""
+    from api.marketdata import dcf
+    monkeypatch.setattr(dcf, "to_usd", lambda amt, ccy: None if amt is None else amt * (1.25 if ccy in ("GBP", "GBp") else 1.0))
+    inp = _inp(currency="USD", price_currency="GBp", price=2000.0, market_cap=4000.0)    # cap in GBP, price in pence
+    v = dcf.value(inp, years=5, discount=0.09, terminal_growth=0.02)
+    expected = 2000.0 * v["equity_value"] / (4000.0 * 1.25)
+    assert v["per_share"] == pytest.approx(expected)
+    assert v["upside"] == pytest.approx(expected / 2000.0 - 1)
+
+
+def test_dcf_loss_maker_target_margin_from_industry():
+    from api.marketdata import dcf
+    v = dcf.value(_inp(ebit=-50.0, target_margin_default=0.18), years=10, discount=0.09, terminal_growth=0.02)
+    assert v["assumptions"]["target_margin"] == pytest.approx(0.18)
+    assert v["projection"][-1]["margin"] == pytest.approx(0.18)
+
+
+def test_damodaran_industry_map_covers_every_yahoo_industry():
+    from yfinance.const import SECTOR_INDUSTY_MAPPING
+    from api.providers.damodaran import YAHOO_TO_DAMODARAN
+    yahoo = {i for v in SECTOR_INDUSTY_MAPPING.values() for i in v}
+    assert yahoo <= set(YAHOO_TO_DAMODARAN)

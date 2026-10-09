@@ -152,7 +152,7 @@ async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le
                   terminal_growth: Optional[float] = Query(None, ge=-0.02, le=0.06), target_margin: Optional[float] = Query(None, ge=-1.0, le=0.9),
                   sales_to_capital: Optional[float] = Query(None, gt=0, le=20), ronic: Optional[float] = Query(None, gt=0, le=2.0),
                   discount: Optional[float] = Query(None, gt=0, lt=0.4), beta: Optional[float] = Query(None, ge=-1, le=5),
-                  erp: float = Query(0.042, ge=0, le=0.15), include_leases: bool = False, mid_year: bool = True):
+                  erp: Optional[float] = Query(None, ge=0, le=0.15), include_leases: bool = False, mid_year: bool = True):
     """FCFF discounted at WACC (Damodaran / McKinsey): fading growth, margin path, reinvestment via
     sales-to-capital, value-driver terminal value, mid-year discounting, reverse DCF and sensitivities."""
     from api.marketdata import dcf

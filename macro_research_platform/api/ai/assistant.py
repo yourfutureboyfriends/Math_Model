@@ -113,10 +113,10 @@ def _t_dcf(symbol: str, growth: Optional[float] = None, terminal_growth: Optiona
     from api.marketdata import dcf
     inp = dcf.inputs(symbol)
     v = dcf.value(inp, growth=growth, terminal_growth=terminal_growth)
-    return {"value_per_share": v["per_share"], "price": v["price"], "upside": v["upside"], "currency": inp["currency"],
+    return {"value_per_share": v["per_share"], "price": v["price"], "upside": v["upside"], "currency": inp.get("price_currency") or inp["currency"],
             "market_implied_growth": dcf.reverse(inp, terminal_growth=terminal_growth), "wacc": v["wacc"]["wacc"],
             "assumptions": v["assumptions"], "terminal_share": v["terminal_share"], "checks": v["checks"],
-            "method": "FCFF at WACC, value-driver terminal value"}
+            "method": "FCFF at WACC (Damodaran market inputs: implied ERP, bottom-up beta, g∞ = risk-free), value-driver terminal value"}
 
 
 def _t_peers(symbol: str) -> Any:

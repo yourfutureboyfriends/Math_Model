@@ -443,14 +443,14 @@ function Scatter({ pts, beta, alpha }: { pts: { x: number; y: number }[]; beta: 
 // ── DCF ──────────────────────────────────────────────────────────────────────
 // FCFF at WACC (Damodaran / McKinsey). Every assumption is editable; blank = default.
 const DCF_FIELDS: [string, string, 'pct' | 'num' | 'int', string][] = [
-  ['growth', 'Revenue growth, year 1', 'pct', 'Fades linearly to terminal growth by the last year. Default: analyst consensus.'],
-  ['target_margin', 'Target operating margin', 'pct', 'EBIT margin reached by the last year. Default: today’s margin.'],
+  ['growth', 'Revenue growth, years 1–3', 'pct', 'Then fades to terminal growth. Default: analyst consensus (this year, then next year).'],
+  ['target_margin', 'Target operating margin', 'pct', 'EBIT margin reached by the last year. Default: today’s (normalised); industry margin for loss-makers; mid-cycle for cyclicals at a peak.'],
   ['years', 'Projection years', 'int', 'High-growth period before the terminal value (3–20).'],
-  ['terminal_growth', 'Terminal growth', 'pct', 'Long-run growth — keep it at or below the risk-free rate.'],
-  ['sales_to_capital', 'Sales-to-capital', 'num', 'Revenue added per $1 of reinvestment. Default: revenue ÷ invested capital.'],
+  ['terminal_growth', 'Terminal growth', 'pct', 'Long-run growth. Default: the risk-free rate (Damodaran) — never above it.'],
+  ['sales_to_capital', 'Sales-to-capital', 'num', 'Revenue added per unit of reinvestment. Default: firm and industry averaged.'],
   ['ronic', 'Return on new capital (terminal)', 'pct', 'Return on growth investment after year N. = WACC means growth adds no value.'],
-  ['beta', 'Beta', 'num', 'Default: Blume-adjusted beta (0.67 × raw + 0.33).'],
-  ['erp', 'Equity risk premium', 'pct', 'Default 4.2% (Damodaran implied ERP, 2026).'],
+  ['beta', 'Beta', 'num', 'Default: bottom-up — industry unlevered beta relevered at the firm’s debt/equity.'],
+  ['erp', 'Equity risk premium', 'pct', 'Default: Damodaran’s latest implied ERP + the home country’s risk premium.'],
   ['discount', 'Override discount rate', 'pct', 'Leave blank to use the computed WACC.'],
 ];
 
@@ -475,7 +475,8 @@ export function DcfView({ symbol }: { symbol: string }) {
   if (error) return <ErrorBox msg={error} />;
   if (!data) return null;
   const inp = data.inputs, v = data.valuation, a = v.assumptions, w = v.wacc, sens = data.sensitivity;
-  const ccy = inp.currency ?? '';
+  const ccy = inp.currency ?? '';                   // reporting currency (projection, bridge)
+  const pccy = inp.price_currency ?? ccy;            // trading currency (value per share)
   const def: Record<string, number | null> = { growth: a.growth, target_margin: a.target_margin, years: a.years, terminal_growth: a.terminal_growth,
     sales_to_capital: a.sales_to_capital, ronic: a.ronic, beta: w.beta, erp: w.erp, discount: null };
   const shown = (k: string, kind: string) => def[k] == null ? 'computed' : kind === 'pct' ? (def[k]! * 100).toFixed(2) : kind === 'int' ? String(def[k]) : def[k]!.toFixed(2);
@@ -483,11 +484,11 @@ export function DcfView({ symbol }: { symbol: string }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-        <Stat label="Intrinsic value / share" value={fmtPrice(v.per_share)} sub={ccy} />
-        <Stat label="vs price" value={v.upside != null ? fmtPct(v.upside, 1) : '—'} tone={v.upside != null ? (v.upside > 0 ? 'up' : 'down') : null} sub={v.price ? `price ${fmtPrice(v.price)}` : 'different currencies'} />
+        <Stat label="Intrinsic value / share" value={v.per_share != null ? fmtPrice(v.per_share) : '—'} sub={pccy} />
+        <Stat label="vs price" value={v.upside != null ? fmtPct(v.upside, 1) : '—'} tone={v.upside != null ? (v.upside > 0 ? 'up' : 'down') : null} sub={v.price ? `price ${fmtPrice(v.price)}` : 'no exchange rate'} />
         <Stat label="Growth the price implies" value={data.market_implied_growth != null ? pctS(data.market_implied_growth) : '—'}
-          sub={`year-1 revenue growth (you: ${pctS(a.growth)})`} />
-        <Stat label="WACC" value={pctS(w.wacc, 2)} sub={`equity ${pctS(w.cost_of_equity, 1)} · debt ${pctS(w.cost_of_debt_after_tax, 1)} after tax`} />
+          sub={`years 1–3 revenue growth (model: ${pctS(a.growth)})`} />
+        <Stat label="WACC" value={`${pctS(w.wacc, 2)} → ${pctS(a.discount_terminal, 2)}`} sub={`today → stable growth (β ${n2(w.beta)} → ${a.beta_terminal != null ? n2(a.beta_terminal) : '—'})`} />
         <Stat label="Terminal value share" value={pctS(v.terminal_share, 0)} sub={`exit ≈ ${v.implied_ev_ebit_exit ? v.implied_ev_ebit_exit.toFixed(1) : '—'}× EBIT`} />
       </div>
       {v.checks.length > 0 && (
@@ -514,9 +515,9 @@ export function DcfView({ symbol }: { symbol: string }) {
       <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-3">
         <Panel title={`Projection (${ccy}, millions) — free cash flow to the firm`}>
           <div className="overflow-x-auto"><table className="w-full text-2xs font-mono tabular-nums">
-            <thead><tr className="text-text-tertiary">{['Year', 'Growth', 'Revenue', 'EBIT margin', 'NOPAT', 'Reinvestment', 'FCFF', 'PV'].map((h) => <th key={h} className="text-right font-normal px-1.5 first:text-left">{h}</th>)}</tr></thead>
+            <thead><tr className="text-text-tertiary">{['Year', 'Growth', 'Revenue', 'EBIT margin', 'NOPAT', 'Reinvestment', 'FCFF', 'WACC', 'PV'].map((h) => <th key={h} className="text-right font-normal px-1.5 first:text-left">{h}</th>)}</tr></thead>
             <tbody>
-              <tr className="border-t border-border-subtle text-text-tertiary"><td className="py-0.5">Now</td><td /><td className="text-right px-1.5">{(inp.revenue / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td><td className="text-right px-1.5">{pctS(a.margin_now)}</td><td colSpan={4} /></tr>
+              <tr className="border-t border-border-subtle text-text-tertiary"><td className="py-0.5">Now</td><td /><td className="text-right px-1.5">{(inp.revenue / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td><td className="text-right px-1.5">{pctS(a.margin_now)}</td><td colSpan={5} /></tr>
               {v.projection.map((r: any) => (
                 <tr key={r.year} className="border-t border-border-subtle">
                   <td className="py-0.5">{r.year}</td><td className="text-right px-1.5">{pctS(r.growth)}</td>
@@ -524,8 +525,9 @@ export function DcfView({ symbol }: { symbol: string }) {
                   <td className="text-right px-1.5">{(r.nopat / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                   <td className="text-right px-1.5 text-text-secondary">{(-r.reinvestment / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                   <td className={cn('text-right px-1.5', r.fcff < 0 && 'text-red')}>{(r.fcff / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                  <td className="text-right px-1.5 text-text-tertiary">{pctS(r.discount_rate, 1)}</td>
                   <td className="text-right px-1.5 text-text-primary">{(r.pv / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td></tr>))}
-              <tr className="border-t-2 border-border"><td colSpan={6} className="py-1 text-text-secondary font-sans">Terminal value (reinvests {pctS(v.terminal_reinvestment_rate, 0)} of NOPAT to grow {pctS(a.terminal_growth)} at {pctS(a.ronic)} return)</td>
+              <tr className="border-t-2 border-border"><td colSpan={7} className="py-1 text-text-secondary font-sans">Terminal value (reinvests {pctS(v.terminal_reinvestment_rate, 0)} of NOPAT to grow {pctS(a.terminal_growth)} at {pctS(a.ronic)} return)</td>
                 <td className="text-right px-1.5">{(v.terminal_value / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                 <td className="text-right px-1.5 text-text-primary">{(v.pv_terminal / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td></tr>
             </tbody>
@@ -534,15 +536,23 @@ export function DcfView({ symbol }: { symbol: string }) {
         <Panel title="From enterprise value to value per share">
           <table className="w-full text-xs"><tbody>
             {[['PV of explicit cash flows', v.pv_explicit], ['PV of terminal value', v.pv_terminal], ['= Enterprise value', v.enterprise_value],
-              ['− Debt' + (a.include_leases ? ' (incl. leases)' : ''), -((inp.debt ?? 0) + (a.include_leases ? inp.leases ?? 0 : 0))], ['+ Cash & short-term investments', inp.cash ?? 0],
+              ['− Debt' + (a.include_leases ? ' (incl. leases)' : '') + (inp.captive_finance_receivables ? ' (industrial only)' : ''), -((inp.debt ?? 0) + (a.include_leases ? inp.leases ?? 0 : 0))], ['+ Cash & short-term investments', inp.cash ?? 0],
+              ['+ Stakes in other companies', inp.investments ?? 0],
               ['− Minority interest', -(inp.minority_interest ?? 0)], ['= Equity value', v.equity_value]].map(([k, x]) => (
               <tr key={k as string} className={cn('border-t border-border-subtle', String(k).startsWith('=') && 'font-semibold text-text-primary')}>
                 <td className="py-1 text-text-secondary">{k}</td><td className="text-right font-mono">{fmtBig(x as number)}</td></tr>))}
-            <tr className="border-t-2 border-border font-semibold"><td className="py-1">÷ {fmtBig(inp.shares)} shares</td><td className="text-right font-mono text-bloomberg">{fmtPrice(v.per_share)} {ccy}</td></tr>
+            <tr className="border-t-2 border-border font-semibold"><td className="py-1">÷ {fmtBig(inp.shares)} shares</td><td className="text-right font-mono text-bloomberg">{fmtPrice(v.per_share_reporting_ccy)} {ccy}</td></tr>
+            {pccy !== ccy && v.per_share != null && <tr><td className="py-1 text-text-secondary">= per traded share, in {pccy}</td><td className="text-right font-mono text-bloomberg">{fmtPrice(v.per_share)} {pccy}</td></tr>}
           </tbody></table>
+          {inp.captive_finance_receivables ? <div className="mt-2 text-[10px] text-text-tertiary">Captive finance arm carved out: {fmtBig(inp.captive_finance_receivables)} of loan book offsets its own debt (total debt {fmtBig(inp.debt_total)}).</div> : null}
           <div className="mt-3 text-[10px] text-text-tertiary space-y-0.5">
             <div>WACC = {pctS(w.weight_equity, 0)} × {pctS(w.cost_of_equity, 2)} (rf {pctS(w.risk_free, 2)} + β {n2(w.beta)} × ERP {pctS(w.erp, 1)}) + {pctS(w.weight_debt, 0)} × {pctS(w.cost_of_debt_after_tax, 2)}</div>
-            <div>Risk-free: {inp.risk_free_source}. Beta: raw {n2(inp.beta_raw)}, adjusted {n2(inp.beta)}.</div>
+            <div>Risk-free: {inp.risk_free_source}.</div>
+            <div>ERP: {inp.erp_source}{inp.country_risk_premium ? ` + ${pctS(inp.country_risk_premium, 2)} country risk (${inp.country}${inp.country_rating ? `, ${inp.country_rating}` : ''})` : ''}.</div>
+            <div>Beta: {inp.beta_source}. Regression beta for comparison: {n2(inp.beta_regression)}.</div>
+            <div>Stable growth: β moves to {a.beta_terminal != null ? n2(a.beta_terminal) : '—'} (bounded 0.8–1.2), so WACC goes {pctS(w.wacc, 2)} → {pctS(a.discount_terminal, 2)} over the fade years.</div>
+            {inp.sales_to_capital_source && <div>Sales-to-capital: {inp.sales_to_capital_source}.</div>}
+            {inp.target_margin_source && <div>Margin: {inp.target_margin_source}.</div>}
             <div>Tax {pctS(a.tax_now, 0)} today → {pctS(a.tax_terminal, 0)} marginal. Today’s ROIC {pctS(a.roic_now, 0)}. Growth default: {inp.growth_source}.</div>
             <div>Financials: {inp.source}{inp.as_of ? ` to ${inp.as_of}` : ''}. Debt: {inp.debt_source}.</div>
           </div>
