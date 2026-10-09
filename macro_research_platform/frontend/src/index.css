@@ -2,6 +2,49 @@
 @tailwind components;
 @tailwind utilities;
 
+
+/* ═══ CLASSIC TERMINAL SKIN (Markets mode; lib/theme.ts sets data-skin="terminal") ═══════
+   Black screen, amber labels, white figures, yellow keys, square dense monospace — the
+   classic market-terminal look. Overrides the light/dark channels while active. */
+:root[data-skin="terminal"] {
+  --c-bg: 0 0 0;
+  --c-surface-1: 0 0 0;
+  --c-surface-2: 14 14 14;
+  --c-surface-3: 30 30 30;
+  --c-surface-4: 44 44 44;
+  --c-border: 52 52 52;
+  --c-border-subtle: 26 26 26;
+  --c-border-strong: 88 88 88;
+  --c-text-primary: 245 245 245;
+  --c-text-secondary: 251 139 30;        /* amber */
+  --c-text-tertiary: 168 112 44;         /* dim amber */
+  --c-text-inverse: 0 0 0;
+  --c-bloomberg: 251 139 30;
+  --c-green: 38 214 85;
+  --c-red: 255 64 64;
+  --c-amber: 255 196 0;
+  --c-blue: 92 172 255;
+  --c-purple: 196 140 255;
+  --key-yellow: 255 214 0;
+  color-scheme: dark;
+}
+:root[data-skin="terminal"] body { background: #000; }
+:root[data-skin="terminal"] .mkt-root,
+:root[data-skin="terminal"] .mkt-root * { font-family: 'IBM Plex Mono', 'JetBrains Mono', 'Menlo', 'Consolas', monospace !important; border-radius: 0 !important; box-shadow: none !important; }
+:root[data-skin="terminal"] .mkt-root { font-size: 12px; letter-spacing: 0; }
+:root[data-skin="terminal"] .mkt-root h1, :root[data-skin="terminal"] .mkt-root h2, :root[data-skin="terminal"] .mkt-root h3 { color: rgb(var(--c-text-secondary)); text-transform: uppercase; letter-spacing: 0.02em; }
+:root[data-skin="terminal"] .mkt-root table tbody tr:nth-child(even) { background: rgb(255 255 255 / 0.025); }
+/* yellow market keys and <GO> */
+.key-yellow { background: rgb(var(--key-yellow, 255 214 0)); color: #000; font-weight: 700; }
+.key-yellow:hover { filter: brightness(1.1); }
+.key-amber { background: rgb(var(--c-bloomberg)); color: #000; font-weight: 700; }
+.panel-bar { background: rgb(var(--c-surface-3)); color: rgb(var(--c-text-secondary)); }
+:root[data-skin="terminal"] .panel-bar { background: #1c1c1c; border-bottom: 1px solid #3a3a3a; }
+@keyframes crawl { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.news-crawl { animation: crawl 240s linear infinite; }
+.news-crawl:hover { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .news-crawl { animation: none; } }
+
 /* ═══ THEME CHANNELS (lib/theme.ts sets data-theme on <html>) ═══════════════════
    Colours are "R G B" channels so Tailwind opacity modifiers (bg-bloomberg/50) work. */
 :root, :root[data-theme="dark"] {

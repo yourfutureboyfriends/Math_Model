@@ -1,5 +1,6 @@
 // Markets functions — Bloomberg-style mnemonics with plain-English names. Security functions
 // need an instrument (e.g. "AAPL DES"); market functions stand alone (e.g. "WEI").
+import { fromTerminal, isExchangeCode } from './bbg';
 export interface MktFunction {
   code: string;            // mnemonic, upper case
   name: string;
@@ -61,10 +62,24 @@ export function findFunction(code: string | null | undefined): MktFunction | und
 
 export const SECURITY_FUNCTIONS = FUNCTIONS.filter((f) => f.security);
 
-/** Parse a command: "AAPL DES", "DES AAPL", "WEI", "7203.T", "EURUSD=X GP <GO>". */
-export function parseCommand(input: string): { symbol?: string; fn?: MktFunction } {
+export const MARKET_FUNCTIONS = FUNCTIONS.filter((f) => !f.security);
+
+/** Parse a command: "AAPL DES", "DES AAPL", "WEI", "7203.T", "EURUSD=X GP <GO>", and the
+ * terminal form "AAPL US Equity DES", "VOD LN Equity GP", "SPX Index", "EURUSD Curncy GP". */
+export function parseCommand(input: string): { symbol?: string; fn?: MktFunction; terminal?: boolean } {
   const parts = input.replace(/<go>/gi, '').trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return {};
+  const sectorAt = parts.findIndex((p) => /^(EQUITY|INDEX|CURNCY|COMDTY)$/i.test(p));
+  if (sectorAt > 0) {
+    const sym = fromTerminal(parts.slice(0, sectorAt + 1).join(' '));
+    const tail = parts.slice(sectorAt + 1);
+    if (sym) return { symbol: sym, fn: tail.length ? findFunction(tail[0]) : undefined, terminal: true };
+  }
+  // "VOD LN", "7203 JP GP": ticker + exchange code without the sector key
+  if (parts.length >= 2 && parts.length <= 3 && isExchangeCode(parts[1]) && !findFunction(parts[0])) {
+    const sym = fromTerminal(`${parts[0]} ${parts[1]}`);
+    if (sym && (parts.length === 2 || findFunction(parts[2]))) return { symbol: sym, fn: parts[2] ? findFunction(parts[2]) : undefined, terminal: true };
+  }
   let fn: MktFunction | undefined;
   const rest: string[] = [];
   for (const p of parts) {

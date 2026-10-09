@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CornerDownLeft, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { FUNCTIONS, parseCommand, type MktFunction } from './functions';
+import { FUNCTIONS, MARKET_FUNCTIONS, parseCommand, SECURITY_FUNCTIONS, type MktFunction } from './functions';
 import { TYPE_COLOR } from './shared';
 
 interface Hit { symbol: string; name: string; type: string; exchange?: string; sector?: string }
@@ -74,6 +74,15 @@ export function CommandLine({ current, onGo }: { current?: string; onGo: (fn: st
     done();
   };
   const go = () => {
+    // a menu number picks from the numbered menu on screen (security functions, or the market menu)
+    const num = /^\s*(\d{1,2})\s*$/.exec(q);
+    if (num) {
+      const menu = current ? SECURITY_FUNCTIONS : MARKET_FUNCTIONS;
+      const f = menu[Number(num[1]) - 1];
+      if (!f) { setHint(`No menu item ${num[1]} — the menu has 1–${menu.length}.`); return; }
+      onGo(f.code, f.security ? current : undefined); return done();
+    }
+    if (parsed.terminal && parsed.symbol) { onGo(parsed.fn?.code ?? 'DES', parsed.symbol); return done(); }
     const opt = options[idx];
     const exactSym = hits.find((h) => h.symbol.toUpperCase() === parsed.symbol);
     if (parsed.fn && !parsed.fn.security) { onGo(parsed.fn.code); return done(); }
@@ -92,8 +101,8 @@ export function CommandLine({ current, onGo }: { current?: string; onGo: (fn: st
       <div className="flex items-center gap-2 px-3 h-10 bg-surface-1 border border-border focus-within:border-bloomberg shadow-sm">
         <Search className="w-4 h-4 text-text-tertiary shrink-0" />
         <input ref={input} value={q} spellCheck={false} autoComplete="off"
-          placeholder={current ? `Type a function for ${current} (e.g. FA, OMON) — or any ticker, company, or market function (WEI, EQS)…`
-            : 'Search any stock, ETF, index, FX pair, future or crypto — or type a function like WEI, MOST, EQS'}
+          placeholder={current ? `Function for ${current} (FA, OMON) or a menu number — or any security: VOD LN Equity, SPX Index, EURUSD Curncy`
+            : 'Security + function <GO>: AAPL US Equity DES · SPX Index GP · EURUSD Curncy · CL1 Comdty · or a name, e.g. toyota'}
           aria-label="Command line: instrument or function" role="combobox" aria-expanded={open} aria-controls="mkt-cmd-list"
           onChange={(e) => { setQ(e.target.value); setOpen(true); setHint(null); }} onFocus={() => setOpen(true)}
           onKeyDown={(e) => {

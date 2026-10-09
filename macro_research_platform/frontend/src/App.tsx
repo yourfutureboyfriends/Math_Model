@@ -11,11 +11,14 @@ import { useAuth } from './context/AuthContext';
 import { DashboardPage, MarketsPage } from './pages';
 import { MarketsSidebar } from './components/markets/MarketsSidebar';
 import { useHubMode } from './lib/hubMode';
+import { applySkin, useMarketsSkin } from './lib/theme';
 import { useMacroStore, selectMeta, selectIsLoading, selectRegime, selectFullDashboard } from './store/macroStore';
 
 function App() {
   const { isAuthenticated, mustChangePassword } = useAuth();
   const hubMode = useHubMode();
+  const skin = useMarketsSkin();
+  useEffect(() => { applySkin(hubMode === 'markets' && skin === 'classic'); }, [hubMode, skin]);
   const [activeSection, setActiveSection] = useState('master-signal');
 
   // Initialize macro store

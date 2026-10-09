@@ -56,3 +56,29 @@ export function useTheme(): { setting: ThemeSetting; theme: Theme } {
   }, []);
   return { setting, theme };
 }
+
+// ── Markets skin: 'classic' (black terminal) or 'modern' (follows the theme) ──
+export type MarketsSkin = 'classic' | 'modern';
+const SKIN_KEY = 'mkt_skin';
+const SKIN_EVT = 'mkt-skin';
+export function getMarketsSkin(): MarketsSkin {
+  try { return localStorage.getItem(SKIN_KEY) === 'modern' ? 'modern' : 'classic'; } catch { return 'classic'; }
+}
+export function setMarketsSkin(s: MarketsSkin) {
+  try { localStorage.setItem(SKIN_KEY, s); } catch { /* storage unavailable */ }
+  window.dispatchEvent(new CustomEvent(SKIN_EVT, { detail: s }));
+}
+export function useMarketsSkin(): MarketsSkin {
+  const [s, setS] = useState<MarketsSkin>(getMarketsSkin);
+  useEffect(() => {
+    const h = (e: Event) => setS((e as CustomEvent).detail as MarketsSkin);
+    window.addEventListener(SKIN_EVT, h);
+    return () => window.removeEventListener(SKIN_EVT, h);
+  }, []);
+  return s;
+}
+/** Applies the terminal skin to <html> while `on` (the Markets mode with the classic skin). */
+export function applySkin(on: boolean) {
+  const root = document.documentElement;
+  if (on) root.dataset.skin = 'terminal'; else delete root.dataset.skin;
+}

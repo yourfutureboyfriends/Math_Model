@@ -6,7 +6,11 @@ import { Bell, BookOpen, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CommandLine } from '@/components/markets/CommandLine';
-import { FUNCTIONS, SECURITY_FUNCTIONS, findFunction, type MktFunction } from '@/components/markets/functions';
+import { FUNCTIONS, MARKET_FUNCTIONS, SECURITY_FUNCTIONS, findFunction, type MktFunction } from '@/components/markets/functions';
+import { FunctionMenu, HelpPanel, KeyBar, NewsCrawl, TitleBar, useHelp } from '@/components/markets/Chrome';
+import { MonitorHome } from '@/components/markets/Monitor';
+import { toTerminal } from '@/components/markets/bbg';
+import { setMarketsSkin, useMarketsSkin } from '@/lib/theme';
 import { OverviewView } from '@/components/markets/OverviewView';
 import { Chart, Financials, News, useQuote } from '@/components/markets/TickerView';
 import { MoversView, ScreenerView } from '@/components/markets/ScreenerView';
@@ -83,7 +87,32 @@ function Launchpad({ onGo }: { onGo: (fn: string, s?: string) => void }) {
   );
 }
 
+function TerminalQuoteHeader({ d, f, symbol, onGo, actions }: { d: any; f: MktFunction; symbol: string; onGo: (fn: string, s?: string) => void; actions: React.ReactNode }) {
+  const up = (d.change ?? 0) >= 0;
+  const state = d.market_state === 'REGULAR' ? 'OPEN' : d.market_state === 'PRE' ? 'PRE-MKT' : d.market_state === 'POST' || d.market_state === 'POSTPOST' ? 'AFTER HRS' : 'CLOSED';
+  return (
+    <div className="space-y-1">
+      <TitleBar security={toTerminal(d.symbol ?? symbol, d.type)} code={f.code} title={f.name}
+        right={<span>{d.exchange} · {d.currency} · {d.delay_minutes ? `delayed ${d.delay_minutes}m` : 'end of day / real-time where free'} · {d.source}</span>} />
+      <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 px-2 py-1 text-[13px]">
+        <span className="text-text-primary font-semibold uppercase truncate max-w-[28rem]">{d.name}</span>
+        <span className="text-[22px] font-semibold tabular-nums text-text-primary">{fmtPrice(d.price, d.type)}</span>
+        {d.change != null && <span className={cn('tabular-nums font-semibold', up ? 'text-green' : 'text-red')}>{up ? '▲' : '▼'} {up ? '+' : ''}{fmtPrice(d.change, d.type)}  {d.change_pct != null ? `${up ? '+' : ''}${(d.change_pct * 100).toFixed(2)}%` : ''}</span>}
+        <span className="text-text-secondary">{TYPE_LABEL[d.type] ?? d.type}</span>
+        <span className={cn('px-1', state === 'OPEN' ? 'bg-green text-black' : 'border border-border text-text-tertiary')}>{state}</span>
+        <span className="ml-auto flex flex-wrap gap-1">{actions}</span>
+      </div>
+      <div className="px-2 py-1 border border-border">
+        <FunctionMenu items={SECURITY_FUNCTIONS} active={f.code} onPick={(x) => onGo(x.code, symbol)} />
+      </div>
+    </div>
+  );
+}
+
+const TYPE_LABEL: Record<string, string> = { Stock: 'EQUITY', ETF: 'ETF', Index: 'INDEX', FX: 'CURNCY', Future: 'COMDTY', Crypto: 'CRYPTO', Fund: 'FUND' };
+
 function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: (fn: string, s?: string) => void }) {
+  const classic = useMarketsSkin() === 'classic';
   const q = useQuote(symbol);
   const addToWatch = useAddToWatchlist();
   const [note, setNote] = useState<string | null>(null);
@@ -94,8 +123,18 @@ function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: 
   if (q.loading && !d) return <Loading label={`Loading ${symbol}…`} />;
   if (q.error && !d) return <ErrorBox msg={`${q.error} Try the command line to search by name.`} />;
   if (!d) return null;
+  const watch = async () => { try { const n = await addToWatch(symbol); if (n) setNote(`Added to “${n}”.`); } catch (e: any) { setNote(e.message); } };
+  const tk = 'px-2 py-0.5 text-[11px] border border-border hover:border-bloomberg hover:text-bloomberg';
   return (
     <div className="space-y-3">
+      {classic ? (
+        <TerminalQuoteHeader d={d} f={f} symbol={symbol} onGo={onGo} actions={<>
+          <button onClick={watch} className={tk}>+ WATCH</button>
+          <button onClick={() => onGo('ALRT', symbol)} className={tk}>ALRT</button>
+          <button onClick={() => onGo('JRNL', symbol)} className={tk}>JRNL</button>
+          <button onClick={() => onGo('COMP', symbol)} className={tk}>COMP</button>
+          {note && <span className="text-[11px] text-green self-center">{note}</span>}</>} />
+      ) : <>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-xs text-text-tertiary">
@@ -115,7 +154,7 @@ function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: 
           <div className="text-[11px] text-text-tertiary mt-1">{d.delay_minutes ? `Delayed ${d.delay_minutes} min · ` : ''}Source: {d.source}</div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={async () => { try { const n = await addToWatch(symbol); if (n) setNote(`Added to “${n}”.`); } catch (e: any) { setNote(e.message); } }}
+          <button onClick={watch}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs border border-border hover:border-bloomberg bg-surface-1"><Plus className="w-3.5 h-3.5" />Watch</button>
           <button onClick={() => onGo('ALRT', symbol)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs border border-border hover:border-bloomberg bg-surface-1"><Bell className="w-3.5 h-3.5" />Alert</button>
           <button onClick={() => onGo('JRNL', symbol)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs border border-border hover:border-bloomberg bg-surface-1"><BookOpen className="w-3.5 h-3.5" />Journal</button>
@@ -129,6 +168,7 @@ function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: 
             className={cn('px-3 py-2 text-xs -mb-px border-b-2 whitespace-nowrap transition-colors', t.code === f.code ? 'border-bloomberg text-text-primary font-semibold' : 'border-transparent text-text-secondary hover:text-text-primary')}>
             {t.code === 'DES' ? 'Overview' : t.name}<span className="ml-1.5 font-mono text-[9px] text-text-tertiary">{t.code}</span></button>))}
       </nav>
+      </>}
       <ErrorBoundary sectionName={`${f.code} ${symbol}`} key={`${f.code}:${symbol}`}>
         {f.code === 'DES' && <InstrumentOverview q={d} onOpen={(s) => onGo('DES', s)} onGo={onGo} />}
         {f.code === 'GP' && <Chart symbol={symbol} height={560} />}
@@ -154,15 +194,22 @@ export function MarketsPage() {
   const open = useCallback((s: string) => goMarkets('DES', s), []);
   useEffect(() => { if (!window.location.hash.startsWith('#mkt')) goMarkets('WEI'); }, []);
   const f = findFunction(route.fn) ?? findFunction('WEI')!;
+  const classic = useMarketsSkin() === 'classic';
+  const help = useHelp();
   return (
-    <div className="p-4 flex gap-4 items-start">
-    <div className="flex-1 min-w-0 space-y-4 max-w-[1500px]">
+    <div className={cn('mkt-root flex items-start', classic ? 'p-2 pb-10 gap-2' : 'p-4 gap-4')}>
+    <div className={cn('flex-1 min-w-0', classic ? 'space-y-2' : 'space-y-4 max-w-[1500px]')}>
+      {classic ? <KeyBar onGo={(fn) => onGo(fn)} onHelp={help.toggle} /> : (
+        <div className="flex justify-end -mb-2"><button onClick={() => setMarketsSkin('classic')} className="text-[11px] text-text-tertiary hover:text-bloomberg">Switch to the classic terminal look</button></div>)}
       <CommandLine current={f.security ? route.symbol : undefined} onGo={onGo} />
+      {help.open && <HelpPanel onClose={help.close} />}
       {f.security && route.symbol ? <SecurityView fn={f.code} symbol={route.symbol} onGo={onGo} /> : (
-        <div className="space-y-3">
-          <FunctionHeader f={f} />
+        <div className={classic ? 'space-y-2' : 'space-y-3'}>
+          {classic ? <TitleBar code={f.code} title={f.name} right={f.desc} /> : <FunctionHeader f={f} />}
           <ErrorBoundary sectionName={`Markets · ${f.code}`} key={f.code}>
-            {f.code === 'WEI' && <div className="space-y-5"><Launchpad onGo={onGo} /><OverviewView onOpen={open} /></div>}
+            {f.code === 'WEI' && (classic
+              ? <div className="space-y-2"><div className="px-2 py-1 border border-border"><FunctionMenu items={MARKET_FUNCTIONS} onPick={(x) => onGo(x.code)} /></div><MonitorHome onOpen={open} onGo={onGo} /></div>
+              : <div className="space-y-5"><Launchpad onGo={onGo} /><OverviewView onOpen={open} /></div>)}
             {f.code === 'MOST' && <MoversView onOpen={open} />}
             {f.code === 'EQS' && <ScreenerView onOpen={open} />}
             {f.code === 'IMAP' && <ImapView onOpen={open} />}
@@ -184,6 +231,7 @@ export function MarketsPage() {
         </div>
       )}
       <AlertToasts onOpen={open} />
+      {classic && <NewsCrawl />}
     </div>
     {f.code !== 'AI' && <RightRail symbol={f.security ? route.symbol : undefined} onOpen={open} />}
     </div>
