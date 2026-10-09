@@ -1306,6 +1306,17 @@ async def lifespan(app: FastAPI):
         )
         logger.info("[STARTUP] Scheduled auto_book_run at 22:20 UTC weekdays")
 
+        # Macro Trader (paper): fills yesterday's orders at the open, marks to the close and
+        # rebalances to the macro model's targets — after the auto book.
+        from api.macro_trader import run as _macro_run
+        _scheduler.add_job(
+            func=_macro_run,
+            trigger=CronTrigger(day_of_week="mon-fri", hour=22, minute=35),
+            id="macro_trader_run",
+            replace_existing=True,
+        )
+        logger.info("[STARTUP] Scheduled macro_trader_run at 22:35 UTC weekdays")
+
         # Catch-up: cron jobs only fire while the process is up, so a backend that was down
         # at 06:00 UTC left the CSV stale until the next day. If it is over 24h old, run the
         # pipeline once, a few minutes after startup (after the warm-up's FRED requests).
@@ -1526,6 +1537,8 @@ from api.routers.portfolios import router as portfolios_router  # model review, 
 app.include_router(portfolios_router)
 from api.routers.strategies import router as strategies_router  # Strategy Lab
 app.include_router(strategies_router)
+from api.routers.quant import router as quant_router  # Quant Lab + Quant Trader + Macro Trader
+app.include_router(quant_router)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NATIVE WEBSOCKET ENDPOINTS
