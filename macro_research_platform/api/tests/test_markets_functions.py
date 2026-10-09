@@ -40,16 +40,55 @@ def test_implied_vol_nan_below_intrinsic():
 
 
 # ── DCF ──────────────────────────────────────────────────────────────────────
-def test_dcf_matches_hand_calculation():
-    out = security.dcf(fcf=100.0, shares=10.0, net_debt=200.0, growth=0.05, years=2, terminal_growth=0.02, discount=0.10, price=50.0)
-    f1, f2 = 105.0, 110.25
-    pv = f1 / 1.1 + f2 / 1.1 ** 2
-    tv = f2 * 1.02 / (0.10 - 0.02) / 1.1 ** 2
-    assert out["enterprise_value"] == pytest.approx(pv + tv)
-    assert out["per_share"] == pytest.approx((pv + tv - 200.0) / 10.0)
-    assert out["sensitivity"]["per_share"][2][2] == pytest.approx(out["per_share"])
+def _inp(**over):
+    base = {"symbol": "X", "currency": "USD", "price_currency": "USD", "price": 50.0, "revenue": 1000.0, "ebit": 200.0,
+            "shares": 100.0, "market_cap": 5000.0, "debt": 1000.0, "cash": 200.0, "leases": 0.0, "minority_interest": 0.0,
+            "beta": 1.0, "risk_free": 0.04, "cost_of_debt": 0.05, "tax_marginal": 0.25, "tax_effective": 0.25,
+            "sales_to_capital": 2.0, "growth": 0.05, "roic": 0.15, "is_financial": False, "risk_free_matched": True}
+    base.update(over)
+    return base
+
+
+def test_dcf_uses_wacc_for_fcff_and_market_weights():
+    from api.marketdata import dcf
+    w = dcf.wacc(_inp(), erp=0.05)
+    ke, kd = 0.04 + 0.05, 0.05 * 0.75
+    assert w["cost_of_equity"] == pytest.approx(ke)
+    assert w["wacc"] == pytest.approx((5000 * ke + 1000 * kd) / 6000)       # FCFF discounted at WACC, not ke
+
+
+def test_dcf_hand_check_terminal_value_driver_formula():
+    from api.marketdata import dcf
+    v = dcf.value(_inp(), growth=0.03, terminal_growth=0.03, years=3, discount=0.08, ronic=0.12, mid_year=False)
+    rev, pv = 1000.0, 0.0
+    for y in range(1, 4):                        # constant growth = terminal → fade is flat
+        new = rev * 1.03
+        fcff = new * 0.2 * 0.75 - (new - rev) / 2.0
+        pv += fcff / 1.08 ** y
+        rev = new
+    tv = rev * 1.03 * 0.2 * 0.75 * (1 - 0.03 / 0.12) / (0.08 - 0.03)
+    ev = pv + tv / 1.08 ** 3
+    assert v["enterprise_value"] == pytest.approx(ev)
+    assert v["per_share"] == pytest.approx((ev - 1000 + 200) / 100)
+
+
+def test_dcf_mid_year_raises_value_and_growth_fades():
+    from api.marketdata import dcf
+    a = dcf.value(_inp(), growth=0.20, terminal_growth=0.02, years=10, discount=0.09, mid_year=False)
+    b = dcf.value(_inp(), growth=0.20, terminal_growth=0.02, years=10, discount=0.09, mid_year=True)
+    assert b["per_share"] > a["per_share"]
+    gs = [r["growth"] for r in b["projection"]]
+    assert gs[0] == pytest.approx(0.20) and gs[-1] == pytest.approx(0.02) and all(x >= y for x, y in zip(gs, gs[1:]))
+
+
+def test_dcf_checks_and_reverse():
+    from api.marketdata import dcf
+    v = dcf.value(_inp(is_financial=True), terminal_growth=0.05)
+    assert any("Financial firm" in c for c in v["checks"]) and any("risk-free" in c for c in v["checks"])
     with pytest.raises(core.NotFound):
-        security.dcf(100.0, 10.0, 0.0, 0.05, 5, 0.03, 0.02)          # discount below terminal growth
+        dcf.value(_inp(), terminal_growth=0.06, discount=0.05)
+    g = dcf.reverse(_inp(price=40.0), terminal_growth=0.02, discount=0.09)
+    assert g is not None and dcf.value(_inp(), growth=g, terminal_growth=0.02, discount=0.09)["per_share"] == pytest.approx(40.0, rel=1e-4)
 
 
 # ── dividends ────────────────────────────────────────────────────────────────

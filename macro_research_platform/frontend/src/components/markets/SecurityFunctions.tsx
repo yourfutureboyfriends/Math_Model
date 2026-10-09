@@ -441,59 +441,133 @@ function Scatter({ pts, beta, alpha }: { pts: { x: number; y: number }[]; beta: 
 }
 
 // ── DCF ──────────────────────────────────────────────────────────────────────
+// FCFF at WACC (Damodaran / McKinsey). Every assumption is editable; blank = default.
+const DCF_FIELDS: [string, string, 'pct' | 'num' | 'int', string][] = [
+  ['growth', 'Revenue growth, year 1', 'pct', 'Fades linearly to terminal growth by the last year. Default: analyst consensus.'],
+  ['target_margin', 'Target operating margin', 'pct', 'EBIT margin reached by the last year. Default: today’s margin.'],
+  ['years', 'Projection years', 'int', 'High-growth period before the terminal value (3–20).'],
+  ['terminal_growth', 'Terminal growth', 'pct', 'Long-run growth — keep it at or below the risk-free rate.'],
+  ['sales_to_capital', 'Sales-to-capital', 'num', 'Revenue added per $1 of reinvestment. Default: revenue ÷ invested capital.'],
+  ['ronic', 'Return on new capital (terminal)', 'pct', 'Return on growth investment after year N. = WACC means growth adds no value.'],
+  ['beta', 'Beta', 'num', 'Default: Blume-adjusted beta (0.67 × raw + 0.33).'],
+  ['erp', 'Equity risk premium', 'pct', 'Default 4.2% (Damodaran implied ERP, 2026).'],
+  ['discount', 'Override discount rate', 'pct', 'Leave blank to use the computed WACC.'],
+];
+
 export function DcfView({ symbol }: { symbol: string }) {
-  const [p, setP] = useState<Record<string, string>>({});
-  const qs = Object.entries(p).filter(([, v]) => v !== '').map(([k, v]) => `${k}=${k === 'years' ? v : Number(v) / (k === 'fcf' ? 1 : 100)}`).join('&');
-  const [url, setUrl] = useState(`/api/v1/mkt/dcf/${enc(symbol)}`);
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [leases, setLeases] = useState(false);
+  const [midYear, setMidYear] = useState(true);
+  const build = () => {
+    const p = new URLSearchParams();
+    for (const [k, , kind] of DCF_FIELDS) {
+      const v = form[k];
+      if (v === undefined || v === '') continue;
+      p.set(k, String(kind === 'pct' ? Number(v) / 100 : Number(v)));
+    }
+    if (leases) p.set('include_leases', 'true');
+    if (!midYear) p.set('mid_year', 'false');
+    return `/api/v1/mkt/dcf/${enc(symbol)}${p.toString() ? `?${p}` : ''}`;
+  };
+  const [url, setUrl] = useState(() => `/api/v1/mkt/dcf/${enc(symbol)}`);
   const { data, error, loading } = useJSON<any>(url);
-  const inp = data?.inputs, v = data?.valuation;
-  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setP({ ...p, [k]: e.target.value });
-  const field = (k: string, label: string, def: number | null | undefined, unit: string, hint: string) => (
-    <label className="text-[10px] uppercase tracking-wider text-text-tertiary" title={hint}>{label}
-      <div className="flex items-center mt-0.5"><input type="number" step="any" placeholder={def != null ? String(unit === '%' ? +(def * 100).toFixed(2) : def) : ''} value={p[k] ?? ''} onChange={set(k)}
-        className="w-full bg-surface-1 border border-border px-2 py-1 text-xs font-mono text-text-primary" /><span className="ml-1 text-text-tertiary normal-case">{unit}</span></div></label>);
+  if (loading && !data) return <Loading label="Building the valuation model…" />;
+  if (error) return <ErrorBox msg={error} />;
+  if (!data) return null;
+  const inp = data.inputs, v = data.valuation, a = v.assumptions, w = v.wacc, sens = data.sensitivity;
+  const ccy = inp.currency ?? '';
+  const def: Record<string, number | null> = { growth: a.growth, target_margin: a.target_margin, years: a.years, terminal_growth: a.terminal_growth,
+    sales_to_capital: a.sales_to_capital, ronic: a.ronic, beta: w.beta, erp: w.erp, discount: null };
+  const shown = (k: string, kind: string) => def[k] == null ? 'computed' : kind === 'pct' ? (def[k]! * 100).toFixed(2) : kind === 'int' ? String(def[k]) : def[k]!.toFixed(2);
+  const pctS = (x: number | null | undefined, d = 1) => (x == null ? '—' : `${(x * 100).toFixed(d)}%`);
   return (
     <div className="space-y-3">
-      {loading && !data ? <Loading label="Building the model…" /> : error ? <ErrorBox msg={error} /> : data && (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <Stat label="Value per share" value={fmtPrice(v.per_share)} sub={inp.currency} />
-            <Stat label="vs price" value={v.upside != null ? fmtPct(v.upside, 1) : '—'} tone={v.upside != null ? (v.upside > 0 ? 'up' : 'down') : null} sub={inp.price ? `price ${fmtPrice(inp.price)}` : data.currency_note ?? ''} />
-            <Stat label="Enterprise value" value={fmtBig(v.enterprise_value, inp.currency)} sub={`net debt ${fmtBig(inp.net_debt)}`} />
-            <Stat label="Terminal value share" value={fmtPct(v.terminal_share, 0).replace('+', '')} sub="of enterprise value" />
-          </div>
-          {inp.investment_warning && <div className="px-3 py-2 border border-amber/50 bg-amber/5 text-2xs text-amber">{inp.investment_warning}</div>}
-          <Panel title="Assumptions — blank = default shown in grey">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              {field('growth', 'Growth / yr', inp.used.growth, '%', 'Free cash flow growth during the projection years')}
-              {field('years', 'Years', inp.used.years, 'yrs', 'Projection years before the terminal value')}
-              {field('terminal_growth', 'Terminal growth', inp.used.terminal_growth, '%', 'Perpetual growth after the projection — usually 2–3%')}
-              {field('discount', 'Discount rate', inp.used.discount, '%', 'CAPM cost of equity by default: 10-year Treasury + beta × 5%')}
-              {field('fcf', 'Starting FCF', inp.used.fcf, inp.currency ?? '', 'Trailing-twelve-month free cash flow')}
-            </div>
-            <button onClick={() => setUrl(`/api/v1/mkt/dcf/${enc(symbol)}${qs ? `?${qs}` : ''}`)} className="mt-3 px-4 py-1.5 text-xs bg-bloomberg text-text-inverse">Recalculate</button>
-            <span className="ml-3 text-[10px] text-text-tertiary">FCF source: {inp.fcf_source} · beta {n2(inp.beta)} · 10y {inp.risk_free != null ? `${(inp.risk_free * 100).toFixed(2)}%` : '—'}</span>
-          </Panel>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <Panel title="Projected free cash flow">
-              <Bars data={v.projection.map((r: any) => ({ label: `Y${r.year}`, a: r.fcf }))} fmt={(x) => fmtBig(x)} />
-              <div className="text-[10px] text-text-tertiary mt-1">PV of cash flows {fmtBig(v.pv_cash_flows)} + PV of terminal value {fmtBig(v.pv_terminal)}</div>
-            </Panel>
-            <Panel title="Sensitivity — value per share (rows: discount rate, columns: terminal growth)">
-              <table className="w-full text-2xs font-mono">
-                <thead><tr className="text-text-tertiary"><th />{v.sensitivity.terminal_growth.map((g: number) => <th key={g} className="text-right font-normal">{(g * 100).toFixed(1)}%</th>)}</tr></thead>
-                <tbody>{v.sensitivity.discount_rates.map((r: number, i: number) => (
-                  <tr key={r} className="border-t border-border-subtle"><td className="text-text-tertiary">{(r * 100).toFixed(1)}%</td>
-                    {v.sensitivity.per_share[i].map((x: number | null, j: number) => (
-                      <td key={j} className={cn('text-right py-0.5', i === 2 && j === 2 && 'text-bloomberg font-semibold',
-                        inp.price && x != null && (x > inp.price ? 'text-green' : 'text-red'))}>{x == null ? '—' : fmtPrice(x)}</td>))}</tr>))}</tbody>
-              </table>
-              <div className="text-[10px] text-text-tertiary mt-1">Green = above today's price. Centre = your assumptions.</div>
-            </Panel>
-          </div>
-          <div className="text-[10px] text-text-tertiary">{inp.note} A DCF is only as good as its assumptions — the terminal value is usually most of the answer.</div>
-        </>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <Stat label="Intrinsic value / share" value={fmtPrice(v.per_share)} sub={ccy} />
+        <Stat label="vs price" value={v.upside != null ? fmtPct(v.upside, 1) : '—'} tone={v.upside != null ? (v.upside > 0 ? 'up' : 'down') : null} sub={v.price ? `price ${fmtPrice(v.price)}` : 'different currencies'} />
+        <Stat label="Growth the price implies" value={data.market_implied_growth != null ? pctS(data.market_implied_growth) : '—'}
+          sub={`year-1 revenue growth (you: ${pctS(a.growth)})`} />
+        <Stat label="WACC" value={pctS(w.wacc, 2)} sub={`equity ${pctS(w.cost_of_equity, 1)} · debt ${pctS(w.cost_of_debt_after_tax, 1)} after tax`} />
+        <Stat label="Terminal value share" value={pctS(v.terminal_share, 0)} sub={`exit ≈ ${v.implied_ev_ebit_exit ? v.implied_ev_ebit_exit.toFixed(1) : '—'}× EBIT`} />
+      </div>
+      {v.checks.length > 0 && (
+        <div className="px-3 py-2 border border-amber/50 bg-amber/5 space-y-1">{v.checks.map((c: string) => <div key={c} className="text-2xs text-amber">• {c}</div>)}</div>
       )}
+      <Panel title="Assumptions — blank uses the default shown">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+          {DCF_FIELDS.map(([k, label, kind, hint]) => (
+            <label key={k} className="text-[10px] uppercase tracking-wider text-text-tertiary" title={hint}>{label}
+              <div className="flex items-center mt-0.5">
+                <input type="number" step="any" placeholder={shown(k, kind)} value={form[k] ?? ''} onChange={(e) => setForm({ ...form, [k]: e.target.value })}
+                  className="w-full bg-surface-1 border border-border px-2 py-1 text-xs font-mono text-text-primary" />
+                <span className="ml-1 text-text-tertiary normal-case w-3">{kind === 'pct' ? '%' : ''}</span></div>
+              <span className="normal-case tracking-normal text-[10px] text-text-tertiary leading-tight block mt-0.5">{hint}</span>
+            </label>))}
+        </div>
+        <div className="flex flex-wrap items-center gap-4 mt-3 text-2xs text-text-secondary">
+          <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={leases} onChange={(e) => setLeases(e.target.checked)} />Treat operating leases as debt</label>
+          <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={midYear} onChange={(e) => setMidYear(e.target.checked)} />Mid-year discounting</label>
+          <button onClick={() => setUrl(build())} className="px-4 py-1.5 text-xs bg-bloomberg text-text-inverse">Recalculate</button>
+          <button onClick={() => { setForm({}); setLeases(false); setMidYear(true); setUrl(`/api/v1/mkt/dcf/${enc(symbol)}`); }} className="text-text-tertiary hover:text-text-primary">Reset to defaults</button>
+        </div>
+      </Panel>
+      <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-3">
+        <Panel title={`Projection (${ccy}, millions) — free cash flow to the firm`}>
+          <div className="overflow-x-auto"><table className="w-full text-2xs font-mono tabular-nums">
+            <thead><tr className="text-text-tertiary">{['Year', 'Growth', 'Revenue', 'EBIT margin', 'NOPAT', 'Reinvestment', 'FCFF', 'PV'].map((h) => <th key={h} className="text-right font-normal px-1.5 first:text-left">{h}</th>)}</tr></thead>
+            <tbody>
+              <tr className="border-t border-border-subtle text-text-tertiary"><td className="py-0.5">Now</td><td /><td className="text-right px-1.5">{(inp.revenue / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td><td className="text-right px-1.5">{pctS(a.margin_now)}</td><td colSpan={4} /></tr>
+              {v.projection.map((r: any) => (
+                <tr key={r.year} className="border-t border-border-subtle">
+                  <td className="py-0.5">{r.year}</td><td className="text-right px-1.5">{pctS(r.growth)}</td>
+                  <td className="text-right px-1.5">{(r.revenue / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td><td className="text-right px-1.5">{pctS(r.margin)}</td>
+                  <td className="text-right px-1.5">{(r.nopat / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                  <td className="text-right px-1.5 text-text-secondary">{(-r.reinvestment / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                  <td className={cn('text-right px-1.5', r.fcff < 0 && 'text-red')}>{(r.fcff / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                  <td className="text-right px-1.5 text-text-primary">{(r.pv / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td></tr>))}
+              <tr className="border-t-2 border-border"><td colSpan={6} className="py-1 text-text-secondary font-sans">Terminal value (reinvests {pctS(v.terminal_reinvestment_rate, 0)} of NOPAT to grow {pctS(a.terminal_growth)} at {pctS(a.ronic)} return)</td>
+                <td className="text-right px-1.5">{(v.terminal_value / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                <td className="text-right px-1.5 text-text-primary">{(v.pv_terminal / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td></tr>
+            </tbody>
+          </table></div>
+        </Panel>
+        <Panel title="From enterprise value to value per share">
+          <table className="w-full text-xs"><tbody>
+            {[['PV of explicit cash flows', v.pv_explicit], ['PV of terminal value', v.pv_terminal], ['= Enterprise value', v.enterprise_value],
+              ['− Debt' + (a.include_leases ? ' (incl. leases)' : ''), -((inp.debt ?? 0) + (a.include_leases ? inp.leases ?? 0 : 0))], ['+ Cash & short-term investments', inp.cash ?? 0],
+              ['− Minority interest', -(inp.minority_interest ?? 0)], ['= Equity value', v.equity_value]].map(([k, x]) => (
+              <tr key={k as string} className={cn('border-t border-border-subtle', String(k).startsWith('=') && 'font-semibold text-text-primary')}>
+                <td className="py-1 text-text-secondary">{k}</td><td className="text-right font-mono">{fmtBig(x as number)}</td></tr>))}
+            <tr className="border-t-2 border-border font-semibold"><td className="py-1">÷ {fmtBig(inp.shares)} shares</td><td className="text-right font-mono text-bloomberg">{fmtPrice(v.per_share)} {ccy}</td></tr>
+          </tbody></table>
+          <div className="mt-3 text-[10px] text-text-tertiary space-y-0.5">
+            <div>WACC = {pctS(w.weight_equity, 0)} × {pctS(w.cost_of_equity, 2)} (rf {pctS(w.risk_free, 2)} + β {n2(w.beta)} × ERP {pctS(w.erp, 1)}) + {pctS(w.weight_debt, 0)} × {pctS(w.cost_of_debt_after_tax, 2)}</div>
+            <div>Risk-free: {inp.risk_free_source}. Beta: raw {n2(inp.beta_raw)}, adjusted {n2(inp.beta)}.</div>
+            <div>Tax {pctS(a.tax_now, 0)} today → {pctS(a.tax_terminal, 0)} marginal. Today’s ROIC {pctS(a.roic_now, 0)}. Growth default: {inp.growth_source}.</div>
+            <div>Financials: {inp.source}{inp.as_of ? ` to ${inp.as_of}` : ''}. Debt: {inp.debt_source}.</div>
+          </div>
+        </Panel>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <SensGrid title="Value per share — WACC (rows) × terminal growth (columns)" rows={sens.discount_rates} cols={sens.terminal_growth} grid={sens.per_share} price={v.price} />
+        <SensGrid title="Value per share — target margin (rows) × year-1 growth (columns)" rows={sens.target_margins} cols={sens.growth_rates} grid={sens.per_share_growth_margin} price={v.price} />
+      </div>
+      <div className="text-[10px] text-text-tertiary">{data.method} Green cells are above today’s price. A DCF is a structured way to state assumptions — the reverse DCF (growth the price implies) is often the more useful number.</div>
     </div>
+  );
+}
+
+function SensGrid({ title, rows, cols, grid, price }: { title: string; rows: number[]; cols: number[]; grid: (number | null)[][]; price: number | null }) {
+  return (
+    <Panel title={title}>
+      <table className="w-full text-2xs font-mono tabular-nums">
+        <thead><tr className="text-text-tertiary"><th />{cols.map((c) => <th key={c} className="text-right font-normal">{(c * 100).toFixed(1)}%</th>)}</tr></thead>
+        <tbody>{rows.map((r, i) => (
+          <tr key={r} className="border-t border-border-subtle"><td className="text-text-tertiary">{(r * 100).toFixed(1)}%</td>
+            {grid[i].map((x, j) => (
+              <td key={j} className={cn('text-right py-0.5', i === 2 && j === 2 && 'font-semibold underline', price && x != null && (x > price ? 'text-green' : 'text-red'))}>
+                {x == null ? '—' : fmtPrice(x)}</td>))}</tr>))}</tbody>
+      </table>
+    </Panel>
   );
 }

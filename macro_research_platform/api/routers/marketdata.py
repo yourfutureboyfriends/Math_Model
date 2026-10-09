@@ -148,20 +148,24 @@ async def mkt_beta(symbol: str, benchmark: str = "^GSPC", period: str = Query("2
 
 
 @router.get("/api/v1/mkt/dcf/{symbol}")
-async def mkt_dcf(symbol: str, growth: Optional[float] = None, years: int = Query(5, ge=1, le=20),
-                  terminal_growth: float = Query(0.025, ge=-0.02, le=0.06), discount: Optional[float] = Query(None, gt=0, lt=0.4),
-                  fcf: Optional[float] = None):
-    from api.marketdata import security
-    inp = await _run(security.dcf_inputs, symbol, timeout=60)
-    g = growth if growth is not None else (inp["growth"] if inp["growth"] is not None else 0.05)
-    r = discount if discount is not None else inp["discount_rate"]
-    base = fcf if fcf is not None else inp["fcf"]
-    val = await _run(security.dcf, base, inp["shares"], inp["net_debt"], g, years, terminal_growth, r,
-                     inp["price"] if inp["currency"] == inp["price_currency"] else None)
-    return {"inputs": {**inp, "used": {"fcf": base, "growth": g, "years": years, "terminal_growth": terminal_growth, "discount": r}},
-            "valuation": val,
-            "currency_note": None if inp["currency"] == inp["price_currency"] else
-            f"Financials are in {inp['currency']} but the share trades in {inp['price_currency']}, so upside is not shown."}
+async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le=2.0), years: int = Query(10, ge=3, le=20),
+                  terminal_growth: Optional[float] = Query(None, ge=-0.02, le=0.06), target_margin: Optional[float] = Query(None, ge=-1.0, le=0.9),
+                  sales_to_capital: Optional[float] = Query(None, gt=0, le=20), ronic: Optional[float] = Query(None, gt=0, le=2.0),
+                  discount: Optional[float] = Query(None, gt=0, lt=0.4), beta: Optional[float] = Query(None, ge=-1, le=5),
+                  erp: float = Query(0.042, ge=0, le=0.15), include_leases: bool = False, mid_year: bool = True):
+    """FCFF discounted at WACC (Damodaran / McKinsey): fading growth, margin path, reinvestment via
+    sales-to-capital, value-driver terminal value, mid-year discounting, reverse DCF and sensitivities."""
+    from api.marketdata import dcf
+    inp = await _run(dcf.inputs, symbol, timeout=60)
+    kw = dict(growth=growth, years=years, terminal_growth=terminal_growth, target_margin=target_margin, sales_to_capital=sales_to_capital,
+              ronic=ronic, discount=discount, beta=beta, erp=erp, include_leases=include_leases, mid_year=mid_year)
+    val = await _run(dcf.value, inp, **kw)
+    sens = await _run(dcf.sensitivity, inp, val, **kw)
+    implied = await _run(dcf.reverse, inp, **{k: v for k, v in kw.items() if k != "growth"})
+    return {"inputs": inp, "valuation": val, "sensitivity": sens, "market_implied_growth": implied,
+            "method": "FCFF at WACC with mid-year discounting; terminal value = NOPAT × (1 − g/RONIC) ÷ (WACC − g). "
+                      "SBC is expensed (inside GAAP operating income). Sources: Damodaran (NYU Stern); Koller, Goedhart & Wessels, "
+                      "Valuation (McKinsey)."}
 
 
 # ── Global monitors ──────────────────────────────────────────────────────────

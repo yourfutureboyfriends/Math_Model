@@ -12,7 +12,7 @@ Single-security functions for the Markets mode (Bloomberg mnemonics in brackets)
   history(s)     [HP]      OHLCV table
   compare(ss)    [COMP]    total-return comparison, stats and correlations
   beta(s, b)     [BETA]    regression beta / alpha / R², rolling beta, scatter
-  dcf(s, ...)    [DCF]     two-stage discounted free cash flow with sensitivity grid
+  (DCF lives in api/marketdata/dcf.py)
 
 Sources: Yahoo Finance (prices, estimates, holders, options); SEC EDGAR for US free cash
 flow when available. Missing data stays missing.
@@ -584,79 +584,3 @@ def beta(symbol: str, benchmark: str = "^GSPC", period: str = "2y", freq: str = 
                 "note": "OLS of the security's returns on the benchmark's. Adjusted beta = 0.67 × raw + 0.33 (Blume, as on Bloomberg).",
                 "source": "Yahoo Finance"}
     return _cached(f"beta:{s}:{b}:{period}:{freq}", 3600, fetch)
-
-
-# ── DCF ──────────────────────────────────────────────────────────────────────
-def dcf_inputs(symbol: str) -> Dict[str, Any]:
-    """Defaults for the DCF: TTM free cash flow (SEC filings for US filers, else company
-    reports), shares, net debt, beta, risk-free rate and a CAPM cost of equity."""
-    s = symbol.strip().upper()
-    i = _info(s)
-    fcf, src, ocf, capex = None, None, None, None
-    try:
-        from api.providers import sec_edgar
-        if sec_edgar.resolve(s):
-            st = sec_edgar.statements(s)
-            fcf, src = st["ttm"].get("free_cash_flow"), "SEC EDGAR (TTM, as filed)"
-            ocf, capex = st["ttm"].get("operating_cash_flow"), st["ttm"].get("capex")
-    except Exception:
-        pass
-    if ocf is None:
-        ocf = _f(i.get("operatingCashflow"))
-    if fcf is None:
-        fcf, src = _f(i.get("freeCashflow")), "Yahoo Finance (TTM)"
-    rf = None
-    try:
-        from api.marketdata.core import quote
-        rf = (quote("^TNX")["price"] or 0) / 100 or None
-    except Exception:
-        pass
-    b = _f(i.get("beta"))
-    erp = 0.05
-    coe = (rf or 0.04) + (b if b is not None else 1.0) * erp
-    debt, cash = _f(i.get("totalDebt")) or 0.0, _f(i.get("totalCash")) or 0.0
-    return {"symbol": s, "name": i.get("longName") or i.get("shortName"), "currency": i.get("financialCurrency") or i.get("currency"),
-            "price": _f(i.get("regularMarketPrice")) or _f(i.get("currentPrice")), "price_currency": i.get("currency"),
-            "fcf": fcf, "fcf_source": src, "shares": _f(i.get("sharesOutstanding")), "net_debt": debt - cash,
-            "beta": b, "risk_free": rf, "equity_risk_premium": erp, "discount_rate": round(coe, 4),
-            # Conservative default: revenue growth capped to −5%…15% (quarterly EPS growth is too noisy to project).
-            "growth": None if _f(i.get("revenueGrowth")) is None else round(min(0.15, max(-0.05, _f(i.get("revenueGrowth")))), 4),
-            "capex_share_of_ocf": (capex / ocf) if capex is not None and ocf and ocf > 0 else None,
-            "investment_warning": (f"Capital spending is {capex / ocf:.0%} of operating cash flow, so trailing free cash flow is "
-                                   "depressed by growth investment. A DCF on it will understate the value if that investment "
-                                   "pays off — try a higher starting FCF (e.g. operating cash flow minus maintenance capex).")
-                                  if capex is not None and ocf and ocf > 0 and capex / ocf > 0.5 else None,
-            "note": "Discount rate defaults to CAPM cost of equity (10-year Treasury + beta × 5% equity premium); "
-                    "free cash flow is to the firm, so subtract net debt to reach equity value."}
-
-
-def dcf(fcf: float, shares: float, net_debt: float, growth: float, years: int, terminal_growth: float,
-        discount: float, price: Optional[float] = None) -> Dict[str, Any]:
-    if not fcf or not shares or shares <= 0:
-        raise NotFound("Need positive free cash flow and share count for a DCF.")
-    if discount <= terminal_growth:
-        raise NotFound("The discount rate must exceed terminal growth.")
-    if not 1 <= years <= 20:
-        raise NotFound("Use 1–20 projection years.")
-
-    def value(g, r, tg):
-        cfs, f = [], fcf
-        for y in range(1, years + 1):
-            f *= 1 + g
-            cfs.append(f / (1 + r) ** y)
-        tv = f * (1 + tg) / (r - tg) / (1 + r) ** years
-        ev = sum(cfs) + tv
-        return ev, (ev - net_debt) / shares, sum(cfs), tv
-    ev, per_share, pv_cf, pv_tv = value(growth, discount, terminal_growth)
-    grid_r = [round(discount + d, 4) for d in (-0.02, -0.01, 0, 0.01, 0.02)]
-    grid_g = [round(terminal_growth + d, 4) for d in (-0.01, -0.005, 0, 0.005, 0.01)]
-    grid = [[(value(growth, r, tg)[1] if r > tg else None) for tg in grid_g] for r in grid_r]
-    proj, f = [], fcf
-    for y in range(1, years + 1):
-        f *= 1 + growth
-        proj.append({"year": y, "fcf": f, "pv": f / (1 + discount) ** y})
-    return {"enterprise_value": ev, "equity_value": ev - net_debt, "per_share": per_share,
-            "upside": (per_share / price - 1) if price else None, "pv_cash_flows": pv_cf, "pv_terminal": pv_tv,
-            "terminal_share": pv_tv / ev if ev else None, "projection": proj,
-            "sensitivity": {"discount_rates": grid_r, "terminal_growth": grid_g, "per_share": grid},
-            "implied_exit_multiple": (proj[-1]["fcf"] * (1 + terminal_growth) / (discount - terminal_growth)) / proj[-1]["fcf"]}

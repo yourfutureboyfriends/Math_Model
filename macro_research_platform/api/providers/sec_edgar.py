@@ -51,6 +51,14 @@ DURATION = {
     "capex": ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],
     "dividends_paid": ["PaymentsOfDividends", "PaymentsOfDividendsCommonStock"],
     "rnd": ["ResearchAndDevelopmentExpense"],
+    "pretax_income": ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+                      "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+                      "IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic"],
+    "income_tax": ["IncomeTaxExpenseBenefit"],
+    "interest_expense": ["InterestExpense", "InterestExpenseNonoperating", "InterestExpenseDebt", "InterestAndDebtExpense"],
+    "dna": ["DepreciationDepletionAndAmortization", "DepreciationAndAmortization", "DepreciationAmortizationAndAccretionNet",
+            "Depreciation"],
+    "sbc": ["ShareBasedCompensation", "AllocatedShareBasedCompensationExpense"],
 }
 INSTANT = {
     "total_assets": ["Assets"],
@@ -58,9 +66,15 @@ INSTANT = {
     "equity": ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"],
     "equity_incl_nci": ["StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "StockholdersEquity"],
     "cash": ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"],
-    "long_term_debt": ["LongTermDebtNoncurrent", "LongTermDebt"],
+    "long_term_debt": ["LongTermDebtNoncurrent", "LongTermDebt", "LongTermDebtAndCapitalLeaseObligations",
+                       "LongTermDebtAndFinanceLeaseObligationsNoncurrent", "LongTermNotesPayable", "SeniorNotes"],
     "current_assets": ["AssetsCurrent"],
     "current_liabilities": ["LiabilitiesCurrent"],
+    "short_term_investments": ["ShortTermInvestments", "MarketableSecuritiesCurrent", "AvailableForSaleSecuritiesDebtSecuritiesCurrent"],
+    "short_term_debt": ["DebtCurrent", "LongTermDebtCurrent", "ShortTermBorrowings", "CommercialPaper"],
+    "minority_interest": ["MinorityInterest"],
+    "operating_lease": ["OperatingLeaseLiability", "OperatingLeaseLiabilityNoncurrent"],
+    "finance_lease": ["FinanceLeaseLiability", "FinanceLeaseLiabilityNoncurrent"],
 }
 LABELS = {
     "revenue": "Revenue", "gross_profit": "Gross profit", "operating_income": "Operating income",
@@ -68,7 +82,11 @@ LABELS = {
     "capex": "Capital expenditure", "free_cash_flow": "Free cash flow", "dividends_paid": "Dividends paid",
     "rnd": "R&D", "total_assets": "Total assets", "total_liabilities": "Total liabilities", "equity": "Shareholders' equity",
     "cash": "Cash", "long_term_debt": "Long-term debt", "current_assets": "Current assets",
-    "current_liabilities": "Current liabilities", "shares": "Shares outstanding",
+    "current_liabilities": "Current liabilities", "shares": "Shares outstanding", "pretax_income": "Pretax income",
+    "income_tax": "Income tax", "interest_expense": "Interest expense", "dna": "Depreciation & amortisation",
+    "sbc": "Stock-based compensation", "short_term_investments": "Short-term investments", "short_term_debt": "Short-term debt",
+    "minority_interest": "Minority interest", "operating_lease": "Operating lease liabilities",
+    "finance_lease": "Finance lease liabilities",
 }
 
 
@@ -347,7 +365,8 @@ def statements(ticker: str, years: int = 10, quarters: int = 12) -> Dict[str, An
         vals = [qtr[e].get(k) for e in latest_q]
         return sum(vals) if latest_q and all(v is not None for v in vals) else None
     last_bal = qtr[sorted(qtr)[-1]] if qtr else {}
-    t = {k: ttm_of(k) for k in ("revenue", "gross_profit", "operating_income", "net_income", "eps_diluted", "operating_cash_flow", "capex")}
+    t = {k: ttm_of(k) for k in ("revenue", "gross_profit", "operating_income", "net_income", "eps_diluted", "operating_cash_flow", "capex",
+                                "pretax_income", "income_tax", "interest_expense", "dna", "sbc")}
 
     def ratio(a, b):
         return round(a / b, 4) if a is not None and b not in (None, 0) else None
@@ -366,6 +385,7 @@ def statements(ticker: str, years: int = 10, quarters: int = 12) -> Dict[str, An
             "quarterly": [{"period_end": e, **qtr[e]} for e in sorted(qtr)],
             "ttm": {**t, "free_cash_flow": fcf, "as_of": latest_q[-1] if latest_q else None},
             "ratios": ratios, "shares_outstanding": sh[-1] if sh else None, "tags": tags, "labels": LABELS,
+            "balance": {k: v for k, v in last_bal.items() if k in INSTANT}, "balance_as_of": sorted(qtr)[-1] if qtr else None,
             "filings": [{"accession": a, "filed": f, "form": fm,
                          "url": f"https://www.sec.gov/Archives/edgar/data/{ent['cik']}/{a.replace('-', '')}/"} for a, f, fm in filings],
             "source": "SEC EDGAR XBRL (as filed)"}
