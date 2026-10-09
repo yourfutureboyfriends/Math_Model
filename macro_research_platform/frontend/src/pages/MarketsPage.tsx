@@ -7,7 +7,8 @@ import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CommandLine } from '@/components/markets/CommandLine';
 import { FUNCTIONS, MARKET_FUNCTIONS, SECURITY_FUNCTIONS, findFunction, type MktFunction } from '@/components/markets/functions';
-import { FunctionMenu, HelpPanel, KeyBar, NewsCrawl, TitleBar, useHelp } from '@/components/markets/Chrome';
+import { FunctionMenu, HelpPanel, KeyBar, NewsCrawl, TitleBar, UpDownToggle, WorkspaceTabs, useHelp } from '@/components/markets/Chrome';
+import { QuoteWorkstation, WatchColumn } from '@/components/markets/QuoteWorkstation';
 import { MonitorHome } from '@/components/markets/Monitor';
 import { toTerminal } from '@/components/markets/bbg';
 import { setMarketsSkin, useMarketsSkin } from '@/lib/theme';
@@ -18,7 +19,6 @@ import { AnrView, BetaView, DcfView, DvdView, ErnView, HdsView, HpView, OmonView
 import { BtmmView, CmdtyView, CompView, CryptoView, EcoView, EvtsView, GcView, ImapView, NewsView, WcrsView } from '@/components/markets/GlobalFunctions';
 import { AlertsView, AlertToasts, JournalView, WatchlistsView, useAddToWatchlist } from '@/components/markets/MyTools';
 import { ErrorBox, fmtPrice, Loading, TYPE_COLOR } from '@/components/markets/shared';
-import { InstrumentOverview } from '@/components/markets/InstrumentOverview';
 import { WorldMap } from '@/components/markets/WorldMap';
 import { AiChat, RightRail } from '@/components/markets/RightRail';
 
@@ -145,7 +145,8 @@ function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: 
               <span className={cn('w-1.5 h-1.5 rounded-full', d.market_state === 'REGULAR' ? 'bg-green' : 'bg-text-tertiary')} />
               {d.market_state === 'REGULAR' ? 'Market open' : d.market_state === 'PRE' ? 'Pre-market' : d.market_state === 'POST' || d.market_state === 'POSTPOST' ? 'After hours' : 'Market closed'}</span>}
           </div>
-          <h1 className="text-2xl font-semibold text-text-primary mt-1 truncate">{d.name}</h1>
+          <h1 className={cn('font-semibold text-text-primary mt-1 truncate', f.code === 'DES' ? 'text-lg' : 'text-2xl')}>{d.name}</h1>
+          {f.code !== 'DES' && <>
           <div className="flex items-baseline gap-3 mt-1">
             <span className="text-4xl font-semibold font-mono tabular-nums text-text-primary">{fmtPrice(d.price, d.type)}</span>
             <span className="text-sm font-mono">{d.currency}</span>
@@ -153,6 +154,7 @@ function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: 
               {d.change >= 0 ? '+' : ''}{fmtPrice(d.change, d.type)} ({d.change_pct != null ? `${d.change_pct >= 0 ? '+' : ''}${(d.change_pct * 100).toFixed(2)}%` : '—'})</span>}
           </div>
           <div className="text-[11px] text-text-tertiary mt-1">{d.delay_minutes ? `Delayed ${d.delay_minutes} min · ` : ''}Source: {d.source}</div>
+          </>}
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={watch}
@@ -171,7 +173,7 @@ function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: 
       </nav>
       </>}
       <ErrorBoundary sectionName={`${f.code} ${symbol}`} key={`${f.code}:${symbol}`}>
-        {f.code === 'DES' && <InstrumentOverview q={d} onOpen={(s) => onGo('DES', s)} onGo={onGo} />}
+        {f.code === 'DES' && <QuoteWorkstation q={d} onOpen={(s) => onGo('DES', s)} onGo={onGo} />}
         {f.code === 'GP' && <Chart symbol={symbol} height={560} />}
         {f.code === 'FA' && <Financials symbol={symbol} />}
         {f.code === 'ERN' && <ErnView symbol={symbol} />}
@@ -200,11 +202,18 @@ export function MarketsPage() {
   return (
     <div className={cn('mkt-root flex items-start', classic ? 'p-2 pb-10 gap-2' : 'p-4 gap-4')}>
     <div className={cn('flex-1 min-w-0', classic ? 'space-y-2' : 'space-y-4 max-w-[1500px]')}>
-      {classic ? <KeyBar onGo={(fn) => onGo(fn)} onHelp={help.toggle} /> : (
-        <div className="flex justify-end -mb-2"><button onClick={() => setMarketsSkin('classic')} className="text-[11px] text-text-tertiary hover:text-bloomberg">Switch to the classic terminal look</button></div>)}
+      {classic ? <KeyBar onGo={(fn) => (fn === 'BACK' ? window.history.back() : onGo(fn))} onHelp={help.toggle} /> : (
+        <div className="flex justify-end items-center gap-3 -mb-2 text-[11px] text-text-tertiary"><UpDownToggle />
+          <button onClick={() => setMarketsSkin('classic')} className="hover:text-bloomberg">Switch to the classic terminal look</button></div>)}
+      <WorkspaceTabs />
       <CommandLine current={f.security ? route.symbol : undefined} onGo={onGo} />
       {help.open && <HelpPanel onClose={help.close} />}
-      {f.security && route.symbol ? <SecurityView fn={f.code} symbol={route.symbol} onGo={onGo} /> : (
+      {f.security && route.symbol ? (
+        <div className="grid grid-cols-1 xl:grid-cols-[230px_minmax(0,1fr)] gap-2 items-start">
+          <WatchColumn current={route.symbol} onOpen={(s) => onGo(f.code, s)} />
+          <div className="min-w-0"><SecurityView fn={f.code} symbol={route.symbol} onGo={onGo} /></div>
+        </div>
+      ) : (
         <div className={classic ? 'space-y-2' : 'space-y-3'}>
           {classic ? <TitleBar code={f.code} title={f.name} right={f.desc} /> : <FunctionHeader f={f} />}
           <ErrorBoundary sectionName={`Markets · ${f.code}`} key={f.code}>
@@ -234,7 +243,7 @@ export function MarketsPage() {
       <AlertToasts onOpen={open} />
       {classic && <NewsCrawl />}
     </div>
-    {f.code !== 'AI' && <RightRail symbol={f.security ? route.symbol : undefined} onOpen={open} />}
+    {f.code !== 'AI' && !(f.security && route.symbol) && <RightRail onOpen={open} />}
     </div>
   );
 }

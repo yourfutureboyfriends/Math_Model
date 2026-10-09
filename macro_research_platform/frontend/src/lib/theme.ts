@@ -82,3 +82,29 @@ export function applySkin(on: boolean) {
   const root = document.documentElement;
   if (on) root.dataset.skin = 'terminal'; else delete root.dataset.skin;
 }
+
+// ── Up/down colours: 'green' (US/Europe: green = up) or 'red' (HK/China/Japan/Korea: red = up) ──
+export type UpDown = 'green' | 'red';
+const UD_KEY = 'mkt_updown';
+const UD_EVT = 'mkt-updown';
+export function getUpDown(): UpDown {
+  try { return localStorage.getItem(UD_KEY) === 'red' ? 'red' : 'green'; } catch { return 'green'; }
+}
+export function applyUpDown(u: UpDown = getUpDown()) {
+  const root = document.documentElement;
+  if (u === 'red') root.dataset.updown = 'red'; else delete root.dataset.updown;
+}
+export function setUpDown(u: UpDown) {
+  try { localStorage.setItem(UD_KEY, u); } catch { /* storage unavailable */ }
+  applyUpDown(u);
+  window.dispatchEvent(new CustomEvent(UD_EVT, { detail: u }));
+}
+export function useUpDown(): UpDown {
+  const [u, setU] = useState<UpDown>(getUpDown);
+  useEffect(() => {
+    const h = (e: Event) => setU((e as CustomEvent).detail as UpDown);
+    window.addEventListener(UD_EVT, h);
+    return () => window.removeEventListener(UD_EVT, h);
+  }, []);
+  return u;
+}

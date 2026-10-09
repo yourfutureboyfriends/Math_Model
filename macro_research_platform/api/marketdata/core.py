@@ -101,6 +101,16 @@ def _info(symbol: str) -> Dict[str, Any]:
     return _cached(f"info:{symbol}", 60, fetch)
 
 
+def div_yield(i: Dict[str, Any]) -> Optional[float]:
+    """Dividend yield as a decimal. Yahoo's `dividendYield` is always in percent (0.32 = 0.32%,
+    2.42 = 2.42%); funds carry a decimal `yield` instead."""
+    dy = _f(i.get("dividendYield"))
+    if dy is not None:
+        return dy / 100
+    y = _f(i.get("yield"))
+    return y if y is not None else _f(i.get("trailingAnnualDividendYield"))
+
+
 def quote(symbol: str) -> Dict[str, Any]:
     s = symbol.strip().upper()
     i = _info(s)
@@ -117,7 +127,82 @@ def quote(symbol: str) -> Dict[str, Any]:
             "week52_low": _f(i.get("fiftyTwoWeekLow")), "market_cap": _f(i.get("marketCap")),
             "market_state": i.get("marketState"), "exchange_timezone": i.get("exchangeTimezoneName"),
             "quote_time": i.get("regularMarketTime"), "delay_minutes": i.get("exchangeDataDelayedBy"),
+            **_quote_extras(i, price, prev),
             "source": "Yahoo Finance"}
+
+
+def _quote_extras(i: Dict[str, Any], price: Optional[float], prev: Optional[float]) -> Dict[str, Any]:
+    """Brokerage-style quote fields: top of book, extended hours, valuation, activity."""
+    vol, hi, lo = _f(i.get("regularMarketVolume")), _f(i.get("regularMarketDayHigh")), _f(i.get("regularMarketDayLow"))
+    flt = _f(i.get("floatShares"))
+    dy = div_yield(i)
+    pre, post = _f(i.get("preMarketPrice")), _f(i.get("postMarketPrice"))
+    bid, ask = _f(i.get("bid")), _f(i.get("ask"))
+    return {
+        "bid": bid if bid else None, "ask": ask if ask else None,
+        "bid_size": _f(i.get("bidSize")) or None, "ask_size": _f(i.get("askSize")) or None,
+        "pre_market_price": pre, "pre_market_change_pct": (pre / prev - 1) if pre and prev else None,
+        "post_market_price": post, "post_market_change_pct": (post / price - 1) if post and price else None,
+        "trailing_pe": _f(i.get("trailingPE")), "forward_pe": _f(i.get("forwardPE")), "price_to_book": _f(i.get("priceToBook")),
+        "eps_ttm": _f(i.get("epsTrailingTwelveMonths")) or _f(i.get("trailingEps")), "dividend_yield": dy,
+        "beta": _f(i.get("beta")), "shares_outstanding": _f(i.get("sharesOutstanding")), "float_shares": flt,
+        "turnover": price * vol if price and vol else None,
+        "turnover_ratio": vol / flt if vol and flt else None,
+        "amplitude": (hi - lo) / prev if hi and lo and prev else None,
+        "avg_volume_10d": _f(i.get("averageDailyVolume10Day")),
+        "volume_ratio": vol / _f(i.get("averageDailyVolume10Day")) if vol and _f(i.get("averageDailyVolume10Day")) else None,
+    }
+
+
+def tape(symbol: str) -> Dict[str, Any]:
+    """Today's session from 1-minute bars: recent prints, VWAP, a tick-rule split of volume into
+    buying and selling, and a volume-by-price profile. (Free data has no true tick-by-tick
+    trades or order book; one-minute bars are the finest free granularity.)"""
+    s = symbol.strip().upper()
+
+    def fetch():
+        import yfinance as yf
+        try:
+            df = yf.Ticker(s).history(period="5d", interval="1m", prepost=False, auto_adjust=False)
+        except Exception as e:
+            raise Upstream(f"Intraday data unavailable for {s}: {e}")
+        if df is None or df.empty:
+            raise NotFound(f"No intraday data for {s}.")
+        last_day = df.index[-1].date()
+        d = df[df.index.date == last_day]
+        d = d[d["Volume"].fillna(0) >= 0]
+        closes, vols = d["Close"].astype(float), d["Volume"].fillna(0).astype(float)
+        prints, up_v, down_v, flat_v = [], 0.0, 0.0, 0.0
+        prev = None
+        for ts, c, v in zip(d.index, closes, vols):
+            side = 0 if prev is None or c == prev else (1 if c > prev else -1)
+            if side > 0:
+                up_v += v
+            elif side < 0:
+                down_v += v
+            else:
+                flat_v += v
+            prints.append({"time": ts.strftime("%H:%M"), "price": c, "volume": v, "side": side})
+            prev = c
+        vwap = float((d["Close"] * d["Volume"]).sum() / d["Volume"].sum()) if d["Volume"].sum() > 0 else None
+        # volume profile: 24 price buckets across the day's range
+        lo, hi = float(d["Low"].min()), float(d["High"].max())
+        buckets: List[Dict[str, Any]] = []
+        if hi > lo:
+            n = 24
+            step = (hi - lo) / n
+            vol_at = [0.0] * n
+            for c, v in zip(closes, vols):
+                k = min(n - 1, int((c - lo) / step))
+                vol_at[k] += v
+            buckets = [{"price_low": lo + k * step, "price_high": lo + (k + 1) * step, "volume": vol_at[k]} for k in range(n)]
+        tz = str(df.index.tz) if df.index.tz is not None else None
+        return {"symbol": s, "date": str(last_day), "timezone": tz, "prints": prints[-80:][::-1], "bars": len(d),
+                "vwap": vwap, "high": hi, "low": lo, "volume": float(vols.sum()),
+                "up_volume": up_v, "down_volume": down_v, "flat_volume": flat_v, "profile": buckets,
+                "method": "1-minute bars (Yahoo). Buy/sell split by the tick rule: volume in a minute that closed up counts as "
+                          "buying, down as selling — an estimate, not exchange-reported order flow."}
+    return _cached(f"tape:{s}", 60, fetch)
 
 
 OVERVIEW: Dict[str, List[tuple]] = {
@@ -200,7 +285,7 @@ def profile(symbol: str) -> Dict[str, Any]:
                      "valuation": {k: _f(i.get(v)) for k, v in (("trailing_pe", "trailingPE"), ("forward_pe", "forwardPE"),
                                    ("price_to_book", "priceToBook"), ("price_to_sales", "priceToSalesTrailing12Months"),
                                    ("ev_to_ebitda", "enterpriseToEbitda"), ("peg", "trailingPegRatio"),
-                                   ("dividend_yield", "dividendYield"), ("beta", "beta"))},
+                                   ("beta", "beta"))} | {"dividend_yield": div_yield(i)},
                      "analysts": {"target_mean": _f(i.get("targetMeanPrice")), "target_low": _f(i.get("targetLowPrice")),
                                   "target_high": _f(i.get("targetHighPrice")), "recommendation": i.get("recommendationKey"),
                                   "analysts": i.get("numberOfAnalystOpinions")}})

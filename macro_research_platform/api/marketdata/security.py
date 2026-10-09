@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from api.marketdata.core import (MAIN_EXCHANGES, NotFound, Upstream, _cached, _f, _info, _norm, to_usd, usd_to_local)
+from api.marketdata.core import (MAIN_EXCHANGES, NotFound, Upstream, _cached, _f, _info, _norm, div_yield, to_usd, usd_to_local)
 
 
 def _tk(symbol: str):
@@ -196,10 +196,10 @@ def dividends(symbol: str) -> Dict[str, Any]:
                     streak += 1
                 else:
                     break
-        dy = _f(i.get("dividendYield"))
+        dy = div_yield(i)
         return {"symbol": s, "payments": pays[:40], "annual": [{"year": y, "total": annual[y]} for y in ys[-20:]],
                 "growth": growth, "consecutive_increases": streak, "currency": i.get("currency"),
-                "dividend_yield": dy / 100 if dy is not None and dy > 1 else dy,
+                "dividend_yield": dy,
                 "payout_ratio": _f(i.get("payoutRatio")), "ex_dividend_date": i.get("exDividendDate"),
                 "forward_rate": _f(i.get("dividendRate")),
                 "splits": [{"date": d.strftime("%Y-%m-%d"), "ratio": _f(v)} for d, v in sp.items()][::-1] if sp is not None else [],
@@ -294,8 +294,7 @@ def options(symbol: str, expiry: Optional[str] = None) -> Dict[str, Any]:
         S = _f(i.get("regularMarketPrice")) or _f(i.get("previousClose"))
         if S is None:
             raise NotFound(f"No underlying price for {s}.")
-        dy = _f(i.get("dividendYield")) or 0.0
-        q = dy / 100 if dy > 1 else dy
+        q = div_yield(i) or 0.0                 # continuous dividend yield for Black-Scholes-Merton
         r = _risk_free()
         try:
             ch = t.option_chain(exp)
@@ -467,14 +466,14 @@ def comps(symbol: str, max_peers: int = 12) -> Dict[str, Any]:
                 return None
             ccy = ii.get("currency")
             mcap = _f(ii.get("marketCap"))
-            dy = _f(ii.get("dividendYield"))
+            dy = div_yield(ii)
             return {"symbol": sym, "name": ii.get("longName") or ii.get("shortName"), "country": ii.get("country"),
                     "currency": ccy, "market_cap_usd": to_usd(mcap, ccy),
                     "pe": _f(ii.get("trailingPE")), "forward_pe": _f(ii.get("forwardPE")), "ev_ebitda": _f(ii.get("enterpriseToEbitda")),
                     "price_to_book": _f(ii.get("priceToBook")), "price_to_sales": _f(ii.get("priceToSalesTrailing12Months")),
                     "gross_margin": _f(ii.get("grossMargins")), "operating_margin": _f(ii.get("operatingMargins")),
                     "roe": _f(ii.get("returnOnEquity")), "revenue_growth": _f(ii.get("revenueGrowth")),
-                    "dividend_yield": (dy / 100 if dy is not None and dy > 1 else dy), "beta": _f(ii.get("beta")),
+                    "dividend_yield": dy, "beta": _f(ii.get("beta")),
                     "subject": sym == s}
         with cf.ThreadPoolExecutor(max_workers=8) as ex:
             rows = [r for r in ex.map(row, syms) if r]

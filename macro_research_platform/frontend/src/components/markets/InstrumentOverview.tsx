@@ -34,7 +34,7 @@ function RangeBar({ low, high, value, label }: { low?: number | null; high?: num
   );
 }
 
-function KeyStats({ q, p }: { q: any; p: any }) {
+export function KeyStats({ q, p }: { q: any; p: any }) {
   const v = p?.valuation ?? {};
   const rows: [string, string][] = [
     ['Open', fmtPrice(q.open, q.type)], ['Previous close', fmtPrice(q.previous_close, q.type)],
@@ -55,7 +55,7 @@ function KeyStats({ q, p }: { q: any; p: any }) {
   );
 }
 
-function OrderTicket({ q }: { q: any }) {
+export function OrderTicket({ q }: { q: any }) {
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [mode, setMode] = useState<'shares' | 'amount'>('shares');
   const [qty, setQty] = useState('');
@@ -116,7 +116,7 @@ function OrderTicket({ q }: { q: any }) {
   );
 }
 
-function AnalystGauge({ symbol, price }: { symbol: string; price?: number | null }) {
+export function AnalystGauge({ symbol, price }: { symbol: string; price?: number | null }) {
   const { data, loading } = useJSON<any>(`/api/v1/mkt/anr/${enc(symbol)}`);
   if (loading && !data) return <Loading />;
   const s = data?.summary?.[0];
@@ -148,7 +148,7 @@ function AnalystGauge({ symbol, price }: { symbol: string; price?: number | null
   );
 }
 
-function EarningsCard({ symbol }: { symbol: string }) {
+export function EarningsCard({ symbol }: { symbol: string }) {
   const { data, loading } = useJSON<any>(`/api/v1/mkt/ern/${enc(symbol)}`);
   if (loading && !data) return <Loading />;
   if (!data) return <p className="text-xs text-text-tertiary">No earnings data.</p>;
@@ -165,7 +165,7 @@ function EarningsCard({ symbol }: { symbol: string }) {
   );
 }
 
-function SimilarStocks({ symbol, onOpen }: { symbol: string; onOpen: (s: string) => void }) {
+export function SimilarStocks({ symbol, onOpen }: { symbol: string; onOpen: (s: string) => void }) {
   const { data, loading } = useJSON<any>(`/api/v1/mkt/rv/${enc(symbol)}`);
   const peers = (data?.rows ?? []).filter((r: any) => !r.subject).slice(0, 8);
   const quotes = useJSON<any>(peers.length ? `/api/v1/mkt/quotes?symbols=${enc(peers.map((p: any) => p.symbol).join(','))}` : null);
@@ -184,7 +184,7 @@ function SimilarStocks({ symbol, onOpen }: { symbol: string; onOpen: (s: string)
   );
 }
 
-function NewsList({ symbol }: { symbol: string }) {
+export function NewsList({ symbol }: { symbol: string }) {
   const { data, loading } = useJSON<any>(`/api/v1/mkt/news/${enc(symbol)}`, 900_000);
   if (loading && !data) return <Loading />;
   const items = data?.news ?? [];

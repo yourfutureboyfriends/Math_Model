@@ -40,6 +40,11 @@
 .key-amber { background: rgb(var(--c-bloomberg)); color: #000; font-weight: 700; }
 .panel-bar { background: rgb(var(--c-surface-3)); color: rgb(var(--c-text-secondary)); }
 :root[data-skin="terminal"] .panel-bar { background: #1c1c1c; border-bottom: 1px solid #3a3a3a; }
+/* Up/down colours: red-up / green-down is the convention in Hong Kong, China, Japan and Korea
+   (Futubull's default there). Swapped inside Markets only; lib/theme.ts sets data-updown. */
+:root[data-updown="red"] .mkt-root { --c-green: 239 68 68; --c-red: 34 197 94; }
+:root[data-theme="light"][data-updown="red"] .mkt-root { --c-green: 200 30 30; --c-red: 21 128 61; }
+:root[data-skin="terminal"][data-updown="red"] .mkt-root { --c-green: 255 64 64; --c-red: 38 214 85; }
 @keyframes crawl { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 .news-crawl { animation: crawl 240s linear infinite; }
 .news-crawl:hover { animation-play-state: paused; }

@@ -287,3 +287,13 @@ def test_bank_excess_return_values_profitable_bank_above_book():
     assert a["payout_terminal"] == pytest.approx(1 - a["terminal_growth"] / a["roe_terminal"])
     r = dcf.reverse_financial(_bank(price=v["per_share"]), years=10)
     assert r is not None and 0.09 < r < 0.20
+
+
+def test_dividend_yield_is_always_read_as_percent():
+    """Yahoo's dividendYield is in percent: 0.32 means 0.32%, not 32% (it used to be misread for
+    low-yield stocks, which also fed a 32% dividend yield into Black-Scholes)."""
+    from api.marketdata.core import div_yield
+    assert div_yield({"dividendYield": 0.32}) == pytest.approx(0.0032)
+    assert div_yield({"dividendYield": 2.42}) == pytest.approx(0.0242)
+    assert div_yield({"yield": 0.0099}) == pytest.approx(0.0099)          # funds
+    assert div_yield({}) is None

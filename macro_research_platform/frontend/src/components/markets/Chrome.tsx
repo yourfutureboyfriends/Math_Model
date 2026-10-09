@@ -1,9 +1,10 @@
 // Classic terminal chrome for the Markets mode: yellow market-sector keys, amber function
 // keys, the function title bar, numbered function menus and the scrolling news crawl.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { setMarketsSkin, useMarketsSkin } from '@/lib/theme';
-import { FUNCTIONS, type MktFunction } from './functions';
+import { setMarketsSkin, setUpDown, useMarketsSkin, useUpDown } from '@/lib/theme';
+import { FUNCTIONS, findFunction, type MktFunction } from './functions';
+import { toTerminal } from './bbg';
 import { useJSON } from './shared';
 
 const SECTOR_KEYS: [string, string, string][] = [
@@ -11,7 +12,7 @@ const SECTOR_KEYS: [string, string, string][] = [
   ['EQUITY', 'MOST', 'Equities: most active, gainers, losers'], ['INDEX', 'WEI', 'World equity indices'], ['CURNCY', 'WCRS', 'Currencies: cross rates'],
   ['CMDTY', 'CMDTY', 'Commodities & futures curves'],
 ];
-const FN_KEYS: [string, string, string][] = [['MENU', 'WEI', 'Back to the launchpad'], ['NEWS', 'N', 'Top news'], ['MON', 'W', 'Your monitors / watchlists'],
+const FN_KEYS: [string, string, string][] = [['MENU', 'BACK', 'Back to the previous screen'], ['HOME', 'WEI', 'Launchpad: world markets monitor'], ['NEWS', 'N', 'Top news'], ['MON', 'W', 'Your monitors / watchlists'],
   ['ALRT', 'ALRT', 'Alerts'], ['AI', 'AI', 'AI research assistant']];
 
 export function KeyBar({ onGo, onHelp }: { onGo: (fn: string) => void; onHelp: () => void }) {
@@ -25,6 +26,8 @@ export function KeyBar({ onGo, onHelp }: { onGo: (fn: string) => void; onHelp: (
         <button key={k} onClick={() => onGo(fn)} title={title} className="key-amber px-2 py-0.5 leading-5">{k}</button>))}
       <button onClick={onHelp} title="How to use the terminal" className="px-2 py-0.5 leading-5 bg-green text-black font-bold">HELP</button>
       <span className="ml-auto inline-flex items-center gap-1 text-text-tertiary">
+        <UpDownToggle />
+        <span className="w-2" />
         Style
         {(['classic', 'modern'] as const).map((s) => (
           <button key={s} onClick={() => setMarketsSkin(s)} className={cn('px-1.5 py-0.5 border', skin === s ? 'border-bloomberg text-bloomberg' : 'border-border hover:text-text-primary')}>{s}</button>))}
@@ -98,4 +101,112 @@ export function HelpPanel({ onClose }: { onClose: () => void }) {
 export function useHelp() {
   const [open, setOpen] = useState(false);
   return { open, toggle: () => setOpen((o) => !o), close: () => setOpen(false) };
+}
+
+/** Up colour: green (US/Europe) or red (Hong Kong, China, Japan, Korea — Futubull's default there). */
+export function UpDownToggle() {
+  const u = useUpDown();
+  return (
+    <span className="inline-flex items-center gap-1" title="Colour for rising prices">
+      Up
+      {(['green', 'red'] as const).map((c) => (
+        <button key={c} onClick={() => setUpDown(c)} aria-pressed={u === c}
+          className={cn('px-1.5 py-0.5 border', u === c ? 'border-bloomberg' : 'border-border hover:text-text-primary')}>
+          <span style={{ color: c === 'green' ? '#22c55e' : '#ef4444' }}>▲</span></button>))}
+    </span>
+  );
+}
+
+// ── Workspace tabs: several screens open at once, each keeping its own security & function ──
+type WsTab = { id: string; hash: string };
+const TABS_KEY = 'mkt_tabs';
+const MAX_TABS = 9;
+
+function tabLabel(hash: string): { code: string; sec?: string } {
+  const parts = hash.replace(/^#mkt\/?/, '').split('/').filter(Boolean);
+  const f = findFunction(parts[0] ?? 'WEI');
+  const sym = parts[1] ? decodeURIComponent(parts[1]).toUpperCase() : undefined;
+  return { code: f?.code ?? 'WEI', sec: sym && f?.security ? toTerminal(sym).replace(/ (Equity|Index|Curncy|Comdty)$/, '') : sym };
+}
+
+export function WorkspaceTabs() {
+  const load = (): { tabs: WsTab[]; active: string } => {
+    const cur = window.location.hash.startsWith('#mkt') ? window.location.hash : '#mkt/wei';
+    try {
+      const j = JSON.parse(localStorage.getItem(TABS_KEY) || '');
+      if (Array.isArray(j.tabs) && j.tabs.length) {
+        const active = j.tabs.some((t: WsTab) => t.id === j.active) ? j.active : j.tabs[0].id;
+        return { tabs: j.tabs.map((t: WsTab) => (t.id === active ? { ...t, hash: cur } : t)), active };
+      }
+    } catch { /* first run or storage unavailable */ }
+    return { tabs: [{ id: 't1', hash: cur }], active: 't1' };
+  };
+  const [st, setSt] = useState(load);
+  const ref = useRef(st);
+  ref.current = st;
+  useEffect(() => { try { localStorage.setItem(TABS_KEY, JSON.stringify(st)); } catch { /* storage unavailable */ } }, [st]);
+  useEffect(() => {
+    const h = () => {
+      if (!window.location.hash.startsWith('#mkt')) return;
+      setSt((s) => ({ ...s, tabs: s.tabs.map((t) => (t.id === s.active ? { ...t, hash: window.location.hash } : t)) }));
+    };
+    window.addEventListener('hashchange', h);
+    return () => window.removeEventListener('hashchange', h);
+  }, []);
+  const activate = (id: string) => {
+    const t = ref.current.tabs.find((x) => x.id === id);
+    if (!t) return;
+    setSt((s) => ({ ...s, active: id }));
+    if (window.location.hash !== t.hash) window.location.hash = t.hash;
+  };
+  const add = () => {
+    if (ref.current.tabs.length >= MAX_TABS) return;
+    const id = `t${Date.now()}`;
+    setSt((s) => ({ tabs: [...s.tabs, { id, hash: '#mkt/wei' }], active: id }));
+    window.location.hash = '#mkt/wei';
+  };
+  const close = (id: string) => {
+    const s = ref.current;
+    if (s.tabs.length <= 1) return;
+    const i = s.tabs.findIndex((t) => t.id === id);
+    const tabs = s.tabs.filter((t) => t.id !== id);
+    if (id === s.active) {
+      const next = tabs[Math.max(0, i - 1)];
+      setSt({ tabs, active: next.id });
+      window.location.hash = next.hash;
+    } else setSt({ ...s, tabs });
+  };
+  // Alt+1…9 switch tabs, Alt+T new tab, Alt+W close tab (Option on a Mac)
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (!e.altKey || e.metaKey || e.ctrlKey) return;
+      const m = /^Digit([1-9])$/.exec(e.code);
+      if (m) { const t = ref.current.tabs[Number(m[1]) - 1]; if (t) { e.preventDefault(); activate(t.id); } }
+      else if (e.code === 'KeyT') { e.preventDefault(); add(); }
+      else if (e.code === 'KeyW') { e.preventDefault(); close(ref.current.active); }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
+  return (
+    <div role="tablist" aria-label="Workspace tabs" className="flex items-end gap-px overflow-x-auto text-[11px] border-b border-border">
+      {st.tabs.map((t, i) => {
+        const { code, sec } = tabLabel(t.hash);
+        const on = t.id === st.active;
+        return (
+          <div key={t.id} role="tab" aria-selected={on} title={`Alt+${i + 1}`}
+            className={cn('group flex items-center gap-1.5 pl-2 pr-1 py-1 border border-b-0 cursor-pointer whitespace-nowrap',
+              on ? 'bg-surface-1 border-border text-text-primary' : 'bg-surface-2/60 border-transparent text-text-tertiary hover:text-text-primary')}
+            onClick={() => activate(t.id)} onAuxClick={(e) => { if (e.button === 1) close(t.id); }}>
+            <span className="text-text-tertiary">{i + 1}</span>
+            {sec && <span className={on ? 'text-[rgb(var(--key-yellow,255_214_0))]' : ''}>{sec}</span>}
+            <span className={cn('font-mono font-semibold', on && 'text-bloomberg')}>{code}</span>
+            {st.tabs.length > 1 && <button onClick={(e) => { e.stopPropagation(); close(t.id); }} aria-label="Close tab"
+              className="px-0.5 text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-red">×</button>}
+          </div>);
+      })}
+      {st.tabs.length < MAX_TABS && <button onClick={add} title="New tab (Alt+T)" className="px-2 py-1 text-text-tertiary hover:text-bloomberg">+</button>}
+      <span className="ml-auto pr-1 pb-1 text-[10px] text-text-tertiary hidden md:inline">Alt+1…9 switch · Alt+T new · Alt+W close · MENU = back</span>
+    </div>
+  );
 }
