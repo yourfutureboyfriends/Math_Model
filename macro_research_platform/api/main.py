@@ -556,11 +556,27 @@ def _series(df: pd.DataFrame, *candidates) -> pd.Series:
 
 # Data Loading
 
+_FRESH_FRED: dict = {}   # series_id -> (expires_at, value); these are monthly/daily series
+_FRESH_FRED_TTL, _FRESH_FRED_FAIL_TTL = 1800, 300
+
+
 def _fetch_fresh_fred_value(series_id: str) -> Optional[float]:
     """
-    Fetch fresh value from FRED API for critical metrics.
+    Fresh value from FRED for critical metrics, cached 30 min (5 min after a failure) —
+    FRED is rate-limited and these series move monthly, so re-fetching on every request
+    only queued callers behind the rate-limit guard.
     Returns None if FRED API key not configured or fetch fails.
     """
+    import time as _t
+    hit = _FRESH_FRED.get(series_id)
+    if hit and hit[0] > _t.time():
+        return hit[1]
+    val = _fetch_fresh_fred_value_uncached(series_id)
+    _FRESH_FRED[series_id] = (_t.time() + (_FRESH_FRED_TTL if val is not None else _FRESH_FRED_FAIL_TTL), val)
+    return val
+
+
+def _fetch_fresh_fred_value_uncached(series_id: str) -> Optional[float]:
     from api.config import FRED_API_KEY
     api_key = FRED_API_KEY
     if not api_key or api_key == "your_fred_api_key_here":
@@ -599,6 +615,19 @@ def _fetch_fresh_fred_value(series_id: str) -> Optional[float]:
     return None
 
 
+_CSV_CACHE: dict = {}
+
+
+def _read_csv_cached(path) -> pd.DataFrame:
+    """read_csv keyed by the file's mtime; returns a copy so callers can patch it."""
+    mtime = path.stat().st_mtime
+    hit = _CSV_CACHE.get(str(path))
+    if not hit or hit[0] != mtime:
+        hit = (mtime, pd.read_csv(path, index_col=0, parse_dates=True))
+        _CSV_CACHE[str(path)] = hit
+    return hit[1].copy()
+
+
 def load_processed_data() -> Optional[pd.DataFrame]:
     """
     FIXED: Read from CSV and PATCH with fresh FRED data for critical metrics.
@@ -609,7 +638,7 @@ def load_processed_data() -> Optional[pd.DataFrame]:
     df = None
     if csv_file.exists():
         try:
-            df = pd.read_csv(csv_file, index_col=0, parse_dates=True)
+            df = _read_csv_cached(csv_file)
             if not df.empty:
                 logger.info(f"[DATA] Loaded CSV: {df.index.max().date()}, {len(df)} rows")
         except Exception as e:
@@ -1641,7 +1670,7 @@ async def subscribe_market_data(sid, data):
 
 
 @app.get("/api/health")
-@ttl_cache(120)
+@ttl_cache(120, offload=True)
 async def health_check():
     df_live = load_processed_data()
     # No silent fallback to the synthetic sample dataset — report the live data's state.
@@ -2863,7 +2892,7 @@ async def event_vol_v1():
 
 
 @app.get("/api/v1/risk-parity-compare")
-@ttl_cache(600)
+@ttl_cache(600, offload=True)
 async def risk_parity_compare_v1():
     """Honest comparison of allocation methods on REAL asset returns (per 'Risk Parity and its
     Discontents' 2025 + HRP/CVaR-RP research): Traditional RP (inverse-vol), Return-overlay RP,
@@ -2940,7 +2969,7 @@ async def risk_parity_compare_v1():
 
 
 @app.get("/api/v1/quadrants")
-@ttl_cache(300)
+@ttl_cache(300, offload=True)
 async def quadrants_v1():
     """Bridgewater Four Quadrants: classify the environment on growth-surprise × inflation-
     surprise axes (release vs its own trend, a consensus proxy), with the per-quadrant asset
@@ -2979,7 +3008,7 @@ async def quadrants_v1():
 
 
 @app.get("/api/v1/stream-agreement")
-@ttl_cache(300)
+@ttl_cache(300, offload=True)
 async def stream_agreement_v1():
     """Three-stream signal agreement: classify live signals into three
     INDEPENDENT evidence streams — macro drivers, intermarket action, capital flows — reduce
@@ -3027,7 +3056,7 @@ async def stream_agreement_v1():
 
 
 @app.get("/api/v1/factor-validation")
-@ttl_cache(600)
+@ttl_cache(600, offload=True)
 async def factor_validation_v1():
     """Factor out-of-sample validation (Phase 4, AQR discipline): for each macro factor, fit the
     exposure in-sample, measure R² in- vs out-of-sample, and flag factors whose explanatory power
@@ -3091,7 +3120,7 @@ async def factor_validation_v1():
 
 
 @app.get("/api/v1/regime-transition")
-@ttl_cache(300)
+@ttl_cache(300, offload=True)
 async def regime_transition_v1():
     """Forward-looking regime early-warning (Phase 6B): the empirical next-period transition
     probabilities from the CURRENT regime, computed from a monthly regime history that is
@@ -3469,7 +3498,7 @@ async def get_data_freshness():
     observation_dates = {}
     statuses = []
 
-    df = load_processed_data()
+    df = await asyncio.to_thread(load_processed_data)
     if df is not None:
         for metric_name, contract in CONTRACTS.items():
             if contract.fred_series:
@@ -3962,7 +3991,7 @@ async def get_earnings_revisions():
 
 
 @app.get("/api/cot")
-@ttl_cache(3600)
+@ttl_cache(3600, offload=True)
 async def get_cot_data():
     """CFTC Commitments of Traders: speculative positioning per contract, selected by CFTC
     contract code, with the 3-year COT index for extremes (see api/cot.py)."""
@@ -3975,7 +4004,7 @@ async def get_cot_data():
                 "last_updated": datetime.now().isoformat()}
 
 @app.get("/api/v1/risk/cycle")
-@ttl_cache(3600)
+@ttl_cache(3600, offload=True)
 async def get_cycle_risk_v1():
     """Cycle & systemic-risk indicators from published research: near-term forward spread
     (Engstrom & Sharpe), excess bond premium (Gilchrist & Zakrajšek), financial turbulence
@@ -4132,7 +4161,7 @@ async def get_fx_rates():
 
 
 @app.get("/api/market-hours")
-@ttl_cache(21600)  # 6h — holiday calendars change rarely
+@ttl_cache(21600, offload=True)  # 6h — holiday calendars change rarely
 async def get_market_hours():
     """Per-exchange trading hours + REAL holiday calendars (not hardcoded).
 

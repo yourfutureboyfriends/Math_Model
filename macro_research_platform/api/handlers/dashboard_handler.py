@@ -821,7 +821,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     _valuation = build_valuation(_sections, now)
 
     # News Sentiment — REAL headline-level sentiment from live RSS news (was a VIX-derived stub).
-    _news_sentiment = _build_news_sentiment(regime_name, now)
+    _news_sentiment = await _dash_asyncio.to_thread(_build_news_sentiment, regime_name, now)  # blocking feed I/O
 
     # Reflexivity — feedback loops (equity↔credit, vol↔deleveraging, dollar↔conditions)
     # measured as z-scores of observed moves.

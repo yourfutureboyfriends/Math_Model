@@ -116,11 +116,12 @@ function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: 
   const q = useQuote(symbol);
   const addToWatch = useAddToWatchlist();
   const [note, setNote] = useState<string | null>(null);
-  const d = q.data;
+  // while a new symbol loads, don't show the previous security under the new one
+  const d = q.current ? q.data : null;
   const isEquity = d?.type === 'Stock';
   const tabs = SECURITY_FUNCTIONS.filter((f) => !f.equityOnly || isEquity);
   const f = findFunction(fn)!;
-  if (q.loading && !d) return <Loading label={`Loading ${symbol}…`} />;
+  if (!d && !q.error) return <Loading label={`Loading ${symbol}…`} />;
   if (q.error && !d) return <ErrorBox msg={`${q.error} Try the command line to search by name.`} />;
   if (!d) return null;
   const watch = async () => { try { const n = await addToWatch(symbol); if (n) setNote(`Added to “${n}”.`); } catch (e: any) { setNote(e.message); } };

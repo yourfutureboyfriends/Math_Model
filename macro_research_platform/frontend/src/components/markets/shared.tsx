@@ -7,16 +7,17 @@ export function useJSON<T = any>(url: string | null, refreshMs = 0) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [dataUrl, setDataUrl] = useState<string | null>(null);   // the url `data` was fetched for
   useEffect(() => {
-    if (!url) { setData(null); return; }
+    if (!url) { setData(null); setDataUrl(null); return; }
     let live = true;
     const load = (first: boolean) => {
-      if (first) setLoading(true);
+      if (first) { setLoading(true); setError(null); }
       fetch(url).then(async (r) => {
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(typeof j?.detail === 'string' ? j.detail : `HTTP ${r.status}`);
         return j;
-      }).then((j) => { if (live) { setData(j); setError(null); } })
+      }).then((j) => { if (live) { setData(j); setDataUrl(url); setError(null); } })
         .catch((e) => { if (live && first) { setError(e.message); setData(null); } })   // a failed refresh keeps the last data
         .finally(() => { if (live && first) setLoading(false); });
     };
@@ -24,7 +25,8 @@ export function useJSON<T = any>(url: string | null, refreshMs = 0) {
     const t = refreshMs > 0 ? setInterval(() => { if (document.visibilityState === 'visible') load(false); }, refreshMs) : null;
     return () => { live = false; if (t) clearInterval(t); };
   }, [url, refreshMs]);
-  return { data, error, loading };
+  // `current` is false while `data` still belongs to a previous url (e.g. the last symbol)
+  return { data, error, loading, current: data != null && dataUrl === url };
 }
 
 export function decimalsFor(price: number | null | undefined, type?: string): number {
