@@ -232,3 +232,12 @@ def test_damodaran_industry_map_covers_every_yahoo_industry():
     from api.providers.damodaran import YAHOO_TO_DAMODARAN
     yahoo = {i for v in SECTOR_INDUSTY_MAPPING.values() for i in v}
     assert yahoo <= set(YAHOO_TO_DAMODARAN)
+
+
+def test_country_table_is_consistent():
+    from api.marketdata import countries as c
+    assert len(c.COUNTRIES) > 180
+    assert len({x["iso2"] for x in c.COUNTRIES}) == len(c.COUNTRIES)          # no duplicate codes
+    assert len({x["numeric"] for x in c.COUNTRIES}) == len(c.COUNTRIES)
+    assert c.NUMERIC_TO_ISO2["840"] == "US" and c.NUMERIC_TO_ISO2["392"] == "JP" and c.NUMERIC_TO_ISO2["076"] == "BR"
+    assert c.ISO3_TO_ISO2["DEU"] == "DE" and c.BY_ISO2["DE"]["currency"] == "EUR"

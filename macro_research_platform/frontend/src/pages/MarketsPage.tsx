@@ -214,7 +214,7 @@ export function MarketsPage() {
             {f.code === 'MOST' && <MoversView onOpen={open} />}
             {f.code === 'EQS' && <ScreenerView onOpen={open} />}
             {f.code === 'IMAP' && <ImapView onOpen={open} />}
-            {f.code === 'MAP' && <WorldMap onOpen={open} />}
+            {f.code === 'MAP' && <WorldMap onOpen={open} onGo={onGo} />}
             {f.code === 'CRYPTO' && <CryptoView onOpen={open} />}
             {f.code === 'CMDTY' && <CmdtyView onOpen={open} />}
             {f.code === 'COMP' && <CompView seed={route.symbol} />}

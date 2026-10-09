@@ -28,7 +28,14 @@ export function equalEarth(lon: number, lat: number): [number, number] {
 }
 const X_MAX = equalEarth(180, 0)[0], Y_MAX = equalEarth(0, 90)[1];
 
-export interface CountryShape { id: string; name: string; path: string; centroid: [number, number] }
+/** Project lon/lat to the pixel space countryPaths() draws in, for a canvas `width` wide. */
+export function projectPoint(lon: number, lat: number, width: number): [number, number] {
+  const height = width * (Y_MAX / X_MAX);
+  const [x, y] = equalEarth(lon, lat);
+  return [width / 2 + x * ((width / 2) / X_MAX), height / 2 - y * ((height / 2) / Y_MAX)];
+}
+
+export interface CountryShape { id: string; name: string; path: string; centroid: [number, number]; area: number }
 
 /** Country outlines as SVG paths for a width × (width × 0.487) canvas. */
 export function countryPaths(t: Topology, width: number): { shapes: CountryShape[]; height: number } {
@@ -71,7 +78,7 @@ export function countryPaths(t: Topology, width: number): { shapes: CountryShape
         }
       }
     }
-    if (d) shapes.push({ id: String(g.id ?? ''), name: g.properties?.name ?? '', path: d, centroid: [cx, cy] });
+    if (d) shapes.push({ id: String(g.id ?? ''), name: g.properties?.name ?? '', path: d, centroid: [cx, cy], area: bestArea / 2 });
   }
   return { shapes, height };
 }

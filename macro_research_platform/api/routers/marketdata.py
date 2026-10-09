@@ -169,6 +169,13 @@ async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le
 
 
 # ── Global monitors ──────────────────────────────────────────────────────────
+@router.get("/api/v1/mkt/map/world")
+async def mkt_world_map():
+    """Every country: markets (ETF, index, currency, 10y yield), IMF economy, sovereign risk."""
+    from api.marketdata import countries
+    return await _run(countries.world_data, timeout=120)
+
+
 @router.get("/api/v1/mkt/evts")
 async def mkt_earnings_calendar(start: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"), days: int = Query(7, ge=1, le=31),
                                 min_cap_bn: float = Query(0, ge=0), offset: int = Query(0, ge=0), limit: int = Query(100, ge=10, le=250)):
