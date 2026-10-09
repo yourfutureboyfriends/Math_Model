@@ -9,6 +9,8 @@ import { WorkspaceBar } from '@/components/layout/WorkspaceBar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SectionSkeleton } from '@/components/ui/SectionSkeleton';
 import { useMacroStore } from '@/store/macroStore';
+import { PANEL_HELP } from '@/lib/panelHelp';
+import { PanelHelpPopover, type HelpAnchor } from '@/components/ui/PanelHelpPopover';
 import {
   MyDeskSection,
   MacroModelSection,
@@ -105,6 +107,7 @@ function foldPanel(sec: HTMLElement, fold: boolean) {
   sec.querySelectorAll<HTMLElement>('[data-fold]').forEach((n) => n.removeAttribute('data-fold'));
   if (!head) { sec.removeAttribute('data-collapsed'); return; }
   head.setAttribute('data-panel-head', '');
+  ensureHelpButton(head, panelId(sec));
   if (!fold) { sec.removeAttribute('data-collapsed'); return; }
   sec.setAttribute('data-collapsed', '');
   for (let node: HTMLElement = head; node !== sec && node.parentElement; node = node.parentElement) {
@@ -112,6 +115,20 @@ function foldPanel(sec: HTMLElement, fold: boolean) {
       if (sib !== node) sib.setAttribute('data-fold', '');
     }
   }
+}
+
+// Every panel with an entry in PANEL_HELP gets a "?" in its header (beside the fold chevron).
+// Re-applied by the mutation observer, so it survives a panel re-rendering its header.
+function ensureHelpButton(head: HTMLElement, id: string | null) {
+  if (!id || !PANEL_HELP[id] || head.querySelector(':scope > [data-help-btn]')) return;
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.dataset.helpBtn = id;
+  b.className = 'panel-help-btn';
+  b.textContent = '?';
+  b.title = 'What is this panel and how do I read it?';
+  b.setAttribute('aria-label', 'How to read this panel');
+  head.appendChild(b);
 }
 
 export function DashboardPage() {
@@ -158,8 +175,20 @@ export function DashboardPage() {
     return () => { obs.disconnect(); clearTimeout(t); };
   }, [ws, desk, collapsed, hasData]);
 
+  const [help, setHelp] = useState<HelpAnchor | null>(null);
+  const closeHelp = useCallback(() => setHelp(null), []);
+
   const toggleFold = useCallback((e: { target: EventTarget }) => {
     const el = e.target as HTMLElement;
+    const helpBtn = el.closest<HTMLElement>('[data-help-btn]');
+    if (helpBtn) {
+      const id = helpBtn.dataset.helpBtn!;
+      const head = helpBtn.closest<HTMLElement>('[data-panel-head]');
+      const title = head?.querySelector('.section-title, h2, h3')?.textContent?.trim() || id;
+      const r = helpBtn.getBoundingClientRect();
+      setHelp((cur) => (cur?.id === id ? null : { id, title: String(title), rect: { left: r.left, right: r.right, top: r.top, bottom: r.bottom } }));
+      return;
+    }
     const head = el.closest<HTMLElement>('[data-panel-head]');
     if (!head || el.closest('button, a, input, select, textarea, label, [role="button"], [role="tab"]')) return;
     let sec: HTMLElement | null = head;
@@ -219,6 +248,7 @@ export function DashboardPage() {
   return (
     <>
     <WorkspaceBar onCollapseAll={collapseAll} visibleCount={visibleCount} />
+    {help && <PanelHelpPopover anchor={help} onClose={closeHelp} />}
     <div ref={rootRef} onClick={toggleFold}>
       {refreshFailed && (
         <div className="mx-4 mt-2 px-3 py-1.5 text-2xs font-mono border border-amber/40 text-amber bg-amber/5 flex items-center gap-2">

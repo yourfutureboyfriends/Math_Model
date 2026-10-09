@@ -82,6 +82,36 @@ def _audit(user: str, action: str, text: str) -> None:
         logger.debug("[auto] audit failed: %s", e)
 
 
+def _describe_run(res) -> str:
+    """One readable line for the audit log instead of the raw result dict."""
+    if not isinstance(res, dict):
+        return str(res)
+    if res.get("ran") is False:
+        return f"Auto-book run skipped: {res.get('reason', 'no reason given')}"
+    n = lambda k: len(res.get(k) or [])
+    parts = [f"{n('filled')} filled", f"{n('ordered')} new orders", f"{n('exited')} exits",
+             f"{n('cancelled')} cancelled"]
+    tail = []
+    if res.get("paused"):
+        tail.append("trading paused")
+    if isinstance(res.get("risk_scale"), (int, float)) and res["risk_scale"] != 1:
+        tail.append(f"risk scaled to {res['risk_scale']:.0%}")
+    if isinstance(res.get("equity"), (int, float)):
+        tail.append(f"equity ${res['equity']:,.0f}")
+    return "Auto-book run: " + ", ".join(parts) + (f" ({'; '.join(tail)})" if tail else "")
+
+
+_SETTING_NAMES = {"enabled": "auto-trading", "exclude_frontier": "exclude frontier markets"}
+
+
+def _describe_settings(changes: dict) -> str:
+    out = []
+    for k, v in changes.items():
+        name = _SETTING_NAMES.get(k, k.replace("_", " "))
+        out.append(f"{name} {'on' if v else 'off'}" if isinstance(v, bool) else f"{name} → {v}")
+    return "Auto-book settings: " + (", ".join(out) or "no changes")
+
+
 @router.get("/api/v1/auto/status")
 async def auto_status():
     from api import auto_trader
@@ -94,7 +124,7 @@ async def auto_run(request: Request):
     from api.core.access import require_roles
     user = require_roles(request, {"pm"})["username"]
     res = await auto_trader.run(force=True)
-    await asyncio.to_thread(_audit, user, "auto_run", f"Manual auto-book run: {res}")
+    await asyncio.to_thread(_audit, user, "auto_run", "Manual " + _describe_run(res)[0].lower() + _describe_run(res)[1:])
     return res
 
 
@@ -109,7 +139,7 @@ async def auto_settings(body: AutoSettingsIn, request: Request):
         s = await asyncio.to_thread(auto_trader.update_settings, changes)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    await asyncio.to_thread(_audit, user, "auto_settings", f"Auto-book settings changed: {changes}")
+    await asyncio.to_thread(_audit, user, "auto_settings", _describe_settings(changes))
     return s
 
 
@@ -122,7 +152,7 @@ async def auto_reset(body: ResetIn, request: Request):
         await asyncio.to_thread(auto_trader.reset, body.capital)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    await asyncio.to_thread(_audit, user, "auto_reset", f"Auto book reset (capital {body.capital})")
+    await asyncio.to_thread(_audit, user, "auto_reset", "Auto book reset" + (f" with ${body.capital:,.0f} capital" if body.capital else ""))
     return await auto_trader.status()
 
 
@@ -137,7 +167,9 @@ async def auto_close(pos_id: int, request: Request):
         raise HTTPException(404, "open position not found")
     except RuntimeError as e:
         raise HTTPException(503, str(e))
-    await asyncio.to_thread(_audit, user, "auto_close", f"Closed auto position {pos_id}: {res}")
+    await asyncio.to_thread(_audit, user, "auto_close", (f"Closed {res['closed']} at {res['price']:,.2f}, P&L ${res['pnl_usd']:+,.2f}"
+                             if isinstance(res, dict) and {'closed', 'price', 'pnl_usd'} <= res.keys()
+                             else f"Closed auto position {pos_id}: {res}"))
     return res
 
 

@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Cpu, RefreshCw, Settings2, Send } from 'lucide-react';
 import { LineChart } from '@/components/ui/LineChart';
 import { useAuth } from '@/context/AuthContext';
+import { useMacroStore } from '@/store/macroStore';
 
 // Categorical slots validated on the dark surface (#0d1117): fixed order, never cycled.
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500'];
@@ -31,6 +32,7 @@ function Step({ n, title, children, right }: { n: number; title: string; childre
 }
 
 export function MacroModelSection() {
+  const signalRegime = useMacroStore((st) => st.regime.current);
   const { user } = useAuth();
   const canRun = user && ['quant', 'pm', 'admin'].includes(user.role);
   const canStage = user && ['pm', 'quant', 'admin'].includes(user.role);
@@ -163,6 +165,14 @@ export function MacroModelSection() {
                   </div>
                 ))}
               </div>
+              {signalRegime && data.regime.most_likely && signalRegime.toLowerCase() !== String(data.regime.most_likely).toLowerCase() && (
+                <div className="mt-2 p-2 border border-border-subtle bg-surface-2 text-2xs text-text-secondary">
+                  <span className="text-text-primary">Why this differs from the Signal Regime ({signalRegime}):</span> this model
+                  forecasts <em>next month's</em> quadrant from slow-moving economic data (growth &amp; inflation factors),
+                  while the Signal Regime classifies <em>today</em> from market prices. A disagreement is a heads-up that the
+                  macro data points to a change the market hasn't priced yet — not an error.
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2 mt-2 text-2xs text-text-tertiary">
                 <div>P(growth rising) <span className="font-mono text-text-primary">{pct(data.regime.p_growth_rising, 0)}</span> (base {pct(data.regime.base_rates.growth_rising, 0)})</div>
                 <div>P(inflation rising) <span className="font-mono text-text-primary">{pct(data.regime.p_inflation_rising, 0)}</span> (base {pct(data.regime.base_rates.inflation_rising, 0)})</div>

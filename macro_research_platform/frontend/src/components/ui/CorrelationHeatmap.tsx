@@ -1,8 +1,9 @@
 /**
  * CorrelationHeatmap — reusable cross-asset correlation matrix (Phase 4).
  *
- * Diverging encoding: deep red = strong negative, neutral surface = ~0, deep green =
- * strong positive. The coefficient is printed in every cell, so identity is never
+ * Diverging encoding: deep orange = strong negative, neutral surface = ~0, deep blue =
+ * strong positive. Blue/orange rather than green/red: correlation is not good/bad, and the
+ * pair stays distinct under red-green colour blindness. The coefficient is printed in every cell, so identity is never
  * color-alone (CVD-safe). Flat cells only — no gradients/shadows (terminal aesthetic).
  *
  * Pure presentational primitive: parent supplies labels + matrix and handles fetching.
@@ -14,11 +15,19 @@ interface CorrelationHeatmapProps {
   selected?: { a: string; b: string } | null;
 }
 
-// Diverging color: red (neg) ↔ transparent surface (0) ↔ green (pos), alpha ∝ |r|.
+// Diverging color: orange (neg) ↔ transparent surface (0) ↔ blue (pos), alpha ∝ |r|.
 function cellBg(v: number | null): string {
   if (v === null || Number.isNaN(v)) return 'transparent';
   const a = Math.min(Math.abs(v), 1) * 0.85;
-  return v >= 0 ? `rgba(34, 197, 94, ${a})` : `rgba(239, 68, 68, ${a})`;
+  return v >= 0 ? `rgba(57, 135, 229, ${a})` : `rgba(217, 89, 38, ${a})`;
+}
+// Plain-English reading for the hover tooltip.
+function describe(v: number | null): string {
+  if (v === null || Number.isNaN(v)) return 'no data';
+  const m = Math.abs(v);
+  const strength = m >= 0.7 ? 'strongly' : m >= 0.4 ? 'moderately' : m >= 0.2 ? 'weakly' : null;
+  if (!strength) return 'largely unrelated';
+  return v > 0 ? `move together ${strength}` : `move ${strength} in opposite directions (a hedge)`;
 }
 // Keep the number legible on both dark surface and saturated cells.
 function cellFg(v: number | null): string {
@@ -53,7 +62,7 @@ export function CorrelationHeatmap({ labels, matrix, onCellClick, selected }: Co
                 <button
                   key={j}
                   onClick={() => !diagonal && onCellClick?.(labels[i], labels[j], v)}
-                  title={`${labels[i]} · ${labels[j]}: ${v === null ? 'n/a' : v.toFixed(2)}`}
+                  title={`${labels[i]} vs ${labels[j]}: ${v === null ? 'n/a' : (v > 0 ? '+' : '') + v.toFixed(2)} — ${describe(v)}`}
                   className={`h-8 flex items-center justify-center text-2xs font-mono tabular-nums transition-none ${diagonal ? 'opacity-40' : 'cursor-pointer'} ${isSel ? 'ring-1 ring-bloomberg z-10' : ''}`}
                   style={{ background: diagonal ? 'var(--surface-3)' : cellBg(v), color: cellFg(v) }}
                 >
@@ -73,7 +82,7 @@ export function CorrelationHeatmap({ labels, matrix, onCellClick, selected }: Co
             })}
           </div>
           <span>+1.0</span>
-          <span className="ml-2">deep red = strong negative · deep green = strong positive</span>
+          <span className="ml-2">orange = move opposite (diversifies) · blue = move together · hover a cell for detail</span>
         </div>
       </div>
     </div>

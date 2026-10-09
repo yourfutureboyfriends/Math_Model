@@ -690,8 +690,25 @@ button, a, [role="button"],
   /* Panel folding: the first header of each dashboard panel toggles it (DashboardPage). */
   [data-panel-head] {
     cursor: pointer;
-    padding-right: 26px;
+    padding-right: 50px;
   }
+  /* "?" help button (DashboardPage → PanelHelpPopover), left of the fold chevron. */
+  .panel-help-btn {
+    position: absolute;
+    right: 26px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    font: 600 10px/14px var(--font-mono, monospace);
+    text-align: center;
+    color: var(--text-tertiary);
+    background: transparent;
+    cursor: help;
+  }
+  .panel-help-btn:hover, .panel-help-btn:focus-visible { color: var(--text-primary); border-color: var(--bloomberg, #f59e0b); outline: none; }
   [data-panel-head]:not(.section-header) { position: relative; }
   [data-panel-head]::after {
     content: '';

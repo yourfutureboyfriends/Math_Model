@@ -12,6 +12,13 @@ import { actorHeaders, currentActor } from '../../../lib/actor';
 
 const t = (iso?: string) => (iso ? new Date(iso).toLocaleString() : '—');
 
+
+// Readable names for the system-generated action codes in the decision log.
+const ACTION_LABELS: Record<string, string> = {
+  login: 'Signed in', logout: 'Signed out',
+  auto_run: 'Auto book: manual run', auto_settings: 'Auto book: settings changed',
+  auto_reset: 'Auto book: reset', auto_close: 'Auto book: position closed',
+};
 export function SystemAuditSection() {
   const [decisions, setDecisions] = useState<any[]>([]);
   const [snapshots, setSnapshots] = useState<any[]>([]);
@@ -113,13 +120,16 @@ export function SystemAuditSection() {
             {decisions.map((d) => (
               <div key={d.id} className="px-3 py-2 border-b border-border-subtle last:border-0 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-text-primary">{d.action}</span>
+                  <span className="font-medium text-text-primary">{ACTION_LABELS[d.action] ?? d.action}</span>
                   <span className="text-2xs text-text-tertiary">{t(d.ts)}</span>
                 </div>
                 <div className="text-2xs text-text-secondary">
                   <span className="text-bloomberg">{d.user}</span>
                   {d.target && <span> · {d.target}</span>}
-                  <span> — {d.rationale}</span>
+                  {String(d.rationale ?? '').length > 160
+                    ? <details className="inline"><summary className="inline cursor-pointer text-text-tertiary"> — {String(d.rationale).slice(0, 110)}… details</summary>
+                        <div className="mt-1 font-mono text-[10px] text-text-tertiary break-all whitespace-pre-wrap">{d.rationale}</div></details>
+                    : <span> — {d.rationale}</span>}
                 </div>
               </div>
             ))}
