@@ -114,6 +114,11 @@ def run(spec_in: Dict[str, Any], n_trials: int = 1, trial_sharpes: Optional[Sequ
         nv = engine.simulate(spec, prep, vol_target_off=True)["net"][-len(net):]
         rb["without_vol_target"] = {"sharpe": _r(robust.sharpe(nv), 3), "cagr": robust.metrics(nv, dates)["cagr"],
                                     "max_drawdown": robust.metrics(nv, dates)["max_drawdown"]}
+    try:                                   # is it just known factor premia? (Fama–French 5 + momentum)
+        from api.providers import factor_library
+        rb["factor_attribution"] = factor_library.attribution(net, dates)
+    except Exception as e:
+        rb["factor_attribution"] = {"available": False, "reason": f"Factor library unavailable: {e}"[:200]}
     out["robustness"] = rb
     out["warnings"] = _warnings(spec, prep, out)
     out["verdict"] = robust.verdict(out)

@@ -257,6 +257,32 @@ VARIABLES: Dict[str, str] = {
     "nan": "Missing value — means 'no position' in a signal.",
 }
 
+# Point-in-time fundamentals from SEC filings (US-listed SEC filers only; blank for ETFs and
+# non-US stocks). Each value appears the day after its filing became public, as first filed.
+FUNDAMENTALS: Dict[str, str] = {
+    "eps_ttm": "Diluted EPS, trailing 12 months (SEC filings).",
+    "sales_ttm": "Revenue, trailing 12 months.",
+    "net_income_ttm": "Net income, trailing 12 months.",
+    "gross_profit_ttm": "Gross profit, trailing 12 months.",
+    "fcf_ttm": "Free cash flow (operating cash flow − capex), trailing 12 months.",
+    "book_value": "Shareholders' equity (latest balance sheet).",
+    "total_assets": "Total assets (latest balance sheet).",
+    "total_liabilities": "Total liabilities (latest balance sheet).",
+    "shares": "Shares outstanding (latest filing).",
+    "market_cap": "Shares outstanding × price.",
+    "earnings_yield": "EPS (TTM) ÷ price — value. Higher = cheaper.",
+    "book_to_price": "Book value ÷ market cap — classic value (Fama & French 1992).",
+    "sales_to_price": "Revenue (TTM) ÷ market cap.",
+    "fcf_yield": "Free cash flow (TTM) ÷ market cap.",
+    "roe": "Net income (TTM) ÷ book value — return on equity.",
+    "gross_profitability": "Gross profit (TTM) ÷ total assets — quality (Novy-Marx 2013).",
+    "leverage": "Total liabilities ÷ total assets.",
+}
+VARIABLES.update(FUNDAMENTALS)
+_RAW_FUND = {"eps_ttm": "eps_ttm", "sales_ttm": "sales_ttm", "net_income_ttm": "net_income_ttm",
+             "gross_profit_ttm": "gross_profit_ttm", "fcf_ttm": "fcf_ttm", "book_value": "equity",
+             "total_assets": "total_assets", "total_liabilities": "total_liabilities", "shares": "shares"}
+
 _BINOPS = {ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b, ast.Mult: lambda a, b: a * b,
            ast.Div: lambda a, b: a / b, ast.Pow: lambda a, b: a ** b, ast.Mod: lambda a, b: a % b}
 _CMPOPS = {ast.Gt: lambda a, b: a > b, ast.GtE: lambda a, b: a >= b, ast.Lt: lambda a, b: a < b,
@@ -269,13 +295,42 @@ _ALLOWED = (ast.Expression, ast.BinOp, ast.UnaryOp, ast.Compare, ast.BoolOp, ast
 class Ctx:
     def __init__(self, close: pd.DataFrame, open_: Optional[pd.DataFrame] = None, high: Optional[pd.DataFrame] = None,
                  low: Optional[pd.DataFrame] = None, volume: Optional[pd.DataFrame] = None,
-                 mkt: Optional[pd.Series] = None):
+                 mkt: Optional[pd.Series] = None, fundamentals_loader: Optional[Callable] = None):
         self.close, self.open, self.high, self.low, self.volume = close, open_, high, low, volume
         self.mkt_series = mkt if mkt is not None else close.mean(axis=1)
+        self._fund_loader = fundamentals_loader
+        self._fund: Optional[Dict[str, pd.DataFrame]] = None
+
+    def _fundamentals(self) -> Dict[str, pd.DataFrame]:
+        """Loaded once per evaluation, only if a formula uses a fundamental."""
+        if self._fund is None:
+            loader = self._fund_loader
+            if loader is None:
+                from api.providers import sec_edgar
+                loader = sec_edgar.pit_frame
+            try:
+                self._fund = loader(list(self.close.columns), self.close.index)
+            except Exception as e:
+                raise ExprError(f"Fundamentals unavailable: {e}")
+        return self._fund
+
+    def fundamental(self, name: str) -> pd.DataFrame:
+        f = self._fundamentals()
+        if name in _RAW_FUND:
+            return f[_RAW_FUND[name]]
+        mcap = f["shares"] * self.close
+        num = {"market_cap": mcap, "earnings_yield": f["eps_ttm"] / self.close, "book_to_price": f["equity"] / mcap,
+               "sales_to_price": f["sales_ttm"] / mcap, "fcf_yield": f["fcf_ttm"] / mcap,
+               "roe": f["net_income_ttm"] / f["equity"].where(f["equity"] > 0),
+               "gross_profitability": f["gross_profit_ttm"] / f["total_assets"],
+               "leverage": f["total_liabilities"] / f["total_assets"]}[name]
+        return num.replace([np.inf, -np.inf], np.nan)
 
     def var(self, name: str):
         if name == "nan":
             return float("nan")
+        if name in FUNDAMENTALS:
+            return self.fundamental(name)
         if name == "mkt":
             return pd.DataFrame(np.repeat(self.mkt_series.to_numpy()[:, None], self.close.shape[1], axis=1),
                                 index=self.close.index, columns=self.close.columns)
@@ -386,5 +441,6 @@ def catalogue() -> Dict[str, Any]:
     cats: Dict[str, List[Dict[str, str]]] = {}
     for name, f in FUNCS.items():
         cats.setdefault(f["cat"], []).append({"name": name, "sig": f["sig"], "desc": f["desc"]})
-    return {"functions": cats, "variables": [{"name": k, "desc": v} for k, v in VARIABLES.items()],
+    return {"functions": cats, "variables": [{"name": k, "desc": v} for k, v in VARIABLES.items() if k not in FUNDAMENTALS],
+            "fundamentals": [{"name": k, "desc": v} for k, v in FUNDAMENTALS.items()],
             "operators": "+ - * / ** % · comparisons > >= < <= == != (give 1 or 0) · & | ~ (and, or, not)"}

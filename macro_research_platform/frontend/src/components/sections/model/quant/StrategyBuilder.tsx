@@ -6,7 +6,8 @@ import { cn } from '@/lib/utils';
 import { api, BLANK_SPEC, Field, inputCls, type Spec } from './shared';
 
 export interface Meta {
-  functions: { functions: Record<string, { name: string; sig: string; desc: string }[]>; variables: { name: string; desc: string }[]; operators: string };
+  functions: { functions: Record<string, { name: string; sig: string; desc: string }[]>; variables: { name: string; desc: string }[];
+               fundamentals?: { name: string; desc: string }[]; operators: string };
   universes: { id: string; label: string; symbols: string[]; note: string; survivorship: boolean }[];
   templates: any[];
   research: { title: string; text: string }[];
@@ -136,6 +137,18 @@ export function StrategyBuilder({ spec, setSpec, meta }: { spec: Spec; setSpec: 
                 ))}
               </div>
             </div>
+            {meta.functions.fundamentals && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Fundamentals — SEC filings, point-in-time (US stocks only)</div>
+                <div className="flex flex-wrap gap-1">
+                  {meta.functions.fundamentals.map((v) => (
+                    <button key={v.name} type="button" title={v.desc} onClick={() => insert(v.name)}
+                      className="px-1.5 py-0.5 border border-border text-[11px] font-mono text-text-secondary hover:border-bloomberg hover:text-text-primary">{v.name}</button>
+                  ))}
+                </div>
+                <div className="text-[10px] text-text-tertiary mt-1">Each figure is used only from the day after its filing became public, as first filed — no look-ahead. Blank for ETFs and non-US stocks.</div>
+              </div>
+            )}
             <div className="text-[10px] text-text-tertiary">Operators: {meta.functions.operators}</div>
           </div>
         )}

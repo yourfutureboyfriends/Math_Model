@@ -251,6 +251,17 @@ def verdict(stats: Dict[str, Any]) -> Dict[str, Any]:
     if cost2 and cost2.get("sharpe") is not None and m.get("sharpe"):
         if cost2["sharpe"] < 0.5 * m["sharpe"]:
             score -= 1; reasons.append(f"Doubling costs cuts the Sharpe to {cost2['sharpe']:.2f} — fragile to execution.")
+    fa = rb.get("factor_attribution") or {}
+    if fa.get("available") and fa.get("r2") is not None and fa["r2"] > 0.5:
+        if fa.get("alpha_t") is not None and fa["alpha_t"] < 2:
+            score -= 1
+            top = max(fa["loadings"], key=lambda x: abs(x["t"]) if x["factor"] != "Mkt-RF" else 0)
+            reasons.append(f"Mostly known factor exposure: alpha after Fama–French 5 + momentum is {fa['alpha_annual']:+.1%}/yr "
+                           f"(t = {fa['alpha_t']:.1f}); the biggest tilt is {top['name'].lower()} (β {top['beta']:+.2f}). "
+                           "You could get most of this from cheap factor ETFs.")
+        elif fa.get("alpha_t") is not None and fa["alpha_t"] >= 3:
+            score += 1
+            reasons.append(f"Alpha survives the factor model: {fa['alpha_annual']:+.1%}/yr after Fama–French 5 + momentum (t = {fa['alpha_t']:.1f}).")
     if m.get("years") is not None and m["years"] < 5:
         score -= 1; reasons.append(f"Only {m['years']:.0f} years of history — too short to judge.")
     grade = "promising" if score >= 4 else "mixed" if score >= 1 else "weak"

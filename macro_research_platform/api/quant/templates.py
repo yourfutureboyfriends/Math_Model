@@ -118,6 +118,44 @@ TEMPLATES: List[Dict[str, Any]] = [
                  "selection": {"mode": "top_pct", "pct": 0.2}, "weighting": "equal", "rebalance": "monthly", "costs": {"bps": 5}},
     },
     {
+        "id": "value_earnings_yield",
+        "name": "Value — cheapest by earnings yield (point-in-time)",
+        "family": "Value & quality",
+        "description": "The 20% of large caps with the highest earnings yield (EPS ÷ price), from SEC filings as first "
+                       "filed — each figure is used only from the day after it became public.",
+        "evidence": "Cheap stocks have out-earned expensive ones over the long run (Basu 1977; Fama & French 1992), but "
+                    "value had a long drought after 2007. Point-in-time data avoids the look-ahead that flatters most "
+                    "value backtests (using earnings before they were reported).",
+        "citation": "Basu (1977); Fama & French (1992)",
+        "spec": {"universe": {"preset": "us_megacaps"}, "signal": "earnings_yield",
+                 "selection": {"mode": "top_pct", "pct": 0.2}, "weighting": "equal", "rebalance": "monthly",
+                 "costs": {"bps": 5}, "start": "2011-01-01"},
+    },
+    {
+        "id": "quality_gross_profitability",
+        "name": "Quality — gross profitability (point-in-time)",
+        "family": "Value & quality",
+        "description": "The 20% of large caps with the highest gross profit ÷ total assets.",
+        "evidence": "Gross profitability predicts returns about as well as value, and the two are negatively correlated, "
+                    "so they combine well (Novy-Marx 2013 'The Other Side of Value').",
+        "citation": "Novy-Marx (2013)",
+        "spec": {"universe": {"preset": "us_megacaps"}, "signal": "gross_profitability",
+                 "selection": {"mode": "top_pct", "pct": 0.2}, "weighting": "equal", "rebalance": "monthly",
+                 "costs": {"bps": 5}, "start": "2011-01-01"},
+    },
+    {
+        "id": "quality_value_combo",
+        "name": "Quality + value (point-in-time)",
+        "family": "Value & quality",
+        "description": "Rank on earnings yield and on gross profitability, add the ranks, hold the top 20%.",
+        "evidence": "Buying cheap AND profitable firms beats either alone because each screen removes the other's traps "
+                    "(Novy-Marx 2013; Asness, Frazzini & Pedersen 2019 'Quality Minus Junk').",
+        "citation": "Novy-Marx (2013); Asness, Frazzini & Pedersen (2019)",
+        "spec": {"universe": {"preset": "us_megacaps"}, "signal": "rank(earnings_yield) + rank(gross_profitability)",
+                 "selection": {"mode": "top_pct", "pct": 0.2}, "weighting": "equal", "rebalance": "monthly",
+                 "costs": {"bps": 5}, "start": "2011-01-01"},
+    },
+    {
         "id": "donchian_breakout",
         "name": "Donchian channel trend (Turtle-style)",
         "family": "Trend",

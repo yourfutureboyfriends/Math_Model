@@ -124,6 +124,7 @@ export function QuantReport({ r }: { r: any }) {
           <Row k="Up / down capture" v={`${pct(vb.up_capture, 0)} / ${pct(vb.down_capture, 0)}`} />
           <Row k={`Avg month when ${sym} falls`} v={spct(vb.return_in_benchmark_down_months)} />
         </Card>
+        <FactorCard fa={rb.factor_attribution} />
         <Card title="How it trades">
           <Row k="Average holdings" v={num(tr.avg_holdings, 1)} />
           <Row k="Gross / net exposure" v={`${num(tr.avg_gross_exposure)}× / ${num(tr.avg_net_exposure)}×`} />
@@ -173,5 +174,28 @@ export function QuantReport({ r }: { r: any }) {
       </div>
       {r.missing_symbols?.length > 0 && <div className="text-[10px] text-text-tertiary">No data for: {r.missing_symbols.join(', ')}</div>}
     </div>
+  );
+}
+
+function FactorCard({ fa }: { fa: any }) {
+  if (!fa) return null;
+  return (
+    <Card title="Is it just known factors? — Fama–French 5 + momentum">
+      {!fa.available ? <div className="text-2xs text-text-tertiary">{fa.reason}</div> : <>
+        <Row k="Alpha after factors / year" v={`${spct(fa.alpha_annual)} (t ${num(fa.alpha_t, 1)})`}
+          cls={fa.alpha_t >= 2 ? 'text-green' : fa.alpha_t <= -2 ? 'text-red' : 'text-amber'} />
+        <Row k="Explained by factors (R²)" v={pct(fa.r2, 0)} />
+        <div className="mt-1 space-y-0.5">
+          {fa.loadings.map((l: any) => (
+            <div key={l.factor} className="grid grid-cols-[1fr_auto_auto] gap-2 text-2xs" title={`t = ${l.t}; contributes ${spct(l.return_contribution)}/yr`}>
+              <span className="text-text-secondary truncate">{l.name}</span>
+              <span className={cn('font-mono', Math.abs(l.t) >= 2 ? 'text-text-primary' : 'text-text-tertiary')}>β {num(l.beta)}</span>
+              <span className="font-mono text-text-tertiary w-12 text-right">t {num(l.t, 1)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="text-[10px] text-text-tertiary mt-1">{fa.start} → {fa.end}. {fa.note}</div>
+      </>}
+    </Card>
   );
 }

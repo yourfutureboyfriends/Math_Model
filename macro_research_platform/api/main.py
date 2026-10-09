@@ -1539,6 +1539,8 @@ from api.routers.strategies import router as strategies_router  # Strategy Lab
 app.include_router(strategies_router)
 from api.routers.quant import router as quant_router  # Quant Lab + Quant Trader + Macro Trader
 app.include_router(quant_router)
+from api.routers.data_sources import router as data_sources_router  # SEC EDGAR, ALFRED, DBnomics, factors
+app.include_router(data_sources_router)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NATIVE WEBSOCKET ENDPOINTS
