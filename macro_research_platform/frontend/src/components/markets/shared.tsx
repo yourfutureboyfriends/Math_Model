@@ -3,6 +3,19 @@
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 
+/** A readable message from a FastAPI error body (string detail, or a list of validation errors). */
+export function apiError(j: any, status: number): string {
+  const d = j?.detail;
+  if (typeof d === 'string') return d;
+  if (Array.isArray(d) && d.length) {
+    return d.map((e: any) => {
+      const field = Array.isArray(e?.loc) ? String(e.loc[e.loc.length - 1]).replace(/_/g, ' ') : 'input';
+      return `${field}: ${String(e?.msg ?? 'invalid').replace(/^Input should be /, 'must be ')}`;
+    }).join('; ');
+  }
+  return `Request failed (HTTP ${status}).`;
+}
+
 export function useJSON<T = any>(url: string | null, refreshMs = 0) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +28,7 @@ export function useJSON<T = any>(url: string | null, refreshMs = 0) {
       if (first) { setLoading(true); setError(null); }
       fetch(url).then(async (r) => {
         const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(typeof j?.detail === 'string' ? j.detail : `HTTP ${r.status}`);
+        if (!r.ok) throw new Error(apiError(j, r.status));
         return j;
       }).then((j) => { if (live) { setData(j); setDataUrl(url); setError(null); } })
         .catch((e) => { if (live && first) { setError(e.message); setData(null); } })   // a failed refresh keeps the last data

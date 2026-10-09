@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bot, ChevronRight, List, Loader2, Send, Sparkles, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { fmtPrice, Spark } from './shared';
+import { fmtPrice, Spark, apiError } from './shared';
 
 const KEY = 'mkt_rail';
 
@@ -110,7 +110,7 @@ export function AiChat({ context, compact }: { context?: string; compact?: boole
       const r = await fetch('/api/v1/ai/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: next.map(({ role, content }) => ({ role, content })), context, model: deep ? deepModel : undefined }) });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(typeof j?.detail === 'string' ? j.detail : `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(apiError(j, r.status));
       setTurns([...next, { role: 'assistant', content: j.reply, tools: j.tool_calls, meta: `${j.model} · ${j.seconds}s` }]);
     } catch (e: any) {
       setTurns([...next, { role: 'assistant', content: `⚠ ${e.message}` }]);

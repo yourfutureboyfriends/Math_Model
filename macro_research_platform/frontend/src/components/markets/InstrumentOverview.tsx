@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { CheckCircle2, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chart } from './TickerView';
-import { Chg, fmtBig, fmtPct, fmtPrice, Loading, useJSON } from './shared';
+import { Chg, fmtBig, fmtPct, fmtPrice, Loading, useJSON, apiError } from './shared';
 
 const enc = encodeURIComponent;
 
@@ -76,7 +76,7 @@ function OrderTicket({ q }: { q: any }) {
           asset_class: q.type === 'Stock' ? 'Equity' : q.type, book: 'Discretionary' }),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(typeof j?.detail === 'string' ? j.detail : `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(apiError(j, r.status));
       setMsg({ ok: true, text: `Paper ${side} of ${+shares.toFixed(4)} ${q.symbol} at ${fmtPrice(px, q.type)} recorded in My Portfolio.` });
       setQty('');
     } catch (e: any) { setMsg({ ok: false, text: e.message }); } finally { setBusy(false); }

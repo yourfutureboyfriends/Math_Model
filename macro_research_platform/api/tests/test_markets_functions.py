@@ -241,3 +241,49 @@ def test_country_table_is_consistent():
     assert len({x["numeric"] for x in c.COUNTRIES}) == len(c.COUNTRIES)
     assert c.NUMERIC_TO_ISO2["840"] == "US" and c.NUMERIC_TO_ISO2["392"] == "JP" and c.NUMERIC_TO_ISO2["076"] == "BR"
     assert c.ISO3_TO_ISO2["DEU"] == "DE" and c.BY_ISO2["DE"]["currency"] == "EUR"
+
+
+def test_dcf_negative_equity_is_floored_at_zero():
+    from api.marketdata import dcf
+    v = dcf.value(_inp(ebit=-300.0, debt=50000.0), years=5, discount=0.09, terminal_growth=0.02)
+    assert v["per_share"] == 0.0 and v["equity_negative"] is True
+    assert "worth less than its debt" in v["checks"][0]
+
+
+def test_dcf_rejects_inputs_that_make_the_terminal_value_explode():
+    from api.marketdata import dcf
+    with pytest.raises(dcf.NotFound, match="must exceed terminal growth"):
+        dcf.value(_inp(), ronic=0.001, terminal_growth=0.03, discount=0.09)
+    with pytest.raises(dcf.NotFound, match="0.5 points below"):
+        dcf.value(_inp(), terminal_growth=0.088, discount=0.09)
+
+
+def test_dcf_years_up_to_30():
+    from api.marketdata import dcf
+    v = dcf.value(_inp(), years=30, discount=0.09, terminal_growth=0.02)
+    assert len(v["projection"]) == 30
+    with pytest.raises(dcf.NotFound):
+        dcf.value(_inp(), years=31, discount=0.09)
+
+
+def _bank(**over):
+    return _inp(is_financial=True, equity_book=1000.0, net_income=150.0, payout_ratio=0.4, risk_free=0.04, beta=1.0, erp=0.05, **over)
+
+
+def test_bank_excess_return_hand_check():
+    """ROE = cost of equity throughout → no excess returns → value = book value exactly."""
+    from api.marketdata import dcf
+    v = dcf.value_financial(_bank(), roe=0.09, terminal_roe=0.09, years=5, terminal_growth=0.03)      # ke = 4% + 1 × 5% = 9%
+    assert v["equity_value"] == pytest.approx(1000.0)
+    assert v["per_share"] == pytest.approx(10.0)
+
+
+def test_bank_excess_return_values_profitable_bank_above_book():
+    from api.marketdata import dcf
+    v = dcf.value_financial(_bank(), years=10)                     # ROE 15% vs ke 9%
+    assert v["model"] == "excess_return" and v["equity_value"] > 1000.0
+    a = v["assumptions"]
+    assert a["roe_now"] == pytest.approx(0.15) and 0.09 < a["roe_terminal"] < 0.15
+    assert a["payout_terminal"] == pytest.approx(1 - a["terminal_growth"] / a["roe_terminal"])
+    r = dcf.reverse_financial(_bank(price=v["per_share"]), years=10)
+    assert r is not None and 0.09 < r < 0.20

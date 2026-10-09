@@ -2,12 +2,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Bell, Plus, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Chg, ErrorBox, fmtPct, fmtPrice, Loading, Panel, Spark } from './shared';
+import { Chg, ErrorBox, fmtPct, fmtPrice, Loading, Panel, Spark, apiError } from './shared';
 
 async function call(url: string, method = 'GET', body?: unknown) {
   const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(typeof j?.detail === 'string' ? j.detail : `HTTP ${r.status}`);
+  if (!r.ok) throw new Error(apiError(j, r.status));
   return j;
 }
 const inp = 'bg-surface-1 border border-border px-2 py-1 text-xs text-text-primary';

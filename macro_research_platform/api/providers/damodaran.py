@@ -206,13 +206,14 @@ def industry(yahoo_industry: Optional[str], country: Optional[str]) -> Dict[str,
     D/(D+E), from the regional file that matches the company's home market."""
     dname = _norm_industry(yahoo_industry)
     files = _region_files(country)
-    out: Dict[str, Any] = {"industry": dname, "region": files["region"], "unlevered_beta": None, "margin": None,
+    out: Dict[str, Any] = {"industry": dname, "region": files["region"], "unlevered_beta": None, "levered_beta": None, "margin": None,
                            "sales_to_capital": None, "debt_ratio": None, "firms": None}
     if not dname:
         return out
     try:
         b = _table(files["beta"]).get(dname) or {}
         out["unlevered_beta"] = _num(b.get("Unlevered beta corrected for cash"))
+        out["levered_beta"] = _num(b.get("Beta"))
         out["firms"] = _num(b.get("Number of firms"))
         m = _table(files["margin"]).get(dname) or {}
         out["margin"] = _num(m.get("Pre-tax Unadjusted Operating Margin"))

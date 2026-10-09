@@ -64,6 +64,34 @@ RF_SERIES = {"JPY": "IRLTLT01JPM156N", "EUR": "IRLTLT01DEM156N", "GBP": "IRLTLT0
 FINANCIAL_INDUSTRIES = ("bank", "insurance", "capital markets", "credit services", "asset management", "mortgage")
 
 
+def _rf_persist(ccy: str, fetch) -> Optional[tuple]:
+    """Fetch a government yield, remembering the last good value on disk: a FRED timeout must not
+    silently swap in the US rate for another currency's cash flows."""
+    import json
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[2] / "data" / "processed" / "risk_free_cache.json"
+    try:
+        saved = json.loads(path.read_text()) if path.exists() else {}
+    except Exception:
+        saved = {}
+    v = None
+    try:
+        v = fetch()
+    except Exception:
+        v = None
+    if v:
+        saved[ccy] = [v[0], str(v[1])]
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(saved))
+        except Exception:
+            pass
+        return v
+    if ccy in saved:
+        return (saved[ccy][0], f"{saved[ccy][1]}, last saved — FRED unreachable")
+    raise RuntimeError("no yield")
+
+
 def risk_free(currency: Optional[str]) -> Dict[str, Any]:
     """10-year government yield for the cash-flow currency (decimal) with its source."""
     from api.marketdata.core import _cached
@@ -82,7 +110,7 @@ def risk_free(currency: Optional[str]) -> Dict[str, Any]:
             obs = [o for o in (res.data or []) if o.value is not None]
             return (obs[-1].value / 100, obs[-1].date) if obs else None
         try:
-            v = _cached(f"rf:{ccy}", 86400, fetch)
+            v = _cached(f"rf:{ccy}", 86400, lambda: _rf_persist(ccy, fetch))
             if v:
                 rate, note = v[0], ""
                 try:
@@ -135,6 +163,7 @@ def inputs(symbol: str) -> Dict[str, Any]:
                     "operating_cash_flow": _f(i.get("operatingCashflow")), "cash": _f(i.get("totalCash")), "debt": _f(i.get("totalDebt")),
                     "leases": None, "minority_interest": None, "equity_book": None, "as_of": None})
         src = "Yahoo Finance (TTM)"
+        out["currency"] = i.get("financialCurrency") or i.get("currency")     # Yahoo reports in the filing currency
     out["source"] = src
     # Shares: diluted where available
     out["shares"] = _f(i.get("impliedSharesOutstanding")) or _f(i.get("sharesOutstanding"))
@@ -200,7 +229,7 @@ def inputs(symbol: str) -> Dict[str, Any]:
 
 def _balance_extras(symbol: str) -> Dict[str, Optional[float]]:
     """Non-operating stakes and captive-finance receivables from the latest balance sheet."""
-    out: Dict[str, Optional[float]] = {"investments": None, "nc_receivables": None, "receivables": None}
+    out: Dict[str, Optional[float]] = {"investments": None, "nc_receivables": None, "receivables": None, "book_equity": None}
     try:
         import yfinance as yf
         bs = yf.Ticker(symbol).balance_sheet
@@ -217,6 +246,7 @@ def _balance_extras(symbol: str) -> Dict[str, Optional[float]]:
         out["investments"] = get("Investments And Advances") or get("Long Term Equity Investment")
         out["nc_receivables"] = get("Non Current Accounts Receivable")
         out["receivables"] = get("Receivables") or get("Accounts Receivable")
+        out["book_equity"] = get("Common Stock Equity") or get("Stockholders Equity")
     except Exception:
         pass
     return out
@@ -249,6 +279,11 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
         out["debt"] = (out.get("debt") or 0.0) - fin
         out["debt_source"] = f"{out.get('debt_source')}; less {fin:,.0f} of finance receivables funded by captive-finance debt"
     out["investments"] = ex.get("investments")
+    if out.get("equity_book") is None:
+        out["equity_book"] = ex.get("book_equity")
+    out["net_income"] = _f(info.get("netIncomeToCommon"))
+    pr = _f(info.get("payoutRatio"))
+    out["payout_ratio"] = min(1.0, max(0.0, pr)) if pr is not None else None
 
     # Industry benchmarks
     ind = damodaran.industry(out.get("industry"), out.get("country"))
@@ -259,7 +294,11 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
         mcap = usd / per if usd and per else None
     out["market_cap_fin_ccy"] = mcap
     bu = ind.get("unlevered_beta")
-    if bu and mcap:
+    if out.get("is_financial") and ind.get("levered_beta"):
+        # banks/insurers: debt is raw material, so use the industry's levered (equity) beta as is
+        out["beta"] = round(ind["levered_beta"], 3)
+        out["beta_source"] = f"{ind['industry']} average equity beta ({ind['region']}, Damodaran)"
+    elif bu and mcap:
         de = (out.get("debt") or 0.0) / mcap
         out["beta"] = round(bu * (1 + (1 - out["tax_marginal"]) * de), 3)
         out["beta_source"] = f"bottom-up: {ind['industry']} unlevered β {bu:.2f} ({ind['region']}, cash-corrected), relevered at D/E {de:.2f}"
@@ -365,12 +404,13 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
           include_leases: bool = False, mid_year: bool = True) -> Dict[str, Any]:
     rev0, ebit0 = inp.get("revenue"), inp.get("ebit")
     if not rev0 or ebit0 is None:
-        raise NotFound("Revenue and operating income are needed for a DCF (not available for this instrument).")
+        raise NotFound("A DCF values an operating company from its revenue and profits — this instrument (an ETF, index, "
+                       "currency, commodity or crypto asset) has none. Use DES, GP or COMP for it instead.")
     shares = inp.get("shares")
     if not shares or shares <= 0:
         raise NotFound("Share count unavailable.")
-    if not 3 <= years <= 20:
-        raise NotFound("Use 3–20 projection years.")
+    if not 3 <= years <= 30:
+        raise NotFound("Use 3–30 projection years.")
     w = wacc(inp, beta, erp, include_leases)
     r = discount if discount is not None else w["wacc"]
     rf = inp.get("risk_free") or 0.04
@@ -387,8 +427,9 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
         beta_T = min(1.2, max(0.8, w["beta"]))
         ke_T = rf + beta_T * w["erp"]
         rT = w["weight_equity"] * ke_T + w["weight_debt"] * w["cost_of_debt_after_tax"]
-    if rT <= gT:
-        raise NotFound("The terminal discount rate must exceed terminal growth.")
+    if rT - gT < 0.005:
+        raise NotFound(f"Terminal growth ({gT:.2%}) must be at least 0.5 points below the long-run discount rate ({rT:.2%}) — "
+                       "otherwise the terminal value explodes. Lower the terminal growth or raise the discount rate.")
     m0 = inp.get("margin_normalized") or ebit0 / rev0
     mT = (inp.get("target_margin_default") if inp.get("target_margin_default") is not None else m0) if target_margin is None else target_margin
     stc = sales_to_capital or inp["sales_to_capital"]
@@ -399,8 +440,9 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
     roic = inp.get("roic")
     default_ron = min(0.30, rT + 0.5 * (roic - rT)) if roic is not None and roic > rT else rT
     ron = default_ron if ronic is None else ronic
-    if ron <= 0:
-        raise NotFound("RONIC must be positive.")
+    if ron <= max(0.0, gT):
+        raise NotFound(f"Return on new capital ({ron:.2%}) must exceed terminal growth ({gT:.2%}): growing faster than the "
+                       "return on reinvestment would need more than 100% of profits reinvested, forever.")
 
     rows: List[Dict[str, Any]] = []
     rev, pv_sum, cum = rev0, 0.0, 1.0
@@ -434,6 +476,10 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
     ev = pv_sum + pv_tv
     debt = (inp.get("debt") or 0) + ((inp.get("leases") or 0) if include_leases else 0)
     eq = ev - debt + (inp.get("cash") or 0) + (inp.get("investments") or 0) - (inp.get("minority_interest") or 0)
+    equity_negative = eq < 0
+    eq_raw = eq
+    if equity_negative:
+        eq = 0.0           # limited liability: shareholders can't lose more than their stake
     per_share = eq / shares
     price = inp.get("price")
     per_share_fin = per_share
@@ -450,6 +496,9 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
         checks.append(f"Terminal growth {gT:.1%} is above the risk-free rate {rf:.1%} — no company can outgrow the economy forever (Damodaran).")
     if pv_tv / ev > 0.8 if ev > 0 else False:
         checks.append(f"{pv_tv / ev:.0%} of the value is in the terminal value — the answer depends mostly on the long run.")
+    if equity_negative:
+        checks.insert(0, f"The operating business is worth less than its debt (equity {eq_raw / 1e6:,.0f}m before the floor): on these "
+                         "assumptions the shares are worth only their option value on a turnaround — shown as 0.")
     if inp.get("margin_note"):
         checks.append(inp["margin_note"] + ".")
     if ebit0 <= 0 and not inp.get("margin_normalized"):
@@ -475,7 +524,7 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
     bridge = {"enterprise_value": ev, "debt": -debt, "cash": inp.get("cash") or 0, "investments": inp.get("investments") or 0,
               "minority_interest": -(inp.get("minority_interest") or 0), "equity_value": eq,
               "captive_finance_excluded": inp.get("captive_finance_receivables")}
-    return {"per_share": per_share, "per_share_reporting_ccy": per_share_fin, "bridge": bridge, "upside": (per_share / price - 1) if price else None, "enterprise_value": ev, "equity_value": eq,
+    return {"model": "fcff", "per_share": per_share, "per_share_reporting_ccy": per_share_fin, "bridge": bridge, "equity_negative": equity_negative, "upside": (per_share / price - 1) if price else None, "enterprise_value": ev, "equity_value": eq,
             "pv_explicit": pv_sum, "pv_terminal": pv_tv, "terminal_share": pv_tv / ev if ev > 0 else None, "terminal_value": tv,
             "terminal_fcff": fcff_next, "terminal_reinvestment_rate": gT / ron,
             "implied_ev_ebit_exit": tv / (nopat_next / (1 - t_term)) if nopat_next > 0 else None,
@@ -504,7 +553,10 @@ def reverse(inp: Dict[str, Any], **kw) -> Optional[float]:
         return None
     for _ in range(60):
         mid = (lo + hi) / 2
-        fm = f(mid)
+        try:
+            fm = f(mid)
+        except NotFound:
+            return None
         if (fm > 0) == (fhi > 0):
             hi, fhi = mid, fm
         else:
@@ -538,3 +590,120 @@ def sensitivity(inp: Dict[str, Any], base: Dict[str, Any], **kw) -> Dict[str, An
         grid2.append(row)
     return {"discount_rates": rs, "terminal_growth": gs, "per_share": grid,
             "target_margins": ms, "growth_rates": g0s, "per_share_growth_margin": grid2}
+
+
+
+# ── Banks and insurers: excess-return model (Damodaran) ──────────────────────
+def value_financial(inp: Dict[str, Any], years: int = 10, roe: Optional[float] = None, terminal_roe: Optional[float] = None,
+                    payout: Optional[float] = None, terminal_growth: Optional[float] = None, beta: Optional[float] = None,
+                    erp: Optional[float] = ERP_DEFAULT, discount: Optional[float] = None, **_ignored) -> Dict[str, Any]:
+    """Equity = book value + PV of future excess returns, (ROE − cost of equity) × book value.
+    For banks and insurers debt is raw material, not financing, so FCFF and WACC don't apply."""
+    bv0, ni = inp.get("equity_book"), inp.get("net_income")
+    if not bv0 or bv0 <= 0 or ni is None:
+        raise NotFound("Book equity and net income are needed for the excess-return model (not available).")
+    shares = inp.get("shares")
+    if not shares or shares <= 0:
+        raise NotFound("Share count unavailable.")
+    if not 3 <= years <= 30:
+        raise NotFound("Use 3–30 projection years.")
+    rf = inp.get("risk_free") or 0.04
+    b = beta if beta is not None else (inp.get("beta") or 1.0)
+    e = erp if erp is not None else (inp.get("erp") or ERP_FALLBACK)
+    ke = discount if discount is not None else rf + b * e
+    roe0 = roe if roe is not None else min(0.40, max(-0.10, ni / bv0))
+    # stable ROE: half of today's excess return persists (as for RONIC in the FCFF model)
+    roeT = terminal_roe if terminal_roe is not None else (ke + 0.5 * (roe0 - ke) if roe0 > ke else roe0 + 0.5 * (ke - roe0))
+    g = max(0.0, min(rf, ke - 0.01)) if terminal_growth is None else terminal_growth
+    if ke - g < 0.005:
+        raise NotFound(f"Terminal growth ({g:.2%}) must be at least 0.5 points below the cost of equity ({ke:.2%}).")
+    if roeT <= g:
+        raise NotFound(f"Stable ROE ({roeT:.2%}) must exceed terminal growth ({g:.2%}).")
+    p0 = payout if payout is not None else (inp.get("payout_ratio") if inp.get("payout_ratio") is not None else 0.4)
+    pT = 1 - g / roeT                                        # payout consistent with stable growth
+    rows, bv, pv_sum = [], bv0, 0.0
+    for y in range(1, years + 1):
+        f = y / years
+        r_y = roe0 + (roeT - roe0) * f
+        p_y = p0 + (pT - p0) * f
+        excess = (r_y - ke) * bv
+        df = 1 / (1 + ke) ** y
+        pv_sum += excess * df
+        ni_y = r_y * bv
+        new_bv = bv + ni_y * (1 - p_y)
+        rows.append({"year": y, "roe": r_y, "book_value_start": bv, "net_income": ni_y, "payout": p_y, "dividends": ni_y * p_y,
+                     "excess_return": excess, "discount_factor": df, "pv": excess * df, "book_growth": new_bv / bv - 1 if bv else None})
+        bv = new_bv
+    tv = (roeT - ke) * bv / (ke - g)
+    pv_tv = tv / (1 + ke) ** years
+    eq = bv0 + pv_sum + pv_tv
+    equity_negative = eq < 0
+    eq = max(0.0, eq)
+    per_share_fin = eq / shares
+    price, per_share = inp.get("price"), per_share_fin
+    if inp.get("currency") != inp.get("price_currency"):
+        mc = inp.get("market_cap")
+        eq_usd, mc_usd = to_usd(eq, inp.get("currency")), (to_usd(mc, inp.get("price_currency")) if mc else None)
+        per_share = price * eq_usd / mc_usd if price and eq_usd is not None and mc_usd else None
+    checks = ["Bank / insurer: valued with Damodaran's excess-return model — book equity plus the present value of returns above "
+              "the cost of equity — because debt is a raw material for financial firms, not financing."]
+    if roe0 < ke:
+        checks.append(f"ROE today ({roe0:.1%}) is below the cost of equity ({ke:.1%}): the firm is worth less than its book value "
+                      "unless returns improve.")
+    if equity_negative:
+        checks.insert(0, "The model value is below zero — shown as 0.")
+    return {"model": "excess_return", "per_share": per_share, "per_share_reporting_ccy": per_share_fin, "price": price,
+            "upside": (per_share / price - 1) if price and per_share is not None else None,
+            "equity_value": eq, "book_value": bv0, "pv_excess": pv_sum, "pv_terminal": pv_tv, "terminal_value": tv,
+            "terminal_share": pv_tv / eq if eq > 0 else None, "price_to_book_implied": eq / bv0,
+            "assumptions": {"years": years, "roe_now": roe0, "roe_terminal": roeT, "payout_now": p0, "payout_terminal": pT,
+                            "terminal_growth": g, "cost_of_equity": ke, "beta": b, "erp": e, "risk_free": rf},
+            "wacc": {"wacc": ke, "cost_of_equity": ke, "beta": b, "erp": e, "risk_free": rf, "weight_equity": 1.0, "weight_debt": 0.0,
+                     "cost_of_debt_after_tax": None},
+            "projection": rows, "checks": checks, "equity_negative": equity_negative}
+
+
+def reverse_financial(inp: Dict[str, Any], **kw) -> Optional[float]:
+    """The sustained ROE (held through the projection and in stable growth) that justifies today's price."""
+    price = inp.get("price")
+    if not price:
+        return None
+    def f(r):
+        v = value_financial(inp, **{**kw, "roe": r, "terminal_roe": r})
+        if v["per_share"] is None:
+            raise NotFound("no comparable price")
+        return v["per_share"] - price
+    lo, hi = (inp.get("risk_free") or 0.04) + 0.006, 0.6      # ROE must exceed stable growth (≤ risk-free)
+    try:
+        flo, fhi = f(lo), f(hi)
+    except NotFound:
+        return None
+    if flo * fhi > 0:
+        return None
+    for _ in range(50):
+        mid = (lo + hi) / 2
+        try:
+            fm = f(mid)
+        except NotFound:
+            return None
+        if (fm > 0) == (fhi > 0):
+            hi, fhi = mid, fm
+        else:
+            lo, flo = mid, fm
+    return (lo + hi) / 2
+
+
+def sensitivity_financial(inp: Dict[str, Any], base: Dict[str, Any], **kw) -> Dict[str, Any]:
+    a = base["assumptions"]
+    kes = [round(a["cost_of_equity"] + d, 4) for d in (-0.02, -0.01, 0, 0.01, 0.02)]
+    roes = [round(a["roe_terminal"] + d, 4) for d in (-0.04, -0.02, 0, 0.02, 0.04)]
+    grid = []
+    for k in kes:
+        row = []
+        for r in roes:
+            try:
+                row.append(value_financial(inp, **{**kw, "discount": k, "terminal_roe": r})["per_share"])
+            except NotFound:
+                row.append(None)
+        grid.append(row)
+    return {"costs_of_equity": kes, "terminal_roes": roes, "per_share": grid}

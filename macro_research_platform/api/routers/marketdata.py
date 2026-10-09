@@ -148,27 +148,45 @@ async def mkt_beta(symbol: str, benchmark: str = "^GSPC", period: str = Query("2
 
 
 @router.get("/api/v1/mkt/dcf/{symbol}")
-async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le=2.0), years: int = Query(10, ge=3, le=20),
-                  terminal_growth: Optional[float] = Query(None, ge=-0.02, le=0.06), target_margin: Optional[float] = Query(None, ge=-1.0, le=0.9),
+async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le=2.0), years: int = Query(10, ge=3, le=30),
+                  terminal_growth: Optional[float] = Query(None, ge=-0.05, le=0.15), target_margin: Optional[float] = Query(None, ge=-1.0, le=0.9),
                   sales_to_capital: Optional[float] = Query(None, gt=0, le=20), ronic: Optional[float] = Query(None, gt=0, le=2.0),
                   discount: Optional[float] = Query(None, gt=0, lt=0.4), beta: Optional[float] = Query(None, ge=-1, le=5),
-                  erp: Optional[float] = Query(None, ge=0, le=0.15), include_leases: bool = False, mid_year: bool = True):
-    """FCFF discounted at WACC (Damodaran / McKinsey): fading growth, margin path, reinvestment via
-    sales-to-capital, value-driver terminal value, mid-year discounting, reverse DCF and sensitivities."""
+                  erp: Optional[float] = Query(None, ge=0, le=0.15), include_leases: bool = False, mid_year: bool = True,
+                  roe: Optional[float] = Query(None, ge=-0.5, le=1.0), terminal_roe: Optional[float] = Query(None, gt=0, le=1.0),
+                  payout: Optional[float] = Query(None, ge=0, le=1.0), model: Optional[str] = Query(None, pattern="^(fcff|excess_return)$")):
+    """FCFF discounted at WACC (Damodaran / McKinsey) for operating companies; Damodaran's excess-return
+    model for banks and insurers. Reverse DCF and sensitivity grids for both."""
     from api.marketdata import dcf
     inp = await _run(dcf.inputs, symbol, timeout=60)
+    use_fin = model == "excess_return" or (model is None and inp.get("is_financial"))
+    if use_fin:
+        kw = dict(years=years, roe=roe, terminal_roe=terminal_roe, payout=payout, terminal_growth=terminal_growth, beta=beta, erp=erp, discount=discount)
+        val = await _run(dcf.value_financial, inp, **kw)
+        sens = await _run(dcf.sensitivity_financial, inp, val, **kw)
+        implied = await _run(dcf.reverse_financial, inp, **{k: v for k, v in kw.items() if k not in ("roe", "terminal_roe")})
+        return {"inputs": inp, "valuation": val, "sensitivity": sens, "market_implied_roe": implied, "model": "excess_return",
+                "method": "Excess-return model: equity = book value + PV of (ROE − cost of equity) × book value, with ROE and payout "
+                          "converging to stable levels and stable growth ≤ the risk-free rate. Source: Damodaran (NYU Stern)."}
     kw = dict(growth=growth, years=years, terminal_growth=terminal_growth, target_margin=target_margin, sales_to_capital=sales_to_capital,
               ronic=ronic, discount=discount, beta=beta, erp=erp, include_leases=include_leases, mid_year=mid_year)
     val = await _run(dcf.value, inp, **kw)
     sens = await _run(dcf.sensitivity, inp, val, **kw)
     implied = await _run(dcf.reverse, inp, **{k: v for k, v in kw.items() if k != "growth"})
-    return {"inputs": inp, "valuation": val, "sensitivity": sens, "market_implied_growth": implied,
+    return {"inputs": inp, "valuation": val, "sensitivity": sens, "market_implied_growth": implied, "model": "fcff",
             "method": "FCFF at WACC with mid-year discounting; terminal value = NOPAT × (1 − g/RONIC) ÷ (WACC − g). "
-                      "SBC is expensed (inside GAAP operating income). Sources: Damodaran (NYU Stern); Koller, Goedhart & Wessels, "
-                      "Valuation (McKinsey)."}
+                      "SBC is expensed (inside GAAP operating income). Inputs from Damodaran's market data (implied ERP, "
+                      "industry betas, country risk). Sources: Damodaran (NYU Stern); Koller, Goedhart & Wessels, Valuation (McKinsey)."}
 
 
 # ── Global monitors ──────────────────────────────────────────────────────────
+@router.get("/api/v1/mkt/tape/{symbol}")
+async def mkt_tape(symbol: str):
+    """Intraday prints (1-minute bars), VWAP, tick-rule buy/sell volume and volume profile."""
+    from api.marketdata import core
+    return await _run(core.tape, symbol)
+
+
 @router.get("/api/v1/mkt/map/world")
 async def mkt_world_map():
     """Every country: markets (ETF, index, currency, 10y yield), IMF economy, sovereign risk."""

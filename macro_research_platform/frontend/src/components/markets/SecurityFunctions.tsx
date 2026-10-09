@@ -1,5 +1,5 @@
 // Security function screens: ERN, ANR, HDS, DVD, OMON, RV, HP, BETA, DCF.
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
@@ -445,7 +445,7 @@ function Scatter({ pts, beta, alpha }: { pts: { x: number; y: number }[]; beta: 
 const DCF_FIELDS: [string, string, 'pct' | 'num' | 'int', string][] = [
   ['growth', 'Revenue growth, years 1–3', 'pct', 'Then fades to terminal growth. Default: analyst consensus (this year, then next year).'],
   ['target_margin', 'Target operating margin', 'pct', 'EBIT margin reached by the last year. Default: today’s (normalised); industry margin for loss-makers; mid-cycle for cyclicals at a peak.'],
-  ['years', 'Projection years', 'int', 'High-growth period before the terminal value (3–20).'],
+  ['years', 'Projection years', 'int', 'Years before the terminal value (3–30).'],
   ['terminal_growth', 'Terminal growth', 'pct', 'Long-run growth. Default: the risk-free rate (Damodaran) — never above it.'],
   ['sales_to_capital', 'Sales-to-capital', 'num', 'Revenue added per unit of reinvestment. Default: firm and industry averaged.'],
   ['ronic', 'Return on new capital (terminal)', 'pct', 'Return on growth investment after year N. = WACC means growth adds no value.'],
@@ -454,33 +454,97 @@ const DCF_FIELDS: [string, string, 'pct' | 'num' | 'int', string][] = [
   ['discount', 'Override discount rate', 'pct', 'Leave blank to use the computed WACC.'],
 ];
 
+const FIN_FIELDS: [string, string, 'pct' | 'num' | 'int', string][] = [
+  ['roe', 'ROE now', 'pct', 'Return on equity today. Default: TTM net income ÷ book equity.'],
+  ['terminal_roe', 'Stable ROE', 'pct', 'ROE reached by the last year and kept. Default: half of today’s excess over the cost of equity persists.'],
+  ['payout', 'Payout ratio now', 'pct', 'Share of earnings paid out; converges to the payout stable growth needs.'],
+  ['years', 'Projection years', 'int', 'Years before stable growth (3–30).'],
+  ['terminal_growth', 'Stable growth', 'pct', 'Default: the risk-free rate (capped 1 point below the cost of equity).'],
+  ['beta', 'Beta', 'num', 'Default: the industry’s average equity beta (Damodaran).'],
+  ['erp', 'Equity risk premium', 'pct', 'Default: Damodaran’s latest implied ERP + country risk premium.'],
+  ['discount', 'Override cost of equity', 'pct', 'Leave blank to use risk-free + beta × ERP.'],
+];
+
+// allowed ranges (in the units typed: % for pct fields) — mirror the API's limits
+const DCF_LIMITS: Record<string, [number, number]> = {
+  growth: [-50, 200], target_margin: [-100, 90], years: [3, 30], terminal_growth: [-5, 15], sales_to_capital: [0.05, 20],
+  ronic: [0.1, 200], beta: [-1, 5], erp: [0, 15], discount: [0.1, 39.9], roe: [-50, 100], terminal_roe: [0.1, 100], payout: [0, 100],
+};
+
 export function DcfView({ symbol }: { symbol: string }) {
   const [form, setForm] = useState<Record<string, string>>({});
   const [leases, setLeases] = useState(false);
   const [midYear, setMidYear] = useState(true);
-  const build = () => {
+  const [formErr, setFormErr] = useState<string | null>(null);
+  const modelRef = useRef<'fcff' | 'excess_return'>('fcff');
+  const build = (): string | null => {
     const p = new URLSearchParams();
-    for (const [k, , kind] of DCF_FIELDS) {
-      const v = form[k];
-      if (v === undefined || v === '') continue;
-      p.set(k, String(kind === 'pct' ? Number(v) / 100 : Number(v)));
+    const bad: string[] = [];
+    if (modelRef.current === 'excess_return') p.set('model', 'excess_return');
+    for (const [k, label, kind] of (modelRef.current === 'excess_return' ? FIN_FIELDS : DCF_FIELDS)) {
+      const raw = form[k];
+      if (raw === undefined || raw.trim() === '') continue;
+      const n = Number(raw);
+      const [lo, hi] = DCF_LIMITS[k];
+      if (!Number.isFinite(n)) { bad.push(`${label}: not a number`); continue; }
+      if (kind === 'int' && !Number.isInteger(n)) { bad.push(`${label}: whole number`); continue; }
+      if (n < lo || n > hi) { bad.push(`${label}: ${lo}–${hi}${kind === 'pct' ? '%' : ''}`); continue; }
+      p.set(k, String(kind === 'pct' ? n / 100 : n));
     }
+    if (bad.length) { setFormErr(`Check: ${bad.join(' · ')}`); return null; }
+    setFormErr(null);
     if (leases) p.set('include_leases', 'true');
     if (!midYear) p.set('mid_year', 'false');
     return `/api/v1/mkt/dcf/${enc(symbol)}${p.toString() ? `?${p}` : ''}`;
   };
-  const [url, setUrl] = useState(() => `/api/v1/mkt/dcf/${enc(symbol)}`);
-  const { data, error, loading } = useJSON<any>(url);
+  const [url, setUrlRaw] = useState(() => `/api/v1/mkt/dcf/${enc(symbol)}`);
+  // Recalculate always refetches, even with unchanged inputs (e.g. after a failed request)
+  const setUrl = (u: string) => setUrlRaw((prev) => (prev.split('&_=')[0].split('?_=')[0] === u ? `${u}${u.includes('?') ? '&' : '?'}_=${Date.now()}` : u));
+  const { data: fresh, error, loading } = useJSON<any>(url);
+  // keep the last good model on screen when a recalculation fails, so the inputs can be fixed
+  const lastGood = useRef<any>(null);
+  if (fresh) lastGood.current = fresh;
+  const data = fresh ?? lastGood.current;
   if (loading && !data) return <Loading label="Building the valuation model…" />;
-  if (error) return <ErrorBox msg={error} />;
+  if (error && !data) return <ErrorBox msg={error} />;
   if (!data) return null;
+  const isFin = data.model === 'excess_return';
+  modelRef.current = isFin ? 'excess_return' : 'fcff';
   const inp = data.inputs, v = data.valuation, a = v.assumptions, w = v.wacc, sens = data.sensitivity;
+  const FIELDS = isFin ? FIN_FIELDS : DCF_FIELDS;
   const ccy = inp.currency ?? '';                   // reporting currency (projection, bridge)
   const pccy = inp.price_currency ?? ccy;            // trading currency (value per share)
-  const def: Record<string, number | null> = { growth: a.growth, target_margin: a.target_margin, years: a.years, terminal_growth: a.terminal_growth,
-    sales_to_capital: a.sales_to_capital, ronic: a.ronic, beta: w.beta, erp: w.erp, discount: null };
+  const def: Record<string, number | null> = isFin
+    ? { years: a.years, roe: a.roe_now, terminal_roe: a.roe_terminal, payout: a.payout_now, terminal_growth: a.terminal_growth, beta: a.beta, erp: a.erp, discount: null }
+    : { growth: a.growth, target_margin: a.target_margin, years: a.years, terminal_growth: a.terminal_growth,
+        sales_to_capital: a.sales_to_capital, ronic: a.ronic, beta: w.beta, erp: w.erp, discount: null };
   const shown = (k: string, kind: string) => def[k] == null ? 'computed' : kind === 'pct' ? (def[k]! * 100).toFixed(2) : kind === 'int' ? String(def[k]) : def[k]!.toFixed(2);
   const pctS = (x: number | null | undefined, d = 1) => (x == null ? '—' : `${(x * 100).toFixed(d)}%`);
+  const formPanel = (
+    <>
+      {(formErr || error) && <div className="px-3 py-2 border border-red/60 bg-red/5 text-xs text-red">{formErr ?? `Couldn’t recalculate — ${(error ?? "").replace(/\.$/, "")}. Showing the last valid result.`}</div>}
+      <Panel title="Assumptions — blank uses the default shown" right={loading ? <span className="text-[10px] text-text-tertiary">Recalculating…</span> : undefined}>
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+          {FIELDS.map(([k, label, kind, hint]) => (
+            <label key={k} className="text-[10px] uppercase tracking-wider text-text-tertiary" title={hint}>{label}
+              <div className="flex items-center mt-0.5">
+                <input type="number" step="any" min={DCF_LIMITS[k][0]} max={DCF_LIMITS[k][1]} placeholder={shown(k, kind)} value={form[k] ?? ''}
+                  onChange={(e) => setForm({ ...form, [k]: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') { const u = build(); if (u) setUrl(u); } }}
+                  className="w-full bg-surface-1 border border-border px-2 py-1 text-xs font-mono text-text-primary" />
+                <span className="ml-1 text-text-tertiary normal-case w-3">{kind === 'pct' ? '%' : ''}</span></div>
+              <span className="normal-case tracking-normal text-[10px] text-text-tertiary leading-tight block mt-0.5">{hint}</span>
+            </label>))}
+        </div>
+        <div className="flex flex-wrap items-center gap-4 mt-3 text-2xs text-text-secondary">
+          {!isFin && <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={leases} onChange={(e) => setLeases(e.target.checked)} />Treat operating leases as debt</label>}
+          {!isFin && <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={midYear} onChange={(e) => setMidYear(e.target.checked)} />Mid-year discounting</label>}
+          <button onClick={() => { const u = build(); if (u) setUrl(u); }} className="px-4 py-1.5 text-xs bg-bloomberg text-text-inverse">Recalculate</button>
+          <button onClick={() => { setForm({}); setLeases(false); setMidYear(true); setFormErr(null); setUrl(`/api/v1/mkt/dcf/${enc(symbol)}`); }} className="text-text-tertiary hover:text-text-primary">Reset to defaults</button>
+        </div>
+      </Panel>
+    </>
+  );
+  if (isFin) return <FinancialValuation data={data} formPanel={formPanel} pctS={pctS} />;
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
@@ -494,24 +558,7 @@ export function DcfView({ symbol }: { symbol: string }) {
       {v.checks.length > 0 && (
         <div className="px-3 py-2 border border-amber/50 bg-amber/5 space-y-1">{v.checks.map((c: string) => <div key={c} className="text-2xs text-amber">• {c}</div>)}</div>
       )}
-      <Panel title="Assumptions — blank uses the default shown">
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
-          {DCF_FIELDS.map(([k, label, kind, hint]) => (
-            <label key={k} className="text-[10px] uppercase tracking-wider text-text-tertiary" title={hint}>{label}
-              <div className="flex items-center mt-0.5">
-                <input type="number" step="any" placeholder={shown(k, kind)} value={form[k] ?? ''} onChange={(e) => setForm({ ...form, [k]: e.target.value })}
-                  className="w-full bg-surface-1 border border-border px-2 py-1 text-xs font-mono text-text-primary" />
-                <span className="ml-1 text-text-tertiary normal-case w-3">{kind === 'pct' ? '%' : ''}</span></div>
-              <span className="normal-case tracking-normal text-[10px] text-text-tertiary leading-tight block mt-0.5">{hint}</span>
-            </label>))}
-        </div>
-        <div className="flex flex-wrap items-center gap-4 mt-3 text-2xs text-text-secondary">
-          <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={leases} onChange={(e) => setLeases(e.target.checked)} />Treat operating leases as debt</label>
-          <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={midYear} onChange={(e) => setMidYear(e.target.checked)} />Mid-year discounting</label>
-          <button onClick={() => setUrl(build())} className="px-4 py-1.5 text-xs bg-bloomberg text-text-inverse">Recalculate</button>
-          <button onClick={() => { setForm({}); setLeases(false); setMidYear(true); setUrl(`/api/v1/mkt/dcf/${enc(symbol)}`); }} className="text-text-tertiary hover:text-text-primary">Reset to defaults</button>
-        </div>
-      </Panel>
+      {formPanel}
       <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-3">
         <Panel title={`Projection (${ccy}, millions) — free cash flow to the firm`}>
           <div className="overflow-x-auto"><table className="w-full text-2xs font-mono tabular-nums">
@@ -560,9 +607,60 @@ export function DcfView({ symbol }: { symbol: string }) {
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <SensGrid title="Value per share — WACC (rows) × terminal growth (columns)" rows={sens.discount_rates} cols={sens.terminal_growth} grid={sens.per_share} price={v.price} />
-        <SensGrid title="Value per share — target margin (rows) × year-1 growth (columns)" rows={sens.target_margins} cols={sens.growth_rates} grid={sens.per_share_growth_margin} price={v.price} />
+        <SensGrid title="Value per share — target margin (rows) × years 1–3 growth (columns)" rows={sens.target_margins} cols={sens.growth_rates} grid={sens.per_share_growth_margin} price={v.price} />
       </div>
       <div className="text-[10px] text-text-tertiary">{data.method} Green cells are above today’s price. A DCF is a structured way to state assumptions — the reverse DCF (growth the price implies) is often the more useful number.</div>
+    </div>
+  );
+}
+
+function FinancialValuation({ data, formPanel, pctS }: { data: any; formPanel: React.ReactNode; pctS: (x: number | null | undefined, d?: number) => string }) {
+  const inp = data.inputs, v = data.valuation, a = v.assumptions, sens = data.sensitivity;
+  const ccy = inp.currency ?? '', pccy = inp.price_currency ?? ccy;
+  const m = (x: number) => (x / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <Stat label="Intrinsic value / share" value={v.per_share != null ? fmtPrice(v.per_share) : '—'} sub={pccy} />
+        <Stat label="vs price" value={v.upside != null ? fmtPct(v.upside, 1) : '—'} tone={v.upside != null ? (v.upside > 0 ? 'up' : 'down') : null} sub={v.price ? `price ${fmtPrice(v.price)}` : '—'} />
+        <Stat label="ROE the price implies" value={data.market_implied_roe != null ? pctS(data.market_implied_roe) : '—'} sub={`sustained (model: ${pctS(a.roe_now)} → ${pctS(a.roe_terminal)})`} />
+        <Stat label="Cost of equity" value={pctS(a.cost_of_equity, 2)} sub={`rf ${pctS(a.risk_free, 2)} + β ${a.beta?.toFixed(2)} × ${pctS(a.erp, 1)}`} />
+        <Stat label="Justified price / book" value={v.price_to_book_implied != null ? `${v.price_to_book_implied.toFixed(2)}×` : '—'} sub="value ÷ book equity" />
+      </div>
+      {v.checks.length > 0 && (
+        <div className="px-3 py-2 border border-amber/50 bg-amber/5 space-y-1">{v.checks.map((c: string) => <div key={c} className="text-2xs text-amber">• {c}</div>)}</div>
+      )}
+      {formPanel}
+      <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-3">
+        <Panel title={`Projection (${ccy}, millions) — excess returns`}>
+          <div className="overflow-x-auto"><table className="w-full text-2xs font-mono tabular-nums">
+            <thead><tr className="text-text-tertiary">{['Year', 'ROE', 'Book value', 'Net income', 'Payout', 'Excess return', 'PV'].map((h) => <th key={h} className="text-right font-normal px-1.5 first:text-left">{h}</th>)}</tr></thead>
+            <tbody>{v.projection.map((r: any) => (
+              <tr key={r.year} className="border-t border-border-subtle">
+                <td className="py-0.5">{r.year}</td><td className="text-right px-1.5">{pctS(r.roe)}</td><td className="text-right px-1.5">{m(r.book_value_start)}</td>
+                <td className="text-right px-1.5">{m(r.net_income)}</td><td className="text-right px-1.5">{pctS(r.payout, 0)}</td>
+                <td className={cn('text-right px-1.5', r.excess_return < 0 && 'text-red')}>{m(r.excess_return)}</td><td className="text-right px-1.5 text-text-primary">{m(r.pv)}</td></tr>))}
+              <tr className="border-t-2 border-border"><td colSpan={5} className="py-1 text-text-secondary font-sans">Stable growth: {pctS(a.terminal_growth)} a year at ROE {pctS(a.roe_terminal)}, payout {pctS(a.payout_terminal, 0)}</td>
+                <td className="text-right px-1.5">{m(v.terminal_value)}</td><td className="text-right px-1.5 text-text-primary">{m(v.pv_terminal)}</td></tr>
+            </tbody></table></div>
+        </Panel>
+        <Panel title="From book value to value per share">
+          <table className="w-full text-xs"><tbody>
+            {[['Book equity today', v.book_value], ['+ PV of excess returns', v.pv_excess], ['+ PV of stable-growth excess returns', v.pv_terminal], ['= Equity value', v.equity_value]].map(([k, x]) => (
+              <tr key={k as string} className={cn('border-t border-border-subtle', String(k).startsWith('=') && 'font-semibold text-text-primary')}>
+                <td className="py-1 text-text-secondary">{k}</td><td className="text-right font-mono">{fmtBig(x as number)}</td></tr>))}
+            <tr className="border-t-2 border-border font-semibold"><td className="py-1">÷ {fmtBig(inp.shares)} shares</td><td className="text-right font-mono text-bloomberg">{fmtPrice(v.per_share_reporting_ccy)} {ccy}</td></tr>
+            {pccy !== ccy && v.per_share != null && <tr><td className="py-1 text-text-secondary">= per traded share, in {pccy}</td><td className="text-right font-mono text-bloomberg">{fmtPrice(v.per_share)} {pccy}</td></tr>}
+          </tbody></table>
+          <div className="mt-3 text-[10px] text-text-tertiary space-y-0.5">
+            <div>Risk-free: {inp.risk_free_source}.</div>
+            <div>ERP: {inp.erp_source}{inp.country_risk_premium ? ` + ${pctS(inp.country_risk_premium, 2)} country risk` : ''}. Beta: {inp.beta_source}.</div>
+            <div>Financials: {inp.source}. Book equity and net income from the latest filings (Yahoo).</div>
+          </div>
+        </Panel>
+      </div>
+      <SensGrid title="Value per share — cost of equity (rows) × stable ROE (columns)" rows={sens.costs_of_equity} cols={sens.terminal_roes} grid={sens.per_share} price={v.price} />
+      <div className="text-[10px] text-text-tertiary">{data.method}</div>
     </div>
   );
 }
