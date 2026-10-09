@@ -363,3 +363,9 @@ async def mkt_journal_delete(jid: int, request: Request):
     from api.marketdata import usertools
     await _user_op(usertools.delete_journal, _owner(request), jid)
     return {"deleted": jid}
+
+
+@router.get("/api/v1/mkt/map")
+async def mkt_world_map():
+    from api.marketdata import monitors
+    return await _run(monitors.world_map_markets, timeout=90)

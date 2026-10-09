@@ -31,6 +31,7 @@ export const FUNCTIONS: MktFunction[] = [
   { code: 'IMAP', name: 'Market heatmap', desc: 'A country’s largest stocks by sector, sized by value, coloured by today’s move.', group: 'Markets', aliases: ['HEAT'] },
   { code: 'CRYPTO', name: 'Crypto', desc: 'Top 100 coins: price, 1h/24h/7d/30d moves, market cap, dominance.', group: 'Markets' },
   { code: 'CMDTY', name: 'Commodities & curves', desc: 'Futures term structures — contango, backwardation and roll yield.', group: 'Markets', aliases: ['CRV', 'FUT'] },
+  { code: 'MAP', name: 'World map', desc: 'Every country coloured by its stock market or economy — returns, rates, inflation, growth.', group: 'Markets', aliases: ['BMAP', 'WORLD'] },
   { code: 'COMP', name: 'Compare', desc: 'Total-return comparison of up to 8 instruments, with risk and correlation.', group: 'Markets', aliases: ['TRA'] },
   // Rates & FX
   { code: 'GC', name: 'Yield curves', desc: 'Government curves for the US, UK, Germany, Japan, Canada and Australia.', group: 'Rates & FX', aliases: ['CURVE'] },
@@ -44,6 +45,7 @@ export const FUNCTIONS: MktFunction[] = [
   // My tools
   { code: 'W', name: 'Watchlists', desc: 'Your lists of instruments with live prices.', group: 'My tools', aliases: ['WATCH', 'MON'] },
   { code: 'ALRT', name: 'Alerts', desc: 'Price and move alerts that notify you in the terminal.', group: 'My tools', aliases: ['ALERT'] },
+  { code: 'AI', name: 'AI research assistant', desc: 'Ask anything — answers from the terminal’s data, with the lookups shown. Runs locally.', group: 'My tools', aliases: ['ASK', 'GPT'] },
   { code: 'JRNL', name: 'Trading journal', desc: 'Record trades and ideas with your reasoning; review what worked.', group: 'My tools', aliases: ['NOTES'] },
 ];
 

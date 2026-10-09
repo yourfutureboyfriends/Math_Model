@@ -8,12 +8,15 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CommandLine } from '@/components/markets/CommandLine';
 import { FUNCTIONS, SECURITY_FUNCTIONS, findFunction, type MktFunction } from '@/components/markets/functions';
 import { OverviewView } from '@/components/markets/OverviewView';
-import { Chart, Financials, News, Profile, QuoteHeader, useQuote } from '@/components/markets/TickerView';
+import { Chart, Financials, News, useQuote } from '@/components/markets/TickerView';
 import { MoversView, ScreenerView } from '@/components/markets/ScreenerView';
 import { AnrView, BetaView, DcfView, DvdView, ErnView, HdsView, HpView, OmonView, RvView } from '@/components/markets/SecurityFunctions';
 import { BtmmView, CmdtyView, CompView, CryptoView, EcoView, EvtsView, GcView, ImapView, NewsView, WcrsView } from '@/components/markets/GlobalFunctions';
 import { AlertsView, AlertToasts, JournalView, WatchlistsView, useAddToWatchlist } from '@/components/markets/MyTools';
-import { ErrorBox, Loading } from '@/components/markets/shared';
+import { ErrorBox, fmtPrice, Loading, TYPE_COLOR } from '@/components/markets/shared';
+import { InstrumentOverview } from '@/components/markets/InstrumentOverview';
+import { WorldMap } from '@/components/markets/WorldMap';
+import { AiChat, RightRail } from '@/components/markets/RightRail';
 
 export type MarketsRoute = { fn: string; symbol?: string };
 
@@ -93,25 +96,41 @@ function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: 
   if (!d) return null;
   return (
     <div className="space-y-3">
-      <div className="bg-surface-1 border border-border p-4 space-y-3">
-        <QuoteHeader d={d} />
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-xs text-text-tertiary">
+            <span className="font-mono font-semibold text-text-secondary">{d.symbol}</span><span>·</span><span>{d.exchange}</span>
+            <span className={cn('px-1.5 py-0.5 rounded border border-border text-[10px]', TYPE_COLOR[d.type])}>{d.type}</span>
+            {d.market_state && <span className={cn('inline-flex items-center gap-1', d.market_state === 'REGULAR' ? 'text-green' : '')}>
+              <span className={cn('w-1.5 h-1.5 rounded-full', d.market_state === 'REGULAR' ? 'bg-green' : 'bg-text-tertiary')} />
+              {d.market_state === 'REGULAR' ? 'Market open' : d.market_state === 'PRE' ? 'Pre-market' : d.market_state === 'POST' || d.market_state === 'POSTPOST' ? 'After hours' : 'Market closed'}</span>}
+          </div>
+          <h1 className="text-2xl font-semibold text-text-primary mt-1 truncate">{d.name}</h1>
+          <div className="flex items-baseline gap-3 mt-1">
+            <span className="text-4xl font-semibold font-mono tabular-nums text-text-primary">{fmtPrice(d.price, d.type)}</span>
+            <span className="text-sm font-mono">{d.currency}</span>
+            {d.change != null && <span className={cn('px-2 py-0.5 rounded-md text-sm font-mono font-semibold', d.change >= 0 ? 'bg-green/15 text-green' : 'bg-red/15 text-red')}>
+              {d.change >= 0 ? '+' : ''}{fmtPrice(d.change, d.type)} ({d.change_pct != null ? `${d.change_pct >= 0 ? '+' : ''}${(d.change_pct * 100).toFixed(2)}%` : '—'})</span>}
+          </div>
+          <div className="text-[11px] text-text-tertiary mt-1">{d.delay_minutes ? `Delayed ${d.delay_minutes} min · ` : ''}Source: {d.source}</div>
+        </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={async () => { try { const n = await addToWatch(symbol); if (n) setNote(`Added to “${n}”.`); } catch (e: any) { setNote(e.message); } }}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-2xs border border-border hover:border-bloomberg"><Plus className="w-3 h-3" />Watch</button>
-          <button onClick={() => onGo('ALRT', symbol)} className="inline-flex items-center gap-1 px-2.5 py-1 text-2xs border border-border hover:border-bloomberg"><Bell className="w-3 h-3" />Alert</button>
-          <button onClick={() => onGo('JRNL', symbol)} className="inline-flex items-center gap-1 px-2.5 py-1 text-2xs border border-border hover:border-bloomberg"><BookOpen className="w-3 h-3" />Journal</button>
-          <button onClick={() => onGo('COMP', symbol)} className="inline-flex items-center gap-1 px-2.5 py-1 text-2xs border border-border hover:border-bloomberg">Compare</button>
-          {note && <span className="text-2xs text-green self-center">{note}</span>}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs border border-border hover:border-bloomberg bg-surface-1"><Plus className="w-3.5 h-3.5" />Watch</button>
+          <button onClick={() => onGo('ALRT', symbol)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs border border-border hover:border-bloomberg bg-surface-1"><Bell className="w-3.5 h-3.5" />Alert</button>
+          <button onClick={() => onGo('JRNL', symbol)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs border border-border hover:border-bloomberg bg-surface-1"><BookOpen className="w-3.5 h-3.5" />Journal</button>
+          <button onClick={() => onGo('COMP', symbol)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs border border-border hover:border-bloomberg bg-surface-1">Compare</button>
+          {note && <span className="text-xs text-green self-center">{note}</span>}
         </div>
       </div>
-      <nav aria-label="Functions" className="flex flex-wrap gap-0.5 border-b border-border">
+      <nav aria-label="Functions" className="flex gap-1 border-b border-border overflow-x-auto [scrollbar-width:thin]">
         {tabs.map((t) => (
           <button key={t.code} onClick={() => onGo(t.code, symbol)} title={t.desc}
-            className={cn('px-3 py-1.5 text-2xs -mb-px border-b-2 whitespace-nowrap', t.code === f.code ? 'border-bloomberg text-text-primary' : 'border-transparent text-text-secondary hover:text-text-primary')}>
-            <span className="font-mono font-semibold mr-1 text-bloomberg/90">{t.code}</span>{t.name}</button>))}
+            className={cn('px-3 py-2 text-xs -mb-px border-b-2 whitespace-nowrap transition-colors', t.code === f.code ? 'border-bloomberg text-text-primary font-semibold' : 'border-transparent text-text-secondary hover:text-text-primary')}>
+            {t.code === 'DES' ? 'Overview' : t.name}<span className="ml-1.5 font-mono text-[9px] text-text-tertiary">{t.code}</span></button>))}
       </nav>
       <ErrorBoundary sectionName={`${f.code} ${symbol}`} key={`${f.code}:${symbol}`}>
-        {f.code === 'DES' && <div className="space-y-3"><Chart symbol={symbol} height={320} /><Profile symbol={symbol} /></div>}
+        {f.code === 'DES' && <InstrumentOverview q={d} onOpen={(s) => onGo('DES', s)} onGo={onGo} />}
         {f.code === 'GP' && <Chart symbol={symbol} height={560} />}
         {f.code === 'FA' && <Financials symbol={symbol} />}
         {f.code === 'ERN' && <ErnView symbol={symbol} />}
@@ -136,7 +155,8 @@ export function MarketsPage() {
   useEffect(() => { if (!window.location.hash.startsWith('#mkt')) goMarkets('WEI'); }, []);
   const f = findFunction(route.fn) ?? findFunction('WEI')!;
   return (
-    <div className="p-4 space-y-4 max-w-[1680px]">
+    <div className="p-4 flex gap-4 items-start">
+    <div className="flex-1 min-w-0 space-y-4 max-w-[1500px]">
       <CommandLine current={f.security ? route.symbol : undefined} onGo={onGo} />
       {f.security && route.symbol ? <SecurityView fn={f.code} symbol={route.symbol} onGo={onGo} /> : (
         <div className="space-y-3">
@@ -146,6 +166,7 @@ export function MarketsPage() {
             {f.code === 'MOST' && <MoversView onOpen={open} />}
             {f.code === 'EQS' && <ScreenerView onOpen={open} />}
             {f.code === 'IMAP' && <ImapView onOpen={open} />}
+            {f.code === 'MAP' && <WorldMap onOpen={open} />}
             {f.code === 'CRYPTO' && <CryptoView onOpen={open} />}
             {f.code === 'CMDTY' && <CmdtyView onOpen={open} />}
             {f.code === 'COMP' && <CompView seed={route.symbol} />}
@@ -158,10 +179,13 @@ export function MarketsPage() {
             {f.code === 'W' && <WatchlistsView onOpen={open} />}
             {f.code === 'ALRT' && <AlertsView seed={route.symbol} />}
             {f.code === 'JRNL' && <JournalView seed={route.symbol} onOpen={open} />}
+            {f.code === 'AI' && <div className="bg-surface-1 border border-border rounded-md h-[calc(100vh-220px)] min-h-[480px]"><AiChat context={route.symbol} /></div>}
           </ErrorBoundary>
         </div>
       )}
       <AlertToasts onOpen={open} />
+    </div>
+    {f.code !== 'AI' && <RightRail symbol={f.security ? route.symbol : undefined} onOpen={open} />}
     </div>
   );
 }

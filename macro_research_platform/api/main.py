@@ -1548,6 +1548,8 @@ from api.routers.data_sources import router as data_sources_router  # SEC EDGAR,
 app.include_router(data_sources_router)
 from api.routers.marketdata import router as marketdata_router  # Markets mode: universal search/quotes/screener
 app.include_router(marketdata_router)
+from api.routers.ai import router as ai_router  # AI research assistant (local Ollama / Groq)
+app.include_router(ai_router)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NATIVE WEBSOCKET ENDPOINTS

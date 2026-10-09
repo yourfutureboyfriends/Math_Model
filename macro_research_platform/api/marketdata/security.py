@@ -112,8 +112,16 @@ def analysts(symbol: str) -> Dict[str, Any]:
             changes = []
         return {"symbol": s, "summary": summ, "targets": targets, "changes": changes,
                 "recommendation": _info(s).get("recommendationKey"), "analysts": _info(s).get("numberOfAnalystOpinions"),
+                # Yahoo's consensus mean on a 1 (strong buy) … 5 (strong sell) scale — a fallback when
+                # the rating breakdown endpoint fails (it intermittently returns 401).
+                "recommendation_mean": _f(_info(s).get("recommendationMean")),
                 "currency": _info(s).get("currency"), "source": "Yahoo Finance"}
     out = _cached(f"anr:{s}", 3600, fetch)
+    if not out["summary"] and not out["changes"]:            # partial failure: retry soon, don't keep it for an hour
+        from api.marketdata.core import _cache, _lock
+        with _lock:
+            ts, val = _cache.get(f"anr:{s}", (0, None))
+            _cache[f"anr:{s}"] = (ts - 3600 + 120, val)
     if not out["summary"] and not out["targets"] and not out["changes"]:
         raise NotFound(f"No analyst coverage data for {s}.")
     return out

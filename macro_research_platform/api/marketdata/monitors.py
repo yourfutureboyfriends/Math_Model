@@ -295,3 +295,46 @@ def news_hub(q: Optional[str] = None, limit: int = 60) -> Dict[str, Any]:
     sources = sorted({i["source"] for i in items if i["source"]})
     return {"query": q, "items": items[:limit], "sources": sources, "count": len(items),
             "source": "RSS: " + ", ".join(sources) if sources else "RSS", "sentiment_note": "Finance word-list tone, −1 to +1."}
+
+
+# ── MAP: country equity markets via USD-listed MSCI country ETFs ─────────────
+COUNTRY_ETFS = {
+    "US": ("SPY", "S&P 500"), "CA": ("EWC", "MSCI Canada"), "MX": ("EWW", "MSCI Mexico"), "BR": ("EWZ", "MSCI Brazil"),
+    "AR": ("ARGT", "MSCI Argentina"), "CL": ("ECH", "MSCI Chile"), "PE": ("EPU", "MSCI Peru"), "CO": ("GXG", "MSCI Colombia"),
+    "GB": ("EWU", "MSCI UK"), "DE": ("EWG", "MSCI Germany"), "FR": ("EWQ", "MSCI France"), "IT": ("EWI", "MSCI Italy"),
+    "ES": ("EWP", "MSCI Spain"), "NL": ("EWN", "MSCI Netherlands"), "CH": ("EWL", "MSCI Switzerland"), "SE": ("EWD", "MSCI Sweden"),
+    "NO": ("NORW", "MSCI Norway"), "DK": ("EDEN", "MSCI Denmark"), "FI": ("EFNL", "MSCI Finland"), "BE": ("EWK", "MSCI Belgium"),
+    "AT": ("EWO", "MSCI Austria"), "IE": ("EIRL", "MSCI Ireland"), "PL": ("EPOL", "MSCI Poland"), "TR": ("TUR", "MSCI Turkey"),
+    "IL": ("EIS", "MSCI Israel"), "SA": ("KSA", "MSCI Saudi Arabia"), "AE": ("UAE", "MSCI UAE"), "QA": ("QAT", "MSCI Qatar"),
+    "ZA": ("EZA", "MSCI South Africa"), "IN": ("INDA", "MSCI India"),
+    "CN": ("MCHI", "MSCI China"), "HK": ("EWH", "MSCI Hong Kong"), "TW": ("EWT", "MSCI Taiwan"), "KR": ("EWY", "MSCI Korea"),
+    "JP": ("EWJ", "MSCI Japan"), "SG": ("EWS", "MSCI Singapore"), "MY": ("EWM", "MSCI Malaysia"), "TH": ("THD", "MSCI Thailand"),
+    "ID": ("EIDO", "MSCI Indonesia"), "PH": ("EPHE", "MSCI Philippines"), "VN": ("VNM", "Vietnam"), "AU": ("EWA", "MSCI Australia"),
+    "NZ": ("ENZL", "MSCI New Zealand"), "GR": ("GREK", "MSCI Greece"), "PT": ("PGAL", "Portugal"),
+}
+
+
+def world_map_markets() -> Dict[str, Any]:
+    def fetch():
+        import yfinance as yf
+        syms = sorted({v[0] for v in COUNTRY_ETFS.values()})
+        try:
+            df = yf.download(syms, period="13mo", interval="1d", auto_adjust=True, group_by="ticker", progress=False, threads=True)
+        except Exception as ex:
+            raise Upstream(f"Country ETF prices unavailable: {ex}")
+        out = {}
+        for iso, (sym, label) in COUNTRY_ETFS.items():
+            try:
+                c = df[sym]["Close"].dropna()
+            except Exception:
+                continue
+            if len(c) < 30:
+                continue
+            last = float(c.iloc[-1])
+            prior_year = c[c.index.year < c.index[-1].year]
+            out[iso] = {"etf": sym, "label": label, "price": last, "date": c.index[-1].strftime("%Y-%m-%d"),
+                        "change_1d": last / float(c.iloc[-2]) - 1, "change_1m": last / float(c.iloc[-22]) - 1 if len(c) > 22 else None,
+                        "change_ytd": last / float(prior_year.iloc[-1]) - 1 if len(prior_year) else None,
+                        "change_1y": last / float(c.iloc[-253]) - 1 if len(c) > 253 else None}
+        return {"countries": out, "source": "Yahoo Finance — USD-listed MSCI country ETFs (total return, in USD)"}
+    return _cached("worldmap", 600, fetch)
