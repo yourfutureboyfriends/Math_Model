@@ -23,6 +23,7 @@ export const PANEL_LABELS: Record<string, string> = {
   'stock-backtest': 'Entry Model Backtest',
   portfolios: 'Portfolios',
   'strategy-lab': 'Strategy Lab',
+  'quant-lab': 'Quant Lab',
   // Signals
   ensemble: 'Model Ensemble',
   'signal-stack': 'Signal Breakdown',

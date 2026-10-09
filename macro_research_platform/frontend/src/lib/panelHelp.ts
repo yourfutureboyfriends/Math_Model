@@ -255,10 +255,16 @@ export const PANEL_HELP: Record<string, PanelHelp> = {
     use: 'Size positions down before high-impact events if the event window is much more volatile.',
   },
   portfolios: {
-    what: 'Your two books: My Portfolio (stocks you pick, reviewed by the model) and the Auto Portfolio (paper-traded by the model), plus the optimiser.',
-    read: 'Auto Portfolio fills at the next market open with a stop (2.5× ATR), a target (2R) and a 63-day time limit. It is simulated — no real orders.',
-    use: 'Use Backtest & research to see how the auto rules did historically, and the Optimiser to size a basket.',
+    what: 'My Portfolio (stocks you pick, reviewed by the model), two separate paper traders, and the optimiser. The Macro Trader follows the macro model’s asset-class allocation; the Quant Trader runs the systematic algos you deploy from the Quant Lab, plus the stock entry-model book.',
+    read: 'Both traders decide after the close and fill at the next open, with costs. They are simulated — no real orders. Each shows its live record next to its backtest so you can see if it behaves as expected.',
+    use: 'Compare the two traders: macro (slow, top-down, asset classes) vs quant (rules-based signals). Use the Optimiser to size a basket.',
     terms: [['ATR', 'Average True Range — the typical daily move; stops are set as a multiple of it.'], ['R', 'Risk unit = distance from entry to stop. 2R target = twice the risk.']],
+  },
+  'quant-lab': {
+    what: 'Build, backtest and deploy your own quant trading algos — from a research-backed template or a signal formula you write (e.g. rank(mom(252, 21))).',
+    read: 'Every backtest trades at the next open after the signal (no look-ahead) and is net of costs. The verdict at the top weighs the evidence: Deflated Sharpe (counts every variant you tried), t > 3 hurdle, out-of-sample decay, bootstrap range, cost and delay stress.',
+    use: 'Start from Templates, customise in Build & test, check robustness in Parameter sweep, blend algos in Combine, then Deploy to the Quant Trader to paper-trade it live.',
+    terms: [SHARPE, DD, ['Deflated Sharpe', 'Probability the Sharpe is real after correcting for how many variants were tried.'], ['PBO', 'Probability of backtest overfitting: how often the best in-sample setting does worse than the median out of sample.']],
   },
   'strategy-lab': {
     what: 'Five research-backed strategies (trend, sector momentum, low-vol, residual momentum, auto book) and an equal-risk combination of them.',

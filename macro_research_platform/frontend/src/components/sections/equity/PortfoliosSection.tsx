@@ -7,12 +7,14 @@
 //   * Optimiser: six weighting methods on either book or any tickers, ranked walk-forward.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, Briefcase, CheckCircle2, FlaskConical, Loader2, MinusCircle, Play, Plus, RefreshCw, Scale, X, XCircle } from 'lucide-react';
+import { Briefcase, Cpu, Globe2, CheckCircle2, Loader2, MinusCircle, Play, Plus, RefreshCw, Scale, X, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
 import { Donut } from '@/components/ui/Donut';
 import { stableColors } from '@/lib/chartPalette';
 import { openStockAnalysis } from './StockIdeasSection';
+import { MacroTrader } from './MacroTrader';
+import { QuantTrader } from './QuantTrader';
 
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#8a63d2', '#d0457a', '#6b7280'];
 const usd = (v: number | null | undefined, d = 0) =>
@@ -491,23 +493,6 @@ function AutoBacktest() {
   );
 }
 
-function AutoPortfolio() {
-  const [view, setView] = useState<'live' | 'backtest'>('live');
-  return (
-    <div className="space-y-2">
-      <div className="flex border border-border w-fit" role="tablist" aria-label="Auto book view">
-        {([['live', 'Live book', Bot], ['backtest', 'Backtest & research', FlaskConical]] as const).map(([k, l, Icon]) => (
-          <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)}
-            className={cn('inline-flex items-center gap-1 px-2.5 py-0.5 text-2xs', view === k ? 'bg-surface-3 text-text-primary' : 'text-text-secondary hover:text-text-primary')}>
-            <Icon className="w-3 h-3" />{l}
-          </button>
-        ))}
-      </div>
-      {view === 'live' ? <AutoLive /> : <AutoBacktest />}
-    </div>
-  );
-}
-
 // ── Optimiser ─────────────────────────────────────────────────────────────────
 function Optimiser() {
   const [source, setSource] = useState<'my' | 'auto' | 'custom'>('my');
@@ -654,13 +639,17 @@ function Optimiser() {
 
 const TABS = [
   { key: 'my', label: 'My Portfolio', Icon: Briefcase },
-  { key: 'auto', label: 'Auto Portfolio (paper)', Icon: Bot },
+  { key: 'macro', label: 'Macro Trader (paper)', Icon: Globe2 },
+  { key: 'quant', label: 'Quant Trader (paper)', Icon: Cpu },
   { key: 'opt', label: 'Optimiser', Icon: Scale },
 ] as const;
 
 export function PortfoliosSection() {
   const [tab, setTab] = useState<(typeof TABS)[number]['key']>(() => {
-    try { return (localStorage.getItem('portfolios.tab') as any) || 'my'; } catch { return 'my'; }
+    try {
+      const t = localStorage.getItem('portfolios.tab');
+      return (t === 'auto' ? 'quant' : TABS.some((x) => x.key === t) ? t : 'my') as any;   // 'auto' became the Quant Trader
+    } catch { return 'my'; }
   });
   useEffect(() => { try { localStorage.setItem('portfolios.tab', tab); } catch { /* storage unavailable */ } }, [tab]);
   return (
@@ -669,7 +658,7 @@ export function PortfoliosSection() {
         <div className="section-header-left">
           <span className="section-tag"><Briefcase className="w-3 h-3" /></span>
           <h2 className="section-title">Portfolios</h2>
-          <span className="text-2xs text-text-tertiary">your picks reviewed by the model · a systematic paper book · optimisation</span>
+          <span className="text-2xs text-text-tertiary">your picks reviewed by the model · two paper traders (macro and quant) · optimisation</span>
         </div>
       </div>
       <div className="flex border border-border mb-2 w-fit" role="tablist" aria-label="Portfolio">
@@ -681,7 +670,8 @@ export function PortfoliosSection() {
         ))}
       </div>
       {tab === 'my' && <MyPortfolio />}
-      {tab === 'auto' && <AutoPortfolio />}
+      {tab === 'macro' && <MacroTrader />}
+      {tab === 'quant' && <QuantTrader stockLive={<AutoLive />} stockBacktest={<AutoBacktest />} />}
       {tab === 'opt' && <Optimiser />}
     </div>
   );

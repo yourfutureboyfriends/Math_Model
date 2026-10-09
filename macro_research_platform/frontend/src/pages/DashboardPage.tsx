@@ -45,6 +45,7 @@ import {
   StockBacktestSection,
   PortfoliosSection,
   StrategyLabSection,
+  QuantLabSection,
   PositionsSection,
   TradeWorkflowSection,
   CTATrendSection,
@@ -661,6 +662,13 @@ export function DashboardPage() {
       <div id="strategy-lab" className="terminal-section">
         <ErrorBoundary sectionName="Strategy Lab">
           <StrategyLabSection />
+        </ErrorBoundary>
+      </div>
+
+      {/* ── Quant Lab: build / backtest / deploy your own quant algos ─────────── */}
+      <div id="quant-lab" className="terminal-section">
+        <ErrorBoundary sectionName="Quant Lab">
+          <QuantLabSection />
         </ErrorBoundary>
       </div>
 
