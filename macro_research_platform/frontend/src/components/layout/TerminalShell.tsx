@@ -16,6 +16,8 @@ import { ErrorBoundary } from '../ErrorBoundary';
 
 interface TerminalShellProps {
   children: React.ReactNode;
+  /** Replaces the Research navigation (the Markets mode has its own sidebar). */
+  sidebar?: (collapsed: boolean) => React.ReactNode;
   latestDate?: string;
   dataStatus?: 'current' | 'acceptable' | 'stale' | 'unknown';
   mode?: string;
@@ -30,6 +32,7 @@ interface TerminalShellProps {
 
 export function TerminalShell({
   children,
+  sidebar,
   latestDate,
   dataStatus,
   mode,
@@ -317,13 +320,15 @@ export function TerminalShell({
         )}
       >
         <ErrorBoundary sectionName="Sidebar">
-          <Sidebar
-            activeSection={activeSection}
-            onNavigate={handleNavigate}
-            currentRegime={currentRegime}
-            collapsed={sidebarCollapsed}
-            onCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-          />
+          {sidebar ? sidebar(sidebarCollapsed) : (
+            <Sidebar
+              activeSection={activeSection}
+              onNavigate={handleNavigate}
+              currentRegime={currentRegime}
+              collapsed={sidebarCollapsed}
+              onCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+            />
+          )}
         </ErrorBoundary>
       </aside>
 

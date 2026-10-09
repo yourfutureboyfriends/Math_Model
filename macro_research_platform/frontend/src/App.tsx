@@ -8,11 +8,14 @@ import { ChangePasswordScreen } from './components/account/AccountPanels';
 import { DiagnosticsPanel } from './components/dev/DiagnosticsPanel';
 import { ChartModal } from './components/ui/ChartModal';
 import { useAuth } from './context/AuthContext';
-import { DashboardPage } from './pages';
+import { DashboardPage, MarketsPage } from './pages';
+import { MarketsSidebar } from './components/markets/MarketsSidebar';
+import { useHubMode } from './lib/hubMode';
 import { useMacroStore, selectMeta, selectIsLoading, selectRegime, selectFullDashboard } from './store/macroStore';
 
 function App() {
   const { isAuthenticated, mustChangePassword } = useAuth();
+  const hubMode = useHubMode();
   const [activeSection, setActiveSection] = useState('master-signal');
 
   // Initialize macro store
@@ -129,8 +132,9 @@ function App() {
         loading={isLoading}
         activeSection={activeSection}
         onNavigate={handleNavigate}
+        sidebar={hubMode === 'markets' ? (collapsed) => <MarketsSidebar collapsed={collapsed} /> : undefined}
       >
-        <DashboardPage />
+        {hubMode === 'markets' ? <MarketsPage /> : <DashboardPage />}
       </TerminalShell>
 
       {/* Click-to-chart: any panel opens a full interactive chart (openChart) */}

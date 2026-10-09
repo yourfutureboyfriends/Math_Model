@@ -1541,6 +1541,8 @@ from api.routers.quant import router as quant_router  # Quant Lab + Quant Trader
 app.include_router(quant_router)
 from api.routers.data_sources import router as data_sources_router  # SEC EDGAR, ALFRED, DBnomics, factors
 app.include_router(data_sources_router)
+from api.routers.marketdata import router as marketdata_router  # Markets mode: universal search/quotes/screener
+app.include_router(marketdata_router)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NATIVE WEBSOCKET ENDPOINTS

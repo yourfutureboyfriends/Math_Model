@@ -2,6 +2,7 @@
 // Row 1: Branding | Function keys | Session badges | Data status | Time | Tools
 // Row 2: Market ticker strip
 
+import { setHubMode, useHubMode } from '@/lib/hubMode';
 import { useState, useEffect, useMemo } from 'react';
 import { Download, Maximize, AlertTriangle, LayoutGrid, RefreshCw, FunctionSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -168,6 +169,22 @@ const FN_KEYS = [
   { n: 'F7', label: 'SYSTEM',    section: 'system-health' },
 ];
 
+function ModeSwitch() {
+  const mode = useHubMode();
+  return (
+    <div role="tablist" aria-label="Mode" className="flex border border-border ml-1">
+      {([['research', 'Research & Trading'], ['markets', 'Markets']] as const).map(([m, label]) => (
+        <button key={m} role="tab" aria-selected={mode === m} onClick={() => setHubMode(m)}
+          title={m === 'research' ? 'Macro research, signals, risk, Quant Lab and the paper traders' : 'Any stock, ETF, index, FX, future or crypto — workstation, movers, screener'}
+          className={cn('px-2 h-6 text-[10px] font-mono uppercase tracking-wider whitespace-nowrap',
+            mode === m ? 'bg-bloomberg text-bg' : 'text-text-tertiary hover:text-text-primary')}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Topbar({
   latestDate: latestDateProp,
   dataStatus: dataStatusProp,
@@ -277,13 +294,13 @@ export function Topbar({
       {/* ── ROW 1: Main bar (40px) ─────────────────────────────────────────────── */}
       <div className="topbar-main-row">
 
-        {/* Branding */}
+        {/* Branding + hub mode switch */}
         <div className="flex items-center gap-2 mr-2 shrink-0">
           <span className="font-mono text-bloomberg font-bold tracking-tight" style={{ fontSize: 13 }}>▸</span>
-          <span className="font-mono text-text-primary font-bold tracking-tight" style={{ fontSize: 12, letterSpacing: '0.06em' }}>
-            MACRO TERMINAL
+          <span className="hidden sm:inline font-mono text-text-primary font-bold tracking-tight" style={{ fontSize: 12, letterSpacing: '0.06em' }}>
+            TERMINAL
           </span>
-          <span className="font-mono text-text-tertiary" style={{ fontSize: 10 }}>v8.0</span>
+          <ModeSwitch />
         </div>
 
         <div className="topbar-divider" />
