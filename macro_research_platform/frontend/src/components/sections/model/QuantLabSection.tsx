@@ -298,7 +298,7 @@ function Combine({ meta, mine }: { meta: Meta; mine: any[] }) {
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
   const lines = res ? [{ key: 'combined', label: 'Combined', color: CATEGORICAL[0] },
-    ...res.names.map((n: string, i: number) => ({ key: n, label: n, color: CATEGORICAL[(i + 1) % CATEGORICAL.length] }))] : [];
+    ...res.names.map((n: string, i: number) => ({ key: n, label: n.length > 26 ? `${n.slice(0, 25).trim()}…` : n, color: CATEGORICAL[(i + 1) % CATEGORICAL.length] }))] : [];
   return (
     <div className="space-y-3">
       <p className="text-2xs text-text-secondary">Run several algos as one book. Strategies with low correlation smooth each other's losing streaks — this is how multi-strategy funds are built. Pick 2–8.</p>

@@ -100,7 +100,9 @@ function Live() {
         <div className="p-3 bg-surface-1 border border-border">
           <Donut title="Target allocation" fmt={(v) => pct(v, 0)} centerLabel="invested"
             centerValue={pct(Object.values(d.positions).reduce((a: number, p: any) => a + (p.target ?? 0), 0) as number, 0)}
-            data={d.positions.filter((p: any) => p.target > 0).map((p: any) => ({ label: NAMES[p.symbol] ?? p.symbol, value: p.target }))} />
+            data={[...d.positions.filter((p: any) => p.target > 0).map((p: any) => ({ label: NAMES[p.symbol] ?? p.symbol, value: p.target })),
+              // cash is part of the allocation — without it the slices would rescale to the invested share
+              { label: 'Cash', value: Math.max(0, 1 - d.positions.reduce((a: number, p: any) => a + (p.target ?? 0), 0)) }]} />
         </div>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
