@@ -2427,6 +2427,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/market/bars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Market Bars
+         * @description OHLCV bars for the interactive chart — interval 5m/15m/1h/1d/1wk/1mo, period 1d…max.
+         */
+        get: operations["market_bars_api_v1_market_bars_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/nowcast": {
         parameters: {
             query?: never;
@@ -2436,22 +2456,8 @@ export interface paths {
         };
         /**
          * Get Nowcast
-         * @description GDP Nowcast using DFM/PCA methodology.
-         *
-         *     Estimates current quarter GDP growth using dynamic factor models
-         *     and principal component analysis on high-frequency economic data.
-         *
-         *     Returns:
-         *         Dict containing:
-         *             - nowcast: Current GDP growth estimate (annualized %)
-         *             - confidence: Confidence interval (low, high)
-         *             - components: Contributing factor weights
-         *             - lastUpdated: Timestamp of calculation
-         *             - model: "DFM/PCA" methodology identifier
-         *
-         *     Examples:
-         *         >>> GET /api/nowcast
-         *         {"nowcast": 2.3, "confidence": {"low": 1.8, "high": 2.8}, ...}
+         * @description GDP nowcast: Atlanta Fed GDPNow (FRED GDPNOW), real GDP QoQ SAAR for the latest
+         *     quarter, as served in the dashboard's `nowcast` section. 503 if unavailable.
          */
         get: operations["get_nowcast_api_nowcast_get"];
         put?: never;
@@ -3223,6 +3229,2493 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/fund/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fund Settings */
+        get: operations["fund_settings_api_v1_fund_settings_get"];
+        /** Update Fund Settings */
+        put: operations["update_fund_settings_api_v1_fund_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fund/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fund Overview
+         * @description NAV, exposures as % NAV, risk-limit status, and the recorded track record
+         *     (plus a clearly-labelled pro-forma path for context).
+         */
+        get: operations["fund_overview_api_v1_fund_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fund/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fund Snapshot */
+        post: operations["fund_snapshot_api_v1_fund_snapshot_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/risk/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Risk Limits */
+        get: operations["risk_limits_api_v1_risk_limits_get"];
+        /** Update Risk Limits */
+        put: operations["update_risk_limits_api_v1_risk_limits_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/risk/pretrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pretrade
+         * @description Pre-trade compliance: limit metrics before vs after the trade → PASS / WARN / BLOCK.
+         */
+        post: operations["pretrade_api_v1_risk_pretrade_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/rebalance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Rebalance
+         * @description Regime-tilted, risk-budgeted, vol-targeted target portfolio for `book` and the
+         *     orders to get there. sleeve_pct = fraction of fund NAV allocated to this book.
+         */
+        get: operations["rebalance_api_v1_portfolio_rebalance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/rebalance/stage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stage Rebalance
+         * @description Send rebalance orders into the trade-idea workflow (state 'Proposed') for PM/risk
+         *     approval, and record the decision in the audit trail.
+         */
+        post: operations["stage_rebalance_api_v1_portfolio_rebalance_stage_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Orders */
+        get: operations["list_orders_api_v1_orders_get"];
+        put?: never;
+        /**
+         * Create Order
+         * @description Order ticket: runs pre-trade compliance immediately and queues the order as
+         *     'Proposed' (a BLOCK is reported but the ticket is still recorded for the audit trail).
+         */
+        post: operations["create_order_api_v1_orders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{order_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Order
+         * @description Four-eyes approval: the approver must differ from the order's creator. Compliance is
+         *     re-run against the CURRENT book: BLOCK refuses; WARN requires a written note.
+         */
+        post: operations["approve_order_api_v1_orders__order_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{order_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Order */
+        post: operations["reject_order_api_v1_orders__order_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{order_id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Order
+         * @description Execute an APPROVED order: simulated fill at the latest close (default) or Alpaca PAPER
+         *     routing when configured; the fill is booked into positions + blotter atomically.
+         */
+        post: operations["execute_order_api_v1_orders__order_id__execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/blotter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Blotter */
+        get: operations["blotter_api_v1_blotter_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/models/scorecard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Model Scorecard
+         * @description How the models actually performed: walk-forward regime-transition test on FRED history,
+         *     recession forecasts scored once their 12-month horizon resolves (FRED USREC), and the
+         *     signal backtests' independent-window hit rates.
+         */
+        get: operations["model_scorecard_api_v1_models_scorecard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Users */
+        get: operations["list_users_api_admin_users_get"];
+        put?: never;
+        /** Create User */
+        post: operations["create_user_api_admin_users_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{username}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update User */
+        put: operations["update_user_api_admin_users__username__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{username}/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset Password */
+        post: operations["reset_password_api_admin_users__username__reset_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{username}/unlock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unlock User */
+        post: operations["unlock_user_api_admin_users__username__unlock_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/desk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Desk */
+        get: operations["desk_api_v1_desk_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Model Latest
+         * @description Current model state, portfolios and backtest with default parameters (cached).
+         */
+        get: operations["model_latest_api_v1_model_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model/params": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Model Params */
+        get: operations["model_params_api_v1_model_params_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Model Run
+         * @description Re-run the model with custom parameters (recorded with the user).
+         */
+        post: operations["model_run_api_v1_model_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Model Runs */
+        get: operations["model_runs_api_v1_model_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model/sleeve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Model Sleeve
+         * @description Read-only: the model sleeve's holdings (book "Macro Model") against the model's
+         *     targets, with the drift and the orders that would close it. Nothing is staged.
+         */
+        get: operations["model_sleeve_api_v1_model_sleeve_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model/orders/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Model Orders Preview */
+        post: operations["model_orders_preview_api_v1_model_orders_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model/orders/stage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Model Orders Stage
+         * @description Stage the model's orders through the normal order ticket: each runs pre-trade
+         *     compliance and needs risk approval (four-eyes) before it can be executed.
+         */
+        post: operations["model_orders_stage_api_v1_model_orders_stage_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock/timing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stock Timing
+         * @description Buy / wait / avoid for one stock, with the evidence, levels, size and a historical test.
+         */
+        get: operations["stock_timing_api_v1_stock_timing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock/screen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stock Screen
+         * @description The same model over a watchlist (default large caps + book holdings), ranked.
+         */
+        get: operations["stock_screen_api_v1_stock_screen_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock/ideas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stock Ideas
+         * @description System-generated stock suggestions (S&P 500 screen → full model on the best set-ups).
+         *     Returns the latest list immediately; starts a rebuild in the background when it is older
+         *     than a day or missing.
+         */
+        get: operations["stock_ideas_api_v1_stock_ideas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock/ideas/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stock Ideas Refresh */
+        post: operations["stock_ideas_refresh_api_v1_stock_ideas_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock/backtest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stock Backtest
+         * @description Walk-forward backtest of the entry model on the global universe (model vs control
+         *     variants, trade statistics, portfolio curve). Starts the first run when none exists.
+         */
+        get: operations["stock_backtest_api_v1_stock_backtest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock/backtest/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stock Backtest Run */
+        post: operations["stock_backtest_run_api_v1_stock_backtest_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stock Search
+         * @description Find any listed stock worldwide by name or ticker (Yahoo search), classified by
+         *     market (MSCI class, region, country) and flagged when it is in the screened universe.
+         */
+        get: operations["stock_search_api_v1_stock_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock/watchlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Watchlist */
+        get: operations["get_watchlist_api_v1_stock_watchlist_get"];
+        /**
+         * Put Watchlist
+         * @description Replace the caller's watchlist (max 100). Watchlist names are always fully analysed in
+         *     the next Stock Ideas build, whatever market they trade in.
+         */
+        put: operations["put_watchlist_api_v1_stock_watchlist_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/model-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Model Review
+         * @description Your holdings run through the entry model → action, trailing stop, trend status.
+         */
+        get: operations["model_review_api_v1_portfolio_model_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/optimize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Optimize
+         * @description Weights by six methods with a walk-forward comparison. source = my | auto | custom.
+         */
+        get: operations["optimize_api_v1_portfolio_optimize_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auto/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Auto Status */
+        get: operations["auto_status_api_v1_auto_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auto/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Auto Run */
+        post: operations["auto_run_api_v1_auto_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auto/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Auto Settings */
+        put: operations["auto_settings_api_v1_auto_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auto/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Auto Reset */
+        post: operations["auto_reset_api_v1_auto_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auto/positions/{pos_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Auto Close */
+        post: operations["auto_close_api_v1_auto_positions__pos_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auto/backtest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Auto Backtest
+         * @description The auto book's rules backtested (with ablations, a random-stock control, the Deflated
+         *     Sharpe Ratio and a live-performance expectation) and the live book compared with it.
+         */
+        get: operations["auto_backtest_api_v1_auto_backtest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auto/backtest/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Auto Backtest Run */
+        post: operations["auto_backtest_run_api_v1_auto_backtest_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/strategies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Strategies */
+        get: operations["strategies_api_v1_strategies_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/strategies/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Strategies Run */
+        post: operations["strategies_run_api_v1_strategies_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quant/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quant Meta */
+        get: operations["quant_meta_api_v1_quant_meta_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quant/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quant Validate */
+        post: operations["quant_validate_api_v1_quant_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quant/backtest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quant Backtest */
+        post: operations["quant_backtest_api_v1_quant_backtest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quant/sweep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quant Sweep */
+        post: operations["quant_sweep_api_v1_quant_sweep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quant/combine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quant Combine */
+        post: operations["quant_combine_api_v1_quant_combine_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quant/strategies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quant Strategies */
+        get: operations["quant_strategies_api_v1_quant_strategies_get"];
+        put?: never;
+        /** Quant Save */
+        post: operations["quant_save_api_v1_quant_strategies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quant/strategies/{sid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Quant Update */
+        put: operations["quant_update_api_v1_quant_strategies__sid__put"];
+        post?: never;
+        /** Quant Delete */
+        delete: operations["quant_delete_api_v1_quant_strategies__sid__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quant/trader": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Quant Trader */
+        get: operations["quant_trader_api_v1_quant_trader_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quant/trader/deploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quant Deploy */
+        post: operations["quant_deploy_api_v1_quant_trader_deploy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quant/trader/deployments/{did}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Quant Undeploy */
+        delete: operations["quant_undeploy_api_v1_quant_trader_deployments__did__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/macro-trader": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Macro Trader Status */
+        get: operations["macro_trader_status_api_v1_macro_trader_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/macro-trader/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Macro Trader Run */
+        post: operations["macro_trader_run_api_v1_macro_trader_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/macro-trader/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Macro Trader Settings */
+        put: operations["macro_trader_settings_api_v1_macro_trader_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/macro-trader/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Macro Trader Reset */
+        post: operations["macro_trader_reset_api_v1_macro_trader_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fundamentals/{ticker}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fundamentals */
+        get: operations["fundamentals_api_v1_fundamentals__ticker__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/alfred/revisions/{series}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Alfred Revisions */
+        get: operations["alfred_revisions_api_v1_alfred_revisions__series__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/alfred/as-of/{series}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Alfred As Of */
+        get: operations["alfred_as_of_api_v1_alfred_as_of__series__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dbnomics/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dbnomics Series */
+        get: operations["dbnomics_series_api_v1_dbnomics_series_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dbnomics/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dbnomics Search */
+        get: operations["dbnomics_search_api_v1_dbnomics_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factor Returns
+         * @description Recent and long-run performance of the Fama–French factors (annualised).
+         */
+        get: operations["factor_returns_api_v1_factors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/tv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Tv Live
+         * @description Live business/news channels (official YouTube streams) with their home countries.
+         */
+        get: operations["mkt_tv_live_api_v1_mkt_tv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/tv/clips": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Tv Clips
+         * @description Recent economy clips from those channels — for a country, the ones about it.
+         */
+        get: operations["mkt_tv_clips_api_v1_mkt_tv_clips_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/gc": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Yield Curves
+         * @description GC: official daily government curves (US, DE, euro AAA, UK, JP, CA, AU) with 1W/1M changes.
+         */
+        get: operations["mkt_yield_curves_api_v1_mkt_gc_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Search */
+        get: operations["mkt_search_api_v1_mkt_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/quote/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Quote */
+        get: operations["mkt_quote_api_v1_mkt_quote__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Overview */
+        get: operations["mkt_overview_api_v1_mkt_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/profile/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Profile */
+        get: operations["mkt_profile_api_v1_mkt_profile__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/statements/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Statements */
+        get: operations["mkt_statements_api_v1_mkt_statements__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/news/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt News */
+        get: operations["mkt_news_api_v1_mkt_news__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/movers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Movers */
+        get: operations["mkt_movers_api_v1_mkt_movers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/screen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Screen */
+        get: operations["mkt_screen_api_v1_mkt_screen_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Meta */
+        get: operations["mkt_meta_api_v1_mkt_meta_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/ern/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Earnings */
+        get: operations["mkt_earnings_api_v1_mkt_ern__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/anr/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Analysts */
+        get: operations["mkt_analysts_api_v1_mkt_anr__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/hds/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Holders */
+        get: operations["mkt_holders_api_v1_mkt_hds__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/dvd/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Dividends */
+        get: operations["mkt_dividends_api_v1_mkt_dvd__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/omon/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Options */
+        get: operations["mkt_options_api_v1_mkt_omon__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/omon/{symbol}/term": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Iv Term */
+        get: operations["mkt_iv_term_api_v1_mkt_omon__symbol__term_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/rv/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Comps */
+        get: operations["mkt_comps_api_v1_mkt_rv__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/hp/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt History */
+        get: operations["mkt_history_api_v1_mkt_hp__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/comp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Compare */
+        get: operations["mkt_compare_api_v1_mkt_comp_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/beta/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Beta */
+        get: operations["mkt_beta_api_v1_mkt_beta__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/dcf/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Dcf
+         * @description FCFF discounted at WACC (Damodaran / McKinsey) for operating companies; Damodaran's excess-return
+         *     model for banks and insurers. Reverse DCF and sensitivity grids for both.
+         */
+        get: operations["mkt_dcf_api_v1_mkt_dcf__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/dcf/{symbol}/xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Dcf Excel
+         * @description The FCFF model as an Excel workbook with live formulas (edit the inputs in Excel).
+         */
+        get: operations["mkt_dcf_excel_api_v1_mkt_dcf__symbol__xlsx_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/seas/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Seasonality */
+        get: operations["mkt_seasonality_api_v1_mkt_seas__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/corr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Correlation */
+        get: operations["mkt_correlation_api_v1_mkt_corr_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/rrg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Rrg */
+        get: operations["mkt_rrg_api_v1_mkt_rrg_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/frd": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Fx Forwards */
+        get: operations["mkt_fx_forwards_api_v1_mkt_frd_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/si/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Short Selling
+         * @description Short interest (official, twice monthly) and FINRA daily short-sale volume.
+         */
+        get: operations["mkt_short_selling_api_v1_mkt_si__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/splc/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Supply Chain
+         * @description Suppliers and competitors from SEC 10-K full-text search.
+         */
+        get: operations["mkt_supply_chain_api_v1_mkt_splc__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/eco/global": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Eco Global
+         * @description Global economic calendar with consensus, actual (US: as first published) and surprise.
+         */
+        get: operations["mkt_eco_global_api_v1_mkt_eco_global_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/ecst": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Surprise Index
+         * @description Model-based US economic surprise index (ALFRED first releases).
+         */
+        get: operations["mkt_surprise_index_api_v1_mkt_ecst_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/ship/chokepoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Chokepoints
+         * @description IMF PortWatch: daily transits through 28 maritime chokepoints.
+         */
+        get: operations["mkt_chokepoints_api_v1_mkt_ship_chokepoints_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/ship/vessels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Vessels
+         * @description Live AIS positions (aisstream.io with a key, else Digitraffic Baltic).
+         */
+        get: operations["mkt_vessels_api_v1_mkt_ship_vessels_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/ship/vessel/{query}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Vessel
+         * @description Vessel identity, flag/name history, owners and recent port calls (Global Fishing Watch).
+         */
+        get: operations["mkt_vessel_api_v1_mkt_ship_vessel__query__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/fly": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Flights
+         * @description Live aircraft around a point (adsb.lol).
+         */
+        get: operations["mkt_flights_api_v1_mkt_fly_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/fly/airports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Airports */
+        get: operations["mkt_airports_api_v1_mkt_fly_airports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/quakes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Quakes
+         * @description USGS earthquakes (past week) with distance to the nearest major port and chokepoint.
+         */
+        get: operations["mkt_quakes_api_v1_mkt_quakes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/wirp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Wirp
+         * @description Fed rate-move probabilities from fed funds futures (FedWatch method).
+         */
+        get: operations["mkt_wirp_api_v1_mkt_wirp_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/auct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Auctions */
+        get: operations["mkt_auctions_api_v1_mkt_auct_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/eia": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Eia */
+        get: operations["mkt_eia_api_v1_mkt_eia_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/eia/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Eia History */
+        get: operations["mkt_eia_history_api_v1_mkt_eia_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/ipo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Ipo */
+        get: operations["mkt_ipo_api_v1_mkt_ipo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/wetr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Weather */
+        get: operations["mkt_weather_api_v1_mkt_wetr_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/insd/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Insiders */
+        get: operations["mkt_insiders_api_v1_mkt_insd__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/13f": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt 13F */
+        get: operations["mkt_13f_api_v1_mkt_13f_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/fund/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Fund
+         * @description ETF / mutual fund: top holdings, sector weights, asset mix, expense ratio, assets.
+         */
+        get: operations["mkt_fund_api_v1_mkt_fund__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/tape/{symbol}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Tape
+         * @description Intraday prints (1-minute bars), VWAP, tick-rule buy/sell volume and volume profile.
+         */
+        get: operations["mkt_tape_api_v1_mkt_tape__symbol__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/map/world": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt World Map
+         * @description Every country: markets (ETF, index, currency, 10y yield), IMF economy, sovereign risk.
+         */
+        get: operations["mkt_world_map_api_v1_mkt_map_world_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/evts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Earnings Calendar */
+        get: operations["mkt_earnings_calendar_api_v1_mkt_evts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/regions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Regions
+         * @description Regions, their countries and their screener markets.
+         */
+        get: operations["mkt_regions_api_v1_mkt_regions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/region/{region}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Region
+         * @description Country matrix for a region: index, currency, 10y yield, IMF macro, sovereign risk.
+         */
+        get: operations["mkt_region_api_v1_mkt_region__region__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/country/{iso2}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Country
+         * @description One country: markets, economy, risk, plus its index / currency / screener market for the page.
+         */
+        get: operations["mkt_country_api_v1_mkt_country__iso2__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/wcrs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Fx Matrix */
+        get: operations["mkt_fx_matrix_api_v1_mkt_wcrs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/btmm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Money Markets */
+        get: operations["mkt_money_markets_api_v1_mkt_btmm_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/imap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Heatmap */
+        get: operations["mkt_heatmap_api_v1_mkt_imap_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/crypto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Crypto */
+        get: operations["mkt_crypto_api_v1_mkt_crypto_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/futures/{root}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Futures Curve */
+        get: operations["mkt_futures_curve_api_v1_mkt_futures__root__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/futures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Futures Roots */
+        get: operations["mkt_futures_roots_api_v1_mkt_futures_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/news": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt News Hub */
+        get: operations["mkt_news_hub_api_v1_mkt_news_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/quotes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Quotes */
+        get: operations["mkt_quotes_api_v1_mkt_quotes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/watchlists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Watchlists */
+        get: operations["mkt_watchlists_api_v1_mkt_watchlists_get"];
+        put?: never;
+        /** Mkt Watchlist Create */
+        post: operations["mkt_watchlist_create_api_v1_mkt_watchlists_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/watchlists/{wid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Mkt Watchlist Update */
+        put: operations["mkt_watchlist_update_api_v1_mkt_watchlists__wid__put"];
+        post?: never;
+        /** Mkt Watchlist Delete */
+        delete: operations["mkt_watchlist_delete_api_v1_mkt_watchlists__wid__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Alerts */
+        get: operations["mkt_alerts_api_v1_mkt_alerts_get"];
+        put?: never;
+        /** Mkt Alert Create */
+        post: operations["mkt_alert_create_api_v1_mkt_alerts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/alerts/triggered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Alerts Triggered */
+        get: operations["mkt_alerts_triggered_api_v1_mkt_alerts_triggered_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/alerts/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mkt Alerts Seen */
+        post: operations["mkt_alerts_seen_api_v1_mkt_alerts_seen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/alerts/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mkt Alerts Check */
+        post: operations["mkt_alerts_check_api_v1_mkt_alerts_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/alerts/{aid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Mkt Alert Delete */
+        delete: operations["mkt_alert_delete_api_v1_mkt_alerts__aid__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/journal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt Journal */
+        get: operations["mkt_journal_api_v1_mkt_journal_get"];
+        put?: never;
+        /** Mkt Journal Create */
+        post: operations["mkt_journal_create_api_v1_mkt_journal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/journal/{jid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Mkt Journal Update */
+        put: operations["mkt_journal_update_api_v1_mkt_journal__jid__put"];
+        post?: never;
+        /** Mkt Journal Delete */
+        delete: operations["mkt_journal_delete_api_v1_mkt_journal__jid__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mkt World Map */
+        get: operations["mkt_world_map_api_v1_mkt_map_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ai Status */
+        get: operations["ai_status_api_v1_ai_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ai Chat */
+        post: operations["ai_chat_api_v1_ai_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/port-info": {
         parameters: {
             query?: never;
@@ -3337,7 +5830,11 @@ export interface paths {
          */
         get: operations["portfolio_positions_v1_api_v1_portfolio_positions_get"];
         put?: never;
-        /** Portfolio Add Position V1 */
+        /**
+         * Portfolio Add Position V1
+         * @description Manual position entry (e.g. loading an existing book). Trading should go through
+         *     /api/v1/orders so it is approved and booked in the blotter; manual edits are audited.
+         */
         post: operations["portfolio_add_position_v1_api_v1_portfolio_positions_post"];
         delete?: never;
         options?: never;
@@ -3772,7 +6269,7 @@ export interface paths {
          * Signal Attribution V1
          * @description Storytelling layer: for Growth / Inflation / Liquidity / Risk, return the score, its
          *     largest driver, a one-line plain-English explanation, and ranked input contributions —
-         *     computed from the live dashboard inputs (SPX, 10Y, 2Y, DXY, Fed, VIX). Phase 2.
+         *     computed from the live dashboard inputs (SPX, CPI, 10Y breakeven, DXY, 10Y, Fed, VIX). Phase 2.
          */
         get: operations["signal_attribution_v1_api_v1_signal_attribution_get"];
         put?: never;
@@ -3864,6 +6361,99 @@ export interface paths {
          *     derived from each event's release cadence (surfaced as a caveat).
          */
         get: operations["event_vol_v1_api_v1_event_vol_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/risk-parity-compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Risk Parity Compare V1
+         * @description Honest comparison of allocation methods on REAL asset returns (per 'Risk Parity and its
+         *     Discontents' 2025 + HRP/CVaR-RP research): Traditional RP (inverse-vol), Return-overlay RP,
+         *     HRP (López de Prado), CVaR-RP, vs a 60/40 benchmark. Reports Sharpe / Sortino / max
+         *     drawdown for each — including honestly when a method does NOT beat 60/40.
+         */
+        get: operations["risk_parity_compare_v1_api_v1_risk_parity_compare_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quadrants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Quadrants V1
+         * @description Bridgewater Four Quadrants: classify the environment on growth-surprise × inflation-
+         *     surprise axes (release vs its own trend, a consensus proxy), with the per-quadrant asset
+         *     playbook, cross-validated against the app's 6-regime label. Citation: Bridgewater All
+         *     Weather / Four Quadrants.
+         */
+        get: operations["quadrants_v1_api_v1_quadrants_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stream-agreement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Agreement V1
+         * @description Three-stream signal agreement: classify live signals into three
+         *     INDEPENDENT evidence streams — macro drivers, intermarket action, capital flows — reduce
+         *     each to risk-on/off/neutral, and return an agreement score + position-sizing multiplier.
+         *     Conviction scales with the NUMBER of independent streams that agree, not the confidence of
+         *     any single model.
+         */
+        get: operations["stream_agreement_v1_api_v1_stream_agreement_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/factor-validation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Factor Validation V1
+         * @description Factor out-of-sample validation (Phase 4, AQR discipline): for each macro factor, fit the
+         *     exposure in-sample, measure R² in- vs out-of-sample, and flag factors whose explanatory power
+         *     does NOT survive out-of-sample (overfitting). Reports each factor's own max drawdown so tail
+         *     risk is visible. Citation: AQR 'Fact, Fiction, and Factor Investing'.
+         */
+        get: operations["factor_validation_v1_api_v1_factor_validation_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3994,10 +6584,11 @@ export interface paths {
         put?: never;
         /**
          * Login
-         * @description Authentication endpoint for frontend login.
-         *     Accepts both form data (x-www-form-urlencoded) and JSON.
-         *     In production, this should validate against a proper auth service.
-         *     For demo/development, accepts demo/demo credentials.
+         * @description Verify username/password against the users table (bcrypt) and issue a signed JWT
+         *     carrying the user and role. Invalid credentials return HTTP 401.
+         *
+         *     (This used to accept only demo/demo and answer every other attempt with HTTP 200
+         *     {"success": false}, which the UI treated as a successful login — any credentials got in.)
          */
         post: operations["login_api_auth_login_post"];
         delete?: never;
@@ -4017,9 +6608,71 @@ export interface paths {
         put?: never;
         /**
          * Logout
-         * @description Logout endpoint - clears session/token.
+         * @description Revoke the presented token for the rest of its lifetime (persisted, survives restarts).
          */
         post: operations["logout_api_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/change-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Password
+         * @description Change your own password (policy-checked). All your other sessions are signed out;
+         *     a fresh token is returned for this one.
+         */
+        post: operations["change_password_api_auth_change_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Auth Status
+         * @description Public: whether the seeded demo credentials still work (the login screen only shows
+         *     them in that case) and the password policy.
+         */
+        get: operations["auth_status_api_auth_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Auth Me
+         * @description The verified identity behind the request's token (401 if none).
+         */
+        get: operations["auth_me_api_auth_me_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4197,9 +6850,168 @@ export interface paths {
         };
         /**
          * Get Cot Data
-         * @description Returns CFTC Commitments of Traders positioning data.
+         * @description CFTC Commitments of Traders: speculative positioning per contract, selected by CFTC
+         *     contract code, with the 3-year COT index for extremes (see api/cot.py).
          */
         get: operations["get_cot_data_api_cot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/risk/cycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cycle Risk V1
+         * @description Cycle & systemic-risk indicators from published research: near-term forward spread
+         *     (Engstrom & Sharpe), excess bond premium (Gilchrist & Zakrajšek), financial turbulence
+         *     (Kritzman & Li), absorption ratio (Kritzman et al.) and environmental balance of the book.
+         *     See api/research_indicators.py.
+         */
+        get: operations["get_cycle_risk_v1_api_v1_risk_cycle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/global-macro": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Global Macro V1
+         * @description Developed-markets monitor (Americas, Europe, Asia-Pacific): policy rates and recent
+         *     central-bank moves, CPI, unemployment, GDP, 10Y/3M yields, equity and FX — each value dated
+         *     and graded against its release calendar. See api/global_macro.py for sources.
+         */
+        get: operations["get_global_macro_v1_api_v1_global_macro_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/regional-macro": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Regional Macro
+         * @description Cross-country comparison (legacy shape) derived from the developed-markets monitor.
+         *
+         *     It used FRED's mirror of OECD Main Economic Indicators, which stopped updating in early
+         *     2025 — so UK/Canada CPI from 2025-03 and an August-average US 10Y were shown as current.
+         *     Every value now carries its period.
+         */
+        get: operations["get_regional_macro_api_regional_macro_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/global-correlation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Global Correlation
+         * @description Cross-market correlation matrix across WORLD equity indices + FX + cross-asset, from real
+         *     aligned daily returns (yfinance). Answers 'how do these global markets move together'.
+         */
+        get: operations["get_global_correlation_api_global_correlation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fx-rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Fx Rates
+         * @description Broad FX board — many pairs grouped by region (G10 majors, Asia, EMEA, LatAm), each with
+         *     a real live spot + daily % change. Pairs that fail to quote return null, never a fake value.
+         */
+        get: operations["get_fx_rates_api_fx_rates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/market-hours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Market Hours
+         * @description Per-exchange trading hours + REAL holiday calendars (not hardcoded).
+         *
+         *     Holidays come from the `holidays` library, which is per-region and works for ANY year —
+         *     including lunar-based closures (Hong Kong / Singapore Chinese New Year). The frontend keeps
+         *     a live-ticking clock and just uses these dates to mark weekends/holidays as closed.
+         */
+        get: operations["get_market_hours_api_market_hours_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/global-markets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Global Markets
+         * @description Major world equity indices with real level + daily % change (not just US).
+         *
+         *     Uses live yfinance closes per index; any index that fails to fetch is returned with a null
+         *     level + reason rather than a fabricated value.
+         */
+        get: operations["get_global_markets_api_global_markets_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4237,27 +7049,10 @@ export interface paths {
         };
         /**
          * Get Economic Calendar
-         * @description Economic calendar with FOMC, NFP, and CPI events.
-         *     FIXED (BUG 7 PERMANENT): Uses live data from Fed website and FRED API.
+         * @description US economic calendar: official release dates (FRED release calendar) for the main
+         *     releases and FOMC decisions, with each release's latest print. See api/econ_calendar.py.
          */
         get: operations["get_economic_calendar_api_calendar_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/test-version": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Test Version */
-        get: operations["test_version_api_test_version_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4275,7 +7070,11 @@ export interface paths {
         };
         /**
          * Get Market Stream
-         * @description Live market data stream for topbar ticker - REST fallback for WebSocket.
+         * @description Market snapshot for the live-price tiles (REST fallback for the WebSocket).
+         *
+         *     Uses the shared dated-close fetch (FX re-dated to its NY session, api/market_dates.py) and
+         *     FRED for rates. Unavailable values are null. (It previously read rates from the legacy CSV
+         *     — fed funds came back 0.0 — and fell back to invented 4.2 / 3.8 / 4.5 levels.)
          */
         get: operations["get_market_stream_api_market_stream_get"];
         put?: never;
@@ -4333,6 +7132,17 @@ export interface components {
             } | null;
             /** Lastupdated */
             lastUpdated?: string | null;
+        };
+        /** AlertIn */
+        AlertIn: {
+            /** Symbol */
+            symbol: string;
+            /** Kind */
+            kind: string;
+            /** Value */
+            value: number;
+            /** Note */
+            note?: string | null;
         };
         /**
          * AlertItem
@@ -4395,14 +7205,23 @@ export interface components {
         AssetClassForecast: {
             /** Assetclass */
             assetClass: string;
+            /** Proxy */
+            proxy?: string | null;
             /** Expectedreturn */
             expectedReturn: number;
             /** Volatility */
-            volatility: number;
+            volatility?: number | null;
             /** Sharperatio */
-            sharpeRatio: number;
+            sharpeRatio?: number | null;
             /** Confidence */
-            confidence: number;
+            confidence?: number | null;
+            /**
+             * Components
+             * @default {}
+             */
+            components: {
+                [key: string]: number;
+            };
         };
         /**
          * AssetMomentum
@@ -4423,6 +7242,29 @@ export interface components {
             rawSignal: string;
             /** Interpretation */
             interpretation: string;
+        };
+        /** AutoSettingsIn */
+        AutoSettingsIn: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Capital */
+            capital?: number | null;
+            /** Max Positions */
+            max_positions?: number | null;
+            /** Risk Per Trade */
+            risk_per_trade?: number | null;
+            /** Max Position */
+            max_position?: number | null;
+            /** Max Gross */
+            max_gross?: number | null;
+            /** Max Drawdown */
+            max_drawdown?: number | null;
+            /** Vol Target */
+            vol_target?: number | null;
+            /** Max Per Sector */
+            max_per_sector?: number | null;
+            /** Exclude Frontier */
+            exclude_frontier?: boolean | null;
         };
         /** Body_signal_log_stack_api_diagnostics_signal_log_stack_post */
         Body_signal_log_stack_api_diagnostics_signal_log_stack_post: {
@@ -4458,6 +7300,34 @@ export interface components {
             signalScorecard: components["schemas"]["SignalScorecardItem"][];
             /** Decisionlog */
             decisionLog: components["schemas"]["DecisionLogEntry"][];
+        };
+        /** ChangePasswordIn */
+        ChangePasswordIn: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
+        };
+        /** ChatIn */
+        ChatIn: {
+            /** Messages */
+            messages: components["schemas"]["Msg"][];
+            /** Context */
+            context?: string | null;
+            /** Model */
+            model?: string | null;
+        };
+        /** CombineIn */
+        CombineIn: {
+            /** Members */
+            members: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Method
+             * @default erc
+             */
+            method: string;
         };
         /**
          * CorrelationPair
@@ -4501,9 +7371,11 @@ export interface components {
             /** Name */
             name: string;
             /** Spreadbps */
-            spreadBps: number;
+            spreadBps?: number | null;
+            /** Change1Wbps */
+            change1wBps?: number | null;
             /** Signal */
-            signal: string;
+            signal?: string | null;
         };
         /**
          * DashboardData
@@ -4663,36 +7535,18 @@ export interface components {
          * @description Long-term debt cycle analysis.
          */
         DebtCycleData: {
-            /**
-             * Phase
-             * @default Expansion
-             */
-            phase: string;
-            /**
-             * Privatedebtgdp
-             * @default 180
-             */
-            privateDebtGDP: number;
-            /**
-             * Publicdebtgdp
-             * @default 120
-             */
-            publicDebtGDP: number;
-            /**
-             * Totaldebtgdp
-             * @default 300
-             */
-            totalDebtGDP: number;
-            /**
-             * Debtserviceratio
-             * @default 12.5
-             */
-            debtServiceRatio: number;
-            /**
-             * Trend
-             * @default Rising
-             */
-            trend: string;
+            /** Phase */
+            phase?: string | null;
+            /** Privatedebtgdp */
+            privateDebtGDP?: number | null;
+            /** Publicdebtgdp */
+            publicDebtGDP?: number | null;
+            /** Totaldebtgdp */
+            totalDebtGDP?: number | null;
+            /** Debtserviceratio */
+            debtServiceRatio?: number | null;
+            /** Trend */
+            trend?: string | null;
             /**
              * Interpretation
              * @default
@@ -4739,6 +7593,29 @@ export interface components {
             count: number;
             /** Total */
             total: number;
+            /** Basis */
+            basis?: string | null;
+        };
+        /** DecisionNoteIn */
+        DecisionNoteIn: {
+            /** Note */
+            note?: string | null;
+        };
+        /** DeployIn */
+        DeployIn: {
+            /** Spec */
+            spec?: {
+                [key: string]: unknown;
+            } | null;
+            /** Strategy Id */
+            strategy_id?: number | null;
+            /** Template */
+            template?: string | null;
+            /**
+             * Capital
+             * @default 1000000
+             */
+            capital: number;
         };
         /**
          * EnsembleData
@@ -4767,11 +7644,19 @@ export interface components {
             riskBudget: number;
             /**
              * Mode
-             * @default Dynamic
+             * @default Equal-weight
              */
             mode: string;
             /** Bullishpct */
             bullishPct?: number | null;
+            /** Components */
+            components?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Votes */
+            votes?: {
+                [key: string]: unknown;
+            }[] | null;
         };
         /**
          * ExpectedReturn
@@ -4824,96 +7709,66 @@ export interface components {
          * @description Expected returns calculation result.
          */
         ExpectedReturnsResult: {
-            /** Sectors */
+            /**
+             * Sectors
+             * @default []
+             */
             sectors: components["schemas"]["ExpectedReturnSector"][];
             /** Weightedportfolioreturn */
-            weightedPortfolioReturn: number;
+            weightedPortfolioReturn?: number | null;
+            /** Currentquadrant */
+            currentQuadrant?: string | null;
+            /**
+             * Byassetclass
+             * @default {}
+             */
+            byAssetClass: {
+                [key: string]: number;
+            };
+            /**
+             * Riskadjustedreturns
+             * @default {}
+             */
+            riskAdjustedReturns: {
+                [key: string]: number;
+            };
+            /**
+             * Next12Months
+             * @default []
+             */
+            next12Months: {
+                [key: string]: unknown;
+            }[];
             /** Methodology */
             methodology: string;
             /** Lastupdated */
             lastUpdated: string;
         };
-        /**
-         * FactorData
-         * @description Factor data.
-         */
-        FactorData: {
-            /** Name */
-            name: string;
-            /** Value */
-            value: number;
-            /** Zscore */
-            zScore: number;
-            /** Contribution */
-            contribution: number;
-        };
-        /**
-         * FactorDecompositionData
-         * @description Two Sigma Factor Decomposition data.
-         */
-        FactorDecompositionData: {
-            /** Asset */
-            asset: string;
-            /** Rsquared */
-            rSquared: number;
-            /** Factors */
-            factors: components["schemas"]["FactorDecompositionItem"][];
-            /** Residual */
-            residual: number;
-            /** Lastupdated */
-            lastUpdated: string;
-        };
-        /**
-         * FactorDecompositionItem
-         * @description Factor decomposition item.
-         */
-        FactorDecompositionItem: {
-            /** Factor */
-            factor: string;
-            /** Exposure */
-            exposure: number;
-            /** Contribution */
-            contribution: number;
-            /** Tstat */
-            tStat: number;
-            /** Significance */
-            significance: string;
+        /** ExprIn */
+        ExprIn: {
+            /** Formula */
+            formula: string;
         };
         /**
          * FactorRotationData
          * @description Factor rotation analysis.
          */
         FactorRotationData: {
-            /**
-             * Momentum
-             * @default 0.5
-             */
-            momentum: number;
-            /**
-             * Value
-             * @default 0.3
-             */
-            value: number;
-            /**
-             * Growth
-             * @default 0.7
-             */
-            growth: number;
-            /**
-             * Quality
-             * @default 0.6
-             */
-            quality: number;
+            /** Momentum */
+            momentum?: number | null;
+            /** Value */
+            value?: number | null;
+            /** Growth */
+            growth?: number | null;
+            /** Quality */
+            quality?: number | null;
             /**
              * Interpretation
              * @default
              */
             interpretation: string;
-            /**
-             * Rotationsignal
-             * @default Balanced
-             */
-            rotationSignal: string;
+            /** Rotationsignal */
+            rotationSignal?: string | null;
         };
         /**
          * FullRiskData
@@ -4953,39 +7808,26 @@ export interface components {
             /** Volatility */
             volatility: number;
         };
-        /**
-         * GeopoliticalData
-         * @description Geopolitical Risk Layer data.
-         */
-        GeopoliticalData: {
-            /** Overallrisk */
-            overallRisk: string;
-            /** Score */
-            score: number;
-            /** Trend */
-            trend: string;
-            /** Events */
-            events: components["schemas"]["GeopoliticalRiskEvent"][];
-            /** Lastupdated */
-            lastUpdated: string;
-        };
-        /**
-         * GeopoliticalRiskEvent
-         * @description Geopolitical risk event.
-         */
-        GeopoliticalRiskEvent: {
-            /** Region */
-            region: string;
-            /** Event */
-            event: string;
-            /** Severity */
-            severity: string;
-            /** Probability */
-            probability: number;
-            /** Impact */
-            impact: string;
-            /** Timeframe */
-            timeframe: string;
+        /** FundSettingsIn */
+        FundSettingsIn: {
+            /** Fund Name */
+            fund_name?: string | null;
+            /** Capital */
+            capital?: number | null;
+            /** Base Currency */
+            base_currency?: string | null;
+            /** Inception Date */
+            inception_date?: string | null;
+            /** Vol Target */
+            vol_target?: number | null;
+            /** Risk Free Rate */
+            risk_free_rate?: number | null;
+            /** Realized Pnl */
+            realized_pnl?: number | null;
+            /** Cost Bps */
+            cost_bps?: number | null;
+            /** Min Trade Pct */
+            min_trade_pct?: number | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -5016,16 +7858,38 @@ export interface components {
              * @default []
              */
             regions: components["schemas"]["RegionMacro"][];
-            /**
-             * Globalsync
-             * @default 0.65
-             */
-            globalSync: number;
+            /** Globalsync */
+            globalSync?: number | null;
             /**
              * Interpretation
              * @default
              */
             interpretation: string;
+        };
+        /** JournalIn */
+        JournalIn: {
+            /** Date */
+            date?: string | null;
+            /** Symbol */
+            symbol?: string | null;
+            /** Side */
+            side?: string | null;
+            /** Quantity */
+            quantity?: number | null;
+            /** Entry */
+            entry?: number | null;
+            /** Exit */
+            exit?: number | null;
+            /** Exit Date */
+            exit_date?: string | null;
+            /** Thesis */
+            thesis?: string | null;
+            /** Outcome */
+            outcome?: string | null;
+            /** Tags */
+            tags?: string[] | null;
+            /** Status */
+            status?: string | null;
         };
         /**
          * KeyMetrics
@@ -5055,6 +7919,10 @@ export interface components {
             tenYearYield?: number | null;
             /** Tenyearchange */
             tenYearChange?: number | null;
+            /** Changeasof */
+            changeAsOf?: {
+                [key: string]: string | null;
+            } | null;
             /** Twoyearyield */
             twoYearYield?: number | null;
             /** Dxy */
@@ -5080,57 +7948,53 @@ export interface components {
             /** Vixchange */
             vixChange?: number | null;
         };
-        /**
-         * LiquidityConditionsData
-         * @description Liquidity conditions data.
-         */
-        LiquidityConditionsData: {
-            /** Indicators */
-            indicators: components["schemas"]["LiquidityIndicator"][];
-            /** Liquidityscore */
-            liquidityScore: number;
-            /** Regime */
-            regime: string;
-        };
-        /**
-         * LiquidityIndicator
-         * @description Liquidity indicator.
-         */
-        LiquidityIndicator: {
-            /** Name */
-            name: string;
-            /** Value */
-            value: number;
-            /** Status */
-            status: string;
-            /** Contribution */
-            contribution: number;
-        };
-        /**
-         * LoginResponse
-         * @description Login response.
-         */
-        LoginResponse: {
-            /** Success */
-            success: boolean;
-            /** Token */
-            token?: string | null;
-            /** Error */
-            error?: string | null;
+        /** LimitIn */
+        LimitIn: {
+            /** Soft */
+            soft: number;
+            /** Hard */
+            hard: number;
         };
         /**
          * LongtermForecastsData
          * @description GMO 7-Year Asset Class Return Model.
          */
         LongtermForecastsData: {
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /** Reason */
+            reason?: string | null;
             /** Forecasts */
             forecasts: components["schemas"]["AssetClassForecast"][];
+            /** Riskfreerate */
+            riskFreeRate?: number | null;
+            /** Breakeven */
+            breakeven?: number | null;
             /** Methodology */
             methodology: string;
             /** Asofdate */
             asOfDate: string;
             /** Disclaimer */
             disclaimer: string;
+        };
+        /** MacroResetIn */
+        MacroResetIn: {
+            /** Capital */
+            capital?: number | null;
+        };
+        /** MacroSettingsIn */
+        MacroSettingsIn: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Portfolio */
+            portfolio?: string | null;
+            /** Drift Threshold */
+            drift_threshold?: number | null;
+            /** Cost Bps */
+            cost_bps?: number | null;
         };
         /**
          * MetricWithSparkline
@@ -5164,6 +8028,22 @@ export interface components {
             /** Reasoning */
             reasoning?: string | null;
         };
+        /** Msg */
+        Msg: {
+            /** Role */
+            role: string;
+            /** Content */
+            content: string;
+        };
+        /** NewUserIn */
+        NewUserIn: {
+            /** Username */
+            username: string;
+            /** Role */
+            role: string;
+            /** Display Name */
+            display_name?: string | null;
+        };
         /**
          * NewsSentimentData
          * @description NLP News Sentiment data.
@@ -5196,91 +8076,41 @@ export interface components {
             /** Timestamp */
             timestamp: string;
         };
-        /**
-         * NowcastComponent
-         * @description Nowcast component.
-         */
-        NowcastComponent: {
-            /** Name */
-            name: string;
-            /** Weight */
-            weight: number;
-            /** Contribution */
-            contribution: number;
-            /** Status */
-            status: string;
+        /** OrderIn */
+        OrderIn: {
+            /** Symbol */
+            symbol: string;
+            /** Side */
+            side: string;
+            /** Quantity */
+            quantity: number;
+            /**
+             * Book
+             * @default Macro
+             */
+            book: string;
+            /** Thesis */
+            thesis?: string | null;
+            /**
+             * Conviction
+             * @default MEDIUM
+             */
+            conviction: string;
         };
-        /**
-         * NowcastData
-         * @description Nowcast data.
-         */
-        NowcastData: {
-            /** Gdpnowcast */
-            gdpNowcast: number;
-            /** Nowcastqoq */
-            nowcastQoQ: number;
-            /** Nowcastyoy */
-            nowcastYoY: number;
-            /** Confidenceinterval */
-            confidenceInterval: {
+        /** OrdersIn */
+        OrdersIn: {
+            /**
+             * Portfolio
+             * @default strategic
+             * @enum {string}
+             */
+            portfolio: "strategic" | "tactical";
+            /** Params */
+            params?: {
                 [key: string]: unknown;
-            };
-            /** Components */
-            components: components["schemas"]["NowcastComponent"][];
-            /** Revisionhistory */
-            revisionHistory: {
-                [key: string]: unknown;
-            }[];
-            /** Methodology */
-            methodology: string;
-            /** Lastupdated */
-            lastUpdated: string;
-        };
-        /**
-         * OptionsFlowItem
-         * @description Options flow item.
-         */
-        OptionsFlowItem: {
-            /** Underlying */
-            underlying: string;
-            /** Expiration */
-            expiration: string;
-            /** Strike */
-            strike: number;
-            /** Type */
-            type: string;
-            /** Volume */
-            volume: number;
-            /** Openinterest */
-            openInterest: number;
-            /** Impliedvol */
-            impliedVol: number;
-            /** Sentiment */
-            sentiment: string;
-        };
-        /**
-         * OptionsIntelligenceData
-         * @description Options Market Intelligence data.
-         */
-        OptionsIntelligenceData: {
-            /** Underlying */
-            underlying: string;
-            /** Currentprice */
-            currentPrice: number;
-            /** Impliedvolrank */
-            impliedVolRank: number;
-            /** Putcallratio */
-            putCallRatio: number;
-            /** Unusualactivity */
-            unusualActivity: components["schemas"]["OptionsFlowItem"][];
-            /** Keylevels */
-            keyLevels: {
-                [key: string]: number;
-            };
-            /** Sentiment */
-            sentiment: string;
-            /** Lastupdated */
-            lastUpdated: string;
+            } | null;
+            /** Sleeve Capital */
+            sleeve_capital?: number | null;
         };
         /** PositionIn */
         PositionIn: {
@@ -5360,6 +8190,18 @@ export interface components {
             /** Entry Date */
             entry_date?: string | null;
         };
+        /** PretradeIn */
+        PretradeIn: {
+            /** Symbol */
+            symbol: string;
+            /** Quantity */
+            quantity: number;
+            /**
+             * Book
+             * @default Macro
+             */
+            book: string | null;
+        };
         /**
          * RatesData
          * @description Interest rates data - updated to match frontend expectations.
@@ -5377,11 +8219,19 @@ export interface components {
              * @default []
              */
             creditSpreads: components["schemas"]["CreditSpread"][];
+            /** Realyieldsignal */
+            realYieldSignal?: string | null;
             /**
-             * Realyieldsignal
-             * @default neutral
+             * Ratestable
+             * @default []
              */
-            realYieldSignal: string;
+            ratesTable: {
+                [key: string]: unknown;
+            }[];
+            /** Breakeveninflation */
+            breakevenInflation?: {
+                [key: string]: unknown;
+            } | null;
             /** Tenyear */
             tenYear?: number | null;
             /** Twoyear */
@@ -5402,15 +8252,15 @@ export interface components {
          */
         RecessionData: {
             /** Probability */
-            probability: number;
+            probability?: number | null;
             /** Level */
             level: string;
             /** Logisticprob */
-            logisticProb: number;
+            logisticProb?: number | null;
             /** Emprobitprob */
-            emProbitProb: number;
+            emProbitProb?: number | null;
             /** Sahmvalue */
-            sahmValue: number;
+            sahmValue?: number | null;
             /** Sahmsignal */
             sahmSignal: string;
             /** Description */
@@ -5423,36 +8273,18 @@ export interface components {
             history: {
                 [key: string]: unknown;
             }[];
-        };
-        /**
-         * ReflexivityData
-         * @description Soros Reflexivity Detector data.
-         */
-        ReflexivityData: {
-            /** Signals */
-            signals: components["schemas"]["ReflexivitySignal"][];
-            /** Aggregatedivergence */
-            aggregateDivergence: number;
             /** Regime */
-            regime: string;
-            /** Interpretation */
-            interpretation: string;
+            regime?: string | null;
+            /** Models */
+            models?: {
+                [key: string]: unknown;
+            } | null;
+            /** Indicators */
+            indicators?: {
+                [key: string]: unknown;
+            } | null;
             /** Lastupdated */
-            lastUpdated: string;
-        };
-        /**
-         * ReflexivitySignal
-         * @description Reflexivity detection signal.
-         */
-        ReflexivitySignal: {
-            /** Asset */
-            asset: string;
-            /** Divergence */
-            divergence: number;
-            /** Feedbackloop */
-            feedbackLoop: string;
-            /** Confidence */
-            confidence: number;
+            lastUpdated?: string | null;
         };
         /**
          * RegimeData
@@ -5503,9 +8335,14 @@ export interface components {
             /** Regime */
             regime: string;
             /** Confidence */
-            confidence: number;
+            confidence?: number | null;
             /** Divergence */
-            divergence: number;
+            divergence?: number | null;
+        };
+        /** ResetIn */
+        ResetIn: {
+            /** Capital */
+            capital?: number | null;
         };
         /**
          * RiskParityAllocationData
@@ -5517,11 +8354,21 @@ export interface components {
             /** Totalholdings */
             totalHoldings: number;
             /** Lastrebalanced */
-            lastRebalanced: string;
+            lastRebalanced?: string | null;
             /** Methodology */
             methodology: string;
             /** Portfoliovol */
             portfolioVol?: number | null;
+            /** Portfoliovolatility */
+            portfolioVolatility?: number | null;
+            /** Targetvolatility */
+            targetVolatility?: number | null;
+            /** Leverage */
+            leverage?: number | null;
+            /** Rebalancingneeded */
+            rebalancingNeeded?: boolean | null;
+            /** Weightdrift20D */
+            weightDrift20d?: number | null;
             /** Diversificationratio */
             diversificationRatio?: number | null;
             /** Regimeadjustmentactive */
@@ -5552,6 +8399,22 @@ export interface components {
             adjustedWeight: number;
             /** Targetallocationpct */
             targetAllocationPct: number;
+        };
+        /** RunIn */
+        RunIn: {
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** SaveIn */
+        SaveIn: {
+            /** Spec */
+            spec: {
+                [key: string]: unknown;
+            };
+            /** Template */
+            template?: string | null;
         };
         /**
          * Scores
@@ -5587,9 +8450,9 @@ export interface components {
             /** Name */
             name: string;
             /** Score */
-            score: number;
+            score?: number | null;
             /** Z Score */
-            z_score: number;
+            z_score?: number | null;
             /** Allocation */
             allocation: number;
             /** Rationale */
@@ -5599,6 +8462,8 @@ export interface components {
              * @default Neutral
              */
             signal: string;
+            /** Playbookstance */
+            playbookStance?: string | null;
             /**
              * Conviction
              * @default Medium
@@ -5615,33 +8480,9 @@ export interface components {
             /** Regime */
             regime: string;
             /** Confidence */
-            confidence: number;
+            confidence?: number | null;
             /** Totalscore */
-            totalScore: number;
-        };
-        /**
-         * SentimentGauge
-         * @description Sentiment gauge.
-         */
-        SentimentGauge: {
-            /** Name */
-            name: string;
-            /** Score */
-            score: number;
-            /** Interpretation */
-            interpretation: string;
-        };
-        /**
-         * SentimentRiskData
-         * @description Sentiment risk data.
-         */
-        SentimentRiskData: {
-            /** Gauges */
-            gauges: components["schemas"]["SentimentGauge"][];
-            /** Compositescore */
-            compositeScore: number;
-            /** Risklevel */
-            riskLevel: string;
+            totalScore?: number | null;
         };
         /**
          * SignalDetails
@@ -5740,7 +8581,7 @@ export interface components {
             /** Signal */
             signal: string;
             /** Conviction */
-            conviction: number;
+            conviction?: number | null;
             /** Override */
             override?: string | null;
         };
@@ -5756,6 +8597,29 @@ export interface components {
             liquidity: components["schemas"]["SignalDetails"];
             risk: components["schemas"]["SignalDetails"];
         };
+        /** SpecIn */
+        SpecIn: {
+            /** Spec */
+            spec: {
+                [key: string]: unknown;
+            };
+            /** Strategy Id */
+            strategy_id?: number | null;
+        };
+        /** StageIn */
+        StageIn: {
+            /**
+             * Book
+             * @default Macro
+             */
+            book: string;
+            /** Orders */
+            orders: {
+                [key: string]: unknown;
+            }[];
+            /** Regime */
+            regime?: string | null;
+        };
         /** StressCustomIn */
         StressCustomIn: {
             /** Shocks */
@@ -5764,6 +8628,19 @@ export interface components {
             };
             /** Book */
             book?: string | null;
+        };
+        /** SweepIn */
+        SweepIn: {
+            /** Spec */
+            spec: {
+                [key: string]: unknown;
+            };
+            /** Params */
+            params: {
+                [key: string]: number[];
+            };
+            /** Strategy Id */
+            strategy_id?: number | null;
         };
         /**
          * TradeIdeaData
@@ -5784,6 +8661,20 @@ export interface components {
             conviction: string;
             /** Rationale */
             rationale: string;
+            /** Ticker */
+            ticker?: string | null;
+            /** Thesis */
+            thesis?: string | null;
+            /** Rr */
+            rr?: number | null;
+            /** Category */
+            category?: string | null;
+            /** Regime Valid */
+            regime_valid?: boolean | null;
+            /** Regime Current */
+            regime_current?: string | null;
+            /** Status */
+            status?: string | null;
         };
         /** TradeIdeaIn */
         TradeIdeaIn: {
@@ -5829,36 +8720,15 @@ export interface components {
             count: number;
             /** Lastupdated */
             lastUpdated: string;
-        };
-        /**
-         * TrendSignal
-         * @description Individual trend signal.
-         */
-        TrendSignal: {
-            /** Asset */
-            asset: string;
-            /** Direction */
-            direction: string;
-            /** Strength */
-            strength: number;
-            /** Timeframe */
-            timeframe: string;
-            /** Confidence */
-            confidence: number;
-        };
-        /**
-         * TrendsData
-         * @description CTA Trend Following data.
-         */
-        TrendsData: {
-            /** Signals */
-            signals: components["schemas"]["TrendSignal"][];
-            /** Aggregatescore */
-            aggregateScore: number;
             /** Regime */
-            regime: string;
-            /** Lastupdated */
-            lastUpdated: string;
+            regime?: string | null;
+        };
+        /** UserUpdateIn */
+        UserUpdateIn: {
+            /** Role */
+            role?: string | null;
+            /** Disabled */
+            disabled?: boolean | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -5872,30 +8742,6 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
-        };
-        /**
-         * ValuationFilterData
-         * @description Valuation filter data.
-         */
-        ValuationFilterData: {
-            /** Metrics */
-            metrics: components["schemas"]["ValuationMetric"][];
-            /** Summary */
-            summary: string;
-        };
-        /**
-         * ValuationMetric
-         * @description Valuation metric.
-         */
-        ValuationMetric: {
-            /** Name */
-            name: string;
-            /** Value */
-            value: number;
-            /** Zscore */
-            zScore: number;
-            /** Percentile */
-            percentile: number;
         };
         /** WhatIfIn */
         WhatIfIn: {
@@ -5933,13 +8779,26 @@ export interface components {
             spread5s30s?: number | null;
             /** Realyield10Y */
             realYield10y?: number | null;
-            /**
-             * Shape
-             * @default unknown
-             */
-            shape: string;
+            /** Shape */
+            shape?: string | null;
+            /** Spreadshort10Y */
+            spreadShort10y?: number | null;
+            /** Shortrate */
+            shortRate?: string | null;
             /** Recessionprob */
             recessionProb?: number | null;
+            /** Asof */
+            asOf?: {
+                [key: string]: string;
+            } | null;
+            /** Source */
+            source?: string | null;
+            /** History */
+            history?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            } | null;
         };
         /**
          * YieldPoint
@@ -5950,6 +8809,18 @@ export interface components {
             tenor: number;
             /** Yield */
             yield: number;
+        };
+        /** WatchlistIn */
+        api__routers__marketdata__WatchlistIn: {
+            /** Name */
+            name?: string | null;
+            /** Symbols */
+            symbols?: string[] | null;
+        };
+        /** WatchlistIn */
+        api__routers__stock__WatchlistIn: {
+            /** Symbols */
+            symbols: string[];
         };
     };
     responses: never;
@@ -8782,6 +11653,42 @@ export interface operations {
             };
         };
     };
+    market_bars_api_v1_market_bars_get: {
+        parameters: {
+            query: {
+                symbol: string;
+                interval?: string;
+                period?: string;
+                start?: string | null;
+                end?: string | null;
+                warmup?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_nowcast_api_nowcast_get: {
         parameters: {
             query?: never;
@@ -8797,7 +11704,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["NowcastData"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -8817,7 +11726,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LiquidityConditionsData"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -8837,7 +11748,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SentimentRiskData"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -8857,7 +11770,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ValuationFilterData"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -8957,7 +11872,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FactorData"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -8977,7 +11894,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TrendsData"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -9037,7 +11956,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ReflexivityData"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -9057,7 +11978,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FactorDecompositionData"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -9077,7 +12000,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GeopoliticalData"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -9097,7 +12022,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OptionsIntelligenceData"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -9509,6 +12436,4272 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    fund_settings_api_v1_fund_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    update_fund_settings_api_v1_fund_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FundSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fund_overview_api_v1_fund_overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    fund_snapshot_api_v1_fund_snapshot_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    risk_limits_api_v1_risk_limits_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    update_risk_limits_api_v1_risk_limits_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: components["schemas"]["LimitIn"];
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pretrade_api_v1_risk_pretrade_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PretradeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rebalance_api_v1_portfolio_rebalance_get: {
+        parameters: {
+            query?: {
+                book?: string;
+                regime?: string | null;
+                vol_target?: number | null;
+                sleeve_pct?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stage_rebalance_api_v1_portfolio_rebalance_stage_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StageIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_orders_api_v1_orders_get: {
+        parameters: {
+            query?: {
+                state?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_order_api_v1_orders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrderIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_order_api_v1_orders__order_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionNoteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_order_api_v1_orders__order_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionNoteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execute_order_api_v1_orders__order_id__execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    blotter_api_v1_blotter_get: {
+        parameters: {
+            query?: {
+                book?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    model_scorecard_api_v1_models_scorecard_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_users_api_admin_users_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    create_user_api_admin_users_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewUserIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_user_api_admin_users__username__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_password_api_admin_users__username__reset_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlock_user_api_admin_users__username__unlock_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    desk_api_v1_desk_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    model_latest_api_v1_model_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    model_params_api_v1_model_params_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    model_run_api_v1_model_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    model_runs_api_v1_model_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    model_sleeve_api_v1_model_sleeve_get: {
+        parameters: {
+            query?: {
+                portfolio?: "strategic" | "tactical";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    model_orders_preview_api_v1_model_orders_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    model_orders_stage_api_v1_model_orders_stage_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrdersIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_timing_api_v1_stock_timing_get: {
+        parameters: {
+            query: {
+                symbol: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_screen_api_v1_stock_screen_get: {
+        parameters: {
+            query?: {
+                symbols?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stock_ideas_api_v1_stock_ideas_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    stock_ideas_refresh_api_v1_stock_ideas_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    stock_backtest_api_v1_stock_backtest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    stock_backtest_run_api_v1_stock_backtest_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    stock_search_api_v1_stock_search_get: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_watchlist_api_v1_stock_watchlist_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    put_watchlist_api_v1_stock_watchlist_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api__routers__stock__WatchlistIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    model_review_api_v1_portfolio_model_review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    optimize_api_v1_portfolio_optimize_get: {
+        parameters: {
+            query?: {
+                source?: string;
+                symbols?: string | null;
+                max_weight?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auto_status_api_v1_auto_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    auto_run_api_v1_auto_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    auto_settings_api_v1_auto_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutoSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auto_reset_api_v1_auto_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auto_close_api_v1_auto_positions__pos_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pos_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auto_backtest_api_v1_auto_backtest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    auto_backtest_run_api_v1_auto_backtest_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    strategies_api_v1_strategies_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    strategies_run_api_v1_strategies_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    quant_meta_api_v1_quant_meta_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    quant_validate_api_v1_quant_validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExprIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quant_backtest_api_v1_quant_backtest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpecIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quant_sweep_api_v1_quant_sweep_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SweepIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quant_combine_api_v1_quant_combine_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CombineIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quant_strategies_api_v1_quant_strategies_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    quant_save_api_v1_quant_strategies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quant_update_api_v1_quant_strategies__sid__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quant_delete_api_v1_quant_strategies__sid__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quant_trader_api_v1_quant_trader_get: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quant_deploy_api_v1_quant_trader_deploy_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeployIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quant_undeploy_api_v1_quant_trader_deployments__did__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                did: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    macro_trader_status_api_v1_macro_trader_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    macro_trader_run_api_v1_macro_trader_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    macro_trader_settings_api_v1_macro_trader_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MacroSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    macro_trader_reset_api_v1_macro_trader_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MacroResetIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fundamentals_api_v1_fundamentals__ticker__get: {
+        parameters: {
+            query?: {
+                years?: number;
+                quarters?: number;
+            };
+            header?: never;
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    alfred_revisions_api_v1_alfred_revisions__series__get: {
+        parameters: {
+            query?: {
+                start?: string;
+                transform?: string;
+            };
+            header?: never;
+            path: {
+                series: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    alfred_as_of_api_v1_alfred_as_of__series__get: {
+        parameters: {
+            query: {
+                date: string;
+                start?: string;
+            };
+            header?: never;
+            path: {
+                series: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dbnomics_series_api_v1_dbnomics_series_get: {
+        parameters: {
+            query: {
+                code: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dbnomics_search_api_v1_dbnomics_search_get: {
+        parameters: {
+            query: {
+                q: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    factor_returns_api_v1_factors_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_tv_live_api_v1_mkt_tv_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_tv_clips_api_v1_mkt_tv_clips_get: {
+        parameters: {
+            query?: {
+                country?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_yield_curves_api_v1_mkt_gc_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_search_api_v1_mkt_search_get: {
+        parameters: {
+            query: {
+                q: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_quote_api_v1_mkt_quote__symbol__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_overview_api_v1_mkt_overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_profile_api_v1_mkt_profile__symbol__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_statements_api_v1_mkt_statements__symbol__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_news_api_v1_mkt_news__symbol__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_movers_api_v1_mkt_movers_get: {
+        parameters: {
+            query?: {
+                region?: string;
+                kind?: string;
+                count?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_screen_api_v1_mkt_screen_get: {
+        parameters: {
+            query?: {
+                regions?: string;
+                sector?: string | null;
+                sort?: string;
+                ascending?: boolean;
+                size?: number;
+                offset?: number;
+                market_cap_min?: number | null;
+                market_cap_max?: number | null;
+                pe_min?: number | null;
+                pe_max?: number | null;
+                dividend_yield_min?: number | null;
+                change_pct_min?: number | null;
+                change_pct_max?: number | null;
+                price_min?: number | null;
+                include_adrs?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_meta_api_v1_mkt_meta_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_earnings_api_v1_mkt_ern__symbol__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_analysts_api_v1_mkt_anr__symbol__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_holders_api_v1_mkt_hds__symbol__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_dividends_api_v1_mkt_dvd__symbol__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_options_api_v1_mkt_omon__symbol__get: {
+        parameters: {
+            query?: {
+                expiry?: string | null;
+            };
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_iv_term_api_v1_mkt_omon__symbol__term_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_comps_api_v1_mkt_rv__symbol__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_history_api_v1_mkt_hp__symbol__get: {
+        parameters: {
+            query?: {
+                period?: string;
+                interval?: string;
+            };
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_compare_api_v1_mkt_comp_get: {
+        parameters: {
+            query: {
+                symbols: string;
+                period?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_beta_api_v1_mkt_beta__symbol__get: {
+        parameters: {
+            query?: {
+                benchmark?: string | null;
+                period?: string;
+                freq?: string;
+            };
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_dcf_api_v1_mkt_dcf__symbol__get: {
+        parameters: {
+            query?: {
+                growth?: number | null;
+                years?: number;
+                terminal_growth?: number | null;
+                target_margin?: number | null;
+                sales_to_capital?: number | null;
+                ronic?: number | null;
+                discount?: number | null;
+                beta?: number | null;
+                erp?: number | null;
+                include_leases?: boolean;
+                mid_year?: boolean;
+                roe?: number | null;
+                terminal_roe?: number | null;
+                payout?: number | null;
+                model?: string | null;
+            };
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_dcf_excel_api_v1_mkt_dcf__symbol__xlsx_get: {
+        parameters: {
+            query?: {
+                growth?: number | null;
+                years?: number;
+                terminal_growth?: number | null;
+                target_margin?: number | null;
+                sales_to_capital?: number | null;
+                ronic?: number | null;
+                discount?: number | null;
+                beta?: number | null;
+                erp?: number | null;
+                include_leases?: boolean;
+                mid_year?: boolean;
+            };
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_seasonality_api_v1_mkt_seas__symbol__get: {
+        parameters: {
+            query?: {
+                years?: number;
+            };
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_correlation_api_v1_mkt_corr_get: {
+        parameters: {
+            query: {
+                symbols: string;
+                period?: string;
+                freq?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_rrg_api_v1_mkt_rrg_get: {
+        parameters: {
+            query?: {
+                universe?: string;
+                tail?: number;
+                benchmark?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_fx_forwards_api_v1_mkt_frd_get: {
+        parameters: {
+            query?: {
+                base?: string;
+                quote?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_short_selling_api_v1_mkt_si__symbol__get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_supply_chain_api_v1_mkt_splc__symbol__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_eco_global_api_v1_mkt_eco_global_get: {
+        parameters: {
+            query?: {
+                days_back?: number;
+                countries?: string | null;
+                min_impact?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_surprise_index_api_v1_mkt_ecst_get: {
+        parameters: {
+            query?: {
+                start?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_chokepoints_api_v1_mkt_ship_chokepoints_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_vessels_api_v1_mkt_ship_vessels_get: {
+        parameters: {
+            query: {
+                lat_min: number;
+                lon_min: number;
+                lat_max: number;
+                lon_max: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_vessel_api_v1_mkt_ship_vessel__query__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_flights_api_v1_mkt_fly_get: {
+        parameters: {
+            query: {
+                lat: number;
+                lon: number;
+                radius_nm?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_airports_api_v1_mkt_fly_airports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_quakes_api_v1_mkt_quakes_get: {
+        parameters: {
+            query?: {
+                min_mag?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_wirp_api_v1_mkt_wirp_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_auctions_api_v1_mkt_auct_get: {
+        parameters: {
+            query?: {
+                kind?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_eia_api_v1_mkt_eia_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_eia_history_api_v1_mkt_eia_history_get: {
+        parameters: {
+            query?: {
+                weeks?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_ipo_api_v1_mkt_ipo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_weather_api_v1_mkt_wetr_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_insiders_api_v1_mkt_insd__symbol__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_13f_api_v1_mkt_13f_get: {
+        parameters: {
+            query?: {
+                cik?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_fund_api_v1_mkt_fund__symbol__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_tape_api_v1_mkt_tape__symbol__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_world_map_api_v1_mkt_map_world_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_earnings_calendar_api_v1_mkt_evts_get: {
+        parameters: {
+            query?: {
+                start?: string | null;
+                days?: number;
+                min_cap_bn?: number;
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_regions_api_v1_mkt_regions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_region_api_v1_mkt_region__region__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                region: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_country_api_v1_mkt_country__iso2__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso2: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_fx_matrix_api_v1_mkt_wcrs_get: {
+        parameters: {
+            query?: {
+                ccys?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_money_markets_api_v1_mkt_btmm_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_heatmap_api_v1_mkt_imap_get: {
+        parameters: {
+            query?: {
+                country?: string;
+                max_names?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_crypto_api_v1_mkt_crypto_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_futures_curve_api_v1_mkt_futures__root__get: {
+        parameters: {
+            query?: {
+                n?: number;
+            };
+            header?: never;
+            path: {
+                root: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_futures_roots_api_v1_mkt_futures_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_news_hub_api_v1_mkt_news_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                limit?: number;
+                region?: string | null;
+                country?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_quotes_api_v1_mkt_quotes_get: {
+        parameters: {
+            query: {
+                symbols: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_watchlists_api_v1_mkt_watchlists_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_watchlist_create_api_v1_mkt_watchlists_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api__routers__marketdata__WatchlistIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_watchlist_update_api_v1_mkt_watchlists__wid__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["api__routers__marketdata__WatchlistIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_watchlist_delete_api_v1_mkt_watchlists__wid__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_alerts_api_v1_mkt_alerts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_alert_create_api_v1_mkt_alerts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_alerts_triggered_api_v1_mkt_alerts_triggered_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_alerts_seen_api_v1_mkt_alerts_seen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_alerts_check_api_v1_mkt_alerts_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_alert_delete_api_v1_mkt_alerts__aid__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                aid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_journal_api_v1_mkt_journal_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_journal_create_api_v1_mkt_journal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JournalIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_journal_update_api_v1_mkt_journal__jid__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jid: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JournalIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_journal_delete_api_v1_mkt_journal__jid__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_world_map_api_v1_mkt_map_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    ai_status_api_v1_ai_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    ai_chat_api_v1_ai_chat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -10576,6 +17769,86 @@ export interface operations {
             };
         };
     };
+    risk_parity_compare_v1_api_v1_risk_parity_compare_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    quadrants_v1_api_v1_quadrants_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    stream_agreement_v1_api_v1_stream_agreement_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    factor_validation_v1_api_v1_factor_validation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     regime_transition_v1_api_v1_regime_transition_get: {
         parameters: {
             query?: never;
@@ -10713,12 +17986,85 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LoginResponse"];
+                    "application/json": unknown;
                 };
             };
         };
     };
     logout_api_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    change_password_api_auth_change_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_status_api_auth_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    auth_me_api_auth_me_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -10931,6 +18277,157 @@ export interface operations {
             };
         };
     };
+    get_cycle_risk_v1_api_v1_risk_cycle_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_global_macro_v1_api_v1_global_macro_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_regional_macro_api_regional_macro_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_global_correlation_api_global_correlation_get: {
+        parameters: {
+            query?: {
+                window?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fx_rates_api_fx_rates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_market_hours_api_market_hours_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_global_markets_api_global_markets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     get_horizon_risks_api_horizon_get: {
         parameters: {
             query?: never;
@@ -10952,26 +18449,6 @@ export interface operations {
         };
     };
     get_economic_calendar_api_calendar_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
-    test_version_api_test_version_get: {
         parameters: {
             query?: never;
             header?: never;
