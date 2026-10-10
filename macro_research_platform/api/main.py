@@ -1472,6 +1472,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[STARTUP] Could not start endpoints warm loop: {e}")
 
+    try:   # live ship positions: one persistent aisstream.io connection, if a key is configured
+        from api.marketdata.tracking import ais_collector
+        if ais_collector():
+            logger.info("[STARTUP] AIS collector started")
+    except Exception as e:
+        logger.warning(f"[STARTUP] AIS collector not started: {e}")
+
     async def _pit_snapshot_loop():
         # Periodic point-in-time snapshots for the audit "time machine".
         from api import audit_store

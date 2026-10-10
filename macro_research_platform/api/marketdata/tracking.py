@@ -140,52 +140,142 @@ def _ship_type(code: Optional[int]) -> str:
     return "Other"
 
 
-def vessels(lat_min: float, lon_min: float, lat_max: float, lon_max: float, seconds: int = 12) -> Dict[str, Any]:
-    """Live vessel positions in a bounding box: aisstream.io if a key is configured (global),
-    otherwise Fintraffic Digitraffic (Baltic Sea only)."""
-    key = os.getenv("AISSTREAM_API_KEY") or ""
-    box = (round(lat_min, 2), round(lon_min, 2), round(lat_max, 2), round(lon_max, 2))
-    if key:
-        return _cached(f"ais:{box}", 120, lambda: _aisstream(key, box, seconds))
-    return _cached("digitraffic", 120, lambda: _digitraffic(box))
+# Preset sea areas the live collector always watches (lat_min, lon_min, lat_max, lon_max)
+AIS_AREAS = {"Singapore / Malacca": (0, 100, 5, 106), "Hong Kong / Pearl River": (21.3, 112.5, 23.2, 115.5), "Suez / Red Sea": (26, 31, 32, 35),
+             "Strait of Hormuz": (24.5, 54.5, 27.5, 58), "English Channel": (49.5, -3, 52, 3), "Rotterdam / North Sea": (51.3, 2.5, 53, 5.5),
+             "LA / Long Beach": (33.3, -119, 34, -117.8), "Shanghai": (30.5, 121, 32, 123), "Panama Canal": (8.6, -80.2, 9.6, -79.3),
+             "Baltic": (59, 19, 61, 26)}
 
 
-def _aisstream(key: str, box, seconds: int) -> Dict[str, Any]:
-    import asyncio
-    import websockets
+class _AisCollector:
+    """One persistent aisstream.io connection (the free key allows a single connection) that
+    keeps the latest position and identity of every vessel in the watched areas. Requests are
+    answered from this picture instantly, and slow-reporting ships (at anchor: every ~3 min)
+    accumulate instead of being missed by a short listen."""
+    MAX_AGE = 30 * 60
 
-    async def run():
-        ships: Dict[int, Dict[str, Any]] = {}
-        sub = {"APIKey": key, "BoundingBoxes": [[[box[0], box[1]], [box[2], box[3]]]],
-               "FilterMessageTypes": ["PositionReport", "ShipStaticData"]}
-        async with websockets.connect("wss://stream.aisstream.io/v0/stream", open_timeout=15) as ws:
-            await ws.send(json.dumps(sub))
-            end = asyncio.get_event_loop().time() + seconds
-            while asyncio.get_event_loop().time() < end:
+    def __init__(self, key: str):
+        import threading
+        self.key = key
+        self.boxes = list(AIS_AREAS.values())
+        self.ships: Dict[int, Dict[str, Any]] = {}
+        self.lock = threading.Lock()
+        self.resubscribe = False
+        self.started = time_now()
+        self.status = "connecting"
+        threading.Thread(target=self._run, name="aisstream", daemon=True).start()
+
+    def watch(self, box) -> None:
+        with self.lock:
+            if not any(b[0] <= box[0] and b[1] <= box[1] and b[2] >= box[2] and b[3] >= box[3] for b in self.boxes):
+                self.boxes = (self.boxes + [box])[-24:]
+                self.resubscribe = True
+
+    def snapshot(self, box) -> List[Dict[str, Any]]:
+        cutoff = time_now() - self.MAX_AGE
+        with self.lock:
+            return [dict(v) for v in self.ships.values() if v.get("lat") is not None and v["seen"] >= cutoff
+                    and box[0] <= v["lat"] <= box[2] and box[1] <= v["lon"] <= box[3]]
+
+    def _sub(self):
+        return json.dumps({"APIKey": self.key, "BoundingBoxes": [[[b[0], b[1]], [b[2], b[3]]] for b in self.boxes],
+                           "FilterMessageTypes": ["PositionReport", "ShipStaticData", "StandardClassBPositionReport"]})
+
+    def _run(self):
+        import asyncio
+        import websockets
+
+        async def loop():
+            backoff = 5
+            while True:
                 try:
-                    msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=max(0.1, end - asyncio.get_event_loop().time())))
-                except asyncio.TimeoutError:
-                    break
-                meta = msg.get("MetaData") or {}
-                mmsi = meta.get("MMSI")
-                if not mmsi:
-                    continue
-                s = ships.setdefault(mmsi, {"mmsi": mmsi})
-                s["name"] = (meta.get("ShipName") or s.get("name") or "").strip()
-                if msg.get("MessageType") == "PositionReport":
-                    p = msg["Message"]["PositionReport"]
-                    s.update({"lat": p.get("Latitude"), "lon": p.get("Longitude"), "speed": p.get("Sog"), "course": p.get("Cog"),
-                              "heading": p.get("TrueHeading"), "status": p.get("NavigationalStatus")})
-                elif msg.get("MessageType") == "ShipStaticData":
-                    d = msg["Message"]["ShipStaticData"]
-                    s.update({"type": _ship_type(d.get("Type")), "destination": (d.get("Destination") or "").strip(),
-                              "draught": d.get("MaximumStaticDraught")})
-        return [s for s in ships.values() if s.get("lat") is not None]
-    try:
-        ships = asyncio.run(run())
-    except Exception as e:
-        raise Upstream(f"aisstream.io: {e}")
-    return {"source": "aisstream.io (live AIS)", "coverage": "global", "box": box, "vessels": ships, "listen_seconds": seconds}
+                    async with websockets.connect("wss://stream.aisstream.io/v0/stream", open_timeout=20, ping_interval=20) as ws:
+                        await ws.send(self._sub())
+                        self.status, backoff = "live", 5
+                        while True:
+                            if self.resubscribe:
+                                self.resubscribe = False
+                                await ws.send(self._sub())
+                            try:
+                                raw = await asyncio.wait_for(ws.recv(), timeout=60)
+                            except asyncio.TimeoutError:
+                                continue
+                            self._ingest(json.loads(raw))
+                except Exception as e:                     # reconnect with backoff (429 = another connection open)
+                    self.status = f"reconnecting ({type(e).__name__})"
+                    logger.warning("[ais] %s — reconnecting in %ss", e, backoff)
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, 300)
+        asyncio.run(loop())
+
+    def _ingest(self, m: Dict[str, Any]) -> None:
+        meta, kind = m.get("MetaData") or {}, m.get("MessageType")
+        mmsi = meta.get("MMSI")
+        if not mmsi:
+            return
+        now = time_now()
+        with self.lock:
+            v = self.ships.setdefault(mmsi, {"mmsi": mmsi})
+            name = (meta.get("ShipName") or "").strip()
+            if name:
+                v["name"] = name
+            if kind in ("PositionReport", "StandardClassBPositionReport"):
+                p = m["Message"][kind]
+                sp, co, hd = _ais_clean(p.get("Sog"), p.get("Cog"), p.get("TrueHeading"))
+                v.update({"lat": p.get("Latitude"), "lon": p.get("Longitude"), "speed": sp, "course": co,
+                          "heading": hd, "status": p.get("NavigationalStatus"), "seen": now})
+            elif kind == "ShipStaticData":
+                d = m["Message"]["ShipStaticData"]
+                v.update({"type": _ship_type(d.get("Type")), "destination": (d.get("Destination") or "").strip(),
+                          "draught": d.get("MaximumStaticDraught"), "imo": d.get("ImoNumber") or None, "callsign": (d.get("CallSign") or "").strip()})
+                v.setdefault("seen", now)
+            if len(self.ships) > 60000:                   # prune stale ships
+                cutoff = now - self.MAX_AGE
+                for k in [k for k, x in self.ships.items() if x.get("seen", 0) < cutoff]:
+                    self.ships.pop(k, None)
+
+
+def _ais_clean(speed, course, heading):
+    """AIS 'not available' codes: speed 102.3 kn, course 360°, heading 511 → None."""
+    sp = speed if speed is not None and speed < 102.2 else None
+    co = course if course is not None and course < 360 else None
+    hd = heading if heading is not None and heading < 360 else None
+    return sp, co, hd
+
+
+def time_now() -> float:
+    import time as _t
+    return _t.time()
+
+
+_collector: Optional[_AisCollector] = None
+
+
+def ais_collector() -> Optional[_AisCollector]:
+    """Start the live collector once (only when a key is configured)."""
+    global _collector
+    key = os.getenv("AISSTREAM_API_KEY") or ""
+    if key and _collector is None:
+        _collector = _AisCollector(key)
+    return _collector
+
+
+def vessels(lat_min: float, lon_min: float, lat_max: float, lon_max: float, seconds: int = 12) -> Dict[str, Any]:
+    """Live vessel positions in a bounding box: aisstream.io (global, persistent collector) if a
+    key is configured, otherwise Fintraffic Digitraffic (Baltic Sea only)."""
+    box = (round(lat_min, 2), round(lon_min, 2), round(lat_max, 2), round(lon_max, 2))
+    col = ais_collector()
+    if col:
+        col.watch(box)
+        ships = col.snapshot(box)
+        age = time_now() - col.started
+        for v in ships:
+            v.setdefault("type", "Unknown")
+        return {"source": "aisstream.io (live AIS, community receivers)", "box": box, "vessels": ships, "status": col.status,
+                "coverage": "global where volunteer receivers exist — dense in NW Europe, thinner in parts of Asia and the Middle East"
+                            + (f"; still building the picture ({int(age)}s since start — anchored ships report every few minutes)" if age < 300 else ""),
+                "listening_since": int(age)}
+    return _cached("digitraffic", 120, lambda: _digitraffic(box))
 
 
 def _digitraffic(box) -> Dict[str, Any]:
@@ -203,7 +293,8 @@ def _digitraffic(box) -> Dict[str, Any]:
         lon, lat = f["geometry"]["coordinates"][:2]
         p = f["properties"]
         m = meta.get(p["mmsi"], {})
-        out.append({"mmsi": p["mmsi"], "lat": lat, "lon": lon, "speed": p.get("sog"), "course": p.get("cog"), "heading": p.get("heading"),
+        sp, co, hd = _ais_clean(p.get("sog"), p.get("cog"), p.get("heading"))
+        out.append({"mmsi": p["mmsi"], "lat": lat, "lon": lon, "speed": sp, "course": co, "heading": hd,
                     "status": p.get("navStat"), "name": (m.get("name") or "").strip(), "type": _ship_type(m.get("shipType")),
                     "destination": (m.get("destination") or "").strip()})
     return {"source": "Fintraffic Digitraffic (open AIS data)", "coverage": "Baltic Sea / Finland only — add a free aisstream.io key "
@@ -259,3 +350,69 @@ def earthquakes(min_mag: float = 4.5) -> Dict[str, Any]:
         out.sort(key=lambda x: -(x["mag"] or 0))
         return {"quakes": out, "source": "USGS (M4.5+, past 7 days); PAGER alert level where issued"}
     return _cached(f"quakes:{min_mag}", 900, fetch)
+
+
+# ── Vessel identity and port calls (Global Fishing Watch API, free token) ───
+GFW = "https://gateway.api.globalfishingwatch.org/v3"
+FLAGS = {"PAN": "Panama", "LBR": "Liberia", "MHL": "Marshall Islands", "HKG": "Hong Kong", "SGP": "Singapore", "MLT": "Malta",
+         "BHS": "Bahamas", "GRC": "Greece", "CHN": "China", "CYP": "Cyprus", "NOR": "Norway", "GBR": "United Kingdom", "JPN": "Japan",
+         "DNK": "Denmark", "PRT": "Portugal", "ITA": "Italy", "USA": "United States", "TWN": "Taiwan", "KOR": "South Korea", "DEU": "Germany",
+         "NLD": "Netherlands", "IND": "India", "IDN": "Indonesia", "MYS": "Malaysia", "RUS": "Russia", "TUR": "Türkiye", "BEL": "Belgium",
+         "FRA": "France", "ESP": "Spain", "LKA": "Sri Lanka", "ARE": "UAE", "SAU": "Saudi Arabia", "EGY": "Egypt", "VNM": "Vietnam"}
+
+
+def vessel_info(query: str) -> Dict[str, Any]:
+    token = os.getenv("GFW_API_TOKEN") or ""
+    if not token:
+        raise NotFound("Vessel identity needs a free Global Fishing Watch token (GFW_API_TOKEN).")
+    q = query.strip()
+
+    def fetch():
+        import requests
+        h = {"Authorization": f"Bearer {token}", **UA}
+        r = requests.get(f"{GFW}/vessels/search", headers=h, timeout=30,
+                         params={"query": q, "datasets[0]": "public-global-vessel-identity:latest", "limit": 10, "includes[0]": "OWNERSHIP"})
+        if r.status_code in (401, 403):
+            raise Upstream("Global Fishing Watch refused the token.")
+        r.raise_for_status()
+        entries = r.json().get("entries") or []
+        if not entries:
+            raise NotFound(f"No vessel found for '{q}'.")
+
+        def ident(e):
+            return (e.get("selfReportedInfo") or [{}])[0]
+        # the vessel asked for: exact MMSI match first, else the most recently transmitting
+        best = next((e for e in entries if ident(e).get("ssvid") == q), None) or \
+            max(entries, key=lambda e: ident(e).get("transmissionDateTo") or "")
+        imo = ident(best).get("imo")
+        same = [e for e in entries if imo and ident(e).get("imo") == imo] or [best]
+        history = sorted(({"name": ident(e).get("shipname"), "flag": ident(e).get("flag"), "flag_name": FLAGS.get(ident(e).get("flag") or "", ident(e).get("flag")),
+                           "mmsi": ident(e).get("ssvid"), "callsign": ident(e).get("callsign"), "from": (ident(e).get("transmissionDateFrom") or "")[:10],
+                           "to": (ident(e).get("transmissionDateTo") or "")[:10]} for e in same), key=lambda x: x["to"], reverse=True)
+        owners = [{"name": o.get("name"), "flag": o.get("flag"), "from": (o.get("dateFrom") or "")[:10], "to": (o.get("dateTo") or "")[:10]}
+                  for e in same for o in (e.get("registryOwners") or [])]
+        types = sorted({t["name"] for e in same for c in (e.get("combinedSourcesInfo") or []) for t in c.get("shiptypes", [])} - {"NA", "OTHER"})
+        reg = next((ri for e in same for ri in (e.get("registryInfo") or [])), {})
+        ids = [ident(e).get("id") for e in same if ident(e).get("id")]
+        params = {"datasets[0]": "public-global-port-visits-events:latest", "start-date": str(date.today() - timedelta(days=180)),
+                  "end-date": str(date.today()), "limit": 25, "offset": 0, "sort": "-start"}
+        for i, vid in enumerate(ids[:5]):
+            params[f"vessels[{i}]"] = vid
+        calls = []
+        try:
+            ev = requests.get(f"{GFW}/events", headers=h, params=params, timeout=30)
+            ev.raise_for_status()
+            for e in ev.json().get("entries") or []:
+                pv = e.get("port_visit") or {}
+                a = pv.get("intermediateAnchorage") or pv.get("startAnchorage") or {}
+                calls.append({"port": (a.get("name") or "").title() or None, "country": FLAGS.get(a.get("flag") or "", a.get("flag")),
+                              "arrived": (e.get("start") or "")[:16].replace("T", " "), "departed": (e.get("end") or "")[:16].replace("T", " "),
+                              "hours": round(pv.get("durationHrs") or 0, 1)})
+        except Exception as e:
+            logger.debug("[gfw] events: %s", e)
+        cur = history[0] if history else {}
+        return {"query": q, "name": cur.get("name"), "imo": imo, "mmsi": cur.get("mmsi"), "flag": cur.get("flag_name"), "callsign": cur.get("callsign"),
+                "types": types, "length_m": reg.get("lengthM"), "tonnage_gt": reg.get("tonnageGt"), "built": reg.get("builtYear"),
+                "history": history, "owners": owners, "port_calls": calls,
+                "source": "Global Fishing Watch (vessel identity from AIS and registries; port visits from AIS)"}
+    return _cached(f"gfw:{q}", 6 * 3600, fetch)

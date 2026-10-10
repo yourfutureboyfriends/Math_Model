@@ -430,3 +430,63 @@ def thirteen_f(cik: str = "0001067983") -> Dict[str, Any]:
                         "no shorts, cash, bonds or non-US shares.",
                 "source": "SEC EDGAR 13F-HR information tables; tickers via OpenFIGI"}
     return _cached(f"13f:{cik10}", 12 * 3600, fetch)
+
+
+
+# ── EIA weekly supply & demand history (EIA API v2, free key) ────────────────
+EIA_SERIES = {"WCRFPUS2": ("Crude production", "kb/d"), "WCRRIUS2": ("Refinery crude runs", "kb/d"), "WPULEUS3": ("Refinery utilisation", "%"),
+              "WCEIMUS2": ("Crude imports", "kb/d"), "WCREXUS2": ("Crude exports", "kb/d"), "WGFUPUS2": ("Gasoline demand", "kb/d"),
+              "WDIUPUS2": ("Distillate demand", "kb/d"), "WRPUPUS2": ("Total product demand", "kb/d"), "WCESTUS1": ("Commercial crude stocks", "kb"),
+              "W_EPC0_SAX_YCUOK_MBBL": ("Cushing stocks", "kb"), "WTTSTUS1": ("All petroleum stocks", "kb")}
+
+
+def eia_history(weeks: int = 520) -> Dict[str, Any]:
+    import os
+    key = os.getenv("EIA_API_KEY") or ""
+    if not key:
+        raise NotFound("Supply & demand history needs a free EIA API key (EIA_API_KEY).")
+
+    def fetch():
+        import requests
+        params = [("api_key", key), ("frequency", "weekly"), ("data[0]", "value"), ("sort[0][column]", "period"),
+                  ("sort[0][direction]", "desc"), ("length", str(min(5000, weeks * len(EIA_SERIES))))]
+        params += [("facets[series][]", sid) for sid in EIA_SERIES]
+        r = requests.get("https://api.eia.gov/v2/petroleum/sum/sndw/data/", params=params, timeout=60)
+        r.raise_for_status()
+        rows: Dict[str, Dict[str, Any]] = {}
+        for d in r.json().get("response", {}).get("data", []):
+            sid, per, v = d.get("series"), d.get("period"), _f(d.get("value"))
+            if sid in EIA_SERIES and v is not None:
+                rows.setdefault(per, {"date": per})[sid] = v
+        series = sorted(rows.values(), key=lambda x: x["date"])
+        if not series:
+            raise Upstream("EIA returned no data.")
+        latest = series[-1]
+        def ago(n):
+            return series[-1 - n] if len(series) > n else {}
+        summary = [{"series": sid, "label": lab, "unit": unit, "latest": latest.get(sid), "week_change": (latest.get(sid) or 0) - (ago(1).get(sid) or 0) if ago(1).get(sid) is not None else None,
+                    "year_ago": ago(52).get(sid), "five_year_avg": (sum(x.get(sid) or 0 for x in series[-260:]) / max(1, sum(1 for x in series[-260:] if x.get(sid) is not None)))}
+                   for sid, (lab, unit) in EIA_SERIES.items()]
+        return {"as_of": latest["date"], "series": series, "summary": summary, "labels": {k: v[0] for k, v in EIA_SERIES.items()},
+                "units": {k: v[1] for k, v in EIA_SERIES.items()}, "source": "EIA Weekly Petroleum Status Report (API v2)"}
+    return _cached(f"eiahist:{weeks}", 6 * 3600, fetch)
+
+
+# ── IPO calendar (Finnhub, free key) ─────────────────────────────────────────
+def ipo_calendar(days_back: int = 30, days_ahead: int = 45) -> Dict[str, Any]:
+    import os
+    key = os.getenv("FINNHUB_API_KEY") or ""
+    if not key:
+        raise NotFound("The IPO calendar needs a free Finnhub key (FINNHUB_API_KEY).")
+
+    def fetch():
+        import requests
+        r = requests.get("https://finnhub.io/api/v1/calendar/ipo", timeout=20,
+                         params={"from": str(date.today() - timedelta(days=days_back)), "to": str(date.today() + timedelta(days=days_ahead)), "token": key})
+        r.raise_for_status()
+        rows = [{"date": x.get("date"), "symbol": x.get("symbol"), "name": x.get("name"), "exchange": x.get("exchange"), "price": x.get("price"),
+                 "shares": x.get("numberOfShares"), "value": x.get("totalSharesValue"), "status": x.get("status")} for x in r.json().get("ipoCalendar", [])]
+        rows.sort(key=lambda x: x["date"] or "", reverse=True)
+        return {"ipos": rows, "source": "Finnhub IPO calendar (mainly US listings)",
+                "note": "'expected' = scheduled with a price range; 'priced' = priced, trading; 'withdrawn' = pulled."}
+    return _cached(f"ipo:{days_back}:{days_ahead}", 3600, fetch)

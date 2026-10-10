@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ErrorBox, fmtBig, fmtPrice, Loading, Panel, useJSON } from './shared';
+import { LineChart } from '@/components/ui/LineChart';
 
 const enc = encodeURIComponent;
 const pc = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);
@@ -120,8 +121,78 @@ export function EiaView() {
                 <td className="text-right font-mono">{sgn(g.change, 0)}</td><td className="text-right font-mono">{sgn(g.vs_5yr_pct, 1, '%')}</td><td className="text-right font-mono">{sgn(g.vs_year_ago_pct, 1, '%')}</td></tr>))}</tbody></table>
         </Panel>
       </div>
+      <EiaHistory />
       <div className="text-[10px] text-text-tertiary">Source: {d.source}. Petroleum released Wednesdays 10:30 ET, gas Thursdays 10:30 ET.</div>
     </div>)}</Frame>;
+}
+
+const EIA_COLORS = ['rgb(var(--c-bloomberg))', 'rgb(var(--c-blue))', 'rgb(var(--c-green))', 'rgb(var(--c-red))'];
+
+function EiaHistory() {
+  const { data, error, loading } = useJSON<any>('/api/v1/mkt/eia/history', 3_600_000);
+  const [sel, setSel] = useState<string[]>(['WCRFPUS2', 'WCRRIUS2']);
+  if (loading && !data) return <Loading label="Loading EIA weekly history…" />;
+  if (error && !data) return <p className="text-[11px] text-text-tertiary">{error}</p>;
+  if (!data) return null;
+  const unit = data.units[sel[0]];
+  const toggle = (sid: string) => setSel((cur) => cur.includes(sid) ? (cur.length > 1 ? cur.filter((x) => x !== sid) : cur)
+    : data.units[sid] === data.units[cur[0]] ? [...cur, sid].slice(-4) : [sid]);          // only compare like units on one axis
+  return (
+    <Panel title={`Supply & demand — weekly since ${data.series[0]?.date?.slice(0, 4)} (click rows to chart; up to 4 with the same unit)`}>
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-3">
+        <LineChart rows={data.series} x="date" height={300} fmt={(v) => unit === '%' ? `${v.toFixed(1)}%` : v.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          lines={sel.map((sid, i) => ({ key: sid, label: data.labels[sid], color: EIA_COLORS[i] }))} />
+        <table className="w-full text-xs self-start">
+          <thead><tr className="text-[10px] uppercase text-text-tertiary"><th className="text-left font-normal">Series</th><th className="text-right font-normal">Latest</th>
+            <th className="text-right font-normal">Week</th><th className="text-right font-normal">vs year ago</th><th className="text-right font-normal">vs 5y avg</th></tr></thead>
+          <tbody>{data.summary.map((r: any) => (
+            <tr key={r.series} onClick={() => toggle(r.series)} className={cn('border-t border-border-subtle cursor-pointer', sel.includes(r.series) && 'bg-surface-3')}>
+              <td className="py-0.5 text-text-primary">{sel.includes(r.series) && <span className="inline-block w-2 h-2 mr-1.5 rounded-sm" style={{ background: EIA_COLORS[sel.indexOf(r.series)] }} />}{r.label} <span className="text-text-tertiary">{r.unit}</span></td>
+              <td className="text-right font-mono">{r.latest?.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+              <td className={cn('text-right font-mono', (r.week_change ?? 0) > 0 ? 'text-green' : (r.week_change ?? 0) < 0 ? 'text-red' : '')}>{r.week_change != null ? sgn(r.week_change, r.unit === '%' ? 1 : 0) : ''}</td>
+              <td className="text-right font-mono">{r.year_ago ? sgn((r.latest / r.year_ago - 1) * 100, 1, '%') : '—'}</td>
+              <td className="text-right font-mono">{r.five_year_avg ? sgn((r.latest / r.five_year_avg - 1) * 100, 1, '%') : '—'}</td></tr>))}</tbody>
+        </table>
+      </div>
+    </Panel>
+  );
+}
+
+// ── IPO ─────────────────────────────────────────────────────────────────────
+export function IpoView({ onOpen }: { onOpen: (s: string) => void }) {
+  const [status, setStatus] = useState('all');
+  return <Frame<any> url="/api/v1/mkt/ipo" label="Loading the IPO calendar…" refresh={3_600_000}>{(d) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = (d.ipos as any[]).filter((x) => status === 'all' || x.status === status);
+    const upcoming = (d.ipos as any[]).filter((x) => x.date >= today && x.status === 'expected');
+    return (
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <Stat label="Upcoming" value={upcoming.length} sub="expected, next 45 days" />
+          <Stat label="Expected to raise" value={`$${fmtBig(upcoming.reduce((a, x) => a + (x.value || 0), 0))}`} />
+          <Stat label="Priced, last 30 days" value={(d.ipos as any[]).filter((x) => x.date < today && x.status === 'priced').length} />
+          <Stat label="Withdrawn" value={(d.ipos as any[]).filter((x) => x.status === 'withdrawn').length} tone="down" />
+        </div>
+        <div className="flex gap-1 text-xs">{['all', 'expected', 'priced', 'filed', 'withdrawn'].map((k) => (
+          <button key={k} onClick={() => setStatus(k)} className={cn('px-2 py-0.5 border capitalize', status === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{k}</button>))}</div>
+        <div className="border border-border overflow-x-auto max-h-[560px] overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-surface-1"><tr className="text-[10px] uppercase text-text-tertiary"><th className="text-left px-2 py-1 font-normal">Date</th><th className="text-left font-normal">Ticker</th>
+              <th className="text-left font-normal">Company</th><th className="text-left font-normal">Exchange</th><th className="text-right font-normal">Price / range</th>
+              <th className="text-right font-normal">Shares</th><th className="text-right font-normal">Deal size</th><th className="text-left px-2 font-normal">Status</th></tr></thead>
+            <tbody>{rows.map((x) => (
+              <tr key={x.symbol + x.date} className={cn('border-t border-border-subtle', x.date === today && 'bg-surface-3')}>
+                <td className="px-2 py-0.5 font-mono text-text-secondary">{x.date}</td>
+                <td>{x.symbol ? <button onClick={() => onOpen(x.symbol)} className="font-mono text-bloomberg hover:underline">{x.symbol}</button> : '—'}</td>
+                <td className="text-text-primary">{x.name}</td><td className="text-text-tertiary">{x.exchange}</td>
+                <td className="text-right font-mono">{x.price ? `$${x.price}` : '—'}</td><td className="text-right font-mono">{x.shares ? fmtBig(x.shares) : '—'}</td>
+                <td className="text-right font-mono">{x.value ? `$${fmtBig(x.value)}` : '—'}</td>
+                <td className={cn('px-2 capitalize', x.status === 'priced' ? 'text-green' : x.status === 'withdrawn' ? 'text-red' : 'text-text-secondary')}>{x.status}</td></tr>))}</tbody>
+          </table>
+        </div>
+        <div className="text-[10px] text-text-tertiary">{d.note} Source: {d.source}.</div>
+      </div>);
+  }}</Frame>;
 }
 
 // ── WETR ────────────────────────────────────────────────────────────────────

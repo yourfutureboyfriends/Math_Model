@@ -12,7 +12,7 @@ import { QuoteWorkstation, WatchColumn } from '@/components/markets/QuoteWorksta
 import { CorrView, FrdView, OsaView, RrgView, SeasView } from '@/components/markets/AnalyticsViews';
 import { EcoGlobalView, EcstView, SiView, SplcView } from '@/components/markets/DataViews';
 import { FlyView, QuakeView, ShipView } from '@/components/markets/TrackingViews';
-import { AuctView, EiaView, InsdView, ThirteenFView, WetrView, WirpView } from '@/components/markets/ExtrasViews';
+import { AuctView, EiaView, InsdView, IpoView, ThirteenFView, WetrView, WirpView } from '@/components/markets/ExtrasViews';
 import { CountryView, RegionBar, RegionMonitor } from '@/components/markets/RegionViews';
 import { useRegion } from '@/lib/region';
 import { MonitorHome } from '@/components/markets/Monitor';
@@ -260,6 +260,7 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'EIA' && <EiaView />}
     {code === 'WETR' && <WetrView />}
     {code === '13F' && <ThirteenFView onOpen={open} />}
+    {code === 'IPO' && <IpoView onOpen={open} />}
     {code === 'GC' && <GcView />}
     {code === 'BTMM' && <BtmmView />}
     {code === 'WCRS' && <WcrsView onOpen={open} />}

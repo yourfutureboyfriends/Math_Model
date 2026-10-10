@@ -53,3 +53,9 @@ def test_regions_and_country_tagging():
     tags = countries_in("Bank of Japan holds rates as yen slides; Germany's DAX rallies")
     assert "JP" in tags and "DE" in tags and "US" not in tags
     assert "US" not in countries_in("Business is a focus")          # 'us' as a word is not the US
+
+
+def test_ais_not_available_codes_are_dropped():
+    from api.marketdata.tracking import _ais_clean
+    assert _ais_clean(102.3, 360.0, 511) == (None, None, None)
+    assert _ais_clean(12.4, 87.5, 90) == (12.4, 87.5, 90)

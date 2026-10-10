@@ -270,6 +270,13 @@ async def mkt_vessels(lat_min: float = Query(..., ge=-90, le=90), lon_min: float
     return await _run(tracking.vessels, lat_min, lon_min, lat_max, lon_max, timeout=60)
 
 
+@router.get("/api/v1/mkt/ship/vessel/{query}")
+async def mkt_vessel(query: str):
+    """Vessel identity, flag/name history, owners and recent port calls (Global Fishing Watch)."""
+    from api.marketdata import tracking
+    return await _run(tracking.vessel_info, query, timeout=60)
+
+
 @router.get("/api/v1/mkt/fly")
 async def mkt_flights(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180), radius_nm: int = Query(100, ge=5, le=250)):
     """Live aircraft around a point (adsb.lol)."""
@@ -307,6 +314,18 @@ async def mkt_auctions(kind: str = Query("Note", pattern="^(Bill|Note|Bond|TIPS|
 async def mkt_eia():
     from api.marketdata import extras
     return await _run(extras.energy)
+
+
+@router.get("/api/v1/mkt/eia/history")
+async def mkt_eia_history(weeks: int = Query(520, ge=52, le=1040)):
+    from api.marketdata import extras
+    return await _run(extras.eia_history, weeks, timeout=90)
+
+
+@router.get("/api/v1/mkt/ipo")
+async def mkt_ipo():
+    from api.marketdata import extras
+    return await _run(extras.ipo_calendar)
 
 
 @router.get("/api/v1/mkt/wetr")

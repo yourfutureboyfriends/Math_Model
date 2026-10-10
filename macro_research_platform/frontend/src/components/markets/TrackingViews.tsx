@@ -53,8 +53,11 @@ export function ShipView() {
   const cp = useJSON<any>('/api/v1/mkt/ship/chokepoints', 3_600_000);
   const [sel, setSel] = useState<string | null>(null);
   const [sea, setSea] = useState(SEAS[0]);
+  const [pick, setPick] = useState<string | null>(null);        // MMSI / IMO / name for the vessel card
+  const [find, setFind] = useState('');
+  const [sortBy, setSortBy] = useState<'speed' | 'name' | 'type'>('speed');
   const box = sea[1];
-  const live = useJSON<any>(`/api/v1/mkt/ship/vessels?lon_min=${box[0]}&lat_min=${box[1]}&lon_max=${box[2]}&lat_max=${box[3]}`, 120_000);
+  const live = useJSON<any>(`/api/v1/mkt/ship/vessels?lon_min=${box[0]}&lat_min=${box[1]}&lon_max=${box[2]}&lat_max=${box[3]}`, 20_000);
   const chosen = cp.data?.chokepoints.find((c: any) => c.name === sel);
   const maxN = Math.max(1, ...(cp.data?.chokepoints ?? []).map((c: any) => c.transits_7d ?? 0));
   const vessels = (live.data?.vessels ?? []).filter((v: any) => v.lon >= box[0] && v.lon <= box[2] && v.lat >= box[1] && v.lat <= box[3]);
@@ -113,15 +116,41 @@ export function ShipView() {
         {live.error && <ErrorBox msg={live.error} />}
         {live.data && (
           <>
-            <Basemap box={box} height={380}>{(p, k) => vessels.map((v: any) => {
+            <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_380px] gap-2">
+            <Basemap box={box} height={420}>{(p, k) => vessels.map((v: any) => {
               const [x, y] = p(v.lon, v.lat);
               const moving = (v.speed ?? 0) > 0.5;
               const ang = ((v.course ?? v.heading ?? 0) - 90) * Math.PI / 180;
               const L = 6 / k;
-              return <g key={v.mmsi}><circle cx={x} cy={y} r={2.2 / k} fill={TYPE_COL[v.type] ?? 'rgb(var(--c-text-tertiary))'} />
+              const on = pick === String(v.mmsi);
+              return <g key={v.mmsi} onClick={() => setPick(String(v.mmsi))} className="cursor-pointer">
+                <circle cx={x} cy={y} r={(on ? 4.5 : 2.2) / k} fill={TYPE_COL[v.type] ?? 'rgb(var(--c-text-tertiary))'} stroke={on ? 'rgb(var(--c-text-primary))' : 'none'} strokeWidth={1 / k} />
                 {moving && <line x1={x} y1={y} x2={x + Math.cos(ang) * L} y2={y + Math.sin(ang) * L} stroke={TYPE_COL[v.type] ?? 'rgb(var(--c-text-tertiary))'} strokeWidth={0.8 / k} />}
-                <title>{`${v.name || v.mmsi} · ${v.type}${v.destination ? ` → ${v.destination}` : ''} · ${v.speed ?? 0} kn`}</title></g>;
+                <title>{`${v.name || v.mmsi} · ${v.type}${v.destination ? ` → ${v.destination}` : ''} · ${v.speed ?? 0} kn — click for details`}</title></g>;
             })}</Basemap>
+            <div className="space-y-2 min-w-0">
+              <form onSubmit={(e) => { e.preventDefault(); if (find.trim()) setPick(find.trim()); }} className="flex gap-1">
+                <input value={find} onChange={(e) => setFind(e.target.value)} placeholder="Find a vessel — name, IMO or MMSI" aria-label="Find a vessel"
+                  className="flex-1 min-w-0 bg-surface-1 border border-border px-2 py-1 text-xs text-text-primary placeholder:text-text-tertiary" />
+                <button className="px-2 py-1 text-xs border border-border">Find</button>
+              </form>
+              {pick ? <VesselCard query={pick} live={vessels.find((v: any) => String(v.mmsi) === pick)} onClose={() => setPick(null)} /> : (
+                <div className="border border-border max-h-[372px] overflow-y-auto">
+                  <table className="w-full text-[11px]">
+                    <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary">
+                      {([['name', 'Vessel'], ['type', 'Type'], ['speed', 'Knots']] as const).map(([k, l]) => (
+                        <th key={k} onClick={() => setSortBy(k)} className={cn('font-normal px-1.5 cursor-pointer', k === 'speed' ? 'text-right' : 'text-left', sortBy === k && 'text-bloomberg')}>{l}</th>))}
+                      <th className="text-left font-normal">Destination</th></tr></thead>
+                    <tbody>{[...vessels].sort((a: any, b: any) => sortBy === 'speed' ? (b.speed ?? 0) - (a.speed ?? 0) : String(a[sortBy] ?? '').localeCompare(String(b[sortBy] ?? '')))
+                      .slice(0, 300).map((v: any) => (
+                      <tr key={v.mmsi} onClick={() => setPick(String(v.mmsi))} className="border-t border-border-subtle cursor-pointer">
+                        <td className="px-1.5 py-0.5 text-text-primary truncate max-w-[9rem]">{v.name || v.mmsi}</td>
+                        <td style={{ color: TYPE_COL[v.type] }}>{v.type}</td><td className="text-right px-1.5 font-mono">{v.speed != null ? v.speed.toFixed(1) : ''}</td>
+                        <td className="text-text-tertiary truncate max-w-[7rem]">{v.destination ?? ''}</td></tr>))}</tbody>
+                  </table>
+                </div>)}
+            </div>
+            </div>
             <div className="flex flex-wrap gap-3 text-[11px] text-text-secondary mt-1">
               <span>{vessels.length} vessels in view</span>
               {Object.entries(TYPE_COL).map(([t, c]) => <span key={t}><span className="inline-block w-2 h-2 rounded-full mr-1" style={{ background: c }} />{t} {vessels.filter((v: any) => v.type === t).length}</span>)}
@@ -130,6 +159,37 @@ export function ShipView() {
               {live.data.source} — coverage: {live.data.coverage}. {vessels.length === 0 && /only/.test(live.data.coverage) ? 'Pick “Baltic (open data)” or add the key to see this area.' : ''}</div>
           </>)}
       </Panel>
+    </div>
+  );
+}
+
+function VesselCard({ query, live, onClose }: { query: string; live?: any; onClose: () => void }) {
+  const { data, error, loading } = useJSON<any>(`/api/v1/mkt/ship/vessel/${encodeURIComponent(query)}`);
+  return (
+    <div className="border border-border bg-surface-1 p-2.5 text-xs space-y-2 max-h-[372px] overflow-y-auto">
+      <div className="flex items-start justify-between gap-2">
+        <div><div className="text-sm font-semibold text-text-primary">{data?.name ?? live?.name ?? query}</div>
+          <div className="text-[11px] text-text-tertiary">{[data?.flag && `Flag: ${data.flag}`, data?.imo && `IMO ${data.imo}`, (data?.mmsi ?? live?.mmsi) && `MMSI ${data?.mmsi ?? live?.mmsi}`, data?.callsign].filter(Boolean).join(' · ')}</div></div>
+        <button onClick={onClose} className="text-text-tertiary hover:text-text-primary" aria-label="Close">×</button>
+      </div>
+      {live && <div className="grid grid-cols-3 gap-1.5 text-[11px]">
+        <div><div className="text-text-tertiary">Speed</div><div className="font-mono">{live.speed ?? '—'} kn</div></div>
+        <div><div className="text-text-tertiary">Course</div><div className="font-mono">{live.course != null ? Math.round(live.course) + '°' : '—'}</div></div>
+        <div><div className="text-text-tertiary">Destination</div><div className="truncate">{live.destination || '—'}</div></div></div>}
+      {loading && !data && <Loading label="Looking up identity and port calls…" />}
+      {error && !data && <p className="text-[11px] text-text-tertiary">{error}</p>}
+      {data && <>
+        <div className="text-[11px] text-text-secondary">{[data.types?.join(', '), data.length_m && `${data.length_m} m`, data.tonnage_gt && `${Math.round(data.tonnage_gt).toLocaleString()} GT`, data.built && `built ${data.built}`].filter(Boolean).join(' · ')}</div>
+        {data.owners?.length > 0 && <div><div className="text-[10px] uppercase tracking-wide text-text-tertiary">Owner</div>{data.owners.slice(0, 2).map((o: any, i: number) => <div key={i}>{o.name} <span className="text-text-tertiary">({o.flag})</span></div>)}</div>}
+        {data.history?.length > 1 && <div><div className="text-[10px] uppercase tracking-wide text-text-tertiary">Identity history</div>
+          {data.history.map((h: any, i: number) => <div key={i} className="font-mono text-[11px]">{h.from} → {h.to} · {h.name} · {h.flag_name}</div>)}</div>}
+        <div><div className="text-[10px] uppercase tracking-wide text-text-tertiary">Port calls, last 6 months</div>
+          {data.port_calls?.length ? <table className="w-full text-[11px]"><tbody>{data.port_calls.map((c: any, i: number) => (
+            <tr key={i} className="border-t border-border-subtle"><td className="py-0.5 text-text-primary">{c.port ?? 'Anchorage'}</td><td className="text-text-secondary">{c.country}</td>
+              <td className="font-mono text-text-tertiary">{c.arrived?.slice(0, 10)}</td><td className="text-right font-mono">{c.hours}h</td></tr>))}</tbody></table>
+            : <p className="text-[11px] text-text-tertiary">None recorded.</p>}</div>
+        <div className="text-[10px] text-text-tertiary">{data.source}</div>
+      </>}
     </div>
   );
 }

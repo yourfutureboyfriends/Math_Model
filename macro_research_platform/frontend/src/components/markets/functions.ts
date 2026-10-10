@@ -59,6 +59,7 @@ export const FUNCTIONS: MktFunction[] = [
   // Research
   { code: 'EQS', name: 'Equity screener', desc: 'Screen 22 markets by sector, size, valuation and yield.', group: 'Research', aliases: ['SCREEN'] },
   { code: '13F', name: 'Investor holdings (13F)', desc: 'What Buffett, Dalio, Ackman, Burry and others own — quarterly 13F filings with changes.', group: 'Research', aliases: ['HFND', 'GURU'] },
+  { code: 'IPO', name: 'IPO calendar', desc: 'Upcoming and recent IPOs: date, price range, shares, deal size and status (Finnhub).', group: 'Research', aliases: ['IPOS', 'NEWISSUE'] },
   { code: 'EVTS', name: 'Earnings calendar', desc: 'Who reports this week, with estimates and surprises.', group: 'Research', aliases: ['ERNC', 'CAL'] },
   { code: 'ECO', name: 'Economic calendar', desc: 'Global releases with consensus, previous and actual (US as first published) and the surprise.', group: 'Research' },
   { code: 'ECST', name: 'Economic surprises', desc: 'US data surprise index since 2010: releases vs their own trend, as first published.', group: 'Research', aliases: ['CESI', 'SURP'] },

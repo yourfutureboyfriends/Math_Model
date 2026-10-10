@@ -111,6 +111,26 @@ def div_yield(i: Dict[str, Any]) -> Optional[float]:
     return y if y is not None else _f(i.get("trailingAnnualDividendYield"))
 
 
+def _finnhub_quote(sym: str) -> Optional[Dict[str, Any]]:
+    """Real-time US quote from Finnhub (free key, 60 calls/min) — None if unavailable."""
+    import os
+    key = os.getenv("FINNHUB_API_KEY") or ""
+    if not key or any(c in sym for c in ".^=") or sym.endswith("-USD"):
+        return None
+
+    def fetch():
+        import requests
+        r = requests.get("https://finnhub.io/api/v1/quote", params={"symbol": sym, "token": key}, timeout=6)
+        if r.status_code != 200:
+            return None
+        j = r.json()
+        return j if (j.get("c") or 0) > 0 else None
+    try:
+        return _cached(f"fh:{sym}", 10, fetch)
+    except Exception:
+        return None
+
+
 def quote(symbol: str) -> Dict[str, Any]:
     s = symbol.strip().upper()
     i = _info(s)
@@ -128,7 +148,20 @@ def quote(symbol: str) -> Dict[str, Any]:
             "market_state": i.get("marketState"), "exchange_timezone": i.get("exchangeTimezoneName"),
             "quote_time": i.get("regularMarketTime"), "delay_minutes": i.get("exchangeDataDelayedBy"),
             **_quote_extras(i, price, prev),
-            "source": "Yahoo Finance"}
+            "source": "Yahoo Finance"} | _realtime(s, i)
+
+
+def _realtime(s: str, i: Dict[str, Any]) -> Dict[str, Any]:
+    """Overlay Finnhub's real-time last price on US-listed stocks and ETFs during and after the session."""
+    t = (i.get("quoteType") or "").upper()
+    if t not in ("EQUITY", "ETF") or (i.get("currency") or "USD") != "USD":
+        return {}
+    fh = _finnhub_quote(s)
+    if not fh:
+        return {}
+    return {"price": fh["c"], "change": fh.get("d"), "change_pct": (fh.get("dp") or 0) / 100 if fh.get("dp") is not None else None,
+            "day_high": fh.get("h") or None, "day_low": fh.get("l") or None, "open": fh.get("o") or None, "previous_close": fh.get("pc") or None,
+            "quote_time": fh.get("t"), "delay_minutes": 0, "source": "Finnhub (real-time) · fundamentals Yahoo Finance"}
 
 
 def _quote_extras(i: Dict[str, Any], price: Optional[float], prev: Optional[float]) -> Dict[str, Any]:
