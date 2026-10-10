@@ -26,6 +26,44 @@ logger = logging.getLogger(__name__)
 
 
 # ── EVTS ─────────────────────────────────────────────────────────────────────
+def _universe_by_name() -> Dict[str, Dict[str, Any]]:
+    """Normalised company name → its home listing, from the global universe."""
+    from api.marketdata.core import _norm
+
+    def build():
+        try:
+            from api import global_universe as gu
+            u = gu.load(rebuild_if_stale=False)
+            items = u if isinstance(u, list) else (u.get("stocks") or [])
+        except Exception:
+            return {}
+        return {_norm(x.get("name")): x for x in items if x.get("name")}
+    return _cached("universe:byname", 86400, build)
+
+
+def _dedupe_listings(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """One row per company. US OTC lines of foreign companies (ASMLF, AEONF — 5 letters ending
+    F or Y) give way to an exchange listing of the same company; the ones left are tagged with
+    their home listing and country, so Aeon sits in Japan rather than in the Americas."""
+    import re
+    from api.marketdata.core import _norm
+    otc = lambda sym: bool(re.fullmatch(r"[A-Z]{4}[FY]", sym or ""))
+    uni = _universe_by_name()
+    seen, out = set(), []
+    for r in sorted(rows, key=lambda r: otc(r["symbol"])):          # exchange listings first
+        key = (_norm(r.get("company")), (r.get("datetime") or "")[:10])
+        if key in seen:
+            continue
+        seen.add(key)
+        if otc(r["symbol"]):
+            hit = uni.get(key[0])
+            r["otc_foreign"] = True                               # home market unknown unless matched below
+            if hit:
+                r["home_symbol"], r["country"] = hit.get("symbol"), hit.get("country")
+        out.append(r)
+    return out
+
+
 def earnings_calendar(start: Optional[str] = None, days: int = 7, min_cap_bn: float = 0.0, offset: int = 0,
                       limit: int = 100) -> Dict[str, Any]:
     s = date.fromisoformat(start) if start else date.today()
@@ -47,6 +85,7 @@ def earnings_calendar(start: Optional[str] = None, days: int = 7, min_cap_bn: fl
                              "timing": {"BMO": "Before open", "AMC": "After close", "TAS": "During session", "TNS": "Time not set"}.get(str(r.get("Timing")), r.get("Timing")),
                              "eps_estimate": _f(r.get("EPS Estimate")), "eps_reported": _f(r.get("Reported EPS")),
                              "surprise_pct": _f(r.get("Surprise(%)"))})
+        rows = _dedupe_listings(rows)
         rows.sort(key=lambda x: (x["datetime"] or "", -(x["market_cap"] or 0)))
         return {"start": s.isoformat(), "end": e.isoformat(), "rows": rows, "offset": offset,
                 "source": "Yahoo Finance earnings calendar"}
@@ -137,7 +176,7 @@ def money_markets() -> Dict[str, Any]:
                     prior = [x for x in obs if x[0] <= cutoff]
                     return (v - prior[-1][1]) * 100 if prior else None
                 rows.append({"series": sid, "name": label, "value": v, "date": d, "change_1w_bp": back(7), "change_1m_bp": back(30),
-                             "change_1y_bp": back(365), "spark": [round(x[1], 4) for x in obs[-90:]]})
+                             "change_3m_bp": back(91), "change_1y_bp": back(365), "spark": [round(x[1], 4) for x in obs[-90:]]})
             groups.append({"group": g, "rows": rows})
         return {"groups": groups, "units": "percent; changes in basis points", "source": "FRED (St. Louis Fed)"}
     return _cached("btmm", 3600, fetch)
@@ -239,6 +278,9 @@ FUTURES = {
 }
 
 
+FINANCIAL_FUTURES = {"ES", "NQ", "YM", "RTY", "ZT", "ZF", "ZN", "ZB", "6E", "6J"}
+
+
 def futures_curve(root: str, n: int = 10) -> Dict[str, Any]:
     root = root.upper()
     if root not in FUTURES:
@@ -279,7 +321,9 @@ def futures_curve(root: str, n: int = 10) -> Dict[str, Any]:
         return {"root": root, "name": name, "exchange": exch, "points": pts, "front": pts[0], "slope": slope,
                 "annualised_roll_yield": -((1 + slope) ** (12 / span_m) - 1),
                 "shape": "contango (later months dearer)" if slope > 0.005 else "backwardation (later months cheaper)" if slope < -0.005 else "flat",
-                "note": "Positive roll yield (backwardation) pays a long futures holder as contracts converge to spot.",
+                "note": ("Financial futures: the slope is carry — the financing rate minus the dividend or coupon yield (and, for "
+                         "currencies, the interest-rate gap) — not a supply signal." if root in FINANCIAL_FUTURES else
+                         "Positive roll yield (backwardation) pays a long futures holder as contracts converge to spot."),
                 "source": "Yahoo Finance futures (delayed)"}
     return _cached(f"fut:{root}:{n}", 600, fetch)
 

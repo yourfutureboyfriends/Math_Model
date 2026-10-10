@@ -376,7 +376,8 @@ async def mkt_earnings_calendar(start: Optional[str] = Query(None, pattern=r"^\d
     from api.marketdata.countries import country_of_symbol, region_of
     out = await _run(monitors.earnings_calendar, start, days, min_cap_bn, offset, limit)
     for r in out.get("rows", []):                       # place each company in a country and region
-        c = country_of_symbol(r.get("symbol") or "")
+        # OTC lines of foreign companies carry their home country when it is known, else none
+        c = r.get("country") or (None if r.get("otc_foreign") else country_of_symbol(r.get("symbol") or ""))
         r["country"], r["region"] = c or None, region_of(c) if c else None
     return out
 

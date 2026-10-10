@@ -35,12 +35,13 @@ export function EvtsView({ onOpen }: { onOpen: (s: string) => void }) {
       {loading && !data ? <Loading label="Loading earnings calendar…" /> : error ? <ErrorBox msg={error} /> : byDay.length === 0 ? <Panel><div className="text-2xs text-text-tertiary">No reports in this window.</div></Panel> : (
         byDay.map(([day, rows]) => (
           <Panel key={day} title={new Date(day + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}>
-            <table className="w-full text-2xs"><tbody>{rows.map((r) => (
-              <tr key={r.symbol + r.datetime} onClick={() => onOpen(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3">
-                <td className="py-1 w-20 font-mono text-text-primary">{r.symbol}</td><td className="text-text-secondary truncate max-w-[18rem]">{r.company}</td>
-                <td className="text-text-tertiary">{r.timing}</td><td className="text-right font-mono">{fmtBig(r.market_cap)}</td>
-                <td className="text-right font-mono">{r.eps_estimate != null ? `est ${r.eps_estimate.toFixed(2)}` : ''}</td>
-                <td className="text-right font-mono">{r.eps_reported != null ? <>act {r.eps_reported.toFixed(2)} <Chg v={r.surprise_pct != null ? r.surprise_pct / 100 : null} d={1} /></> : ''}</td>
+            <table className="w-full text-2xs table-fixed"><tbody>{rows.map((r) => (
+              <tr key={r.symbol + r.datetime} onClick={() => onOpen(r.home_symbol ?? r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3"
+                title={r.home_symbol ? `${r.symbol} trades over the counter in the US; opens the home listing ${r.home_symbol}` : undefined}>
+                <td className="py-1 w-24 font-mono text-text-primary">{r.home_symbol ?? r.symbol}</td><td className="text-text-secondary truncate max-w-[18rem]">{r.company}</td>
+                <td className="w-28 text-text-tertiary">{r.timing}</td><td className="w-24 text-right font-mono">{fmtBig(r.market_cap)}</td>
+                <td className="w-24 text-right font-mono">{r.eps_estimate != null ? `est ${r.eps_estimate.toFixed(2)}` : ''}</td>
+                <td className="w-40 text-right font-mono">{r.eps_reported != null ? <>act {r.eps_reported.toFixed(2)} <Chg v={r.surprise_pct != null ? r.surprise_pct / 100 : null} d={1} /></> : ''}</td>
               </tr>))}</tbody></table>
           </Panel>)))}
     </div>
@@ -101,11 +102,11 @@ export function BtmmView() {
         {data.groups.map((g: any) => (
           <Panel key={g.group} title={g.group}>
             <table className="w-full text-2xs"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Rate</th><th className="text-right font-normal">Level</th>
-              <th className="text-right font-normal">1W</th><th className="text-right font-normal">1M</th><th className="text-right font-normal">1Y</th><th className="text-right font-normal hidden md:table-cell">3M</th></tr></thead>
+              <th className="text-right font-normal">1W</th><th className="text-right font-normal">1M</th><th className="text-right font-normal">3M</th><th className="text-right font-normal">1Y</th><th className="text-right font-normal hidden md:table-cell">90d</th></tr></thead>
               <tbody>{g.rows.map((r: any) => (
                 <tr key={r.series} className="border-t border-border-subtle" title={`FRED ${r.series}${r.date ? ` · ${r.date}` : ''}`}>
                   <td className="py-1 text-text-primary">{r.name}</td><td className="text-right font-mono text-text-primary">{r.value == null ? '—' : `${r.value.toFixed(2)}%`}</td>
-                  <td className="text-right"><Bp v={r.change_1w_bp} /></td><td className="text-right"><Bp v={r.change_1m_bp} /></td><td className="text-right"><Bp v={r.change_1y_bp} /></td>
+                  <td className="text-right"><Bp v={r.change_1w_bp} /></td><td className="text-right"><Bp v={r.change_1m_bp} /></td><td className="text-right"><Bp v={r.change_3m_bp} /></td><td className="text-right"><Bp v={r.change_1y_bp} /></td>
                   <td className="text-right hidden md:table-cell"><Spark values={r.spark} /></td></tr>))}</tbody></table>
           </Panel>))}
       </div>

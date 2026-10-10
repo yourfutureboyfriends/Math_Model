@@ -13,6 +13,53 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
+# Feeds without dates (Nikkei Asia's RSS 1.0 feed) are stamped with when each article was first
+# seen — kept on disk across restarts. On a cold start the existing items are spread back in
+# feed order (newest first) so they don't all claim to be this minute's news.
+import json as _json
+import threading as _threading
+import time as _time
+from pathlib import Path as _Path
+
+_SEEN_PATH = _Path(__file__).resolve().parents[2] / "data" / "processed" / "news_first_seen.json"
+_SEEN: Optional[dict] = None
+_SEEN_LOCK = _threading.Lock()
+
+
+def _seen_map() -> dict:
+    global _SEEN
+    if _SEEN is None:
+        try:
+            _SEEN = _json.loads(_SEEN_PATH.read_text())
+        except Exception:
+            _SEEN = {}
+    return _SEEN
+
+
+def _feed_is_cold(feed: str) -> bool:
+    with _SEEN_LOCK:
+        return not any(x.startswith(feed + "|") for x in _seen_map())
+
+
+def _first_seen(feed: str, key: str, index: int, cold: bool) -> float:
+    global _SEEN
+    with _SEEN_LOCK:
+        _seen_map()
+        now = _time.time()
+        k = f"{feed}|{key}"
+        if k not in _SEEN:
+            _SEEN[k] = now - index * 1800 if cold else now
+            if len(_SEEN) > 20000 or index % 10 == 0:
+                cutoff = now - 14 * 86400
+                _SEEN = {a: t for a, t in _SEEN.items() if t >= cutoff}
+                try:
+                    _SEEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+                    _SEEN_PATH.write_text(_json.dumps(_SEEN))
+                except Exception:
+                    pass
+        return _SEEN[k]
+
+
 @dataclass
 class NewsArticle:
     """Raw news article data."""
@@ -93,17 +140,23 @@ class NewsProvider:
             )
 
         try:
-            feed = feedparser.parse(feed_url)
+            # fetch with a timeout first: feedparser's own fetch can hang on a slow feed and stall the batch
+            import requests
+            resp = requests.get(feed_url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (MacroTerminal news reader)"})
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.content)
             articles = []
 
-            for entry in feed.get("entries", [])[:50]:  # Limit to 50
+            entries = feed.get("entries", [])[:50]  # Limit to 50
+            cold = _feed_is_cold(feed_name)
+            for idx, entry in enumerate(entries):
                 try:
                     # Parse published date
                     published = entry.get("published_parsed") or entry.get("updated_parsed")
                     if published:
                         published_dt = datetime(*published[:6])
-                    else:
-                        published_dt = datetime.utcnow()
+                    else:   # undated feed: when we first saw it
+                        published_dt = datetime.utcfromtimestamp(_first_seen(feed_name, entry.get("link") or entry.get("title", ""), idx, cold))
 
                     articles.append(NewsArticle(
                         title=entry.get("title", ""),

@@ -123,7 +123,28 @@ def chokepoints(days: int = 1100) -> Dict[str, Any]:
         out.sort(key=lambda c: -(c["transits_7d"] or 0))
         return {"chokepoints": out, "as_of": max(c["date"] for c in out),
                 "source": "IMF PortWatch (satellite AIS; daily transits through maritime chokepoints, updated weekly)"}
-    return _cached(f"chokepoints:{days}", 6 * 3600, fetch)
+    def persisted():   # PortWatch updates weekly and a cold pull pages ~30k rows (≈1 min): keep a disk copy
+        import time as _t
+        from pathlib import Path
+        path = Path(__file__).resolve().parents[2] / "data" / "processed" / f"portwatch_chokepoints_{days}.json"
+        try:
+            if path.exists() and _t.time() - path.stat().st_mtime < 6 * 3600:
+                return json.loads(path.read_text())
+        except Exception:
+            pass
+        try:
+            data = fetch()
+        except Exception:
+            if path.exists():                        # upstream down: serve the last copy rather than nothing
+                return json.loads(path.read_text())
+            raise
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(data, separators=(",", ":")))
+        except Exception:
+            pass
+        return data
+    return _cached(f"chokepoints:{days}", 6 * 3600, persisted)
 
 
 # ── SHIP: live vessels ───────────────────────────────────────────────────────
@@ -159,6 +180,10 @@ class _AisCollector:
         self.key = key
         self.boxes = list(AIS_AREAS.values())
         self.ships: Dict[int, Dict[str, Any]] = {}
+        # Identity (type, destination, IMO…) is broadcast only every ~6 minutes: keep the last
+        # known copy on disk so ships aren't all "Unknown" for minutes after a restart.
+        self.static: Dict[int, Dict[str, Any]] = self._load_static()
+        self.static_saved = time_now()
         self.lock = threading.Lock()
         self.resubscribe = False
         self.started = time_now()
@@ -177,9 +202,31 @@ class _AisCollector:
             return [dict(v) for v in self.ships.values() if v.get("lat") is not None and v["seen"] >= cutoff
                     and box[0] <= v["lat"] <= box[2] and box[1] <= v["lon"] <= box[3]]
 
+    @staticmethod
+    def _static_path():
+        from pathlib import Path
+        return Path(__file__).resolve().parents[2] / "data" / "processed" / "ais_static.json"
+
+    def _load_static(self) -> Dict[int, Dict[str, Any]]:
+        try:
+            return {int(k): v for k, v in json.loads(self._static_path().read_text()).items()}
+        except Exception:
+            return {}
+
+    def _save_static(self, snap: Dict[int, Dict[str, Any]]) -> None:
+        try:
+            items = dict(list(snap.items())[-150000:])
+            path = self._static_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(items, separators=(",", ":")))
+            tmp.replace(path)
+        except Exception as e:
+            logger.debug("[ais] static cache not saved: %s", e)
+
     def _sub(self):
         return json.dumps({"APIKey": self.key, "BoundingBoxes": [[[b[0], b[1]], [b[2], b[3]]] for b in self.boxes],
-                           "FilterMessageTypes": ["PositionReport", "ShipStaticData", "StandardClassBPositionReport"]})
+                           "FilterMessageTypes": ["PositionReport", "ShipStaticData", "StandardClassBPositionReport", "StaticDataReport"]})
 
     def _run(self):
         import asyncio
@@ -215,7 +262,9 @@ class _AisCollector:
             return
         now = time_now()
         with self.lock:
-            v = self.ships.setdefault(mmsi, {"mmsi": mmsi})
+            v = self.ships.get(mmsi)
+            if v is None:
+                v = self.ships[mmsi] = {"mmsi": mmsi, **self.static.get(mmsi, {})}
             name = (meta.get("ShipName") or "").strip()
             if name:
                 v["name"] = name
@@ -226,9 +275,23 @@ class _AisCollector:
                           "heading": hd, "status": p.get("NavigationalStatus"), "seen": now})
             elif kind == "ShipStaticData":
                 d = m["Message"]["ShipStaticData"]
-                v.update({"type": _ship_type(d.get("Type")), "destination": (d.get("Destination") or "").strip(),
-                          "draught": d.get("MaximumStaticDraught"), "imo": d.get("ImoNumber") or None, "callsign": (d.get("CallSign") or "").strip()})
+                ident = {"type": _ship_type(d.get("Type")), "destination": (d.get("Destination") or "").strip(),
+                         "draught": d.get("MaximumStaticDraught"), "imo": d.get("ImoNumber") or None, "callsign": (d.get("CallSign") or "").strip()}
+                v.update(ident)
+                self.static[mmsi] = {**ident, **({"name": v["name"]} if v.get("name") else {})}
                 v.setdefault("seen", now)
+            elif kind == "StaticDataReport":             # class B (smaller vessels): part B carries the type
+                d = m["Message"]["StaticDataReport"]
+                rb = d.get("ReportB") or {}
+                if rb.get("Valid") and rb.get("ShipType") is not None:
+                    v["type"] = _ship_type(rb.get("ShipType"))
+                    self.static[mmsi] = {**self.static.get(mmsi, {}), "type": v["type"], **({"name": v["name"]} if v.get("name") else {})}
+                v.setdefault("seen", now)
+            if now - self.static_saved > 300 and self.static:
+                self.static_saved = now
+                import threading
+                snap = dict(self.static)                 # copied under the lock; written off the stream thread
+                threading.Thread(target=self._save_static, args=(snap,), daemon=True).start()
             if len(self.ships) > 60000:                   # prune stale ships
                 cutoff = now - self.MAX_AGE
                 for k in [k for k, x in self.ships.items() if x.get("seen", 0) < cutoff]:

@@ -173,12 +173,13 @@ def energy() -> Dict[str, Any]:
         keep = {"Crude Oil": "Crude oil incl. SPR", "Commercial (Excluding SPR)": "Commercial crude", "Strategic Petroleum Reserve (SPR)": "Strategic reserve (SPR)",
                 "Total Motor Gasoline": "Gasoline", "Distillate Fuel Oil": "Distillates (diesel, heating oil)", "Kerosene-Type Jet Fuel": "Jet fuel",
                 "Propane/Propylene": "Propane", "Total Stocks (Including SPR)": "All petroleum incl. SPR"}
+        n = lambda x: _f(str(x).replace(",", "")) if x is not None else None      # "1,520.383" for totals over 1bn bbl
         petro = []
         for row in t1[1:]:
             if row and row[0] in keep:
-                petro.append({"item": keep[row[0]], "latest": _f(row[1]), "week_ago": _f(row[2]), "change": _f(row[3]),
-                              "year_ago": _f(row[5]), "vs_year_ago_pct": _f(row[7])})
-        cushing = next(({"latest": _f(r[1]), "change": _f(r[3]), "year_ago": _f(r[4])} for r in t4 if r and r[0] == "Cushing"), None)
+                petro.append({"item": keep[row[0]], "latest": n(row[1]), "week_ago": n(row[2]), "change": n(row[3]),
+                              "year_ago": n(row[5]), "vs_year_ago_pct": n(row[7])})
+        cushing = next(({"latest": n(r[1]), "change": n(r[3]), "year_ago": n(r[4])} for r in t4 if r and r[0] == "Cushing"), None)
         g = requests.get("https://ir.eia.gov/ngs/wngsr.json", headers=BROWSER, timeout=30, allow_redirects=True)
         g.raise_for_status()
         gas = json.loads(g.content.decode("utf-8-sig"))
@@ -341,6 +342,25 @@ MANAGERS = {"0001067983": "Berkshire Hathaway (Buffett)", "0001350694": "Bridgew
 FIGI_CACHE = Path(__file__).resolve().parents[2] / "data" / "processed" / "cusip_tickers.json"
 
 
+def _issuer_key(name: Optional[str]) -> str:
+    """'CHUBB LIMITED' / 'Chubb Ltd' → 'chubb' (13F issuer names are abbreviated and upper-case)."""
+    from api.marketdata.core import _norm
+    return _norm(re.sub(r"\b(LIMITED|LTD|INC|CORP|CORPORATION|CO|COMPANY|PLC|NV|N\.V\.|SA|AG|HLDGS?|HOLDINGS?|GROUP|THE)\b\.?", " ",
+                        str(name or "").upper()))
+
+
+def _sec_names() -> Dict[str, str]:
+    """Normalised SEC registrant name → ticker (first listed ticker wins: the common share)."""
+    try:
+        from api.providers import sec_edgar
+        out: Dict[str, str] = {}
+        for t, v in sec_edgar.ticker_map().items():
+            out.setdefault(_issuer_key(v["name"]), t)
+        return out
+    except Exception:
+        return {}
+
+
 def _cusip_tickers(cusips: List[str]) -> Dict[str, Optional[str]]:
     """CUSIP → ticker via OpenFIGI (free, 10 per request without a key), cached on disk."""
     import requests
@@ -414,6 +434,10 @@ def thirteen_f(cik: str = "0001067983") -> Dict[str, Any]:
         scale = 1000 if cur_period < "2023-01-01" else 1
         total = sum(v["value"] for v in A.values()) * scale or 1
         tick = _cusip_tickers([v["cusip"] for v in sorted(A.values(), key=lambda v: -v["value"])[:60]])
+        by_name = _sec_names()
+        for v in A.values():          # OpenFIGI misses some foreign-domiciled CUSIPs (Chubb's H1467Z104): match the SEC name
+            if not tick.get(v["cusip"]):
+                tick[v["cusip"]] = by_name.get(_issuer_key(v["issuer"]))
         rows = []
         for k, v in sorted(A.items(), key=lambda kv: -kv[1]["value"]):
             p = B.get(k)

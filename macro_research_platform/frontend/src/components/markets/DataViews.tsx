@@ -135,7 +135,8 @@ export function EcoGlobalView() {
                     <td className="text-right font-mono text-text-primary">{e.actual != null ? `${e.actual}${e.unit && e.unit !== '%' ? e.unit : e.unit === '%' ? '%' : ''}` : ''}</td>
                     <td className="text-right font-mono text-text-secondary">{e.forecast ?? ''}</td>
                     <td className="text-right font-mono text-text-tertiary">{e.previous ?? ''}</td>
-                    <td className={cn('text-right px-2 font-mono', e.surprise > 0 ? 'text-green' : e.surprise < 0 ? 'text-red' : '')}>{e.surprise != null ? `${e.surprise > 0 ? '+' : ''}${e.surprise}` : ''}</td>
+                    <td title={INVERSE.test(e.title) ? 'Lower than expected is better news here' : undefined}
+                      className={cn('text-right px-2 font-mono', surpriseTone(e))}>{e.surprise != null ? `${e.surprise > 0 ? '+' : ''}${+Number(e.surprise).toFixed(3)}${e.unit ?? ''}` : ''}</td>
                   </tr>))}
               </Fragment>))}</tbody>
           </table>
@@ -143,6 +144,14 @@ export function EcoGlobalView() {
       {data && <div className="text-[10px] text-text-tertiary">{data.note} Recording since {String(data.recorded_since ?? '').slice(0, 10) || 'today'}. Source: {data.source}.</div>}
     </div>
   );
+}
+
+// Releases where a lower print is the better news (green)
+const INVERSE = /unemploy|jobless|claims/i;
+function surpriseTone(e: any) {
+  if (e.surprise == null || e.surprise === 0) return '';
+  const good = INVERSE.test(e.title) ? e.surprise < 0 : e.surprise > 0;
+  return good ? 'text-green' : 'text-red';
 }
 
 // ── ECST: economic surprise index ───────────────────────────────────────────

@@ -107,12 +107,13 @@ export function WorldMap({ onOpen, onGo }: { onOpen: (s: string) => void; onGo?:
   const color = (v: number | null | undefined) => {
     if (v == null || !Number.isFinite(v)) return 'rgb(var(--c-surface-3))';
     if (layer.diverging) {
-      const a = Math.min(1, Math.abs(v) / scale.hi) * 0.85 + 0.12;
+      // square-root ramp with a visible floor: small moves still read as tinted, not as "no data"
+      const a = 0.25 + 0.72 * Math.sqrt(Math.min(1, Math.abs(v) / scale.hi));
       const good = layer.goodHigh ? v >= 0 : v <= 0;
       return good ? `rgb(var(--c-green) / ${a})` : `rgb(var(--c-red) / ${a})`;
     }
     const t = Math.min(1, Math.max(0, (v - scale.lo) / (scale.hi - scale.lo)));
-    return `rgb(var(--c-bloomberg) / ${0.12 + t * 0.85})`;
+    return `rgb(var(--c-bloomberg) / ${0.2 + t * 0.78})`;
   };
   const ranked = useMemo(() => [...values].sort((a, b) => b[1] - a[1]), [values]);
 

@@ -647,6 +647,26 @@ def to_usd(amount: Optional[float], ccy: Optional[str]) -> Optional[float]:
         return None
 
 
+# Yahoo symbol suffixes of each market's main exchange(s)
+REGION_SUFFIX = {"us": ("",), "ca": ("TO", "V"), "gb": ("L",), "de": ("DE",), "fr": ("PA",), "nl": ("AS",), "ch": ("SW",),
+                 "se": ("ST",), "it": ("MI",), "es": ("MC",), "jp": ("T",), "hk": ("HK",), "cn": ("SS", "SZ"), "kr": ("KS", "KQ"),
+                 "tw": ("TW", "TWO"), "in": ("NS", "BO"), "au": ("AX",), "sg": ("SI",), "br": ("SA",), "mx": ("MX",),
+                 "za": ("JO",), "sa": ("SR",)}
+
+
+def _primary_multi(rows: List[Dict[str, Any]], regs: List[str]) -> List[Dict[str, Any]]:
+    """Primary listings only, for one market or several (e.g. the eurozone): each market's lines
+    are filtered against that market's own home rule, so Nvidia in Milan or Frankfurt drops out."""
+    if len(regs) == 1:
+        return _primary_only(rows, regs[0])
+    out: List[Dict[str, Any]] = []
+    for r in regs:
+        sfx = REGION_SUFFIX.get(r, ())
+        mine = [x for x in rows if str(x["symbol"]).partition(".")[2] in sfx]
+        out += _primary_only(mine, r)
+    return out
+
+
 def _is_secondary_line(symbol: str) -> bool:
     """Lines that list foreign shares: LSE international codes like 0YG8.L, and Brazilian
     depositary receipts (BDRs, codes ending 31–35 such as AAPL34.SA)."""
@@ -702,7 +722,8 @@ def screen(regions: List[str], sector: Optional[str] = None, sort: str = "market
         # which crowd the top of Brazil's and Mexico's lists — still leaves a full page.
         rows: List[Dict[str, Any]] = []
         total, off = None, offset
-        for _ in range(3 if regs != ["us"] else 1):
+        pages = 6 if len(regs) > 1 else 1 if regs == ["us"] else 3      # multi-market: more pages to fill after filtering
+        for _ in range(pages):
             try:
                 res = yf.screen(query, sortField=SORTS.get(sort, "intradaymarketcap"), sortAsc=ascending,
                                 size=min(250, size if regs == ["us"] else 250), offset=off)
@@ -713,13 +734,12 @@ def screen(regions: List[str], sector: Optional[str] = None, sort: str = "market
             total = res.get("total")
             page = _rows(res.get("quotes") or [])
             rows += page
-            kept = _primary_only(rows, regs[0]) if len(regs) == 1 else rows
+            kept = _primary_multi(rows, regs)
             kept = [r for r in kept if not _is_secondary_line(r["symbol"]) and not (sort == "market_cap" and not r.get("market_cap"))]
             off += len(page)
             if len(kept) >= size or len(page) < 250 or (total is not None and off >= total):
                 break
-        if len(regs) == 1:
-            rows = _primary_only(rows, regs[0])
+        rows = _primary_multi(rows, regs)
         rows = [r for r in rows if not _is_secondary_line(r["symbol"])
                 and not (sort == "market_cap" and not r.get("market_cap"))]     # drop warrants/notes with no market value
         col = {"change": "change_pct"}.get(sort, sort)
