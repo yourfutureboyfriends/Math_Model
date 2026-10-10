@@ -123,6 +123,8 @@ def quotes(symbols: List[str]) -> List[Dict[str, Any]]:
                 c = (df[s] if isinstance(df.columns, pd.MultiIndex) else df)["Close"].dropna()
             except Exception:
                 c = pd.Series(dtype=float)
+            if not s.endswith("-USD"):                 # weekend prints (junk on thin FX pairs) — crypto trades 7 days
+                c = c[c.index.dayofweek < 5]
             if len(c) == 0:
                 out.append({"symbol": s, "price": None})
                 continue
@@ -153,6 +155,14 @@ def create_alert(owner: str, symbol: str, kind: str, value: float, note: Optiona
         raise ValueError("Move threshold must be between 0 and 100%.")
     if kind in ("above", "below") and value <= 0:
         raise ValueError("Price level must be positive.")
+    if kind in ("above", "below"):       # a level that's already met would fire on the next check
+        try:
+            px = next((x.get("price") for x in quotes([sym]) if x["symbol"] == sym), None)
+        except Exception:
+            px = None
+        if px is not None and fires(kind, value, px, None):
+            raise ValueError(f"{sym} is already {'at or above' if kind == 'above' else 'at or below'} {value:g} "
+                             f"(last {px:,.4g}) — the alert would fire immediately.")
     with _conn() as c:
         if c.execute("SELECT COUNT(*) FROM mkt_alerts WHERE owner = ? AND active = 1", (owner,)).fetchone()[0] >= MAX_ALERTS:
             raise ValueError(f"At most {MAX_ALERTS} active alerts.")
@@ -268,6 +278,8 @@ def _validate_journal(d: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("status must be open or closed")
     if "exit" in out and out["exit"] is not None and "status" not in out:
         out["status"] = "closed"
+    if out.get("exit") is not None and not d.get("exit_date"):     # closing a trade dates it, unless given
+        out["exit_date"] = datetime.now().strftime("%Y-%m-%d")
     return out
 
 

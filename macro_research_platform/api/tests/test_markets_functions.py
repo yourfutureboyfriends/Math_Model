@@ -145,8 +145,12 @@ def test_watchlists_crud_and_validation(db):
 def test_alert_rules_and_trigger(db, monkeypatch):
     assert usertools.fires("above", 100, 101, None) and not usertools.fires("above", 100, 99, None)
     assert usertools.fires("change_down", 3, None, -0.035) and not usertools.fires("change_down", 3, None, -0.02)
+    monkeypatch.setattr(usertools, "quotes", lambda syms: [{"symbol": "SPY", "price": 490.0, "change_1d": 0.0},
+                                                            {"symbol": "QQQ", "price": 400.0, "change_1d": 0.0}])
     a = usertools.create_alert("ann", "spy", "above", 500)
     usertools.create_alert("ann", "QQQ", "below", 100)
+    with pytest.raises(ValueError, match="already"):                  # a level already met would fire at once
+        usertools.create_alert("ann", "QQQ", "above", 350)
     monkeypatch.setattr(usertools, "quotes", lambda syms: [{"symbol": "SPY", "price": 510.0, "change_1d": 0.01},
                                                             {"symbol": "QQQ", "price": 400.0, "change_1d": 0.0}])
     assert usertools.check_alerts() == {"checked": 2, "triggered": 1}

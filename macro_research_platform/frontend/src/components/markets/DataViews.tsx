@@ -84,7 +84,8 @@ export function SplcView({ symbol, onOpen }: { symbol: string; onOpen: (s: strin
                 <td className="px-2 py-1 text-text-primary">{r.name}</td>
                 <td>{r.ticker ? <button onClick={() => onOpen(r.ticker)} className="font-mono text-bloomberg hover:underline">{r.ticker}</button> : <span className="text-text-tertiary">—</span>}</td>
                 <td className={r.confidence === 'weak' ? 'text-text-tertiary' : 'text-text-secondary'}>
-                  {r.confidence === 'weak' && <span className="mr-1.5 px-1 border border-border text-[9px] uppercase" title="Only a list-style mention — open the filing to confirm">weak</span>}{r.evidence.slice(0, 3).map((e: string) => `“${e}”`).join(', ')}{r.evidence.length > 3 ? ` +${r.evidence.length - 3}` : ''}</td>
+                  {r.confidence && r.confidence !== 'strong' && <span className="mr-1.5 px-1 border border-border text-[9px] uppercase"
+                    title={r.confidence === 'likely' ? 'Named in the same 10-K as its largest customer — open the filing to confirm' : 'Only a list-style mention — open the filing to confirm'}>{r.confidence}</span>}{r.evidence.slice(0, 3).map((e: string) => `“${e}”`).join(', ')}{r.evidence.length > 3 ? ` +${r.evidence.length - 3}` : ''}</td>
                 <td className="text-right font-mono text-text-tertiary">{r.latest_10k}</td>
                 <td className="px-2">{r.filing_url && <a href={r.filing_url} target="_blank" rel="noreferrer noopener" title="Open the filing on SEC.gov" className="text-text-tertiary hover:text-bloomberg"><ExternalLink className="w-3.5 h-3.5" /></a>}</td>
               </tr>))}</tbody>

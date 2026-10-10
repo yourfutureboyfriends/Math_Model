@@ -537,20 +537,24 @@ def _is_cross_listing(row: Dict[str, Any], region: str, fidx: Dict[str, Any]) ->
 def _primary_only(rows: List[Dict[str, Any]], region: str) -> List[Dict[str, Any]]:
     if region == "us":
         return rows
+    import re
     fidx = _foreign_index(region)
-    order = {id(r): i for i, r in enumerate(rows)}          # requested (e.g. market-cap) order
-    if region == "in":       # NSE and BSE list the same companies: prefer the NSE line
-        rows = sorted(rows, key=lambda r: 0 if str(r["symbol"]).endswith(".NS") else 1)
-    seen, out = set(), []
+
+    def rank(r):
+        # One line per company: the NSE line in India, then a line with a market value that isn't a
+        # preferred or second trading line (ENB-PY.TO, NOVNEE.SW), then the most traded.
+        sym = str(r["symbol"])
+        pref = bool(re.search(r"-P[A-Z0-9]*\.|-PR\.|EE\.SW$", sym))
+        return (region == "in" and sym.endswith(".NS"), r.get("market_cap") is not None, not pref,
+                (r.get("price") or 0) * (r.get("volume") or 0))
+    best: Dict[str, Dict[str, Any]] = {}
     for r in rows:
         n = _norm(r.get("name"))
-        if n in seen or _is_cross_listing(r, region, fidx):     # duplicate line, or a foreign company's cross-listing
-            continue
-        seen.add(n)
-        out.append(r)
-    if region == "in":       # restore the requested order
-        out.sort(key=lambda r: order[id(r)])
-    return out
+        if n not in best or rank(r) > rank(best[n]):
+            best[n] = r
+    return [r for r in rows if r.get("name")                     # nameless lines are stray foreign listings (DG.SW)
+            and best.get(_norm(r.get("name"))) is r
+            and not _is_cross_listing(r, region, fidx)]          # a foreign company's cross-listing
 
 
 def _rows(quotes: List[Dict]) -> List[Dict[str, Any]]:
@@ -687,6 +691,56 @@ SECTORS = ["Basic Materials", "Communication Services", "Consumer Cyclical", "Co
            "Financial Services", "Healthcare", "Industrials", "Real Estate", "Technology", "Utilities"]
 
 
+def _screen_supplement(rows: List[Dict[str, Any]], region: str, sector: Optional[str], filters: Dict[str, Any],
+                       fx: float) -> List[Dict[str, Any]]:
+    """Large companies Yahoo's screener leaves out of a market (Allianz in Germany, Reliance and TCS
+    in India, NAB and ANZ in Australia): the global universe's home listings for the market, quoted
+    live and put through the same filters."""
+    try:
+        from api import global_universe as gu
+        u = gu.load(rebuild_if_stale=False)
+        items = u if isinstance(u, list) else (u.get("stocks") or [])
+    except Exception:
+        return []
+    sfx = REGION_SUFFIX.get(region, ())
+    have = {r["symbol"] for r in rows} | {_norm(r.get("name")) for r in rows}
+    floor = min((to_usd(r["market_cap"], r.get("currency")) or 0 for r in rows if r.get("market_cap")), default=0)
+    cands = [i for i in items if str(i.get("symbol", "")).partition(".")[2] in sfx and i["symbol"] not in have
+             and _norm(i.get("name")) not in have and (i.get("mcap_usd") or 0) > max(floor, 2e9)]
+    cands = sorted(cands, key=lambda i: -(i.get("mcap_usd") or 0))[:12]
+    if not cands:
+        return []
+
+    def one(sym):
+        try:
+            i = _info(sym)
+        except Exception:
+            return None
+        if not i.get("regularMarketPrice") or not i.get("marketCap"):
+            return None
+        q = {**i, "symbol": sym}
+        q["dividendYield"] = i.get("dividendYield")
+        return _rows([q])[0] | {"sector": i.get("sector")}
+    import concurrent.futures as cf
+    with cf.ThreadPoolExecutor(6) as ex:
+        got = [r for r in ex.map(one, [c["symbol"] for c in cands]) if r]
+    f = {k: v for k, v in filters.items() if v is not None}
+
+    def ok(r):
+        mc = r.get("market_cap") or 0
+        pe, dy, ch, px = r.get("pe"), r.get("dividend_yield"), r.get("change_pct"), r.get("price")
+        return ((not sector or r.get("sector") == sector)
+                and ("market_cap_min" not in f or mc > f["market_cap_min"] * fx)
+                and ("market_cap_max" not in f or mc < f["market_cap_max"] * fx)
+                and ("pe_max" not in f or (pe is not None and pe < f["pe_max"]))
+                and ("pe_min" not in f or (pe is not None and pe > f["pe_min"]))
+                and ("dividend_yield_min" not in f or (dy is not None and dy * 100 > f["dividend_yield_min"]))
+                and ("change_pct_min" not in f or (ch is not None and ch * 100 > f["change_pct_min"]))
+                and ("change_pct_max" not in f or (ch is not None and ch * 100 < f["change_pct_max"]))
+                and ("price_min" not in f or (px is not None and px > f["price_min"])))
+    return [r for r in got if ok(r)]
+
+
 def screen(regions: List[str], sector: Optional[str] = None, sort: str = "market_cap", ascending: bool = False,
            size: int = 50, offset: int = 0, **filters) -> Dict[str, Any]:
     """Yahoo's global equity screener. Filters use percent for dividend yield and change."""
@@ -742,6 +796,8 @@ def screen(regions: List[str], sector: Optional[str] = None, sort: str = "market
         rows = _primary_multi(rows, regs)
         rows = [r for r in rows if not _is_secondary_line(r["symbol"])
                 and not (sort == "market_cap" and not r.get("market_cap"))]     # drop warrants/notes with no market value
+        if len(regs) == 1 and offset == 0:
+            rows = rows + _screen_supplement(rows, regs[0], sector, filters, fx)
         col = {"change": "change_pct"}.get(sort, sort)
         if col in ("market_cap", "change_pct", "volume", "pe", "dividend_yield"):    # Yahoo ranks on a lagging snapshot
             has = [r for r in rows if r.get(col) is not None]

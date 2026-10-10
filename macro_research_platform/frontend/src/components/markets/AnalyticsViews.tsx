@@ -332,7 +332,8 @@ export function OsaView({ symbol }: { symbol: string }) {
             <line x1={pad} x2={W - pad} y1={sy(0)} y2={sy(0)} stroke="rgb(var(--c-border-strong))" />
             <line x1={sx(S)} x2={sx(S)} y1={pad / 2} y2={H - pad} stroke="rgb(var(--c-bloomberg))" strokeDasharray="3 3" />
             <text x={sx(S) + 4} y={pad / 2 + 8} fontSize="10" fill="rgb(var(--c-bloomberg))">spot {fmtPrice(S)}</text>
-            {breakevens.map((b) => <g key={b}><line x1={sx(b)} x2={sx(b)} y1={sy(0) - 5} y2={sy(0) + 5} stroke="rgb(var(--c-text-secondary))" /><text x={sx(b)} y={sy(0) + 16} fontSize="9" textAnchor="middle" fill="rgb(var(--c-text-secondary))">{fmtPrice(b)}</text></g>)}
+            {breakevens.map((b) => <g key={b}><line x1={sx(b)} x2={sx(b)} y1={sy(0) - 5} y2={sy(0) + 5} stroke="rgb(var(--c-text-secondary))" /><text x={sx(b)} y={sy(0) - 9} fontSize="9" textAnchor="middle" fill="rgb(var(--c-text-primary))"
+                style={{ paintOrder: 'stroke', stroke: 'rgb(var(--c-bg))', strokeWidth: 3 }}>BE {fmtPrice(b)}</text></g>)}
             <path d={path(now)} fill="none" stroke="rgb(var(--c-blue))" strokeWidth={1.5} strokeDasharray="4 3" />
             <path d={path(pay)} fill="none" stroke="rgb(var(--c-text-primary))" strokeWidth={2} />
             {[0, 0.25, 0.5, 0.75, 1].map((f) => { const x = lo + (hi - lo) * f; return <text key={f} x={sx(x)} y={H - pad + 14} fontSize="9" textAnchor="middle" fill="rgb(var(--c-text-tertiary))">{fmtPrice(x)}</text>; })}

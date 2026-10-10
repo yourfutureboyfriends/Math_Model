@@ -146,10 +146,11 @@ def calendar(days_back: int = 7, countries: Optional[List[str]] = None, min_impa
     _snapshot()
     rank = {"Holiday": -1, "Non-Economic": -1, "Low": 0, "Medium": 1, "High": 2}
     cutoff = (datetime.utcnow() - timedelta(days=days_back)).date().isoformat()
-    rows = []
+    from api.marketdata import econ_actuals
+    rows, found = [], {}
     with _lock:
         store = _load()
-    for rec in store.values():
+    for key, rec in store.items():
         d = str(rec.get("date"))[:10]
         if d < cutoff or rank.get(rec.get("impact"), 0) < rank.get(min_impact, 0):
             continue
@@ -163,6 +164,10 @@ def calendar(days_back: int = 7, countries: Optional[List[str]] = None, min_impa
             except Exception as e:
                 logger.debug("[eco] actual %s: %s", rec.get("title"), e)
                 a = None
+            if not a:              # Canada / UK / central banks / UMich — kept once found (later revisions don't rewrite it)
+                a = rec.get("actual_found") or econ_actuals.actual_for(rec)
+                if a and not rec.get("actual_found"):
+                    found[key] = a
             if a:
                 r.update(a)
                 f = _num(rec.get("forecast"))
@@ -170,11 +175,19 @@ def calendar(days_back: int = 7, countries: Optional[List[str]] = None, min_impa
             elif rec.get("actual_feed"):
                 r["actual"] = _num(rec["actual_feed"])
         rows.append(r)
+    if found:
+        with _lock:
+            st = _load()
+            for k, a in found.items():
+                if k in st:
+                    st[k]["actual_found"] = a
+            _save(st)
     rows.sort(key=lambda x: str(x["date"]))
     return {"events": rows, "countries": sorted({r["country"] for r in rows if r.get("country")}),
             "recorded_since": min((v.get("first_seen", "") for v in store.values()), default=None),
             "note": "Consensus forecasts come from a weekly feed and are recorded from the day this terminal first saw "
-                    "them; US actuals are the figures as first published (ALFRED). Other countries: forecast and previous.",
+                    "them; actuals as first published — US from ALFRED, Canada from Statistics Canada, UK from the ONS and "
+                    "Bank of England, sentiment from the University of Michigan. ISM surveys and other countries: forecast and previous.",
             "source": "Forex Factory calendar feed; ALFRED (St. Louis Fed)"}
 
 

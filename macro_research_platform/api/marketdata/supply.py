@@ -37,6 +37,37 @@ COMPETITOR = ['"compete with {x}"', '"competitors include {x}"', '"competitors s
               '"competing with {x}"', '"competitors, {x}"']
 
 
+RANK = {"strong": 0, "likely": 1, "weak": 2}
+# Co-mentions in the same 10-K: the legal name together with customer-concentration wording
+LIKELY = ['"{x}" "largest customer"', '"{x}" "largest end customer"']
+STRONG = ['"sales to {x}"', '"{x} accounted for"', '"{x} represented"', '"revenue from {x}"', '"revenues from {x}"', '"net sales to {x}"']
+
+
+def _legal_names(symbol: str) -> List[str]:
+    raw = (_info(symbol).get("longName") or "").strip()
+    if not raw or not SUFFIX.search(raw):
+        return []
+    return list(dict.fromkeys([raw, raw.rstrip(".")]))
+
+
+def _merge(a: List[Dict[str, Any]], b: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Combine two evidence lists by company, re-grading and re-ranking."""
+    by = {r["cik"]: dict(r) for r in a}
+    for r in b:
+        if r["cik"] in by:
+            x = by[r["cik"]]
+            x["evidence"] = sorted(set(x["evidence"]) | set(r["evidence"]))
+            x["strength"] = len(x["evidence"])
+            x["confidence"] = min((x["confidence"], r["confidence"]), key=RANK.get)
+            x["latest_10k"] = max(x["latest_10k"], r["latest_10k"])
+        else:
+            by[r["cik"]] = dict(r)
+    rows = sorted(by.values(), key=lambda r: r["latest_10k"], reverse=True)
+    rows.sort(key=lambda r: -r["strength"])
+    rows.sort(key=lambda r: RANK[r["confidence"]])
+    return rows
+
+
 def _names(symbol: str) -> List[str]:
     i = _info(symbol)
     raw = (i.get("longName") or i.get("shortName") or symbol).strip()
@@ -86,13 +117,14 @@ def _collect(names: List[str], templates: List[str], self_cik: str) -> List[Dict
         link = (f"https://www.sec.gov/Archives/edgar/data/{int(f['cik'])}/{adsh.replace('-', '')}/" if adsh else None)
         # List-style phrases ("customers, Apple") also match "customers, Apple Pay"; revenue
         # disclosures ("Apple accounted for", "sales to Apple") are the reliable evidence.
-        strong = any(not re.match(r"customers?,|customers includ", ph) for ph in f["phrases"])
+        grades = ["likely" if '" "' in ph else "weak" if re.match(r"customers?,|customers includ", ph) else "strong" for ph in f["phrases"]]
+        conf = "strong" if "strong" in grades else "likely" if "likely" in grades else "weak"
         rows.append({"name": f["name"], "ticker": f["ticker"], "cik": f["cik"], "evidence": sorted(f["phrases"]),
-                     "strength": len(f["phrases"]), "confidence": "strong" if strong else "weak",
+                     "strength": len(f["phrases"]), "confidence": conf,
                      "latest_10k": f["latest"], "filing_url": link})
     rows.sort(key=lambda r: r["latest_10k"], reverse=True)       # newest first …
     rows.sort(key=lambda r: -r["strength"])                       # … within the strongest evidence first …
-    rows.sort(key=lambda r: r["confidence"] != "strong")          # … and revenue disclosures before name lists
+    rows.sort(key=lambda r: RANK[r["confidence"]])                # … revenue disclosures, then co-mentions, then name lists
     return rows
 
 
@@ -103,13 +135,15 @@ def supply_chain(symbol: str) -> Dict[str, Any]:
         names = _names(s)
         try:
             from api.providers import sec_edgar
-            self_cik = str(sec_edgar.resolve(s) or "")
+            self_cik = str((sec_edgar.resolve(s) or {}).get("cik") or "")
         except Exception:
             self_cik = ""
         def not_self(r):        # a company's own 10-K naturally mentions itself
             n = r["name"].lower()
             return not (any(x.lower() in n for x in names) or (r["ticker"] and r["ticker"][:4] == s.split(".")[0][:4]))
-        suppliers = [r for r in _collect(names, CUSTOMER, self_cik) if not_self(r)]
+        # Revenue disclosures usually use the legal name ("Apple Inc. accounted for 87%"): search those too
+        legal = [n for n in _legal_names(s) if n not in names]
+        suppliers = [r for r in _merge(_collect(names, CUSTOMER, self_cik), _collect(legal, STRONG + LIKELY, self_cik)) if not_self(r)]
         competitors = [r for r in _collect(names, COMPETITOR, self_cik) if not_self(r)]
         if not suppliers and not competitors:
             raise NotFound(f"No SEC filings name {names[0]} as a customer or competitor in the last two years "

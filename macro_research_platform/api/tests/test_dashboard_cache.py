@@ -34,7 +34,7 @@ def env(tmp_path, monkeypatch):
 
     async def build(mode="live"):
         calls.append(mode)
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(1.0)      # a slow rebuild: callers must not wait for it
         return FakeDash(f"fresh{len(calls)}")
 
     monkeypatch.setattr(dh, "_SNAPSHOT_DIR", tmp_path)
@@ -56,7 +56,7 @@ def test_cold_start_serves_disk_snapshot_then_refreshes(env):
         dh._save_snapshot("live", time.time() - 300, FakeDash("disk"))
         t0 = time.perf_counter()
         d = await dh.get_dashboard_data("live")
-        assert time.perf_counter() - t0 < 0.1
+        assert time.perf_counter() - t0 < 0.5         # well under the 1 s rebuild, with slack for a busy machine
         assert d.tag == "disk" and d.metadata.dataStatus == "stale" and "snapshot" in d.metadata.validationWarnings
         await _settle()
         assert (await dh.get_dashboard_data("live")).tag == "fresh1"
@@ -69,7 +69,7 @@ def test_expired_cache_served_instantly_with_single_refresh(env):
         dh._DASHBOARD_CACHE["live"] = (time.time() - 120, FakeDash("old"))
         t0 = time.perf_counter()
         out = await asyncio.gather(*(dh.get_dashboard_data("live") for _ in range(5)))
-        assert time.perf_counter() - t0 < 0.1
+        assert time.perf_counter() - t0 < 0.5         # well under the 1 s rebuild, with slack for a busy machine
         assert {d.tag for d in out} == {"old"}
         await _settle()
         assert env == ["live"], "concurrent requests must trigger one rebuild"

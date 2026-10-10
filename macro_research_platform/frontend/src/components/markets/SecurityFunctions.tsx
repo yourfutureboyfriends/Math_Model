@@ -25,20 +25,23 @@ function Bars({ data, height = 140, fmt = (v: number) => v.toFixed(2) }: { data:
   if (!vals.length) return <div className="text-2xs text-text-tertiary">No data.</div>;
   const max = Math.max(0, ...vals), min = Math.min(0, ...vals);
   const span = max - min || 1;
-  const y = (v: number) => ((max - v) / span) * (height - 18);
+  const y = (v: number) => ((max - v) / span) * height;
   const w = 100 / data.length;
+  // bars in a stretched SVG; labels in HTML so they aren't distorted by the stretch
   return (
-    <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" className="w-full" style={{ height }} role="img" aria-label="Bar chart">
-      <line x1="0" x2="100" y1={y(0)} y2={y(0)} stroke="var(--border)" strokeWidth="0.3" />
-      {data.map((d, i) => (
-        <g key={d.label}>
-          {d.b != null && <rect x={i * w + w * 0.15} width={w * 0.32} y={Math.min(y(d.b), y(0))} height={Math.abs(y(d.b) - y(0))} fill="var(--text-tertiary)" opacity="0.5"><title>{`${d.label} estimate ${fmt(d.b)}`}</title></rect>}
-          {d.a != null && <rect x={i * w + (d.b != null ? w * 0.5 : w * 0.25)} width={w * (d.b != null ? 0.32 : 0.5)} y={Math.min(y(d.a), y(0))} height={Math.abs(y(d.a) - y(0))}
-            fill={d.b != null ? (d.a >= d.b ? 'rgb(var(--c-green))' : 'rgb(var(--c-red))') : 'rgb(var(--c-bloomberg))'}><title>{`${d.label} ${fmt(d.a)}`}</title></rect>}
-          <text x={i * w + w / 2} y={height - 4} fontSize="3.2" textAnchor="middle" fill="var(--text-tertiary)">{d.label}</text>
-        </g>
-      ))}
-    </svg>
+    <div>
+      <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" className="w-full block" style={{ height }} role="img" aria-label="Bar chart">
+        <line x1="0" x2="100" y1={y(0)} y2={y(0)} stroke="rgb(var(--c-border))" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+        {data.map((d, i) => (
+          <g key={d.label + i}>
+            {d.b != null && <rect x={i * w + w * 0.15} width={w * 0.32} y={Math.min(y(d.b), y(0))} height={Math.max(0.5, Math.abs(y(d.b) - y(0)))} fill="rgb(var(--c-text-tertiary))" opacity="0.5"><title>{`${d.label} estimate ${fmt(d.b)}`}</title></rect>}
+            {d.a != null && <rect x={i * w + (d.b != null ? w * 0.5 : w * 0.25)} width={w * (d.b != null ? 0.32 : 0.5)} y={Math.min(y(d.a), y(0))} height={Math.max(0.5, Math.abs(y(d.a) - y(0)))}
+              fill={d.b != null ? (d.a >= d.b ? 'rgb(var(--c-green))' : 'rgb(var(--c-red))') : 'rgb(var(--c-bloomberg))'}><title>{`${d.label} ${fmt(d.a)}`}</title></rect>}
+          </g>
+        ))}
+      </svg>
+      <div className="flex mt-1">{data.map((d, i) => <div key={d.label + i} className="flex-1 text-center text-[10px] text-text-tertiary font-mono truncate" title={d.a != null ? `${d.label}: ${fmt(d.a)}` : d.label}>{d.label}</div>)}</div>
+    </div>
   );
 }
 
