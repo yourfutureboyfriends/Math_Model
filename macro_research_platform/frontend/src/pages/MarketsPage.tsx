@@ -9,6 +9,7 @@ import { CommandLine } from '@/components/markets/CommandLine';
 import { FUNCTIONS, MARKET_FUNCTIONS, SECURITY_FUNCTIONS, findFunction, type MktFunction } from '@/components/markets/functions';
 import { FunctionMenu, HelpPanel, KeyBar, NewsCrawl, TitleBar, UpDownToggle, WorkspaceTabs, useHelp } from '@/components/markets/Chrome';
 import { QuoteWorkstation, WatchColumn } from '@/components/markets/QuoteWorkstation';
+import { CorrView, FrdView, OsaView, RrgView, SeasView } from '@/components/markets/AnalyticsViews';
 import { MonitorHome } from '@/components/markets/Monitor';
 import { toTerminal } from '@/components/markets/bbg';
 import { setMarketsSkin, useMarketsSkin } from '@/lib/theme';
@@ -189,6 +190,8 @@ function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: 
         {f.code === 'BETA' && <BetaView symbol={symbol} />}
         {f.code === 'DCF' && <DcfView symbol={symbol} />}
         {f.code === 'CN' && <News symbol={symbol} />}
+        {f.code === 'SEAS' && <SeasView symbol={symbol} />}
+        {f.code === 'OSA' && <OsaView symbol={symbol} />}
         </>}
       </ErrorBoundary>
     </div>
@@ -231,6 +234,9 @@ export function MarketsPage() {
             {f.code === 'CRYPTO' && <CryptoView onOpen={open} />}
             {f.code === 'CMDTY' && <CmdtyView onOpen={open} />}
             {f.code === 'COMP' && <CompView seed={route.symbol} />}
+            {f.code === 'CORR' && <CorrView seed={route.symbol} />}
+            {f.code === 'RRG' && <RrgView onOpen={open} />}
+            {f.code === 'FRD' && <FrdView />}
             {f.code === 'GC' && <GcView />}
             {f.code === 'BTMM' && <BtmmView />}
             {f.code === 'WCRS' && <WcrsView onOpen={open} />}

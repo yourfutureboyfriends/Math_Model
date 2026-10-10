@@ -179,7 +179,53 @@ async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le
                       "industry betas, country risk). Sources: Damodaran (NYU Stern); Koller, Goedhart & Wessels, Valuation (McKinsey)."}
 
 
+@router.get("/api/v1/mkt/dcf/{symbol}/xlsx")
+async def mkt_dcf_excel(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le=2.0), years: int = Query(10, ge=3, le=30),
+                        terminal_growth: Optional[float] = Query(None, ge=-0.05, le=0.15), target_margin: Optional[float] = Query(None, ge=-1.0, le=0.9),
+                        sales_to_capital: Optional[float] = Query(None, gt=0, le=20), ronic: Optional[float] = Query(None, gt=0, le=2.0),
+                        discount: Optional[float] = Query(None, gt=0, lt=0.4), beta: Optional[float] = Query(None, ge=-1, le=5),
+                        erp: Optional[float] = Query(None, ge=0, le=0.15), include_leases: bool = False, mid_year: bool = True):
+    """The FCFF model as an Excel workbook with live formulas (edit the inputs in Excel)."""
+    from fastapi.responses import Response
+    from api.marketdata import dcf, dcf_excel
+    inp = await _run(dcf.inputs, symbol, timeout=60)
+    if inp.get("is_financial"):
+        raise HTTPException(404, "Excel export covers the FCFF model; banks and insurers use the excess-return model on screen.")
+    val = await _run(dcf.value, inp, growth=growth, years=years, terminal_growth=terminal_growth, target_margin=target_margin,
+                     sales_to_capital=sales_to_capital, ronic=ronic, discount=discount, beta=beta, erp=erp,
+                     include_leases=include_leases, mid_year=mid_year)
+    data, _ = await asyncio.to_thread(dcf_excel.build, inp, val)
+    name = f"DCF_{inp['symbol'].replace('^', '').replace('=', '')}.xlsx"
+    return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
 # ── Global monitors ──────────────────────────────────────────────────────────
+@router.get("/api/v1/mkt/seas/{symbol}")
+async def mkt_seasonality(symbol: str, years: int = Query(15, ge=3, le=40)):
+    from api.marketdata import analytics
+    return await _run(analytics.seasonality, symbol, years)
+
+
+@router.get("/api/v1/mkt/corr")
+async def mkt_correlation(symbols: str, period: str = Query("1y", pattern="^(3mo|6mo|1y|2y|5y|10y)$"),
+                          freq: str = Query("daily", pattern="^(daily|weekly)$")):
+    from api.marketdata import analytics
+    return await _run(analytics.correlation, symbols.split(","), period, freq, timeout=90)
+
+
+@router.get("/api/v1/mkt/rrg")
+async def mkt_rrg(universe: str = "us_sectors", tail: int = Query(8, ge=2, le=26), benchmark: Optional[str] = None):
+    from api.marketdata import analytics
+    return await _run(analytics.rrg, universe, tail, benchmark, timeout=90)
+
+
+@router.get("/api/v1/mkt/frd")
+async def mkt_fx_forwards(base: str = Query("EUR", pattern="^[A-Za-z]{3}$"), quote: str = Query("USD", pattern="^[A-Za-z]{3}$")):
+    from api.marketdata import analytics
+    return await _run(analytics.fx_forwards, base, quote)
+
+
 @router.get("/api/v1/mkt/fund/{symbol}")
 async def mkt_fund(symbol: str):
     """ETF / mutual fund: top holdings, sector weights, asset mix, expense ratio, assets."""

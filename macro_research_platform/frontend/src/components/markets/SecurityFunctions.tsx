@@ -539,6 +539,9 @@ export function DcfView({ symbol }: { symbol: string }) {
           {!isFin && <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={leases} onChange={(e) => setLeases(e.target.checked)} />Treat operating leases as debt</label>}
           {!isFin && <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={midYear} onChange={(e) => setMidYear(e.target.checked)} />Mid-year discounting</label>}
           <button onClick={() => { const u = build(); if (u) setUrl(u); }} className="px-4 py-1.5 text-xs bg-bloomberg text-text-inverse">Recalculate</button>
+          {!isFin && <a href={url.replace(/^(\/api\/v1\/mkt\/dcf\/[^?]+)/, '$1/xlsx')} download
+            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs border border-border hover:border-bloomberg hover:text-bloomberg"
+            title="The model with live formulas — change any input in Excel and the value updates"><Download className="w-3.5 h-3.5" />Excel model</a>}
           <button onClick={() => { setForm({}); setLeases(false); setMidYear(true); setFormErr(null); setUrl(`/api/v1/mkt/dcf/${enc(symbol)}`); }} className="text-text-tertiary hover:text-text-primary">Reset to defaults</button>
         </div>
       </Panel>
