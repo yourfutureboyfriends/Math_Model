@@ -75,7 +75,7 @@ export function RegionMonitor({ onOpen, onGo }: { onOpen: (s: string) => void; o
                 <td className="text-right text-text-tertiary">{c.gdp_usd_bn != null ? Math.round(c.gdp_usd_bn).toLocaleString() : ''}</td></tr>))}</tbody>
           </table>
         </div>
-        <div className="text-[10px] text-text-tertiary mt-1">Index: local currency (US-listed MSCI ETF in $ where no local index is available). Inflation, GDP growth and debt: IMF {data?.year} estimates. 10Y: OECD (monthly) / US live. Click a country for its page.</div>
+        <div className="text-[10px] text-text-tertiary mt-1">Index: local currency (US-listed MSCI ETF in $ where no local index is available). Inflation, GDP growth and debt: IMF {data?.year} estimates. 10Y: issuers' daily data for the US, Germany, UK, Japan, Canada and Australia; OECD monthly averages elsewhere. Click a country for its page.</div>
       </Panel>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
         <Panel title="Most active" right={<span className="flex gap-1">{REGION_MARKETS[region].map((m) => (

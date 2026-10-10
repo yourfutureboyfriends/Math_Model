@@ -356,6 +356,14 @@ REGIONAL_FEEDS = {
 }
 
 
+def _plain(html: Optional[str]) -> str:
+    """Feed text as plain text: some outlets put HTML (paragraphs, links, entities) in summaries."""
+    import html as _h
+    import re
+    t = re.sub(r"<[^>]+>", " ", html or "")
+    return re.sub(r"\s+", " ", _h.unescape(t)).strip()
+
+
 def _articles(provider_feeds: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
     from api.providers.news_provider import NewsProvider
     from api.calculations.news_sentiment import score_headline
@@ -368,8 +376,9 @@ def _articles(provider_feeds: Optional[Dict[str, str]] = None) -> List[Dict[str,
         return []
     out = []
     for a in res.articles or []:
-        text = f"{a.title or ''} {a.summary or ''}"
-        out.append({"title": a.title, "source": a.source, "url": a.url, "summary": (a.summary or "")[:280],
+        summary, title = _plain(a.summary), _plain(a.title)
+        text = f"{title} {summary}"
+        out.append({"title": title, "source": a.source, "url": a.url, "summary": summary[:280],
                     "time": a.published.replace(tzinfo=timezone.utc).isoformat() if a.published else None,
                     "sentiment": score_headline(a.title or ""), "countries": countries_in(text)})
     return out

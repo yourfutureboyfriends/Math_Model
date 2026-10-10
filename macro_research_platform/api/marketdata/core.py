@@ -494,10 +494,24 @@ def news(symbol: str) -> Dict[str, Any]:
         except Exception:
             name = s
         try:
-            raw = yf.Search(name, max_results=1, news_count=15).news or []
+            # several queries — the full name retrieves poorly ("NVIDIA Corporation", "SAP SE"):
+            # the distinctive name word, the name, and the ticker; merged and de-duplicated
+            first = next((w for w in _norm(name).split() if len(w) >= 3), None)
+            queries = list(dict.fromkeys(q for q in (first, name, s.split(".")[0] if "." in s else s) if q))
+            raw, seen_t = [], set()
+            for q in queries:
+                try:
+                    for n in yf.Search(q, max_results=1, news_count=15).news or []:
+                        t0 = ((n.get("content") or n).get("title") or "").strip().lower()
+                        if t0 and t0 not in seen_t:
+                            seen_t.add(t0)
+                            raw.append(n)
+                except Exception:
+                    continue
             if not raw:
                 raw = yf.Ticker(s).news or []
-            for n in raw[:20]:
+            raw = _extra_company_news(s, first or name) + raw          # company-specific sources first
+            for n in raw[:60]:
                 c = n.get("content") or n
                 url = ((c.get("canonicalUrl") or {}).get("url") or (c.get("clickThroughUrl") or {}).get("url")
                        or c.get("link"))
@@ -508,12 +522,59 @@ def news(symbol: str) -> Dict[str, Any]:
                               "time": t, "url": url, "summary": c.get("summary")})
         except Exception as e:
             logger.info("[markets] news unavailable for %s: %s", s, e)
-        return [i for i in items if i["title"]]
+        items = [i for i in items if i["title"]]
+        # Yahoo's name search mixes in general market stories: keep the ones about this company
+        # (its name's distinctive words or its ticker); fall back to all if too few match
+        import re
+        words = [w for w in _norm(name).split() if len(w) >= 3][:1]       # the distinctive first word ("toyota", not "motor")
+        base = s.split(".")[0].split("=")[0].lstrip("^")
+        pats = [re.compile(rf"\b{re.escape(w)}", re.I) for w in words] + ([re.compile(rf"\b{re.escape(base)}\b")] if len(base) >= 2 else [])
+        about = [i for i in items if any(p.search(f"{i['title']} {i.get('summary') or ''}") for p in pats)]
+        is_stock = (_info(s).get("quoteType") or "").upper() == "EQUITY"
+        keep = about if (about and is_stock) or len(about) >= 4 else items
+        return sorted(keep, key=lambda i: str(i.get("time") or ""), reverse=True)[:20]
     out = {"symbol": s, "news": _cached(f"news:{s}", 900, fetch), "filings": []}
     try:
         out["filings"] = sec_filings(s)
     except Exception as e:
         logger.info("[markets] filings unavailable for %s: %s", s, e)
+    return out
+
+
+def _extra_company_news(symbol: str, word: str) -> List[Dict[str, Any]]:
+    """Company news beyond Yahoo's (often generic) search: Finnhub's company feed for US listings
+    (free key) and Google News' RSS search by company name — in Yahoo's item shape."""
+    import os
+    import re
+    import requests
+    from email.utils import parsedate_to_datetime
+    out: List[Dict[str, Any]] = []
+    key = os.getenv("FINNHUB_API_KEY") or ""
+    if key and "." not in symbol and "=" not in symbol and not symbol.startswith("^"):
+        try:
+            today = time.strftime("%Y-%m-%d")
+            frm = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 14 * 86400))
+            r = requests.get("https://finnhub.io/api/v1/company-news", params={"symbol": symbol, "from": frm, "to": today, "token": key}, timeout=10)
+            for x in (r.json() if r.status_code == 200 else [])[:25]:
+                out.append({"title": x.get("headline"), "publisher": x.get("source"), "summary": x.get("summary"), "link": x.get("url"),
+                            "providerPublishTime": x.get("datetime")})
+        except Exception as e:
+            logger.debug("[news] finnhub %s: %s", symbol, e)
+    if word:
+        try:
+            r = requests.get("https://news.google.com/rss/search", params={"q": f'"{word}" stock OR shares OR earnings', "hl": "en-US", "gl": "US", "ceid": "US:en"},
+                             headers={"User-Agent": "Mozilla/5.0 (MacroTerminal research)"}, timeout=10)
+            for title, link, pub, src in re.findall(r"<item><title>(.*?)</title><link>(.*?)</link>.*?<pubDate>(.*?)</pubDate>.*?<source[^>]*>(.*?)</source>", r.text, re.S)[:20]:
+                import html as _h
+                t = _h.unescape(title)
+                t = re.sub(r"\s+-\s+[^-]+$", "", t)                      # Google appends " - Publisher"
+                try:
+                    ts = int(parsedate_to_datetime(pub).timestamp())
+                except Exception:
+                    ts = None
+                out.append({"title": t, "publisher": _h.unescape(src), "link": link, "providerPublishTime": ts, "summary": None})
+        except Exception as e:
+            logger.debug("[news] google %s: %s", word, e)
     return out
 
 

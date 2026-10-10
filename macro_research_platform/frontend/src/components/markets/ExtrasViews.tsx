@@ -196,9 +196,33 @@ export function IpoView({ onOpen }: { onOpen: (s: string) => void }) {
 }
 
 // ── WETR ────────────────────────────────────────────────────────────────────
+/** Daily degree days: heating above the axis, cooling below, each with its 10-year normal as a tick. */
+function DegreeDays({ days }: { days: any[] }) {
+  const W = 760, H = 200, L = 30, R = 8, mid = H / 2, lab = 14;
+  const max = Math.max(...days.flatMap((x) => [x.hdd, x.cdd, x.hdd_normal, x.cdd_normal]), 1);
+  const slot = (W - L - R) / days.length, bw = Math.max(4, slot * 0.6);
+  const h = (v: number) => (v / max) * (mid - lab);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 240 }} role="img" aria-label="Daily heating and cooling degree days vs normal">
+      <line x1={L} x2={W - R} y1={mid} y2={mid} stroke="var(--border)" />
+      <text x={L - 4} y={lab} fontSize="9" textAnchor="end" fill="var(--text-tertiary)">{max.toFixed(0)}</text>
+      <text x={L - 4} y={H - 4} fontSize="9" textAnchor="end" fill="var(--text-tertiary)">{max.toFixed(0)}</text>
+      {days.map((x, i) => { const cx = L + slot * (i + 0.5); return (
+        <g key={x.date}><title>{`${x.date}: HDD ${x.hdd.toFixed(1)} (normal ${x.hdd_normal.toFixed(1)}) · CDD ${x.cdd.toFixed(1)} (normal ${x.cdd_normal.toFixed(1)})`}</title>
+          <rect x={cx - bw / 2} y={mid - h(x.hdd)} width={bw} height={h(x.hdd)} fill="rgb(var(--c-blue))" opacity={0.8} />
+          <rect x={cx - bw / 2} y={mid} width={bw} height={h(x.cdd)} fill="rgb(var(--c-red))" opacity={0.8} />
+          <line x1={cx - bw / 2 - 2} x2={cx + bw / 2 + 2} y1={mid - h(x.hdd_normal)} y2={mid - h(x.hdd_normal)} stroke="var(--text-primary)" strokeWidth={1.5} />
+          <line x1={cx - bw / 2 - 2} x2={cx + bw / 2 + 2} y1={mid + h(x.cdd_normal)} y2={mid + h(x.cdd_normal)} stroke="var(--text-primary)" strokeWidth={1.5} />
+          {i % 2 === 0 && <text x={cx} y={mid - 3 - Math.max(h(x.hdd), h(x.hdd_normal)) - 2} fontSize="8" textAnchor="middle" fill="var(--text-tertiary)">{x.date.slice(5)}</text>}
+        </g>); })}
+      <text x={W - R} y={lab} fontSize="9" textAnchor="end" fill="rgb(var(--c-blue))">heating ▲</text>
+      <text x={W - R} y={H - 4} fontSize="9" textAnchor="end" fill="rgb(var(--c-red))">cooling ▼</text>
+    </svg>
+  );
+}
+
 export function WetrView() {
   return <Frame<any> url="/api/v1/mkt/wetr" label="Building degree days vs 10-year normals…">{(d) => {
-    const max = Math.max(...d.days.flatMap((x: any) => [x.hdd, x.cdd, x.hdd_normal, x.cdd_normal]), 1);
     const t = d.totals;
     return (
       <div className="space-y-3">
@@ -208,13 +232,8 @@ export function WetrView() {
           <div className="md:col-span-2 border border-border bg-surface-1 px-3 py-2 text-xs text-text-primary flex items-center">{d.signal}</div>
         </div>
         <Panel title="Daily degree days vs normal (population-weighted, 12 US metros)">
-          <div className="flex items-end gap-1 h-40">{d.days.map((x: any) => (
-            <div key={x.date} className="flex-1 flex flex-col justify-end items-center gap-px" title={`${x.date}: HDD ${x.hdd.toFixed(1)} (normal ${x.hdd_normal.toFixed(1)}), CDD ${x.cdd.toFixed(1)} (normal ${x.cdd_normal.toFixed(1)})`}>
-              <div className="w-full flex items-end gap-px justify-center h-full">
-                <div className="w-1/3 bg-blue/80" style={{ height: `${(x.hdd / max) * 100}%` }} /><div className="w-1/3 bg-red/80" style={{ height: `${(x.cdd / max) * 100}%` }} />
-                <div className="w-1/6 bg-text-tertiary/50" style={{ height: `${(Math.max(x.hdd_normal, x.cdd_normal) / max) * 100}%` }} /></div>
-              <div className="text-[9px] text-text-tertiary">{x.date.slice(8)}</div></div>))}</div>
-          <div className="text-[10px] text-text-tertiary mt-1"><span className="text-blue">■</span> heating · <span className="text-red">■</span> cooling · <span className="text-text-tertiary">■</span> normal</div>
+          <DegreeDays days={d.days} />
+          <div className="text-[10px] text-text-tertiary mt-1"><span className="text-blue">■</span> heating (up) · <span className="text-red">■</span> cooling (down) · <span className="text-text-primary">—</span> 10-year normal for that day</div>
         </Panel>
         <div className="border border-border overflow-x-auto">
           <table className="w-full text-[11px] font-mono"><thead><tr className="text-text-tertiary"><th className="text-left px-2 font-normal">City (°F, daily mean)</th>{d.days.map((x: any) => <th key={x.date} className="font-normal px-1">{x.date.slice(5)}</th>)}</tr></thead>

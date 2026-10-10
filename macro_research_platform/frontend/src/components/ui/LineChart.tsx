@@ -85,13 +85,14 @@ const RANGES: { key: string; label: string; days: number }[] = [
 const isDaily = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const isMonthly = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}$/.test(v);
 
-export function LineChart(props: Props & { controls?: boolean }) {
+export function LineChart(props: Props & { controls?: boolean; defaultRange?: string }) {
   const { rows, x, controls = true, lines, baseline } = props;
   const first = rows[0]?.[x], last = rows[rows.length - 1]?.[x];
   const daily = isDaily(first) && isDaily(last);
   const monthly = isMonthly(first) && isMonthly(last);
   const enabled = controls && rows.length > 8 && (daily || monthly);
-  const [range, setRange] = useState('all');
+  // a long history can start zoomed in (e.g. 5Y) so one extreme episode doesn't flatten the rest
+  const [range, setRange] = useState(props.defaultRange ?? 'all');
   const [freq, setFreq] = useState<'D' | 'W' | 'M'>('D');
   // custom window: typed dates or a drag-to-zoom selection (overrides the preset)
   const [custom, setCustom] = useState<{ from: string; to: string } | null>(null);

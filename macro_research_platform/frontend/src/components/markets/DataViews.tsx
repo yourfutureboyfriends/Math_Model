@@ -167,7 +167,7 @@ export function EcstView() {
       <div className="flex items-center text-xs"><span className="text-text-tertiary">US economic surprise index · weekly since 2010</span>
         <span className="ml-auto text-text-tertiary">Latest <span className={cn('font-mono text-sm', (data.latest ?? 0) >= 0 ? 'text-green' : 'text-red')}>{data.latest?.toFixed(2)}</span></span></div>
       <Panel title="Data beating (above 0) or missing (below 0) its recent trend">
-        <LineChart rows={data.series} x="date" height={300} baseline={0} fmt={(v) => v.toFixed(2)}
+        <LineChart rows={data.series} x="date" height={300} baseline={0} defaultRange="5y" fmt={(v) => v.toFixed(2)}
           lines={[{ key: 'index', label: 'Surprise index', color: 'rgb(var(--c-bloomberg))' }]} />
       </Panel>
       <Panel title="Biggest surprises in the last 45 days">

@@ -183,6 +183,15 @@ TENORS = [("1W", 7), ("1M", 30), ("2M", 61), ("3M", 91), ("6M", 182), ("9M", 273
 
 
 def _short_rate(ccy: str) -> Dict[str, Any]:
+    if ccy == "EUR":                     # the ECB's daily 3-month point beats OECD's monthly interbank average
+        try:
+            from api.marketdata.curves import curves
+            c = curves()["curves"].get("EA")
+            p3 = next((p for p in (c or {}).get("points", []) if abs(p["tenor"] - 0.25) < 1e-6), None)
+            if p3:
+                return {"rate": p3["yield"] / 100, "date": c["date"], "series": "ECB euro-area AAA curve, 3 months (daily)"}
+        except Exception:
+            pass
     sid = SHORT_RATE.get(ccy)
     if not sid:
         raise NotFound(f"No short-term rate for {ccy}.")

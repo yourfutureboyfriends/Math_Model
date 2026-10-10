@@ -102,6 +102,25 @@ def risk_free(currency: Optional[str]) -> Dict[str, Any]:
             return {"rate": round((quote("^TNX")["price"] or 0) / 100, 4), "source": "US 10-year Treasury (^TNX)", "currency_matched": True}
         except Exception:
             return {"rate": 0.04, "source": "default 4% (live rate unavailable)", "currency_matched": True}
+    # the issuer's daily 10-year (the Bund for the euro) — OECD's FRED series are monthly averages
+    daily = {"EUR": "DE", "GBP": "GB", "JPY": "JP", "CAD": "CA", "AUD": "AU"}.get(ccy)
+    if daily:
+        try:
+            from api.marketdata.curves import curves
+            c = curves()["curves"].get(daily)
+            p10 = next((p for p in (c or {}).get("points", []) if abs(p["tenor"] - 10) < 1e-6), None)
+            if p10:
+                rate, note = p10["yield"] / 100, ""
+                try:
+                    from api.providers import damodaran
+                    ds = damodaran.country_risk(CCY_SOVEREIGN.get(ccy)).get("default_spread") or 0.0
+                    if ds > 0:
+                        rate, note = rate - ds, f" less {ds:.2%} sovereign default spread"
+                except Exception:
+                    pass
+                return {"rate": round(rate, 4), "source": f"{ccy} 10-year government bond ({c['source']}, {c['date']}){note}", "currency_matched": True}
+        except Exception:
+            pass
     sid = RF_SERIES.get(ccy)
     if sid:
         def fetch():

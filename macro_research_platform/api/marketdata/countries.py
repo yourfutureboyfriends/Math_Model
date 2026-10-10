@@ -235,6 +235,18 @@ def world_data() -> Dict[str, Any]:
         return data
 
     s = _cached("worldmap:slow2", 86400, slow_persisted)
+    daily10: Dict[str, Dict[str, Any]] = {}
+    try:
+        from api.marketdata.curves import curves
+        for code, c in curves()["curves"].items():
+            if code == "EA":
+                continue
+            p10 = next((p for p in c["points"] if abs(p["tenor"] - 10) < 1e-6), None)
+            if p10:
+                daily10[code] = {"yield_10y": p10["yield"], "yield_date": c["date"], "yield_source": c["source"],
+                                 **({"yield_change_1m_bp": p10["change_1m_bp"]} if p10.get("change_1m_bp") is not None else {})}
+    except Exception as e:
+        logger.info("[worldmap] daily curves unavailable: %s", e)
     f = _cached("worldmap:fast", 600, fast)
     countries: Dict[str, Dict[str, Any]] = {}
     for c in COUNTRIES:
@@ -255,6 +267,8 @@ def world_data() -> Dict[str, Any]:
             rec["fx"] = f["fx"][c["currency"]]
         rec.update(s["imf"].get(iso, {}))
         rec.update(s["yields"].get(iso, {}))
+        if iso in daily10:                               # the issuer's own daily 10-year beats OECD's monthly average
+            rec.update(daily10[iso])
         if iso in s["risk"]:
             rk = s["risk"][iso]
             rec.update({"rating": rk["rating"], "crp": rk["crp"], "default_spread": rk["default_spread"],
@@ -262,7 +276,7 @@ def world_data() -> Dict[str, Any]:
         countries[iso] = rec
     return {"countries": countries, "numeric_to_iso2": NUMERIC_TO_ISO2, "year": year,
             "sources": {"markets": "Yahoo Finance — MSCI country ETFs (USD), local indices, currencies",
-                        "yields": "OECD 10-year government yields via FRED (monthly)",
+                        "yields": "Issuers' daily 10-year yields (US, DE, UK, JP, CA, AU); OECD monthly averages via FRED elsewhere",
                         "economy": f"IMF World Economic Outlook ({year} estimates; {year + 1} projections)",
                         "risk": "Damodaran (NYU Stern) sovereign ratings and country risk premiums"}}
 

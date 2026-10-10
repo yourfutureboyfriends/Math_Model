@@ -20,7 +20,7 @@ const L: Layer[] = [
   { key: 'idxytd', group: 'Markets', label: 'Local index YTD', get: (c) => c.index?.change_ytd, fmt: 'pct', diverging: true, goodHigh: true, help: 'Main local index year to date, local currency.' },
   { key: 'fx1d', group: 'Markets', label: 'Currency today', get: (c) => c.fx?.change_1d, fmt: 'pct', diverging: true, goodHigh: true, help: 'Currency vs the US dollar today (+ = stronger).' },
   { key: 'fxytd', group: 'Markets', label: 'Currency YTD', get: (c) => c.fx?.change_ytd, fmt: 'pct', diverging: true, goodHigh: true, help: 'Currency vs the US dollar this year (+ = stronger).' },
-  { key: 'y10', group: 'Markets', label: '10Y yield', get: (c) => c.yield_10y, fmt: 'pctpt', diverging: false, goodHigh: false, help: '10-year government bond yield (OECD, monthly; US live).' },
+  { key: 'y10', group: 'Markets', label: '10Y yield', get: (c) => c.yield_10y, fmt: 'pctpt', diverging: false, goodHigh: false, help: '10-year government bond yield — issuers\' daily data for the US, DE, UK, JP, CA and AU; OECD monthly averages elsewhere.' },
   { key: 'gdp', group: 'Economy', label: 'GDP growth', get: (c) => c.gdp_growth, fmt: 'pctpt', diverging: true, goodHigh: true, help: 'Real GDP growth this year — IMF World Economic Outlook.' },
   { key: 'gdpn', group: 'Economy', label: 'GDP growth next yr', get: (c) => c.gdp_growth_next, fmt: 'pctpt', diverging: true, goodHigh: true, help: 'IMF projection for next year.' },
   { key: 'cpi', group: 'Economy', label: 'Inflation', get: (c) => c.inflation, fmt: 'pctpt', diverging: false, goodHigh: false, help: 'Consumer price inflation this year — IMF.' },

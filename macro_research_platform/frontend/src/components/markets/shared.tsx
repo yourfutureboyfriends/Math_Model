@@ -78,8 +78,11 @@ export function Chg({ v, d = 2, className }: { v: number | null | undefined; d?:
 export function Spark({ values, w = 72, h = 20 }: { values?: number[]; w?: number; h?: number }) {
   if (!values || values.length < 2) return <span className="inline-block" style={{ width: w }} />;
   const lo = Math.min(...values), hi = Math.max(...values);
-  const pts = values.map((v, i) => `${(i / (values.length - 1)) * w},${hi === lo ? h / 2 : h - ((v - lo) / (hi - lo)) * h}`).join(' ');
+  // a range under 0.2% of the level (stablecoins, pegs) is noise: don't stretch it to full height
+  const flat = hi === lo || (hi - lo) / Math.max(Math.abs((hi + lo) / 2), 1e-12) < 0.002;
+  const pts = values.map((v, i) => `${(i / (values.length - 1)) * w},${flat ? h / 2 : h - ((v - lo) / (hi - lo)) * h}`).join(' ');
   const up = values[values.length - 1] >= values[0];
+  if (flat) return <svg width={w} height={h} aria-hidden="true" className="inline-block align-middle"><polyline points={pts} fill="none" stroke="rgb(var(--c-text-tertiary))" strokeWidth={1.25} /></svg>;
   return (
     <svg width={w} height={h} aria-hidden="true" className="inline-block align-middle">
       <polyline points={pts} fill="none" stroke={up ? 'rgb(var(--c-green))' : 'rgb(var(--c-red))'} strokeWidth={1.25} />
