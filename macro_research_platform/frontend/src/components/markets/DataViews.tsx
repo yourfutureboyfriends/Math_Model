@@ -6,6 +6,7 @@ import { ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { REGION_CCYS, useRegion } from '@/lib/region';
 import { ErrorBox, fmtBig, Loading, Panel, useJSON } from './shared';
+import { LineChart } from '@/components/ui/LineChart';
 
 const enc = encodeURIComponent;
 const pc = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);
@@ -15,7 +16,7 @@ function Stat({ label, value, sub }: { label: string; value: React.ReactNode; su
     <div className="text-lg font-mono text-text-primary">{value}</div>{sub && <div className="text-[10px] text-text-tertiary">{sub}</div>}</div>;
 }
 
-function Bars({ values, height = 120, ref100 }: { values: number[]; height?: number; ref100?: number }) {
+export function Bars({ values, height = 120, ref100 }: { values: number[]; height?: number; ref100?: number }) {
   const max = Math.max(...values, ref100 ?? 0, 1e-9);
   return (
     <div className="relative flex items-end gap-px" style={{ height }}>
@@ -27,7 +28,7 @@ function Bars({ values, height = 120, ref100 }: { values: number[]; height?: num
 
 // ── SI ──────────────────────────────────────────────────────────────────────
 export function SiView({ symbol }: { symbol: string }) {
-  const { data, error, loading } = useJSON<any>(`/api/v1/mkt/si/${enc(symbol)}?days=60`);
+  const { data, error, loading } = useJSON<any>(`/api/v1/mkt/si/${enc(symbol)}?days=120`);
   if (loading && !data) return <Loading label="Loading FINRA short-sale data (first time: ~10 s)…" />;
   if (error && !data) return <ErrorBox msg={error} />;
   if (!data) return null;
@@ -42,9 +43,10 @@ export function SiView({ symbol }: { symbol: string }) {
         <Stat label="Short volume today" value={pc(data.ratio_latest)} sub={data.ratio_zscore != null ? `z ${data.ratio_zscore.toFixed(1)} vs 20 days` : ''} />
         <Stat label="Short volume 20d avg" value={pc(data.ratio_20d)} sub={data.ratio_prev_20d != null ? `prior 20d ${pc(data.ratio_prev_20d)}` : ''} />
       </div>
-      <Panel title={`Daily short-sale volume share — ${d[0].date} to ${d[d.length - 1].date}`}>
-        <Bars values={d.map((x) => x.ratio)} ref100={data.ratio_20d} />
-        <div className="flex justify-between text-[10px] text-text-tertiary mt-1"><span>{d[0].date}</span><span>dashed: 20-day average</span><span>{d[d.length - 1].date}</span></div>
+      <Panel title="Daily short-sale volume share (FINRA)">
+        <LineChart rows={d.map((x, i) => ({ date: x.date, ratio: x.ratio * 100,
+            avg20: i >= 19 ? d.slice(i - 19, i + 1).reduce((a, y) => a + y.ratio, 0) / 20 * 100 : null }))} x="date" height={240} fmt={(v) => `${v.toFixed(1)}%`}
+          lines={[{ key: 'ratio', label: 'Short share', color: 'rgb(var(--c-blue))' }, { key: 'avg20', label: '20-day average', color: 'rgb(var(--c-bloomberg))' }]} />
       </Panel>
       <div className="overflow-x-auto border border-border max-h-72 overflow-y-auto">
         <table className="w-full text-[11px] font-mono tabular-nums">
@@ -145,37 +147,18 @@ export function EcoGlobalView() {
 
 // ── ECST: economic surprise index ───────────────────────────────────────────
 export function EcstView() {
-  const [start, setStart] = useState('2018-01-01');
-  const { data, error, loading } = useJSON<any>(`/api/v1/mkt/ecst?start=${start}`, 3_600_000);
+  const { data, error, loading } = useJSON<any>('/api/v1/mkt/ecst?start=2010-01-01', 3_600_000);
   if (loading && !data) return <Loading label="Rebuilding releases as first published (first time ~10 s)…" />;
   if (error && !data) return <ErrorBox msg={error} />;
   if (!data) return null;
-  const s = data.series as { date: string; index: number }[];
-  const W = 900, H = 260, pad = 30;
-  const max = Math.max(...s.map((x) => Math.abs(x.index)), 1);
-  const sx = (i: number) => pad + (i / Math.max(1, s.length - 1)) * (W - 2 * pad);
-  const sy = (v: number) => H / 2 - (v / max) * (H / 2 - pad);
-  const path = s.map((x, i) => `${i ? 'L' : 'M'}${sx(i).toFixed(1)},${sy(x.index).toFixed(1)}`).join('');
-  const area = `${path}L${sx(s.length - 1)},${H / 2}L${sx(0)},${H / 2}Z`;
-  const years = [...new Set(s.map((x) => x.date.slice(0, 4)))];
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-1 text-xs">
-        {[['2010-01-01', 'Since 2010'], ['2018-01-01', 'Since 2018'], ['2023-01-01', 'Since 2023']].map(([v, l]) => <button key={v} onClick={() => setStart(v)} className={cn('px-2 py-0.5 border', start === v ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{l}</button>)}
-        <span className="ml-auto text-text-tertiary">Latest <span className={cn('font-mono text-sm', (data.latest ?? 0) >= 0 ? 'text-green' : 'text-red')}>{data.latest?.toFixed(2)}</span></span>
-      </div>
-      <div className="border border-border bg-surface-1 p-2">
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="US economic surprise index">
-          <defs><clipPath id="ecst-up"><rect x="0" y="0" width={W} height={H / 2} /></clipPath><clipPath id="ecst-dn"><rect x="0" y={H / 2} width={W} height={H / 2} /></clipPath></defs>
-          <path d={area} fill="rgb(var(--c-green) / 0.25)" clipPath="url(#ecst-up)" />
-          <path d={area} fill="rgb(var(--c-red) / 0.25)" clipPath="url(#ecst-dn)" />
-          <path d={path} fill="none" stroke="rgb(var(--c-text-primary))" strokeWidth={1.2} />
-          <line x1={pad} x2={W - pad} y1={H / 2} y2={H / 2} stroke="rgb(var(--c-border-strong))" />
-          {years.map((y) => { const i = s.findIndex((x) => x.date.startsWith(y)); return <text key={y} x={sx(i)} y={H - 6} fontSize="10" fill="rgb(var(--c-text-tertiary))">{y}</text>; })}
-          <text x={pad} y={14} fontSize="10" fill="rgb(var(--c-green))">data beating its trend</text>
-          <text x={pad} y={H - 18} fontSize="10" fill="rgb(var(--c-red))">data missing its trend</text>
-        </svg>
-      </div>
+      <div className="flex items-center text-xs"><span className="text-text-tertiary">US economic surprise index · weekly since 2010</span>
+        <span className="ml-auto text-text-tertiary">Latest <span className={cn('font-mono text-sm', (data.latest ?? 0) >= 0 ? 'text-green' : 'text-red')}>{data.latest?.toFixed(2)}</span></span></div>
+      <Panel title="Data beating (above 0) or missing (below 0) its recent trend">
+        <LineChart rows={data.series} x="date" height={300} baseline={0} fmt={(v) => v.toFixed(2)}
+          lines={[{ key: 'index', label: 'Surprise index', color: 'rgb(var(--c-bloomberg))' }]} />
+      </Panel>
       <Panel title="Biggest surprises in the last 45 days">
         <table className="w-full text-xs"><tbody>
           {data.recent.map((r: any, i: number) => (

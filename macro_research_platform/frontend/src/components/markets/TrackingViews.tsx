@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { countryPaths, projectPoint, type Topology } from '@/lib/topo';
 import { ErrorBox, Loading, Panel, Spark, useJSON } from './shared';
+import { LineChart } from '@/components/ui/LineChart';
 
 let topoCache: Topology | null = null;
 const W = 1000;
@@ -81,12 +82,28 @@ export function ShipView() {
                     <td className="py-0.5 text-text-primary">{c.name}</td><td className="text-right font-mono">{c.transits_7d?.toFixed(0)}</td>
                     <td className="text-right font-mono" style={{ color: yoyColor(c.vs_last_year) }}>{pc(c.vs_last_year)}</td>
                     <td className="text-right font-mono text-text-secondary">{c.tankers_7d?.toFixed(0)}</td><td className="text-right font-mono text-text-secondary">{c.containers_7d?.toFixed(0)}</td>
-                    <td className="pl-2"><Spark values={c.series.map((x: any) => x.n)} w={70} h={16} /></td></tr>))}</tbody>
+                    <td className="pl-2"><Spark values={c.series.slice(-180).map((x: any) => x.n)} w={70} h={16} /></td></tr>))}</tbody>
               </table>
             </div>
           </div>)}
         {chosen && <div className="mt-2 text-xs text-text-secondary"><span className="text-text-primary font-semibold">{chosen.name}</span> — {chosen.why}. {chosen.transits_7d?.toFixed(0)} ships a day
           ({chosen.tankers_7d?.toFixed(0)} tankers, {chosen.containers_7d?.toFixed(0)} container ships, {chosen.dry_bulk_7d?.toFixed(0)} dry bulk), {pc(chosen.vs_last_year)} vs the same week last year, {pc(chosen.vs_1y_avg)} vs its 1-year average.</div>}
+        {(chosen ?? cp.data?.chokepoints?.[0]) && (() => {
+          const c = chosen ?? cp.data.chokepoints[0];
+          // 7-day averages smooth the day-to-day noise of satellite transit counts
+          const rows = c.series.map((x: any, i: number, a: any[]) => {
+            const w = a.slice(Math.max(0, i - 6), i + 1);
+            const avg = (k: string) => w.reduce((s2: number, y: any) => s2 + (y[k] ?? 0), 0) / w.length;
+            return { date: x.date, total: avg('n'), tankers: avg('tankers'), containers: avg('containers'), dry_bulk: avg('dry_bulk') };
+          });
+          return (
+            <div className="mt-3">
+              <div className="text-[11px] text-text-tertiary mb-1">{c.name} — daily transits, 7-day average{!chosen ? ' (click a chokepoint to switch)' : ''}</div>
+              <LineChart rows={rows} x="date" height={260} fmt={(v) => v.toFixed(0)}
+                lines={[{ key: 'total', label: 'All ships', color: 'rgb(var(--c-text-primary))' }, { key: 'tankers', label: 'Tankers', color: 'rgb(var(--c-red))' },
+                        { key: 'containers', label: 'Container ships', color: 'rgb(var(--c-blue))' }, { key: 'dry_bulk', label: 'Dry bulk', color: 'rgb(var(--c-amber))' }]} />
+            </div>);
+        })()}
         {cp.data && <div className="text-[10px] text-text-tertiary mt-1">{cp.data.source}. Circle size = traffic; colour = change vs a year ago (red ≤ −15%, green ≥ +15%).</div>}
       </Panel>
       <Panel title="Live vessels">

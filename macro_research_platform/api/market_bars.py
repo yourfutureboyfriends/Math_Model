@@ -38,11 +38,21 @@ def _num(x) -> Optional[float]:
     return v if math.isfinite(v) else None
 
 
-def bars(symbol: str, interval: str = "1d", period: str = "1y") -> Dict[str, Any]:
+def bars(symbol: str, interval: str = "1d", period: str = "1y", start: str | None = None, end: str | None = None) -> Dict[str, Any]:
+    """OHLCV bars for a preset period, or for a custom start/end date range (YYYY-MM-DD)."""
+    from datetime import date, timedelta
     sym = (symbol or "").strip().upper()
     if not sym:
         raise ValueError("symbol required")
-    if not allowed(interval, period):
+    if start:
+        d0 = date.fromisoformat(start)
+        d1 = date.fromisoformat(end) if end else date.today()
+        if d1 < d0:
+            raise ValueError("the end date is before the start date")
+        if interval in _MAX_DAYS and (date.today() - d0).days > _MAX_DAYS[interval]:
+            raise ValueError(f"{interval} bars only go back {_MAX_DAYS[interval]} days on the free feed — pick a later start or a daily interval")
+        period = f"{start}..{d1}"
+    elif not allowed(interval, period):
         raise ValueError(f"{interval} bars are available for: {', '.join(allowed_periods(interval)) or 'none'}")
     key = (sym, interval, period)
     ttl = 60 if interval in _MAX_DAYS else 600
@@ -52,7 +62,11 @@ def bars(symbol: str, interval: str = "1d", period: str = "1y") -> Dict[str, Any
             return hit[1]
     import yfinance as yf
     t = yf.Ticker(sym)
-    df = t.history(period=period, interval=interval, auto_adjust=interval not in _MAX_DAYS, prepost=False)
+    if start:   # yfinance's end is exclusive: add a day so the chosen end date is included
+        df = t.history(start=start, end=str(date.fromisoformat(period.split("..")[1]) + timedelta(days=1)), interval=interval,
+                       auto_adjust=interval not in _MAX_DAYS, prepost=False)
+    else:
+        df = t.history(period=period, interval=interval, auto_adjust=interval not in _MAX_DAYS, prepost=False)
     if df is None or df.empty:
         raise LookupError(f"no {interval} data for {sym}")
     intraday = interval in _MAX_DAYS

@@ -79,7 +79,7 @@ function monthTicks(labels: string[], maxTicks: number): { i: number; text: stri
 // chosen period so the lines stay comparable; other series are shown as is.
 const RANGES: { key: string; label: string; days: number }[] = [
   { key: '1m', label: '1M', days: 31 }, { key: '3m', label: '3M', days: 92 }, { key: '6m', label: '6M', days: 183 },
-  { key: 'ytd', label: 'YTD', days: -1 }, { key: '1y', label: '1Y', days: 366 }, { key: '3y', label: '3Y', days: 1096 },
+  { key: 'ytd', label: 'YTD', days: -1 }, { key: '1y', label: '1Y', days: 366 }, { key: '2y', label: '2Y', days: 731 }, { key: '3y', label: '3Y', days: 1096 },
   { key: '5y', label: '5Y', days: 1827 }, { key: '10y', label: '10Y', days: 3653 }, { key: 'all', label: 'All', days: 0 },
 ];
 const isDaily = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -90,18 +90,32 @@ export function LineChart(props: Props & { controls?: boolean }) {
   const first = rows[0]?.[x], last = rows[rows.length - 1]?.[x];
   const daily = isDaily(first) && isDaily(last);
   const monthly = isMonthly(first) && isMonthly(last);
-  const enabled = controls && rows.length > 24 && (daily || monthly);
+  const enabled = controls && rows.length > 8 && (daily || monthly);
   const [range, setRange] = useState('all');
   const [freq, setFreq] = useState<'D' | 'W' | 'M'>('D');
+  // custom window: typed dates or a drag-to-zoom selection (overrides the preset)
+  const [custom, setCustom] = useState<{ from: string; to: string } | null>(null);
+  const spanDays = useMemo(() => {
+    if (!enabled) return 0;
+    const a = new Date(`${String(first).slice(0, 10)}${monthly ? '-01' : ''}T00:00:00`).getTime();
+    const b = new Date(`${String(last).slice(0, 10)}${monthly ? '-28' : ''}T00:00:00`).getTime();
+    return (b - a) / 864e5;
+  }, [enabled, first, last, monthly]);
+  const presets = RANGES.filter((q) => q.days <= 0 || q.days < spanDays * 1.15);     // only periods the history covers
 
   const view = useMemo(() => {
     if (!enabled) return rows;
-    const end = new Date(`${String(last).slice(0, 7)}${monthly ? '-28' : String(last).slice(7)}T00:00:00`);
-    const r = RANGES.find((q) => q.key === range)!;
-    let cutoff: string | null = null;
-    if (r.days > 0) cutoff = new Date(end.getTime() - r.days * 864e5).toISOString().slice(0, monthly ? 7 : 10);
-    if (r.days === -1) cutoff = `${end.getFullYear()}-01${monthly ? '' : '-01'}`;
-    let out = cutoff ? rows.filter((row) => String(row[x]) >= cutoff!) : rows;
+    let out: Record<string, any>[];
+    if (custom) {
+      out = rows.filter((row) => String(row[x]) >= custom.from && String(row[x]) <= custom.to);
+    } else {
+      const end = new Date(`${String(last).slice(0, 7)}${monthly ? '-28' : String(last).slice(7)}T00:00:00`);
+      const r = RANGES.find((q) => q.key === range)!;
+      let cutoff: string | null = null;
+      if (r.days > 0) cutoff = new Date(end.getTime() - r.days * 864e5).toISOString().slice(0, monthly ? 7 : 10);
+      if (r.days === -1) cutoff = `${end.getFullYear()}-01${monthly ? '' : '-01'}`;
+      out = cutoff ? rows.filter((row) => String(row[x]) >= cutoff!) : rows;
+    }
     if (daily && freq !== 'D') {
       const keyOf = (d: string) => {
         if (freq === 'M') return d.slice(0, 7);
@@ -122,38 +136,53 @@ export function LineChart(props: Props & { controls?: boolean }) {
       });
     }
     return out;
-  }, [enabled, rows, x, range, freq, daily, monthly, last, baseline, lines]);
+  }, [enabled, rows, x, range, freq, daily, monthly, last, baseline, lines, custom]);
 
   if (!enabled) return <LineChartCore {...props} />;
+  const btn = (on: boolean) => `px-1.5 py-0.5 text-[10px] font-mono ${on ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary'}`;
+  const dateType = monthly ? 'month' : 'date';
+  const lo = String(first).slice(0, monthly ? 7 : 10), hi = String(last).slice(0, monthly ? 7 : 10);
   return (
     <div>
       <div className="flex flex-wrap items-center gap-1.5 mb-1">
         <div className="flex border border-border" role="group" aria-label="Period">
-          {RANGES.map((q) => (
-            <button key={q.key} onClick={() => setRange(q.key)} aria-pressed={range === q.key}
-              className={`px-1.5 py-0.5 text-[10px] font-mono ${range === q.key ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary'}`}>{q.label}</button>
+          {presets.map((q) => (
+            <button key={q.key} onClick={() => { setRange(q.key); setCustom(null); }} aria-pressed={!custom && range === q.key} className={btn(!custom && range === q.key)}>{q.label}</button>
           ))}
         </div>
         {daily && (
           <div className="flex border border-border" role="group" aria-label="Interval">
             {([['D', 'Daily'], ['W', 'Weekly'], ['M', 'Monthly']] as const).map(([k, l]) => (
-              <button key={k} onClick={() => setFreq(k)} aria-pressed={freq === k}
-                className={`px-1.5 py-0.5 text-[10px] font-mono ${freq === k ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary'}`}>{l}</button>
+              <button key={k} onClick={() => setFreq(k)} aria-pressed={freq === k} className={btn(freq === k)}>{l}</button>
             ))}
           </div>
         )}
-        {baseline === 1 && range !== 'all' && <span className="text-[10px] text-text-tertiary">re-based to 1 at the start of the period</span>}
+        <div className="flex items-center gap-1 text-[10px] text-text-tertiary" role="group" aria-label="Custom range">
+          <input type={dateType} min={lo} max={hi} value={custom?.from ?? ''} aria-label="From"
+            onChange={(e) => e.target.value && setCustom({ from: e.target.value, to: custom?.to ?? hi })}
+            className="bg-transparent border border-border px-1 py-0.5 font-mono text-text-secondary w-[7.6rem]" />
+          <span>–</span>
+          <input type={dateType} min={lo} max={hi} value={custom?.to ?? ''} aria-label="To"
+            onChange={(e) => e.target.value && setCustom({ from: custom?.from ?? lo, to: e.target.value })}
+            className="bg-transparent border border-border px-1 py-0.5 font-mono text-text-secondary w-[7.6rem]" />
+          {custom && <button onClick={() => setCustom(null)} className="px-1.5 py-0.5 border border-border text-text-secondary hover:text-text-primary">Reset</button>}
+        </div>
+        <span className="text-[10px] text-text-tertiary">{custom ? `${custom.from} → ${custom.to}` : 'drag on the chart to zoom'}</span>
+        {baseline === 1 && (custom || range !== 'all') && <span className="text-[10px] text-text-tertiary">· re-based to 1 at the start</span>}
       </div>
-      {view.length > 1 ? <LineChartCore {...props} rows={view} />
+      {view.length > 1 ? <LineChartCore {...props} rows={view}
+          onZoom={(a, b) => setCustom({ from: a.slice(0, monthly ? 7 : 10), to: b.slice(0, monthly ? 7 : 10) })} onReset={() => setCustom(null)} />
         : <div className="text-2xs text-text-tertiary p-3">No data in this period.</div>}
     </div>
   );
 }
 
-function LineChartCore({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2), axisFmt, log = false, baseline, refs = NO_REFS }: Props) {
+function LineChartCore({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2), axisFmt, log = false, baseline, refs = NO_REFS, onZoom, onReset }:
+  Props & { onZoom?: (from: string, to: string) => void; onReset?: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [W, setW] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
+  const [drag, setDrag] = useState<{ a: number; b: number } | null>(null);
 
   useEffect(() => {
     const el = ref.current;
@@ -221,14 +250,33 @@ function LineChartCore({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2)
       {legend}
       <div ref={ref} className="relative w-full" style={{ height }}>
         {geo && (
-          <svg width={W} height={height} className="block select-none"
-            onMouseLeave={() => setHover(null)}
+          <svg width={W} height={height} className={`block select-none ${onZoom ? 'cursor-crosshair' : ''}`}
+            onMouseLeave={() => { setHover(null); setDrag(null); }}
+            onMouseDown={(e) => {
+              if (!onZoom) return;
+              const r = e.currentTarget.getBoundingClientRect();
+              const i = Math.max(0, Math.min(rows.length - 1, Math.round(((e.clientX - r.left - geo.L) / (W - geo.L - geo.R)) * (rows.length - 1))));
+              setDrag({ a: i, b: i });
+            }}
+            onMouseUp={() => {
+              if (drag && onZoom && Math.abs(drag.b - drag.a) >= 2) {
+                const [i, j] = [Math.min(drag.a, drag.b), Math.max(drag.a, drag.b)];
+                onZoom(String(rows[i][x]), String(rows[j][x]));
+              }
+              setDrag(null);
+            }}
+            onDoubleClick={() => onReset?.()}
             onMouseMove={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
               const px = e.clientX - r.left;
-              const i = Math.round(((px - geo.L) / (W - geo.L - geo.R)) * (rows.length - 1));
-              setHover(Math.max(0, Math.min(rows.length - 1, i)));
+              const i = Math.max(0, Math.min(rows.length - 1, Math.round(((px - geo.L) / (W - geo.L - geo.R)) * (rows.length - 1))));
+              setHover(i);
+              if (drag) setDrag({ ...drag, b: i });
             }}>
+            {drag && drag.a !== drag.b && (
+              <rect x={geo.sx(Math.min(drag.a, drag.b))} y={geo.T} width={Math.abs(geo.sx(drag.b) - geo.sx(drag.a))} height={height - geo.T - geo.B}
+                fill="rgb(var(--c-bloomberg) / 0.12)" stroke="rgb(var(--c-bloomberg) / 0.5)" />
+            )}
             {/* grid + y axis */}
             {geo.yt.map((t) => (
               <g key={t}>

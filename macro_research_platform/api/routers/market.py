@@ -1,5 +1,5 @@
 """Market data endpoints (rates, FX, commodities, prices)."""
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from typing import Dict, Any
 import logging
 
@@ -54,13 +54,14 @@ async def get_market_overview() -> Dict[str, Any]:
 
 
 @router.get("/api/v1/market/bars")
-async def market_bars(symbol: str, interval: str = "1d", period: str = "1y"):
+async def market_bars(symbol: str, interval: str = "1d", period: str = "1y",
+                      start: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"), end: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$")):
     """OHLCV bars for the interactive chart — interval 5m/15m/1h/1d/1wk/1mo, period 1d…max."""
     import asyncio as _asyncio
     from fastapi import HTTPException as _HTTPException
     from api import market_bars as mb
     try:
-        return await _asyncio.to_thread(mb.bars, symbol, interval, period)
+        return await _asyncio.to_thread(mb.bars, symbol, interval, period, start, end)
     except ValueError as e:
         raise _HTTPException(400, {"message": str(e), "allowed_periods": mb.allowed_periods(interval)})
     except LookupError as e:

@@ -98,6 +98,7 @@ interface Props {
 export function PriceChart({ symbol, refs = [], markers, height = 340, defaultInterval = '1d', defaultPeriod = '1y' }: Props) {
   const [interval, setInterval_] = useState(defaultInterval);
   const [period, setPeriod] = useState(defaultPeriod);
+  const [range, setRange] = useState<{ start: string; end: string } | null>(null);   // custom dates override the preset
   const [kind, setKind] = useState<'candle' | 'line' | 'area'>('candle');
   const [mas, setMas] = useState<Record<number, boolean>>({ 20: false, 50: true, 200: true });
   const [showVol, setShowVol] = useState(true);
@@ -124,7 +125,7 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setErr(null);
-    fetch(`/api/v1/market/bars?${new URLSearchParams({ symbol, interval, period })}`)
+    fetch(`/api/v1/market/bars?${new URLSearchParams(range ? { symbol, interval, start: range.start, end: range.end } : { symbol, interval, period })}`)
       .then(async (r) => {
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(typeof j?.detail === 'string' ? j.detail : j?.detail?.message || `HTTP ${r.status}`);
@@ -134,7 +135,7 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
       .catch((e) => { if (!cancelled) { setErr(e.message); setData(null); } })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [symbol, interval, period]);
+  }, [symbol, interval, period, range]);
 
   const pickInterval = (i: string) => {
     setInterval_(i);
@@ -245,9 +246,19 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
         </div>
         <div className="flex border border-border" role="group" aria-label="Period">
           {PERIODS.map((p) => (
-            <Btn key={p.key} on={period === p.key} disabled={!allowed(interval, p.key)} onClick={() => setPeriod(p.key)}
+            <Btn key={p.key} on={!range && period === p.key} disabled={!allowed(interval, p.key)} onClick={() => { setRange(null); setPeriod(p.key); }}
               title={allowed(interval, p.key) ? p.label : `${interval} bars only go back ${MAX_DAYS[interval]} days`}>{p.label}</Btn>
           ))}
+        </div>
+        <div className="flex items-center gap-1 text-[10px] text-text-tertiary" role="group" aria-label="Custom date range">
+          <input type="date" aria-label="From" value={range?.start ?? ''} max={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => e.target.value && setRange({ start: e.target.value, end: range?.end ?? new Date().toISOString().slice(0, 10) })}
+            className="bg-transparent border border-border px-1 py-0.5 font-mono text-text-secondary w-[7.6rem]" />
+          <span>–</span>
+          <input type="date" aria-label="To" value={range?.end ?? ''} max={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => e.target.value && setRange({ start: range?.start ?? e.target.value, end: e.target.value })}
+            className="bg-transparent border border-border px-1 py-0.5 font-mono text-text-secondary w-[7.6rem]" />
+          {range && <button onClick={() => setRange(null)} className="px-1.5 py-0.5 border border-border text-text-secondary hover:text-text-primary">Reset</button>}
         </div>
         <div className="flex border border-border" role="group" aria-label="Chart type">
           {(['candle', 'line', 'area'] as const).map((t) => <Btn key={t} on={kind === t} onClick={() => setKind(t)}>{t === 'candle' ? 'Candles' : t === 'line' ? 'Line' : 'Area'}</Btn>)}

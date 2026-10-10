@@ -79,7 +79,7 @@ def _km(a_lat, a_lon, b_lat, b_lon) -> float:
 
 
 # ── SHIP: chokepoints ────────────────────────────────────────────────────────
-def chokepoints(days: int = 400) -> Dict[str, Any]:
+def chokepoints(days: int = 1100) -> Dict[str, Any]:
     def fetch():
         import requests
         since = (date.today() - timedelta(days=days)).isoformat()
@@ -118,7 +118,8 @@ def chokepoints(days: int = 400) -> Dict[str, Any]:
                         "vs_1y_avg": (wk / (sum(yr) / len(yr)) - 1) if wk is not None and yr and sum(yr) else None,
                         "tankers_7d": avg(0, 7, "n_tanker"), "containers_7d": avg(0, 7, "n_container"), "dry_bulk_7d": avg(0, 7, "n_dry_bulk"),
                         "capacity_7d": avg(0, 7, "capacity"),
-                        "series": [{"date": str(x["date"])[:10], "n": x["n_total"]} for x in xs[-180:]]})
+                        "series": [{"date": str(x["date"])[:10], "n": x["n_total"], "tankers": x["n_tanker"], "containers": x["n_container"],
+                                    "dry_bulk": x["n_dry_bulk"]} for x in xs]})
         out.sort(key=lambda c: -(c["transits_7d"] or 0))
         return {"chokepoints": out, "as_of": max(c["date"] for c in out),
                 "source": "IMF PortWatch (satellite AIS; daily transits through maritime chokepoints, updated weekly)"}
