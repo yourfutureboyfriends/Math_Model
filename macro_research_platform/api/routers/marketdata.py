@@ -352,7 +352,49 @@ async def mkt_world_map():
 async def mkt_earnings_calendar(start: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"), days: int = Query(7, ge=1, le=31),
                                 min_cap_bn: float = Query(0, ge=0), offset: int = Query(0, ge=0), limit: int = Query(100, ge=10, le=250)):
     from api.marketdata import monitors
-    return await _run(monitors.earnings_calendar, start, days, min_cap_bn, offset, limit)
+    from api.marketdata.countries import country_of_symbol, region_of
+    out = await _run(monitors.earnings_calendar, start, days, min_cap_bn, offset, limit)
+    for r in out.get("rows", []):                       # place each company in a country and region
+        c = country_of_symbol(r.get("symbol") or "")
+        r["country"], r["region"] = c or None, region_of(c) if c else None
+    return out
+
+
+@router.get("/api/v1/mkt/regions")
+async def mkt_regions():
+    """Regions, their countries and their screener markets."""
+    from api.marketdata import countries as C
+    return {"regions": [{"id": k, "name": v, "markets": C.REGION_MARKETS[k],
+                         "countries": sorted(c["iso2"] for c in C.COUNTRIES if C.region_of(c["iso2"]) == k)} for k, v in C.REGION_NAMES.items()],
+            "names": {c["iso2"]: c["name"] for c in C.COUNTRIES}}
+
+
+@router.get("/api/v1/mkt/region/{region}")
+async def mkt_region(region: str):
+    """Country matrix for a region: index, currency, 10y yield, IMF macro, sovereign risk."""
+    from api.marketdata import countries as C
+    if region not in C.REGION_NAMES and region != "global":
+        raise HTTPException(404, "Region: global, americas, europe, mea or apac.")
+    w = await _run(C.world_data, timeout=120)
+    rows = [{"iso2": k, **v} for k, v in w["countries"].items() if region == "global" or v.get("region") == region]
+    rows.sort(key=lambda r: -(r.get("gdp_usd_bn") or 0))          # largest economies first
+    return {"region": region, "name": C.REGION_NAMES.get(region, "Global"), "markets": C.REGION_MARKETS.get(region, list(C.REGION_MARKETS["americas"][:1])),
+            "countries": rows, "sources": w["sources"], "year": w["year"]}
+
+
+@router.get("/api/v1/mkt/country/{iso2}")
+async def mkt_country(iso2: str):
+    """One country: markets, economy, risk, plus its index / currency / screener market for the page."""
+    from api.marketdata import countries as C
+    c = iso2.upper()
+    if c not in C.BY_ISO2:
+        raise HTTPException(404, f"Unknown country code '{iso2}'.")
+    w = await _run(C.world_data, timeout=120)
+    rec = {"iso2": c, **w["countries"].get(c, {"name": C.BY_ISO2[c]["name"]})}
+    rec["market"] = c.lower() if c.lower() in __import__("api.marketdata.core", fromlist=["REGIONS"]).REGIONS else None
+    rec["fx_symbol"] = None if rec.get("currency") == "USD" else f"{rec.get('currency')}=X"
+    rec["region_name"] = C.REGION_NAMES.get(rec.get("region") or C.region_of(c))
+    return rec
 
 
 @router.get("/api/v1/mkt/wcrs")
@@ -392,9 +434,11 @@ async def mkt_futures_roots():
 
 
 @router.get("/api/v1/mkt/news")
-async def mkt_news_hub(q: Optional[str] = Query(None, max_length=60), limit: int = Query(60, ge=10, le=200)):
+async def mkt_news_hub(q: Optional[str] = Query(None, max_length=60), limit: int = Query(60, ge=10, le=200),
+                       region: Optional[str] = Query(None, pattern="^(global|americas|europe|mea|apac)$"),
+                       country: Optional[str] = Query(None, pattern="^[A-Za-z]{2}$")):
     from api.marketdata import monitors
-    return await _run(monitors.news_hub, q, limit)
+    return await _run(monitors.news_hub, q, limit, region, country, timeout=60)
 
 
 # ── Your tools: watchlists, alerts, journal (per signed-in user) ─────────────

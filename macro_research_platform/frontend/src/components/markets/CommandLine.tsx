@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CornerDownLeft, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { FUNCTIONS, MARKET_FUNCTIONS, parseCommand, SECURITY_FUNCTIONS, type MktFunction } from './functions';
-import { TYPE_COLOR } from './shared';
+import { TYPE_COLOR, useJSON } from './shared';
 
 interface Hit { symbol: string; name: string; type: string; exchange?: string; sector?: string }
 type Option = { kind: 'fn'; fn: MktFunction; symbol?: string } | { kind: 'sym'; hit: Hit; fn?: MktFunction };
@@ -18,6 +18,7 @@ export function CommandLine({ current, onGo }: { current?: string; onGo: (fn: st
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const parsed = useMemo(() => parseCommand(q), [q]);
+  const countryNames = useJSON<any>('/api/v1/mkt/regions').data?.names as Record<string, string> | undefined;
 
   // "/" or Ctrl/Cmd+K focuses the command line from anywhere in Markets.
   useEffect(() => {
@@ -74,6 +75,10 @@ export function CommandLine({ current, onGo }: { current?: string; onGo: (fn: st
     done();
   };
   const go = () => {
+    // a country name or "CTRY JP" opens the country page
+    const t = q.trim().toLowerCase();
+    const iso = countryNames && Object.entries<string>(countryNames).find(([, n]) => n.toLowerCase() === t)?.[0];
+    if (iso) { onGo('CTRY', iso); return done(); }
     // a menu number picks from the numbered menu on screen (security functions, or the market menu)
     const num = /^\s*(\d{1,2})\s*$/.exec(q);
     if (num) {
@@ -85,7 +90,7 @@ export function CommandLine({ current, onGo }: { current?: string; onGo: (fn: st
     if (parsed.terminal && parsed.symbol) { onGo(parsed.fn?.code ?? 'DES', parsed.symbol); return done(); }
     const opt = options[idx];
     const exactSym = hits.find((h) => h.symbol.toUpperCase() === parsed.symbol);
-    if (parsed.fn && !parsed.fn.security) { onGo(parsed.fn.code); return done(); }
+    if (parsed.fn && !parsed.fn.security) { onGo(parsed.fn.code, parsed.symbol); return done(); }
     if (parsed.fn && parsed.fn.security) {
       const sym = parsed.symbol ?? current;
       if (!sym) { setHint(`${parsed.fn.code} needs an instrument — e.g. "AAPL ${parsed.fn.code}".`); return; }

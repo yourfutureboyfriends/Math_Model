@@ -3,55 +3,102 @@
 @tailwind utilities;
 
 
-/* ═══ CLASSIC TERMINAL SKIN (Markets mode; lib/theme.ts sets data-skin="terminal") ═══════
-   Black screen, amber labels, white figures, yellow keys, square dense monospace — the
-   classic market-terminal look. Overrides the light/dark channels while active. */
+/* ═══ TERMINAL SKIN (Markets; lib/theme.ts sets data-skin="terminal") ════════════════════
+   The classic market terminal — black screen, amber labels, white figures, yellow keys,
+   dense monospace data — with a modern finish: sans-serif chrome, mono figures, soft
+   4–6px corners, layered panels, tactile keys, hover/focus states and smooth motion. */
 :root[data-skin="terminal"] {
-  --c-bg: 0 0 0;
-  --c-surface-1: 0 0 0;
-  --c-surface-2: 14 14 14;
-  --c-surface-3: 30 30 30;
-  --c-surface-4: 44 44 44;
-  --c-border: 52 52 52;
-  --c-border-subtle: 26 26 26;
-  --c-border-strong: 88 88 88;
-  --c-text-primary: 245 245 245;
-  --c-text-secondary: 251 139 30;        /* amber */
-  --c-text-tertiary: 168 112 44;         /* dim amber */
+  --c-bg: 5 5 7;
+  --c-surface-1: 11 11 14;
+  --c-surface-2: 18 18 22;
+  --c-surface-3: 28 28 34;
+  --c-surface-4: 40 40 48;
+  --c-border: 42 42 50;
+  --c-border-subtle: 24 24 30;
+  --c-border-strong: 74 74 86;
+  --c-text-primary: 240 240 242;
+  --c-text-secondary: 251 146 44;        /* amber */
+  --c-text-tertiary: 150 112 70;         /* dim amber */
   --c-text-inverse: 0 0 0;
   --c-bloomberg: 251 139 30;
-  --c-green: 38 214 85;
-  --c-red: 255 64 64;
+  --c-green: 46 214 102;
+  --c-red: 255 82 82;
   --c-amber: 255 196 0;
-  --c-blue: 92 172 255;
+  --c-blue: 96 165 250;
   --c-purple: 196 140 255;
   --key-yellow: 255 214 0;
+  --term-radius: 3px;
   color-scheme: dark;
 }
-:root[data-skin="terminal"] body { background: #000; }
-:root[data-skin="terminal"] .mkt-root,
-:root[data-skin="terminal"] .mkt-root * { font-family: 'IBM Plex Mono', 'JetBrains Mono', 'Menlo', 'Consolas', monospace !important; border-radius: 0 !important; box-shadow: none !important; }
-:root[data-skin="terminal"] .mkt-root { font-size: 12px; letter-spacing: 0; }
-:root[data-skin="terminal"] .mkt-root h1, :root[data-skin="terminal"] .mkt-root h2, :root[data-skin="terminal"] .mkt-root h3 { color: rgb(var(--c-text-secondary)); text-transform: uppercase; letter-spacing: 0.02em; }
-:root[data-skin="terminal"] .mkt-root table tbody tr:nth-child(even) { background: rgb(255 255 255 / 0.025); }
-/* yellow market keys and <GO> */
-.key-yellow { background: rgb(var(--key-yellow, 255 214 0)); color: #000; font-weight: 700; }
-.key-yellow:hover { filter: brightness(1.1); }
-.key-amber { background: rgb(var(--c-bloomberg)); color: #000; font-weight: 700; }
+:root[data-skin="terminal"] body { background: radial-gradient(1200px 600px at 70% -10%, #0e0e14 0%, #050507 60%) fixed, #050507; }
+
+/* Type: sans for interface chrome, tabular mono for every figure */
+:root[data-skin="terminal"] .mkt-root { font-family: 'Inter', system-ui, sans-serif; font-size: 12px; letter-spacing: 0.005em; -webkit-font-smoothing: antialiased; }
+:root[data-skin="terminal"] .mkt-root :is(td, input, select, textarea, .font-mono, kbd, code, svg text),
+:root[data-skin="terminal"] .mkt-root .tabular-nums { font-family: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+:root[data-skin="terminal"] .mkt-root h1, :root[data-skin="terminal"] .mkt-root h2, :root[data-skin="terminal"] .mkt-root h3 { color: rgb(var(--c-text-primary)); letter-spacing: -0.01em; }
+
+/* Surfaces: soft corners, layered panels with a hairline top highlight and depth */
+:root[data-skin="terminal"] .mkt-root :is(.rounded, .rounded-md, .rounded-lg) { border-radius: var(--term-radius); }
+:root[data-skin="terminal"] .mkt-root :is(section, .bg-surface-1.border, .bg-surface-1.border-border) {
+  border-radius: 4px; box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03); }
+:root[data-skin="terminal"] .mkt-root :is(section, .bg-surface-1.border) { overflow: hidden; }
+:root[data-skin="terminal"] .mkt-root .panel-hdr, :root[data-skin="terminal"] .panel-bar {
+  background: #121216; border-bottom: 1px solid rgb(var(--c-border)); }
+:root[data-skin="terminal"] .mkt-root .panel-hdr > span:first-child, :root[data-skin="terminal"] .panel-bar > span:first-child {
+  color: rgb(var(--c-bloomberg)); font-weight: 600; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.08em; }
+
+/* Buttons: every bordered control gets rounded, a hover lift and a press */
+:root[data-skin="terminal"] .mkt-root button { transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s, transform .08s, filter .15s; }
+:root[data-skin="terminal"] .mkt-root button.border { border-radius: var(--term-radius); }
+:root[data-skin="terminal"] .mkt-root button.border:hover { border-color: rgb(var(--c-bloomberg) / 0.45); background-color: rgb(255 255 255 / 0.03); }
+:root[data-skin="terminal"] .mkt-root button.border-bloomberg { background-color: rgb(var(--c-bloomberg) / 0.08); }
+:root[data-skin="terminal"] .mkt-root :focus-visible { outline: none; box-shadow: 0 0 0 2px rgb(var(--c-bloomberg) / 0.55); border-radius: var(--term-radius); }
+
+/* Solid orange buttons (selected chart intervals, primary actions) → the same subtle tint */
+:root[data-skin="terminal"] .mkt-root button.bg-bloomberg { background: rgb(251 139 30 / 0.14) !important; color: #ffb15a !important;
+  box-shadow: inset 0 0 0 1px rgb(251 139 30 / 0.4); }
+:root[data-skin="terminal"] .mkt-root button.bg-bloomberg:hover { background: rgb(251 139 30 / 0.22) !important; }
+
+/* Inputs and the command line: recessed, amber glow on focus */
+:root[data-skin="terminal"] .mkt-root :is(input:not([type=checkbox]):not([type=radio]), select, textarea) { border-radius: var(--term-radius); }
+:root[data-skin="terminal"] .mkt-root .focus-within\:border-bloomberg:focus-within { box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.18), inset 0 1px 2px rgb(0 0 0 / 0.6); }
+:root[data-skin="terminal"] .mkt-root [role=combobox] { font-family: 'JetBrains Mono', monospace; }
+
+/* Market keys: flat and quiet — a faint tint of the key colour, coloured label, hairline border */
+.key-yellow, .key-amber, .key-green { font-weight: 600; border-radius: 3px; border: 1px solid transparent; transition: background-color .15s, border-color .15s, color .15s; }
+.key-yellow { color: #ffd84a; background: rgb(255 214 0 / 0.09); border-color: rgb(255 214 0 / 0.26); }
+.key-amber { color: #ff9d3a; background: rgb(251 139 30 / 0.09); border-color: rgb(251 139 30 / 0.28); }
+.key-green { color: #4ade80; background: rgb(34 197 94 / 0.09); border-color: rgb(34 197 94 / 0.28); }
+.key-yellow:hover { background: rgb(255 214 0 / 0.17); border-color: rgb(255 214 0 / 0.45); }
+.key-amber:hover { background: rgb(251 139 30 / 0.17); border-color: rgb(251 139 30 / 0.5); }
+.key-green:hover { background: rgb(34 197 94 / 0.17); border-color: rgb(34 197 94 / 0.5); }
+/* light theme (modern skin) keeps the keys legible */
+:root[data-theme="light"]:not([data-skin="terminal"]) .key-yellow { color: #8a6d00; }
+:root[data-theme="light"]:not([data-skin="terminal"]) .key-amber { color: #b45309; }
 .panel-bar { background: rgb(var(--c-surface-3)); color: rgb(var(--c-text-secondary)); }
-:root[data-skin="terminal"] .panel-bar { background: #1c1c1c; border-bottom: 1px solid #3a3a3a; }
+
 /* Up/down colours: red-up / green-down is the convention in Hong Kong, China, Japan and Korea
    (Futubull's default there). Swapped inside Markets only; lib/theme.ts sets data-updown. */
 :root[data-updown="red"] .mkt-root { --c-green: 239 68 68; --c-red: 34 197 94; }
 :root[data-theme="light"][data-updown="red"] .mkt-root { --c-green: 200 30 30; --c-red: 21 128 61; }
-:root[data-skin="terminal"][data-updown="red"] .mkt-root { --c-green: 255 64 64; --c-red: 38 214 85; }
-/* Denser, sharper classic terminal: amber column headers, panel title bars, blue row highlight */
-:root[data-skin="terminal"] .mkt-root thead th { color: rgb(251 139 30) !important; text-transform: uppercase; font-size: 10px; letter-spacing: 0.03em; }
-:root[data-skin="terminal"] .mkt-root tbody tr:hover { background: rgb(18 35 63) !important; }
-:root[data-skin="terminal"] .mkt-root .panel-hdr { background: #161616; border-bottom: 1px solid #333; }
-:root[data-skin="terminal"] .mkt-root .panel-hdr > span:first-child { color: rgb(251 139 30); font-weight: 600; }
-:root[data-skin="terminal"] .mkt-root td, :root[data-skin="terminal"] .mkt-root th { padding-top: 1px; padding-bottom: 1px; }
-:root[data-skin="terminal"] .mkt-root .softkey { color: rgb(255 214 0); }
+:root[data-skin="terminal"][data-updown="red"] .mkt-root { --c-green: 255 82 82; --c-red: 46 214 102; }
+
+/* Tables: amber column headers, subtle zebra, blue selection highlight, dense rows */
+:root[data-skin="terminal"] .mkt-root thead th { color: rgb(var(--c-bloomberg) / 0.9) !important; text-transform: uppercase; font-size: 10px; font-weight: 600; letter-spacing: 0.06em;
+  font-family: 'Inter', system-ui, sans-serif; }
+:root[data-skin="terminal"] .mkt-root tbody tr:nth-child(even) { background: rgb(255 255 255 / 0.018); }
+:root[data-skin="terminal"] .mkt-root tbody tr { transition: background-color .12s; }
+:root[data-skin="terminal"] .mkt-root tbody tr:hover { background: rgb(37 99 235 / 0.16) !important; }
+:root[data-skin="terminal"] .mkt-root td, :root[data-skin="terminal"] .mkt-root th { padding-top: 2px; padding-bottom: 2px; }
+:root[data-skin="terminal"] .mkt-root .softkey { color: rgb(255 214 0); border-radius: 4px; padding: 0 6px; }
+:root[data-skin="terminal"] .mkt-root .softkey:hover { background: rgb(255 214 0 / 0.12); text-decoration: none; }
+
+/* Thin dark scrollbars */
+:root[data-skin="terminal"] .mkt-root * { scrollbar-width: thin; scrollbar-color: #2e2e38 transparent; }
+:root[data-skin="terminal"] .mkt-root ::-webkit-scrollbar { width: 8px; height: 8px; }
+:root[data-skin="terminal"] .mkt-root ::-webkit-scrollbar-thumb { background: #2e2e38; border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+@media (prefers-reduced-motion: reduce) { :root[data-skin="terminal"] .mkt-root * { transition: none !important; } }
 /* Price ticks flash like a terminal monitor */
 @keyframes flash-up { from { background: rgb(var(--c-green) / 0.55); } to { background: transparent; } }
 @keyframes flash-down { from { background: rgb(var(--c-red) / 0.55); } to { background: transparent; } }

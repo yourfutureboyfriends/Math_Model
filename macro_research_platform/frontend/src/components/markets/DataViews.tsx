@@ -4,6 +4,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { REGION_CCYS, useRegion } from '@/lib/region';
 import { ErrorBox, fmtBig, Loading, Panel, useJSON } from './shared';
 
 const enc = encodeURIComponent;
@@ -97,7 +98,9 @@ const FLAG: Record<string, string> = { USD: 'US', EUR: 'Euro area', GBP: 'UK', J
 export function EcoGlobalView() {
   const [impact, setImpact] = useState('Medium');
   const [ccy, setCcy] = useState('');
-  const { data, error, loading } = useJSON<any>(`/api/v1/mkt/eco/global?days_back=14&min_impact=${impact}${ccy ? `&countries=${ccy}` : ''}`, 900_000);
+  const area = useRegion();
+  const ccyParam = ccy || REGION_CCYS[area].join(',');          // default: the Markets region's currencies
+  const { data, error, loading } = useJSON<any>(`/api/v1/mkt/eco/global?days_back=14&min_impact=${impact}${ccyParam ? `&countries=${ccyParam}` : ''}`, 900_000);
   const days = useMemo(() => {
     const m = new Map<string, any[]>();
     for (const e of data?.events ?? []) { const k = String(e.date).slice(0, 10); m.set(k, [...(m.get(k) ?? []), e]); }

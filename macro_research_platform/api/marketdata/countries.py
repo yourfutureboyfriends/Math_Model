@@ -80,7 +80,7 @@ MAIN_INDEX: Dict[str, Tuple[str, str]] = {
 YIELD_SERIES: Dict[str, str] = {c: f"IRLTLT01{c}M156N" for c in (
     "AU AT BE CA CL CZ DK FI FR DE GR HU IS IE IL IT JP KR LU MX NL NZ NO PL PT SK SI ES SE CH GB US ZA CO IN".split())}
 IMF_INDICATORS = {"gdp_growth": "NGDP_RPCH", "inflation": "PCPIPCH", "unemployment": "LUR", "gov_debt": "GGXWDG_NGDP",
-                  "current_account": "BCA_NGDPD", "gdp_per_capita": "NGDPDPC"}
+                  "current_account": "BCA_NGDPD", "gdp_per_capita": "NGDPDPC", "gdp_usd_bn": "NGDPD"}
 
 
 def _imf(year: int) -> Dict[str, Dict[str, Optional[float]]]:
@@ -212,7 +212,7 @@ def world_data() -> Dict[str, Any]:
     def slow_persisted():   # survives restarts: the cold fetch (IMF + 34 FRED series) takes about a minute
         import json, time
         from pathlib import Path
-        path = Path(__file__).resolve().parents[2] / "data" / "processed" / "worldmap_slow.json"
+        path = Path(__file__).resolve().parents[2] / "data" / "processed" / "worldmap_slow_v2.json"
         try:
             if path.exists() and time.time() - path.stat().st_mtime < 86400:
                 return json.loads(path.read_text())
@@ -226,12 +226,12 @@ def world_data() -> Dict[str, Any]:
             pass
         return data
 
-    s = _cached("worldmap:slow", 86400, slow_persisted)
+    s = _cached("worldmap:slow2", 86400, slow_persisted)
     f = _cached("worldmap:fast", 600, fast)
     countries: Dict[str, Dict[str, Any]] = {}
     for c in COUNTRIES:
         iso = c["iso2"]
-        rec: Dict[str, Any] = {"name": c["name"], "currency": c["currency"], "iso3": c["iso3"]}
+        rec: Dict[str, Any] = {"name": c["name"], "currency": c["currency"], "iso3": c["iso3"], "region": region_of(iso)}
         if iso in f["etf"]:
             rec["etf"] = f["etf"][iso]
             for k in ("change_1d", "change_1m", "change_ytd", "change_1y"):
@@ -254,3 +254,73 @@ def world_data() -> Dict[str, Any]:
                         "yields": "OECD 10-year government yields via FRED (monthly)",
                         "economy": f"IMF World Economic Outlook ({year} estimates; {year + 1} projections)",
                         "risk": "Damodaran (NYU Stern) sovereign ratings and country risk premiums"}}
+
+
+# ── Regions (Bloomberg-style: Americas, Europe, Middle East & Africa, Asia-Pacific) ──
+REGION_NAMES = {"americas": "Americas", "europe": "Europe", "mea": "Middle East & Africa", "apac": "Asia-Pacific"}
+_EUROPE = set("GB IE FR DE NL BE LU CH AT IT ES PT GR DK SE NO FI IS PL CZ SK HU RO BG HR SI RS BA ME MK AL XK EE LV LT BY UA MD RU CY MT TR "
+              "AM AZ GE KZ UZ TM KG TJ".split())
+_MEA = set("SA AE QA KW BH OM YE IQ IR IL JO LB SY PS EG LY TN DZ MA EH SD SS ET ER DJ SO KE UG TZ RW BI MZ MW ZM ZW BW NA ZA LS SZ "
+           "AO CD CG GA GQ CM CF TD NE NG BJ TG GH CI BF ML SN GM GW GN SL LR MR CV ST SC KM MU MG".split())
+_APAC = set("CN HK MO TW JP KR KP MN IN PK BD LK NP BT MV AF MM TH LA KH VN MY SG ID PH BN TL AU NZ PG FJ SB VU NC".split())
+
+
+def region_of(iso2: str) -> str:
+    c = (iso2 or "").upper()
+    return "europe" if c in _EUROPE else "mea" if c in _MEA else "apac" if c in _APAC else "americas"
+
+
+# Screener / movers markets per region, lead market first
+REGION_MARKETS = {"americas": ["us", "ca", "br", "mx"], "europe": ["gb", "de", "fr", "ch", "nl", "it", "es", "se"],
+                  "mea": ["sa", "za"], "apac": ["jp", "cn", "hk", "in", "kr", "tw", "au", "sg"]}
+# Ticker suffix → ISO2 (to place earnings, movers and holdings in a country)
+SUFFIX_COUNTRY = {"": "US", "TO": "CA", "V": "CA", "SA": "BR", "MX": "MX", "L": "GB", "DE": "DE", "F": "DE", "PA": "FR", "AS": "NL",
+                  "SW": "CH", "MI": "IT", "MC": "ES", "ST": "SE", "OL": "NO", "CO": "DK", "HE": "FI", "BR": "BE", "VI": "AT",
+                  "IR": "IE", "LS": "PT", "AT": "GR", "WA": "PL", "IS": "TR", "TA": "IL", "SR": "SA", "JO": "ZA", "CA": "EG",
+                  "T": "JP", "HK": "HK", "SS": "CN", "SZ": "CN", "KS": "KR", "KQ": "KR", "TW": "TW", "TWO": "TW", "NS": "IN",
+                  "BO": "IN", "AX": "AU", "NZ": "NZ", "SI": "SG", "KL": "MY", "BK": "TH", "JK": "ID", "PS": "PH", "VN": "VN"}
+
+
+def country_of_symbol(symbol: str) -> str:
+    s = (symbol or "").upper()
+    if s.startswith("^") or s.endswith("=X") or s.endswith("=F"):
+        return ""
+    suffix = s.rsplit(".", 1)[1] if "." in s and len(s.rsplit(".", 1)[1]) <= 3 and not s.rsplit(".", 1)[1].isdigit() else ""
+    return SUFFIX_COUNTRY.get(suffix, "")
+
+
+# Words that put a headline in a country (name, demonym, capital/financial centre, institutions)
+COUNTRY_ALIASES = {
+    "US": ["U.S.", "United States", "American", "Wall Street", "Federal Reserve", "the Fed", "Washington", "Treasury yields", "S&P 500", "Nasdaq", "Dow"],
+    "CA": ["Canada", "Canadian", "Bank of Canada", "Toronto", "Ottawa"], "MX": ["Mexico", "Mexican", "Banxico"],
+    "BR": ["Brazil", "Brazilian", "Petrobras", "Sao Paulo", "São Paulo", "Lula"], "AR": ["Argentina", "Argentine", "Milei", "Buenos Aires"],
+    "CL": ["Chile", "Chilean"], "CO": ["Colombia", "Colombian"], "PE": ["Peru", "Peruvian"], "VE": ["Venezuela", "Venezuelan"],
+    "GB": ["UK", "U.K.", "Britain", "British", "Bank of England", "London", "FTSE", "sterling", "England"],
+    "DE": ["Germany", "German", "Bundesbank", "Berlin", "Frankfurt", "DAX"], "FR": ["France", "French", "Paris", "CAC 40", "Macron"],
+    "IT": ["Italy", "Italian", "Rome", "Milan"], "ES": ["Spain", "Spanish", "Madrid"], "NL": ["Netherlands", "Dutch", "Amsterdam"],
+    "CH": ["Switzerland", "Swiss", "SNB", "Zurich"], "SE": ["Sweden", "Swedish", "Riksbank"], "NO": ["Norway", "Norwegian"],
+    "PL": ["Poland", "Polish"], "TR": ["Turkey", "Turkish", "Türkiye", "Erdogan", "Istanbul"], "RU": ["Russia", "Russian", "Kremlin", "Moscow", "Putin"],
+    "UA": ["Ukraine", "Ukrainian", "Kyiv"], "IE": ["Ireland", "Irish"], "GR": ["Greece", "Greek"], "PT": ["Portugal", "Portuguese"],
+    "SA": ["Saudi", "Riyadh", "Aramco"], "AE": ["UAE", "Emirates", "Emirati", "Dubai", "Abu Dhabi"], "QA": ["Qatar", "Qatari", "Doha"],
+    "IL": ["Israel", "Israeli", "Tel Aviv"], "IR": ["Iran", "Iranian", "Tehran"], "EG": ["Egypt", "Egyptian", "Cairo", "Suez"],
+    "ZA": ["South Africa", "South African", "Johannesburg", "Rand"], "NG": ["Nigeria", "Nigerian", "Lagos"], "KE": ["Kenya", "Kenyan", "Nairobi"],
+    "MA": ["Morocco", "Moroccan"], "ET": ["Ethiopia", "Ethiopian"], "GH": ["Ghana", "Ghanaian"],
+    "CN": ["China", "Chinese", "Beijing", "Shanghai", "Shenzhen", "PBOC", "yuan", "renminbi", "Xi Jinping"],
+    "HK": ["Hong Kong", "Hang Seng"], "TW": ["Taiwan", "Taiwanese", "Taipei", "TSMC"], "JP": ["Japan", "Japanese", "Tokyo", "Bank of Japan", "BOJ", "Nikkei", "yen"],
+    "KR": ["South Korea", "Korean", "Seoul", "Kospi", "Samsung"], "IN": ["India", "Indian", "Mumbai", "RBI", "Sensex", "Nifty", "rupee", "Modi"],
+    "AU": ["Australia", "Australian", "RBA", "Sydney", "ASX"], "NZ": ["New Zealand", "RBNZ"], "SG": ["Singapore", "Singaporean", "MAS"],
+    "ID": ["Indonesia", "Indonesian", "Jakarta"], "MY": ["Malaysia", "Malaysian", "Kuala Lumpur"], "TH": ["Thailand", "Thai", "Bangkok"],
+    "VN": ["Vietnam", "Vietnamese", "Hanoi"], "PH": ["Philippines", "Philippine", "Manila"], "PK": ["Pakistan", "Pakistani"], "BD": ["Bangladesh"],
+}
+
+
+def countries_in(text: str) -> List[str]:
+    import re as _re
+    hits = []
+    for iso, words in COUNTRY_ALIASES.items():
+        for w in words:
+            pat = r"(?<![A-Za-z])" + _re.escape(w) + r"(?![A-Za-z])"
+            if _re.search(pat, text, 0 if w.isupper() or "." in w else _re.I):
+                hits.append(iso)
+                break
+    return hits

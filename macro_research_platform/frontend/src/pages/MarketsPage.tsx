@@ -13,6 +13,8 @@ import { CorrView, FrdView, OsaView, RrgView, SeasView } from '@/components/mark
 import { EcoGlobalView, EcstView, SiView, SplcView } from '@/components/markets/DataViews';
 import { FlyView, QuakeView, ShipView } from '@/components/markets/TrackingViews';
 import { AuctView, EiaView, InsdView, ThirteenFView, WetrView, WirpView } from '@/components/markets/ExtrasViews';
+import { CountryView, RegionBar, RegionMonitor } from '@/components/markets/RegionViews';
+import { useRegion } from '@/lib/region';
 import { MonitorHome } from '@/components/markets/Monitor';
 import { toTerminal } from '@/components/markets/bbg';
 import { setMarketsSkin, useMarketsSkin } from '@/lib/theme';
@@ -103,7 +105,7 @@ function TerminalQuoteHeader({ d, f, symbol, onGo, actions }: { d: any; f: MktFu
         <span className="text-[22px] font-semibold tabular-nums text-text-primary">{fmtPrice(d.price, d.type)}</span>
         {d.change != null && <span className={cn('tabular-nums font-semibold', up ? 'text-green' : 'text-red')}>{up ? '▲' : '▼'} {up ? '+' : ''}{fmtPrice(d.change, d.type)}  {d.change_pct != null ? `${up ? '+' : ''}${(d.change_pct * 100).toFixed(2)}%` : ''}</span>}
         <span className="text-text-secondary">{TYPE_LABEL[d.type] ?? d.type}</span>
-        <span className={cn('px-1', state === 'OPEN' ? 'bg-green text-black' : 'border border-border text-text-tertiary')}>{state}</span>
+        <span className={cn('px-1.5 rounded-sm text-[11px] border', state === 'OPEN' ? 'border-green/40 bg-green/10 text-green' : 'border-border text-text-tertiary')}>{state}</span>
         <span className="ml-auto flex flex-wrap gap-1">{actions}</span>
       </div>
       <div className="px-2 py-1 border border-border">
@@ -231,10 +233,14 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
 /** The body of any market-wide function (used by the main view and by launchpad windows). */
 export function MarketBody({ code, seed, onGo, open, classic, compact = false }: { code: string; seed?: string; onGo: (fn: string, s?: string) => void;
   open: (s: string) => void; classic: boolean; compact?: boolean }) {
+  const region = useRegion();
   return (
     <>
+    {code === 'RMON' && <RegionMonitor onOpen={open} onGo={onGo} />}
+    {code === 'CTRY' && <CountryView iso={seed} onOpen={open} onGo={onGo} />}
     {code === 'WEI' && (classic || compact
-      ? <div className="space-y-2">{!compact && <div className="px-2 py-1 border border-border"><FunctionMenu items={MARKET_FUNCTIONS} onPick={(x) => onGo(x.code)} /></div>}<MonitorHome onOpen={open} onGo={onGo} /></div>
+      ? <div className="space-y-2">{!compact && <div className="px-2 py-1 border border-border"><FunctionMenu items={MARKET_FUNCTIONS} onPick={(x) => onGo(x.code)} /></div>}
+          {region === 'global' ? <MonitorHome onOpen={open} onGo={onGo} /> : <RegionMonitor onOpen={open} onGo={onGo} />}</div>
       : <div className="space-y-5"><Launchpad onGo={onGo} /><OverviewView onOpen={open} /></div>)}
     {code === 'MOST' && <MoversView onOpen={open} />}
     {code === 'EQS' && <ScreenerView onOpen={open} />}
@@ -420,6 +426,8 @@ function SoftKeys({ fn, symbol, onHelp }: { fn: string; symbol?: string; onHelp?
   );
 }
 
+const REGION_AWARE = new Set(['WEI', 'RMON', 'MOST', 'EQS', 'IMAP', 'N', 'ECO', 'EVTS', 'MAP', 'LP']);
+
 export function MarketsPage() {
   const route = useMarketsRoute();
   const onGo = useCallback((fn: string, s?: string) => goMarkets(fn, s), []);
@@ -434,6 +442,8 @@ export function MarketsPage() {
       {classic ? <KeyBar onGo={(fn) => (fn === 'BACK' ? window.history.back() : onGo(fn))} onHelp={help.toggle} /> : (
         <div className="flex justify-end items-center gap-3 -mb-2 text-[11px] text-text-tertiary"><UpDownToggle />
           <button onClick={() => setMarketsSkin('classic')} className="hover:text-bloomberg">Switch to the classic terminal look</button></div>)}
+      {/* screens that follow the region stay put; anything else opens the regional monitor */}
+      <RegionBar onPick={() => { if (!REGION_AWARE.has(f.code)) onGo('RMON'); }} />
       <WorkspaceTabs />
       <CommandLine current={f.security ? route.symbol : undefined} onGo={onGo} />
       {help.open && <HelpPanel onClose={help.close} />}

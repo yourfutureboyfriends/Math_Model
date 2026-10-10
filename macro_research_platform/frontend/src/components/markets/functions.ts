@@ -33,6 +33,8 @@ export const FUNCTIONS: MktFunction[] = [
   { code: 'CN', name: 'Company news', desc: 'Latest headlines and official SEC filings for this instrument.', group: 'Security', security: true },
   // Markets
   { code: 'WEI', name: 'World markets', desc: 'Equity indices, rates, currencies, commodities and crypto at a glance.', group: 'Markets', aliases: ['HOME', 'TOP'] },
+  { code: 'RMON', name: 'Regional monitor', desc: 'Every country in the selected region: index, currency, 10Y, policy rate, inflation, growth, rating — plus movers, news, releases.', group: 'Markets', aliases: ['REGION', 'RGN', 'EMEA', 'APAC', 'AMER'] },
+  { code: 'CTRY', name: 'Country page', desc: 'One country: index and currency charts, largest companies, yields, policy, IMF economy, risk, news and releases. e.g. CTRY JP.', group: 'Markets', aliases: ['COUNTRY'] },
   { code: 'LP', name: 'Launchpad (multi-window)', desc: 'Up to six windows side by side, each running any function with its own command line.', group: 'Markets', aliases: ['BLP', 'GRID', 'LAUNCH'] },
   { code: 'MOST', name: 'Movers', desc: 'Biggest gainers, losers and most active stocks in 22 markets.', group: 'Markets', aliases: ['MOV'] },
   { code: 'IMAP', name: 'Market heatmap', desc: 'A country’s largest stocks by sector, sized by value, coloured by today’s move.', group: 'Markets', aliases: ['HEAT'] },

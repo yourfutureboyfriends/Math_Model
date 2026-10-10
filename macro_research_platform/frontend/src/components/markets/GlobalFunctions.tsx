@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { REGION_HEATMAP, useRegion } from '@/lib/region';
 import { LineChart } from '@/components/ui/LineChart';
 import { CorrelationHeatmap } from '@/components/ui/CorrelationHeatmap';
 import { CATEGORICAL } from '@/lib/chartPalette';
@@ -17,11 +18,12 @@ export function EvtsView({ onOpen }: { onOpen: (s: string) => void }) {
   const [days, setDays] = useState(7);
   const [cap, setCap] = useState(10);
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/evts?days=${days}&min_cap_bn=${cap}&limit=250`, 1_800_000);
+  const area = useRegion();
   const byDay = useMemo(() => {
     const m: Record<string, any[]> = {};
-    for (const r of data?.rows ?? []) (m[String(r.datetime).slice(0, 10)] ||= []).push(r);
+    for (const r of data?.rows ?? []) if (area === 'global' || r.region === area) (m[String(r.datetime).slice(0, 10)] ||= []).push(r);
     return Object.entries(m).sort(([a], [b]) => a.localeCompare(b));
-  }, [data]);
+  }, [data, area]);
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2 items-center text-2xs text-text-tertiary">
@@ -154,7 +156,9 @@ const heatColor = (v: number | null) => {
 };
 
 export function ImapView({ onOpen }: { onOpen: (s: string) => void }) {
-  const [country, setCountry] = useState('US');
+  const area = useRegion();
+  const [country, setCountry] = useState(REGION_HEATMAP[area]);
+  useEffect(() => { setCountry(REGION_HEATMAP[area]); }, [area]);            // follow the Markets region
   const [period, setPeriod] = useState<'change_1d' | 'change_5d'>('change_1d');
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/imap?country=${country}&max_names=${country === 'US' ? 300 : 150}`, 300_000);
   // Lay out at the container's real pixel size so labels stay legible on any screen.
@@ -331,7 +335,8 @@ export function NewsView() {
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
   const [src, setSrc] = useState('');
-  const { data, error, loading } = useJSON<any>(`/api/v1/mkt/news?limit=150${query ? `&q=${encodeURIComponent(query)}` : ''}`, 600_000);
+  const area = useRegion();
+  const { data, error, loading } = useJSON<any>(`/api/v1/mkt/news?limit=150${area !== 'global' ? `&region=${area}` : ''}${query ? `&q=${encodeURIComponent(query)}` : ''}`, 600_000);
   const items = (data?.items ?? []).filter((i: any) => !src || i.source === src);
   return (
     <div className="space-y-3">

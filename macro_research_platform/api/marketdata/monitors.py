@@ -275,26 +275,70 @@ def futures_curve(root: str, n: int = 10) -> Dict[str, Any]:
 
 
 # ── N / TOP ──────────────────────────────────────────────────────────────────
-def news_hub(q: Optional[str] = None, limit: int = 60) -> Dict[str, Any]:
-    def fetch():
-        from api.providers.news_provider import NewsProvider
-        from api.calculations.news_sentiment import score_headline
-        res = NewsProvider().fetch_all()
-        if not res.success:
-            raise Upstream(f"News feeds unreachable: {res.error}")
-        out = []
-        for a in res.articles or []:
-            out.append({"title": a.title, "source": a.source, "url": a.url, "summary": (a.summary or "")[:280],
-                        "time": a.published.replace(tzinfo=timezone.utc).isoformat() if a.published else None,
-                        "sentiment": score_headline(a.title or "")})
-        return out
-    items = _cached("newshub", 600, fetch)
+# Regional business feeds (keyless, checked 2026-10) — tagged with their home region
+REGIONAL_FEEDS = {
+    "Nikkei Asia": ("https://asia.nikkei.com/rss/feed/nar", "apac"), "SCMP Business": ("https://www.scmp.com/rss/92/feed", "apac"),
+    "Economic Times": ("https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms", "apac"),
+    "BusinessLine": ("https://www.thehindubusinessline.com/markets/feeder/default.rss", "apac"),
+    "CNA Business": ("https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6936", "apac"),
+    "ABC Australia": ("https://www.abc.net.au/news/feed/51892/rss.xml", "apac"),
+    "BBC Business": ("https://feeds.bbci.co.uk/news/business/rss.xml", "europe"), "Guardian Business": ("https://www.theguardian.com/uk/business/rss", "europe"),
+    "DW Business": ("https://rss.dw.com/rdf/rss-en-bus", "europe"), "Euronews Business": ("https://www.euronews.com/rss?level=vertical&name=business", "europe"),
+    "Africanews": ("https://www.africanews.com/feed/rss?themes=business", "mea"),
+    "Moneyweb": ("https://www.moneyweb.co.za/feed/", "mea"),
+    "CBC Business": ("https://www.cbc.ca/webfeed/rss/rss-business", "americas"), "Financial Post": ("https://financialpost.com/feed", "americas"),
+    "MercoPress": ("https://en.mercopress.com/rss/", "americas"), "Buenos Aires Times": ("https://www.batimes.com.ar/feed", "americas"),
+    "Mexico News Daily": ("https://mexiconewsdaily.com/feed/", "americas"),
+}
+
+
+def _articles(provider_feeds: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+    from api.providers.news_provider import NewsProvider
+    from api.calculations.news_sentiment import score_headline
+    from api.marketdata.countries import countries_in
+    p = NewsProvider()
+    if provider_feeds is not None:
+        p.feeds = provider_feeds
+    res = p.fetch_all()
+    if not res.success and not res.articles:
+        return []
+    out = []
+    for a in res.articles or []:
+        text = f"{a.title or ''} {a.summary or ''}"
+        out.append({"title": a.title, "source": a.source, "url": a.url, "summary": (a.summary or "")[:280],
+                    "time": a.published.replace(tzinfo=timezone.utc).isoformat() if a.published else None,
+                    "sentiment": score_headline(a.title or ""), "countries": countries_in(text)})
+    return out
+
+
+def news_hub(q: Optional[str] = None, limit: int = 60, region: Optional[str] = None, country: Optional[str] = None) -> Dict[str, Any]:
+    from api.marketdata.countries import region_of
+    glob = _cached("newshub", 600, lambda: _articles())
+    regional = _cached("newshub:regional", 900, lambda: _articles({k: v[0] for k, v in REGIONAL_FEEDS.items()}))
+    feed_region = {k: v[1] for k, v in REGIONAL_FEEDS.items()}
+    if not glob and not regional:
+        raise Upstream("News feeds unreachable.")
+    seen, items = set(), []
+    for i in glob + regional:
+        key = (i["title"] or "").strip().lower()[:90]
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        items.append({**i, "region": feed_region.get(i["source"], "global"),
+                      "regions": sorted({region_of(c) for c in i["countries"]} | ({feed_region[i["source"]]} if i["source"] in feed_region else set()))})
+    items.sort(key=lambda i: i["time"] or "", reverse=True)
+    if region and region != "global":
+        items = [i for i in items if region in i["regions"]]
+    if country:
+        c = country.upper()
+        items = [i for i in items if c in i["countries"]]
     if q:
         ql = q.lower()
         items = [i for i in items if ql in (i["title"] or "").lower() or ql in (i["summary"] or "").lower()]
     sources = sorted({i["source"] for i in items if i["source"]})
-    return {"query": q, "items": items[:limit], "sources": sources, "count": len(items),
-            "source": "RSS: " + ", ".join(sources) if sources else "RSS", "sentiment_note": "Finance word-list tone, −1 to +1."}
+    return {"query": q, "region": region, "country": country, "items": items[:limit], "sources": sources, "count": len(items),
+            "source": "RSS: " + ", ".join(sources) if sources else "RSS", "sentiment_note": "Finance word-list tone, −1 to +1.",
+            "note": "Headlines are placed in a region by their outlet and by the countries they mention."}
 
 
 # ── MAP: country equity markets via USD-listed MSCI country ETFs ─────────────

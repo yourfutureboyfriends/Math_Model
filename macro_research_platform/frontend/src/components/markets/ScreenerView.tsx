@@ -1,8 +1,9 @@
 // Movers and a global equity screener over 22 markets (Yahoo's screener): any region(s),
 // sector, size, valuation, yield and today's move. Market caps are entered in USD and
 // converted to each market's currency by the server.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { REGION_MARKETS, useRegion } from '@/lib/region';
 import { Chg, ErrorBox, fmtBig, fmtPrice, Loading, Panel, useJSON } from './shared';
 
 function Table({ rows, onOpen, showSector = true }: { rows: any[]; onOpen: (s: string) => void; showSector?: boolean }) {
@@ -34,7 +35,9 @@ function Table({ rows, onOpen, showSector = true }: { rows: any[]; onOpen: (s: s
 
 export function MoversView({ onOpen }: { onOpen: (s: string) => void }) {
   const meta = useJSON<any>('/api/v1/mkt/meta');
-  const [region, setRegion] = useState('us');
+  const area = useRegion();
+  const [region, setRegion] = useState(() => REGION_MARKETS[area][0]);
+  useEffect(() => { setRegion(REGION_MARKETS[area][0]); }, [area]);         // follow the Markets region
   const [kind, setKind] = useState<'gainers' | 'losers' | 'active'>('gainers');
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/movers?region=${region}&kind=${kind}&count=30`, 300_000);
   return (
@@ -73,7 +76,9 @@ const PRESETS: [string, Record<string, string>, string][] = [
 
 export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
   const meta = useJSON<any>('/api/v1/mkt/meta');
-  const [f, setF] = useState<Record<string, string>>({ regions: 'us', sector: '', sort: 'market_cap', market_cap_min: '10', pe_max: '', dividend_yield_min: '' });
+  const area = useRegion();
+  const [f, setF] = useState<Record<string, string>>({ regions: REGION_MARKETS[area][0], sector: '', sort: 'market_cap', market_cap_min: '10', pe_max: '', dividend_yield_min: '' });
+  useEffect(() => { setF((x) => ({ ...x, regions: REGION_MARKETS[area][0] })); }, [area]);
   const [url, setUrl] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const run = (off = 0, form: Record<string, string> = f) => {

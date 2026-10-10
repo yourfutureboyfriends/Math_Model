@@ -24,7 +24,7 @@ export function KeyBar({ onGo, onHelp }: { onGo: (fn: string) => void; onHelp: (
       <span className="w-2" />
       {FN_KEYS.map(([k, fn, title]) => (
         <button key={k} onClick={() => onGo(fn)} title={title} className="key-amber px-2 py-0.5 leading-5">{k}</button>))}
-      <button onClick={onHelp} title="How to use the terminal" className="px-2 py-0.5 leading-5 bg-green text-black font-bold">HELP</button>
+      <button onClick={onHelp} title="How to use the terminal" className="key-green px-2 py-0.5 leading-5">HELP</button>
       <span className="ml-auto inline-flex items-center gap-1 text-text-tertiary">
         <UpDownToggle />
         <span className="w-2" />
@@ -53,10 +53,10 @@ export function FunctionMenu({ items, active, onPick, columns = 'auto', dim }: {
     <nav aria-label="Functions" className={cn('grid gap-x-6 gap-y-0.5 text-[12px]', columns === 'one' ? 'grid-cols-1' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7')}>
       {items.map((f, i) => (
         <button key={f.code} onClick={() => onPick(f)} title={`${f.code} — ${f.name}: ${f.desc}`}
-          className={cn('text-left whitespace-nowrap overflow-hidden text-ellipsis min-w-0 px-1 hover:bg-surface-3', f.code === active && 'bg-[rgb(251,139,30)] text-black', dim?.(f) && f.code !== active && 'opacity-40')}>
-          <span className={cn('inline-block w-6 text-right mr-1', f.code === active ? 'text-black' : 'text-bloomberg')}>{i + 1})</span>
-          <span className={cn('inline-block w-12 font-semibold', f.code === active ? 'text-black' : 'text-text-primary')}>{f.code}</span>
-          <span className={f.code === active ? 'text-black' : 'text-text-secondary'}>{f.name}</span>
+          className={cn('text-left whitespace-nowrap overflow-hidden text-ellipsis min-w-0 px-1 hover:bg-surface-3', f.code === active && 'bg-[rgb(251_139_30/0.12)] rounded-sm', dim?.(f) && f.code !== active && 'opacity-40')}>
+          <span className={cn('inline-block w-6 text-right mr-1', f.code === active ? 'text-[#ffd84a]' : 'text-bloomberg/80')}>{i + 1})</span>
+          <span className={cn('inline-block w-12 font-semibold font-mono', f.code === active ? 'text-[#ffd84a]' : 'text-text-primary')}>{f.code}</span>
+          <span className={f.code === active ? 'text-text-primary' : 'text-text-secondary'}>{f.name}</span>
         </button>))}
     </nav>
   );

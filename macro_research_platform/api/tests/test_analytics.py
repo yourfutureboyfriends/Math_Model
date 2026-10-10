@@ -43,3 +43,13 @@ def test_tracking_helpers():
     assert abs(_km(51.47, -0.454, 40.641, -73.778) - 5540) < 30          # Heathrow → JFK ≈ 5,540 km
     assert _ship_type(84) == "Tanker" and _ship_type(71) == "Cargo" and _ship_type(None) == "Unknown"
     assert all(-90 <= c["lat"] <= 90 and -180 <= c["lon"] <= 180 for c in CHOKEPOINTS.values())
+
+
+def test_regions_and_country_tagging():
+    from api.marketdata.countries import countries_in, country_of_symbol, region_of
+    assert region_of("JP") == "apac" and region_of("DE") == "europe" and region_of("ZA") == "mea" and region_of("BR") == "americas"
+    assert country_of_symbol("7203.T") == "JP" and country_of_symbol("VOD.L") == "GB" and country_of_symbol("AAPL") == "US"
+    assert country_of_symbol("^N225") == "" and country_of_symbol("EURUSD=X") == ""
+    tags = countries_in("Bank of Japan holds rates as yen slides; Germany's DAX rallies")
+    assert "JP" in tags and "DE" in tags and "US" not in tags
+    assert "US" not in countries_in("Business is a focus")          # 'us' as a word is not the US
