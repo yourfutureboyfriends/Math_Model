@@ -100,7 +100,9 @@ export function AiChat({ context, compact }: { context?: string; compact?: boole
   useEffect(() => { fetch('/api/v1/ai/status').then((r) => r.json()).then(setStatus).catch(() => setStatus({ available: false, note: 'Assistant unavailable.' })); }, []);
   useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [turns, busy]);
   useEffect(() => { if (!busy) return; const t0 = Date.now(); const t = setInterval(() => setElapsed(Math.round((Date.now() - t0) / 1000)), 1000); return () => clearInterval(t); }, [busy]);
-  const deepModel = status?.models?.find((m: string) => m.startsWith('qwen3.5')) ?? status?.models?.find((m: string) => m !== status?.model);
+  // Deep mode = a larger *local* model. On Groq the default is already the strongest available model.
+  const deepModel = status?.provider !== 'ollama' ? undefined
+    : status?.models?.find((m: string) => m.startsWith('qwen3.5')) ?? status?.models?.find((m: string) => m !== status?.model);
   const send = async (text: string) => {
     const q = text.trim();
     if (!q || busy) return;

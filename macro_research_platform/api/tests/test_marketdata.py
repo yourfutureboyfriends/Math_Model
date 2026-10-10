@@ -86,3 +86,23 @@ def test_overview_reports_yield_moves_in_basis_points(monkeypatch):
     tnx = next(r for g in out["groups"] for r in g["rows"] if r["symbol"] == "^TNX")
     assert tnx["is_yield"] and tnx["change_1d_bp"] == pytest.approx((4.5 - 4.5 + 0.5 / 59) * 100, rel=1e-6)
     assert "change_1d" not in tnx                      # no misleading % change of a yield level
+
+
+def test_cross_listing_detection():
+    """Foreign companies' lines on another market are dropped; domestic companies (including
+    Hong Kong's mainland-Chinese majors and dual primaries) are kept."""
+    from api.marketdata import core
+    fidx = {"names": {core._norm("NVIDIA Corporation")}}
+    row = lambda sym, name, mc, px, vol, ccy="EUR": {"symbol": sym, "name": name, "market_cap": mc, "price": px, "volume": vol, "currency": ccy}
+    assert core._is_cross_listing(row("NVD.DE", "NVIDIA Corporation", 4.9e12, 200, 1e5), "de", fidx)            # name
+    assert core._is_cross_listing(row("GCP.DE", "General Electric Company", 2.8e11, 273, 400), "de", fidx)       # barely trades here
+    assert not core._is_cross_listing(row("SAP.DE", "SAP SE", 2.2e11, 191, 1.5e6), "de", fidx)
+    assert not core._is_cross_listing(row("0005.HK", "HSBC Holdings plc", 2.5e12, 145, 1e3, "HKD"), "hk", fidx)  # dual primary
+    assert not core._is_cross_listing(row("HSBA.L", "HSBC Holdings plc", 2.4e11, 1395.8, 2e7, "GBp"), "gb", fidx)  # pence handled
+
+
+def test_brazilian_depositary_receipts_are_secondary_lines():
+    from api.marketdata import core
+    assert core._is_secondary_line("AAPL34.SA") and core._is_secondary_line("T2TD34.SA")
+    assert not core._is_secondary_line("PETR3.SA") and not core._is_secondary_line("BPAC11.SA")
+    assert core._is_secondary_line("0YG8.L") and not core._is_secondary_line("HSBA.L")

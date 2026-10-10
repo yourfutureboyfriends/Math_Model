@@ -233,6 +233,27 @@ def _ollama_models() -> List[str]:
         return []
 
 
+# Groq retires models regularly; pick the first of these that the account actually offers.
+PREFERRED_GROQ = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "llama-3.3-70b-versatile", "openai/gpt-oss-20b"]
+_groq_models_cache: Dict[str, Any] = {}
+
+
+def _groq_models(key: str) -> List[str]:
+    import time
+    hit = _groq_models_cache.get("m")
+    if hit and time.time() - hit[0] < 3600:
+        return hit[1]
+    try:
+        import requests
+        r = requests.get("https://api.groq.com/openai/v1/models", headers={"Authorization": f"Bearer {key}"}, timeout=10)
+        r.raise_for_status()
+        models = sorted(m["id"] for m in r.json().get("data", []))
+    except Exception:
+        models = []
+    _groq_models_cache["m"] = (time.time(), models)
+    return models
+
+
 def config() -> Dict[str, Any]:
     prov = (os.getenv("AI_PROVIDER") or "").lower()
     groq_key = os.getenv("GROQ_API_KEY") or ""
@@ -245,8 +266,10 @@ def config() -> Dict[str, Any]:
                 "models": local, "note": "Runs locally with Ollama — free, nothing leaves your computer."
                 if local else "Ollama is not running — open the Ollama app (or run `ollama serve`)."}
     if prov == "groq":
+        offered = _groq_models(groq_key) if groq_key else []
+        model = os.getenv("AI_MODEL") or next((m for m in PREFERRED_GROQ if m in offered), PREFERRED_GROQ[0])
         return {"provider": "groq", "base_url": "https://api.groq.com/openai/v1", "key": groq_key,
-                "model": os.getenv("AI_MODEL") or "llama-3.3-70b-versatile", "available": bool(groq_key), "models": [],
+                "model": model, "available": bool(groq_key), "models": [m for m in PREFERRED_GROQ if m in offered],
                 "note": "Groq free tier." if groq_key else "Set GROQ_API_KEY (free at console.groq.com)."}
     if prov == "openai":
         base = os.getenv("AI_BASE_URL") or "https://api.openai.com/v1"

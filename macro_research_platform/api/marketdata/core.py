@@ -435,31 +435,74 @@ def _norm(name: Optional[str]) -> str:
     return " ".join(w for w in words if w and w not in _SUFFIX_WORDS)
 
 
-def _foreign_names(region: str) -> set:
-    """Names of large companies headquartered OUTSIDE `region` (from the global universe) —
-    used to drop cross-listings, e.g. Nvidia trading in Frankfurt, from a German screen."""
+# Markets whose main board is the home listing for each other's companies: Hong Kong is the
+# primary market for mainland Chinese firms (H-shares, red chips) and vice versa.
+HOME_EQUIV = {"hk": {"HK", "CN"}, "cn": {"CN", "HK"}}
+# Dual-primary listings that belong in their second market's screens (index constituents there)
+DUAL_PRIMARY = {"0005.HK", "2888.HK", "2378.HK", "0945.HK",              # HSBC, StanChart, Prudential, Manulife
+                "9988.HK", "9618.HK", "9999.HK", "9888.HK", "9961.HK", "2015.HK", "9868.HK", "9866.HK", "1179.HK"}   # US+HK dual primaries
+
+
+def _foreign_index(region: str) -> Dict[str, Any]:
+    """Large companies whose home listing is OUTSIDE `region` (from the global universe):
+    their names, and market values for those over $20bn — to drop cross-listings such as
+    Nvidia or GE trading in Frankfurt, even when the line carries an older company name."""
     def build():
         try:
             from api import global_universe as gu
             u = gu.load(rebuild_if_stale=False)
             items = u if isinstance(u, list) else (u.get("stocks") or [])
         except Exception:
-            return set()
-        return {_norm(x.get("name")) for x in items if str(x.get("country", "")).lower() != region and x.get("name")}
-    return _cached(f"foreign:{region}", 86400, build)
+            return {"names": set()}
+        home = HOME_EQUIV.get(region, {region.upper()})
+        # foreign = headquartered AND primarily listed abroad (an Indian bank with a US ADR is
+        # still an Indian company on the Indian screen)
+        foreign = [x for x in items if str(x.get("listing_country") or x.get("country") or "").upper() not in home
+                   and str(x.get("country") or "").upper() not in home]
+        return {"names": {_norm(x.get("name")) for x in foreign if x.get("name")}}
+    return _cached(f"foreignidx:{region}", 86400, build)
+
+
+def _foreign_names(region: str) -> set:
+    return _foreign_index(region)["names"]
+
+
+def _is_cross_listing(row: Dict[str, Any], region: str, fidx: Dict[str, Any]) -> bool:
+    """A foreign company's line on this market: its name is a foreign primary-listed company,
+    or it is a large company that barely trades here. Cross-listings (GE in Frankfurt or
+    Mexico, still named "General Electric") turn over well under 0.0003% of their value a day;
+    domestic large caps trade 0.01–0.5%. (Matching on market value alone was unreliable:
+    hundreds of companies sit within 1% of each other around $100bn.)"""
+    if row["symbol"] in DUAL_PRIMARY:
+        return False
+    if _norm(row.get("name")) in fidx["names"]:
+        return True
+    mc, px, vol = row.get("market_cap"), row.get("price"), row.get("volume")
+    if mc and px and vol is not None:
+        usd = to_usd(mc, row.get("currency"))
+        if usd and usd > 3e8:
+            traded = px * vol * (0.01 if row.get("currency") in ("GBp", "GBX", "ZAc", "ILA") else 1.0)  # minor units
+            if traded / mc < 3e-6:                       # ~100x below the thinnest domestic line seen (Roche bearer 3e-5)
+                return True
+    return False
 
 
 def _primary_only(rows: List[Dict[str, Any]], region: str) -> List[Dict[str, Any]]:
     if region == "us":
         return rows
-    foreign = _foreign_names(region)
+    fidx = _foreign_index(region)
+    order = {id(r): i for i, r in enumerate(rows)}          # requested (e.g. market-cap) order
+    if region == "in":       # NSE and BSE list the same companies: prefer the NSE line
+        rows = sorted(rows, key=lambda r: 0 if str(r["symbol"]).endswith(".NS") else 1)
     seen, out = set(), []
     for r in rows:
         n = _norm(r.get("name"))
-        if n in foreign or n in seen:                    # cross-listing or duplicate line of the same firm
+        if n in seen or _is_cross_listing(r, region, fidx):     # duplicate line, or a foreign company's cross-listing
             continue
         seen.add(n)
         out.append(r)
+    if region == "in":       # restore the requested order
+        out.sort(key=lambda r: order[id(r)])
     return out
 
 
@@ -486,7 +529,7 @@ def movers(region: str = "us", kind: str = "gainers", count: int = 25) -> Dict[s
             if region == "us":
                 res = yf.screen({"gainers": "day_gainers", "losers": "day_losers", "active": "most_actives"}[kind], count=count)
             else:
-                q = Q("and", [Q("eq", ["region", region]), Q("is-in", ["exchange", *MAIN_EXCHANGES[region]]),
+                q = Q("and", [Q("is-in", ["exchange", *MAIN_EXCHANGES[region]]),          # exchange, not Yahoo's region tag
                               Q("gt", ["intradaymarketcap", 2e9 * usd_to_local(region)])])     # ≈ $2bn floor
                 field = "dayvolume" if kind == "active" else "percentchange"
                 res = yf.screen(q, sortField=field, sortAsc=(kind == "losers"), size=250)
@@ -551,9 +594,13 @@ def to_usd(amount: Optional[float], ccy: Optional[str]) -> Optional[float]:
 
 
 def _is_secondary_line(symbol: str) -> bool:
-    """LSE codes like 0YG8.L / 0MTP.L are foreign shares on London's international lines."""
+    """Lines that list foreign shares: LSE international codes like 0YG8.L, and Brazilian
+    depositary receipts (BDRs, codes ending 31–35 such as AAPL34.SA)."""
+    import re
     base, _, suffix = symbol.partition(".")
-    return suffix == "L" and len(base) == 4 and base[0] == "0"
+    if suffix == "L" and len(base) == 4 and base[0] == "0":
+        return True
+    return suffix == "SA" and bool(re.fullmatch(r"[A-Z0-9]{4}3[1-5]", base))
 
 
 SCREEN_FIELDS = {"market_cap_min": ("gt", "intradaymarketcap"), "market_cap_max": ("lt", "intradaymarketcap"),
@@ -573,8 +620,11 @@ def screen(regions: List[str], sector: Optional[str] = None, sort: str = "market
     from yfinance import EquityQuery as Q
     regs = [r for r in regions if r in REGIONS] or ["us"]
     size = max(1, min(size, 250))
-    parts = [Q("is-in", ["region", *regs]) if len(regs) > 1 else Q("eq", ["region", regs[0]]),
-             Q("is-in", ["exchange", *[e for r in regs for e in MAIN_EXCHANGES[r]]])]
+    # The exchange defines the market. Yahoo's per-stock "region" tag is unreliable (Allianz is
+    # tagged US, which silently dropped it from Germany), so it's used for the US only; foreign
+    # lines on a market's exchange are removed afterwards by _primary_only.
+    exch = Q("is-in", ["exchange", *[e for r in regs for e in MAIN_EXCHANGES[r]]])
+    parts = [Q("eq", ["region", "us"]), exch] if regs == ["us"] else [exch]
     if sector:
         if sector not in SECTORS:
             raise NotFound(f"Unknown sector '{sector}'.")
@@ -591,18 +641,33 @@ def screen(regions: List[str], sector: Optional[str] = None, sort: str = "market
         val = float(v) * fx if k.startswith("market_cap") else float(v)      # market caps are given in USD
         parts.append(Q(op, [field, val]))
     query = Q("and", parts) if len(parts) > 1 else parts[0]
-    key = f"screen:{regs}:{sector}:{sort}:{ascending}:{size}:{offset}:{sorted((k, v) for k, v in filters.items() if v is not None)}"
+    key = f"screen2:{regs}:{sector}:{sort}:{ascending}:{size}:{offset}:{sorted((k, v) for k, v in filters.items() if v is not None)}"
 
     def fetch():
-        try:   # over-fetch so dropping cross-listings still leaves a full page
-            res = yf.screen(query, sortField=SORTS.get(sort, "intradaymarketcap"), sortAsc=ascending,
-                            size=min(250, size if regs == ["us"] else 250), offset=offset)
-        except Exception as e:
-            raise Upstream(f"Screener unavailable: {e}")
-        rows = _rows(res.get("quotes") or [])
+        # Over-fetch (up to 3 pages) so dropping cross-listings and foreign depositary receipts —
+        # which crowd the top of Brazil's and Mexico's lists — still leaves a full page.
+        rows: List[Dict[str, Any]] = []
+        total, off = None, offset
+        for _ in range(3 if regs != ["us"] else 1):
+            try:
+                res = yf.screen(query, sortField=SORTS.get(sort, "intradaymarketcap"), sortAsc=ascending,
+                                size=min(250, size if regs == ["us"] else 250), offset=off)
+            except Exception as e:
+                if rows:
+                    break
+                raise Upstream(f"Screener unavailable: {e}")
+            total = res.get("total")
+            page = _rows(res.get("quotes") or [])
+            rows += page
+            kept = _primary_only(rows, regs[0]) if len(regs) == 1 else rows
+            kept = [r for r in kept if not _is_secondary_line(r["symbol"]) and not (sort == "market_cap" and not r.get("market_cap"))]
+            off += len(page)
+            if len(kept) >= size or len(page) < 250 or (total is not None and off >= total):
+                break
         if len(regs) == 1:
             rows = _primary_only(rows, regs[0])
-        rows = [r for r in rows if not _is_secondary_line(r["symbol"])][:size]
-        return {"total": res.get("total"), "rows": rows, "offset": offset,
+        rows = [r for r in rows if not _is_secondary_line(r["symbol"])
+                and not (sort == "market_cap" and not r.get("market_cap"))][:size]     # drop warrants/notes with no market value
+        return {"total": total, "rows": rows, "offset": offset,
                 "source": "Yahoo Finance global screener"}
     return _cached(key, 300, fetch)
