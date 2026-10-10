@@ -50,7 +50,7 @@ export function SiView({ symbol }: { symbol: string }) {
       </Panel>
       <div className="overflow-x-auto border border-border max-h-72 overflow-y-auto">
         <table className="w-full text-[11px] font-mono tabular-nums">
-          <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left px-2 font-normal">Date</th><th className="text-right font-normal">Short volume</th><th className="text-right font-normal">Total volume</th><th className="text-right px-2 font-normal">Short %</th></tr></thead>
+          <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left px-2 font-normal">Date</th><th className="text-right font-normal">Short volume</th><th className="text-right font-normal" title="Volume reported to FINRA facilities (off-exchange and TRF prints) — not the consolidated tape">FINRA volume</th><th className="text-right px-2 font-normal">Short %</th></tr></thead>
           <tbody>{[...d].reverse().map((x) => (
             <tr key={x.date} className="border-t border-border-subtle"><td className="px-2 text-text-secondary">{x.date}</td><td className="text-right">{fmtBig(x.short_volume)}</td>
               <td className="text-right">{fmtBig(x.total_volume)}</td><td className={cn('text-right px-2', x.ratio > data.ratio_20d * 1.15 ? 'text-red' : x.ratio < data.ratio_20d * 0.85 ? 'text-green' : '')}>{pc(x.ratio)}</td></tr>))}</tbody>
@@ -83,7 +83,8 @@ export function SplcView({ symbol, onOpen }: { symbol: string; onOpen: (s: strin
               <tr key={r.cik} className="border-t border-border-subtle hover:bg-surface-3">
                 <td className="px-2 py-1 text-text-primary">{r.name}</td>
                 <td>{r.ticker ? <button onClick={() => onOpen(r.ticker)} className="font-mono text-bloomberg hover:underline">{r.ticker}</button> : <span className="text-text-tertiary">—</span>}</td>
-                <td className="text-text-secondary">{r.evidence.slice(0, 3).map((e: string) => `“${e}”`).join(', ')}{r.evidence.length > 3 ? ` +${r.evidence.length - 3}` : ''}</td>
+                <td className={r.confidence === 'weak' ? 'text-text-tertiary' : 'text-text-secondary'}>
+                  {r.confidence === 'weak' && <span className="mr-1.5 px-1 border border-border text-[9px] uppercase" title="Only a list-style mention — open the filing to confirm">weak</span>}{r.evidence.slice(0, 3).map((e: string) => `“${e}”`).join(', ')}{r.evidence.length > 3 ? ` +${r.evidence.length - 3}` : ''}</td>
                 <td className="text-right font-mono text-text-tertiary">{r.latest_10k}</td>
                 <td className="px-2">{r.filing_url && <a href={r.filing_url} target="_blank" rel="noreferrer noopener" title="Open the filing on SEC.gov" className="text-text-tertiary hover:text-bloomberg"><ExternalLink className="w-3.5 h-3.5" /></a>}</td>
               </tr>))}</tbody>

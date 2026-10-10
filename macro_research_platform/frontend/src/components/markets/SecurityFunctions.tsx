@@ -147,13 +147,13 @@ export function AnrView({ symbol }: { symbol: string }) {
         <Panel title="Recent rating and target changes">
           <div className="max-h-80 overflow-y-auto"><table className="w-full text-2xs">
             <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left font-normal">Date</th><th className="text-left font-normal">Firm</th>
-              <th className="text-left font-normal">Rating</th><th className="text-right font-normal">Target</th></tr></thead>
+              <th className="text-left font-normal">Rating</th><th className="text-right font-normal pr-3">Target</th></tr></thead>
             <tbody>{data.changes.map((c: any, i: number) => (
               <tr key={i} className="border-t border-border-subtle">
-                <td className="font-mono text-text-tertiary py-1">{c.date}</td><td className="text-text-primary">{c.Firm}</td>
+                <td className="font-mono text-text-tertiary py-1 whitespace-nowrap pr-2">{c.date}</td><td className="text-text-primary truncate max-w-[9rem]" title={c.Firm}>{c.Firm}</td>
                 <td className="text-text-secondary">{c.FromGrade && c.FromGrade !== c.ToGrade ? <>{c.FromGrade} → </> : null}
                   <span className={/up/i.test(c.Action) ? 'text-green' : /down/i.test(c.Action) ? 'text-red' : ''}>{c.ToGrade}</span></td>
-                <td className="text-right font-mono">{c.currentPriceTarget ? <>{c.priorPriceTarget ? <span className="text-text-tertiary">{fmtPrice(c.priorPriceTarget)} → </span> : null}
+                <td className="text-right font-mono whitespace-nowrap pr-3">{c.currentPriceTarget ? <>{c.priorPriceTarget ? <span className="text-text-tertiary">{fmtPrice(c.priorPriceTarget)} → </span> : null}
                   <span className={c.currentPriceTarget > (c.priorPriceTarget ?? c.currentPriceTarget) ? 'text-green' : c.currentPriceTarget < (c.priorPriceTarget ?? 0) ? 'text-red' : ''}>{fmtPrice(c.currentPriceTarget)}</span></> : '—'}</td>
               </tr>))}</tbody>
           </table></div>
@@ -196,13 +196,13 @@ export function HdsView({ symbol }: { symbol: string }) {
         <Panel title="Insider transactions (Form 4)">
           {data.insiders.length ? <div className="max-h-80 overflow-y-auto"><table className="w-full text-2xs">
             <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left font-normal">Date</th><th className="text-left font-normal">Insider</th>
-              <th className="text-left font-normal">Transaction</th><th className="text-right font-normal">Shares</th><th className="text-right font-normal">Value</th></tr></thead>
+              <th className="text-left font-normal">Transaction</th><th className="text-right font-normal">Shares</th><th className="text-right font-normal pr-3">Value</th></tr></thead>
             <tbody>{data.insiders.map((r: any, i: number) => (
               <tr key={i} className="border-t border-border-subtle" title={r.Text ?? ''}>
                 <td className="font-mono text-text-tertiary py-1">{r['Start Date']}</td><td className="text-text-primary truncate max-w-[10rem]">{r.Insider}<span className="text-text-tertiary"> · {r.Position}</span></td>
                 <td className={cn(/sale|sell/i.test(r.Text ?? r.Transaction ?? '') ? 'text-red' : /purchase|buy/i.test(r.Text ?? r.Transaction ?? '') ? 'text-green' : 'text-text-secondary')}>
                   {r.Transaction || (r.Text ?? '').split(' at ')[0]}</td>
-                <td className="text-right font-mono">{fmtBig(r.Shares)}</td><td className="text-right font-mono">{fmtBig(r.Value)}</td></tr>))}</tbody>
+                <td className="text-right font-mono">{fmtBig(r.Shares)}</td><td className="text-right font-mono pr-3">{fmtBig(r.Value)}</td></tr>))}</tbody>
           </table></div> : <div className="text-2xs text-text-tertiary">No recent insider filings.</div>}
         </Panel>
       </div>

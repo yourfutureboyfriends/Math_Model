@@ -84,10 +84,15 @@ def _collect(names: List[str], templates: List[str], self_cik: str) -> List[Dict
     for f in firms.values():
         adsh = sorted(f["filings"])[-1] if f["filings"] else None
         link = (f"https://www.sec.gov/Archives/edgar/data/{int(f['cik'])}/{adsh.replace('-', '')}/" if adsh else None)
+        # List-style phrases ("customers, Apple") also match "customers, Apple Pay"; revenue
+        # disclosures ("Apple accounted for", "sales to Apple") are the reliable evidence.
+        strong = any(not re.match(r"customers?,|customers includ", ph) for ph in f["phrases"])
         rows.append({"name": f["name"], "ticker": f["ticker"], "cik": f["cik"], "evidence": sorted(f["phrases"]),
-                     "strength": len(f["phrases"]), "latest_10k": f["latest"], "filing_url": link})
+                     "strength": len(f["phrases"]), "confidence": "strong" if strong else "weak",
+                     "latest_10k": f["latest"], "filing_url": link})
     rows.sort(key=lambda r: r["latest_10k"], reverse=True)       # newest first …
-    rows.sort(key=lambda r: -r["strength"])                       # … within the strongest evidence first
+    rows.sort(key=lambda r: -r["strength"])                       # … within the strongest evidence first …
+    rows.sort(key=lambda r: r["confidence"] != "strong")          # … and revenue disclosures before name lists
     return rows
 
 

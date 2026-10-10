@@ -374,7 +374,11 @@ def statements(ticker: str, years: int = 10, quarters: int = 12) -> Dict[str, An
     ratios = {"gross_margin": ratio(t["gross_profit"], t["revenue"]), "operating_margin": ratio(t["operating_income"], t["revenue"]),
               "net_margin": ratio(t["net_income"], t["revenue"]), "roe": ratio(t["net_income"], last_bal.get("equity")),
               "roa": ratio(t["net_income"], last_bal.get("total_assets")),
-              "debt_to_equity": ratio(last_bal.get("total_liabilities"), last_bal.get("equity")),
+              # interest-bearing debt ÷ equity (total liabilities would count payables, deferred revenue…)
+              "debt_to_equity": ratio(((last_bal.get("long_term_debt") or 0) + (last_bal.get("short_term_debt") or 0))
+                                      if last_bal.get("long_term_debt") is not None else None,      # untagged long-term debt → unknown, not ~0
+                                      last_bal.get("equity")),
+              "liabilities_to_equity": ratio(last_bal.get("total_liabilities"), last_bal.get("equity")),
               "current_ratio": ratio(last_bal.get("current_assets"), last_bal.get("current_liabilities")),
               "fcf_margin": ratio(fcf, t["revenue"])}
     filings = sorted({(r.get("accn"), r.get("filed"), r.get("form")) for _, pts in
