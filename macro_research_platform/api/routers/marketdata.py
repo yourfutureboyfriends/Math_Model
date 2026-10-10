@@ -26,6 +26,20 @@ async def _run(fn, *a, timeout: float = 45, **k):
         raise HTTPException(502, f"The data provider returned something unexpected ({type(e).__name__}) — try again shortly.")
 
 
+@router.get("/api/v1/mkt/tv")
+async def mkt_tv_live():
+    """Live business/news channels (official YouTube streams) with their home countries."""
+    from api.marketdata import tv
+    return await _run(tv.live, timeout=90)
+
+
+@router.get("/api/v1/mkt/tv/clips")
+async def mkt_tv_clips(country: Optional[str] = Query(None, pattern=r"^[A-Za-z]{2}$"), limit: int = Query(24, ge=1, le=60)):
+    """Recent economy clips from those channels — for a country, the ones about it."""
+    from api.marketdata import tv
+    return await _run(tv.clips, country, limit, timeout=90)
+
+
 @router.get("/api/v1/mkt/gc")
 async def mkt_yield_curves():
     """GC: official daily government curves (US, DE, euro AAA, UK, JP, CA, AU) with 1W/1M changes."""

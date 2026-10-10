@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { countryPaths, NUMERIC_TO_ISO2 as FALLBACK_NUMERIC, projectPoint, type Topology } from '@/lib/topo';
 import { Chg, ErrorBox, fmtPct, fmtPrice, Loading, useJSON } from './shared';
+import { Globe3D } from './Globe3D';
+import { LiveTV } from './LiveTV';
 
 type Fmt = 'pct' | 'pctpt' | 'pp' | 'bp' | 'usd' | 'ratio';
 type Layer = { key: string; group: 'Markets' | 'Economy' | 'Policy' | 'Risk'; label: string; get: (c: any) => number | null | undefined;
@@ -63,6 +65,15 @@ export function WorldMap({ onOpen, onGo }: { onOpen: (s: string) => void; onGo?:
   const [hover, setHover] = useState<{ iso: string; name: string; x: number; y: number } | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [mode, setMode] = useState<'2d' | '3d'>(() => { try { return (localStorage.getItem('mkt_map_mode') as any) || '2d'; } catch { return '2d'; } });
+  useEffect(() => { try { localStorage.setItem('mkt_map_mode', mode); } catch { /* storage unavailable */ } }, [mode]);
+  const [tour, setTour] = useState(false);
+  // auto-tour: step through every layer (a slow "screensaver" of the world's numbers)
+  useEffect(() => {
+    if (!tour) return;
+    const t = setInterval(() => setLayer((cur) => { const n = L[(L.indexOf(cur) + 1) % L.length]; setGroup(n.group); return n; }), 6000);
+    return () => clearInterval(t);
+  }, [tour]);
   const world = useJSON<any>('/api/v1/mkt/map/world', 600_000);
   const macro = useJSON<any>('/api/v1/global-macro', 3_600_000);
   const box = useRef<HTMLDivElement>(null);
@@ -116,6 +127,18 @@ export function WorldMap({ onOpen, onGo }: { onOpen: (s: string) => void; onGo?:
     return `rgb(var(--c-bloomberg) / ${0.2 + t * 0.78})`;
   };
   const ranked = useMemo(() => [...values].sort((a, b) => b[1] - a[1]), [values]);
+  const pulses = useMemo(() => (layer.diverging && ranked.length > 8
+    ? [...ranked.slice(0, 3).map(([iso, v]) => ({ iso, good: layer.goodHigh ? v >= 0 : v <= 0 })),
+       ...ranked.slice(-3).map(([iso, v]) => ({ iso, good: layer.goodHigh ? v >= 0 : v <= 0 }))]
+    : []), [ranked, layer]);
+  // meridians and parallels every 30°, as polylines in the map's projection
+  const graticule = useMemo(() => {
+    const seg = (pts: [number, number][]) => pts.map(([lo, la], i) => { const [x, y] = projectPoint(lo, la, W); return `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`; }).join('');
+    const out: string[] = [];
+    for (let lo = -180; lo <= 180; lo += 30) out.push(seg(Array.from({ length: 37 }, (_, i) => [lo, -90 + i * 5] as [number, number])));
+    for (let la = -60; la <= 60; la += 30) out.push(seg(Array.from({ length: 73 }, (_, i) => [-180 + i * 5, la] as [number, number])));
+    return out.join('');
+  }, [W]);
 
   const zoomTo = (b: [number, number, number, number]) => {
     const [x0, y0] = projectPoint(b[0], b[3], W), [x1, y1] = projectPoint(b[2], b[1], W);
@@ -167,10 +190,15 @@ export function WorldMap({ onOpen, onGo }: { onOpen: (s: string) => void; onGo?:
       <div className="grid grid-cols-1 2xl:grid-cols-[1fr_320px] gap-2">
         <div className="space-y-2 min-w-0">
           <div className="flex flex-wrap items-center gap-1 text-[11px]">
-            {REGIONS.map(([name, b]) => (
+            {mode === '2d' && REGIONS.map(([name, b]) => (
               <button key={name} onClick={() => (name === 'World' ? setView({ x: 0, y: 0, k: 1 }) : zoomTo(b))} className="px-2 py-0.5 border border-border text-text-secondary hover:text-bloomberg hover:border-bloomberg">{name}</button>))}
-            <button onClick={() => zoomBy(1.4)} aria-label="Zoom in" className="px-2 py-0.5 border border-border hover:border-bloomberg">+</button>
-            <button onClick={() => zoomBy(1 / 1.4)} aria-label="Zoom out" className="px-2 py-0.5 border border-border hover:border-bloomberg">−</button>
+            {mode === '2d' && <><button onClick={() => zoomBy(1.4)} aria-label="Zoom in" className="px-2 py-0.5 border border-border hover:border-bloomberg">+</button>
+            <button onClick={() => zoomBy(1 / 1.4)} aria-label="Zoom out" className="px-2 py-0.5 border border-border hover:border-bloomberg">−</button></>}
+            <span className="mx-1 text-text-tertiary">|</span>
+            {(['2d', '3d'] as const).map((m) => <button key={m} onClick={() => setMode(m)} aria-pressed={mode === m}
+              className={cn('px-2 py-0.5 border font-mono', mode === m ? 'border-bloomberg text-bloomberg bg-bloomberg/10' : 'border-border text-text-secondary hover:text-text-primary')}>{m === '2d' ? '2D map' : '3D globe'}</button>)}
+            <button onClick={() => setTour((t) => !t)} title="Step through every layer automatically" aria-pressed={tour}
+              className={cn('px-2 py-0.5 border', tour ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary hover:text-text-primary')}>{tour ? '❚❚ Tour' : '▶ Tour'}</button>
             <div className="relative ml-auto">
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a country…" aria-label="Find a country"
                 className="w-44 bg-surface-1 border border-border px-2 py-0.5 text-xs text-text-primary placeholder:text-text-tertiary" />
@@ -191,14 +219,24 @@ export function WorldMap({ onOpen, onGo }: { onOpen: (s: string) => void; onGo?:
             onMouseUp={() => { setTimeout(() => { drag.current = null; }, 0); }} onMouseLeave={() => { drag.current = null; setHover(null); }}>
             {loading && <Loading label="Drawing the map…" />}
             {world.error && !world.data && <ErrorBox msg={world.error} />}
-            {geo && (
+            {geo && mode === '3d' && topo && (
+              <Globe3D topo={topo} numToIso={numToIso} height={Math.max(420, Math.min(680, Math.round(W * 0.6)))} selected={sel}
+                fill={(iso) => color(iso && data[iso] ? layer.get(data[iso]) : null)} onSelect={(iso) => setSel(iso)} onHover={setHover} />
+            )}
+            {geo && mode === '2d' && (
               <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label={`World map: ${layer.label}`} className={view.k > 1 ? 'cursor-grab' : ''}>
+                <defs>
+                  <radialGradient id="mkt-ocean" cx="45%" cy="40%" r="75%"><stop offset="0%" stopColor="rgb(var(--c-surface-2))" /><stop offset="100%" stopColor="rgb(var(--c-surface-1))" /></radialGradient>
+                </defs>
+                <rect x={0} y={0} width={W} height={H} fill="url(#mkt-ocean)" />
                 <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
+                  <path d={graticule} fill="none" stroke="rgb(var(--c-border) / 0.35)" strokeWidth={0.5 / view.k} pointerEvents="none" />
                   {geo.shapes.map((s) => {
                     const iso = numToIso[s.id];
                     const v = iso && data[iso] ? layer.get(data[iso]) : null;
                     return <path key={s.id + s.name} d={s.path} data-iso={iso} aria-label={s.name} fill={color(v)} stroke="rgb(var(--c-bg))" strokeWidth={0.5 / view.k}
-                      className={cn(iso && 'cursor-pointer hover:opacity-80')} style={sel && iso === sel ? { stroke: 'rgb(var(--c-text-primary))', strokeWidth: 1.6 / view.k } : undefined}
+                      className={cn(iso && 'cursor-pointer hover:opacity-80')}
+                      style={{ transition: 'fill 700ms ease', ...(sel && iso === sel ? { stroke: 'rgb(var(--c-text-primary))', strokeWidth: 1.6 / view.k } : {}) }}
                       onMouseMove={(e) => { const r = box.current!.getBoundingClientRect(); setHover({ iso: iso ?? '', name: data[iso]?.name ?? s.name, x: e.clientX - r.left, y: e.clientY - r.top }); }}
                       onClick={() => { if (!drag.current?.moved && iso) setSel(iso); }} />;
                   })}
@@ -211,6 +249,17 @@ export function WorldMap({ onOpen, onGo }: { onOpen: (s: string) => void; onGo?:
                     return <text key={`t${s.id}`} x={s.centroid[0]} y={s.centroid[1]} textAnchor="middle" dominantBaseline="middle" pointerEvents="none"
                       style={{ fontSize: 9 / view.k, fill: 'rgb(var(--c-text-primary))', paintOrder: 'stroke', stroke: 'rgb(var(--c-bg) / 0.7)', strokeWidth: 2 / view.k }}>
                       {fmtVal(v, layer.fmt, layer.diverging)}</text>;
+                  })}
+                  {/* gentle pulses on the day's extremes (top and bottom three) */}
+                  {pulses.map(({ iso, good }) => {
+                    const sh = geo.shapes.find((s) => numToIso[s.id] === iso); if (!sh) return null;
+                    const c = good ? 'rgb(var(--c-green))' : 'rgb(var(--c-red))';
+                    return <g key={`p${iso}`} pointerEvents="none">
+                      <circle cx={sh.centroid[0]} cy={sh.centroid[1]} r={3 / view.k} fill={c} />
+                      <circle cx={sh.centroid[0]} cy={sh.centroid[1]} r={3 / view.k} fill="none" stroke={c} strokeWidth={1.2 / view.k}>
+                        <animate attributeName="r" from={3 / view.k} to={16 / view.k} dur="2.4s" repeatCount="indefinite" />
+                        <animate attributeName="opacity" from="0.8" to="0" dur="2.4s" repeatCount="indefinite" />
+                      </circle></g>;
                   })}
                 </g>
               </svg>
@@ -256,8 +305,9 @@ export function WorldMap({ onOpen, onGo }: { onOpen: (s: string) => void; onGo?:
           </div>
         </div>
       </div>
+      <LiveTV iso={sel} name={selName} region={selRec?.region ?? null} />
       <div className="text-[10px] text-text-tertiary">
-        {world.data ? Object.values<string>(world.data.sources).join(' · ') : ''}{macro.data ? ' · Policy: Research mode Global Macro (BIS, OECD, FRED, national sources)' : ''} · Map: Natural Earth via world-atlas, Equal Earth projection.
+        {world.data ? Object.values<string>(world.data.sources).join(' · ') : ''}{macro.data ? ' · Policy: Research mode Global Macro (BIS, OECD, FRED, national sources)' : ''} · Map: Natural Earth via world-atlas, Equal Earth projection (2D) and orthographic globe (3D).
       </div>
     </div>
   );
