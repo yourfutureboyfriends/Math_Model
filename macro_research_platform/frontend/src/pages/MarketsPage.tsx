@@ -270,13 +270,17 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
 }
 
 // ── LP: multi-window launchpad ───────────────────────────────────────────────
-type Pane = { fn: string; symbol?: string };
-const LP_KEY = 'mkt_lp';
+type Link = 'red' | 'green' | 'blue' | 'yellow';
+type Pane = { fn: string; symbol?: string; link?: Link | null };
+const LINKS: (Link | null)[] = [null, 'red', 'green', 'blue', 'yellow'];
+const LINK_RGB: Record<Link, string> = { red: '239 68 68', green: '34 197 94', blue: '59 130 246', yellow: '250 204 21' };
+const LP_KEY = 'mkt_lp_v2';
 const LAYOUTS: Record<string, { n: number; cls: string; h: string }> = {
   '1x1': { n: 1, cls: 'grid-cols-1', h: 'h-[calc(100vh-230px)]' }, '2x1': { n: 2, cls: 'grid-cols-1 xl:grid-cols-2', h: 'h-[calc(100vh-230px)]' },
   '2x2': { n: 4, cls: 'grid-cols-1 xl:grid-cols-2', h: 'h-[calc((100vh-240px)/2)]' }, '3x2': { n: 6, cls: 'grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3', h: 'h-[calc((100vh-240px)/2)]' },
 };
-const DEFAULT_LP = { layout: '2x2', panes: [{ fn: 'WEI' }, { fn: 'GP', symbol: '^GSPC' }, { fn: 'N' }, { fn: 'WIRP' }, { fn: 'WCRS' }, { fn: 'MOST' }] as Pane[] };
+const DEFAULT_LP = { layout: '2x2', panes: [{ fn: 'W', link: 'red' }, { fn: 'GP', symbol: 'AAPL', link: 'red' }, { fn: 'DES', symbol: 'AAPL', link: 'red' },
+  { fn: 'WIRP' }, { fn: 'N' }, { fn: 'WEI' }] as Pane[] };
 function loadLP(): { layout: string; panes: Pane[] } {
   try { const j = JSON.parse(localStorage.getItem(LP_KEY) || ''); if (j?.panes?.length && LAYOUTS[j.layout]) return j; } catch { /* first run */ }
   return DEFAULT_LP;
@@ -305,20 +309,26 @@ async function resolveCommand(text: string): Promise<Pane | null> {
   return sym ? { fn: p.fn?.code ?? 'DES', symbol: sym } : null;
 }
 
-function LpPane({ pane, index, classic, onChange, onClose, onMax }: { pane: Pane; index: number; classic: boolean; onChange: (p: Pane) => void; onClose: () => void; onMax: () => void }) {
+function LpPane({ pane, index, classic, onChange, onClose, onMax, onPick }: { pane: Pane; index: number; classic: boolean; onChange: (p: Pane) => void;
+  onClose: () => void; onMax: () => void; onPick: (symbol: string) => boolean }) {
   const [text, setText] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const f = findFunction(pane.fn) ?? findFunction('WEI')!;
-  const go = (fn: string, s?: string) => onChange(findFunction(fn)?.security ? { fn, symbol: s ?? pane.symbol } : { fn, symbol: s });
+  const go = (fn: string, s?: string) => onChange({ ...pane, ...(findFunction(fn)?.security ? { fn, symbol: s ?? pane.symbol } : { fn, symbol: s }) });
+  // Picking a security inside a linked window (e.g. a watchlist) drives the linked windows instead
+  const openSym = (s: string) => { if (!onPick(s)) go('DES', s); };
+  const cycle = () => onChange({ ...pane, link: LINKS[(LINKS.indexOf(pane.link ?? null) + 1) % LINKS.length] });
   const submit = async () => {
     const r = await resolveCommand(text);
     if (!r) { setErr('Not recognised'); return; }
     if (findFunction(r.fn)?.security && !r.symbol) { setErr(`${r.fn} needs a security`); return; }
-    setErr(null); setText(''); onChange(r);
+    setErr(null); setText(''); onChange({ ...r, link: pane.link });
   };
   return (
-    <section className="bg-surface-1 border border-border flex flex-col min-w-0 min-h-0">
+    <section className="bg-surface-1 border border-border flex flex-col min-w-0 min-h-0" style={pane.link ? { borderTopColor: `rgb(${LINK_RGB[pane.link]})`, borderTopWidth: 2 } : undefined}>
       <header className="panel-hdr flex items-center gap-2 px-1.5 h-7 text-[11px]">
+        <button onClick={cycle} title={pane.link ? `Linked: ${pane.link} group — windows of the same colour follow the same security (click to change)` : 'Not linked — click to link this window to a colour group'}
+          className="w-3.5 h-3.5 border border-border-strong shrink-0" style={pane.link ? { background: `rgb(${LINK_RGB[pane.link]})` } : undefined} />
         <span className="key-amber px-1">{index + 1}</span>
         <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           placeholder={f.security && pane.symbol ? `${toTerminal(pane.symbol)} ${f.code} — type a security or function` : `${f.code} — type e.g. AAPL US Equity GP, WIRP, toyota`}
@@ -331,9 +341,9 @@ function LpPane({ pane, index, classic, onChange, onClose, onMax }: { pane: Pane
       </header>
       <div className="flex-1 min-h-0 overflow-auto p-1.5 text-[12px]">
         <ErrorBoundary sectionName={`Window ${index + 1}`} key={`${pane.fn}:${pane.symbol ?? ''}`}>
-          {f.security && pane.symbol ? <SecurityView fn={f.code} symbol={pane.symbol} onGo={go} compact />
+          {f.security && pane.symbol ? <SecurityView fn={f.code} symbol={pane.symbol} onGo={(fn, sym) => (sym && sym !== pane.symbol && fn === 'DES' && onPick(sym) ? undefined : go(fn, sym))} compact />
             : f.security ? <p className="text-xs text-text-tertiary p-2">{f.code} needs a security — type one above, e.g. “AAPL US Equity {f.code}”.</p>
-            : <MarketBody code={f.code} seed={pane.symbol} onGo={go} open={(s) => go('DES', s)} classic={classic} compact />}
+            : <MarketBody code={f.code} seed={pane.symbol} onGo={go} open={openSym} classic={classic} compact />}
         </ErrorBoundary>
       </div>
     </section>
@@ -345,7 +355,25 @@ function LaunchpadGrid({ classic }: { classic: boolean }) {
   useEffect(() => saveLP(st), [st]);
   const L = LAYOUTS[st.layout] ?? LAYOUTS['2x2'];
   const panes = [...st.panes, ...DEFAULT_LP.panes].slice(0, L.n);
-  const set = (i: number, p: Pane) => setSt((s) => { const ps = [...s.panes, ...DEFAULT_LP.panes].slice(0, 6); ps[i] = p; return { ...s, panes: ps }; });
+  const set = (i: number, p: Pane) => setSt((s) => {
+    const ps = [...s.panes, ...DEFAULT_LP.panes].slice(0, 6);
+    const before = ps[i];
+    ps[i] = p;
+    // a linked window that switched security takes its colour group with it (IBKR-style linking)
+    if (p.link && p.symbol && p.symbol !== before?.symbol && findFunction(p.fn)?.security) {
+      ps.forEach((q, j) => { if (j !== i && q.link === p.link && findFunction(q.fn)?.security) ps[j] = { ...q, symbol: p.symbol }; });
+    }
+    return { ...s, panes: ps };
+  });
+  /** A security picked inside window i: if other windows share its colour, they follow and window i stays put. */
+  const pick = (i: number, symbol: string): boolean => {
+    const me = panes[i];
+    if (!me?.link) return false;
+    const followers = panes.map((q, j) => (j !== i && q.link === me.link && findFunction(q.fn)?.security ? j : -1)).filter((j) => j >= 0);
+    if (!followers.length) return false;
+    setSt((s) => { const ps = [...s.panes, ...DEFAULT_LP.panes].slice(0, 6); followers.forEach((j) => { ps[j] = { ...ps[j], symbol }; }); return { ...s, panes: ps }; });
+    return true;
+  };
   return (
     <div className="space-y-1.5">
       <div className="flex flex-wrap items-center gap-1 text-[11px]">
@@ -353,13 +381,13 @@ function LaunchpadGrid({ classic }: { classic: boolean }) {
         {Object.keys(LAYOUTS).map((k) => <button key={k} onClick={() => setSt((s) => ({ ...s, layout: k }))}
           className={cn('px-2 py-0.5 border font-mono', st.layout === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{k}</button>)}
         <button onClick={() => setSt(DEFAULT_LP)} className="ml-2 px-2 py-0.5 border border-border text-text-tertiary hover:text-text-primary">Reset</button>
-        <span className="ml-auto text-text-tertiary">Each window takes its own command — e.g. “VOD LN Equity GP”, “WIRP”, “toyota”. ⤢ opens it full screen.</span>
+        <span className="ml-auto text-text-tertiary">Each window takes its own command (“VOD LN Equity GP”, “WIRP”, “toyota”). The coloured square links windows: same colour = same security, as in IBKR’s Mosaic.</span>
       </div>
       <div className={cn('grid gap-1.5', L.cls)}>
         {panes.map((p, i) => (
           <div key={i} className={cn('min-w-0', L.h, 'min-h-[320px] flex')}>
             <div className="flex-1 min-w-0 flex">
-              <LpPane pane={p} index={i} classic={classic} onChange={(np) => set(i, np)} onClose={() => set(i, DEFAULT_LP.panes[i])}
+              <LpPane pane={p} index={i} classic={classic} onChange={(np) => set(i, np)} onClose={() => set(i, DEFAULT_LP.panes[i])} onPick={(sym) => pick(i, sym)}
                 onMax={() => goMarkets(p.fn, p.symbol)} />
             </div>
           </div>))}
