@@ -297,3 +297,20 @@ def test_dividend_yield_is_always_read_as_percent():
     assert div_yield({"dividendYield": 2.42}) == pytest.approx(0.0242)
     assert div_yield({"yield": 0.0099}) == pytest.approx(0.0099)          # funds
     assert div_yield({}) is None
+
+
+def test_option_time_to_expiry_uses_trading_sessions():
+    """A Friday-close quote on a Monday expiry has one session left, not three calendar days
+    (calendar time over a weekend understated short-dated implied vol by ~40%)."""
+    import pandas as pd
+    from api.marketdata import security
+    fri_close = pd.Timestamp("2026-10-09 16:00", tz="America/New_York").tz_convert("UTC").timestamp()
+    info = {"exchangeTimezoneName": "America/New_York", "regularMarketTime": fri_close}
+    mon = security.time_to_expiry(info, "2026-10-12")
+    assert mon["sessions"] == 1.0 and mon["calendar_days"] == 3
+    assert mon["T"] == pytest.approx(1 / 252)
+    assert security.time_to_expiry(info, "2026-10-16")["sessions"] == 5.0
+    # mid-session Wednesday 12:45 → half of today's session + Thu + Fri
+    wed = pd.Timestamp("2026-10-07 12:45", tz="America/New_York").tz_convert("UTC").timestamp()
+    t = security.time_to_expiry({**info, "regularMarketTime": wed}, "2026-10-09")
+    assert t["sessions"] == pytest.approx(2.5)

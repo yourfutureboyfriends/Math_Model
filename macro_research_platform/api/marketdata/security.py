@@ -212,12 +212,40 @@ def _norm_cdf(x):
     return 0.5 * (1 + np.vectorize(math.erf)(x / math.sqrt(2)))
 
 
-def bs_greeks(S: float, K: np.ndarray, T: float, r: float, q: float, iv: np.ndarray, call: bool) -> Dict[str, np.ndarray]:
-    """Black–Scholes–Merton Greeks with continuous dividend yield q. Theta per calendar day,
-    vega per 1 vol point, rho per 1% rate move."""
+TRADING_DAYS = 252
+
+
+def time_to_expiry(info: Dict[str, Any], expiry: str) -> Dict[str, Any]:
+    """Time to expiry in trading sessions, measured from the quote's own timestamp.
+
+    Option prices carry almost no variance over weekends and holidays, so calendar time badly
+    overstates the time left for short-dated options (a Friday-close quote on a Monday expiry
+    has one session left, not three days) and drags implied vol down. Standard practice for
+    short-dated vol is trading time: sessions remaining ÷ 252, plus the unexpired part of
+    today's session when the market is open (US hours, 09:30–16:00 exchange time)."""
+    tz = info.get("exchangeTimezoneName") or "America/New_York"
+    ts = info.get("regularMarketTime")
+    now = pd.Timestamp.now(tz=tz)
+    qt = pd.Timestamp(ts, unit="s", tz="UTC").tz_convert(tz) if isinstance(ts, (int, float)) else now
+    exp = pd.Timestamp(expiry).date()
+    qd = qt.date()
+    # whole sessions after the quote's day, up to and including expiry day
+    sessions = float(np.busday_count(np.datetime64(qd) + np.timedelta64(1, "D"), np.datetime64(exp) + np.timedelta64(1, "D")))
+    open_, close = qt.normalize() + pd.Timedelta(hours=9.5), qt.normalize() + pd.Timedelta(hours=16)
+    if np.is_busday(np.datetime64(qd)) and qd <= exp and qt < close:
+        sessions += min(1.0, (close - max(qt, open_)).total_seconds() / (6.5 * 3600))
+    sessions = max(sessions, 0.05)                      # expiry-day floor: ~20 minutes of trading
+    return {"T": sessions / TRADING_DAYS, "sessions": sessions, "calendar_days": (pd.Timestamp(exp) - pd.Timestamp(qd)).days,
+            "quote_time": qt.strftime("%Y-%m-%d %H:%M %Z")}
+
+
+def bs_greeks(S: float, K: np.ndarray, T: float, r: float, q: float, iv: np.ndarray, call: bool,
+              days_per_year: float = 365) -> Dict[str, np.ndarray]:
+    """Black–Scholes–Merton Greeks with continuous dividend yield q. Theta per day (calendar day,
+    or trading day when T is in trading time: days_per_year=252), vega per 1 vol point, rho per 1%."""
     K = np.asarray(K, float)
     iv = np.asarray(iv, float)
-    T = max(T, 1 / 365)
+    T = max(T, 0.05 / TRADING_DAYS)
     with np.errstate(all="ignore"):
         d1 = (np.log(S / K) + (r - q + 0.5 * iv ** 2) * T) / (iv * math.sqrt(T))
         d2 = d1 - iv * math.sqrt(T)
@@ -226,12 +254,12 @@ def bs_greeks(S: float, K: np.ndarray, T: float, r: float, q: float, iv: np.ndar
         if call:
             delta = math.exp(-q * T) * Nd1
             theta = (-S * math.exp(-q * T) * pdf * iv / (2 * math.sqrt(T)) - r * K * math.exp(-r * T) * Nd2
-                     + q * S * math.exp(-q * T) * Nd1) / 365
+                     + q * S * math.exp(-q * T) * Nd1) / days_per_year
             rho = K * T * math.exp(-r * T) * Nd2 / 100
         else:
             delta = -math.exp(-q * T) * _norm_cdf(-d1)
             theta = (-S * math.exp(-q * T) * pdf * iv / (2 * math.sqrt(T)) + r * K * math.exp(-r * T) * _norm_cdf(-d2)
-                     - q * S * math.exp(-q * T) * _norm_cdf(-d1)) / 365
+                     - q * S * math.exp(-q * T) * _norm_cdf(-d1)) / days_per_year
             rho = -K * T * math.exp(-r * T) * _norm_cdf(-d2) / 100
         gamma = math.exp(-q * T) * pdf / (S * iv * math.sqrt(T))
         vega = S * math.exp(-q * T) * pdf * math.sqrt(T) / 100
@@ -300,7 +328,8 @@ def options(symbol: str, expiry: Optional[str] = None) -> Dict[str, Any]:
             ch = t.option_chain(exp)
         except Exception as e:
             raise Upstream(f"Option chain unavailable: {e}")
-        T = max((pd.Timestamp(exp) - pd.Timestamp.now().normalize()).days, 0) / 365 + 1 / 365
+        tte = time_to_expiry(i, exp)
+        T = tte["T"]
         sides = {}
         for name, df, call in (("calls", ch.calls, True), ("puts", ch.puts, False)):
             if df is None or df.empty:
@@ -311,7 +340,7 @@ def options(symbol: str, expiry: Optional[str] = None) -> Dict[str, Any]:
             bid, ask, last = (df[c].astype(float).to_numpy() for c in ("bid", "ask", "lastPrice"))
             mid = np.where((bid > 0) & (ask > 0) & (ask >= bid), (bid + ask) / 2, last)
             ivs = implied_vol(mid, S, df["strike"].to_numpy(), T, r, q, call)
-            g = bs_greeks(S, df["strike"].to_numpy(), T, r, q, np.nan_to_num(ivs), call)
+            g = bs_greeks(S, df["strike"].to_numpy(), T, r, q, np.nan_to_num(ivs), call, days_per_year=TRADING_DAYS)
             rows = []
             for j, (_, x) in enumerate(df.iterrows()):
                 rows.append({"contract": x.get("contractSymbol"), "strike": _f(x.get("strike")), "last": _f(x.get("lastPrice")),
@@ -343,7 +372,8 @@ def options(symbol: str, expiry: Optional[str] = None) -> Dict[str, Any]:
                 smile.append({"strike": k, "iv": row["iv"], "moneyness": round(k / S, 4)})
         atm = min(smile, key=lambda x: abs(x["strike"] - S)) if smile else None
         return {"symbol": s, "underlying": S, "currency": i.get("currency"), "expiry": exp, "expirations": exps,
-                "days": int(round(T * 365)), "rate": r, "dividend_yield": q, "calls": sides["calls"], "puts": sides["puts"],
+                "days": tte["calendar_days"], "sessions": round(tte["sessions"], 2), "quote_time": tte["quote_time"],
+                "time_basis": "trading time: sessions to expiry ÷ 252 (theta per trading day)", "rate": r, "dividend_yield": q, "calls": sides["calls"], "puts": sides["puts"],
                 "put_call_oi": round(oi_p / oi_c, 3) if oi_c else None, "put_call_volume": round(vol_p / vol_c, 3) if vol_c else None,
                 "max_pain": pain, "atm_iv": atm["iv"] if atm else None, "smile": smile,
                 "quotes_stale": stale,
@@ -365,7 +395,7 @@ def iv_term_structure(symbol: str, n: int = 8) -> List[Dict[str, Any]]:
             try:
                 o = options(s, e)
                 if o["atm_iv"]:
-                    out.append({"expiry": e, "days": o["days"], "atm_iv": o["atm_iv"]})
+                    out.append({"expiry": e, "days": o["days"], "sessions": o.get("sessions"), "atm_iv": o["atm_iv"]})
             except Exception:
                 continue
         return out
@@ -591,3 +621,36 @@ def beta(symbol: str, benchmark: str = "^GSPC", period: str = "2y", freq: str = 
                 "note": "OLS of the security's returns on the benchmark's. Adjusted beta = 0.67 × raw + 0.33 (Blume, as on Bloomberg).",
                 "source": "Yahoo Finance"}
     return _cached(f"beta:{s}:{b}:{period}:{freq}", 3600, fetch)
+
+
+# ── Fund holdings (HDS for ETFs and funds) ───────────────────────────────────
+def fund_holdings(symbol: str) -> Dict[str, Any]:
+    """Top holdings, sector weights, asset mix and fund facts for an ETF or mutual fund."""
+    s = symbol.strip().upper()
+
+    def fetch():
+        import yfinance as yf
+        try:
+            fd = yf.Ticker(s).funds_data
+            th, sw, ac = fd.top_holdings, fd.sector_weightings, fd.asset_classes
+            ov, ops = fd.fund_overview or {}, fd.fund_operations
+        except Exception as e:
+            raise NotFound(f"No fund data for {s} (holdings are published for ETFs and mutual funds).") from e
+        if th is None or th.empty:
+            raise NotFound(f"No holdings published for {s}.")
+        holdings = [{"symbol": str(idx), "name": str(r.get("Name") or idx), "weight": _f(r.get("Holding Percent"))}
+                    for idx, r in th.iterrows()]
+        facts: Dict[str, Any] = {"category": ov.get("categoryName"), "family": ov.get("family"), "legal_type": ov.get("legalType")}
+        try:
+            col = ops.columns[0]
+            facts.update({"expense_ratio": _f(ops.loc["Annual Report Expense Ratio", col]),
+                          "turnover": _f(ops.loc["Annual Holdings Turnover", col])})
+        except Exception:
+            pass
+        sectors = sorted(({"sector": k.replace("_", " ").title(), "weight": _f(v)} for k, v in (sw or {}).items() if _f(v)),
+                         key=lambda x: -x["weight"])
+        assets = {k.replace("Position", ""): _f(v) for k, v in (ac or {}).items() if _f(v)}
+        top10 = sum(h["weight"] or 0 for h in holdings)
+        return {"symbol": s, "holdings": holdings, "top_weight": top10, "sectors": sectors, "assets": assets, "facts": facts,
+                "source": "Yahoo Finance fund data (top 10 holdings as last published by the issuer)"}
+    return _cached(f"fund:{s}", 21600, fetch)

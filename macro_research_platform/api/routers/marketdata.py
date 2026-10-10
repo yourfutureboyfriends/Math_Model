@@ -180,6 +180,13 @@ async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le
 
 
 # ── Global monitors ──────────────────────────────────────────────────────────
+@router.get("/api/v1/mkt/fund/{symbol}")
+async def mkt_fund(symbol: str):
+    """ETF / mutual fund: top holdings, sector weights, asset mix, expense ratio, assets."""
+    from api.marketdata import security
+    return await _run(security.fund_holdings, symbol)
+
+
 @router.get("/api/v1/mkt/tape/{symbol}")
 async def mkt_tape(symbol: str):
     """Intraday prints (1-minute bars), VWAP, tick-rule buy/sell volume and volume profile."""

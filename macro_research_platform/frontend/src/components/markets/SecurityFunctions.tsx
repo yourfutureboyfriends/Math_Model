@@ -679,3 +679,61 @@ function SensGrid({ title, rows, cols, grid, price }: { title: string; rows: num
     </Panel>
   );
 }
+
+// ── HDS for ETFs and funds: what the fund owns ───────────────────────────────
+export function FundHoldingsView({ symbol, onOpen }: { symbol: string; onOpen: (s: string) => void }) {
+  const { data, error, loading } = useJSON<any>(`/api/v1/mkt/fund/${enc(symbol)}`);
+  if (loading && !data) return <Loading label="Loading fund holdings…" />;
+  if (error && !data) return <ErrorBox msg={error} />;
+  if (!data) return null;
+  const f = data.facts ?? {};
+  const maxW = Math.max(...data.holdings.map((h: any) => h.weight ?? 0), 0.0001);
+  const maxS = Math.max(...data.sectors.map((x: any) => x.weight ?? 0), 0.0001);
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <Stat label="Category" value={f.category ?? '—'} sub={f.family ?? ''} />
+        <Stat label="Expense ratio" value={f.expense_ratio != null ? `${(f.expense_ratio * 100).toFixed(2)}%` : '—'} sub="a year" />
+        <Stat label="Top 10 weight" value={`${(data.top_weight * 100).toFixed(1)}%`} sub="concentration" />
+        <Stat label="Turnover" value={f.turnover != null ? `${(f.turnover * 100).toFixed(0)}%` : '—'} sub="of holdings a year" />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <Panel title="Top holdings">
+          <table className="w-full text-xs"><tbody>
+            {data.holdings.map((h: any, i: number) => (
+              <tr key={h.symbol} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3" onClick={() => onOpen(h.symbol)} title={`Open ${h.symbol}`}>
+                <td className="py-1 w-6 text-text-tertiary">{i + 1}</td>
+                <td className="py-1"><span className="text-text-primary">{h.name}</span> <span className="font-mono text-text-tertiary">{h.symbol}</span></td>
+                <td className="w-32"><div className="h-1.5 bg-surface-3"><div className="h-full bg-bloomberg" style={{ width: `${((h.weight ?? 0) / maxW) * 100}%` }} /></div></td>
+                <td className="text-right font-mono w-16">{h.weight != null ? `${(h.weight * 100).toFixed(2)}%` : '—'}</td></tr>))}
+          </tbody></table>
+        </Panel>
+        <Panel title="Sector weights">
+          <table className="w-full text-xs"><tbody>
+            {data.sectors.map((x: any) => (
+              <tr key={x.sector} className="border-t border-border-subtle">
+                <td className="py-1 text-text-primary">{x.sector}</td>
+                <td className="w-40"><div className="h-1.5 bg-surface-3"><div className="h-full bg-blue" style={{ width: `${(x.weight / maxS) * 100}%` }} /></div></td>
+                <td className="text-right font-mono w-16">{(x.weight * 100).toFixed(1)}%</td></tr>))}
+          </tbody></table>
+          {Object.keys(data.assets).length > 0 && <div className="mt-3 text-[11px] text-text-secondary">Asset mix: {Object.entries<number>(data.assets).map(([k, v]) => `${k} ${(v * 100).toFixed(1)}%`).join(' · ')}</div>}
+        </Panel>
+      </div>
+      <div className="text-[10px] text-text-tertiary">{data.source}. Click a holding to open it.</div>
+    </div>
+  );
+}
+
+const KIND: Record<string, string> = { ETF: 'an ETF', Fund: 'a fund', Index: 'an index', FX: 'a currency pair', Future: 'a futures contract', Crypto: 'a crypto asset' };
+
+/** Shown instead of an error when a company-only function is opened on something else. */
+export function NotApplicable({ fn, name, q, onGo }: { fn: string; name: string; q: any; onGo: (fn: string, s?: string) => void }) {
+  const alts = q.type === 'ETF' || q.type === 'Fund' ? ['DES', 'HDS', 'GP', 'DVD', 'OMON', 'HP'] : q.type === 'Index' ? ['DES', 'GP', 'HP', 'BETA', 'CN'] : ['DES', 'GP', 'HP', 'CN'];
+  return (
+    <div className="border border-border bg-surface-1 p-4 space-y-3">
+      <div className="text-sm text-text-primary"><span className="font-mono text-bloomberg mr-2">{fn}</span>{name} applies to companies — {q.symbol} is {KIND[q.type] ?? q.type?.toLowerCase() ?? 'not a company'}.</div>
+      <div className="flex flex-wrap gap-2">{alts.map((a) => (
+        <button key={a} onClick={() => onGo(a, q.symbol)} className="px-2.5 py-1 text-xs border border-border hover:border-bloomberg hover:text-bloomberg"><span className="font-mono font-semibold">{a}</span></button>))}</div>
+    </div>
+  );
+}

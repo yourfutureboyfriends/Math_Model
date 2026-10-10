@@ -15,7 +15,7 @@ import { setMarketsSkin, useMarketsSkin } from '@/lib/theme';
 import { OverviewView } from '@/components/markets/OverviewView';
 import { Chart, Financials, News, useQuote } from '@/components/markets/TickerView';
 import { MoversView, ScreenerView } from '@/components/markets/ScreenerView';
-import { AnrView, BetaView, DcfView, DvdView, ErnView, HdsView, HpView, OmonView, RvView } from '@/components/markets/SecurityFunctions';
+import { AnrView, BetaView, DcfView, DvdView, ErnView, FundHoldingsView, HdsView, HpView, NotApplicable, OmonView, RvView } from '@/components/markets/SecurityFunctions';
 import { BtmmView, CmdtyView, CompView, CryptoView, EcoView, EvtsView, GcView, ImapView, NewsView, WcrsView } from '@/components/markets/GlobalFunctions';
 import { AlertsView, AlertToasts, JournalView, WatchlistsView, useAddToWatchlist } from '@/components/markets/MyTools';
 import { ErrorBox, fmtPrice, Loading, TYPE_COLOR } from '@/components/markets/shared';
@@ -103,7 +103,8 @@ function TerminalQuoteHeader({ d, f, symbol, onGo, actions }: { d: any; f: MktFu
         <span className="ml-auto flex flex-wrap gap-1">{actions}</span>
       </div>
       <div className="px-2 py-1 border border-border">
-        <FunctionMenu items={SECURITY_FUNCTIONS} active={f.code} onPick={(x) => onGo(x.code, symbol)} />
+        <FunctionMenu items={SECURITY_FUNCTIONS} active={f.code} onPick={(x) => onGo(x.code, symbol)}
+          dim={(x) => !!x.equityOnly && d.type !== 'Stock' && !(x.code === 'HDS' && (d.type === 'ETF' || d.type === 'Fund'))} />
       </div>
     </div>
   );
@@ -119,7 +120,8 @@ function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: 
   // while a new symbol loads, don't show the previous security under the new one
   const d = q.current ? q.data : null;
   const isEquity = d?.type === 'Stock';
-  const tabs = SECURITY_FUNCTIONS.filter((f) => !f.equityOnly || isEquity);
+  const isFund = d?.type === 'ETF' || d?.type === 'Fund';
+  const tabs = SECURITY_FUNCTIONS.filter((f) => !f.equityOnly || isEquity || (f.code === 'HDS' && isFund));
   const f = findFunction(fn)!;
   if (!d && !q.error) return <Loading label={`Loading ${symbol}…`} />;
   if (q.error && !d) return <ErrorBox msg={`${q.error} Try the command line to search by name.`} />;
@@ -173,12 +175,13 @@ function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: 
       </nav>
       </>}
       <ErrorBoundary sectionName={`${f.code} ${symbol}`} key={`${f.code}:${symbol}`}>
+        {f.equityOnly && !isEquity && !(f.code === 'HDS' && isFund) ? <NotApplicable fn={f.code} name={f.name} q={d} onGo={onGo} /> : <>
         {f.code === 'DES' && <QuoteWorkstation q={d} onOpen={(s) => onGo('DES', s)} onGo={onGo} />}
         {f.code === 'GP' && <Chart symbol={symbol} height={560} />}
         {f.code === 'FA' && <Financials symbol={symbol} />}
         {f.code === 'ERN' && <ErnView symbol={symbol} />}
         {f.code === 'ANR' && <AnrView symbol={symbol} />}
-        {f.code === 'HDS' && <HdsView symbol={symbol} />}
+        {f.code === 'HDS' && (isFund ? <FundHoldingsView symbol={symbol} onOpen={(s) => onGo('DES', s)} /> : <HdsView symbol={symbol} />)}
         {f.code === 'DVD' && <DvdView symbol={symbol} />}
         {f.code === 'OMON' && <OmonView symbol={symbol} />}
         {f.code === 'RV' && <RvView symbol={symbol} onOpen={(s) => onGo('DES', s)} />}
@@ -186,6 +189,7 @@ function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: 
         {f.code === 'BETA' && <BetaView symbol={symbol} />}
         {f.code === 'DCF' && <DcfView symbol={symbol} />}
         {f.code === 'CN' && <News symbol={symbol} />}
+        </>}
       </ErrorBoundary>
     </div>
   );
