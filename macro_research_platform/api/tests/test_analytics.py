@@ -22,3 +22,17 @@ def test_correlation_cluster_order_keeps_related_together():
     order = _cluster_order(c)
     pos = {s: i for i, s in enumerate(order)}
     assert abs(pos["A"] - pos["B"]) == 1 and abs(pos["C"] - pos["D"]) == 1
+
+
+def test_finra_line_parsing_and_share_classes():
+    from api.marketdata.shorts import _parse
+    text = "Date|Symbol|ShortVolume|ShortExemptVolume|TotalVolume|Market\n20261009|A|100|0|400|B,Q\n20261009|AA|50|0|100|N\n20261009|BRK/B|30|0|90|N\n"
+    assert _parse(text, "A") == {"short": 100.0, "exempt": 0.0, "total": 400.0}
+    assert _parse(text, "AA")["total"] == 100.0
+    assert _parse(text, "BRK/B")["short"] == 30.0
+    assert _parse(text, "ZZZ") is None
+
+
+def test_calendar_number_parsing():
+    from api.marketdata.econ import _num
+    assert _num("0.3%") == 0.3 and _num("150K") == 150 and _num("-1.2B") == -1.2 and _num("<0.1%") == 0.1 and _num("") is None

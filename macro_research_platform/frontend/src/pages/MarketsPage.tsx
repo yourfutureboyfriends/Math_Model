@@ -10,6 +10,7 @@ import { FUNCTIONS, MARKET_FUNCTIONS, SECURITY_FUNCTIONS, findFunction, type Mkt
 import { FunctionMenu, HelpPanel, KeyBar, NewsCrawl, TitleBar, UpDownToggle, WorkspaceTabs, useHelp } from '@/components/markets/Chrome';
 import { QuoteWorkstation, WatchColumn } from '@/components/markets/QuoteWorkstation';
 import { CorrView, FrdView, OsaView, RrgView, SeasView } from '@/components/markets/AnalyticsViews';
+import { EcoGlobalView, EcstView, SiView, SplcView } from '@/components/markets/DataViews';
 import { MonitorHome } from '@/components/markets/Monitor';
 import { toTerminal } from '@/components/markets/bbg';
 import { setMarketsSkin, useMarketsSkin } from '@/lib/theme';
@@ -17,7 +18,7 @@ import { OverviewView } from '@/components/markets/OverviewView';
 import { Chart, Financials, News, useQuote } from '@/components/markets/TickerView';
 import { MoversView, ScreenerView } from '@/components/markets/ScreenerView';
 import { AnrView, BetaView, DcfView, DvdView, ErnView, FundHoldingsView, HdsView, HpView, NotApplicable, OmonView, RvView } from '@/components/markets/SecurityFunctions';
-import { BtmmView, CmdtyView, CompView, CryptoView, EcoView, EvtsView, GcView, ImapView, NewsView, WcrsView } from '@/components/markets/GlobalFunctions';
+import { BtmmView, CmdtyView, CompView, CryptoView, EvtsView, GcView, ImapView, NewsView, WcrsView } from '@/components/markets/GlobalFunctions';
 import { AlertsView, AlertToasts, JournalView, WatchlistsView, useAddToWatchlist } from '@/components/markets/MyTools';
 import { ErrorBox, fmtPrice, Loading, TYPE_COLOR } from '@/components/markets/shared';
 import { WorldMap } from '@/components/markets/WorldMap';
@@ -192,6 +193,8 @@ function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: 
         {f.code === 'CN' && <News symbol={symbol} />}
         {f.code === 'SEAS' && <SeasView symbol={symbol} />}
         {f.code === 'OSA' && <OsaView symbol={symbol} />}
+        {f.code === 'SI' && <SiView symbol={symbol} />}
+        {f.code === 'SPLC' && <SplcView symbol={symbol} onOpen={(s) => onGo('DES', s)} />}
         </>}
       </ErrorBoundary>
     </div>
@@ -241,7 +244,8 @@ export function MarketsPage() {
             {f.code === 'BTMM' && <BtmmView />}
             {f.code === 'WCRS' && <WcrsView onOpen={open} />}
             {f.code === 'EVTS' && <EvtsView onOpen={open} />}
-            {f.code === 'ECO' && <EcoView />}
+            {f.code === 'ECO' && <EcoGlobalView />}
+            {f.code === 'ECST' && <EcstView />}
             {f.code === 'N' && <NewsView />}
             {f.code === 'W' && <WatchlistsView onOpen={open} />}
             {f.code === 'ALRT' && <AlertsView seed={route.symbol} />}

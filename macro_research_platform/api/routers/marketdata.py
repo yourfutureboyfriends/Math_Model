@@ -226,6 +226,35 @@ async def mkt_fx_forwards(base: str = Query("EUR", pattern="^[A-Za-z]{3}$"), quo
     return await _run(analytics.fx_forwards, base, quote)
 
 
+@router.get("/api/v1/mkt/si/{symbol}")
+async def mkt_short_selling(symbol: str, days: int = Query(60, ge=10, le=120)):
+    """Short interest (official, twice monthly) and FINRA daily short-sale volume."""
+    from api.marketdata import shorts
+    return await _run(shorts.short_selling, symbol, days, timeout=120)
+
+
+@router.get("/api/v1/mkt/splc/{symbol}")
+async def mkt_supply_chain(symbol: str):
+    """Suppliers and competitors from SEC 10-K full-text search."""
+    from api.marketdata import supply
+    return await _run(supply.supply_chain, symbol, timeout=120)
+
+
+@router.get("/api/v1/mkt/eco/global")
+async def mkt_eco_global(days_back: int = Query(7, ge=0, le=365), countries: Optional[str] = None,
+                         min_impact: str = Query("Low", pattern="^(Low|Medium|High)$")):
+    """Global economic calendar with consensus, actual (US: as first published) and surprise."""
+    from api.marketdata import econ
+    return await _run(econ.calendar, days_back, countries.upper().split(",") if countries else None, min_impact, timeout=120)
+
+
+@router.get("/api/v1/mkt/ecst")
+async def mkt_surprise_index(start: str = Query("2010-01-01", pattern=r"^\d{4}-\d{2}-\d{2}$")):
+    """Model-based US economic surprise index (ALFRED first releases)."""
+    from api.marketdata import econ
+    return await _run(econ.surprise_index, start, timeout=180)
+
+
 @router.get("/api/v1/mkt/fund/{symbol}")
 async def mkt_fund(symbol: str):
     """ETF / mutual fund: top holdings, sector weights, asset mix, expense ratio, assets."""

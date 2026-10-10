@@ -27,6 +27,8 @@ export const FUNCTIONS: MktFunction[] = [
   { code: 'DCF', name: 'DCF valuation', desc: 'Discounted free-cash-flow value per share with an editable model and sensitivity grid.', group: 'Security', security: true, equityOnly: true },
   { code: 'SEAS', name: 'Seasonality', desc: 'Average return by calendar month over up to 30 years, hit rate and significance.', group: 'Security', security: true, aliases: ['SEASON'] },
   { code: 'OSA', name: 'Option strategies', desc: 'Build spreads, straddles, condors: payoff, breakevens, max profit/loss, chance of profit, Greeks.', group: 'Security', security: true, aliases: ['OSB', 'STRAT'] },
+  { code: 'SI', name: 'Short selling', desc: 'Short interest, % of float, days to cover, and FINRA daily short-sale volume (US).', group: 'Security', security: true, aliases: ['SHORT'] },
+  { code: 'SPLC', name: 'Supply chain', desc: 'Suppliers and competitors found in SEC annual reports (companies naming it as a customer or rival).', group: 'Security', security: true, equityOnly: true, aliases: ['SUPPLY'] },
   { code: 'CN', name: 'Company news', desc: 'Latest headlines and official SEC filings for this instrument.', group: 'Security', security: true },
   // Markets
   { code: 'WEI', name: 'World markets', desc: 'Equity indices, rates, currencies, commodities and crypto at a glance.', group: 'Markets', aliases: ['HOME', 'TOP'] },
@@ -46,7 +48,8 @@ export const FUNCTIONS: MktFunction[] = [
   // Research
   { code: 'EQS', name: 'Equity screener', desc: 'Screen 22 markets by sector, size, valuation and yield.', group: 'Research', aliases: ['SCREEN'] },
   { code: 'EVTS', name: 'Earnings calendar', desc: 'Who reports this week, with estimates and surprises.', group: 'Research', aliases: ['ERNC', 'CAL'] },
-  { code: 'ECO', name: 'Economic calendar', desc: 'Upcoming US data releases with prior values and importance.', group: 'Research' },
+  { code: 'ECO', name: 'Economic calendar', desc: 'Global releases with consensus, previous and actual (US as first published) and the surprise.', group: 'Research' },
+  { code: 'ECST', name: 'Economic surprises', desc: 'US data surprise index since 2010: releases vs their own trend, as first published.', group: 'Research', aliases: ['CESI', 'SURP'] },
   { code: 'N', name: 'News', desc: 'Markets headlines from Bloomberg, CNBC, the FT and more — searchable, with tone.', group: 'Research', aliases: ['TOP', 'NEWS'] },
   // My tools
   { code: 'W', name: 'Watchlists', desc: 'Your lists of instruments with live prices.', group: 'My tools', aliases: ['WATCH', 'MON'] },
