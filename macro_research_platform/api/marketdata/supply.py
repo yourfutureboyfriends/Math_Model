@@ -130,6 +130,8 @@ def _collect(names: List[str], templates: List[str], self_cik: str) -> List[Dict
 
 def supply_chain(symbol: str) -> Dict[str, Any]:
     s = symbol.strip().upper()
+    from api.marketdata.extras import _company_only
+    _company_only(s, "Supply chain")
 
     def fetch():
         names = _names(s)

@@ -709,6 +709,29 @@ def _rows(quotes: List[Dict]) -> List[Dict[str, Any]]:
             for q in quotes if q.get("symbol")]
 
 
+def _yscreen(*a, **k):
+    """yf.screen with retries: Yahoo intermittently answers 401 (stale session crumb) or 429."""
+    import yfinance as yf
+    last = None
+    for attempt in range(3):
+        try:
+            return yf.screen(*a, **k)
+        except Exception as e:
+            last = e
+            msg = str(e)
+            if not any(x in msg for x in ("401", "429", "Unauthorized", "Crumb", "crumb", "Too Many")):
+                raise
+            if attempt == 1:
+                try:                                   # force a fresh cookie/crumb on the second retry
+                    from yfinance.data import YfData
+                    d = YfData()
+                    d._cookie, d._crumb = None, None
+                except Exception:
+                    pass
+            time.sleep(1.0 + attempt)
+    raise last
+
+
 def _enrich(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Add value traded (price × volume, in the major currency unit) and USD market cap."""
     for r in rows:
@@ -730,12 +753,12 @@ def movers(region: str = "us", kind: str = "gainers", count: int = 25) -> Dict[s
         from yfinance import EquityQuery as Q
         try:
             if region == "us":
-                res = yf.screen({"gainers": "day_gainers", "losers": "day_losers", "active": "most_actives"}[kind], count=max(count, 50))
+                res = _yscreen({"gainers": "day_gainers", "losers": "day_losers", "active": "most_actives"}[kind], count=max(count, 50))
             else:
                 q = Q("and", [Q("is-in", ["exchange", *MAIN_EXCHANGES[region]]),          # exchange, not Yahoo's region tag
                               Q("gt", ["intradaymarketcap", 2e9 * usd_to_local(region)])])     # ≈ $2bn floor
                 field = "dayvolume" if kind == "active" else "percentchange"      # re-ranked by value below
-                res = yf.screen(q, sortField=field, sortAsc=(kind == "losers"), size=250)
+                res = _yscreen(q, sortField=field, sortAsc=(kind == "losers"), size=250)
         except Exception as e:
             raise Upstream(f"Screener unavailable: {e}")
         rows = _enrich([r for r in _primary_only(_rows(res.get("quotes") or []), region) if not _is_secondary_line(r["symbol"])])
@@ -945,7 +968,7 @@ def screen(regions: List[str], sector: Optional[str] = None, sort: str = "market
         pages = 6 if len(regs) > 1 else 3      # filtering (cross-listings, ADRs) can need more raw rows to fill a page
         for _ in range(pages):
             try:
-                res = yf.screen(query, sortField=SORTS.get(sort, "intradaymarketcap"), sortAsc=ascending,
+                res = _yscreen(query, sortField=SORTS.get(sort, "intradaymarketcap"), sortAsc=ascending,
                                 size=250, offset=off)
             except Exception as e:
                 if rows:

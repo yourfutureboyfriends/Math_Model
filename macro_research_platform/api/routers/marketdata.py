@@ -459,7 +459,7 @@ async def mkt_crypto(limit: int = Query(100, ge=10, le=250)):
 
 
 @router.get("/api/v1/mkt/futures/{root}")
-async def mkt_futures_curve(root: str, n: int = Query(10, ge=3, le=24)):
+async def mkt_futures_curve(root: str, n: int = Query(60, ge=3, le=80)):
     from api.marketdata import monitors
     return await _run(monitors.futures_curve, root, n)
 

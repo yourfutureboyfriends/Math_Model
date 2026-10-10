@@ -285,7 +285,10 @@ FUTURES = {
 FINANCIAL_FUTURES = {"ES", "NQ", "YM", "RTY", "ZT", "ZF", "ZN", "ZB", "6E", "6J"}
 
 
-def futures_curve(root: str, n: int = 10) -> Dict[str, Any]:
+def futures_curve(root: str, n: int = 60) -> Dict[str, Any]:
+    """The whole listed curve: every listed month for two years, then June and December contracts
+    out to twelve years (crude trades to the 2030s), with the same contracts' prices a month and a
+    year ago — so the curve's shift can be seen, as on the government curves."""
     root = root.upper()
     if root not in FUTURES:
         raise NotFound(f"Unknown futures root '{root}'. Try one of: {', '.join(FUTURES)}")
@@ -296,29 +299,35 @@ def futures_curve(root: str, n: int = 10) -> Dict[str, Any]:
         today = date.today()
         contracts = []
         y, m = today.year, today.month
-        for k in range(36):
+        for k in range(12 * 12):
             mm = (m - 1 + k) % 12 + 1
             yy = y + (m - 1 + k) // 12
-            if mm in months:
-                contracts.append((f"{root}{MONTH_CODES[mm - 1]}{str(yy)[-2:]}.{exch}", f"{yy}-{mm:02d}"))
-            if len(contracts) >= n + 2:
-                break
+            if mm not in months:
+                continue
+            if k >= 24 and mm not in (6, 12) and not (len(months) <= 6 and mm == max(months)):
+                continue                                   # beyond two years: mid-year and year-end only
+            contracts.append((f"{root}{MONTH_CODES[mm - 1]}{str(yy)[-2:]}.{exch}", f"{yy}-{mm:02d}"))
         syms = [c for c, _ in contracts]
         try:
-            df = yf.download(syms + [f"{root}=F"], period="5d", interval="1d", auto_adjust=False, group_by="ticker", progress=False, threads=True)
+            df = yf.download(syms, period="1y", interval="1d", auto_adjust=False, group_by="ticker", progress=False, threads=True)
         except Exception as ex:
             raise Upstream(f"Futures prices unavailable: {ex}")
+
+        def at(c, days):
+            prior = c[c.index <= c.index[-1] - pd.Timedelta(days=days)]
+            return float(prior.iloc[-1]) if len(prior) else None
         pts = []
         for sym, month in contracts:
             try:
                 c = df[sym]["Close"].dropna()
-                if len(c):
-                    pts.append({"contract": sym, "month": month, "price": float(c.iloc[-1]), "last_date": c.index[-1].strftime("%Y-%m-%d"),
-                                "change_1d": float(c.iloc[-1] / c.iloc[-2] - 1) if len(c) > 1 else None})
             except Exception:
                 continue
-        # an expired front month keeps its last print in the download: drop contracts that
-        # stopped trading before the rest of the curve
+            if not len(c):
+                continue
+            pts.append({"contract": sym, "month": month, "price": float(c.iloc[-1]), "last_date": c.index[-1].strftime("%Y-%m-%d"),
+                        "change_1d": float(c.iloc[-1] / c.iloc[-2] - 1) if len(c) > 1 else None,
+                        "price_1m_ago": at(c, 30), "price_1y_ago": at(c, 360) if (c.index[-1] - c.index[0]).days >= 340 else None})
+        # an expired front month keeps its last print: drop contracts that stopped before the rest
         latest = max((p["last_date"] for p in pts), default=None)
         if latest:
             cut = (date.fromisoformat(latest) - timedelta(days=5)).isoformat()    # thin back months may skip a day
@@ -326,16 +335,21 @@ def futures_curve(root: str, n: int = 10) -> Dict[str, Any]:
         pts = pts[:n]
         if len(pts) < 2:
             raise NotFound(f"Not enough listed contracts priced for {name}.")
-        slope = pts[-1]["price"] / pts[0]["price"] - 1
-        span_m = max(1, (int(pts[-1]["month"][:4]) - int(pts[0]["month"][:4])) * 12 + int(pts[-1]["month"][5:]) - int(pts[0]["month"][5:]))
-        return {"root": root, "name": name, "exchange": exch, "points": pts, "front": pts[0], "slope": slope,
+        front = pts[0]
+        # slope and roll yield over the first year of the curve (comparable across markets)
+        yr = next((p for p in pts if p["month"] >= f"{int(front['month'][:4]) + 1}{front['month'][4:]}"), pts[-1])
+        slope = yr["price"] / front["price"] - 1
+        span_m = max(1, (int(yr["month"][:4]) - int(front["month"][:4])) * 12 + int(yr["month"][5:]) - int(front["month"][5:]))
+        far = pts[-1]
+        return {"root": root, "name": name, "exchange": exch, "points": pts, "front": front, "slope": slope, "slope_months": span_m,
+                "full_slope": far["price"] / front["price"] - 1, "last_month": far["month"],
                 "annualised_roll_yield": -((1 + slope) ** (12 / span_m) - 1),
                 "shape": "contango (later months dearer)" if slope > 0.005 else "backwardation (later months cheaper)" if slope < -0.005 else "flat",
                 "note": ("Financial futures: the slope is carry — the financing rate minus the dividend or coupon yield (and, for "
                          "currencies, the interest-rate gap) — not a supply signal." if root in FINANCIAL_FUTURES else
                          "Positive roll yield (backwardation) pays a long futures holder as contracts converge to spot."),
                 "source": "Yahoo Finance futures (delayed)"}
-    return _cached(f"fut:{root}:{n}", 600, fetch)
+    return _cached(f"fut2:{root}:{n}", 600, fetch)
 
 
 # ── N / TOP ──────────────────────────────────────────────────────────────────

@@ -182,6 +182,50 @@ SHORT_RATE = {"USD": "DTB3", "EUR": "IR3TIB01DEM156N", "GBP": "IR3TIB01GBM156N",
 TENORS = [("1W", 7), ("1M", 30), ("2M", 61), ("3M", 91), ("6M", 182), ("9M", 273), ("1Y", 365)]
 
 
+def _daily_short_rate(ccy: str) -> Optional[Dict[str, Any]]:
+    """SONIA (BoE), TONA (BoJ), Selic (BCB) and India's repo rate — fresher than OECD's 3-month series."""
+    import csv
+    import io
+    from datetime import date, datetime, timedelta
+    import requests
+    ua = {"User-Agent": "Mozilla/5.0 (MacroTerminal research)"}
+
+    def gbp():
+        start = (date.today() - timedelta(days=20)).strftime("%d/%b/%Y")
+        t = requests.get("https://www.bankofengland.co.uk/boeapps/database/_iadb-fromshowcolumns.asp", headers=ua, timeout=20,
+                         params={"csv.x": "yes", "Datefrom": start, "Dateto": "now", "SeriesCodes": "IUDSOIA", "CSVF": "TN",
+                                 "UsingCodes": "Y", "VPD": "Y", "VFD": "N"}).text
+        rows = [r for r in csv.reader(io.StringIO(t)) if len(r) >= 2 and r[1].replace(".", "", 1).isdigit()]
+        d, v = rows[-1]
+        return {"rate": float(v) / 100, "date": datetime.strptime(d, "%d %b %Y").date().isoformat(), "series": "SONIA (Bank of England, overnight)"}
+
+    def jpy():
+        start = (date.today() - timedelta(days=40)).strftime("%Y%m")
+        j = requests.get("https://www.stat-search.boj.or.jp/api/v1/getDataCode", headers=ua, timeout=20,
+                         params={"format": "json", "lang": "en", "db": "FM01", "code": "STRDCLUCON", "startDate": start}).json()
+        v = j["RESULTSET"][0]["VALUES"]
+        pairs = [(d, x) for d, x in zip(v["SURVEY_DATES"], v["VALUES"]) if x is not None]
+        d, x = pairs[-1]
+        return {"rate": float(x) / 100, "date": f"{str(d)[:4]}-{str(d)[4:6]}-{str(d)[6:]}", "series": "TONA (Bank of Japan, overnight call)"}
+
+    def brl():
+        j = requests.get("https://api.bcb.gov.br/dados/serie/bcdata.sgs.432/dados/ultimos/1", params={"formato": "json"}, headers=ua, timeout=20).json()
+        return {"rate": float(j[-1]["valor"]) / 100, "date": date.today().isoformat(), "series": "Selic target (Banco Central do Brasil)"}
+
+    def inr():
+        from api.providers.fred_provider import FREDProvider
+        obs = [o for o in (FREDProvider().fetch_series("IRSTCI01INM156N").data or []) if o.value is not None]
+        return {"rate": obs[-1].value / 100, "date": str(obs[-1].date)[:10], "series": "India call money rate (OECD via FRED, monthly)"} if obs else None
+
+    fn = {"GBP": gbp, "JPY": jpy, "BRL": brl, "INR": inr}.get(ccy)
+    if not fn:
+        return None
+    try:
+        return _cached(f"srate:daily:{ccy}", 6 * 3600, fn)
+    except Exception:
+        return None
+
+
 def _short_rate(ccy: str) -> Dict[str, Any]:
     if ccy == "EUR":                     # the ECB's daily 3-month point beats OECD's monthly interbank average
         try:
@@ -192,6 +236,9 @@ def _short_rate(ccy: str) -> Dict[str, Any]:
                 return {"rate": p3["yield"] / 100, "date": c["date"], "series": "ECB euro-area AAA curve, 3 months (daily)"}
         except Exception:
             pass
+    daily = _daily_short_rate(ccy)                # official daily rates where free (OECD's monthly series lag)
+    if daily:
+        return daily
     sid = SHORT_RATE.get(ccy)
     if not sid:
         raise NotFound(f"No short-term rate for {ccy}.")
@@ -231,7 +278,8 @@ def fx_forwards(base: str, quote: str) -> Dict[str, Any]:
         stale = [c for c, r in ((b, rb), (q, rq)) if (date.today() - date.fromisoformat(r["date"])).days > 90]
         return {"pair": f"{b}/{q}", "spot": spot, "rates": {b: rb, q: rq}, "pip": pip, "tenors": rows,
                 "stale_rates": stale,
-                "method": "Covered interest parity with 3-month money-market rates (USD: 3-month T-bill), act/360. "
+                "method": "Covered interest parity with short-term rates — USD 3-month T-bill, EUR 3-month (ECB curve), GBP SONIA, JPY TONA, "
+                          "BRL Selic, INR call money; OECD 3-month interbank rates elsewhere — act/360. "
                           "Theoretical: traded forwards also price the cross-currency basis.",
                 "source": "Yahoo Finance (spot), FRED / OECD (rates)"}
     return _cached(f"frd:{b}{q}", 600, fetch)

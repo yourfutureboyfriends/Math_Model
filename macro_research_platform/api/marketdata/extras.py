@@ -30,6 +30,19 @@ logger = logging.getLogger(__name__)
 BROWSER = {"User-Agent": "Mozilla/5.0 (macro research terminal)"}
 
 
+def _company_only(symbol: str, what: str) -> None:
+    """Company functions refuse funds, indices, FX and the like (an ETF trust files no meaningful Form 4)."""
+    from api.marketdata.core import _info
+    try:
+        t = (_info(symbol).get("quoteType") or "").upper()
+    except Exception:
+        return
+    if t and t != "EQUITY":
+        kind = {"ETF": "an ETF", "MUTUALFUND": "a fund", "INDEX": "an index", "CURRENCY": "a currency pair", "FUTURE": "a futures contract",
+                "CRYPTOCURRENCY": "a cryptocurrency", "OPTION": "an option"}.get(t, f"a {t.lower()}")
+        raise NotFound(f"{what} applies to companies; {symbol} is {kind}.")
+
+
 def _sec_get(url: str, timeout: int = 30):
     import requests
     from api.providers.sec_edgar import USER_AGENT
@@ -277,6 +290,7 @@ CODES = {"P": "Buy (open market)", "S": "Sale (open market)", "A": "Grant / awar
 
 def insiders(symbol: str, limit: int = 40) -> Dict[str, Any]:
     s = symbol.strip().upper()
+    _company_only(s, "Insider trades (Form 4)")
 
     def fetch():
         from api.providers import sec_edgar
@@ -346,23 +360,59 @@ MANAGERS = {"0001067983": "Berkshire Hathaway (Buffett)", "0001350694": "Bridgew
 FIGI_CACHE = Path(__file__).resolve().parents[2] / "data" / "processed" / "cusip_tickers.json"
 
 
+# 13F issuer names are upper-case, abbreviated and cut at ~28 characters
+_ABBR = {"HLDNGS": "HOLDINGS", "HLDGS": "HOLDINGS", "HLDG": "HOLDING", "PMTS": "PAYMENTS", "INTL": "INTERNATIONAL", "CMNTYS": "COMMUNITIES",
+         "APT": "APARTMENT", "AMER": "AMERICA", "TR": "TRUST", "TECHNOLOGIES": "TECHNOLOGIES", "TECH": "TECHNOLOGY", "SYS": "SYSTEMS",
+         "SVCS": "SERVICES", "FINL": "FINANCIAL", "PHARMACEUTICALS": "PHARMACEUTICALS", "PHARMA": "PHARMACEUTICALS", "COMMUNICATIONS": "COMMUNICATIONS",
+         "COMM": "COMMUNICATIONS", "MGMT": "MANAGEMENT", "BANCORP": "BANCORP", "NATL": "NATIONAL", "RES": "RESOURCES", "PPTYS": "PROPERTIES",
+         "INVT": "INVESTMENT", "ENTMT": "ENTERTAINMENT", "MFG": "MANUFACTURING", "LABS": "LABORATORIES", "GRP": "GROUP", "INDS": "INDUSTRIES",
+         "MACHS": "MACHINES", "MTRS": "MOTORS", "PETE": "PETROLEUM", "ENGY": "ENERGY", "CHEM": "CHEMICAL", "MED": "MEDICAL",
+         "HLTH": "HEALTH", "HLTHCARE": "HEALTHCARE", "BK": "BANK", "SCIENTIFIC": "SCIENTIFIC", "SOLUTIONS": "SOLUTIONS", "INTERACT": "INTERACTIVE",
+         "AUTOMOTIVE": "AUTOMOTIVE", "DEV": "DEVELOPMENT", "UTD": "UNITED", "MTG": "MORTGAGE", "INS": "INSURANCE", "BRANDS": "BRANDS"}
+_NOISE = {"LIMITED", "LTD", "INC", "CORP", "CORPORATION", "CO", "COMPANY", "PLC", "NV", "N", "V", "SA", "S", "A", "AG", "SE", "THE", "NEW",
+          "PUBLIC", "HOLDINGS", "HOLDING", "GROUP", "CL", "CLASS", "COM", "SHS", "ORD", "ADR", "SPONSORED", "&", "AND", "DEL", "DE", "LP", "LLC", "OF"}
+
+
 def _issuer_key(name: Optional[str]) -> str:
-    """'CHUBB LIMITED' / 'Chubb Ltd' → 'chubb' (13F issuer names are abbreviated and upper-case)."""
-    from api.marketdata.core import _norm
-    return _norm(re.sub(r"\b(LIMITED|LTD|INC|CORP|CORPORATION|CO|COMPANY|PLC|NV|N\.V\.|SA|AG|HLDGS?|HOLDINGS?|GROUP|THE)\b\.?", " ",
-                        str(name or "").upper()))
+    """'SEAGATE TECHNOLOGY HLDNGS PL' / 'Seagate Technology Holdings plc' → 'seagate technology'."""
+    words = re.findall(r"[A-Z0-9]+", str(name or "").upper().replace("&", " AND "))
+    words = [_ABBR.get(w, w) for w in words]
+    return " ".join(w.lower() for w in words if w not in _NOISE)
 
 
 def _sec_names() -> Dict[str, str]:
     """Normalised SEC registrant name → ticker (first listed ticker wins: the common share)."""
-    try:
-        from api.providers import sec_edgar
-        out: Dict[str, str] = {}
-        for t, v in sec_edgar.ticker_map().items():
-            out.setdefault(_issuer_key(v["name"]), t)
-        return out
-    except Exception:
-        return {}
+    def build():
+        try:
+            from api.providers import sec_edgar
+            out: Dict[str, str] = {}
+            for t, v in sec_edgar.ticker_map().items():
+                out.setdefault(_issuer_key(v["name"]), t)
+            return out
+        except Exception:
+            return {}
+    return _cached("13f:secnames", 86400, build)
+
+
+def _match_issuer(issuer: str, names: Dict[str, str]) -> Optional[str]:
+    """Exact normalised match, else — for names cut short — a unique registrant that starts with
+    the issuer's words (dropping a possibly truncated last word)."""
+    k = _issuer_key(issuer)
+    if not k:
+        return None
+    if k in names:
+        return names[k]
+    words = k.split()
+    if len(words) < 2:
+        return None
+    # only a name that is visibly cut short (last word 1–2 letters: 'CHEMICALS I', 'ENTERPRISE C')
+    # earns a prefix match, and only when exactly one registrant fits — a wrong ticker is worse than none
+    if len(words[-1]) <= 2 or len(issuer.strip()) >= 26:
+        prefix = " ".join(words[:-1])
+        cands = [key for key in names if key.startswith(prefix + " " + words[-1]) or key == prefix]
+        if len(cands) == 1:
+            return names[cands[0]]
+    return None
 
 
 def _cusip_tickers(cusips: List[str]) -> Dict[str, Optional[str]]:
@@ -441,7 +491,7 @@ def thirteen_f(cik: str = "0001067983") -> Dict[str, Any]:
         by_name = _sec_names()
         for v in A.values():          # OpenFIGI misses some foreign-domiciled CUSIPs (Chubb's H1467Z104): match the SEC name
             if not tick.get(v["cusip"]):
-                tick[v["cusip"]] = by_name.get(_issuer_key(v["issuer"]))
+                tick[v["cusip"]] = _match_issuer(v["issuer"], by_name)
         rows = []
         for k, v in sorted(A.items(), key=lambda kv: -kv[1]["value"]):
             p = B.get(k)

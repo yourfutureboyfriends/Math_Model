@@ -4,6 +4,7 @@ import { ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { REGION_HEATMAP, useRegion } from '@/lib/region';
 import { LineChart } from '@/components/ui/LineChart';
+import { PriceChart } from '@/components/ui/PriceChart';
 import { CorrelationHeatmap } from '@/components/ui/CorrelationHeatmap';
 import { CATEGORICAL } from '@/lib/chartPalette';
 import { Chg, ErrorBox, fmtBig, fmtPct, fmtPrice, Loading, Panel, Spark, useJSON, useSort } from './shared';
@@ -250,29 +251,83 @@ export function CryptoView({ onOpen }: { onOpen: (s: string) => void }) {
 }
 
 // ── CMDTY ────────────────────────────────────────────────────────────────────
+/** A futures curve on a true time axis (contracts years out sit where they belong), with the same
+ *  contracts a month and a year ago as dashed overlays. */
+function FuturesCurve({ pts, name, show }: { pts: any[]; name: string; show: { m1: boolean; y1: boolean } }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const W = 860, H = 300, L = 60, R = 16, T = 12, B = 28;
+  const t = (m: string) => { const [y, mo] = m.split('-').map(Number); return y + (mo - 1) / 12; };
+  const t0 = t(pts[0].month), t1 = Math.max(t(pts[pts.length - 1].month), t0 + 0.5);
+  const vals = pts.flatMap((p) => [p.price, show.m1 ? p.price_1m_ago : null, show.y1 ? p.price_1y_ago : null]).filter((v): v is number => v != null);
+  const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo || Math.abs(hi) * 0.05 || 1) * 0.08;
+  const sx = (m: string) => L + ((t(m) - t0) / (t1 - t0)) * (W - L - R);
+  const sy = (v: number) => T + ((hi + pad - v) / (hi - lo + 2 * pad)) * (H - T - B);
+  const line = (k: string) => pts.filter((p) => p[k] != null).map((p, i) => `${i ? 'L' : 'M'}${sx(p.month).toFixed(1)},${sy(p[k]).toFixed(1)}`).join('');
+  const years = Array.from(new Set(pts.map((p) => p.month.slice(0, 4)))).filter((y) => t(`${y}-01`) >= t0);
+  const yt = [0, 0.25, 0.5, 0.75, 1].map((f) => lo - pad + f * (hi - lo + 2 * pad));
+  const h = hover != null ? pts[hover] : null;
+  return (
+    <div className="relative">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`${name} futures curve`}
+        onMouseMove={(e) => { const r = (e.currentTarget as SVGElement).getBoundingClientRect(); const x = ((e.clientX - r.left) / r.width) * W;
+          let best = 0; pts.forEach((p, i) => { if (Math.abs(sx(p.month) - x) < Math.abs(sx(pts[best].month) - x)) best = i; }); setHover(best); }}
+        onMouseLeave={() => setHover(null)}>
+        {yt.map((v) => <g key={v}><line x1={L} x2={W - R} y1={sy(v)} y2={sy(v)} stroke="var(--border)" strokeOpacity={0.5} />
+          <text x={L - 6} y={sy(v) + 3} fontSize="10" textAnchor="end" fill="var(--text-tertiary)">{fmtPrice(v)}</text></g>)}
+        {years.map((y) => <text key={y} x={sx(`${y}-01`)} y={H - 8} fontSize="10" textAnchor="middle" fill="var(--text-tertiary)">{y}</text>)}
+        {show.y1 && <path d={line('price_1y_ago')} fill="none" stroke="var(--text-tertiary)" strokeWidth={1.5} strokeDasharray="2 4" />}
+        {show.m1 && <path d={line('price_1m_ago')} fill="none" stroke={CATEGORICAL[0]} strokeWidth={1.5} strokeDasharray="6 4" opacity={0.8} />}
+        <path d={line('price')} fill="none" stroke={CATEGORICAL[3]} strokeWidth={2} />
+        {pts.map((p, i) => <circle key={p.contract} cx={sx(p.month)} cy={sy(p.price)} r={hover === i ? 4 : 2.5} fill={CATEGORICAL[3]} />)}
+        {h && <line x1={sx(h.month)} x2={sx(h.month)} y1={T} y2={H - B} stroke="var(--text-tertiary)" strokeDasharray="2 3" />}
+      </svg>
+      {h && <div className="absolute top-2 right-3 bg-surface-2 border border-border px-2 py-1 text-[11px] font-mono pointer-events-none">
+        <div className="text-text-primary">{h.month} · {h.contract}</div>
+        <div>now <span className="text-text-primary">{fmtPrice(h.price)}</span></div>
+        {h.price_1m_ago != null && <div>1M ago {fmtPrice(h.price_1m_ago)}</div>}
+        {h.price_1y_ago != null && <div>1Y ago {fmtPrice(h.price_1y_ago)}</div>}
+      </div>}
+    </div>
+  );
+}
+
 export function CmdtyView({ onOpen }: { onOpen: (s: string) => void }) {
   const roots = useJSON<any>('/api/v1/mkt/futures');
   const [root, setRoot] = useState('CL');
-  const { data, error, loading } = useJSON<any>(`/api/v1/mkt/futures/${root}?n=12`, 600_000);
+  const [show, setShow] = useState({ m1: true, y1: true });
+  const { data, error, loading } = useJSON<any>(`/api/v1/mkt/futures/${root}?n=60`, 600_000);
+  const cur = data && data.root === root ? data : null;
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-1">{(roots.data?.roots ?? []).map((r: any) => (
         <button key={r.root} onClick={() => setRoot(r.root)} className={cn('px-2 py-1 text-2xs border', root === r.root ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary hover:text-text-primary')}>{r.name}</button>))}</div>
-      {loading && !data ? <Loading label="Loading futures curve…" /> : error ? <ErrorBox msg={error} /> : data && (
+      {loading && !cur ? <Loading label="Loading the futures curve…" /> : error ? <ErrorBox msg={error} /> : cur && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <Panel><div className="text-[10px] uppercase text-text-tertiary">Front month</div><div className="font-mono text-base">{fmtPrice(data.front.price)}</div><div className="text-[10px] text-text-tertiary">{data.front.contract}</div></Panel>
-            <Panel><div className="text-[10px] uppercase text-text-tertiary">Curve shape</div><div className={cn('text-sm', data.slope < 0 ? 'text-green' : 'text-amber')}>{data.shape}</div></Panel>
-            <Panel><div className="text-[10px] uppercase text-text-tertiary">Front → back</div><div className="font-mono text-base"><Chg v={data.slope} d={1} /></div></Panel>
-            <Panel><div className="text-[10px] uppercase text-text-tertiary">Roll yield / yr</div><div className="font-mono text-base"><Chg v={data.annualised_roll_yield} d={1} /></div></Panel>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+            <Panel><div className="text-[10px] uppercase text-text-tertiary">Front month</div><div className="font-mono text-base">{fmtPrice(cur.front.price)}</div><div className="text-[10px] text-text-tertiary">{cur.front.contract}</div></Panel>
+            <Panel><div className="text-[10px] uppercase text-text-tertiary">Curve shape (first year)</div><div className={cn('text-sm', cur.slope < 0 ? 'text-green' : 'text-amber')}>{cur.shape}</div></Panel>
+            <Panel><div className="text-[10px] uppercase text-text-tertiary">Front → {cur.slope_months}M</div><div className="font-mono text-base"><Chg v={cur.slope} d={1} /></div></Panel>
+            <Panel><div className="text-[10px] uppercase text-text-tertiary">Front → {cur.last_month}</div><div className="font-mono text-base"><Chg v={cur.full_slope} d={1} /></div></Panel>
+            <Panel><div className="text-[10px] uppercase text-text-tertiary">Roll yield / yr</div><div className="font-mono text-base"><Chg v={cur.annualised_roll_yield} d={1} /></div></Panel>
           </div>
-          <Panel title={`${data.name} — futures curve (${data.exchange})`}>
-            <LineChart rows={data.points} x="month" height={260} lines={[{ key: 'price', label: data.name, color: CATEGORICAL[3] }]} fmt={(v) => fmtPrice(v)} />
-            <table className="w-full text-2xs font-mono mt-3"><tbody>{data.points.map((p: any) => (
-              <tr key={p.contract} onClick={() => onOpen(p.contract)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3">
-                <td className="py-0.5 text-text-secondary">{p.month}</td><td className="text-text-tertiary">{p.contract}</td><td className="text-right">{fmtPrice(p.price)}</td><td className="text-right"><Chg v={p.change_1d} /></td></tr>))}</tbody></table>
+          <Panel title={`${cur.name} — futures curve to ${cur.last_month} (${cur.exchange}, ${cur.points.length} contracts)`} right={<span className="flex gap-2 text-[10px] text-text-tertiary">
+            <label className="inline-flex items-center gap-1"><input type="checkbox" checked={show.m1} onChange={(e) => setShow({ ...show, m1: e.target.checked })} /><span style={{ color: CATEGORICAL[0] }}>— —</span> 1 month ago</label>
+            <label className="inline-flex items-center gap-1"><input type="checkbox" checked={show.y1} onChange={(e) => setShow({ ...show, y1: e.target.checked })} /><span>· · ·</span> 1 year ago</label></span>}>
+            <FuturesCurve pts={cur.points} name={cur.name} show={show} />
+            <div className="overflow-x-auto mt-3 max-h-72 overflow-y-auto"><table className="w-full text-2xs font-mono">
+              <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left font-normal">Month</th><th className="text-left font-normal">Contract</th>
+                <th className="text-right font-normal">Price</th><th className="text-right font-normal">1D</th><th className="text-right font-normal">vs 1M ago</th><th className="text-right font-normal">vs 1Y ago</th></tr></thead>
+              <tbody>{cur.points.map((p: any) => (
+                <tr key={p.contract} onClick={() => onOpen(p.contract)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3">
+                  <td className="py-0.5 text-text-secondary">{p.month}</td><td className="text-text-tertiary">{p.contract}</td><td className="text-right">{fmtPrice(p.price)}</td>
+                  <td className="text-right"><Chg v={p.change_1d} /></td>
+                  <td className="text-right"><Chg v={p.price_1m_ago ? p.price / p.price_1m_ago - 1 : null} d={1} /></td>
+                  <td className="text-right"><Chg v={p.price_1y_ago ? p.price / p.price_1y_ago - 1 : null} d={1} /></td></tr>))}</tbody></table></div>
           </Panel>
-          <div className="text-[10px] text-text-tertiary">{data.note} {data.source}.</div>
+          <Panel title={`${cur.name} — continuous front month (${cur.root}=F)`}>
+            <PriceChart key={cur.root} symbol={`${cur.root}=F`} height={340} />
+          </Panel>
+          <div className="text-[10px] text-text-tertiary">{cur.note} {cur.source}. Every listed month for two years, then June and December contracts as far as they trade.</div>
         </>
       )}
     </div>

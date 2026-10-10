@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from api.marketdata.core import (MAIN_EXCHANGES, NotFound, Upstream, _cached, _f, _info, _norm, div_yield, to_usd, usd_to_local)
+from api.marketdata.core import (MAIN_EXCHANGES, NotFound, Upstream, _cached, _f, _info, _norm, _yscreen, div_yield, to_usd, usd_to_local)
 
 
 def _tk(symbol: str):
@@ -479,7 +479,7 @@ def comps(symbol: str, max_peers: int = 12) -> Dict[str, Any]:
                           Q("eq", ["industry", industry]), Q("gt", ["intradaymarketcap", 1e9 * fx])])
             for attempt in range(2):                      # Yahoo rate-limits bursts: retry once
                 try:
-                    res = yf.screen(q, sortField="intradaymarketcap", sortAsc=False, size=25)
+                    res = _yscreen(q, sortField="intradaymarketcap", sortAsc=False, size=25)
                     return [(rg, x, to_usd(_f(x.get("marketCap")), x.get("currency")) or 0) for x in res.get("quotes") or []
                             if not _foreign_line(x.get("symbol", ""))]
                 except Exception:
