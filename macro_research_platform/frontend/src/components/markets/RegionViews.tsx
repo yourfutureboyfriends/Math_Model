@@ -7,6 +7,7 @@ import { REGIONS, REGION_CCYS, REGION_MARKETS, setRegion, useRegion, type Region
 import { toTerminal } from './bbg';
 import { Chart } from './TickerView';
 import { Chg, ErrorBox, fmtBig, fmtPrice, Loading, Panel, useJSON } from './shared';
+import { MarketClock } from './MarketClock';
 
 const pct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${v.toFixed(d)}%`);
 const MARKET_NAME: Record<string, string> = { us: 'US', ca: 'Canada', br: 'Brazil', mx: 'Mexico', gb: 'UK', de: 'Germany', fr: 'France', ch: 'Switzerland',
@@ -94,17 +95,19 @@ export function RegionMonitor({ onOpen, onGo }: { onOpen: (s: string) => void; o
           {news.data && news.data.items.length === 0 && <p className="text-[11px] text-text-tertiary">No recent regional headlines.</p>}
         </Panel>
         <div className="space-y-2">
+          <Panel title="Market hours"><MarketClock region={region} /></Panel>
           <Panel title="Economic releases" right={<button onClick={() => onGo('ECO')} className="text-[10px] text-text-tertiary hover:text-bloomberg">ECO &lt;GO&gt;</button>}>
             {ccys.length === 0 && region !== 'global' ? <p className="text-[11px] text-text-tertiary">The free consensus calendar covers the US, euro area, UK, Japan, China, Canada, Australia, Switzerland and New Zealand.</p> : (
               <table className="w-full text-[11px]"><tbody>{(eco.data?.events ?? []).slice(-10).map((e: any, i: number) => (
                 <tr key={i} className="border-t border-border-subtle"><td className="py-0.5 font-mono text-text-tertiary">{String(e.date).slice(5, 10)}</td><td className="text-text-secondary">{e.country}</td>
-                  <td className="text-text-primary truncate max-w-[12rem]">{e.title}</td><td className="text-right font-mono">{e.actual ?? e.forecast ?? ''}</td></tr>))}</tbody></table>)}
+                  <td className="text-text-primary truncate max-w-[12rem]">{e.title}</td><td className="text-right font-mono" title={e.actual != null ? 'Actual' : 'Consensus forecast'}>
+                    {e.actual != null ? <span className="text-text-primary">{e.actual}{e.unit ?? ''}</span> : e.forecast ? <span className="text-text-tertiary">f {e.forecast}</span> : ''}</td></tr>))}</tbody></table>)}
           </Panel>
           <Panel title="Earnings this week" right={<button onClick={() => onGo('EVTS')} className="text-[10px] text-text-tertiary hover:text-bloomberg">EVTS &lt;GO&gt;</button>}>
             {earnings.length === 0 ? <p className="text-[11px] text-text-tertiary">{evts.loading ? 'Loading…' : 'No large-cap reports in this region this week (the free calendar is US-heavy).'}</p> : (
               <table className="w-full text-[11px]"><tbody>{earnings.map((r: any) => (
-                <tr key={r.symbol + r.datetime} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(r.symbol)}>
-                  <td className="py-0.5 font-mono text-text-tertiary">{String(r.datetime).slice(5, 10)}</td><td className="font-mono text-bloomberg">{r.symbol}</td>
+                <tr key={r.symbol + r.datetime} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(r.home_symbol ?? r.symbol)}>
+                  <td className="py-0.5 font-mono text-text-tertiary">{String(r.datetime).slice(5, 10)}</td><td className="font-mono text-bloomberg">{r.home_symbol ?? r.symbol}</td>
                   <td className="text-text-secondary truncate max-w-[10rem]">{r.company}</td><td className="text-right font-mono">{r.eps_estimate ?? ''}</td></tr>))}</tbody></table>)}
           </Panel>
         </div>

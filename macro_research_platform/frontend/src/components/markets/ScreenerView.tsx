@@ -4,20 +4,21 @@
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { REGION_MARKETS, useRegion } from '@/lib/region';
-import { Chg, ErrorBox, fmtBig, fmtPrice, Loading, Panel, useJSON } from './shared';
+import { Chg, ErrorBox, fmtBig, fmtPrice, Loading, Panel, useJSON, useSort } from './shared';
 
 const MAJOR: Record<string, string> = { GBp: 'GBP', GBX: 'GBP', ZAc: 'ZAR', ILA: 'ILS' };
 
-function Table({ rows, onOpen, showSector = true }: { rows: any[]; onOpen: (s: string) => void; showSector?: boolean }) {
+function Table({ rows: input, onOpen, showSector = true }: { rows: any[]; onOpen: (s: string) => void; showSector?: boolean }) {
+  const { rows, th } = useSort(input);          // click a header to sort; the server order is the default
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-2xs">
         <thead><tr className="text-text-tertiary">
-          <th className="text-left font-normal pb-1">Symbol</th><th className="text-left font-normal">Name</th>
-          <th className="text-right font-normal">Price</th><th className="text-right font-normal">Change</th>
-          <th className="text-right font-normal">Mkt cap $</th><th className="text-right font-normal hidden md:table-cell" title="Value traded today, in the listing currency">Value traded</th>
-          <th className="text-right font-normal hidden md:table-cell">P/E</th><th className="text-right font-normal hidden lg:table-cell">Yield</th>
-          {showSector && <th className="text-left font-normal hidden xl:table-cell pl-3">Sector</th>}</tr></thead>
+          {th('symbol', 'Symbol', 'text-left pb-1', false)}{th('name', 'Name', 'text-left', false)}
+          {th('price', 'Price', 'text-right')}{th('change_pct', 'Change', 'text-right')}
+          {th('market_cap_usd', 'Mkt cap $', 'text-right')}{th('value_traded_usd', 'Traded $', 'text-right hidden md:table-cell')}
+          {th('pe', 'P/E', 'text-right hidden md:table-cell')}{th('dividend_yield', 'Yield', 'text-right hidden lg:table-cell')}
+          {showSector && th('sector', 'Sector', 'text-left hidden xl:table-cell pl-3', false)}</tr></thead>
         <tbody>{rows.map((r) => (
           <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3">
             <td className="py-1 font-mono text-text-primary">{r.symbol}</td>
@@ -25,7 +26,7 @@ function Table({ rows, onOpen, showSector = true }: { rows: any[]; onOpen: (s: s
             <td className="text-right font-mono">{fmtPrice(r.price)} <span className="text-text-tertiary">{r.currency}</span></td>
             <td className="text-right"><Chg v={r.change_pct} /></td>
             <td className="text-right font-mono" title={r.market_cap != null ? `${fmtBig(r.market_cap)} ${MAJOR[r.currency] ?? r.currency ?? ''}` : undefined}>{fmtBig(r.market_cap_usd ?? null)}</td>
-            <td className="text-right font-mono hidden md:table-cell" title={r.volume != null ? `${fmtBig(r.volume)} shares` : undefined}>{fmtBig(r.value_traded ?? null)}</td>
+            <td className="text-right font-mono hidden md:table-cell" title={r.volume != null ? `${fmtBig(r.volume)} shares · ${fmtBig(r.value_traded ?? null)} ${MAJOR[r.currency] ?? r.currency ?? ''}` : undefined}>{fmtBig(r.value_traded_usd ?? null)}</td>
             <td className="text-right font-mono hidden md:table-cell">{r.pe != null ? r.pe.toFixed(1) : '—'}</td>
             <td className="text-right font-mono hidden lg:table-cell">{r.dividend_yield != null ? `${(r.dividend_yield * 100).toFixed(1)}%` : '—'}</td>
             {showSector && <td className="text-text-tertiary hidden xl:table-cell pl-3 truncate">{r.sector ?? ''}</td>}
@@ -76,7 +77,22 @@ const PRESETS: [string, Record<string, string>, string][] = [
   ['Small caps', { market_cap_min: '0.3', market_cap_max: '2' }, '$300m – $2bn'],
 ];
 
+// Your own screens, kept in this browser (name → the form's filters)
+const SAVED_KEY = 'mkt_eqs_saved_v1';
+function loadSaved(): Record<string, Record<string, string>> {
+  try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '{}') ?? {}; } catch { return {}; }
+}
+function storeSaved(v: Record<string, Record<string, string>>) { try { localStorage.setItem(SAVED_KEY, JSON.stringify(v)); } catch { /* storage unavailable */ } }
+
 export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
+  const [saved, setSaved] = useState(loadSaved);
+  const saveAs = () => {
+    const name = window.prompt('Name this screen', '')?.trim();
+    if (!name) return;
+    const next = { ...saved, [name.slice(0, 40)]: f };
+    setSaved(next); storeSaved(next);
+  };
+  const drop = (name: string) => { const { [name]: _gone, ...rest } = saved; setSaved(rest); storeSaved(rest); };
   const meta = useJSON<any>('/api/v1/mkt/meta');
   const area = useRegion();
   const blank = { market_cap_min: '', market_cap_max: '', pe_min: '', pe_max: '', dividend_yield_min: '', change_pct_min: '' };
@@ -113,6 +129,13 @@ export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
           <button key={name} onClick={() => preset(p)} title={tip} className="px-2 py-0.5 border border-border text-text-secondary hover:text-bloomberg hover:border-bloomberg">{name}</button>))}
         <span className="text-text-tertiary ml-1">(in the market selected below)</span>
       </div>
+      {Object.keys(saved).length > 0 && <div className="flex flex-wrap items-center gap-1 text-xs">
+        <span className="text-text-tertiary mr-1">My screens</span>
+        {Object.entries(saved).map(([name, form]) => (
+          <span key={name} className="inline-flex items-center border border-border">
+            <button onClick={() => { setF(form); setPages([]); run(0, form); }} className="px-2 py-0.5 text-text-secondary hover:text-bloomberg">{name}</button>
+            <button onClick={() => drop(name)} title={`Delete “${name}”`} className="px-1 text-text-tertiary hover:text-red">×</button></span>))}
+      </div>}
       <Panel title="Global equity screener — 22 markets">
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-11 gap-2 items-end">
           <label className="text-[10px] uppercase text-text-tertiary col-span-2">Market
@@ -137,6 +160,7 @@ export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
         <button onClick={() => { setPages([]); run(0); }} className="mt-3 px-4 py-1.5 text-xs bg-bloomberg text-bg">Screen</button>
         <button onClick={() => { const next = { ...f, sector: '', sort: 'market_cap', ...blank }; setF(next); setPages([]); run(0, next); }}
           className="mt-3 ml-2 px-3 py-1.5 text-xs border border-border text-text-secondary hover:text-text-primary">Clear filters</button>
+        <button onClick={saveAs} className="mt-3 ml-2 px-3 py-1.5 text-xs border border-border text-text-secondary hover:text-text-primary">Save screen…</button>
         <span className="ml-3 text-[10px] text-text-tertiary">Primary listings only (cross-listings such as Nvidia in Frankfurt are removed). Size filters and the cap column in USD; hover a cap for the local figure.</span>
       </Panel>
       {loading && <Loading label="Screening…" />}

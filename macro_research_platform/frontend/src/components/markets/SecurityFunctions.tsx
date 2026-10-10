@@ -251,6 +251,42 @@ export function DvdView({ symbol }: { symbol: string }) {
 }
 
 // ── OMON ─────────────────────────────────────────────────────────────────────
+/** Open interest by strike — calls up, puts down — with the underlying and max pain marked:
+ *  where positioning (and often pinning into expiry) is concentrated. */
+function OpenInterest({ data, rows }: { data: any; rows: { k: number; c?: any; p?: any }[] }) {
+  const pts = rows.filter((r) => (r.c?.open_interest ?? 0) + (r.p?.open_interest ?? 0) > 0);
+  if (pts.length < 3) return null;
+  const W = 720, H = 220, P = 42, mid = H / 2;
+  const max = Math.max(...pts.flatMap((r) => [r.c?.open_interest ?? 0, r.p?.open_interest ?? 0]), 1);
+  const lo = pts[0].k, hi = pts[pts.length - 1].k;
+  const sx = (k: number) => P + ((k - lo) / (hi - lo || 1)) * (W - 2 * P);
+  const bw = Math.max(2, ((W - 2 * P) / pts.length) * 0.7);
+  const h = (v: number) => (v / max) * (mid - 18);
+  const mark = (k: number | null | undefined, label: string, color: string, ty: number) => k != null && k >= lo && k <= hi && (
+    <g><line x1={sx(k)} x2={sx(k)} y1={8} y2={H - 12} stroke={color} strokeDasharray="3 3" />
+      <text x={sx(k) + 3} y={ty} fontSize="9" fill={color}>{label} {fmtPrice(k)}</text></g>);
+  const oc = pts.reduce((a, r) => a + (r.c?.open_interest ?? 0), 0), op = pts.reduce((a, r) => a + (r.p?.open_interest ?? 0), 0);
+  return (
+    <Panel title={`Open interest by strike · ${data.expiry}`} right={<span className="text-[10px] text-text-tertiary">calls {fmtBig(oc)} · puts {fmtBig(op)} (strikes shown)</span>}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 260 }} role="img" aria-label="Open interest by strike">
+        <line x1={P} x2={W - P} y1={mid} y2={mid} stroke="var(--border)" />
+        {pts.map((r) => (
+          <g key={r.k}>
+            {(r.c?.open_interest ?? 0) > 0 && <rect x={sx(r.k) - bw / 2} y={mid - h(r.c.open_interest)} width={bw} height={h(r.c.open_interest)} fill="rgb(var(--c-green))" opacity="0.75">
+              <title>{`${fmtPrice(r.k)} call OI ${fmtBig(r.c.open_interest)}`}</title></rect>}
+            {(r.p?.open_interest ?? 0) > 0 && <rect x={sx(r.k) - bw / 2} y={mid} width={bw} height={h(r.p.open_interest)} fill="rgb(var(--c-red))" opacity="0.75">
+              <title>{`${fmtPrice(r.k)} put OI ${fmtBig(r.p.open_interest)}`}</title></rect>}
+          </g>))}
+        {mark(data.underlying, 'spot', 'rgb(var(--c-bloomberg))', 12)}
+        {data.max_pain !== data.underlying && mark(data.max_pain, 'max pain', 'var(--text-secondary)', H - 16)}
+        <text x={4} y={mid - 4} fontSize="8" fill="var(--text-tertiary)">calls ▲</text><text x={4} y={mid + 11} fontSize="8" fill="var(--text-tertiary)">puts ▼</text>
+        <text x={sx(lo)} y={H - 2} fontSize="8" textAnchor="middle" fill="var(--text-tertiary)">{fmtPrice(lo)}</text>
+        <text x={sx(hi)} y={H - 2} fontSize="8" textAnchor="middle" fill="var(--text-tertiary)">{fmtPrice(hi)}</text>
+      </svg>
+    </Panel>
+  );
+}
+
 export function OmonView({ symbol }: { symbol: string }) {
   const [expiry, setExpiry] = useState<string | null>(null);
   const [range, setRange] = useState(10);
@@ -305,6 +341,7 @@ export function OmonView({ symbol }: { symbol: string }) {
         </table></div>
         <div className="text-[10px] text-text-tertiary mt-2">Shaded = in the money. The orange line marks the underlying price. Θ is per trading day (time measured in trading sessions); Vega per 1 vol point. {data.source}</div>
       </Panel>
+      <OpenInterest data={data} rows={rows} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Panel title="Volatility smile (out-of-the-money IV by strike)">
           {data.smile.length > 2 ? <LineChart rows={data.smile.map((s: any) => ({ ...s, x: s.strike.toFixed(0) }))} x="x" height={200}
@@ -334,6 +371,7 @@ export function RvView({ symbol, onOpen }: { symbol: string; onOpen: (s: string)
   const rows = [...data.rows].sort((a: any, b: any) => (b[sort] ?? -1e18) - (a[sort] ?? -1e18));
   const med = data.peer_median;
   return (
+    <div className="space-y-3">
     <Panel title={`${data.industry} peers worldwide — click a column to sort, a row to open`}>
       <div className="overflow-x-auto"><table className="w-full text-2xs">
         <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Company</th>
@@ -354,6 +392,65 @@ export function RvView({ symbol, onOpen }: { symbol: string; onOpen: (s: string)
         </tbody>
       </table></div>
       <div className="text-[10px] text-text-tertiary mt-2">Green = cheaper (multiples) or stronger (margins, growth) than the peer median. {data.source}</div>
+    </Panel>
+    <ValuationMap rows={data.rows} onOpen={onOpen} />
+    </div>
+  );
+}
+
+/** Peers on a valuation map: a multiple against what usually justifies it (margin, ROE, growth),
+ *  with a least-squares line — a point well below the line is cheap for its quality. */
+function ValuationMap({ rows, onOpen }: { rows: any[]; onOpen: (s: string) => void }) {
+  const Y: [string, string][] = [['ev_ebitda', 'EV/EBITDA'], ['pe', 'P/E'], ['forward_pe', 'Fwd P/E'], ['price_to_sales', 'P/S'], ['price_to_book', 'P/B']];
+  const X: [string, string][] = [['operating_margin', 'Operating margin'], ['roe', 'ROE'], ['revenue_growth', 'Revenue growth'], ['gross_margin', 'Gross margin']];
+  const [yk, setYk] = useState('ev_ebitda');
+  const [xk, setXk] = useState('operating_margin');
+  const pts = rows.filter((r) => r[xk] != null && r[yk] != null && r[yk] > 0 && r[yk] < 200 && Math.abs(r[xk]) < 3);
+  if (pts.length < 3) return null;
+  const W = 640, H = 300, P = 36;
+  // outliers (above 3× the median multiple, e.g. Tesla) are pinned to the top edge and left out of the fit
+  const sortedY = pts.map((p) => p[yk]).sort((a, b) => a - b);
+  const medY = sortedY[Math.floor(sortedY.length / 2)];
+  const isOut = (p: any) => p[yk] > 3 * medY;
+  const inl = pts.filter((p) => !isOut(p));
+  const xs = pts.map((p) => p[xk]), ys = inl.map((p) => p[yk]);
+  const [x0, x1] = [Math.min(...xs, 0), Math.max(...xs)], [y0, y1] = [0, Math.max(...ys) * 1.15];
+  const sx = (v: number) => P + ((v - x0) / (x1 - x0 || 1)) * (W - 2 * P);
+  const sy = (v: number) => H - P - ((v - y0) / (y1 - y0 || 1)) * (H - 2 * P);
+  // least squares on the peers (subject excluded so it is judged against them)
+  const peers = inl.filter((p) => !p.subject);
+  const n = peers.length, mx = peers.reduce((a, p) => a + p[xk], 0) / n, my = peers.reduce((a, p) => a + p[yk], 0) / n;
+  const sxx = peers.reduce((a, p) => a + (p[xk] - mx) ** 2, 0);
+  const b = sxx > 0 ? peers.reduce((a, p) => a + (p[xk] - mx) * (p[yk] - my), 0) / sxx : 0, a0 = my - b * mx;
+  const subj = pts.find((p) => p.subject);
+  const fair = subj ? a0 + b * subj[xk] : null;
+  const sel = 'bg-surface-1 border border-border px-1.5 py-0.5 text-[11px] text-text-primary';
+  const label = (k: string, L: [string, string][]) => L.find(([x]) => x === k)?.[1] ?? k;
+  return (
+    <Panel title="Valuation map" right={<span className="flex gap-1 items-center text-[10px] text-text-tertiary">
+      <select value={yk} onChange={(e) => setYk(e.target.value)} className={sel}>{Y.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select> vs
+      <select value={xk} onChange={(e) => setXk(e.target.value)} className={sel}>{X.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></span>}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 340 }} role="img" aria-label="Peer valuation scatter">
+        <line x1={P} x2={W - P} y1={H - P} y2={H - P} stroke="var(--border)" /><line x1={P} x2={P} y1={P} y2={H - P} stroke="var(--border)" />
+        {x0 < 0 && <line x1={sx(0)} x2={sx(0)} y1={P} y2={H - P} stroke="var(--border)" strokeDasharray="3 3" />}
+        <line x1={sx(x0)} y1={sy(a0 + b * x0)} x2={sx(x1)} y2={sy(a0 + b * x1)} stroke="rgb(var(--c-bloomberg))" strokeDasharray="5 4" strokeWidth="1.2" />
+        {pts.map((p) => (
+          <g key={p.symbol} onClick={() => !p.subject && onOpen(p.symbol)} className={p.subject ? '' : 'cursor-pointer'}>
+            <circle cx={sx(p[xk])} cy={isOut(p) ? P : sy(p[yk])} r={p.subject ? 6 : 4} fill={p.subject ? 'rgb(var(--c-bloomberg))' : 'rgb(var(--c-blue))'} opacity={p.subject ? 1 : 0.7}>
+              <title>{`${p.name}: ${label(yk, Y)} ${p[yk].toFixed(1)}, ${label(xk, X)} ${(p[xk] * 100).toFixed(1)}%`}</title></circle>
+            <text x={sx(p[xk]) + 7} y={(isOut(p) ? P : sy(p[yk])) + 3} fontSize="9" fill={p.subject ? 'rgb(var(--c-bloomberg))' : 'var(--text-secondary)'}>
+              {String(p.symbol).split('.')[0]}{isOut(p) ? ` ↑${p[yk].toFixed(0)}` : ''}</text>
+          </g>))}
+        <text x={W - P} y={H - 8} fontSize="9" textAnchor="end" fill="var(--text-tertiary)">{label(xk, X)} →</text>
+        <text x={P} y={P - 10} fontSize="9" fill="var(--text-tertiary)">↑ {label(yk, Y)}</text>
+        <text x={P - 4} y={sy(y1) + 3} fontSize="8" textAnchor="end" fill="var(--text-tertiary)">{y1.toFixed(0)}</text>
+        <text x={sx(x0)} y={H - P + 12} fontSize="8" textAnchor="middle" fill="var(--text-tertiary)">{(x0 * 100).toFixed(0)}%</text>
+        <text x={sx(x1)} y={H - P + 12} fontSize="8" textAnchor="middle" fill="var(--text-tertiary)">{(x1 * 100).toFixed(0)}%</text>
+      </svg>
+      {subj && fair != null && fair > 0 && <div className="text-2xs text-text-secondary mt-1">
+        At its {label(xk, X).toLowerCase()} of {(subj[xk] * 100).toFixed(1)}%, the peer line implies {label(yk, Y)} ≈ <span className="font-mono text-text-primary">{fair.toFixed(1)}</span>;
+        it trades at <span className="font-mono text-text-primary">{subj[yk].toFixed(1)}</span> — <span className={subj[yk] < fair ? 'text-green' : 'text-red'}>{Math.abs(subj[yk] / fair - 1) * 100 < 5 ? 'in line' : `${(Math.abs(subj[yk] / fair - 1) * 100).toFixed(0)}% ${subj[yk] < fair ? 'below' : 'above'}`}</span> the line.</div>}
+      <div className="text-[10px] text-text-tertiary mt-1">Dashed line = least-squares fit across the peers ({n}); outliers above 3× the median are pinned to the top and excluded. Below the line = cheaper than peers of similar quality. Negative or extreme multiples are left out.</div>
     </Panel>
   );
 }
@@ -425,7 +522,7 @@ export function BetaView({ symbol }: { symbol: string }) {
             <Stat label="Alpha / yr" value={fmtPct(data.alpha_annual, 1)} tone={data.alpha_annual > 0 ? 'up' : 'down'} sub={`${data.observations} observations`} />
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <Panel title={`Returns: ${symbol} (up) vs ${bench} (across)`}><Scatter pts={data.scatter} beta={data.beta} alpha={data.alpha_annual / ({ D: 252, W: 52, M: 12 } as any)[freq]} /></Panel>
+            <Panel title={`Returns: ${symbol} (up) vs ${data.benchmark} (across)`}><Scatter pts={data.scatter} beta={data.beta} alpha={data.alpha_annual / ({ D: 252, W: 52, M: 12 } as any)[freq]} /></Panel>
             <Panel title="Rolling beta">{data.rolling.length > 2 ? <LineChart rows={data.rolling} x="date" height={220} baseline={1}
               lines={[{ key: 'beta', label: 'Beta', color: CATEGORICAL[0] }]} fmt={(v) => v.toFixed(2)} /> : <div className="text-2xs text-text-tertiary">Not enough history.</div>}</Panel>
           </div>

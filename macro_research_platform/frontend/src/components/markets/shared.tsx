@@ -1,6 +1,6 @@
 // Shared bits for the Markets mode: data hook, number formats that respect the instrument
 // (FX/crypto precision, currency), change colouring, compact market caps.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 /** A readable message from a FastAPI error body (string detail, or a list of validation errors). */
@@ -128,4 +128,31 @@ export function Flash({ value, children, className }: { value: number | null | u
     prev.current = value;
   }, [value]);
   return <span key={n} className={cn(cls, className)}>{children}</span>;
+}
+
+/** Click-to-sort for any table: `useSort(rows)` returns the sorted rows and a header factory.
+ *  First click sorts descending for numbers (biggest first) and ascending for text; again flips. */
+export function useSort<T extends Record<string, any>>(rows: T[] | undefined, initial?: { key: string; dir: 1 | -1 }) {
+  const [s, setS] = useState<{ key: string; dir: 1 | -1 } | null>(initial ?? null);
+  const sorted = useMemo(() => {
+    const r = [...(rows ?? [])];
+    if (!s) return r;
+    const val = (x: T) => {
+      const v = s.key.split('.').reduce((o: any, k) => (o == null ? o : o[k]), x);
+      return typeof v === 'string' ? v.toLowerCase() : v;
+    };
+    return r.sort((a, b) => {
+      const va = val(a), vb = val(b);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;                              // blanks always last
+      if (vb == null) return -1;
+      return (va < vb ? -1 : va > vb ? 1 : 0) * s.dir;
+    });
+  }, [rows, s]);
+  const th = (key: string, label: React.ReactNode, className = '', numeric = true) => (
+    <th className={cn('font-normal cursor-pointer select-none hover:text-text-primary whitespace-nowrap', className)} aria-sort={s?.key === key ? (s.dir > 0 ? 'ascending' : 'descending') : undefined}
+      onClick={() => setS((p) => (p?.key === key ? { key, dir: (p.dir * -1) as 1 | -1 } : { key, dir: numeric ? -1 : 1 }))} title="Sort">
+      {label}{s?.key === key ? <span className="text-bloomberg ml-0.5">{s.dir > 0 ? '▲' : '▼'}</span> : null}</th>
+  );
+  return { rows: sorted, th, sort: s };
 }

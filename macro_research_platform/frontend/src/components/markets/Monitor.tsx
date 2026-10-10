@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { toTerminal } from './bbg';
 import { Chg, Flash, fmtPrice, Spark, useJSON } from './shared';
+import { MarketClock } from './MarketClock';
 
 function Pane({ title, code, onCode, children, className, style }: { title: string; code?: string; onCode?: () => void; children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
   return (
@@ -110,6 +111,7 @@ export function MonitorHome({ onOpen, onGo }: { onOpen: (s: string) => void; onG
           <Pane key={title} title={title} code={code} onCode={() => onGo(code)} className={code === 'WEI' && cols > 1 ? 'row-span-2' : ''}>
             {g ? <GroupTable g={g} onOpen={onOpen} /> : <div className="p-2 text-[11px] text-text-tertiary">{data ? 'No data' : 'Loading…'}</div>}
           </Pane>); })}
+        <Pane title="Market hours" className="max-h-[420px]"><MarketClock /></Pane>
         <Pane title="Most active · US" code="MOST" onCode={() => onGo('MOST')}><Movers kind="active" onOpen={onOpen} /></Pane>
         <Pane title="Top gainers · US" code="MOST" onCode={() => onGo('MOST')}><Movers kind="gainers" onOpen={onOpen} /></Pane>
         <Pane title="Top losers · US" code="MOST" onCode={() => onGo('MOST')}><Movers kind="losers" onOpen={onOpen} /></Pane>

@@ -91,7 +91,8 @@ function quoteCells(q: any) {
     : (q.market_state === 'POST' || q.market_state === 'POSTPOST' || q.market_state === 'CLOSED') && q.post_market_price ? { label: 'After hours', p: q.post_market_price, c: q.post_market_change_pct } : null;
   // vs previous close: tinted only when both are known
   const tone = (v: number | null | undefined) => (v == null || q.previous_close == null ? undefined : v > q.previous_close ? 'text-green' : v < q.previous_close ? 'text-red' : undefined);
-  const ccy = q.currency && !['FX', 'Index'].includes(q.type) ? q.currency : null;       // money figures in the listing's currency
+  // money figures carry the listing's currency when it isn't the dollar (Toyota: "34.47T JPY")
+  const ccy = q.currency && q.currency !== 'USD' && !['FX', 'Index'].includes(q.type) ? q.currency : null;
   const cells: [string, string, string?][] = [
     ['High', fmtPrice(q.day_high, q.type), tone(q.day_high)], ['Open', fmtPrice(q.open, q.type), tone(q.open)],
     ['Volume', fmtBig(q.volume)], ['Mkt cap', fmtBig(q.market_cap, ccy && (MAJOR[ccy] ?? ccy))], ['P/E TTM', q.trailing_pe != null ? q.trailing_pe.toFixed(2) : '—'], ['52W high', fmtPrice(q.week52_high, q.type)],
@@ -102,6 +103,22 @@ function quoteCells(q: any) {
     ['Div yield', q.dividend_yield != null ? `${(q.dividend_yield * 100).toFixed(2)}%` : '—'], ['EPS TTM', q.eps_ttm != null ? q.eps_ttm.toFixed(2) : '—'],
   ];
   return { ext, cells };
+}
+
+/** Where the price sits inside a range (day, 52 weeks): a thin track with a marker. */
+function RangeBar({ label, lo, hi, v, type }: { label: string; lo?: number | null; hi?: number | null; v?: number | null; type?: string }) {
+  if (lo == null || hi == null || v == null || !(hi > lo)) return null;
+  const pct = Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100));
+  return (
+    <div className="text-[10px] min-w-[150px]" title={`${label}: ${fmtPrice(lo, type)} – ${fmtPrice(hi, type)} · ${pct.toFixed(0)}% of the range`}>
+      <div className="flex justify-between text-text-tertiary"><span>{label}</span><span>{pct.toFixed(0)}%</span></div>
+      <div className="relative h-1.5 bg-surface-3 mt-0.5">
+        <div className="absolute inset-y-0 left-0 bg-bloomberg/30" style={{ width: `${pct}%` }} />
+        <div className="absolute -top-0.5 w-0.5 h-2.5 bg-bloomberg" style={{ left: `calc(${pct}% - 1px)` }} />
+      </div>
+      <div className="flex justify-between font-mono text-text-tertiary mt-0.5"><span>{fmtPrice(lo, type)}</span><span>{fmtPrice(hi, type)}</span></div>
+    </div>
+  );
 }
 
 function QuoteHeaderDense({ q, vwap }: { q: any; vwap?: number | null }) {
@@ -118,6 +135,10 @@ function QuoteHeaderDense({ q, vwap }: { q: any; vwap?: number | null }) {
         <div className="text-[11px] text-text-tertiary mt-0.5">{q.currency} · {q.exchange}{q.delay_minutes ? ` · delayed ${q.delay_minutes}m` : ''}</div>
         {ext?.p != null && <div className="text-[11px] mt-0.5"><span className="text-text-tertiary">{ext.label} </span>
           <span className={cn('font-mono', upDown(ext.c))}>{fmtPrice(ext.p, q.type)} {ext.c != null ? `${ext.c >= 0 ? '+' : ''}${(ext.c * 100).toFixed(2)}%` : ''}</span></div>}
+        <div className="flex gap-4 mt-1.5">
+          <RangeBar label="Day range" lo={q.day_low} hi={q.day_high} v={q.price} type={q.type} />
+          <RangeBar label="52-week range" lo={q.week52_low} hi={q.week52_high} v={q.price} type={q.type} />
+        </div>
       </div>
       <dl className="flex-1 grid grid-cols-3 sm:grid-cols-6 gap-x-4 gap-y-1 text-[11px] min-w-[300px]">
         {filled.map(([k, v, tone]) => (

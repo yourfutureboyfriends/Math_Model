@@ -6,7 +6,7 @@ import { REGION_HEATMAP, useRegion } from '@/lib/region';
 import { LineChart } from '@/components/ui/LineChart';
 import { CorrelationHeatmap } from '@/components/ui/CorrelationHeatmap';
 import { CATEGORICAL } from '@/lib/chartPalette';
-import { Chg, ErrorBox, fmtBig, fmtPct, fmtPrice, Loading, Panel, Spark, useJSON } from './shared';
+import { Chg, ErrorBox, fmtBig, fmtPct, fmtPrice, Loading, Panel, Spark, useJSON, useSort } from './shared';
 
 const Bp = ({ v }: { v: number | null | undefined }) => (
   <span className={cn('font-mono', v == null ? 'text-text-tertiary' : v > 0 ? 'text-red' : v < 0 ? 'text-green' : 'text-text-secondary')}>
@@ -218,6 +218,7 @@ export function ImapView({ onOpen }: { onOpen: (s: string) => void }) {
 // ── CRYPTO ───────────────────────────────────────────────────────────────────
 export function CryptoView({ onOpen }: { onOpen: (s: string) => void }) {
   const { data, error, loading } = useJSON<any>('/api/v1/mkt/crypto?limit=100', 180_000);
+  const { rows, th } = useSort(data?.rows);
   if (loading && !data) return <Loading label="Loading crypto…" />;
   if (error) return <ErrorBox msg={error} />;
   if (!data) return null;
@@ -229,9 +230,12 @@ export function CryptoView({ onOpen }: { onOpen: (s: string) => void }) {
       </div>
       <Panel title="Top coins by market cap — click to chart">
         <div className="overflow-x-auto"><table className="w-full text-2xs">
-          <thead><tr className="text-text-tertiary">{['#', 'Coin', 'Price', '1h', '24h', '7d', '30d', 'Market cap', 'Volume 24h', 'From ATH', '7 days'].map((h) =>
-            <th key={h} className={cn('font-normal py-1', h === 'Coin' || h === '#' ? 'text-left' : 'text-right')}>{h}</th>)}</tr></thead>
-          <tbody>{data.rows.map((r: any) => (
+          <thead><tr className="text-text-tertiary">
+            {th('rank', '#', 'text-left py-1', false)}{th('name', 'Coin', 'text-left', false)}{th('price', 'Price', 'text-right')}
+            {th('change_1h', '1h', 'text-right')}{th('change_24h', '24h', 'text-right')}{th('change_7d', '7d', 'text-right')}{th('change_30d', '30d', 'text-right')}
+            {th('market_cap', 'Market cap', 'text-right')}{th('volume_24h', 'Volume 24h', 'text-right')}{th('ath_change', 'From ATH', 'text-right')}
+            <th className="font-normal text-right">7 days</th></tr></thead>
+          <tbody>{rows.map((r: any) => (
             <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3">
               <td className="text-text-tertiary py-1">{r.rank}</td><td><span className="font-mono text-text-primary">{r.coin}</span> <span className="text-text-secondary">{r.name}</span></td>
               <td className="text-right font-mono">{fmtPrice(r.price)}</td><td className="text-right"><Chg v={r.change_1h} d={1} /></td><td className="text-right"><Chg v={r.change_24h} d={1} /></td>
@@ -336,14 +340,28 @@ export function NewsView() {
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
   const [src, setSrc] = useState('');
+  const [tone, setTone] = useState('');
+  const [ctry, setCtry] = useState('');
   const area = useRegion();
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/news?limit=150${area !== 'global' ? `&region=${area}` : ''}${query ? `&q=${encodeURIComponent(query)}` : ''}`, 600_000);
-  const items = (data?.items ?? []).filter((i: any) => !src || i.source === src);
+  const toneOf = (v: number) => (v > 0.15 ? 'positive' : v < -0.15 ? 'negative' : 'neutral');
+  const items = (data?.items ?? []).filter((i: any) => (!src || i.source === src) && (!tone || toneOf(i.sentiment) === tone)
+    && (!ctry || (i.countries ?? []).includes(ctry)));
+  // countries actually mentioned in the current headlines, most frequent first
+  const mentioned = useMemo(() => {
+    const n: Record<string, number> = {};
+    for (const i of data?.items ?? []) for (const c of i.countries ?? []) n[c] = (n[c] ?? 0) + 1;
+    return Object.entries(n).sort((a, b) => b[1] - a[1]).slice(0, 25);
+  }, [data]);
   return (
     <div className="space-y-3">
       <form onSubmit={(e) => { e.preventDefault(); setQuery(q.trim()); }} className="flex flex-wrap gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search headlines — e.g. Fed, oil, Nvidia, China" className="flex-1 min-w-[14rem] bg-surface-1 border border-border px-3 py-1.5 text-xs text-text-primary" />
         <select value={src} onChange={(e) => setSrc(e.target.value)} className={sel}><option value="">All sources</option>{(data?.sources ?? []).map((s: string) => <option key={s}>{s}</option>)}</select>
+        <select value={tone} onChange={(e) => setTone(e.target.value)} className={sel} aria-label="Tone"><option value="">Any tone</option>
+          <option value="positive">Positive</option><option value="neutral">Neutral</option><option value="negative">Negative</option></select>
+        <select value={ctry} onChange={(e) => setCtry(e.target.value)} className={sel} aria-label="Country mentioned"><option value="">Any country</option>
+          {mentioned.map(([c, k]) => <option key={c} value={c}>{c} ({k})</option>)}</select>
         <button className="px-3 py-1.5 text-xs bg-bloomberg text-text-inverse">Search</button>
       </form>
       {loading && !data ? <Loading label="Loading headlines…" /> : error ? <ErrorBox msg={error} /> : (

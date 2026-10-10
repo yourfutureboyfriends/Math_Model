@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Bell, Plus, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Chg, ErrorBox, fmtPct, fmtPrice, Loading, Panel, Spark, apiError } from './shared';
+import { Chg, ErrorBox, fmtPct, fmtPrice, Loading, Panel, Spark, apiError, useJSON } from './shared';
 
 async function call(url: string, method = 'GET', body?: unknown) {
   const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
@@ -98,6 +98,15 @@ export function useAddToWatchlist() {
 export function AlertsView({ seed }: { seed?: string }) {
   const [data, setData] = useState<any>(null);
   const [form, setForm] = useState({ symbol: seed ?? '', kind: 'above', value: '', note: '' });
+  const [lookup, setLookup] = useState((seed ?? '').toUpperCase());         // symbol whose price is shown (set on blur)
+  const last = useJSON<any>(lookup ? `/api/v1/mkt/quote/${encodeURIComponent(lookup)}` : null);
+  const px: number | null = last.current ? last.data?.price ?? null : null;
+  const level = (pct: number) => {
+    if (px == null) return;
+    const v = px * (1 + pct / 100);
+    const d = v >= 100 ? 2 : v >= 1 ? 3 : 6;
+    setForm({ ...form, kind: pct > 0 ? 'above' : 'below', value: String(Number(v.toFixed(d))) });
+  };
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => call('/api/v1/mkt/alerts').then(setData).catch((e) => setErr(e.message)), []);
@@ -116,7 +125,8 @@ export function AlertsView({ seed }: { seed?: string }) {
     <div className="space-y-3">
       <Panel title="New alert">
         <form onSubmit={create} className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
-          <label className="text-[10px] uppercase text-text-tertiary">Symbol<input required value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} className={cn(inp, 'w-full font-mono')} placeholder="AAPL" /></label>
+          <label className="text-[10px] uppercase text-text-tertiary">Symbol<input required value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })}
+            onBlur={() => setLookup(form.symbol.trim().toUpperCase())} className={cn(inp, 'w-full font-mono')} placeholder="AAPL" /></label>
           <label className="text-[10px] uppercase text-text-tertiary col-span-2">Condition
             <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} className={cn(inp, 'w-full')}>
               {Object.entries(data?.kinds ?? { above: 'Price rises above', below: 'Price falls below', change_up: "Day's gain exceeds %", change_down: "Day's loss exceeds %" })
@@ -125,6 +135,10 @@ export function AlertsView({ seed }: { seed?: string }) {
           <label className="text-[10px] uppercase text-text-tertiary">Note<input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className={cn(inp, 'w-full')} placeholder="optional" /></label>
           <button disabled={busy} className="px-3 py-1.5 text-xs bg-bloomberg text-text-inverse inline-flex items-center justify-center gap-1 disabled:opacity-50"><Bell className="w-3 h-3" />Create</button>
         </form>
+        {px != null && <div className="flex flex-wrap items-center gap-1 mt-2 text-[11px]">
+          <span className="text-text-tertiary">Last <span className="font-mono text-text-primary">{fmtPrice(px)}</span> · quick level:</span>
+          {[-10, -5, 5, 10].map((p) => <button key={p} type="button" onClick={() => level(p)}
+            className={cn('px-1.5 border border-border font-mono hover:border-bloomberg', p > 0 ? 'text-green' : 'text-red')}>{p > 0 ? '+' : ''}{p}%</button>)}</div>}
         <div className="text-[10px] text-text-tertiary mt-2">Checked every 5 minutes. A triggered alert pops up in the terminal (and as a browser notification if you allow it) and stays in the list below.</div>
       </Panel>
       <ErrorBox msg={err} />

@@ -1,9 +1,9 @@
 // WIRP (Fed rate probabilities), AUCT (Treasury auctions), EIA (oil & gas inventories),
 // WETR (degree days), INSD (Form 4 insiders), 13F (investor holdings).
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { ErrorBox, fmtBig, fmtPrice, Loading, Panel, useJSON } from './shared';
+import { ErrorBox, fmtBig, fmtPrice, Loading, Panel, useJSON, useSort } from './shared';
 import { LineChart } from '@/components/ui/LineChart';
 
 const enc = encodeURIComponent;
@@ -259,9 +259,33 @@ export function InsdView({ symbol }: { symbol: string }) {
 }
 
 // ── 13F ─────────────────────────────────────────────────────────────────────
+function Holdings13F({ d, onOpen }: { d: any; onOpen: (s: string) => void }) {
+  const CHG: Record<string, string> = { new: 'text-green', added: 'text-green', reduced: 'text-red', unchanged: 'text-text-tertiary' };
+  const ranked = useMemo(() => d.holdings.map((h: any, i: number) => ({ ...h, rank: i + 1 })), [d]);
+  const { rows, th } = useSort(ranked);
+  const top = Math.max(d.holdings[0]?.weight ?? 0, 0.01);
+  return (
+    <div className="border border-border overflow-x-auto max-h-[520px] overflow-y-auto">
+      <table className="w-full text-xs">
+        <thead className="sticky top-0 bg-surface-1"><tr className="text-[10px] uppercase text-text-tertiary">
+          {th('rank', '#', 'text-left px-2 py-1', false)}{th('issuer', 'Holding', 'text-left', false)}{th('ticker', 'Ticker', 'text-left', false)}
+          {th('value', 'Value', 'text-right')}{th('weight', 'Weight')}{th('shares', 'Shares', 'text-right')}{th('shares_change_pct', 'Change q/q', 'text-right px-2')}</tr></thead>
+        <tbody>{rows.map((h: any) => (
+          <tr key={h.cusip + (h.put_call ?? '')} className="border-t border-border-subtle hover:bg-surface-3">
+            <td className="px-2 text-text-tertiary">{h.rank}</td><td className="text-text-primary">{h.issuer}{h.put_call ? <span className="text-amber"> ({h.put_call})</span> : ''}</td>
+            <td>{h.ticker ? <button onClick={() => onOpen(h.ticker)} className="font-mono text-bloomberg hover:underline">{h.ticker}</button> : <span className="font-mono text-text-tertiary">{h.cusip}</span>}</td>
+            <td className="text-right font-mono">${fmtBig(h.value)}</td>
+            <td className="px-2 w-36"><div className="h-1.5 bg-surface-3"><div className="h-full bg-bloomberg" style={{ width: `${Math.min(100, h.weight * 100 / top)}%` }} /></div>
+              <div className="text-[10px] text-right font-mono text-text-secondary">{pc(h.weight)}</div></td>
+            <td className="text-right font-mono">{fmtBig(h.shares)}</td>
+            <td className={cn('text-right px-2', CHG[h.change])}>{h.change === 'new' ? 'NEW' : h.change === 'unchanged' ? '—' : `${h.change} ${sgn((h.shares_change_pct ?? 0) * 100, 0, '%')}`}</td></tr>))}</tbody>
+      </table>
+    </div>
+  );
+}
+
 export function ThirteenFView({ onOpen }: { onOpen: (s: string) => void }) {
   const [cik, setCik] = useState('0001067983');
-  const CHG: Record<string, string> = { new: 'text-green', added: 'text-green', reduced: 'text-red', unchanged: 'text-text-tertiary' };
   return <Frame<any> url={`/api/v1/mkt/13f?cik=${cik}`} label="Reading 13F filings from SEC EDGAR…">{(d) => (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -275,21 +299,7 @@ export function ThirteenFView({ onOpen }: { onOpen: (s: string) => void }) {
         <Stat label="New / added" value={`${d.holdings.filter((h: any) => h.change === 'new').length} / ${d.holdings.filter((h: any) => h.change === 'added').length}`} tone="up" />
         <Stat label="Reduced / sold out" value={`${d.holdings.filter((h: any) => h.change === 'reduced').length} / ${d.sold_out.length}`} tone="down" />
       </div>
-      <div className="border border-border overflow-x-auto max-h-[520px] overflow-y-auto">
-        <table className="w-full text-xs">
-          <thead className="sticky top-0 bg-surface-1"><tr className="text-[10px] uppercase text-text-tertiary"><th className="text-left px-2 py-1 font-normal">#</th><th className="text-left font-normal">Holding</th><th className="text-left font-normal">Ticker</th>
-            <th className="text-right font-normal">Value</th><th className="font-normal">Weight</th><th className="text-right font-normal">Shares</th><th className="text-right px-2 font-normal">Change q/q</th></tr></thead>
-          <tbody>{d.holdings.map((h: any, i: number) => (
-            <tr key={h.cusip + (h.put_call ?? '')} className="border-t border-border-subtle hover:bg-surface-3">
-              <td className="px-2 text-text-tertiary">{i + 1}</td><td className="text-text-primary">{h.issuer}{h.put_call ? <span className="text-amber"> ({h.put_call})</span> : ''}</td>
-              <td>{h.ticker ? <button onClick={() => onOpen(h.ticker)} className="font-mono text-bloomberg hover:underline">{h.ticker}</button> : <span className="font-mono text-text-tertiary">{h.cusip}</span>}</td>
-              <td className="text-right font-mono">${fmtBig(h.value)}</td>
-              <td className="px-2 w-36"><div className="h-1.5 bg-surface-3"><div className="h-full bg-bloomberg" style={{ width: `${Math.min(100, h.weight * 100 / Math.max(d.holdings[0].weight, 0.01))}%` }} /></div>
-                <div className="text-[10px] text-right font-mono text-text-secondary">{pc(h.weight)}</div></td>
-              <td className="text-right font-mono">{fmtBig(h.shares)}</td>
-              <td className={cn('text-right px-2', CHG[h.change])}>{h.change === 'new' ? 'NEW' : h.change === 'unchanged' ? '—' : `${h.change} ${sgn((h.shares_change_pct ?? 0) * 100, 0, '%')}`}</td></tr>))}</tbody>
-        </table>
-      </div>
+      <Holdings13F d={d} onOpen={onOpen} />
       {d.sold_out.length > 0 && <div className="text-xs text-red">Sold out: {d.sold_out.map((s: any) => s.issuer).join(', ')}</div>}
       <div className="text-[10px] text-text-tertiary">{d.note} Source: {d.source}.</div>
     </div>)}</Frame>;
