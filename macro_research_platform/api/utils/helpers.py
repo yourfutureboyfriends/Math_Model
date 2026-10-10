@@ -2,7 +2,7 @@
 import socket
 import logging
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Optional
 import numpy as np
 
 logger = logging.getLogger(__name__)

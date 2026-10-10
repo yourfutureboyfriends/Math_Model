@@ -21,7 +21,9 @@ from collections import deque
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).parent.parent.parent / "macro_terminal.db"
+from api.core.app_db import app_db_path
+
+DB_PATH = Path(app_db_path())   # the application DB (not a stale copy at the project root)
 
 # Rolling window sizes for metrics calculation
 ROLLING_WINDOWS = {

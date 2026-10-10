@@ -37,7 +37,7 @@ export function BlackoutBanner() {
       <div className="flex items-center justify-center gap-3">
         <AlertTriangle className="w-5 h-5 text-text-primary" />
         <span className="font-medium text-text-primary">
-          ⚠ BLACKOUT ACTIVE: {blackout.event} in {blackout.minutes_remaining}m
+          Blackout active: {blackout.event} in {blackout.minutes_remaining}m
         </span>
         <span className="text-text-secondary">
           | Affected: {blackout.affected_assets?.join(" ") || "N/A"}

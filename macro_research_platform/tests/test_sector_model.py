@@ -16,14 +16,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.sector_model import (
+from src.sector_model import (  # recreated from config/sector_rules.yaml
     compute_sector_scores,
     get_sector_signals,
     get_sector_table,
     SECTOR_CONFIG,
     SIGNAL_THRESHOLDS,
 )
-from src.portfolio_constructor import (
+from src.models.portfolio_construction.portfolio_constructor import (
     PortfolioConstructor,
     construct_model_portfolio,
 )
@@ -167,9 +167,11 @@ class TestPortfolioConstruction:
         signals = {s: "Neutral" for s in SECTOR_CONFIG}
         portfolio = constructor.construct(signals)
 
-        # All weights should be equal (1/7)
+        # All weights should be equal (1/N) and benchmark weights must sum to 100%
         weights = portfolio["Model Weight"].tolist()
-        assert all(abs(w - 1/7) < 0.001 for w in weights)
+        n = len(SECTOR_CONFIG)
+        assert all(abs(w - 1/n) < 0.001 for w in weights)
+        assert abs(portfolio["Benchmark Weight"].sum() - 1.0) < 0.001
 
     def test_ow_tilt(self):
         """Test OW tilt applied correctly."""

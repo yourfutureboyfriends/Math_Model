@@ -1,13 +1,6 @@
 """
 Celery tasks module for background processing.
+
+Task modules are loaded explicitly by the Celery app's `include` list (see celery_app.py);
+nothing is imported here, so one task module's import error can't break the others.
 """
-
-from .universe_tasks import (
-    refresh_universe_task,
-    generate_recommendations_task,
-)
-
-__all__ = [
-    "refresh_universe_task",
-    "generate_recommendations_task",
-]

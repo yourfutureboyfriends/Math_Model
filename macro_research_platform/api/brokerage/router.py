@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 from .alpaca_client import (
-    AlpacaClient, get_alpaca_client, OrderSide, OrderType, TimeInForce
+    get_alpaca_client, OrderSide
 )
 from .order_manager import OrderManager
 from .portfolio_sync import PortfolioSync, run_daily_sync

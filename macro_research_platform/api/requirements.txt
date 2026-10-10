@@ -1,4 +1,8 @@
 # Macro Terminal v8.0 — Production Dependencies
+#
+# For development: install with `pip install -r requirements.txt`
+# For production: use requirements.lock for reproducible builds
+#   `pip install -r requirements.lock`
 
 # Web Framework
 fastapi>=0.110.0
@@ -45,6 +49,7 @@ optuna>=3.5.0
 # Data Connectors
 fredapi>=0.5.0
 yfinance>=0.2.35
+holidays>=0.50        # per-region market holidays (market clock)
 finnhub-python>=2.4.19
 python-dotenv>=1.0.0
 httpx>=0.26.0

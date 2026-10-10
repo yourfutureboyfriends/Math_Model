@@ -2,12 +2,166 @@
 @tailwind components;
 @tailwind utilities;
 
+
+/* ═══ TERMINAL SKIN (Markets; lib/theme.ts sets data-skin="terminal") ════════════════════
+   The classic market terminal — black screen, amber labels, white figures, yellow keys,
+   dense monospace data — with a modern finish: sans-serif chrome, mono figures, soft
+   4–6px corners, layered panels, tactile keys, hover/focus states and smooth motion. */
+:root[data-skin="terminal"] {
+  --c-bg: 5 5 7;
+  --c-surface-1: 11 11 14;
+  --c-surface-2: 18 18 22;
+  --c-surface-3: 28 28 34;
+  --c-surface-4: 40 40 48;
+  --c-border: 42 42 50;
+  --c-border-subtle: 24 24 30;
+  --c-border-strong: 74 74 86;
+  --c-text-primary: 240 240 242;
+  --c-text-secondary: 251 146 44;        /* amber */
+  --c-text-tertiary: 150 112 70;         /* dim amber */
+  --c-text-inverse: 0 0 0;
+  --c-bloomberg: 251 139 30;
+  --c-green: 46 214 102;
+  --c-red: 255 82 82;
+  --c-amber: 255 196 0;
+  --c-blue: 96 165 250;
+  --c-purple: 196 140 255;
+  --key-yellow: 255 214 0;
+  --term-radius: 3px;
+  color-scheme: dark;
+}
+:root[data-skin="terminal"] body { background: radial-gradient(1200px 600px at 70% -10%, #0e0e14 0%, #050507 60%) fixed, #050507; }
+
+/* Type: sans for interface chrome, tabular mono for every figure */
+:root[data-skin="terminal"] .mkt-root { font-family: 'Inter', system-ui, sans-serif; font-size: 12px; letter-spacing: 0.005em; -webkit-font-smoothing: antialiased; }
+:root[data-skin="terminal"] .mkt-root :is(td, input, select, textarea, .font-mono, kbd, code, svg text),
+:root[data-skin="terminal"] .mkt-root .tabular-nums { font-family: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+:root[data-skin="terminal"] .mkt-root h1, :root[data-skin="terminal"] .mkt-root h2, :root[data-skin="terminal"] .mkt-root h3 { color: rgb(var(--c-text-primary)); letter-spacing: -0.01em; }
+
+/* Surfaces: soft corners, layered panels with a hairline top highlight and depth */
+:root[data-skin="terminal"] .mkt-root :is(.rounded, .rounded-md, .rounded-lg) { border-radius: var(--term-radius); }
+:root[data-skin="terminal"] .mkt-root :is(section, .bg-surface-1.border, .bg-surface-1.border-border) {
+  border-radius: 4px; box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03); }
+:root[data-skin="terminal"] .mkt-root :is(section, .bg-surface-1.border) { overflow: hidden; }
+:root[data-skin="terminal"] .mkt-root .panel-hdr, :root[data-skin="terminal"] .panel-bar {
+  background: #121216; border-bottom: 1px solid rgb(var(--c-border)); }
+:root[data-skin="terminal"] .mkt-root .panel-hdr > span:first-child, :root[data-skin="terminal"] .panel-bar > span:first-child {
+  color: rgb(var(--c-bloomberg)); font-weight: 600; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.08em; }
+
+/* Buttons: every bordered control gets rounded, a hover lift and a press */
+:root[data-skin="terminal"] .mkt-root button { transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s, transform .08s, filter .15s; }
+:root[data-skin="terminal"] .mkt-root button.border { border-radius: var(--term-radius); }
+:root[data-skin="terminal"] .mkt-root button.border:hover { border-color: rgb(var(--c-bloomberg) / 0.45); background-color: rgb(255 255 255 / 0.03); }
+:root[data-skin="terminal"] .mkt-root button.border-bloomberg { background-color: rgb(var(--c-bloomberg) / 0.08); }
+:root[data-skin="terminal"] .mkt-root :focus-visible { outline: none; box-shadow: 0 0 0 2px rgb(var(--c-bloomberg) / 0.55); border-radius: var(--term-radius); }
+
+/* Solid orange buttons (selected chart intervals, primary actions) → the same subtle tint */
+:root[data-skin="terminal"] .mkt-root button.bg-bloomberg { background: rgb(251 139 30 / 0.14) !important; color: #ffb15a !important;
+  box-shadow: inset 0 0 0 1px rgb(251 139 30 / 0.4); }
+:root[data-skin="terminal"] .mkt-root button.bg-bloomberg:hover { background: rgb(251 139 30 / 0.22) !important; }
+
+/* Inputs and the command line: recessed, amber glow on focus */
+:root[data-skin="terminal"] .mkt-root :is(input:not([type=checkbox]):not([type=radio]), select, textarea) { border-radius: var(--term-radius); }
+:root[data-skin="terminal"] .mkt-root .focus-within\:border-bloomberg:focus-within { box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.18), inset 0 1px 2px rgb(0 0 0 / 0.6); }
+:root[data-skin="terminal"] .mkt-root [role=combobox] { font-family: 'JetBrains Mono', monospace; }
+
+/* Market keys: flat and quiet — a faint tint of the key colour, coloured label, hairline border */
+.key-yellow, .key-amber, .key-green { font-weight: 600; border-radius: 3px; border: 1px solid transparent; transition: background-color .15s, border-color .15s, color .15s; }
+.key-yellow { color: #ffd84a; background: rgb(255 214 0 / 0.09); border-color: rgb(255 214 0 / 0.26); }
+.key-amber { color: #ff9d3a; background: rgb(251 139 30 / 0.09); border-color: rgb(251 139 30 / 0.28); }
+.key-green { color: #4ade80; background: rgb(34 197 94 / 0.09); border-color: rgb(34 197 94 / 0.28); }
+.key-yellow:hover { background: rgb(255 214 0 / 0.17); border-color: rgb(255 214 0 / 0.45); }
+.key-amber:hover { background: rgb(251 139 30 / 0.17); border-color: rgb(251 139 30 / 0.5); }
+.key-green:hover { background: rgb(34 197 94 / 0.17); border-color: rgb(34 197 94 / 0.5); }
+/* light theme (modern skin) keeps the keys legible */
+:root[data-theme="light"]:not([data-skin="terminal"]) .key-yellow { color: #8a6d00; }
+:root[data-theme="light"]:not([data-skin="terminal"]) .key-amber { color: #b45309; }
+.panel-bar { background: rgb(var(--c-surface-3)); color: rgb(var(--c-text-secondary)); }
+
+/* Up/down colours: red-up / green-down is the convention in Hong Kong, China, Japan and Korea
+   (Futubull's default there). Swapped inside Markets only; lib/theme.ts sets data-updown. */
+:root[data-updown="red"] .mkt-root { --c-green: 239 68 68; --c-red: 34 197 94; }
+:root[data-theme="light"][data-updown="red"] .mkt-root { --c-green: 200 30 30; --c-red: 21 128 61; }
+:root[data-skin="terminal"][data-updown="red"] .mkt-root { --c-green: 255 82 82; --c-red: 46 214 102; }
+
+/* Tables: amber column headers, subtle zebra, blue selection highlight, dense rows */
+:root[data-skin="terminal"] .mkt-root thead th { color: rgb(var(--c-bloomberg) / 0.9) !important; text-transform: uppercase; font-size: 10px; font-weight: 600; letter-spacing: 0.06em;
+  font-family: 'Inter', system-ui, sans-serif; }
+:root[data-skin="terminal"] .mkt-root tbody tr:nth-child(even) { background: rgb(255 255 255 / 0.018); }
+:root[data-skin="terminal"] .mkt-root tbody tr { transition: background-color .12s; }
+:root[data-skin="terminal"] .mkt-root tbody tr:hover { background: rgb(37 99 235 / 0.16) !important; }
+:root[data-skin="terminal"] .mkt-root td, :root[data-skin="terminal"] .mkt-root th { padding-top: 2px; padding-bottom: 2px; }
+:root[data-skin="terminal"] .mkt-root .softkey { color: rgb(255 214 0); border-radius: 4px; padding: 0 6px; }
+:root[data-skin="terminal"] .mkt-root .softkey:hover { background: rgb(255 214 0 / 0.12); text-decoration: none; }
+
+/* Thin dark scrollbars */
+:root[data-skin="terminal"] .mkt-root * { scrollbar-width: thin; scrollbar-color: #2e2e38 transparent; }
+:root[data-skin="terminal"] .mkt-root ::-webkit-scrollbar { width: 8px; height: 8px; }
+:root[data-skin="terminal"] .mkt-root ::-webkit-scrollbar-thumb { background: #2e2e38; border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+@media (prefers-reduced-motion: reduce) { :root[data-skin="terminal"] .mkt-root * { transition: none !important; } }
+/* Price ticks flash like a terminal monitor */
+@keyframes flash-up { from { background: rgb(var(--c-green) / 0.55); } to { background: transparent; } }
+@keyframes flash-down { from { background: rgb(var(--c-red) / 0.55); } to { background: transparent; } }
+.flash-up { animation: flash-up 1.2s ease-out; }
+.flash-down { animation: flash-down 1.2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .flash-up, .flash-down { animation: none; } }
+@keyframes crawl { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.news-crawl { animation: crawl 240s linear infinite; }
+.news-crawl:hover { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .news-crawl { animation: none; } }
+
+/* ═══ THEME CHANNELS (lib/theme.ts sets data-theme on <html>) ═══════════════════
+   Colours are "R G B" channels so Tailwind opacity modifiers (bg-bloomberg/50) work. */
+:root, :root[data-theme="dark"] {
+  --c-bg: 6 9 12;
+  --c-surface-1: 13 17 23;
+  --c-surface-2: 19 25 32;
+  --c-surface-3: 26 34 48;
+  --c-surface-4: 30 39 54;
+  --c-border: 30 45 61;
+  --c-border-subtle: 21 31 46;
+  --c-border-strong: 42 63 85;
+  --c-text-primary: 232 237 242;
+  --c-text-secondary: 136 149 164;
+  --c-text-tertiary: 106 118 134;
+  --c-text-inverse: 9 12 15;
+  --c-bloomberg: 240 112 48;
+  --c-green: 34 197 94;
+  --c-red: 239 68 68;
+  --c-amber: 245 158 11;
+  --c-blue: 59 130 246;
+  --c-purple: 168 85 247;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --c-bg: 243 245 248;
+  --c-surface-1: 255 255 255;
+  --c-surface-2: 247 248 250;
+  --c-surface-3: 236 239 243;
+  --c-surface-4: 226 231 237;
+  --c-border: 214 220 228;
+  --c-border-subtle: 230 234 239;
+  --c-border-strong: 176 186 199;
+  --c-text-primary: 15 23 42;
+  --c-text-secondary: 71 85 105;
+  --c-text-tertiary: 100 113 130;
+  --c-text-inverse: 255 255 255;
+  --c-bloomberg: 200 80 18;
+  --c-green: 21 128 61;
+  --c-red: 200 30 30;
+  --c-amber: 161 98 7;
+  --c-blue: 29 78 216;
+  --c-purple: 109 40 217;
+  color-scheme: light;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════════
    TERMINAL DESIGN TOKENS — Institutional Trading Terminal
    Bloomberg Terminal × Linear × Vercel Dashboard
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 :root {
+  --workspace-bar-height: 36px;
   /* ═══════════════════════════════════════════════════════════════════════════════
      TYPOGRAPHY TOKENS
      ═══════════════════════════════════════════════════════════════════════════════ */
@@ -44,23 +198,23 @@
   /* ═══════════════════════════════════════════════════════════════════════════════
      BLOOMBERG ORANGE — primary terminal accent
      ═══════════════════════════════════════════════════════════════════════════════ */
-  --bloomberg:        #f07030;
-  --bloomberg-dim:    rgba(240, 112, 48, 0.15);
-  --bloomberg-muted:  rgba(240, 112, 48, 0.08);
-  --bloomberg-border: rgba(240, 112, 48, 0.30);
+  --bloomberg:        rgb(var(--c-bloomberg));
+  --bloomberg-dim:    rgb(var(--c-bloomberg) / 0.15);
+  --bloomberg-muted:  rgb(var(--c-bloomberg) / 0.08);
+  --bloomberg-border: rgb(var(--c-bloomberg) / 0.30);
   --bloomberg-hover:  rgba(240, 112, 48, 0.20);
 
   /* ═══════════════════════════════════════════════════════════════════════════════
      SURFACES — preserve teal, add amber palette
      ═══════════════════════════════════════════════════════════════════════════════ */
-  --bg:              #06090c;
-  --surface-1:       #0d1117;
-  --surface-2:       #131920;
-  --surface-3:       #1a2230;
-  --surface-4:       #1e2736;
-  --border:          #1e2d3d;
-  --border-subtle:   #151f2e;
-  --border-strong:   #2a3f55;
+  --bg:              rgb(var(--c-bg));
+  --surface-1:       rgb(var(--c-surface-1));
+  --surface-2:       rgb(var(--c-surface-2));
+  --surface-3:       rgb(var(--c-surface-3));
+  --surface-4:       rgb(var(--c-surface-4));
+  --border:          rgb(var(--c-border));
+  --border-subtle:   rgb(var(--c-border-subtle));
+  --border-strong:   rgb(var(--c-border-strong));
 
   /* Amber Terminal colors — dual palette support */
   --color-bg:          #0a0a0a;
@@ -72,10 +226,10 @@
   --color-border-dim:  rgba(255,255,255,0.03);
 
   /* Text hierarchy */
-  --text-primary:    #e8edf2;
-  --text-secondary:  #8895a4;
-  --text-tertiary:   #4a5568;
-  --text-inverse:    #090c0f;
+  --text-primary:    rgb(var(--c-text-primary));
+  --text-secondary:  rgb(var(--c-text-secondary));
+  --text-tertiary:   rgb(var(--c-text-tertiary));
+  --text-inverse:    rgb(var(--c-text-inverse));
   --color-text:        #e8e6e1;
   --color-text-muted:  #7a7870;
   --color-text-faint:  #3d3d3a;
@@ -100,16 +254,16 @@
   --color-caution:     #f59e0b;
 
   /* Semantic colours */
-  --green:           #22c55e;
-  --green-dim:       rgba(34, 197, 94, 0.12);
-  --red:             #ef4444;
-  --red-dim:         rgba(239, 68, 68, 0.12);
-  --amber:           #f59e0b;
-  --amber-dim:       rgba(245, 158, 11, 0.12);
-  --blue:            #3b82f6;
-  --blue-dim:        rgba(59, 130, 246, 0.12);
-  --purple:          #a855f7;
-  --purple-dim:      rgba(168, 85, 247, 0.12);
+  --green:           rgb(var(--c-green));
+  --green-dim:       rgb(var(--c-green) / 0.12);
+  --red:             rgb(var(--c-red));
+  --red-dim:         rgb(var(--c-red) / 0.12);
+  --amber:           rgb(var(--c-amber));
+  --amber-dim:       rgb(var(--c-amber) / 0.12);
+  --blue:            rgb(var(--c-blue));
+  --blue-dim:        rgb(var(--c-blue) / 0.12);
+  --purple:          rgb(var(--c-purple));
+  --purple-dim:      rgb(var(--c-purple) / 0.12);
 
   /* Legacy aliases for compatibility */
   --terminal-bg: var(--bg);
@@ -682,9 +836,51 @@ button, a, [role="button"],
     border-left: 2px solid var(--bloomberg);
     background: var(--surface-2);
     position: sticky;
-    top: var(--topbar-height);
+    top: calc(var(--topbar-height) + var(--workspace-bar-height, 0px));
     z-index: 10;
   }
+
+  /* Panel folding: the first header of each dashboard panel toggles it (DashboardPage). */
+  [data-panel-head] {
+    cursor: pointer;
+    padding-right: 50px;
+  }
+  /* "?" help button (DashboardPage → PanelHelpPopover), left of the fold chevron. */
+  .panel-help-btn {
+    position: absolute;
+    right: 26px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    font: 600 10px/14px var(--font-mono, monospace);
+    text-align: center;
+    color: var(--text-tertiary);
+    background: transparent;
+    cursor: help;
+  }
+  .panel-help-btn:hover, .panel-help-btn:focus-visible { color: var(--text-primary); border-color: var(--bloomberg, #f59e0b); outline: none; }
+  [data-panel-head]:not(.section-header) { position: relative; }
+  [data-panel-head]::after {
+    content: '';
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid var(--text-tertiary);
+    border-bottom: 1.5px solid var(--text-tertiary);
+    transform: translateY(-70%) rotate(45deg);
+    transition: transform 120ms ease, border-color 120ms ease;
+  }
+  [data-panel-head]:hover::after { border-color: var(--text-primary); }
+  [data-collapsed] [data-panel-head]::after { transform: translateY(-40%) rotate(-45deg); }
+  [data-collapsed] [data-panel-head] { border-bottom-color: transparent; }
+  [data-fold] { display: none !important; }
+  /* Jump targets land below the fixed top bar and the workspace tabs. */
+  .terminal-section, section[id] { scroll-margin-top: calc(var(--topbar-height) + var(--workspace-bar-height) + 8px); }
 
   .section-header-left {
     display: flex;
@@ -769,14 +965,14 @@ button, a, [role="button"],
   .ticker-chg-pos {
     font-family: var(--font-data);
     font-size: 10px;
-    color: #22c55e;
+    color: rgb(var(--c-green));
     font-variant-numeric: tabular-nums;
   }
 
   .ticker-chg-neg {
     font-family: var(--font-data);
     font-size: 10px;
-    color: #ef4444;
+    color: rgb(var(--c-red));
     font-variant-numeric: tabular-nums;
   }
 
@@ -803,7 +999,7 @@ button, a, [role="button"],
   }
 
   .session-badge.open {
-    color: #22c55e;
+    color: rgb(var(--c-green));
     border-color: rgba(34, 197, 94, 0.30);
     background: rgba(34, 197, 94, 0.08);
   }

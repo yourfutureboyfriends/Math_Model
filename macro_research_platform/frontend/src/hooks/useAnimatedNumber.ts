@@ -1,7 +1,5 @@
-
 // Animated Number Hook — Phase 8 UI Polish
 // Counting animation for numeric values
-
 
 import { useEffect, useRef, useState } from 'react'
 
@@ -12,18 +10,46 @@ interface UseAnimatedNumberOptions {
   suffix?: string
 }
 
+/**
+ * Normalize any input value to a safe number
+ * Handles: numbers, numeric strings, null, undefined, and invalid values
+ */
+function normalizeNumericInput(value: unknown, fallback: number = 0): number {
+  // Already a valid number
+  if (typeof value === 'number' && !isNaN(value) && isFinite(value)) {
+    return value
+  }
+
+  // String that might be numeric
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (trimmed === '') return fallback
+    const parsed = parseFloat(trimmed)
+    if (!isNaN(parsed) && isFinite(parsed)) {
+      return parsed
+    }
+  }
+
+  // Null/undefined or invalid - return fallback
+  return fallback
+}
+
 export function useAnimatedNumber(
-  value: number,
+  value: number | string | null | undefined,
   options: UseAnimatedNumberOptions = {}
 ) {
   const { duration = 600, decimals = 2, prefix = '', suffix = '' } = options
-  const [displayed, setDisplayed] = useState(value)
-  const prevRef = useRef(value)
+
+  // Normalize the target value
+  const normalizedValue = normalizeNumericInput(value, 0)
+
+  const [displayed, setDisplayed] = useState(normalizedValue)
+  const prevRef = useRef(normalizedValue)
   const frameRef = useRef<number | null>(null)
 
   useEffect(() => {
     const start = prevRef.current
-    const end = value
+    const end = normalizedValue
     if (start === end) return
 
     const startTime = performance.now()
@@ -45,25 +71,28 @@ export function useAnimatedNumber(
     return () => {
       if (frameRef.current) cancelAnimationFrame(frameRef.current)
     }
-  }, [value, duration])
+  }, [normalizedValue, duration])
 
-  return `${prefix}${displayed.toFixed(decimals)}${suffix}`
+  // Ensure displayed is always a valid number before calling toFixed
+  const safeDisplayed = normalizeNumericInput(displayed, 0)
+  return `${prefix}${safeDisplayed.toFixed(decimals)}${suffix}`
 }
 
 // Hook for flashing on value change
-export function useFlashOnChange(value: number) {
-  const prevRef = useRef(value)
+export function useFlashOnChange(value: number | string | null | undefined) {
+  const normalizedValue = normalizeNumericInput(value, 0)
+  const prevRef = useRef(normalizedValue)
   const [flashClass, setFlashClass] = useState('')
 
   useEffect(() => {
-    if (value !== prevRef.current) {
-      const dir = value > prevRef.current ? 'flash-up' : 'flash-down'
+    if (normalizedValue !== prevRef.current) {
+      const dir = normalizedValue > prevRef.current ? 'flash-up' : 'flash-down'
       setFlashClass(dir)
       const t = setTimeout(() => setFlashClass(''), 1000)
-      prevRef.current = value
+      prevRef.current = normalizedValue
       return () => clearTimeout(t)
     }
-  }, [value])
+  }, [normalizedValue])
 
   return flashClass
 }

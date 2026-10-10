@@ -2,127 +2,16 @@
 // Optimized navigation for PM daily workflow: Morning → Signals → Trades → Risk → Strategy
 
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, KeyRound, LogOut, Star } from 'lucide-react';
 import { Logo } from './Logo';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
-
-interface NavItem {
-  id: string;
-  label: string;
-  icon: string;
-  permission: string;
-  highlight?: boolean;
-}
-
-interface NavSection {
-  title: string;
-  items: NavItem[];
-}
-
-// UPGRADE-9: Reorganized navigation for hedge fund workflow
-// FIXED (PART 3): Sidebar reorganized per user spec
-const navigation: NavSection[] = [
-  {
-    title: 'MORNING BRIEF',
-    items: [
-      { id: 'morning-brief', label: 'Morning Brief', icon: '☀', permission: 'master_signal', highlight: true },
-    ],
-  },
-  {
-    title: 'OVERVIEW',
-    items: [
-      { id: 'master-signal', label: 'Master Ensemble', icon: '◆', permission: 'master_signal', highlight: true },
-      { id: 'key-metrics', label: 'Key Metrics', icon: '◆', permission: 'key_metrics' },
-      { id: 'regime', label: 'Regime Engine', icon: '◇', permission: 'regime_engine', highlight: true },
-      { id: 'regime-playbook', label: 'Regime Playbook', icon: '◇', permission: 'regime_engine', highlight: true },
-      { id: 'market-clock', label: 'Market Clock', icon: '◆', permission: 'master_signal' },
-    ],
-  },
-  {
-    title: 'SIGNALS',
-    items: [
-      { id: 'signals', label: 'Signal Interpretation', icon: '◆', permission: 'ml_signals' },
-      { id: 'ensemble', label: 'Ensemble', icon: '◆', permission: 'ensemble', highlight: true },
-      { id: 'signal-stack', label: 'Signal Stack', icon: '◆', permission: 'signal_stack' },
-      { id: 'sector-allocation', label: 'Sector Allocation', icon: '◆', permission: 'sector_allocation' },
-      { id: 'factor-rotation', label: 'Factor Rotation', icon: '◆', permission: 'factor_rotation' },
-      { id: 'cot-positioning', label: 'COT Positioning', icon: '◆', permission: 'signal_stack' },
-      // FIXED (PART 3): Moved from STRATEGY to SIGNALS
-      { id: 'model-agreement', label: 'Model Agreement', icon: '◆', permission: 'model_agreement' },
-      { id: 'cta-trend', label: 'CTA Trends', icon: '◆', permission: 'cta_trends' },
-      { id: 'news-sentiment', label: 'News Sentiment', icon: '◆', permission: 'news_sentiment' },
-    ],
-  },
-  {
-    title: 'RISK',
-    items: [
-      { id: 'risk-indicators', label: 'Risk Indicators', icon: '◆', permission: 'risk_indicators', highlight: true },
-      { id: 'risk-analytics', label: 'Risk Analytics', icon: '◆', permission: 'var_drawdown', highlight: true },
-      { id: 'debt-cycle', label: 'Debt Cycle', icon: '◆', permission: 'debt_cycle' },
-      { id: 'advanced', label: 'Advanced Indicators', icon: '◆', permission: 'advanced_indicators' },
-      // FIXED (PART 3): Moved from STRATEGY to RISK
-      { id: 'correlation', label: 'Correlation Regime', icon: '◆', permission: 'correlation' },
-      { id: 'factor-decomposition', label: 'Factor Decomposition', icon: '◆', permission: 'factor_decomp' },
-      { id: 'risk-parity', label: 'Risk Parity', icon: '◆', permission: 'risk_parity' },
-      { id: 'horizon-tension', label: 'Horizon Tensions', icon: '◆', permission: 'horizon_tensions', highlight: true },
-    ],
-  },
-  {
-    title: 'FORECASTS',
-    items: [
-      { id: 'nowcast', label: 'GDP Nowcast', icon: '◆', permission: 'gdp_nowcast' },
-      { id: 'liquidity', label: 'Liquidity Conditions', icon: '◆', permission: 'liquidity' },
-      { id: 'sentiment', label: 'Sentiment', icon: '◆', permission: 'sentiment' },
-      { id: 'yield-curve', label: 'Yield Curve', icon: '◆', permission: 'master_signal' },
-      // FIXED (PART 3): Moved from STRATEGY to FORECASTS
-      { id: 'valuation', label: 'Valuation Filter', icon: '◆', permission: 'valuation' },
-    ],
-  },
-  {
-    title: 'STRATEGY',
-    items: [
-      { id: 'expected-returns', label: 'Expected Returns', icon: '◆', permission: 'expected_returns', highlight: true },
-      { id: 'gmo-forecasts', label: 'GMO 7-Year', icon: '◆', permission: 'gmo_7year' },
-      { id: 'fx-monitor', label: 'FX Monitor', icon: '◆', permission: 'master_signal' },
-      { id: 'commodities-dashboard', label: 'Commodities', icon: '◆', permission: 'master_signal' },
-      { id: 'fixed-income-dashboard', label: 'Fixed Income', icon: '◆', permission: 'master_signal' },
-      { id: 'international', label: 'International Macro', icon: '◆', permission: 'international_macro' },
-      { id: 'reflexivity', label: 'Reflexivity', icon: '◆', permission: 'reflexivity' },
-      { id: 'transmission', label: 'Transmission', icon: '◆', permission: 'transmission' },
-      { id: 'regime-transition', label: 'Regime Transition', icon: '◆', permission: 'regime_transition' },
-      { id: 'momentum-veto', label: 'Momentum Veto', icon: '◆', permission: 'momentum_veto' },
-    ],
-  },
-  {
-    title: 'RESEARCH',
-    items: [
-      { id: 'equity-research', label: 'Equity Research', icon: '◆', permission: 'equity_research', highlight: true },
-    ],
-  },
-  {
-    title: 'PORTFOLIO',
-    items: [
-      { id: 'trade-ideas', label: 'Trade Ideas', icon: '◆', permission: 'trade_ideas', highlight: true },
-      { id: 'trade-recommendations', label: 'Trade Recommendations', icon: '◆', permission: 'trade_recommendations', highlight: true },
-      { id: 'scenario-analysis', label: 'Scenario Analysis', icon: '◆', permission: 'master_signal' },
-      { id: 'portfolio', label: 'Model Portfolio', icon: '◆', permission: 'portfolio_fit', highlight: true },
-      // FIXED (PART 3): Moved from RESEARCH to PORTFOLIO
-      { id: 'performance-attribution', label: 'Performance Attribution', icon: '◆', permission: 'performance_tracking', highlight: true },
-      { id: 'data-to-watch', label: 'Data to Watch', icon: '◆', permission: 'investment_memo' },
-      { id: 'investment-memo', label: 'Investment Memo', icon: '◆', permission: 'investment_memo' },
-      { id: 'business-layer', label: 'Business Layer', icon: '◆', permission: 'business_layer' },
-      { id: 'economic-calendar', label: 'Economic Calendar', icon: '◆', permission: 'economic_calendar' },
-    ],
-  },
-  {
-    title: 'SYSTEM',
-    items: [
-      { id: 'system-health', label: 'System Health', icon: '◆', permission: 'system_health' },
-      { id: 'data-explorer', label: 'Data Explorer', icon: '◆', permission: 'system_health' },
-    ],
-  },
-];
+import { AccountDialog } from '@/components/account/AccountPanels';
+import { useDesk } from '@/hooks/useDesk';
+import { panelLabel } from '@/lib/panels';
+import { setFocusMode, setWorkspace, useFocusMode, useWorkspace } from '@/lib/focusMode';
+import { usePinnedSections } from '@/hooks/usePinnedSections';
+import { navigation, type NavItem } from '@/lib/navigation';
 
 interface SidebarProps {
   activeSection?: string;
@@ -135,6 +24,7 @@ interface SidebarProps {
 export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRegime, collapsed: externalCollapsed, onCollapse }: SidebarProps) {
   const [internalCollapsed, setInternalCollapsed] = useState(false);
   const { user, logout } = useAuth();
+  const [accountOpen, setAccountOpen] = useState(false);
 
   // Use external state if provided, otherwise internal
   const collapsed = externalCollapsed ?? internalCollapsed;
@@ -149,6 +39,68 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
   // FIXED: Navigation always renders — unconditional, no permission filtering
   // All users see all navigation items; permission-based feature hiding is deprecated
   const filteredNavigation = navigation;
+
+  // Per-user pinned panels for one-click access.
+  const pinKey = user?.username || user?.display_name || 'default';
+  const { pinned, toggle: togglePin, isPinned } = usePinnedSections(pinKey);
+  const itemById: Record<string, NavItem> = Object.fromEntries(
+    navigation.flatMap((s) => s.items).map((i) => [i.id, i])
+  );
+  const pinnedItems = pinned.map((id) => itemById[id]).filter(Boolean) as NavItem[];
+  // Role desk: "My Desk" plus the panels this role works from (server-defined).
+  const desk = useDesk(user?.username);
+  const deskItems: NavItem[] = [
+    { id: 'my-desk', label: 'My Desk', icon: '▣', permission: 'master_signal', highlight: true },
+    ...((desk?.focus.panels ?? []).map((id) => itemById[id]).filter(Boolean) as NavItem[]),
+  ];
+  const deskQueue = desk?.queue.filter((i) => i.priority === 'high').length ?? 0;
+  const focus = useFocusMode();
+  const workspace = useWorkspace();
+
+  const renderNavItem = (item: NavItem) => {
+    const isActive = activeSection === item.id;
+    const pinnedNow = isPinned(item.id);
+    return (
+      <div key={item.id} className="group relative flex items-center">
+        <button
+          onClick={() => onNavigate?.(item.id)}
+          className={cn(
+            'flex-1 h-7 flex items-center transition-all duration-120 min-w-0',
+            collapsed ? 'justify-center px-0' : 'px-4',
+            isActive
+              ? 'bg-bloomberg-muted text-bloomberg border-l-2 border-bloomberg'
+              : item.highlight
+                ? 'text-amber hover:bg-amber-dim hover:text-amber border-l-2 border-transparent hover:border-amber'
+                : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
+          )}
+        >
+          <span className={cn('font-mono text-xs',
+            isActive ? 'text-bloomberg' : item.highlight ? 'text-amber' : 'text-text-secondary')}>
+            {item.highlight ? '◆' : '·'}
+          </span>
+          {!collapsed && (
+            <span className={cn('ml-2 text-xs truncate', item.highlight && !isActive && 'font-medium')}>
+              {panelLabel(item.id, item.label)}
+            </span>
+          )}
+        </button>
+        {!collapsed && (
+          <button
+            onClick={(e) => { e.stopPropagation(); togglePin(item.id); }}
+            title={pinnedNow ? 'Unpin panel' : 'Pin panel'}
+            className={cn(
+              'absolute right-1.5 p-1 transition-opacity',
+              pinnedNow
+                ? 'opacity-100 text-amber'
+                : 'opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-amber'
+            )}
+          >
+            <Star className="w-3 h-3" fill={pinnedNow ? 'currentColor' : 'none'} />
+          </button>
+        )}
+      </div>
+    );
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -167,7 +119,7 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
         <Logo currentRegime={currentRegime} />
         {!collapsed && (
           <>
-            <span className="ml-2 font-mono text-sm text-text-secondary">MACRO OS</span>
+            <span className="ml-2 font-mono text-sm text-text-secondary">MACRO TERMINAL</span>
             <span className="ml-1.5 text-2xs text-text-tertiary">v8.0</span>
           </>
         )}
@@ -175,48 +127,54 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-2">
-        {filteredNavigation.map((section) => (
-          <div key={section.title} className="mb-1">
+        {/* Your desk — role-tailored entry points */}
+        <div className="mb-1">
+          {!collapsed && (
+            <div className="px-4 py-1.5 text-2xs text-bloomberg font-medium tracking-wider flex items-center gap-1">
+              MY DESK
+              <button onClick={() => setFocusMode(!focus)}
+                title={focus ? 'Showing only your panels — click to show all' : 'Show only the panels for your role'}
+                className={`ml-2 px-1 border text-2xs font-mono ${focus ? 'border-bloomberg text-bloomberg' : 'border-border-subtle text-text-tertiary hover:text-text-primary'}`}>
+                {focus ? 'FOCUS ON' : 'FOCUS'}
+              </button>
+              {deskQueue > 0 && (
+                <span className="ml-auto px-1 text-2xs font-mono bg-red text-bg rounded-sm" title="High-priority items in your queue">
+                  {deskQueue}
+                </span>
+              )}
+            </div>
+          )}
+          <div className="space-y-px">{deskItems.map((i) => renderNavItem({ ...i }))}</div>
+          <div className="mx-4 my-1.5 border-t border-border-subtle" />
+        </div>
+
+        {/* Pinned panels — user's most-watched, one-click access */}
+        {pinnedItems.length > 0 && (
+          <div className="mb-1">
             {!collapsed && (
-              <div className="px-4 py-1.5 text-2xs text-text-tertiary font-medium tracking-wider">
-                {section.title}
+              <div className="px-4 py-1.5 text-2xs text-amber font-medium tracking-wider flex items-center gap-1">
+                <Star className="w-3 h-3" fill="currentColor" /> PINNED
               </div>
             )}
             <div className="space-y-px">
-              {section.items.map((item) => {
-                const isActive = activeSection === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => onNavigate?.(item.id)}
-                    className={cn(
-                      'w-full h-7 flex items-center transition-all duration-120',
-                      collapsed ? 'justify-center px-0' : 'px-4',
-                      isActive
-                        ? 'bg-bloomberg-muted text-bloomberg border-l-2 border-bloomberg'
-                        : item.highlight
-                          ? 'text-amber hover:bg-amber-dim hover:text-amber border-l-2 border-transparent hover:border-amber'
-                          : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
-                    )}
-                  >
-                    <span className={cn(
-                      'font-mono text-xs',
-                      isActive ? 'text-bloomberg' : item.highlight ? 'text-amber' : 'text-text-secondary'
-                    )}>
-                      {item.icon}
-                    </span>
-                    {!collapsed && (
-                      <span className={cn(
-                        "ml-2 text-xs",
-                        item.highlight && !isActive && "font-medium"
-                      )}
-                      >
-                        {item.label}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+              {pinnedItems.map(renderNavItem)}
+            </div>
+            <div className="mx-4 my-1.5 border-t border-border-subtle" />
+          </div>
+        )}
+
+        {filteredNavigation.map((section) => (
+          <div key={section.title} className="mb-1">
+            {!collapsed && (
+              <button onClick={() => { setWorkspace(section.title); window.scrollTo({ top: 0 }); }}
+                title={`Show only ${section.title.toLowerCase()} panels`}
+                className={cn('w-full text-left px-4 py-1.5 text-2xs font-medium tracking-wider transition-colors',
+                  workspace === section.title ? 'text-bloomberg' : 'text-text-tertiary hover:text-text-primary')}>
+                {section.title}
+              </button>
+            )}
+            <div className="space-y-px">
+              {section.items.map(renderNavItem)}
             </div>
           </div>
         ))}
@@ -232,6 +190,14 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
                 {user.role.toUpperCase()} — {user.display_name}
               </span>
             </div>
+            <div className="flex items-center">
+            <button
+              onClick={() => setAccountOpen(true)}
+              className="p-1 text-text-tertiary hover:text-text-primary transition-colors"
+              title={user.role === 'admin' ? 'Account & users' : 'Account'}
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+            </button>
             <button
               onClick={handleLogout}
               className="p-1 text-text-tertiary hover:text-text-primary transition-colors"
@@ -239,7 +205,9 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
             >
               <LogOut className="w-3.5 h-3.5" />
             </button>
+            </div>
           </div>
+          {accountOpen && <AccountDialog onClose={() => setAccountOpen(false)} />}
         </div>
       )}
 

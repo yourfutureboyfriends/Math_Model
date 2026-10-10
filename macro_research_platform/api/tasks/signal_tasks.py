@@ -4,19 +4,19 @@
 
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 import uuid
 
 import numpy as np
 import pandas as pd
-from celery_app import app
+from api.celery_app import app
 from lightgbm import LGBMClassifier
 from sklearn.model_selection import TimeSeriesSplit
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://macro:macro_terminal_secure_2024@localhost:5432/macro_terminal")
+DATABASE_URL = os.getenv("DATABASE_URL")   # required; no credentials in source
 
 
 @app.task(bind=True, max_retries=3, default_retry_delay=60)
@@ -34,11 +34,11 @@ def generate_all_signals(self) -> Dict[str, Any]:
     try:
         # Signal types to generate
         signal_types = [
-            "master_signal",
-            "technical_signal",
-            "macro_signal",
-            "ml_signal",
-            "sentiment_signal",
+            "master_signal",      # composite (ensemble) score
+            "growth_signal",
+            "inflation_signal",
+            "liquidity_signal",
+            "risk_signal",
         ]
 
         for signal_type in signal_types:
@@ -70,56 +70,42 @@ def generate_all_signals(self) -> Dict[str, Any]:
         raise self.retry(exc=exc)
 
 
+def _live_dashboard():
+    """The dashboard's live computation (the same numbers the terminal shows)."""
+    import asyncio
+    from api.handlers.dashboard_handler import get_dashboard_data
+    return asyncio.run(get_dashboard_data(mode="live"))
+
+
 def generate_signal_with_ci(signal_type: str) -> Dict[str, Any]:
-    """Generate a signal with bootstrap confidence intervals"""
+    """Read a live signal from the dashboard computation, mapped to [-1, 1].
 
-    # This would use actual model calculations
-    # Placeholder for demonstration
-    np.random.seed(int(datetime.utcnow().timestamp()))
-
-    base_value = np.random.normal(0, 0.5)
-    base_value = np.clip(base_value, -1, 1)
-
-    # Generate bootstrap samples for confidence intervals
-    n_bootstrap = 1000
-    bootstrap_samples = np.random.normal(base_value, 0.2, n_bootstrap)
-
-    ci_80_lower = np.percentile(bootstrap_samples, 10)
-    ci_80_upper = np.percentile(bootstrap_samples, 90)
-    ci_95_lower = np.percentile(bootstrap_samples, 2.5)
-    ci_95_upper = np.percentile(bootstrap_samples, 97.5)
-
-    # Determine confidence level
-    ci_width = ci_95_upper - ci_95_lower
-    if ci_width < 0.5:
-        confidence = "high"
-    elif ci_width < 0.8:
-        confidence = "medium"
-    elif ci_width < 1.2:
-        confidence = "low"
-    else:
-        confidence = "uncertain"
-
-    # Direction
-    if base_value > 0.2:
-        direction = "bullish"
-    elif base_value < -0.2:
-        direction = "bearish"
-    else:
-        direction = "neutral"
-
+    This used to draw a random value and a random "bootstrap" interval ("Placeholder for
+    demonstration") and publish it as a signal event. Confidence intervals are not modelled,
+    so they are None.
+    """
+    d = _live_dashboard()
+    raw = {
+        "master_signal": d.ensemble.score if d.ensemble else None,
+        "growth_signal": d.scores.growth / 100 if d.scores else None,
+        "inflation_signal": d.scores.inflation / 100 if d.scores else None,
+        "liquidity_signal": d.scores.liquidity / 100 if d.scores else None,
+        "risk_signal": d.scores.risk / 100 if d.scores else None,
+    }.get(signal_type)
+    if raw is None:
+        raise ValueError(f"{signal_type} unavailable")
+    value = float(np.clip(2 * raw - 1, -1, 1))       # 0-1 score -> -1..+1
+    direction = "bullish" if value > 0.2 else "bearish" if value < -0.2 else "neutral"
     return {
         "id": str(uuid.uuid4()),
         "type": signal_type,
         "timestamp": datetime.utcnow(),
-        "value": float(base_value),
+        "value": value,
         "direction": direction,
-        "confidence_level": confidence,
-        "confidence_lower_80": float(ci_80_lower),
-        "confidence_upper_80": float(ci_80_upper),
-        "confidence_lower_95": float(ci_95_lower),
-        "confidence_upper_95": float(ci_95_upper),
-        "model_version": "1.0.0",
+        "confidence_level": "unrated",
+        "confidence_lower_80": None, "confidence_upper_80": None,
+        "confidence_lower_95": None, "confidence_upper_95": None,
+        "model_version": "dashboard",
     }
 
 
@@ -167,15 +153,12 @@ def classify_regime(self) -> Dict[str, Any]:
         # Calculate regime probabilities based on economic indicators
         # This would use actual regime classification model
 
-        regimes = ["goldilocks", "inflation", "deflation", "stagflation", "recession", "recovery"]
-        probs = np.random.dirichlet(np.ones(6))  # Random probabilities for demo
-
-        regime_probs = dict(zip(regimes, probs))
-        current_regime = max(regime_probs, key=regime_probs.get)
-
+        # The dashboard's regime classifier (this used to draw random Dirichlet "probabilities").
+        d = _live_dashboard()
+        current_regime = d.regime.current
         results["regime"] = current_regime
-        results["probabilities"] = {k: float(v) for k, v in regime_probs.items()}
-        results["confidence"] = float(regime_probs[current_regime])
+        results["probabilities"] = {}            # the classifier does not produce a distribution
+        results["confidence"] = d.regime.confidenceScore
 
         # Store in database
         store_regime_classification(results)
@@ -183,7 +166,7 @@ def classify_regime(self) -> Dict[str, Any]:
         # Publish regime event if changed
         publish_regime_event(results)
 
-        logger.info(f"Regime classified: {current_regime} ({results['confidence']:.2%})")
+        logger.info(f"Regime classified: {current_regime} (confidence {results['confidence']})")
         return results
 
     except Exception as exc:

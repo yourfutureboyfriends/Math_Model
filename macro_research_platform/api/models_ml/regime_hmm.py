@@ -10,408 +10,255 @@ Academic basis:
   Interest Rates. Journal of Business & Economic
   Statistics, 20(2), 163-182.
 
+Design:
+  Two independent 2-state Gaussian HMMs, one per quadrant axis:
+    - growth axis:    industrial-production YoY z-score (+ credit-spread z-score)
+    - inflation axis: CPI YoY z-score
+  Each axis's states are labelled "rising"/"falling" by their mean, and the quadrant
+  is the combination (Goldilocks = growth rising + inflation falling, etc.).
+
+  A single 4-state joint HMM was used before. Its states don't line up with quadrants
+  (it learns e.g. a "crisis" state with collapsing growth and neutral inflation), so
+  forcing quadrant names onto them mislabelled 2008/2020 and could leave some
+  quadrants unreachable. Per-axis states always have an unambiguous direction.
+
 Key improvement over threshold rules:
   - Regime is a latent variable learned from data
   - Transition probabilities are estimated, not assumed
   - Provides full probability distribution over regimes
-  - Uses forward algorithm for real-time state inference
-  - Handles fuzzy/overlapping regimes naturally
+  - Uses forward filtering for real-time state inference
 """
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
-import sqlite3
-import logging
-import os
-import glob
-from datetime import datetime
 from hmmlearn import hmm
 from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
 
+_Z_WINDOW, _Z_MIN = 36, 24
+_N_RESTARTS = 5
+
+# (growth rising?, inflation rising?) -> quadrant
+_QUADRANT = {
+    (True, False): 'Goldilocks',
+    (True, True): 'Reflation',
+    (False, False): 'Slowdown',
+    (False, True): 'Stagflation',
+}
+
+
+class _AxisHMM:
+    """2-state Gaussian HMM on one axis; state 'up' has the higher mean of `key`."""
+
+    def __init__(self, name: str, cols: list[str], key: str):
+        self.name, self.cols, self.key = name, cols, key
+        self.scaler = StandardScaler()
+        self.model: hmm.GaussianHMM | None = None
+        self.up_state = 0
+
+    def fit(self, df: pd.DataFrame) -> float:
+        X = self.scaler.fit_transform(df[self.cols].values.astype(float))
+        best, best_ll = None, -np.inf
+        for seed in range(_N_RESTARTS):  # EM finds local optima; keep the best fit
+            m = hmm.GaussianHMM(n_components=2, covariance_type='full', n_iter=300,
+                                tol=1e-5, random_state=seed, init_params='stmc')
+            m.fit(X)
+            ll = m.score(X)
+            if ll > best_ll:
+                best, best_ll = m, ll
+        self.model = best
+        k = self.cols.index(self.key)
+        self.up_state = int(np.argmax(best.means_[:, k]))
+        return float(best_ll)
+
+    def _X(self, df: pd.DataFrame) -> np.ndarray:
+        return self.scaler.transform(df[self.cols].values.astype(float))
+
+    def p_up_filtered(self, df: pd.DataFrame) -> float:
+        """P(up at last row | all rows): the last smoothed posterior equals the filter."""
+        return float(self.model.predict_proba(self._X(df))[-1, self.up_state])
+
+    def p_up_next(self, p_up: float) -> float:
+        p = np.zeros(2)
+        p[self.up_state], p[1 - self.up_state] = p_up, 1 - p_up
+        return float((p @ self.model.transmat_)[self.up_state])
+
+    def viterbi_up(self, df: pd.DataFrame) -> np.ndarray:
+        return self.model.predict(self._X(df)) == self.up_state
+
+    def summary(self) -> dict:
+        means = self.scaler.inverse_transform(self.model.means_)
+        k = self.cols.index(self.key)
+        up, down = self.up_state, 1 - self.up_state
+        return {
+            'features': self.cols,
+            'rising_mean': round(float(means[up, k]), 3),
+            'falling_mean': round(float(means[down, k]), 3),
+            'p_stay_rising': round(float(self.model.transmat_[up, up]), 4),
+            'p_stay_falling': round(float(self.model.transmat_[down, down]), 4),
+        }
+
 
 class MacroRegimeHMM:
     """
-    4-state Gaussian Hidden Markov Model for macro regime
-    classification. States are labelled post-fit by their
-    growth/inflation characteristics.
+    Quadrant regime classifier from two per-axis 2-state HMMs (growth, inflation).
 
-    Features used:
-      - Growth z-score (GDP momentum proxy)
-      - Inflation z-score (CPI YoY z-score)
-      - Yield curve slope (10Y-2Y spread)
-      - Credit conditions proxy
-
-    State labelling convention (quadrant):
-      High growth + Low inflation  = Goldilocks
-      High growth + High inflation = Reflation
-      Low growth  + Low inflation  = Slowdown
-      Low growth  + High inflation = Stagflation
+    Public API (unchanged): prepare_features(), fit(df), predict_current(),
+    get_historical_sequence(df), fitted / fit_stats / state_labels.
     """
 
     def __init__(self, n_states: int = 4):
-        self.n_states = n_states
-        self.model = hmm.GaussianHMM(
-            n_components=n_states,
-            covariance_type='full',
-            n_iter=300,
-            tol=1e-5,
-            random_state=42,
-            init_params='stmc',
-        )
-        self.scaler = StandardScaler()
-        self.state_labels: dict = {}
+        # n_states kept for backward compatibility; the model is always 2 axes x 2 states.
+        self.n_states = 4
+        self.growth = _AxisHMM('growth', ['growth_z'], 'growth_z')
+        self.inflation = _AxisHMM('inflation', ['inflation_z'], 'inflation_z')
+        self.state_labels: dict = {'growth': {}, 'inflation': {}}
         self.feature_cols: list = []
         self.fitted = False
         self.fit_stats: dict = {}
         self.last_trained: str | None = None
+        self._train_df: pd.DataFrame | None = None
 
     # ── Feature preparation ───────────────────────────────
 
-    def _find_csv(self) -> str | None:
-        """Find the macro data CSV file."""
-        candidates = (
-            glob.glob('data/*.csv') +
-            glob.glob('*.csv') +
-            glob.glob('api/data/*.csv') +
-            glob.glob('../data/*.csv')
-        )
-        # Prefer files with 'macro' or 'fred' in name
-        for c in candidates:
-            if any(k in c.lower()
-                   for k in ['macro', 'fred', 'data']):
-                return c
-        return candidates[0] if candidates else None
+    @staticmethod
+    def _rolling_z(s: pd.Series) -> pd.Series:
+        """Backward-looking z-score (no look-ahead): uses the trailing 36 months."""
+        r = s.rolling(_Z_WINDOW, min_periods=_Z_MIN)
+        return (s - r.mean()) / r.std()
 
     def prepare_features(self) -> pd.DataFrame:
         """
-        Build feature matrix from available data sources.
-        Priority: CSV data file → SQLite regime_history.
-        Minimum 24 months of data required for reliable fit.
+        Monthly feature matrix from FRED (api.handlers.macro_inputs.load_monthly_macro):
+        growth_z (industrial production YoY), inflation_z (CPI YoY), yield_curve
+        (10Y-2Y, pp) and credit_z (Baa-10Y spread). Real month dates; rows with any
+        missing feature are dropped. Raises if FRED data is unavailable — there is no
+        synthetic fallback.
         """
-        # Try CSV first
-        csv_path = self._find_csv()
-        if csv_path:
-            try:
-                df = pd.read_csv(csv_path)
-                return self._extract_features_from_csv(df)
-            except Exception as e:
-                logger.warning(
-                    f'[HMM] CSV feature build failed: {e}'
-                )
+        from api.handlers.macro_inputs import load_monthly_macro
 
-        # Fallback: derive from regime_history
-        return self._features_from_regime_history()
+        panel = load_monthly_macro()
+        if panel is None or panel.empty:
+            raise ValueError('Monthly FRED macro data unavailable')
 
-    def _extract_features_from_csv(
-        self, df: pd.DataFrame
-    ) -> pd.DataFrame:
-        """Extract and z-score macro features from CSV."""
-        result = pd.DataFrame()
+        result = pd.DataFrame({'date': panel.index})
+        result['growth_z'] = self._rolling_z(panel['growth_yoy']).values
+        result['inflation_z'] = self._rolling_z(panel['cpi_yoy']).values
+        if 'curve' in panel:
+            result['yield_curve'] = panel['curve'].values
+        if 'credit' in panel:
+            result['credit_z'] = self._rolling_z(panel['credit']).values
 
-        # Date column
-        for col in ['date', 'Date', 'DATE', 'timestamp']:
-            if col in df.columns:
-                result['date'] = pd.to_datetime(df[col])
-                break
-        if 'date' not in result.columns:
-            result['date'] = pd.date_range(
-                end=datetime.today(), periods=len(df), freq='ME'
-            )
-
-        # Growth z-score
-        for col in ['gdp_growth', 'real_gdp', 'lei_composite',
-                    'payrolls_mom', 'ism_manufacturing']:
-            if col in df.columns:
-                s = pd.to_numeric(df[col], errors='coerce')
-                result['growth_z'] = (
-                    (s - s.rolling(36, min_periods=12).mean()) /
-                    s.rolling(36, min_periods=12).std()
-                )
-                break
-
-        # Inflation z-score
-        for col in ['us_cpi', 'cpi_yoy', 'core_cpi_yoy',
-                    'inflation']:
-            if col in df.columns:
-                s = pd.to_numeric(df[col], errors='coerce')
-                result['inflation_z'] = (
-                    (s - s.rolling(36, min_periods=12).mean()) /
-                    s.rolling(36, min_periods=12).std()
-                )
-                break
-
-        # Yield curve
-        for col in ['yield_spread', 'treasury_spread',
-                    'yield_curve', 'term_spread', 'yield_curve_spread']:
-            if col in df.columns:
-                s = pd.to_numeric(df[col], errors='coerce')
-                result['yield_curve'] = s
-                break
-
-        # Credit conditions
-        for col in ['hy_spreads', 'credit_spread',
-                    'hy_spread', 'credit_impulse', 'credit_spreads']:
-            if col in df.columns:
-                s = pd.to_numeric(df[col], errors='coerce')
-                result['credit_z'] = (
-                    (s - s.rolling(36, min_periods=12).mean()) /
-                    s.rolling(36, min_periods=12).std()
-                )
-                break
-
-        # Keep only rows where we have at least 2 features
-        feature_cols = [c for c in result.columns
-                        if c != 'date']
-        if len(feature_cols) < 2:
-            raise ValueError(
-                f'Only {len(feature_cols)} features found '
-                f'in CSV. Need at least 2.'
-            )
-
-        result = result.dropna(subset=feature_cols[:2])
-        logger.info(
-            f'[HMM] Features: {feature_cols}, '
-            f'rows: {len(result)}'
-        )
-        return result.reset_index(drop=True)
-
-    def _features_from_regime_history(self) -> pd.DataFrame:
-        """
-        Last-resort feature derivation from regime_history.
-        Converts regime labels to numeric growth/inflation
-        scores for HMM fitting.
-        """
-        conn = sqlite3.connect('macro_terminal.db')
-        rows = conn.execute(
-            'SELECT date, regime, confidence '
-            'FROM regime_history ORDER BY date'
-        ).fetchall()
-        conn.close()
-
-        if len(rows) < 8:
-            raise ValueError(
-                f'Only {len(rows)} regime history rows. '
-                f'Need at least 8.'
-            )
-
-        regime_to_features = {
-            'Goldilocks':  ( 0.8, -0.5,  0.8, -0.3),
-            'Reflation':   ( 0.5,  0.8,  0.3,  0.1),
-            'Slowdown':    (-0.7, -0.4, -0.5,  0.4),
-            'Stagflation': (-0.4,  0.9, -0.6,  0.8),
-        }
-        data = []
-        for date, regime, conf in rows:
-            feats = regime_to_features.get(
-                regime, (0.0, 0.0, 0.0, 0.0)
-            )
-            # Add small noise to avoid degenerate covariance
-            noise = np.random.normal(0, 0.1, 4)
-            data.append({
-                'date':        date,
-                'growth_z':    feats[0] + noise[0],
-                'inflation_z': feats[1] + noise[1],
-                'yield_curve': feats[2] + noise[2],
-                'credit_z':    feats[3] + noise[3],
-            })
-
-        return pd.DataFrame(data)
+        feature_cols = [c for c in result.columns if c != 'date']
+        result = result.dropna(subset=feature_cols).reset_index(drop=True)
+        logger.info(f'[HMM] Features: {feature_cols}, rows: {len(result)}')
+        return result
 
     # ── Model fitting ─────────────────────────────────────
 
     def fit(self, df: pd.DataFrame) -> dict:
-        """
-        Fit HMM on macro features.
-        Labels states by economic quadrant.
-        Returns fit statistics.
-        """
-        self.feature_cols = [c for c in df.columns
-                             if c != 'date']
-        X = df[self.feature_cols].values.astype(float)
+        """Fit both axis HMMs. Requires growth_z and inflation_z; credit_z is used on
+        the growth axis when present. Returns fit statistics."""
+        for col in ('growth_z', 'inflation_z'):
+            if col not in df.columns:
+                raise ValueError(f'HMM features need a {col} column')
+        growth_cols = ['growth_z'] + (['credit_z'] if 'credit_z' in df.columns else [])
+        self.growth = _AxisHMM('growth', growth_cols, 'growth_z')
+        self.inflation = _AxisHMM('inflation', ['inflation_z'], 'inflation_z')
+        self.feature_cols = growth_cols + ['inflation_z']
 
-        if np.any(np.isnan(X)):
-            X = np.nan_to_num(X, nan=0.0)
+        # Drop incomplete rows: zero-filling would inject fake "average" observations.
+        df = df.dropna(subset=self.feature_cols).reset_index(drop=True)
+        ll = self.growth.fit(df) + self.inflation.fit(df)
 
-        X_scaled = self.scaler.fit_transform(X)
-        lengths = [len(X_scaled)]
-
-        self.model.fit(X_scaled, lengths)
-
-        # Label states by growth/inflation quadrant
-        self._label_states()
-
+        self.state_labels = {
+            'growth': {self.growth.up_state: 'rising', 1 - self.growth.up_state: 'falling'},
+            'inflation': {self.inflation.up_state: 'rising', 1 - self.inflation.up_state: 'falling'},
+        }
         self.fitted = True
         self.last_trained = datetime.utcnow().isoformat()
-
-        log_prob = self.model.score(X_scaled, lengths)
+        self._train_df = df
         self.fit_stats = {
-            'log_likelihood': round(log_prob, 4),
-            'n_samples':      len(X_scaled),
+            'log_likelihood': round(ll, 4),
+            'n_samples':      len(df),
             'n_features':     len(self.feature_cols),
-            'state_labels':   self.state_labels,
+            'growth_axis':    self.growth.summary(),
+            'inflation_axis': self.inflation.summary(),
+            'sample_start':   str(df['date'].iloc[0])[:10] if 'date' in df else None,
+            'sample_end':     str(df['date'].iloc[-1])[:10] if 'date' in df else None,
             'trained_at':     self.last_trained,
             'paper': 'Hamilton (1989) Econometrica 57(2)',
         }
-        logger.info(
-            f'[HMM] Fit complete: '
-            f'logL={log_prob:.2f} '
-            f'states={self.state_labels}'
-        )
+        logger.info(f'[HMM] Fit complete: logL={ll:.2f} n={len(df)}')
         return self.fit_stats
-
-    def _label_states(self):
-        """
-        Label HMM states by economic quadrant.
-        Uses mean values of growth and inflation features.
-        """
-        means = self.model.means_  # shape: (n_states, n_features)
-
-        g_idx = self._feature_index('growth_z')
-        i_idx = self._feature_index('inflation_z')
-
-        labels = {}
-        used_labels = {}
-
-        for state in range(self.n_states):
-            g = means[state, g_idx]
-            i = means[state, i_idx]
-
-            if g >= 0 and i < 0:
-                label = 'Goldilocks'
-            elif g >= 0 and i >= 0:
-                label = 'Reflation'
-            elif g < 0 and i < 0:
-                label = 'Slowdown'
-            else:
-                label = 'Stagflation'
-
-            # Handle duplicate labels
-            if label in used_labels:
-                label = label + '_2'
-            used_labels[label] = state
-            labels[state] = label
-
-        self.state_labels = labels
-
-    def _feature_index(self, name: str) -> int:
-        """Return index of feature, default 0 if not found."""
-        try:
-            return self.feature_cols.index(name)
-        except ValueError:
-            return 0
 
     # ── Prediction ────────────────────────────────────────
 
-    def predict_current(
-        self, current_features: dict
-    ) -> dict:
+    @staticmethod
+    def _quadrant_probs(p_g: float, p_i: float) -> dict:
+        return {
+            _QUADRANT[(g_up, i_up)]: (p_g if g_up else 1 - p_g) * (p_i if i_up else 1 - p_i)
+            for g_up in (True, False) for i_up in (True, False)
+        }
+
+    def predict_current(self, features_df: pd.DataFrame | None = None) -> dict:
         """
-        Predict current regime using forward algorithm.
+        Filtered regime probabilities for the latest month.
 
-        Args:
-          current_features: dict with keys matching
-                            self.feature_cols
-
-        Returns:
-          regime, confidence, probabilities, transition_probs
+        Runs each axis HMM over the whole feature history (default: the training frame)
+        and takes P(rising at T | obs_1..T). Quadrant probabilities combine the two axes
+        (treated as independent). Also returns next-month probabilities via each axis's
+        transition matrix.
         """
         if not self.fitted:
-            raise RuntimeError(
-                'HMM not fitted. Call fit() first.'
-            )
+            raise RuntimeError('HMM not fitted. Call fit() first.')
+        df = features_df if features_df is not None else self._train_df
+        df = df.dropna(subset=self.feature_cols)
 
-        X = np.array([[
-            current_features.get('growth_z', 0.0),
-            current_features.get('inflation_z', 0.0),
-            current_features.get('yield_curve', 0.5),
-            current_features.get('credit_z', 0.0),
-        ]])
-        # Trim to n_features used in training
-        n = len(self.feature_cols)
-        X = X[:, :n]
-
-        X_scaled = self.scaler.transform(X)
-
-        # Forward algorithm: posterior state probabilities
-        _, posteriors = self.model.score_samples(
-            X_scaled, lengths=[1]
-        )
-        state_probs = posteriors[0]
-
-        # Map to regime labels
-        regime_probs = {}
-        for state, prob in enumerate(state_probs):
-            label = self.state_labels.get(
-                state, f'State_{state}'
-            )
-            # Merge _2 labels back to base
-            base = label.replace('_2', '')
-            regime_probs[base] = (
-                regime_probs.get(base, 0.0) + float(prob)
-            )
-
-        # Most likely regime
-        best_state = int(np.argmax(state_probs))
-        best_label = self.state_labels.get(
-            best_state, 'Unknown'
-        )
-        best_regime = best_label.replace('_2', '')
-        confidence = float(state_probs[best_state])
-
-        # Next-period transition probabilities
-        transmat = self.model.transmat_
-        next_probs_raw = {}
-        for next_state in range(self.n_states):
-            label = self.state_labels.get(
-                next_state, f'State_{next_state}'
-            ).replace('_2', '')
-            p = float(transmat[best_state, next_state])
-            next_probs_raw[label] = (
-                next_probs_raw.get(label, 0.0) + p
-            )
+        p_g = self.growth.p_up_filtered(df)
+        p_i = self.inflation.p_up_filtered(df)
+        probs = self._quadrant_probs(p_g, p_i)
+        nxt = self._quadrant_probs(self.growth.p_up_next(p_g), self.inflation.p_up_next(p_i))
+        regime = max(probs, key=probs.get)
 
         return {
-            'regime':               best_regime,
-            'confidence':           round(confidence, 4),
-            'regime_probabilities': {
-                k: round(v, 4)
-                for k, v in regime_probs.items()
-            },
-            'transition_probs':     {
-                k: round(v, 4)
-                for k, v in next_probs_raw.items()
-            },
-            'method':   'HMM_Forward_Algorithm',
+            'regime':               regime,
+            'confidence':           round(probs[regime], 4),
+            'as_of':                str(df['date'].iloc[-1])[:10] if 'date' in df else None,
+            'p_growth_rising':      round(p_g, 4),
+            'p_inflation_rising':   round(p_i, 4),
+            'regime_probabilities': {k: round(v, 4) for k, v in probs.items()},
+            'transition_probs':     {k: round(v, 4) for k, v in nxt.items()},
+            'method':   'HMM_Forward_Filtering (per-axis)',
             'paper':    'Hamilton (1989) Econometrica',
             'trained_at': self.last_trained,
         }
 
-    def get_historical_sequence(
-        self, df: pd.DataFrame
-    ) -> list[dict]:
+    def get_historical_sequence(self, df: pd.DataFrame) -> list[dict]:
         """
-        Viterbi decoding: most likely historical regime
-        sequence. Used to backfill regime_history table.
+        Viterbi decoding per axis, combined into the quadrant sequence. Used to
+        backfill regime_history. In-sample: parameters and scaling are fit on the full
+        sample, so this describes history rather than an out-of-sample backtest.
         """
         if not self.fitted:
             return []
-
-        X = df[self.feature_cols].values.astype(float)
-        X = np.nan_to_num(X, nan=0.0)
-        X_scaled = self.scaler.transform(X)
-        states = self.model.predict(X_scaled)
-
+        df = df.dropna(subset=self.feature_cols).reset_index(drop=True)
+        g_up = self.growth.viterbi_up(df)
+        i_up = self.inflation.viterbi_up(df)
         return [
             {
-                'date':   str(df['date'].iloc[i])[:10],
-                'regime': self.state_labels.get(
-                              int(states[i]), 'Unknown'
-                          ).replace('_2', ''),
-                'state':  int(states[i]),
+                'date':   str(df['date'].iloc[k])[:10],
+                'regime': _QUADRANT[(bool(g_up[k]), bool(i_up[k]))],
+                'growth': 'rising' if g_up[k] else 'falling',
+                'inflation': 'rising' if i_up[k] else 'falling',
             }
-            for i in range(len(states))
+            for k in range(len(df))
         ]
 
 
@@ -436,10 +283,10 @@ def _fit_hmm_on_startup(model: MacroRegimeHMM):
     """Attempt to fit HMM on startup. Log but don't crash."""
     try:
         df = model.prepare_features()
-        if len(df) < 24:
+        if len(df) < 60:
             logger.warning(
-                f'[HMM] Only {len(df)} samples available. '
-                f'Need 24 minimum. Using fallback classifier.'
+                f'[HMM] Only {len(df)} monthly samples available. '
+                f'Need 60 minimum. Using fallback classifier.'
             )
             return
         stats = model.fit(df)
