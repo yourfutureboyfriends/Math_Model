@@ -26,6 +26,13 @@ async def _run(fn, *a, timeout: float = 45, **k):
         raise HTTPException(502, f"The data provider returned something unexpected ({type(e).__name__}) — try again shortly.")
 
 
+@router.get("/api/v1/mkt/gc")
+async def mkt_yield_curves():
+    """GC: official daily government curves (US, DE, euro AAA, UK, JP, CA, AU) with 1W/1M changes."""
+    from api.marketdata import curves
+    return await _run(curves.curves, timeout=120)
+
+
 @router.get("/api/v1/mkt/search")
 async def mkt_search(q: str = Query(..., min_length=1, max_length=60), limit: int = Query(12, ge=1, le=25)):
     from api.marketdata import core

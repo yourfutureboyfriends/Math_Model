@@ -280,35 +280,89 @@ export function CmdtyView({ onOpen }: { onOpen: (s: string) => void }) {
 }
 
 // ── GC ───────────────────────────────────────────────────────────────────────
-const COUNTRY: Record<string, string> = { US: 'United States', UK: 'United Kingdom', DE: 'Germany', JP: 'Japan', CA: 'Canada', AU: 'Australia' };
+const tenorLabel = (t: number) => (t < 1 ? `${Math.round(t * 12)}M` : `${+t.toFixed(1)}Y`);
+
+/** Government curves on a true maturity axis (square-root scale: the short end gets room, 30Y
+ *  still fits). Each country plots only the tenors it has, so sparse curves stay correct. */
+function CurveChart({ curves, codes, colors, overlay }: { curves: Record<string, any>; codes: string[]; colors: Record<string, string>;
+  overlay: { code: string; which: 'week_ago' | 'month_ago' } | null }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const W = 860, H = 340, L = 44, R = 16, T = 14, B = 30;
+  const all = codes.flatMap((c) => curves[c].points);
+  const extra = overlay ? curves[overlay.code]?.[overlay.which]?.points ?? [] : [];
+  const ys = [...all, ...extra].map((p: any) => p.yield);
+  const tmax = Math.max(...all.map((p: any) => p.tenor), 10);
+  const lo = Math.floor(Math.min(...ys) * 2) / 2 - 0.25, hi = Math.ceil(Math.max(...ys) * 2) / 2 + 0.25;
+  const sx = (t: number) => L + (Math.sqrt(t) / Math.sqrt(tmax)) * (W - L - R);
+  const sy = (y: number) => T + ((hi - y) / (hi - lo)) * (H - T - B);
+  const path = (pts: any[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${sx(p.tenor).toFixed(1)},${sy(p.yield).toFixed(1)}`).join('');
+  const ticks = [0.25, 1, 2, 3, 5, 7, 10, 20, 30, 40].filter((t) => t <= tmax);
+  const yticks: number[] = []; for (let v = Math.ceil(lo * 2) / 2; v <= hi; v += 0.5) yticks.push(v);
+  const near = (pts: any[], t: number) => pts.reduce((b: any, p: any) => (Math.abs(p.tenor - t) < Math.abs(b.tenor - t) ? p : b), pts[0]);
+  return (
+    <div className="relative">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Government yield curves"
+        onMouseMove={(e) => { const r = (e.currentTarget as SVGElement).getBoundingClientRect(); const x = ((e.clientX - r.left) / r.width) * W;
+          const t = ((x - L) / (W - L - R)) ** 2 * tmax; setHover(x < L ? null : Math.max(0, Math.min(tmax, t))); }} onMouseLeave={() => setHover(null)}>
+        {yticks.map((v) => <g key={v}><line x1={L} x2={W - R} y1={sy(v)} y2={sy(v)} stroke="var(--border)" strokeOpacity={0.5} />
+          <text x={L - 6} y={sy(v) + 3} fontSize="10" textAnchor="end" fill="var(--text-tertiary)">{v.toFixed(1)}%</text></g>)}
+        {ticks.map((t) => <g key={t}><line x1={sx(t)} x2={sx(t)} y1={H - B} y2={H - B + 4} stroke="var(--border)" />
+          <text x={sx(t)} y={H - B + 15} fontSize="10" textAnchor="middle" fill="var(--text-tertiary)">{tenorLabel(t)}</text></g>)}
+        {overlay && extra.length > 1 && <path d={path(extra)} fill="none" stroke={colors[overlay.code]} strokeWidth={1.5} strokeDasharray="5 4" opacity={0.7} />}
+        {codes.map((c) => <g key={c}>
+          <path d={path(curves[c].points)} fill="none" stroke={colors[c]} strokeWidth={2} />
+          {curves[c].points.map((p: any) => <circle key={p.tenor} cx={sx(p.tenor)} cy={sy(p.yield)} r={2.6} fill={colors[c]}><title>{`${curves[c].name} ${tenorLabel(p.tenor)}: ${p.yield.toFixed(3)}%`}</title></circle>)}
+        </g>)}
+        {hover != null && <line x1={sx(hover)} x2={sx(hover)} y1={T} y2={H - B} stroke="var(--text-tertiary)" strokeDasharray="2 3" />}
+      </svg>
+      {hover != null && (
+        <div className="absolute top-2 right-3 bg-surface-2 border border-border px-2 py-1 text-[11px] font-mono pointer-events-none">
+          {codes.map((c) => { const p = near(curves[c].points, hover); return (
+            <div key={c} className="flex gap-2 justify-between"><span style={{ color: colors[c] }}>{c} {tenorLabel(p.tenor)}</span><span className="text-text-primary">{p.yield.toFixed(3)}%</span></div>); })}
+        </div>)}
+    </div>
+  );
+}
+
 export function GcView() {
-  const { data, error, loading } = useJSON<any>('/api/rates', 900_000);
-  if (loading && !data) return <Loading label="Loading yield curves…" />;
-  if (error) return <ErrorBox msg={error} />;
-  if (!data?.yieldCurves) return <ErrorBox msg="Yield curve data unavailable." />;
-  const curves = data.yieldCurves as Record<string, any>;
-  const label = (t: number) => (t < 1 ? `${Math.round(t * 12)}M` : `${+t.toFixed(1)}Y`);
-  const tenors = Array.from(new Set(Object.values(curves).flatMap((c: any) => (c?.points ?? []).map((p: any) => Number(p.tenor))))).sort((a, b) => a - b);
-  const rows = tenors.map((t) => ({ tenor: label(t), ...Object.fromEntries(Object.entries(curves).map(([k, c]: [string, any]) =>
-    [k, (c?.points ?? []).find((p: any) => Math.abs(Number(p.tenor) - t) < 1e-6)?.yield ?? null])) }));
-  const keys = Object.keys(curves);
+  const { data, error, loading } = useJSON<any>('/api/v1/mkt/gc', 3_600_000);
+  const [off, setOff] = useState<Record<string, boolean>>({});
+  const [overlay, setOverlay] = useState<{ code: string; which: 'week_ago' | 'month_ago' } | null>(null);
+  if (loading && !data) return <Loading label="Loading government curves from the issuers…" />;
+  if (error && !data) return <ErrorBox msg={error} />;
+  if (!data) return null;
+  const order: string[] = data.order;
+  const colors = Object.fromEntries(order.map((c, i) => [c, CATEGORICAL[i % CATEGORICAL.length]]));
+  const shown = order.filter((c) => !off[c]);
+  const tenors = Array.from(new Set(order.flatMap((c) => data.curves[c].points.map((p: any) => p.tenor)))).sort((a: any, b: any) => a - b) as number[];
+  const at = (c: string, t: number) => data.curves[c].points.find((p: any) => Math.abs(p.tenor - t) < 1e-6);
   return (
     <div className="space-y-3">
-      <Panel title="Government yield curves">
-        <LineChart rows={rows} x="tenor" height={300} lines={keys.map((k, i) => ({ key: k, label: COUNTRY[k] ?? k, color: CATEGORICAL[i % CATEGORICAL.length] }))} fmt={(v) => `${v.toFixed(2)}%`} />
+      <Panel title="Government yield curves" right={<span className="flex flex-wrap gap-1 text-[10px]">
+        {order.map((c) => <button key={c} onClick={() => setOff({ ...off, [c]: !off[c] })} title={`${data.curves[c].name} · ${data.curves[c].date}`}
+          className={cn('px-1.5 border font-mono', off[c] ? 'border-border text-text-tertiary' : 'border-transparent')} style={off[c] ? undefined : { background: `${colors[c]}22`, color: colors[c] }}>{c}</button>)}
+        <select value={overlay ? `${overlay.code}:${overlay.which}` : ''} onChange={(e) => { const [code, which] = e.target.value.split(':'); setOverlay(code ? { code, which: which as any } : null); }}
+          className="ml-2 bg-surface-1 border border-border px-1 text-text-primary">
+          <option value="">Compare: none</option>
+          {order.flatMap((c) => [<option key={c + 'w'} value={`${c}:week_ago`}>{c} vs 1 week ago</option>, <option key={c + 'm'} value={`${c}:month_ago`}>{c} vs 1 month ago</option>])}
+        </select></span>}>
+        {shown.length ? <CurveChart curves={data.curves} codes={shown} colors={colors} overlay={overlay} /> : <div className="text-2xs text-text-tertiary">Pick a country.</div>}
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10px] text-text-tertiary">{order.map((c) => (
+          <span key={c}><span style={{ color: colors[c] }}>■</span> {data.curves[c].name} · {data.curves[c].date}{data.curves[c].slope_2s10s_bp != null ? ` · 2s10s ${data.curves[c].slope_2s10s_bp > 0 ? '+' : ''}${data.curves[c].slope_2s10s_bp.toFixed(0)}bp` : ''}</span>))}</div>
       </Panel>
-      <Panel title="Yields by tenor (%)">
+      <Panel title="Yields by tenor (%) — change over 1 week / 1 month in bp">
         <div className="overflow-x-auto"><table className="w-full text-2xs font-mono">
-          <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Tenor</th>{keys.map((k) => <th key={k} className="text-right font-normal">{COUNTRY[k] ?? k}</th>)}</tr></thead>
-          <tbody>{rows.map((r: any) => (<tr key={r.tenor} className="border-t border-border-subtle"><td className="text-text-secondary py-0.5">{r.tenor}</td>
-            {keys.map((k) => <td key={k} className="text-right">{r[k] == null ? '—' : Number(r[k]).toFixed(2)}</td>)}</tr>))}</tbody>
+          <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Tenor</th>{order.map((c) => <th key={c} className="text-right font-normal px-2" style={{ color: colors[c] }}>{c}</th>)}</tr></thead>
+          <tbody>{tenors.map((t) => (
+            <tr key={t} className="border-t border-border-subtle"><td className="py-0.5 text-text-secondary">{tenorLabel(t)}</td>
+              {order.map((c) => { const p = at(c, t); return (
+                <td key={c} className="text-right px-2 whitespace-nowrap">{p ? <>{p.yield.toFixed(2)} <span className="text-[10px]"><Bp v={p.change_1w_bp} /> <Bp v={p.change_1m_bp} /></span></> : <span className="text-text-tertiary">—</span>}</td>); })}
+            </tr>))}</tbody>
         </table></div>
+        <div className="text-[10px] text-text-tertiary mt-2">— = tenor not published by that issuer. Rising yields red (prices fall).</div>
       </Panel>
-      {data.creditSpreads?.length > 0 && <Panel title="US credit spreads">
-        <div className="grid grid-cols-3 gap-2">{data.creditSpreads.map((c: any) => (
-          <div key={c.name}><div className="text-[10px] uppercase text-text-tertiary">{c.name}</div><div className="font-mono">{c.spreadBps}bp <Bp v={c.change1wBps} /> <span className="text-text-tertiary">1w</span></div></div>))}</div>
-      </Panel>}
-      <div className="text-[10px] text-text-tertiary">Sources: US Treasury / FRED and national data as used in the Research mode's Yield Curve panel. Last updated {data.lastUpdated ?? '—'}.</div>
+      {Object.keys(data.unavailable ?? {}).length > 0 && <div className="text-[10px] text-amber">Unavailable now: {Object.keys(data.unavailable).join(', ')}</div>}
+      <div className="text-[10px] text-text-tertiary">{data.note} Sources — {data.source}.</div>
     </div>
   );
 }
