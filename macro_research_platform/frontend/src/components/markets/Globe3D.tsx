@@ -12,6 +12,12 @@ type Feat = { iso: string | undefined; name: string; f: any };
 function useColorResolver() {
   const probe = useRef<HTMLSpanElement | null>(null);
   const cache = useRef(new Map<string, string>());
+  // theme, skin and up/down colour switches live on <html>: forget resolved colours when they change
+  useEffect(() => {
+    const mo = new MutationObserver(() => cache.current.clear());
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-skin', 'data-updown', 'class'] });
+    return () => mo.disconnect();
+  }, []);
   return {
     probe,
     resolve: (c: string) => {
@@ -146,11 +152,12 @@ export function Globe3D({ topo, numToIso, fill, selected, onSelect, onHover, hei
     };
     const wheel = (e: WheelEvent) => { e.preventDefault(); zoom.current = Math.max(0.8, Math.min(6, zoom.current * (e.deltaY < 0 ? 1.12 : 0.9))); idleSince.current = performance.now(); };
     cv.addEventListener('pointerdown', down); cv.addEventListener('pointermove', move); cv.addEventListener('pointerup', up);
-    cv.addEventListener('pointerleave', () => onHover(null)); cv.addEventListener('wheel', wheel, { passive: false });
+    const leave = () => onHover(null);
+    cv.addEventListener('pointerleave', leave); cv.addEventListener('wheel', wheel, { passive: false });
     return () => {
       cancelAnimationFrame(raf);
       cv.removeEventListener('pointerdown', down); cv.removeEventListener('pointermove', move); cv.removeEventListener('pointerup', up);
-      cv.removeEventListener('wheel', wheel);
+      cv.removeEventListener('pointerleave', leave); cv.removeEventListener('wheel', wheel);
     };
   }, [W, height, feats]);
 

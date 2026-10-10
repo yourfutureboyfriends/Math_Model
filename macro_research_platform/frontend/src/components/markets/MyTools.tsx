@@ -1,7 +1,7 @@
 // Your tools: W (watchlists), ALRT (alerts), JRNL (trading journal) + the alert toast.
 import { useCallback, useEffect, useState } from 'react';
 import { Bell, Plus, Trash2, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, localToday } from '@/lib/utils';
 import { Chg, ErrorBox, fmtPct, fmtPrice, Loading, Panel, Spark, apiError, symType, useJSON } from './shared';
 
 async function call(url: string, method = 'GET', body?: unknown) {
@@ -190,7 +190,7 @@ export function AlertToasts({ onOpen }: { onOpen: (s: string) => void }) {
 }
 
 // ── JRNL ─────────────────────────────────────────────────────────────────────
-const blank = { date: new Date().toISOString().slice(0, 10), symbol: '', side: 'long', quantity: '', entry: '', exit: '', thesis: '', outcome: '', tags: '' };
+const blank = { date: localToday(), symbol: '', side: 'long', quantity: '', entry: '', exit: '', thesis: '', outcome: '', tags: '' };
 
 export function JournalView({ seed, onOpen }: { seed?: string; onOpen: (s: string) => void }) {
   const [data, setData] = useState<any>(null);

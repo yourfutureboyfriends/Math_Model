@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, RotateCcw } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, localToday } from '@/lib/utils';
 
 export interface Bar { t: string; o: number; h: number; l: number; c: number; v: number }
 export interface PriceRef { value: number; label: string; color?: string }
@@ -256,11 +256,11 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
           ))}
         </div>
         <div className="flex items-center gap-1 text-[10px] text-text-tertiary" role="group" aria-label="Custom date range">
-          <input type="date" aria-label="From" value={range?.start ?? ''} max={new Date().toISOString().slice(0, 10)}
-            onChange={(e) => e.target.value && setRange({ start: e.target.value, end: range?.end ?? new Date().toISOString().slice(0, 10) })}
+          <input type="date" aria-label="From" value={range?.start ?? ''} max={localToday()}
+            onChange={(e) => e.target.value && setRange({ start: e.target.value, end: range?.end ?? localToday() })}
             className="bg-transparent border border-border px-1 py-0.5 font-mono text-text-secondary w-[7.6rem]" />
           <span>–</span>
-          <input type="date" aria-label="To" value={range?.end ?? ''} max={new Date().toISOString().slice(0, 10)}
+          <input type="date" aria-label="To" value={range?.end ?? ''} max={localToday()}
             onChange={(e) => e.target.value && setRange({ start: range?.start ?? e.target.value, end: e.target.value })}
             className="bg-transparent border border-border px-1 py-0.5 font-mono text-text-secondary w-[7.6rem]" />
           {range && <button onClick={() => setRange(null)} className="px-1.5 py-0.5 border border-border text-text-secondary hover:text-text-primary">Reset</button>}

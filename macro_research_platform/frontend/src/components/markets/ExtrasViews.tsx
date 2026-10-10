@@ -2,7 +2,7 @@
 // WETR (degree days), INSD (Form 4 insiders), 13F (investor holdings).
 import { useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, localToday } from '@/lib/utils';
 import { ErrorBox, fmtBig, fmtPrice, Loading, Panel, useJSON, useSort } from './shared';
 import { LineChart } from '@/components/ui/LineChart';
 
@@ -162,7 +162,7 @@ function EiaHistory() {
 export function IpoView({ onOpen }: { onOpen: (s: string) => void }) {
   const [status, setStatus] = useState('all');
   return <Frame<any> url="/api/v1/mkt/ipo" label="Loading the IPO calendar…" refresh={3_600_000}>{(d) => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localToday();
     const rows = (d.ipos as any[]).filter((x) => status === 'all' || x.status === status);
     const upcoming = (d.ipos as any[]).filter((x) => x.date >= today && x.status === 'expected');
     return (

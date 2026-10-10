@@ -3,7 +3,7 @@
 // consensus and actuals) and ECST (economic surprise index).
 import { Fragment, useMemo, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, localToday } from '@/lib/utils';
 import { REGION_CCYS, useRegion } from '@/lib/region';
 import { ErrorBox, fmtBig, Loading, Panel, useJSON } from './shared';
 import { LineChart } from '@/components/ui/LineChart';
@@ -110,7 +110,7 @@ export function EcoGlobalView() {
     for (const e of data?.events ?? []) { const k = String(e.date).slice(0, 10); m.set(k, [...(m.get(k) ?? []), e]); }
     return [...m.entries()];
   }, [data]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday();
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-1 text-xs">

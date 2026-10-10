@@ -1,7 +1,7 @@
 // Live TV for MAP: official live streams of business and news channels (the selected country's own
 // channels first, then its region's, then global business TV), and recent clips from established
 // outlets about that country's economy. Embedded with YouTube's privacy-enhanced player, muted.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useJSON } from './shared';
 
@@ -20,10 +20,13 @@ export function LiveTV({ iso, name, region }: { iso: string | null; name: string
     return [...cs].sort((a, b) => rank(a) - rank(b) || Number(b.live) - Number(a.live));
   }, [tv.data, iso, region]);
   const [playing, setPlaying] = useState<{ id: string; label: string } | null>(null);
-  // a new country starts on its own first live channel
+  // a new country starts on its own first live channel; a background refresh of the channel list
+  // must not interrupt what is already playing
+  const startedFor = useRef<string | null | undefined>(undefined);
   useEffect(() => {
+    if (!tv.data || startedFor.current === iso) return;
     const first = ordered.find((c) => c.live && c.video_id);
-    if (first) setPlaying({ id: first.video_id!, label: `${first.channel} — live` });
+    if (first) { setPlaying({ id: first.video_id!, label: `${first.channel} — live` }); startedFor.current = iso; }
   }, [iso, tv.data]);           // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
