@@ -59,7 +59,7 @@ export function useTheme(): { setting: ThemeSetting; theme: Theme } {
 
 // ── Markets skin: 'classic' (black terminal) or 'modern' (follows the theme) ──
 export type MarketsSkin = 'classic' | 'modern';
-const SKIN_KEY = 'mkt_skin';
+const SKIN_KEY = 'mkt_skin_v2';          // v2: the classic terminal look is the default again
 const SKIN_EVT = 'mkt-skin';
 export function getMarketsSkin(): MarketsSkin {
   try { return localStorage.getItem(SKIN_KEY) === 'modern' ? 'modern' : 'classic'; } catch { return 'classic'; }

@@ -290,6 +290,43 @@ async def mkt_quakes(min_mag: float = Query(4.5, ge=4.5, le=9)):
     return await _run(tracking.earthquakes, min_mag)
 
 
+@router.get("/api/v1/mkt/wirp")
+async def mkt_wirp():
+    """Fed rate-move probabilities from fed funds futures (FedWatch method)."""
+    from api.marketdata import extras
+    return await _run(extras.wirp, timeout=90)
+
+
+@router.get("/api/v1/mkt/auct")
+async def mkt_auctions(kind: str = Query("Note", pattern="^(Bill|Note|Bond|TIPS|FRN)$"), limit: int = Query(40, ge=5, le=100)):
+    from api.marketdata import extras
+    return await _run(extras.auctions, kind, limit)
+
+
+@router.get("/api/v1/mkt/eia")
+async def mkt_eia():
+    from api.marketdata import extras
+    return await _run(extras.energy)
+
+
+@router.get("/api/v1/mkt/wetr")
+async def mkt_weather():
+    from api.marketdata import extras
+    return await _run(extras.weather, timeout=90)
+
+
+@router.get("/api/v1/mkt/insd/{symbol}")
+async def mkt_insiders(symbol: str, limit: int = Query(40, ge=5, le=100)):
+    from api.marketdata import extras
+    return await _run(extras.insiders, symbol, limit, timeout=120)
+
+
+@router.get("/api/v1/mkt/13f")
+async def mkt_13f(cik: str = Query("0001067983", pattern=r"^\d{1,10}$")):
+    from api.marketdata import extras
+    return await _run(extras.thirteen_f, cik, timeout=120)
+
+
 @router.get("/api/v1/mkt/fund/{symbol}")
 async def mkt_fund(symbol: str):
     """ETF / mutual fund: top holdings, sector weights, asset mix, expense ratio, assets."""

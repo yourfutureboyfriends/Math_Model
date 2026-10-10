@@ -1,6 +1,6 @@
 // Shared bits for the Markets mode: data hook, number formats that respect the instrument
 // (FX/crypto precision, currency), change colouring, compact market caps.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 /** A readable message from a FastAPI error body (string detail, or a list of validation errors). */
@@ -86,7 +86,7 @@ export function Panel({ title, right, children, className }: { title?: string; r
   return (
     <div className={cn('bg-surface-1 border border-border', className)}>
       {(title || right) && (
-        <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-subtle">
+        <div className="panel-hdr flex items-center justify-between px-3 py-1.5 border-b border-border-subtle">
           <span className="text-[10px] uppercase tracking-wider text-text-tertiary">{title}</span>
           {right}
         </div>
@@ -108,3 +108,19 @@ export const TYPE_COLOR: Record<string, string> = {
   Stock: 'text-blue', ETF: 'text-green', Fund: 'text-green', Index: 'text-amber', FX: 'text-purple',
   Crypto: 'text-bloomberg', Future: 'text-purple', Option: 'text-red',
 };
+
+
+/** A value that flashes green/red for a moment when it ticks up/down (terminal monitors). */
+export function Flash({ value, children, className }: { value: number | null | undefined; children: React.ReactNode; className?: string }) {
+  const prev = useRef<number | null | undefined>(value);
+  const [cls, setCls] = useState('');
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    if (value != null && prev.current != null && value !== prev.current) {
+      setCls(value > prev.current ? 'flash-up' : 'flash-down');
+      setN((k) => k + 1);                       // restart the animation on every tick
+    }
+    prev.current = value;
+  }, [value]);
+  return <span key={n} className={cn(cls, className)}>{children}</span>;
+}

@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { toTerminal } from './bbg';
 import { Chart } from './TickerView';
 import { AnalystGauge, EarningsCard, NewsList, OrderTicket, SimilarStocks } from './InstrumentOverview';
-import { fmtBig, fmtPct, fmtPrice, Loading, useJSON } from './shared';
+import { Flash, fmtBig, fmtPct, fmtPrice, Loading, useJSON } from './shared';
 
 const enc = encodeURIComponent;
 
@@ -71,7 +71,7 @@ export function WatchColumn({ current, onOpen }: { current?: string; onOpen: (s:
           <li key={s}><button onClick={() => onOpen(s)} className={cn('w-full grid grid-cols-[1fr_auto_auto] gap-x-2 items-center px-2 py-1 text-left border-l-2 hover:bg-surface-3',
             on ? 'border-bloomberg bg-surface-3' : 'border-transparent')}>
             <span className="min-w-0"><span className="block truncate text-text-primary">{q?.name ?? s}</span><span className="block text-[10px] text-text-tertiary font-mono truncate">{toTerminal(s)}</span></span>
-            <span className={cn('font-mono tabular-nums text-right', upDown(q?.change_1d))}>{q ? fmtPrice(q.price) : '…'}</span>
+            <span className={cn('font-mono tabular-nums text-right', upDown(q?.change_1d))}><Flash value={q?.price}>{q ? fmtPrice(q.price) : '…'}</Flash></span>
             <span className={cn('font-mono tabular-nums text-right w-14 px-1 text-[11px]', q?.change_1d == null ? 'text-text-tertiary' : q.change_1d >= 0 ? 'bg-green/15 text-green' : 'bg-red/15 text-red')}>
               {q?.change_1d == null ? '—' : `${q.change_1d >= 0 ? '+' : ''}${(q.change_1d * 100).toFixed(2)}%`}</span>
           </button></li>); })}
@@ -105,7 +105,7 @@ function QuoteHeaderDense({ q, vwap }: { q: any; vwap?: number | null }) {
     <div className="bg-surface-1 border border-border p-2 flex flex-wrap gap-x-6 gap-y-2">
       <div className="min-w-[200px]">
         <div className="flex items-baseline gap-2">
-          <span className={cn('text-3xl font-semibold font-mono tabular-nums', upDown(q.change))}>{fmtPrice(q.price, q.type)}</span>
+          <Flash value={q.price} className={cn('text-3xl font-semibold font-mono tabular-nums', upDown(q.change))}>{fmtPrice(q.price, q.type)}</Flash>
           <span className={cn('text-sm font-mono', upDown(q.change))}>{q.change != null ? `${q.change >= 0 ? '+' : ''}${fmtPrice(q.change, q.type)}` : ''}</span>
           <span className={cn('text-sm font-mono', upDown(q.change))}>{q.change_pct != null ? `${q.change_pct >= 0 ? '+' : ''}${(q.change_pct * 100).toFixed(2)}%` : ''}</span>
         </div>

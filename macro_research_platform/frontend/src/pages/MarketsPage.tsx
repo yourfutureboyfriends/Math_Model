@@ -6,12 +6,13 @@ import { Bell, BookOpen, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CommandLine } from '@/components/markets/CommandLine';
-import { FUNCTIONS, MARKET_FUNCTIONS, SECURITY_FUNCTIONS, findFunction, type MktFunction } from '@/components/markets/functions';
+import { FUNCTIONS, MARKET_FUNCTIONS, SECURITY_FUNCTIONS, findFunction, parseCommand, type MktFunction } from '@/components/markets/functions';
 import { FunctionMenu, HelpPanel, KeyBar, NewsCrawl, TitleBar, UpDownToggle, WorkspaceTabs, useHelp } from '@/components/markets/Chrome';
 import { QuoteWorkstation, WatchColumn } from '@/components/markets/QuoteWorkstation';
 import { CorrView, FrdView, OsaView, RrgView, SeasView } from '@/components/markets/AnalyticsViews';
 import { EcoGlobalView, EcstView, SiView, SplcView } from '@/components/markets/DataViews';
 import { FlyView, QuakeView, ShipView } from '@/components/markets/TrackingViews';
+import { AuctView, EiaView, InsdView, ThirteenFView, WetrView, WirpView } from '@/components/markets/ExtrasViews';
 import { MonitorHome } from '@/components/markets/Monitor';
 import { toTerminal } from '@/components/markets/bbg';
 import { setMarketsSkin, useMarketsSkin } from '@/lib/theme';
@@ -96,7 +97,7 @@ function TerminalQuoteHeader({ d, f, symbol, onGo, actions }: { d: any; f: MktFu
   return (
     <div className="space-y-1">
       <TitleBar security={toTerminal(d.symbol ?? symbol, d.type)} code={f.code} title={f.name}
-        right={<span>{d.exchange} · {d.currency} · {d.delay_minutes ? `delayed ${d.delay_minutes}m` : 'end of day / real-time where free'} · {d.source}</span>} />
+        right={<span className="flex items-center gap-4"><span className="hidden xl:inline">{d.exchange} · {d.currency} · {d.delay_minutes ? `delayed ${d.delay_minutes}m` : 'real-time where free'}</span><SoftKeys fn={f.code} symbol={symbol} /></span>} />
       <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 px-2 py-1 text-[13px]">
         <span className="text-text-primary font-semibold uppercase truncate max-w-[28rem]">{d.name}</span>
         <span className="text-[22px] font-semibold tabular-nums text-text-primary">{fmtPrice(d.price, d.type)}</span>
@@ -115,7 +116,32 @@ function TerminalQuoteHeader({ d, f, symbol, onGo, actions }: { d: any; f: MktFu
 
 const TYPE_LABEL: Record<string, string> = { Stock: 'EQUITY', ETF: 'ETF', Index: 'INDEX', FX: 'CURNCY', Future: 'COMDTY', Crypto: 'CRYPTO', Fund: 'FUND' };
 
-function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: (fn: string, s?: string) => void }) {
+function SecurityBody({ code, symbol, d, isFund, onGo }: { code: string; symbol: string; d: any; isFund: boolean; onGo: (fn: string, s?: string) => void }) {
+  return (
+    <>
+        {code === 'DES' && <QuoteWorkstation q={d} onOpen={(s) => onGo('DES', s)} onGo={onGo} />}
+        {code === 'GP' && <Chart symbol={symbol} height={560} />}
+        {code === 'FA' && <Financials symbol={symbol} />}
+        {code === 'ERN' && <ErnView symbol={symbol} />}
+        {code === 'ANR' && <AnrView symbol={symbol} />}
+        {code === 'HDS' && (isFund ? <FundHoldingsView symbol={symbol} onOpen={(s) => onGo('DES', s)} /> : <HdsView symbol={symbol} />)}
+        {code === 'DVD' && <DvdView symbol={symbol} />}
+        {code === 'OMON' && <OmonView symbol={symbol} />}
+        {code === 'RV' && <RvView symbol={symbol} onOpen={(s) => onGo('DES', s)} />}
+        {code === 'HP' && <HpView symbol={symbol} />}
+        {code === 'BETA' && <BetaView symbol={symbol} />}
+        {code === 'DCF' && <DcfView symbol={symbol} />}
+        {code === 'CN' && <News symbol={symbol} />}
+        {code === 'SEAS' && <SeasView symbol={symbol} />}
+        {code === 'OSA' && <OsaView symbol={symbol} />}
+        {code === 'SI' && <SiView symbol={symbol} />}
+        {code === 'INSD' && <InsdView symbol={symbol} />}
+        {code === 'SPLC' && <SplcView symbol={symbol} onOpen={(s) => onGo('DES', s)} />}
+    </>
+  );
+}
+
+export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string; symbol: string; onGo: (fn: string, s?: string) => void; compact?: boolean }) {
   const classic = useMarketsSkin() === 'classic';
   const q = useQuote(symbol);
   const addToWatch = useAddToWatchlist();
@@ -131,6 +157,22 @@ function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: 
   if (!d) return null;
   const watch = async () => { try { const n = await addToWatch(symbol); if (n) setNote(`Added to “${n}”.`); } catch (e: any) { setNote(e.message); } };
   const tk = 'px-2 py-0.5 text-[11px] border border-border hover:border-bloomberg hover:text-bloomberg';
+  if (compact) {
+    const up = (d.change ?? 0) >= 0;
+    return (
+      <div className="space-y-1">
+        <div className="flex items-baseline gap-2 px-1 text-[12px] font-mono">
+          <span className="text-[rgb(255,214,0)]">{toTerminal(d.symbol ?? symbol, d.type)}</span>
+          <span className="text-text-secondary truncate max-w-[14rem] font-sans">{d.name}</span>
+          <span className="text-text-primary font-semibold">{fmtPrice(d.price, d.type)}</span>
+          {d.change_pct != null && <span className={up ? 'text-green' : 'text-red'}>{up ? '▲+' : '▼'}{(d.change_pct * 100).toFixed(2)}%</span>}
+        </div>
+        <ErrorBoundary sectionName={`${f.code} ${symbol}`} key={`${f.code}:${symbol}`}>
+          {f.equityOnly && !isEquity && !(f.code === 'HDS' && isFund) ? <NotApplicable fn={f.code} name={f.name} q={d} onGo={onGo} />
+            : <SecurityBody code={f.code} symbol={symbol} d={d} isFund={isFund} onGo={onGo} />}
+        </ErrorBoundary>
+      </div>);
+  }
   return (
     <div className="space-y-3">
       {classic ? (
@@ -179,26 +221,174 @@ function SecurityView({ fn, symbol, onGo }: { fn: string; symbol: string; onGo: 
       </>}
       <ErrorBoundary sectionName={`${f.code} ${symbol}`} key={`${f.code}:${symbol}`}>
         {f.equityOnly && !isEquity && !(f.code === 'HDS' && isFund) ? <NotApplicable fn={f.code} name={f.name} q={d} onGo={onGo} /> : <>
-        {f.code === 'DES' && <QuoteWorkstation q={d} onOpen={(s) => onGo('DES', s)} onGo={onGo} />}
-        {f.code === 'GP' && <Chart symbol={symbol} height={560} />}
-        {f.code === 'FA' && <Financials symbol={symbol} />}
-        {f.code === 'ERN' && <ErnView symbol={symbol} />}
-        {f.code === 'ANR' && <AnrView symbol={symbol} />}
-        {f.code === 'HDS' && (isFund ? <FundHoldingsView symbol={symbol} onOpen={(s) => onGo('DES', s)} /> : <HdsView symbol={symbol} />)}
-        {f.code === 'DVD' && <DvdView symbol={symbol} />}
-        {f.code === 'OMON' && <OmonView symbol={symbol} />}
-        {f.code === 'RV' && <RvView symbol={symbol} onOpen={(s) => onGo('DES', s)} />}
-        {f.code === 'HP' && <HpView symbol={symbol} />}
-        {f.code === 'BETA' && <BetaView symbol={symbol} />}
-        {f.code === 'DCF' && <DcfView symbol={symbol} />}
-        {f.code === 'CN' && <News symbol={symbol} />}
-        {f.code === 'SEAS' && <SeasView symbol={symbol} />}
-        {f.code === 'OSA' && <OsaView symbol={symbol} />}
-        {f.code === 'SI' && <SiView symbol={symbol} />}
-        {f.code === 'SPLC' && <SplcView symbol={symbol} onOpen={(s) => onGo('DES', s)} />}
+        <SecurityBody code={f.code} symbol={symbol} d={d} isFund={isFund} onGo={onGo} />
         </>}
       </ErrorBoundary>
     </div>
+  );
+}
+
+/** The body of any market-wide function (used by the main view and by launchpad windows). */
+export function MarketBody({ code, seed, onGo, open, classic, compact = false }: { code: string; seed?: string; onGo: (fn: string, s?: string) => void;
+  open: (s: string) => void; classic: boolean; compact?: boolean }) {
+  return (
+    <>
+    {code === 'WEI' && (classic || compact
+      ? <div className="space-y-2">{!compact && <div className="px-2 py-1 border border-border"><FunctionMenu items={MARKET_FUNCTIONS} onPick={(x) => onGo(x.code)} /></div>}<MonitorHome onOpen={open} onGo={onGo} /></div>
+      : <div className="space-y-5"><Launchpad onGo={onGo} /><OverviewView onOpen={open} /></div>)}
+    {code === 'MOST' && <MoversView onOpen={open} />}
+    {code === 'EQS' && <ScreenerView onOpen={open} />}
+    {code === 'IMAP' && <ImapView onOpen={open} />}
+    {code === 'MAP' && <WorldMap onOpen={open} onGo={onGo} />}
+    {code === 'CRYPTO' && <CryptoView onOpen={open} />}
+    {code === 'CMDTY' && <CmdtyView onOpen={open} />}
+    {code === 'COMP' && <CompView seed={seed} />}
+    {code === 'CORR' && <CorrView seed={seed} />}
+    {code === 'RRG' && <RrgView onOpen={open} />}
+    {code === 'FRD' && <FrdView />}
+    {code === 'SHIP' && <ShipView />}
+    {code === 'FLY' && <FlyView />}
+    {code === 'QUAK' && <QuakeView />}
+    {code === 'WIRP' && <WirpView />}
+    {code === 'AUCT' && <AuctView />}
+    {code === 'EIA' && <EiaView />}
+    {code === 'WETR' && <WetrView />}
+    {code === '13F' && <ThirteenFView onOpen={open} />}
+    {code === 'GC' && <GcView />}
+    {code === 'BTMM' && <BtmmView />}
+    {code === 'WCRS' && <WcrsView onOpen={open} />}
+    {code === 'EVTS' && <EvtsView onOpen={open} />}
+    {code === 'ECO' && <EcoGlobalView />}
+    {code === 'ECST' && <EcstView />}
+    {code === 'N' && <NewsView />}
+    {code === 'W' && <WatchlistsView onOpen={open} />}
+    {code === 'ALRT' && <AlertsView seed={seed} />}
+    {code === 'JRNL' && <JournalView seed={seed} onOpen={open} />}
+    {code === 'AI' && <div className="bg-surface-1 border border-border rounded-md h-[calc(100vh-220px)] min-h-[480px]"><AiChat context={seed} /></div>}
+    </>
+  );
+}
+
+// ── LP: multi-window launchpad ───────────────────────────────────────────────
+type Pane = { fn: string; symbol?: string };
+const LP_KEY = 'mkt_lp';
+const LAYOUTS: Record<string, { n: number; cls: string; h: string }> = {
+  '1x1': { n: 1, cls: 'grid-cols-1', h: 'h-[calc(100vh-230px)]' }, '2x1': { n: 2, cls: 'grid-cols-1 xl:grid-cols-2', h: 'h-[calc(100vh-230px)]' },
+  '2x2': { n: 4, cls: 'grid-cols-1 xl:grid-cols-2', h: 'h-[calc((100vh-240px)/2)]' }, '3x2': { n: 6, cls: 'grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3', h: 'h-[calc((100vh-240px)/2)]' },
+};
+const DEFAULT_LP = { layout: '2x2', panes: [{ fn: 'WEI' }, { fn: 'GP', symbol: '^GSPC' }, { fn: 'N' }, { fn: 'WIRP' }, { fn: 'WCRS' }, { fn: 'MOST' }] as Pane[] };
+function loadLP(): { layout: string; panes: Pane[] } {
+  try { const j = JSON.parse(localStorage.getItem(LP_KEY) || ''); if (j?.panes?.length && LAYOUTS[j.layout]) return j; } catch { /* first run */ }
+  return DEFAULT_LP;
+}
+function saveLP(v: { layout: string; panes: Pane[] }) { try { localStorage.setItem(LP_KEY, JSON.stringify(v)); } catch { /* storage unavailable */ } }
+
+/** Put a function into the first launchpad window and open the launchpad ("pop out"). */
+export function popOutToLaunchpad(fn: string, symbol?: string) {
+  const st = loadLP();
+  const panes = [{ fn, symbol }, ...st.panes].slice(0, 6);
+  saveLP({ ...st, panes });
+  goMarkets('LP');
+}
+
+async function resolveCommand(text: string): Promise<Pane | null> {
+  const p = parseCommand(text);
+  if (p.fn && !p.fn.security) return { fn: p.fn.code };
+  let sym = p.symbol;
+  if (sym && !p.terminal) {
+    try {
+      const j = await (await fetch(`/api/v1/mkt/search?q=${encodeURIComponent(text.replace(new RegExp(`\\b${p.fn?.code ?? '§'}\\b`, 'i'), '').trim())}&limit=1`)).json();
+      const hit = j.results?.[0]?.symbol;
+      if (hit && (hit.toUpperCase() === sym || !/^[A-Z0-9.^=-]+$/.test(text.trim().toUpperCase().split(' ')[0]) || !p.fn)) sym = hit;
+    } catch { /* keep the typed symbol */ }
+  }
+  return sym ? { fn: p.fn?.code ?? 'DES', symbol: sym } : null;
+}
+
+function LpPane({ pane, index, classic, onChange, onClose, onMax }: { pane: Pane; index: number; classic: boolean; onChange: (p: Pane) => void; onClose: () => void; onMax: () => void }) {
+  const [text, setText] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const f = findFunction(pane.fn) ?? findFunction('WEI')!;
+  const go = (fn: string, s?: string) => onChange(findFunction(fn)?.security ? { fn, symbol: s ?? pane.symbol } : { fn, symbol: s });
+  const submit = async () => {
+    const r = await resolveCommand(text);
+    if (!r) { setErr('Not recognised'); return; }
+    if (findFunction(r.fn)?.security && !r.symbol) { setErr(`${r.fn} needs a security`); return; }
+    setErr(null); setText(''); onChange(r);
+  };
+  return (
+    <section className="bg-surface-1 border border-border flex flex-col min-w-0 min-h-0">
+      <header className="panel-hdr flex items-center gap-2 px-1.5 h-7 text-[11px]">
+        <span className="key-amber px-1">{index + 1}</span>
+        <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+          placeholder={f.security && pane.symbol ? `${toTerminal(pane.symbol)} ${f.code} — type a security or function` : `${f.code} — type e.g. AAPL US Equity GP, WIRP, toyota`}
+          aria-label={`Window ${index + 1} command`} className="flex-1 min-w-0 bg-transparent font-mono text-text-primary placeholder:text-text-tertiary outline-none" />
+        {err && <span className="text-red">{err}</span>}
+        <span className="text-bloomberg font-mono font-semibold">{f.code}</span>
+        <span className="hidden md:inline text-text-tertiary truncate max-w-[10rem]">{f.name}</span>
+        <button onClick={onMax} title="Open full screen" className="text-text-tertiary hover:text-bloomberg px-0.5">⤢</button>
+        <button onClick={onClose} title="Reset this window" className="text-text-tertiary hover:text-red px-0.5">×</button>
+      </header>
+      <div className="flex-1 min-h-0 overflow-auto p-1.5 text-[12px]">
+        <ErrorBoundary sectionName={`Window ${index + 1}`} key={`${pane.fn}:${pane.symbol ?? ''}`}>
+          {f.security && pane.symbol ? <SecurityView fn={f.code} symbol={pane.symbol} onGo={go} compact />
+            : f.security ? <p className="text-xs text-text-tertiary p-2">{f.code} needs a security — type one above, e.g. “AAPL US Equity {f.code}”.</p>
+            : <MarketBody code={f.code} seed={pane.symbol} onGo={go} open={(s) => go('DES', s)} classic={classic} compact />}
+        </ErrorBoundary>
+      </div>
+    </section>
+  );
+}
+
+function LaunchpadGrid({ classic }: { classic: boolean }) {
+  const [st, setSt] = useState(loadLP);
+  useEffect(() => saveLP(st), [st]);
+  const L = LAYOUTS[st.layout] ?? LAYOUTS['2x2'];
+  const panes = [...st.panes, ...DEFAULT_LP.panes].slice(0, L.n);
+  const set = (i: number, p: Pane) => setSt((s) => { const ps = [...s.panes, ...DEFAULT_LP.panes].slice(0, 6); ps[i] = p; return { ...s, panes: ps }; });
+  return (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-1 text-[11px]">
+        <span className="text-text-tertiary mr-1">Layout</span>
+        {Object.keys(LAYOUTS).map((k) => <button key={k} onClick={() => setSt((s) => ({ ...s, layout: k }))}
+          className={cn('px-2 py-0.5 border font-mono', st.layout === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{k}</button>)}
+        <button onClick={() => setSt(DEFAULT_LP)} className="ml-2 px-2 py-0.5 border border-border text-text-tertiary hover:text-text-primary">Reset</button>
+        <span className="ml-auto text-text-tertiary">Each window takes its own command — e.g. “VOD LN Equity GP”, “WIRP”, “toyota”. ⤢ opens it full screen.</span>
+      </div>
+      <div className={cn('grid gap-1.5', L.cls)}>
+        {panes.map((p, i) => (
+          <div key={i} className={cn('min-w-0', L.h, 'min-h-[320px] flex')}>
+            <div className="flex-1 min-w-0 flex">
+              <LpPane pane={p} index={i} classic={classic} onChange={(np) => set(i, np)} onClose={() => set(i, DEFAULT_LP.panes[i])}
+                onMax={() => goMarkets(p.fn, p.symbol)} />
+            </div>
+          </div>))}
+      </div>
+    </div>
+  );
+}
+
+// ── Soft keys on every function's title bar (Bloomberg: 96) … 99) …) ──────────
+function exportFirstTable(name: string) {
+  const t = document.querySelector('#mkt-fn-body table') as HTMLTableElement | null;
+  if (!t) { alert('No table on this screen to export.'); return; }
+  const rows = [...t.querySelectorAll('tr')].map((tr) => [...tr.querySelectorAll('th,td')].map((c) => `"${(c as HTMLElement).innerText.replace(/\s+/g, ' ').trim().replace(/"/g, '""')}"`).join(','));
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${name}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function SoftKeys({ fn, symbol, onHelp }: { fn: string; symbol?: string; onHelp?: () => void }) {
+  const k = 'softkey px-1 hover:underline whitespace-nowrap';
+  return (
+    <span className="flex gap-2 normal-case tracking-normal text-[11px]">
+      {fn !== 'LP' && <button className={k} onClick={() => popOutToLaunchpad(fn, symbol)} title="Open this function in a launchpad window">96) Pop out</button>}
+      <button className={k} onClick={() => exportFirstTable(`${fn}${symbol ? `_${symbol}` : ''}_${new Date().toISOString().slice(0, 10)}`)} title="Download the main table as CSV">97) Export</button>
+      {onHelp && <button className={k} onClick={onHelp}>98) Help</button>}
+    </span>
   );
 }
 
@@ -212,7 +402,7 @@ export function MarketsPage() {
   const help = useHelp();
   return (
     <div className={cn('mkt-root flex items-start', classic ? 'p-2 pb-10 gap-2' : 'p-4 gap-4')}>
-    <div className={cn('flex-1 min-w-0', classic ? 'space-y-2' : 'space-y-4 max-w-[1500px]')}>
+    <div className={cn('flex-1 min-w-0', classic ? 'space-y-2' : 'space-y-4', !classic && f.code !== 'LP' && 'max-w-[1500px]')}>
       {classic ? <KeyBar onGo={(fn) => (fn === 'BACK' ? window.history.back() : onGo(fn))} onHelp={help.toggle} /> : (
         <div className="flex justify-end items-center gap-3 -mb-2 text-[11px] text-text-tertiary"><UpDownToggle />
           <button onClick={() => setMarketsSkin('classic')} className="hover:text-bloomberg">Switch to the classic terminal look</button></div>)}
@@ -222,46 +412,23 @@ export function MarketsPage() {
       {f.security && route.symbol ? (
         <div className="grid grid-cols-1 xl:grid-cols-[230px_minmax(0,1fr)] gap-2 items-start">
           <WatchColumn current={route.symbol} onOpen={(s) => onGo(f.code, s)} />
-          <div className="min-w-0"><SecurityView fn={f.code} symbol={route.symbol} onGo={onGo} /></div>
+          <div className="min-w-0" id="mkt-fn-body"><SecurityView fn={f.code} symbol={route.symbol} onGo={onGo} /></div>
         </div>
       ) : (
         <div className={classic ? 'space-y-2' : 'space-y-3'}>
-          {classic ? <TitleBar code={f.code} title={f.name} right={f.desc} /> : <FunctionHeader f={f} />}
+          {classic ? <TitleBar code={f.code} title={f.name} right={<span className="flex items-center gap-4"><span className="hidden xl:inline truncate max-w-[36rem]">{f.desc}</span><SoftKeys fn={f.code} symbol={route.symbol} onHelp={help.toggle} /></span>} />
+            : <div className="flex items-start justify-between gap-3"><FunctionHeader f={f} /><SoftKeys fn={f.code} symbol={route.symbol} /></div>}
+          <div id="mkt-fn-body">
           <ErrorBoundary sectionName={`Markets · ${f.code}`} key={f.code}>
-            {f.code === 'WEI' && (classic
-              ? <div className="space-y-2"><div className="px-2 py-1 border border-border"><FunctionMenu items={MARKET_FUNCTIONS} onPick={(x) => onGo(x.code)} /></div><MonitorHome onOpen={open} onGo={onGo} /></div>
-              : <div className="space-y-5"><Launchpad onGo={onGo} /><OverviewView onOpen={open} /></div>)}
-            {f.code === 'MOST' && <MoversView onOpen={open} />}
-            {f.code === 'EQS' && <ScreenerView onOpen={open} />}
-            {f.code === 'IMAP' && <ImapView onOpen={open} />}
-            {f.code === 'MAP' && <WorldMap onOpen={open} onGo={onGo} />}
-            {f.code === 'CRYPTO' && <CryptoView onOpen={open} />}
-            {f.code === 'CMDTY' && <CmdtyView onOpen={open} />}
-            {f.code === 'COMP' && <CompView seed={route.symbol} />}
-            {f.code === 'CORR' && <CorrView seed={route.symbol} />}
-            {f.code === 'RRG' && <RrgView onOpen={open} />}
-            {f.code === 'FRD' && <FrdView />}
-            {f.code === 'SHIP' && <ShipView />}
-            {f.code === 'FLY' && <FlyView />}
-            {f.code === 'QUAK' && <QuakeView />}
-            {f.code === 'GC' && <GcView />}
-            {f.code === 'BTMM' && <BtmmView />}
-            {f.code === 'WCRS' && <WcrsView onOpen={open} />}
-            {f.code === 'EVTS' && <EvtsView onOpen={open} />}
-            {f.code === 'ECO' && <EcoGlobalView />}
-            {f.code === 'ECST' && <EcstView />}
-            {f.code === 'N' && <NewsView />}
-            {f.code === 'W' && <WatchlistsView onOpen={open} />}
-            {f.code === 'ALRT' && <AlertsView seed={route.symbol} />}
-            {f.code === 'JRNL' && <JournalView seed={route.symbol} onOpen={open} />}
-            {f.code === 'AI' && <div className="bg-surface-1 border border-border rounded-md h-[calc(100vh-220px)] min-h-[480px]"><AiChat context={route.symbol} /></div>}
+            {f.code === 'LP' ? <LaunchpadGrid classic={classic} /> : <MarketBody code={f.code} seed={route.symbol} onGo={onGo} open={open} classic={classic} />}
           </ErrorBoundary>
+          </div>
         </div>
       )}
       <AlertToasts onOpen={open} />
       {classic && <NewsCrawl />}
     </div>
-    {f.code !== 'AI' && !(f.security && route.symbol) && <RightRail onOpen={open} />}
+    {f.code !== 'AI' && f.code !== 'LP' && !(f.security && route.symbol) && <RightRail onOpen={open} />}
     </div>
   );
 }

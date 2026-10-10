@@ -1,12 +1,13 @@
 // Terminal launchpad: a dense multi-panel monitor — world indices, rates, FX, commodities,
 // crypto, most active / gainers / losers and top news — every row opens its security.
+import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { toTerminal } from './bbg';
-import { Chg, fmtPrice, Spark, useJSON } from './shared';
+import { Chg, Flash, fmtPrice, Spark, useJSON } from './shared';
 
-function Pane({ title, code, onCode, children, className }: { title: string; code?: string; onCode?: () => void; children: React.ReactNode; className?: string }) {
+function Pane({ title, code, onCode, children, className, style }: { title: string; code?: string; onCode?: () => void; children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
   return (
-    <section className={cn('bg-surface-1 border border-border min-w-0 flex flex-col', className)}>
+    <section className={cn('bg-surface-1 border border-border min-w-0 flex flex-col', className)} style={style}>
       <header className="panel-bar flex items-center px-2 h-6 text-[11px] uppercase tracking-wide">
         <span className="text-bloomberg font-semibold">{title}</span>
         {code && <button onClick={onCode} title={`Open ${code}`} className="ml-auto text-text-tertiary hover:text-bloomberg">{code} &lt;GO&gt;</button>}
@@ -32,7 +33,7 @@ function GroupTable({ g, onOpen }: { g: any; onOpen: (s: string) => void }) {
       <tbody>{g.rows.map((r: any) => (
         <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="cursor-pointer hover:bg-surface-3 odd:bg-surface-2/40" title={`${r.name} — ${r.symbol}`}>
           <td className={cn(td, 'text-text-primary max-w-[11rem] truncate')}>{r.name}<span className="ml-1 text-text-tertiary">{toTerminal(r.symbol)}</span></td>
-          <td className={cn(td, 'text-right font-mono text-text-primary')}>{r.price == null ? '—' : g.is_yield ? r.price.toFixed(3) : fmtPrice(r.price, fx ? 'FX' : undefined)}</td>
+          <td className={cn(td, 'text-right font-mono text-text-primary')}><Flash value={r.price}>{r.price == null ? '—' : g.is_yield ? r.price.toFixed(3) : fmtPrice(r.price, fx ? 'FX' : undefined)}</Flash></td>
           <td className={cn(td, 'text-right')}>{r.is_yield ? <Bp v={r.change_1d_bp} /> : <Chg v={r.change_1d} />}</td>
           <td className={cn(td, 'text-right hidden sm:table-cell')}>{r.is_yield ? <Bp v={r.change_ytd_bp} /> : <Chg v={r.change_ytd} d={1} />}</td>
           <td className={cn(td, 'hidden md:table-cell w-16')}><Spark values={r.spark} /></td>
@@ -51,7 +52,7 @@ function Movers({ kind, onOpen }: { kind: 'active' | 'gainers' | 'losers'; onOpe
       <tbody>{(data.rows ?? []).map((r: any) => (
         <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="cursor-pointer hover:bg-surface-3 odd:bg-surface-2/40" title={r.name}>
           <td className={cn(td, 'text-text-primary')}>{toTerminal(r.symbol)}</td>
-          <td className={cn(td, 'text-right font-mono text-text-primary')}>{fmtPrice(r.price)}</td>
+          <td className={cn(td, 'text-right font-mono text-text-primary')}><Flash value={r.price}>{fmtPrice(r.price)}</Flash></td>
           <td className={cn(td, 'text-right')}><Chg v={r.change_pct} /></td>
           <td className={cn(td, 'text-right font-mono text-text-secondary')}>{kind === 'active' ? compact(r.volume) : compact(r.market_cap)}</td>
         </tr>))}</tbody>
@@ -81,7 +82,20 @@ function TopNews() {
   );
 }
 
+/** Columns that follow the container's own width (so the monitor also fits a launchpad window). */
+function useColumns(): [React.RefObject<HTMLDivElement>, number] {
+  const ref = useRef<HTMLDivElement>(null);
+  const [cols, setCols] = useState(3);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const ro = new ResizeObserver(([e]) => { const w = e.contentRect.width; setCols(w >= 1250 ? 3 : w >= 640 ? 2 : 1); });
+    ro.observe(el); return () => ro.disconnect();
+  }, []);
+  return [ref, cols];
+}
+
 export function MonitorHome({ onOpen, onGo }: { onOpen: (s: string) => void; onGo: (fn: string) => void }) {
+  const [box, cols] = useColumns();
   const { data, error } = useJSON<any>('/api/v1/mkt/overview', 120_000);
   const groups: any[] = data?.groups ?? [];
   const pick = (re: RegExp) => groups.find((g) => re.test(g.group));
@@ -90,15 +104,15 @@ export function MonitorHome({ onOpen, onGo }: { onOpen: (s: string) => void; onG
   return (
     <div className="space-y-2">
       {error && !data && <div className="text-[11px] text-red">World markets unavailable: {error}</div>}
-      <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-2">
+      <div ref={box} className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
         {panes.map(([re, title, code]) => { const g = pick(re); return (
-          <Pane key={title} title={title} code={code} onCode={() => onGo(code)} className={code === 'WEI' ? 'lg:row-span-2' : ''}>
+          <Pane key={title} title={title} code={code} onCode={() => onGo(code)} className={code === 'WEI' && cols > 1 ? 'row-span-2' : ''}>
             {g ? <GroupTable g={g} onOpen={onOpen} /> : <div className="p-2 text-[11px] text-text-tertiary">{data ? 'No data' : 'Loading…'}</div>}
           </Pane>); })}
         <Pane title="Most active · US" code="MOST" onCode={() => onGo('MOST')}><Movers kind="active" onOpen={onOpen} /></Pane>
         <Pane title="Top gainers · US" code="MOST" onCode={() => onGo('MOST')}><Movers kind="gainers" onOpen={onOpen} /></Pane>
         <Pane title="Top losers · US" code="MOST" onCode={() => onGo('MOST')}><Movers kind="losers" onOpen={onOpen} /></Pane>
-        <Pane title="Top news" code="N" onCode={() => onGo('N')} className="lg:col-span-2 2xl:col-span-3 max-h-[480px]"><TopNews /></Pane>
+        <Pane title="Top news" code="N" onCode={() => onGo('N')} className="max-h-[480px]" style={{ gridColumn: `span ${cols}` }}><TopNews /></Pane>
       </div>
       <div className="text-[10px] text-text-tertiary">{data?.source ?? ''} · exchange delays apply · yields in %, changes in bp · refreshes every 2 min</div>
     </div>
