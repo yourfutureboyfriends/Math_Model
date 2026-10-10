@@ -39,6 +39,9 @@ export const FUNCTIONS: MktFunction[] = [
   { code: 'MAP', name: 'World map', desc: 'Every country coloured by its stock market or economy — returns, rates, inflation, growth.', group: 'Markets', aliases: ['BMAP', 'WORLD'] },
   { code: 'CORR', name: 'Correlation matrix', desc: 'Correlations across any instruments, clustered — cross-asset, sectors, indices, currencies.', group: 'Markets', aliases: ['CORREL'] },
   { code: 'RRG', name: 'Relative rotation', desc: 'Sectors, countries, factors or asset classes: leading, weakening, lagging or improving vs the market.', group: 'Markets', aliases: ['ROT'] },
+  { code: 'SHIP', name: 'Shipping tracker', desc: 'Traffic through Suez, Panama, Hormuz, Malacca and 24 more chokepoints, and live ship positions.', group: 'Markets', aliases: ['AIS', 'VSL', 'CHOKE'] },
+  { code: 'FLY', name: 'Flight tracker', desc: 'Live aircraft around major airports and cargo hubs, with altitude, speed and emergency squawks.', group: 'Markets', aliases: ['PLANE', 'ADSB'] },
+  { code: 'QUAK', name: 'Earthquakes', desc: 'Magnitude 4.5+ quakes this week, flagged when near a major port or shipping chokepoint.', group: 'Markets', aliases: ['QUAKE', 'HAZ'] },
   { code: 'COMP', name: 'Compare', desc: 'Total-return comparison of up to 8 instruments, with risk and correlation.', group: 'Markets', aliases: ['TRA'] },
   // Rates & FX
   { code: 'GC', name: 'Yield curves', desc: 'Government curves for the US, UK, Germany, Japan, Canada and Australia.', group: 'Rates & FX', aliases: ['CURVE'] },

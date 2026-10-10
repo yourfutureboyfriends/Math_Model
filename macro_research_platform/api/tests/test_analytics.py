@@ -36,3 +36,10 @@ def test_finra_line_parsing_and_share_classes():
 def test_calendar_number_parsing():
     from api.marketdata.econ import _num
     assert _num("0.3%") == 0.3 and _num("150K") == 150 and _num("-1.2B") == -1.2 and _num("<0.1%") == 0.1 and _num("") is None
+
+
+def test_tracking_helpers():
+    from api.marketdata.tracking import CHOKEPOINTS, _km, _ship_type
+    assert abs(_km(51.47, -0.454, 40.641, -73.778) - 5540) < 30          # Heathrow → JFK ≈ 5,540 km
+    assert _ship_type(84) == "Tanker" and _ship_type(71) == "Cargo" and _ship_type(None) == "Unknown"
+    assert all(-90 <= c["lat"] <= 90 and -180 <= c["lon"] <= 180 for c in CHOKEPOINTS.values())

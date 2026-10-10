@@ -11,6 +11,7 @@ import { FunctionMenu, HelpPanel, KeyBar, NewsCrawl, TitleBar, UpDownToggle, Wor
 import { QuoteWorkstation, WatchColumn } from '@/components/markets/QuoteWorkstation';
 import { CorrView, FrdView, OsaView, RrgView, SeasView } from '@/components/markets/AnalyticsViews';
 import { EcoGlobalView, EcstView, SiView, SplcView } from '@/components/markets/DataViews';
+import { FlyView, QuakeView, ShipView } from '@/components/markets/TrackingViews';
 import { MonitorHome } from '@/components/markets/Monitor';
 import { toTerminal } from '@/components/markets/bbg';
 import { setMarketsSkin, useMarketsSkin } from '@/lib/theme';
@@ -240,6 +241,9 @@ export function MarketsPage() {
             {f.code === 'CORR' && <CorrView seed={route.symbol} />}
             {f.code === 'RRG' && <RrgView onOpen={open} />}
             {f.code === 'FRD' && <FrdView />}
+            {f.code === 'SHIP' && <ShipView />}
+            {f.code === 'FLY' && <FlyView />}
+            {f.code === 'QUAK' && <QuakeView />}
             {f.code === 'GC' && <GcView />}
             {f.code === 'BTMM' && <BtmmView />}
             {f.code === 'WCRS' && <WcrsView onOpen={open} />}

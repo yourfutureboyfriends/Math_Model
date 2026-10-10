@@ -255,6 +255,41 @@ async def mkt_surprise_index(start: str = Query("2010-01-01", pattern=r"^\d{4}-\
     return await _run(econ.surprise_index, start, timeout=180)
 
 
+@router.get("/api/v1/mkt/ship/chokepoints")
+async def mkt_chokepoints():
+    """IMF PortWatch: daily transits through 28 maritime chokepoints."""
+    from api.marketdata import tracking
+    return await _run(tracking.chokepoints, timeout=120)
+
+
+@router.get("/api/v1/mkt/ship/vessels")
+async def mkt_vessels(lat_min: float = Query(..., ge=-90, le=90), lon_min: float = Query(..., ge=-180, le=180),
+                      lat_max: float = Query(..., ge=-90, le=90), lon_max: float = Query(..., ge=-180, le=180)):
+    """Live AIS positions (aisstream.io with a key, else Digitraffic Baltic)."""
+    from api.marketdata import tracking
+    return await _run(tracking.vessels, lat_min, lon_min, lat_max, lon_max, timeout=60)
+
+
+@router.get("/api/v1/mkt/fly")
+async def mkt_flights(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180), radius_nm: int = Query(100, ge=5, le=250)):
+    """Live aircraft around a point (adsb.lol)."""
+    from api.marketdata import tracking
+    return await _run(tracking.flights, lat, lon, radius_nm)
+
+
+@router.get("/api/v1/mkt/fly/airports")
+async def mkt_airports():
+    from api.marketdata import tracking
+    return {"airports": [{"code": k, "name": v[0], "lat": v[1], "lon": v[2]} for k, v in tracking.AIRPORTS.items()]}
+
+
+@router.get("/api/v1/mkt/quakes")
+async def mkt_quakes(min_mag: float = Query(4.5, ge=4.5, le=9)):
+    """USGS earthquakes (past week) with distance to the nearest major port and chokepoint."""
+    from api.marketdata import tracking
+    return await _run(tracking.earthquakes, min_mag)
+
+
 @router.get("/api/v1/mkt/fund/{symbol}")
 async def mkt_fund(symbol: str):
     """ETF / mutual fund: top holdings, sector weights, asset mix, expense ratio, assets."""
