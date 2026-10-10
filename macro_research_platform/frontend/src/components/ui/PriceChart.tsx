@@ -27,6 +27,7 @@ const DEFAULT_PERIOD: Record<string, string> = { '5m': '5d', '15m': '1mo', '1h':
 const allowed = (i: string, p: string) => PERIOD_DAYS[p] <= (MAX_DAYS[i] ?? 1e9);
 
 const UP = '#199e70', DOWN = '#e66767';
+const WARM = new Set(['1d', '1wk', '1mo']);     // intervals fetched with 200 extra bars so MAs start on the first bar
 const MA = [{ n: 20, color: '#c98500' }, { n: 50, color: '#3987e5' }, { n: 200, color: '#d55181' }];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const AXIS_W = 58, PAD_T = 6, PAD_B = 20, PAD_L = 6;
@@ -108,6 +109,7 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [win, setWin] = useState<[number, number] | null>(null);       // visible [start, end) in raw bars
+  const [base, setBase] = useState(0);                                  // first bar of the chosen window (earlier bars warm up the MAs)
   const [hover, setHover] = useState<number | null>(null);              // index into drawn bars
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(640);
@@ -125,13 +127,14 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setErr(null);
-    fetch(`/api/v1/market/bars?${new URLSearchParams(range ? { symbol, interval, start: range.start, end: range.end } : { symbol, interval, period })}`)
+    fetch(`/api/v1/market/bars?${new URLSearchParams({ ...(range ? { symbol, interval, start: range.start, end: range.end } : { symbol, interval, period }),
+      ...(WARM.has(interval) && (range || period !== 'max') ? { warmup: '200' } : {}) })}`)
       .then(async (r) => {
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(typeof j?.detail === 'string' ? j.detail : j?.detail?.message || `HTTP ${r.status}`);
         return j;
       })
-      .then((j) => { if (!cancelled) { setData(j.bars); setMeta({ currency: j.currency, timezone: j.timezone }); setWin(null); setHover(null); } })
+      .then((j) => { if (!cancelled) { setData(j.bars); setBase(j.first_visible ?? 0); setMeta({ currency: j.currency, timezone: j.timezone }); setWin(null); setHover(null); } })
       .catch((e) => { if (!cancelled) { setErr(e.message); setData(null); } })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -145,7 +148,8 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
   const all = useMemo(() => data ?? [], [data]);
   const closes = useMemo(() => all.map((b) => b.c), [all]);
   const maLines = useMemo(() => Object.fromEntries(MA.map((m) => [m.n, sma(closes, m.n)])), [closes]);
-  const [s0, s1] = win ?? [0, all.length];
+  const full: [number, number] = [Math.min(base, Math.max(0, all.length - 1)), all.length];
+  const [s0, s1] = win ?? full;
   const plotW = Math.max(100, width - AXIS_W - PAD_L);
   const visible = useMemo(() => all.slice(s0, s1), [all, s0, s1]);
   const k = Math.max(1, Math.ceil(visible.length / (plotW / 3)));
@@ -201,14 +205,14 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
     e.preventDefault();
     const rect = (e.currentTarget as SVGElement).getBoundingClientRect();
     const frac = Math.min(1, Math.max(0, (e.clientX - rect.left - PAD_L) / plotW));
-    const [a, b] = win ?? [0, all.length];
+    const [a, b] = win ?? [base, all.length];
     const len = b - a;
     const newLen = Math.max(10, Math.min(all.length, Math.round(len * (e.deltaY > 0 ? 1.15 : 0.87))));
     const center = a + frac * len;
     let na = Math.round(center - frac * newLen);
     na = Math.max(0, Math.min(all.length - newLen, na));
-    setWin(newLen >= all.length ? null : [na, na + newLen]);
-  }, [all.length, plotW, win]);
+    setWin(newLen >= all.length ? (base ? [0, all.length] : null) : [na, na + newLen]);
+  }, [all.length, plotW, win, base]);
   const svgRef = useRef<SVGSVGElement>(null);
   useEffect(() => {
     const el = svgRef.current;
@@ -298,7 +302,7 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
         <svg ref={svgRef} width={width} height={height} tabIndex={0} onKeyDown={onKey} role="img"
           aria-label={`${symbol} ${interval} price chart`}
           onMouseMove={onMove} onMouseLeave={() => { setHover(null); drag.current = null; }}
-          onMouseDown={(e) => { const r = (e.currentTarget as SVGElement).getBoundingClientRect(); drag.current = { x: e.clientX - r.left, win: win ?? [0, all.length] }; }}
+          onMouseDown={(e) => { const r = (e.currentTarget as SVGElement).getBoundingClientRect(); drag.current = { x: e.clientX - r.left, win: win ?? [s0, s1] }; }}
           onMouseUp={() => { drag.current = null; }} onDoubleClick={() => setWin(null)}
           className={cn('outline-none', drag.current ? 'cursor-grabbing' : 'cursor-crosshair')}>
           {/* grid + y axis */}

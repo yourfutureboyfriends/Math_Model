@@ -26,14 +26,15 @@ function Bp({ v }: { v?: number | null }) {
 
 function GroupTable({ g, onOpen }: { g: any; onOpen: (s: string) => void }) {
   const fx = g.group === 'Currencies';
+  const allYield = g.rows.length > 0 && g.rows.every((r: any) => r.is_yield);     // rates pane also holds VIX / MOVE
   return (
     <table className="w-full text-[11px] leading-[18px]">
-      <thead><tr><th className={cn(th, 'text-left')}>Security</th><th className={cn(th, 'text-right')}>{g.is_yield ? 'Yield' : 'Last'}</th>
-        <th className={cn(th, 'text-right')}>{g.is_yield ? 'Chg bp' : '%Chg'}</th><th className={cn(th, 'text-right hidden sm:table-cell')}>YTD</th><th className={cn(th, 'hidden md:table-cell')} /></tr></thead>
+      <thead><tr><th className={cn(th, 'text-left')}>Security</th><th className={cn(th, 'text-right')}>{allYield ? 'Yield' : 'Last'}</th>
+        <th className={cn(th, 'text-right')} title={g.is_yield ? 'Yields: change in bp · others: % change' : undefined}>{allYield ? 'Chg bp' : g.is_yield ? 'Chg' : '%Chg'}</th><th className={cn(th, 'text-right hidden sm:table-cell')}>YTD</th><th className={cn(th, 'hidden md:table-cell')} /></tr></thead>
       <tbody>{g.rows.map((r: any) => (
         <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="cursor-pointer hover:bg-surface-3 odd:bg-surface-2/40" title={`${r.name} — ${r.symbol}`}>
           <td className={cn(td, 'text-text-primary max-w-[11rem] truncate')}>{r.name}<span className="ml-1 text-text-tertiary">{toTerminal(r.symbol)}</span></td>
-          <td className={cn(td, 'text-right font-mono text-text-primary')}><Flash value={r.price}>{r.price == null ? '—' : g.is_yield ? r.price.toFixed(3) : fmtPrice(r.price, fx ? 'FX' : undefined)}</Flash></td>
+          <td className={cn(td, 'text-right font-mono text-text-primary')}><Flash value={r.price}>{r.price == null ? '—' : r.is_yield ? `${r.price.toFixed(3)}%` : fmtPrice(r.price, fx ? 'FX' : undefined)}</Flash></td>
           <td className={cn(td, 'text-right')}>{r.is_yield ? <Bp v={r.change_1d_bp} /> : <Chg v={r.change_1d} />}</td>
           <td className={cn(td, 'text-right hidden sm:table-cell')}>{r.is_yield ? <Bp v={r.change_ytd_bp} /> : <Chg v={r.change_ytd} d={1} />}</td>
           <td className={cn(td, 'hidden md:table-cell w-16')}><Spark values={r.spark} /></td>

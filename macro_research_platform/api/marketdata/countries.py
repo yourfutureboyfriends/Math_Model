@@ -66,7 +66,7 @@ NUMERIC_TO_ISO2 = {c["numeric"]: c["iso2"] for c in COUNTRIES}
 # Main local equity index per market (Yahoo symbols)
 MAIN_INDEX: Dict[str, Tuple[str, str]] = {
     "US": ("^GSPC", "S&P 500"), "CA": ("^GSPTSE", "S&P/TSX"), "MX": ("^MXX", "IPC Mexico"), "BR": ("^BVSP", "Ibovespa"),
-    "AR": ("^MERV", "Merval"), "CL": ("^IPSA", "S&P IPSA"), "GB": ("^FTSE", "FTSE 100"), "DE": ("^GDAXI", "DAX"), "FR": ("^FCHI", "CAC 40"),
+    "AR": ("^MERV", "Merval"), "CL": ("^IPSA", "S&P IPSA"), "CO": ("ICOLCAP.CL", "MSCI COLCAP (iShares ETF)"), "GB": ("^FTSE", "FTSE 100"), "DE": ("^GDAXI", "DAX"), "FR": ("^FCHI", "CAC 40"),
     "IT": ("FTSEMIB.MI", "FTSE MIB"), "ES": ("^IBEX", "IBEX 35"), "NL": ("^AEX", "AEX"), "CH": ("^SSMI", "SMI"), "SE": ("^OMX", "OMX Stockholm 30"),
     "NO": ("OBX.OL", "OBX"), "DK": ("^OMXC25", "OMX Copenhagen 25"), "FI": ("^OMXH25", "OMX Helsinki 25"), "BE": ("^BFX", "BEL 20"),
     "AT": ("^ATX", "ATX"), "IE": ("^ISEQ", "ISEQ Overall"), "PT": ("PSI20.LS", "PSI"), "GR": ("GD.AT", "Athens General"),
@@ -119,11 +119,19 @@ def _closes(symbols: List[str], period: str = "13mo"):
         return None
 
 
+# Hard pegs (local currency per USD). Yahoo's history for these thin pairs is unreliable (SAR=X
+# printed 3.63 for weeks against a 3.75 peg), so the official rate is shown with no move.
+HARD_PEGS = {"SAR": 3.75, "AED": 3.6725, "QAR": 3.64, "BHD": 0.376, "OMR": 0.3845, "JOD": 0.709, "PAB": 1.0, "BSD": 1.0,
+             "BMD": 1.0, "BBD": 2.0, "BZD": 2.0, "XCD": 2.7, "AWG": 1.79, "ANG": 1.79, "DJF": 177.721, "KYD": 0.82, "ERN": 15.0}
+
+
 def _moves(df, sym: str) -> Optional[Dict[str, Any]]:
     try:
         c = df[sym]["Close"].dropna()
     except Exception:
         return None
+    if sym.endswith("=X"):        # Yahoo's weekend prints on thin FX pairs are junk (IQD 1,308 → 1,511 on a Saturday)
+        c = c[c.index.dayofweek < 5]
     if len(c) < 30:
         return None
     last = float(c.iloc[-1])
@@ -240,6 +248,9 @@ def world_data() -> Dict[str, Any]:
             rec["index"] = f["index"][iso]
         if c["currency"] == "USD":
             rec["fx"] = {"symbol": None, "per_usd": 1.0, "change_1d": 0.0, "change_1m": 0.0, "change_ytd": 0.0, "change_1y": 0.0}
+        elif c["currency"] in HARD_PEGS:
+            rec["fx"] = {"symbol": None, "per_usd": HARD_PEGS[c["currency"]], "pegged": True,
+                         "change_1d": 0.0, "change_1m": 0.0, "change_ytd": 0.0, "change_1y": 0.0}
         elif c["currency"] in f["fx"]:
             rec["fx"] = f["fx"][c["currency"]]
         rec.update(s["imf"].get(iso, {}))

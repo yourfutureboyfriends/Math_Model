@@ -38,8 +38,14 @@ def _num(x) -> Optional[float]:
     return v if math.isfinite(v) else None
 
 
-def bars(symbol: str, interval: str = "1d", period: str = "1y", start: str | None = None, end: str | None = None) -> Dict[str, Any]:
-    """OHLCV bars for a preset period, or for a custom start/end date range (YYYY-MM-DD)."""
+_WARM_DAYS = {"1d": 1.5, "1wk": 7.3, "1mo": 30.6}     # calendar days per bar, for the moving-average warm-up
+
+
+def bars(symbol: str, interval: str = "1d", period: str = "1y", start: str | None = None, end: str | None = None,
+         warmup: int = 0) -> Dict[str, Any]:
+    """OHLCV bars for a preset period, or for a custom start/end date range (YYYY-MM-DD).
+    `warmup` > 0 also returns about that many bars before the window (daily and longer bars)
+    so moving averages are defined from its first bar; `first_visible` marks where it begins."""
     from datetime import date, timedelta
     sym = (symbol or "").strip().upper()
     if not sym:
@@ -54,7 +60,13 @@ def bars(symbol: str, interval: str = "1d", period: str = "1y", start: str | Non
         period = f"{start}..{d1}"
     elif not allowed(interval, period):
         raise ValueError(f"{interval} bars are available for: {', '.join(allowed_periods(interval)) or 'none'}")
-    key = (sym, interval, period)
+    warmup = max(0, min(int(warmup or 0), 400)) if interval in _WARM_DAYS and period != "max" else 0
+    vis_start = None
+    if warmup:
+        today = date.today()
+        vis_start = (date.fromisoformat(start) if start else date(today.year, 1, 1) if period == "ytd"
+                     else today - timedelta(days=_PERIOD_DAYS[period]))
+    key = (sym, interval, period, warmup)
     ttl = 60 if interval in _MAX_DAYS else 600
     with _lock:
         hit = _CACHE.get(key)
@@ -62,7 +74,11 @@ def bars(symbol: str, interval: str = "1d", period: str = "1y", start: str | Non
             return hit[1]
     import yfinance as yf
     t = yf.Ticker(sym)
-    if start:   # yfinance's end is exclusive: add a day so the chosen end date is included
+    if vis_start is not None:
+        d_end = date.fromisoformat(period.split("..")[1]) if start else date.today()
+        df = t.history(start=str(vis_start - timedelta(days=int(warmup * _WARM_DAYS[interval]) + 5)),
+                       end=str(d_end + timedelta(days=1)), interval=interval, auto_adjust=True, prepost=False)
+    elif start:   # yfinance's end is exclusive: add a day so the chosen end date is included
         df = t.history(start=start, end=str(date.fromisoformat(period.split("..")[1]) + timedelta(days=1)), interval=interval,
                        auto_adjust=interval not in _MAX_DAYS, prepost=False)
     else:
@@ -84,7 +100,13 @@ def bars(symbol: str, interval: str = "1d", period: str = "1y", start: str | Non
         ccy, tz = fi.get("currency"), fi.get("timezone")
     except Exception:
         ccy, tz = None, None
-    out = {"symbol": sym, "interval": interval, "period": period, "intraday": intraday, "currency": ccy,
+    first_visible = 0
+    if vis_start is not None:
+        vs = vis_start.isoformat()
+        first_visible = next((i for i, b in enumerate(out_bars) if b["t"] >= vs), len(out_bars))
+        if first_visible >= len(out_bars):
+            raise LookupError(f"no {interval} data for {sym} in the chosen window")
+    out = {"symbol": sym, "interval": interval, "period": period, "intraday": intraday, "currency": ccy, "first_visible": first_visible,
            "timezone": tz, "bars": out_bars, "allowed_periods": allowed_periods(interval)}
     with _lock:
         _CACHE[key] = (time.time(), out)

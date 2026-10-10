@@ -101,12 +101,20 @@ def _info(symbol: str) -> Dict[str, Any]:
     return _cached(f"info:{symbol}", 60, fetch)
 
 
+def _sane_yield(fwd: Optional[float], trailing: Optional[float]) -> Optional[float]:
+    """Yahoo's forward yield keeps the pre-split dividend rate for a while after a split
+    (Tokio Marine showed 25% after its 10:1 split); fall back to the trailing yield then."""
+    if fwd is not None and fwd > 0.15 and trailing is not None and trailing < fwd / 3:
+        return trailing
+    return fwd
+
+
 def div_yield(i: Dict[str, Any]) -> Optional[float]:
     """Dividend yield as a decimal. Yahoo's `dividendYield` is always in percent (0.32 = 0.32%,
     2.42 = 2.42%); funds carry a decimal `yield` instead."""
     dy = _f(i.get("dividendYield"))
     if dy is not None:
-        return dy / 100
+        return _sane_yield(dy / 100, _f(i.get("trailingAnnualDividendYield")))
     y = _f(i.get("yield"))
     return y if y is not None else _f(i.get("trailingAnnualDividendYield"))
 
@@ -141,8 +149,8 @@ def quote(symbol: str) -> Dict[str, Any]:
     return {"symbol": s, "name": i.get("longName") or i.get("shortName") or s, "type": TYPE_LABEL.get(t, t.title()),
             "exchange": i.get("fullExchangeName") or i.get("exchange"), "currency": i.get("currency"),
             "price": price, "previous_close": prev, "change": chg, "change_pct": chg / prev if chg is not None else None,
-            "open": _f(i.get("regularMarketOpen")), "day_high": _f(i.get("regularMarketDayHigh")),
-            "day_low": _f(i.get("regularMarketDayLow")), "volume": _f(i.get("regularMarketVolume")),
+            "open": _f(i.get("regularMarketOpen")) or None, "day_high": _f(i.get("regularMarketDayHigh")) or None,     # 0 = no range (yield indices)
+            "day_low": _f(i.get("regularMarketDayLow")) or None, "volume": _f(i.get("regularMarketVolume")),
             "avg_volume": _f(i.get("averageVolume")), "week52_high": _f(i.get("fiftyTwoWeekHigh")),
             "week52_low": _f(i.get("fiftyTwoWeekLow")), "market_cap": _f(i.get("marketCap")),
             "market_state": i.get("marketState"), "exchange_timezone": i.get("exchangeTimezoneName"),
@@ -171,12 +179,16 @@ def _quote_extras(i: Dict[str, Any], price: Optional[float], prev: Optional[floa
     dy = div_yield(i)
     pre, post = _f(i.get("preMarketPrice")), _f(i.get("postMarketPrice"))
     bid, ask = _f(i.get("bid")), _f(i.get("ask"))
+    if bid and ask and bid > ask:          # stale crossed book outside the session — show neither side
+        bid = ask = None
+    fund = (i.get("quoteType") or "").upper() in ("ETF", "MUTUALFUND", "INDEX", "CURRENCY", "FUTURE", "CRYPTOCURRENCY")
+    pe = lambda k: None if fund else (lambda v: v if v is not None and 0 < v < 5000 else None)(_f(i.get(k)))   # negative earnings → NM
     return {
         "bid": bid if bid else None, "ask": ask if ask else None,
         "bid_size": _f(i.get("bidSize")) or None, "ask_size": _f(i.get("askSize")) or None,
         "pre_market_price": pre, "pre_market_change_pct": (pre / prev - 1) if pre and prev else None,
         "post_market_price": post, "post_market_change_pct": (post / price - 1) if post and price else None,
-        "trailing_pe": _f(i.get("trailingPE")), "forward_pe": _f(i.get("forwardPE")), "price_to_book": _f(i.get("priceToBook")),
+        "trailing_pe": pe("trailingPE"), "forward_pe": pe("forwardPE"), "price_to_book": _f(i.get("priceToBook")),
         "eps_ttm": _f(i.get("epsTrailingTwelveMonths")) or _f(i.get("trailingEps")), "dividend_yield": dy,
         "beta": _f(i.get("beta")), "shares_outstanding": _f(i.get("sharesOutstanding")), "float_shares": flt,
         "turnover": price * vol if price and vol else None,
@@ -277,6 +289,8 @@ def overview() -> Dict[str, Any]:
             for s, label in items:
                 try:
                     c = df[s]["Close"].dropna()
+                    if s.endswith("=X") or s.endswith("=F") or s.startswith("^"):
+                        c = c[c.index.dayofweek < 5]      # no weekend prints outside crypto
                 except Exception:
                     c = pd.Series(dtype=float)
                 if len(c) < 2:
@@ -544,7 +558,8 @@ def _rows(quotes: List[Dict]) -> List[Dict[str, Any]]:
              "change_pct": (_f(q.get("regularMarketChangePercent")) or 0) / 100 if q.get("regularMarketChangePercent") is not None else None,
              "volume": _f(q.get("regularMarketVolume")), "market_cap": _f(q.get("marketCap")), "currency": q.get("currency"),
              "exchange": q.get("fullExchangeName") or q.get("exchange"), "pe": _f(q.get("trailingPE")),
-             "dividend_yield": (_f(q.get("dividendYield")) / 100) if _f(q.get("dividendYield")) is not None else None,
+             "dividend_yield": _sane_yield(_f(q.get("dividendYield")) / 100 if _f(q.get("dividendYield")) is not None else None,
+                                           _f(q.get("trailingAnnualDividendYield"))),
              "sector": q.get("sector")}
             for q in quotes if q.get("symbol")]
 
@@ -560,7 +575,7 @@ def movers(region: str = "us", kind: str = "gainers", count: int = 25) -> Dict[s
         from yfinance import EquityQuery as Q
         try:
             if region == "us":
-                res = yf.screen({"gainers": "day_gainers", "losers": "day_losers", "active": "most_actives"}[kind], count=count)
+                res = yf.screen({"gainers": "day_gainers", "losers": "day_losers", "active": "most_actives"}[kind], count=max(count, 50))
             else:
                 q = Q("and", [Q("is-in", ["exchange", *MAIN_EXCHANGES[region]]),          # exchange, not Yahoo's region tag
                               Q("gt", ["intradaymarketcap", 2e9 * usd_to_local(region)])])     # ≈ $2bn floor
@@ -568,9 +583,15 @@ def movers(region: str = "us", kind: str = "gainers", count: int = 25) -> Dict[s
                 res = yf.screen(q, sortField=field, sortAsc=(kind == "losers"), size=250)
         except Exception as e:
             raise Upstream(f"Screener unavailable: {e}")
-        return {"region": region, "region_name": REGIONS[region], "kind": kind,
-                "rows": [r for r in _primary_only(_rows(res.get("quotes") or []), region)
-                         if not _is_secondary_line(r["symbol"])][:count],
+        rows = [r for r in _primary_only(_rows(res.get("quotes") or []), region) if not _is_secondary_line(r["symbol"])]
+        # Yahoo sorts on a lagging snapshot while the rows carry live values — re-rank on what's shown.
+        if kind == "active":
+            rows.sort(key=lambda r: -(r["volume"] or 0))
+        else:
+            sign = 1 if kind == "gainers" else -1
+            rows = sorted([r for r in rows if r["change_pct"] is not None and r["change_pct"] * sign > 0],
+                          key=lambda r: -sign * r["change_pct"])
+        return {"region": region, "region_name": REGIONS[region], "kind": kind, "rows": rows[:count],
                 "source": "Yahoo Finance screener", "note": None if region == "us" else "Companies above ~$2bn market cap, primary listings on the main exchange."}
     return _cached(f"movers:{region}:{kind}:{count}", 300, fetch)
 
@@ -700,7 +721,12 @@ def screen(regions: List[str], sector: Optional[str] = None, sort: str = "market
         if len(regs) == 1:
             rows = _primary_only(rows, regs[0])
         rows = [r for r in rows if not _is_secondary_line(r["symbol"])
-                and not (sort == "market_cap" and not r.get("market_cap"))][:size]     # drop warrants/notes with no market value
+                and not (sort == "market_cap" and not r.get("market_cap"))]     # drop warrants/notes with no market value
+        col = {"change": "change_pct"}.get(sort, sort)
+        if col in ("market_cap", "change_pct", "volume", "pe", "dividend_yield"):    # Yahoo ranks on a lagging snapshot
+            has = [r for r in rows if r.get(col) is not None]
+            rows = sorted(has, key=lambda r: r[col], reverse=not ascending) + [r for r in rows if r.get(col) is None]
+        rows = rows[:size]
         return {"total": total, "rows": rows, "offset": offset,
                 "source": "Yahoo Finance global screener"}
     return _cached(key, 300, fetch)

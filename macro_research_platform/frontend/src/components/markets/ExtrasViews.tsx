@@ -180,8 +180,8 @@ export function IpoView({ onOpen }: { onOpen: (s: string) => void }) {
             <thead className="sticky top-0 bg-surface-1"><tr className="text-[10px] uppercase text-text-tertiary"><th className="text-left px-2 py-1 font-normal">Date</th><th className="text-left font-normal">Ticker</th>
               <th className="text-left font-normal">Company</th><th className="text-left font-normal">Exchange</th><th className="text-right font-normal">Price / range</th>
               <th className="text-right font-normal">Shares</th><th className="text-right font-normal">Deal size</th><th className="text-left px-2 font-normal">Status</th></tr></thead>
-            <tbody>{rows.map((x) => (
-              <tr key={x.symbol + x.date} className={cn('border-t border-border-subtle', x.date === today && 'bg-surface-3')}>
+            <tbody>{rows.map((x, i) => (
+              <tr key={`${x.symbol ?? x.name}-${x.date}-${i}`} className={cn('border-t border-border-subtle', x.date === today && 'bg-surface-3')}>
                 <td className="px-2 py-0.5 font-mono text-text-secondary">{x.date}</td>
                 <td>{x.symbol ? <button onClick={() => onOpen(x.symbol)} className="font-mono text-bloomberg hover:underline">{x.symbol}</button> : '—'}</td>
                 <td className="text-text-primary">{x.name}</td><td className="text-text-tertiary">{x.exchange}</td>

@@ -65,7 +65,7 @@ export function RegionMonitor({ onOpen, onGo }: { onOpen: (s: string) => void; o
                 <td className="text-right text-text-primary">{c.index ? fmtPrice(c.index.price) : c.etf ? fmtPrice(c.etf.price) : ''}</td>
                 <td className="text-right"><Chg v={c.index?.change_1d ?? c.change_1d} /></td>
                 <td className="text-right"><Chg v={c.index?.change_ytd ?? c.change_ytd} d={1} /></td>
-                <td className="text-right">{c.currency === 'USD' ? <span className="text-text-tertiary">USD</span> : <Chg v={c.fx?.change_ytd} d={1} />}</td>
+                <td className="text-right">{c.currency === 'USD' ? <span className="text-text-tertiary">USD</span> : c.fx?.pegged ? <span className="text-text-tertiary" title={`Pegged at ${c.fx.per_usd} per USD`}>peg</span> : <Chg v={c.fx?.change_ytd} d={1} />}</td>
                 <td className="text-right">{c.yield_10y != null ? c.yield_10y.toFixed(2) : ''}</td>
                 <td className="text-right">{pol(c.iso2) != null ? pol(c.iso2).toFixed(2) : ''}</td>
                 <td className="text-right">{pct(c.inflation)}</td><td className="text-right">{pct(c.gdp_growth)}</td>
@@ -144,7 +144,7 @@ export function CountryView({ iso, onOpen, onGo }: { iso?: string; onOpen: (s: s
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-1.5">
         {stat(c.index?.label ?? 'Equity index', c.index ? fmtPrice(c.index.price) : c.etf ? `${fmtPrice(c.etf.price)} (${c.etf.etf})` : '—', c.index ? <><Chg v={c.index.change_1d} /> · YTD <Chg v={c.index.change_ytd} d={1} /></> : null)}
-        {stat(`${c.currency} per USD`, c.fx ? fmtPrice(c.fx.per_usd, 'FX') : '1.00', c.fx && c.currency !== 'USD' ? <>vs $ YTD <Chg v={c.fx.change_ytd} d={1} /></> : null)}
+        {stat(`${c.currency} per USD`, c.fx ? fmtPrice(c.fx.per_usd, 'FX') : '1.00', c.fx?.pegged ? 'pegged to the US dollar' : c.fx && c.currency !== 'USD' ? <>vs $ YTD <Chg v={c.fx.change_ytd} d={1} /></> : null)}
         {stat('10-year yield', c.yield_10y != null ? `${c.yield_10y.toFixed(2)}%` : '—', c.yield_source)}
         {stat('Policy rate', pol?.policy?.rate != null ? `${pol.policy.rate.toFixed(2)}%` : '—', pol ? `${pol.cb ?? ''}${pol.policy?.stance ? ` · ${pol.policy.stance}` : ''}` : 'not in the macro model')}
         {stat('Inflation', pct(c.inflation), `next year ${pct(c.inflation_next)}`)}

@@ -68,11 +68,19 @@ def earnings(symbol: str) -> Dict[str, Any]:
             dates = None
         hist = []
         upcoming = []
+        today = pd.Timestamp.today().strftime("%Y-%m-%d")
         if dates is not None and not dates.empty:
             for idx, r in dates.iterrows():
                 rec = {"date": idx.strftime("%Y-%m-%d"), "eps_estimate": _f(r.get("EPS Estimate")),
                        "eps_reported": _f(r.get("Reported EPS")), "surprise_pct": _f(r.get("Surprise(%)"))}
-                (hist if rec["eps_reported"] is not None else upcoming).append(rec)
+                if rec["eps_reported"] is not None:
+                    hist.append(rec)
+                elif rec["date"] >= today:            # a past date with no reported EPS isn't "upcoming"
+                    upcoming.append(rec)
+        note = None
+        if hist and hist[0]["date"] < (pd.Timestamp.today() - pd.Timedelta(days=550)).strftime("%Y-%m-%d"):
+            note = f"Yahoo's reported-EPS history for {s} stops in {hist[0]['date'][:4]}; older quarters are hidden as out of date."
+            hist = []
         est = {}
         for key, attr in (("eps", "earnings_estimate"), ("revenue", "revenue_estimate"), ("eps_trend", "eps_trend"),
                           ("eps_revisions", "eps_revisions"), ("growth", "growth_estimates")):
@@ -80,11 +88,13 @@ def earnings(symbol: str) -> Dict[str, Any]:
                 est[key] = _df_records(getattr(t, attr), "period")
             except Exception:
                 est[key] = []
+        hist = hist[:16]
         beats = [h for h in hist if h["surprise_pct"] is not None]
-        return {"symbol": s, "history": hist[:16], "upcoming": sorted(upcoming, key=lambda x: x["date"])[:2],
+        return {"symbol": s, "history": hist, "upcoming": sorted(upcoming, key=lambda x: x["date"])[:2],
                 "estimates": est, "beat_rate": round(sum(1 for h in beats if h["surprise_pct"] > 0) / len(beats), 3) if beats else None,
                 "avg_surprise_pct": round(float(np.mean([h["surprise_pct"] for h in beats])), 2) if beats else None,
-                "currency": _info(s).get("financialCurrency") or _info(s).get("currency"), "source": "Yahoo Finance (analyst consensus)"}
+                "currency": _info(s).get("financialCurrency") or _info(s).get("currency"), "note": note,
+                "source": "Yahoo Finance (analyst consensus)"}
     out = _cached(f"ern:{s}", 3600, fetch)
     if not out["history"] and not out["estimates"].get("eps"):
         raise NotFound(f"No earnings data for {s} (not a covered company).")
@@ -236,6 +246,7 @@ def time_to_expiry(info: Dict[str, Any], expiry: str) -> Dict[str, Any]:
         sessions += min(1.0, (close - max(qt, open_)).total_seconds() / (6.5 * 3600))
     sessions = max(sessions, 0.05)                      # expiry-day floor: ~20 minutes of trading
     return {"T": sessions / TRADING_DAYS, "sessions": sessions, "calendar_days": (pd.Timestamp(exp) - pd.Timestamp(qd)).days,
+            "days_left": max(0, (pd.Timestamp(exp) - pd.Timestamp(now.date())).days),       # from today, as displayed
             "quote_time": qt.strftime("%Y-%m-%d %H:%M %Z")}
 
 
@@ -290,7 +301,8 @@ def implied_vol(price: np.ndarray, S: float, K: np.ndarray, T: float, r: float, 
         p = bs_price(S, K, T, r, q, mid, call)
         hi = np.where(p > price, mid, hi)
         lo = np.where(p > price, lo, mid)
-    return np.where(ok, (lo + hi) / 2, np.nan)
+    iv = (lo + hi) / 2
+    return np.where(ok & (iv < 4.99), iv, np.nan)        # pinned at the 500% cap = no solution (stale deep-ITM/OTM print)
 
 
 def _risk_free() -> float:
@@ -372,7 +384,7 @@ def options(symbol: str, expiry: Optional[str] = None) -> Dict[str, Any]:
                 smile.append({"strike": k, "iv": row["iv"], "moneyness": round(k / S, 4)})
         atm = min(smile, key=lambda x: abs(x["strike"] - S)) if smile else None
         return {"symbol": s, "underlying": S, "currency": i.get("currency"), "expiry": exp, "expirations": exps,
-                "days": tte["calendar_days"], "sessions": round(tte["sessions"], 2), "quote_time": tte["quote_time"],
+                "days": tte["days_left"], "sessions": round(tte["sessions"], 2), "quote_time": tte["quote_time"],
                 "time_basis": "trading time: sessions to expiry ÷ 252 (theta per trading day)", "rate": r, "dividend_yield": q, "calls": sides["calls"], "puts": sides["puts"],
                 "put_call_oi": round(oi_p / oi_c, 3) if oi_c else None, "put_call_volume": round(vol_p / vol_c, 3) if vol_c else None,
                 "max_pain": pain, "atm_iv": atm["iv"] if atm else None, "smile": smile,

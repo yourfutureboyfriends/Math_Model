@@ -129,7 +129,7 @@ export function AlertsView({ seed }: { seed?: string }) {
       </Panel>
       <ErrorBox msg={err} />
       <Panel title="Your alerts" right={<button onClick={check} disabled={busy} className="text-2xs text-text-tertiary hover:text-text-primary disabled:opacity-40">Check now</button>}>
-        {!data ? <Loading /> : data.alerts.length === 0 ? <div className="text-2xs text-text-tertiary">No alerts yet.</div> : (
+        {!data ? (err ? null : <Loading />) : data.alerts.length === 0 ? <div className="text-2xs text-text-tertiary">No alerts yet.</div> : (
           <table className="w-full text-xs"><tbody>{data.alerts.map((a: any) => (
             <tr key={a.id} className="border-t border-border-subtle">
               <td className="py-1.5 font-mono text-text-primary">{a.symbol}</td>
@@ -222,7 +222,7 @@ export function JournalView({ seed, onOpen }: { seed?: string; onOpen: (s: strin
         </form>
       </Panel>
       <ErrorBox msg={err} />
-      {!data ? <Loading /> : data.entries.length === 0 ? <Panel><div className="text-2xs text-text-tertiary">No entries yet. Writing down why you take a trade — and reviewing it later — is one of the most reliable ways to improve.</div></Panel> : (
+      {!data ? (err ? null : <Loading />) : data.entries.length === 0 ? <Panel><div className="text-2xs text-text-tertiary">No entries yet. Writing down why you take a trade — and reviewing it later — is one of the most reliable ways to improve.</div></Panel> : (
         <div className="space-y-2">{data.entries.map((r: any) => (
           <div key={r.id} className="p-3 bg-surface-1 border border-border">
             <div className="flex flex-wrap items-center gap-2 text-2xs">

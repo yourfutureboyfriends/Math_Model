@@ -202,7 +202,7 @@ def inputs(symbol: str) -> Dict[str, Any]:
     rev, eq = out.get("revenue"), out.get("equity_book")
     ic = (eq or 0) + (debt or 0) - (out.get("cash") or 0) if eq is not None else None
     stc = rev / ic if rev and ic and ic > 0 else None
-    out["sales_to_capital"] = round(min(5.0, max(0.5, stc)), 2) if stc else 1.5
+    out["sales_to_capital"] = round(min(5.0, max(0.5, stc)), 2) if stc else None
     out["invested_capital"] = ic
     # Starting growth: analysts' consensus revenue growth for next fiscal year (then this year),
     # else Yahoo's latest year-on-year — bounded to −10%…30%.
@@ -229,7 +229,8 @@ def inputs(symbol: str) -> Dict[str, Any]:
 
 def _balance_extras(symbol: str) -> Dict[str, Optional[float]]:
     """Non-operating stakes and captive-finance receivables from the latest balance sheet."""
-    out: Dict[str, Optional[float]] = {"investments": None, "nc_receivables": None, "receivables": None, "book_equity": None}
+    out: Dict[str, Optional[float]] = {"investments": None, "nc_receivables": None, "receivables": None, "book_equity": None,
+                                       "minority_interest": None}
     try:
         import yfinance as yf
         bs = yf.Ticker(symbol).balance_sheet
@@ -247,6 +248,7 @@ def _balance_extras(symbol: str) -> Dict[str, Optional[float]]:
         out["nc_receivables"] = get("Non Current Accounts Receivable")
         out["receivables"] = get("Receivables") or get("Accounts Receivable")
         out["book_equity"] = get("Common Stock Equity") or get("Stockholders Equity")
+        out["minority_interest"] = get("Minority Interest")
     except Exception:
         pass
     return out
@@ -277,10 +279,23 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
     out["debt_total"] = out.get("debt")
     if fin:
         out["debt"] = (out.get("debt") or 0.0) - fin
-        out["debt_source"] = f"{out.get('debt_source')}; less {fin:,.0f} of finance receivables funded by captive-finance debt"
+        out["debt_source"] = f"{out.get('debt_source')}; less {fin / 1e12:,.2f}T of finance receivables funded by captive-finance debt" if fin >= 1e12 \
+            else f"{out.get('debt_source')}; less {fin / 1e9:,.2f}B of finance receivables funded by captive-finance debt"
     out["investments"] = ex.get("investments")
     if out.get("equity_book") is None:
         out["equity_book"] = ex.get("book_equity")
+    if out.get("minority_interest") is None:          # Yahoo-sourced (non-US) firms: read it off the balance sheet
+        out["minority_interest"] = ex.get("minority_interest")
+    # Invested capital on the operating (industrial) balance sheet — after the captive-finance
+    # carve-out and with book equity now known for non-US firms — drives sales-to-capital and ROIC.
+    eq = out.get("equity_book")
+    if eq is not None:
+        ic = eq + (out.get("debt") or 0.0) - (out.get("cash") or 0.0)
+        out["invested_capital"] = ic
+        if rev and ic > 0:
+            out["sales_to_capital"] = round(min(5.0, max(0.5, rev / ic)), 2)
+            if out.get("ebit"):
+                out["roic"] = round(out["ebit"] * (1 - (out.get("tax_effective") or out["tax_marginal"])) / ic, 4)
     out["net_income"] = _f(info.get("netIncomeToCommon"))
     pr = _f(info.get("payoutRatio"))
     out["payout_ratio"] = min(1.0, max(0.0, pr)) if pr is not None else None
@@ -305,12 +320,18 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
     out["sales_to_capital_firm"] = out.get("sales_to_capital")
     stc_ind = ind.get("sales_to_capital")
     if stc_ind:
-        firm = out["sales_to_capital_firm"] or stc_ind
-        # shrink the firm's ratio halfway toward its industry (one year of book capital is noisy)
-        out["sales_to_capital"] = round(min(8.0, max(0.5, (firm + stc_ind) / 2)), 2)
-        out["sales_to_capital_source"] = f"average of the firm ({firm:.2f}) and {ind['industry']} ({stc_ind:.2f})"
+        firm = out["sales_to_capital_firm"]
+        if firm:
+            # shrink the firm's ratio halfway toward its industry (one year of book capital is noisy)
+            out["sales_to_capital"] = round(min(8.0, max(0.5, (firm + stc_ind) / 2)), 2)
+            out["sales_to_capital_source"] = f"average of the firm ({firm:.2f}) and {ind['industry']} ({stc_ind:.2f})"
+        else:
+            out["sales_to_capital"] = round(min(8.0, max(0.5, stc_ind)), 2)
+            out["sales_to_capital_source"] = f"{ind['industry']} average ({stc_ind:.2f}) — no book capital for the firm"
+    if not out.get("sales_to_capital"):
+        out["sales_to_capital"], out["sales_to_capital_source"] = 1.5, "default 1.5 (no firm or industry data)"
 
-    # Growth path: year 1 = current fiscal year consensus, years 2–5 = next fiscal year consensus
+    # Growth path: year 1 = current fiscal year consensus, years 2–3 = next fiscal year consensus
     # Growth is recomputed from the estimate levels: Yahoo's own "growth" column uses a wrong
     # year-ago base for many non-US listings (e.g. +195% for Toyota).
     g1 = g2 = None
@@ -351,7 +372,7 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
     if g1 is not None or g2 is not None:
         out["growth_y1"] = clip(g1 if g1 is not None else g2)
         out["growth"] = clip(g2 if g2 is not None else g1)
-        out["growth_source"] = "analyst consensus revenue growth: this fiscal year (year 1), next fiscal year (years 2–5)"
+        out["growth_source"] = "analyst consensus revenue growth: this fiscal year (year 1), next fiscal year (years 2–3), then a fade to terminal growth"
     else:
         out["growth_y1"] = out.get("growth")
 
@@ -414,7 +435,7 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
     w = wacc(inp, beta, erp, include_leases)
     r = discount if discount is not None else w["wacc"]
     rf = inp.get("risk_free") or 0.04
-    g0 = inp["growth"] if growth is None else growth                     # years 2–5 (or 1–5 when set by hand)
+    g0 = inp["growth"] if growth is None else growth                     # years 2–3 (or 1–3 when set by hand)
     g1 = (inp.get("growth_y1", g0) if growth is None else growth)
     gT = max(0.0, rf) if terminal_growth is None else terminal_growth    # Damodaran: stable growth = risk-free rate
     hg = min(HIGH_GROWTH_YEARS, years - 1)
@@ -520,6 +541,12 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
                       "should be in the currency of the cash flows (adjust it for the inflation difference).")
     if (inp.get("leases") or 0) > 0 and not include_leases:
         checks.append("Operating leases are excluded from debt (enable them for a lease-adjusted value, as Damodaran does).")
+    nonop = (inp.get("cash") or 0) + (inp.get("investments") or 0)
+    if eq > 0 and nonop > 0.35 * eq:
+        checks.append(f"Cash and stakes in other companies are {nonop / eq:.0%} of the equity value"
+                      + (" — with a captive finance arm, part of them back its loan book rather than being free to shareholders"
+                         if inp.get("captive_finance_receivables") else "")
+                      + "; markets usually discount cross-holdings and trapped cash, so treat this part of the value with care.")
     roic_now = inp.get("roic")
     bridge = {"enterprise_value": ev, "debt": -debt, "cash": inp.get("cash") or 0, "investments": inp.get("investments") or 0,
               "minority_interest": -(inp.get("minority_interest") or 0), "equity_value": eq,
@@ -532,6 +559,18 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
                             "sales_to_capital": stc, "ronic": ron, "discount": r, "discount_terminal": rT, "beta_terminal": beta_T, "tax_now": t_now, "tax_terminal": t_term,
                             "mid_year": mid_year, "include_leases": include_leases, "roic_now": roic_now},
             "wacc": w, "net_debt": debt - (inp.get("cash") or 0), "projection": rows, "checks": checks, "price": price}
+
+
+def reverse_bound(inp: Dict[str, Any], **kw) -> Optional[str]:
+    """When reverse() finds no root: 'below' if even −60% growth is worth more than the price,
+    'above' if even +150% growth is worth less."""
+    try:
+        lo, hi = value(inp, growth=-0.6, **kw), value(inp, growth=1.5, **kw)
+    except NotFound:
+        return None
+    if lo["per_share"] is None or hi["per_share"] is None:
+        return None
+    return "below" if lo["per_share"] > lo["price"] else "above" if hi["per_share"] < hi["price"] else None
 
 
 def reverse(inp: Dict[str, Any], **kw) -> Optional[float]:

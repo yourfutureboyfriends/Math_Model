@@ -314,3 +314,20 @@ def test_option_time_to_expiry_uses_trading_sessions():
     wed = pd.Timestamp("2026-10-07 12:45", tz="America/New_York").tz_convert("UTC").timestamp()
     t = security.time_to_expiry({**info, "regularMarketTime": wed}, "2026-10-09")
     assert t["sessions"] == pytest.approx(2.5)
+
+
+def test_forward_yield_falls_back_after_split():
+    """Yahoo keeps the pre-split dividend rate for a while (Tokio Marine: 25% after a 10:1 split)."""
+    from api.marketdata.core import _sane_yield, div_yield
+    assert _sane_yield(0.2509, 0.028) == 0.028
+    assert _sane_yield(0.032, 0.03) == 0.032                 # normal yields untouched
+    assert _sane_yield(0.18, 0.16) == 0.18                   # genuinely high yield, consistent with trailing
+    assert div_yield({"dividendYield": 25.09, "trailingAnnualDividendYield": 0.028}) == 0.028
+
+
+def test_implied_vol_pinned_at_cap_is_no_solution():
+    import numpy as np
+    from api.marketdata.security import implied_vol
+    # a deep-OTM call quoted far above any BSM value: the bisection would pin at 500%
+    iv = implied_vol(np.array([40.0, 2.0]), 100.0, np.array([300.0, 100.0]), 0.05, 0.04, 0.0, True)
+    assert np.isnan(iv[0]) and 0.05 < iv[1] < 1.0

@@ -71,6 +71,7 @@ def fx_matrix(ccys: Optional[List[str]] = None) -> Dict[str, Any]:
         for c, p in pairs.items():
             try:
                 cl = df[p]["Close"].dropna()
+                cl = cl[cl.index.dayofweek < 5]          # weekend prints are stale/junk: compare trading days
                 last[c], prev[c] = float(cl.iloc[-1]), float(cl.iloc[-2])
                 asof = max(asof or cl.index[-1], cl.index[-1])
             except Exception:
@@ -226,6 +227,15 @@ FUTURES = {
     "SI": ("Silver", "CMX", [3, 5, 7, 9, 12]), "HG": ("Copper", "CMX", [3, 5, 7, 9, 12]),
     "ZC": ("Corn", "CBT", [3, 5, 7, 9, 12]), "ZW": ("Wheat", "CBT", [3, 5, 7, 9, 12]), "ZS": ("Soybeans", "CBT", [1, 3, 5, 7, 8, 9, 11]),
     "KC": ("Coffee", "NYB", [3, 5, 7, 9, 12]), "LE": ("Live cattle", "CME", [2, 4, 6, 8, 10, 12]),
+    "PL": ("Platinum", "NYM", [1, 4, 7, 10]), "PA": ("Palladium", "NYM", [3, 6, 9, 12]),
+    "HE": ("Lean hogs", "CME", [2, 4, 5, 6, 7, 8, 10, 12]), "CT": ("Cotton", "NYB", [3, 5, 7, 10, 12]),
+    "SB": ("Sugar No. 11", "NYB", [3, 5, 7, 10]),
+    # financial futures (quarterly)
+    "ES": ("E-mini S&P 500", "CME", [3, 6, 9, 12]), "NQ": ("E-mini Nasdaq-100", "CME", [3, 6, 9, 12]),
+    "YM": ("E-mini Dow", "CBT", [3, 6, 9, 12]), "RTY": ("E-mini Russell 2000", "CME", [3, 6, 9, 12]),
+    "ZT": ("2-year T-note", "CBT", [3, 6, 9, 12]), "ZF": ("5-year T-note", "CBT", [3, 6, 9, 12]),
+    "ZN": ("10-year T-note", "CBT", [3, 6, 9, 12]), "ZB": ("30-year T-bond", "CBT", [3, 6, 9, 12]),
+    "6E": ("Euro FX", "CME", [3, 6, 9, 12]), "6J": ("Japanese yen", "CME", [3, 6, 9, 12]),
 }
 
 
@@ -344,7 +354,7 @@ def news_hub(q: Optional[str] = None, limit: int = 60, region: Optional[str] = N
 # ── MAP: country equity markets via USD-listed MSCI country ETFs ─────────────
 COUNTRY_ETFS = {
     "US": ("SPY", "S&P 500"), "CA": ("EWC", "MSCI Canada"), "MX": ("EWW", "MSCI Mexico"), "BR": ("EWZ", "MSCI Brazil"),
-    "AR": ("ARGT", "MSCI Argentina"), "CL": ("ECH", "MSCI Chile"), "PE": ("EPU", "MSCI Peru"), "CO": ("GXG", "MSCI Colombia"),
+    "AR": ("ARGT", "MSCI Argentina"), "CL": ("ECH", "MSCI Chile"), "PE": ("EPU", "MSCI Peru"), "KW": ("KWT", "MSCI Kuwait"),      # GXG (Colombia) was delisted: Colombia uses ICOLCAP as its index
     "GB": ("EWU", "MSCI UK"), "DE": ("EWG", "MSCI Germany"), "FR": ("EWQ", "MSCI France"), "IT": ("EWI", "MSCI Italy"),
     "ES": ("EWP", "MSCI Spain"), "NL": ("EWN", "MSCI Netherlands"), "CH": ("EWL", "MSCI Switzerland"), "SE": ("EWD", "MSCI Sweden"),
     "NO": ("NORW", "MSCI Norway"), "DK": ("EDEN", "MSCI Denmark"), "FI": ("EFNL", "MSCI Finland"), "BE": ("EWK", "MSCI Belgium"),

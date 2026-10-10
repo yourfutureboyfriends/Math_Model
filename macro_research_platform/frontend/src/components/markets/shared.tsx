@@ -24,19 +24,24 @@ export function useJSON<T = any>(url: string | null, refreshMs = 0) {
   useEffect(() => {
     if (!url) { setData(null); setDataUrl(null); return; }
     let live = true;
-    const load = (first: boolean) => {
-      if (first) { setLoading(true); setError(null); }
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    const load = (first: boolean, attempt = 0) => {
+      if (first && attempt === 0) { setLoading(true); setError(null); }
       fetch(url).then(async (r) => {
         const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(apiError(j, r.status));
+        if (!r.ok) throw Object.assign(new Error(apiError(j, r.status)), { transient: r.status >= 500 });
         return j;
-      }).then((j) => { if (live) { setData(j); setDataUrl(url); setError(null); } })
-        .catch((e) => { if (live && first) { setError(e.message); setData(null); } })   // a failed refresh keeps the last data
-        .finally(() => { if (live && first) setLoading(false); });
+      }).then((j) => { if (live) { setData(j); setDataUrl(url); setError(null); } if (live && first) setLoading(false); })
+        .catch((e) => {
+          if (!live || !first) return;                       // a failed refresh keeps the last data
+          // network blips and 5xx (e.g. the API restarting) are retried with backoff before surfacing
+          if ((e.transient || e instanceof TypeError) && attempt < 3) { retry = setTimeout(() => load(true, attempt + 1), [1500, 4000, 9000][attempt]); return; }
+          setError(e.message); setData(null); setLoading(false);
+        });
     };
     load(true);
     const t = refreshMs > 0 ? setInterval(() => { if (document.visibilityState === 'visible') load(false); }, refreshMs) : null;
-    return () => { live = false; if (t) clearInterval(t); };
+    return () => { live = false; if (t) clearInterval(t); if (retry) clearTimeout(retry); };
   }, [url, refreshMs]);
   // `current` is false while `data` still belongs to a previous url (e.g. the last symbol)
   return { data, error, loading, current: data != null && dataUrl === url };

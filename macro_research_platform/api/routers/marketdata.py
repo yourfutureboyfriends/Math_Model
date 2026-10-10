@@ -172,8 +172,10 @@ async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le
               ronic=ronic, discount=discount, beta=beta, erp=erp, include_leases=include_leases, mid_year=mid_year)
     val = await _run(dcf.value, inp, **kw)
     sens = await _run(dcf.sensitivity, inp, val, **kw)
-    implied = await _run(dcf.reverse, inp, **{k: v for k, v in kw.items() if k != "growth"})
-    return {"inputs": inp, "valuation": val, "sensitivity": sens, "market_implied_growth": implied, "model": "fcff",
+    rkw = {k: v for k, v in kw.items() if k != "growth"}
+    implied = await _run(dcf.reverse, inp, **rkw)
+    bound = await _run(dcf.reverse_bound, inp, **rkw) if implied is None else None
+    return {"inputs": inp, "valuation": val, "sensitivity": sens, "market_implied_growth": implied, "market_implied_growth_bound": bound, "model": "fcff",
             "method": "FCFF at WACC with mid-year discounting; terminal value = NOPAT × (1 − g/RONIC) ÷ (WACC − g). "
                       "SBC is expensed (inside GAAP operating income). Inputs from Damodaran's market data (implied ERP, "
                       "industry betas, country risk). Sources: Damodaran (NYU Stern); Koller, Goedhart & Wessels, Valuation (McKinsey)."}

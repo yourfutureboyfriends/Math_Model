@@ -155,7 +155,7 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
   const tabs = SECURITY_FUNCTIONS.filter((f) => !f.equityOnly || isEquity || (f.code === 'HDS' && isFund));
   const f = findFunction(fn)!;
   if (!d && !q.error) return <Loading label={`Loading ${symbol}…`} />;
-  if (q.error && !d) return <ErrorBox msg={`${q.error} Try the command line to search by name.`} />;
+  if (q.error && !d) return <ErrorBox msg={/HTTP 5\d\d|unavailable|fetch/i.test(q.error) ? `${q.error} The data service may be restarting — reopen the security in a moment.` : `${q.error} Try the command line to search by name.`} />;
   if (!d) return null;
   const watch = async () => { try { const n = await addToWatch(symbol); if (n) setNote(`Added to “${n}”.`); } catch (e: any) { setNote(e.message); } };
   const tk = 'px-2 py-0.5 text-[11px] border border-border hover:border-bloomberg hover:text-bloomberg';

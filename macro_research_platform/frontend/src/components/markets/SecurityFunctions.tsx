@@ -54,14 +54,15 @@ export function ErnView({ symbol }: { symbol: string }) {
     <div className="space-y-3">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <Stat label="Next report" value={up ? up.date : '—'} sub={up?.eps_estimate != null ? `EPS estimate ${n2(up.eps_estimate)} ${data.currency ?? ''}` : 'No date announced'} />
-        <Stat label="Beat rate" value={data.beat_rate != null ? fmtPct(data.beat_rate, 0).replace('+', '') : '—'} sub={`of the last ${data.history.length} reports`} />
+        <Stat label="Beat rate" value={data.beat_rate != null ? fmtPct(data.beat_rate, 0).replace('+', '') : '—'} sub={data.history.length ? `of the last ${data.history.length} reports` : 'No recent reports'} />
         <Stat label="Average surprise" value={data.avg_surprise_pct != null ? `${data.avg_surprise_pct > 0 ? '+' : ''}${data.avg_surprise_pct.toFixed(1)}%` : '—'}
           tone={data.avg_surprise_pct > 0 ? 'up' : data.avg_surprise_pct < 0 ? 'down' : null} />
         <Stat label="Last report" value={hist.length ? hist[hist.length - 1].date : '—'} sub={hist.length ? `EPS ${n2(hist[hist.length - 1].eps_reported)} vs ${n2(hist[hist.length - 1].eps_estimate)} est.` : ''} />
       </div>
-      <Panel title="Reported EPS vs estimate — green = beat, red = miss (grey = estimate)">
+      {data.note && <div className="text-2xs text-amber">{data.note}</div>}
+      {hist.length > 0 && <Panel title="Reported EPS vs estimate — green = beat, red = miss (grey = estimate)">
         <Bars data={hist.map((h: any) => ({ label: h.date.slice(2, 7), a: h.eps_reported, b: h.eps_estimate }))} />
-      </Panel>
+      </Panel>}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Panel title="Consensus estimates">
           <EstTable rows={data.estimates.eps} cols={[['avg', 'EPS (avg)'], ['low', 'Low'], ['high', 'High'], ['yearAgoEps', 'Year ago'], ['growth', 'Growth', 'pct'], ['numberOfAnalysts', 'Analysts', 'int']]} />
@@ -257,7 +258,9 @@ export function OmonView({ symbol }: { symbol: string }) {
     const strikes = Array.from(new Set([...data.calls, ...data.puts].map((r: any) => r.strike))).sort((a: any, b: any) => a - b) as number[];
     const atm = strikes.reduce((b, k) => (Math.abs(k - data.underlying) < Math.abs(b - data.underlying) ? k : b), strikes[0]);
     const i = strikes.indexOf(atm);
-    return strikes.slice(Math.max(0, i - range), i + range + 1).map((k) => ({ k, c: data.calls.find((x: any) => x.strike === k), p: data.puts.find((x: any) => x.strike === k), atm: k === atm }));
+    const shown = strikes.slice(Math.max(0, i - range), i + range + 1);
+    const above = shown.find((k) => k >= data.underlying);         // the spot line sits just above this strike
+    return shown.map((k) => ({ k, c: data.calls.find((x: any) => x.strike === k), p: data.puts.find((x: any) => x.strike === k), atm: k === atm, spot: k === above && k !== shown[0] }));
   }, [data, range]);
   if (loading && !data) return <Loading label="Loading option chain…" />;
   if (error) return <ErrorBox msg={error} />;
@@ -277,7 +280,7 @@ export function OmonView({ symbol }: { symbol: string }) {
       </div>
       <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
         <Stat label="Underlying" value={fmtPrice(data.underlying)} sub={data.currency} />
-        <Stat label="Days to expiry" value={data.days} />
+        <Stat label="Days to expiry" value={data.days} sub={data.sessions != null ? `${+Number(data.sessions).toFixed(1)} trading sessions` : undefined} />
         <Stat label="ATM implied vol" value={data.atm_iv != null ? `${(data.atm_iv * 100).toFixed(1)}%` : '—'} />
         <Stat label="Expected move" value={data.expected_move != null ? `±${fmtPrice(data.expected_move)}` : '—'} sub={data.expected_move ? `±${((data.expected_move / data.underlying) * 100).toFixed(1)}% by expiry (1σ)` : ''} />
         <Stat label="Put / call (OI)" value={n2(data.put_call_oi)} sub={`volume ${n2(data.put_call_volume)}`} />
@@ -289,14 +292,15 @@ export function OmonView({ symbol }: { symbol: string }) {
             {cols.map(([, l]) => <th key={`c${l}`} className="font-normal text-right px-1.5">{l}</th>)}
             <th className="font-normal text-center px-2 text-text-primary">Strike</th>
             {cols.map(([, l]) => <th key={`p${l}`} className="font-normal text-right px-1.5">{l}</th>)}</tr></thead>
-          <tbody>{rows.map(({ k, c, p, atm }) => (
-            <tr key={k} className={cn('border-t border-border-subtle', atm && 'border-y-2 border-bloomberg/60')}>
+          <tbody>{rows.map(({ k, c, p, atm, spot }) => (
+            <tr key={k} title={spot ? `Underlying ${fmtPrice(data.underlying)} lies between this strike and the one above` : undefined}
+              className={cn('border-t', spot ? 'border-t-2 border-t-bloomberg/70' : 'border-border-subtle', atm && 'bg-surface-2/60')}>
               {cols.map(([key, l, d]) => <td key={`c${l}`} className={cn('text-right px-1.5 py-0.5', c?.itm && 'bg-blue/5')}>{cell(c, key, d)}</td>)}
               <td className="text-center px-2 font-semibold text-text-primary bg-surface-2">{n2(k)}</td>
               {cols.map(([key, l, d]) => <td key={`p${l}`} className={cn('text-right px-1.5 py-0.5', p?.itm && 'bg-blue/5')}>{cell(p, key, d)}</td>)}
             </tr>))}</tbody>
         </table></div>
-        <div className="text-[10px] text-text-tertiary mt-2">Shaded = in the money. Θ is per calendar day; Vega per 1 vol point. {data.source}</div>
+        <div className="text-[10px] text-text-tertiary mt-2">Shaded = in the money. The orange line marks the underlying price. Θ is per trading day (time measured in trading sessions); Vega per 1 vol point. {data.source}</div>
       </Panel>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Panel title="Volatility smile (out-of-the-money IV by strike)">
@@ -553,7 +557,8 @@ export function DcfView({ symbol }: { symbol: string }) {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <Stat label="Intrinsic value / share" value={v.per_share != null ? fmtPrice(v.per_share) : '—'} sub={pccy} />
         <Stat label="vs price" value={v.upside != null ? fmtPct(v.upside, 1) : '—'} tone={v.upside != null ? (v.upside > 0 ? 'up' : 'down') : null} sub={v.price ? `price ${fmtPrice(v.price)}` : 'no exchange rate'} />
-        <Stat label="Growth the price implies" value={data.market_implied_growth != null ? pctS(data.market_implied_growth) : '—'}
+        <Stat label="Growth the price implies" value={data.market_implied_growth != null ? pctS(data.market_implied_growth)
+          : data.market_implied_growth_bound === 'below' ? '< −60%' : data.market_implied_growth_bound === 'above' ? '> +150%' : '—'}
           sub={`years 1–3 revenue growth (model: ${pctS(a.growth)})`} />
         <Stat label="WACC" value={`${pctS(w.wacc, 2)} → ${pctS(a.discount_terminal, 2)}`} sub={`today → stable growth (β ${n2(w.beta)} → ${a.beta_terminal != null ? n2(a.beta_terminal) : '—'})`} />
         <Stat label="Terminal value share" value={pctS(v.terminal_share, 0)} sub={`exit ≈ ${v.implied_ev_ebit_exit ? v.implied_ev_ebit_exit.toFixed(1) : '—'}× EBIT`} />
@@ -586,9 +591,9 @@ export function DcfView({ symbol }: { symbol: string }) {
         <Panel title="From enterprise value to value per share">
           <table className="w-full text-xs"><tbody>
             {[['PV of explicit cash flows', v.pv_explicit], ['PV of terminal value', v.pv_terminal], ['= Enterprise value', v.enterprise_value],
-              ['− Debt' + (a.include_leases ? ' (incl. leases)' : '') + (inp.captive_finance_receivables ? ' (industrial only)' : ''), -((inp.debt ?? 0) + (a.include_leases ? inp.leases ?? 0 : 0))], ['+ Cash & short-term investments', inp.cash ?? 0],
+              ['− Debt' + (a.include_leases ? ' (incl. leases)' : '') + (inp.captive_finance_receivables ? ' (industrial only)' : ''), (inp.debt ?? 0) + (a.include_leases ? inp.leases ?? 0 : 0)], ['+ Cash & short-term investments', inp.cash ?? 0],
               ['+ Stakes in other companies', inp.investments ?? 0],
-              ['− Minority interest', -(inp.minority_interest ?? 0)], ['= Equity value', v.equity_value]].map(([k, x]) => (
+              ['− Minority interest', inp.minority_interest ?? 0], ['= Equity value', v.equity_value]].map(([k, x]) => (
               <tr key={k as string} className={cn('border-t border-border-subtle', String(k).startsWith('=') && 'font-semibold text-text-primary')}>
                 <td className="py-1 text-text-secondary">{k}</td><td className="text-right font-mono">{fmtBig(x as number)}</td></tr>))}
             <tr className="border-t-2 border-border font-semibold"><td className="py-1">÷ {fmtBig(inp.shares)} shares</td><td className="text-right font-mono text-bloomberg">{fmtPrice(v.per_share_reporting_ccy)} {ccy}</td></tr>
