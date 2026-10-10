@@ -93,6 +93,19 @@ const ROWS: [string, string][] = [['revenue', 'Revenue'], ['gross_profit', 'Gros
   ['free_cash_flow', 'Free cash flow'], ['total_assets', 'Total assets'], ['total_liabilities', 'Total liabilities'], ['equity', 'Equity'],
   ['cash', 'Cash'], ['long_term_debt', 'Long-term debt']];
 
+function RatioTiles({ r }: { r: Record<string, number | null> }) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+      {[['Gross margin', r.gross_margin], ['Operating margin', r.operating_margin], ['Net margin', r.net_margin], ['FCF margin', r.fcf_margin],
+        ['ROE', r.roe], ['ROA', r.roa], ['Debt / equity', r.debt_to_equity, 'x'], ['Current ratio', r.current_ratio, 'x']].map(([k, x, u]) => (
+        <div key={k as string} className="px-2 py-1.5 bg-surface-1 border border-border">
+          <div className="text-[10px] uppercase text-text-tertiary">{k}</div>
+          <div className="font-mono text-xs text-text-primary">{x == null ? '—' : u === 'x' ? `${(x as number).toFixed(2)}×` : fmtPct(x as number, 1)}</div>
+        </div>))}
+    </div>
+  );
+}
+
 export function Financials({ symbol }: { symbol: string }) {
   const [period, setPeriod] = useState<'annual' | 'quarterly'>('annual');
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/statements/${encodeURIComponent(symbol)}`);
@@ -102,6 +115,7 @@ export function Financials({ symbol }: { symbol: string }) {
   if (data.provider === 'yahoo') {
     return (
       <div className="space-y-3">
+        {data.ratios && <RatioTiles r={data.ratios} />}
         {Object.entries(data.tables).map(([k, t]: [string, any]) => (
           <Panel key={k} title={`${{ income: 'Income statement (annual)', balance: 'Balance sheet', cashflow: 'Cash flow', income_q: 'Income statement (quarterly)' }[k] ?? k} · ${data.currency ?? ''}`}>
             <div className="overflow-x-auto"><table className="w-full text-2xs font-mono">
@@ -121,14 +135,7 @@ export function Financials({ symbol }: { symbol: string }) {
   const r = data.ratios ?? {};
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
-        {[['Gross margin', r.gross_margin], ['Operating margin', r.operating_margin], ['Net margin', r.net_margin], ['FCF margin', r.fcf_margin],
-          ['ROE', r.roe], ['ROA', r.roa], ['Debt / equity', r.debt_to_equity, 'x'], ['Current ratio', r.current_ratio, 'x']].map(([k, x, u]) => (
-          <div key={k as string} className="px-2 py-1.5 bg-surface-1 border border-border">
-            <div className="text-[10px] uppercase text-text-tertiary">{k}</div>
-            <div className="font-mono text-xs text-text-primary">{x == null ? '—' : u === 'x' ? `${(x as number).toFixed(2)}×` : fmtPct(x as number, 1)}</div>
-          </div>))}
-      </div>
+      <RatioTiles r={r} />
       <Panel title={`SEC filings, as filed · TTM to ${data.ttm?.as_of ?? '—'}`} right={
         <div className="flex border border-border">{(['annual', 'quarterly'] as const).map((p) => (
           <button key={p} onClick={() => setPeriod(p)} className={cn('px-2 py-0.5 text-[10px]', period === p ? 'bg-surface-3 text-text-primary' : 'text-text-tertiary')}>{p}</button>))}</div>}>
@@ -164,7 +171,7 @@ export function News({ symbol }: { symbol: string }) {
           <ul className="space-y-2">{data.news.map((n: any, i: number) => (
             <li key={i} className="text-xs">
               <a href={n.url} target="_blank" rel="noreferrer noopener" className="text-text-primary hover:text-bloomberg">{n.title}</a>
-              <div className="text-[10px] text-text-tertiary">{n.publisher}{n.time ? ` · ${String(n.time).slice(0, 16).replace('T', ' ')}` : ''}</div>
+              <div className="text-[10px] text-text-tertiary">{n.publisher}{n.time ? ` · ${new Date(n.time).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}</div>
             </li>))}</ul>)}
       </Panel>
       <Panel title="SEC filings (official)">

@@ -21,6 +21,9 @@ function Box({ title, right, children, className }: { title: string; right?: Rea
   );
 }
 
+// Yahoo states market caps of lines quoted in minor units (pence, cents, agorot) in the major unit
+const MAJOR: Record<string, string> = { GBp: 'GBP', GBX: 'GBP', ZAc: 'ZAR', ILA: 'ILS' };
+
 const upDown = (v: number | null | undefined) => (v == null ? 'text-text-tertiary' : v > 0 ? 'text-green' : v < 0 ? 'text-red' : 'text-text-secondary');
 
 // ── Left: watchlist ─────────────────────────────────────────────────────────
@@ -86,11 +89,14 @@ export function WatchColumn({ current, onOpen }: { current?: string; onOpen: (s:
 function quoteCells(q: any) {
   const ext = q.market_state === 'PRE' || q.market_state === 'PREPRE' ? { label: 'Pre-market', p: q.pre_market_price, c: q.pre_market_change_pct }
     : (q.market_state === 'POST' || q.market_state === 'POSTPOST' || q.market_state === 'CLOSED') && q.post_market_price ? { label: 'After hours', p: q.post_market_price, c: q.post_market_change_pct } : null;
+  // vs previous close: tinted only when both are known
+  const tone = (v: number | null | undefined) => (v == null || q.previous_close == null ? undefined : v > q.previous_close ? 'text-green' : v < q.previous_close ? 'text-red' : undefined);
+  const ccy = q.currency && !['FX', 'Index'].includes(q.type) ? q.currency : null;       // money figures in the listing's currency
   const cells: [string, string, string?][] = [
-    ['High', fmtPrice(q.day_high, q.type), q.day_high > q.previous_close ? 'text-green' : 'text-red'], ['Open', fmtPrice(q.open, q.type), q.open > q.previous_close ? 'text-green' : q.open < q.previous_close ? 'text-red' : undefined],
-    ['Volume', fmtBig(q.volume)], ['Mkt cap', fmtBig(q.market_cap)], ['P/E TTM', q.trailing_pe != null ? q.trailing_pe.toFixed(2) : '—'], ['52W high', fmtPrice(q.week52_high, q.type)],
-    ['Low', fmtPrice(q.day_low, q.type), q.day_low > q.previous_close ? 'text-green' : 'text-red'], ['Prev close', fmtPrice(q.previous_close, q.type)],
-    ['Turnover', fmtBig(q.turnover)], ['Float', fmtBig(q.float_shares)], ['P/E fwd', q.forward_pe != null ? q.forward_pe.toFixed(2) : '—'], ['52W low', fmtPrice(q.week52_low, q.type)],
+    ['High', fmtPrice(q.day_high, q.type), tone(q.day_high)], ['Open', fmtPrice(q.open, q.type), tone(q.open)],
+    ['Volume', fmtBig(q.volume)], ['Mkt cap', fmtBig(q.market_cap, ccy && (MAJOR[ccy] ?? ccy))], ['P/E TTM', q.trailing_pe != null ? q.trailing_pe.toFixed(2) : '—'], ['52W high', fmtPrice(q.week52_high, q.type)],
+    ['Low', fmtPrice(q.day_low, q.type), tone(q.day_low)], ['Prev close', fmtPrice(q.previous_close, q.type)],
+    ['Turnover', fmtBig(q.turnover, ccy)], ['Float', fmtBig(q.float_shares)], ['P/E fwd', q.forward_pe != null ? q.forward_pe.toFixed(2) : '—'], ['52W low', fmtPrice(q.week52_low, q.type)],
     ['Amplitude', q.amplitude != null ? `${(q.amplitude * 100).toFixed(2)}%` : '—'], ['Avg price', '—'],
     ['Turnover %', q.turnover_ratio != null ? `${(q.turnover_ratio * 100).toFixed(2)}%` : '—'], ['Vol ratio', q.volume_ratio != null ? q.volume_ratio.toFixed(2) : '—'],
     ['Div yield', q.dividend_yield != null ? `${(q.dividend_yield * 100).toFixed(2)}%` : '—'], ['EPS TTM', q.eps_ttm != null ? q.eps_ttm.toFixed(2) : '—'],

@@ -40,7 +40,7 @@ export function SiView({ symbol }: { symbol: string }) {
         <Stat label="Short interest" value={fmtBig(o.shares_short)} sub={o.as_of ? `shares · as of ${o.as_of}` : 'shares'} />
         <Stat label="% of float" value={pc(o.percent_of_float)} sub={o.change != null ? `${o.change >= 0 ? '+' : ''}${(o.change * 100).toFixed(1)}% vs prior report` : ''} />
         <Stat label="Days to cover" value={o.days_to_cover?.toFixed(1) ?? '—'} sub="short interest ÷ avg volume" />
-        <Stat label="Short volume today" value={pc(data.ratio_latest)} sub={data.ratio_zscore != null ? `z ${data.ratio_zscore.toFixed(1)} vs 20 days` : ''} />
+        <Stat label="Short volume today" value={pc(data.ratio_latest)} sub={data.ratio_zscore != null ? `z ${data.ratio_zscore.toFixed(1)} vs prior 20 days` : ''} />
         <Stat label="Short volume 20d avg" value={pc(data.ratio_20d)} sub={data.ratio_prev_20d != null ? `prior 20d ${pc(data.ratio_prev_20d)}` : ''} />
       </div>
       <Panel title="Daily short-sale volume share (FINRA)">

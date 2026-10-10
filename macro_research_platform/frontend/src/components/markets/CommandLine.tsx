@@ -39,11 +39,12 @@ export function CommandLine({ current, onGo }: { current?: string; onGo: (fn: st
   useEffect(() => {
     const t = q.trim().split(/\s+/).filter((w) => !parsed.fn || w.toUpperCase() !== parsed.fn.code).join(' ');
     if (!t || t.length < 1) { setHits([]); return; }
+    let stale = false;                    // a slower, older response must not overwrite newer suggestions
     const id = setTimeout(() => {
       fetch(`/api/v1/mkt/search?q=${encodeURIComponent(t)}&limit=8`).then((r) => (r.ok ? r.json() : { results: [] }))
-        .then((j) => setHits(j.results ?? [])).catch(() => setHits([]));
+        .then((j) => { if (!stale) setHits(j.results ?? []); }).catch(() => { if (!stale) setHits([]); });
     }, 220);
-    return () => clearTimeout(id);
+    return () => { stale = true; clearTimeout(id); };
   }, [q, parsed.fn, symText]);
 
   const options: Option[] = useMemo(() => {

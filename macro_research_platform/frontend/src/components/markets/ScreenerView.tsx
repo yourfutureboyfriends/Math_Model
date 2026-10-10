@@ -6,6 +6,8 @@ import { cn } from '@/lib/utils';
 import { REGION_MARKETS, useRegion } from '@/lib/region';
 import { Chg, ErrorBox, fmtBig, fmtPrice, Loading, Panel, useJSON } from './shared';
 
+const MAJOR: Record<string, string> = { GBp: 'GBP', GBX: 'GBP', ZAc: 'ZAR', ILA: 'ILS' };
+
 function Table({ rows, onOpen, showSector = true }: { rows: any[]; onOpen: (s: string) => void; showSector?: boolean }) {
   return (
     <div className="overflow-x-auto">
@@ -13,7 +15,7 @@ function Table({ rows, onOpen, showSector = true }: { rows: any[]; onOpen: (s: s
         <thead><tr className="text-text-tertiary">
           <th className="text-left font-normal pb-1">Symbol</th><th className="text-left font-normal">Name</th>
           <th className="text-right font-normal">Price</th><th className="text-right font-normal">Change</th>
-          <th className="text-right font-normal">Market cap</th><th className="text-right font-normal hidden md:table-cell">Volume</th>
+          <th className="text-right font-normal">Mkt cap $</th><th className="text-right font-normal hidden md:table-cell" title="Value traded today, in the listing currency">Value traded</th>
           <th className="text-right font-normal hidden md:table-cell">P/E</th><th className="text-right font-normal hidden lg:table-cell">Yield</th>
           {showSector && <th className="text-left font-normal hidden xl:table-cell pl-3">Sector</th>}</tr></thead>
         <tbody>{rows.map((r) => (
@@ -22,8 +24,8 @@ function Table({ rows, onOpen, showSector = true }: { rows: any[]; onOpen: (s: s
             <td className="text-text-secondary max-w-[16rem] truncate" title={r.name}>{r.name}</td>
             <td className="text-right font-mono">{fmtPrice(r.price)} <span className="text-text-tertiary">{r.currency}</span></td>
             <td className="text-right"><Chg v={r.change_pct} /></td>
-            <td className="text-right font-mono">{fmtBig(r.market_cap)}</td>
-            <td className="text-right font-mono hidden md:table-cell">{fmtBig(r.volume)}</td>
+            <td className="text-right font-mono" title={r.market_cap != null ? `${fmtBig(r.market_cap)} ${MAJOR[r.currency] ?? r.currency ?? ''}` : undefined}>{fmtBig(r.market_cap_usd ?? null)}</td>
+            <td className="text-right font-mono hidden md:table-cell" title={r.volume != null ? `${fmtBig(r.volume)} shares` : undefined}>{fmtBig(r.value_traded ?? null)}</td>
             <td className="text-right font-mono hidden md:table-cell">{r.pe != null ? r.pe.toFixed(1) : '—'}</td>
             <td className="text-right font-mono hidden lg:table-cell">{r.dividend_yield != null ? `${(r.dividend_yield * 100).toFixed(1)}%` : '—'}</td>
             {showSector && <td className="text-text-tertiary hidden xl:table-cell pl-3 truncate">{r.sector ?? ''}</td>}
@@ -77,10 +79,12 @@ const PRESETS: [string, Record<string, string>, string][] = [
 export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
   const meta = useJSON<any>('/api/v1/mkt/meta');
   const area = useRegion();
-  const [f, setF] = useState<Record<string, string>>({ regions: REGION_MARKETS[area][0], sector: '', sort: 'market_cap', market_cap_min: '10', pe_max: '', dividend_yield_min: '' });
-  useEffect(() => { setF((x) => ({ ...x, regions: REGION_MARKETS[area][0] })); }, [area]);
+  const blank = { market_cap_min: '', market_cap_max: '', pe_min: '', pe_max: '', dividend_yield_min: '', change_pct_min: '' };
+  const [f, setF] = useState<Record<string, string>>({ regions: REGION_MARKETS[area][0], sector: '', sort: 'market_cap', ...blank, market_cap_min: '10' });
   const [url, setUrl] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
+  const [pages, setPages] = useState<number[]>([]);        // offsets of earlier pages (for ← Prev)
+  useEffect(() => { const next = { ...f, regions: REGION_MARKETS[area][0] }; setF(next); setPages([]); run(0, next); }, [area]);   // runs on open too
   const run = (off = 0, form: Record<string, string> = f) => {
     const f = form;
     const p = new URLSearchParams({ regions: f.regions, sort: f.sort, size: '50', offset: String(off) });
@@ -98,8 +102,8 @@ export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
   const { data, error, loading } = useJSON<any>(url);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
   const preset = (p: Record<string, string>) => {
-    const next = { regions: f.regions, sector: f.sector, sort: 'market_cap', market_cap_min: '', market_cap_max: '', pe_max: '', pe_min: '', dividend_yield_min: '', change_pct_min: '', ...p };
-    setF(next); run(0, next);
+    const next = { regions: f.regions, sector: f.sector, sort: 'market_cap', ...blank, ...p };
+    setF(next); setPages([]); run(0, next);
   };
   return (
     <div className="space-y-3">
@@ -110,7 +114,7 @@ export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
         <span className="text-text-tertiary ml-1">(in the market selected below)</span>
       </div>
       <Panel title="Global equity screener — 22 markets">
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 items-end">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-11 gap-2 items-end">
           <label className="text-[10px] uppercase text-text-tertiary col-span-2">Market
             <select value={f.regions} onChange={set('regions')} className={inp}>
               {(meta.data?.regions ?? []).map((r: any) => <option key={r.id} value={r.id}>{r.name} ({r.currency})</option>)}
@@ -120,23 +124,28 @@ export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
             <select value={f.sector} onChange={set('sector')} className={inp}><option value="">All sectors</option>
               {(meta.data?.sectors ?? []).map((s: string) => <option key={s}>{s}</option>)}</select></label>
           <label className="text-[10px] uppercase text-text-tertiary">Mkt cap ≥ $bn<input type="number" min={0} value={f.market_cap_min} onChange={set('market_cap_min')} className={inp} /></label>
+          <label className="text-[10px] uppercase text-text-tertiary">Mkt cap ≤ $bn<input type="number" min={0} value={f.market_cap_max} onChange={set('market_cap_max')} className={inp} /></label>
+          <label className="text-[10px] uppercase text-text-tertiary">P/E ≥<input type="number" min={0} value={f.pe_min} onChange={set('pe_min')} className={inp} /></label>
           <label className="text-[10px] uppercase text-text-tertiary">P/E ≤<input type="number" min={0} value={f.pe_max} onChange={set('pe_max')} className={inp} /></label>
           <label className="text-[10px] uppercase text-text-tertiary">Yield ≥ %<input type="number" min={0} step="0.5" value={f.dividend_yield_min} onChange={set('dividend_yield_min')} className={inp} /></label>
+          <label className="text-[10px] uppercase text-text-tertiary">Today ≥ %<input type="number" step="0.5" value={f.change_pct_min} onChange={set('change_pct_min')} className={inp} /></label>
           <label className="text-[10px] uppercase text-text-tertiary">Sort
             <select value={f.sort} onChange={set('sort')} className={inp}>
               <option value="market_cap">Market cap</option><option value="change">Today's change</option><option value="volume">Volume</option>
               <option value="pe">P/E</option><option value="dividend_yield">Dividend yield</option></select></label>
         </div>
-        <button onClick={() => run(0)} className="mt-3 px-4 py-1.5 text-xs bg-bloomberg text-bg">Screen</button>
-        <span className="ml-3 text-[10px] text-text-tertiary">Primary listings only (cross-listings such as Nvidia in Frankfurt are removed). Market caps in USD.</span>
+        <button onClick={() => { setPages([]); run(0); }} className="mt-3 px-4 py-1.5 text-xs bg-bloomberg text-bg">Screen</button>
+        <button onClick={() => { const next = { ...f, sector: '', sort: 'market_cap', ...blank }; setF(next); setPages([]); run(0, next); }}
+          className="mt-3 ml-2 px-3 py-1.5 text-xs border border-border text-text-secondary hover:text-text-primary">Clear filters</button>
+        <span className="ml-3 text-[10px] text-text-tertiary">Primary listings only (cross-listings such as Nvidia in Frankfurt are removed). Size filters and the cap column in USD; hover a cap for the local figure.</span>
       </Panel>
       {loading && <Loading label="Screening…" />}
       <ErrorBox msg={error} />
       {data && (
-        <Panel title={`${data.total?.toLocaleString() ?? '?'} matches`} right={
+        <Panel title={`Page ${pages.length + 1} · ${data.rows.length} companies${data.listed_total ? ` · from ${data.listed_total.toLocaleString()} listings scanned` : ''}`} right={
           <div className="flex gap-1 text-[10px]">
-            <button disabled={offset === 0} onClick={() => run(Math.max(0, offset - 50))} className="px-2 border border-border disabled:opacity-40">← Prev</button>
-            <button disabled={!data.rows.length} onClick={() => run(offset + 50)} className="px-2 border border-border disabled:opacity-40">Next →</button>
+            <button disabled={!pages.length} onClick={() => { const prev = pages[pages.length - 1]; setPages(pages.slice(0, -1)); run(prev); }} className="px-2 border border-border disabled:opacity-40">← Prev</button>
+            <button disabled={data.next_offset == null} onClick={() => { setPages([...pages, offset]); run(data.next_offset); }} className="px-2 border border-border disabled:opacity-40">Next →</button>
           </div>}>
           {data.rows.length ? <Table rows={data.rows} onOpen={onOpen} /> : <div className="text-2xs text-text-tertiary">No matches — loosen the filters.</div>}
         </Panel>

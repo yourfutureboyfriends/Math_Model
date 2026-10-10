@@ -90,8 +90,11 @@ def wirp() -> Dict[str, Any]:
         if len(implied) < 3:
             raise Upstream("Fed funds futures unavailable.")
         effr = _fred_last("EFFR") or _fred_last("DFF")
-        # target range from the effective rate (EFFR sits ~8bp above the floor of the range)
-        lower = round((effr - 0.08) * 4) / 4 if effr else None
+        # the published target range (FRED); estimated from EFFR only if those series are unavailable
+        lower, upper = _fred_last("DFEDTARL"), _fred_last("DFEDTARU")
+        if lower is None or upper is None:
+            lower = round((effr - 0.08) * 4) / 4 if effr else None
+            upper = lower + 0.25 if lower is not None else None
         meetings = [d for d in _fomc_meetings() if d >= today]
         rows, r_pre = [], effr
         for d in meetings:
@@ -117,7 +120,7 @@ def wirp() -> Dict[str, Any]:
                          "p_cut": round(sum(v for k, v in probs.items() if k < 0), 3), "p_hike": round(sum(v for k, v in probs.items() if k > 0), 3)})
             r_pre = r_post
         path = [{"month": f"{y}-{m:02d}", "implied_rate": v} for (y, m), v in sorted(implied.items())]
-        return {"effective_rate": effr, "target_lower": lower, "target_upper": lower + 0.25 if lower is not None else None,
+        return {"effective_rate": effr, "target_lower": lower, "target_upper": upper,
                 "meetings": rows, "path": path, "as_of": str(today),
                 "method": "CME FedWatch method: each month's fed funds future prices the average effective rate for that month; "
                           "the rate after an FOMC decision is backed out from the days before and after the meeting, chained "
@@ -133,7 +136,8 @@ def auctions(kind: str = "Note", limit: int = 30) -> Dict[str, Any]:
 
     def fetch():
         import requests
-        r = requests.get("https://www.treasurydirect.gov/TA_WS/securities/auctioned", params={"format": "json", "type": kind, "pagesize": limit},
+        # fetch well beyond what's shown: each term's "vs average" needs its own previous auctions
+        r = requests.get("https://www.treasurydirect.gov/TA_WS/securities/auctioned", params={"format": "json", "type": kind, "pagesize": max(150, limit)},
                          headers=BROWSER, timeout=30)
         r.raise_for_status()
         out = []
@@ -153,7 +157,7 @@ def auctions(kind: str = "Note", limit: int = 30) -> Dict[str, Any]:
                 a["btc_vs_avg"] = a["bid_to_cover"] - sum(b["bid_to_cover"] for b in same) / len(same)
                 ind = [b["indirect"] for b in same if b["indirect"] is not None]
                 a["indirect_vs_avg"] = (a["indirect"] - sum(ind) / len(ind)) if ind and a["indirect"] is not None else None
-        return {"kind": kind, "auctions": out, "source": "TreasuryDirect auction results",
+        return {"kind": kind, "auctions": out[:limit], "source": "TreasuryDirect auction results",
                 "note": "Bid-to-cover above its recent average and a higher indirect (foreign and investor) share = stronger demand; "
                         "a heavy primary-dealer share = weaker. The 'tail' needs the when-issued yield, which isn't free."}
     return _cached(f"auct:{kind}:{limit}", 1800, fetch)
@@ -488,8 +492,18 @@ def eia_history(weeks: int = 520) -> Dict[str, Any]:
         latest = series[-1]
         def ago(n):
             return series[-1 - n] if len(series) > n else {}
+        def seasonal_avg(sid):
+            # EIA's convention: the same week in each of the previous five years (±3 days)
+            d0 = date.fromisoformat(latest["date"])
+            vals = []
+            for yrs in range(1, 6):
+                target = d0 - timedelta(weeks=52 * yrs)
+                near = [x for x in series if abs((date.fromisoformat(x["date"]) - target).days) <= 3 and x.get(sid) is not None]
+                if near:
+                    vals.append(near[0][sid])
+            return sum(vals) / len(vals) if vals else None
         summary = [{"series": sid, "label": lab, "unit": unit, "latest": latest.get(sid), "week_change": (latest.get(sid) or 0) - (ago(1).get(sid) or 0) if ago(1).get(sid) is not None else None,
-                    "year_ago": ago(52).get(sid), "five_year_avg": (sum(x.get(sid) or 0 for x in series[-260:]) / max(1, sum(1 for x in series[-260:] if x.get(sid) is not None)))}
+                    "year_ago": ago(52).get(sid), "five_year_avg": seasonal_avg(sid)}
                    for sid, (lab, unit) in EIA_SERIES.items()]
         return {"as_of": latest["date"], "series": series, "summary": summary, "labels": {k: v[0] for k, v in EIA_SERIES.items()},
                 "units": {k: v[1] for k, v in EIA_SERIES.items()}, "source": "EIA Weekly Petroleum Status Report (API v2)"}

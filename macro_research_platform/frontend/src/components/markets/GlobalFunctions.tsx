@@ -199,7 +199,7 @@ export function ImapView({ onOpen }: { onOpen: (s: string) => void }) {
           <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label={`${country} market heatmap`}>
             {tiles.map((t: any, i: number) => t.kind === 'sector' ? (
               <g key={`s${i}`}><rect x={t.x} y={t.y} width={t.w} height={t.h} fill="var(--surface-2)" stroke="var(--bg)" strokeWidth="2" />
-                {t.w > 60 && <text x={t.x + 4} y={t.y + 10} fontSize="9" fill="var(--text-secondary)" className="uppercase">{t.sector} {t.change_1d != null ? `${(t.change_1d * 100).toFixed(1)}%` : ''}</text>}</g>
+                {t.w > 60 && <text x={t.x + 4} y={t.y + 10} fontSize="9" fill="var(--text-secondary)" className="uppercase">{t.sector} {t[period] != null ? `${t[period] >= 0 ? '+' : ''}${(t[period] * 100).toFixed(1)}%` : ''}</text>}</g>
             ) : (
               <g key={t.symbol} onClick={() => onOpen(t.symbol)} className="cursor-pointer">
                 <rect x={t.x} y={t.y} width={t.w} height={t.h} fill={heatColor(t[period])} stroke="var(--bg)" strokeWidth="1"><title>{`${t.name} (${t.symbol}) ${t[period] != null ? (t[period] * 100).toFixed(2) + '%' : '—'} · $${fmtBig(t.market_cap_usd)}`}</title></rect>

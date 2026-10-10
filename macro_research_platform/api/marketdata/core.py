@@ -34,18 +34,33 @@ class Upstream(RuntimeError):
     pass
 
 
+_inflight: Dict[str, threading.Lock] = {}
+
+
 def _cached(key: str, ttl: float, fn: Callable[[], Any]) -> Any:
+    """TTL cache with single-flight: concurrent misses for one key (several launchpad windows on
+    the same data) wait for a single upstream fetch instead of each calling the provider."""
     with _lock:
         hit = _cache.get(key)
         if hit and time.time() - hit[0] < ttl:
             return hit[1]
-    val = fn()
-    with _lock:
-        _cache[key] = (time.time(), val)
-        if len(_cache) > 2000:                       # bound memory
-            for k in sorted(_cache, key=lambda k: _cache[k][0])[:500]:
-                _cache.pop(k, None)
-    return val
+        flight = _inflight.setdefault(key, threading.Lock())
+    with flight:
+        with _lock:                                  # filled while we waited?
+            hit = _cache.get(key)
+            if hit and time.time() - hit[0] < ttl:
+                return hit[1]
+        try:
+            val = fn()
+        finally:
+            with _lock:
+                _inflight.pop(key, None)
+        with _lock:
+            _cache[key] = (time.time(), val)
+            if len(_cache) > 2000:                   # bound memory
+                for k in sorted(_cache, key=lambda k: _cache[k][0])[:500]:
+                    _cache.pop(k, None)
+        return val
 
 
 def _f(v) -> Optional[float]:
@@ -81,8 +96,48 @@ def search(q: str, limit: int = 12) -> List[Dict[str, Any]]:
             out.append({"symbol": sym, "name": r.get("longname") or r.get("shortname") or sym,
                         "type": TYPE_LABEL.get(t, t.title() or "Other"), "exchange": r.get("exchDisp") or r.get("exchange"),
                         "sector": r.get("sectorDisp") or r.get("sector"), "industry": r.get("industryDisp") or r.get("industry")})
-        return out
+        alias = SEARCH_ALIASES.get(q.lower())
+        if alias and alias[0] not in {h["symbol"] for h in out}:
+            out.insert(0, {"symbol": alias[0], "name": alias[1], "type": "Stock", "exchange": None, "sector": None, "industry": None,
+                           "home_listing": True})
+        return _home_first(out)[:limit]
     return _cached(f"search:{q.lower()}:{limit}", 600, fetch)
+
+
+# Common names Yahoo's search doesn't resolve to the company (abbreviations, brands)
+SEARCH_ALIASES = {"tsmc": ("2330.TW", "Taiwan Semiconductor Manufacturing"), "lvmh": ("MC.PA", "LVMH Moët Hennessy Louis Vuitton"),
+                  "tencent": ("0700.HK", "Tencent Holdings"), "alibaba": ("9988.HK", "Alibaba Group"), "byd": ("1211.HK", "BYD Company"),
+                  "aramco": ("2222.SR", "Saudi Aramco"), "hsbc": ("HSBA.L", "HSBC Holdings"), "shell": ("SHEL.L", "Shell plc"),
+                  "unilever": ("ULVR.L", "Unilever"), "nestle": ("NESN.SW", "Nestlé"), "novo": ("NOVO-B.CO", "Novo Nordisk"),
+                  "novo nordisk": ("NOVO-B.CO", "Novo Nordisk"), "samsung": ("005930.KS", "Samsung Electronics"),
+                  "reliance": ("RELIANCE.NS", "Reliance Industries"), "sap": ("SAP.DE", "SAP SE"), "siemens": ("SIE.DE", "Siemens")}
+
+
+def _home_first(hits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Put a foreign company's home listing ahead of its US ADR or OTC line ("toyota" → 7203.T
+    before TM), as Bloomberg resolves names to the primary listing."""
+    try:
+        from api import global_universe as gu
+        u = gu.load(rebuild_if_stale=False)
+        items = u if isinstance(u, list) else (u.get("stocks") or [])
+        by_name = _cached("search:homes", 86400, lambda: {_norm(x.get("name")): x for x in items
+                                                          if x.get("name") and "." in str(x.get("symbol", ""))})
+    except Exception:
+        return hits
+    out: List[Dict[str, Any]] = []
+    placed = set()
+    for h in hits:
+        if h["symbol"] in placed:
+            continue
+        home = by_name.get(_norm(h.get("name"))) if h.get("type") == "Stock" and "." not in h["symbol"] else None
+        if home and home["symbol"] != h["symbol"] and home["symbol"] not in placed:
+            found = next((x for x in hits if x["symbol"] == home["symbol"]), None)      # already listed further down?
+            out.append({**(found or {"symbol": home["symbol"], "name": home.get("name"), "type": "Stock", "exchange": home.get("exchange"),
+                                      "sector": home.get("sector"), "industry": None}), "home_listing": True})
+            placed.add(home["symbol"])
+        out.append(h)
+        placed.add(h["symbol"])
+    return out
 
 
 # ── Quotes ───────────────────────────────────────────────────────────────────
@@ -272,6 +327,13 @@ OVERVIEW: Dict[str, List[tuple]] = {
 YIELDS = {"^IRX", "^FVX", "^TNX", "^TYX"}
 
 
+def _month_ago(c) -> Optional[float]:
+    """Close on or before the same day a month earlier (calendar-based, so 7-day markets work)."""
+    import pandas as pd
+    prior = c[c.index <= c.index[-1] - pd.DateOffset(months=1)]
+    return float(prior.iloc[-1]) if len(prior) else None
+
+
 def overview() -> Dict[str, Any]:
     """Last price and 1-day / 1-month / YTD change for each instrument, one batched download."""
     def fetch():
@@ -303,13 +365,13 @@ def overview() -> Dict[str, Any]:
                     prev_y = base_ytd.iloc[-1] if len(base_ytd) else ytd.iloc[0]
                     rows.append({"symbol": s, "name": label, "price": last, "date": c.index[-1].strftime("%Y-%m-%d"), "is_yield": True,
                                  "change_1d_bp": (last - float(c.iloc[-2])) * 100,
-                                 "change_1m_bp": (last - float(c.iloc[-22])) * 100 if len(c) > 22 else None,
+                                 "change_1m_bp": (last - m1) * 100 if (m1 := _month_ago(c)) is not None else None,
                                  "change_ytd_bp": (last - float(prev_y)) * 100,
                                  "spark": [round(float(x), 6) for x in c.iloc[-60:]]})
                     continue
                 rows.append({"symbol": s, "name": label, "price": last, "date": c.index[-1].strftime("%Y-%m-%d"),
                              "change_1d": last / float(c.iloc[-2]) - 1,
-                             "change_1m": last / float(c.iloc[-22]) - 1 if len(c) > 22 else None,
+                             "change_1m": (last / m1 - 1) if (m1 := _month_ago(c)) else None,     # by date: crypto trades 7 days
                              "change_ytd": last / float(base_ytd.iloc[-1]) - 1 if len(base_ytd) else (last / float(ytd.iloc[0]) - 1 if len(ytd) else None),
                              "spark": [round(float(x), 6) for x in c.iloc[-60:]]})
             groups.append({"group": g, "rows": rows,
@@ -341,9 +403,12 @@ def profile(symbol: str) -> Dict[str, Any]:
             base["valuation"]["dividend_yield"] = dy / 100
     elif t in ("ETF", "MUTUALFUND"):
         base.update({"category": i.get("category"), "fund_family": i.get("fundFamily"),
-                     "expense_ratio": _f(i.get("netExpenseRatio") or i.get("annualReportExpenseRatio")),
+                     # netExpenseRatio is in percent (SPY 0.0945 = 0.0945%); the older field is a decimal
+                     "expense_ratio": (_f(i.get("netExpenseRatio")) / 100 if _f(i.get("netExpenseRatio")) is not None
+                                       else _f(i.get("annualReportExpenseRatio"))),
                      "total_assets": _f(i.get("totalAssets")), "yield": _f(i.get("yield")),
-                     "inception": i.get("fundInceptionDate"), "ytd_return": _f(i.get("ytdReturn"))})
+                     "inception": i.get("fundInceptionDate"),
+                     "ytd_return": (_f(i.get("ytdReturn")) / 100) if _f(i.get("ytdReturn")) is not None else None})     # percent → decimal
     else:
         base.update({"underlying": i.get("underlyingSymbol"), "expiry": i.get("expireDate"),
                      "open_interest": _f(i.get("openInterest")), "circulating_supply": _f(i.get("circulatingSupply"))})
@@ -397,7 +462,20 @@ def statements(symbol: str) -> Dict[str, Any]:
                            "key_lines": len([r for r in rows if r["item"] in order])}
         if not tables:
             raise NotFound(f"No financial statements available for {s}.")
-        return {"ticker": s, "provider": "yahoo", "tables": tables, "currency": _info(s).get("financialCurrency"),
+        # headline ratios from the latest annual statements (same tiles as the SEC view)
+        def latest(tab, item):
+            t = tables.get(tab)
+            row = next((r for r in (t or {}).get("rows", []) if r["item"] == item), None)
+            return row["values"][0] if row and row["values"] else None
+        def ratio(a, b):
+            return round(a / b, 4) if a is not None and b not in (None, 0) else None
+        rev, ni, eq = latest("income", "Total Revenue"), latest("income", "Net Income"), latest("balance", "Stockholders Equity")
+        ratios = {"gross_margin": ratio(latest("income", "Gross Profit"), rev), "operating_margin": ratio(latest("income", "Operating Income"), rev),
+                  "net_margin": ratio(ni, rev), "fcf_margin": ratio(latest("cashflow", "Free Cash Flow"), rev),
+                  "roe": ratio(ni, eq), "roa": ratio(ni, latest("balance", "Total Assets")),
+                  "debt_to_equity": ratio(latest("balance", "Total Debt"), eq),
+                  "current_ratio": ratio(latest("balance", "Current Assets"), latest("balance", "Current Liabilities"))}
+        return {"ticker": s, "provider": "yahoo", "tables": tables, "ratios": ratios, "currency": _info(s).get("financialCurrency"),
                 "source": "Yahoo Finance (company reports)"}
     return _cached(f"stmts:{s}", 6 * 3600, fetch)
 
@@ -524,8 +602,9 @@ def _is_cross_listing(row: Dict[str, Any], region: str, fidx: Dict[str, Any]) ->
         return False
     if _norm(row.get("name")) in fidx["names"]:
         return True
-    mc, px, vol = row.get("market_cap"), row.get("price"), row.get("volume")
-    if mc and px and vol is not None:
+    mc, px = row.get("market_cap"), row.get("price")
+    vol = max(row.get("volume") or 0, row.get("avg_volume") or 0)      # before the open today's volume is 0
+    if mc and px and (row.get("volume") is not None or row.get("avg_volume") is not None):
         usd = to_usd(mc, row.get("currency"))
         if usd and usd > 3e8:
             traded = px * vol * (0.01 if row.get("currency") in ("GBp", "GBX", "ZAc", "ILA") else 1.0)  # minor units
@@ -561,11 +640,22 @@ def _rows(quotes: List[Dict]) -> List[Dict[str, Any]]:
     return [{"symbol": q.get("symbol"), "name": q.get("longName") or q.get("shortName"), "price": _f(q.get("regularMarketPrice")),
              "change_pct": (_f(q.get("regularMarketChangePercent")) or 0) / 100 if q.get("regularMarketChangePercent") is not None else None,
              "volume": _f(q.get("regularMarketVolume")), "market_cap": _f(q.get("marketCap")), "currency": q.get("currency"),
+             "avg_volume": _f(q.get("averageDailyVolume3Month")) or _f(q.get("averageDailyVolume10Day")),
              "exchange": q.get("fullExchangeName") or q.get("exchange"), "pe": _f(q.get("trailingPE")),
              "dividend_yield": _sane_yield(_f(q.get("dividendYield")) / 100 if _f(q.get("dividendYield")) is not None else None,
                                            _f(q.get("trailingAnnualDividendYield"))),
              "sector": q.get("sector")}
             for q in quotes if q.get("symbol")]
+
+
+def _enrich(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Add value traded (price × volume, in the major currency unit) and USD market cap."""
+    for r in rows:
+        minor = 0.01 if r.get("currency") in MINOR_UNITS else 1.0
+        r["value_traded"] = r["price"] * r["volume"] * minor if r.get("price") and r.get("volume") else None
+        r["market_cap_usd"] = to_usd(r.get("market_cap"), r.get("currency"))
+        r["value_traded_usd"] = to_usd(r["value_traded"], MINOR_UNITS.get(r.get("currency"), r.get("currency")))
+    return rows
 
 
 def movers(region: str = "us", kind: str = "gainers", count: int = 25) -> Dict[str, Any]:
@@ -583,20 +673,24 @@ def movers(region: str = "us", kind: str = "gainers", count: int = 25) -> Dict[s
             else:
                 q = Q("and", [Q("is-in", ["exchange", *MAIN_EXCHANGES[region]]),          # exchange, not Yahoo's region tag
                               Q("gt", ["intradaymarketcap", 2e9 * usd_to_local(region)])])     # ≈ $2bn floor
-                field = "dayvolume" if kind == "active" else "percentchange"
+                field = "dayvolume" if kind == "active" else "percentchange"      # re-ranked by value below
                 res = yf.screen(q, sortField=field, sortAsc=(kind == "losers"), size=250)
         except Exception as e:
             raise Upstream(f"Screener unavailable: {e}")
-        rows = [r for r in _primary_only(_rows(res.get("quotes") or []), region) if not _is_secondary_line(r["symbol"])]
+        rows = _enrich([r for r in _primary_only(_rows(res.get("quotes") or []), region) if not _is_secondary_line(r["symbol"])])
         # Yahoo sorts on a lagging snapshot while the rows carry live values — re-rank on what's shown.
+        # "Most active" ranks by value traded, as Bloomberg's MOST does: share counts favour
+        # low-priced stocks and aren't comparable across markets.
         if kind == "active":
-            rows.sort(key=lambda r: -(r["volume"] or 0))
+            rows.sort(key=lambda r: -(r["value_traded"] or 0))
         else:
             sign = 1 if kind == "gainers" else -1
             rows = sorted([r for r in rows if r["change_pct"] is not None and r["change_pct"] * sign > 0],
                           key=lambda r: -sign * r["change_pct"])
         return {"region": region, "region_name": REGIONS[region], "kind": kind, "rows": rows[:count],
-                "source": "Yahoo Finance screener", "note": None if region == "us" else "Companies above ~$2bn market cap, primary listings on the main exchange."}
+                "source": "Yahoo Finance screener",
+                "note": ("Most active = highest value traded today. " if kind == "active" else "")
+                        + ("" if region == "us" else "Companies above ~$2bn market cap, primary listings on the main exchange.")}
     return _cached(f"movers:{region}:{kind}:{count}", 300, fetch)
 
 
@@ -632,12 +726,16 @@ def usd_to_local(region: str) -> float:
         raise Upstream(f"FX rate for {ccy} unavailable: {e}")
 
 
+# Exchanges that quote in minor units: London pence, Johannesburg cents, Tel Aviv agorot
+MINOR_UNITS = {"GBp": "GBP", "GBX": "GBP", "ZAc": "ZAR", "ZAC": "ZAR", "ILA": "ILS"}
+
+
 def to_usd(amount: Optional[float], ccy: Optional[str]) -> Optional[float]:
-    """Convert an amount in `ccy` to USD. Yahoo's `marketCap` for pence-quoted London lines
-    (GBp) is already in pounds, so GBp/GBX amounts are treated as GBP here."""
+    """Convert an amount in `ccy` to USD. Yahoo's `marketCap` for lines quoted in minor units
+    (GBp, ZAc, ILA) is already in the major unit, so those amounts are treated as GBP/ZAR/ILS."""
     if amount is None or not ccy:
         return None
-    major = "GBP" if ccy in ("GBp", "GBX") else ccy.upper()
+    major = MINOR_UNITS.get(ccy, ccy.upper())
     if major == "USD":
         return amount
 
@@ -787,6 +885,8 @@ def screen(regions: List[str], sector: Optional[str] = None, sort: str = "market
                 raise Upstream(f"Screener unavailable: {e}")
             total = res.get("total")
             page = _rows(res.get("quotes") or [])
+            for k, r in enumerate(page):
+                r["_raw"] = off + k                      # position in Yahoo's list, to resume page 2 exactly
             rows += page
             kept = _primary_multi(rows, regs)
             kept = [r for r in kept if not _is_secondary_line(r["symbol"]) and not (sort == "market_cap" and not r.get("market_cap"))]
@@ -802,7 +902,14 @@ def screen(regions: List[str], sector: Optional[str] = None, sort: str = "market
         if col in ("market_cap", "change_pct", "volume", "pe", "dividend_yield"):    # Yahoo ranks on a lagging snapshot
             has = [r for r in rows if r.get(col) is not None]
             rows = sorted(has, key=lambda r: r[col], reverse=not ascending) + [r for r in rows if r.get(col) is None]
+        more = len(rows) > size or (total is not None and off < total)
         rows = rows[:size]
-        return {"total": total, "rows": rows, "offset": offset,
-                "source": "Yahoo Finance global screener"}
+        # page 2 resumes just after the last row shown here (not offset + size: filtering consumed more)
+        raw = [r["_raw"] for r in rows if "_raw" in r]
+        nxt = (max(raw) + 1) if raw else off
+        for r in rows:
+            r.pop("_raw", None)
+        rows = _enrich(rows)
+        return {"total": total, "rows": rows, "offset": offset, "next_offset": nxt if more else None,
+                "listed_total": total, "source": "Yahoo Finance global screener"}
     return _cached(key, 300, fetch)

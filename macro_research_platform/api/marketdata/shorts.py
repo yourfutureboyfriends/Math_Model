@@ -104,7 +104,9 @@ def short_selling(symbol: str, days: int = 60) -> Dict[str, Any]:
         return {"symbol": s, "official": official, "daily": series,
                 "ratio_latest": float(ratios[-1]), "ratio_20d": float(last20.mean()),
                 "ratio_prev_20d": float(ratios[-40:-20].mean()) if len(ratios) >= 40 else None,
-                "ratio_zscore": float((ratios[-1] - last20.mean()) / last20.std()) if len(last20) > 5 and last20.std() > 0 else None,
+                # today vs the 20 days before it (today excluded from its own baseline)
+                "ratio_zscore": (float((ratios[-1] - ratios[-21:-1].mean()) / ratios[-21:-1].std())
+                                 if len(ratios) > 6 and ratios[-21:-1].std() > 0 else None),
                 "note": "Daily short volume is the share of trading that was a short sale — mostly market makers and hedgers, "
                         "so 40–50% is typical. Watch the trend and unusual days. Short interest (positions held) is reported "
                         "twice a month.",

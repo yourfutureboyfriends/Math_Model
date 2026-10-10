@@ -26,7 +26,8 @@ const MAX_DAYS: Record<string, number> = { '5m': 60, '15m': 60, '1h': 730 };
 const DEFAULT_PERIOD: Record<string, string> = { '5m': '5d', '15m': '1mo', '1h': '3mo', '1d': '1y', '1wk': '5y', '1mo': 'max' };
 const allowed = (i: string, p: string) => PERIOD_DAYS[p] <= (MAX_DAYS[i] ?? 1e9);
 
-const UP = '#199e70', DOWN = '#e66767';
+// theme colours, so the Markets up/down setting (red = up in Asian markets) applies to candles too
+const UP = 'rgb(var(--c-green))', DOWN = 'rgb(var(--c-red))';
 const WARM = new Set(['1d', '1wk', '1mo']);     // intervals fetched with 200 extra bars so MAs start on the first bar
 const MA = [{ n: 20, color: '#c98500' }, { n: 50, color: '#3987e5' }, { n: 200, color: '#d55181' }];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -355,7 +356,7 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
           })}
           {/* signal markers (daily) */}
           {markers && interval === '1d' && bars.map((b, i) => (markers[b.t.slice(0, 10)] ? (
-            <path key={`m${i}`} d={`M${xOf(i)},${yOf(b.l) + 4}l4,7h-8z`} fill="#199e70" opacity={0.85} />
+            <path key={`m${i}`} d={`M${xOf(i)},${yOf(b.l) + 4}l4,7h-8z`} fill={UP} opacity={0.85} />
           ) : null))}
           {/* plan levels */}
           {refs.filter((r) => r.value >= lo && r.value <= hi).map((r) => (

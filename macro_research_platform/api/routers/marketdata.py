@@ -18,6 +18,12 @@ async def _run(fn, *a, timeout: float = 45, **k):
         raise HTTPException(503, str(e))
     except asyncio.TimeoutError:
         raise HTTPException(504, "The data provider is slow to respond — try again.")
+    except HTTPException:
+        raise
+    except Exception as e:                         # a provider returned something unexpected: say so, don't 500 blank
+        import logging
+        logging.getLogger(__name__).exception("[mkt] %s failed", getattr(fn, "__name__", fn))
+        raise HTTPException(502, f"The data provider returned something unexpected ({type(e).__name__}) — try again shortly.")
 
 
 @router.get("/api/v1/mkt/search")
@@ -141,7 +147,7 @@ async def mkt_compare(symbols: str = Query(..., min_length=1), period: str = Que
 
 
 @router.get("/api/v1/mkt/beta/{symbol}")
-async def mkt_beta(symbol: str, benchmark: str = "^GSPC", period: str = Query("2y", pattern="^(1y|2y|3y|5y|10y)$"),
+async def mkt_beta(symbol: str, benchmark: Optional[str] = None, period: str = Query("2y", pattern="^(1y|2y|3y|5y|10y)$"),
                    freq: str = Query("W", pattern="^(D|W|M)$")):
     from api.marketdata import security
     return await _run(security.beta, symbol, benchmark, period, freq)

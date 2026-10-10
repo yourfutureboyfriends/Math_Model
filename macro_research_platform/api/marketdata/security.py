@@ -331,7 +331,10 @@ def options(symbol: str, expiry: Optional[str] = None) -> Dict[str, Any]:
 
     def fetch():
         i = _info(s)
-        S = _f(i.get("regularMarketPrice")) or _f(i.get("previousClose"))
+        from api.marketdata.core import _finnhub_quote
+        fh = _finnhub_quote(s) if (i.get("currency") or "USD") == "USD" else None
+        # the same underlying price the quote header shows (Finnhub real-time for US names)
+        S = (fh or {}).get("c") or _f(i.get("regularMarketPrice")) or _f(i.get("previousClose"))
         if S is None:
             raise NotFound(f"No underlying price for {s}.")
         q = div_yield(i) or 0.0                 # continuous dividend yield for Black-Scholes-Merton
@@ -402,15 +405,15 @@ def iv_term_structure(symbol: str, n: int = 8) -> List[Dict[str, Any]]:
 
     def fetch():
         exps = list(_tk(s).options or [])[:n]
-        out = []
-        for e in exps:
+
+        def one(e):
             try:
                 o = options(s, e)
-                if o["atm_iv"]:
-                    out.append({"expiry": e, "days": o["days"], "sessions": o.get("sessions"), "atm_iv": o["atm_iv"]})
+                return {"expiry": e, "days": o["days"], "sessions": o.get("sessions"), "atm_iv": o["atm_iv"]} if o["atm_iv"] else None
             except Exception:
-                continue
-        return out
+                return None
+        with cf.ThreadPoolExecutor(4) as ex:                 # chains fetched in parallel (was one by one)
+            return [x for x in ex.map(one, exps) if x]
     return _cached(f"ivts:{s}", 900, fetch)
 
 
@@ -471,7 +474,8 @@ def comps(symbol: str, max_peers: int = 12) -> Dict[str, Any]:
 
         def region(rg):
             fx = usd_to_local(rg)
-            q = Q("and", [Q("eq", ["region", rg]), Q("is-in", ["exchange", *MAIN_EXCHANGES[rg]]),
+            # the exchange defines the market (Yahoo's per-stock region tag drops e.g. Allianz from Germany)
+            q = Q("and", [Q("is-in", ["exchange", *MAIN_EXCHANGES[rg]]),
                           Q("eq", ["industry", industry]), Q("gt", ["intradaymarketcap", 1e9 * fx])])
             for attempt in range(2):                      # Yahoo rate-limits bursts: retry once
                 try:
@@ -563,7 +567,7 @@ def history(symbol: str, period: str = "1y", interval: str = "1d") -> Dict[str, 
         if df is None or df.empty:
             raise NotFound(f"No price history for {s}.")
         rows = [{"date": d.strftime("%Y-%m-%d"), "open": _f(r["Open"]), "high": _f(r["High"]), "low": _f(r["Low"]),
-                 "close": _f(r["Close"]), "adj_close": None, "volume": _f(r["Volume"])} for d, r in df.iterrows()]
+                 "close": _f(r["Close"]), "volume": _f(r["Volume"])} for d, r in df.iterrows()]
         for k in range(1, len(rows)):
             if rows[k]["close"] and rows[k - 1]["close"]:
                 rows[k]["change_pct"] = rows[k]["close"] / rows[k - 1]["close"] - 1
@@ -604,8 +608,16 @@ def compare(symbols: List[str], period: str = "5y") -> Dict[str, Any]:
     return _cached(f"comp:{','.join(syms)}:{period}", 900, fetch)
 
 
-def beta(symbol: str, benchmark: str = "^GSPC", period: str = "2y", freq: str = "W") -> Dict[str, Any]:
-    s, b = symbol.strip().upper(), benchmark.strip().upper()
+def home_benchmark(symbol: str) -> str:
+    """The main index of the security's home market (Bloomberg's BETA default), S&P 500 otherwise."""
+    from api.marketdata.countries import MAIN_INDEX, country_of_symbol
+    c = country_of_symbol(symbol)
+    return MAIN_INDEX.get(c, ("^GSPC", ""))[0] if c else "^GSPC"
+
+
+def beta(symbol: str, benchmark: Optional[str] = None, period: str = "2y", freq: str = "W") -> Dict[str, Any]:
+    s = symbol.strip().upper()
+    b = (benchmark or home_benchmark(s)).strip().upper()
 
     def fetch():
         px = _closes([s, b], period).dropna()

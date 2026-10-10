@@ -94,7 +94,7 @@ function Launchpad({ onGo }: { onGo: (fn: string, s?: string) => void }) {
 }
 
 function TerminalQuoteHeader({ d, f, symbol, onGo, actions }: { d: any; f: MktFunction; symbol: string; onGo: (fn: string, s?: string) => void; actions: React.ReactNode }) {
-  const up = (d.change ?? 0) >= 0;
+  const up = (d.change ?? 0) > 0, flat = !d.change;
   const state = d.market_state === 'REGULAR' ? 'OPEN' : d.market_state === 'PRE' ? 'PRE-MKT' : d.market_state === 'POST' || d.market_state === 'POSTPOST' ? 'AFTER HRS' : 'CLOSED';
   return (
     <div className="space-y-1">
@@ -103,7 +103,7 @@ function TerminalQuoteHeader({ d, f, symbol, onGo, actions }: { d: any; f: MktFu
       <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 px-2 py-1 text-[13px]">
         <span className="text-text-primary font-semibold uppercase truncate max-w-[28rem]">{d.name}</span>
         <span className="text-[22px] font-semibold tabular-nums text-text-primary">{fmtPrice(d.price, d.type)}</span>
-        {d.change != null && <span className={cn('tabular-nums font-semibold', up ? 'text-green' : 'text-red')}>{up ? '▲' : '▼'} {up ? '+' : ''}{fmtPrice(d.change, d.type)}  {d.change_pct != null ? `${up ? '+' : ''}${(d.change_pct * 100).toFixed(2)}%` : ''}</span>}
+        {d.change != null && <span className={cn('tabular-nums font-semibold', flat ? 'text-text-secondary' : up ? 'text-green' : 'text-red')}>{flat ? '■' : up ? '▲' : '▼'} {up ? '+' : ''}{fmtPrice(d.change, d.type)}  {d.change_pct != null ? `${up ? '+' : ''}${(d.change_pct * 100).toFixed(2)}%` : ''}</span>}
         <span className="text-text-secondary">{TYPE_LABEL[d.type] ?? d.type}</span>
         <span className={cn('px-1.5 rounded-sm text-[11px] border', state === 'OPEN' ? 'border-green/40 bg-green/10 text-green' : 'border-border text-text-tertiary')}>{state}</span>
         <span className="ml-auto flex flex-wrap gap-1">{actions}</span>
@@ -405,7 +405,8 @@ function LaunchpadGrid({ classic }: { classic: boolean }) {
 
 // ── Soft keys on every function's title bar (Bloomberg: 96) … 99) …) ──────────
 function exportFirstTable(name: string) {
-  const t = document.querySelector('#mkt-fn-body table') as HTMLTableElement | null;
+  // the screen's main table = the one with the most rows (side panels often come first)
+  const t = [...document.querySelectorAll('#mkt-fn-body table')].sort((a, b) => b.querySelectorAll('tr').length - a.querySelectorAll('tr').length)[0] as HTMLTableElement | undefined;
   if (!t) { alert('No table on this screen to export.'); return; }
   const rows = [...t.querySelectorAll('tr')].map((tr) => [...tr.querySelectorAll('th,td')].map((c) => `"${(c as HTMLElement).innerText.replace(/\s+/g, ' ').trim().replace(/"/g, '""')}"`).join(','));
   const blob = new Blob([rows.join('\n')], { type: 'text/csv' });

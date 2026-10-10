@@ -197,7 +197,7 @@ def heatmap(country: str = "US", max_names: int = 300) -> Dict[str, Any]:
             raise NotFound(f"No stock universe for country '{country}'.")
         syms = [x["symbol"] for x in names]
         try:
-            df = yf.download(syms, period="5d", interval="1d", auto_adjust=False, group_by="ticker", progress=False, threads=True)
+            df = yf.download(syms, period="1mo", interval="1d", auto_adjust=False, group_by="ticker", progress=False, threads=True)
         except Exception as ex:
             raise Upstream(f"Prices unavailable: {ex}")
         rows = []
@@ -205,7 +205,7 @@ def heatmap(country: str = "US", max_names: int = 300) -> Dict[str, Any]:
             try:
                 c = df[x["symbol"]]["Close"].dropna()
                 chg = float(c.iloc[-1] / c.iloc[-2] - 1) if len(c) >= 2 else None
-                wk = float(c.iloc[-1] / c.iloc[0] - 1) if len(c) >= 2 else None
+                wk = float(c.iloc[-1] / c.iloc[-6] - 1) if len(c) >= 6 else None       # five sessions back
                 px = float(c.iloc[-1])
             except Exception:
                 chg = wk = px = None
@@ -213,14 +213,18 @@ def heatmap(country: str = "US", max_names: int = 300) -> Dict[str, Any]:
                          "market_cap_usd": x.get("mcap_usd"), "price": px, "change_1d": chg, "change_5d": wk})
         sectors: Dict[str, Dict[str, Any]] = {}
         for r in rows:
-            s = sectors.setdefault(r["sector"], {"sector": r["sector"], "cap": 0.0, "wsum": 0.0, "w": 0.0, "n": 0})
+            s = sectors.setdefault(r["sector"], {"sector": r["sector"], "cap": 0.0, "n": 0, "wsum": 0.0, "w": 0.0, "wsum5": 0.0, "w5": 0.0})
             s["cap"] += r["market_cap_usd"] or 0
             s["n"] += 1
             if r["change_1d"] is not None and r["market_cap_usd"]:
                 s["wsum"] += r["change_1d"] * r["market_cap_usd"]
                 s["w"] += r["market_cap_usd"]
+            if r["change_5d"] is not None and r["market_cap_usd"]:
+                s["wsum5"] += r["change_5d"] * r["market_cap_usd"]
+                s["w5"] += r["market_cap_usd"]
         sec = [{"sector": v["sector"], "market_cap_usd": v["cap"], "count": v["n"],
-                "change_1d": v["wsum"] / v["w"] if v["w"] else None} for v in sectors.values()]
+                "change_1d": v["wsum"] / v["w"] if v["w"] else None,
+                "change_5d": v["wsum5"] / v["w5"] if v["w5"] else None} for v in sectors.values()]
         sec.sort(key=lambda x: -x["market_cap_usd"])
         return {"country": country, "rows": rows, "sectors": sec,
                 "countries": sorted({str(x.get("country")) for x in items if x.get("country")}),
@@ -309,10 +313,16 @@ def futures_curve(root: str, n: int = 10) -> Dict[str, Any]:
             try:
                 c = df[sym]["Close"].dropna()
                 if len(c):
-                    pts.append({"contract": sym, "month": month, "price": float(c.iloc[-1]),
+                    pts.append({"contract": sym, "month": month, "price": float(c.iloc[-1]), "last_date": c.index[-1].strftime("%Y-%m-%d"),
                                 "change_1d": float(c.iloc[-1] / c.iloc[-2] - 1) if len(c) > 1 else None})
             except Exception:
                 continue
+        # an expired front month keeps its last print in the download: drop contracts that
+        # stopped trading before the rest of the curve
+        latest = max((p["last_date"] for p in pts), default=None)
+        if latest:
+            cut = (date.fromisoformat(latest) - timedelta(days=5)).isoformat()    # thin back months may skip a day
+            pts = [p for p in pts if p["last_date"] >= cut]
         pts = pts[:n]
         if len(pts) < 2:
             raise NotFound(f"Not enough listed contracts priced for {name}.")

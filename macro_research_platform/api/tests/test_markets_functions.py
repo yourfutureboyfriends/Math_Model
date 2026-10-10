@@ -335,3 +335,46 @@ def test_implied_vol_pinned_at_cap_is_no_solution():
     # a deep-OTM call quoted far above any BSM value: the bisection would pin at 500%
     iv = implied_vol(np.array([40.0, 2.0]), 100.0, np.array([300.0, 100.0]), 0.05, 0.04, 0.0, True)
     assert np.isnan(iv[0]) and 0.05 < iv[1] < 1.0
+
+
+def test_cache_single_flight():
+    """Concurrent misses for one key make a single upstream call."""
+    import threading, time as _t
+    calls = []
+
+    def slow():
+        calls.append(1)
+        _t.sleep(0.2)
+        return 42
+    out = []
+    ts = [threading.Thread(target=lambda: out.append(core._cached("sf:test", 60, slow))) for _ in range(5)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert out == [42] * 5 and len(calls) == 1
+
+
+def test_minor_currency_units(monkeypatch):
+    monkeypatch.setattr(core, "_cached", lambda key, ttl, fn: 0.05 if key == "usdper:ZAR" else 1.0)
+    assert core.to_usd(100.0, "ZAc") == pytest.approx(5.0)          # JSE caps are stated in rand
+    assert core.to_usd(100.0, "ILA") == pytest.approx(100.0)
+
+
+def test_cross_listing_rule_uses_average_volume_before_the_open(monkeypatch):
+    monkeypatch.setattr(core, "to_usd", lambda a, c: a)
+    fidx = {"names": set()}
+    pre_open = {"symbol": "7203.T", "name": "Toyota", "market_cap": 3e13, "price": 2900.0, "volume": 0.0,
+                "avg_volume": 2.5e7, "currency": "JPY"}
+    assert not core._is_cross_listing(pre_open, "jp", fidx)        # volume 0 at 8am is not "barely trades"
+    stray = {**pre_open, "symbol": "GE.MX", "volume": 10.0, "avg_volume": 20.0}
+    assert core._is_cross_listing(stray, "mx", fidx)
+
+
+def test_search_puts_home_listing_first(monkeypatch):
+    monkeypatch.setattr(core, "_cached", lambda key, ttl, fn: fn())
+    import api.global_universe as gu
+    monkeypatch.setattr(gu, "load", lambda **k: {"stocks": [{"symbol": "7203.T", "name": "Toyota Motor Corporation", "exchange": "JPX"}]})
+    hits = [{"symbol": "TM", "name": "Toyota Motor Corporation", "type": "Stock"},
+            {"symbol": "7203.T", "name": "Toyota Motor Corporation", "type": "Stock"}]
+    assert [h["symbol"] for h in core._home_first(hits)] == ["7203.T", "TM"]

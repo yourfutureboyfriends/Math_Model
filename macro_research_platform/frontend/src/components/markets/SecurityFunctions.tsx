@@ -329,7 +329,7 @@ export function RvView({ symbol, onOpen }: { symbol: string; onOpen: (s: string)
   if (!data) return null;
   const cols: [string, string, 'x' | 'pct' | 'big'][] = [['market_cap_usd', 'Mkt cap $', 'big'], ['pe', 'P/E', 'x'], ['forward_pe', 'Fwd P/E', 'x'], ['ev_ebitda', 'EV/EBITDA', 'x'],
     ['price_to_book', 'P/B', 'x'], ['price_to_sales', 'P/S', 'x'], ['gross_margin', 'Gross mgn', 'pct'], ['operating_margin', 'Op mgn', 'pct'], ['roe', 'ROE', 'pct'],
-    ['revenue_growth', 'Rev growth', 'pct'], ['dividend_yield', 'Yield', 'pct']];
+    ['revenue_growth', 'Rev growth (qtr y/y)', 'pct'], ['dividend_yield', 'Yield', 'pct']];
   const f = (v: any, kind: string) => v == null ? '—' : kind === 'big' ? fmtBig(v) : kind === 'pct' ? `${(v * 100).toFixed(1)}%` : v.toFixed(1);
   const rows = [...data.rows].sort((a: any, b: any) => (b[sort] ?? -1e18) - (a[sort] ?? -1e18));
   const med = data.peer_median;
@@ -397,15 +397,21 @@ export function HpView({ symbol }: { symbol: string }) {
 
 // ── BETA ─────────────────────────────────────────────────────────────────────
 export function BetaView({ symbol }: { symbol: string }) {
-  const [bench, setBench] = useState('^GSPC');
+  // '' = the security's home index (Bloomberg's default); typed benchmarks apply on Enter
+  const [bench, setBench] = useState('');
+  const [typed, setTyped] = useState('');
   const [period, setPeriod] = useState('2y');
   const [freq, setFreq] = useState('W');
-  const { data, error, loading } = useJSON<any>(`/api/v1/mkt/beta/${enc(symbol)}?benchmark=${enc(bench)}&period=${period}&freq=${freq}`);
+  const { data, error, loading } = useJSON<any>(`/api/v1/mkt/beta/${enc(symbol)}?period=${period}&freq=${freq}${bench ? `&benchmark=${enc(bench)}` : ''}`);
+  const pickB = (b: string) => { setBench(b); setTyped(b); };
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2 items-center text-2xs text-text-tertiary">
-        <label>Benchmark <input value={bench} onChange={(e) => setBench(e.target.value.toUpperCase())} className="ml-1 w-24 bg-surface-1 border border-border px-2 py-1 font-mono text-xs text-text-primary" /></label>
-        <span className="flex gap-1">{['^GSPC', '^NDX', '^STOXX50E', '^N225', 'ACWI'].map((b) => <button key={b} onClick={() => setBench(b)} className={cn('px-1.5 py-0.5 border', bench === b ? 'border-bloomberg text-bloomberg' : 'border-border')}>{b}</button>)}</span>
+        <label>Benchmark <input value={typed} placeholder={data?.benchmark ?? 'home index'} onChange={(e) => setTyped(e.target.value.toUpperCase())}
+          onKeyDown={(e) => { if (e.key === 'Enter') setBench(typed.trim()); }} onBlur={() => setBench(typed.trim())}
+          className="ml-1 w-24 bg-surface-1 border border-border px-2 py-1 font-mono text-xs text-text-primary" /></label>
+        <span className="flex gap-1"><button onClick={() => pickB('')} className={cn('px-1.5 py-0.5 border', !bench ? 'border-bloomberg text-bloomberg' : 'border-border')}>Home index</button>
+          {['^GSPC', '^NDX', '^STOXX50E', '^N225', 'ACWI'].map((b) => <button key={b} onClick={() => pickB(b)} className={cn('px-1.5 py-0.5 border', bench === b ? 'border-bloomberg text-bloomberg' : 'border-border')}>{b}</button>)}</span>
         <select value={period} onChange={(e) => setPeriod(e.target.value)} className="bg-surface-1 border border-border px-2 py-1 text-xs text-text-primary">{['1y', '2y', '3y', '5y', '10y'].map((p) => <option key={p}>{p}</option>)}</select>
         <select value={freq} onChange={(e) => setFreq(e.target.value)} className="bg-surface-1 border border-border px-2 py-1 text-xs text-text-primary"><option value="D">Daily</option><option value="W">Weekly</option><option value="M">Monthly</option></select>
       </div>

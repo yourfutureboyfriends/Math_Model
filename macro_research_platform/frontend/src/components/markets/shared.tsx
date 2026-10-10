@@ -82,7 +82,7 @@ export function Spark({ values, w = 72, h = 20 }: { values?: number[]; w?: numbe
   const up = values[values.length - 1] >= values[0];
   return (
     <svg width={w} height={h} aria-hidden="true" className="inline-block align-middle">
-      <polyline points={pts} fill="none" stroke={up ? '#199e70' : '#e66767'} strokeWidth={1.25} />
+      <polyline points={pts} fill="none" stroke={up ? 'rgb(var(--c-green))' : 'rgb(var(--c-red))'} strokeWidth={1.25} />
     </svg>
   );
 }
