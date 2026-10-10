@@ -839,8 +839,15 @@ def _screen_supplement(rows: List[Dict[str, Any]], region: str, sector: Optional
     return [r for r in got if ok(r)]
 
 
+def _us_domestic(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """US screens: drop ADRs and other foreign companies' US lines (TSM, SAP, Toyota's TM), as the
+    other markets drop foreign cross-listings — they belong to their home market's screen."""
+    fidx = _foreign_index("us")
+    return [r for r in rows if _norm(r.get("name")) not in fidx["names"]]
+
+
 def screen(regions: List[str], sector: Optional[str] = None, sort: str = "market_cap", ascending: bool = False,
-           size: int = 50, offset: int = 0, **filters) -> Dict[str, Any]:
+           size: int = 50, offset: int = 0, include_adrs: bool = False, **filters) -> Dict[str, Any]:
     """Yahoo's global equity screener. Filters use percent for dividend yield and change."""
     import yfinance as yf
     from yfinance import EquityQuery as Q
@@ -867,18 +874,18 @@ def screen(regions: List[str], sector: Optional[str] = None, sort: str = "market
         val = float(v) * fx if k.startswith("market_cap") else float(v)      # market caps are given in USD
         parts.append(Q(op, [field, val]))
     query = Q("and", parts) if len(parts) > 1 else parts[0]
-    key = f"screen2:{regs}:{sector}:{sort}:{ascending}:{size}:{offset}:{sorted((k, v) for k, v in filters.items() if v is not None)}"
+    key = f"screen2:{regs}:{sector}:{sort}:{ascending}:{size}:{offset}:{include_adrs}:{sorted((k, v) for k, v in filters.items() if v is not None)}"
 
     def fetch():
         # Over-fetch (up to 3 pages) so dropping cross-listings and foreign depositary receipts —
         # which crowd the top of Brazil's and Mexico's lists — still leaves a full page.
         rows: List[Dict[str, Any]] = []
         total, off = None, offset
-        pages = 6 if len(regs) > 1 else 1 if regs == ["us"] else 3      # multi-market: more pages to fill after filtering
+        pages = 6 if len(regs) > 1 else 3      # filtering (cross-listings, ADRs) can need more raw rows to fill a page
         for _ in range(pages):
             try:
                 res = yf.screen(query, sortField=SORTS.get(sort, "intradaymarketcap"), sortAsc=ascending,
-                                size=min(250, size if regs == ["us"] else 250), offset=off)
+                                size=250, offset=off)
             except Exception as e:
                 if rows:
                     break
@@ -889,11 +896,15 @@ def screen(regions: List[str], sector: Optional[str] = None, sort: str = "market
                 r["_raw"] = off + k                      # position in Yahoo's list, to resume page 2 exactly
             rows += page
             kept = _primary_multi(rows, regs)
+            if "us" in regs and not include_adrs:
+                kept = _us_domestic(kept)
             kept = [r for r in kept if not _is_secondary_line(r["symbol"]) and not (sort == "market_cap" and not r.get("market_cap"))]
             off += len(page)
             if len(kept) >= size or len(page) < 250 or (total is not None and off >= total):
                 break
         rows = _primary_multi(rows, regs)
+        if "us" in regs and not include_adrs:
+            rows = _us_domestic(rows)
         rows = [r for r in rows if not _is_secondary_line(r["symbol"])
                 and not (sort == "market_cap" and not r.get("market_cap"))]     # drop warrants/notes with no market value
         if len(regs) == 1 and offset == 0:

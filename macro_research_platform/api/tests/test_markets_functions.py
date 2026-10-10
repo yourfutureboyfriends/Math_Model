@@ -378,3 +378,24 @@ def test_search_puts_home_listing_first(monkeypatch):
     hits = [{"symbol": "TM", "name": "Toyota Motor Corporation", "type": "Stock"},
             {"symbol": "7203.T", "name": "Toyota Motor Corporation", "type": "Stock"}]
     assert [h["symbol"] for h in core._home_first(hits)] == ["7203.T", "TM"]
+
+
+def test_ism_actual_from_release_headline(monkeypatch):
+    from api.marketdata import econ_actuals as E
+    monkeypatch.setattr(E, "_cached", lambda key, ttl, fn: [
+        ("Services PMI® at 54.9%; September 2026 ISM® Services PMI® Report - PR Newswire", "Mon, 05 Oct 2026 14:00:00 GMT"),
+        ("Services PMI® at 54%; June 2026 ISM® Services PMI® Report - PR Newswire", "Mon, 06 Jul 2026 14:00:23 GMT")])
+    got = E.actual_for({"country": "USD", "title": "ISM Services PMI", "date": "2026-10-05T10:00:00-04:00"})
+    assert got["actual"] == 54.9 and got["period"] == "September 2026"
+    # a headline for another month never fills this event
+    assert E.actual_for({"country": "USD", "title": "ISM Services PMI", "date": "2026-09-03T10:00:00-04:00"}) is None
+
+
+def test_eurostat_actual_needs_a_same_day_update(monkeypatch):
+    from api.marketdata import econ_actuals as E
+    doc = {"updated": "2026-10-01T11:00:00+0200", "value": {"0": 3.2, "1": 3.8},
+           "dimension": {"time": {"category": {"index": {"2026-08": 0, "2026-09": 1}}}}}
+    monkeypatch.setattr(E, "_cached", lambda key, ttl, fn: doc)
+    ev = {"country": "EUR", "title": "CPI Flash Estimate y/y", "date": "2026-10-01T05:00:00-04:00"}
+    assert E.actual_for(ev)["actual"] == 3.8
+    assert E.actual_for({**ev, "date": "2026-09-01T05:00:00-04:00"}) is None      # dataset not updated that day

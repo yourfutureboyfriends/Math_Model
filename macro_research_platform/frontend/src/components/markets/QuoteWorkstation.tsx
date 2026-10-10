@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { toTerminal } from './bbg';
 import { Chart } from './TickerView';
 import { AnalystGauge, EarningsCard, NewsList, OrderTicket, SimilarStocks } from './InstrumentOverview';
-import { Flash, fmtBig, fmtPct, fmtPrice, Loading, useJSON } from './shared';
+import { Flash, fmtBig, fmtPct, fmtPrice, Loading, symType, useJSON } from './shared';
 
 const enc = encodeURIComponent;
 
@@ -74,7 +74,7 @@ export function WatchColumn({ current, onOpen }: { current?: string; onOpen: (s:
           <li key={s}><button onClick={() => onOpen(s)} className={cn('w-full grid grid-cols-[1fr_auto_auto] gap-x-2 items-center px-2 py-1 text-left border-l-2 hover:bg-surface-3',
             on ? 'border-bloomberg bg-surface-3' : 'border-transparent')}>
             <span className="min-w-0"><span className="block truncate text-text-primary">{q?.name ?? s}</span><span className="block text-[10px] text-text-tertiary font-mono truncate">{toTerminal(s)}</span></span>
-            <span className={cn('font-mono tabular-nums text-right', upDown(q?.change_1d))}><Flash value={q?.price}>{q ? fmtPrice(q.price) : '…'}</Flash></span>
+            <span className={cn('font-mono tabular-nums text-right', upDown(q?.change_1d))}><Flash value={q?.price}>{q ? fmtPrice(q.price, symType(s)) : '…'}</Flash></span>
             <span className={cn('font-mono tabular-nums text-right w-14 px-1 text-[11px]', q?.change_1d == null ? 'text-text-tertiary' : q.change_1d >= 0 ? 'bg-green/15 text-green' : 'bg-red/15 text-red')}>
               {q?.change_1d == null ? '—' : `${q.change_1d >= 0 ? '+' : ''}${(q.change_1d * 100).toFixed(2)}%`}</span>
           </button></li>); })}

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bot, ChevronRight, List, Loader2, Send, Sparkles, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { fmtPrice, Spark, apiError } from './shared';
+import { fmtPrice, Spark, apiError, symType } from './shared';
 
 const KEY = 'mkt_rail';
 
@@ -63,7 +63,7 @@ function RailWatchlist({ current, onOpen }: { current?: string; onOpen: (s: stri
           <li key={s}><button onClick={() => onOpen(s)} className={cn('w-full grid grid-cols-[1fr_auto] gap-x-2 px-3 py-2 text-left border-l-2 hover:bg-surface-2',
             s === current ? 'border-bloomberg bg-surface-2' : 'border-transparent')}>
             <span className="font-mono text-xs font-semibold text-text-primary truncate">{s}</span>
-            <span className="font-mono text-xs text-right text-text-primary">{q ? fmtPrice(q.price) : '…'}</span>
+            <span className="font-mono text-xs text-right text-text-primary">{q ? fmtPrice(q.price, symType(s)) : '…'}</span>
             <span className="opacity-80"><Spark values={q?.spark} w={70} h={16} /></span>
             <span className={cn('text-right text-[11px] font-mono px-1.5 rounded self-center', q?.change_1d == null ? 'text-text-tertiary' : q.change_1d >= 0 ? 'bg-green/15 text-green' : 'bg-red/15 text-red')}>
               {q?.change_1d == null ? '—' : `${q.change_1d >= 0 ? '+' : ''}${(q.change_1d * 100).toFixed(2)}%`}</span>

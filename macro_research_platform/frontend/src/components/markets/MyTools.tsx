@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Bell, Plus, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Chg, ErrorBox, fmtPct, fmtPrice, Loading, Panel, Spark, apiError, useJSON } from './shared';
+import { Chg, ErrorBox, fmtPct, fmtPrice, Loading, Panel, Spark, apiError, symType, useJSON } from './shared';
 
 async function call(url: string, method = 'GET', body?: unknown) {
   const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
@@ -69,7 +69,7 @@ export function WatchlistsView({ onOpen }: { onOpen: (s: string) => void }) {
               <tbody>{list.symbols.map((s: string) => { const q = quotes[s]; return (
                 <tr key={s} className="border-t border-border-subtle hover:bg-surface-3">
                   <td className="py-1.5 font-mono text-text-primary cursor-pointer" onClick={() => onOpen(s)}>{s}</td>
-                  <td className="text-right font-mono">{q ? fmtPrice(q.price) : '…'}</td>
+                  <td className="text-right font-mono">{q ? fmtPrice(q.price, symType(s)) : '…'}</td>
                   <td className="text-right"><Chg v={q?.change_1d} /></td><td className="text-right"><Chg v={q?.change_1m} d={1} /></td>
                   <td className="text-right hidden sm:table-cell"><Spark values={q?.spark} /></td>
                   <td className="text-right"><button onClick={() => save(list.symbols.filter((x: string) => x !== s))} aria-label={`Remove ${s}`} className="p-1 text-text-tertiary hover:text-red"><X className="w-3 h-3" /></button></td>

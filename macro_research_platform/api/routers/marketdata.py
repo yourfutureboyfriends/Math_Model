@@ -75,10 +75,10 @@ async def mkt_screen(regions: str = "us", sector: Optional[str] = None, sort: st
                      market_cap_min: Optional[float] = None, market_cap_max: Optional[float] = None,
                      pe_min: Optional[float] = None, pe_max: Optional[float] = None,
                      dividend_yield_min: Optional[float] = None, change_pct_min: Optional[float] = None,
-                     change_pct_max: Optional[float] = None, price_min: Optional[float] = None):
+                     change_pct_max: Optional[float] = None, price_min: Optional[float] = None, include_adrs: bool = False):
     from api.marketdata import core
     regs: List[str] = [r.strip().lower() for r in regions.split(",") if r.strip()]
-    return await _run(core.screen, regs, sector, sort, ascending, size, offset,
+    return await _run(core.screen, regs, sector, sort, ascending, size, offset, include_adrs,
                       market_cap_min=market_cap_min, market_cap_max=market_cap_max, pe_min=pe_min, pe_max=pe_max,
                       dividend_yield_min=dividend_yield_min, change_pct_min=change_pct_min,
                       change_pct_max=change_pct_max, price_min=price_min)
@@ -181,7 +181,9 @@ async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le
     rkw = {k: v for k, v in kw.items() if k != "growth"}
     implied = await _run(dcf.reverse, inp, **rkw)
     bound = await _run(dcf.reverse_bound, inp, **rkw) if implied is None else None
-    return {"inputs": inp, "valuation": val, "sensitivity": sens, "market_implied_growth": implied, "market_implied_growth_bound": bound, "model": "fcff",
+    implied_r = await _run(dcf.implied_discount, inp, **kw)
+    return {"inputs": inp, "valuation": val, "sensitivity": sens, "market_implied_growth": implied, "market_implied_growth_bound": bound,
+            "market_implied_discount": implied_r, "model": "fcff",
             "method": "FCFF at WACC with mid-year discounting; terminal value = NOPAT × (1 − g/RONIC) ÷ (WACC − g). "
                       "SBC is expensed (inside GAAP operating income). Inputs from Damodaran's market data (implied ERP, "
                       "industry betas, country risk). Sources: Damodaran (NYU Stern); Koller, Goedhart & Wessels, Valuation (McKinsey)."}

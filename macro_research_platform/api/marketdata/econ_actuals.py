@@ -43,7 +43,17 @@ SOURCES: Dict[Tuple[str, str], Tuple[str, Any, str, str]] = {
     ("GBP", "GDP m/m"): ("ons", "economy/grossdomesticproductgdp/timeseries/ecy2/mgdp", "pct_mm", "%"),
     ("GBP", "Retail Sales m/m"): ("ons", "businessindustryandtrade/retailindustry/timeseries/j5ek/drsi", "pct_mm", "%"),
     ("GBP", "Official Bank Rate"): ("boe_rate", "IUDBEDR", "level", "%"),
+    # Euro area (Eurostat; ECOICOP v2 HICP since 2026, euro-area aggregate "EA"; labour data on EA21)
+    ("EUR", "CPI Flash Estimate y/y"): ("eurostat", "prc_hicp_minr?geo=EA&coicop18=TOTAL&unit=RCH_A", "level", "%"),
+    ("EUR", "Core CPI Flash Estimate y/y"): ("eurostat", "prc_hicp_minr?geo=EA&coicop18=TOT_X_NRG_FOOD&unit=RCH_A", "level", "%"),
+    ("EUR", "Final CPI y/y"): ("eurostat", "prc_hicp_minr?geo=EA&coicop18=TOTAL&unit=RCH_A", "level", "%"),
+    ("EUR", "Final Core CPI y/y"): ("eurostat", "prc_hicp_minr?geo=EA&coicop18=TOT_X_NRG_FOOD&unit=RCH_A", "level", "%"),
+    ("EUR", "CPI m/m"): ("eurostat", "prc_hicp_minr?geo=EA&coicop18=TOTAL&unit=RCH_M", "level", "%"),
+    ("EUR", "Unemployment Rate"): ("eurostat", "une_rt_m?geo=EA21&s_adj=SA&age=TOTAL&sex=T&unit=PC_ACT", "level", "%"),
     ("USD", "Revised UoM Consumer Sentiment"): ("umich", None, "level", ""),
+    # ISM's own release headlines on PR Newswire ("Services PMI® at 54.9%; September 2026 ISM® …")
+    ("USD", "ISM Services PMI"): ("ism", "Services", "level", ""),
+    ("USD", "ISM Manufacturing PMI"): ("ism", "Manufacturing", "level", ""),
     ("USD", "Federal Funds Rate"): ("fred_rate", "DFEDTARU", "level", "%"),
 }
 
@@ -115,6 +125,57 @@ def _ons(path: str, how: str, day: str) -> Optional[Tuple[float, str]]:
     return (v, obs[-1]["date"]) if v is not None and obs else None
 
 
+def _eurostat(query: str, day: str) -> Optional[Tuple[float, str]]:
+    """Latest observation of a Eurostat series, when the dataset was updated on the event day
+    (or up to two days after — the API stamps the dataset, Luxembourg time)."""
+    import requests
+
+    def fetch():
+        r = requests.get(f"https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/{query}&lastTimePeriod=2",
+                         headers=UA, timeout=30)
+        r.raise_for_status()
+        return r.json()
+    d = _cached(f"eurostat:{query}", 1800, fetch)
+    upd = str(d.get("updated") or "")[:10]
+    if not upd or not (0 <= (date.fromisoformat(upd) - date.fromisoformat(day)).days <= 2):
+        return None
+    times = sorted(d["dimension"]["time"]["category"]["index"].items(), key=lambda kv: kv[1])
+    vals = d.get("value") or {}
+    for period, idx in reversed(times):                  # newest period with a value
+        v = vals.get(str(idx))
+        if v is not None:
+            return float(v), period
+    return None
+
+
+def _ism(kind: str, day: str) -> Optional[Tuple[float, str]]:
+    """ISM's headline PMI from its press-release title (distributed via PR Newswire, found through
+    Google News' RSS): the report for the month before the event, published within a day of it."""
+    import re
+    import requests
+    from email.utils import parsedate_to_datetime
+
+    def fetch():
+        q = f'"{kind} PMI" ISM report on business'
+        r = requests.get("https://news.google.com/rss/search", params={"q": q, "hl": "en-US", "gl": "US", "ceid": "US:en"},
+                         headers=UA, timeout=20)
+        r.raise_for_status()
+        return re.findall(r"<item><title>(.*?)</title>.*?<pubDate>(.*?)</pubDate>", r.text, re.S)
+    ev = date.fromisoformat(day)
+    want = (ev.replace(day=1) - timedelta(days=1)).strftime("%B %Y")          # the month reported
+    for title, pub in _cached(f"ism:{kind}", 1800, fetch):
+        m = re.match(rf"{kind} PMI(?:®)? at ([0-9.]+)%; (\w+ \d{{4}}) ISM", title)
+        if not m or m.group(2) != want:
+            continue
+        try:
+            if abs((parsedate_to_datetime(pub).date() - ev).days) > 1:
+                continue
+        except Exception:
+            continue
+        return float(m.group(1)), want
+    return None
+
+
 def _boe_rate(code: str, day: str) -> Optional[Tuple[float, str]]:
     import requests
     start = (date.fromisoformat(day) - timedelta(days=10)).strftime("%d/%b/%Y")
@@ -184,6 +245,7 @@ def actual_for(rec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     try:
         got = {"statcan": lambda: _statcan(ident, how, day), "statcan_rate": lambda: _statcan_rate(ident, day),
                "ons": lambda: _ons(ident, how, day), "boe_rate": lambda: _boe_rate(ident, day),
+               "eurostat": lambda: _eurostat(ident, day), "ism": lambda: _ism(ident, day),
                "fred_rate": lambda: _fred_rate(ident, day), "umich": lambda: _umich(day)}[kind]()
     except Exception as e:
         logger.debug("[eco] %s %s: %s", rec.get("country"), rec.get("title"), e)

@@ -666,7 +666,11 @@ export function DcfView({ symbol }: { symbol: string }) {
         <Stat label="Growth the price implies" value={data.market_implied_growth != null ? pctS(data.market_implied_growth)
           : data.market_implied_growth_bound === 'below' ? '< −60%' : data.market_implied_growth_bound === 'above' ? '> +150%' : '—'}
           sub={`years 1–3 revenue growth (model: ${pctS(a.growth)})`} />
-        <Stat label="WACC" value={`${pctS(w.wacc, 2)} → ${pctS(a.discount_terminal, 2)}`} sub={`today → stable growth (β ${n2(w.beta)} → ${a.beta_terminal != null ? n2(a.beta_terminal) : '—'})`} />
+        <Stat label="WACC" value={`${pctS(w.wacc, 2)} → ${pctS(a.discount_terminal, 2)}`}
+          sub={data.market_implied_discount != null
+            ? <span title="The single discount rate at which this model's value equals today's price — the return the market is demanding on these cash flows">
+                price implies <span className={cn('font-mono', data.market_implied_discount > w.wacc + 0.02 ? 'text-amber' : 'text-text-secondary')}>{pctS(data.market_implied_discount, 1)}</span></span>
+            : `today → stable growth (β ${n2(w.beta)} → ${a.beta_terminal != null ? n2(a.beta_terminal) : '—'})`} />
         <Stat label="Terminal value share" value={pctS(v.terminal_share, 0)} sub={`exit ≈ ${v.implied_ev_ebit_exit ? v.implied_ev_ebit_exit.toFixed(1) : '—'}× EBIT`} />
       </div>
       {v.checks.length > 0 && (

@@ -156,3 +156,6 @@ export function useSort<T extends Record<string, any>>(rows: T[] | undefined, in
   );
   return { rows: sorted, th, sort: s };
 }
+
+/** Instrument type from a Yahoo symbol, for lists that only carry symbols (FX needs 4–5 decimals). */
+export const symType = (s?: string | null) => (s && s.endsWith('=X') ? 'FX' : undefined);

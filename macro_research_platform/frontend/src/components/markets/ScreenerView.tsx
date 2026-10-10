@@ -112,6 +112,7 @@ export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
     if (f.pe_min) p.set('pe_min', f.pe_min);
     if (f.dividend_yield_min) p.set('dividend_yield_min', f.dividend_yield_min);
     if (f.change_pct_min) p.set('change_pct_min', f.change_pct_min);
+    if (f.include_adrs) p.set('include_adrs', 'true');
     setOffset(off);
     setUrl(`/api/v1/mkt/screen?${p.toString()}`);
   };
@@ -160,6 +161,8 @@ export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
         <button onClick={() => { setPages([]); run(0); }} className="mt-3 px-4 py-1.5 text-xs bg-bloomberg text-bg">Screen</button>
         <button onClick={() => { const next = { ...f, sector: '', sort: 'market_cap', ...blank }; setF(next); setPages([]); run(0, next); }}
           className="mt-3 ml-2 px-3 py-1.5 text-xs border border-border text-text-secondary hover:text-text-primary">Clear filters</button>
+        {f.regions.split(',').includes('us') && <label className="mt-3 ml-3 inline-flex items-center gap-1 text-[11px] text-text-secondary" title="US screens show US companies; tick to add foreign companies' US listings (ADRs such as TSM, ASML)">
+          <input type="checkbox" checked={!!f.include_adrs} onChange={(e) => { const next = { ...f, include_adrs: e.target.checked ? '1' : '' }; setF(next); setPages([]); run(0, next); }} />Include ADRs</label>}
         <button onClick={saveAs} className="mt-3 ml-2 px-3 py-1.5 text-xs border border-border text-text-secondary hover:text-text-primary">Save screen…</button>
         <span className="ml-3 text-[10px] text-text-tertiary">Primary listings only (cross-listings such as Nvidia in Frankfurt are removed). Size filters and the cap column in USD; hover a cap for the local figure.</span>
       </Panel>

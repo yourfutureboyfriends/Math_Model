@@ -125,6 +125,7 @@ def risk_free(currency: Optional[str]) -> Dict[str, Any]:
             pass
     us = risk_free("USD")
     return {"rate": us["rate"], "source": f"US 10-year Treasury — no {ccy} government yield available", "currency_matched": False}
+CAPTIVE_DEBT_SHARE = 0.9        # share of a captive finance loan book funded by debt (~10:1 leverage)
 MARGINAL_TAX_US = 0.21
 MARGINAL_TAX_OTHER = 0.25
 
@@ -230,6 +231,7 @@ def inputs(symbol: str) -> Dict[str, Any]:
 def _balance_extras(symbol: str) -> Dict[str, Optional[float]]:
     """Non-operating stakes and captive-finance receivables from the latest balance sheet."""
     out: Dict[str, Optional[float]] = {"investments": None, "nc_receivables": None, "receivables": None, "book_equity": None,
+                                       "cash_financial": None,
                                        "minority_interest": None}
     try:
         import yfinance as yf
@@ -249,6 +251,7 @@ def _balance_extras(symbol: str) -> Dict[str, Optional[float]]:
         out["receivables"] = get("Receivables") or get("Accounts Receivable")
         out["book_equity"] = get("Common Stock Equity") or get("Stockholders Equity")
         out["minority_interest"] = get("Minority Interest")
+        out["cash_financial"] = get("Cash Financial")              # cash held by the financial-services segment
     except Exception:
         pass
     return out
@@ -273,14 +276,28 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
     ncr, cur = ex.get("nc_receivables") or 0.0, ex.get("receivables") or 0.0
     # Trade credit rarely exceeds ~3 months of sales; receivables above half a year's revenue are
     # a loan book (Toyota, Ford, Deere, Caterpillar finance arms).
-    if rev and (ncr + cur) > 0.5 * rev and not out.get("is_financial"):
-        fin = min(out.get("debt") or 0.0, ncr + max(0.0, cur - rev * 60 / 365))   # beyond ~2 months of trade credit
+    fin_cash = 0.0
+    # (customers' trade credit is almost never long-dated, so non-current receivables above ~10% of
+    # sales are a loan book on their own — Honda's ¥6.8T sat under the 50% total test)
+    if rev and ((ncr + cur) > 0.5 * rev or ncr > 0.1 * rev) and not out.get("is_financial"):
+        # The finance arm's assets: its loans (receivables beyond ~1 month of trade credit — a
+        # manufacturer's own customers pay in weeks) and its own cash. They are funded ~90% by the
+        # arm's debt (captive finance runs about 10:1: Toyota Financial Services, Ford Credit, John
+        # Deere Financial); the equity-funded ~10% already earns its keep inside operating income,
+        # so offsetting it too would count it twice. Industrial debt = total − that funding, and the
+        # arm's cash leaves the cash line with it.
+        loans = ncr + max(0.0, cur - rev * 30 / 365)
+        fin_cash = min(ex.get("cash_financial") or 0.0, out.get("cash") or 0.0)
+        fin = min(out.get("debt") or 0.0, (loans + fin_cash) * CAPTIVE_DEBT_SHARE)
     out["captive_finance_receivables"] = fin or None
     out["debt_total"] = out.get("debt")
     if fin:
         out["debt"] = (out.get("debt") or 0.0) - fin
-        out["debt_source"] = f"{out.get('debt_source')}; less {fin / 1e12:,.2f}T of finance receivables funded by captive-finance debt" if fin >= 1e12 \
-            else f"{out.get('debt_source')}; less {fin / 1e9:,.2f}B of finance receivables funded by captive-finance debt"
+        if fin_cash:
+            out["cash"] = (out.get("cash") or 0.0) - fin_cash
+        unit, div = ("T", 1e12) if fin >= 1e12 else ("B", 1e9)
+        out["debt_source"] = (f"{out.get('debt_source')}; less {fin / div:,.2f}{unit} of debt funding the captive finance arm "
+                              f"(90% of its loans" + (f" and its {fin_cash / div:,.2f}{unit} of cash, removed from cash" if fin_cash else "") + ")")
     out["investments"] = ex.get("investments")
     if out.get("equity_book") is None:
         out["equity_book"] = ex.get("book_equity")
@@ -559,6 +576,38 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
                             "sales_to_capital": stc, "ronic": ron, "discount": r, "discount_terminal": rT, "beta_terminal": beta_T, "tax_now": t_now, "tax_terminal": t_term,
                             "mid_year": mid_year, "include_leases": include_leases, "roic_now": roic_now},
             "wacc": w, "net_debt": debt - (inp.get("cash") or 0), "projection": rows, "checks": checks, "price": price}
+
+
+def implied_discount(inp: Dict[str, Any], **kw) -> Optional[float]:
+    """The discount rate at which the model's value equals today's price — the market's required
+    return given these cash flows. A gap to the model WACC shows how much risk the market prices in
+    (Japanese automakers: ~6% model vs low-teens implied)."""
+    kw = {k: v for k, v in kw.items() if k != "discount"}
+    def f(r):
+        v = value(inp, **{**kw, "discount": r})
+        return None if v["per_share"] is None or not v.get("price") else v["per_share"] - v["price"]
+    g = kw.get("terminal_growth")
+    g = max(0.0, inp.get("risk_free") or 0.04) if g is None else g
+    lo, hi = g + 0.0055, 0.30                              # the rate must stay >0.5pt above terminal growth
+    try:
+        flo, fhi = f(lo), f(hi)
+    except NotFound:
+        return None
+    if flo is None or fhi is None or flo * fhi > 0:
+        return None
+    for _ in range(50):
+        mid = (lo + hi) / 2
+        try:
+            fm = f(mid)
+        except NotFound:
+            return None
+        if fm is None:
+            return None
+        if (fm > 0) == (flo > 0):
+            lo, flo = mid, fm
+        else:
+            hi, fhi = mid, fm
+    return round((lo + hi) / 2, 4)
 
 
 def reverse_bound(inp: Dict[str, Any], **kw) -> Optional[str]:
