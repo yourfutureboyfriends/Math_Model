@@ -298,6 +298,13 @@ def liabilities_instants(facts: Dict[str, Any]) -> List[Dict]:
 
 
 # ── Statements (for the UI) ──────────────────────────────────────────────────
+def _shown(table: Dict[str, Dict[str, float]], n: int) -> List[Dict[str, Any]]:
+    """The latest n periods that report income or cash-flow figures, oldest first. A tag that was
+    discontinued years ago leaves older period ends holding nothing but balance-sheet values."""
+    ends = [e for e in sorted(table) if any(k in DURATION or k == "free_cash_flow" for k in table[e])]
+    return [{"period_end": e, **table[e]} for e in ends[-n:]]
+
+
 def statements(ticker: str, years: int = 10, quarters: int = 12) -> Dict[str, Any]:
     ent = resolve(ticker)
     if not ent:
@@ -385,8 +392,7 @@ def statements(ticker: str, years: int = 10, quarters: int = 12) -> Dict[str, An
                       [_pick_tag(facts, DURATION["revenue"]), _pick_tag(facts, DURATION["net_income"])]
                       for r in pts if r.get("accn")}, key=lambda x: x[1] or "", reverse=True)[:8]
     return {"ticker": ticker.upper(), "cik": ent["cik"], "name": facts.get("entityName") or ent["name"],
-            "annual": [{"period_end": e, **ann[e]} for e in sorted(ann)],
-            "quarterly": [{"period_end": e, **qtr[e]} for e in sorted(qtr)],
+            "annual": _shown(ann, years), "quarterly": _shown(qtr, quarters),
             "ttm": {**t, "free_cash_flow": fcf, "as_of": latest_q[-1] if latest_q else None},
             "ratios": ratios, "shares_outstanding": sh[-1] if sh else None, "tags": tags, "labels": LABELS,
             "balance": {k: v for k, v in last_bal.items() if k in INSTANT}, "balance_as_of": sorted(qtr)[-1] if qtr else None,

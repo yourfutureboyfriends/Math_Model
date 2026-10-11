@@ -91,7 +91,7 @@ export function HelpPanel({ onClose }: { onClose: () => void }) {
         <li><span className="text-text-primary">SPX Index GP</span> · <span className="text-text-primary">EURUSD Curncy GP</span> · <span className="text-text-primary">CL1 Comdty</span> · <span className="text-text-primary">USGG10YR Index</span> · <span className="text-text-primary">XBTUSD Curncy</span></li>
         <li>Plain tickers and names work too: <span className="text-text-primary">NVDA OMON</span>, <span className="text-text-primary">toyota</span>, <span className="text-text-primary">gold</span>.</li>
         <li>On a security page, type a <span className="text-text-primary">menu number</span> (e.g. <span className="text-text-primary">8</span>) and &lt;GO&gt; to open that function. <span className="text-text-primary">/</span> focuses the command line.</li>
-        <li>Yellow keys open market sectors; amber keys: MENU (launchpad), NEWS, MON (monitors), ALRT, AI.</li>
+        <li>Yellow keys open market sectors; amber keys: MENU (back), HOME (launchpad), NEWS, MON (monitors), ALRT, AI. Workspace tabs: Alt+1…9, Alt+T new, Alt+W close.</li>
       </ul>
       <p className="text-text-tertiary">All functions: {FUNCTIONS.map((f) => f.code).join(' · ')}</p>
     </div>

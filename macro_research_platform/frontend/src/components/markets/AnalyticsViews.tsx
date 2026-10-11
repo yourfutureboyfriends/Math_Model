@@ -264,7 +264,15 @@ export function OsaView({ symbol }: { symbol: string }) {
     return { ...l, premium: mid, iv: r?.iv ?? data?.atm_iv ?? null, greeks: r };
   };
   const strikes: number[] = useMemo(() => [...new Set<number>([...(data?.calls ?? []), ...(data?.puts ?? [])].map((r: any) => r.strike))].sort((a, b) => a - b), [data]);
-  const nearest = (m: number) => strikes.reduce((best, k) => (Math.abs(k - S * m) < Math.abs(best - S * m) ? k : best), strikes[0]);
+  // strike nearest to S·m, kept at least one listed strike away per 5% from the at-the-money one so
+  // spreads, strangles and condors never collapse onto a single strike where strikes are sparse
+  const nearest = (m: number) => {
+    const idx = (t: number) => strikes.reduce((bi, k, i) => (Math.abs(k - t) < Math.abs(strikes[bi] - t) ? i : bi), 0);
+    const atm = idx(S), steps = Math.round(Math.abs(m - 1) / 0.05);
+    let i = idx(S * m);
+    if (m > 1) i = Math.max(i, atm + steps); else if (m < 1) i = Math.min(i, atm - steps);
+    return strikes[Math.max(0, Math.min(strikes.length - 1, i))];
+  };
   const applyTpl = (name: string) => { setTpl(name); const t = TEMPLATES.find((x) => x[0] === name)!; setLegs(t[1](nearest).map(quoteLeg)); };
   // build legs once the chain arrives (and whenever the expiry changes)
   const legsNow: Leg[] = useMemo(() => {
@@ -337,7 +345,7 @@ export function OsaView({ symbol }: { symbol: string }) {
             <path d={path(now)} fill="none" stroke="rgb(var(--c-blue))" strokeWidth={1.5} strokeDasharray="4 3" />
             <path d={path(pay)} fill="none" stroke="rgb(var(--c-text-primary))" strokeWidth={2} />
             {[0, 0.25, 0.5, 0.75, 1].map((f) => { const x = lo + (hi - lo) * f; return <text key={f} x={sx(x)} y={H - pad + 14} fontSize="9" textAnchor="middle" fill="rgb(var(--c-text-tertiary))">{fmtPrice(x)}</text>; })}
-            {[ymin, 0, ymax].map((y) => <text key={y} x={pad - 4} y={sy(y) + 3} fontSize="9" textAnchor="end" fill="rgb(var(--c-text-tertiary))">{money(y)}</text>)}
+            {[...new Set([ymin, 0, ymax])].map((y) => <text key={y} x={pad - 4} y={sy(y) + 3} fontSize="9" textAnchor="end" fill="rgb(var(--c-text-tertiary))">{money(y)}</text>)}
           </svg>
           <div className="text-[10px] text-text-tertiary"><span className="text-text-primary">━</span> at expiry · <span className="text-blue">┅</span> today (each leg at its implied vol) · per 1 contract = 100 shares</div>
         </div>

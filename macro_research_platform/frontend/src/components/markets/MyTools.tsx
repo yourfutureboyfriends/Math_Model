@@ -136,7 +136,7 @@ export function AlertsView({ seed }: { seed?: string }) {
           <button disabled={busy} className="px-3 py-1.5 text-xs bg-bloomberg text-text-inverse inline-flex items-center justify-center gap-1 disabled:opacity-50"><Bell className="w-3 h-3" />Create</button>
         </form>
         {px != null && <div className="flex flex-wrap items-center gap-1 mt-2 text-[11px]">
-          <span className="text-text-tertiary">Last <span className="font-mono text-text-primary">{fmtPrice(px)}</span> · quick level:</span>
+          <span className="text-text-tertiary">Last <span className="font-mono text-text-primary">{fmtPrice(px, symType(lookup))}</span> · quick level:</span>
           {[-10, -5, 5, 10].map((p) => <button key={p} type="button" onClick={() => level(p)}
             className={cn('px-1.5 border border-border font-mono hover:border-bloomberg', p > 0 ? 'text-green' : 'text-red')}>{p > 0 ? '+' : ''}{p}%</button>)}</div>}
         <div className="text-[10px] text-text-tertiary mt-2">Checked every 5 minutes. A triggered alert pops up in the terminal (and as a browser notification if you allow it) and stays in the list below.</div>
@@ -147,8 +147,8 @@ export function AlertsView({ seed }: { seed?: string }) {
           <table className="w-full text-xs"><tbody>{data.alerts.map((a: any) => (
             <tr key={a.id} className="border-t border-border-subtle">
               <td className="py-1.5 font-mono text-text-primary">{a.symbol}</td>
-              <td className="text-text-secondary">{a.label} <span className="font-mono text-text-primary">{a.kind.startsWith('change') ? `${a.value}%` : fmtPrice(a.value)}</span>{a.note && <span className="text-text-tertiary"> · {a.note}</span>}</td>
-              <td className="text-2xs">{a.active ? <span className="text-green">● watching</span> : <span className="text-amber">triggered {String(a.triggered_at).slice(0, 16).replace('T', ' ')} at {fmtPrice(a.triggered_price)}</span>}</td>
+              <td className="text-text-secondary">{a.label} <span className="font-mono text-text-primary">{a.kind.startsWith('change') ? `${a.value}%` : fmtPrice(a.value, symType(a.symbol))}</span>{a.note && <span className="text-text-tertiary"> · {a.note}</span>}</td>
+              <td className="text-2xs">{a.active ? <span className="text-green">● watching</span> : <span className="text-amber">triggered {localStamp(a.triggered_at)} at {fmtPrice(a.triggered_price, symType(a.symbol))}</span>}</td>
               <td className="text-right"><button onClick={() => del(a.id)} aria-label="Delete alert" className="p-1 text-text-tertiary hover:text-red"><Trash2 className="w-3 h-3" /></button></td>
             </tr>))}</tbody></table>)}
       </Panel>
@@ -183,18 +183,23 @@ export function AlertToasts({ onOpen }: { onOpen: (s: string) => void }) {
         <button onClick={dismiss} aria-label="Dismiss" className="text-text-tertiary hover:text-text-primary"><X className="w-3.5 h-3.5" /></button></div>
       <ul className="max-h-48 overflow-y-auto">{items.map((a) => (
         <li key={a.id}><button onClick={() => onOpen(a.symbol)} className="w-full text-left px-3 py-1.5 text-2xs hover:bg-surface-3">
-          <span className="font-mono text-text-primary">{a.symbol}</span> <span className="text-text-secondary">{a.label} {a.kind.startsWith('change') ? `${a.value}%` : fmtPrice(a.value)}</span>
-          <span className="text-text-tertiary"> · at {fmtPrice(a.triggered_price)}</span></button></li>))}</ul>
+          <span className="font-mono text-text-primary">{a.symbol}</span> <span className="text-text-secondary">{a.label} {a.kind.startsWith('change') ? `${a.value}%` : fmtPrice(a.value, symType(a.symbol))}</span>
+          <span className="text-text-tertiary"> · at {fmtPrice(a.triggered_price, symType(a.symbol))}</span></button></li>))}</ul>
     </div>
   );
 }
 
 // ── JRNL ─────────────────────────────────────────────────────────────────────
-const blank = { date: localToday(), symbol: '', side: 'long', quantity: '', entry: '', exit: '', thesis: '', outcome: '', tags: '' };
+const blank = () => ({ date: localToday(), symbol: '', side: 'long', quantity: '', entry: '', exit: '', thesis: '', outcome: '', tags: '' });
+// alert times are stored in UTC: show them in local time
+const localStamp = (t: string | null | undefined) => {
+  const d = t ? new Date(t) : null;
+  return d && !Number.isNaN(d.getTime()) ? d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+};
 
 export function JournalView({ seed, onOpen }: { seed?: string; onOpen: (s: string) => void }) {
   const [data, setData] = useState<any>(null);
-  const [form, setForm] = useState<any>({ ...blank, symbol: seed ?? '' });
+  const [form, setForm] = useState<any>({ ...blank(), symbol: seed ?? '' });
   const [editing, setEditing] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const load = useCallback(() => call('/api/v1/mkt/journal').then(setData).catch((e) => setErr(e.message)), []);
@@ -205,7 +210,7 @@ export function JournalView({ seed, onOpen }: { seed?: string; onOpen: (s: strin
       quantity: form.quantity === '' ? null : Number(form.quantity), entry: form.entry === '' ? null : Number(form.entry), exit: form.exit === '' ? null : Number(form.exit) };
     try {
       if (editing) await call(`/api/v1/mkt/journal/${editing}`, 'PUT', body); else await call('/api/v1/mkt/journal', 'POST', body);
-      setForm({ ...blank }); setEditing(null); load();
+      setForm(blank()); setEditing(null); load();
     } catch (e2: any) { setErr(e2.message); }
   };
   const edit = (r: any) => { setEditing(r.id); setForm({ ...r, quantity: r.quantity ?? '', entry: r.entry ?? '', exit: r.exit ?? '', tags: (r.tags ?? []).join(', '), thesis: r.thesis ?? '', outcome: r.outcome ?? '' }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
@@ -232,7 +237,7 @@ export function JournalView({ seed, onOpen }: { seed?: string; onOpen: (s: strin
           <textarea value={form.thesis} onChange={(e) => setForm({ ...form, thesis: e.target.value })} rows={2} placeholder="Thesis — why this trade? What would prove you wrong?" className={cn(inp, 'w-full')} aria-label="Thesis" />
           <textarea value={form.outcome} onChange={(e) => setForm({ ...form, outcome: e.target.value })} rows={2} placeholder="Outcome & lessons (after closing)" className={cn(inp, 'w-full')} aria-label="Outcome" />
           <div className="flex gap-2"><button className="px-3 py-1.5 text-xs bg-bloomberg text-text-inverse">{editing ? 'Save changes' : 'Add to journal'}</button>
-            {editing && <button type="button" onClick={() => { setEditing(null); setForm({ ...blank }); }} className="px-3 py-1.5 text-xs border border-border">Cancel</button>}</div>
+            {editing && <button type="button" onClick={() => { setEditing(null); setForm(blank()); }} className="px-3 py-1.5 text-xs border border-border">Cancel</button>}</div>
         </form>
       </Panel>
       <ErrorBox msg={err} />

@@ -446,7 +446,8 @@ def statements(symbol: str) -> Dict[str, Any]:
         tk = yf.Ticker(s)
         tables = {}
         for key, attr in (("income", "income_stmt"), ("balance", "balance_sheet"), ("cashflow", "cashflow"),
-                          ("income_q", "quarterly_income_stmt")):
+                          ("income_q", "quarterly_income_stmt"), ("balance_q", "quarterly_balance_sheet"),
+                          ("cashflow_q", "quarterly_cashflow")):
             try:
                 df = getattr(tk, attr)
             except Exception:
@@ -454,6 +455,9 @@ def statements(symbol: str) -> Dict[str, Any]:
             if df is None or df.empty:
                 continue
             df = df.iloc[:, :8]
+            df = df.loc[:, df.notna().sum() >= 3]                 # yfinance pads with near-empty old periods
+            if df.empty:
+                continue
             rows = [{"item": str(idx), "values": [_f(v) for v in row]} for idx, row in df.iterrows()]
             rows = [r for r in rows if any(v not in (None, 0) for v in r["values"])]      # drop empty / all-zero lines
             order = {name: i for i, name in enumerate(KEY_LINES.get(key.replace("_q", ""), []))}
@@ -477,12 +481,29 @@ def statements(symbol: str) -> Dict[str, Any]:
                   "current_ratio": ratio(latest("balance", "Current Assets"), latest("balance", "Current Liabilities"))}
         return {"ticker": s, "provider": "yahoo", "tables": tables, "ratios": ratios, "currency": _info(s).get("financialCurrency"),
                 "source": "Yahoo Finance (company reports)"}
-    return _cached(f"stmts:{s}", 6 * 3600, fetch)
+    return _cached(f"stmts2:{s}", 6 * 3600, fetch)
 
 
 # ── News & filings ───────────────────────────────────────────────────────────
+# currency names used in FX headlines ("euro", "yen", "sterling"…), for currency-pair news
+CCY_WORDS = {"EUR": ["euro"], "JPY": ["yen"], "GBP": ["sterling", "pound"], "CHF": ["swiss franc", "franc"], "AUD": ["aussie", "australian dollar"],
+             "CAD": ["loonie", "canadian dollar"], "NZD": ["kiwi", "new zealand dollar"], "CNY": ["yuan", "renminbi"], "CNH": ["yuan", "renminbi"],
+             "HKD": ["hong kong dollar"], "INR": ["rupee"], "KRW": ["won"], "MXN": ["peso"], "BRL": ["real"], "ZAR": ["rand"], "TRY": ["lira"],
+             "SEK": ["krona"], "NOK": ["krone"], "SGD": ["singapore dollar"], "TWD": ["taiwan dollar"], "RUB": ["rouble", "ruble"],
+             "PLN": ["zloty"], "IDR": ["rupiah"], "THB": ["baht"], "USD": ["dollar", "greenback"]}
+
+
+def _fx_pair(s: str) -> Optional[Tuple[str, str]]:
+    """EURUSD=X → (EUR, USD); JPY=X → (USD, JPY)."""
+    if not s.endswith("=X"):
+        return None
+    b = s[:-2]
+    return (b[:3], b[3:6]) if len(b) == 6 else (("USD", b) if len(b) == 3 else None)
+
+
 def news(symbol: str) -> Dict[str, Any]:
     s = symbol.strip().upper()
+    pair = _fx_pair(s)
 
     def fetch():
         # Yahoo's per-ticker news feed went empty in 2026; its search endpoint still returns
@@ -498,6 +519,9 @@ def news(symbol: str) -> Dict[str, Any]:
             # the distinctive name word, the name, and the ticker; merged and de-duplicated
             first = next((w for w in _norm(name).split() if len(w) >= 3), None)
             queries = list(dict.fromkeys(q for q in (first, name, s.split(".")[0] if "." in s else s) if q))
+            if pair:                                            # "EUR/USD", "euro dollar": not the 3-letter code
+                foreign = pair[0] if pair[0] != "USD" else pair[1]
+                queries = [f"{pair[0]}/{pair[1]}", f"{CCY_WORDS.get(foreign, [foreign])[0]} {CCY_WORDS.get(pair[1] if foreign == pair[0] else pair[0], ['dollar'])[0]}"]
             raw, seen_t = [], set()
             for q in queries:
                 try:
@@ -510,7 +534,12 @@ def news(symbol: str) -> Dict[str, Any]:
                     continue
             if not raw:
                 raw = yf.Ticker(s).news or []
-            raw = _extra_company_news(s, first or name) + raw          # company-specific sources first
+            if pair:
+                foreign = pair[0] if pair[0] != "USD" else pair[1]
+                gq = f'"{pair[0]}/{pair[1]}" OR "{CCY_WORDS.get(foreign, [foreign])[0]}" currency OR forex'
+                raw = _extra_company_news(s, None, query=gq) + raw
+            else:
+                raw = _extra_company_news(s, first or name) + raw      # company-specific sources first
             for n in raw[:60]:
                 c = n.get("content") or n
                 url = ((c.get("canonicalUrl") or {}).get("url") or (c.get("clickThroughUrl") or {}).get("url")
@@ -523,9 +552,18 @@ def news(symbol: str) -> Dict[str, Any]:
         except Exception as e:
             logger.info("[markets] news unavailable for %s: %s", s, e)
         items = [i for i in items if i["title"]]
+        seen_titles: set = set()                       # the same story from two feeds
+        items = [i for i in items if not (i["title"].strip().lower() in seen_titles or seen_titles.add(i["title"].strip().lower()))]
         # Yahoo's name search mixes in general market stories: keep the ones about this company
         # (its name's distinctive words or its ticker); fall back to all if too few match
         import re
+        if pair:
+            # a currency pair: the pair itself, or a non-dollar currency's name — "EUR 256.00" share-price
+            # stories mention the code, not the currency
+            terms = [f"{pair[0]}/?{pair[1]}"] + [re.escape(w) for c in pair if c != "USD" for w in CCY_WORDS.get(c, [])]
+            pats = [re.compile(rf"\b(?:{t})s?\b", re.I) for t in terms]
+            keep = [i for i in items if any(p.search(i["title"]) for p in pats)]
+            return sorted(keep, key=lambda i: str(i.get("time") or ""), reverse=True)[:20]
         words = [w for w in _norm(name).split() if len(w) >= 3][:1]       # the distinctive first word ("toyota", not "motor")
         base = s.split(".")[0].split("=")[0].lstrip("^")
         pats = [re.compile(rf"\b{re.escape(w)}", re.I) for w in words] + ([re.compile(rf"\b{re.escape(base)}\b")] if len(base) >= 2 else [])
@@ -533,7 +571,7 @@ def news(symbol: str) -> Dict[str, Any]:
         is_stock = (_info(s).get("quoteType") or "").upper() == "EQUITY"
         keep = about if (about and is_stock) or len(about) >= 4 else items
         return sorted(keep, key=lambda i: str(i.get("time") or ""), reverse=True)[:20]
-    out = {"symbol": s, "news": _cached(f"news:{s}", 900, fetch), "filings": []}
+    out = {"symbol": s, "news": _cached(f"news2:{s}", 900, fetch), "filings": []}
     try:
         out["filings"] = sec_filings(s)
     except Exception as e:
@@ -541,7 +579,7 @@ def news(symbol: str) -> Dict[str, Any]:
     return out
 
 
-def _extra_company_news(symbol: str, word: str) -> List[Dict[str, Any]]:
+def _extra_company_news(symbol: str, word: Optional[str], query: Optional[str] = None) -> List[Dict[str, Any]]:
     """Company news beyond Yahoo's (often generic) search: Finnhub's company feed for US listings
     (free key) and Google News' RSS search by company name — in Yahoo's item shape."""
     import os
@@ -560,9 +598,9 @@ def _extra_company_news(symbol: str, word: str) -> List[Dict[str, Any]]:
                             "providerPublishTime": x.get("datetime")})
         except Exception as e:
             logger.debug("[news] finnhub %s: %s", symbol, e)
-    if word:
+    if word or query:
         try:
-            r = requests.get("https://news.google.com/rss/search", params={"q": f'"{word}" stock OR shares OR earnings', "hl": "en-US", "gl": "US", "ceid": "US:en"},
+            r = requests.get("https://news.google.com/rss/search", params={"q": query or f'"{word}" stock OR shares OR earnings', "hl": "en-US", "gl": "US", "ceid": "US:en"},
                              headers={"User-Agent": "Mozilla/5.0 (MacroTerminal research)"}, timeout=10)
             for title, link, pub, src in re.findall(r"<item><title>(.*?)</title><link>(.*?)</link>.*?<pubDate>(.*?)</pubDate>.*?<source[^>]*>(.*?)</source>", r.text, re.S)[:20]:
                 import html as _h
@@ -574,7 +612,7 @@ def _extra_company_news(symbol: str, word: str) -> List[Dict[str, Any]]:
                     ts = None
                 out.append({"title": t, "publisher": _h.unescape(src), "link": link, "providerPublishTime": ts, "summary": None})
         except Exception as e:
-            logger.debug("[news] google %s: %s", word, e)
+            logger.debug("[news] google %s: %s", word or query, e)
     return out
 
 

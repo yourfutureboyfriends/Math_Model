@@ -9,6 +9,13 @@ import { Chart } from './TickerView';
 import { Chg, ErrorBox, fmtBig, fmtPrice, Loading, Panel, useJSON } from './shared';
 import { MarketClock } from './MarketClock';
 
+// calendar times come with a UTC offset (New York time): show them in the viewer's own time zone
+const evDate = (d: string, withTime = false) => {
+  const t = new Date(d);
+  if (Number.isNaN(t.getTime()) || String(d).length <= 10) return String(d).slice(5, 10);
+  const md = `${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  return withTime ? `${md} ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}` : md;
+};
 const pct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${v.toFixed(d)}%`);
 const MARKET_NAME: Record<string, string> = { us: 'US', ca: 'Canada', br: 'Brazil', mx: 'Mexico', gb: 'UK', de: 'Germany', fr: 'France', ch: 'Switzerland',
   nl: 'Netherlands', it: 'Italy', es: 'Spain', se: 'Sweden', sa: 'Saudi Arabia', za: 'South Africa', jp: 'Japan', cn: 'China', hk: 'Hong Kong',
@@ -99,7 +106,7 @@ export function RegionMonitor({ onOpen, onGo }: { onOpen: (s: string) => void; o
           <Panel title="Economic releases" right={<button onClick={() => onGo('ECO')} className="text-[10px] text-text-tertiary hover:text-bloomberg">ECO &lt;GO&gt;</button>}>
             {ccys.length === 0 && region !== 'global' ? <p className="text-[11px] text-text-tertiary">The free consensus calendar covers the US, euro area, UK, Japan, China, Canada, Australia, Switzerland and New Zealand.</p> : (
               <table className="w-full text-[11px]"><tbody>{(eco.data?.events ?? []).slice(-10).map((e: any, i: number) => (
-                <tr key={i} className="border-t border-border-subtle"><td className="py-0.5 font-mono text-text-tertiary">{String(e.date).slice(5, 10)}</td><td className="text-text-secondary">{e.country}</td>
+                <tr key={i} className="border-t border-border-subtle"><td className="py-0.5 font-mono text-text-tertiary">{evDate(e.date)}</td><td className="text-text-secondary">{e.country}</td>
                   <td className="text-text-primary truncate max-w-[12rem]">{e.title}</td><td className="text-right font-mono" title={e.actual != null ? 'Actual' : 'Consensus forecast'}>
                     {e.actual != null ? <span className="text-text-primary">{e.actual}{e.unit ?? ''}</span> : e.forecast ? <span className="text-text-tertiary">f {e.forecast}</span> : ''}</td></tr>))}</tbody></table>)}
           </Panel>
@@ -184,9 +191,9 @@ export function CountryView({ iso, onOpen, onGo }: { iso?: string; onOpen: (s: s
         </Panel>
         <Panel title={`Economic releases — ${c.currency}`}>
           {(eco.data?.events ?? []).length === 0 ? <p className="text-[11px] text-text-tertiary">{eco.loading ? 'Loading…' : 'No releases for this currency in the free consensus calendar this week.'}</p> : (
-            <table className="w-full text-[11px]"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Date</th><th className="text-left font-normal">Release</th><th className="text-right font-normal">Actual</th><th className="text-right font-normal">Cons.</th><th className="text-right font-normal">Prev.</th></tr></thead>
+            <table className="w-full text-[11px]"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Date (local)</th><th className="text-left font-normal">Release</th><th className="text-right font-normal">Actual</th><th className="text-right font-normal">Cons.</th><th className="text-right font-normal">Prev.</th></tr></thead>
               <tbody>{eco.data.events.map((e: any, i: number) => (
-                <tr key={i} className="border-t border-border-subtle"><td className="py-0.5 font-mono text-text-tertiary">{String(e.date).slice(5, 16).replace('T', ' ')}</td>
+                <tr key={i} className="border-t border-border-subtle"><td className="py-0.5 font-mono text-text-tertiary">{evDate(e.date, true)}</td>
                   <td className="text-text-primary">{e.title}</td><td className="text-right font-mono">{e.actual ?? ''}</td><td className="text-right font-mono text-text-secondary">{e.forecast ?? ''}</td>
                   <td className="text-right font-mono text-text-tertiary">{e.previous ?? ''}</td></tr>))}</tbody></table>)}
         </Panel>

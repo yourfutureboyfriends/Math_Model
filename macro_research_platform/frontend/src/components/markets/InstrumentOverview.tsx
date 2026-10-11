@@ -19,7 +19,7 @@ function Card({ title, right, children, className }: { title: string; right?: Re
   );
 }
 
-function RangeBar({ low, high, value, label }: { low?: number | null; high?: number | null; value?: number | null; label: string }) {
+function RangeBar({ low, high, value, label, type }: { low?: number | null; high?: number | null; value?: number | null; label: string; type?: string }) {
   if (low == null || high == null || value == null || high <= low) return null;
   const p = Math.max(0, Math.min(100, ((value - low) / (high - low)) * 100));
   return (
@@ -29,25 +29,28 @@ function RangeBar({ low, high, value, label }: { low?: number | null; high?: num
         <div className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-red/60 via-amber/60 to-green/60" style={{ width: '100%' }} />
         <div className="absolute -top-1 w-0.5 h-3.5 bg-text-primary" style={{ left: `${p}%` }} />
       </div>
-      <div className="flex justify-between text-[11px] font-mono text-text-secondary mt-1"><span>{fmtPrice(low)}</span><span>{fmtPrice(high)}</span></div>
+      <div className="flex justify-between text-[11px] font-mono text-text-secondary mt-1"><span>{fmtPrice(low, type)}</span><span>{fmtPrice(high, type)}</span></div>
     </div>
   );
 }
 
 export function KeyStats({ q, p }: { q: any; p: any }) {
   const v = p?.valuation ?? {};
-  const rows: [string, string][] = [
-    ['Open', fmtPrice(q.open, q.type)], ['Previous close', fmtPrice(q.previous_close, q.type)],
-    ['Day high', fmtPrice(q.day_high, q.type)], ['Day low', fmtPrice(q.day_low, q.type)],
-    ['Volume', fmtBig(q.volume)], ['Avg volume', fmtBig(q.avg_volume)],
-    ['Market cap', fmtBig(q.market_cap)], ['P/E (TTM)', v.trailing_pe != null ? v.trailing_pe.toFixed(1) : '—'],
-    ['Forward P/E', v.forward_pe != null ? v.forward_pe.toFixed(1) : '—'], ['Dividend yield', v.dividend_yield != null ? fmtPct(v.dividend_yield, 2).replace('+', '') : '—'],
-    ['Beta', v.beta != null ? v.beta.toFixed(2) : '—'], ['Price / book', v.price_to_book != null ? v.price_to_book.toFixed(2) : '—'],
+  const equity = q.type === 'Stock';
+  const all: [string, string, boolean][] = [
+    ['Open', fmtPrice(q.open, q.type), true], ['Previous close', fmtPrice(q.previous_close, q.type), true],
+    ['Day high', fmtPrice(q.day_high, q.type), true], ['Day low', fmtPrice(q.day_low, q.type), true],
+    // currencies and some indices report no volume: leave the rows out rather than show 0
+    ['Volume', fmtBig(q.volume), !!q.volume], ['Avg volume', fmtBig(q.avg_volume), !!q.avg_volume],
+    ['Market cap', fmtBig(q.market_cap, q.currency), equity || q.market_cap != null], ['P/E (TTM)', v.trailing_pe != null ? v.trailing_pe.toFixed(1) : '—', equity],
+    ['Forward P/E', v.forward_pe != null ? v.forward_pe.toFixed(1) : '—', equity], ['Dividend yield', v.dividend_yield != null ? fmtPct(v.dividend_yield, 2).replace('+', '') : '—', equity || v.dividend_yield != null],
+    ['Beta', v.beta != null ? v.beta.toFixed(2) : '—', equity || v.beta != null], ['Price / book', v.price_to_book != null ? v.price_to_book.toFixed(2) : '—', equity],
   ];
+  const rows = all.filter(([, , show]) => show).map(([k, val]) => [k, val] as [string, string]);
   return (
     <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-      <RangeBar low={q.day_low} high={q.day_high} value={q.price} label="Day range" />
-      <RangeBar low={q.week52_low} high={q.week52_high} value={q.price} label="52-week range" />
+      <RangeBar low={q.day_low} high={q.day_high} value={q.price} label="Day range" type={q.type} />
+      <RangeBar low={q.week52_low} high={q.week52_high} value={q.price} label="52-week range" type={q.type} />
       {rows.map(([k, val]) => (
         <div key={k} className="flex justify-between gap-2 text-xs border-b border-border-subtle pb-1">
           <span className="text-text-tertiary">{k}</span><span className="font-mono text-text-primary">{val}</span></div>))}
@@ -106,7 +109,7 @@ export function OrderTicket({ q }: { q: any }) {
         <div className="flex justify-between"><span className="text-text-tertiary">{type === 'market' ? 'Market price' : 'Limit price'}</span><span className="font-mono">{fmtPrice(px, q.type)}</span></div>
         {mode === 'amount' && <div className="flex justify-between"><span className="text-text-tertiary">Units</span><span className="font-mono">{shares ? +shares.toFixed(4) : '—'}</span></div>}
         <div className="flex justify-between font-semibold"><span className="text-text-secondary">Estimated {side === 'buy' ? 'cost' : 'proceeds'}</span>
-          <span className="font-mono">{cost != null ? `${fmtPrice(cost)} ${q.currency ?? ''}` : '—'}</span></div>
+          <span className="font-mono">{cost != null ? `${fmtPrice(cost, q.type)} ${q.currency ?? ''}` : '—'}</span></div>
       </div>
       <button onClick={submit} disabled={busy} className={cn('w-full py-2.5 rounded-md text-sm font-semibold text-white disabled:opacity-50', side === 'buy' ? 'bg-green hover:bg-green/90' : 'bg-red hover:bg-red/90')}>
         {busy ? 'Recording…' : `Review & ${side} (paper)`}</button>
@@ -123,8 +126,12 @@ export function AnalystGauge({ symbol, price }: { symbol: string; price?: number
   const rm = data?.recommendation_mean;                 // Yahoo: 1 = strong buy … 5 = strong sell
   if (!s && rm == null) return <p className="text-xs text-text-tertiary">No analyst coverage.</p>;
   const counts = s ? [s.strongSell ?? 0, s.sell ?? 0, s.hold ?? 0, s.buy ?? 0, s.strongBuy ?? 0] : [0, 0, 0, 0, 0];
-  const n = s ? counts.reduce((a, b) => a + b, 0) || 1 : data.analysts ?? 0;
-  const score = s ? (counts[0] * 1 + counts[1] * 2 + counts[2] * 3 + counts[3] * 4 + counts[4] * 5) / (n || 1) : 6 - rm;   // 1 = strong sell … 5 = strong buy
+  const total = counts.reduce((a, b) => a + b, 0);
+  // an empty latest-month breakdown falls back to Yahoo's mean rating
+  const useCounts = total > 0 || rm == null;
+  if (useCounts && total === 0) return <p className="text-xs text-text-tertiary">No analyst coverage.</p>;
+  const n = useCounts ? total : data.analysts ?? 0;
+  const score = useCounts ? (counts[0] * 1 + counts[1] * 2 + counts[2] * 3 + counts[3] * 4 + counts[4] * 5) / total : 6 - rm;   // 1 = strong sell … 5 = strong buy
   const label = score >= 4.5 ? 'Strong buy' : score >= 3.5 ? 'Buy' : score >= 2.5 ? 'Hold' : score >= 1.5 ? 'Sell' : 'Strong sell';
   const ang = Math.PI * (1 - (score - 1) / 4);
   const t = data.targets ?? {};
@@ -140,7 +147,7 @@ export function AnalystGauge({ symbol, price }: { symbol: string; price?: number
       </svg>
       <div className="min-w-0 text-xs space-y-1">
         <div className="text-base font-semibold text-text-primary">{label}</div>
-        <div className="text-text-tertiary">{s ? `${n} analysts · ${counts[4] + counts[3]} buy · ${counts[2]} hold · ${counts[1] + counts[0]} sell` : `${n || '—'} analysts · mean rating ${rm?.toFixed(2)} (1 = strong buy)`}</div>
+        <div className="text-text-tertiary">{useCounts ? `${n} analysts · ${counts[4] + counts[3]} buy · ${counts[2]} hold · ${counts[1] + counts[0]} sell` : `${n || '—'} analysts · mean rating ${rm?.toFixed(2)} (1 = strong buy)`}</div>
         {t.mean != null && <div>Target <span className="font-mono text-text-primary">{fmtPrice(t.mean)}</span>
           {price ? <> (<Chg v={t.mean / price - 1} d={1} />)</> : null}<div className="text-text-tertiary">range {fmtPrice(t.low)} – {fmtPrice(t.high)}</div></div>}
       </div>
@@ -153,13 +160,18 @@ export function EarningsCard({ symbol }: { symbol: string }) {
   if (loading && !data) return <Loading />;
   if (!data) return <p className="text-xs text-text-tertiary">No earnings data.</p>;
   const up = data.upcoming?.[0], last = data.history?.[0];
-  const days = up ? Math.round((new Date(up.date).getTime() - Date.now()) / 86400000) : null;
+  // report dates are calendar days: read them in local time (new Date('YYYY-MM-DD') is UTC midnight)
+  const upDate = up ? new Date(String(up.date).length === 10 ? `${up.date}T00:00:00` : up.date) : null;
+  const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+  const days = upDate ? Math.round((new Date(upDate).setHours(0, 0, 0, 0) - today0.getTime()) / 86400000) : null;
   return (
     <div className="grid grid-cols-2 gap-3 text-xs">
-      <div><div className="text-text-tertiary">Next report</div><div className="text-sm font-semibold text-text-primary">{up ? new Date(up.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</div>
-        {days != null && <div className="text-text-tertiary">{days >= 0 ? `in ${days} days` : 'recently'}{up?.eps_estimate != null ? ` · est. EPS ${up.eps_estimate.toFixed(2)}` : ''}</div>}</div>
+      <div><div className="text-text-tertiary">Next report</div><div className="text-sm font-semibold text-text-primary">{upDate ? upDate.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</div>
+        {days != null && <div className="text-text-tertiary">{days > 1 ? `in ${days} days` : days === 1 ? 'tomorrow' : days === 0 ? 'today' : 'recently'}{up?.eps_estimate != null ? ` · est. EPS ${up.eps_estimate.toFixed(2)}` : ''}</div>}</div>
       <div><div className="text-text-tertiary">Last quarter</div>{last ? <><div className="text-sm font-semibold font-mono">{last.eps_reported?.toFixed(2)} <span className="text-text-tertiary text-xs font-sans">vs {last.eps_estimate?.toFixed(2)}</span></div>
-        <div className={cn(last.surprise_pct > 0 ? 'text-green' : 'text-red')}>{last.surprise_pct > 0 ? 'Beat' : 'Missed'} by {Math.abs(last.surprise_pct).toFixed(1)}%</div></> : '—'}</div>
+        {last.surprise_pct != null && (Math.abs(last.surprise_pct) < 0.05
+          ? <div className="text-text-secondary">In line with estimates</div>
+          : <div className={cn(last.surprise_pct > 0 ? 'text-green' : 'text-red')}>{last.surprise_pct > 0 ? 'Beat' : 'Missed'} by {Math.abs(last.surprise_pct).toFixed(1)}%</div>)}</> : '—'}</div>
       {data.beat_rate != null && <div className="col-span-2 text-text-tertiary">Beat estimates in <span className="text-text-primary">{Math.round(data.beat_rate * 100)}%</span> of the last {data.history.length} reports.</div>}
     </div>
   );
