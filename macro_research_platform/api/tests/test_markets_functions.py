@@ -443,3 +443,36 @@ def test_tic_country_names_map_to_iso():
     from api.marketdata.flows import _iso_of
     assert _iso_of("China, Mainland") == "CN" and _iso_of("Korea, South") == "KR" and _iso_of("Cayman Islands") == "KY"
     assert _iso_of("Japan") == "JP" and _iso_of("Grand Total") is None and _iso_of("Total Europe") is None
+
+
+# ── Market internals ────────────────────────────────────────────────────────
+def test_recession_probit_matches_ny_fed():
+    from api.marketdata.insights import _norm_cdf
+    p = lambda spread: _norm_cdf(-0.5333 - 0.6330 * spread)
+    assert abs(p(0.0) - 0.297) < 0.002               # flat curve ≈ 30% (NY Fed's published mapping)
+    assert p(-1.0) > 0.5 > p(1.0)                    # inversion raises it, steepening lowers it
+
+
+def test_percentile_rank():
+    from api.marketdata.insights import _pctile
+    assert _pctile([1, 2, 3, 4], 4) == 1.0 and _pctile([1, 2, 3, 4], 1) == 0.25 and _pctile([], 1) is None
+
+
+def test_uoa_skips_deep_itm_and_flags_new_positions(monkeypatch):
+    import pandas as pd
+    from api.marketdata import insights
+
+    class Chain:
+        calls = pd.DataFrame([{"strike": 100.0, "volume": 5000, "openInterest": 500, "lastPrice": 2.0, "impliedVolatility": 0.4},
+                              {"strike": 50.0, "volume": 5000, "openInterest": 10, "lastPrice": 51.0, "impliedVolatility": 2.9}])
+        puts = pd.DataFrame([{"strike": 95.0, "volume": 100, "openInterest": 900, "lastPrice": 1.0, "impliedVolatility": 0.4}])
+
+    class T:
+        options = ["2026-10-16"]
+        fast_info = {"lastPrice": 100.0}
+        def option_chain(self, e): return Chain
+    import yfinance as yf
+    monkeypatch.setattr(yf, "Ticker", lambda s: T())
+    r = insights._uoa_one("XYZ")
+    assert [h["strike"] for h in r["hits"]] == [100.0]          # the deep-ITM, IV-290% line is dropped
+    assert r["hits"][0]["vol_oi"] == 10.0 and r["hits"][0]["premium"] == 1_000_000

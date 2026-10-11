@@ -391,6 +391,16 @@ async def mkt_edge(layer: str):
     return await _run(fn, timeout=180)
 
 
+@router.get("/api/v1/mkt/ins/{layer}")
+async def mkt_insights(layer: str):
+    """Market internals: vol (volatility complex), breadth (S&P 500), impm (earnings implied moves), uoa (unusual options), risk (regime)."""
+    from api.marketdata import insights
+    fn = {"vol": insights.vol, "breadth": insights.breadth, "impm": insights.implied_moves, "uoa": insights.uoa, "risk": insights.risk}.get(layer)
+    if not fn:
+        raise HTTPException(404, "Unknown layer")
+    return await _run(fn, timeout=240)
+
+
 @router.get("/api/v1/mkt/fly")
 async def mkt_flights(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180), radius_nm: int = Query(100, ge=5, le=250)):
     """Live aircraft around a point (same as /fly/area)."""

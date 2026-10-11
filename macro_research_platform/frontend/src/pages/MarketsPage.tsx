@@ -14,6 +14,7 @@ import { EcoGlobalView, EcstView, SiView, SplcView } from '@/components/markets/
 import { FlyView, QuakeView, ShipView } from '@/components/markets/TrackingViews';
 import { FlowView } from '@/components/markets/FlowView';
 import { CotView, EdgeBoard, NowView, PredView } from '@/components/markets/EdgeViews';
+import { BreadthView, ImpmView, RiskView, UoaView, VolView } from '@/components/markets/InsightViews';
 import { AuctView, EiaView, InsdView, IpoView, ThirteenFView, WetrView, WirpView } from '@/components/markets/ExtrasViews';
 import { CountryView, RegionBar, RegionMonitor } from '@/components/markets/RegionViews';
 import { useRegion } from '@/lib/region';
@@ -259,6 +260,11 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'COT' && <CotView />}
     {code === 'PRED' && <PredView />}
     {code === 'NOW' && <NowView />}
+    {code === 'RISK' && <RiskView />}
+    {code === 'VOL' && <VolView onOpen={open} />}
+    {code === 'BRDT' && <BreadthView />}
+    {code === 'IMPM' && <ImpmView onOpen={open} />}
+    {code === 'UOA' && <UoaView onOpen={open} />}
     {code === 'SHIP' && <ShipView />}
     {code === 'FLY' && <FlyView />}
     {code === 'QUAK' && <QuakeView />}

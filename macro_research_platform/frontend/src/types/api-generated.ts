@@ -5239,6 +5239,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mkt/ins/{layer}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Insights
+         * @description Market internals: vol (volatility complex), breadth (S&P 500), impm (earnings implied moves), uoa (unusual options), risk (regime).
+         */
+        get: operations["mkt_insights_api_v1_mkt_ins__layer__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mkt/fly": {
         parameters: {
             query?: never;
@@ -15985,6 +16005,37 @@ export interface operations {
         };
     };
     mkt_edge_api_v1_mkt_edge__layer__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                layer: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_insights_api_v1_mkt_ins__layer__get: {
         parameters: {
             query?: never;
             header?: never;

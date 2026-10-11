@@ -92,7 +92,8 @@ export function LineChart(props: Props & { controls?: boolean; defaultRange?: st
   const monthly = isMonthly(first) && isMonthly(last);
   const enabled = controls && rows.length > 8 && (daily || monthly);
   // a long history can start zoomed in (e.g. 5Y) so one extreme episode doesn't flatten the rest
-  const [range, setRange] = useState(props.defaultRange ?? 'all');
+  // an unknown preset (e.g. '1Y' instead of '1y') falls back to the full history rather than crashing
+  const [range, setRange] = useState(() => { const k = (props.defaultRange ?? 'all').toLowerCase(); return RANGES.some((q) => q.key === k) ? k : 'all'; });
   const [freq, setFreq] = useState<'D' | 'W' | 'M'>('D');
   // custom window: typed dates or a drag-to-zoom selection (overrides the preset)
   const [custom, setCustom] = useState<{ from: string; to: string } | null>(null);
@@ -111,7 +112,7 @@ export function LineChart(props: Props & { controls?: boolean; defaultRange?: st
       out = rows.filter((row) => String(row[x]) >= custom.from && String(row[x]) <= custom.to);
     } else {
       const end = new Date(`${String(last).slice(0, 7)}${monthly ? '-28' : String(last).slice(7)}T00:00:00`);
-      const r = RANGES.find((q) => q.key === range)!;
+      const r = RANGES.find((q) => q.key === range) ?? RANGES[RANGES.length - 1];
       let cutoff: string | null = null;
       if (r.days > 0) cutoff = new Date(end.getTime() - r.days * 864e5).toISOString().slice(0, monthly ? 7 : 10);
       if (r.days === -1) cutoff = `${end.getFullYear()}-01${monthly ? '' : '-01'}`;

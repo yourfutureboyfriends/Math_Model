@@ -18,6 +18,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import math
 import statistics
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
@@ -422,6 +423,38 @@ def board() -> Dict[str, Any]:
                         f"{abs(w) / r['flows']['aum_usd'] * 100:.1f}% of assets.", 2 + abs(w) / r["flows"]["aum_usd"] * 20, "FLOW", r["symbol"])
         except Exception as e:
             logger.info("[board] etf: %s", e)
+        try:
+            from api.marketdata import insights
+            v = insights.vol()
+            if v["ratio_vix_vix3m"] > 1:
+                add("Volatility", "VIX term structure inverted (backwardation)", f"VIX {v['vix']} above VIX3M: ratio {v['ratio_vix_vix3m']:.2f} — near-term stress priced.", 4.0, "VOL")
+            elif (v.get("ratio_pct_3y") or 1) <= 0.05:
+                add("Volatility", "VIX curve unusually steep — complacency", f"VIX/VIX3M {v['ratio_vix_vix3m']:.2f}, bottom 5% of 3 years; variance premium {v['variance_premium']:+.1f} pts.", 2.5, "VOL")
+            for ix in v["indices"]:
+                if ix.get("pct_3y") is not None and ix["pct_3y"] >= 0.95 and ix["symbol"] not in ("^VIX9D", "^VIX3M", "^VIX6M", "^VIX1Y"):
+                    add("Volatility", f"{ix['name']} at a 3-year high zone ({ix['last']})", f"{ix['pct_3y'] * 100:.0f}th percentile of 3 years.", 2.8, "VOL")
+            b = insights.breadth()
+            lt = b["latest"]
+            r = insights.risk()
+            trend = next((c["value"] for c in r["components"] if c["key"] == "spx_trend"), None)
+            if trend is not None and trend > 3 and lt["above50"] < 45:
+                add("Breadth", f"Narrow market: index {trend:+.1f}% above its 200-day, only {lt['above50']:.0f}% of members above their 50-day",
+                    f"{lt['above200']:.0f}% above the 200-day; McClellan {lt['mcclellan']:+.0f}. Leadership is concentrated.", 3.0, "BRDT")
+            if abs(lt["mcclellan"] or 0) >= 60:
+                add("Breadth", f"McClellan oscillator {lt['mcclellan']:+.0f} — {'overbought' if lt['mcclellan'] > 0 else 'oversold'}", "S&P 500 advance/decline momentum at an extreme.", 2.6, "BRDT")
+            if r["recession_prob_12m"] >= 0.3:
+                add("Macro", f"Yield-curve recession probability {r['recession_prob_12m'] * 100:.0f}% (12 months)", f"10y−3m spread {r['curve_3m10y_avg']:+.2f}pp (NY Fed model).", 3.2, "RISK")
+            for m in insights.implied_moves()["rows"]:
+                if m.get("ratio") and (m["ratio"] >= 1.8 or m["ratio"] <= 0.6) and m.get("n", 0) >= 4:
+                    rich = m["ratio"] >= 1.8
+                    add("Options", f"{m['symbol']} earnings {m['date']}: options price ±{m['implied_move'] * 100:.1f}% vs a typical ±{m['avg_abs_move'] * 100:.1f}%",
+                        f"Implied move {m['ratio']:.1f}× its average over the last {m['n']} reports — options look {'rich' if rich else 'cheap'}.",
+                        min(3.2, 1.5 + abs(math.log(m["ratio"])) * 2), "IMPM", m["symbol"])
+            for h in insights.uoa()["hits"][:6]:
+                add("Options", f"{h['symbol']} {h['expiry']} {h['strike']:g} {h['kind']}s: {h['volume']:,} contracts vs {h['open_interest']:,} open",
+                    f"${h['premium'] / 1e6:,.1f}M premium{f', {h["vol_oi"]}× open interest' if h.get('vol_oi') else ''}.", min(3.0, 1.5 + h["premium"] / 2e7), "UOA", h["symbol"])
+        except Exception as e:
+            logger.info("[board] insights: %s", e)
         sig.sort(key=lambda s: -s["score"])
         # keep the board varied: at most 12 signals of any one kind
         per: Dict[str, int] = {}

@@ -1269,7 +1269,15 @@ async def lifespan(app: FastAPI):
             sweep_start()                          # live ADS-B sweep of hubs OpenSky covers poorly
             import threading
             from api.marketdata import edge
-            threading.Thread(target=lambda: [f() for f in (edge.cot, edge.trade, edge.ports_trade, edge.board)], daemon=True).start()   # warm the slow ones
+            from api.marketdata import insights
+
+            def _warm():
+                for f in (insights.breadth, insights.vol, insights.risk, edge.cot, edge.trade, edge.ports_trade, insights.implied_moves, insights.uoa, edge.board):
+                    try:
+                        f()
+                    except Exception as e:                       # one slow source must not stop the rest
+                        logger.info(f"[STARTUP] warm-up {getattr(f, '__name__', f)}: {e}")
+            threading.Thread(target=_warm, name="warm-markets", daemon=True).start()
         except Exception as e:
             logger.warning(f"[STARTUP] ship collectors not started: {e}")
 
