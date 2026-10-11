@@ -476,3 +476,18 @@ def test_uoa_skips_deep_itm_and_flags_new_positions(monkeypatch):
     r = insights._uoa_one("XYZ")
     assert [h["strike"] for h in r["hits"]] == [100.0]          # the deep-ITM, IV-290% line is dropped
     assert r["hits"][0]["vol_oi"] == 10.0 and r["hits"][0]["premium"] == 1_000_000
+
+
+def test_cache_serves_stale_value_when_the_provider_fails(monkeypatch):
+    from api.marketdata import core
+    key = "test:stale"
+    core._cache[key] = (core.time.time() - 7200, {"x": 1})          # expired an hour ago
+    def boom():
+        raise core.Upstream("429 Too Many Requests")
+    v = core._cached(key, 60, boom)
+    assert v["x"] == 1 and v["stale"] is True and v["stale_age_s"] >= 7200
+    core._cache[key] = (core.time.time() - 3 * 86400, {"x": 1})     # too old: the error surfaces
+    import pytest
+    with pytest.raises(core.Upstream):
+        core._cached(key, 60, boom)
+    core._cache.pop(key, None)

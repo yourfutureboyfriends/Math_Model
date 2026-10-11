@@ -85,6 +85,11 @@ def _opensky_states() -> Dict[str, Any]:
     return r.json()
 
 
+def _kt(v: Optional[float]) -> Optional[int]:
+    """Ground speed in knots; above 750 kt (no airliner, few fighters at cruise) is a bad fix."""
+    return round(v) if v is not None and 0 <= v <= 750 else None
+
+
 def _world_rows(j: Dict[str, Any]) -> List[list]:
     rows = []
     for s in j.get("states") or []:
@@ -95,7 +100,7 @@ def _world_rows(j: Dict[str, Any]) -> List[list]:
         alt = s[7] if s[7] is not None else s[13]
         rows.append([s[0], (s[1] or "").strip(), s[2], round(s[5], 4), round(s[6], 4),
                      round(alt * M_TO_FT) if alt is not None and not s[8] else None, 1 if s[8] else 0,
-                     round(s[9] * MS_TO_KT) if s[9] is not None else None, round(s[10]) if s[10] is not None else None,
+                     _kt(s[9] * MS_TO_KT if s[9] is not None else None), round(s[10]) if s[10] is not None else None,
                      round(s[11] * MS_TO_FPM) if s[11] is not None else None, s[14], s[3] or s[4], 0, None])
     return rows
 
@@ -164,7 +169,7 @@ def _world_base() -> Dict[str, Any]:
             alt = a.get("alt_baro")
             row = [a.get("hex"), (a.get("flight") or "").strip(), (by_hex.get(a.get("hex")) or [None, None, None])[2],
                    round(a["lon"], 4), round(a["lat"], 4), None if alt == "ground" else alt, 1 if alt == "ground" else 0,
-                   round(a["gs"]) if a.get("gs") is not None else None, round(a["track"]) if a.get("track") is not None else None,
+                   _kt(a.get("gs")), round(a["track"]) if a.get("track") is not None else None,
                    a.get("baro_rate"), a.get("squawk"), now - int(a.get("seen_pos") or a.get("seen") or 0), 1, a.get("t")]
             by_hex[row[0]] = row
         rows = list(by_hex.values())
@@ -211,7 +216,7 @@ def _ac(a: Dict[str, Any]) -> Dict[str, Any]:
     return {"hex": a.get("hex"), "flight": (a.get("flight") or "").strip(), "reg": a.get("r"), "type": a.get("t"), "model": a.get("desc"),
             "operator": a.get("ownOp"), "year": a.get("year"), "lat": a.get("lat"), "lon": a.get("lon"),
             "alt": None if alt == "ground" else alt, "alt_geom": a.get("alt_geom"), "on_ground": alt == "ground",
-            "speed": a.get("gs"), "ias": a.get("ias"), "tas": a.get("tas"), "mach": a.get("mach"), "track": a.get("track"),
+            "speed": _kt(a.get("gs")), "ias": a.get("ias"), "tas": a.get("tas"), "mach": a.get("mach"), "track": a.get("track"),
             "vrate": a.get("baro_rate") if a.get("baro_rate") is not None else a.get("geom_rate"),
             "squawk": a.get("squawk"), "emergency": em, "category": a.get("category"),
             "wind_dir": a.get("wd"), "wind_kt": a.get("ws"), "oat_c": a.get("oat"), "sel_alt": a.get("nav_altitude_mcp") or a.get("nav_altitude_fms"),

@@ -427,9 +427,12 @@ def _cusip_tickers(cusips: List[str]) -> Dict[str, Optional[str]]:
         batch = todo[i:i + 10]
         try:
             r = requests.post("https://api.openfigi.com/v3/mapping", json=[{"idType": "ID_CUSIP", "idValue": c, "exchCode": "US"} for c in batch], timeout=20)
-            if r.status_code == 429:
+            if r.status_code != 200:                     # rate limit or outage: try again next time, cache nothing
                 break
-            for c, res in zip(batch, r.json()):
+            body = r.json()
+            if not isinstance(body, list):
+                break
+            for c, res in zip(batch, body):
                 data = res.get("data") or []
                 cache[c] = data[0].get("ticker") if data else None
         except Exception:

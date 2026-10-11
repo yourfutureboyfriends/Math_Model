@@ -659,6 +659,10 @@ def fund_holdings(symbol: str) -> Dict[str, Any]:
             th, sw, ac = fd.top_holdings, fd.sector_weightings, fd.asset_classes
             ov, ops = fd.fund_overview or {}, fd.fund_operations
         except Exception as e:
+            # a rate limit or outage is not "no data": report it as an upstream failure (the cache can
+            # then serve the last good copy)
+            if any(w in str(e) for w in ("Too Many Requests", "Rate limited", "429", "timed out", "Connection")):
+                raise Upstream(f"Yahoo is rate-limiting fund data for {s} — try again shortly.") from e
             raise NotFound(f"No fund data for {s} (holdings are published for ETFs and mutual funds).") from e
         if th is None or th.empty:
             raise NotFound(f"No holdings published for {s}.")

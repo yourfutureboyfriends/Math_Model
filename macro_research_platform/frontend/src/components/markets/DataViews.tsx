@@ -107,8 +107,14 @@ export function EcoGlobalView() {
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/eco/global?days_back=14&min_impact=${impact}${ccyParam ? `&countries=${ccyParam}` : ''}`, 900_000);
   const days = useMemo(() => {
     const m = new Map<string, any[]>();
-    for (const e of data?.events ?? []) { const k = String(e.date).slice(0, 10); m.set(k, [...(m.get(k) ?? []), e]); }
-    return [...m.entries()];
+    // group by the viewer's local day: times are shown in local time, so the day heading must match
+    for (const e of data?.events ?? []) {
+      const t = new Date(e.date);
+      const k = Number.isNaN(t.getTime()) || String(e.date).length <= 10 ? String(e.date).slice(0, 10) : localToday(t);
+      m.set(k, [...(m.get(k) ?? []), e]);
+    }
+    for (const evs of m.values()) evs.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [data]);
   const today = localToday();
   return (

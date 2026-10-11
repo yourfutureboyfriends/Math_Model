@@ -37,6 +37,9 @@ class Upstream(RuntimeError):
 _inflight: Dict[str, threading.Lock] = {}
 
 
+STALE_MAX = 24 * 3600
+
+
 def _cached(key: str, ttl: float, fn: Callable[[], Any]) -> Any:
     """TTL cache with single-flight: concurrent misses for one key (several launchpad windows on
     the same data) wait for a single upstream fetch instead of each calling the provider."""
@@ -52,6 +55,18 @@ def _cached(key: str, ttl: float, fn: Callable[[], Any]) -> Any:
                 return hit[1]
         try:
             val = fn()
+        except NotFound:
+            raise
+        except Exception as e:
+            # the provider failed (rate limit, outage, timeout): serve the last good value if it is
+            # under a day old, marked stale, rather than turning a working screen into an error
+            with _lock:
+                old = _cache.get(key)
+            if old and time.time() - old[0] < STALE_MAX:
+                logger.info("[cache] %s refresh failed (%s): serving %ds-old data", key, type(e).__name__, time.time() - old[0])
+                v = old[1]
+                return {**v, "stale": True, "stale_age_s": int(time.time() - old[0])} if isinstance(v, dict) else v
+            raise
         finally:
             with _lock:
                 _inflight.pop(key, None)

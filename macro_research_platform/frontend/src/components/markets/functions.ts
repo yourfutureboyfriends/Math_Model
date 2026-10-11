@@ -45,14 +45,14 @@ export const FUNCTIONS: MktFunction[] = [
   { code: 'RRG', name: 'Relative rotation', desc: 'Sectors, countries, factors or asset classes: leading, weakening, lagging or improving vs the market.', group: 'Markets', aliases: ['ROT'] },
   { code: 'EDGE', name: 'Signal board', desc: 'The most unusual readings right now: crowded positioning, prediction-market jumps, port and trade shocks, fund-flow surges.', group: 'Markets', aliases: ['SIG', 'ALPHA', 'IDEAS'] },
   { code: 'RISK', name: 'Risk regime', desc: 'Risk-on / risk-off gauge from credit, volatility, curve, dollar, copper/gold and trend — plus the yield-curve recession probability.', group: 'Markets', aliases: ['REGIME', 'RECESS'] },
-  { code: 'VOL', name: 'Volatility', desc: 'VIX term structure, VVIX, SKEW, MOVE, oil and gold vol, implied vs realised volatility.', group: 'Markets', aliases: ['VIX', 'VOLA'] },
-  { code: 'BRDT', name: 'Market breadth', desc: 'S&P 500 participation: members above 50/200-day averages, advance/decline line, new highs/lows, McClellan, by sector.', group: 'Markets', aliases: ['BREADTH', 'AD'] },
+  { code: 'VOL', name: 'Volatility', desc: 'VIX term structure, VVIX, SKEW, MOVE, oil and gold vol, implied vs realised volatility.', group: 'Markets', aliases: ['VOLA'] },
+  { code: 'BRDT', name: 'Market breadth', desc: 'S&P 500 participation: members above 50/200-day averages, advance/decline line, new highs/lows, McClellan, by sector.', group: 'Markets', aliases: ['BREADTH'] },
   { code: 'IMPM', name: 'Earnings implied moves', desc: 'The move options price through each upcoming report vs the stock’s typical post-earnings reaction.', group: 'Markets', aliases: ['EMOVE', 'STRADDLE'] },
   { code: 'UOA', name: 'Unusual options', desc: 'Contracts trading far above open interest across the most active US names; premium and put/call by name.', group: 'Markets', aliases: ['FLOWOPT', 'SWEEP'] },
-  { code: 'COT', name: 'Positioning (COT)', desc: 'CFTC Commitments of Traders: hedge funds, asset managers and managed money in 29 futures — crowded longs and shorts.', group: 'Markets', aliases: ['CFTC', 'POS'] },
+  { code: 'COT', name: 'Positioning (COT)', desc: 'CFTC Commitments of Traders: hedge funds, asset managers and managed money in 29 futures — crowded longs and shorts.', group: 'Markets', aliases: ['CFTC'] },
   { code: 'PRED', name: 'Prediction markets', desc: 'Real-money odds (Polymarket, Kalshi) for Fed decisions, inflation, recession, geopolitics — and today’s biggest moves.', group: 'Markets', aliases: ['ODDS', 'POLY', 'KALSHI'] },
-  { code: 'NOW', name: 'Nowcasts & trade', desc: 'GDPNow, Cleveland Fed inflation nowcasts, weekly activity, financial conditions, and world trade from ship data — before the official numbers.', group: 'Markets', aliases: ['NOWCAST', 'GDPNOW', 'TRADE'] },
-  { code: 'FLOW', name: 'Money flow map', desc: 'Where money is moving: cross-border portfolio flows (TIC), bank lending (BIS), ETF creations and money flow, stablecoins, Fed liquidity.', group: 'Markets', aliases: ['MONEY', 'CAPF', 'TIC', 'FUND'] },
+  { code: 'NOW', name: 'Nowcasts & trade', desc: 'GDPNow, Cleveland Fed inflation nowcasts, weekly activity, financial conditions, and world trade from ship data — before the official numbers.', group: 'Markets', aliases: ['NOWCAST', 'GDPNOW'] },
+  { code: 'FLOW', name: 'Money flow map', desc: 'Where money is moving: cross-border portfolio flows (TIC), bank lending (BIS), ETF creations and money flow, stablecoins, Fed liquidity.', group: 'Markets', aliases: ['MONEY', 'CAPF', 'TIC'] },
   { code: 'SHIP', name: 'Shipping tracker', desc: 'Every vessel worldwide (live AIS + satellite), port congestion, ship photos, and traffic through 28 chokepoints.', group: 'Markets', aliases: ['AIS', 'VSL', 'CHOKE'] },
   { code: 'FLY', name: 'Flight tracker', desc: 'Every aircraft in the world; zoom in for live detail, routes, airframes, photos and tracks flown.', group: 'Markets', aliases: ['PLANE', 'ADSB'] },
   { code: 'QUAK', name: 'Earthquakes', desc: 'Magnitude 4.5+ quakes this week, flagged when near a major port or shipping chokepoint.', group: 'Markets', aliases: ['QUAKE', 'HAZ'] },
@@ -111,14 +111,17 @@ export function parseCommand(input: string): { symbol?: string; fn?: MktFunction
     const sym = fromTerminal(`${parts[0]} ${parts[1]}`);
     if (sym && (parts.length === 2 || findFunction(parts[2]))) return { symbol: sym, fn: parts[2] ? findFunction(parts[2]) : undefined, terminal: true };
   }
-  let fn: MktFunction | undefined;
-  const rest: string[] = [];
-  for (const p of parts) {
-    const f = !fn ? findFunction(p) : undefined;
-    // a token that is BOTH a function and plausibly a ticker (e.g. "GP") counts as the function only when another token exists
-    if (f && (parts.length > 1 || !f.security)) fn = f;
-    else rest.push(p);
+  // One token: a function if it is one ("NOW" opens nowcasts, as on a terminal), else a security.
+  if (parts.length === 1) {
+    const f = findFunction(parts[0]);
+    return f && !f.security ? { fn: f } : { symbol: parts[0].toUpperCase(), fn: f && f.security ? undefined : f };
   }
-  const symbol = rest.length ? rest.join('').toUpperCase() : undefined;
-  return { symbol, fn };
+  // Several tokens: the usual order is SECURITY FUNCTION, so a trailing function wins — that keeps
+  // tickers which are also function codes working ("NOW DES" = ServiceNow, "AI GP" = C3.ai).
+  // Otherwise a leading function ("DES AAPL").
+  const last = findFunction(parts[parts.length - 1]);
+  if (last) return { symbol: parts.slice(0, -1).join('').toUpperCase(), fn: last };
+  const first = findFunction(parts[0]);
+  if (first) return { symbol: parts.slice(1).join('').toUpperCase(), fn: first };
+  return { symbol: parts.join('').toUpperCase() };
 }

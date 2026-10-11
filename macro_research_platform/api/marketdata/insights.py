@@ -99,7 +99,7 @@ def breadth() -> Dict[str, Any]:
         from api.stock_ideas import load_universe
         uni = load_universe()
         syms = list(uni)
-        raw = yf.download(syms, period="2y", interval="1d", auto_adjust=True, progress=False, threads=True)["Close"]
+        raw = yf.download(syms, period="2y", interval="1d", auto_adjust=True, progress=False, threads=6)["Close"]   # gentle on Yahoo
         px = raw.dropna(axis=1, thresh=300).ffill(limit=3)
         if px.shape[1] < 300:
             raise Upstream("Not enough S&P 500 price history for breadth.")
@@ -236,7 +236,7 @@ def implied_moves(days: int = 10, min_cap_bn: float = 10) -> Dict[str, Any]:
                and r.get("datetime") and r["datetime"][:10] >= date.today().isoformat()]
         cal.sort(key=lambda r: -(r.get("market_cap") or 0))
         cal = cal[:40]
-        with ThreadPoolExecutor(8) as ex:
+        with ThreadPoolExecutor(4) as ex:
             res = list(ex.map(lambda r: (r, _implied_move(r["symbol"], r["datetime"], r.get("timing"))), cal))
         rows = []
         for r, m in res:
@@ -299,7 +299,7 @@ def _uoa_one(sym: str) -> Dict[str, Any]:
 
 def uoa() -> Dict[str, Any]:
     def build():
-        with ThreadPoolExecutor(10) as ex:
+        with ThreadPoolExecutor(4) as ex:
             res = list(ex.map(_uoa_one, UOA_UNIVERSE))
         hits = sorted((h for r in res for h in r["hits"]), key=lambda h: -h["premium"])[:80]
         tickers = sorted(({k: v for k, v in r.items() if k != "hits"} | {"unusual": len(r["hits"])} for r in res if r.get("call_volume") is not None),

@@ -7,6 +7,7 @@ const EXCH: Record<string, string> = {
   SM: '.MC', IM: '.MI', SW: '.SW', SE: '.SW', SS: '.ST', NO: '.OL', DC: '.CO', FH: '.HE', BB: '.BR', AV: '.VI', ID: '.IR',
   PL: '.LS', HK: '.HK', KS: '.KS', KQ: '.KQ', TT: '.TW', AU: '.AX', AT: '.AX', IN: '.NS', IB: '.BO', IS: '.NS', SP: '.SI',
   CN: '.TO', CT: '.TO', MM: '.MX', BZ: '.SA', BS: '.SA', SJ: '.JO', AB: '.SR', TI: '.IS', NZ: '.NZ', TB: '.BK', MK: '.KL', IJ: '.JK',
+  CH: '.SS', C1: '.SS', C2: '.SZ',           // China A-shares: CH picks Shanghai (6xxxxx) or Shenzhen by the code
 };
 const SUFFIX_TO_EXCH: Record<string, string> = {
   '': 'US', '.L': 'LN', '.T': 'JP', '.DE': 'GR', '.PA': 'FP', '.AS': 'NA', '.MC': 'SM', '.MI': 'IM', '.SW': 'SW', '.ST': 'SS',
@@ -56,7 +57,7 @@ export function fromTerminal(input: string): string | null {
   if (eq && eq[2] in EXCH) {
     let [, sym, ex] = eq;
     if (ex === 'HK' && /^\d+$/.test(sym)) sym = sym.padStart(4, '0');
-    if (ex === 'CH') return /^6/.test(sym) ? `${sym}.SS` : `${sym}.SZ`;
+    if (ex === 'CH') return /^[69]/.test(sym) ? `${sym}.SS` : `${sym}.SZ`;
     return `${sym.replace('/', '-')}${EXCH[ex]}`;
   }
   if (sector === 'EQUITY') return `${body.replace(/\s/g, '')}`;

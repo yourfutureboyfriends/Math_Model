@@ -352,8 +352,8 @@ class _AisCollector:
 
 
 def _ais_clean(speed, course, heading):
-    """AIS 'not available' codes: speed 102.3 kn, course 360°, heading 511 → None."""
-    sp = speed if speed is not None and speed < 102.2 else None
+    """AIS 'not available' codes (speed 102.3 kn, course 360°, heading 511) and impossible speeds → None."""
+    sp = speed if speed is not None and speed <= 60 else None          # 102.3 = not available; above ~60 kn is a bad fix
     co = course if course is not None and course < 360 else None
     hd = heading if heading is not None and heading < 360 else None
     return sp, co, hd
@@ -564,8 +564,10 @@ def _sat_rows() -> List[list]:
                 z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & 0xFFFFFFFFFFFFFFFF
                 z ^= z >> 31
                 return (z / 0xFFFFFFFFFFFFFFFF - 0.5) * 0.095
-            _sat_cache["rows"] = [[m, round(p[0] + jit(m, 1), 4), round(p[1] + jit(m, 2), 4), None, None, idx.get(p[2], idx["Other"]), None, p[4], 1]
-                                  for m, p in _presence["rows"].items()]
+            def wrap(lon: float) -> float:                  # scatter near the date line must stay on the map
+                return ((lon + 180) % 360) - 180
+            _sat_cache["rows"] = [[m, round(max(-89.99, min(89.99, p[0] + jit(m, 1))), 4), round(wrap(p[1] + jit(m, 2)), 4), None, None,
+                                   idx.get(p[2], idx["Other"]), None, p[4], 1] for m, p in _presence["rows"].items()]
             _sat_cache["built"] = _presence.get("built")
         return _sat_cache["rows"]
 

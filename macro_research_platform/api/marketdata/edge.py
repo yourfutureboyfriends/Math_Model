@@ -322,8 +322,12 @@ def ports_trade() -> Dict[str, Any]:
     def build():
         # port complexes: every terminal whose name starts with the port's ("Shanghai" + "Shanghai (Yangshan)")
         like = " OR ".join("portname LIKE '" + p.replace("'", "''") + "%'" for p in BIG_PORTS)
-        since = (date.today() - timedelta(days=420)).isoformat()
-        rows = _pw("Daily_Ports_Data", f"({like}) AND date >= '{since}'", "date,portname,country,portcalls,import,export", "date")
+        # only the windows used: the last 90 days (spark, 4-week and month-on-month) and the same 4 weeks a
+        # year earlier — a third of the rows of a 14-month pull
+        recent = (date.today() - timedelta(days=100)).isoformat()
+        ly0, ly1 = (date.today() - timedelta(days=364 + 45)).isoformat(), (date.today() - timedelta(days=364 - 5)).isoformat()
+        rows = _pw("Daily_Ports_Data", f"({like}) AND (date >= '{recent}' OR (date >= '{ly0}' AND date <= '{ly1}'))",
+                   "date,portname,country,portcalls,import,export", "date")
         by: Dict[str, Dict[str, Dict[str, Any]]] = {}
         for r in rows:
             base = next((p for p in sorted(BIG_PORTS, key=len, reverse=True) if r["portname"].startswith(p)), None)

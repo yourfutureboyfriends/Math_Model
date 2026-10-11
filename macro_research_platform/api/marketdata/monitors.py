@@ -334,7 +334,8 @@ def futures_curve(root: str, n: int = 60) -> Dict[str, Any]:
             pts = [p for p in pts if p["last_date"] >= cut]
         pts = pts[:n]
         if len(pts) < 2:
-            raise NotFound(f"Not enough listed contracts priced for {name}.")
+            raise NotFound(f"The free feed prices only {'the front contract' if pts else 'no contracts'} of {name} — no curve to draw. "
+                           f"Open {root}=F for the front-month chart.")
         front = pts[0]
         # slope and roll yield over the first year of the curve (comparable across markets)
         yr = next((p for p in pts if p["month"] >= f"{int(front['month'][:4]) + 1}{front['month'][4:]}"), pts[-1])

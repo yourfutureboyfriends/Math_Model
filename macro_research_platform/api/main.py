@@ -1272,11 +1272,16 @@ async def lifespan(app: FastAPI):
             from api.marketdata import insights
 
             def _warm():
-                for f in (insights.breadth, insights.vol, insights.risk, edge.cot, edge.trade, edge.ports_trade, insights.implied_moves, insights.uoa, edge.board):
+                # spread out: hundreds of Yahoo requests at once (breadth, option chains) get the server
+                # rate-limited, which then breaks ordinary quote screens for a while
+                import time as _t
+                _t.sleep(90)
+                for f in (insights.vol, insights.risk, edge.cot, edge.trade, insights.breadth, edge.ports_trade, insights.implied_moves, insights.uoa, edge.board):
                     try:
                         f()
                     except Exception as e:                       # one slow source must not stop the rest
                         logger.info(f"[STARTUP] warm-up {getattr(f, '__name__', f)}: {e}")
+                    _t.sleep(20)
             threading.Thread(target=_warm, name="warm-markets", daemon=True).start()
         except Exception as e:
             logger.warning(f"[STARTUP] ship collectors not started: {e}")

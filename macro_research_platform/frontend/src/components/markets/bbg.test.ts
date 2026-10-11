@@ -28,4 +28,18 @@ describe('terminal identifiers', () => {
     expect(parseCommand('NVDA OMON')).toMatchObject({ symbol: 'NVDA', fn: { code: 'OMON' } });
     expect(parseCommand('WEI').fn?.code).toBe('WEI');
   });
+  it('keeps tickers that are also function codes', () => {
+    expect(parseCommand('NOW DES')).toMatchObject({ symbol: 'NOW', fn: { code: 'DES' } });
+    expect(parseCommand('AI GP')).toMatchObject({ symbol: 'AI', fn: { code: 'GP' } });
+    expect(parseCommand('W FA')).toMatchObject({ symbol: 'W', fn: { code: 'FA' } });
+    expect(parseCommand('DES AAPL')).toMatchObject({ symbol: 'AAPL', fn: { code: 'DES' } });
+    expect(parseCommand('NOW').fn?.code).toBe('NOW');
+    expect(parseCommand('AAPL')).toMatchObject({ symbol: 'AAPL' });
+    expect(parseCommand('GP').symbol).toBe('GP');          // a lone security function is read as a ticker
+  });
+  it('reads China A-shares', () => {
+    expect(fromTerminal('600519 CH Equity')).toBe('600519.SS');
+    expect(fromTerminal('000858 CH Equity')).toBe('000858.SZ');
+    expect(parseCommand('600519 CH GP')).toMatchObject({ symbol: '600519.SS', fn: { code: 'GP' } });
+  });
 });

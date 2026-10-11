@@ -85,8 +85,8 @@ export function AuctView() {
               <tbody>{d.auctions.map((a: any) => (
                 <tr key={a.cusip + a.auction_date} className="border-t border-border-subtle">
                   <td className="px-2 py-1 font-mono text-text-secondary">{a.auction_date}</td><td className="text-text-primary">{a.term}{a.reopening ? <span className="text-text-tertiary"> (reopening)</span> : ''}</td>
-                  <td className="text-right font-mono">{a.size_bn.toFixed(0)}</td><td className="text-right font-mono">{a.high_yield?.toFixed(3)}%</td>
-                  <td className="text-right font-mono">{a.bid_to_cover?.toFixed(2)}</td>
+                  <td className="text-right font-mono">{a.size_bn.toFixed(0)}</td><td className="text-right font-mono">{a.high_yield != null ? `${a.high_yield.toFixed(3)}%` : '—'}</td>
+                  <td className="text-right font-mono">{a.bid_to_cover != null ? a.bid_to_cover.toFixed(2) : '—'}</td>
                   <td className={cn('text-right font-mono', (a.btc_vs_avg ?? 0) > 0.05 ? 'text-green' : (a.btc_vs_avg ?? 0) < -0.05 ? 'text-red' : '')}>{a.btc_vs_avg != null ? sgn(a.btc_vs_avg, 2) : ''}</td>
                   <td className="text-right font-mono">{pc(a.indirect, 0)}</td><td className="text-right font-mono">{pc(a.direct, 0)}</td>
                   <td className={cn('text-right px-2 font-mono', (a.dealers ?? 0) > 0.2 ? 'text-red' : '')}>{pc(a.dealers, 0)}</td></tr>))}</tbody>
