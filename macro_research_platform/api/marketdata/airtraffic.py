@@ -181,16 +181,49 @@ def _world_rows(j: Dict[str, Any]) -> List[list]:
     return rows
 
 
+MIL_DISK = Path(__file__).resolve().parents[2] / "data" / "processed" / "military_aircraft.json"
+
+
 def _military() -> List[Dict[str, Any]]:
+    """Military aircraft worldwide from two community networks (adsb.fi and adsb.lol), merged by hex.
+    Either can fail or rate-limit without emptying the list; the last list is kept on disk (30 min)."""
     def fetch():
         import requests
-        r = requests.get("https://api.adsb.lol/v2/mil", headers=UA, timeout=20)
-        r.raise_for_status()                              # a failure keeps the last list (stale cache) rather than none
-        return [a for a in r.json().get("ac", []) if a.get("lat") is not None]
+        got: Dict[str, Dict[str, Any]] = {}
+        errors = []
+        try:
+            for a in (_adsbfi("mil").get("ac") or []):
+                if a.get("lat") is not None:
+                    got[a["hex"]] = a
+        except Exception as e:
+            errors.append(f"adsb.fi: {e}")
+        try:
+            r = requests.get("https://api.adsb.lol/v2/mil", headers=UA, timeout=20)
+            r.raise_for_status()
+            for a in r.json().get("ac") or []:
+                if a.get("lat") is not None and (a["hex"] not in got or (a.get("seen_pos") or 99) < (got[a["hex"]].get("seen_pos") or 99)):
+                    got[a["hex"]] = a
+        except Exception as e:
+            errors.append(f"adsb.lol: {e}")
+        if not got:
+            raise Upstream("; ".join(errors) or "no military aircraft returned")
+        out = list(got.values())
+        try:
+            MIL_DISK.parent.mkdir(parents=True, exist_ok=True)
+            MIL_DISK.write_text(json.dumps({"t": time.time(), "ac": out}))
+        except Exception:
+            pass
+        return out
     try:
         return _cached("fly:mil", 90, fetch)
     except Exception as e:
-        logger.info("[mil] adsb.lol: %s", e)
+        logger.info("[mil] %s", e)
+        try:                                              # after a restart while both are failing: the last list, if recent
+            d = json.loads(MIL_DISK.read_text())
+            if time.time() - d["t"] < 1800:
+                return d["ac"]
+        except Exception:
+            pass
         return []
 
 
@@ -213,7 +246,7 @@ def world() -> Dict[str, Any]:
             by_hex[r[0]] = r
         rows = [r[:14] + ["".join(t for _, t, _ in flight_tags(r[1], r[13], bool(r[12]), r[10]))] for r in by_hex.values()]
         air = [r for r in rows if not r[6]]
-        return {**base, "rows": rows, "airborne": len(air), "on_ground": len(rows) - len(air),
+        return {**base, "rows": rows, "airborne": len(air), "on_ground": len(rows) - len(air), "military": sum(1 for r in rows if r[12]),
                 "sweep": {"added": added, "refreshed": replaced, "hubs": len(SWEEP), "live_aircraft": added + replaced},
                 "emergencies": [{"hex": r[0], "callsign": r[1], "squawk": r[10], "what": EMERGENCY[str(r[10])], "lat": r[4], "lon": r[3]}
                                 for r in rows if str(r[10] or "") in EMERGENCY]}

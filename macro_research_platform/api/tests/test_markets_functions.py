@@ -542,3 +542,13 @@ def test_flight_tags_and_load():
     assert load_estimate("FDX12", "B77L", "777 FS2")["kind"] == "cargo"
     assert load_estimate("CPA101", "A333", "A330 343X")["seats"] == 300
     assert phase(5000, -900, False).startswith("Descending")
+
+
+def test_cargo_inference_from_export_terminal():
+    from api.marketdata.vessel_intel import infer_cargo as f
+    r = f({"type": "Tanker", "profile": {"cargo": "Crude oil", "laden": "laden"}, "last_port": {"port": "PRIMORSK"}})
+    assert r["confidence"] == "likely" and "Urals" in r["text"]
+    assert f({"type": "Cargo", "profile": {"cargo": "Dry bulk or general cargo"}, "voyage": {"from": {"name": "Port Hedland"}}})["confidence"] == "possible"
+    assert f({"type": "Tanker", "profile": {"cargo": "Crude oil", "laden": "in ballast"}, "last_port": {"port": "Ras Tanura"}})["text"].startswith("Empty")
+    assert f({"type": "Tanker", "profile": {"cargo": "Crude oil", "laden": "laden"}, "last_port": {"port": "San Jose"}}) is None   # whole words only
+    assert f({"type": "Cargo", "profile": {"cargo": "Dry bulk or general cargo"}, "last_port": {"port": "Ras Tanura"}}) is None    # a bulker at an oil port

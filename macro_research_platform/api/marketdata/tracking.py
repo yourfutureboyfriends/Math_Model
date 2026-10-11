@@ -692,7 +692,7 @@ def _enrich(out: Dict[str, Any]) -> Dict[str, Any]:
     # where it came from: the last completed port call (Global Fishing Watch, cached 6 h)
     try:
         info = vessel_info(str(out.get("imo") or out.get("mmsi")))
-        calls = [c for c in info.get("port_calls") or [] if c.get("departed")]
+        calls = [c for c in info.get("port_calls") or [] if c.get("departed") and (c.get("hours") or 0) >= 2]   # < 2 h: passing an anchorage
         if calls:
             out["last_port"] = calls[0]
         out["owners"] = info.get("owners")
@@ -716,6 +716,7 @@ def _enrich(out: Dict[str, Any]) -> Dict[str, Any]:
             out["notable"] = [r for _, _, r in VI.notable_reasons(out)]
     except Exception as e:
         logger.debug("[ship] no GFW record for %s: %s", out.get("mmsi"), e)
+    out["cargo_inference"] = VI.infer_cargo(out)
     return out
 
 
@@ -827,9 +828,15 @@ def vessel_info(query: str) -> Dict[str, Any]:
 
         def ident(e):
             return (e.get("selfReportedInfo") or [{}])[0]
-        # the vessel asked for: exact MMSI match first, else the most recently transmitting
-        best = next((e for e in entries if ident(e).get("ssvid") == q), None) or \
-            max(entries, key=lambda e: ident(e).get("transmissionDateTo") or "")
+        # the vessel asked for. An MMSI or IMO must match exactly: the search also returns look-alikes, and
+        # another ship's identity and port calls are worse than none. A name takes the most recently transmitting.
+        if q.isdigit() and len(q) in (7, 9):
+            key = "imo" if len(q) == 7 else "ssvid"
+            best = next((e for e in entries if str(ident(e).get(key) or "") == q), None)
+            if not best:
+                raise NotFound(f"No vessel with {'IMO' if key == 'imo' else 'MMSI'} {q} in the registry.")
+        else:
+            best = max(entries, key=lambda e: ident(e).get("transmissionDateTo") or "")
         imo = ident(best).get("imo")
         same = [e for e in entries if imo and ident(e).get("imo") == imo] or [best]
         history = sorted(({"name": ident(e).get("shipname"), "flag": ident(e).get("flag"), "flag_name": FLAGS.get(ident(e).get("flag") or "", ident(e).get("flag")),

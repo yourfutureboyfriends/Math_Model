@@ -279,6 +279,9 @@ function ShipCard({ mmsi, ship, det, loading, error, onClose, onRegistry, follow
             ['Owner', d.owners?.[0]?.name], ['Built', d.built], ['Gross tonnage', d.tonnage_gt ? Math.round(d.tonnage_gt).toLocaleString() : null], ['Flag', d.flag]].map(([k, x]) => (
             <div key={k as string}><div className="text-text-tertiary">{k}</div><div className={cn('text-text-primary truncate', k === 'Load' && x === 'laden' && 'text-amber')} title={String(x ?? '')}>{x ?? '—'}</div></div>))}
         </div>
+        {d.cargo_inference && <div className={cn('px-2 py-1.5 rounded border text-[11px]', d.cargo_inference.confidence === 'likely' ? 'border-bloomberg/50 bg-bloomberg/[0.06] text-text-primary' : 'border-border text-text-secondary')}>
+          <span className="text-[10px] uppercase tracking-wide text-text-tertiary mr-1">{d.cargo_inference.confidence === 'likely' ? 'Likely cargo' : 'Possible cargo'}</span>
+          {d.cargo_inference.text}<div className="text-[10px] text-text-tertiary">Inferred from the {d.cargo_inference.basis} — manifests aren't public.</div></div>}
         {pf.laden_note && <div className="text-[10px] text-text-tertiary">{pf.laden_note}.</div>}
       </div>
       {hours > 0.2 && <div className="text-[11px] text-text-secondary border-t border-border-subtle pt-2">Last {hours.toFixed(1)} h: {Math.round(trackKm).toLocaleString()} km

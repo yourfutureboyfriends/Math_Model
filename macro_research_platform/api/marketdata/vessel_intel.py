@@ -174,8 +174,9 @@ def decode_dest(text: Optional[str]) -> Optional[Dict[str, Any]]:
 
 
 # ── Vessel profile ──────────────────────────────────────────────────────────
-CONTAINER_LINES = re.compile(r"^(MSC|MAERSK|CMA CGM|COSCO|CSCL|EVER|ONE |OOCL|HMM|YM |YANG MING|ZIM|APL|HAPAG|WAN HAI|PIL|X-PRESS|SEASPAN|"
-                             r"KOTA|NYK|MOL |CAPE|SAN |NORTHERN|E\.R\.|GSL|SITC|TS |KMTC|EMIRATES|NAVIOS|CONTSHIP|BALTIC)", re.I)
+# container lines' naming patterns (generic words such as CAPE / SAN / BALTIC are left out: bulkers use them too)
+CONTAINER_LINES = re.compile(r"^(MSC |MAERSK |CMA CGM |COSCO SHIPPING |CSCL |EVER |ONE |OOCL |HMM |YM |YANG MING |ZIM |APL |HAPAG|WAN HAI |"
+                             r"X-PRESS |SEASPAN |KOTA |NYK |SITC |TS |KMTC |CONTSHIP )", re.I)
 GAS = re.compile(r"\b(LNG|LPG|GAS|METHANE|ETHANE|AMMONIA)\b", re.I)
 HAZ = {1: "A", 2: "B", 3: "C", 4: "D"}
 
@@ -271,3 +272,64 @@ def notable_reasons(v: Dict[str, Any]) -> List[Tuple[int, str, str]]:
         if z:
             out.append((5, "z", f"Tanker in the {z}"))
     return sorted(out)
+
+
+# ── What a ship is probably carrying, from where it loaded ──────────────────
+# Major export terminals by commodity (name fragments as they appear in port-call and LOCODE data).
+# Exact manifests are not public; a laden ship leaving one of these is very likely carrying its export.
+TERMINALS: List[Tuple[str, str, str]] = [
+    # (fragment, kind, what)
+    ("primorsk", "crude", "Russian Urals crude"), ("ust-luga", "crude", "Russian Urals crude / products"), ("ust luga", "crude", "Russian Urals crude / products"),
+    ("novorossiysk", "crude", "Russian Urals or CPC Blend crude"), ("kozmino", "crude", "Russian ESPO crude"), ("de-kastri", "crude", "Russian Sokol crude"),
+    ("ras tanura", "crude", "Saudi Arab Light / Medium crude"), ("juaymah", "crude", "Saudi Arab crude"), ("yanbu", "crude", "Saudi crude / products (Red Sea)"),
+    ("basrah", "crude", "Iraqi Basrah crude"), ("basra", "crude", "Iraqi Basrah crude"), ("kharg", "crude", "Iranian crude"), ("jask", "crude", "Iranian crude"),
+    ("mina al ahmadi", "crude", "Kuwaiti crude"), ("ahmadi", "crude", "Kuwaiti crude"), ("jebel dhanna", "crude", "UAE Murban crude"), ("ruwais", "crude", "UAE crude / products"),
+    ("fujairah", "crude", "crude or fuel oil (Fujairah storage hub)"), ("ceyhan", "crude", "Kirkuk / Azeri BTC crude"), ("es sider", "crude", "Libyan crude"),
+    ("zawiya", "crude", "Libyan crude"), ("bonny", "crude", "Nigerian Bonny Light crude"), ("forcados", "crude", "Nigerian Forcados crude"),
+    ("puerto jose", "crude", "Venezuelan Merey crude"), ("corpus christi", "crude", "US WTI crude"), ("loop", "crude", "US crude"), ("galveston", "crude", "US crude / products"),
+    ("sullom voe", "crude", "North Sea crude"), ("mongstad", "crude", "North Sea crude"), ("sao sebastiao", "crude", "Brazilian crude"), ("acu", "crude", "Brazilian pre-salt crude"),
+    ("ras laffan", "lng", "Qatari LNG"), ("sabine pass", "lng", "US LNG"), ("cameron", "lng", "US LNG"), ("freeport", "lng", "US LNG"), ("corpus christi lng", "lng", "US LNG"),
+    ("bintulu", "lng", "Malaysian LNG"), ("gladstone", "lng", "Australian LNG (Curtis Island) or coal"), ("darwin", "lng", "Australian LNG"), ("karratha", "lng", "Australian LNG"),
+    ("hammerfest", "lng", "Norwegian LNG"), ("sabetta", "lng", "Russian Yamal LNG"), ("bonny lng", "lng", "Nigerian LNG"), ("idku", "lng", "Egyptian LNG"),
+    ("port hedland", "ore", "iron ore (Pilbara)"), ("dampier", "ore", "iron ore (Pilbara)"), ("cape lambert", "ore", "iron ore (Pilbara)"), ("port walcott", "ore", "iron ore (Pilbara)"),
+    ("tubarao", "ore", "iron ore (Brazil)"), ("ponta da madeira", "ore", "iron ore (Brazil)"), ("itaqui", "ore", "iron ore (Brazil)"), ("saldanha", "ore", "iron ore (South Africa)"),
+    ("sept-iles", "ore", "iron ore (Canada)"), ("narvik", "ore", "iron ore (Sweden)"),
+    ("newcastle", "coal", "thermal coal (Australia)"), ("hay point", "coal", "coking coal (Australia)"), ("dalrymple", "coal", "coking coal (Australia)"),
+    ("abbot point", "coal", "coal (Australia)"), ("richards bay", "coal", "coal (South Africa)"), ("taboneo", "coal", "coal (Indonesia)"), ("samarinda", "coal", "coal (Indonesia)"),
+    ("muara pantai", "coal", "coal (Indonesia)"), ("vostochny", "coal", "coal (Russia)"), ("vanino", "coal", "coal (Russia)"), ("roberts bank", "coal", "coal (Canada)"),
+    ("puerto bolivar", "coal", "coal (Colombia)"),
+    ("santos", "grain", "soybeans / corn / sugar (Brazil)"), ("paranagua", "grain", "soybeans / corn (Brazil)"), ("rio grande", "grain", "soybeans (Brazil)"),
+    ("rosario", "grain", "soybeans / meal / corn (Argentina)"), ("san lorenzo", "grain", "soybean meal / corn (Argentina)"), ("bahia blanca", "grain", "wheat / corn (Argentina)"),
+    ("darrow", "grain", "US corn / soybeans (Mississippi)"), ("kalama", "grain", "US soybeans / corn (Pacific NW)"),
+    ("longview", "grain", "US grain (Pacific NW)"), ("chornomorsk", "grain", "Ukrainian grain"), ("pivdennyi", "grain", "Ukrainian grain"), ("odesa", "grain", "Ukrainian grain"),
+    ("odessa", "grain", "Ukrainian grain"), ("izmail", "grain", "Ukrainian grain"), ("constanta", "grain", "grain (Black Sea)"), ("kamsar", "bauxite", "bauxite (Guinea)"),
+    ("weipa", "bauxite", "bauxite (Australia)"),
+]
+KIND_FITS = {"Tanker": {"crude", "lng"}, "Cargo": {"ore", "coal", "grain", "bauxite"}}
+
+
+def infer_cargo(v: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Likely cargo from the terminal it loaded at (crew 'FROM>TO' or last port call) and its load state."""
+    voy, lp = v.get("voyage") or {}, v.get("last_port") or {}
+    origin = ((voy.get("from") or {}).get("name") or lp.get("port") or "")
+    if not origin:
+        return None
+    o = origin.lower()
+    t = v.get("type")
+    prof = v.get("profile") or {}
+    gas = "gas" in (prof.get("cargo") or "").lower()
+    hit = next(((frag, kind, what) for frag, kind, what in TERMINALS
+                if re.search(rf"\b{re.escape(frag)}\b", o) and kind in KIND_FITS.get(t, set()) and (kind != "lng" or gas) and (kind != "crude" or not gas)), None)
+    laden = prof.get("laden")
+    if not hit:
+        if t == "Cargo" and "Containers" == prof.get("cargo"):
+            return {"text": f"Containers, last loaded or discharged at {origin.title()}", "confidence": "possible", "basis": "last port call"}
+        return None
+    _, kind, what = hit
+    if laden == "in ballast":
+        return {"text": f"Empty (in ballast) — last called at {origin.title()}, a {what} export terminal: likely sailing to load or after discharging",
+                "confidence": "likely", "basis": "draught and last port"}
+    conf = "likely" if laden in ("laden", "part laden") else "possible"
+    lead = "Likely carrying" if conf == "likely" else "Possibly carrying"
+    return {"text": f"{lead} {what}, loaded at {origin.title()}", "confidence": conf,
+            "basis": "export terminal it left" + (" and a laden draught" if conf == "likely" else " (load state unknown)")}
