@@ -24,6 +24,7 @@ export const FUNCTIONS: MktFunction[] = [
   { code: 'RV', name: 'Peer comparison', desc: 'Same-industry companies worldwide on valuation, margins and growth (in USD).', group: 'Security', security: true, equityOnly: true, aliases: ['COMPS', 'PEERS'] },
   { code: 'HP', name: 'Price history', desc: 'Daily, weekly or monthly prices as a table — download as CSV.', group: 'Security', security: true },
   { code: 'BETA', name: 'Beta', desc: 'Sensitivity to an index: regression beta, adjusted beta, R², rolling beta.', group: 'Security', security: true },
+  { code: 'VAL', name: 'Valuation hub', desc: 'Fair value from DCF, dividend model and peers in one place — pre-filled; move the few drivers that matter, see bear/base/bull and a 24-month price path.', group: 'Security', security: true, equityOnly: true, aliases: ['VALUE', 'FAIRVALUE', 'DDM'] },
   { code: 'DCF', name: 'DCF valuation', desc: 'Discounted free-cash-flow value per share with an editable model and sensitivity grid.', group: 'Security', security: true, equityOnly: true },
   { code: 'SEAS', name: 'Seasonality', desc: 'Average return by calendar month over up to 30 years, hit rate and significance.', group: 'Security', security: true, aliases: ['SEASON'] },
   { code: 'OSA', name: 'Option strategies', desc: 'Build spreads, straddles, condors: payoff, breakevens, max profit/loss, chance of profit, Greeks.', group: 'Security', security: true, aliases: ['OSB', 'STRAT'] },

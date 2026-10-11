@@ -108,45 +108,6 @@ function RangeDot({ p }: { p: number }) {
   );
 }
 
-// ── PRED: prediction markets ────────────────────────────────────────────────
-export function PredView() {
-  const [cat, setCat] = useState('all');
-  const [q, setQ] = useState('');
-  const [movers, setMovers] = useState(false);
-  return (
-    <Frame<any> url="/api/v1/mkt/edge/pred" label="Loading prediction markets…" refresh={600_000}>{(d) => {
-      const cats = ['all', ...new Set<string>(d.events.map((e: any) => e.category))];
-      let evs = d.events.filter((e: any) => (cat === 'all' || e.category === cat) && (!q || `${e.title} ${e.markets.map((m: any) => m.question).join(' ')}`.toLowerCase().includes(q.toLowerCase())));
-      if (movers) evs = evs.filter((e: any) => e.markets.some((m: any) => Math.abs(m.chg_1d ?? 0) >= 0.05)).sort((a: any, b: any) =>
-        Math.max(...b.markets.map((m: any) => Math.abs(m.chg_1d ?? 0))) - Math.max(...a.markets.map((m: any) => Math.abs(m.chg_1d ?? 0))));
-      return (
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-1 text-[11px]">
-            {cats.map((c) => <button key={c} onClick={() => setCat(c)} className={cn('px-2 py-0.5 border capitalize', cat === c ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{c}</button>)}
-            <button onClick={() => setMovers(!movers)} className={cn('px-2 py-0.5 border', movers ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>Biggest moves today</button>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search (Fed, CPI, recession, oil…)" className="ml-auto w-56 bg-surface-1 border border-border px-2 py-0.5 text-text-primary" />
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-2">
-            {evs.slice(0, 60).map((e: any, i: number) => (
-              <div key={i} className="border border-border bg-surface-1 p-2.5">
-                <div className="flex justify-between gap-2"><span className="text-xs font-semibold text-text-primary">{e.title}</span>
-                  <span className="text-[10px] text-text-tertiary shrink-0">{e.source}</span></div>
-                <div className="text-[10px] text-text-tertiary mb-1">24h volume ${Math.round(e.volume_24h || 0).toLocaleString()}{e.end ? ` · resolves ${e.end}` : ''}</div>
-                {e.markets.slice(0, 6).map((m: any, j: number) => (
-                  <div key={j} className="flex items-center gap-2 text-[11px] py-0.5">
-                    <span className="flex-1 min-w-0 truncate text-text-secondary" title={m.question}>{m.question}</span>
-                    <span className="w-20 h-1.5 bg-surface-3"><span className="block h-full bg-bloomberg" style={{ width: `${m.yes * 100}%` }} /></span>
-                    <span className="w-10 text-right font-mono text-text-primary">{(m.yes * 100).toFixed(m.yes < 0.01 || m.yes > 0.99 ? 1 : 0)}%</span>
-                    <span className={cn('w-12 text-right font-mono', tone(m.chg_1d))}>{m.chg_1d != null && Math.abs(m.chg_1d) >= 0.005 ? `${m.chg_1d > 0 ? '+' : ''}${(m.chg_1d * 100).toFixed(0)}pt` : ''}</span>
-                  </div>))}
-              </div>))}
-          </div>
-          <div className="text-[10px] text-text-tertiary">{d.note} {d.source}.</div>
-        </div>);
-    }}</Frame>
-  );
-}
-
 // ── NOW: nowcasts and trade from ship data ──────────────────────────────────
 export function NowView() {
   const now = useJSON<any>('/api/v1/mkt/edge/nowcasts', 3_600_000);

@@ -13,7 +13,9 @@ import { CorrView, FrdView, OsaView, RrgView, SeasView } from '@/components/mark
 import { EcoGlobalView, EcstView, SiView, SplcView } from '@/components/markets/DataViews';
 import { FlyView, QuakeView, ShipView } from '@/components/markets/TrackingViews';
 import { FlowView } from '@/components/markets/FlowView';
-import { CotView, EdgeBoard, NowView, PredView } from '@/components/markets/EdgeViews';
+import { CotView, EdgeBoard, NowView } from '@/components/markets/EdgeViews';
+import { PredView, RelatedOdds } from '@/components/markets/PredMarkets';
+import { ValuationHub } from '@/components/markets/ValuationHub';
 import { BreadthView, ImpmView, RiskView, UoaView, VolView } from '@/components/markets/InsightViews';
 import { AuctView, EiaView, InsdView, IpoView, ThirteenFView, WetrView, WirpView } from '@/components/markets/ExtrasViews';
 import { CountryView, RegionBar, RegionMonitor } from '@/components/markets/RegionViews';
@@ -43,6 +45,15 @@ export function parseMarketsHash(h = window.location.hash): MarketsRoute {
   const symbol = parts[1] ? decodeURIComponent(parts[1]).toUpperCase() : undefined;
   if (f?.security && !symbol) return { fn: 'WEI' };
   return { fn: code, symbol };
+}
+
+function countryTerms(iso?: string): string[] {
+  const code = (iso || 'US').toUpperCase();
+  let name = '';
+  try { name = new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? ''; } catch { /* old browser */ }
+  const extra: Record<string, string[]> = { US: ['fed', 'recession', 'us'], GB: ['uk', 'britain', 'bank of england'], JP: ['boj', 'yen'], CN: ['china', 'xi'],
+    DE: ['germany', 'ecb'], FR: ['france', 'macron', 'ecb'], RU: ['russia', 'putin'], UA: ['ukraine', 'zelenskyy'], IL: ['israel'], IR: ['iran'], TW: ['taiwan'], KR: ['korea'] };
+  return [...new Set([name.replace(/^United States$/, 'United States'), ...(extra[code] ?? [])].filter(Boolean))];
 }
 
 export function goMarkets(fn: string, symbol?: string) {
@@ -136,6 +147,7 @@ function SecurityBody({ code, symbol, d, isFund, onGo }: { code: string; symbol:
         {code === 'HP' && <HpView symbol={symbol} />}
         {code === 'BETA' && <BetaView symbol={symbol} />}
         {code === 'DCF' && <DcfView symbol={symbol} />}
+        {code === 'VAL' && <ValuationHub symbol={symbol} onGo={onGo} />}
         {code === 'CN' && <News symbol={symbol} />}
         {code === 'SEAS' && <SeasView symbol={symbol} />}
         {code === 'OSA' && <OsaView symbol={symbol} />}
@@ -240,7 +252,7 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
   return (
     <>
     {code === 'RMON' && <RegionMonitor onOpen={open} onGo={onGo} />}
-    {code === 'CTRY' && <CountryView iso={seed} onOpen={open} onGo={onGo} />}
+    {code === 'CTRY' && <><CountryView iso={seed} onOpen={open} onGo={onGo} /><RelatedOdds terms={countryTerms(seed)} title="Odds on this country" limit={6} className="mt-3" /></>}
     {code === 'WEI' && (classic || compact
       ? <div className="space-y-2">{!compact && <div className="px-2 py-1 border border-border"><FunctionMenu items={MARKET_FUNCTIONS} onPick={(x) => onGo(x.code)} /></div>}
           {region === 'global' ? <MonitorHome onOpen={open} onGo={onGo} /> : <RegionMonitor onOpen={open} onGo={onGo} />}</div>
@@ -249,8 +261,8 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'EQS' && <ScreenerView onOpen={open} />}
     {code === 'IMAP' && <ImapView onOpen={open} />}
     {code === 'MAP' && <WorldMap onOpen={open} onGo={onGo} />}
-    {code === 'CRYPTO' && <CryptoView onOpen={open} />}
-    {code === 'CMDTY' && <CmdtyView onOpen={open} />}
+    {code === 'CRYPTO' && <><CryptoView onOpen={open} /><RelatedOdds terms={['bitcoin', 'ethereum', 'solana', 'crypto', 'xrp']} title="Crypto price odds" limit={8} className="mt-3" /></>}
+    {code === 'CMDTY' && <><CmdtyView onOpen={open} /><RelatedOdds terms={['oil', 'crude', 'wti', 'brent', 'gold', 'natural gas', 'opec', 'gas price']} title="Commodity odds" limit={8} className="mt-3" /></>}
     {code === 'COMP' && <CompView seed={seed} />}
     {code === 'CORR' && <CorrView seed={seed} />}
     {code === 'RRG' && <RrgView onOpen={open} />}
@@ -260,15 +272,15 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'COT' && <CotView />}
     {code === 'PRED' && <PredView />}
     {code === 'NOW' && <NowView />}
-    {code === 'RISK' && <RiskView />}
+    {code === 'RISK' && <><RiskView /><RelatedOdds terms={['recession', 'shutdown', 'debt ceiling', 'fed', 'tariff']} title="Macro risk odds" limit={6} className="mt-3" /></>}
     {code === 'VOL' && <VolView onOpen={open} />}
     {code === 'BRDT' && <BreadthView />}
     {code === 'IMPM' && <ImpmView onOpen={open} />}
     {code === 'UOA' && <UoaView onOpen={open} />}
-    {code === 'SHIP' && <ShipView />}
+    {code === 'SHIP' && <><ShipView /><RelatedOdds terms={['hormuz', 'red sea', 'houthi', 'suez', 'panama canal', 'blockade', 'taiwan', 'iran']} title="Shipping-lane risk — geopolitical odds" limit={8} className="mt-3" /></>}
     {code === 'FLY' && <FlyView />}
     {code === 'QUAK' && <QuakeView />}
-    {code === 'WIRP' && <WirpView />}
+    {code === 'WIRP' && <><WirpView /><RelatedOdds terms={['fed', 'fomc', 'rate cut', 'rate hike', 'powell', 'fed chair']} title="The same meetings on Kalshi and Polymarket" limit={6} className="mt-3" /></>}
     {code === 'AUCT' && <AuctView />}
     {code === 'EIA' && <EiaView />}
     {code === 'WETR' && <WetrView />}
@@ -278,7 +290,7 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'BTMM' && <BtmmView />}
     {code === 'WCRS' && <WcrsView onOpen={open} />}
     {code === 'EVTS' && <EvtsView onOpen={open} />}
-    {code === 'ECO' && <EcoGlobalView />}
+    {code === 'ECO' && <><EcoGlobalView /><RelatedOdds terms={['cpi', 'inflation', 'payrolls', 'jobs', 'unemployment', 'gdp', 'recession', 'pce']} title="Release odds — what the crowd expects" limit={8} className="mt-3" /></>}
     {code === 'ECST' && <EcstView />}
     {code === 'N' && <NewsView />}
     {code === 'W' && <WatchlistsView onOpen={open} />}

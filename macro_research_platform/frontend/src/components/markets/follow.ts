@@ -2,7 +2,7 @@
 // (localStorage) and shared live between the trackers through a window event.
 import { useEffect, useState } from 'react';
 
-export type Followed = { kind: 'ship' | 'plane'; id: string; label: string; note: string; added: string; reason?: string };
+export type Followed = { kind: 'ship' | 'plane' | 'pred'; id: string; label: string; note: string; added: string; reason?: string };
 const KEY = 'mkt_follow_v1';
 const EVT = 'mkt-follow';
 
@@ -14,7 +14,7 @@ function write(list: Followed[]) {
   window.dispatchEvent(new CustomEvent(EVT));
 }
 
-export function useFollow(kind: 'ship' | 'plane') {
+export function useFollow(kind: 'ship' | 'plane' | 'pred') {
   const [all, setAll] = useState<Followed[]>(read);
   useEffect(() => {
     const h = () => setAll(read());

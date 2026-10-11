@@ -65,6 +65,8 @@ RF_SERIES = {"JPY": "IRLTLT01JPM156N", "EUR": "IRLTLT01DEM156N", "GBP": "IRLTLT0
              "AUD": "IRLTLT01AUM156N", "CHF": "IRLTLT01CHM156N", "KRW": "IRLTLT01KRM156N", "MXN": "IRLTLT01MXM156N",
              "ZAR": "IRLTLT01ZAM156N", "INR": "INDIRLTLT01STM", "SEK": "IRLTLT01SEM156N", "NOK": "IRLTLT01NOM156N",
              "DKK": "IRLTLT01DKM156N", "NZD": "IRLTLT01NZM156N", "BRL": "IRLTLT01BRM156N"}
+# 'financials' that don't lend or underwrite — exchanges, data vendors, brokers' platforms — have ordinary operating cash flows
+NON_LENDER_FINANCIALS = ("financial data", "stock exchange")
 FINANCIAL_INDUSTRIES = ("bank", "insurance", "capital markets", "credit services", "asset management", "mortgage")
 
 
@@ -147,7 +149,23 @@ def risk_free(currency: Optional[str]) -> Dict[str, Any]:
         except Exception:
             pass
     us = risk_free("USD")
+    if ccy in PEGGED_USD:
+        return {"rate": us["rate"], "source": f"US 10-year Treasury ({ccy} is pegged to the dollar)", "currency_matched": True}
+    if ccy in LT_INFLATION:
+        # Damodaran's inflation-differential method: rf_local = (1 + rf_US) × (1 + π_local) / (1 + π_US) − 1
+        rate = (1 + us["rate"]) * (1 + LT_INFLATION[ccy]) / (1 + LT_INFLATION["USD"]) - 1
+        return {"rate": round(rate, 4), "source": f"US 10-year Treasury adjusted for expected inflation ({ccy} {LT_INFLATION[ccy]:.1%} vs USD "
+                                                  f"{LT_INFLATION['USD']:.1%}; Damodaran's inflation-differential method)", "currency_matched": True}
     return {"rate": us["rate"], "source": f"US 10-year Treasury — no {ccy} government yield available", "currency_matched": False}
+
+
+PEGGED_USD = {"SAR", "AED", "QAR", "BHD", "OMR", "KWD", "PAB"}
+# Long-run expected inflation by currency (central-bank targets / IMF medium-term projections), for
+# currencies without a usable government-bond feed.
+LT_INFLATION = {"USD": 0.023, "CNY": 0.015, "TWD": 0.015, "SGD": 0.02, "THB": 0.015, "MYR": 0.02, "IDR": 0.03, "PHP": 0.03,
+                "VND": 0.035, "ILS": 0.025, "PLN": 0.03, "CZK": 0.025, "HUF": 0.035, "CLP": 0.03, "COP": 0.035, "PEN": 0.025,
+                "BRL": 0.035, "MXN": 0.035, "ZAR": 0.045, "INR": 0.04, "KRW": 0.02, "TRY": 0.20, "EGP": 0.12, "NGN": 0.15,
+                "ARS": 0.30, "SEK": 0.02, "NOK": 0.02, "DKK": 0.02, "NZD": 0.02, "ISK": 0.025, "RON": 0.03}
 CAPTIVE_DEBT_SHARE = 0.9        # share of a captive finance loan book funded by debt (~10:1 leverage)
 MARGINAL_TAX_US = 0.21
 MARGINAL_TAX_OTHER = 0.25
@@ -211,7 +229,8 @@ def inputs(symbol: str) -> Dict[str, Any]:
         out["debt_source"] = src
     ind = (i.get("industry") or "").lower()
     out["industry"] = i.get("industry")
-    out["is_financial"] = any(k in ind for k in FINANCIAL_INDUSTRIES) or (i.get("sector") or "") == "Financial Services"
+    out["is_financial"] = (any(k in ind for k in FINANCIAL_INDUSTRIES) or (i.get("sector") or "") == "Financial Services") \
+        and not any(k in ind for k in NON_LENDER_FINANCIALS)
     # Effective tax rate (bounded), marginal rate for the long run
     pt, tx = out.get("pretax_income"), out.get("income_tax")
     eff = tx / pt if pt and tx is not None and pt > 0 else None
@@ -383,10 +402,14 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
             e0 = _f(re_.loc["0y", "avg"]) if "0y" in re_.index else None
             e1 = _f(re_.loc["+1y", "avg"]) if "+1y" in re_.index else None
             last_fy = hist["revenues"][0] if hist["revenues"] else None
-            if e0 and last_fy and last_fy > 0:
+            if e0 and last_fy and last_fy > 0 and 0.55 < e0 / last_fy < 1.8:
                 g1 = e0 / last_fy - 1
-            if e1 and e0 and e0 > 0:
+            if e1 and e0 and e0 > 0 and 0.6 < e1 / e0 < 1.7:
                 g2 = e1 / e0 - 1
+            # an estimate that implies revenue jumps or halves is almost always a different currency or
+            # basis from the statements (Petrobras: USD estimates vs BRL accounts) — it is ignored
+            if (e0 and last_fy and g1 is None) or (e1 and e0 and g2 is None):
+                out["growth_note"] = "Analyst revenue estimates look inconsistent with reported revenue (different currency or basis) — not used."
     except Exception:
         pass
     # Normalised margin (Damodaran): a one-off loss year shouldn't be projected forever.
@@ -408,6 +431,13 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
         out["target_margin_default"] = round(med, 4)
         out["target_margin_source"] = (f"cyclical industry at a peak: margin returns from {base:.1%} to its "
                                        f"{len(hist['margins'][:3])}-year median {med:.1%} by the final year")
+    if (ind_name in CYCLICAL and ind_m and ind_m > 0 and out["target_margin_default"] is not None
+            and out["target_margin_default"] > 1.5 * ind_m):
+        # a few good years of a commodity cycle are not a through-cycle margin: meet the industry halfway
+        tgt = round((out["target_margin_default"] + ind_m) / 2, 4)
+        out["target_margin_source"] = (f"cyclical industry: margin fades from {out['target_margin_default']:.1%} halfway to the "
+                                       f"{ind_name} through-cycle margin {ind_m:.1%} (→ {tgt:.1%})")
+        out["target_margin_default"] = tgt
     clip = lambda g: round(min(0.40, max(-0.15, g)), 4)
     if g1 is not None or g2 is not None:
         out["growth_y1"] = clip(g1 if g1 is not None else g2)
@@ -570,6 +600,8 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
                          "assumptions the shares are worth only their option value on a turnaround — shown as 0.")
     if inp.get("margin_note"):
         checks.append(inp["margin_note"] + ".")
+    if inp.get("growth_note"):
+        checks.append(inp["growth_note"])
     if ebit0 <= 0 and not inp.get("margin_normalized"):
         checks.append("Operating income is negative today: the value rests on the margin reaching your target.")
     if ron < rT:
@@ -735,6 +767,8 @@ def value_financial(inp: Dict[str, Any], years: int = 10, roe: Optional[float] =
     # stable ROE: half of today's excess return persists (as for RONIC in the FCFF model)
     roeT = terminal_roe if terminal_roe is not None else (ke + 0.5 * (roe0 - ke) if roe0 > ke else roe0 + 0.5 * (ke - roe0))
     g = max(0.0, min(rf, ke - 0.01)) if terminal_growth is None else terminal_growth
+    if terminal_roe is None and roeT <= g + 0.005:
+        roeT = max(ke, g + 0.01)          # a weak franchise reverts to earning its cost of equity, not to shrinking forever
     if ke - g < 0.005:
         raise NotFound(f"Terminal growth ({g:.2%}) must be at least 0.5 points below the cost of equity ({ke:.2%}).")
     if roeT <= g:
@@ -829,3 +863,215 @@ def sensitivity_financial(inp: Dict[str, Any], base: Dict[str, Any], **kw) -> Di
                 row.append(None)
         grid.append(row)
     return {"costs_of_equity": kes, "terminal_roes": roes, "per_share": grid}
+
+
+# ── Dividend discount model ─────────────────────────────────────────────────
+def _dividend_history(symbol: str) -> List[Dict[str, Any]]:
+    """Dividends per share by calendar year (complete years only), in the trading currency."""
+    from api.marketdata.core import _cached
+
+    def fetch():
+        import yfinance as yf
+        d = yf.Ticker(symbol).dividends
+        if d is None or d.empty:
+            return []
+        by = d.groupby(d.index.year).sum()
+        from datetime import date as _d
+        return [{"year": int(y), "dps": float(v)} for y, v in by.items() if int(y) < _d.today().year and v > 0]
+    try:
+        return _cached(f"divhist:{symbol}", 86400, fetch)
+    except Exception:
+        return []
+
+
+def value_ddm(inp: Dict[str, Any], years: int = 10, high_years: int = 5, growth: Optional[float] = None,
+              terminal_growth: Optional[float] = None, discount: Optional[float] = None, beta: Optional[float] = None,
+              erp: Optional[float] = ERP_DEFAULT, **_ignored) -> Dict[str, Any]:
+    """Dividend discount model (Damodaran's two-stage with a transition): value = PV of dividends per share.
+
+    Dividends grow at g for `high_years`, then the rate fades linearly to stable growth by year N; the
+    terminal value is D_{N+1} ÷ (kₑ − g∞). For firms that retain a real share of earnings, the payout
+    ratio also moves to the stable payout 1 − g∞ ÷ ROE∞ (growth has to be paid for). REITs, utilities
+    and any firm already paying out ≥ 90% grow the dividend directly. Works in the trading currency, so
+    there is no FX step; it suits banks, insurers, REITs, utilities and mature payers — the firms where
+    free cash flow is hard to define or the dividend is the cash flow investors actually receive."""
+    s = inp["symbol"]
+    i = _info(s)
+    price = inp.get("price")
+    from api.marketdata.core import div_yield
+    dy = div_yield(i)
+    dps0 = (dy * price) if dy and price else None
+    hist = _dividend_history(s)
+    if not dps0 and hist:
+        dps0 = hist[-1]["dps"]
+    if not dps0 or dps0 <= 0 or not price:
+        raise NotFound(f"{s} pays no regular dividend, so a dividend discount model doesn't apply — use the DCF or peer multiples.")
+    if not 5 <= years <= 30:
+        raise NotFound("Use 5–30 projection years.")
+    rf = inp.get("risk_free") or 0.04
+    b = beta if beta is not None else (inp.get("beta") or 1.0)
+    e = erp if erp is not None else (inp.get("erp") or ERP_FALLBACK)
+    ke_model = rf + b * e
+    ke = discount if discount is not None else max(ke_model, KE_FLOOR)
+    ccy = (inp.get("currency") or "USD").upper()
+    infl = LT_INFLATION.get(ccy, 0.02 if ccy in ("EUR", "JPY", "GBP", "CHF", "CAD", "AUD") else LT_INFLATION["USD"])
+    g_cap = 0.02 + infl                                   # ≈ 2% real growth plus the currency's inflation
+    # stable phase: a mature firm's beta drifts toward the market's (bounded 0.8–1.2, as in the DCF)
+    keT = ke if discount is not None else max(KE_FLOOR, rf + min(1.2, max(0.8, b)) * e)
+    gT = min(rf, keT - 0.03, g_cap) if terminal_growth is None else terminal_growth
+    gT = max(gT, 0.0) if terminal_growth is None else gT
+    if keT - gT < 0.005:
+        raise NotFound(f"Terminal growth ({gT:.2%}) must be at least 0.5 points below the cost of equity ({keT:.2%}).")
+    ind = (inp.get("industry") or "")
+    payout = inp.get("payout_ratio")
+    ni, bv = inp.get("net_income"), inp.get("equity_book")
+    roe = ni / bv if ni is not None and bv and bv > 0 else None
+    # dividend growth history (5-year CAGR of complete years)
+    cagr = None
+    if len(hist) >= 6 and hist[-6]["dps"] > 0:
+        cagr = (hist[-1]["dps"] / hist[-6]["dps"]) ** (1 / 5) - 1
+    elif len(hist) >= 3 and hist[0]["dps"] > 0:
+        n = len(hist) - 1
+        cagr = (hist[-1]["dps"] / hist[0]["dps"]) ** (1 / n) - 1
+    pass_through = ind.startswith("REIT") or ind.startswith("Utilities") or (payout is not None and payout >= 0.9) or roe is None
+    sustainable = roe * (1 - min(1.0, payout or 0.0)) if roe is not None and payout is not None and not pass_through else None
+    cands = [x for x in (sustainable, cagr) if x is not None]
+    g_src = []
+    if growth is not None:
+        g1 = growth
+        g_src.append("your input")
+    elif cands:
+        g1 = min(cands)          # the more conservative signal: ROE is often flattered by buybacks, history by one-offs
+        if sustainable is not None:
+            g_src.append(f"sustainable growth ROE × retention = {roe:.1%} × {1 - payout:.0%} = {sustainable:.1%}")
+        if cagr is not None:
+            g_src.append(f"5-year dividend growth {cagr:.1%}")
+    else:
+        g1 = gT
+        g_src.append("no history: stable growth from the start")
+    g1 = min(0.10 if not pass_through else 0.08, max(-0.05, g1)) if growth is None else g1
+    if pass_through and terminal_growth is None:
+        gT = min(gT, max(g1, infl))          # a firm paying out everything can't grow its dividend faster forever
+    roeT = (keT + 0.5 * (roe - keT) if roe is not None and roe > keT else keT) if roe is not None else None
+    pT = (1 - gT / roeT) if roeT and roeT > gT else None
+    p0 = min(1.0, payout) if payout else None
+    use_payout = not pass_through and p0 and pT and p0 > 0.05
+    eps0 = dps0 / p0 if use_payout else None
+    rows, pv, d, eps, cum = [], 0.0, dps0, eps0, 1.0
+    for y in range(1, years + 1):
+        f = 0.0 if y <= high_years else (y - high_years) / (years - high_years)
+        g = g1 + (gT - g1) * f
+        k_y = ke + (keT - ke) * f
+        if use_payout:
+            eps = eps * (1 + g)
+            p = p0 + (pT - p0) * max(0.0, (y - high_years) / (years - high_years))
+            d = eps * p
+        else:
+            p = None
+            d = d * (1 + g)
+        cum /= (1 + k_y)
+        pv += d * cum
+        rows.append({"year": y, "growth": g, "eps": eps, "payout": p, "dividend": d, "cost_of_equity": k_y, "discount_factor": cum, "pv": d * cum})
+    d_next = (eps * (1 + gT) * pT) if use_payout else d * (1 + gT)
+    tv = d_next / (keT - gT)
+    pv_tv = tv * cum
+    per_share = pv + pv_tv
+    checks = []
+    if pv_tv / per_share > 0.75:
+        checks.append(f"{pv_tv / per_share:.0%} of the value is in the terminal value — the answer depends mostly on long-run dividend growth.")
+    if discount is None and ke_model < KE_FLOOR:
+        checks.append(f"Cost of equity floored at {KE_FLOOR:.0%}: the local risk-free rate ({rf:.2%}) would give only {ke_model:.1%}.")
+    if payout is not None and payout > 1.0 and not ind.startswith("REIT"):
+        checks.append(f"The dividend is {payout:.0%} of earnings — not covered by profits; the model assumes it is sustained.")
+    if dy is not None and dy < 0.01:
+        checks.append(f"The yield is only {dy:.1%}: most of this company's return comes from retained earnings and buybacks, "
+                      "so a dividend model understates it — prefer the DCF.")
+    if not inp.get("risk_free_matched", True):
+        checks.append(f"No government yield in {ccy}: the US rate is used for the risk-free rate.")
+    # reverse DDM: the constant dividend growth today's price implies at the long-run cost of equity (Gordon)
+    implied_g = (keT * price - dps0) / (price + dps0)
+    return {"model": "ddm", "per_share": per_share, "price": price, "upside": per_share / price - 1, "implied_growth": implied_g,
+            "dps": dps0, "dividend_yield": dps0 / price, "pv_dividends": pv, "pv_terminal": pv_tv, "terminal_value": tv,
+            "terminal_share": pv_tv / per_share if per_share > 0 else None, "variant": "payout" if use_payout else "dividend_growth",
+            "dividend_history": hist[-12:], "dividend_cagr_5y": cagr,
+            "assumptions": {"growth": g1, "growth_source": "; ".join(g_src), "high_years": high_years, "years": years, "terminal_growth": gT,
+                            "terminal_growth_cap": g_cap, "cost_of_equity": ke, "cost_of_equity_terminal": keT, "cost_of_equity_model": ke_model, "beta": b, "erp": e,
+                            "risk_free": rf, "payout_now": payout, "payout_terminal": pT if use_payout else None, "roe_now": roe, "roe_terminal": roeT},
+            "projection": rows, "checks": checks}
+
+
+def sensitivity_ddm(inp: Dict[str, Any], base: Dict[str, Any], **kw) -> Dict[str, Any]:
+    a = base["assumptions"]
+    kes = [a["cost_of_equity"] + d for d in (-0.01, -0.005, 0.0, 0.005, 0.01)]
+    gs = [a["terminal_growth"] + d for d in (-0.01, -0.005, 0.0, 0.005, 0.01)]
+    grid = []
+    for k in kes:
+        row = []
+        for g in gs:
+            try:
+                row.append(value_ddm(inp, **{**kw, "discount": k, "terminal_growth": g})["per_share"] if k - g >= 0.005 else None)
+            except NotFound:
+                row.append(None)
+        grid.append(row)
+    return {"rows_label": "cost of equity", "cols_label": "stable dividend growth", "rows": kes, "cols": gs, "grid": grid}
+
+
+# ── Price outlook: from a value today to expected prices over the next 24 months ─────────────
+def _realized_vol(symbol: str) -> Optional[float]:
+    from api.marketdata.core import _cached
+
+    def fetch():
+        import numpy as np
+        import yfinance as yf
+        c = yf.Ticker(symbol).history(period="1y", auto_adjust=True)["Close"].dropna()
+        if len(c) < 60:
+            return None
+        r = np.diff(np.log(c.values))
+        return float(r.std() * math.sqrt(252))
+    try:
+        return _cached(f"rvol1y:{symbol}", 6 * 3600, fetch)
+    except Exception:
+        return None
+
+
+def outlook(symbol: str, price: Optional[float], value: Optional[float], cost_of_equity: Optional[float],
+            dividend_yield: Optional[float], half_life_years: float = 3.0, months: int = 24) -> Optional[Dict[str, Any]]:
+    """Expected price path. An intrinsic value says where the price should be, not when it gets there, so:
+
+      median log price  ln P_t = ln P₀ + (kₑ − yield)·t + (1 − e^(−λt))·ln(V / P₀)
+
+    The price earns its cost of equity (less the dividend paid out), and the gap to the model value closes
+    with a half-life (default 3 years — value spreads mean-revert slowly; Fama-French, Damodaran). Bands are
+    lognormal with the stock's 1-year realised volatility: 10th–90th percentile = median × e^(∓1.28 σ√t)."""
+    if not price or price <= 0 or cost_of_equity is None:
+        return None
+    sigma = _realized_vol(symbol) or 0.30
+    dy = max(0.0, dividend_yield or 0.0)
+    drift = cost_of_equity - dy
+    lam = math.log(2) / max(0.25, half_life_years)
+    gap = math.log(value / price) if value and value > 0 else 0.0
+    i = _info(symbol)
+    from datetime import date as _d
+    today = _d.today()
+
+    def at(t: float) -> Dict[str, Any]:
+        m = math.log(price) + drift * t + (1 - math.exp(-lam * t)) * gap
+        sd = sigma * math.sqrt(t) if t > 0 else 0.0
+        med = math.exp(m)
+        p_up = 0.5 * (1 + math.erf(((m - math.log(price)) / sd) / math.sqrt(2))) if sd else None
+        return {"median": med, "p10": med * math.exp(-1.2816 * sd), "p90": med * math.exp(1.2816 * sd),
+                "p25": med * math.exp(-0.6745 * sd), "p75": med * math.exp(0.6745 * sd), "prob_above_today": p_up,
+                "expected_return": med / price - 1}
+    path = []
+    for k in range(0, months + 1):
+        y, mth = today.year + (today.month - 1 + k) // 12, (today.month - 1 + k) % 12 + 1
+        path.append({"date": f"{y}-{mth:02d}", **{kk: round(v, 4) if isinstance(v, float) else v for kk, v in at(k / 12).items()}})
+    table = [{"months": k, **at(k / 12)} for k in (1, 3, 6, 12, 18, 24) if k <= months]
+    tgt, n = _f(i.get("targetMeanPrice")), i.get("numberOfAnalystOpinions")
+    return {"path": path, "horizons": table, "volatility": sigma, "drift": drift, "half_life_years": half_life_years,
+            "value": value, "price": price, "cost_of_equity": cost_of_equity, "dividend_yield": dy,
+            "gap_closed_12m": 1 - math.exp(-lam), "analyst_target": tgt, "analysts": n,
+            "analyst_low": _f(i.get("targetLowPrice")), "analyst_high": _f(i.get("targetHighPrice")),
+            "note": "Median = the price earning its cost of equity (net of dividends) while closing the gap to the model value "
+                    f"with a {half_life_years:g}-year half-life; bands from 1-year realised volatility ({sigma:.0%}). "
+                    "A model-based expectation, not a forecast of short-term moves — over 1–3 months volatility dominates."}

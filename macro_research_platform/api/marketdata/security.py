@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from api.marketdata.core import (MAIN_EXCHANGES, NotFound, Upstream, _cached, _f, _info, _norm, _yscreen, div_yield, to_usd, usd_to_local)
+from api.marketdata.core import (MAIN_EXCHANGES, NotFound, Upstream, _cached, _f, _info, _norm, _yscreen, div_yield, to_usd, usd_to_local, MINOR_UNITS)
 
 
 def _tk(symbol: str):
@@ -458,10 +458,67 @@ def _home_countries() -> Dict[str, str]:
     return _cached("home_countries", 86400, build)
 
 
+PEER_AREA = {"us": "Americas", "ca": "Americas", "gb": "Europe", "de": "Europe", "fr": "Europe", "nl": "Europe", "ch": "Europe",
+             "se": "Europe", "it": "Europe", "es": "Europe", "jp": "Asia-Pacific", "kr": "Asia-Pacific", "tw": "Asia-Pacific",
+             "cn": "Asia-Pacific", "hk": "Asia-Pacific", "in": "Asia-Pacific", "au": "Asia-Pacific"}
+AREA_ORDER = ["Americas", "Europe", "Asia-Pacific", "Middle East & Africa", "Other"]
+_AMERICAS = {"united states", "canada", "mexico", "brazil", "argentina", "chile", "colombia", "peru", "uruguay", "panama", "bermuda", "cayman islands", "puerto rico"}
+_EUROPE = {"united kingdom", "germany", "france", "netherlands", "switzerland", "sweden", "italy", "spain", "ireland", "belgium", "denmark",
+           "norway", "finland", "austria", "portugal", "luxembourg", "poland", "greece", "czech republic", "hungary", "jersey", "guernsey",
+           "isle of man", "russia", "turkey", "monaco", "iceland"}
+_APAC = {"japan", "south korea", "korea", "taiwan", "china", "hong kong", "india", "australia", "singapore", "new zealand", "indonesia",
+         "malaysia", "thailand", "philippines", "vietnam", "macau", "pakistan"}
+_MEA = {"israel", "south africa", "saudi arabia", "united arab emirates", "qatar", "kuwait", "egypt", "nigeria", "morocco", "kenya"}
+
+
+def area_of_country(c: Optional[str]) -> Optional[str]:
+    c = (c or "").lower()
+    return ("Americas" if c in _AMERICAS else "Europe" if c in _EUROPE else "Asia-Pacific" if c in _APAC
+            else "Middle East & Africa" if c in _MEA else None)
+
+
+def area_of_symbol(sym: str) -> str:
+    suf = sym.rpartition(".")[2] if "." in sym else ""
+    return {"": "Americas", "TO": "Americas", "SA": "Americas", "MX": "Americas", "L": "Europe", "DE": "Europe", "PA": "Europe",
+            "AS": "Europe", "SW": "Europe", "ST": "Europe", "MI": "Europe", "MC": "Europe", "T": "Asia-Pacific", "KS": "Asia-Pacific",
+            "TW": "Asia-Pacific", "SS": "Asia-Pacific", "SZ": "Asia-Pacific", "HK": "Asia-Pacific", "NS": "Asia-Pacific", "BO": "Asia-Pacific",
+            "AX": "Asia-Pacific"}.get(suf, "Other")
+
+
+def peer_multiples(ii: Dict[str, Any]) -> Dict[str, Any]:
+    """Valuation multiples rebuilt from company totals in one currency. Yahoo's ready-made ratios mix
+    units when a stock trades in one currency and reports in another (TSMC's ADR P/B of 93, pence vs
+    pounds on London lines), so: market cap → the reporting currency, then divide by reported totals.
+    Negative or absurd results are 'not meaningful' (None) rather than numbers that wreck a median."""
+    ccy, fin = ii.get("currency"), ii.get("financialCurrency") or ii.get("currency")
+    mcap = _f(ii.get("marketCap"))
+    same = (MINOR_UNITS.get(ccy, ccy) if ccy else None) == fin
+    if mcap and not same:
+        usd, per = to_usd(mcap, ccy), to_usd(1.0, fin)
+        mcap = usd / per if usd and per else None
+    ni, rev, ebitda = _f(ii.get("netIncomeToCommon")), _f(ii.get("totalRevenue")), _f(ii.get("ebitda"))
+    debt, cash = _f(ii.get("totalDebt")) or 0.0, _f(ii.get("totalCash")) or 0.0
+    sh, bvps = _f(ii.get("impliedSharesOutstanding")) or _f(ii.get("sharesOutstanding")), _f(ii.get("bookValue"))
+
+    def ok(v, lo, hi):
+        return v if v is not None and lo < v < hi else None
+    pe = ok(mcap / ni, 0, 300) if mcap and ni and ni > 0 else None
+    ps = ok(mcap / rev, 0, 100) if mcap and rev and rev > 0 else None
+    ev = mcap + debt - cash if mcap else None
+    ev_ebitda = ok(ev / ebitda, 0, 100) if ev and ebitda and ebitda > 0 else None
+    pb = ok(mcap / (bvps * sh), 0.05, 60) if mcap and bvps and sh and bvps > 0 else None
+    if same and pb is None:
+        pb = ok(_f(ii.get("priceToBook")), 0.05, 60)
+    te, fe = _f(ii.get("trailingEps")), _f(ii.get("forwardEps"))
+    fpe = ok(pe * te / fe, 0, 300) if pe and te and fe and te > 0 and fe > 0 else (ok(_f(ii.get("forwardPE")), 0, 300) if same else None)
+    return {"pe": pe, "forward_pe": fpe, "ev_ebitda": ev_ebitda, "price_to_book": pb, "price_to_sales": ps,
+            "multiples_currency": fin, "ev": ev, "mcap_fin": mcap}
+
+
 PEER_REGIONS = ["us", "jp", "gb", "de", "fr", "nl", "ch", "kr", "tw", "cn", "hk", "in", "ca", "au", "se", "it", "es"]
 
 
-def comps(symbol: str, max_peers: int = 12) -> Dict[str, Any]:
+def comps(symbol: str, max_peers: int = 8) -> Dict[str, Any]:
     s = symbol.strip().upper()
     i = _info(s)
     industry = _screen_industry(i.get("industry"))
@@ -501,9 +558,15 @@ def comps(symbol: str, max_peers: int = 12) -> Dict[str, Any]:
             hq = home.get(n)
             pref = [c for c in cands if hq and c[0] in HOME_REGIONS.get(hq, [hq.lower()])]
             rg, x, mcap_usd = max(pref or cands, key=lambda c: c[2])
-            peers.append((x["symbol"], max(c[2] for c in cands)))
+            peers.append((x["symbol"], max(c[2] for c in cands), PEER_AREA.get(rg, "Other")))
         peers.sort(key=lambda p: -p[1])
-        syms = [s] + [p for p, _ in peers if p != s][:max_peers]
+        # the largest few in each region, so a US company is compared with US peers as well as global ones
+        per_area: Dict[str, int] = {}
+        syms = [s]
+        for p, _, area in peers:
+            if p != s and per_area.get(area, 0) < max_peers:
+                per_area[area] = per_area.get(area, 0) + 1
+                syms.append(p)
 
         def row(sym):
             try:
@@ -513,24 +576,55 @@ def comps(symbol: str, max_peers: int = 12) -> Dict[str, Any]:
             ccy = ii.get("currency")
             mcap = _f(ii.get("marketCap"))
             dy = div_yield(ii)
+            m = peer_multiples(ii)
             return {"symbol": sym, "name": ii.get("longName") or ii.get("shortName"), "country": ii.get("country"),
-                    "currency": ccy, "market_cap_usd": to_usd(mcap, ccy),
-                    "pe": _f(ii.get("trailingPE")), "forward_pe": _f(ii.get("forwardPE")), "ev_ebitda": _f(ii.get("enterpriseToEbitda")),
-                    "price_to_book": _f(ii.get("priceToBook")), "price_to_sales": _f(ii.get("priceToSalesTrailing12Months")),
+                    "region": area_of_country(ii.get("country")) or area_of_symbol(sym),
+                    "currency": ccy, "market_cap_usd": to_usd(mcap, ccy), **m,
                     "gross_margin": _f(ii.get("grossMargins")), "operating_margin": _f(ii.get("operatingMargins")),
                     "roe": _f(ii.get("returnOnEquity")), "revenue_growth": _f(ii.get("revenueGrowth")),
                     "dividend_yield": dy, "beta": _f(ii.get("beta")),
                     "subject": sym == s}
         with cf.ThreadPoolExecutor(max_workers=8) as ex:
             rows = [r for r in ex.map(row, syms) if r]
-        med = {}
-        for k in ("pe", "forward_pe", "ev_ebitda", "price_to_book", "price_to_sales", "gross_margin", "operating_margin", "roe",
-                  "revenue_growth", "dividend_yield"):
-            vals = [r[k] for r in rows if not r["subject"] and r[k] is not None and (k not in ("pe", "forward_pe", "ev_ebitda") or 0 < r[k] < 500)]
-            med[k] = float(np.median(vals)) if vals else None
+        keys = ("pe", "forward_pe", "ev_ebitda", "price_to_book", "price_to_sales", "gross_margin", "operating_margin", "roe",
+                "revenue_growth", "dividend_yield")
+
+        def medians(rs):
+            out = {}
+            for k in keys:
+                vals = [r[k] for r in rs if not r["subject"] and r[k] is not None]
+                out[k] = float(np.median(vals)) if vals else None
+            out["n"] = sum(1 for r in rs if not r["subject"])
+            return out
+        med = medians(rows)
+        regions = sorted({r["region"] for r in rows}, key=lambda a: AREA_ORDER.index(a) if a in AREA_ORDER else 9)
+        region_median = {a: medians([r for r in rows if r["region"] == a]) for a in regions}
+        subj = next((r for r in rows if r["subject"]), None)
+        # what the subject would be worth at its peers' multiples (price × peer multiple ÷ own multiple)
+        implied = {}
+        if subj:
+            px = _f(i.get("regularMarketPrice")) or _f(i.get("currentPrice"))
+            for k in ("pe", "forward_pe", "ev_ebitda", "price_to_book", "price_to_sales"):
+                if not px or not subj.get(k):
+                    continue
+                row = {}
+                for scope, mm in [("global", med), *[(a, region_median[a]) for a in regions]]:
+                    if mm.get(k) and mm.get("n", 0) >= 2:
+                        if k == "ev_ebitda" and subj.get("ev") and subj["ev"] > 0:
+                            # EV multiple: rebuild equity from the implied EV (net debt stays)
+                            ev_imp = subj["ev"] * mm[k] / subj[k]
+                            nd = subj["ev"] - (subj.get("mcap_fin") or 0)
+                            row[scope] = px * (ev_imp - nd) / subj["mcap_fin"] if subj.get("mcap_fin") else None
+                        else:
+                            row[scope] = px * mm[k] / subj[k]
+                implied[k] = row
         return {"symbol": s, "industry": industry, "sector": i.get("sector"), "rows": rows, "peer_median": med,
+                "regions": regions, "region_median": region_median, "implied_price": implied, "price_currency": i.get("currency"),
+                "home_region": subj["region"] if subj else None,
+                "multiples_note": "Multiples are rebuilt from reported totals in each company's reporting currency (market cap converted at "
+                                  "today's rate); negative or extreme values are shown as n/m and left out of medians.",
                 "source": "Yahoo Finance — largest same-industry companies on each market's main exchange (≥ $1bn)"}
-    return _cached(f"rv:{s}", 6 * 3600, fetch)
+    return _cached(f"rv2:{s}", 6 * 3600, fetch)
 
 
 # ── HP / COMP / BETA ─────────────────────────────────────────────────────────

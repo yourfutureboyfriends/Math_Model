@@ -181,30 +181,98 @@ async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le
                   discount: Optional[float] = Query(None, gt=0, lt=0.4), beta: Optional[float] = Query(None, ge=-1, le=5),
                   erp: Optional[float] = Query(None, ge=0, le=0.15), include_leases: bool = False, mid_year: bool = True,
                   roe: Optional[float] = Query(None, ge=-0.5, le=1.0), terminal_roe: Optional[float] = Query(None, gt=0, le=1.0),
-                  payout: Optional[float] = Query(None, ge=0, le=1.0), model: Optional[str] = Query(None, pattern="^(fcff|excess_return)$")):
+                  payout: Optional[float] = Query(None, ge=0, le=1.0), model: Optional[str] = Query(None, pattern="^(fcff|excess_return|ddm)$"),
+                  half_life: float = Query(3.0, ge=0.25, le=20)):
+    """Valuation (FCFF / excess return / DDM) plus a 24-month price outlook built on it."""
+    from api.marketdata import dcf
+    from api.marketdata.core import _info, div_yield
+    res = await _dcf_core(symbol, growth, years, terminal_growth, target_margin, sales_to_capital, ronic, discount, beta, erp,
+                          include_leases, mid_year, roe, terminal_roe, payout, model)
+    v = res["valuation"]
+    ke = (v.get("wacc") or {}).get("cost_of_equity") or (v.get("assumptions") or {}).get("cost_of_equity")
+    try:
+        dy = div_yield(_info(res["inputs"]["symbol"]))
+    except Exception:
+        dy = None
+    value = None if v.get("equity_negative") else v.get("per_share")
+    res["outlook"] = await _run(dcf.outlook, res["inputs"]["symbol"], v.get("price") or res["inputs"].get("price"), value, ke, dy, half_life, timeout=30)
+    return res
+
+
+async def _dcf_core(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le=2.0), years: int = Query(10, ge=3, le=30),
+                  terminal_growth: Optional[float] = Query(None, ge=-0.05, le=0.15), target_margin: Optional[float] = Query(None, ge=-1.0, le=0.9),
+                  sales_to_capital: Optional[float] = Query(None, gt=0, le=20), ronic: Optional[float] = Query(None, gt=0, le=2.0),
+                  discount: Optional[float] = Query(None, gt=0, lt=0.4), beta: Optional[float] = Query(None, ge=-1, le=5),
+                  erp: Optional[float] = Query(None, ge=0, le=0.15), include_leases: bool = False, mid_year: bool = True,
+                  roe: Optional[float] = Query(None, ge=-0.5, le=1.0), terminal_roe: Optional[float] = Query(None, gt=0, le=1.0),
+                  payout: Optional[float] = Query(None, ge=0, le=1.0), model: Optional[str] = Query(None, pattern="^(fcff|excess_return|ddm)$")):
     """FCFF discounted at WACC (Damodaran / McKinsey) for operating companies; Damodaran's excess-return
-    model for banks and insurers. Reverse DCF and sensitivity grids for both."""
+    model for banks and insurers; a dividend discount model for dividend payers (and as the fallback where
+    a DCF can't be built). Reverse DCF and sensitivity grids for all three."""
     from api.marketdata import dcf
     inp = await _run(dcf.inputs, symbol, timeout=60)
-    use_fin = model == "excess_return" or (model is None and inp.get("is_financial"))
-    if use_fin:
-        kw = dict(years=years, roe=roe, terminal_roe=terminal_roe, payout=payout, terminal_growth=terminal_growth, beta=beta, erp=erp, discount=discount)
-        val = await _run(dcf.value_financial, inp, **kw)
-        sens = await _run(dcf.sensitivity_financial, inp, val, **kw)
-        implied = await _run(dcf.reverse_financial, inp, **{k: v for k, v in kw.items() if k not in ("roe", "terminal_roe")})
-        return {"inputs": inp, "valuation": val, "sensitivity": sens, "market_implied_roe": implied, "model": "excess_return",
-                "method": "Excess-return model: equity = book value + PV of (ROE − cost of equity) × book value, with ROE and payout "
-                          "converging to stable levels and stable growth ≤ the risk-free rate. Source: Damodaran (NYU Stern)."}
-    kw = dict(growth=growth, years=years, terminal_growth=terminal_growth, target_margin=target_margin, sales_to_capital=sales_to_capital,
-              ronic=ronic, discount=discount, beta=beta, erp=erp, include_leases=include_leases, mid_year=mid_year)
-    val = await _run(dcf.value, inp, **kw)
+    ind = inp.get("industry") or ""
+    # the dividend model runs alongside whenever the company pays one
+    ddm_kw = dict(growth=growth if model == "ddm" else None, terminal_growth=terminal_growth if model == "ddm" else None,
+                  discount=discount if model == "ddm" else None, beta=beta, erp=erp)
+    ddm = ddm_err = None
+    try:
+        ddm = await _run(dcf.value_ddm, inp, **ddm_kw)
+    except HTTPException as e:
+        ddm_err = e.detail
+    suits_ddm = ind.startswith("REIT") or ind.startswith("Utilities")
+    recommended = "excess_return" if inp.get("is_financial") else ("ddm" if suits_ddm and ddm else "fcff")
+
+    def ddm_response(reason: Optional[str] = None):
+        sens = dcf.sensitivity_ddm(inp, ddm, **ddm_kw)
+        return {"inputs": inp, "valuation": ddm, "sensitivity": sens, "model": "ddm", "ddm": ddm, "recommended": recommended,
+                "fallback_reason": reason,
+                "method": "Dividend discount model (Damodaran): dividends grow at the lower of sustainable growth (ROE × retention) and "
+                          "their 5-year history, fade to stable growth (≤ the risk-free rate, ≤ 2% real + inflation, ≥ 3 points under the "
+                          "cost of equity) and are discounted at the cost of equity, whose beta drifts to 0.8–1.2 as the firm matures."}
+    chosen = model or recommended
+    if chosen == "ddm":
+        if not ddm:
+            raise HTTPException(404, ddm_err or "No dividend model available.")
+        return ddm_response()
+    try:
+        if chosen == "excess_return":
+            kw = dict(years=years, roe=roe, terminal_roe=terminal_roe, payout=payout, terminal_growth=terminal_growth, beta=beta, erp=erp, discount=discount)
+            val = await _run(dcf.value_financial, inp, **kw)
+            sens = await _run(dcf.sensitivity_financial, inp, val, **kw)
+            implied = await _run(dcf.reverse_financial, inp, **{k: v for k, v in kw.items() if k not in ("roe", "terminal_roe")})
+            return {"inputs": inp, "valuation": val, "sensitivity": sens, "market_implied_roe": implied, "model": "excess_return",
+                    "ddm": ddm, "recommended": recommended,
+                    "method": "Excess-return model: equity = book value + PV of (ROE − cost of equity) × book value, with ROE and payout "
+                              "converging to stable levels and stable growth ≤ the risk-free rate. Source: Damodaran (NYU Stern)."}
+        kw = dict(growth=growth, years=years, terminal_growth=terminal_growth, target_margin=target_margin, sales_to_capital=sales_to_capital,
+                  ronic=ronic, discount=discount, beta=beta, erp=erp, include_leases=include_leases, mid_year=mid_year)
+        val = await _run(dcf.value, inp, **kw)
+    except HTTPException as e:
+        if chosen == "excess_return" and model is None and not inp.get("is_bank_like", False):
+            try:    # a 'financial' that isn't a lender (exchanges, data vendors, crypto brokers) can be valued on cash flow
+                kw = dict(growth=growth, years=years, terminal_growth=terminal_growth, target_margin=target_margin, sales_to_capital=sales_to_capital,
+                          ronic=ronic, discount=discount, beta=beta, erp=erp, include_leases=include_leases, mid_year=mid_year)
+                val = await _run(dcf.value, inp, **kw)
+                sens = await _run(dcf.sensitivity, inp, val, **kw)
+                return {"inputs": inp, "valuation": val, "sensitivity": sens, "model": "fcff", "ddm": ddm, "recommended": "fcff",
+                        "fallback_reason": f"The excess-return model can't run ({e.detail}) — valued on free cash flow instead.",
+                        "method": "FCFF at WACC (Damodaran / McKinsey)."}
+            except HTTPException:
+                pass
+        if ddm and model is None:          # the cash-flow model can't run on these numbers: value the dividend instead
+            return ddm_response(f"Using the dividend model: the {'excess-return' if chosen == 'excess_return' else 'cash-flow'} model can't run ({e.detail}).")
+        raise
+    if model is None and ddm and val.get("equity_negative") and (ddm.get("dividend_yield") or 0) >= 0.015:
+        return ddm_response("Using the dividend model: the cash-flow model leaves nothing for shareholders on these numbers (debt exceeds the operating value) — "
+                            "the dividend actually paid is the better guide.")
     sens = await _run(dcf.sensitivity, inp, val, **kw)
     rkw = {k: v for k, v in kw.items() if k != "growth"}
     implied = await _run(dcf.reverse, inp, **rkw)
     bound = await _run(dcf.reverse_bound, inp, **rkw) if implied is None else None
     implied_r = await _run(dcf.implied_discount, inp, **kw)
     return {"inputs": inp, "valuation": val, "sensitivity": sens, "market_implied_growth": implied, "market_implied_growth_bound": bound,
-            "market_implied_discount": implied_r, "model": "fcff",
+            "market_implied_discount": implied_r, "model": "fcff", "ddm": ddm, "recommended": recommended,
             "method": "FCFF at WACC with mid-year discounting; terminal value = NOPAT × (1 − g/RONIC) ÷ (WACC − g). "
                       "SBC is expensed (inside GAAP operating income). Inputs from Damodaran's market data (implied ERP, "
                       "industry betas, country risk). Sources: Damodaran (NYU Stern); Koller, Goedhart & Wessels, Valuation (McKinsey)."}
@@ -403,6 +471,51 @@ async def mkt_edge(layer: str):
     if not fn:
         raise HTTPException(404, "Unknown edge layer")
     return await _run(fn, timeout=180)
+
+
+@router.get("/api/v1/mkt/pred/browse")
+async def mkt_pred_browse(q: str = "", venue: str = "", category: str = "", sort: str = "volume",
+                          offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200), active: bool = True, sports: bool = False):
+    """Prediction markets (Kalshi + Polymarket): search / filter / sort every open event."""
+    from api.marketdata import predmarkets
+    return await _run(predmarkets.browse, q, venue, category, sort, offset, limit, active, sports, timeout=120)
+
+
+@router.get("/api/v1/mkt/pred/event/{venue}/{event_id}")
+async def mkt_pred_event(venue: str, event_id: str):
+    from api.marketdata import predmarkets
+    return await _run(predmarkets.event, venue, event_id, timeout=120)
+
+
+@router.get("/api/v1/mkt/pred/history/{venue}/{market_id}")
+async def mkt_pred_history(venue: str, market_id: str, series: str = "", span: str = "1m"):
+    from api.marketdata import predmarkets
+    return await _run(predmarkets.history, venue, market_id, series or None, span, timeout=45)
+
+
+@router.get("/api/v1/mkt/pred/book/{venue}/{market_id}")
+async def mkt_pred_book(venue: str, market_id: str):
+    from api.marketdata import predmarkets
+    return await _run(predmarkets.orderbook, venue, market_id, timeout=30)
+
+
+@router.get("/api/v1/mkt/pred/related")
+async def mkt_pred_related(q: str = Query(..., min_length=2, max_length=300), limit: int = Query(6, ge=1, le=20)):
+    """Prediction markets related to a screen: comma-separated terms (company, country, 'fed', 'oil'…)."""
+    from api.marketdata import predmarkets
+    return await _run(predmarkets.related, q.split(","), limit, timeout=120)
+
+
+@router.get("/api/v1/mkt/pred/{layer}")
+async def mkt_pred_layer(layer: str, sports: bool = False):
+    """movers / cross (same question on both venues) / macro (Fed odds vs futures and macro markets)."""
+    from api.marketdata import predmarkets
+    if layer == "movers":
+        return await _run(predmarkets.movers, 5000, sports, timeout=120)
+    fn = {"cross": predmarkets.cross_venue, "macro": predmarkets.macro}.get(layer)
+    if not fn:
+        raise HTTPException(404, "Unknown prediction-market layer")
+    return await _run(fn, timeout=150)
 
 
 @router.get("/api/v1/mkt/ins/{layer}")

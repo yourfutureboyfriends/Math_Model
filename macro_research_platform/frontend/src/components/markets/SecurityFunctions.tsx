@@ -398,38 +398,69 @@ export function OmonView({ symbol }: { symbol: string }) {
 export function RvView({ symbol, onOpen }: { symbol: string; onOpen: (s: string) => void }) {
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/rv/${enc(symbol)}`);
   const [sort, setSort] = useState('market_cap_usd');
+  const [area, setArea] = useState<string>('all');
   if (loading && !data) return <Loading label="Finding peers in 17 markets…" />;
   if (error) return <ErrorBox msg={error} />;
   if (!data) return null;
   const cols: [string, string, 'x' | 'pct' | 'big'][] = [['market_cap_usd', 'Mkt cap $', 'big'], ['pe', 'P/E', 'x'], ['forward_pe', 'Fwd P/E', 'x'], ['ev_ebitda', 'EV/EBITDA', 'x'],
     ['price_to_book', 'P/B', 'x'], ['price_to_sales', 'P/S', 'x'], ['gross_margin', 'Gross mgn', 'pct'], ['operating_margin', 'Op mgn', 'pct'], ['roe', 'ROE', 'pct'],
     ['revenue_growth', 'Rev growth (qtr y/y)', 'pct'], ['dividend_yield', 'Yield', 'pct']];
-  const f = (v: any, kind: string) => v == null ? '—' : kind === 'big' ? fmtBig(v) : kind === 'pct' ? `${(v * 100).toFixed(1)}%` : v.toFixed(1);
-  const rows = [...data.rows].sort((a: any, b: any) => (b[sort] ?? -1e18) - (a[sort] ?? -1e18));
-  const med = data.peer_median;
+  const f = (v: any, kind: string) => v == null ? <span className="text-text-tertiary">n/m</span> : kind === 'big' ? fmtBig(v) : kind === 'pct' ? `${(v * 100).toFixed(1)}%` : v.toFixed(1);
+  const regions: string[] = data.regions ?? ['All'];
+  const rmed = data.region_median ?? {};
+  const subj = data.rows.find((r: any) => r.subject);
+  const srt = (rs: any[]) => [...rs].sort((a: any, b: any) => (b[sort] ?? -1e18) - (a[sort] ?? -1e18));
+  const shown = area === 'all' ? regions : [area];
+  const Row = ({ r, med }: { r: any; med: any }) => (
+    <tr onClick={() => !r.subject && onOpen(r.symbol)} className={cn('border-t border-border-subtle', r.subject ? 'bg-bloomberg/10' : 'cursor-pointer hover:bg-surface-3')}>
+      <td className="py-1 pr-2"><span className="font-mono text-text-primary">{r.symbol}</span> <span className="text-text-secondary">{r.name}</span>
+        {r.country && <span className="text-text-tertiary"> · {r.country}</span>}</td>
+      {cols.map(([k, , kind]) => {
+        const v = r[k], m = med?.[k];
+        const better = m != null && v != null && k !== 'market_cap_usd' ? (kind === 'x' ? v < m : v > m) : null;
+        return <td key={k} className={cn('text-right font-mono px-1.5', better === true && 'text-green', better === false && 'text-text-secondary')}>{f(v, kind)}</td>;
+      })}
+    </tr>);
+  const MedRow = ({ label, med, strong }: { label: string; med: any; strong?: boolean }) => (
+    <tr className={cn('border-t', strong ? 'border-t-2 border-border font-semibold' : 'border-border-subtle bg-surface-2/60')}>
+      <td className="py-1 text-text-secondary">{label}{med?.n != null && <span className="text-text-tertiary font-normal"> ({med.n})</span>}</td>
+      {cols.map(([k, , kind]) => <td key={k} className="text-right font-mono px-1.5 text-text-primary">{k === 'market_cap_usd' ? '' : f(med?.[k], kind)}</td>)}</tr>);
+  const imp = data.implied_price ?? {};
+  const impKeys: [string, string][] = [['pe', 'P/E'], ['forward_pe', 'Forward P/E'], ['ev_ebitda', 'EV/EBITDA'], ['price_to_book', 'P/B'], ['price_to_sales', 'P/S']];
   return (
     <div className="space-y-3">
-    <Panel title={`${data.industry} peers worldwide — click a column to sort, a row to open`}>
+    <Panel title={`${data.industry} peers by region — click a column to sort, a row to open`} right={<div className="flex gap-1 text-[11px]">
+      {['all', ...regions].map((a) => <button key={a} onClick={() => setArea(a)} className={cn('px-2 py-0.5 border rounded-sm', area === a ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>
+        {a === 'all' ? 'All regions' : a}{a === data.home_region ? ' ★' : ''}</button>)}</div>}>
       <div className="overflow-x-auto"><table className="w-full text-2xs">
         <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Company</th>
           {cols.map(([k, l]) => <th key={k} onClick={() => setSort(k)} className={cn('text-right font-normal cursor-pointer hover:text-text-primary px-1.5', sort === k && 'text-bloomberg')}>{l}</th>)}</tr></thead>
         <tbody>
-          {rows.map((r: any) => (
-            <tr key={r.symbol} onClick={() => !r.subject && onOpen(r.symbol)} className={cn('border-t border-border-subtle', r.subject ? 'bg-bloomberg/10' : 'cursor-pointer hover:bg-surface-3')}>
-              <td className="py-1 pr-2"><span className="font-mono text-text-primary">{r.symbol}</span> <span className="text-text-secondary">{r.name}</span>
-                {r.country && <span className="text-text-tertiary"> · {r.country}</span>}</td>
-              {cols.map(([k, , kind]) => {
-                const v = r[k], m = med?.[k];
-                const better = m != null && v != null && k !== 'market_cap_usd' ? (kind === 'x' ? v < m : v > m) : null;
-                return <td key={k} className={cn('text-right font-mono px-1.5', better === true && 'text-green', better === false && 'text-text-secondary')}>{f(v, kind)}</td>;
-              })}
-            </tr>))}
-          <tr className="border-t-2 border-border font-semibold"><td className="py-1 text-text-secondary">Peer median</td>
-            {cols.map(([k, , kind]) => <td key={k} className="text-right font-mono px-1.5 text-text-primary">{k === 'market_cap_usd' ? '' : f(med?.[k], kind)}</td>)}</tr>
+          {subj && <Row r={subj} med={rmed[subj.region] ?? data.peer_median} />}
+          {shown.map((a) => {
+            const rs = srt(data.rows.filter((r: any) => !r.subject && (r.region === a || !data.regions)));
+            return [
+              <tr key={`h${a}`}><td colSpan={cols.length + 1} className="pt-3 pb-1 text-[10px] uppercase tracking-wider text-bloomberg font-semibold">{a}{a === data.home_region ? ' — home region' : ''}</td></tr>,
+              ...rs.map((r: any) => <Row key={r.symbol} r={r} med={rmed[a] ?? data.peer_median} />),
+              rmed[a] && <MedRow key={`m${a}`} label={`${a} median`} med={rmed[a]} />,
+            ];
+          })}
+          <MedRow label="Global peer median" med={data.peer_median} strong />
         </tbody>
       </table></div>
-      <div className="text-[10px] text-text-tertiary mt-2">Green = cheaper (multiples) or stronger (margins, growth) than the peer median. {data.source}</div>
+      <div className="text-[10px] text-text-tertiary mt-2">Green = cheaper (multiples) or stronger (margins, growth) than that region’s median. n/m = not meaningful (losses, negative book, or an extreme value). {data.multiples_note} {data.source}</div>
     </Panel>
+    {subj && Object.keys(imp).length > 0 && <Panel title={`${symbol} at its peers’ multiples — implied share price (${data.price_currency ?? ''})`}>
+      <table className="w-full text-2xs font-mono">
+        <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Multiple</th><th className="text-right font-normal">{symbol} today</th>
+          {['global', ...regions].map((a) => <th key={a} className="text-right font-normal px-1.5">{a === 'global' ? 'Global median' : a}</th>)}</tr></thead>
+        <tbody>{impKeys.filter(([k]) => imp[k]).map(([k, l]) => (
+          <tr key={k} className="border-t border-border-subtle"><td className="py-1 font-sans text-text-secondary">{l}</td><td className="text-right">{subj[k]?.toFixed(1) ?? '—'}×</td>
+            {['global', ...regions].map((a) => { const v = imp[k][a];
+              return <td key={a} className="text-right px-1.5 text-text-primary">{v != null && v > 0 ? v.toLocaleString(undefined, { maximumFractionDigits: v < 100 ? 2 : 0 }) : '—'}</td>; })}</tr>))}</tbody>
+      </table>
+      <div className="text-[10px] text-text-tertiary mt-1">Price × (peer median multiple ÷ {symbol}’s multiple). EV/EBITDA keeps {symbol}’s own net debt. A quick relative-value cross-check for the DCF — regions differ in growth, rates and accounting, so the home region is usually the fairest yardstick.</div>
+    </Panel>}
     <ValuationMap rows={data.rows} onOpen={onOpen} />
     </div>
   );
@@ -612,6 +643,16 @@ const FIN_FIELDS: [string, string, 'pct' | 'num' | 'int', string][] = [
   ['discount', 'Override cost of equity', 'pct', 'Leave blank to use risk-free + beta × ERP.'],
 ];
 
+const DDM_FIELDS: [string, string, 'pct' | 'num' | 'int', string][] = [
+  ['growth', 'Dividend growth, years 1–5', 'pct', 'Then fades to stable growth by year 10. Default: the lower of ROE × retention and 5-year dividend growth.'],
+  ['terminal_growth', 'Stable dividend growth', 'pct', 'Default: the lowest of the risk-free rate, 2% real + inflation, and 3 points under the cost of equity.'],
+  ['beta', 'Beta', 'num', 'Default: as in the DCF (bottom-up); drifts to 0.8–1.2 in stable growth.'],
+  ['erp', 'Equity risk premium', 'pct', 'Default: Damodaran’s latest implied ERP + country risk premium.'],
+  ['discount', 'Override cost of equity', 'pct', 'Leave blank to use risk-free + beta × ERP.'],
+];
+type ValModel = 'fcff' | 'excess_return' | 'ddm';
+const MODEL_LABEL: Record<ValModel, string> = { fcff: 'Cash flow (DCF)', excess_return: 'Excess return (banks/insurers)', ddm: 'Dividend discount (DDM)' };
+
 // allowed ranges (in the units typed: % for pct fields) — mirror the API's limits
 const DCF_LIMITS: Record<string, [number, number]> = {
   growth: [-50, 200], target_margin: [-100, 90], years: [3, 30], terminal_growth: [-5, 15], sales_to_capital: [0.05, 20],
@@ -623,12 +664,13 @@ export function DcfView({ symbol }: { symbol: string }) {
   const [leases, setLeases] = useState(false);
   const [midYear, setMidYear] = useState(true);
   const [formErr, setFormErr] = useState<string | null>(null);
-  const modelRef = useRef<'fcff' | 'excess_return'>('fcff');
+  const modelRef = useRef<ValModel>('fcff');
+  const pinned = useRef(false);            // the user picked a model (otherwise the server recommends one)
   const build = (): string | null => {
     const p = new URLSearchParams();
     const bad: string[] = [];
-    if (modelRef.current === 'excess_return') p.set('model', 'excess_return');
-    for (const [k, label, kind] of (modelRef.current === 'excess_return' ? FIN_FIELDS : DCF_FIELDS)) {
+    if (pinned.current) p.set('model', modelRef.current);
+    for (const [k, label, kind] of (modelRef.current === 'excess_return' ? FIN_FIELDS : modelRef.current === 'ddm' ? DDM_FIELDS : DCF_FIELDS)) {
       const raw = form[k];
       if (raw === undefined || raw.trim() === '') continue;
       const n = Number(raw);
@@ -656,13 +698,31 @@ export function DcfView({ symbol }: { symbol: string }) {
   if (error && !data) return <ErrorBox msg={error} />;
   if (!data) return null;
   const isFin = data.model === 'excess_return';
-  modelRef.current = isFin ? 'excess_return' : 'fcff';
-  const inp = data.inputs, v = data.valuation, a = v.assumptions, w = v.wacc, sens = data.sensitivity;
-  const FIELDS = isFin ? FIN_FIELDS : DCF_FIELDS;
+  const isDdm = data.model === 'ddm';
+  modelRef.current = data.model;
+  const inp = data.inputs, v = data.valuation, a = v.assumptions, w = v.wacc ?? {}, sens = data.sensitivity;
+  const FIELDS = isFin ? FIN_FIELDS : isDdm ? DDM_FIELDS : DCF_FIELDS;
+  const pick = (m: ValModel) => { pinned.current = true; modelRef.current = m; setForm({}); setFormErr(null); setUrl(`/api/v1/mkt/dcf/${enc(symbol)}?model=${m}`); };
+  const available: ValModel[] = [inp.is_financial ? 'excess_return' : 'fcff', ...(data.ddm || isDdm ? ['ddm' as ValModel] : [])];
+  const modelBar = (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-1 text-[11px]">
+        <span className="text-text-tertiary mr-1">Model</span>
+        {available.map((m) => (
+          <button key={m} onClick={() => pick(m)} className={cn('px-2.5 py-1 border rounded-sm', data.model === m ? 'border-bloomberg text-bloomberg bg-bloomberg/10' : 'border-border text-text-secondary hover:text-text-primary')}>
+            {MODEL_LABEL[m]}{data.recommended === m && <span className="ml-1 text-[9px] uppercase text-green">recommended</span>}</button>))}
+        {!data.ddm && !isDdm && <span className="text-text-tertiary ml-2">No dividend, so no DDM.</span>}
+      </div>
+      {data.fallback_reason && <div className="px-3 py-2 border border-blue/50 bg-blue/5 text-2xs text-text-secondary">{data.fallback_reason}</div>}
+      <ValuationSummary symbol={symbol} data={data} />
+      {data.outlook && <PriceOutlook o={data.outlook} ccy={inp.price_currency ?? inp.currency ?? ''} />}
+    </div>);
+
   const ccy = inp.currency ?? '';                   // reporting currency (projection, bridge)
   const pccy = inp.price_currency ?? ccy;            // trading currency (value per share)
   const def: Record<string, number | null> = isFin
     ? { years: a.years, roe: a.roe_now, terminal_roe: a.roe_terminal, payout: a.payout_now, terminal_growth: a.terminal_growth, beta: a.beta, erp: a.erp, discount: null }
+    : isDdm ? { growth: a.growth, terminal_growth: a.terminal_growth, beta: a.beta, erp: a.erp, discount: null }
     : { growth: a.growth, target_margin: a.target_margin, years: a.years, terminal_growth: a.terminal_growth,
         sales_to_capital: a.sales_to_capital, ronic: a.ronic, beta: w.beta, erp: w.erp, discount: null };
   const shown = (k: string, kind: string) => def[k] == null ? 'computed' : kind === 'pct' ? (def[k]! * 100).toFixed(2) : kind === 'int' ? String(def[k]) : def[k]!.toFixed(2);
@@ -683,20 +743,22 @@ export function DcfView({ symbol }: { symbol: string }) {
             </label>))}
         </div>
         <div className="flex flex-wrap items-center gap-4 mt-3 text-2xs text-text-secondary">
-          {!isFin && <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={leases} onChange={(e) => setLeases(e.target.checked)} />Treat operating leases as debt</label>}
-          {!isFin && <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={midYear} onChange={(e) => setMidYear(e.target.checked)} />Mid-year discounting</label>}
+          {!isFin && !isDdm && <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={leases} onChange={(e) => setLeases(e.target.checked)} />Treat operating leases as debt</label>}
+          {!isFin && !isDdm && <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={midYear} onChange={(e) => setMidYear(e.target.checked)} />Mid-year discounting</label>}
           <button onClick={() => { const u = build(); if (u) setUrl(u); }} className="px-4 py-1.5 text-xs bg-bloomberg text-text-inverse">Recalculate</button>
-          {!isFin && <a href={url.replace(/^(\/api\/v1\/mkt\/dcf\/[^?]+)/, '$1/xlsx')} download
+          {!isFin && !isDdm && <a href={url.replace(/^(\/api\/v1\/mkt\/dcf\/[^?]+)/, '$1/xlsx')} download
             className="inline-flex items-center gap-1 px-3 py-1.5 text-xs border border-border hover:border-bloomberg hover:text-bloomberg"
             title="The model with live formulas — change any input in Excel and the value updates"><Download className="w-3.5 h-3.5" />Excel model</a>}
-          <button onClick={() => { setForm({}); setLeases(false); setMidYear(true); setFormErr(null); setUrl(`/api/v1/mkt/dcf/${enc(symbol)}`); }} className="text-text-tertiary hover:text-text-primary">Reset to defaults</button>
+          <button onClick={() => { setForm({}); setLeases(false); setMidYear(true); setFormErr(null); pinned.current = false; setUrl(`/api/v1/mkt/dcf/${enc(symbol)}`); }} className="text-text-tertiary hover:text-text-primary">Reset to defaults</button>
         </div>
       </Panel>
     </>
   );
-  if (isFin) return <FinancialValuation data={data} formPanel={formPanel} pctS={pctS} />;
+  if (isFin) return <div className="space-y-3">{modelBar}<FinancialValuation data={data} formPanel={formPanel} pctS={pctS} /></div>;
+  if (isDdm) return <div className="space-y-3">{modelBar}<DdmValuation data={data} formPanel={formPanel} pctS={pctS} /></div>;
   return (
     <div className="space-y-3">
+      {modelBar}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <Stat label="Intrinsic value / share" value={v.per_share != null ? fmtPrice(v.per_share) : '—'} sub={pccy} />
         <Stat label="vs price" value={v.upside != null ? fmtPct(v.upside, 1) : '—'} tone={v.upside != null ? (v.upside > 0 ? 'up' : 'down') : null} sub={v.price ? `price ${fmtPrice(v.price)}` : 'no exchange rate'} />
@@ -816,6 +878,162 @@ function FinancialValuation({ data, formPanel, pctS }: { data: any; formPanel: R
         </Panel>
       </div>
       <SensGrid title="Value per share — cost of equity (rows) × stable ROE (columns)" rows={sens.costs_of_equity} cols={sens.terminal_roes} grid={sens.per_share} price={v.price} />
+      <div className="text-[10px] text-text-tertiary">{data.method}</div>
+    </div>
+  );
+}
+
+/** Expected price over the next 1–24 months: the price earns its cost of equity (net of dividends)
+ *  while closing the gap to the model value with a chosen half-life; lognormal bands from realised vol.
+ *  Recomputed here from the server's inputs so the half-life can be changed instantly. */
+export function PriceOutlook({ o, ccy, value, halfLife, title }: { o: any; ccy: string; value?: number | null; halfLife?: number; title?: string }) {
+  const [hlState, setHl] = useState<number>(o.half_life_years ?? 3);
+  const hl = halfLife ?? hlState;
+  const [useModel, setUseModel] = useState(true);
+  const P0 = o.price, V = value !== undefined ? value : o.value, sig = o.volatility, drift = o.drift;
+  const gap = useModel && V && V > 0 ? Math.log(V / P0) : 0;
+  const lam = Math.log(2) / hl;
+  const at = (t: number) => {
+    const m = Math.log(P0) + drift * t + (1 - Math.exp(-lam * t)) * gap, sd = sig * Math.sqrt(t), med = Math.exp(m);
+    const z = sd > 0 ? (m - Math.log(P0)) / sd : 0;
+    const cdf = (x: number) => 0.5 * (1 + erf(x / Math.SQRT2));
+    return { median: med, p10: med * Math.exp(-1.2816 * sd), p90: med * Math.exp(1.2816 * sd), p25: med * Math.exp(-0.6745 * sd), p75: med * Math.exp(0.6745 * sd), up: sd > 0 ? cdf(z) : null };
+  };
+  const rows = o.path.map((r: any, k: number) => { const x = at(k / 12); return { date: r.date, median: x.median, p10: x.p10, p90: x.p90, p25: x.p25, p75: x.p75 }; });
+  const refs = [{ value: P0, label: `price ${fmtPrice(P0)}`, color: 'rgb(var(--c-text-tertiary))' },
+    ...(V && V > 0 ? [{ value: V, label: `model ${fmtPrice(V)}`, color: 'rgb(var(--c-bloomberg))' }] : []),
+    ...(o.analyst_target ? [{ value: o.analyst_target, label: `analysts ${fmtPrice(o.analyst_target)}`, color: 'rgb(var(--c-amber))' }] : [])];
+  const pc = (x: number | null) => (x == null ? '—' : `${(x * 100).toFixed(0)}%`);
+  return (
+    <Panel title={title ?? `Price outlook — next 24 months (${ccy})`} right={<div className="flex items-center gap-1 text-[11px]">
+      {halfLife == null && <span className="text-text-tertiary">gap closes</span>}
+      {halfLife == null && [[1, 'fast (1y)'], [3, 'typical (3y)'], [6, 'slow (6y)']].map(([h, l]) => (
+        <button key={h} onClick={() => setHl(h as number)} className={cn('px-2 py-0.5 border rounded-sm', hl === h ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{l}</button>))}
+      <label className="ml-2 inline-flex items-center gap-1 text-text-secondary"><input type="checkbox" checked={useModel} onChange={(e) => setUseModel(e.target.checked)} />use model value</label></div>}>
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-3">
+        <LineChart rows={rows} x="date" height={230} controls={false} fmt={(v) => fmtPrice(v)} refs={refs}
+          lines={[{ key: 'p90', label: '90th pct', color: 'rgb(var(--c-green) / 0.55)' }, { key: 'p75', label: '75th', color: 'rgb(var(--c-green) / 0.3)' },
+            { key: 'median', label: 'Median', color: 'rgb(var(--c-blue))' }, { key: 'p25', label: '25th', color: 'rgb(var(--c-red) / 0.3)' }, { key: 'p10', label: '10th pct', color: 'rgb(var(--c-red) / 0.55)' }]} />
+        <div>
+          <table className="w-full text-2xs font-mono tabular-nums">
+            <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Horizon</th><th className="text-right font-normal">Median</th><th className="text-right font-normal">vs now</th>
+              <th className="text-right font-normal">80% range</th><th className="text-right font-normal" title="Probability the price is above today's">P(up)</th></tr></thead>
+            <tbody>{[1, 3, 6, 12, 18, 24].map((m) => { const x = at(m / 12); return (
+              <tr key={m} className="border-t border-border-subtle"><td className="py-0.5 font-sans text-text-secondary">{m < 12 ? `${m} month${m > 1 ? 's' : ''}` : `${m / 12} year${m > 12 ? 's' : ''}`}</td>
+                <td className="text-right text-text-primary">{fmtPrice(x.median)}</td><td className={cn('text-right', x.median >= P0 ? 'text-green' : 'text-red')}>{fmtPct(x.median / P0 - 1, 1)}</td>
+                <td className="text-right text-text-secondary">{fmtPrice(x.p10)} – {fmtPrice(x.p90)}</td><td className="text-right">{pc(x.up)}</td></tr>); })}</tbody>
+          </table>
+          <div className="mt-2 text-[10px] text-text-tertiary space-y-0.5">
+            <div>Drift {(drift * 100).toFixed(1)}% a year (cost of equity {(o.cost_of_equity * 100).toFixed(1)}% less {(o.dividend_yield * 100).toFixed(1)}% dividend yield); volatility {(sig * 100).toFixed(0)}% (1-year realised).</div>
+            <div>The gap to {V ? fmtPrice(V) : 'the model value'} closes with a {hl}-year half-life ({Math.round((1 - Math.exp(-Math.log(2) / hl)) * 100)}% of it in the first year).</div>
+            {o.analyst_target && <div>Analysts’ 12-month target {fmtPrice(o.analyst_target)} ({o.analyst_low ? `${fmtPrice(o.analyst_low)}–${fmtPrice(o.analyst_high)}, ` : ''}{o.analysts ?? '?'} analysts).</div>}
+            <div>A model-based expectation, not a forecast of short-term moves — over 1–3 months volatility dominates.</div>
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function erf(x: number) {          // Abramowitz–Stegun 7.1.26
+  const t = 1 / (1 + 0.3275911 * Math.abs(x));
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return x >= 0 ? y : -y;
+}
+
+/** Every way of valuing the stock side by side: the cash-flow (or excess-return) model, the dividend
+ *  model, and the share price implied by peers' multiples in the home region. */
+function ValuationSummary({ symbol, data }: { symbol: string; data: any }) {
+  const rv = useJSON<any>(`/api/v1/mkt/rv/${enc(symbol)}`);
+  const v = data.valuation, price = v.price ?? data.inputs.price;
+  const primary = data.model === 'ddm' ? null : v;
+  const ddm = data.model === 'ddm' ? v : data.ddm;
+  const home = rv.data?.home_region;
+  const imp = rv.data?.implied_price ?? {};
+  const peerVals = ['forward_pe', 'pe', 'ev_ebitda'].map((k) => imp[k]?.[home] ?? imp[k]?.global).filter((x: any) => x != null && x > 0) as number[];
+  const peer = peerVals.length ? [...peerVals].sort((a, b) => a - b)[Math.floor(peerVals.length / 2)] : null;
+  const items: [string, number | null | undefined, string][] = [
+    [data.model === 'excess_return' || data.inputs.is_financial ? 'Excess return' : 'DCF (FCFF)', primary?.per_share ?? null, primary ? '' : 'see the DCF tab'],
+    ['Dividend model', ddm?.per_share ?? null, ddm ? `yield ${(ddm.dividend_yield * 100).toFixed(1)}%` : 'no dividend'],
+    [`Peer multiples${home ? ` (${home})` : ''}`, peer, rv.loading && !rv.data ? 'loading…' : peer ? 'median of P/E, fwd P/E, EV/EBITDA' : 'not meaningful'],
+  ];
+  const vals = items.map((x) => x[1]).filter((x): x is number => x != null && x > 0);
+  if (!price) return null;
+  const lo = Math.min(price, ...vals) * 0.9, hi = Math.max(price, ...vals) * 1.1;
+  const pos = (x: number) => `${((x - lo) / (hi - lo || 1)) * 100}%`;
+  return (
+    <div className="border border-border bg-surface-1 rounded-md px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wider text-text-tertiary mb-1">Valuation summary — value per share ({data.inputs.price_currency ?? ''})</div>
+      <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-3 items-center">
+        <table className="text-2xs w-full"><tbody>
+          {items.map(([k, x, sub]) => (
+            <tr key={k} className="border-t border-border-subtle first:border-0"><td className="py-0.5 text-text-secondary">{k}</td>
+              <td className="text-right font-mono text-text-primary">{x != null && x > 0 ? fmtPrice(x) : '—'}</td>
+              <td className={cn('text-right font-mono w-16', x && price ? (x > price ? 'text-green' : 'text-red') : 'text-text-tertiary')}>{x && price ? fmtPct(x / price - 1, 0) : ''}</td>
+              <td className="pl-2 text-[10px] text-text-tertiary">{sub}</td></tr>))}
+          <tr className="border-t border-border"><td className="py-0.5 text-text-secondary">Price</td><td className="text-right font-mono text-bloomberg">{fmtPrice(price)}</td><td /><td /></tr>
+        </tbody></table>
+        <div className="relative h-10" aria-label="Valuation range">
+          <div className="absolute left-0 right-0 top-5 h-px bg-border" />
+          {vals.length > 1 && <div className="absolute top-4 h-2 bg-bloomberg/15 rounded" style={{ left: pos(Math.min(...vals)), width: `calc(${pos(Math.max(...vals))} - ${pos(Math.min(...vals))})` }} />}
+          {items.map(([k, x]) => x != null && x > 0 && <div key={k} title={`${k}: ${fmtPrice(x)}`} className="absolute top-3.5 w-2.5 h-2.5 -ml-[5px] rounded-full bg-blue ring-2 ring-surface-1" style={{ left: pos(x) }} />)}
+          <div className="absolute top-1 w-0.5 h-8 bg-bloomberg" style={{ left: pos(price) }} title={`Price ${fmtPrice(price)}`} />
+          <div className="absolute top-0 text-[9px] text-bloomberg -translate-x-1/2" style={{ left: pos(price) }}>price</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DdmValuation({ data, formPanel, pctS }: { data: any; formPanel: React.ReactNode; pctS: (x: number | null | undefined, d?: number) => string }) {
+  const inp = data.inputs, v = data.valuation, a = v.assumptions, sens = data.sensitivity;
+  const pccy = inp.price_currency ?? inp.currency ?? '';
+  const d2 = (x: number | null | undefined) => (x == null ? '—' : x.toLocaleString(undefined, { maximumFractionDigits: x < 10 ? 3 : 2 }));
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <Stat label="Intrinsic value / share" value={fmtPrice(v.per_share)} sub={pccy} />
+        <Stat label="vs price" value={fmtPct(v.upside, 1)} tone={v.upside > 0 ? 'up' : 'down'} sub={`price ${fmtPrice(v.price)}`} />
+        <Stat label="Dividend / share" value={d2(v.dps)} sub={`yield ${pctS(v.dividend_yield, 2)}`} />
+        <Stat label="Cost of equity" value={`${pctS(a.cost_of_equity, 2)} → ${pctS(a.cost_of_equity_terminal, 2)}`} sub={`rf ${pctS(a.risk_free, 2)} + β ${a.beta?.toFixed(2)} × ${pctS(a.erp, 1)}`} />
+        <Stat label="Dividend growth" value={`${pctS(a.growth)} → ${pctS(a.terminal_growth)}`}
+          sub={<span title="The constant dividend growth at which today's price equals the model value (Gordon growth at the stable cost of equity)">price implies <span className="font-mono text-text-secondary">{pctS(v.implied_growth)}</span> · 5-yr history {pctS(v.dividend_cagr_5y)}</span>} />
+      </div>
+      {v.checks.length > 0 && <div className="px-3 py-2 border border-amber/50 bg-amber/5 space-y-1">{v.checks.map((c: string) => <div key={c} className="text-2xs text-amber">• {c}</div>)}</div>}
+      {formPanel}
+      <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-3">
+        <Panel title={`Projection (${pccy} per share) — ${v.variant === 'payout' ? 'earnings × payout, payout rising to the stable level' : 'dividend growing directly'}`}>
+          <div className="overflow-x-auto"><table className="w-full text-2xs font-mono tabular-nums">
+            <thead><tr className="text-text-tertiary">{['Year', 'Growth', ...(v.variant === 'payout' ? ['EPS', 'Payout'] : []), 'Dividend', 'Cost of equity', 'PV'].map((h) => <th key={h} className="text-right font-normal px-1.5 first:text-left">{h}</th>)}</tr></thead>
+            <tbody>
+              <tr className="border-t border-border-subtle text-text-tertiary"><td className="py-0.5">Now</td><td />{v.variant === 'payout' && <><td /><td className="text-right px-1.5">{pctS(a.payout_now, 0)}</td></>}<td className="text-right px-1.5">{d2(v.dps)}</td><td colSpan={2} /></tr>
+              {v.projection.map((r: any) => (
+                <tr key={r.year} className="border-t border-border-subtle"><td className="py-0.5">{r.year}</td><td className="text-right px-1.5">{pctS(r.growth)}</td>
+                  {v.variant === 'payout' && <><td className="text-right px-1.5">{d2(r.eps)}</td><td className="text-right px-1.5">{pctS(r.payout, 0)}</td></>}
+                  <td className="text-right px-1.5">{d2(r.dividend)}</td><td className="text-right px-1.5 text-text-tertiary">{pctS(r.cost_of_equity, 1)}</td>
+                  <td className="text-right px-1.5 text-text-primary">{d2(r.pv)}</td></tr>))}
+              <tr className="border-t-2 border-border"><td colSpan={v.variant === 'payout' ? 5 : 3} className="py-1 text-text-secondary font-sans">Terminal value: grows {pctS(a.terminal_growth)} a year forever{a.payout_terminal != null ? `, paying out ${pctS(a.payout_terminal, 0)}` : ''}</td>
+                <td className="text-right px-1.5">{d2(v.terminal_value)}</td><td className="text-right px-1.5 text-text-primary">{d2(v.pv_terminal)}</td></tr>
+            </tbody></table></div>
+        </Panel>
+        <Panel title="Dividend history and value build-up">
+          {v.dividend_history?.length > 1 && <div className="flex items-end gap-1 h-24 mb-2">{(() => { const mx = Math.max(...v.dividend_history.map((h: any) => h.dps)); return v.dividend_history.map((h: any) => (
+            <div key={h.year} className="flex-1 flex flex-col items-center justify-end h-full" title={`${h.year}: ${d2(h.dps)}`}>
+              <div className="w-full bg-blue/70 rounded-t-sm" style={{ height: `${(h.dps / mx) * 100}%` }} /><span className="text-[8px] text-text-tertiary mt-0.5">{String(h.year).slice(2)}</span></div>)); })()}</div>}
+          <table className="w-full text-xs"><tbody>
+            {[['PV of dividends, years 1–' + a.years, v.pv_dividends], ['PV of terminal value', v.pv_terminal], ['= Value per share', v.per_share]].map(([k, x]) => (
+              <tr key={k as string} className={cn('border-t border-border-subtle', String(k).startsWith('=') && 'font-semibold text-text-primary')}>
+                <td className="py-1 text-text-secondary">{k}</td><td className="text-right font-mono">{d2(x as number)} {pccy}</td></tr>))}
+          </tbody></table>
+          <div className="mt-3 text-[10px] text-text-tertiary space-y-0.5">
+            <div>Growth: {a.growth_source}.</div>
+            {a.roe_now != null && <div>ROE {pctS(a.roe_now)} today → {pctS(a.roe_terminal)} stable.</div>}
+            <div>Stable growth capped at {pctS(a.terminal_growth_cap)} (2% real + {inp.currency} inflation) and the risk-free rate. Risk-free: {inp.risk_free_source}.</div>
+            <div>Beta: {inp.beta_source}.</div>
+          </div>
+        </Panel>
+      </div>
+      <SensGrid title="Value per share — cost of equity (rows) × stable dividend growth (columns)" rows={sens.rows} cols={sens.cols} grid={sens.grid} price={v.price} />
       <div className="text-[10px] text-text-tertiary">{data.method}</div>
     </div>
   );

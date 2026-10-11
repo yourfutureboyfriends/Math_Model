@@ -7,6 +7,7 @@ import { toTerminal } from './bbg';
 import { Chart } from './TickerView';
 import { AnalystGauge, EarningsCard, NewsList, OrderTicket, SimilarStocks } from './InstrumentOverview';
 import { Flash, fmtBig, fmtPct, fmtPrice, Loading, symType, useJSON } from './shared';
+import { predTerms, RelatedOdds } from './PredMarkets';
 
 const enc = encodeURIComponent;
 
@@ -253,6 +254,7 @@ export function QuoteWorkstation({ q, onOpen, onGo }: { q: any; onOpen: (s: stri
       </div>
       <div className="space-y-2">
         <BookBox q={q} />
+        <RelatedOdds terms={predTerms(q.symbol, q.name, q.type)} limit={4} />
         <TapeBoxes symbol={q.symbol} q={q} />
         <Box title="Trade (paper)"><OrderTicket q={q} /></Box>
       </div>
