@@ -16,6 +16,10 @@ export function apiError(j: any, status: number): string {
   return `Request failed (HTTP ${status}).`;
 }
 
+// Messages the API returned with 404 — "this doesn't apply / isn't published for this instrument",
+// not a failure — so ErrorBox can show them as a neutral note instead of a red error.
+const NOT_APPLICABLE = new Set<string>();
+
 export function useJSON<T = any>(url: string | null, refreshMs = 0) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,13 +33,14 @@ export function useJSON<T = any>(url: string | null, refreshMs = 0) {
       if (first && attempt === 0) { setLoading(true); setError(null); }
       fetch(url).then(async (r) => {
         const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw Object.assign(new Error(apiError(j, r.status)), { transient: r.status >= 500 });
+        if (!r.ok) throw Object.assign(new Error(apiError(j, r.status)), { transient: r.status >= 500, status: r.status });
         return j;
       }).then((j) => { if (live) { setData(j); setDataUrl(url); setError(null); } if (live && first) setLoading(false); })
         .catch((e) => {
           if (!live || !first) return;                       // a failed refresh keeps the last data
           // network blips and 5xx (e.g. the API restarting) are retried with backoff before surfacing
           if ((e.transient || e instanceof TypeError) && attempt < 3) { retry = setTimeout(() => load(true, attempt + 1), [1500, 4000, 9000][attempt]); return; }
+          if (e.status === 404) NOT_APPLICABLE.add(e.message);
           setError(e.message); setData(null); setLoading(false);
         });
     };
@@ -123,6 +128,13 @@ export function Loading({ label = 'Loading…' }: { label?: string }) {
 }
 
 export function ErrorBox({ msg }: { msg: string | null }) {
+  if (msg && NOT_APPLICABLE.has(msg)) {
+    return (
+      <div className="flex items-start gap-2 px-3 py-2 rounded-md border border-border bg-surface-1 text-xs text-text-secondary" role="status">
+        <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 mt-0.5 shrink-0 text-text-tertiary" fill="currentColor" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Zm-.75 3h1.5V6h-1.5V4.5Zm0 3h1.5v4h-1.5v-4Z" /></svg>
+        <span>{msg}</span>
+      </div>);
+  }
   return msg ? (
     <div className="flex items-start gap-2 px-3 py-2 rounded-md border border-red/35 bg-red/[0.06] text-xs text-red" role="alert">
       <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 mt-0.5 shrink-0" fill="currentColor" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Zm-.75 3.5h1.5v4.5h-1.5V5Zm0 5.5h1.5V12h-1.5v-1.5Z" /></svg>
