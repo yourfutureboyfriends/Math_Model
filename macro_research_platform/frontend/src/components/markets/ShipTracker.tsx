@@ -117,7 +117,7 @@ export function ShipTracker() {
       <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-2">
         <LiveMap ref={map} glyph="ship" points={points} lines={lines} markers={markers} selected={sel != null ? String(sel) : null}
           onSelect={(id) => { setSel(id ? Number(id) : null); setRegistry(null); }} onMarker={(port) => { const p = ports.data?.ports.find((x: any) => x.port === port); if (p) map.current?.flyTo({ lon: p.lon, lat: p.lat, zoom: 10 }); }}
-          onView={setBounds} hoverText={hoverText} height={600} initial={{ lon: 60, lat: 25, zoom: 2.2 }} density={DENSITY_ZOOM}>
+          onView={setBounds} hoverText={hoverText} height={600} initial={{ lon: 60, lat: 25, zoom: 2.2 }} density={DENSITY_ZOOM} occludeLand>
           {(bounds?.zoom ?? 0) < DENSITY_ZOOM && <div className="absolute top-2 left-2 text-[10px] bg-surface-1/85 border border-border px-2 py-1 flex items-center gap-2">
             <span>Traffic density</span><span className="w-20 h-2" style={{ background: 'linear-gradient(90deg, rgb(24 70 140), rgb(0 150 200), rgb(60 210 190), rgb(250 210 90), rgb(255 250 235))' }} />
             <span className="text-text-tertiary">zoom in for individual ships</span></div>}

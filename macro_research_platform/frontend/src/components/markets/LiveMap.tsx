@@ -47,8 +47,9 @@ export const LiveMap = forwardRef<LiveMapHandle, {
   onSelect?: (id: string | null) => void; onMarker?: (id: string) => void; hoverText?: (id: string) => string;
   onView?: (b: MapBounds) => void; children?: React.ReactNode;
   density?: number;                  // below this zoom, draw a traffic-density layer instead of individual points
+  occludeLand?: boolean;             // draw land over the points (ships): nothing appears to sit on land
 }>(function LiveMap({ points, lines = [], markers = [], selected, height = 560, initial, minZoom = 1, maxZoom = 13, glyph,
-  onSelect, onMarker, hoverText, onView, children, density }, ref) {
+  onSelect, onMarker, hoverText, onView, children, density, occludeLand = false }, ref) {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const landCanvas = useRef<HTMLCanvasElement | null>(null);
@@ -181,7 +182,9 @@ export const LiveMap = forwardRef<LiveMapHandle, {
     ctx.fillStyle = c('rgb(var(--c-surface-1))'); ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = c('rgb(var(--c-sea) / 0.2)'); ctx.fillRect(0, 0, W, H);
 
-    // land: a fresh render when the view is settled, else the last render shifted / scaled
+    // land: a fresh render when the view is settled, else the last render shifted / scaled.
+    // Drawn before the points (aircraft fly over land) or, with occludeLand, after them (ships).
+    const drawLand = () => {
     if (land) {
       if (!landView.current) {
         const lc = landCanvas.current ?? (landCanvas.current = document.createElement('canvas'));
@@ -210,6 +213,7 @@ export const LiveMap = forwardRef<LiveMapHandle, {
               flat(pg.f); flatP(pg.f);
             }
           } else { path(land.land); geoPath(proj, lp as any)(land.land); }
+          lx.fillStyle = c('rgb(var(--c-surface-1))'); lx.fill(rule);                     // opaque base: land hides what is under it
           lx.fillStyle = c('rgb(var(--c-border-strong) / 0.6)'); lx.fill(rule);          // land, clearly lighter than the sea
           lx.beginPath(); path(land.borders); lx.strokeStyle = c('rgb(var(--c-text-tertiary) / 0.35)'); lx.lineWidth = 0.6; lx.stroke();
         }
@@ -224,9 +228,18 @@ export const LiveMap = forwardRef<LiveMapHandle, {
       const shifts = [0, s, -s].map((w) => dx + w).sort((a, b) => Math.abs(a) - Math.abs(b));
       ctx.drawImage(landCanvas.current!, 0, 0, W * dpr, H * dpr, shifts[0], dy, W * k, H * k);
     }
+    };
+    if (!occludeLand) drawLand();
 
     const z = v.zoom;
     const project = (lon: number, lat: number): [number, number] => [worldX(lon, s) + ox, worldY(lat, s) + oy];
+    const taken = new Set<string>();                                 // label collision grid (60 × 14 px cells)
+    const labelOk = (x: number, y: number) => {
+      const k = `${Math.floor(x / 60)}:${Math.floor(y / 14)}`;
+      if (taken.has(k)) return false;
+      taken.add(k); return true;
+    };
+    const drawOverlays = () => {
     // lines (tracks, routes): longitudes unwrapped so a route across the date line stays one stroke
     for (const ln of lines) {
       if (ln.coords.length < 2) continue;
@@ -244,12 +257,6 @@ export const LiveMap = forwardRef<LiveMapHandle, {
       }
     }
 
-    const taken = new Set<string>();                                 // label collision grid (60 × 14 px cells)
-    const labelOk = (x: number, y: number) => {
-      const k = `${Math.floor(x / 60)}:${Math.floor(y / 14)}`;
-      if (taken.has(k)) return false;
-      taken.add(k); return true;
-    };
 
     // markers (ports, chokepoints, airports)
     markerScreen.current = [];
@@ -264,6 +271,9 @@ export const LiveMap = forwardRef<LiveMapHandle, {
       if (m.label && (z >= 5 || (z >= 3.5 && r >= 7)) && labelOk(x, y)) { ctx.fillStyle = c('rgb(var(--c-text-secondary))'); ctx.fillText(m.label, x + r + 3, y + 3); }
       if (m.id) markerScreen.current.push({ x, y, r: Math.max(r, 6), id: m.id });
     }
+
+    };
+    if (!occludeLand) drawOverlays();
 
     // points
     const n = points.length * copies.length;
@@ -280,6 +290,7 @@ export const LiveMap = forwardRef<LiveMapHandle, {
     const cell = 2.5, gw = Math.ceil(W / cell), gh = Math.ceil(H / cell);
     const counts = dense ? new Float32Array(gw * gh) : null;
     const byColor = new Map<string, number[]>();                     // batch dots by colour
+    const pendingLabels: [number, number, string][] = [];               // drawn last, above land and markers
     for (let i = 0; i < points.length; i++) {
       const p = points[i];
       const x0 = worldX(p.lon, s) + ox;
@@ -288,7 +299,9 @@ export const LiveMap = forwardRef<LiveMapHandle, {
       for (const k of copies) {
       const x = x0 + k;
       if (x < -10 || x > W + 10) continue;
-      if (p.approx && p.id !== selected && landTest && ctx.isPointInPath(landTest.path, x * dpr, y * dpr, landTest.rule)) continue;
+      // on land: approximate positions always drop out; with occludeLand every point does (land would hide it
+      // anyway, and a hidden ship must not answer hover or clicks)
+      if ((p.approx || occludeLand) && p.id !== selected && landTest && ctx.isPointInPath(landTest.path, x * dpr, y * dpr, landTest.rule)) continue;
       xs[m] = x; ys[m] = y; ids[m] = p.id; m++;
       if (p.id === selected) { if (!sel || Math.abs(x - W / 2) < Math.abs(sel.x - W / 2)) sel = { x, y, p }; continue; }
       if (counts) { const gx = Math.floor(x / cell), gy = Math.floor(y / cell); if (gx >= 0 && gy >= 0 && gx < gw && gy < gh) counts[gy * gw + gx] += 1; continue; }
@@ -297,7 +310,7 @@ export const LiveMap = forwardRef<LiveMapHandle, {
       } else {
         const arr = byColor.get(p.color) ?? []; arr.push(x, y); byColor.set(p.color, arr);
       }
-      if (labels && p.label && m < 2000 && labelOk(x, y)) { ctx.fillStyle = c('rgb(var(--c-text-tertiary))'); ctx.font = '9px ui-monospace, monospace'; ctx.fillText(p.label, x + 6, y - 4); }
+      if (labels && p.label && m < 2000) pendingLabels.push([x, y, p.label]);
       }
     }
     if (counts) drawDensity(ctx, counts, gw, gh);
@@ -305,13 +318,16 @@ export const LiveMap = forwardRef<LiveMapHandle, {
       ctx.fillStyle = c(col);
       for (let i = 0; i < arr.length; i += 2) ctx.fillRect(arr[i] - dot / 2, arr[i + 1] - dot / 2, dot, dot);
     }
+    if (occludeLand) { drawLand(); drawOverlays(); }
+    ctx.font = '9px ui-monospace, monospace'; ctx.fillStyle = c('rgb(var(--c-text-tertiary))');
+    for (const [x, y, t] of pendingLabels) if (labelOk(x, y)) ctx.fillText(t, x + 6, y - 4);
     if (sel) {
       ctx.beginPath(); ctx.arc(sel.x, sel.y, 11, 0, 2 * Math.PI);
       ctx.strokeStyle = c('rgb(var(--c-text-primary))'); ctx.lineWidth = 1.5; ctx.stroke();
       drawGlyph(ctx, glyph, sel.x, sel.y, { ...sel.p, big: true }, true, c, dot);
     }
     screen.current = { xs: xs.subarray(0, m), ys: ys.subarray(0, m), ids: ids.slice(0, m) };
-  }, [tick, W, H, land, fine, points, lines, markers, selected, glyph, density]);     // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tick, W, H, land, fine, points, lines, markers, selected, glyph, density, occludeLand]);     // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── interaction ──
   const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean } | null>(null);
