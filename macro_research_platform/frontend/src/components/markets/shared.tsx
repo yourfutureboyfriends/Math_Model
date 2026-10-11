@@ -80,21 +80,27 @@ export function Spark({ values, w = 72, h = 20 }: { values?: number[]; w?: numbe
   const lo = Math.min(...values), hi = Math.max(...values);
   // a range under 0.2% of the level (stablecoins, pegs) is noise: don't stretch it to full height
   const flat = hi === lo || (hi - lo) / Math.max(Math.abs((hi + lo) / 2), 1e-12) < 0.002;
-  const pts = values.map((v, i) => `${(i / (values.length - 1)) * w},${flat ? h / 2 : h - ((v - lo) / (hi - lo)) * h}`).join(' ');
+  const pad = 1.5, ih = h - 2 * pad;                    // keep the stroke and end dot inside the box
+  const xy = values.map((v, i) => [(i / (values.length - 1)) * (w - 3), flat ? h / 2 : pad + ih - ((v - lo) / (hi - lo)) * ih]);
+  const pts = xy.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join(' ');
   const up = values[values.length - 1] >= values[0];
   if (flat) return <svg width={w} height={h} aria-hidden="true" className="inline-block align-middle"><polyline points={pts} fill="none" stroke="rgb(var(--c-text-tertiary))" strokeWidth={1.25} /></svg>;
+  const col = up ? 'rgb(var(--c-green))' : 'rgb(var(--c-red))';
+  const [lx, ly] = xy[xy.length - 1];
   return (
-    <svg width={w} height={h} aria-hidden="true" className="inline-block align-middle">
-      <polyline points={pts} fill="none" stroke={up ? 'rgb(var(--c-green))' : 'rgb(var(--c-red))'} strokeWidth={1.25} />
+    <svg width={w} height={h} aria-hidden="true" className="inline-block align-middle overflow-visible">
+      <polygon points={`0,${h} ${pts} ${lx.toFixed(1)},${h}`} fill={col} fillOpacity={0.12} />
+      <polyline points={pts} fill="none" stroke={col} strokeWidth={1.3} strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={lx} cy={ly} r={1.8} fill={col} />
     </svg>
   );
 }
 
 export function Panel({ title, right, children, className }: { title?: string; right?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn('bg-surface-1 border border-border', className)}>
+    <div className={cn('mkt-panel bg-surface-1 border border-border', className)}>
       {(title || right) && (
-        <div className="panel-hdr flex items-center justify-between px-3 py-1.5 border-b border-border-subtle">
+        <div className="panel-hdr flex items-center justify-between gap-2 px-3 py-1.5 border-b border-border-subtle">
           <span className="text-[10px] uppercase tracking-wider text-text-tertiary">{title}</span>
           {right}
         </div>
@@ -104,19 +110,30 @@ export function Panel({ title, right, children, className }: { title?: string; r
   );
 }
 
+/** Loading placeholder: a shimmering skeleton with the label, so a screen never looks blank. */
 export function Loading({ label = 'Loading…' }: { label?: string }) {
-  return <div className="text-2xs text-text-tertiary p-3 animate-pulse">{label}</div>;
+  return (
+    <div className="p-3 space-y-2" role="status" aria-live="polite">
+      <div className="flex items-center gap-2 text-2xs text-text-tertiary">
+        <span className="inline-block w-3 h-3 rounded-full border-2 border-bloomberg/30 border-t-bloomberg animate-spin" />{label}
+      </div>
+      <div className="mkt-skeleton h-2.5 w-3/4" /><div className="mkt-skeleton h-2.5 w-1/2" /><div className="mkt-skeleton h-2.5 w-2/3" />
+    </div>
+  );
 }
 
 export function ErrorBox({ msg }: { msg: string | null }) {
-  return msg ? <div className="px-3 py-2 border border-red/40 bg-red/5 text-xs text-red" role="alert">{msg}</div> : null;
+  return msg ? (
+    <div className="flex items-start gap-2 px-3 py-2 rounded-md border border-red/35 bg-red/[0.06] text-xs text-red" role="alert">
+      <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 mt-0.5 shrink-0" fill="currentColor" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13Zm-.75 3.5h1.5v4.5h-1.5V5Zm0 5.5h1.5V12h-1.5v-1.5Z" /></svg>
+      <span>{msg}</span>
+    </div>) : null;
 }
 
 export const TYPE_COLOR: Record<string, string> = {
   Stock: 'text-blue', ETF: 'text-green', Fund: 'text-green', Index: 'text-amber', FX: 'text-purple',
   Crypto: 'text-bloomberg', Future: 'text-purple', Option: 'text-red',
 };
-
 
 /** A value that flashes green/red for a moment when it ticks up/down (terminal monitors). */
 export function Flash({ value, children, className }: { value: number | null | undefined; children: React.ReactNode; className?: string }) {

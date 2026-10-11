@@ -18,6 +18,7 @@ function Frame<T>({ url, label, refresh, children }: { url: string; label: strin
 
 // ── EDGE: signal board ──────────────────────────────────────────────────────
 const KIND_COL: Record<string, string> = { Positioning: 'text-blue', 'Prediction markets': 'text-[rgb(168_85_247)]', Trade: 'text-amber', 'Fund flows': 'text-green' };
+const KIND_EDGE: Record<string, string> = { Positioning: 'rgb(var(--c-blue))', 'Prediction markets': 'rgb(168 85 247)', Trade: 'rgb(var(--c-amber))', 'Fund flows': 'rgb(var(--c-green))' };
 
 export function EdgeBoard({ onGo, onOpen }: { onGo: (fn: string, s?: string) => void; onOpen: (s: string) => void }) {
   const [kind, setKind] = useState('All');
@@ -33,7 +34,8 @@ export function EdgeBoard({ onGo, onOpen }: { onGo: (fn: string, s?: string) => 
             <span className="ml-auto text-text-tertiary">{d.generated?.replace('T', ' ')} UTC</span>
           </div>
           <ol className="space-y-1">{list.map((s: any, i: number) => (
-            <li key={i} className="border border-border bg-surface-1 px-3 py-2 flex gap-3 items-start">
+            <li key={i} className="border border-border bg-surface-1 rounded-md px-3 py-2 flex gap-3 items-start hover:bg-surface-2 transition-colors"
+              style={{ borderLeft: `3px solid ${KIND_EDGE[s.kind] ?? 'rgb(var(--c-border))'}` }}>
               <span className="w-6 text-right font-mono text-bloomberg shrink-0">{i + 1}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-2"><span className={cn('text-[10px] uppercase tracking-wide', KIND_COL[s.kind] ?? 'text-text-tertiary')}>{s.kind}</span>
@@ -223,5 +225,9 @@ export function NowView() {
 function mergeDates(series: [string, { date: string; value: number }[] | null][]) {
   const m = new Map<string, any>();
   for (const [k, s] of series) for (const p of s ?? []) { const r = m.get(p.date) ?? { date: p.date }; r[k] = p.value; m.set(p.date, r); }
-  return [...m.values()].sort((a, b) => a.date.localeCompare(b.date));
+  // series dated on different weekdays: carry each forward so every row has every line
+  const rows = [...m.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const last: Record<string, number> = {};
+  for (const r of rows) for (const [k] of series) { if (r[k] != null) last[k] = r[k]; else if (last[k] != null) r[k] = last[k]; }
+  return rows;
 }

@@ -237,8 +237,8 @@ function LineChartCore({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2)
   const legend = (
     <div className="flex flex-wrap gap-x-3 gap-y-1 mb-1">
       {lines.map((l) => (
-        <span key={l.key} className="inline-flex items-center gap-1.5 text-2xs text-text-secondary">
-          <span className="w-3 h-0.5 rounded-full" style={{ background: l.color }} />{l.label}
+        <span key={l.key} className="inline-flex items-center gap-1.5 text-2xs text-text-secondary px-1.5 py-0.5 rounded-full bg-surface-2/70 border border-border-subtle">
+          <span className="w-2 h-2 rounded-full" style={{ background: l.color, boxShadow: `0 0 0 2px color-mix(in srgb, ${l.color} 25%, transparent)` }} />{l.label}
         </span>
       ))}
     </div>
@@ -281,7 +281,7 @@ function LineChartCore({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2)
             {/* grid + y axis */}
             {geo.yt.map((t) => (
               <g key={t}>
-                <line x1={geo.L} x2={W - geo.R} y1={geo.sy(t)} y2={geo.sy(t)} stroke="var(--border-subtle)" />
+                <line x1={geo.L} x2={W - geo.R} y1={geo.sy(t)} y2={geo.sy(t)} stroke="var(--border)" strokeOpacity={0.55} strokeDasharray="2 4" />
                 <text x={geo.L - 6} y={geo.sy(t) + 3.5} fontSize={FONT} textAnchor="end" fill="var(--text-tertiary)" className="font-mono">{geo.af(t)}</text>
               </g>
             ))}
@@ -305,11 +305,23 @@ function LineChartCore({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2)
                 <text x={geo.sx(i)} y={height - 5} fontSize={FONT} textAnchor="middle" fill="var(--text-tertiary)" className="font-mono">{text}</text>
               </g>
             ))}
+            {/* soft gradient under the first series (one or two lines: more would muddy the chart) */}
+            {lines.length <= 2 && (() => {
+              const l = lines[0];
+              const pts = rows.map((r, i) => (typeof r[l.key] === 'number' && (!log || r[l.key] > 0) ? [geo.sx(i), geo.sy(r[l.key])] : null)).filter(Boolean) as number[][];
+              if (pts.length < 2) return null;
+              const base = height - geo.B, id = `lcg-${l.key.replace(/[^a-z0-9]/gi, '')}`;
+              return (
+                <g pointerEvents="none">
+                  <defs><linearGradient id={id} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor={l.color} stopOpacity={0.22} /><stop offset="100%" stopColor={l.color} stopOpacity={0} /></linearGradient></defs>
+                  <path d={`M${pts[0][0]},${base} ${pts.map(([a, b]) => `L${a.toFixed(1)},${b.toFixed(1)}`).join(' ')} L${pts[pts.length - 1][0]},${base} Z`} fill={`url(#${id})`} />
+                </g>);
+            })()}
             {/* series */}
             {lines.map((l) => {
               const d = rows.map((r, i) => (typeof r[l.key] === 'number' && (!log || r[l.key] > 0)
                 ? `${i && typeof rows[i - 1][l.key] === 'number' ? 'L' : 'M'}${geo.sx(i).toFixed(1)},${geo.sy(r[l.key]).toFixed(1)}` : '')).join('');
-              return <path key={l.key} d={d} fill="none" stroke={l.color} strokeWidth={1.75} strokeLinejoin="round" />;
+              return <path key={l.key} d={d} fill="none" stroke={l.color} strokeWidth={1.75} strokeLinejoin="round" strokeLinecap="round" />;
             })}
             {/* end labels with leader lines when displaced */}
             {geo.ends.map((e) => {
@@ -339,7 +351,7 @@ function LineChartCore({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2)
           const right = px > (W - geo.R) * 0.6;
           const items = lines.filter((l) => typeof h[l.key] === 'number').sort((a, b) => h[b.key] - h[a.key]);
           return (
-            <div className="pointer-events-none absolute top-1 z-10 px-2 py-1.5 bg-surface-3/95 border border-border text-2xs font-mono shadow-lg"
+            <div className="pointer-events-none absolute top-1 z-10 px-2.5 py-1.5 bg-surface-2/95 backdrop-blur border border-border rounded-md text-2xs font-mono shadow-xl"
               style={right ? { right: W - px + 10 } : { left: px + 10 }}>
               <div className="text-text-tertiary mb-0.5">{String(h[x])}</div>
               {items.map((l) => (

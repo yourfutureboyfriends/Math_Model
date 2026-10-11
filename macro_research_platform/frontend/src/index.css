@@ -94,6 +94,60 @@
 :root[data-skin="terminal"] .mkt-root .softkey { color: rgb(255 214 0); border-radius: 4px; padding: 0 6px; }
 :root[data-skin="terminal"] .mkt-root .softkey:hover { background: rgb(255 214 0 / 0.12); text-decoration: none; }
 
+/* ═══ MARKETS POLISH (both skins, both themes) ══════════════════════════════════
+   One finish for every Markets screen: card panels with an accent header, pill toggles,
+   KPI tiles with real hierarchy, sticky table headers, skeleton loading. Colours come from
+   the theme channels, so the classic terminal, modern dark and light themes all inherit it. */
+.mkt-root .mkt-panel { border-radius: 6px; overflow: hidden;
+  background: linear-gradient(180deg, rgb(var(--c-surface-2) / 0.55), rgb(var(--c-surface-1)) 48px);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.25); }
+.mkt-root .mkt-panel > .panel-hdr { position: relative; padding-left: 14px; min-height: 30px;
+  background: linear-gradient(90deg, rgb(var(--c-bloomberg) / 0.07), transparent 55%); }
+.mkt-root .mkt-panel > .panel-hdr::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; border-radius: 0 2px 2px 0;
+  background: rgb(var(--c-bloomberg)); }
+.mkt-root .mkt-panel > .panel-hdr > span:first-child { font-weight: 600; letter-spacing: 0.07em; color: rgb(var(--c-text-primary) / 0.85); }
+:root[data-skin="terminal"] .mkt-root .mkt-panel > .panel-hdr > span:first-child { color: rgb(var(--c-bloomberg)); }
+
+/* Toggle chips (any bordered button): pills with a quiet fill; the selected one filled with the accent */
+.mkt-root button.border { border-radius: 5px; background-color: rgb(var(--c-surface-2) / 0.6); border-color: rgb(var(--c-border) / 0.9);
+  transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s; }
+.mkt-root button.border:hover { border-color: rgb(var(--c-bloomberg) / 0.45); background-color: rgb(var(--c-surface-3) / 0.8); }
+.mkt-root button.border.border-bloomberg { background-color: rgb(var(--c-bloomberg) / 0.14); border-color: rgb(var(--c-bloomberg) / 0.6);
+  box-shadow: 0 0 0 1px rgb(var(--c-bloomberg) / 0.15), 0 0 12px -4px rgb(var(--c-bloomberg) / 0.5); }
+.mkt-root button.border:active { transform: translateY(0.5px); }
+.mkt-root button:disabled { cursor: not-allowed; }
+
+/* KPI tiles: any small bordered card in a grid that starts with a label row */
+.mkt-root .grid > div.border:has(> div.uppercase:first-child) {
+  border-radius: 6px; position: relative; overflow: hidden; border-color: rgb(var(--c-border) / 0.9);
+  background: linear-gradient(160deg, rgb(var(--c-surface-2)) 0%, rgb(var(--c-surface-1)) 70%);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.035) inset; }
+.mkt-root .grid > div.border:has(> div.uppercase:first-child)::after { content: ""; position: absolute; inset: 0 0 auto 0; height: 1px;
+  background: linear-gradient(90deg, rgb(var(--c-bloomberg) / 0.55), transparent 70%); }
+.mkt-root .grid > div.border:has(> div.uppercase:first-child) > div.uppercase:first-child { letter-spacing: 0.08em; font-weight: 500; }
+.mkt-root .grid > div.border:has(> div.uppercase:first-child) > div:nth-child(2) { font-size: 15px; font-weight: 600; line-height: 1.35; letter-spacing: -0.01em; }
+
+/* Tables: sticky, solid header row; hairline rows; numbers right where they belong */
+.mkt-root thead tr { border-bottom: 1px solid rgb(var(--c-border)); }
+.mkt-root thead th { padding-top: 4px; padding-bottom: 4px; white-space: nowrap; }
+.mkt-root thead.sticky, .mkt-root thead .sticky { background: rgb(var(--c-surface-1)); box-shadow: 0 1px 0 rgb(var(--c-border)); }
+.mkt-root tbody tr:hover { background-color: rgb(var(--c-bloomberg) / 0.06); }
+.mkt-root td { font-variant-numeric: tabular-nums; }
+
+/* Inputs */
+.mkt-root :is(input:not([type=checkbox]):not([type=radio]), select) { border-radius: 5px; transition: border-color .15s, box-shadow .15s; }
+.mkt-root :is(input:not([type=checkbox]):not([type=radio]), select):focus { outline: none; border-color: rgb(var(--c-bloomberg) / 0.7); box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.15); }
+.mkt-root input[type=checkbox] { accent-color: rgb(var(--c-bloomberg)); }
+
+/* Skeleton shimmer for loading states */
+.mkt-skeleton { border-radius: 4px; background: linear-gradient(90deg, rgb(var(--c-surface-3) / 0.6) 0%, rgb(var(--c-surface-3)) 40%, rgb(var(--c-surface-3) / 0.6) 80%);
+  background-size: 200% 100%; animation: mkt-shimmer 1.4s ease-in-out infinite; }
+@keyframes mkt-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .mkt-skeleton { animation: none; } }
+
+/* Canvas maps sit in rounded frames */
+.mkt-root canvas.border { border-radius: 6px; }
+
 /* Thin dark scrollbars */
 :root[data-skin="terminal"] .mkt-root * { scrollbar-width: thin; scrollbar-color: #2e2e38 transparent; }
 :root[data-skin="terminal"] .mkt-root ::-webkit-scrollbar { width: 8px; height: 8px; }

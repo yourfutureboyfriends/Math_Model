@@ -1,5 +1,5 @@
 // Security function screens: ERN, ANR, HDS, DVD, OMON, RV, HP, BETA, DCF.
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
@@ -20,27 +20,64 @@ function Stat({ label, value, sub, tone }: { label: string; value: React.ReactNo
   );
 }
 
-function Bars({ data, height = 140, fmt = (v: number) => v.toFixed(2) }: { data: { label: string; a: number | null; b?: number | null }[]; height?: number; fmt?: (v: number) => string }) {
+function Bars({ data, height = 160, fmt = (v: number) => v.toFixed(2) }: { data: { label: string; a: number | null; b?: number | null }[]; height?: number; fmt?: (v: number) => string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [W, setW] = useState(600);
+  const [hover, setHover] = useState<number | null>(null);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const ro = new ResizeObserver(([e]) => setW(Math.max(200, Math.round(e.contentRect.width))));
+    ro.observe(el); return () => ro.disconnect();
+  }, []);
   const vals = data.flatMap((d) => [d.a, d.b]).filter((v): v is number => v != null && Number.isFinite(v));
   if (!vals.length) return <div className="text-2xs text-text-tertiary">No data.</div>;
-  const max = Math.max(0, ...vals), min = Math.min(0, ...vals);
-  const span = max - min || 1;
-  const y = (v: number) => ((max - v) / span) * height;
-  const w = 100 / data.length;
-  // bars in a stretched SVG; labels in HTML so they aren't distorted by the stretch
+  // a rounded value axis with 3–4 gridlines
+  const rawMax = Math.max(0, ...vals), rawMin = Math.min(0, ...vals);
+  const step = (() => { const r = (rawMax - rawMin || 1) / 4, m = 10 ** Math.floor(Math.log10(r)), f = r / m; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * m; })();
+  const max = Math.ceil(rawMax / step) * step, min = Math.floor(rawMin / step) * step;
+  const ticks: number[] = []; for (let t = min; t <= max + step / 2; t += step) ticks.push(+t.toFixed(10));
+  const L = 44, T = 8, B = 4, ph = height - T - B, pw = W - L;
+  const y = (v: number) => T + ((max - v) / (max - min || 1)) * ph;
+  const slot = pw / data.length, paired = data.some((d) => d.b != null);
+  const bw = Math.min(26, slot * (paired ? 0.32 : 0.55)), gap = paired ? Math.min(4, slot * 0.06) : 0;
+  const bar = (x: number, v: number, fill: string, key: string) => {
+    const top = Math.min(y(v), y(0)), h = Math.max(1, Math.abs(y(v) - y(0))), r = Math.min(3, bw / 3, h);
+    const up = v >= 0;
+    return <path key={key} fill={fill} d={up
+      ? `M${x},${top + h} V${top + r} Q${x},${top} ${x + r},${top} H${x + bw - r} Q${x + bw},${top} ${x + bw},${top + r} V${top + h} Z`
+      : `M${x},${top} V${top + h - r} Q${x},${top + h} ${x + r},${top + h} H${x + bw - r} Q${x + bw},${top + h} ${x + bw},${top + h - r} V${top} Z`} />;
+  };
+  const hd = hover != null ? data[hover] : null;
   return (
-    <div>
-      <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" className="w-full block" style={{ height }} role="img" aria-label="Bar chart">
-        <line x1="0" x2="100" y1={y(0)} y2={y(0)} stroke="rgb(var(--c-border))" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-        {data.map((d, i) => (
-          <g key={d.label + i}>
-            {d.b != null && <rect x={i * w + w * 0.15} width={w * 0.32} y={Math.min(y(d.b), y(0))} height={Math.max(0.5, Math.abs(y(d.b) - y(0)))} fill="rgb(var(--c-text-tertiary))" opacity="0.5"><title>{`${d.label} estimate ${fmt(d.b)}`}</title></rect>}
-            {d.a != null && <rect x={i * w + (d.b != null ? w * 0.5 : w * 0.25)} width={w * (d.b != null ? 0.32 : 0.5)} y={Math.min(y(d.a), y(0))} height={Math.max(0.5, Math.abs(y(d.a) - y(0)))}
-              fill={d.b != null ? (d.a >= d.b ? 'rgb(var(--c-green))' : 'rgb(var(--c-red))') : 'rgb(var(--c-bloomberg))'}><title>{`${d.label} ${fmt(d.a)}`}</title></rect>}
-          </g>
-        ))}
+    <div ref={ref} className="relative">
+      <svg width={W} height={height} className="block" role="img" aria-label="Bar chart" onMouseLeave={() => setHover(null)}
+        onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); const i = Math.floor((e.clientX - r.left - L) / slot); setHover(i >= 0 && i < data.length ? i : null); }}>
+        <defs>
+          {[['bg-g', 'var(--c-green)'], ['bg-r', 'var(--c-red)'], ['bg-a', 'var(--c-bloomberg)'], ['bg-e', 'var(--c-text-tertiary)']].map(([id, c]) => (
+            <linearGradient key={id} id={id} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor={`rgb(${c})`} stopOpacity={id === 'bg-e' ? 0.55 : 1} /><stop offset="100%" stopColor={`rgb(${c})`} stopOpacity={id === 'bg-e' ? 0.25 : 0.55} /></linearGradient>))}
+        </defs>
+        {ticks.map((t) => <g key={t}>
+          <line x1={L} x2={W} y1={y(t)} y2={y(t)} stroke="rgb(var(--c-border))" strokeOpacity={t === 0 ? 1 : 0.5} strokeDasharray={t === 0 ? undefined : '2 4'} />
+          <text x={L - 6} y={y(t) + 3.5} fontSize={10} textAnchor="end" fill="rgb(var(--c-text-tertiary))" className="font-mono">{fmt(t)}</text></g>)}
+        {hover != null && <rect x={L + hover * slot} y={T} width={slot} height={ph} fill="rgb(var(--c-text-primary) / 0.04)" rx={4} />}
+        {data.map((d, i) => {
+          const cx = L + i * slot + slot / 2;
+          const xa = paired ? cx + gap / 2 : cx - bw / 2, xb = cx - bw - gap / 2;
+          const col = d.b != null && d.a != null ? (d.a >= d.b ? 'url(#bg-g)' : 'url(#bg-r)') : 'url(#bg-a)';
+          return <g key={d.label + i}>
+            {d.b != null && bar(xb, d.b, 'url(#bg-e)', 'b')}
+            {d.a != null && bar(xa, d.a, col, 'a')}
+          </g>;
+        })}
       </svg>
-      <div className="flex mt-1">{data.map((d, i) => <div key={d.label + i} className="flex-1 text-center text-[10px] text-text-tertiary font-mono truncate" title={d.a != null ? `${d.label}: ${fmt(d.a)}` : d.label}>{d.label}</div>)}</div>
+      <div className="flex mt-1" style={{ paddingLeft: L }}>{data.map((d, i) => <div key={d.label + i} className={cn('flex-1 text-center text-[10px] font-mono truncate', hover === i ? 'text-text-primary' : 'text-text-tertiary')}>{d.label}</div>)}</div>
+      {hd && hover != null && <div className="pointer-events-none absolute top-0 z-10 px-2.5 py-1.5 rounded-md border border-border bg-surface-2/95 shadow-xl text-[11px] font-mono"
+        style={{ left: Math.min(W - 150, Math.max(0, L + hover * slot + slot / 2 - 60)) }}>
+        <div className="text-text-tertiary">{hd.label}</div>
+        {hd.a != null && <div className="text-text-primary">{paired ? 'Reported ' : ''}{fmt(hd.a)}</div>}
+        {hd.b != null && <div className="text-text-secondary">Estimate {fmt(hd.b)}</div>}
+        {hd.a != null && hd.b != null && hd.b !== 0 && <div className={hd.a >= hd.b ? 'text-green' : 'text-red'}>{hd.a >= hd.b ? 'Beat' : 'Missed'} by {Math.abs((hd.a / hd.b - 1) * 100).toFixed(1)}%</div>}
+      </div>}
     </div>
   );
 }

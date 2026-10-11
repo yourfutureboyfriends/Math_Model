@@ -29,9 +29,9 @@ const usd = (mn: number | null | undefined, unit: 'mn' | 'usd' | 'bn' = 'mn') =>
   return `${s}$${a >= 1e12 ? `${(a / 1e12).toFixed(2)}T` : a >= 1e9 ? `${(a / 1e9).toFixed(1)}B` : a >= 1e6 ? `${(a / 1e6).toFixed(0)}M` : `${(a / 1e3).toFixed(0)}K`}`;
 };
 const flowColor = (v: number | null | undefined, max: number) => {
-  if (v == null || !max) return 'rgb(var(--c-surface-3))';
+  if (v == null || !max) return 'rgb(var(--c-surface-3) / 0.7)';
   const k = Math.min(1, Math.sqrt(Math.abs(v) / max));
-  return v >= 0 ? `rgb(var(--c-green) / ${0.15 + 0.75 * k})` : `rgb(var(--c-red) / ${0.15 + 0.75 * k})`;
+  return v >= 0 ? `rgb(var(--c-green) / ${0.1 + 0.5 * k})` : `rgb(var(--c-red) / ${0.1 + 0.5 * k})`;
 };
 
 export function FlowView({ onOpen }: { onOpen: (s: string) => void }) {
@@ -102,12 +102,12 @@ export function FlowView({ onOpen }: { onOpen: (s: string) => void }) {
               <defs>
                 <marker id="flow-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke" /></marker>
               </defs>
-              <rect width={W} height={H} fill="rgb(var(--c-blue) / 0.08)" />
+              <rect width={W} height={H} fill="rgb(var(--c-blue) / 0.05)" />
               {geo.shapes.map((s) => {
                 const iso = NUMERIC_TO_ISO2[s.id];
                 const v = iso ? values[iso] : undefined;
                 return <path key={s.id + s.name} d={s.path} fill={iso === 'US' && (layer === 'into_us' || layer === 'out_of_us') ? 'rgb(var(--c-bloomberg) / 0.35)' : flowColor(v, max)}
-                  stroke={sel && iso === sel ? 'rgb(var(--c-text-primary))' : 'rgb(var(--c-bg))'} strokeWidth={sel && iso === sel ? 1.4 : 0.4}
+                  stroke={sel && iso === sel ? 'rgb(var(--c-text-primary))' : 'rgb(var(--c-border-strong) / 0.5)'} strokeWidth={sel && iso === sel ? 1.4 : 0.35}
                   className="cursor-pointer" onClick={() => iso && setSel(iso)}
                   onMouseMove={(e) => { if (!iso) return; const b = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect(); setHover({ iso, x: e.clientX - b.left, y: e.clientY - b.top }); }} />;
               })}
@@ -115,10 +115,10 @@ export function FlowView({ onOpen }: { onOpen: (s: string) => void }) {
                 const [x0, y0] = shapeOf[iso].centroid as [number, number];
                 const [a, b] = layer === 'into_us' ? [[x0, y0], us] : [us, [x0, y0]];
                 const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2 - Math.min(160, Math.hypot(b[0] - a[0], b[1] - a[1]) * 0.28);
-                const w = 1 + 7 * Math.sqrt(Math.abs(v) / amax);
+                const w = 0.8 + 3.6 * Math.sqrt(Math.abs(v) / amax);
                 const towardUs = layer === 'into_us' ? v >= 0 : v < 0;   // a negative flow runs the other way
                 return <path key={iso} d={`M${(towardUs ? a : b)[0]},${(towardUs ? a : b)[1]} Q${mx},${my} ${(towardUs ? b : a)[0]},${(towardUs ? b : a)[1]}`}
-                  fill="none" stroke={v >= 0 ? 'rgb(var(--c-green) / 0.75)' : 'rgb(var(--c-red) / 0.65)'} strokeWidth={w} strokeLinecap="round" markerEnd="url(#flow-arrow)"
+                  fill="none" stroke={v >= 0 ? 'rgb(var(--c-green) / 0.85)' : 'rgb(var(--c-red) / 0.8)'} strokeWidth={w} strokeLinecap="round" markerEnd="url(#flow-arrow)"
                   className="flow-dash"><title>{`${nameOf(iso)}: ${fmtV(v)}`}</title></path>;
               })}
             </svg>)}
@@ -154,7 +154,7 @@ function Ranked({ ranked, fmtV, nameOf, onPick }: { ranked: [string, number][]; 
   const list = (rows: [string, number][], pos: boolean) => rows.map(([iso, v]) => (
     <button key={iso} onClick={() => onPick(iso)} className="w-full flex items-center gap-2 text-[11px] hover:bg-surface-3 px-1">
       <span className="w-28 truncate text-left text-text-primary">{nameOf(iso)}</span>
-      <span className="flex-1 h-1.5 bg-surface-3"><span className={cn('block h-full', pos ? 'bg-green' : 'bg-red')} style={{ width: `${(Math.abs(v) / m) * 100}%` }} /></span>
+      <span className="flex-1 h-1 rounded-full bg-surface-3 overflow-hidden"><span className={cn('block h-full rounded-full', pos ? 'bg-green/80' : 'bg-red/80')} style={{ width: `${(Math.abs(v) / m) * 100}%` }} /></span>
       <span className="w-20 text-right font-mono">{fmtV(v)}</span></button>));
   return (
     <div className="border border-border bg-surface-1 p-2 space-y-2">
