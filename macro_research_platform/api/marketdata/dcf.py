@@ -46,6 +46,10 @@ from api.marketdata.core import NotFound, _f, _info, to_usd
 
 ERP_FALLBACK = 0.042           # used only if Damodaran's monthly implied ERP can't be fetched
 ERP_DEFAULT = None             # None → live implied ERP + country risk premium
+# Floor on the cost of equity: where the local risk-free rate is held near zero (Swiss franc,
+# at times yen and euro) rf + β·ERP can fall to 2–3%, a return no equity investor accepts, and
+# the valuation balloons. 5% nominal is a conservative practitioner floor; the screen says when it binds.
+KE_FLOOR = 0.05
 HIGH_GROWTH_YEARS = 3          # years of analyst-driven growth before the fade (calibrated: see tests)
 CYCLICAL = {"Semiconductor", "Semiconductor Equip", "Metals & Mining", "Steel", "Oil/Gas (Integrated)", "Oil/Gas (Production and Exploration)",
             "Oilfield Svcs/Equip.", "Coal & Related Energy", "Chemical (Basic)", "Chemical (Diversified)", "Auto & Truck", "Auto Parts",
@@ -440,7 +444,8 @@ def wacc(inp: Dict[str, Any], beta: Optional[float] = None, erp: Optional[float]
     b = beta if beta is not None else (inp.get("beta") if inp.get("beta") is not None else 1.0)
     if erp is None:
         erp = inp.get("erp") or ERP_FALLBACK
-    ke = rf + b * erp
+    ke_model = rf + b * erp
+    ke = max(ke_model, KE_FLOOR)
     debt = (inp.get("debt") or 0) + ((inp.get("leases") or 0) if include_leases else 0)
     # Equity at market value; convert to the financial-statement currency if needed
     mcap = inp.get("market_cap")
@@ -451,7 +456,8 @@ def wacc(inp: Dict[str, Any], beta: Optional[float] = None, erp: Optional[float]
     E, D = (mcap or 0), debt
     kd_after = inp["cost_of_debt"] * (1 - inp["tax_marginal"])
     w = (E * ke + D * kd_after) / (E + D) if E + D > 0 else ke
-    return {"wacc": w, "cost_of_equity": ke, "cost_of_debt_after_tax": kd_after, "beta": b, "erp": erp, "risk_free": rf,
+    return {"wacc": w, "cost_of_equity": ke, "cost_of_equity_model": ke_model, "ke_floored": ke > ke_model + 1e-12,
+            "cost_of_debt_after_tax": kd_after, "beta": b, "erp": erp, "risk_free": rf,
             "weight_equity": E / (E + D) if E + D > 0 else 1.0, "weight_debt": D / (E + D) if E + D > 0 else 0.0}
 
 
@@ -551,7 +557,13 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
     checks = []
     if gT > rf + 1e-9:
         checks.append(f"Terminal growth {gT:.1%} is above the risk-free rate {rf:.1%} — no company can outgrow the economy forever (Damodaran).")
-    if pv_tv / ev > 0.8 if ev > 0 else False:
+    if w.get("ke_floored"):
+        checks.append(f"Cost of equity floored at {KE_FLOOR:.0%}: the local risk-free rate ({rf:.2%}) would give only "
+                      f"{w['cost_of_equity_model']:.1%}, a return no equity investor accepts.")
+    if ev > 0 and pv_tv > ev:
+        checks.append("The next ten years' cash flows are negative in present value (heavy reinvestment): all of the value, and more, "
+                      "sits in the terminal value — treat the result as highly uncertain.")
+    elif ev > 0 and pv_tv / ev > 0.8:
         checks.append(f"{pv_tv / ev:.0%} of the value is in the terminal value — the answer depends mostly on the long run.")
     if equity_negative:
         checks.insert(0, f"The operating business is worth less than its debt (equity {eq_raw / 1e6:,.0f}m before the floor): on these "
@@ -717,7 +729,8 @@ def value_financial(inp: Dict[str, Any], years: int = 10, roe: Optional[float] =
     rf = inp.get("risk_free") or 0.04
     b = beta if beta is not None else (inp.get("beta") or 1.0)
     e = erp if erp is not None else (inp.get("erp") or ERP_FALLBACK)
-    ke = discount if discount is not None else rf + b * e
+    ke_floored = discount is None and rf + b * e < KE_FLOOR
+    ke = discount if discount is not None else max(rf + b * e, KE_FLOOR)
     roe0 = roe if roe is not None else min(0.40, max(-0.10, ni / bv0))
     # stable ROE: half of today's excess return persists (as for RONIC in the FCFF model)
     roeT = terminal_roe if terminal_roe is not None else (ke + 0.5 * (roe0 - ke) if roe0 > ke else roe0 + 0.5 * (ke - roe0))
@@ -754,6 +767,8 @@ def value_financial(inp: Dict[str, Any], years: int = 10, roe: Optional[float] =
         per_share = price * eq_usd / mc_usd if price and eq_usd is not None and mc_usd else None
     checks = ["Bank / insurer: valued with Damodaran's excess-return model — book equity plus the present value of returns above "
               "the cost of equity — because debt is a raw material for financial firms, not financing."]
+    if ke_floored:
+        checks.append(f"Cost of equity floored at {KE_FLOOR:.0%}: the local risk-free rate ({rf:.2%}) would give only {rf + b * e:.1%}.")
     if roe0 < ke:
         checks.append(f"ROE today ({roe0:.1%}) is below the cost of equity ({ke:.1%}): the firm is worth less than its book value "
                       "unless returns improve.")
