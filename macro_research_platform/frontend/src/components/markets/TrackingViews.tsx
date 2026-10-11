@@ -34,7 +34,7 @@ function Basemap({ box, height = 420, children }: { box?: [number, number, numbe
   const proj = (lon: number, lat: number) => projectPoint(lon, lat, W);
   return (
     <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} width="100%" height={height} className="bg-surface-1 border border-border" role="img">
-      <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="rgb(var(--c-blue) / 0.06)" />
+      <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="rgb(var(--c-sea) / 0.08)" />
       {geo?.shapes.map((s) => <path key={s.id + s.name} d={s.path} fill="rgb(var(--c-surface-3))" stroke="rgb(var(--c-border))" strokeWidth={0.4 / k} />)}
       {children(proj, k)}
     </svg>

@@ -102,7 +102,7 @@ export function FlowView({ onOpen }: { onOpen: (s: string) => void }) {
               <defs>
                 <marker id="flow-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke" /></marker>
               </defs>
-              <rect width={W} height={H} fill="rgb(var(--c-blue) / 0.05)" />
+              <rect width={W} height={H} fill="rgb(var(--c-sea) / 0.07)" />
               {geo.shapes.map((s) => {
                 const iso = NUMERIC_TO_ISO2[s.id];
                 const v = iso ? values[iso] : undefined;

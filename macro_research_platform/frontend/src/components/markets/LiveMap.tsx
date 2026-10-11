@@ -179,7 +179,7 @@ export const LiveMap = forwardRef<LiveMapHandle, {
     const c = colors.resolve;
     ctx.clearRect(0, 0, W, H);                                      // the sea: an opaque base, then a blue tint
     ctx.fillStyle = c('rgb(var(--c-surface-1))'); ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = c('rgb(var(--c-blue) / 0.2)'); ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = c('rgb(var(--c-sea) / 0.2)'); ctx.fillRect(0, 0, W, H);
 
     // land: a fresh render when the view is settled, else the last render shifted / scaled
     if (land) {

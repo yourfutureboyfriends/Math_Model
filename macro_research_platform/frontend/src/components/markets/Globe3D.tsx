@@ -71,7 +71,7 @@ export function Globe3D({ topo, numToIso, fill, selected, onSelect, onHover, hei
       ctx.clearRect(0, 0, W, height);
       // atmosphere glow
       const g = ctx.createRadialGradient(W / 2, height / 2, r * 0.92, W / 2, height / 2, r * 1.12);
-      g.addColorStop(0, colors.resolve('rgb(var(--c-blue) / 0.25)'));
+      g.addColorStop(0, colors.resolve('rgb(var(--c-sea) / 0.25)'));
       g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(W / 2, height / 2, r * 1.12, 0, 2 * Math.PI); ctx.fill();
       // ocean with a soft light from the upper left
