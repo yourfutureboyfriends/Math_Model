@@ -12,6 +12,7 @@ import { QuoteWorkstation, WatchColumn } from '@/components/markets/QuoteWorksta
 import { CorrView, FrdView, OsaView, RrgView, SeasView } from '@/components/markets/AnalyticsViews';
 import { EcoGlobalView, EcstView, SiView, SplcView } from '@/components/markets/DataViews';
 import { FlyView, QuakeView, ShipView } from '@/components/markets/TrackingViews';
+import { FlowView } from '@/components/markets/FlowView';
 import { AuctView, EiaView, InsdView, IpoView, ThirteenFView, WetrView, WirpView } from '@/components/markets/ExtrasViews';
 import { CountryView, RegionBar, RegionMonitor } from '@/components/markets/RegionViews';
 import { useRegion } from '@/lib/region';
@@ -252,6 +253,7 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'CORR' && <CorrView seed={seed} />}
     {code === 'RRG' && <RrgView onOpen={open} />}
     {code === 'FRD' && <FrdView />}
+    {code === 'FLOW' && <FlowView onOpen={open} />}
     {code === 'SHIP' && <ShipView />}
     {code === 'FLY' && <FlyView />}
     {code === 'QUAK' && <QuakeView />}

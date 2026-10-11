@@ -5038,6 +5038,187 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mkt/ship/world": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Ships World
+         * @description Every vessel the live AIS collector has heard in the last hour, worldwide (compact rows).
+         */
+        get: operations["mkt_ships_world_api_v1_mkt_ship_world_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/ship/live/{mmsi}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Ship Live
+         * @description One vessel from the live picture: position, identity, dimensions, ETA, flag and 8-hour track.
+         */
+        get: operations["mkt_ship_live_api_v1_mkt_ship_live__mmsi__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/ship/ports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Ship Ports
+         * @description Ships at anchor / moored / moving near 55 major ports, from the live AIS picture.
+         */
+        get: operations["mkt_ship_ports_api_v1_mkt_ship_ports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/fly/world": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Flights World
+         * @description Every aircraft with a position worldwide (OpenSky) plus live military (adsb.lol), compact rows.
+         */
+        get: operations["mkt_flights_world_api_v1_mkt_fly_world_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/fly/area": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Flights Area
+         * @description Live, detailed aircraft around a point (adsb.fi; adsb.lol fallback).
+         */
+        get: operations["mkt_flights_area_api_v1_mkt_fly_area_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/fly/flight/{hex_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Flight
+         * @description One aircraft: route, airframe and photo (adsbdb), track flown (OpenSky), live state (adsb.fi).
+         */
+        get: operations["mkt_flight_api_v1_mkt_fly_flight__hex_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Photos
+         * @description Photos of a vessel (by IMO) or an aircraft (airframe / registration), with credit lines.
+         */
+        get: operations["mkt_photos_api_v1_mkt_photos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/flow/{layer}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Flow
+         * @description Money flows: tic (cross-border portfolio flows), bis (bank lending), etf (fund creations and money flow),
+         *     crypto (stablecoin supply), liquidity (Fed net liquidity).
+         */
+        get: operations["mkt_flow_api_v1_mkt_flow__layer__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/flow/tic/{iso}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Flow Tic Country
+         * @description Monthly cross-border securities flows between the US and one country (TIC).
+         */
+        get: operations["mkt_flow_tic_country_api_v1_mkt_flow_tic__iso__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mkt/fly": {
         parameters: {
             query?: never;
@@ -5047,7 +5228,7 @@ export interface paths {
         };
         /**
          * Mkt Flights
-         * @description Live aircraft around a point (adsb.lol).
+         * @description Live aircraft around a point (same as /fly/area).
          */
         get: operations["mkt_flights_api_v1_mkt_fly_get"];
         put?: never;
@@ -15504,6 +15685,260 @@ export interface operations {
             header?: never;
             path: {
                 query: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_ships_world_api_v1_mkt_ship_world_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_ship_live_api_v1_mkt_ship_live__mmsi__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mmsi: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_ship_ports_api_v1_mkt_ship_ports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_flights_world_api_v1_mkt_fly_world_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mkt_flights_area_api_v1_mkt_fly_area_get: {
+        parameters: {
+            query: {
+                lat: number;
+                lon: number;
+                radius_nm?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_flight_api_v1_mkt_fly_flight__hex_id__get: {
+        parameters: {
+            query?: {
+                callsign?: string | null;
+            };
+            header?: never;
+            path: {
+                hex_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_photos_api_v1_mkt_photos_get: {
+        parameters: {
+            query: {
+                kind: string;
+                imo?: string | null;
+                name?: string | null;
+                hex_id?: string | null;
+                registration?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_flow_api_v1_mkt_flow__layer__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                layer: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_flow_tic_country_api_v1_mkt_flow_tic__iso__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                iso: string;
             };
             cookie?: never;
         };

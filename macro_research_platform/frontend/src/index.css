@@ -107,6 +107,10 @@
 @media (prefers-reduced-motion: reduce) { .flash-up, .flash-down { animation: none; } }
 @keyframes crawl { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 .news-crawl { animation: crawl 240s linear infinite; }
+/* FLOW map: arrows animate in the direction money moves */
+.flow-dash { stroke-dasharray: 6 5; animation: flow-dash 1.2s linear infinite; }
+@keyframes flow-dash { to { stroke-dashoffset: -11; } }
+@media (prefers-reduced-motion: reduce) { .flow-dash { animation: none; } }
 .news-crawl:hover { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { .news-crawl { animation: none; } }
 

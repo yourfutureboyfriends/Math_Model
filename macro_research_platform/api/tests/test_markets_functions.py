@@ -399,3 +399,47 @@ def test_eurostat_actual_needs_a_same_day_update(monkeypatch):
     ev = {"country": "EUR", "title": "CPI Flash Estimate y/y", "date": "2026-10-01T05:00:00-04:00"}
     assert E.actual_for(ev)["actual"] == 3.8
     assert E.actual_for({**ev, "date": "2026-09-01T05:00:00-04:00"}) is None      # dataset not updated that day
+
+
+# ── Trackers and money flows ────────────────────────────────────────────────
+def test_ship_phase_and_flag():
+    from api.marketdata.tracking import _phase, flag_of
+    assert _phase({"status": 5, "speed": 0}) == "moored"
+    assert _phase({"status": 1, "speed": 3}) == "anchored"
+    assert _phase({"status": None, "speed": 0.2}) == "anchored"          # status unset: speed decides
+    assert _phase({"status": 0, "speed": 12}) == "underway"
+    assert flag_of(477123456) == "Hong Kong" and flag_of(636012345) == "Liberia"
+    assert flag_of(123) is None and flag_of(970123456) is None            # SART / not a ship MMSI
+
+
+def test_ship_track_keeps_8h_and_skips_stationary():
+    from api.marketdata.tracking import _AisCollector
+    c = _AisCollector.__new__(_AisCollector)
+    c.tracks, c.t0 = {}, 0.0
+    c._track(1, 0, 1.0, 103.0, 10)
+    c._track(1, 100, 1.1, 103.1, 10)                 # within 5 minutes: not stored
+    c._track(1, 400, 1.2, 103.2, 10)
+    c._track(1, 800, 1.2, 103.2, 0)                  # not moving: time refreshed, no new point
+    assert len(c.tracks[1]) == 8 and c.tracks[1][-4] == 800
+    for i in range(200):
+        c._track(1, 1200 + i * 400, 1.3 + i * 0.01, 103.3, 10)
+    assert len(c.tracks[1]) == 4 * _AisCollector.TRACK_POINTS
+
+
+def test_flight_route_mismatch_drops_progress(monkeypatch):
+    from api.marketdata import airtraffic
+    monkeypatch.setattr(airtraffic, "_cached", lambda key, ttl, fn: fn())
+    monkeypatch.setattr(airtraffic, "_adsbdb", lambda path: {"flightroute": {"origin": {"latitude": 31.99, "longitude": 116.98, "iata_code": "HFE"},
+                                                                              "destination": {"latitude": 37.75, "longitude": 112.63, "iata_code": "TYN"}}}
+                        if path.startswith("callsign") else {"aircraft": {}})
+    monkeypatch.setattr(airtraffic, "_adsbfi", lambda path: {"ac": [{"hex": "78185d", "lat": 21.67, "lon": 112.07, "alt_baro": 25000, "gs": 450}]})
+    import requests
+    monkeypatch.setattr(requests, "get", lambda *a, **k: type("R", (), {"status_code": 500})())
+    d = airtraffic.detail("78185d", "CES6399")
+    assert d["route"]["matches_position"] is False and d["progress"] is None   # near Zhuhai, not between Hefei and Taiyuan
+
+
+def test_tic_country_names_map_to_iso():
+    from api.marketdata.flows import _iso_of
+    assert _iso_of("China, Mainland") == "CN" and _iso_of("Korea, South") == "KR" and _iso_of("Cayman Islands") == "KY"
+    assert _iso_of("Japan") == "JP" and _iso_of("Grand Total") is None and _iso_of("Total Europe") is None

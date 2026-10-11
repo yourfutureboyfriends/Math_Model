@@ -308,11 +308,84 @@ async def mkt_vessel(query: str):
     return await _run(tracking.vessel_info, query, timeout=60)
 
 
+@router.get("/api/v1/mkt/ship/world")
+async def mkt_ships_world():
+    """Every vessel the live AIS collector has heard in the last hour, worldwide (compact rows)."""
+    from fastapi import Response
+    from api.marketdata import tracking
+    body = await _run(tracking.world_vessels_json, timeout=60)
+    return Response(content=body, media_type="application/json")
+
+
+@router.get("/api/v1/mkt/ship/live/{mmsi}")
+async def mkt_ship_live(mmsi: int):
+    """One vessel from the live picture: position, identity, dimensions, ETA, flag and 8-hour track."""
+    from api.marketdata import tracking
+    return await _run(tracking.vessel_live, mmsi)
+
+
+@router.get("/api/v1/mkt/ship/ports")
+async def mkt_ship_ports():
+    """Ships at anchor / moored / moving near 55 major ports, from the live AIS picture."""
+    from api.marketdata import tracking
+    return await _run(tracking.port_congestion, timeout=60)
+
+
+@router.get("/api/v1/mkt/fly/world")
+async def mkt_flights_world():
+    """Every aircraft with a position worldwide (OpenSky) plus live military (adsb.lol), compact rows."""
+    from api.marketdata import airtraffic
+    return await _run(airtraffic.world, timeout=90)
+
+
+@router.get("/api/v1/mkt/fly/area")
+async def mkt_flights_area(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180), radius_nm: int = Query(120, ge=5, le=250)):
+    """Live, detailed aircraft around a point (adsb.fi; adsb.lol fallback)."""
+    from api.marketdata import airtraffic
+    return await _run(airtraffic.area, lat, lon, radius_nm, timeout=45)
+
+
+@router.get("/api/v1/mkt/fly/flight/{hex_id}")
+async def mkt_flight(hex_id: str, callsign: Optional[str] = Query(None, max_length=10)):
+    """One aircraft: route, airframe and photo (adsbdb), track flown (OpenSky), live state (adsb.fi)."""
+    from api.marketdata import airtraffic
+    return await _run(airtraffic.detail, hex_id, callsign, timeout=45)
+
+
+@router.get("/api/v1/mkt/photos")
+async def mkt_photos(kind: str = Query(..., pattern="^(ship|aircraft)$"), imo: Optional[str] = Query(None, max_length=12),
+                     name: Optional[str] = Query(None, max_length=60), hex_id: Optional[str] = Query(None, max_length=8),
+                     registration: Optional[str] = Query(None, max_length=12)):
+    """Photos of a vessel (by IMO) or an aircraft (airframe / registration), with credit lines."""
+    from api.marketdata import photos
+    if kind == "ship":
+        return await _run(photos.ship, imo, name, timeout=40)
+    return await _run(photos.aircraft, hex_id or "", registration, timeout=40)
+
+
+@router.get("/api/v1/mkt/flow/{layer}")
+async def mkt_flow(layer: str):
+    """Money flows: tic (cross-border portfolio flows), bis (bank lending), etf (fund creations and money flow),
+    crypto (stablecoin supply), liquidity (Fed net liquidity)."""
+    from api.marketdata import flows
+    fn = {"tic": flows.tic, "bis": flows.bis, "etf": flows.etf, "crypto": flows.crypto, "liquidity": flows.liquidity}.get(layer)
+    if not fn:
+        raise HTTPException(404, "Unknown flow layer")
+    return await _run(fn, timeout=120)
+
+
+@router.get("/api/v1/mkt/flow/tic/{iso}")
+async def mkt_flow_tic_country(iso: str):
+    """Monthly cross-border securities flows between the US and one country (TIC)."""
+    from api.marketdata import flows
+    return await _run(flows.tic_country, iso[:2])
+
+
 @router.get("/api/v1/mkt/fly")
 async def mkt_flights(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180), radius_nm: int = Query(100, ge=5, le=250)):
-    """Live aircraft around a point (adsb.lol)."""
-    from api.marketdata import tracking
-    return await _run(tracking.flights, lat, lon, radius_nm)
+    """Live aircraft around a point (same as /fly/area)."""
+    from api.marketdata import airtraffic
+    return await _run(airtraffic.area, lat, lon, radius_nm, timeout=45)
 
 
 @router.get("/api/v1/mkt/fly/airports")

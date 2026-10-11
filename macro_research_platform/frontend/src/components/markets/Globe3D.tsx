@@ -5,33 +5,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { geoCentroid, geoContains, geoGraticule10, geoInterpolate, geoOrthographic, geoPath } from 'd3-geo';
 import { feature } from 'topojson-client';
 import type { Topology } from '@/lib/topo';
+import { useCssColor } from './cssColor';
 
 type Feat = { iso: string | undefined; name: string; f: any };
-
-/** Canvas can't read CSS variables: resolve `rgb(var(--c-…) / a)` through the browser once. */
-function useColorResolver() {
-  const probe = useRef<HTMLSpanElement | null>(null);
-  const cache = useRef(new Map<string, string>());
-  // theme, skin and up/down colour switches live on <html>: forget resolved colours when they change
-  useEffect(() => {
-    const mo = new MutationObserver(() => cache.current.clear());
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-skin', 'data-updown', 'class'] });
-    return () => mo.disconnect();
-  }, []);
-  return {
-    probe,
-    resolve: (c: string) => {
-      const hit = cache.current.get(c);
-      if (hit) return hit;
-      const el = probe.current;
-      if (!el) return '#444';
-      el.style.color = c;
-      const v = getComputedStyle(el).color;
-      cache.current.set(c, v);
-      return v;
-    },
-  };
-}
 
 export function Globe3D({ topo, numToIso, fill, selected, onSelect, onHover, height }: {
   topo: Topology; numToIso: Record<string, string>; fill: (iso: string | undefined) => string; selected: string | null;
@@ -45,7 +21,7 @@ export function Globe3D({ topo, numToIso, fill, selected, onSelect, onHover, hei
   const drag = useRef<{ x: number; y: number; r: [number, number, number]; moved: boolean } | null>(null);
   const idleSince = useRef(performance.now());
   const anim = useRef<{ from: [number, number]; to: [number, number]; t0: number } | null>(null);
-  const colors = useColorResolver();
+  const colors = useCssColor();
   const feats: Feat[] = useMemo(() => {
     const fc: any = feature(topo as any, (topo as any).objects.countries);
     return fc.features.map((f: any) => ({ iso: numToIso[String(f.id)], name: f.properties?.name ?? '', f }));

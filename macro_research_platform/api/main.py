@@ -1254,6 +1254,20 @@ async def lifespan(app: FastAPI):
     _DASHBOARD_CACHE["data"] = None
     _DASHBOARD_CACHE["timestamp"] = 0.0
 
+    # Live AIS collector (whole world): start with the server so SHIP has a picture when opened
+    # and the worldwide satellite presence layer (GFW, refreshed daily) for areas without receivers
+    if not os.getenv("PYTEST_CURRENT_TEST"):
+        try:
+            from api.marketdata.tracking import ais_collector, presence_start
+            if os.getenv("AISSTREAM_API_KEY"):
+                ais_collector()
+            if os.getenv("GFW_API_TOKEN"):
+                presence_start()
+            from api.marketdata.flows import snapshots_start
+            snapshots_start()                      # daily ETF shares-outstanding snapshots (fund flows)
+        except Exception as e:
+            logger.warning(f"[STARTUP] ship collectors not started: {e}")
+
     # FIXED: Write port file on startup (dynamic port detection)
     port = int(os.environ.get("RUNTIME_API_PORT", 8000))
     write_port_file(port)
@@ -1544,6 +1558,9 @@ async def global_exception_handler(request, exc):
             "timestamp": datetime.now().isoformat()
         }
     )
+
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=2048, compresslevel=5)   # world ship / flight snapshots are several MB of JSON
 
 app.add_middleware(
     CORSMiddleware,
