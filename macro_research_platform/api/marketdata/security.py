@@ -629,9 +629,11 @@ def comps(symbol: str, max_peers: int = 8) -> Dict[str, Any]:
 
 # ── HP / COMP / BETA ─────────────────────────────────────────────────────────
 def _closes(symbols: List[str], period: str = "5y", interval: str = "1d") -> pd.DataFrame:
-    import yfinance as yf
+    from api.marketdata.core import yahoo_download
     try:
-        df = yf.download(symbols, period=period, interval=interval, auto_adjust=True, group_by="ticker", threads=True, progress=False)
+        df = yahoo_download(symbols, period=period, interval=interval, auto_adjust=True, group_by="ticker", threads=True)
+    except Upstream:
+        raise
     except Exception as e:
         raise Upstream(f"Price history unavailable: {e}")
     out = {}
@@ -654,8 +656,11 @@ def history(symbol: str, period: str = "1y", interval: str = "1d") -> Dict[str, 
         raise NotFound("period 1mo…max, interval 1d/1wk/1mo")
 
     def fetch():
+        from api.marketdata.core import yahoo_call
         try:
-            df = yf.Ticker(s).history(period=period, interval=interval, auto_adjust=False)
+            df = yahoo_call(lambda: yf.Ticker(s).history(period=period, interval=interval, auto_adjust=False))
+        except Upstream:
+            raise
         except Exception as e:
             raise Upstream(f"History unavailable: {e}")
         if df is None or df.empty:

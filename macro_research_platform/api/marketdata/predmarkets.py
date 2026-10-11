@@ -215,25 +215,56 @@ def _kalshi_events(pages: int = 10) -> List[Dict[str, Any]]:
 
 # ── Catalog ─────────────────────────────────────────────────────────────────
 def catalog() -> Dict[str, Any]:
-    def build():
-        with ThreadPoolExecutor(2) as ex:
-            fp, fk = ex.submit(_poly_events), ex.submit(_kalshi_events)
-            poly, kal = fp.result(), fk.result()
-        if not poly and not kal:
-            raise Upstream("Neither Polymarket nor Kalshi answered.")
-        events = poly + kal
-        events.sort(key=lambda e: -(e["volume_24h"] or 0))
-        cats: Dict[str, int] = {}
-        for e in events:
-            cats[e["category"]] = cats.get(e["category"], 0) + 1
-        return {"events": events, "categories": sorted(cats.items(), key=lambda kv: -kv[1]),
-                "venues": {"Polymarket": {"events": len(poly), "markets": sum(len(e["markets"]) for e in poly), "volume_24h": sum(e["volume_24h"] for e in poly)},
-                           "Kalshi": {"events": len(kal), "markets": sum(len(e["markets"]) for e in kal), "volume_24h": sum(e["volume_24h"] for e in kal)}},
-                "as_of": datetime.now(timezone.utc).isoformat(timespec="minutes"),
-                "source": "Polymarket (gamma / CLOB APIs) and Kalshi (public trade API)",
-                "note": "Prices are probabilities. Polymarket volume in USDC; Kalshi volume in contracts (each settles at $1). "
-                        "Read-only market data — no trading."}
-    return _cached("pred:catalog", 300, build)
+    return _cached("pred:catalog", 300, _build_catalog)
+
+
+_refresher_started = False
+
+
+def refresher_start(every: float = 240.0) -> None:
+    """Rebuild the catalog in the background before it expires, so PRED and the odds panels around
+    the terminal never wait ~15 s for both venues on a cold cache."""
+    global _refresher_started
+    if _refresher_started:
+        return
+    _refresher_started = True
+    import threading
+
+    def loop():
+        from api.marketdata import core
+        while True:
+            try:
+                val = _build_catalog()
+                with core._lock:
+                    core._cache["pred:catalog"] = (time.time(), val)
+                for k in [k for k in list(core._cache) if k.startswith(("pred:cross", "pred:macro", "pred:movers"))]:
+                    core._cache.pop(k, None)
+                cross_venue()
+                macro()
+            except Exception as e:
+                logger.info("[pred] background refresh: %s", e)
+            time.sleep(every)
+    threading.Thread(target=loop, name="pred-refresh", daemon=True).start()
+
+
+def _build_catalog() -> Dict[str, Any]:
+    with ThreadPoolExecutor(2) as ex:
+        fp, fk = ex.submit(_poly_events), ex.submit(_kalshi_events)
+        poly, kal = fp.result(), fk.result()
+    if not poly and not kal:
+        raise Upstream("Neither Polymarket nor Kalshi answered.")
+    events = poly + kal
+    events.sort(key=lambda e: -(e["volume_24h"] or 0))
+    cats: Dict[str, int] = {}
+    for e in events:
+        cats[e["category"]] = cats.get(e["category"], 0) + 1
+    return {"events": events, "categories": sorted(cats.items(), key=lambda kv: -kv[1]),
+            "venues": {"Polymarket": {"events": len(poly), "markets": sum(len(e["markets"]) for e in poly), "volume_24h": sum(e["volume_24h"] for e in poly)},
+                       "Kalshi": {"events": len(kal), "markets": sum(len(e["markets"]) for e in kal), "volume_24h": sum(e["volume_24h"] for e in kal)}},
+            "as_of": datetime.now(timezone.utc).isoformat(timespec="minutes"),
+            "source": "Polymarket (gamma / CLOB APIs) and Kalshi (public trade API)",
+            "note": "Prices are probabilities. Polymarket volume in USDC; Kalshi volume in contracts (each settles at $1). "
+                    "Read-only market data — no trading."}
 
 
 # ── One outcome: history and order book ─────────────────────────────────────

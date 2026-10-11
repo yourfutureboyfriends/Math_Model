@@ -1,9 +1,9 @@
 """Markets mode endpoints (api/marketdata): universal search, quotes, overview, profiles,
 statements, news + SEC filings, movers and the global screener. Read-only market data."""
 import asyncio
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 
 router = APIRouter(tags=["markets"])
 
@@ -497,6 +497,44 @@ async def mkt_pred_history(venue: str, market_id: str, series: str = "", span: s
 async def mkt_pred_book(venue: str, market_id: str):
     from api.marketdata import predmarkets
     return await _run(predmarkets.orderbook, venue, market_id, timeout=30)
+
+
+@router.get("/api/v1/mkt/cf/text")
+async def mkt_filing_text(url: str = Query(..., max_length=400)):
+    """An SEC filing (and an 8-K's press release) as plain text."""
+    from api.marketdata import research
+    return await _run(research.filing_text, url, timeout=90)
+
+
+@router.get("/api/v1/mkt/cf/{symbol}")
+async def mkt_filings(symbol: str, limit: int = Query(120, ge=10, le=400)):
+    """A company's SEC filings with 8-K items decoded and each filing day's price reaction."""
+    from api.marketdata import research
+    return await _run(research.filings, symbol, limit, timeout=90)
+
+
+@router.get("/api/v1/mkt/cred")
+async def mkt_credit():
+    """Credit spreads (ICE BofA OAS) by rating and region."""
+    from api.marketdata import research
+    return await _run(research.credit, timeout=90)
+
+
+@router.get("/api/v1/mkt/fac/{symbol}")
+async def mkt_factors(symbol: str, years: int = Query(5, ge=2, le=20)):
+    """Fama–French 5 + momentum exposures of one stock (full period and rolling one-year)."""
+    from api.marketdata import research
+    return await _run(research.factor_exposure, symbol, years, timeout=120)
+
+
+@router.post("/api/v1/mkt/port/risk")
+async def mkt_portfolio_risk(body: Dict[str, Any] = Body(...)):
+    """Portfolio risk for a list of holdings [{symbol, quantity}]: exposures, VaR, risk shares, factors, stress tests."""
+    from api.marketdata import research
+    rows = body.get("holdings") if isinstance(body, dict) else None
+    if not isinstance(rows, list):
+        raise HTTPException(422, "Send {'holdings': [{'symbol': 'AAPL', 'quantity': 10}, …]}")
+    return await _run(research.portfolio_risk, rows, timeout=240)
 
 
 @router.get("/api/v1/mkt/pred/related")

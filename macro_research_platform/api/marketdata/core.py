@@ -78,6 +78,62 @@ def _cached(key: str, ttl: float, fn: Callable[[], Any]) -> Any:
         return val
 
 
+# ── Yahoo rate-limit guard ──────────────────────────────────────────────────
+# Yahoo throttles an IP that sends bursts (hundreds of requests from launchpad windows, breadth scans).
+# Hammering it while throttled extends the block and turns every screen into an error, so: at most a
+# few requests at once, and after a 429 a cool-down (15 s, doubling to 5 min) during which calls fail
+# fast — `_cached` then serves the last good data, marked stale.
+_YH: Dict[str, float] = {"until": 0.0, "backoff": 15.0}
+_YH_SEM = threading.BoundedSemaphore(6)
+
+
+def _rate_limited(e: BaseException) -> bool:
+    m = f"{type(e).__name__} {e}"
+    return "RateLimit" in m or "Too Many Requests" in m or "Rate limited" in m or " 429" in m
+
+
+def _yahoo_cooling() -> Optional[str]:
+    left = _YH["until"] - time.time()
+    return f"Yahoo is rate-limiting this server — pausing requests for {int(left) + 1}s." if left > 0 else None
+
+
+def _yahoo_tripped() -> None:
+    _YH["until"] = time.time() + _YH["backoff"]
+    logger.warning("[yahoo] rate-limited — cooling down %.0fs", _YH["backoff"])
+    _YH["backoff"] = min(300.0, _YH["backoff"] * 2)
+
+
+def yahoo_call(fn: Callable[[], Any]) -> Any:
+    """Run one Yahoo request under the guard (raises Upstream while cooling down or on a 429)."""
+    msg = _yahoo_cooling()
+    if msg:
+        raise Upstream(msg)
+    with _YH_SEM:
+        try:
+            out = fn()
+        except Exception as e:
+            if _rate_limited(e):
+                _yahoo_tripped()
+                raise Upstream("Yahoo is rate-limiting this server — try again in a minute.") from e
+            raise
+    _YH["backoff"] = 15.0
+    return out
+
+
+def yahoo_download(symbols, **kw):
+    """yf.download under the guard. yfinance swallows per-symbol errors into a dict instead of
+    raising, so an empty frame caused by a 429 would otherwise look like 'no price history'."""
+    import yfinance as yf
+
+    def run():
+        df = yf.download(symbols, progress=False, **kw)
+        errs = getattr(getattr(yf, "shared", None), "_ERRORS", {}) or {}
+        if any(_rate_limited(Exception(str(v))) for v in errs.values()):
+            raise Upstream("Too Many Requests")
+        return df
+    return yahoo_call(run)
+
+
 def _f(v) -> Optional[float]:
     try:
         x = float(v)
@@ -161,7 +217,9 @@ def _info(symbol: str) -> Dict[str, Any]:
 
     def fetch():
         try:
-            info = yf.Ticker(symbol).info or {}
+            info = yahoo_call(lambda: yf.Ticker(symbol).info or {})
+        except Upstream:
+            raise
         except Exception as e:
             raise Upstream(f"Yahoo unavailable for {symbol}: {e}")
         if not info or (info.get("regularMarketPrice") is None and info.get("previousClose") is None

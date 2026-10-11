@@ -16,6 +16,7 @@ import { FlowView } from '@/components/markets/FlowView';
 import { CotView, EdgeBoard, NowView } from '@/components/markets/EdgeViews';
 import { PredView, RelatedOdds } from '@/components/markets/PredMarkets';
 import { ValuationHub } from '@/components/markets/ValuationHub';
+import { CfView, CredView, FacView, PortView } from '@/components/markets/ResearchViews';
 import { BreadthView, ImpmView, RiskView, UoaView, VolView } from '@/components/markets/InsightViews';
 import { AuctView, EiaView, InsdView, IpoView, ThirteenFView, WetrView, WirpView } from '@/components/markets/ExtrasViews';
 import { CountryView, RegionBar, RegionMonitor } from '@/components/markets/RegionViews';
@@ -148,6 +149,8 @@ function SecurityBody({ code, symbol, d, isFund, onGo }: { code: string; symbol:
         {code === 'BETA' && <BetaView symbol={symbol} />}
         {code === 'DCF' && <DcfView symbol={symbol} />}
         {code === 'VAL' && <ValuationHub symbol={symbol} onGo={onGo} />}
+        {code === 'CF' && <CfView symbol={symbol} />}
+        {code === 'FAC' && <FacView symbol={symbol} />}
         {code === 'CN' && <News symbol={symbol} />}
         {code === 'SEAS' && <SeasView symbol={symbol} />}
         {code === 'OSA' && <OsaView symbol={symbol} />}
@@ -271,6 +274,8 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'EDGE' && <EdgeBoard onGo={onGo} onOpen={open} />}
     {code === 'COT' && <CotView />}
     {code === 'PRED' && <PredView />}
+    {code === 'CRED' && <><CredView /><RelatedOdds terms={['recession', 'default', 'bankruptcy', 'fed', 'rate cut']} title="Macro odds that move credit" limit={4} className="mt-3" /></>}
+    {code === 'PORT' && <PortView onOpen={open} />}
     {code === 'NOW' && <NowView />}
     {code === 'RISK' && <><RiskView /><RelatedOdds terms={['recession', 'shutdown', 'debt ceiling', 'fed', 'tariff']} title="Macro risk odds" limit={6} className="mt-3" /></>}
     {code === 'VOL' && <VolView onOpen={open} />}
