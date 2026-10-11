@@ -1265,6 +1265,11 @@ async def lifespan(app: FastAPI):
                 presence_start()
             from api.marketdata.flows import snapshots_start
             snapshots_start()                      # daily ETF shares-outstanding snapshots (fund flows)
+            from api.marketdata.airtraffic import sweep_start
+            sweep_start()                          # live ADS-B sweep of hubs OpenSky covers poorly
+            import threading
+            from api.marketdata import edge
+            threading.Thread(target=lambda: [f() for f in (edge.cot, edge.trade, edge.ports_trade, edge.board)], daemon=True).start()   # warm the slow ones
         except Exception as e:
             logger.warning(f"[STARTUP] ship collectors not started: {e}")
 

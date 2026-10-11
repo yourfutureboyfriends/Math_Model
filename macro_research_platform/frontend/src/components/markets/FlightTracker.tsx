@@ -157,6 +157,8 @@ export function FlightTracker() {
         <button onClick={() => setOnly(only === 'emerg' ? 'all' : 'emerg')} className={cn('px-1.5 border', only === 'emerg' ? 'border-red text-red' : w?.emergencies?.length ? 'border-red/60 text-red' : 'border-border text-text-tertiary')}>
           {w?.emergencies?.length ?? 0} emergency squawk{w?.emergencies?.length === 1 ? '' : 's'}</button>
         <span className="text-text-tertiary">in view <b className="font-mono text-text-secondary">{inView.length.toLocaleString()}</b></span>
+        {w?.sweep && <span className="text-text-tertiary" title="adsb.fi + adsb.lol queried continuously around 60 hubs in China, Asia, the Middle East, Africa and Latin America, where OpenSky has few receivers">
+          <span className="text-green">●</span> {w.sweep.live_aircraft.toLocaleString()} live at {w.sweep.hubs} emerging-market hubs (+{w.sweep.added} not in OpenSky)</span>}
         <span className="ml-auto text-text-tertiary">{liveArea && area.data ? <span className="text-green">● live in this area ({area.data.aircraft.length} aircraft, 10 s refresh)</span>
           : `world snapshot ${fixAge != null ? `${fixAge} min old` : ''}${w?.stale ? ' (OpenSky limit reached — last snapshot)' : ''} · zoom in for live`}</span>
       </div>
@@ -187,7 +189,7 @@ export function FlightTracker() {
         </div>
       </div>
       <div className="text-[10px] text-text-tertiary">{w?.source}. {w?.note} Live areas: adsb.fi. Routes and airframes: adsbdb.com. Coverage depends on volunteer receivers
-        (thin over oceans, Africa and parts of Asia); military flights often switch transponders off.{projectOn ? ' Snapshot positions are projected along each aircraft’s track to now.' : ''}</div>
+        (thin over oceans and Africa; mainland China restricts private receivers, so its domestic traffic is only partly visible on any free network); military flights often switch transponders off.{projectOn ? ' Snapshot positions are projected along each aircraft’s track to now.' : ''}</div>
     </div>
   );
 }

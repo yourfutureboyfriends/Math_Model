@@ -22,6 +22,7 @@ const SEAS: [string, [number, number, number, number]][] = [
   ['Baltic', [10, 53.5, 30, 66]], ['New York', [-74.5, 40.3, -73.6, 40.9]], ['Gulf of Mexico', [-97.5, 26, -88, 30.5]],
   ['LA / Long Beach', [-119, 33.3, -117.8, 34]], ['Panama Canal', [-80.2, 8.6, -79.3, 9.6]], ['Santos', [-46.6, -24.3, -45.9, -23.8]],
 ];
+const DENSITY_ZOOM = 5.5;                 // zoomed out: a density layer; closer in: one marker per ship
 const PHASES = [['all', 'All'], ['underway', 'Under way'], ['anchored', 'At anchor'], ['moored', 'Moored']] as const;
 type Phase = typeof PHASES[number][0];
 type ShipPhase = Exclude<Phase, 'all'> | 'unknown';
@@ -55,7 +56,7 @@ export function ShipTracker() {
   const shown = useMemo(() => ships.filter((s) => (!hidden.has(s.type) && (phase === 'all' || s.phase === phase) && (showSat || !s.sat)) || s.mmsi === sel), [ships, hidden, phase, sel, showSat]);
   const points: MapPoint[] = useMemo(() => shown.map((s) => ({
     id: String(s.mmsi), lon: s.lon, lat: s.lat, color: s.sat ? faded(TYPE_COL[s.type] ?? TYPE_COL.Other) : TYPE_COL[s.type] ?? TYPE_COL.Other, heading: s.heading, moving: (s.speed ?? 0) > 0.5,
-    label: s.name || undefined,
+    label: s.name || undefined, approx: s.sat,
   })), [shown]);
 
   const live = useJSON<any>(sel ? `/api/v1/mkt/ship/live/${sel}` : null, 30_000);
@@ -116,7 +117,10 @@ export function ShipTracker() {
       <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-2">
         <LiveMap ref={map} glyph="ship" points={points} lines={lines} markers={markers} selected={sel != null ? String(sel) : null}
           onSelect={(id) => { setSel(id ? Number(id) : null); setRegistry(null); }} onMarker={(port) => { const p = ports.data?.ports.find((x: any) => x.port === port); if (p) map.current?.flyTo({ lon: p.lon, lat: p.lat, zoom: 10 }); }}
-          onView={setBounds} hoverText={hoverText} height={600} initial={{ lon: 60, lat: 25, zoom: 2.2 }}>
+          onView={setBounds} hoverText={hoverText} height={600} initial={{ lon: 60, lat: 25, zoom: 2.2 }} density={DENSITY_ZOOM}>
+          {(bounds?.zoom ?? 0) < DENSITY_ZOOM && <div className="absolute top-2 left-2 text-[10px] bg-surface-1/85 border border-border px-2 py-1 flex items-center gap-2">
+            <span>Traffic density</span><span className="w-20 h-2" style={{ background: 'linear-gradient(90deg, rgb(24 70 140), rgb(0 150 200), rgb(60 210 190), rgb(250 210 90), rgb(255 250 235))' }} />
+            <span className="text-text-tertiary">zoom in for individual ships</span></div>}
           <div className="absolute bottom-2 left-2 right-12 flex flex-wrap gap-1 text-[10px]">
             <div className="flex flex-wrap gap-1 bg-surface-1/85 border border-border px-1.5 py-1">
               {Object.keys(TYPE_COL).filter((t) => t !== 'Towing').map((t) => (

@@ -114,6 +114,32 @@ def _military() -> List[Dict[str, Any]]:
 
 
 def world() -> Dict[str, Any]:
+    """OpenSky snapshot (cached by its allowance) merged with the live regional sweep (refreshed often)."""
+    def merge():
+        base = _world_base()
+        by_hex = {r[0]: r for r in base["rows"]}
+        added = replaced = 0
+        for r in _sweep_rows():
+            old = by_hex.get(r[0])
+            if old is None:
+                added += 1
+            elif (old[11] or 0) >= r[11]:
+                continue
+            else:
+                replaced += 1
+                r[2] = old[2]                              # keep OpenSky's registration country
+                r[12] = r[12] or old[12]
+            by_hex[r[0]] = r
+        rows = list(by_hex.values())
+        air = [r for r in rows if not r[6]]
+        return {**base, "rows": rows, "airborne": len(air), "on_ground": len(rows) - len(air),
+                "sweep": {"added": added, "refreshed": replaced, "hubs": len(SWEEP), "live_aircraft": added + replaced},
+                "emergencies": [{"hex": r[0], "callsign": r[1], "squawk": r[10], "what": EMERGENCY[str(r[10])], "lat": r[4], "lon": r[3]}
+                                for r in rows if str(r[10] or "") in EMERGENCY]}
+    return _cached("fly:world:merged", 20, merge)
+
+
+def _world_base() -> Dict[str, Any]:
     ttl = 180 if _authenticated() else 900
 
     def build():
@@ -155,7 +181,8 @@ def world() -> Dict[str, Any]:
                 "refresh_s": ttl, "stale": stale, "credits_left": _credits["remaining"],
                 "source": "OpenSky Network (state vectors" + (", authenticated" if _authenticated() else ", anonymous") + "); military: adsb.lol",
                 "note": ("World positions refresh every " + ("3" if _authenticated() else "15") + " minutes (OpenSky's free allowance); "
-                         "zoom in for live, seconds-old detail from adsb.fi.")}
+                         "around ~60 hubs in China, Asia, the Middle East, Africa and Latin America they are live (adsb.fi + adsb.lol sweep); "
+                         "zoom in anywhere for live, seconds-old detail.")}
     return _cached("fly:world", ttl, build)
 
 
@@ -213,6 +240,80 @@ def area(lat: float, lon: float, radius_nm: int = 120) -> Dict[str, Any]:
                 "emergencies": [x for x in ac if x["emergency"]], "time": int(time.time()),
                 "source": f"{src} (community ADS-B receivers; live, seconds old)"}
     return _cached(f"fly:area:{key_lat}:{key_lon}:{radius_nm}", 8, fetch)
+
+
+# ── Live sweep of thinly covered regions ────────────────────────────────────
+# OpenSky's receivers are sparse in China, South & Southeast Asia, the Middle East, Africa and
+# Latin America. adsb.fi and adsb.lol have different volunteer feeders there; a background loop
+# queries both around ~55 hubs (250 nm each) and keeps every aircraft heard in the last 5 minutes.
+# These live positions replace OpenSky's (up to 15-minute-old) ones in the world layer.
+SWEEP = [(40.08, 116.58), (31.14, 121.8), (23.39, 113.3), (30.58, 103.95), (25.1, 102.93), (34.45, 108.75), (30.78, 114.21), (43.9, 87.47),
+         (45.62, 126.25), (36.27, 120.37), (22.31, 113.92), (25.08, 121.23), (14.51, 121.02), (10.82, 106.65), (21.22, 105.81), (13.69, 100.75),
+         (2.75, 101.71), (1.36, 103.99), (-6.13, 106.65), (-7.38, 112.79), (-8.75, 115.17), (28.56, 77.1), (19.09, 72.87), (13.2, 77.71),
+         (22.65, 88.45), (17.24, 78.43), (24.91, 67.16), (31.52, 74.4), (25.25, 55.36), (25.27, 51.61), (24.96, 46.7), (21.68, 39.16),
+         (30.12, 31.41), (35.42, 51.15), (33.26, 44.23), (9.03, 38.8), (-1.32, 36.93), (6.58, 3.32), (5.6, -0.17), (-26.14, 28.25),
+         (-33.97, 18.6), (33.37, -7.59), (36.69, 3.21), (-23.43, -46.47), (-22.81, -43.25), (-15.87, -47.92), (-34.82, -58.54),
+         (-33.39, -70.79), (-12.02, -77.11), (4.7, -74.15), (19.44, -99.07), (21.04, -86.87), (9.07, -79.38), (55.97, 37.41), (43.36, 77.04),
+         (41.26, 69.28), (33.62, 73.1), (27.7, 85.36), (23.84, 90.4), (16.9, 96.13)]
+_sweep: Dict[str, Dict[str, Any]] = {}
+_sweep_lock = threading.Lock()
+_lol_last = [0.0]
+SWEEP_KEEP = 300
+
+
+def _adsblol_point(lat: float, lon: float) -> List[Dict[str, Any]]:
+    import requests
+    wait = 1.5 - (time.time() - _lol_last[0])
+    if wait > 0:
+        time.sleep(wait)
+    _lol_last[0] = time.time()
+    r = requests.get(f"https://api.adsb.lol/v2/point/{lat}/{lon}/250", headers=UA, timeout=20)
+    r.raise_for_status()
+    return r.json().get("ac") or []
+
+
+def _sweep_once() -> int:
+    n = 0
+    for i, (lat, lon) in enumerate(SWEEP):
+        for fetch in (lambda: (_adsbfi(f"lat/{lat}/lon/{lon}/dist/250").get("aircraft") or []), lambda: _adsblol_point(lat, lon)):
+            try:
+                raw = fetch()
+            except Exception as e:
+                logger.debug("[sweep] %s,%s: %s", lat, lon, e)
+                continue
+            now = time.time()
+            with _sweep_lock:
+                for a in raw:
+                    if a.get("lat") is None or not a.get("hex"):
+                        continue
+                    fix = now - float(a.get("seen_pos") or a.get("seen") or 0)
+                    cur = _sweep.get(a["hex"])
+                    if cur is None or cur["fix"] < fix:
+                        _sweep[a["hex"]] = {**_ac(a), "fix": fix}
+                        n += 1
+        with _sweep_lock:                                  # forget aircraft not heard for 5 minutes
+            cut = time.time() - SWEEP_KEEP
+            for k in [k for k, v in _sweep.items() if v["fix"] < cut]:
+                del _sweep[k]
+    return n
+
+
+def sweep_start() -> None:
+    def loop():
+        while True:
+            try:
+                _sweep_once()
+            except Exception as e:
+                logger.warning("[sweep] %s", e)
+            time.sleep(20)
+    threading.Thread(target=loop, name="adsb-sweep", daemon=True).start()
+
+
+def _sweep_rows() -> List[list]:
+    with _sweep_lock:
+        return [[v["hex"], v["flight"], None, round(v["lon"], 4), round(v["lat"], 4), v["alt"], 1 if v["on_ground"] else 0,
+                 round(v["speed"]) if v.get("speed") is not None else None, round(v["track"]) if v.get("track") is not None else None,
+                 v.get("vrate"), v.get("squawk"), int(v["fix"]), 1 if v.get("military") else 0, v.get("type")] for v in _sweep.values()]
 
 
 # ── One aircraft ────────────────────────────────────────────────────────────

@@ -5219,6 +5219,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mkt/edge/{layer}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Edge
+         * @description Edge data: cot (CFTC positioning), pred (prediction markets), nowcasts, trade (PortWatch), ports, board (signal board).
+         */
+        get: operations["mkt_edge_api_v1_mkt_edge__layer__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mkt/fly": {
         parameters: {
             query?: never;
@@ -15939,6 +15959,37 @@ export interface operations {
             header?: never;
             path: {
                 iso: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_edge_api_v1_mkt_edge__layer__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                layer: string;
             };
             cookie?: never;
         };

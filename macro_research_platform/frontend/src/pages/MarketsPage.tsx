@@ -13,6 +13,7 @@ import { CorrView, FrdView, OsaView, RrgView, SeasView } from '@/components/mark
 import { EcoGlobalView, EcstView, SiView, SplcView } from '@/components/markets/DataViews';
 import { FlyView, QuakeView, ShipView } from '@/components/markets/TrackingViews';
 import { FlowView } from '@/components/markets/FlowView';
+import { CotView, EdgeBoard, NowView, PredView } from '@/components/markets/EdgeViews';
 import { AuctView, EiaView, InsdView, IpoView, ThirteenFView, WetrView, WirpView } from '@/components/markets/ExtrasViews';
 import { CountryView, RegionBar, RegionMonitor } from '@/components/markets/RegionViews';
 import { useRegion } from '@/lib/region';
@@ -254,6 +255,10 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'RRG' && <RrgView onOpen={open} />}
     {code === 'FRD' && <FrdView />}
     {code === 'FLOW' && <FlowView onOpen={open} />}
+    {code === 'EDGE' && <EdgeBoard onGo={onGo} onOpen={open} />}
+    {code === 'COT' && <CotView />}
+    {code === 'PRED' && <PredView />}
+    {code === 'NOW' && <NowView />}
     {code === 'SHIP' && <ShipView />}
     {code === 'FLY' && <FlyView />}
     {code === 'QUAK' && <QuakeView />}

@@ -381,6 +381,16 @@ async def mkt_flow_tic_country(iso: str):
     return await _run(flows.tic_country, iso[:2])
 
 
+@router.get("/api/v1/mkt/edge/{layer}")
+async def mkt_edge(layer: str):
+    """Edge data: cot (CFTC positioning), pred (prediction markets), nowcasts, trade (PortWatch), ports, board (signal board)."""
+    from api.marketdata import edge
+    fn = {"cot": edge.cot, "pred": edge.predictions, "nowcasts": edge.nowcasts, "trade": edge.trade, "ports": edge.ports_trade, "board": edge.board}.get(layer)
+    if not fn:
+        raise HTTPException(404, "Unknown edge layer")
+    return await _run(fn, timeout=180)
+
+
 @router.get("/api/v1/mkt/fly")
 async def mkt_flights(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180), radius_nm: int = Query(100, ge=5, le=250)):
     """Live aircraft around a point (same as /fly/area)."""

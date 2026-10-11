@@ -14,6 +14,7 @@ export type MapPoint = {
   moving?: boolean;
   big?: boolean;                     // emphasised (emergency, selected kind…)
   ring?: string;                     // outline colour (e.g. military)
+  approx?: boolean;                  // position known only roughly (satellite grid): hidden where it falls on land
   label?: string;                    // drawn next to the point when zoomed in
 };
 export type MapLine = { coords: [number, number][]; color: string; width?: number; dash?: number[] };
@@ -45,12 +46,14 @@ export const LiveMap = forwardRef<LiveMapHandle, {
   initial?: MapView; minZoom?: number; maxZoom?: number; glyph: 'plane' | 'ship';
   onSelect?: (id: string | null) => void; onMarker?: (id: string) => void; hoverText?: (id: string) => string;
   onView?: (b: MapBounds) => void; children?: React.ReactNode;
+  density?: number;                  // below this zoom, draw a traffic-density layer instead of individual points
 }>(function LiveMap({ points, lines = [], markers = [], selected, height = 560, initial, minZoom = 1, maxZoom = 13, glyph,
-  onSelect, onMarker, hoverText, onView, children }, ref) {
+  onSelect, onMarker, hoverText, onView, children, density }, ref) {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const landCanvas = useRef<HTMLCanvasElement | null>(null);
   const landView = useRef<{ cx: number; cy: number; S: number } | null>(null);
+  const landPath = useRef<{ path: Path2D; rule: CanvasFillRule } | null>(null);   // the settled land shape, for land tests
   const [W, setW] = useState(900);
   const [land, setLand] = useState(landCache);
   const [fine, setFine] = useState<Poly[] | null>(fineCache);
@@ -170,7 +173,9 @@ export const LiveMap = forwardRef<LiveMapHandle, {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const v = view.current, s = S();
     const ox = W / 2 - v.cx, oy = H / 2 - v.cy;                      // world px → screen px
-    const copies = [-s, 0, s].filter((k) => ox + k < W && ox + k + s > 0);
+    // the world repeats east–west: every copy that overlaps the view is drawn, so panning is continuous
+    const copies: number[] = [];
+    for (let j = Math.floor(-ox / s) - 1; j <= Math.ceil((W - ox) / s); j++) if (ox + j * s < W && ox + j * s + s > 0) copies.push(j * s);
     const c = colors.resolve;
     ctx.clearRect(0, 0, W, H);                                      // the sea: an opaque base, then a blue tint
     ctx.fillStyle = c('rgb(var(--c-surface-1))'); ctx.fillRect(0, 0, W, H);
@@ -184,6 +189,8 @@ export const LiveMap = forwardRef<LiveMapHandle, {
         const lx = lc.getContext('2d')!;
         lx.setTransform(dpr, 0, 0, dpr, 0, 0);
         lx.clearRect(0, 0, W, H);
+        const lp = new Path2D();
+        let lpRule: CanvasFillRule = 'nonzero';
         for (const k of copies) {
           const proj = geoMercator().scale(s / (2 * Math.PI)).translate([s / 2 + ox + k, s / 2 + oy]).clipExtent([[0, 0], [W, H]]);
           const path = geoPath(proj, lx);
@@ -191,21 +198,23 @@ export const LiveMap = forwardRef<LiveMapHandle, {
           let rule: CanvasFillRule = 'nonzero';
           if (fine && v.zoom >= 4.5) {
             // planar projection: ring winding doesn't matter (d3's spherical fill inverts reversed rings)
-            const flat = geoPath(geoTransform({ point(lon: number, lat: number) { (this as any).stream.point(worldX(lon, s) + ox + k, worldY(lat, s) + oy); } }), lx);
-            rule = 'evenodd';
+            const tf = geoTransform({ point(lon: number, lat: number) { (this as any).stream.point(worldX(lon, s) + ox + k, worldY(lat, s) + oy); } });
+            const flat = geoPath(tf, lx), flatP = geoPath(tf, lp as any);
+            rule = 'evenodd'; lpRule = 'evenodd';
             const b = bounds(), pad = 1;
             const wrapLon = (b.east - b.west) >= 360;
             for (const pg of fine) {
               if (pg.n < b.south - pad || pg.s > b.north + pad) continue;
               if (!wrapLon && !(pg.e >= b.west - pad && pg.w <= b.east + pad) && !(pg.e >= b.west - 360 - pad && pg.w <= b.east - 360 + pad)
                 && !(pg.e >= b.west + 360 - pad && pg.w <= b.east + 360 + pad)) continue;
-              flat(pg.f);
+              flat(pg.f); flatP(pg.f);
             }
-          } else path(land.land);
+          } else { path(land.land); geoPath(proj, lp as any)(land.land); }
           lx.fillStyle = c('rgb(var(--c-border-strong) / 0.6)'); lx.fill(rule);          // land, clearly lighter than the sea
           lx.beginPath(); path(land.borders); lx.strokeStyle = c('rgb(var(--c-text-tertiary) / 0.35)'); lx.lineWidth = 0.6; lx.stroke();
         }
         landView.current = { cx: v.cx, cy: v.cy, S: s };
+        landPath.current = { path: lp, rule: lpRule };
       }
       const lv = landView.current!;
       const k = s / lv.S;
@@ -218,20 +227,21 @@ export const LiveMap = forwardRef<LiveMapHandle, {
 
     const z = v.zoom;
     const project = (lon: number, lat: number): [number, number] => [worldX(lon, s) + ox, worldY(lat, s) + oy];
-    const nearest = (x: number) => { let best = x; for (const k of [-s, s]) if (Math.abs(x + k - W / 2) < Math.abs(best - W / 2)) best = x + k; return best; };
-
-    // lines (tracks, routes)
+    // lines (tracks, routes): longitudes unwrapped so a route across the date line stays one stroke
     for (const ln of lines) {
       if (ln.coords.length < 2) continue;
-      ctx.beginPath();
-      let prevX: number | null = null;
-      ln.coords.forEach(([lon, lat], i) => {
-        let [x, y] = project(lon, lat);
-        x = nearest(x);
-        if (prevX != null && Math.abs(x - prevX) > s / 2) { ctx.moveTo(x, y); } else if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-        prevX = x;
+      let prev: number | null = null;
+      const pts = ln.coords.map(([lon, lat]) => {
+        let L = lon;
+        if (prev != null) { while (L - prev > 180) L -= 360; while (L - prev < -180) L += 360; }
+        prev = L;
+        return project(L, lat);
       });
-      ctx.strokeStyle = c(ln.color); ctx.lineWidth = ln.width ?? 1.6; ctx.setLineDash(ln.dash ?? []); ctx.stroke(); ctx.setLineDash([]);
+      for (const k of copies) {
+        ctx.beginPath();
+        pts.forEach(([x, y], i) => (i ? ctx.lineTo(x + k, y) : ctx.moveTo(x + k, y)));
+        ctx.strokeStyle = c(ln.color); ctx.lineWidth = ln.width ?? 1.6; ctx.setLineDash(ln.dash ?? []); ctx.stroke(); ctx.setLineDash([]);
+      }
     }
 
     const taken = new Set<string>();                                 // label collision grid (60 × 14 px cells)
@@ -244,8 +254,8 @@ export const LiveMap = forwardRef<LiveMapHandle, {
     // markers (ports, chokepoints, airports)
     markerScreen.current = [];
     ctx.font = '10px ui-sans-serif, system-ui';
-    for (const m of markers) {
-      let [x, y] = project(m.lon, m.lat); x = nearest(x);
+    for (const m of markers) for (const k of copies) {
+      const [x0, y] = project(m.lon, m.lat), x = x0 + k;
       if (x < -20 || x > W + 20 || y < -20 || y > H + 20) continue;
       const r = (m.r ?? 4) * Math.max(0.45, Math.min(1, (z - 1) / 4));     // smaller at world zoom
       ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI);
@@ -256,29 +266,41 @@ export const LiveMap = forwardRef<LiveMapHandle, {
     }
 
     // points
-    const n = points.length;
+    const n = points.length * copies.length;
     const xs = new Float32Array(n), ys = new Float32Array(n), ids: string[] = new Array(n);
     let m = 0;
-    const glyphs = z >= (glyph === 'plane' ? 5.5 : 8.5);
+    const glyphs = z >= (glyph === 'plane' ? 5.5 : 7);
+    // approximate positions on land are dropped once zoomed in (only while the land image is current)
+    const lv0 = landView.current;
+    const landTest = z >= 6.5 && landPath.current && lv0 && lv0.S === s && lv0.cx === v.cx && lv0.cy === v.cy ? landPath.current : null;
     const dot = glyph === 'plane' ? (z < 3 ? 1.8 : z < 5 ? 2.2 : 2.6) : (z < 3 ? 1.7 : z < 5 ? 2 : z < 7 ? 2.4 : 2.8);
     const labels = z >= (glyph === 'plane' ? 7.5 : 11);
     let sel: { x: number; y: number; p: MapPoint } | null = null;
+    const dense = density != null && z < density;
+    const cell = 2.5, gw = Math.ceil(W / cell), gh = Math.ceil(H / cell);
+    const counts = dense ? new Float32Array(gw * gh) : null;
     const byColor = new Map<string, number[]>();                     // batch dots by colour
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < points.length; i++) {
       const p = points[i];
-      let x = worldX(p.lon, s) + ox;
+      const x0 = worldX(p.lon, s) + ox;
       const y = worldY(p.lat, s) + oy;
       if (y < -10 || y > H + 10) continue;
-      if (x < -10 || x > W + 10) { x = nearest(x); if (x < -10 || x > W + 10) continue; }
+      for (const k of copies) {
+      const x = x0 + k;
+      if (x < -10 || x > W + 10) continue;
+      if (p.approx && p.id !== selected && landTest && ctx.isPointInPath(landTest.path, x * dpr, y * dpr, landTest.rule)) continue;
       xs[m] = x; ys[m] = y; ids[m] = p.id; m++;
-      if (p.id === selected) { sel = { x, y, p }; continue; }
+      if (p.id === selected) { if (!sel || Math.abs(x - W / 2) < Math.abs(sel.x - W / 2)) sel = { x, y, p }; continue; }
+      if (counts) { const gx = Math.floor(x / cell), gy = Math.floor(y / cell); if (gx >= 0 && gy >= 0 && gx < gw && gy < gh) counts[gy * gw + gx] += 1; continue; }
       if (glyphs || p.big || p.ring) {
         drawGlyph(ctx, glyph, x, y, p, glyphs, c, dot);
       } else {
         const arr = byColor.get(p.color) ?? []; arr.push(x, y); byColor.set(p.color, arr);
       }
       if (labels && p.label && m < 2000 && labelOk(x, y)) { ctx.fillStyle = c('rgb(var(--c-text-tertiary))'); ctx.font = '9px ui-monospace, monospace'; ctx.fillText(p.label, x + 6, y - 4); }
+      }
     }
+    if (counts) drawDensity(ctx, counts, gw, gh);
     for (const [col, arr] of byColor) {
       ctx.fillStyle = c(col);
       for (let i = 0; i < arr.length; i += 2) ctx.fillRect(arr[i] - dot / 2, arr[i + 1] - dot / 2, dot, dot);
@@ -289,7 +311,7 @@ export const LiveMap = forwardRef<LiveMapHandle, {
       drawGlyph(ctx, glyph, sel.x, sel.y, { ...sel.p, big: true }, true, c, dot);
     }
     screen.current = { xs: xs.subarray(0, m), ys: ys.subarray(0, m), ids: ids.slice(0, m) };
-  }, [tick, W, H, land, fine, points, lines, markers, selected, glyph]);     // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tick, W, H, land, fine, points, lines, markers, selected, glyph, density]);     // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── interaction ──
   const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean } | null>(null);
@@ -358,10 +380,44 @@ export const LiveMap = forwardRef<LiveMapHandle, {
   );
 });
 
+// traffic density: log-scaled counts per 2.5 px cell through a navy → teal → amber → white ramp,
+// drawn at cell resolution and scaled up with smoothing so lanes read as soft glowing lines
+const RAMP: [number, number, number][] = [[24, 70, 140], [0, 150, 200], [60, 210, 190], [250, 210, 90], [255, 250, 235]];
+function drawDensity(ctx: CanvasRenderingContext2D, counts: Float32Array, gw: number, gh: number) {
+  const img = new ImageData(gw, gh);
+  const ref = Math.log1p(30);
+  for (let i = 0; i < counts.length; i++) {
+    const c = counts[i];
+    if (!c) continue;
+    const t = Math.min(1, Math.log1p(c) / ref) * (RAMP.length - 1);
+    const k = Math.min(RAMP.length - 2, Math.floor(t)), f = t - k, a = RAMP[k], b = RAMP[k + 1];
+    const o = i * 4;
+    img.data[o] = a[0] + (b[0] - a[0]) * f; img.data[o + 1] = a[1] + (b[1] - a[1]) * f; img.data[o + 2] = a[2] + (b[2] - a[2]) * f;
+    img.data[o + 3] = 120 + 135 * Math.min(1, t / 2);
+  }
+  const off = document.createElement('canvas');
+  off.width = gw; off.height = gh;
+  off.getContext('2d')!.putImageData(img, 0, 0);
+  ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(off, 0, 0, gw * 2.5, gh * 2.5);
+  ctx.restore();
+}
+
 function drawGlyph(ctx: CanvasRenderingContext2D, kind: 'plane' | 'ship', x: number, y: number, p: MapPoint, detailed: boolean,
   c: (s: string) => string, dot: number) {
   const col = c(p.color);
-  const size = (p.big ? 1.5 : 1) * (detailed ? (kind === 'plane' ? 6 : 5) : dot + 1.5);
+  const size = (p.big ? 1.5 : p.approx ? 0.75 : 1) * (detailed ? (kind === 'plane' ? 6 : 5) : dot + 1.5);
+  if (kind === 'ship' && detailed && (p.heading == null || !p.moving)) {
+    // stationary or heading unknown: a hull at its reported heading (or north), outlined when the
+    // heading is unknown so it doesn't look like a precise course
+    ctx.save(); ctx.translate(x, y); ctx.rotate(((p.heading ?? 0) * Math.PI) / 180);
+    ctx.beginPath();
+    ctx.moveTo(0, -size); ctx.lineTo(size * 0.42, -size * 0.25); ctx.lineTo(size * 0.42, size * 0.75); ctx.lineTo(-size * 0.42, size * 0.75); ctx.lineTo(-size * 0.42, -size * 0.25);
+    ctx.closePath();
+    if (p.heading == null) { ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.stroke(); } else { ctx.fillStyle = col; ctx.fill(); }
+    ctx.restore();
+    return;
+  }
   if (p.heading != null && (detailed || p.big) && (kind === 'plane' || p.moving)) {
     ctx.save(); ctx.translate(x, y); ctx.rotate((p.heading * Math.PI) / 180);
     ctx.beginPath();

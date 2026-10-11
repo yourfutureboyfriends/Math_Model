@@ -556,7 +556,16 @@ def _sat_rows() -> List[list]:
     idx = {t: i for i, t in enumerate(TYPE_CODES)}
     with _presence_lock:
         if _sat_cache["built"] != _presence.get("built"):
-            _sat_cache["rows"] = [[m, p[0], p[1], None, None, idx.get(p[2], idx["Other"]), None, p[4], 1] for m, p in _presence["rows"].items()]
+            # GFW positions are 0.1° cell centres: scatter each vessel within its cell (stable per MMSI) so a
+            # busy area reads as traffic, not a grid — the true position is only known to ±5 km anyway
+            def jit(m: int, salt: int) -> float:
+                z = (m * 0x9E3779B97F4A7C15 + salt * 0xBF58476D1CE4E5B9) & 0xFFFFFFFFFFFFFFFF   # splitmix64: no pattern
+                z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & 0xFFFFFFFFFFFFFFFF
+                z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & 0xFFFFFFFFFFFFFFFF
+                z ^= z >> 31
+                return (z / 0xFFFFFFFFFFFFFFFF - 0.5) * 0.095
+            _sat_cache["rows"] = [[m, round(p[0] + jit(m, 1), 4), round(p[1] + jit(m, 2), 4), None, None, idx.get(p[2], idx["Other"]), None, p[4], 1]
+                                  for m, p in _presence["rows"].items()]
             _sat_cache["built"] = _presence.get("built")
         return _sat_cache["rows"]
 
