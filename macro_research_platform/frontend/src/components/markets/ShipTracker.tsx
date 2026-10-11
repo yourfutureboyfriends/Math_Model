@@ -3,11 +3,12 @@
 // flag and the last 8 hours of track; registry owners and port calls from Global Fishing Watch.
 // Below it: port congestion (ships waiting at anchor near 55 major ports).
 import { useMemo, useRef, useState } from 'react';
-import { Anchor, Search, Ship, X } from 'lucide-react';
+import { Anchor, Search, Ship, Star, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ErrorBox, Loading, Panel, useJSON } from './shared';
 import { Photos } from './Photos';
-import { LiveMap, type LiveMapHandle, type MapBounds, type MapLine, type MapMarker, type MapPoint } from './LiveMap';
+import { greatCircle, LiveMap, type LiveMapHandle, type MapBounds, type MapLine, type MapMarker, type MapPoint } from './LiveMap';
+import { useFollow } from './follow';
 
 const TYPE_COL: Record<string, string> = {
   Cargo: 'rgb(var(--c-blue))', Tanker: 'rgb(var(--c-red))', Passenger: 'rgb(var(--c-green))', Fishing: 'rgb(var(--c-amber))',
@@ -30,7 +31,11 @@ const phaseOf = (status: number | null, speed: number | null, sat: boolean): Shi
   sat ? 'unknown' : status === 5 ? 'moored' : status === 1 || ((status == null || status === 15) && speed != null && speed < 0.5) ? 'anchored' : 'underway';
 const faded = (c: string) => c.replace(/\)$/, ' / 0.45)');          // satellite positions: days old, drawn fainter
 
-type Sh = { mmsi: number; lat: number; lon: number; speed: number | null; heading: number | null; type: string; status: number | null; name: string; phase: ShipPhase; sat: boolean };
+type Sh = { mmsi: number; lat: number; lon: number; speed: number | null; heading: number | null; type: string; status: number | null; name: string; phase: ShipPhase; sat: boolean; tag: string };
+// notable reasons (backend tag letters), most important first, and their ring colours
+const TAGS: [string, string, string][] = [['s', 'Sanctioned', 'rgb(239 68 68)'], ['m', 'Military', 'rgb(236 72 153)'], ['l', 'Gas carrier', 'rgb(6 182 212)'],
+  ['g', 'Giant', 'rgb(245 158 11)'], ['h', 'Dangerous goods', 'rgb(249 115 22)'], ['z', 'Tanker in a hot zone', 'rgb(234 179 8)']];
+const tagColor = (tag: string) => TAGS.find(([k]) => tag.includes(k))?.[2];
 
 export function ShipTracker() {
   const world = useJSON<any>('/api/v1/mkt/ship/world', 30_000);
@@ -43,6 +48,10 @@ export function ShipTracker() {
   const [showSat, setShowSat] = useState(true);
   const [find, setFind] = useState('');
   const [registry, setRegistry] = useState<string | null>(null);
+  const [notableOnly, setNotableOnly] = useState(false);
+  const [tab, setTab] = useState<'view' | 'notable' | 'follow'>('view');
+  const follow = useFollow('ship');
+  const notable = useJSON<any>('/api/v1/mkt/ship/notable', 120_000);
   const map = useRef<LiveMapHandle>(null);
 
   const ships: Sh[] = useMemo(() => {
@@ -50,23 +59,36 @@ export function ShipTracker() {
     if (!d) return [];
     const ix = Object.fromEntries((d.cols as string[]).map((c, i) => [c, i]));
     return (d.rows as any[]).map((r) => ({ mmsi: r[ix.mmsi], lat: r[ix.lat], lon: r[ix.lon], speed: r[ix.speed], heading: r[ix.heading],
-      type: d.types[r[ix.type]] ?? 'Unknown', status: r[ix.status], name: r[ix.name], sat: !!r[ix.sat], phase: phaseOf(r[ix.status], r[ix.speed], !!r[ix.sat]) }));
+      type: d.types[r[ix.type]] ?? 'Unknown', status: r[ix.status], name: r[ix.name], sat: !!r[ix.sat], phase: phaseOf(r[ix.status], r[ix.speed], !!r[ix.sat]),
+      tag: r[ix.tag] ?? '' }));
   }, [world.data]);
   const byId = useMemo(() => new Map(ships.map((s) => [String(s.mmsi), s])), [ships]);
-  const shown = useMemo(() => ships.filter((s) => (!hidden.has(s.type) && (phase === 'all' || s.phase === phase) && (showSat || !s.sat)) || s.mmsi === sel), [ships, hidden, phase, sel, showSat]);
+  const shown = useMemo(() => ships.filter((s) => (!hidden.has(s.type) && (phase === 'all' || s.phase === phase) && (showSat || !s.sat) && (!notableOnly || s.tag))
+    || s.mmsi === sel || follow.ids.has(String(s.mmsi))), [ships, hidden, phase, sel, showSat, notableOnly, follow.ids]);
   const points: MapPoint[] = useMemo(() => shown.map((s) => ({
     id: String(s.mmsi), lon: s.lon, lat: s.lat, color: s.sat ? faded(TYPE_COL[s.type] ?? TYPE_COL.Other) : TYPE_COL[s.type] ?? TYPE_COL.Other, heading: s.heading, moving: (s.speed ?? 0) > 0.5,
-    label: s.name || undefined, approx: s.sat,
-  })), [shown]);
+    label: s.name || undefined, approx: s.sat, ring: s.tag ? tagColor(s.tag) : undefined, pin: follow.ids.has(String(s.mmsi)),
+  })), [shown, follow.ids]);
 
   const live = useJSON<any>(sel ? `/api/v1/mkt/ship/live/${sel}` : null, 30_000);
   const det = live.current ? live.data : null;
-  const lines: MapLine[] = useMemo(() => (det?.track?.length > 1
-    ? [{ coords: det.track.map((p: any) => [p[2], p[1]] as [number, number]), color: 'rgb(var(--c-bloomberg))', width: 2 }] : []), [det]);
-  const markers: MapMarker[] = useMemo(() => (showPorts ? (ports.data?.ports ?? []).map((p: any) => ({
-    lon: p.lon, lat: p.lat, id: p.port, color: p.anchored >= 20 ? 'rgb(var(--c-red))' : p.anchored >= 8 ? 'rgb(var(--c-amber))' : 'rgb(var(--c-text-tertiary))',
-    r: 4 + Math.min(14, Math.sqrt(p.anchored) * 1.6), fill: true, label: `${p.port}${p.anchored ? ` · ${p.anchored} waiting` : ''}`,
-  })) : []), [ports.data, showPorts]);
+  const lines: MapLine[] = useMemo(() => {
+    const out: MapLine[] = [];
+    if (det?.track?.length > 1) out.push({ coords: det.track.map((p: any) => [p[2], p[1]] as [number, number]), color: 'rgb(var(--c-bloomberg))', width: 2 });
+    const to = det?.voyage?.port, from = det?.voyage?.from;
+    if (det?.lat != null && to?.lat != null) out.push({ coords: greatCircle([det.lon, det.lat], [to.lon, to.lat]), color: 'rgb(var(--c-text-secondary))', width: 1.3, dash: [6, 4] });
+    if (det?.lat != null && from?.lat != null) out.push({ coords: greatCircle([from.lon, from.lat], [det.lon, det.lat]), color: 'rgb(var(--c-text-tertiary))', width: 1, dash: [2, 4] });
+    return out;
+  }, [det]);
+  const markers: MapMarker[] = useMemo(() => {
+    const out: MapMarker[] = showPorts ? (ports.data?.ports ?? []).map((p: any) => ({
+      lon: p.lon, lat: p.lat, id: p.port, color: p.anchored >= 20 ? 'rgb(var(--c-red))' : p.anchored >= 8 ? 'rgb(var(--c-amber))' : 'rgb(var(--c-text-tertiary))',
+      r: 4 + Math.min(14, Math.sqrt(p.anchored) * 1.6), fill: true, label: `${p.port}${p.anchored ? ` · ${p.anchored} waiting` : ''}`,
+    })) : [];
+    const to = det?.voyage?.port;
+    if (to?.lat != null) out.push({ lon: to.lon, lat: to.lat, color: 'rgb(var(--c-bloomberg))', r: 6, fill: true, label: `→ ${to.name}` });
+    return out;
+  }, [ports.data, showPorts, det]);
 
   const inView = useMemo(() => (bounds ? shown.filter((s) => s.lat >= bounds.south && s.lat <= bounds.north
     && (bounds.east - bounds.west >= 360 || ((s.lon - bounds.west + 360) % 360) <= ((bounds.east - bounds.west + 360) % 360))) : shown), [shown, bounds]);
@@ -131,6 +153,8 @@ export function ShipTracker() {
             <div className="flex gap-1 bg-surface-1/85 border border-border px-1.5 py-1">
               {PHASES.map(([k, l]) => <button key={k} onClick={() => setPhase(k)} className={cn('px-1', phase === k ? 'text-bloomberg' : 'text-text-secondary')}>{l}</button>)}
               <label className="inline-flex items-center gap-1 ml-1 cursor-pointer"><input type="checkbox" checked={showPorts} onChange={(e) => setShowPorts(e.target.checked)} />ports</label>
+              <label className="inline-flex items-center gap-1 ml-1 cursor-pointer" title="Only sanctioned, military, gas carriers, giants, dangerous cargo and tankers in hot zones">
+                <input type="checkbox" checked={notableOnly} onChange={(e) => setNotableOnly(e.target.checked)} />notable only</label>
               <label className="inline-flex items-center gap-1 ml-1 cursor-pointer" title="Vessels outside live receiver range, at their last satellite position (a few days old)">
                 <input type="checkbox" checked={showSat} onChange={(e) => setShowSat(e.target.checked)} />satellite (faint)</label>
             </div>
@@ -138,8 +162,16 @@ export function ShipTracker() {
         </LiveMap>
         <div className="space-y-2 min-w-0">
           {sel != null ? <ShipCard mmsi={sel} ship={byId.get(String(sel))} det={det} loading={live.loading && !det} error={live.error}
-              onClose={() => setSel(null)} onRegistry={(q) => setRegistry(q)} />
-            : registry ? null : <ViewPanel stats={viewStats} inView={inView} onPick={(s) => setSel(s.mmsi)} />}
+              onClose={() => setSel(null)} onRegistry={(q) => setRegistry(q)} follow={follow} />
+            : registry ? null : <>
+              <div className="flex gap-1 text-[11px]">{([['view', 'In view'], ['notable', `Notable ${notable.data?.total ?? ''}`], ['follow', `Following ${follow.list.length}`]] as const).map(([k, l]) => (
+                <button key={k} onClick={() => setTab(k)} className={cn('flex-1 px-2 py-1 border', tab === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{l}</button>))}</div>
+              {tab === 'view' && <ViewPanel stats={viewStats} inView={inView} onPick={(s) => setSel(s.mmsi)} />}
+              {tab === 'notable' && <NotablePanel data={notable.data} loading={notable.loading} follow={follow}
+                onPick={(x) => { setSel(x.mmsi); map.current?.flyTo({ lon: x.lon, lat: x.lat, zoom: Math.max(bounds?.zoom ?? 0, 7) }); }} />}
+              {tab === 'follow' && <FollowPanel follow={follow} byId={byId}
+                onPick={(m) => { const s2 = byId.get(m); setSel(Number(m)); if (s2) map.current?.flyTo({ lon: s2.lon, lat: s2.lat, zoom: Math.max(bounds?.zoom ?? 0, 7) }); }} />}
+            </>}
           {registry && <VesselCard query={registry} live={undefined} onClose={() => setRegistry(null)} />}
         </div>
       </div>
@@ -179,7 +211,8 @@ function ViewPanel({ stats, inView, onPick }: { stats: { t: Record<string, numbe
   );
 }
 
-function ShipCard({ mmsi, ship, det, loading, error, onClose, onRegistry }: { mmsi: number; ship?: Sh; det: any; loading: boolean; error: string | null; onClose: () => void; onRegistry: (q: string) => void }) {
+function ShipCard({ mmsi, ship, det, loading, error, onClose, onRegistry, follow }: { mmsi: number; ship?: Sh; det: any; loading: boolean; error: string | null;
+  onClose: () => void; onRegistry: (q: string) => void; follow: ReturnType<typeof useFollow> }) {
   const d = det ?? {};
   const name = d.name || ship?.name || `MMSI ${mmsi}`;
   // distance and average speed over the stored track
@@ -191,13 +224,28 @@ function ShipCard({ mmsi, ship, det, loading, error, onClose, onRegistry }: { mm
   }, 0);
   const hours = det?.track?.length > 1 ? (det.track[det.track.length - 1][0] - det.track[0][0]) / 3600 : 0;
   const v = (x: any, unit = '') => (x == null || x === '' ? '—' : `${x}${unit}`);
+  const followed = follow.isFollowed(String(mmsi));
+  const fNote = follow.list.find((f) => f.id === String(mmsi))?.note ?? '';
+  const pf = d.profile ?? {}, voy = d.voyage, lp = d.last_port;
   return (
-    <div className="border border-border bg-surface-1 p-2.5 text-xs space-y-2 max-h-[600px] overflow-y-auto">
+    <div className="border border-border bg-surface-1 p-2.5 text-xs space-y-2 max-h-[720px] overflow-y-auto">
       <div className="flex items-start justify-between gap-2">
         <div><div className="text-base font-semibold text-text-primary">{name}</div>
           <div className="text-[11px] text-text-secondary"><span style={{ color: TYPE_COL[d.type ?? ship?.type ?? 'Unknown'] }}>{d.type ?? ship?.type}</span>{d.flag ? ` · ${d.flag} flag` : ''}</div></div>
-        <button onClick={onClose} className="text-text-tertiary hover:text-text-primary" aria-label="Close"><X className="w-4 h-4" /></button>
+        <div className="flex items-center gap-1">
+          <button onClick={() => follow.toggle(String(mmsi), name, d.notable?.[0])} title={followed ? 'Stop following' : 'Follow this ship'}
+            className={cn('inline-flex items-center gap-1 px-2 py-0.5 border text-[11px]', followed ? 'border-[rgb(234_179_8)] text-[rgb(202_138_4)]' : 'border-border text-text-secondary')}>
+            <Star className={cn('w-3 h-3', followed && 'fill-current')} />{followed ? 'Following' : 'Follow'}</button>
+          <button onClick={onClose} className="text-text-tertiary hover:text-text-primary" aria-label="Close"><X className="w-4 h-4" /></button>
+        </div>
       </div>
+      {d.sanctions && <div className="px-2 py-1.5 border border-red/50 bg-red/[0.07] text-[11px] text-red rounded">
+        <b>Sanctioned — US Treasury OFAC SDN list.</b> Programme: {d.sanctions.program}{d.sanctions.name && d.sanctions.name !== name ? ` · listed as ${d.sanctions.name}` : ''}
+        {d.sanctions.flag ? ` · listed flag ${d.sanctions.flag}` : ''}. Matched by {d.sanctions.match}.</div>}
+      {d.notable?.filter((r: string) => !r.startsWith('US sanctions')).length > 0 && <div className="flex flex-wrap gap-1">{d.notable.filter((r: string) => !r.startsWith('US sanctions')).map((r: string) => (
+        <span key={r} className="px-1.5 py-0.5 rounded border border-amber/50 text-amber text-[10px]">{r}</span>))}</div>}
+      {followed && <textarea value={fNote} onChange={(e) => follow.setNote(String(mmsi), e.target.value)} rows={2} placeholder="Your notes on this ship…"
+        className="w-full bg-surface-2 border border-border px-2 py-1 text-[11px] text-text-primary" aria-label="Notes" />}
       {(det || !loading) && <Photos kind="ship" imo={d.imo} name={name} />}
       {d.note && <p className="text-[11px] text-amber">{d.note}</p>}
       {loading && <Loading label="Reading the live picture…" />}
@@ -211,12 +259,81 @@ function ShipCard({ mmsi, ship, det, loading, error, onClose, onRegistry }: { mm
           ['MMSI', String(mmsi)], ['IMO', v(d.imo)], ['Position', d.lat != null ? `${d.lat.toFixed(3)}, ${d.lon.toFixed(3)}` : '—']].map(([k, x]) => (
           <div key={k}><div className="text-text-tertiary">{k}</div><div className="font-mono text-text-primary truncate" title={String(x)}>{x}</div></div>))}
       </div>
+      <div className="border-t border-border-subtle pt-2 space-y-1">
+        <div className="text-[10px] uppercase tracking-wide text-text-tertiary">Voyage</div>
+        <div className="flex items-center gap-2 text-[11px]">
+          <div className="flex-1 min-w-0"><div className="text-text-tertiary">From</div>
+            <div className="text-text-primary truncate">{voy?.from ? `${voy.from.name} (${voy.from.country})` : lp ? `${lp.port ?? 'Anchorage'}${lp.country ? `, ${lp.country}` : ''}` : '—'}</div>
+            {!voy?.from && lp && <div className="text-[10px] text-text-tertiary">last port call, left {String(lp.departed).slice(0, 10)}</div>}</div>
+          <span className="text-bloomberg">→</span>
+          <div className="flex-1 min-w-0 text-right"><div className="text-text-tertiary">To</div>
+            <div className="text-text-primary truncate" title={voy?.raw}>{voy?.port ? `${voy.port.name} (${voy.port.country})` : d.destination || '—'}</div>
+            {d.eta && <div className="text-[10px] text-text-tertiary">ETA {d.eta} UTC</div>}</div>
+        </div>
+        {voy && !voy.port && d.destination && <div className="text-[10px] text-text-tertiary">Destination as typed by the crew: “{d.destination}” (not a port code)</div>}
+      </div>
+      <div className="border-t border-border-subtle pt-2 space-y-1">
+        <div className="text-[10px] uppercase tracking-wide text-text-tertiary">Cargo & vessel</div>
+        <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+          {[['Class', pf.class ? `${pf.class}${pf.size_from === 'tonnage' ? ' (est. from tonnage)' : ''}` : null], ['Likely cargo', pf.cargo], ['Load', pf.laden ? pf.laden : null], ['Dangerous goods', pf.hazard ? pf.hazard.replace('Dangerous goods / pollutant, ', '') : 'none declared'],
+            ['Owner', d.owners?.[0]?.name], ['Built', d.built], ['Gross tonnage', d.tonnage_gt ? Math.round(d.tonnage_gt).toLocaleString() : null], ['Flag', d.flag]].map(([k, x]) => (
+            <div key={k as string}><div className="text-text-tertiary">{k}</div><div className={cn('text-text-primary truncate', k === 'Load' && x === 'laden' && 'text-amber')} title={String(x ?? '')}>{x ?? '—'}</div></div>))}
+        </div>
+        {pf.laden_note && <div className="text-[10px] text-text-tertiary">{pf.laden_note}.</div>}
+      </div>
       {hours > 0.2 && <div className="text-[11px] text-text-secondary border-t border-border-subtle pt-2">Last {hours.toFixed(1)} h: {Math.round(trackKm).toLocaleString()} km
         {trackKm > 1 ? ` at ${(trackKm / 1.852 / hours).toFixed(1)} kn on average` : ' — stationary'} (orange track on the map).</div>}
-      {d.draught && d.length_m && d.type === 'Tanker' && <div className="text-[10px] text-text-tertiary">Draught is the crew-entered maximum: a deep draught relative to the hull usually means a laden tanker.</div>}
       <button onClick={() => onRegistry(d.imo ? String(d.imo) : String(mmsi))} className="w-full py-1.5 border border-border text-[11px] text-text-secondary hover:text-bloomberg hover:border-bloomberg">
         Registry, owners & port calls (Global Fishing Watch)</button>
     </div>
+  );
+}
+
+function NotablePanel({ data, loading, follow, onPick }: { data: any; loading: boolean; follow: ReturnType<typeof useFollow>; onPick: (x: any) => void }) {
+  const [only, setOnly] = useState<string>('');
+  if (loading && !data) return <Loading label="Checking ships against the sanctions list…" />;
+  if (!data) return null;
+  const list = (data.ships as any[]).filter((x) => !only || x.tags.includes(only));
+  return (
+    <div className="border border-border bg-surface-1">
+      <div className="flex flex-wrap gap-1 p-2 text-[10px]">
+        <button onClick={() => setOnly('')} className={cn('px-1.5 border', !only ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>All {data.total}</button>
+        {TAGS.map(([k, l, col]) => (
+          <button key={k} onClick={() => setOnly(k)} className={cn('px-1.5 border inline-flex items-center gap-1', only === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>
+            <span className="w-2 h-2 rounded-full border-2" style={{ borderColor: col }} />{l} {data.counts?.[k] ?? 0}</button>))}
+      </div>
+      <ul className="max-h-[440px] overflow-y-auto divide-y divide-border-subtle">{list.slice(0, 300).map((x) => (
+        <li key={x.mmsi}><button onClick={() => onPick(x)} className="w-full text-left px-2 py-1.5 hover:bg-surface-3 flex gap-2 items-start">
+          <span className="mt-1 w-2 h-2 rounded-full border-2 shrink-0" style={{ borderColor: tagColor(x.tags) }} />
+          <span className="min-w-0 flex-1"><span className="text-[11px] text-text-primary">{x.name}</span>
+            <span className="text-[10px] text-text-tertiary"> · {x.type}{x.satellite ? ' · satellite' : x.speed != null ? ` · ${x.speed} kn` : ''}{x.destination ? ` · → ${x.destination}` : ''}</span>
+            <span className="block text-[10px] text-text-secondary truncate" title={x.reasons.join('; ')}>{x.reasons.join(' · ')}</span></span>
+          {follow.isFollowed(String(x.mmsi)) && <Star className="w-3 h-3 text-[rgb(202_138_4)] fill-current shrink-0" />}
+        </button></li>))}</ul>
+      <p className="p-2 text-[10px] text-text-tertiary">{data.note}</p>
+    </div>
+  );
+}
+
+function FollowPanel({ follow, byId, onPick }: { follow: ReturnType<typeof useFollow>; byId: Map<string, Sh>; onPick: (mmsi: string) => void }) {
+  if (!follow.list.length) return <p className="border border-border bg-surface-1 p-3 text-[11px] text-text-tertiary">Nothing followed yet — open a ship and press <b>Follow</b>. Followed ships get a gold ring and a label on the map, and your notes are kept here.</p>;
+  return (
+    <ul className="border border-border bg-surface-1 divide-y divide-border-subtle max-h-[520px] overflow-y-auto">{follow.list.map((f) => {
+      const s = byId.get(f.id);
+      return (
+        <li key={f.id} className="px-2 py-1.5">
+          <div className="flex items-center gap-2">
+            <Star className="w-3 h-3 text-[rgb(202_138_4)] fill-current shrink-0" />
+            <button onClick={() => onPick(f.id)} className="text-[11px] text-text-primary hover:text-bloomberg truncate">{f.label}</button>
+            <span className="text-[10px] text-text-tertiary">{s ? (s.sat ? 'satellite position' : s.phase === 'underway' ? `${s.speed ?? '?'} kn` : s.phase) : 'not heard now'}</span>
+            <button onClick={() => follow.remove(f.id)} className="ml-auto text-text-tertiary hover:text-red" aria-label="Stop following"><X className="w-3 h-3" /></button>
+          </div>
+          {f.reason && <div className="text-[10px] text-amber">{f.reason}</div>}
+          <textarea value={f.note} onChange={(e) => follow.setNote(f.id, e.target.value)} rows={1} placeholder="Notes…" aria-label={`Notes on ${f.label}`}
+            className="mt-1 w-full bg-surface-2 border border-border-subtle px-1.5 py-0.5 text-[11px] text-text-primary" />
+          <div className="text-[9px] text-text-tertiary">following since {f.added.replace('T', ' ')}</div>
+        </li>);
+    })}</ul>
   );
 }
 

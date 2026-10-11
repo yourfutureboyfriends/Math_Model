@@ -417,7 +417,8 @@ MID = {201: "Albania", 205: "Belgium", 209: "Cyprus", 210: "Cyprus", 211: "Germa
 NAV_STATUS = {0: "Under way (engine)", 1: "At anchor", 2: "Not under command", 3: "Restricted manoeuvrability", 4: "Constrained by draught",
               5: "Moored", 6: "Aground", 7: "Fishing", 8: "Under way (sailing)", 14: "AIS-SART (distress)"}
 TYPE_CODES = ["Cargo", "Tanker", "Passenger", "Fishing", "Tug", "Towing", "Military", "Sailing/pleasure", "Other", "Unknown"]
-WORLD_SHIP_COLS = ["mmsi", "lat", "lon", "speed", "heading", "type", "status", "name", "sat"]   # sat: 1 = GFW position (days old)
+WORLD_SHIP_COLS = ["mmsi", "lat", "lon", "speed", "heading", "type", "status", "name", "sat", "tag"]   # sat: 1 = GFW position (days old)
+# tag letters (vessel_intel.notable_reasons): s sanctioned, m military, l gas carrier, g giant, h dangerous goods, z tanker in a hot zone
 
 
 def flag_of(mmsi: Any) -> Optional[str]:
@@ -566,8 +567,12 @@ def _sat_rows() -> List[list]:
                 return (z / 0xFFFFFFFFFFFFFFFF - 0.5) * 0.095
             def wrap(lon: float) -> float:                  # scatter near the date line must stay on the map
                 return ((lon + 180) % 360) - 180
+            from api.marketdata import vessel_intel as VI
+
+            def tag(m: int, p: list) -> str:
+                return "".join(t for _, t, _ in VI.notable_reasons({"mmsi": m, "imo": p[5], "name": p[4], "type": p[2], "lat": p[0], "lon": p[1]}))
             _sat_cache["rows"] = [[m, round(max(-89.99, min(89.99, p[0] + jit(m, 1))), 4), round(wrap(p[1] + jit(m, 2)), 4), None, None,
-                                   idx.get(p[2], idx["Other"]), None, p[4], 1] for m, p in _presence["rows"].items()]
+                                   idx.get(p[2], idx["Other"]), None, p[4], 1, tag(m, p)] for m, p in _presence["rows"].items()]
             _sat_cache["built"] = _presence.get("built")
         return _sat_cache["rows"]
 
@@ -583,6 +588,7 @@ def world_vessels() -> Dict[str, Any]:
         raise NotFound("Global ship tracking needs a free aisstream.io key (AISSTREAM_API_KEY).")
 
     def build():
+        from api.marketdata import vessel_intel as VI
         rows, by_type, phase = [], {t: 0 for t in TYPE_CODES}, {"underway": 0, "anchored": 0, "moored": 0}
         idx = {t: i for i, t in enumerate(TYPE_CODES)}
         live_ids = set()
@@ -594,7 +600,8 @@ def world_vessels() -> Dict[str, Any]:
             phase[_phase(v)] += 1
             hd = v.get("heading") if v.get("heading") is not None else v.get("course")
             rows.append([v["mmsi"], round(v["lat"], 4), round(v["lon"], 4), round(v["speed"], 1) if v.get("speed") is not None else None,
-                         round(hd) if hd is not None else None, ti, v.get("status"), v.get("name") or "", 0])
+                         round(hd) if hd is not None else None, ti, v.get("status"), v.get("name") or "", 0,
+                         "".join(t for _, t, _ in VI.notable_reasons(v))])
         n_live = len(rows)
         sat_by_type = {t: 0 for t in TYPE_CODES}
         for r in _sat_rows():                          # prebuilt once per daily snapshot
@@ -616,6 +623,45 @@ def world_vessels() -> Dict[str, Any]:
     return _cached("ship:world", 15, build)
 
 
+TAG_NAMES = {"s": "Sanctioned (OFAC)", "m": "Military", "l": "Gas carriers", "g": "Giants (VLCC / ULCV)", "h": "Dangerous goods (cat. A)",
+             "z": "Tankers in hot zones"}
+
+
+def notable_ships(limit: int = 600) -> Dict[str, Any]:
+    """Ships worth following, with the reason: sanctioned vessels first, then warships, gas carriers,
+    giants, dangerous cargo and tankers in the Gulf / Red Sea / Black Sea / Taiwan Strait."""
+    def build():
+        from api.marketdata import vessel_intel as VI
+        w = world_vessels()
+        ix = {c: i for i, c in enumerate(w["cols"])}
+        col = ais_collector()
+        out, counts = [], {k: 0 for k in TAG_NAMES}
+        for r in w["rows"]:
+            tags = r[ix["tag"]]
+            if not tags:
+                continue
+            m = r[ix["mmsi"]]
+            if r[ix["sat"]]:
+                p = _presence["rows"].get(m) or [None] * 8
+                rec = {"mmsi": m, "imo": p[5], "name": p[4], "type": p[2], "lat": r[ix["lat"]], "lon": r[ix["lon"]]}
+            else:
+                with col.lock:
+                    rec = dict(col.ships.get(m) or {})
+            reasons = VI.notable_reasons(rec)
+            for t in set(tags):
+                if t in counts:
+                    counts[t] += 1
+            out.append({"mmsi": m, "name": r[ix["name"]] or f"MMSI {m}", "type": w["types"][r[ix["type"]]], "lat": r[ix["lat"]], "lon": r[ix["lon"]],
+                        "speed": r[ix["speed"]], "satellite": bool(r[ix["sat"]]), "tags": tags, "priority": reasons[0][0] if reasons else 9,
+                        "reasons": [x for _, _, x in reasons], "destination": (rec.get("destination") or None) if not r[ix["sat"]] else None})
+        out.sort(key=lambda x: (x["priority"], x["satellite"], x["name"]))
+        return {"ships": out[:limit], "total": len(out), "counts": counts, "tag_names": TAG_NAMES,
+                "source": "OFAC SDN list (US Treasury), live AIS and Global Fishing Watch positions",
+                "note": "Sanctioned = the IMO or MMSI appears on the US Treasury's SDN list. Sizes and gas carriers come from AIS dimensions "
+                        "and names; hot zones are the Gulf/Hormuz, Red Sea, Gulf of Aden, Black Sea and Taiwan Strait."}
+    return _cached("ship:notable", 60, build)
+
+
 def vessel_live(mmsi: int) -> Dict[str, Any]:
     col = ais_collector()
     v = col.one(int(mmsi)) if col else None
@@ -623,15 +669,53 @@ def vessel_live(mmsi: int) -> Dict[str, Any]:
         p = _presence["rows"].get(int(mmsi))
         if not p:
             raise NotFound(f"No recent AIS position for MMSI {mmsi}.")
-        flag = FLAGS.get(p[3], p[3]) if p[3] else flag_of(mmsi)
-        return {"mmsi": int(mmsi), "name": p[4] or None, "type": p[2], "imo": p[5] or None, "callsign": p[6] or None, "lat": p[0], "lon": p[1],
-                "flag": flag, "phase": None, "status_text": f"Satellite position ({(p[7] or '')[:16].replace('T', ' ')} UTC)", "satellite": True,
-                "position_time": p[7], "track": [],
-                "note": "Outside live receiver range: last position from Global Fishing Watch satellite AIS (a few days old, ±5 km)."}
+        return _enrich({"mmsi": int(mmsi), "name": p[4] or None, "type": p[2], "imo": p[5] or None, "callsign": p[6] or None,
+                        "lat": p[0], "lon": p[1], "flag": FLAGS.get(p[3], p[3]) if p[3] else flag_of(mmsi), "phase": None,
+                        "status_text": f"Satellite position ({(p[7] or '')[:16].replace('T', ' ')} UTC)", "satellite": True,
+                        "position_time": p[7], "track": [],
+                        "note": "Outside live receiver range: last position from Global Fishing Watch satellite AIS (a few days old, ±5 km)."})
     out = {k: v.get(k) for k in ("mmsi", "name", "type", "type_code", "callsign", "imo", "destination", "eta", "draught", "length_m", "beam_m",
                                   "lat", "lon", "speed", "course", "heading", "status")}
     out.update({"flag": flag_of(v.get("mmsi")), "status_text": NAV_STATUS.get(v.get("status")), "phase": _phase(v),
                 "seen_s": round(time_now() - v.get("seen", time_now())), "track": v.get("track") or []})
+    return _enrich(out)
+
+
+def _enrich(out: Dict[str, Any]) -> Dict[str, Any]:
+    """Voyage, cargo profile, sanctions and notable reasons for one vessel record."""
+    from api.marketdata import vessel_intel as VI
+    out["profile"] = VI.profile(out)
+    out["voyage"] = VI.decode_dest(out.get("destination"))
+    s = VI.sanctioned(out.get("imo"), out.get("mmsi"))
+    out["sanctions"] = s
+    out["notable"] = [r for _, _, r in VI.notable_reasons(out)]
+    # where it came from: the last completed port call (Global Fishing Watch, cached 6 h)
+    try:
+        info = vessel_info(str(out.get("imo") or out.get("mmsi")))
+        calls = [c for c in info.get("port_calls") or [] if c.get("departed")]
+        if calls:
+            out["last_port"] = calls[0]
+        out["owners"] = info.get("owners")
+        out["built"] = info.get("built")
+        out["tonnage_gt"] = info.get("tonnage_gt")
+        # satellite-only ships carry no AIS dimensions: the registry's length and type fill the profile
+        refine = False
+        if not out.get("length_m") and info.get("length_m"):
+            out["length_m"], refine = info["length_m"], True
+        if info.get("tonnage_gt"):
+            refine = True
+        sanc_type = ((out.get("sanctions") or {}).get("type") or "")
+        types = (" ".join(info.get("types") or []) + " " + sanc_type).upper()
+        if out.get("type") in (None, "Other", "Unknown") and types:
+            t = "Tanker" if "TANKER" in types or "LNG" in types or "LPG" in types else "Cargo" if any(k in types for k in ("CARGO", "CONTAINER", "BULK", "CARRIER")) \
+                else "Passenger" if "PASSENGER" in types else "Fishing" if "FISH" in types else None
+            if t:
+                out["type"], refine = t, True
+        if refine:
+            out["profile"] = VI.profile(out)
+            out["notable"] = [r for _, _, r in VI.notable_reasons(out)]
+    except Exception as e:
+        logger.debug("[ship] no GFW record for %s: %s", out.get("mmsi"), e)
     return out
 
 

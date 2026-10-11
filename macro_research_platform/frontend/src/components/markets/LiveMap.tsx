@@ -15,6 +15,7 @@ export type MapPoint = {
   big?: boolean;                     // emphasised (emergency, selected kind…)
   ring?: string;                     // outline colour (e.g. military)
   approx?: boolean;                  // position known only roughly (satellite grid): hidden where it falls on land
+  pin?: boolean;                     // followed: gold ring and a label at every zoom
   label?: string;                    // drawn next to the point when zoomed in
 };
 export type MapLine = { coords: [number, number][]; color: string; width?: number; dash?: number[] };
@@ -291,6 +292,7 @@ export const LiveMap = forwardRef<LiveMapHandle, {
     const counts = dense ? new Float32Array(gw * gh) : null;
     const byColor = new Map<string, number[]>();                     // batch dots by colour
     const pendingLabels: [number, number, string][] = [];               // drawn last, above land and markers
+    const ringed: [number, number, MapPoint][] = [], pinned: [number, number, MapPoint][] = [];
     for (let i = 0; i < points.length; i++) {
       const p = points[i];
       const x0 = worldX(p.lon, s) + ox;
@@ -304,7 +306,9 @@ export const LiveMap = forwardRef<LiveMapHandle, {
       if ((p.approx || occludeLand) && p.id !== selected && landTest && ctx.isPointInPath(landTest.path, x * dpr, y * dpr, landTest.rule)) continue;
       xs[m] = x; ys[m] = y; ids[m] = p.id; m++;
       if (p.id === selected) { if (!sel || Math.abs(x - W / 2) < Math.abs(sel.x - W / 2)) sel = { x, y, p }; continue; }
-      if (counts) { const gx = Math.floor(x / cell), gy = Math.floor(y / cell); if (gx >= 0 && gy >= 0 && gx < gw && gy < gh) counts[gy * gw + gx] += 1; continue; }
+      if (p.pin) { pinned.push([x, y, p]); continue; }
+      if (counts && !p.ring) { const gx = Math.floor(x / cell), gy = Math.floor(y / cell); if (gx >= 0 && gy >= 0 && gx < gw && gy < gh) counts[gy * gw + gx] += 1; continue; }
+      if (counts && p.ring) { ringed.push([x, y, p]); continue; }       // notable: drawn over the density layer
       if (glyphs || p.big || p.ring) {
         drawGlyph(ctx, glyph, x, y, p, glyphs, c, dot);
       } else {
@@ -314,6 +318,7 @@ export const LiveMap = forwardRef<LiveMapHandle, {
       }
     }
     if (counts) drawDensity(ctx, counts, gw, gh);
+    for (const [x, y, p] of ringed) drawGlyph(ctx, glyph, x, y, p, false, c, dot + 1);
     for (const [col, arr] of byColor) {
       ctx.fillStyle = c(col);
       for (let i = 0; i < arr.length; i += 2) ctx.fillRect(arr[i] - dot / 2, arr[i + 1] - dot / 2, dot, dot);
@@ -321,6 +326,16 @@ export const LiveMap = forwardRef<LiveMapHandle, {
     if (occludeLand) { drawLand(); drawOverlays(); }
     ctx.font = '9px ui-monospace, monospace'; ctx.fillStyle = c('rgb(var(--c-text-tertiary))');
     for (const [x, y, t] of pendingLabels) if (labelOk(x, y)) ctx.fillText(t, x + 6, y - 4);
+    // followed: above everything, gold ring, always labelled
+    for (const [x, y, p] of pinned) {
+      ctx.beginPath(); ctx.arc(x, y, 8, 0, 2 * Math.PI); ctx.strokeStyle = 'rgb(234 179 8)'; ctx.lineWidth = 2; ctx.stroke();
+      drawGlyph(ctx, glyph, x, y, { ...p, ring: undefined }, true, c, dot);
+      if (p.label) {
+        ctx.font = '600 10px ui-sans-serif, system-ui'; const tw = ctx.measureText(p.label).width;
+        ctx.fillStyle = 'rgb(234 179 8 / 0.92)'; ctx.fillRect(x + 10, y - 16, tw + 8, 14);
+        ctx.fillStyle = 'rgb(20 20 20)'; ctx.fillText(p.label, x + 14, y - 5);
+      }
+    }
     if (sel) {
       ctx.beginPath(); ctx.arc(sel.x, sel.y, 11, 0, 2 * Math.PI);
       ctx.strokeStyle = c('rgb(var(--c-text-primary))'); ctx.lineWidth = 1.5; ctx.stroke();

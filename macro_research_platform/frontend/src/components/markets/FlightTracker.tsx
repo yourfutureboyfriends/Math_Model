@@ -3,7 +3,8 @@
 // seconds-old adsb.fi data with model, operator, Mach, wind and temperature. Click an aircraft for
 // its route, airframe, photo and the track it has flown.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plane, Search, X } from 'lucide-react';
+import { Plane, Search, Star, X } from 'lucide-react';
+import { useFollow } from './follow';
 import { cn } from '@/lib/utils';
 import { ErrorBox, Loading, useJSON } from './shared';
 import { Photos } from './Photos';
@@ -34,7 +35,12 @@ const altColor = (alt: number | null, ground: boolean) => (ground ? ALT_BANDS[0]
   : (ALT_BANDS.slice(1).find(([, max]) => alt < max) ?? ALT_BANDS[4])[2]);
 const airlineOf = (cs: string) => (/^[A-Z]{3}\d/.test(cs) ? cs.slice(0, 3) : null);
 
-type Ac = { hex: string; callsign: string; country?: string | null; lon: number; lat: number; alt: number | null; ground: boolean; speed: number | null;
+// notable reasons (backend tag letters) and their ring colours
+const FTAGS: [string, string, string][] = [['e', 'Emergency', 'rgb(239 68 68)'], ['v', 'VIP / government', 'rgb(234 179 8)'], ['m', 'Military', 'rgb(236 72 153)'],
+  ['n', 'Notable aircraft', 'rgb(168 85 247)'], ['c', 'Cargo', 'rgb(20 184 166)']];
+const ftagColor = (t: string) => FTAGS.find(([k]) => t.includes(k))?.[2];
+
+type Ac = { tag?: string; hex: string; callsign: string; country?: string | null; lon: number; lat: number; alt: number | null; ground: boolean; speed: number | null;
   track: number | null; vrate: number | null; squawk: string | null; fix: number; mil: boolean; type?: string | null; reg?: string | null; model?: string | null;
   operator?: string | null; live?: boolean; emergency?: string | null };
 
@@ -46,7 +52,10 @@ export function FlightTracker() {
   const [sel, setSel] = useState<string | null>(null);
   const [projectOn, setProjectOn] = useState(true);
   const [showGround, setShowGround] = useState(false);
-  const [only, setOnly] = useState<'all' | 'mil' | 'emerg'>('all');
+  const [only, setOnly] = useState<'all' | 'mil' | 'emerg' | 'notable'>('all');
+  const [tab, setTab] = useState<'view' | 'notable' | 'follow'>('view');
+  const follow = useFollow('plane');
+  const notable = useJSON<any>('/api/v1/mkt/fly/notable', 60_000);
   const [find, setFind] = useState('');
   const [now, setNow] = useState(() => Date.now() / 1000);
   const map = useRef<LiveMapHandle>(null);
@@ -69,7 +78,7 @@ export function FlightTracker() {
       const age = now - (r[ix.fix] ?? now);
       if (projectOn && !ground && speed > 60 && track != null && age > 0 && age < 1500) [lon, lat] = project(lon, lat, track, speed, age);
       out.set(r[ix.hex], { hex: r[ix.hex], callsign: r[ix.callsign] || '', country: r[ix.country], lon, lat, alt: r[ix.alt], ground, speed, track,
-        vrate: r[ix.vrate], squawk: r[ix.squawk], fix: r[ix.fix], mil: !!r[ix.mil], type: r[ix.type], emergency: EMERG[String(r[ix.squawk] ?? '')] ?? null });
+        vrate: r[ix.vrate], squawk: r[ix.squawk], fix: r[ix.fix], mil: !!r[ix.mil], type: r[ix.type], emergency: EMERG[String(r[ix.squawk] ?? '')] ?? null, tag: r[ix.tag] ?? '' });
     }
     if (area.data && liveArea) {
       const t = area.data.time ?? now;
@@ -77,17 +86,18 @@ export function FlightTracker() {
         const prev = out.get(a.hex);
         out.set(a.hex, { hex: a.hex, callsign: a.flight || prev?.callsign || '', country: prev?.country, lon: a.lon, lat: a.lat, alt: a.alt, ground: a.on_ground,
           speed: a.speed, track: a.track, vrate: a.vrate, squawk: a.squawk, fix: t - (a.seen_s ?? 0), mil: a.military || !!prev?.mil, type: a.type,
-          reg: a.reg, model: a.model, operator: a.operator, live: true, emergency: a.emergency });
+          reg: a.reg, model: a.model, operator: a.operator, live: true, emergency: a.emergency, tag: prev?.tag ?? (a.emergency ? 'e' : a.military ? 'm' : '') });
       }
     }
     return [...out.values()];
   }, [world.data, area.data, projectOn, now]);                 // eslint-disable-line react-hooks/exhaustive-deps
 
-  const shown = aircraft.filter((a) => (showGround || !a.ground || a.hex === sel) && (only === 'all' || (only === 'mil' ? a.mil : !!a.emergency) || a.hex === sel));
+  const shown = aircraft.filter((a) => follow.ids.has(a.hex) || ((showGround || !a.ground || a.hex === sel)
+    && (only === 'all' || (only === 'mil' ? a.mil : only === 'notable' ? !!a.tag : !!a.emergency) || a.hex === sel)));
   const points: MapPoint[] = useMemo(() => shown.map((a) => ({
     id: a.hex, lon: a.lon, lat: a.lat, color: a.emergency ? 'rgb(var(--c-red))' : altColor(a.alt, a.ground), heading: a.track, moving: !a.ground,
-    big: !!a.emergency, ring: a.mil ? 'rgb(236 72 153)' : undefined, label: a.callsign || undefined,
-  })), [shown]);
+    big: !!a.emergency, ring: a.tag ? ftagColor(a.tag) : a.mil ? 'rgb(236 72 153)' : undefined, label: a.callsign || undefined, pin: follow.ids.has(a.hex),
+  })), [shown, follow.ids]);
   const byHex = useMemo(() => new Map(aircraft.map((a) => [a.hex, a])), [aircraft]);
   const selAc = sel ? byHex.get(sel) : undefined;
   const detail = useJSON<any>(sel ? `/api/v1/mkt/fly/flight/${sel}${selAc?.callsign ? `?callsign=${encodeURIComponent(selAc.callsign)}` : ''}` : null, 20_000);
@@ -156,6 +166,8 @@ export function FlightTracker() {
           {w?.military} military</button>
         <button onClick={() => setOnly(only === 'emerg' ? 'all' : 'emerg')} className={cn('px-1.5 border', only === 'emerg' ? 'border-red text-red' : w?.emergencies?.length ? 'border-red/60 text-red' : 'border-border text-text-tertiary')}>
           {w?.emergencies?.length ?? 0} emergency squawk{w?.emergencies?.length === 1 ? '' : 's'}</button>
+        <button onClick={() => setOnly(only === 'notable' ? 'all' : 'notable')} title="VIP / government, military, notable aircraft, cargo flights, emergencies"
+          className={cn('px-1.5 border', only === 'notable' ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{notable.data?.total ?? '…'} notable</button>
         <span className="text-text-tertiary">in view <b className="font-mono text-text-secondary">{inView.length.toLocaleString()}</b></span>
         {w?.sweep && <span className="text-text-tertiary" title="adsb.fi + adsb.lol queried continuously around 60 hubs in China, Asia, the Middle East, Africa and Latin America, where OpenSky has few receivers">
           <span className="text-green">●</span> {w.sweep.live_aircraft.toLocaleString()} live at {w.sweep.hubs} emerging-market hubs (+{w.sweep.added} not in OpenSky)</span>}
@@ -184,13 +196,68 @@ export function FlightTracker() {
           </div>
         </LiveMap>
         <div className="space-y-2 min-w-0">
-          {sel ? <FlightCard hex={sel} ac={selAc} det={det} loading={detail.loading && !det} onClose={() => setSel(null)} />
-            : <ViewPanel stats={stats} inView={inView} onPick={(a) => { setSel(a.hex); }} />}
+          {sel ? <FlightCard hex={sel} ac={selAc} det={det} loading={detail.loading && !det} onClose={() => setSel(null)} follow={follow} />
+            : <>
+              <div className="flex gap-1 text-[11px]">{([['view', 'In view'], ['notable', `Notable ${notable.data?.total ?? ''}`], ['follow', `Following ${follow.list.length}`]] as const).map(([k, l]) => (
+                <button key={k} onClick={() => setTab(k)} className={cn('flex-1 px-2 py-1 border', tab === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{l}</button>))}</div>
+              {tab === 'view' && <ViewPanel stats={stats} inView={inView} onPick={(a) => { setSel(a.hex); }} />}
+              {tab === 'notable' && <NotableFlights data={notable.data} loading={notable.loading} follow={follow}
+                onPick={(x) => { setSel(x.hex); map.current?.flyTo({ lon: x.lon, lat: x.lat, zoom: Math.max(bounds?.zoom ?? 0, 6.5) }); }} />}
+              {tab === 'follow' && <FollowFlights follow={follow} byHex={byHex}
+                onPick={(h) => { const a = byHex.get(h); setSel(h); if (a) map.current?.flyTo({ lon: a.lon, lat: a.lat, zoom: Math.max(bounds?.zoom ?? 0, 6.5) }); }} />}
+            </>}
         </div>
       </div>
       <div className="text-[10px] text-text-tertiary">{w?.source}. {w?.note} Live areas: adsb.fi. Routes and airframes: adsbdb.com. Coverage depends on volunteer receivers
         (thin over oceans and Africa; mainland China restricts private receivers, so its domestic traffic is only partly visible on any free network); military flights often switch transponders off.{projectOn ? ' Snapshot positions are projected along each aircraft’s track to now.' : ''}</div>
     </div>
+  );
+}
+
+function NotableFlights({ data, loading, follow, onPick }: { data: any; loading: boolean; follow: ReturnType<typeof useFollow>; onPick: (x: any) => void }) {
+  const [only, setOnly] = useState('');
+  if (loading && !data) return <Loading label="Finding flights worth watching…" />;
+  if (!data) return null;
+  const list = (data.flights as any[]).filter((x) => !only || x.tags.includes(only));
+  return (
+    <div className="border border-border bg-surface-1">
+      <div className="flex flex-wrap gap-1 p-2 text-[10px]">
+        <button onClick={() => setOnly('')} className={cn('px-1.5 border', !only ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>All {data.total}</button>
+        {FTAGS.map(([k, l, col]) => (
+          <button key={k} onClick={() => setOnly(k)} className={cn('px-1.5 border inline-flex items-center gap-1', only === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>
+            <span className="w-2 h-2 rounded-full border-2" style={{ borderColor: col }} />{l} {data.counts?.[k] ?? 0}</button>))}
+      </div>
+      <ul className="max-h-[440px] overflow-y-auto divide-y divide-border-subtle">{list.map((x) => (
+        <li key={x.hex}><button onClick={() => onPick(x)} className="w-full text-left px-2 py-1.5 hover:bg-surface-3 flex gap-2 items-start">
+          <span className="mt-1 w-2 h-2 rounded-full border-2 shrink-0" style={{ borderColor: ftagColor(x.tags) }} />
+          <span className="min-w-0 flex-1"><span className="text-[11px] font-mono text-text-primary">{x.callsign}</span>
+            <span className="text-[10px] text-text-tertiary"> {x.type ?? ''}{x.alt != null ? ` · ${x.alt.toLocaleString()} ft` : ''}</span>
+            <span className="block text-[10px] text-text-secondary truncate">{x.reasons.join(' · ')}</span></span>
+          {follow.isFollowed(x.hex) && <Star className="w-3 h-3 text-[rgb(202_138_4)] fill-current shrink-0" />}
+        </button></li>))}</ul>
+      <p className="p-2 text-[10px] text-text-tertiary">{data.note}</p>
+    </div>
+  );
+}
+
+function FollowFlights({ follow, byHex, onPick }: { follow: ReturnType<typeof useFollow>; byHex: Map<string, Ac>; onPick: (hex: string) => void }) {
+  if (!follow.list.length) return <p className="border border-border bg-surface-1 p-3 text-[11px] text-text-tertiary">Nothing followed yet — open an aircraft and press <b>Follow</b>. It keeps a gold ring and a label on the map wherever it flies, with your notes here.</p>;
+  return (
+    <ul className="border border-border bg-surface-1 divide-y divide-border-subtle max-h-[520px] overflow-y-auto">{follow.list.map((f) => {
+      const a = byHex.get(f.id);
+      return (
+        <li key={f.id} className="px-2 py-1.5">
+          <div className="flex items-center gap-2">
+            <Star className="w-3 h-3 text-[rgb(202_138_4)] fill-current shrink-0" />
+            <button onClick={() => onPick(f.id)} className="text-[11px] font-mono text-text-primary hover:text-bloomberg">{f.label}</button>
+            <span className="text-[10px] text-text-tertiary">{a ? (a.ground ? 'on the ground' : `${a.alt?.toLocaleString() ?? '?'} ft · ${a.speed ?? '?'} kt`) : 'not in range now'}</span>
+            <button onClick={() => follow.remove(f.id)} className="ml-auto text-text-tertiary hover:text-red" aria-label="Stop following"><X className="w-3 h-3" /></button>
+          </div>
+          {f.reason && <div className="text-[10px] text-amber">{f.reason}</div>}
+          <textarea value={f.note} onChange={(e) => follow.setNote(f.id, e.target.value)} rows={1} placeholder="Notes…" aria-label={`Notes on ${f.label}`}
+            className="mt-1 w-full bg-surface-2 border border-border-subtle px-1.5 py-0.5 text-[11px] text-text-primary" />
+        </li>);
+    })}</ul>
   );
 }
 
@@ -226,7 +293,9 @@ function ViewPanel({ stats, inView, onPick }: { stats: { bands: { l: string; c: 
   );
 }
 
-function FlightCard({ hex, ac, det, loading, onClose }: { hex: string; ac?: Ac; det: any; loading: boolean; onClose: () => void }) {
+function FlightCard({ hex, ac, det, loading, onClose, follow }: { hex: string; ac?: Ac; det: any; loading: boolean; onClose: () => void; follow: ReturnType<typeof useFollow> }) {
+  const followed = follow.isFollowed(hex);
+  const fNote = follow.list.find((f) => f.id === hex)?.note ?? '';
   const live = det?.live, fr = det?.airframe, rt = det?.route, pg = det?.progress;
   const al = ac ? airlineOf(ac.callsign) : null;
   const v = (x: any, unit = '') => (x == null || x === '' ? '—' : `${typeof x === 'number' ? x.toLocaleString() : x}${unit}`);
@@ -240,8 +309,21 @@ function FlightCard({ hex, ac, det, loading, onClose }: { hex: string; ac?: Ac; 
             {ac?.emergency && <span className="ml-2 text-[10px] px-1 border border-red text-red">{ac.emergency}</span>}</div>
           <div className="text-[11px] text-text-secondary">{rt?.airline ?? (al ? AIRLINES[al] : null) ?? ac?.operator ?? fr?.owner ?? ''}{rt?.iata ? ` · ${rt.iata}` : ''}</div>
         </div>
-        <button onClick={onClose} className="text-text-tertiary hover:text-text-primary" aria-label="Close"><X className="w-4 h-4" /></button>
+        <div className="flex items-center gap-1">
+          <button onClick={() => follow.toggle(hex, ac?.callsign || hex.toUpperCase(), det?.notable?.[0])} title={followed ? 'Stop following' : 'Follow this aircraft'}
+            className={cn('inline-flex items-center gap-1 px-2 py-0.5 border text-[11px]', followed ? 'border-[rgb(234_179_8)] text-[rgb(202_138_4)]' : 'border-border text-text-secondary')}>
+            <Star className={cn('w-3 h-3', followed && 'fill-current')} />{followed ? 'Following' : 'Follow'}</button>
+          <button onClick={onClose} className="text-text-tertiary hover:text-text-primary" aria-label="Close"><X className="w-4 h-4" /></button>
+        </div>
       </div>
+      {det?.notable?.length > 0 && <div className="flex flex-wrap gap-1">{det.notable.map((r: string) => (
+        <span key={r} className={cn('px-1.5 py-0.5 rounded border text-[10px]', r.startsWith('Squawking') ? 'border-red text-red' : 'border-amber/60 text-amber')}>{r}</span>))}</div>}
+      {(det?.phase || det?.load) && <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+        <div><div className="text-text-tertiary">Phase of flight</div><div className="text-text-primary">{det?.phase ?? '—'}</div></div>
+        <div><div className="text-text-tertiary">{det?.load?.kind === 'cargo' ? 'Carrying' : 'Capacity'}</div><div className="text-text-primary">{det?.load?.label ?? '—'}</div></div>
+      </div>}
+      {followed && <textarea value={fNote} onChange={(e) => follow.setNote(hex, e.target.value)} rows={2} placeholder="Your notes on this flight…"
+        className="w-full bg-surface-2 border border-border px-2 py-1 text-[11px] text-text-primary" aria-label="Notes" />}
       {rt && rt.origin && rt.destination && (
         <div className={cn('border border-border-subtle p-2', rt.matches_position === false && 'opacity-60')}>
           <div className="flex items-center justify-between gap-2">

@@ -491,3 +491,54 @@ def test_cache_serves_stale_value_when_the_provider_fails(monkeypatch):
     with pytest.raises(core.Upstream):
         core._cached(key, 60, boom)
     core._cache.pop(key, None)
+
+
+# ── Ship and flight intelligence ────────────────────────────────────────────
+def _fake_ports(monkeypatch):
+    from api.marketdata import vessel_intel as V
+    monkeypatch.setattr(V, "ports", lambda: {"codes": {"SGSIN": ["Singapore", "SG", 1.28, 103.85], "RUNVS": ["Novorossiysk", "RU", 44.7, 37.8],
+                                                       "INSIK": ["Sika", "IN", 22.4, 69.8], "CNSHA": ["Shanghai Hongqiao International Apt", "CN", None, None]},
+                                             "names": {"SINGAPORE": "SGSIN"}})
+    return V
+
+
+def test_destination_decoding(monkeypatch):
+    V = _fake_ports(monkeypatch)
+    assert V.decode_dest(">SGSIN")["port"]["name"] == "Singapore"
+    r = V.decode_dest("RUNVS>INSIK")
+    assert r["from"]["code"] == "RUNVS" and r["port"]["code"] == "INSIK"
+    assert V.decode_dest("SINGAPORE")["port"]["code"] == "SGSIN"
+    sh = V.decode_dest("CN SHA")["port"]                      # listed as an airport without coordinates: pinned to the harbour
+    assert sh["lat"] and sh["name"] == "Shanghai"
+    assert V.decode_dest("FOR ORDERS") == {"raw": "FOR ORDERS", "port": None}
+
+
+def test_vessel_profile_classes_and_load():
+    from api.marketdata.vessel_intel import profile
+    p = profile({"type": "Tanker", "type_code": 80, "length_m": 333, "draught": 21.5, "name": "X"})
+    assert p["class"] == "VLCC" and p["cargo"] == "Crude oil" and p["laden"] == "laden"
+    assert profile({"type": "Tanker", "length_m": 333, "draught": 11, "name": "X"})["laden"] == "in ballast"
+    assert profile({"type": "Tanker", "name": "GASLOG LNG"})["cargo"].startswith("Liquefied gas")
+    assert profile({"type": "Cargo", "length_m": 399, "name": "MSC IRINA"})["class"] == "Ultra-large container ship"
+    assert profile({"type": "Cargo", "type_code": 71, "name": "X"})["hazard"].endswith("category A")
+    est = profile({"type": "Tanker", "tonnage_gt": 81328, "name": "X"})        # satellite-only: size from tonnage, no load guess
+    assert est["class"] == "Suezmax" and est["size_from"] == "tonnage" and est["laden"] is None
+
+
+def test_sanctions_match_by_imo_before_mmsi(monkeypatch):
+    from api.marketdata import vessel_intel as V
+    rec = {"name": "OLD NAME", "program": "IRAN] [SDGT", "type": "Crude Oil Tanker", "flag": "Panama"}
+    monkeypatch.setattr(V, "sanctions", lambda: {"imo:9123456": rec, "mmsi:111222333": rec})
+    assert V.sanctioned("9123456", None)["match"] == "IMO" and V.sanctioned("9123456", None)["program"] == "IRAN, SDGT"
+    assert V.sanctioned("9999999", "111222333") is None          # a known, different IMO wins over a reused MMSI
+    assert V.sanctioned(None, "111222333")["match"].startswith("MMSI")
+
+
+def test_flight_tags_and_load():
+    from api.marketdata.airtraffic import flight_tags, load_estimate, phase
+    assert [t for _, t, _ in flight_tags("SAM44", None, True, None)] == ["v", "m"]
+    assert [t for _, t, _ in flight_tags("SAMPLE1", None, False, None)] == []          # 'SAM' must be followed by digits
+    assert flight_tags("FDX12", "B77L", False, "7700")[0][1] == "e"
+    assert load_estimate("FDX12", "B77L", "777 FS2")["kind"] == "cargo"
+    assert load_estimate("CPA101", "A333", "A330 343X")["seats"] == 300
+    assert phase(5000, -900, False).startswith("Descending")

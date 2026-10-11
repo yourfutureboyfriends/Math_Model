@@ -5058,6 +5058,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mkt/ship/notable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Ships Notable
+         * @description Ships worth following: sanctioned, military, gas carriers, giants, dangerous cargo, tankers in hot zones.
+         */
+        get: operations["mkt_ships_notable_api_v1_mkt_ship_notable_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mkt/ship/live/{mmsi}": {
         parameters: {
             query?: never;
@@ -5130,6 +5150,26 @@ export interface paths {
          * @description Live, detailed aircraft around a point (adsb.fi; adsb.lol fallback).
          */
         get: operations["mkt_flights_area_api_v1_mkt_fly_area_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mkt/fly/notable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mkt Flights Notable
+         * @description Flights worth watching: emergencies, VIP/government, military, unusual aircraft, cargo.
+         */
+        get: operations["mkt_flights_notable_api_v1_mkt_fly_notable_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -15770,6 +15810,26 @@ export interface operations {
             };
         };
     };
+    mkt_ships_notable_api_v1_mkt_ship_notable_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     mkt_ship_live_api_v1_mkt_ship_live__mmsi__get: {
         parameters: {
             query?: never;
@@ -15870,6 +15930,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mkt_flights_notable_api_v1_mkt_fly_notable_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

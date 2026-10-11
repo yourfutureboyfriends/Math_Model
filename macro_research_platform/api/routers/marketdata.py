@@ -317,6 +317,13 @@ async def mkt_ships_world():
     return Response(content=body, media_type="application/json")
 
 
+@router.get("/api/v1/mkt/ship/notable")
+async def mkt_ships_notable():
+    """Ships worth following: sanctioned, military, gas carriers, giants, dangerous cargo, tankers in hot zones."""
+    from api.marketdata import tracking
+    return await _run(tracking.notable_ships, timeout=90)
+
+
 @router.get("/api/v1/mkt/ship/live/{mmsi}")
 async def mkt_ship_live(mmsi: int):
     """One vessel from the live picture: position, identity, dimensions, ETA, flag and 8-hour track."""
@@ -343,6 +350,13 @@ async def mkt_flights_area(lat: float = Query(..., ge=-90, le=90), lon: float = 
     """Live, detailed aircraft around a point (adsb.fi; adsb.lol fallback)."""
     from api.marketdata import airtraffic
     return await _run(airtraffic.area, lat, lon, radius_nm, timeout=45)
+
+
+@router.get("/api/v1/mkt/fly/notable")
+async def mkt_flights_notable():
+    """Flights worth watching: emergencies, VIP/government, military, unusual aircraft, cargo."""
+    from api.marketdata import airtraffic
+    return await _run(airtraffic.notable_flights, timeout=90)
 
 
 @router.get("/api/v1/mkt/fly/flight/{hex_id}")

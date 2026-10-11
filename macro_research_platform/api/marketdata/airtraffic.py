@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import math
 import os
 import threading
@@ -34,7 +35,7 @@ SNAPSHOT = Path(__file__).resolve().parents[2] / "data" / "processed" / "opensky
 M_TO_FT, MS_TO_KT, MS_TO_FPM = 3.28084, 1.943844, 196.8504
 
 # world snapshot columns (compact rows keep ~10,000 aircraft to a few hundred kB)
-WORLD_COLS = ["hex", "callsign", "country", "lon", "lat", "alt", "ground", "speed", "track", "vrate", "squawk", "fix", "mil", "type"]
+WORLD_COLS = ["hex", "callsign", "country", "lon", "lat", "alt", "ground", "speed", "track", "vrate", "squawk", "fix", "mil", "type", "tag"]
 
 
 def _km(a_lat, a_lon, b_lat, b_lon) -> float:
@@ -42,6 +43,81 @@ def _km(a_lat, a_lon, b_lat, b_lon) -> float:
     dp, dl = p2 - p1, math.radians(b_lon - a_lon)
     h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
     return 6371 * 2 * math.asin(min(1, math.sqrt(h)))
+
+
+# ── What a flight is and why it might matter ────────────────────────────────
+GOV_CALLSIGNS = {"SAM": "US Special Air Mission (VIP / government)", "EXEC": "US executive transport", "AF1": "Air Force One",
+                 "VENUS": "US government transport", "RCH": "US Air Force airlift (REACH)", "CNV": "US Navy", "PAT": "US Army priority transport",
+                 "NATO": "NATO", "ASCOT": "Royal Air Force transport", "RRR": "Royal Air Force", "CFC": "Canadian Forces", "GAF": "German Air Force",
+                 "IAM": "Italian Air Force", "CTM": "French Air Force transport", "FAF": "French Air Force", "BAF": "Belgian Air Force",
+                 "NAF": "Royal Netherlands Air Force", "PLF": "Polish Air Force", "SHF": "Swedish Air Force", "HAF": "Hellenic Air Force",
+                 "TUAF": "Turkish Air Force", "JASDF": "Japan Air Self-Defense Force", "KAF": "Kuwait Air Force", "RSAF": "Royal Saudi Air Force",
+                 "UAF": "UAE Air Force", "QAF": "Qatar Emiri Air Force", "IAF": "Indian Air Force", "RFF": "Russian government (Rossiya)"}
+NOTABLE_TYPES = {"A388": "Airbus A380 (largest airliner)", "B748": "Boeing 747-8", "A124": "Antonov An-124 heavy freighter",
+                 "A225": "Antonov An-225", "BLCF": "Boeing Dreamlifter (787 parts)", "A3ST": "Airbus Beluga", "A337": "Airbus BelugaXL",
+                 "C17": "C-17 Globemaster (military airlift)", "C5M": "C-5M Galaxy (military airlift)", "E3TF": "E-3 AWACS", "E3CF": "E-3 AWACS",
+                 "E6": "E-6 Mercury (nuclear command)", "E4": "E-4B Nightwatch (nuclear command)", "R135": "RC-135 reconnaissance",
+                 "P8": "P-8 Poseidon maritime patrol", "K35R": "KC-135 tanker", "KC46": "KC-46 tanker", "B52": "B-52 bomber", "U2": "U-2 spy plane",
+                 "GLHK": "RQ-4 Global Hawk drone", "Q4": "MQ-4C Triton drone", "VC25": "VC-25 (Air Force One)", "E7WW": "E-7 Wedgetail AEW",
+                 "A400": "Airbus A400M military airlift", "IL76": "Ilyushin Il-76", "AN22": "Antonov An-22"}
+CARGO_AIRLINES = {"FDX": "FedEx", "UPS": "UPS", "GTI": "Atlas Air", "CLX": "Cargolux", "ABW": "AirBridgeCargo", "CKS": "Kalitta Air",
+                  "BCS": "DHL (EAT Leipzig)", "DHK": "DHL Air UK", "DAE": "DHL Aero Expreso", "CAO": "Air China Cargo", "CKK": "China Cargo Airlines",
+                  "PAC": "Polar Air Cargo", "ABX": "ABX Air (Amazon/DHL)", "ATN": "Air Transport International", "NCA": "Nippon Cargo Airlines",
+                  "ADB": "Antonov Airlines", "MPH": "Martinair Cargo", "LCO": "LATAM Cargo", "CSS": "SF Airlines", "YZR": "YTO Cargo",
+                  "TAY": "ASL Airlines (TNT)", "QTR": None, "CPA": None}
+# typical seats (passenger) or payload in tonnes (freighter) by ICAO type
+SEATS = {"A20N": 186, "A320": 180, "A21N": 220, "A321": 200, "A319": 140, "A19N": 140, "B738": 189, "B38M": 189, "B39M": 204, "B737": 149,
+         "A333": 300, "A332": 250, "A339": 300, "A359": 325, "A35K": 366, "B77W": 365, "B772": 314, "B788": 242, "B789": 290, "B78X": 318,
+         "B744": 416, "B748": 410, "A388": 525, "B763": 218, "B752": 200, "E190": 100, "E195": 120, "E75L": 76, "CRJ9": 76, "AT76": 70,
+         "DH8D": 78, "A223": 140, "BCS3": 140, "C919": 168}
+FREIGHT_T = {"B77L": 102, "B744": 113, "B748": 137, "MD11": 91, "A332": 70, "B763": 52, "B752": 39, "B738": 23, "A124": 120, "A225": 250,
+             "BLCF": 0, "B77F": 102, "A306": 48}
+
+
+def flight_tags(callsign: str, actype: Optional[str], mil: bool, squawk: Optional[str]) -> List[tuple]:
+    """[(priority, tag, reason)] — tag letters: e emergency, v VIP/government, m military, n notable aircraft, c cargo flight."""
+    cs = (callsign or "").upper().strip()
+    out = []
+    if str(squawk or "") in EMERGENCY:
+        out.append((0, "e", f"Squawking {squawk}: {EMERGENCY[str(squawk)]}"))
+    pre = next((p for p in sorted(GOV_CALLSIGNS, key=len, reverse=True) if cs.startswith(p) and (len(cs) == len(p) or cs[len(p)].isdigit())), None)
+    if pre:
+        out.append((1, "v", GOV_CALLSIGNS[pre]))
+    if mil:
+        out.append((2, "m", "Military aircraft"))
+    t = (actype or "").upper()
+    if t in NOTABLE_TYPES:
+        out.append((3, "n", NOTABLE_TYPES[t]))
+    al = cs[:3] if len(cs) > 3 and cs[:3].isalpha() and cs[3].isdigit() else None
+    if al and CARGO_AIRLINES.get(al):
+        out.append((6, "c", f"Cargo flight — {CARGO_AIRLINES[al]}"))
+    return sorted(out)
+
+
+def load_estimate(callsign: str, actype: Optional[str], airframe_type: Optional[str]) -> Optional[Dict[str, Any]]:
+    """What the aircraft carries: passenger seats, or freighter payload (typical figures for the type)."""
+    t = (actype or "").upper()
+    cs = (callsign or "").upper()
+    freighter = bool(re.search(r"(^|[\s-])F($|[\s\d])|FREIGHT|\dF\b|LCF", (airframe_type or "").upper())) or bool(CARGO_AIRLINES.get(cs[:3]))
+    if freighter:
+        t2 = "B77L" if t in ("B77L", "B77W", "B772") else t
+        tonnes = FREIGHT_T.get(t2)
+        return {"kind": "cargo", "label": f"Freighter — up to ~{tonnes} t of cargo" if tonnes else "Freighter (cargo)", "tonnes": tonnes}
+    if t in SEATS:
+        return {"kind": "passengers", "label": f"Passenger jet — ~{SEATS[t]} seats (typical layout)", "seats": SEATS[t]}
+    return None
+
+
+def phase(alt: Optional[float], vrate: Optional[float], ground: bool) -> Optional[str]:
+    if ground:
+        return "On the ground"
+    if alt is None:
+        return None
+    if vrate is not None and vrate > 400:
+        return "Climbing"
+    if vrate is not None and vrate < -400:
+        return "Descending" + (" — on approach" if alt < 10000 else "")
+    return "Cruising" if alt >= 18000 else "Level, low altitude"
 
 
 # ── OpenSky ─────────────────────────────────────────────────────────────────
@@ -108,14 +184,14 @@ def _world_rows(j: Dict[str, Any]) -> List[list]:
 def _military() -> List[Dict[str, Any]]:
     def fetch():
         import requests
-        try:
-            r = requests.get("https://api.adsb.lol/v2/mil", headers=UA, timeout=20)
-            r.raise_for_status()
-            return [a for a in r.json().get("ac", []) if a.get("lat") is not None]
-        except Exception as e:
-            logger.info("[mil] adsb.lol: %s", e)
-            return []
-    return _cached("fly:mil", 60, fetch)
+        r = requests.get("https://api.adsb.lol/v2/mil", headers=UA, timeout=20)
+        r.raise_for_status()                              # a failure keeps the last list (stale cache) rather than none
+        return [a for a in r.json().get("ac", []) if a.get("lat") is not None]
+    try:
+        return _cached("fly:mil", 90, fetch)
+    except Exception as e:
+        logger.info("[mil] adsb.lol: %s", e)
+        return []
 
 
 def world() -> Dict[str, Any]:
@@ -135,7 +211,7 @@ def world() -> Dict[str, Any]:
                 r[2] = old[2]                              # keep OpenSky's registration country
                 r[12] = r[12] or old[12]
             by_hex[r[0]] = r
-        rows = list(by_hex.values())
+        rows = [r[:14] + ["".join(t for _, t, _ in flight_tags(r[1], r[13], bool(r[12]), r[10]))] for r in by_hex.values()]
         air = [r for r in rows if not r[6]]
         return {**base, "rows": rows, "airborne": len(air), "on_ground": len(rows) - len(air),
                 "sweep": {"added": added, "refreshed": replaced, "hubs": len(SWEEP), "live_aircraft": added + replaced},
@@ -263,12 +339,12 @@ SWEEP = [(40.08, 116.58), (31.14, 121.8), (23.39, 113.3), (30.58, 103.95), (25.1
 _sweep: Dict[str, Dict[str, Any]] = {}
 _sweep_lock = threading.Lock()
 _lol_last = [0.0]
-SWEEP_KEEP = 300
+SWEEP_KEEP = 420
 
 
 def _adsblol_point(lat: float, lon: float) -> List[Dict[str, Any]]:
     import requests
-    wait = 1.5 - (time.time() - _lol_last[0])
+    wait = 4.0 - (time.time() - _lol_last[0])            # adsb.lol rate-limits hard: well under one request a second
     if wait > 0:
         time.sleep(wait)
     _lol_last[0] = time.time()
@@ -277,10 +353,18 @@ def _adsblol_point(lat: float, lon: float) -> List[Dict[str, Any]]:
     return r.json().get("ac") or []
 
 
+_sweep_n = [0]
+
+
 def _sweep_once() -> int:
     n = 0
+    _sweep_n[0] += 1
+    use_lol = _sweep_n[0] % 2 == 0                         # adsb.lol on every other pass only
     for i, (lat, lon) in enumerate(SWEEP):
-        for fetch in (lambda: (_adsbfi(f"lat/{lat}/lon/{lon}/dist/250").get("aircraft") or []), lambda: _adsblol_point(lat, lon)):
+        sources = [lambda: (_adsbfi(f"lat/{lat}/lon/{lon}/dist/250").get("aircraft") or [])]
+        if use_lol:
+            sources.append(lambda: _adsblol_point(lat, lon))
+        for fetch in sources:
             try:
                 raw = fetch()
             except Exception as e:
@@ -389,7 +473,11 @@ def detail(hex_id: str, callsign: Optional[str] = None) -> Dict[str, Any]:
             if spd and spd > 80 and not (live or {}).get("on_ground"):
                 progress["eta_min"] = round(left / (spd * 1.852) * 60)
     al = route.get("airline") or {}
-    return {"hex": h, "callsign": cs, "live": live,
+    actype = (live or {}).get("type") or airframe.get("icao_type")
+    tags = flight_tags(cs or "", actype, bool((live or {}).get("military")), (live or {}).get("squawk"))
+    return {"hex": h, "callsign": cs, "live": live, "notable": [r for _, _, r in tags],
+            "load": load_estimate(cs or "", actype, airframe.get("type")),
+            "phase": phase((live or {}).get("alt"), (live or {}).get("vrate"), bool((live or {}).get("on_ground"))) if live else None,
             "airframe": {"type": airframe.get("type"), "icao_type": airframe.get("icao_type"), "manufacturer": airframe.get("manufacturer"),
                          "registration": airframe.get("registration"), "owner": airframe.get("registered_owner"),
                          "owner_country": airframe.get("registered_owner_country_name"), "photo": airframe.get("url_photo"),
@@ -398,3 +486,29 @@ def detail(hex_id: str, callsign: Optional[str] = None) -> Dict[str, Any]:
                       "origin": org, "destination": dst, "matches_position": on_route} if route else None,
             "progress": progress, "track": path,
             "source": "Live state: adsb.fi; route & airframe: adsbdb.com (route by callsign — usual schedule, may not match a diverted flight); track: OpenSky"}
+
+
+def notable_flights(limit: int = 400) -> Dict[str, Any]:
+    """Flights worth watching right now, with the reason: emergencies, VIP / government, military,
+    unusual aircraft, cargo flights."""
+    def build():
+        w = world()
+        ix = {c: i for i, c in enumerate(w["cols"])}
+        names = {"e": "Emergencies", "v": "VIP / government", "m": "Military", "n": "Notable aircraft", "c": "Cargo flights"}
+        counts = {k: 0 for k in names}
+        out = []
+        for r in w["rows"]:
+            tg = r[ix["tag"]]
+            if not tg or r[ix["ground"]]:
+                continue
+            reasons = flight_tags(r[ix["callsign"]], r[ix["type"]], bool(r[ix["mil"]]), r[ix["squawk"]])
+            for t in set(tg):
+                counts[t] = counts.get(t, 0) + 1
+            out.append({"hex": r[ix["hex"]], "callsign": r[ix["callsign"]] or r[ix["hex"]], "type": r[ix["type"]], "lat": r[ix["lat"]], "lon": r[ix["lon"]],
+                        "alt": r[ix["alt"]], "speed": r[ix["speed"]], "tags": tg, "priority": reasons[0][0] if reasons else 9,
+                        "reasons": [x for _, _, x in reasons]})
+        out.sort(key=lambda x: (x["priority"], x["callsign"]))
+        return {"flights": out[:limit], "total": len(out), "counts": counts, "tag_names": names,
+                "note": "VIP / government by callsign (e.g. SAM = US Special Air Mission); military from transponder registries; notable types "
+                        "include A380s, heavy freighters, AWACS, tankers, reconnaissance and nuclear-command aircraft."}
+    return _cached("fly:notable", 30, build)
