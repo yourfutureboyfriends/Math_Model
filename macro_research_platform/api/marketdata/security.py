@@ -31,9 +31,58 @@ import pandas as pd
 from api.marketdata.core import (MAIN_EXCHANGES, NotFound, Upstream, _cached, _f, _info, _norm, _yscreen, div_yield, to_usd, usd_to_local, MINOR_UNITS)
 
 
-def _tk(symbol: str):
-    import yfinance as yf
-    return yf.Ticker(symbol.strip().upper())
+def _expire_soon(key: str) -> None:
+    """An empty answer is often a transient Yahoo hiccup: don't keep it — the next request asks again."""
+    from api.marketdata.core import _cache, _lock
+    with _lock:
+        _cache.pop(key, None)
+
+
+class _GuardedTicker:
+    """yf.Ticker that notices Yahoo throttling. The screens read many Ticker attributes, each in its own
+    try/except so one missing table doesn't sink the page — but that also swallowed 429s, and the empty
+    result was cached for hours. Now a 429 trips the shared cool-down and `check()` raises, so nothing
+    empty is cached and the last good data is served instead."""
+
+    def __init__(self, symbol: str):
+        import yfinance as yf
+        from api.marketdata.core import _yahoo_cooling
+        msg = _yahoo_cooling()
+        if msg:
+            raise Upstream(msg)
+        self._t = yf.Ticker(symbol)
+        self.throttled = False
+
+    def __getattr__(self, name):
+        from api.marketdata.core import _rate_limited, _yahoo_tripped
+        try:
+            v = getattr(self._t, name)
+        except Exception as e:
+            if _rate_limited(e):
+                if not self.throttled:
+                    _yahoo_tripped()
+                self.throttled = True
+            raise
+        if callable(v):
+            def call(*a, **k):
+                try:
+                    return v(*a, **k)
+                except Exception as e:
+                    if _rate_limited(e):
+                        if not self.throttled:
+                            _yahoo_tripped()
+                        self.throttled = True
+                    raise
+            return call
+        return v
+
+    def check(self) -> None:
+        if self.throttled:
+            raise Upstream("Yahoo is rate-limiting this server — try again in a minute.")
+
+
+def _tk(symbol: str) -> _GuardedTicker:
+    return _GuardedTicker(symbol.strip().upper())
 
 
 def _df_records(df: Optional[pd.DataFrame], index_name: str = "index", limit: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -90,6 +139,7 @@ def earnings(symbol: str) -> Dict[str, Any]:
                 est[key] = []
         hist = hist[:16]
         beats = [h for h in hist if h["surprise_pct"] is not None]
+        t.check()
         return {"symbol": s, "history": hist, "upcoming": sorted(upcoming, key=lambda x: x["date"])[:2],
                 "estimates": est, "beat_rate": round(sum(1 for h in beats if h["surprise_pct"] > 0) / len(beats), 3) if beats else None,
                 "avg_surprise_pct": round(float(np.mean([h["surprise_pct"] for h in beats])), 2) if beats else None,
@@ -97,6 +147,7 @@ def earnings(symbol: str) -> Dict[str, Any]:
                 "source": "Yahoo Finance (analyst consensus)"}
     out = _cached(f"ern:{s}", 3600, fetch)
     if not out["history"] and not out["estimates"].get("eps"):
+        _expire_soon(f"ern:{s}")
         raise NotFound(f"No earnings data for {s} (not a covered company).")
     return out
 
@@ -120,6 +171,7 @@ def analysts(symbol: str) -> Dict[str, Any]:
             changes = _df_records(ud.sort_index(ascending=False), "date", limit=40) if ud is not None else []
         except Exception:
             changes = []
+        t.check()
         return {"symbol": s, "summary": summ, "targets": targets, "changes": changes,
                 "recommendation": _info(s).get("recommendationKey"), "analysts": _info(s).get("numberOfAnalystOpinions"),
                 # Yahoo's consensus mean on a 1 (strong buy) … 5 (strong sell) scale — a fallback when
@@ -161,10 +213,13 @@ def holders(symbol: str) -> Dict[str, Any]:
             insiders = _df_records(ins.head(30), "row") if ins is not None else []
         except Exception:
             insiders = []
-        return {"symbol": s, "breakdown": major, "institutions": holders_table("institutional_holders"),
-                "funds": holders_table("mutualfund_holders"), "insiders": insiders, "source": "Yahoo Finance (13F / Form 4)"}
+        inst, funds = holders_table("institutional_holders"), holders_table("mutualfund_holders")
+        t.check()
+        return {"symbol": s, "breakdown": major, "institutions": inst,
+                "funds": funds, "insiders": insiders, "source": "Yahoo Finance (13F / Form 4)"}
     out = _cached(f"hds:{s}", 6 * 3600, fetch)
     if not out["breakdown"] and not out["institutions"]:
+        _expire_soon(f"hds:{s}")
         raise NotFound(f"No ownership data for {s}.")
     return out
 
@@ -207,6 +262,7 @@ def dividends(symbol: str) -> Dict[str, Any]:
                 else:
                     break
         dy = div_yield(i)
+        t.check()
         return {"symbol": s, "payments": pays[:40], "annual": [{"year": y, "total": annual[y]} for y in ys[-20:]],
                 "growth": growth, "consecutive_increases": streak, "currency": i.get("currency"),
                 "dividend_yield": dy,
@@ -314,8 +370,12 @@ def _risk_free() -> float:
         return 0.04
 
 
+# Index options trade under the option root, not the index's quote symbol
+OPTION_ROOT = {"^GSPC": "^SPX", "^NDX": "^NDX", "^RUT": "^RUT", "^DJI": "^DJX", "^VIX": "^VIX", "^IXIC": "^NDX"}
+
+
 def options(symbol: str, expiry: Optional[str] = None) -> Dict[str, Any]:
-    s = symbol.strip().upper()
+    s = OPTION_ROOT.get(symbol.strip().upper(), symbol.strip().upper())
     t = _tk(s)
     try:
         exps = list(t.options or [])
@@ -401,7 +461,7 @@ def options(symbol: str, expiry: Optional[str] = None) -> Dict[str, Any]:
 
 
 def iv_term_structure(symbol: str, n: int = 8) -> List[Dict[str, Any]]:
-    s = symbol.strip().upper()
+    s = OPTION_ROOT.get(symbol.strip().upper(), symbol.strip().upper())
 
     def fetch():
         exps = list(_tk(s).options or [])[:n]

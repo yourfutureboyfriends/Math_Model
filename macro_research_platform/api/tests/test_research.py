@@ -83,3 +83,31 @@ def test_stale_value_served_when_provider_throttles():
     out = core._cached("t:stale", 60, lambda: (_ for _ in ()).throw(core.Upstream("Too Many Requests")))
     assert out["x"] == 1 and out["stale"] is True
     core._cache.pop("t:stale", None)
+
+
+def test_throttled_ticker_is_not_cached_as_empty(monkeypatch):
+    from api.marketdata import security
+
+    class FakeT:
+        def __init__(self, s):
+            pass
+
+        @property
+        def major_holders(self):
+            raise Exception("YFRateLimitError: Too Many Requests. Rate limited.")
+
+        institutional_holders = mutualfund_holders = insider_transactions = None
+    import yfinance as yf
+    monkeypatch.setattr(yf, "Ticker", FakeT)
+    core._YH.update({"until": 0.0, "backoff": 15.0})
+    core._cache.pop("hds:ZZZ", None)
+    with pytest.raises(core.Upstream):
+        security.holders("ZZZ")
+    assert "hds:ZZZ" not in core._cache                          # nothing empty stored for hours
+    assert core._YH["until"] > 0                                  # and the shared cool-down is on
+    core._YH.update({"until": 0.0, "backoff": 15.0})
+
+
+def test_index_options_use_option_root():
+    from api.marketdata import security
+    assert security.OPTION_ROOT["^GSPC"] == "^SPX"
