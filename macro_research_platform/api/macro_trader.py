@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 DEFAULTS: Dict[str, Any] = {"enabled": True, "capital": 1_000_000.0, "portfolio": "tactical",
                             "drift_threshold": 0.05, "cost_bps": 5.0}
 ETFS = ["SPY", "EFA", "EEM", "TLT", "IEF", "TIP", "LQD", "HYG", "GLD", "DBC"]
+# tactical / strategic: the macro model's portfolios. all_weather / all_weather_tilt: Bridgewater's All Weather
+# construction (equal risk to each growth/inflation environment), the second tilted to the current quadrant.
+PORTFOLIOS = ("tactical", "strategic", "all_weather", "all_weather_tilt")
 _lock = threading.Lock()
 _ready = False
 
@@ -85,8 +88,8 @@ def update_settings(changes: Dict[str, Any]) -> Dict[str, Any]:
     for k, v in changes.items():
         if k not in DEFAULTS or k == "capital":
             continue
-        if k == "portfolio" and v not in ("tactical", "strategic"):
-            raise ValueError("portfolio must be 'tactical' or 'strategic'")
+        if k == "portfolio" and v not in PORTFOLIOS:
+            raise ValueError("portfolio must be one of " + ", ".join(PORTFOLIOS))
         if k == "drift_threshold" and not 0.01 <= float(v) <= 0.5:
             raise ValueError("drift threshold must be 1%–50%")
         if k == "cost_bps" and not 0 <= float(v) <= 100:
@@ -121,6 +124,11 @@ def _bars() -> Dict[str, Any]:
 
 
 async def _targets(which: str) -> Dict[str, Any]:
+    if which in ("all_weather", "all_weather_tilt"):
+        import asyncio
+        from api.marketdata.bridgewater import all_weather_targets
+        bars = await asyncio.to_thread(_bars)
+        return await asyncio.to_thread(all_weather_targets, which == "all_weather_tilt", 0.10, bars)
     from api.model.engine import run_model
     res = await run_model(None, user="system")
     p = (res.get("portfolios") or {}).get(which) or {}

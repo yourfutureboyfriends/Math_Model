@@ -102,3 +102,24 @@ def test_deploy_to_quant_trader_and_stop(client):
     assert client.post("/api/v1/quant/trader/deploy", json={"spec": SPEC}, headers=client.analyst).status_code == 403
     assert client.delete(f"/api/v1/quant/trader/deployments/{d.json()['id']}").status_code == 200
     assert client.get("/api/v1/quant/trader?refresh=true").json()["deployments"] == []
+
+
+def test_macro_and_fundamental_traders_are_separate(client, monkeypatch):
+    from api.quant import trader
+    d = client.post("/api/v1/quant/trader/deploy", json={"spec": SPEC, "capital": 100000})
+    assert d.status_code == 200, d.text
+    natural = d.json()["book"]
+    other = "fundamental" if natural == "macro" else "macro"
+    assert len(client.get(f"/api/v1/quant/trader?refresh=true&book={natural}").json()["deployments"]) == 1
+    assert client.get(f"/api/v1/quant/trader?refresh=true&book={other}").json()["deployments"] == []
+    # asking for the wrong trader is refused rather than mixing the books
+    wrong = client.post("/api/v1/quant/trader/deploy", json={"spec": SPEC, "capital": 100000, "book": other})
+    assert wrong.status_code in (400, 422)
+    client.delete(f"/api/v1/quant/trader/deployments/{d.json()['id']}")
+
+
+def test_classify_by_universe_and_fundamentals():
+    from api.quant import trader
+    assert trader.classify({"universe": {"preset": "cross_asset"}, "signal": "mom(252)"}) == "macro"
+    assert trader.classify({"universe": {"preset": "us_megacaps"}, "signal": "mom(252)"}) == "fundamental"
+    assert trader.classify({"universe": {"preset": "us_sectors"}, "signal": "rank(earnings_yield)"}) == "fundamental"

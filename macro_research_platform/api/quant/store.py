@@ -44,6 +44,9 @@ def init() -> None:
                 owner TEXT NOT NULL, spec TEXT NOT NULL, deployed_at TEXT NOT NULL, capital REAL NOT NULL,
                 active INTEGER NOT NULL DEFAULT 1, backtest TEXT, created_at TEXT, stopped_at TEXT);
         """)
+        cols = {r[1] for r in c.execute("PRAGMA table_info(quant_deployments)").fetchall()}
+        if "book" not in cols:                      # macro vs fundamental trader (added later; old rows classified on read)
+            c.execute("ALTER TABLE quant_deployments ADD COLUMN book TEXT")
     _ready = True
 
 
@@ -118,12 +121,12 @@ def trials(owner: str, strategy_id: Optional[int], spec_hash: str) -> Tuple[int,
 
 # ── Deployments (Quant Trader) ───────────────────────────────────────────────
 def deploy(owner: str, name: str, spec: Dict[str, Any], deployed_at: str, capital: float,
-           strategy_id: Optional[int], backtest_summary: Dict[str, Any]) -> Dict[str, Any]:
+           strategy_id: Optional[int], backtest_summary: Dict[str, Any], book: Optional[str] = None) -> Dict[str, Any]:
     init()
     with _conn() as c:
-        cur = c.execute("INSERT INTO quant_deployments (strategy_id, name, owner, spec, deployed_at, capital, active, backtest, created_at)"
-                        " VALUES (?,?,?,?,?,?,1,?,?)",
-                        (strategy_id, name, owner, json.dumps(spec), deployed_at, capital, json.dumps(backtest_summary), _now()))
+        cur = c.execute("INSERT INTO quant_deployments (strategy_id, name, owner, spec, deployed_at, capital, active, backtest, created_at, book)"
+                        " VALUES (?,?,?,?,?,?,1,?,?,?)",
+                        (strategy_id, name, owner, json.dumps(spec), deployed_at, capital, json.dumps(backtest_summary), _now(), book))
         did = cur.lastrowid
     return get_deployment(did)
 

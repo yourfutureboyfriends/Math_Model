@@ -18,6 +18,7 @@ import { PredView, RelatedOdds } from '@/components/markets/PredMarkets';
 import { ValuationHub } from '@/components/markets/ValuationHub';
 import { CfView, CredView, FacView, PortView } from '@/components/markets/ResearchViews';
 import { CbrtView, EcosView, SprdView, TechView } from '@/components/markets/ToolkitViews';
+import { AllWeatherPanel, DebtCyclesPanel, EnvironmentsPanel, HolyGrailPanel, WorldOrderPanel } from '@/components/markets/BridgewaterViews';
 import { CacsView, CdrView, ChartView, DataView, DdisView, DvdcView, FsrcView, FxcaView, IlbeView, MembView, MgmtView, MrgrView, OvdvView, PgeoView, YasView } from '@/components/markets/TerminalPlus';
 import { BreadthView, ImpmView, RiskView, UoaView, VolView } from '@/components/markets/InsightViews';
 import { AuctView, EiaView, InsdView, IpoView, ThirteenFView, WetrView, WirpView } from '@/components/markets/ExtrasViews';
@@ -286,6 +287,11 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'PORT' && <PortView onOpen={open} />}
     {code === 'SPRD' && <SprdView seed={seed} />}
     {code === 'CHART' && <ChartView seed={seed} />}
+    {code === 'ENVR' && <EnvironmentsPanel />}
+    {code === 'AWP' && <AllWeatherPanel />}
+    {code === 'DCYC' && <DebtCyclesPanel />}
+    {code === 'HGRL' && <HolyGrailPanel defaultSymbols={seed || undefined} />}
+    {code === 'WPWR' && <WorldOrderPanel />}
     {code === 'DATA' && <DataView seed={seed} />}
     {code === 'YAS' && <YasView />}
     {code === 'ILBE' && <IlbeView />}

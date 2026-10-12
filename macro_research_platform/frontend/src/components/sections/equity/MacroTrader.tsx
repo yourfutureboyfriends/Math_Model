@@ -51,7 +51,7 @@ function Live() {
       <div className="flex flex-wrap items-center gap-2 text-2xs">
         <span className="px-2 py-0.5 border border-amber/50 text-amber">PAPER — SIMULATED</span>
         <span className={cn('px-2 py-0.5 border', s.enabled ? 'border-green/50 text-green' : 'border-border text-text-tertiary')}>{s.enabled ? 'Auto-trading on' : 'Paused'}</span>
-        <span className="text-text-tertiary">Following the {s.portfolio} portfolio · model regime <b className="text-text-primary">{d.model?.regime ?? '—'}</b> · runs after each US close (22:35 UTC)</span>
+        <span className="text-text-tertiary">Following the {({ tactical: 'tactical', strategic: 'strategic', all_weather: 'All Weather', all_weather_tilt: 'All Weather + quadrant tilt' } as Record<string, string>)[s.portfolio] ?? s.portfolio} portfolio · {s.portfolio?.startsWith('all_weather') ? 'environment' : 'model regime'} <b className="text-text-primary">{d.model?.regime ?? '—'}</b> · runs after each US close (22:35 UTC)</span>
         <div className="ml-auto flex gap-1">
           {isPM && <button onClick={() => act('run', () => api('/api/v1/macro-trader/run', { method: 'POST' }))} disabled={!!busy}
             className="inline-flex items-center gap-1 px-2.5 py-1 border border-bloomberg text-bloomberg hover:bg-bloomberg hover:text-bg disabled:opacity-50">
@@ -142,9 +142,10 @@ function Settings({ s, onSaved }: { s: any; onSaved: () => void }) {
     <div className="p-3 bg-surface-1 border border-border">
       <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-2">Settings</div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
-        <Field label="Follow" hint="Tactical tilts with the regime; strategic is the long-run risk-balanced mix.">
+        <Field label="Follow" hint="Tactical tilts with the regime; strategic is the long-run risk-balanced mix. All Weather (Bridgewater) puts equal risk into each growth/inflation environment; the tilted version leans toward the environments the current quadrant favours.">
           <select className={inputCls} value={f.portfolio} onChange={(e) => setF({ ...f, portfolio: e.target.value })}>
             <option value="tactical">Tactical (regime-driven)</option><option value="strategic">Strategic (long-run)</option>
+            <option value="all_weather">All Weather (Bridgewater, equal environment risk)</option><option value="all_weather_tilt">All Weather + quadrant tilt</option>
           </select>
         </Field>
         <Field label="Drift trigger %"><input type="number" min={1} max={50} className={inputCls} value={Math.round(f.drift_threshold * 100)} onChange={(e) => setF({ ...f, drift_threshold: Number(e.target.value) / 100 })} /></Field>

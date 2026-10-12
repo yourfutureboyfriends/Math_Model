@@ -6,7 +6,7 @@ import time
 from collections import OrderedDict
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 router = APIRouter(tags=["quant"])
@@ -41,6 +41,7 @@ class DeployIn(BaseModel):
     strategy_id: Optional[int] = None
     template: Optional[str] = None
     capital: float = 1_000_000.0
+    book: Optional[str] = None          # macro | fundamental — checked against what the strategy trades
 
 
 class ExprIn(BaseModel):
@@ -64,12 +65,12 @@ async def _bt(fn, *a, **k):
 # ── Quant Lab ────────────────────────────────────────────────────────────────
 @router.get("/api/v1/quant/meta")
 async def quant_meta():
-    from api.quant import data, engine, expr, templates
+    from api.quant import data, engine, expr, templates, trader
     return {"functions": expr.catalogue(),
             "universes": [{"id": k, "label": v["label"], "symbols": v["symbols"], "note": v["note"],
                            "survivorship": bool(v.get("survivorship"))} for k, v in data.PRESETS.items()],
-            "templates": [{k: t[k] for k in ("id", "name", "family", "description", "evidence", "citation", "spec")}
-                          for t in templates.TEMPLATES],
+            "templates": [{**{k: t[k] for k in ("id", "name", "family", "description", "evidence", "citation", "spec")},
+                           "book": trader.classify(t["spec"])} for t in templates.TEMPLATES],
             "research": templates.RESEARCH_NOTES,
             "options": {"selection": engine.SELECTION_MODES, "weighting": engine.WEIGHTINGS,
                         "rebalance": engine.REBALANCE, "execution": engine.EXECUTION},
@@ -212,11 +213,12 @@ async def quant_delete(sid: int, request: Request):
 
 # ── Quant Trader ─────────────────────────────────────────────────────────────
 @router.get("/api/v1/quant/trader")
-async def quant_trader(request: Request, refresh: bool = False):
+async def quant_trader(request: Request, refresh: bool = False, book: str = Query("macro", pattern="^(macro|fundamental)$")):
+    """One trader's book — macro (asset-class algos) or fundamental (stock / company-fundamental algos)."""
     from api.quant import trader
     _user(request)
     try:
-        return await _bt(trader.book, refresh)
+        return await _bt(trader.book, refresh, book)
     except asyncio.TimeoutError:
         raise HTTPException(504, "Updating the Quant Trader took too long — try again shortly.")
 
@@ -227,11 +229,11 @@ async def quant_deploy(body: DeployIn, request: Request):
     u = _user(request, ("pm", "quant"))
     spec = body.spec or _member_spec({"strategy_id": body.strategy_id, "template": body.template})
     try:
-        d = await _bt(trader.deploy, u["username"], spec, body.capital, body.strategy_id)
+        d = await _bt(trader.deploy, u["username"], spec, body.capital, body.strategy_id, body.book)
     except engine.SpecError as e:
         _spec_error(e)
     await asyncio.to_thread(_audit, u["username"], "quant_deploy",
-                            f"Deployed '{d['name']}' to the Quant Trader with ${body.capital:,.0f} (live from {d['deployed_at']})")
+                            f"Deployed '{d['name']}' to the {'Fundamental' if d.get('book') == 'fundamental' else 'Macro'} Quant Trader with ${body.capital:,.0f} (live from {d['deployed_at']})")
     return d
 
 

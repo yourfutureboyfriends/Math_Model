@@ -80,11 +80,11 @@ export function QuantLabSection() {
   };
 
   const deploy = async () => {
-    if (!window.confirm(`Deploy “${spec.name}” to the Quant Trader paper book with $${capital.toLocaleString()}? It trades from the next session; no real orders.`)) return;
+    if (!window.confirm(`Deploy “${spec.name}” with $${capital.toLocaleString()} of paper capital? Asset-class strategies go to the Macro Quant Trader, stock and fundamental strategies to the Fundamental Quant Trader. It trades from the next session; no real orders.`)) return;
     setBusy('deploy'); setErr(null);
     try {
       const d = await api('/api/v1/quant/trader/deploy', { json: { spec, strategy_id: strategyId, capital } });
-      setNote(`Deployed “${d.name}” — live from the session after ${d.deployed_at}. See Portfolios → Quant Trader.`);
+      setNote(`Deployed “${d.name}” to the ${d.book === 'fundamental' ? 'Fundamental' : 'Macro'} Quant Trader — live from the session after ${d.deployed_at}. See Portfolios → ${d.book === 'fundamental' ? 'Fundamental' : 'Macro'} Quant Trader.`);
     } catch (e: any) { setErr(e.message); } finally { setBusy(null); }
   };
 
@@ -130,9 +130,9 @@ export function QuantLabSection() {
                   <div className="flex flex-wrap items-end gap-2 p-2 border border-border">
                     <Field label="Paper capital ($)"><input type="number" min={1000} step={10000} className={cn(inputCls, 'w-32')} value={capital} onChange={(e) => setCapital(Number(e.target.value))} /></Field>
                     <button onClick={deploy} disabled={!!busy} className="inline-flex items-center gap-1 px-3 py-1.5 text-xs border border-bloomberg text-bloomberg hover:bg-bloomberg hover:text-bg disabled:opacity-50">
-                      {busy === 'deploy' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Rocket className="w-3 h-3" />}Deploy to Quant Trader
+                      {busy === 'deploy' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Rocket className="w-3 h-3" />}Deploy to trader
                     </button>
-                    <span className="text-[10px] text-text-tertiary w-full">Paper-trades this exact spec from the next session — its live record is compared with the backtest.</span>
+                    <span className="text-[10px] text-text-tertiary w-full">Paper-trades this exact spec from the next session — routed to the Macro or Fundamental Quant Trader by what it trades; its live record is compared with the backtest.</span>
                   </div>
                 )}
                 {strategyId && <div className="text-[10px] text-text-tertiary">Editing saved strategy #{strategyId}. Each distinct variant you run is counted in its Deflated Sharpe.</div>}
@@ -164,15 +164,22 @@ export function QuantLabSection() {
 
 // ── Templates ────────────────────────────────────────────────────────────────
 function Templates({ meta, onOpen }: { meta: Meta; onOpen: (s: Partial<Spec>, autorun: boolean) => void }) {
-  const fams = Array.from(new Set(meta.templates.map((t) => t.family)));
+  const [book, setBook] = useState<'macro' | 'fundamental'>('macro');
+  const list = meta.templates.filter((t: any) => (t.book ?? 'macro') === book);
+  const fams = Array.from(new Set(list.map((t) => t.family)));
   return (
     <div className="space-y-3">
       <p className="text-2xs text-text-secondary">Research-backed starting points. Open one in the builder to change it and make it your own — your edits are counted as new variants, so the significance tests stay honest.</p>
+      <div className="flex border border-border w-fit text-2xs" role="tablist" aria-label="Trader">
+        {([['macro', 'Macro quant (asset classes)'], ['fundamental', 'Fundamental quant (stocks)']] as const).map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={book === k} onClick={() => setBook(k)} className={cn('px-3 py-1', book === k ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary')}>{l}</button>))}
+      </div>
+      <p className="text-[10px] text-text-tertiary">{book === 'macro' ? 'Deploys to the Macro Quant Trader — ETF universes of indices, bonds, credit, commodities, sectors and countries.' : 'Deploys to the Fundamental Quant Trader — single stocks, and anything that reads company fundamentals.'}</p>
       {fams.map((f) => (
         <div key={f}>
           <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">{f}</div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-            {meta.templates.filter((t) => t.family === f).map((t) => (
+            {list.filter((t) => t.family === f).map((t) => (
               <div key={t.id} className="p-3 bg-surface-1 border border-border flex flex-col gap-1.5">
                 <div className="text-xs font-semibold text-text-primary">{t.name}</div>
                 <div className="text-2xs text-text-secondary">{t.description}</div>

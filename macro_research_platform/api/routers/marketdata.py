@@ -547,6 +547,42 @@ async def mkt_fred_series(sid: str):
     return await _run(toolkit.fred_series, sid, timeout=90)
 
 
+# ── Bridgewater research frameworks ─────────────────────────────────────────
+@router.get("/api/v1/mkt/bw/envr")
+async def mkt_bw_environments():
+    """All Weather environments: how each asset class did in each growth/inflation environment since 1950."""
+    from api.marketdata import bridgewater
+    return await _run(bridgewater.environments, timeout=180)
+
+
+@router.get("/api/v1/mkt/bw/awp")
+async def mkt_bw_all_weather(target_vol: float = Query(0.10, ge=0.03, le=0.25)):
+    """All Weather construction (equal risk per environment), backtested vs 60/40."""
+    from api.marketdata import bridgewater
+    return await _run(bridgewater.all_weather, round(target_vol, 3), 2.0, timeout=180)
+
+
+@router.get("/api/v1/mkt/bw/dcyc")
+async def mkt_bw_debt_cycles():
+    """Debt-cycle positions of ~40 economies (BIS) and the US monetary-policy stage."""
+    from api.marketdata import bridgewater
+    return await _run(bridgewater.debt_cycles, timeout=180)
+
+
+@router.get("/api/v1/mkt/bw/hgrl")
+async def mkt_bw_holy_grail(symbols: str = Query("SPY,EFA,EEM,TLT,IEF,TIP,LQD,HYG,GLD,DBC", max_length=600), years: int = Query(3, ge=1, le=10)):
+    """Dalio's Holy Grail: how many independent bets a set of instruments really is."""
+    from api.marketdata import bridgewater
+    return await _run(bridgewater.holy_grail, symbols.split(","), years, timeout=90)
+
+
+@router.get("/api/v1/mkt/bw/wpwr")
+async def mkt_bw_world_order():
+    """Changing World Order: the eight measures of national power."""
+    from api.marketdata import bridgewater
+    return await _run(bridgewater.world_order, timeout=180)
+
+
 # ── Fixed income / FX ───────────────────────────────────────────────────────
 @router.get("/api/v1/mkt/ilbe")
 async def mkt_breakevens():

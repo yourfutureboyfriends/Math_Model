@@ -11,6 +11,8 @@ import { SectionSkeleton } from '@/components/ui/SectionSkeleton';
 import { useMacroStore } from '@/store/macroStore';
 import { PANEL_HELP } from '@/lib/panelHelp';
 import { PanelHelpPopover, type HelpAnchor } from '@/components/ui/PanelHelpPopover';
+import { ResearchExpander } from '@/components/markets/ResearchExpander';
+import { AllWeatherPanel, DebtCyclesPanel, EnvironmentsPanel, HolyGrailPanel, WorldOrderPanel } from '@/components/markets/BridgewaterViews';
 import {
   MyDeskSection,
   MacroModelSection,
@@ -338,6 +340,9 @@ export function DashboardPage() {
             <RegionalMacroSection />
           </Suspense>
         </ErrorBoundary>
+        <ResearchExpander title="World power index: the changing world order" subtitle="Dalio, Principles for Dealing with the Changing World Order">
+          <WorldOrderPanel />
+        </ResearchExpander>
       </div>
 
       <div id="ensemble" className="terminal-section">
@@ -521,6 +526,9 @@ export function DashboardPage() {
             <CorrelationMatrixSection />
           </Suspense>
         </ErrorBoundary>
+        <ResearchExpander title="The Holy Grail: how many independent bets is this really?" subtitle="Dalio, Principles">
+          <HolyGrailPanel />
+        </ResearchExpander>
       </div>
 
       <div id="debt-cycle" className="terminal-section">
@@ -529,6 +537,9 @@ export function DashboardPage() {
             <DebtCycleSection />
           </Suspense>
         </ErrorBoundary>
+        <ResearchExpander title="Global debt cycles (~40 economies, BIS) and the US MP1/MP2/MP3 stage" subtitle="Dalio, Big Debt Crises">
+          <DebtCyclesPanel compact />
+        </ResearchExpander>
       </div>
 
       <div id="factor-decomposition" className="terminal-section">
@@ -545,6 +556,9 @@ export function DashboardPage() {
             <RiskParitySection />
           </Suspense>
         </ErrorBoundary>
+        <ResearchExpander title="All Weather construction: equal risk to each growth/inflation environment, backtested" subtitle="also tradable in Portfolios → Macro Quant Trader">
+          <AllWeatherPanel />
+        </ResearchExpander>
       </div>
 
       <div className="terminal-section">
@@ -642,6 +656,9 @@ export function DashboardPage() {
             <QuadrantsSection />
           </Suspense>
         </ErrorBoundary>
+        <ResearchExpander title="75 years of evidence: what each asset earns in each environment" subtitle="Bridgewater, The All Weather Story">
+          <EnvironmentsPanel compact />
+        </ResearchExpander>
       </div>
 
       <div id="event-vol-wrap" className="terminal-section">

@@ -14,7 +14,7 @@ import { Donut } from '@/components/ui/Donut';
 import { stableColors } from '@/lib/chartPalette';
 import { openStockAnalysis } from './StockIdeasSection';
 import { MacroTrader } from './MacroTrader';
-import { QuantTrader } from './QuantTrader';
+import { FundamentalQuantTrader, MacroQuantTrader } from './QuantTrader';
 
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#8a63d2', '#d0457a', '#6b7280'];
 const usd = (v: number | null | undefined, d = 0) =>
@@ -639,8 +639,8 @@ function Optimiser() {
 
 const TABS = [
   { key: 'my', label: 'My Portfolio', Icon: Briefcase },
-  { key: 'macro', label: 'Macro Trader (paper)', Icon: Globe2 },
-  { key: 'quant', label: 'Quant Trader (paper)', Icon: Cpu },
+  { key: 'macro', label: 'Macro Quant Trader (paper)', Icon: Globe2 },
+  { key: 'fund', label: 'Fundamental Quant Trader (paper)', Icon: Cpu },
   { key: 'opt', label: 'Optimiser', Icon: Scale },
 ] as const;
 
@@ -648,7 +648,7 @@ export function PortfoliosSection() {
   const [tab, setTab] = useState<(typeof TABS)[number]['key']>(() => {
     try {
       const t = localStorage.getItem('portfolios.tab');
-      return (t === 'auto' ? 'quant' : TABS.some((x) => x.key === t) ? t : 'my') as any;   // 'auto' became the Quant Trader
+      return (t === 'auto' || t === 'quant' ? 'fund' : TABS.some((x) => x.key === t) ? t : 'my') as any;   // older tab names
     } catch { return 'my'; }
   });
   useEffect(() => { try { localStorage.setItem('portfolios.tab', tab); } catch { /* storage unavailable */ } }, [tab]);
@@ -658,7 +658,7 @@ export function PortfoliosSection() {
         <div className="section-header-left">
           <span className="section-tag"><Briefcase className="w-3 h-3" /></span>
           <h2 className="section-title">Portfolios</h2>
-          <span className="text-2xs text-text-tertiary">your picks reviewed by the model · two paper traders (macro and quant) · optimisation</span>
+          <span className="text-2xs text-text-tertiary">your picks reviewed by the model · two separate paper traders (macro quant and fundamental quant) · optimisation</span>
         </div>
       </div>
       <div className="flex border border-border mb-2 w-fit" role="tablist" aria-label="Portfolio">
@@ -670,8 +670,8 @@ export function PortfoliosSection() {
         ))}
       </div>
       {tab === 'my' && <MyPortfolio />}
-      {tab === 'macro' && <MacroTrader />}
-      {tab === 'quant' && <QuantTrader stockLive={<AutoLive />} stockBacktest={<AutoBacktest />} />}
+      {tab === 'macro' && <MacroQuantTrader modelBook={<MacroTrader />} />}
+      {tab === 'fund' && <FundamentalQuantTrader stockLive={<AutoLive />} stockBacktest={<AutoBacktest />} />}
       {tab === 'opt' && <Optimiser />}
     </div>
   );

@@ -1,5 +1,5 @@
-// Quant Trader — paper book of the systematic algos deployed from the Quant Lab
-// (api/quant/trader.py), plus the stock entry-model book (its own rules and backtest).
+// Two separate paper traders: the Macro Quant Trader (asset-class model book + macro algos) and the
+// Fundamental Quant Trader (single-stock factor algos + the stock entry-model book). api/quant/trader.py keeps them apart.
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, RefreshCw, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -15,24 +15,45 @@ const STATUS: Record<string, string> = {
   'below range': 'border-red/50 text-red', 'above range': 'border-amber/50 text-amber',
 };
 
-export function QuantTrader({ stockLive, stockBacktest }: { stockLive: React.ReactNode; stockBacktest: React.ReactNode }) {
+/** Macro Quant Trader — asset-class books only: the macro model's allocation (incl. Bridgewater All Weather)
+ *  and systematic macro algos (trend, momentum, GTAA, risk parity across ETFs). No single stocks. */
+export function MacroQuantTrader({ modelBook }: { modelBook: React.ReactNode }) {
+  const [view, setView] = useState<'model' | 'algos'>('model');
+  return (
+    <div className="space-y-2">
+      <div className="text-2xs text-text-secondary">
+        <b>Macro quant trading</b> — asset classes only (equity indices, bonds, credit, commodities, gold, sectors, countries).
+        The <b>model book</b> follows the macro model or Bridgewater’s All Weather; <b>macro algos</b> are systematic strategies on ETF universes deployed from the
+        <a href="#quant-lab" className="underline text-bloomberg"> Quant Lab</a>. Kept completely separate from the Fundamental Quant Trader. Paper only.
+      </div>
+      <Pills label="Macro trader view" value={view} onChange={setView} options={[['model', 'Model book'], ['algos', 'Macro algos']] as const} />
+      {view === 'model' && modelBook}
+      {view === 'algos' && <Algos book="macro" />}
+    </div>
+  );
+}
+
+/** Fundamental Quant Trader — single-stock books only: factor algos (value, quality, momentum, low volatility) and
+ *  the stock entry-model book. No asset-class allocation. */
+export function FundamentalQuantTrader({ stockLive, stockBacktest }: { stockLive: React.ReactNode; stockBacktest: React.ReactNode }) {
   const [view, setView] = useState<'algos' | 'stock' | 'stock_bt'>('algos');
   return (
     <div className="space-y-2">
       <div className="text-2xs text-text-secondary">
-        Runs <b>systematic quant algos</b> — strategies you build or pick in the <a href="#quant-lab" className="underline text-bloomberg">Quant Lab</a> and deploy here — plus the stock entry-model book.
-        Paper only; separate from the Macro Trader.
+        <b>Fundamental quant trading</b> — individual companies only: factor algos built on company fundamentals and stock prices (value, quality,
+        momentum, low volatility) deployed from the <a href="#quant-lab" className="underline text-bloomberg">Quant Lab</a>, plus the stock entry-model book.
+        Kept completely separate from the Macro Quant Trader. Paper only.
       </div>
-      <Pills label="Quant trader view" value={view} onChange={setView}
-        options={[['algos', 'Deployed algos'], ['stock', 'Stock entry book'], ['stock_bt', 'Stock book backtest']] as const} />
-      {view === 'algos' && <Algos />}
+      <Pills label="Fundamental trader view" value={view} onChange={setView}
+        options={[['algos', 'Factor algos'], ['stock', 'Stock entry book'], ['stock_bt', 'Stock book backtest']] as const} />
+      {view === 'algos' && <Algos book="fundamental" />}
       {view === 'stock' && stockLive}
       {view === 'stock_bt' && stockBacktest}
     </div>
   );
 }
 
-function Algos() {
+function Algos({ book }: { book: 'macro' | 'fundamental' }) {
   const { user } = useAuth();
   const canManage = ['admin', 'pm', 'quant'].includes(user?.role ?? '');
   const [d, setD] = useState<any>(null);
@@ -40,8 +61,8 @@ function Algos() {
   const [busy, setBusy] = useState(false);
   const load = useCallback((refresh = false) => {
     setBusy(true); setErr(null);
-    api(`/api/v1/quant/trader${refresh ? '?refresh=true' : ''}`).then(setD).catch((e) => setErr(e.message)).finally(() => setBusy(false));
-  }, []);
+    api(`/api/v1/quant/trader?book=${book}${refresh ? '&refresh=true' : ''}`).then(setD).catch((e) => setErr(e.message)).finally(() => setBusy(false));
+  }, [book]);
   useEffect(() => load(), [load]);
   const stop = async (dep: any) => {
     if (!window.confirm(`Stop “${dep.name}”? Its paper record ends today.`)) return;
@@ -50,7 +71,7 @@ function Algos() {
   if (!d) return err ? <ErrorNote msg={err} /> : <div className="flex items-center gap-2 text-2xs text-text-tertiary p-3"><Loader2 className="w-3 h-3 animate-spin" />Updating deployed algos…</div>;
   if (!d.deployments.length) return (
     <div className="p-4 border border-dashed border-border text-2xs text-text-secondary">
-      No algos deployed yet. Open the <a href="#quant-lab" className="underline text-bloomberg">Quant Lab</a>, backtest a template or your own formula, then press <b>Deploy to Quant Trader</b>.
+      No {book} algos deployed yet. Open the <a href="#quant-lab" className="underline text-bloomberg">Quant Lab</a>, backtest a {book === 'macro' ? 'cross-asset / ETF' : 'stock or fundamental-factor'} template or your own formula, then press <b>Deploy</b> — it is routed to this trader automatically.
       {d.errors?.length > 0 && <ErrorNote msg={d.errors.map((e: any) => `${e.name}: ${e.error}`).join(' · ')} />}
     </div>
   );
@@ -73,7 +94,7 @@ function Algos() {
       ]} />
       {d.curve.length > 1 && (
         <div className="p-3 bg-surface-1 border border-border">
-          <LineChart rows={d.curve} x="date" height={200} baseline={d.capital} fmt={(v) => usd(v)} lines={[{ key: 'nav', label: 'Quant book NAV', color: CATEGORICAL[0] }]} />
+          <LineChart rows={d.curve} x="date" height={200} baseline={d.capital} fmt={(v) => usd(v)} lines={[{ key: 'nav', label: `${book === 'macro' ? 'Macro' : 'Fundamental'} algos NAV`, color: CATEGORICAL[0] }]} />
         </div>
       )}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
