@@ -28,13 +28,40 @@ class FakeDash:
         return cls(raw["tag"])
 
 
+class Gate:
+    """The fake rebuild blocks until the test opens the gate — so "the caller did not wait for the rebuild" is
+    checked deterministically (the gate is still shut when the answer arrives), not with a wall-clock budget
+    that a busy machine can blow."""
+
+    def __init__(self, open_=False):
+        self.open = open_
+        self._ev = None
+
+    def event(self):
+        if self._ev is None:                      # created inside the running loop
+            self._ev = asyncio.Event()
+            if self.open:
+                self._ev.set()
+        return self._ev
+
+    def release(self):
+        self.open = True
+        if self._ev is not None:
+            self._ev.set()
+
+
+class Calls(list):
+    gate: Gate
+
+
 @pytest.fixture
 def env(tmp_path, monkeypatch):
-    calls = []
+    calls = Calls()
+    gate = Gate()
 
     async def build(mode="live"):
         calls.append(mode)
-        await asyncio.sleep(1.0)      # a slow rebuild: callers must not wait for it
+        await gate.event().wait()    # a slow rebuild: callers must not wait for it
         return FakeDash(f"fresh{len(calls)}")
 
     monkeypatch.setattr(dh, "_SNAPSHOT_DIR", tmp_path)
@@ -43,6 +70,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(dh, "_DASHBOARD_CACHE", {})
     monkeypatch.setattr(dh, "_DASHBOARD_LOCKS", {})
     monkeypatch.setattr(dh, "_REFRESHING", {})
+    calls.gate = gate
     return calls
 
 
@@ -54,10 +82,10 @@ async def _settle():
 def test_cold_start_serves_disk_snapshot_then_refreshes(env):
     async def go():
         dh._save_snapshot("live", time.time() - 300, FakeDash("disk"))
-        t0 = time.perf_counter()
-        d = await dh.get_dashboard_data("live")
-        assert time.perf_counter() - t0 < 0.85        # under the 1 s rebuild, with slack for a busy machine
+        d = await asyncio.wait_for(dh.get_dashboard_data("live"), timeout=30)
+        assert not env.gate.open                       # answered while the rebuild was still blocked
         assert d.tag == "disk" and d.metadata.dataStatus == "stale" and "snapshot" in d.metadata.validationWarnings
+        env.gate.release()
         await _settle()
         assert (await dh.get_dashboard_data("live")).tag == "fresh1"
         assert json.loads(dh._snapshot_path("live").read_text())["data"]["tag"] == "fresh1"
@@ -67,16 +95,17 @@ def test_cold_start_serves_disk_snapshot_then_refreshes(env):
 def test_expired_cache_served_instantly_with_single_refresh(env):
     async def go():
         dh._DASHBOARD_CACHE["live"] = (time.time() - 120, FakeDash("old"))
-        t0 = time.perf_counter()
-        out = await asyncio.gather(*(dh.get_dashboard_data("live") for _ in range(5)))
-        assert time.perf_counter() - t0 < 0.85        # under the 1 s rebuild, with slack for a busy machine
+        out = await asyncio.wait_for(asyncio.gather(*(dh.get_dashboard_data("live") for _ in range(5))), timeout=30)
+        assert not env.gate.open                       # all five answered while the rebuild was still blocked
         assert {d.tag for d in out} == {"old"}
+        env.gate.release()
         await _settle()
         assert env == ["live"], "concurrent requests must trigger one rebuild"
     asyncio.run(go())
 
 
 def test_no_cache_no_snapshot_builds_inline(env):
+    env.gate.release()                                 # nothing to serve, so the caller waits for the build
     assert asyncio.run(dh.get_dashboard_data("live")).tag == "fresh1"
 
 
