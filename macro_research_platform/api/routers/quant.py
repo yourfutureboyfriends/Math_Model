@@ -319,12 +319,20 @@ async def macro_trader_deep(request: Request, series: str = Query("tactical", pa
     if not curve:
         raise HTTPException(503, "The macro model backtest isn't available yet.")
     key = "model" if series == "tactical" else "strategic"
-    rows = [c for c in curve if c.get(key) is not None and c.get("sixty_forty") is not None]
+    # the book's full history; the 60/40 benchmark is blank (NaN) before both of its legs exist
+    rows = [c for c in curve if c.get(key) is not None]
     dates = [pd_month_end(c["month"]) for c in rows]
-    s_ = [rows[i][key] / rows[i - 1][key] - 1 for i in range(1, len(rows))]
-    b_ = [rows[i]["sixty_forty"] / rows[i - 1]["sixty_forty"] - 1 for i in range(1, len(rows))]
+    # the curve is growth of $1 *after* each month, so the first point is (1 + first month's return)
+    s_ = [rows[0][key] - 1] + [rows[i][key] / rows[i - 1][key] - 1 for i in range(1, len(rows))]
+    nan = float("nan")
+    b_ = [nan] + [rows[i]["sixty_forty"] / rows[i - 1]["sixty_forty"] - 1 if rows[i].get("sixty_forty") is not None
+                  and rows[i - 1].get("sixty_forty") is not None else nan for i in range(1, len(rows))]
     label = "Tactical model book (net of costs)" if series == "tactical" else "Strategic model book (net of costs)"
-    return await asyncio.to_thread(deep.report, dates[1:], s_, 12, b_, None, label, "60/40")
+    rep = await asyncio.to_thread(deep.report, dates, s_, 12, b_, None, label, "60/40")
+    if bt.get("returns_are"):
+        rep["notes"].insert(0, f"The model book's returns are {bt['returns_are']} — add the T-bill rate for total returns. "
+                               "The 60/40 benchmark is measured the same way.")
+    return rep
 
 
 def pd_month_end(m: str) -> str:

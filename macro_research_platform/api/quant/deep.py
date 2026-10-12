@@ -269,14 +269,22 @@ def report(dates: Sequence[str], returns: Sequence[float], ppy: float = 252, ben
     r = pd.Series(np.asarray(returns, float), index=idx).replace([np.inf, -np.inf], np.nan)
     b = pd.Series(np.asarray(benchmark, float), index=idx).replace([np.inf, -np.inf], np.nan) if benchmark is not None else None
     rm = _to_monthly(r.fillna(0), ppy)
-    bm = _to_monthly(b.fillna(0), ppy) if b is not None else None
+    if b is not None:
+        bm = _to_monthly(b.fillna(0), ppy)
+        if ppy > 13:                       # months with no benchmark data at all stay blank, not 0%
+            have = b.notna().resample("ME").sum()
+            bm = bm.where(have.reindex(bm.index).fillna(0) > 0)
+        else:
+            bm = b.copy()
+    else:
+        bm = None
     # calendar
     cal = []
     for y, g in rm.groupby(rm.index.year):
         row = {"year": int(y), "months": {int(d.month): _r(v) for d, v in g.items()}, "total": _r(float(np.prod(1 + g) - 1))}
         if bm is not None:
             gb = bm[bm.index.year == y]
-            row["benchmark"] = _r(float(np.prod(1 + gb) - 1)) if len(gb) else None
+            row["benchmark"] = _r(float(np.prod(1 + gb) - 1)) if len(gb) and gb.notna().all() else None
         cal.append(row)
     # rolling 12 months (monthly)
     roll = []
@@ -306,7 +314,7 @@ def report(dates: Sequence[str], returns: Sequence[float], ppy: float = 252, ben
     # distribution of monthly returns
     edges = np.linspace(-0.2, 0.2, 17)
     hs, _ = np.histogram(rm.clip(-0.2, 0.2), bins=edges)
-    hb, _ = np.histogram(bm.clip(-0.2, 0.2), bins=edges) if bm is not None else (None, None)
+    hb, _ = np.histogram(bm.dropna().clip(-0.2, 0.2), bins=edges) if bm is not None else (None, None)
     dist = [{"bin": f"{edges[i] * 100:.1f}%", "strategy": int(hs[i]), **({"benchmark": int(hb[i])} if hb is not None else {})} for i in range(len(hs))]
     # stability
     half = len(r) // 2
