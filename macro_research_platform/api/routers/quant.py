@@ -164,6 +164,22 @@ async def quant_combine(body: CombineIn, request: Request):
         raise HTTPException(504, "Combining took too long — use fewer strategies.")
 
 
+def _saved_spec(spec_in: Dict[str, Any]) -> Dict[str, Any]:
+    """Code strategies are checked statically (never run); formula specs are normalised as before."""
+    from api.quant import engine, sandbox
+    if (spec_in or {}).get("kind") == "code":
+        try:
+            sandbox.check(spec_in.get("code") or "")
+        except sandbox.SandboxError as e:
+            _spec_error(e)
+        return {"kind": "code", "name": str(spec_in.get("name") or "Untitled strategy")[:80],
+                "description": str(spec_in.get("description") or "")[:1000], "code": spec_in["code"]}
+    try:
+        return engine.normalize(spec_in)
+    except engine.SpecError as e:
+        _spec_error(e)
+
+
 @router.get("/api/v1/quant/strategies")
 async def quant_strategies(request: Request):
     from api.quant import store
@@ -175,10 +191,7 @@ async def quant_strategies(request: Request):
 async def quant_save(body: SaveIn, request: Request):
     from api.quant import engine, store
     user = _user(request, ("pm", "quant", "analyst"))["username"]
-    try:
-        spec = engine.normalize(body.spec)
-    except engine.SpecError as e:
-        _spec_error(e)
+    spec = _saved_spec(body.spec)
     return await asyncio.to_thread(store.save_strategy, user, spec, None, body.template)
 
 
@@ -191,10 +204,7 @@ async def quant_update(sid: int, body: SaveIn, request: Request):
         raise HTTPException(404, "strategy not found")
     if cur["owner"] != u["username"] and u["role"] != "admin":
         raise HTTPException(403, "only the owner can edit this strategy")
-    try:
-        spec = engine.normalize(body.spec)
-    except engine.SpecError as e:
-        _spec_error(e)
+    spec = _saved_spec(body.spec)
     return await asyncio.to_thread(store.save_strategy, cur["owner"], spec, sid)
 
 
@@ -209,6 +219,90 @@ async def quant_delete(sid: int, request: Request):
         raise HTTPException(403, "only the owner can delete this strategy")
     await asyncio.to_thread(store.delete_strategy, sid)
     return {"deleted": sid}
+
+
+# ── Code Lab ─────────────────────────────────────────────────────────────────
+class AnalyzeIn(BaseModel):
+    dates: List[str]
+    returns: List[float]
+    benchmark: Optional[List[float]] = None
+    label: str = "Strategy"
+    benchmark_label: str = "SPY"
+    mc_years: float = 10.0
+    mc_paths: int = 2000
+    max_leverage: float = 2.0
+    dd_limit: float = 0.5
+
+
+class CodeCheckIn(BaseModel):
+    code: str
+
+
+@router.get("/api/v1/quant/code/engine")
+async def code_engine(request: Request):
+    """The backtest engine's source — loaded by the browser so tests run the exact server code."""
+    from fastapi.responses import PlainTextResponse
+    from api.quant import sandbox
+    _user(request)
+    return PlainTextResponse(sandbox.ENGINE.read_text(), headers={"Cache-Control": "private, max-age=300"})
+
+
+@router.get("/api/v1/quant/code/data")
+async def code_data(request: Request, universe: str = Query(..., max_length=1200), start: str = "2005-01-01",
+                    benchmark: str = "SPY"):
+    """Prices, T-bill rate and VIX for a strategy's UNIVERSE (float32, base64) for the browser."""
+    from api.quant import codeserver
+    _user(request)
+    try:
+        return await _bt(codeserver.data_payload, [u for u in universe.split(",") if u.strip()], start[:10], benchmark.upper())
+    except ValueError as e:
+        _spec_error(e)
+
+
+@router.post("/api/v1/quant/code/check")
+async def code_check(body: CodeCheckIn, request: Request):
+    """Static check against the deploy sandbox's rules (does not run the code)."""
+    from api.quant import sandbox
+    _user(request)
+    try:
+        return {"ok": True, **sandbox.check(body.code)}
+    except sandbox.SandboxError as e:
+        return {"ok": False, "error": str(e)}
+
+
+@router.post("/api/v1/quant/code/analyze")
+async def code_analyze(body: AnalyzeIn, request: Request):
+    """Deep analysis + Monte Carlo (bootstrap, leverage/Kelly) of a daily return series — numbers only."""
+    from api.quant import codeserver
+    _user(request)
+    if not 1 <= body.mc_years <= 30 or not 200 <= body.mc_paths <= 5000 or not 1 <= body.max_leverage <= 4 or not 0.1 <= body.dd_limit <= 0.9:
+        raise HTTPException(400, "Monte Carlo: 1–30 years, 200–5000 paths, max leverage 1–4×, drawdown limit 10–90%.")
+    try:
+        return await _bt(codeserver.analyze, body.dates, body.returns, body.benchmark, body.label, body.benchmark_label,
+                         body.mc_years, body.mc_paths, body.max_leverage, body.dd_limit)
+    except ValueError as e:
+        _spec_error(e)
+
+
+@router.get("/api/v1/quant/library")
+async def strategy_library(request: Request):
+    from api.quant import library
+    _user(request)
+    return {"strategies": await asyncio.to_thread(library.summaries), "notes": library.__doc__}
+
+
+@router.get("/api/v1/quant/library/{sid}")
+async def strategy_library_result(sid: str, request: Request, refresh: bool = False):
+    from api.quant import library
+    _user(request)
+    try:
+        library.get(sid)
+    except KeyError:
+        raise HTTPException(404, "Unknown strategy")
+    try:
+        return await _bt(library.result, sid, refresh)
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "Evaluating this strategy took too long — try again shortly.")
 
 
 # ── Quant Trader ─────────────────────────────────────────────────────────────
@@ -284,7 +378,12 @@ async def quant_deep(body: DeepIn, request: Request):
         spec = body.spec or _member_spec({"strategy_id": body.strategy_id, "template": body.template})
 
     def build():
-        res = backtest.run(spec, light=True)
+        if (spec or {}).get("kind") in ("code", "library"):
+            cres = trader.eval_code_spec(spec)
+            res = {"daily_dates": cres["dates"], "daily_returns": cres["returns"], "daily_benchmark": cres.get("benchmark"),
+                   "spec": {"name": spec.get("name"), "benchmark": "SPY", **spec}}
+        else:
+            res = backtest.run(spec, light=True)
         rep = deep.report(res["daily_dates"], res["daily_returns"], 252, res.get("daily_benchmark"),
                           label=res["spec"].get("name") or "Strategy", benchmark_label=res["spec"].get("benchmark") or "Benchmark")
         rep["book"] = trader.classify(res["spec"])

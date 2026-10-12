@@ -67,9 +67,33 @@ def _trades_stocks(spec: Dict[str, Any]) -> bool:
     return stocks > len(syms) / 2
 
 
+def code_universe(spec: Dict[str, Any]) -> List[str]:
+    """Tickers of a code or library strategy, read from its literal UNIVERSE (never by running it)."""
+    from api.quant import library, sandbox
+    if spec.get("kind") == "library":
+        if spec.get("library") == library.PORTFOLIO["id"]:
+            return []
+        return sandbox.check(library.get(spec["library"])["code"])["universe"]
+    return sandbox.check(spec.get("code") or "")["universe"]
+
+
+def eval_code_spec(spec: Dict[str, Any]) -> Dict[str, Any]:
+    """Daily out-of-sample returns of a code strategy: library code runs in-process (trusted), user code
+    only inside the sandbox."""
+    from api.quant import codeserver, library, sandbox
+    if spec.get("kind") == "library":
+        if spec["library"] == library.PORTFOLIO["id"]:
+            return library.result(spec["library"])
+        return codeserver.evaluate_code(library.get(spec["library"])["code"], spec.get("costs"), trusted=True)
+    return sandbox.run(spec["code"], spec.get("costs"))
+
+
 def classify(spec: Dict[str, Any]) -> str:
     """Which trader a strategy belongs to — decided by what it reads and what it trades."""
     from api.quant.expr import FUNDAMENTALS
+    if spec.get("kind") in ("code", "library"):
+        syms = code_universe(spec)
+        return "technical" if syms and _trades_stocks({"universe": {"symbols": syms}}) else "macro"
     text = " ".join(str(spec.get(k) or "") for k in ("signal", "filter", "weighting", "exit"))
     if any(re.search(rf"\b{re.escape(f)}\b", text) for f in FUNDAMENTALS):
         return "fundamental"
@@ -85,6 +109,8 @@ def deploy(owner: str, spec_in: Dict[str, Any], capital: float, strategy_id: Opt
            book: Optional[str] = None) -> Dict[str, Any]:
     if not 1_000 <= capital <= 1_000_000_000:
         raise engine.SpecError("Capital must be between $1,000 and $1bn.")
+    if spec_in.get("kind") in ("code", "library"):
+        return _deploy_code(owner, spec_in, capital, strategy_id, book)
     res = backtest.run(spec_in, light=True)
     spec = res["spec"]
     m = res["metrics"]
@@ -99,6 +125,37 @@ def deploy(owner: str, spec_in: Dict[str, Any], capital: float, strategy_id: Opt
     return d
 
 
+def _deploy_code(owner: str, spec_in: Dict[str, Any], capital: float, strategy_id: Optional[int],
+                 book: Optional[str]) -> Dict[str, Any]:
+    from api.quant import library, sandbox
+    kind = spec_in.get("kind")
+    spec = {"kind": kind, "name": str(spec_in.get("name") or "Code strategy")[:80]}
+    if kind == "library":
+        lib = library.get(str(spec_in.get("library")))
+        spec.update(library=lib["id"], name=str(spec_in.get("name") or lib["name"])[:80])
+    else:
+        try:
+            sandbox.check(spec_in.get("code") or "")
+        except sandbox.SandboxError as e:
+            raise engine.SpecError(str(e))
+        spec["code"] = spec_in["code"]
+    if isinstance(spec_in.get("costs"), dict):
+        spec["costs"] = {k: float(v) for k, v in spec_in["costs"].items() if isinstance(v, (int, float))}
+    try:
+        res = eval_code_spec(spec)
+    except sandbox.SandboxError as e:
+        raise engine.SpecError(str(e))
+    m = res.get("metrics") or {}
+    summary = {k: m.get(k) for k in ("cagr", "vol", "sharpe", "max_drawdown")}
+    summary["period"] = {"start": res["dates"][0], "end": res["dates"][-1], "last_close": res["dates"][-1]}
+    natural = classify(spec)
+    if book and book != natural:
+        raise engine.SpecError(f"This strategy trades {BOOK_TRADES[natural]}, so it belongs in the {BOOK_LABEL[natural]} Quant Trader.")
+    d = store.deploy(owner, spec["name"], spec, res["dates"][-1], float(capital), strategy_id, summary, natural)
+    invalidate()
+    return d
+
+
 def invalidate() -> None:
     with _lock:
         _cache.clear()
@@ -106,7 +163,12 @@ def invalidate() -> None:
 
 def _one(dep: Dict[str, Any]) -> Dict[str, Any]:
     spec = dep["spec"]
-    res = backtest.run(spec, light=True)
+    if spec.get("kind") in ("code", "library"):
+        cres = eval_code_spec(spec)
+        res = {"daily_dates": cres["dates"], "daily_returns": cres["returns"],
+               "positions": [{"symbol": k, "target_weight": v, "signal": None} for k, v in (cres.get("weights_last") or {}).items()]}
+    else:
+        res = backtest.run(spec, light=True)
     dates, r = res["daily_dates"], np.asarray(res["daily_returns"], float)
     live_mask = np.array([d > dep["deployed_at"] for d in dates])
     pre, live = r[~live_mask], r[live_mask]

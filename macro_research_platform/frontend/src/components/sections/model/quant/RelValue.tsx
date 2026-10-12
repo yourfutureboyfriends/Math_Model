@@ -11,7 +11,7 @@ import { LineChart } from '@/components/ui/LineChart';
 import { KpiStrip } from '@/components/ui/KpiStrip';
 import { CATEGORICAL } from '@/lib/chartPalette';
 import { api, ErrorNote, Field, inputCls, num, pct, Pills, spct, tone, usd } from './shared';
-import type { Meta } from './StrategyBuilder';
+type Meta = { universes: { id: string; label: string }[] };
 
 type Sub = 'pairs' | 'mm';
 

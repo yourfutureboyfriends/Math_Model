@@ -278,14 +278,14 @@ function Arb() {
                     <tr onClick={() => setSel(sel === i ? null : i)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-2', sel === i && 'bg-surface-2')}>
                       <td className="py-0.5 pr-1.5 font-sans text-text-primary max-w-[320px] truncate" title={r.poly_question}>{r.poly_question}</td>
                       <td className="px-1.5 font-sans text-text-secondary whitespace-nowrap">{DIR[r.dir]}</td>
-                       <td className="px-1.5 whitespace-nowrap text-right">{C(r.yes_price)}</td> <td className="px-1.5 whitespace-nowrap text-right">{C(r.no_price)}</td>
+                      <td className="px-1.5 whitespace-nowrap text-right">{C(r.yes_price)}</td><td className="px-1.5 whitespace-nowrap text-right">{C(r.no_price)}</td>
                       <td className={cn('px-1.5 whitespace-nowrap text-right', r.edge > 0 ? 'text-green' : 'text-text-tertiary')}>{C(x?.edge_per_contract ?? r.edge)}</td>
-                       <td className="px-1.5 whitespace-nowrap text-right">{x?.contracts ? big(x.contracts) : '—'}</td>
+                      <td className="px-1.5 whitespace-nowrap text-right">{x?.contracts ? big(x.contracts) : '—'}</td>
                       <td className={cn('px-1.5 whitespace-nowrap text-right', (x?.profit ?? 0) > 0 && 'text-green')}>{x?.contracts ? usd0(x.profit) : '—'}</td>
-                       <td className="px-1.5 whitespace-nowrap text-right">{r.annualized == null ? '—' : `${(r.annualized * 100).toFixed(1)}%`}</td>
+                      <td className="px-1.5 whitespace-nowrap text-right">{r.annualized == null ? '—' : `${(r.annualized * 100).toFixed(1)}%`}</td>
                       <td className={cn('px-1.5 whitespace-nowrap text-right', beats == null ? 'text-text-tertiary' : beats ? 'text-green' : 'text-amber')}>{r.treasury_yield == null ? '—' : `${(r.treasury_yield * 100).toFixed(1)}%`}</td>
-                       <td className="px-1.5 whitespace-nowrap text-right text-text-tertiary">{r.end}</td>
-                       <td className="px-1.5 whitespace-nowrap text-right">{r.flags.length ? <span className="text-amber" title={r.flags.join('\n')}>⚠ {r.flags.length}</span> : ''}</td>
+                      <td className="px-1.5 whitespace-nowrap text-right text-text-tertiary">{r.end}</td>
+                      <td className="px-1.5 whitespace-nowrap text-right">{r.flags.length ? <span className="text-amber" title={r.flags.join('\n')}>⚠ {r.flags.length}</span> : ''}</td>
                     </tr>
                     {sel === i && <tr><td colSpan={11} className="font-sans"><ArbDetail r={r} /></td></tr>}
                   </Fragment>);
