@@ -7,14 +7,14 @@
 //   * Optimiser: six weighting methods on either book or any tickers, ranked walk-forward.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Briefcase, Cpu, Globe2, CheckCircle2, Loader2, MinusCircle, Play, Plus, RefreshCw, Scale, X, XCircle } from 'lucide-react';
+import { Activity, Briefcase, Cpu, Globe2, CheckCircle2, Loader2, MinusCircle, Play, Plus, RefreshCw, Scale, X, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
 import { Donut } from '@/components/ui/Donut';
 import { stableColors } from '@/lib/chartPalette';
 import { openStockAnalysis } from './StockIdeasSection';
 import { MacroTrader } from './MacroTrader';
-import { FundamentalQuantTrader, MacroQuantTrader } from './QuantTrader';
+import { FundamentalQuantTrader, MacroQuantTrader, TechnicalQuantTrader } from './QuantTrader';
 
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#8a63d2', '#d0457a', '#6b7280'];
 const usd = (v: number | null | undefined, d = 0) =>
@@ -641,6 +641,7 @@ const TABS = [
   { key: 'my', label: 'My Portfolio', Icon: Briefcase },
   { key: 'macro', label: 'Macro Quant Trader (paper)', Icon: Globe2 },
   { key: 'fund', label: 'Fundamental Quant Trader (paper)', Icon: Cpu },
+  { key: 'tech', label: 'Technical Quant Trader (paper)', Icon: Activity },
   { key: 'opt', label: 'Optimiser', Icon: Scale },
 ] as const;
 
@@ -648,7 +649,7 @@ export function PortfoliosSection() {
   const [tab, setTab] = useState<(typeof TABS)[number]['key']>(() => {
     try {
       const t = localStorage.getItem('portfolios.tab');
-      return (t === 'auto' || t === 'quant' ? 'fund' : TABS.some((x) => x.key === t) ? t : 'my') as any;   // older tab names
+      return (t === 'auto' || t === 'quant' ? 'tech' : TABS.some((x) => x.key === t) ? t : 'my') as any;   // older tab names
     } catch { return 'my'; }
   });
   useEffect(() => { try { localStorage.setItem('portfolios.tab', tab); } catch { /* storage unavailable */ } }, [tab]);
@@ -658,7 +659,7 @@ export function PortfoliosSection() {
         <div className="section-header-left">
           <span className="section-tag"><Briefcase className="w-3 h-3" /></span>
           <h2 className="section-title">Portfolios</h2>
-          <span className="text-2xs text-text-tertiary">your picks reviewed by the model · two separate paper traders (macro quant and fundamental quant) · optimisation</span>
+          <span className="text-2xs text-text-tertiary">your picks reviewed by the model · three separate paper traders (macro, fundamental and technical quant) · optimisation</span>
         </div>
       </div>
       <div className="flex border border-border mb-2 w-fit" role="tablist" aria-label="Portfolio">
@@ -671,7 +672,8 @@ export function PortfoliosSection() {
       </div>
       {tab === 'my' && <MyPortfolio />}
       {tab === 'macro' && <MacroQuantTrader modelBook={<MacroTrader />} />}
-      {tab === 'fund' && <FundamentalQuantTrader stockLive={<AutoLive />} stockBacktest={<AutoBacktest />} />}
+      {tab === 'fund' && <FundamentalQuantTrader />}
+      {tab === 'tech' && <TechnicalQuantTrader stockLive={<AutoLive />} stockBacktest={<AutoBacktest />} />}
       {tab === 'opt' && <Optimiser />}
     </div>
   );

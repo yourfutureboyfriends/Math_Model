@@ -31,31 +31,31 @@ _lock = threading.Lock()
 TTL = 1800
 
 
-# ── Two books, never mixed ───────────────────────────────────────────────────
+# ── Three books, never mixed ─────────────────────────────────────────────────
 # macro       — asset-class strategies: ETFs of indices, bonds, credit, commodities, currencies, sectors, countries
-# fundamental — single-stock strategies, and anything that reads company fundamentals (value, quality …)
-BOOKS = ("macro", "fundamental")
+#               (trend, momentum and breakout rules on those are still macro: what is traded decides)
+# fundamental — single-stock strategies that read company fundamentals (value, quality, profitability …)
+# technical   — single-stock strategies driven only by price and volume (momentum, reversal, breakouts, low vol)
+BOOKS = ("macro", "fundamental", "technical")
+BOOK_LABEL = {"macro": "Macro", "fundamental": "Fundamental", "technical": "Technical"}
+BOOK_TRADES = {"macro": "asset classes", "fundamental": "stocks using company fundamentals",
+               "technical": "stocks using price and volume only"}
 MACRO_PRESETS = {"cross_asset", "us_sectors", "country_etfs", "bonds_credit", "real_assets", "factor_etfs", "gem", "gtaa5"}
-FUNDAMENTAL_PRESETS = {"us_megacaps"}
+STOCK_PRESETS = {"us_megacaps"}
 
 
-def classify(spec: Dict[str, Any]) -> str:
-    """Which trader a strategy belongs to — decided by what it trades and what it reads."""
-    from api.quant.expr import FUNDAMENTALS
-    text = " ".join(str(spec.get(k) or "") for k in ("signal", "filter", "weighting", "exit"))
-    if any(re.search(rf"\b{re.escape(f)}\b", text) for f in FUNDAMENTALS):
-        return "fundamental"
+def _trades_stocks(spec: Dict[str, Any]) -> bool:
     uni = spec.get("universe") or {}
     preset = uni.get("preset")
-    if preset in FUNDAMENTAL_PRESETS:
-        return "fundamental"
+    if preset in STOCK_PRESETS:
+        return True
     if preset in MACRO_PRESETS:
-        return "macro"
-    syms = [str(s).upper() for s in (uni.get("symbols") or [])]
+        return False
+    syms = [str(s).upper() for s in (uni.get("symbols") or [])][:40]
     if not syms:
-        return "macro"
+        return False
     stocks = 0
-    for sym in syms[:40]:
+    for sym in syms:
         if any(ch in sym for ch in "^=") or sym.endswith("-USD"):
             continue                                            # index, FX, future, crypto
         try:
@@ -64,11 +64,21 @@ def classify(spec: Dict[str, Any]) -> str:
                 stocks += 1
         except Exception:
             continue
-    return "fundamental" if stocks > len(syms[:40]) / 2 else "macro"
+    return stocks > len(syms) / 2
+
+
+def classify(spec: Dict[str, Any]) -> str:
+    """Which trader a strategy belongs to — decided by what it reads and what it trades."""
+    from api.quant.expr import FUNDAMENTALS
+    text = " ".join(str(spec.get(k) or "") for k in ("signal", "filter", "weighting", "exit"))
+    if any(re.search(rf"\b{re.escape(f)}\b", text) for f in FUNDAMENTALS):
+        return "fundamental"
+    return "technical" if _trades_stocks(spec) else "macro"
 
 
 def book_of(dep: Dict[str, Any]) -> str:
-    return dep.get("book") if dep.get("book") in BOOKS else classify(dep.get("spec") or {})
+    # always re-derived from the frozen spec, so deployments made before a book existed land in the right one
+    return classify(dep.get("spec") or {})
 
 
 def deploy(owner: str, spec_in: Dict[str, Any], capital: float, strategy_id: Optional[int] = None,
@@ -81,9 +91,8 @@ def deploy(owner: str, spec_in: Dict[str, Any], capital: float, strategy_id: Opt
     summary = {k: m.get(k) for k in ("cagr", "vol", "sharpe", "max_drawdown")}
     summary["period"] = res["period"]
     natural = classify(spec)
-    if book and book != natural:                                # the two traders are kept strictly apart
-        raise engine.SpecError(f"This strategy trades {'single stocks / company fundamentals' if natural == 'fundamental' else 'asset classes'}, "
-                               f"so it belongs in the {'Fundamental' if natural == 'fundamental' else 'Macro'} Quant Trader.")
+    if book and book != natural:                                # the traders are kept strictly apart
+        raise engine.SpecError(f"This strategy trades {BOOK_TRADES[natural]}, so it belongs in the {BOOK_LABEL[natural]} Quant Trader.")
     # Live from the next session after the latest close in the data.
     d = store.deploy(owner, spec["name"], spec, res["period"]["last_close"], float(capital), strategy_id, summary, natural)
     invalidate()
@@ -130,9 +139,9 @@ def _one(dep: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def book(force: bool = False, which: Optional[str] = None) -> Dict[str, Any]:
-    """One trader's book: the macro or the fundamental deployments (never both together)."""
+    """One trader's book: the macro, fundamental or technical deployments (never mixed)."""
     if which not in BOOKS:
-        raise engine.SpecError("Choose the macro or the fundamental trader.")
+        raise engine.SpecError("Choose the macro, fundamental or technical trader.")
     deps = [d for d in store.list_deployments(active_only=True) if book_of(d) == which]
     key = (which,) + tuple((d["id"], d["deployed_at"]) for d in deps)
     with _lock:

@@ -41,7 +41,7 @@ class DeployIn(BaseModel):
     strategy_id: Optional[int] = None
     template: Optional[str] = None
     capital: float = 1_000_000.0
-    book: Optional[str] = None          # macro | fundamental — checked against what the strategy trades
+    book: Optional[str] = None          # macro | fundamental | technical — checked against what the strategy trades
 
 
 class ExprIn(BaseModel):
@@ -213,8 +213,8 @@ async def quant_delete(sid: int, request: Request):
 
 # ── Quant Trader ─────────────────────────────────────────────────────────────
 @router.get("/api/v1/quant/trader")
-async def quant_trader(request: Request, refresh: bool = False, book: str = Query("macro", pattern="^(macro|fundamental)$")):
-    """One trader's book — macro (asset-class algos) or fundamental (stock / company-fundamental algos)."""
+async def quant_trader(request: Request, refresh: bool = False, book: str = Query("macro", pattern="^(macro|fundamental|technical)$")):
+    """One trader's book — macro (asset classes), fundamental (stocks on company data) or technical (stocks on price/volume)."""
     from api.quant import trader
     _user(request)
     try:
@@ -233,7 +233,7 @@ async def quant_deploy(body: DeployIn, request: Request):
     except engine.SpecError as e:
         _spec_error(e)
     await asyncio.to_thread(_audit, u["username"], "quant_deploy",
-                            f"Deployed '{d['name']}' to the {'Fundamental' if d.get('book') == 'fundamental' else 'Macro'} Quant Trader with ${body.capital:,.0f} (live from {d['deployed_at']})")
+                            f"Deployed '{d['name']}' to the {trader.BOOK_LABEL.get(d.get('book'), 'Macro')} Quant Trader with ${body.capital:,.0f} (live from {d['deployed_at']})")
     return d
 
 

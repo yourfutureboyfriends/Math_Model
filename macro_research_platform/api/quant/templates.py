@@ -107,6 +107,40 @@ TEMPLATES: List[Dict[str, Any]] = [
                  "selection": {"mode": "top_pct", "pct": 0.3}, "weighting": "inverse_vol", "rebalance": "monthly", "costs": {"bps": 5}},
     },
     {
+        "id": "week52_high_stocks",
+        "name": "52-week-high momentum",
+        "family": "Momentum",
+        "description": "Hold the 10 large caps trading closest to their 52-week high, equal weight, monthly.",
+        "evidence": "Nearness to the 52-week high predicts returns and explains much of momentum's profit, with "
+                    "fewer reversals than classic 12-1 momentum (George & Hwang 2004) — investors anchor on the high.",
+        "citation": "George & Hwang (2004)",
+        "spec": {"universe": {"preset": "us_megacaps"}, "signal": "drawdown(252)",
+                 "selection": {"mode": "top_n", "n": 10}, "weighting": "equal", "rebalance": "monthly", "costs": {"bps": 5}},
+    },
+    {
+        "id": "short_term_reversal_stocks",
+        "name": "Short-term reversal (1-month losers)",
+        "family": "Mean reversion",
+        "description": "Buy the 20% of large caps that fell most over the last month, rebalanced weekly.",
+        "evidence": "Last month's losers tend to bounce (Jegadeesh 1990; Lehmann 1990) — a liquidity-provision premium. "
+                    "Strong before costs, much weaker after: check the cost-sensitivity test before trusting it.",
+        "citation": "Jegadeesh (1990); Lehmann (1990)",
+        "spec": {"universe": {"preset": "us_megacaps"}, "signal": "-mom(21)",
+                 "selection": {"mode": "top_pct", "pct": 0.2}, "weighting": "equal", "rebalance": "weekly", "costs": {"bps": 5}},
+    },
+    {
+        "id": "rsi2_pullback_stocks",
+        "name": "Stock pullbacks in up-trends (RSI-2)",
+        "family": "Mean reversion",
+        "description": "Buy large caps that are deeply oversold over two days (RSI-2 < 10) while above their 200-day average; daily.",
+        "evidence": "Buying short, sharp pullbacks inside long-term up-trends exploits short-term reversal while the trend "
+                    "filter avoids falling knives (Connors & Alvarez 2009). Turnover is high — costs decide the result.",
+        "citation": "Connors & Alvarez (2009)",
+        "spec": {"universe": {"preset": "us_megacaps"}, "signal": "where((rsi(2) < 10) & (close > sma(close, 200)), 10 - rsi(2), nan)",
+                 "selection": {"mode": "threshold", "min_score": 0}, "weighting": "equal_universe",
+                 "rebalance": "daily", "execution": "next_close", "costs": {"bps": 5}},
+    },
+    {
         "id": "momentum_low_vol_combo",
         "name": "Multi-factor: momentum + low volatility",
         "family": "Multi-factor",
