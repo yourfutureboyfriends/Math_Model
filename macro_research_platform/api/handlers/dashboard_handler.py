@@ -318,8 +318,18 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     gold_level = prices.get('GLD')
     oil_level = prices.get('WTI')
     eurusd_level = prices.get('EURUSD')
-    # 2Y from FRED DGS2: Yahoo has no 2-year index (^FVX, used before, is the 5-year).
-    two_yr = dgs2.latest
+    # 2Y for display: the freshest official print. FRED's DGS2 posts a day after the Treasury publishes its daily par
+    # curve, so showing DGS2 next to the live 10Y mixed two dates; use the Treasury's own curve when it is newer.
+    # (Spreads below still use same-date FRED values.)
+    two_yr, two_yr_date = dgs2.latest, dgs2.latest_date
+    try:
+        from api.marketdata.curves import curves as _mkt_curves
+        _us = (await _dash_asyncio.to_thread(_mkt_curves)).get("curves", {}).get("US") or {}
+        _p2 = next((p for p in _us.get("points", []) if abs(p["tenor"] - 2) < 1e-6), None)
+        if _p2 and _us.get("date") and (two_yr_date is None or str(_us["date"]) >= str(two_yr_date)[:10]):
+            two_yr, two_yr_date = float(_p2["yield"]), str(_us["date"])
+    except Exception as e:
+        logger.debug(f"[dashboard_handler] Treasury curve for 2Y unavailable: {e}")
     fed_rate = round(dff.latest, 2) if dff else None
     sahm_value = sahm_s.latest
 
@@ -662,7 +672,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         fedRate=fed_rate,
         vix=vix_level,
         vixChange=_chg.get('VIX'),
-        changeAsOf=_chg_asof,
+        changeAsOf={**_chg_asof, "2Y": two_yr_date},
     )
 
     # Panels below are computed from observed price / FRED history (see

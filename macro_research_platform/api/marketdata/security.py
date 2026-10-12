@@ -724,6 +724,20 @@ def history(symbol: str, period: str = "1y", interval: str = "1d") -> Dict[str, 
         except Exception as e:
             raise Upstream(f"History unavailable: {e}")
         if df is None or df.empty:
+            # Yahoo sometimes answers an existing symbol with an empty frame ("possibly delisted") when it is busy:
+            # retry once, and if the instrument plainly exists say the provider failed rather than "no history"
+            time.sleep(1.5)
+            try:
+                df = yahoo_call(lambda: yf.Ticker(s).history(period=period, interval=interval, auto_adjust=False))
+            except Exception:
+                df = None
+        if df is None or df.empty:
+            try:
+                exists = bool(_info(s).get("regularMarketPrice") or _info(s).get("previousClose"))
+            except Exception:
+                exists = False
+            if exists:
+                raise Upstream(f"Yahoo returned no price history for {s} just now — it is a live instrument; try again shortly.")
             raise NotFound(f"No price history for {s}.")
         rows = [{"date": d.strftime("%Y-%m-%d"), "open": _f(r["Open"]), "high": _f(r["High"]), "low": _f(r["Low"]),
                  "close": _f(r["Close"]), "volume": _f(r["Volume"])} for d, r in df.iterrows()]

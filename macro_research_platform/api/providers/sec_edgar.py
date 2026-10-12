@@ -154,10 +154,45 @@ def resolve(ticker: str) -> Optional[Dict[str, Any]]:
     return m.get(t) or m.get(t.replace(".", "-")) or m.get(t.replace("-", "."))
 
 
-def company_facts(cik: int) -> Optional[Dict[str, Any]]:
+def _raw_facts(cik: int) -> Optional[Dict[str, Any]]:
     # Not kept in memory: one company's facts can be several MB of JSON (tens of MB parsed).
     return _cached(CACHE / "facts" / f"CIK{cik:010d}.json", FACTS_TTL,
                    lambda: _get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"), keep=False)
+
+
+def _predecessor_cik(facts: Dict[str, Any], cik: int) -> Optional[int]:
+    """A new holding company (e.g. ExxonMobil Holdings Corp, 2026) takes over the ticker but has
+    only its first filings; they are submitted under the old registrant's CIK, which is the
+    accession-number prefix. Returns that CIK when the new entity has little history."""
+    pts = [p for t in ((facts.get("facts") or {}).get("us-gaap") or {}).values()
+           for u in (t.get("units") or {}).values() for p in u]
+    if not pts or len({p.get("accn") for p in pts}) > 3:
+        return None
+    prefixes = {int(str(p.get("accn", "0-")).split("-")[0] or 0) for p in pts}
+    others = [c for c in prefixes if c and c != cik]
+    return others[0] if len(others) == 1 else None
+
+
+def company_facts(cik: int) -> Optional[Dict[str, Any]]:
+    """Company facts; when the filer is a new holding company, the predecessor's history is
+    merged underneath (the successor's own figures win for the same period and filing)."""
+    facts = _raw_facts(cik)
+    if not facts:
+        return facts
+    prev = _predecessor_cik(facts, cik)
+    old = _raw_facts(prev) if prev else None
+    if not old:
+        return facts
+    merged = {ns: {t: {**v, "units": {u: list(pts) for u, pts in (v.get("units") or {}).items()}}
+                   for t, v in tags.items()} for ns, tags in (old.get("facts") or {}).items()}
+    for ns, tags in (facts.get("facts") or {}).items():
+        for t, v in tags.items():
+            dst = merged.setdefault(ns, {}).setdefault(t, {**v, "units": {}})
+            for u, pts in (v.get("units") or {}).items():
+                have = dst["units"].setdefault(u, [])
+                seen = {(p.get("start"), p["end"], p.get("accn")) for p in pts}
+                dst["units"][u] = [p for p in have if (p.get("start"), p["end"], p.get("accn")) not in seen] + list(pts)
+    return {**facts, "facts": merged, "predecessor": {"cik": prev, "name": old.get("entityName")}}
 
 
 # ── Fact extraction ──────────────────────────────────────────────────────────

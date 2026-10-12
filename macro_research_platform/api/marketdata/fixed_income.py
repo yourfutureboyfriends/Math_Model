@@ -166,6 +166,17 @@ def bond_calc(coupon: float, maturity: str, price: Optional[float] = None, ytm: 
             "note": "Street convention: actual/actual accrual, yield compounded with the coupon frequency, clean prices per 100 face."}
 
 
+def bill_bey(price: float, days: int) -> float:
+    """Bond-equivalent (coupon-equivalent) yield of a Treasury bill, per the Treasury's own formula: simple
+    interest up to half a year; beyond that, the semiannual-compounding (quadratic) form, so it compares
+    with coupon yields — the simple formula overstates long bills by several basis points."""
+    if days <= 182:
+        return (100 - price) / price * 365 / days
+    a = days / 365
+    b = 2 * a - 1
+    return (-2 * a + 2 * math.sqrt(a * a - b * (1 - 100 / price))) / b
+
+
 # ── TSY: the Treasury market from FedInvest end-of-day prices ────────────────
 def _fedinvest(day: date) -> List[List[str]]:
     import requests
@@ -214,7 +225,7 @@ def treasuries() -> Dict[str, Any]:
             rec = {"cusip": cusip, "type": k, "coupon": cpn, "maturity": m.isoformat(), "price": px, "years": (m - settle).days / 365.25}
             if k == "Bill":
                 days = (m - settle).days
-                rec["ytm"] = (100 - px) / px * 365 / days                       # bond-equivalent yield
+                rec["ytm"] = bill_bey(px, days)                                  # Treasury's bond-equivalent yield
                 rec["modified"] = days / 365 / (1 + rec["ytm"] * days / 365)
                 rec["dv01"] = rec["modified"] * px / 10000
             elif k in ("Note", "Bond", "Tips"):
@@ -238,7 +249,7 @@ def treasuries() -> Dict[str, Any]:
                 "note": "End-of-day prices from the Treasury's FedInvest service; yields computed here (street convention; bills as bond-equivalent yield). "
                         "TIPS yields are real yields. Prices are indicative end-of-day values, not executable quotes.",
                 "source": "TreasuryDirect FedInvest (U.S. Treasury)"}
-    return _cached("tsy", 6 * 3600, build)
+    return _cached("tsy2", 6 * 3600, build)
 
 
 # ── FXCA: FX carry ───────────────────────────────────────────────────────────
