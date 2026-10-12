@@ -158,8 +158,21 @@ def run() -> Dict[str, Any]:
            "build_seconds": round(time.time() - t0, 1),
            "sample": {"stocks": len(panel.symbols), "start": dates[0], "end": dates[-1], "years": round(yrs, 1)},
            "rules": base, "variants": variants, "deflated_sharpe": dsr, "expectation": expectation,
+           "data_quality": {"positions_closed_on_suspect_jumps": int(live.get("data_exits", 0)),
+                            "rule": "A held stock moving more than ±60% in a day (likely an unadjusted split / bonus issue or a bad print) "
+                                    "is closed at its last good price rather than booked."},
            "curve": curve, "live_daily_returns": [round(float(x), 6) for x in live_r[-2520:]],
            "live_trade_r": [round(float(t["r"]), 4) for t in live["trades"]][-5000:]}
+    # full daily returns per variant and every live-rules trade, for the deep analysis
+    out["daily"] = {"dates": dates[1:], **{key: [round(float(x), 6) for x in np.diff(v["out"]["equity"]) / v["out"]["equity"][:-1]]
+                                           for key, v in results.items() if key in ("live", "control", "no_overlays", "no_regime_gate")}}
+    pd_ = panel.dates
+    out["trade_list"] = [{"symbol": panel.symbols[t["i"]], "entry_date": pd_[t["entry_t"]], "exit_date": pd_[t["exit_t"]],
+                          "reason": t["reason"], "r": round(float(t["r"]), 3), "ret": round(float(t["ret"]), 4),
+                          "days": int(t["exit_t"] - t["entry_t"] + 1),
+                          "sector": panel.sector[t["i"]] if t["i"] < len(panel.sector) else None,
+                          "market_class": panel.market_class[t["i"]] if t["i"] < len(panel.market_class) else None}
+                         for t in live["trades"]][-8000:]
     out["findings"] = findings(out)
     DATA.mkdir(parents=True, exist_ok=True)
     RESULT_FILE.write_text(json.dumps(out))

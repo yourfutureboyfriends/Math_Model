@@ -173,6 +173,34 @@ async def auto_close(pos_id: int, request: Request):
     return res
 
 
+@router.get("/api/v1/auto/backtest/deep")
+async def auto_backtest_deep(variant: str = "live", benchmark: str = "control"):
+    """In-depth analysis of the auto (stock entry) book's portfolio backtest — Technical Quant Trader."""
+    from api import auto_backtest as ab
+    from api.quant import deep
+    cur = await asyncio.to_thread(ab.latest)
+    if not cur:
+        raise HTTPException(404, "Run the auto-book backtest first.")
+    daily = cur.get("daily")
+    if daily and variant in daily:
+        dates, s_, b_, ppy = daily["dates"], daily[variant], daily.get(benchmark), 252
+    else:                                   # older result: 5-day-sampled curve only
+        c = cur.get("curve") or []
+        key = variant if c and variant in c[0] else "live"
+        dates = [x["date"] for x in c][1:]
+        s_ = [c[i][key] / c[i - 1][key] - 1 for i in range(1, len(c))]
+        b_ = [c[i][benchmark] / c[i - 1][benchmark] - 1 for i in range(1, len(c))] if c and benchmark in c[0] else None
+        ppy = 50
+    trades = cur.get("trade_list") if variant == "live" else None
+    labels = {v["key"]: v["label"] for v in cur.get("variants", [])}
+    rep = await asyncio.to_thread(deep.report, dates, s_, ppy, b_, trades, f"Auto book — {labels.get(variant, variant)}",
+                                  labels.get(benchmark, benchmark), "sector")
+    if not trades:
+        rep["trades_note"] = "Trade-by-trade analysis appears after the next backtest run (older results kept only totals)."
+    rep["data_quality"] = cur.get("data_quality")
+    return rep
+
+
 @router.get("/api/v1/auto/backtest")
 async def auto_backtest():
     """The auto book's rules backtested (with ablations, a random-stock control, the Deflated

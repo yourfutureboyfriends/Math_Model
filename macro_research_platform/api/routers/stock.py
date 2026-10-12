@@ -13,7 +13,7 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from api.calculations import stock_timing as st
@@ -323,6 +323,35 @@ async def stock_ideas_refresh():
     if not si.status()["running"]:
         _spawn(si.build_in_background())
     return {"started": True, "status": si.status()}
+
+
+@router.get("/api/v1/stock/backtest/deep")
+async def stock_backtest_deep(variant: str = Query("model", pattern="^(model|regime_gate|setup_only)$"),
+                              benchmark: str = Query("control", pattern="^(control|equal_weight)$")):
+    """In-depth analysis of the stock entry book's portfolio backtest (Technical Quant Trader), incl. every trade."""
+    import json as _json
+    from api import stock_backtest as sb
+    from api.quant import deep
+    if not sb.RESULT_FILE.exists():
+        raise HTTPException(404, "Run the stock-book backtest first.")
+    r = _json.loads(sb.RESULT_FILE.read_text())
+    daily = r.get("daily")
+    if daily:
+        dates, s_, b_, ppy = daily["dates"], daily[variant], daily.get(benchmark), 252
+    else:                                   # older result: downsampled curve only
+        c = r.get("curve") or []
+        dates = [x["date"] for x in c][1:]
+        s_ = [c[i][variant] / c[i - 1][variant] - 1 for i in range(1, len(c))]
+        b_ = [c[i][benchmark] / c[i - 1][benchmark] - 1 for i in range(1, len(c))] if c and benchmark in c[0] else None
+        span = (len(c) - 1) / max(0.5, float((r.get("sample") or {}).get("years") or 1))
+        ppy = max(12, min(252, round(span)))
+    trades = r.get("trade_list") if variant == "model" else None
+    rep = await asyncio.to_thread(deep.report, dates, s_, ppy, b_, trades, f"Stock entry book ({variant.replace('_', ' ')})",
+                                  "Control (random entries)" if benchmark == "control" else "Equal-weight sample", "region")
+    if not trades:
+        rep["trades_note"] = "Trade-by-trade analysis appears after the next backtest run (older results kept only totals)."
+    rep["data_quality"] = r.get("data_quality")
+    return rep
 
 
 @router.get("/api/v1/stock/backtest")

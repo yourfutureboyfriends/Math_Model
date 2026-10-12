@@ -9,6 +9,7 @@ import { Donut } from '@/components/ui/Donut';
 import { useAuth } from '@/context/AuthContext';
 import { CATEGORICAL } from '@/lib/chartPalette';
 import { api, ErrorNote, num, pct, Pills, spct, tone, usd } from '@/components/sections/model/quant/shared';
+import { DeepAnalysis } from '@/components/sections/model/quant/DeepReport';
 
 const STATUS: Record<string, string> = {
   'on track': 'border-green/50 text-green', 'too early': 'border-border text-text-tertiary',
@@ -139,6 +140,7 @@ function Algos({ book }: { book: 'macro' | 'fundamental' | 'technical' }) {
                   {x.positions.slice(0, 10).map((p: any) => `${p.symbol} ${spct(p.weight, 0)}`).join(' · ')}{x.positions.length > 10 ? ` · +${x.positions.length - 10} more` : ''}
                 </div>
               )}
+              <DeepAnalysis request={['/api/v1/quant/deep', { deployment_id: x.id }]} title="Deep analysis of this algo" />
               {canManage && <button onClick={() => stop(x)} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] border border-border text-text-secondary hover:border-red hover:text-red"><Square className="w-2.5 h-2.5" />Stop</button>}
             </div>
           );

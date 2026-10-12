@@ -121,6 +121,20 @@ def _exit(o, h, l, c, start: int, stop: float, target: float, max_hold: int):
     return last, c[last], "time" if last == start + max_hold - 1 else "open"
 
 
+# A one-day close-to-close move this large that does not revert is almost always an unadjusted corporate action
+# (bonus issue, split, rights) or a bad print in free data — a trade spanning one is excluded, not booked.
+MAX_DAILY_JUMP = 0.60
+EXCLUDED: Dict[str, int] = {"jump": 0}
+
+
+def _suspect_jump(c: np.ndarray, a: int, b: int) -> bool:
+    seg = c[max(0, a - 1):b + 1]
+    if seg.size < 2:
+        return False
+    r = seg[1:] / seg[:-1] - 1
+    return bool(np.any(r > MAX_DAILY_JUMP) or np.any(r < -MAX_DAILY_JUMP / (1 + MAX_DAILY_JUMP)))
+
+
 def simulate(symbol: str, dates: Sequence[str], o, h, l, c, regime_ok: Optional[np.ndarray] = None,
              market_class: str = "Developed", variants: Iterable[str] = VARIANTS,
              control_every: int = 21, max_hold: int = MAX_HOLD) -> List[Trade]:
@@ -167,6 +181,11 @@ def simulate(symbol: str, dates: Sequence[str], o, h, l, c, regime_ok: Optional[
             j, px, why = _exit(o, h, l, c, e, stop, target, max_hold)
             if why == "open":                    # still running at the end of the data
                 break
+            if _suspect_jump(c, e, j):
+                EXCLUDED["jump"] += 1
+                last_entry = e
+                i = j
+                continue
             label = "CONTROL" if v == "control" else ("BUY" if reg[i] else "BUY_SMALL")
             out.append(Trade(symbol, v, label, e, j, str(dates[e]), str(dates[j]), float(entry), float(stop),
                              float(target), float(px), why, float(setup[i]), float(timing[i]), cost,

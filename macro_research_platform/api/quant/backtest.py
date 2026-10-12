@@ -91,9 +91,10 @@ def run(spec_in: Dict[str, Any], n_trials: int = 1, trial_sharpes: Optional[Sequ
                      "exposure": round(float(sim["gross_exp"][a + i]), 3)} for i in _thin(len(dates))]
     out["rebalance_log"] = sim["log"][-25:][::-1]
     out["positions"] = _positions(spec, prep, sim)
-    if light:
+    if light:                                            # internal callers only (trader, combine, deep analysis)
         out["daily_returns"] = net
         out["daily_dates"] = dates
+        out["daily_benchmark"] = bench
         return out
     rb: Dict[str, Any] = {"psr": _r(robust.psr(net), 3)}
     trials = list(trial_sharpes or [])

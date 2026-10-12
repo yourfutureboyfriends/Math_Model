@@ -109,6 +109,7 @@ def _regime(stock_index, idx_close, vix_close) -> np.ndarray:
 
 
 def run() -> Dict[str, Any]:
+    bt.EXCLUDED["jump"] = 0
     from api import global_universe as gu
     t0 = time.time()
     _state["stage"] = "loading universe"
@@ -140,6 +141,7 @@ def run() -> Dict[str, Any]:
     if not trades:
         raise RuntimeError("no price history downloaded")
 
+    excluded_jump = bt.EXCLUDED["jump"]
     _state["stage"] = "portfolio"
     calendar = sorted({d for ds in dates.values() for d in ds[bt.WARMUP:]})
     by_v = {v: [t for t in trades if t.variant == v] for v in bt.VARIANTS}
@@ -184,6 +186,16 @@ def run() -> Dict[str, Any]:
             "control_year": bt.group_stats(by_v["control"], lambda t: t.entry_date[:4]),
         },
         "curve": bt.downsample(calendar, curves),
+        "data_quality": {"excluded_jump_trades": excluded_jump,
+                         "rule": f"Trades spanning a one-day move above {bt.MAX_DAILY_JUMP:.0%} (likely an unadjusted split / bonus issue or "
+                                 "a bad print) are excluded — conservative, since a genuine takeover jump is excluded too."},
+        # full daily returns and every model trade, for the deep analysis
+        "daily": {"dates": calendar, **{v: [round(float(x), 6) for x in ports[v]["ret"]] for v in bt.VARIANTS},
+                  "equal_weight": [round(float(x), 6) for x in ew]},
+        "trade_list": [{"symbol": t.symbol, "label": t.label, "entry_date": t.entry_date, "exit_date": t.exit_date,
+                        "reason": t.reason, "r": round(float(t.r), 3), "ret": round(float(t.ret), 4), "days": int(t.days),
+                        "region": t.meta.get("region"), "market_class": t.meta.get("market_class"), "country": t.meta.get("country")}
+                       for t in model][-8000:],
     }
     result["findings"] = findings(result)
     DATA.mkdir(parents=True, exist_ok=True)

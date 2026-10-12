@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, FlaskConical, Loader2, MinusCircle, RefreshCw, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
+import { DeepAnalysis } from '@/components/sections/model/quant/DeepReport';
 
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500'];
 const pct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);
@@ -225,6 +226,7 @@ export function StockBacktestSection() {
           </div>
         </div>
       )}
+      {data?.available && <div className="mt-3"><DeepAnalysis request={['/api/v1/stock/backtest/deep?variant=model&benchmark=control']} title="Deep analysis of the entry model (portfolio of every signal) vs random entries" /></div>}
     </div>
   );
 }

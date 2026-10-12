@@ -96,9 +96,21 @@ def run(p: Panel, rules: Rules, start: int = 260, capital: float = 1.0) -> Dict[
     gross_hist, npos_hist, scale_hist = [], [], []
     peak = capital
 
+    data_exits = 0
     for t in range(start, T):
         has = np.isfinite(p.close[t])
+        prev_close = last_close.copy()
         last_close = np.where(has, p.close[t], last_close)
+        # data hygiene: a held stock jumping more than ±60% in a day is almost always an unadjusted split / bonus issue
+        # or a bad print in free data — close it at the last good price instead of booking the jump (no look-ahead)
+        for i in list(pos):
+            pc, c_ = prev_close[i], p.close[t, i]
+            if has[i] and np.isfinite(pc) and pc > 0 and (c_ / pc > 1.6 or c_ / pc < 1 / 1.6):
+                q = pos.pop(i)
+                proceeds = q["shares"] * pc
+                cash += proceeds - proceeds * cost_side[i]
+                last_close[i] = pc
+                data_exits += 1
 
         # 1. exits
         for i in list(pos):
@@ -228,7 +240,7 @@ def run(p: Panel, rules: Rules, start: int = 260, capital: float = 1.0) -> Dict[
 
     eq = np.array(equity_hist)
     n_orders = len(trades) + len(pos)
-    return {"equity": eq, "orders_per_day": n_orders / max(1, T - start), "dates": p.dates[start:], "trades": trades,
+    return {"equity": eq, "orders_per_day": n_orders / max(1, T - start), "dates": p.dates[start:], "trades": trades, "data_exits": data_exits,
             "gross": np.array(gross_hist), "positions": np.array(npos_hist), "scale": np.array(scale_hist)}
 
 

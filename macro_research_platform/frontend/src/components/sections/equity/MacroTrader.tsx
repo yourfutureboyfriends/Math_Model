@@ -9,6 +9,7 @@ import { Donut } from '@/components/ui/Donut';
 import { useAuth } from '@/context/AuthContext';
 import { CATEGORICAL } from '@/lib/chartPalette';
 import { api, ErrorNote, Field, inputCls, num, pct, Pills, spct, tone, usd } from '@/components/sections/model/quant/shared';
+import { DeepAnalysis } from '@/components/sections/model/quant/DeepReport';
 
 const NAMES: Record<string, string> = { SPY: 'US equity', EFA: 'Developed ex-US', EEM: 'EM equity', TLT: 'Long Treasuries',
   IEF: 'Intermediate Treasuries', TIP: 'TIPS', LQD: 'IG credit', HYG: 'HY credit', GLD: 'Gold', DBC: 'Commodities' };
@@ -159,6 +160,7 @@ function Settings({ s, onSaved }: { s: any; onSaved: () => void }) {
 }
 
 function Backtest() {
+  const [series, setSeries] = useState<'tactical' | 'strategic' | 'all_weather'>('tactical');
   const [m, setM] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { api('/api/v1/model').then(setM).catch((e) => setErr(e.message)); }, []);
@@ -197,6 +199,9 @@ function Backtest() {
           <p className="text-text-secondary">Growth direction right {pct(fs.growth_direction.accuracy, 0)} of months (Brier skill {num(fs.growth_direction.skill)}), inflation {pct(fs.inflation_direction.accuracy, 0)} (skill {num(fs.inflation_direction.skill)}); top regime right {pct(fs.top_regime_hit_rate, 0)} over {fs.months_scored} months.</p>
         </div>
       </div>
+      <Pills label="Book to analyse" value={series} onChange={setSeries}
+        options={[['tactical', 'Tactical model book'], ['strategic', 'Strategic model book'], ['all_weather', 'All Weather (Bridgewater)']] as const} />
+      <DeepAnalysis request={[`/api/v1/macro-trader/deep?series=${series}`]} title={`Deep analysis — ${series === 'all_weather' ? 'All Weather' : series} book vs 60/40`} />
     </div>
   );
 }

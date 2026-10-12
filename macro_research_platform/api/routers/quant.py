@@ -262,6 +262,77 @@ class MacroResetIn(BaseModel):
     capital: Optional[float] = None
 
 
+class DeepIn(BaseModel):
+    spec: Optional[Dict[str, Any]] = None
+    strategy_id: Optional[int] = None
+    template: Optional[str] = None
+    deployment_id: Optional[int] = None
+
+
+@router.post("/api/v1/quant/deep")
+async def quant_deep(body: DeepIn, request: Request):
+    """In-depth analysis of a Quant Lab strategy or a live deployment (any of the three traders)."""
+    from api.quant import backtest, deep, engine, store, trader
+    _user(request)
+    dep = None
+    if body.deployment_id:
+        dep = await asyncio.to_thread(store.get_deployment, body.deployment_id)
+        if not dep:
+            raise HTTPException(404, "deployment not found")
+        spec = dep["spec"]
+    else:
+        spec = body.spec or _member_spec({"strategy_id": body.strategy_id, "template": body.template})
+
+    def build():
+        res = backtest.run(spec, light=True)
+        rep = deep.report(res["daily_dates"], res["daily_returns"], 252, res.get("daily_benchmark"),
+                          label=res["spec"].get("name") or "Strategy", benchmark_label=res["spec"].get("benchmark") or "Benchmark")
+        rep["book"] = trader.classify(res["spec"])
+        if dep:
+            rep["deployed_at"] = dep["deployed_at"]
+            live = [r for d, r in zip(res["daily_dates"], res["daily_returns"]) if d > dep["deployed_at"]]
+            rep["live_days"] = len(live)
+        return rep
+    try:
+        return await _bt(build)
+    except engine.SpecError as e:
+        _spec_error(e)
+
+
+@router.get("/api/v1/macro-trader/deep")
+async def macro_trader_deep(request: Request, series: str = Query("tactical", pattern="^(tactical|strategic|all_weather)$")):
+    """In-depth analysis of the Macro Quant Trader's model books (walk-forward backtests)."""
+    from api.quant import deep
+    _user(request)
+    if series == "all_weather":
+        from api.marketdata import bridgewater
+        aw = await asyncio.to_thread(bridgewater.all_weather, 0.10, 2.0)
+        rows = aw["curves"]
+        dates = [r["date"] for r in rows]
+        s_ = [rows[i]["aw"] / rows[i - 1]["aw"] - 1 if i else 0.0 for i in range(len(rows))]
+        b_ = [rows[i]["6040"] / rows[i - 1]["6040"] - 1 if i else 0.0 for i in range(len(rows))]
+        return await asyncio.to_thread(deep.report, dates[1:], s_[1:], 52, b_[1:], None, "All Weather (unlevered)", "60/40")
+    from api.model.engine import run_model
+    res = await run_model(None, user="system")
+    bt = (res or {}).get("backtest") or {}
+    curve = bt.get("equity_curve") or []
+    if not curve:
+        raise HTTPException(503, "The macro model backtest isn't available yet.")
+    key = "model" if series == "tactical" else "strategic"
+    rows = [c for c in curve if c.get(key) is not None and c.get("sixty_forty") is not None]
+    dates = [pd_month_end(c["month"]) for c in rows]
+    s_ = [rows[i][key] / rows[i - 1][key] - 1 for i in range(1, len(rows))]
+    b_ = [rows[i]["sixty_forty"] / rows[i - 1]["sixty_forty"] - 1 for i in range(1, len(rows))]
+    label = "Tactical model book (net of costs)" if series == "tactical" else "Strategic model book (net of costs)"
+    return await asyncio.to_thread(deep.report, dates[1:], s_, 12, b_, None, label, "60/40")
+
+
+def pd_month_end(m: str) -> str:
+    import calendar
+    y, mo = int(m[:4]), int(m[5:7])
+    return f"{y}-{mo:02d}-{calendar.monthrange(y, mo)[1]:02d}"
+
+
 @router.get("/api/v1/macro-trader")
 async def macro_trader_status(request: Request):
     from api import macro_trader

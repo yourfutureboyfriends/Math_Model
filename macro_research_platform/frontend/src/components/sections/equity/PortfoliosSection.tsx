@@ -15,6 +15,7 @@ import { stableColors } from '@/lib/chartPalette';
 import { openStockAnalysis } from './StockIdeasSection';
 import { MacroTrader } from './MacroTrader';
 import { FundamentalQuantTrader, MacroQuantTrader, TechnicalQuantTrader } from './QuantTrader';
+import { DeepAnalysis } from '@/components/sections/model/quant/DeepReport';
 
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#8a63d2', '#d0457a', '#6b7280'];
 const usd = (v: number | null | undefined, d = 0) =>
@@ -357,6 +358,19 @@ const FTONE: Record<string, { cls: string; Icon: typeof CheckCircle2 }> = {
 };
 const CURVE_KEYS: [string, string][] = [['live', 'Live rules'], ['no_overlays', 'No overlays'], ['alltime_peak', 'All-time-peak DD control'], ['control', 'Random stocks']];
 
+/** Deep analysis of the auto (stock entry) book's replay: any variant, against the random-stock control. */
+function AutoDeep({ variants }: { variants: any[] }) {
+  const [v, setV] = useState('live');
+  const opts = variants.filter((x) => ['live', 'no_overlays', 'no_regime_gate'].includes(x.key));
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-1 text-2xs"><span className="text-text-tertiary">Analyse</span>
+        {opts.map((x) => <button key={x.key} onClick={() => setV(x.key)} className={cn('px-2 py-0.5 border', v === x.key ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{x.label}</button>)}</div>
+      <DeepAnalysis request={[`/api/v1/auto/backtest/deep?variant=${v}&benchmark=control`]} title="Deep analysis of the auto book vs its random-stock control" />
+    </div>
+  );
+}
+
 function AutoBacktest() {
   const [data, setData] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -489,6 +503,7 @@ function AutoBacktest() {
         drawdown control (Grossman &amp; Zhou 1993); volatility targeting (Moreira &amp; Muir 2017; Harvey et al. 2018); overfitting — Deflated Sharpe (Bailey &amp; López de Prado 2014);
         live decay (McLean &amp; Pontiff 2016); institutional costs (Frazzini, Israel &amp; Moskowitz 2018). Sample = today's largest stocks (survivorship flatters absolute returns — compare variants, not levels).
       </div>
+      <AutoDeep variants={v} />
     </div>
   );
 }

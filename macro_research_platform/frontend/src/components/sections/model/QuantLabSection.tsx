@@ -19,6 +19,7 @@ import { CATEGORICAL } from '@/lib/chartPalette';
 import { useAuth } from '@/context/AuthContext';
 import { StrategyBuilder, type Meta } from './quant/StrategyBuilder';
 import { QuantReport } from './quant/QuantReport';
+import { DeepAnalysis } from './quant/DeepReport';
 import { api, BLANK_SPEC, ErrorNote, Field, inputCls, num, pct, spct, tone, withDefaults, type Spec } from './quant/shared';
 
 const TABS = [
@@ -140,7 +141,7 @@ export function QuantLabSection() {
               </div>
               <div className="min-w-0">
                 {busy === 'run' && !result && <div className="flex items-center gap-2 text-2xs text-text-tertiary p-6"><Loader2 className="w-3 h-3 animate-spin" />Downloading prices and running… the first run of a new universe can take ~30 s.</div>}
-                {result ? <div className={cn(busy === 'run' && 'opacity-50')}><QuantReport r={result} /></div> : busy !== 'run' && (
+                {result ? <div className={cn('space-y-2', busy === 'run' && 'opacity-50')}><QuantReport r={result} /><DeepAnalysis request={['/api/v1/quant/deep', { spec: result.spec }]} /></div> : busy !== 'run' && (
                   <div className="p-4 border border-dashed border-border text-2xs text-text-secondary space-y-1.5">
                     <div className="text-text-primary text-xs">How it works</div>
                     <p>1. Pick a universe and write a <b>signal</b>: a formula scored for every asset each day (higher = more attractive), e.g. <code className="font-mono">mom(252, 21)</code> for 12-1 month momentum.</p>
