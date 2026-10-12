@@ -291,6 +291,17 @@ async def strategy_library(request: Request):
     return {"strategies": await asyncio.to_thread(library.summaries), "notes": library.__doc__}
 
 
+@router.get("/api/v1/quant/smartmoney/latest")
+async def smartmoney_latest(request: Request):
+    """Latest 13F top holdings of the tracked institutions (built from cached SEC filings)."""
+    from api.quant import smartmoney
+    _user(request)
+    try:
+        return await _bt(smartmoney.latest_view)
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "Reading the 13F filings took too long — try again shortly.")
+
+
 @router.get("/api/v1/quant/library/{sid}")
 async def strategy_library_result(sid: str, request: Request, refresh: bool = False):
     from api.quant import library

@@ -284,7 +284,137 @@ def strategy(data, days_after=3):
     return pd.DataFrame({"SPY": hold_next.astype(float)}, index=idx)
 ''',
     },
+    {
+        "id": "rentech_statarb",
+        "name": "Short-horizon statistical arbitrage (Medallion-style)",
+        "source": "Renaissance Technologies as described in Zuckerman (2019) 'The Man Who Solved the Market'; "
+                  "Avellaneda & Lee (2010); Blitz, Huij, Lansdorp & Verbeek (2013) 'Short-Term Residual Reversal'",
+        "family": "Stat arb",
+        "summary": "Market-neutral bets that each stock's market-hedged move of the last few days partly reverses: long the "
+                   "biggest residual losers, short the biggest residual winners, scaled by each stock's residual volatility.",
+        "evidence": "Medallion's core, by every public account, is thousands of small, short-holding, market-neutral "
+                    "statistical bets — right only slightly more often than wrong, levered and diversified. Residual "
+                    "reversal is the best-documented public version. Renaissance does it intraday across thousands of "
+                    "instruments with its own execution; on 50 large caps with daily bars and full costs the edge is a "
+                    "small fraction of that — the cost line shows why speed and execution are the real moat.",
+        "code": f"""UNIVERSE = {MEGACAPS}
+START = "2008-01-01"
+PARAMS = {{"horizon": [3, 5, 10], "n": [8, 12]}}
+
+
+def strategy(data, horizon=5, n=10):
+    px = data.close
+    r = px.pct_change()
+    mkt = r.mean(axis=1)
+    beta = r.rolling(126, min_periods=100).cov(mkt).div(mkt.rolling(126, min_periods=100).var(), axis=0).shift(1)
+    resid = r - beta.mul(mkt, axis=0)                              # market-hedged daily return
+    score = -resid.rolling(horizon).sum() / resid.rolling(63, min_periods=40).std()
+    rk = score.rank(axis=1)
+    k = rk.count(axis=1)
+    longs = rk.gt(k - n, axis=0).astype(float)
+    shorts = (rk <= n).astype(float)
+    w = 0.5 * longs.div(longs.sum(axis=1), axis=0) - 0.5 * shorts.div(shorts.sum(axis=1), axis=0)
+    return hold_weekly(w.fillna(0))
+""",
+    },
+    {
+        "id": "janestreet_etf_rv",
+        "name": "ETF relative value (Jane Street-style)",
+        "source": "Jane Street — ETF market making and arbitrage (public descriptions of its business); Gatev, Goetzmann & "
+                  "Rouwenhorst (2006) 'Pairs Trading'; Engle & Granger (1987)",
+        "family": "Stat arb",
+        "summary": "Pairs of economically linked ETFs (resource-exporter countries, gold vs miners, energy majors vs "
+                   "producers, Asian chip exporters, two high-yield trackers): trade the spread back to its rolling "
+                   "equilibrium when it stretches, exit when it closes.",
+        "evidence": "Jane Street's best-known business is keeping ETFs in line with their baskets and with each other. The "
+                    "intraday NAV arbitrage needs authorised-participant status and real-time data; the daily, public "
+                    "version is relative value between closely linked ETFs. Pairs profits are well documented but have "
+                    "decayed as the trade became crowded (Do & Faff 2010).",
+        "code": """UNIVERSE = ["EWA", "EWC", "EWT", "EWY", "GDX", "GLD", "XLE", "XOP", "HYG", "JNK"]
+START = "2008-01-01"
+PAIRS = [("EWA", "EWC"), ("EWT", "EWY"), ("GDX", "GLD"), ("XLE", "XOP"), ("HYG", "JNK")]
+PARAMS = {"entry": [1.5, 2.0], "lookback": [126, 252]}
+
+
+def strategy(data, entry=2.0, lookback=252):
+    lp = np.log(data.close)
+    w = pd.DataFrame(0.0, index=lp.index, columns=lp.columns)
+    for a, b in PAIRS:
+        y, x = lp[a], lp[b]
+        beta = y.rolling(lookback).cov(x) / x.rolling(lookback).var()
+        spread = y - beta * x
+        z = (spread - spread.rolling(lookback).mean()) / spread.rolling(lookback).std()
+        pos = np.zeros(len(z))
+        state = 0.0
+        for i, zi in enumerate(z.to_numpy()):
+            if np.isnan(zi):
+                state = 0.0
+            elif state == 0 and abs(zi) > entry:
+                state = -np.sign(zi)                              # short a stretched spread, long a compressed one
+            elif state != 0 and (abs(zi) < 0.5 or abs(zi) > 4):
+                state = 0.0                                       # converged, or the pair broke: get out
+            pos[i] = state
+        bet = pd.Series(pos, index=z.index)
+        gross = 1 + beta.abs()
+        w[a] += bet / gross / len(PAIRS)
+        w[b] -= bet * beta / gross / len(PAIRS)
+    return w.fillna(0)
+""",
+    },
 ]
+
+SMART_MONEY: List[Dict[str, Any]] = [
+    {"id": "sm_consensus", "kind": "13f", "param": "consensus", "family": "13F institutions", "code": None,
+     "name": "Hedge-fund consensus (Goldman 'VIP'-style)",
+     "source": "Goldman Sachs Hedge Fund VIP basket; SEC 13F filings of Berkshire, Viking, Lone Pine, Coatue, Tiger, Baupost, "
+               "Appaloosa, Pershing Square, Third Point, Duquesne, Elliott, Soros",
+     "summary": "The 20 stocks that appear most often among the top-10 holdings of 12 concentrated fundamental hedge funds, "
+                "equal weight, updated monthly using only filings already public (13F arrives up to 45 days after quarter end).",
+     "evidence": "Goldman's VIP basket (top-10 holdings of fundamental funds) beat the S&P 500 in ~60% of quarters since 2001, "
+                 "by ~52 bp a quarter on average, with higher volatility and crowding risk (it fell hard when crowded "
+                 "longs unwound, e.g. 2016 and 2022). Long-only and growth-heavy."},
+    {"id": "sm_best_ideas", "kind": "13f", "param": "best_ideas", "family": "13F institutions", "code": None,
+     "name": "Best ideas of top fundamental funds",
+     "source": "Cohen, Polk & Silli (2010) 'Best Ideas'; SEC 13F filings of 12 concentrated hedge funds",
+     "summary": "Each fund's two highest-conviction holdings — the positions it overweights most relative to the other funds — "
+                "pooled and equal-weighted, updated as filings become public.",
+     "evidence": "Managers' best ideas beat the market by ~2.8–4.5% a year in Cohen, Polk & Silli; the rest of their "
+                 "portfolios showed no skill. Concentrated, so expect large tracking error against the S&P 500."},
+    {"id": "sm_quant_adds", "kind": "13f", "param": "quant_adds", "family": "13F institutions", "code": None,
+     "name": "Follow the quant giants' buying",
+     "source": "SEC 13F filings of Renaissance, Two Sigma, D. E. Shaw, AQR, Citadel, Millennium and Point72",
+     "summary": "The 20 stocks whose weight rose most across the quant and multi-manager firms' disclosed top holdings last "
+                "quarter, equal weight, from the day the filings are public.",
+     "evidence": "A test, not a recommendation: these firms hold positions for days to weeks, so a quarter-end snapshot "
+                 "published 45 days later mostly describes trades already closed. If this tracks the market with no "
+                 "edge, the data are telling you exactly that."},
+    {"id": "sm_rentech", "kind": "13f", "param": "rentech", "family": "13F institutions", "code": None,
+     "name": "Renaissance disclosed holdings clone",
+     "source": "SEC 13F filings of Renaissance Technologies LLC (largely its institutional long funds, RIEF/RIDA — "
+               "not Medallion)",
+     "summary": "Renaissance's 20 largest disclosed long positions, weighted as it weights them, updated when each filing is public.",
+     "evidence": "Renaissance's 13F reflects its long-only and long-biased institutional funds, which hold for months "
+                 "rather than days, so the clone is a meaningful test of copying them with a 45-day lag. Medallion's "
+                 "book is not observable."},
+]
+
+MULTI_MANAGER = {
+    "id": "multi_manager",
+    "name": "Multi-manager platform (Millennium risk rules, Citadel-style hedging)",
+    "source": "Millennium Management's pod model as widely reported (capital halved at a 5% drawdown, pod closed at 7.5%); "
+              "Citadel's market-neutral pods targeting pure alpha; Two Sigma/AQR risk budgeting",
+    "family": "Portfolio",
+    "summary": "Every library strategy is a 'pod': its market beta is hedged out daily with SPY (Citadel-style), it is scaled "
+               "to 6% volatility and given an equal risk budget. A pod down 5% from its peak has its capital halved; down 7.5% it is shut and a new pod "
+               "running the same strategy is hired six months later (Millennium rules).",
+    "evidence": "Multi-managers earn steady returns not from any single pod but from many uncorrelated, beta-neutral books "
+                "with hard loss limits that stop small losses becoming large ones; they then lever the low-volatility "
+                "whole. The table shows each layer separately — and the hard lesson in it: once market beta is hedged "
+                "out, most public strategies have little alpha left, which is why these firms pay so much for "
+                "portfolio managers who do. Funding only pods with a good recent record made it worse here: track records "
+                "persist weakly (as hedge-fund research finds).",
+    "code": None,
+}
 
 
 PORTFOLIO = {
@@ -335,9 +465,100 @@ def _portfolio(members: List[Dict[str, Any]]) -> Dict[str, Any]:
     return ev
 
 
+def _pods(members: List[Dict[str, Any]], hedge: bool, rules: bool, pod_vol: float = 0.06,
+          cut: float = 0.05, stop: float = 0.075, rehire_days: int = 126, select: bool = False):
+    """Book returns of a multi-manager platform built from strategy return streams (see MULTI_MANAGER)."""
+    import numpy as np
+    import pandas as pd
+    from api.quant import codeserver
+    R = pd.DataFrame({m["id"]: pd.Series(m["returns"], index=pd.to_datetime(m["dates"])) for m in members if m.get("returns")}).sort_index()
+    spy = codeserver._index_series("SPY", R.index[0].strftime("%Y-%m-%d"))
+    rf = codeserver.rf_for([d.strftime("%Y-%m-%d") for d in R.index])
+    # Work in returns above T-bills: a futures hedge removes the market's *excess* return, and scaling a pod
+    # scales its risk premium, not the cash rate. The cash rate is added back once, at the book level.
+    R = R.sub(rf, axis=0)
+    s_r = spy.reindex(R.index).pct_change(fill_method=None).fillna(0.0) - rf
+    if hedge:
+        beta = R.rolling(126, min_periods=63).cov(s_r).div(s_r.rolling(126, min_periods=63).var(), axis=0).shift(1).fillna(0.0)
+        hedge_cost = beta.diff().abs().fillna(0.0) * 0.5e-4                 # ~0.5 bp per unit of SPY traded
+        R = R - beta.mul(s_r, axis=0) - hedge_cost
+    vol = R.rolling(63, min_periods=40).std().shift(1) * np.sqrt(252)
+    pods = (R * (pod_vol / vol).clip(upper=4.0)).where(R.notna() & vol.notna())
+    if select:
+        # capital only for pods with a positive (hedged) track record over the past two years — how platforms
+        # allocate to and hire portfolio managers; decided with data up to the previous day
+        record = R.rolling(504, min_periods=252).mean().shift(1)
+        pods = pods.where(record > 0)
+    T, N = pods.shape
+    P = pods.to_numpy()
+    alloc = np.zeros((T, N))
+    state = np.ones(N)                                                      # 1 full, 0.5 halved, 0 closed
+    eq, hwm = np.ones(N), np.ones(N)
+    closed_at = np.full(N, -10**9)
+    events = []
+    for t in range(T):
+        for j in range(N):
+            if not np.isfinite(P[t, j]):
+                continue
+            if state[j] == 0 and t - closed_at[j] >= rehire_days:
+                state[j], eq[j], hwm[j] = 1.0, 1.0, 1.0                      # new PM, fresh high-water mark
+                events.append({"date": str(pods.index[t].date()), "pod": pods.columns[j], "event": "re-hired"})
+            alloc[t, j] = state[j]
+            if state[j] > 0:
+                eq[j] *= 1 + state[j] * P[t, j]
+                hwm[j] = max(hwm[j], eq[j])
+                dd = eq[j] / hwm[j] - 1
+                if rules and dd <= -stop:
+                    state[j], closed_at[j] = 0.0, t
+                    events.append({"date": str(pods.index[t].date()), "pod": pods.columns[j], "event": f"closed at {dd:.1%}"})
+                elif rules and dd <= -cut and state[j] == 1.0:
+                    state[j] = 0.5
+                    events.append({"date": str(pods.index[t].date()), "pod": pods.columns[j], "event": f"capital halved at {dd:.1%}"})
+                elif state[j] == 0.5 and dd >= 0:
+                    state[j] = 1.0
+    A = pd.DataFrame(alloc, index=pods.index, columns=pods.columns).where(pods.notna(), 0.0)
+    live = pods.notna().sum(axis=1).replace(0, np.nan)
+    book = ((A * pods.fillna(0.0)).sum(axis=1) / live).dropna()            # equal risk budget per live pod
+    book = book + rf.reindex(book.index).fillna(0.0)                        # capital earns T-bills
+    alive = pods.notna().any() if not select else pods.iloc[-63:].notna().any()
+    end_state = pd.Series(state, index=pods.columns).where(alive, 0.0)
+    share = end_state / end_state.sum() if end_state.sum() > 0 else end_state
+    return book, events, share
+
+
+def _multi_manager(members: List[Dict[str, Any]]) -> Dict[str, Any]:
+    from api.quant import codelab, codeserver
+    labels = {"equal_risk": "Equal-risk pods, no hedge, no stops", "hedged": "+ daily beta hedge (Citadel-style)",
+              "hedged_rules": "+ drawdown rules (Millennium) - the record shown",
+              "hedged_rules_select": "+ fund only pods with a positive 2-year record (track-record chasing)"}
+    variants = {k: _pods(members, h, r, select=sel) for k, h, r, sel in (
+        ("equal_risk", False, False, False), ("hedged", True, False, False), ("hedged_rules", True, True, False),
+        ("hedged_rules_select", True, True, True))}
+    book, events, last = variants["hedged_rules"]
+    dates = [d.strftime("%Y-%m-%d") for d in book.index]
+    rf = codeserver.rf_for(dates)
+    out = {"metrics": codelab.metrics(book, rf), "metrics_gross": None, "costs": None,
+           "optimisation": {"walk_forward": True, "members": [m["id"] for m in members], "oos_start": dates[0] if dates else None,
+                            "variants": [{"label": labels[k], **codelab.metrics(v[0].reindex(book.index).fillna(0.0), rf)} for k, v in variants.items()],
+                            "events": events[-40:], "n_events": len(events)},
+           "weights_last": {k: float(v) for k, v in (last.items() if last is not None else []) if v > 0},
+           "dates": dates, "returns": [round(float(x), 7) for x in book.values]}
+    spy = codeserver._index_series("SPY", dates[0])
+    if spy is not None:
+        bm = spy.reindex(book.index).pct_change(fill_method=None).fillna(0.0)
+        out["benchmark"] = [round(float(x), 7) for x in bm.values]
+        out["benchmark_metrics"] = codelab.metrics(bm, rf)
+    return out
+
+
+def all_entries() -> List[Dict[str, Any]]:
+    return [MULTI_MANAGER, PORTFOLIO] + LIBRARY + SMART_MONEY
+
+
 def get(sid: str) -> Dict[str, Any]:
-    if sid == PORTFOLIO["id"]:
-        return PORTFOLIO
+    for s in [MULTI_MANAGER, PORTFOLIO] + SMART_MONEY:
+        if s["id"] == sid:
+            return s
     for s in LIBRARY:
         if s["id"] == sid:
             return s
@@ -361,6 +582,11 @@ def result(sid: str, force: bool = False) -> Dict[str, Any]:
     s = get(sid)
     if sid == PORTFOLIO["id"]:
         ev = _portfolio([{**result(x["id"]), "id": x["id"]} for x in LIBRARY])
+    elif sid == MULTI_MANAGER["id"]:
+        ev = _multi_manager([{**result(x["id"]), "id": x["id"]} for x in LIBRARY + SMART_MONEY])
+    elif s.get("kind") == "13f":
+        from api.quant import smartmoney
+        ev = smartmoney.evaluate(s["param"])
     else:
         ev = codeserver.evaluate_code(s["code"], trusted=True)
     an = codeserver.analyze(ev["dates"], ev["returns"], ev.get("benchmark"), label=s["name"])
@@ -373,8 +599,8 @@ def result(sid: str, force: bool = False) -> Dict[str, Any]:
 def summaries() -> List[Dict[str, Any]]:
     """Library cards with headline numbers where a result is cached."""
     out = []
-    for s in [PORTFOLIO] + LIBRARY:
-        card = {k: s[k] for k in ("id", "name", "source", "family", "summary", "evidence", "code")}
+    for s in all_entries():
+        card = {k: s.get(k) for k in ("id", "name", "source", "family", "summary", "evidence", "code")}
         try:
             r = json.loads(_path(s["id"]).read_text())
             mc = r.get("monte_carlo") or {}

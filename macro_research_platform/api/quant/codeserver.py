@@ -94,4 +94,63 @@ def analyze(dates: List[str], returns: List[float], benchmark: Optional[List[flo
                       benchmark if benchmark and len(benchmark) == len(returns) else None,
                       label=label, benchmark_label=benchmark_label)
     mc = codelab.monte_carlo(ret, rf, years=mc_years, paths=mc_paths, max_leverage=max_leverage, dd_limit=dd_limit)
-    return {"deep": rep, "monte_carlo": mc, "metrics": codelab.metrics(ret, rf)}
+    try:
+        lens = factor_lens(dates, list(returns))
+    except Exception:                                          # noqa: BLE001 — analysis works without it
+        lens = None
+    return {"deep": rep, "monte_carlo": mc, "metrics": codelab.metrics(ret, rf), "factor_lens": lens}
+
+
+# ── Factor lens (Two Sigma-style) ───────────────────────────────────────────
+# ETF proxies for the Two Sigma Factor Lens: core macro (equity, rates, credit, commodities),
+# secondary macro (emerging markets, dollar, inflation) and equity styles (long-short vs the market).
+FACTORS: Dict[str, Any] = {
+    "Equity": ("SPY", None), "Interest rates": ("IEF", None), "Credit": ("HYG", "IEF"), "Commodities": ("DBC", None),
+    "Emerging markets": ("EEM", "SPY"), "US dollar": ("UUP", None), "Inflation": ("TIP", "IEF"),
+    "Momentum": ("MTUM", "SPY"), "Value": ("VLUE", "SPY"), "Quality": ("QUAL", "SPY"), "Low risk": ("USMV", "SPY"),
+    "Small cap": ("IWM", "SPY"),
+}
+
+
+def factor_lens(dates: List[str], returns: List[float]) -> Optional[Dict[str, Any]]:
+    """Weekly regression of excess returns on factor proxies: exposures, t-stats, how much of the return each
+    factor explains, and the alpha left over. (Two Sigma's lens orthogonalises factors; with ETF proxies we
+    keep them raw and report their correlation-adjusted fit, R².)"""
+    idx = pd.DatetimeIndex(pd.to_datetime(list(dates)))
+    syms = sorted({s for a, b in FACTORS.values() for s in (a, b) if s})
+    pan, _ = qdata.panel(syms, start=(idx[0] - pd.Timedelta(days=10)).strftime("%Y-%m-%d"))
+    if not pan:
+        return None
+    px = pan["close"]
+    rf = rf_for(dates)
+    strat = (1 + pd.Series(returns, index=idx)).cumprod()
+    wk = lambda s: s.resample("W-FRI").last().pct_change(fill_method=None)
+    y = wk(strat) - rf.resample("W-FRI").sum()
+    X = {}
+    for name, (a, b) in FACTORS.items():
+        if a not in px:
+            continue
+        fa = wk(px[a].reindex(idx).ffill())
+        X[name] = fa - (wk(px[b].reindex(idx).ffill()) if b and b in px else rf.resample("W-FRI").sum())
+    X = pd.DataFrame(X)
+    df = pd.concat([y.rename("y"), X], axis=1).dropna()
+    if len(df) < 104:
+        return None
+    Y, F = df["y"].to_numpy(), df.drop(columns="y")
+    A = np.column_stack([np.ones(len(F)), F.to_numpy()])
+    coef, *_ = np.linalg.lstsq(A, Y, rcond=None)
+    resid = Y - A @ coef
+    n, k = A.shape
+    s2 = resid @ resid / (n - k)
+    cov = s2 * np.linalg.pinv(A.T @ A)
+    se = np.sqrt(np.diag(cov))
+    r2 = 1 - (resid @ resid) / (((Y - Y.mean()) ** 2).sum())
+    means = F.mean().to_numpy()
+    rows = [{"factor": f, "beta": round(float(coef[i + 1]), 3), "t": round(float(coef[i + 1] / se[i + 1]), 2),
+             "contribution": round(float(coef[i + 1] * means[i] * 52), 4)} for i, f in enumerate(F.columns)]
+    return {"start": str(df.index[0].date()), "end": str(df.index[-1].date()), "weeks": int(n), "r2": round(float(r2), 3),
+            "alpha": round(float(coef[0] * 52), 4), "alpha_t": round(float(coef[0] / se[0]), 2),
+            "factors": sorted(rows, key=lambda r: -abs(r["t"])),
+            "note": "Weekly excess returns regressed on ETF factor proxies (Two Sigma Factor Lens categories). Alpha is the "
+                    "annual return the factors do not explain; |t| above 2 is statistically meaningful. Style factors are "
+                    "ETF minus SPY; proxies start 2013 (MTUM, VLUE, QUAL, USMV), so the fit covers that window."}

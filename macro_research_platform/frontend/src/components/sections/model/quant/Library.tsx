@@ -6,6 +6,41 @@ import { cn } from '@/lib/utils';
 import { api, ErrorNote, num, pct, spct, tone } from './shared';
 import { CodeResults } from './CodeLab';
 
+const STYLE: Record<string, string> = { quant: 'Quant', multi: 'Multi-manager', market_maker: 'Market maker', macro: 'Macro', fundamental: 'Fundamental' };
+
+function Holdings() {
+  const [open, setOpen] = useState(false);
+  const [d, setD] = useState<any>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { if (open && !d) api('/api/v1/quant/smartmoney/latest').then(setD).catch((e) => setErr(e.message)); }, [open, d]);
+  return (
+    <div className="border border-border">
+      <button onClick={() => setOpen(!open)} className="w-full text-left px-3 py-2 text-2xs hover:bg-surface-2">
+        <span className="font-semibold text-text-primary">{open ? '▾' : '▸'} What the institutions hold now</span>
+        <span className="text-text-tertiary"> — latest SEC 13F top holdings of Renaissance, Two Sigma, D. E. Shaw, AQR, Citadel, Millennium, Point72, Jane Street, Bridgewater and 12 fundamental funds</span>
+      </button>
+      {open && (
+        <div className="p-3 border-t border-border">
+          <ErrorNote msg={err} />
+          {!d && !err && <div className="flex items-center gap-2 text-2xs text-text-tertiary"><Loader2 className="w-3 h-3 animate-spin" />Reading filings…</div>}
+          {d && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+              {d.funds.map((f: any) => (
+                <div key={f.cik} className="p-2 bg-surface-1 border border-border text-[11px]">
+                  <div className="flex items-baseline gap-2"><span className="font-semibold text-text-primary">{f.name}</span>
+                    <span className="text-[10px] px-1 border border-border text-text-tertiary">{STYLE[f.style] ?? f.style}</span></div>
+                  <div className="text-[10px] text-text-tertiary mb-1">Q-end {f.period} · filed {f.filed} · {f.positions.toLocaleString()} stock positions · ${(f.value / 1e9).toFixed(1)}bn</div>
+                  <table className="w-full font-mono"><tbody>{f.top.map((r: any, i: number) => (
+                    <tr key={i}><td className="text-text-primary w-14">{r.ticker ?? '—'}</td><td className="font-sans text-text-secondary truncate max-w-[160px]">{r.issuer}</td>
+                      <td className="text-right">{pct(r.weight, 1)}</td></tr>))}</tbody></table>
+                </div>))}
+            </div>)}
+          <div className="text-[10px] text-text-tertiary mt-2">13F shows US-listed long stock positions at quarter end, published up to 45 days later — no shorts, futures, bonds or non-US shares. For quant firms that trade in days, it is a snapshot of trades long since closed.</div>
+        </div>)}
+    </div>
+  );
+}
+
 export function Library({ onOpenCode, canDeploy }: { onOpenCode: (code: string, name: string) => void; canDeploy: boolean }) {
   const [rows, setRows] = useState<any[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -48,6 +83,7 @@ export function Library({ onOpenCode, canDeploy }: { onOpenCode: (code: string, 
         growth: the Monte Carlo sizes leverage to the growth-optimal level within a drawdown limit, capped at half-Kelly.
       </div>
       <ErrorNote msg={err} />
+      <Holdings />
       {note && <div className="px-3 py-2 border border-green/40 bg-green/5 text-xs text-green">{note}</div>}
       {rows.map((s) => {
         const h = s.headline, m = h?.metrics;
@@ -86,7 +122,7 @@ export function Library({ onOpenCode, canDeploy }: { onOpenCode: (code: string, 
             </div>
             {open === s.id && res[s.id] && (
               <div className="border-t border-border p-3">
-                <CodeResults r={{ ...res[s.id], benchmark_label: 'SPY' }} a={{ deep: res[s.id].deep, monte_carlo: res[s.id].monte_carlo }} />
+                <CodeResults r={{ ...res[s.id], benchmark_label: 'SPY' }} a={{ deep: res[s.id].deep, monte_carlo: res[s.id].monte_carlo, factor_lens: res[s.id].factor_lens }} />
                 <div className="text-[10px] text-text-tertiary mt-2">Evaluated {res[s.id].evaluated_at}; refreshed daily.</div>
               </div>)}
           </div>

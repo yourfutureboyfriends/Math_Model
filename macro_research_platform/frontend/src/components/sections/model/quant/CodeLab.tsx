@@ -297,6 +297,8 @@ export function CodeResults({ r, a }: { r: any; a: any | null }) {
             data={Object.entries(r.weights_last).map(([k, v]) => ({ label: k, value: v as number }))} />)}
       </div>
       {opt.walk_forward && opt.chosen && <Optimisation opt={opt} m={m} />}
+      {opt.variants && <Variants opt={opt} />}
+      {a?.factor_lens && <FactorLens f={a.factor_lens} />}
       {mc ? <MonteCarlo mc={mc} /> : a === null && <div className="flex items-center gap-2 text-2xs text-text-tertiary"><Loader2 className="w-3 h-3 animate-spin" />Monte Carlo…</div>}
       {a?.deep && (
         <div className="border border-border p-3">
@@ -321,6 +323,52 @@ function Optimisation({ opt, m }: { opt: any; m: any }) {
       <div className="flex flex-wrap gap-1 font-mono">
         {changes.map((c: any) => <span key={c.year} className="px-1.5 py-0.5 border border-border">{c.year}: {Object.entries(c.params).map(([k, v]) => `${k}=${v}`).join(', ')}</span>)}
       </div>
+    </div>
+  );
+}
+
+function Variants({ opt }: { opt: any }) {
+  return (
+    <div className="p-3 bg-surface-1 border border-border text-[11px] space-y-2">
+      <div className="text-xs font-semibold text-text-primary">What each layer of the platform adds</div>
+      <table className="w-full font-mono">
+        <thead className="text-text-tertiary"><tr>{['Version', 'CAGR', 'Vol', 'Sharpe', 'Max DD', 'Calmar'].map((h) => <th key={h} className="text-right first:text-left font-normal px-1.5">{h}</th>)}</tr></thead>
+        <tbody>{opt.variants.map((v: any) => (
+          <tr key={v.label} className="border-t border-border-subtle">
+            <td className="px-1.5 font-sans">{v.label}</td><td className="text-right px-1.5">{spct(v.cagr)}</td><td className="text-right px-1.5">{pct(v.vol)}</td>
+            <td className="text-right px-1.5">{num(v.sharpe)}</td><td className="text-right px-1.5">{pct(v.max_drawdown)}</td><td className="text-right px-1.5">{num(v.calmar)}</td></tr>))}</tbody>
+      </table>
+      {opt.events?.length > 0 && (
+        <details><summary className="cursor-pointer text-text-tertiary">{opt.n_events ?? opt.events.length} risk events (pods cut, closed, re-hired) — latest {opt.events.length}</summary>
+          <div className="mt-1 flex flex-wrap gap-1 font-mono">{opt.events.slice().reverse().map((e: any, i: number) => (
+            <span key={i} className={cn('px-1.5 py-0.5 border', e.event.startsWith('closed') ? 'border-red/50 text-red' : e.event.startsWith('capital') ? 'border-amber/50 text-amber' : 'border-border text-text-tertiary')}>
+              {e.date} {e.pod}: {e.event}</span>))}</div></details>)}
+    </div>
+  );
+}
+
+function FactorLens({ f }: { f: any }) {
+  return (
+    <div className="p-3 bg-surface-1 border border-border text-[11px] space-y-2">
+      <div className="flex flex-wrap items-baseline gap-2">
+        <div className="text-xs font-semibold text-text-primary">Factor lens (Two Sigma-style)</div>
+        <div className="text-[10px] text-text-tertiary">{f.start} → {f.end}, {f.weeks} weeks · factors explain {pct(f.r2, 0)} of the variation</div>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-3">
+        <div className={cn('p-2 border', Math.abs(f.alpha_t) >= 2 ? (f.alpha > 0 ? 'border-green/50' : 'border-red/50') : 'border-border')}>
+          <div className="text-[10px] uppercase tracking-wide text-text-tertiary">Alpha after factors</div>
+          <div className={cn('text-lg font-mono', f.alpha > 0 ? 'text-green' : 'text-red')}>{spct(f.alpha)}<span className="text-xs text-text-tertiary"> /yr</span></div>
+          <div className="text-[10px] text-text-tertiary">t = {num(f.alpha_t)} — {Math.abs(f.alpha_t) >= 2 ? 'statistically meaningful' : 'not distinguishable from zero'}</div>
+        </div>
+        <table className="w-full font-mono">
+          <thead className="text-text-tertiary"><tr>{['Factor', 'Exposure (β)', 't', 'Return explained /yr'].map((h) => <th key={h} className="text-right first:text-left font-normal px-1.5">{h}</th>)}</tr></thead>
+          <tbody>{f.factors.map((x: any) => (
+            <tr key={x.factor} className={cn('border-t border-border-subtle', Math.abs(x.t) < 2 && 'text-text-tertiary')}>
+              <td className="px-1.5 font-sans">{x.factor}</td><td className="text-right px-1.5">{num(x.beta)}</td>
+              <td className="text-right px-1.5">{num(x.t)}</td><td className="text-right px-1.5">{spct(x.contribution, 2)}</td></tr>))}</tbody>
+        </table>
+      </div>
+      <div className="text-[10px] text-text-tertiary">{f.note}</div>
     </div>
   );
 }
