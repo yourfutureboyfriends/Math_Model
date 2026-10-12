@@ -99,6 +99,63 @@ def f_beta(ctx, n=252):
     return cov.div(var, axis=0)
 
 
+def _resid(ctx, n):
+    """Daily market-hedged return r_t − β·m_t, with β estimated on the n days to t−1 (no look-ahead)."""
+    r = ctx.close.pct_change(fill_method=None)
+    m = ctx.mkt_series.pct_change(fill_method=None)
+    mp = max(20, int(n * 0.8))
+    b = r.rolling(n, min_periods=mp).cov(m).div(m.rolling(n, min_periods=mp).var(), axis=0).shift(1)
+    return r - b.mul(m, axis=0)
+
+
+@_fn("resid", "resid(n=252)", "Idiosyncratic daily return: the asset's return minus beta × the benchmark's, beta from the "
+     "prior n days. sum(resid(), 21) is a market-hedged 1-month return — the building block of stat arb.", "Stat arb")
+def f_resid(ctx, n=252):
+    return _resid(ctx, _win(n, "resid", 20))
+
+
+@_fn("sscore", "sscore(n=60)", "Avellaneda–Lee s-score: in each n-day window, regress the asset's returns on the "
+     "benchmark's, fit an Ornstein–Uhlenbeck process to the cumulative residual and measure how far it sits from "
+     "equilibrium in equilibrium standard deviations (centred across the universe). Blank where the residual does "
+     "not mean-revert within ~n/2 days. Trade −sscore: buy below −1.25, sell above +1.25.", "Stat arb")
+def f_sscore(ctx, n=60):
+    n = _win(n, "sscore", 20)
+    r = ctx.close.pct_change(fill_method=None).to_numpy(float)
+    m = ctx.mkt_series.reindex(ctx.close.index).pct_change(fill_method=None).to_numpy(float)
+    T, N = r.shape
+    out = np.full((T, N), np.nan)
+    b_max = math.exp(-2.0 / n)                                   # mean-reversion half-life under ≈ n/2.9 days
+    for t in range(n, T):
+        rw, mw = r[t - n + 1:t + 1], m[t - n + 1:t + 1]
+        if not np.isfinite(mw).all():
+            continue
+        cols = np.flatnonzero(np.isfinite(rw).all(axis=0))
+        if cols.size == 0:
+            continue
+        rw = rw[:, cols]
+        mc = mw - mw.mean()
+        vm = mc @ mc
+        if vm <= 0:
+            continue
+        beta = mc @ (rw - rw.mean(axis=0)) / vm
+        eps = rw - rw.mean(axis=0) - np.outer(mc, beta)           # OLS residuals (sum to zero)
+        x = np.cumsum(eps, axis=0)
+        xl, xn = x[:-1], x[1:]
+        xlc = xl - xl.mean(axis=0)
+        vx = (xlc * xlc).sum(axis=0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            b = (xlc * (xn - xn.mean(axis=0))).sum(axis=0) / vx
+            a = xn.mean(axis=0) - b * xl.mean(axis=0)
+            z = xn - a - b * xl
+            ok = (b > 0) & (b < b_max) & (vx > 0)
+            m_eq = np.where(ok, a / (1 - b), np.nan)
+            sd = np.where(ok, np.sqrt(z.var(axis=0, ddof=2) / (1 - b * b)), np.nan)
+            if np.isfinite(m_eq).sum() >= 2:
+                m_eq = m_eq - np.nanmean(m_eq)                     # A–L's centred s-score
+            out[t, cols] = (x[-1] - m_eq) / np.where(sd > 0, sd, np.nan)
+    return pd.DataFrame(out, index=ctx.close.index, columns=ctx.close.columns)
+
+
 @_fn("rsi", "rsi(n=14)", "Wilder's Relative Strength Index (0–100). Below 30 = oversold, above 70 = overbought.", "Oscillators")
 def f_rsi(ctx, n=14):
     n = _win(n, "rsi", 2)

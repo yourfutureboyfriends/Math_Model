@@ -8,7 +8,7 @@
  * Reads /api/v1/quant/* (api/routers/quant.py).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, Copy, FlaskConical, Layers, Library, Loader2, Play, Rocket, Save, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, BookOpen, Copy, FlaskConical, Layers, Library, Loader2, Play, Rocket, Save, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
 import { Donut } from '@/components/ui/Donut';
@@ -20,11 +20,12 @@ import { useAuth } from '@/context/AuthContext';
 import { StrategyBuilder, type Meta } from './quant/StrategyBuilder';
 import { QuantReport } from './quant/QuantReport';
 import { DeepAnalysis } from './quant/DeepReport';
+import { RelValue } from './quant/RelValue';
 import { api, BLANK_SPEC, ErrorNote, Field, inputCls, num, pct, spct, tone, withDefaults, type Spec } from './quant/shared';
 
 const TABS = [
   ['build', 'Build & test', FlaskConical], ['templates', 'Templates', Library], ['mine', 'My strategies', Save],
-  ['sweep', 'Parameter sweep', SlidersHorizontal], ['combine', 'Combine', Layers], ['research', 'Research', BookOpen],
+  ['sweep', 'Parameter sweep', SlidersHorizontal], ['combine', 'Combine', Layers], ['relval', 'Arb & market making', ArrowLeftRight], ['research', 'Research', BookOpen],
 ] as const;
 type Tab = (typeof TABS)[number][0];
 
@@ -157,6 +158,7 @@ export function QuantLabSection() {
           {tab === 'mine' && <Mine rows={mine} me={user?.username} isAdmin={user?.role === 'admin'} onOpen={(s, id) => open(s.spec, id)} onChanged={loadMine} />}
           {tab === 'sweep' && <Sweep spec={spec} strategyId={strategyId} />}
           {tab === 'combine' && <Combine meta={meta} mine={mine} />}
+          {tab === 'relval' && <RelValue meta={meta} />}
           {tab === 'research' && <Research meta={meta} />}
         </>
       )}

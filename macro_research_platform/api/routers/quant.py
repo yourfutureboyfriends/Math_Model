@@ -299,6 +299,52 @@ async def quant_deep(body: DeepIn, request: Request):
         _spec_error(e)
 
 
+# ── Relative value & market making ─────────────────────────────────────────
+@router.get("/api/v1/quant/pairs/scan")
+async def pairs_scan(request: Request, preset: Optional[str] = None, symbols: Optional[str] = None,
+                     years: float = Query(2.0, ge=0.5, le=10), min_corr: float = Query(0.4, ge=0, le=0.99)):
+    """Engle–Granger cointegration scan of every pair in a universe."""
+    from api.quant import data, pairs
+    _user(request)
+    try:
+        syms = data.resolve_universe({"preset": preset} if preset else {"symbols": (symbols or "").split(",")})[0]
+        return await _bt(pairs.scan, syms, years, 25, min_corr)
+    except (ValueError, pairs.PairsError) as e:
+        _spec_error(e)
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "The pairs scan took too long — try fewer tickers.")
+
+
+@router.get("/api/v1/quant/pairs/backtest")
+async def pairs_backtest(request: Request, a: str, b: str, lookback: int = 252, entry: float = 2.0, exit: float = 0.5,
+                         stop: float = 4.0, max_hold: int = 60, bps: float = 3.0, start: Optional[str] = None):
+    """Rolling-window (no look-ahead) z-score backtest of one pair."""
+    from api.quant import pairs
+    _user(request)
+    try:
+        return await _bt(pairs.backtest, a, b, lookback, entry, exit, stop, max_hold, bps, start)
+    except pairs.PairsError as e:
+        _spec_error(e)
+
+
+@router.get("/api/v1/quant/mm")
+async def market_making(request: Request, symbol: str = "SPY", interval: str = Query("1m", pattern="^(1m|2m|5m)$"),
+                        half_spread_bps: float = 1.0, aversion: float = 1.0, max_inventory: int = 10,
+                        lot: int = 100, rebate_per_share: float = 0.0):
+    """Avellaneda–Stoikov market-making simulation on intraday bars vs symmetric quoting."""
+    from api.marketdata import core
+    from api.quant import mm
+    _user(request)
+    try:
+        return await _bt(mm.simulate, symbol, interval, half_spread_bps, aversion, max_inventory, lot, rebate_per_share)
+    except ValueError as e:
+        _spec_error(e)
+    except core.NotFound as e:
+        raise HTTPException(404, str(e))
+    except core.Upstream as e:
+        raise HTTPException(503, str(e))
+
+
 @router.get("/api/v1/macro-trader/deep")
 async def macro_trader_deep(request: Request, series: str = Query("tactical", pattern="^(tactical|strategic|all_weather)$")):
     """In-depth analysis of the Macro Quant Trader's model books (walk-forward backtests)."""

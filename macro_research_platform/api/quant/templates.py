@@ -242,9 +242,79 @@ TEMPLATES: List[Dict[str, Any]] = [
                  "selection": {"mode": "threshold", "min_score": 0}, "weighting": "inverse_vol",
                  "rebalance": "monthly", "costs": {"bps": 5}},
     },
+    {
+        "id": "statarb_sscore",
+        "name": "Stat arb — residual mean reversion (Avellaneda–Lee s-score)",
+        "family": "Stat arb & market-neutral",
+        "description": "Each day, buy the 8 large caps whose market-hedged price has fallen furthest below its own "
+                       "mean-reverting equilibrium and short the 8 furthest above; dollar-neutral, daily.",
+        "evidence": "The textbook equity stat-arb model run by quant market-neutral desks: model each stock's residual "
+                    "(after removing market beta) as an Ornstein–Uhlenbeck process and trade its s-score. Sharpe ≈1.4 "
+                    "1997–2007 on US stocks, then much weaker as the trade got crowded — the Aug-2007 quant crash hit it "
+                    "hardest (Avellaneda & Lee 2010; Khandani & Lo 2007). Daily turnover: costs decide it.",
+        "citation": "Avellaneda & Lee (2010); Khandani & Lo (2007)",
+        "spec": {"universe": {"preset": "us_megacaps"}, "signal": "-sscore(60)",
+                 "selection": {"mode": "long_short", "n": 8}, "weighting": "inverse_vol",
+                 "rebalance": "daily", "execution": "next_close", "costs": {"bps": 2, "borrow_bps": 50}},
+    },
+    {
+        "id": "residual_reversal",
+        "name": "Residual short-term reversal, market-neutral",
+        "family": "Stat arb & market-neutral",
+        "description": "Long the 10 large caps with the worst market-hedged week (scaled by their own residual volatility), "
+                       "short the 10 best; weekly, dollar-neutral.",
+        "evidence": "Reversal measured on residual returns roughly doubles the risk-adjusted return of plain reversal "
+                    "and survives costs better because it is not a hidden market or industry bet (Blitz, Huij, Lansdorp "
+                    "& Verbeek 2013). Economically it is paid for supplying liquidity — the market maker's edge "
+                    "(Nagel 2012), and it earns most when volatility is high.",
+        "citation": "Blitz et al. (2013); Nagel (2012)",
+        "spec": {"universe": {"preset": "us_megacaps"}, "signal": "-sum(resid(252), 5) / std(resid(252), 63)",
+                 "selection": {"mode": "long_short", "n": 10}, "weighting": "inverse_vol",
+                 "rebalance": "weekly", "costs": {"bps": 3, "borrow_bps": 50}},
+    },
+    {
+        "id": "residual_momentum",
+        "name": "Residual momentum, market-neutral",
+        "family": "Stat arb & market-neutral",
+        "description": "Rank large caps on their market-hedged 12-1-month return per unit of residual risk; long the top 10, "
+                       "short the bottom 10, monthly.",
+        "evidence": "Momentum built from residual returns has about half the volatility of classic momentum and avoids "
+                    "most of its crashes, which come from hidden beta after market rebounds (Blitz, Huij & Martens 2011; "
+                    "Daniel & Moskowitz 2016).",
+        "citation": "Blitz, Huij & Martens (2011)",
+        "spec": {"universe": {"preset": "us_megacaps"},
+                 "signal": "(sum(resid(252), 252) - sum(resid(252), 21)) / std(resid(252), 252)",
+                 "selection": {"mode": "long_short", "n": 10}, "weighting": "inverse_vol",
+                 "rebalance": "monthly", "costs": {"bps": 3, "borrow_bps": 50}},
+    },
+    {
+        "id": "market_neutral_multifactor",
+        "name": "Market-neutral multi-factor book (quant equity pod)",
+        "family": "Stat arb & market-neutral",
+        "description": "Equal blend of value (earnings yield), quality (gross profitability), momentum (12-1) and low beta, "
+                       "long the top 10 and short the bottom 10, 8% volatility target, monthly.",
+        "evidence": "How multi-manager quant equity books are built: several weakly correlated factors, dollar-neutral, "
+                    "risk-targeted, so returns come from stock selection rather than the market (Asness, Moskowitz & "
+                    "Pedersen 2013; Frazzini & Pedersen 2014; Novy-Marx 2013). Value and momentum hedge each other. Expect long "
+                    "dry spells: the 2018–20 'quant winter' hit value-tilted books hard.",
+        "citation": "Asness, Moskowitz & Pedersen (2013); Frazzini & Pedersen (2014)",
+        "spec": {"universe": {"preset": "us_megacaps"},
+                 "signal": "rank(earnings_yield) + rank(gross_profitability) + rank(mom(252, 21)) + rank(-beta(252))",
+                 "selection": {"mode": "long_short", "n": 10}, "weighting": "inverse_vol",
+                 "risk": {"vol_target": 0.08, "max_weight": 0.15, "max_gross": 2.0},
+                 "rebalance": "monthly", "costs": {"bps": 3, "borrow_bps": 50}},
+    },
 ]
 
 RESEARCH_NOTES: List[Dict[str, str]] = [
+    {"title": "What Jane Street and Citadel actually do (the public part)",
+     "text": "Their models are secret; their businesses are not. Electronic market makers (Citadel Securities, Jane "
+             "Street, Virtu) earn the bid-ask spread and manage inventory risk — see Arb & market making → Market making "
+             "(Avellaneda–Stoikov). Jane Street is best known for ETF market making and arbitrage: keeping ETFs in line "
+             "with their baskets and related ETFs. Quant market-neutral funds (Citadel's GQS, Renaissance, D. E. Shaw) "
+             "run statistical arbitrage: many small, hedged, short-horizon mean-reversion bets (the s-score and pairs "
+             "templates) plus multi-factor equity books. Their edge is mostly speed, data, execution and cost control, "
+             "which a daily-bar backtest cannot reproduce — so expect these to look far weaker here than in the real firms."},
     {"title": "What makes a systematic strategy work",
      "text": "Durable strategies earn a risk premium or exploit a behavioural bias that persists (trend: slow "
              "reaction to news; momentum: under- then over-reaction; low-vol: leverage constraints). An edge without an "
