@@ -72,12 +72,11 @@ def _download(symbols: List[str]):
 def _prices(symbols: List[str]):
     """{symbol: DataFrame[Open, High, Low, Close]} from the cache, refreshed monthly."""
     import pandas as pd
+    from api.quant import cachefmt
     cached: Dict[str, Any] = {}
-    try:
-        if time.time() - PRICE_CACHE.stat().st_mtime < PRICE_MAX_AGE_DAYS * 86400:
-            cached = pd.read_pickle(PRICE_CACHE)
-    except Exception:
-        cached = {}
+    m = cachefmt.mtime(PRICE_CACHE)
+    if m and time.time() - m < PRICE_MAX_AGE_DAYS * 86400:
+        cached = cachefmt.read(PRICE_CACHE, as_dict=True) or {}
     missing = [s for s in symbols if s not in cached]
     if missing:
         df = _download(missing)
@@ -90,7 +89,7 @@ def _prices(symbols: List[str]):
                 if len(sub) > bt.WARMUP + 50:
                     cached[s] = sub
         PRICE_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        pd.to_pickle(cached, PRICE_CACHE)
+        cachefmt.write(cached, PRICE_CACHE)
     return cached
 
 

@@ -126,10 +126,52 @@ def resolve_universe(universe: Dict) -> Tuple[List[str], bool]:
 
 
 def _path(sym: str) -> Path:
+    """Legacy pickle path (read once for migration; never written)."""
     return CACHE / f"{sym.replace('^', '_I_').replace('=', '_E_')}.pkl"
 
 
-def _write_manifest(sym: str, df: pd.DataFrame) -> None:
+def _pq(sym: str) -> Path:
+    return CACHE / f"{sym.replace('^', '_I_').replace('=', '_E_')}.parquet"
+
+
+def _read(sym: str) -> Optional[pd.DataFrame]:
+    """Cached frame: portable Parquet; a legacy pickle (written by this server) is read once and migrated.
+    An unreadable file counts as missing, so it is re-downloaded rather than silently half-used."""
+    p = _pq(sym)
+    if p.exists():
+        try:
+            return pd.read_parquet(p)
+        except Exception as e:                               # noqa: BLE001
+            logger.warning("[quant] unreadable cache %s: %s", p.name, e)
+            return None
+    old = _path(sym)
+    if old.exists():
+        try:
+            df = pd.read_pickle(old)
+            _write(sym, df, migrated=True)
+            return df
+        except Exception as e:                               # noqa: BLE001 — e.g. pickle from another pandas version
+            logger.warning("[quant] legacy cache %s unreadable (%s) — will re-download", old.name, e)
+    return None
+
+
+def _write(sym: str, df: pd.DataFrame, migrated: bool = False) -> None:
+    import os
+    CACHE.mkdir(parents=True, exist_ok=True)
+    p = _pq(sym)
+    tmp = p.with_suffix(".parquet.tmp")
+    df.to_parquet(tmp)
+    os.replace(tmp, p)                                       # atomic: a crash never leaves half a file
+    if not migrated or not _pq(sym).with_suffix(".json").exists():
+        _write_manifest(sym, df, migrated)
+    try:
+        if migrated:
+            _path(sym).unlink()
+    except Exception:                                        # noqa: BLE001
+        pass
+
+
+def _write_manifest(sym: str, df: pd.DataFrame, migrated: bool = False) -> None:
     """Sidecar describing a cached series: when and how it was fetched, what it covers and with which library
     versions — so a stale or incompatible cache is visible, and pickles are never the only record."""
     import hashlib
@@ -140,19 +182,22 @@ def _write_manifest(sym: str, df: pd.DataFrame) -> None:
                 "adjustment": "auto_adjust=True (splits and dividends folded into OHLC; total return)",
                 "rows": int(len(df)), "first": str(df.index.min().date()), "last": str(df.index.max().date()),
                 "close_sha256": hashlib.sha256(np.ascontiguousarray(df["Close"].to_numpy(float)).tobytes()).hexdigest()[:16],
-                "pandas": pd.__version__, "numpy": np.__version__, "format": "pickle (trusted, written by this server only)"}
-        _path(sym).with_suffix(".json").write_text(json.dumps(body))
+                "pandas": pd.__version__, "numpy": np.__version__, "format": "parquet (pyarrow)",
+                "migrated_from_pickle": migrated}
+        if migrated:
+            body["fetched_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(_path(sym).stat().st_mtime))
+        _pq(sym).with_suffix(".json").write_text(json.dumps(body))
     except Exception:                                         # noqa: BLE001 — the manifest must never block data
         pass
 
 
 def _fresh(sym: str) -> Optional[pd.DataFrame]:
-    p = _path(sym)
-    try:
-        if time.time() - p.stat().st_mtime < MAX_AGE_S:
-            return pd.read_pickle(p)
-    except Exception:
-        pass
+    for p in (_pq(sym), _path(sym)):
+        try:
+            if p.exists() and time.time() - p.stat().st_mtime < MAX_AGE_S:
+                return _read(sym)
+        except Exception:                                    # noqa: BLE001
+            pass
     return None
 
 
@@ -201,15 +246,13 @@ def load(symbols: Sequence[str]) -> Tuple[Dict[str, pd.DataFrame], List[str]]:
             CACHE.mkdir(parents=True, exist_ok=True)
             for s in need:
                 if s in got:
-                    got[s].to_pickle(_path(s))
-                    _write_manifest(s, got[s])
+                    _write(s, got[s])
                     have[s] = got[s]
                 else:                                   # stale cache beats nothing — but say so
-                    try:
-                        have[s] = pd.read_pickle(_path(s))
+                    old = _read(s)
+                    if old is not None:
+                        have[s] = old
                         stale.append(s)
-                    except Exception:
-                        pass
     missing = [s for s in syms if s not in have]
     LAST_REPORT.stale = stale
     return have, missing

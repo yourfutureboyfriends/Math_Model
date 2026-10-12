@@ -68,13 +68,17 @@ def _trades_stocks(spec: Dict[str, Any]) -> bool:
 
 
 def code_universe(spec: Dict[str, Any]) -> List[str]:
-    """Tickers of a code or library strategy, read from its literal UNIVERSE (never by running it)."""
+    """Tickers of a code or library strategy, read from its literal header (never by running it). A
+    TRADABLE_UNIVERSE strategy trades the stocks of that universe, not just its literal UNIVERSE list."""
     from api.quant import library, sandbox
     if spec.get("kind") == "library":
-        if spec.get("library") == library.PORTFOLIO["id"]:
+        entry = library.get(spec["library"])
+        if not entry.get("code"):                            # portfolios and 13F strategies are server-computed
             return []
-        return sandbox.check(library.get(spec["library"])["code"])["universe"]
-    return sandbox.check(spec.get("code") or "")["universe"]
+        head = sandbox.check(entry["code"])
+    else:
+        head = sandbox.check(spec.get("code") or "")
+    return head["universe"] + (["__TRADABLE__"] if head.get("tradable") else [])
 
 
 def eval_code_spec(spec: Dict[str, Any]) -> Dict[str, Any]:
@@ -82,9 +86,10 @@ def eval_code_spec(spec: Dict[str, Any]) -> Dict[str, Any]:
     only inside the sandbox."""
     from api.quant import codeserver, library, sandbox
     if spec.get("kind") == "library":
-        if spec["library"] == library.PORTFOLIO["id"]:
+        entry = library.get(spec["library"])
+        if not entry.get("code"):                            # portfolios and 13F strategies: the server's own result
             return library.result(spec["library"])
-        return codeserver.evaluate_code(library.get(spec["library"])["code"], spec.get("costs"), trusted=True)
+        return codeserver.evaluate_code(entry["code"], spec.get("costs"), trusted=True)
     return sandbox.run(spec["code"], spec.get("costs"))
 
 
@@ -92,7 +97,16 @@ def classify(spec: Dict[str, Any]) -> str:
     """Which trader a strategy belongs to — decided by what it reads and what it trades."""
     from api.quant.expr import FUNDAMENTALS
     if spec.get("kind") in ("code", "library"):
+        from api.quant import library
+        if spec.get("kind") == "library":
+            entry = library.get(spec["library"])
+            if entry.get("kind") == "13f":
+                return "fundamental"                        # stock picks from institutions' disclosed holdings
+            if not entry.get("code"):
+                return "macro"                              # multi-strategy / multi-manager portfolios
         syms = code_universe(spec)
+        if "__TRADABLE__" in syms:
+            return "technical"                              # a stock universe chosen by the strategy from price/volume
         return "technical" if syms and _trades_stocks({"universe": {"symbols": syms}}) else "macro"
     text = " ".join(str(spec.get(k) or "") for k in ("signal", "filter", "weighting", "exit"))
     if any(re.search(rf"\b{re.escape(f)}\b", text) for f in FUNDAMENTALS):

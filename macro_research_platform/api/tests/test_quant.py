@@ -97,8 +97,9 @@ def test_costs_charged_on_turnover():
     s0, s1 = _spec(), _spec(costs={"bps": 10, "borrow_bps": 0})
     a = engine.simulate(s0, _prep(s0, close, open_))
     b = engine.simulate(s1, _prep(s1, close, open_))
-    # one initial buy of 100% NAV; later monthly rebalances only trim drift (zero for 1 asset)
-    assert sum(b["cost"]) == pytest.approx(0.001, rel=1e-6)
+    # one initial buy of 100% of NAV after its own fee (self-financing ledger: X + 10bp·X = 1); later monthly
+    # rebalances only trim drift (zero for 1 asset)
+    assert sum(b["cost"]) == pytest.approx(0.001 / 1.001, rel=1e-6)
     assert np.prod(1 + np.array(b["net"])) < np.prod(1 + np.array(a["net"]))
 
 

@@ -24,6 +24,8 @@ def main() -> None:
                         observed=pd.DataFrame(z["observed"], index=idx, columns=cols) if "observed" in z.files else None,
                         rf_known=meta.get("rf_known", True), provenance=meta.get("provenance"))
     bm = pd.Series(z["benchmark"], index=idx) if "benchmark" in z.files else None
+    # point-in-time index membership (TRADABLE_UNIVERSE = "SP500_PIT"): True where the ticker was a member that day
+    data.members = pd.DataFrame(z["members"], index=idx, columns=cols) if "members" in z.files else None
     # warm pandas' lazy imports before locking down
     pd.DataFrame({"a": [1.0, 2.0]}).rolling(2).mean().ewm(span=2).std().rank(axis=1)
 

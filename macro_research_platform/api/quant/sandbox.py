@@ -143,7 +143,39 @@ def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] 
     from api.quant import codelab, codeserver
     head = check(code)
     say = (lambda m: job.progress(m)) if job is not None else (lambda m: None)
-    if head.get("tradable"):
+    members = None
+    if head.get("tradable") == "SP500_PIT":
+        from api.quant import membership
+        names, minfo = membership.universe_since(head["start"])
+        universe = list(dict.fromkeys(head["universe"] + names))
+        say(f"Loading prices for {len(universe)} past and present S&P 500 members (first run downloads them)…")
+        data = codeserver.load_data(universe, head["start"], limit=codelab.LARGE_UNIVERSE_LIMIT, allow_missing=True)
+        members = membership.members_frame(data.close.index, data.tickers)
+        # Explicit delisting events (the engine settles only these): a former member whose trading stopped more
+        # than 10 sessions before the data ends AND that had already left the index by then — two independent
+        # records of a real exit, not a feed gap. Effective (and known) on the session after its last bar.
+        events = {}
+        idx = data.close.index
+        for c in data.tickers:
+            if c in head["universe"]:
+                continue
+            obs = data.observed[c]
+            if not obs.any():
+                continue
+            last = obs[obs].index[-1]
+            k = idx.get_loc(last)
+            if len(idx) - 1 - k > 10 and not bool(members[c].iloc[k + 1:].any()):
+                when = str(idx[k + 1].date())
+                events[c] = {"effective_date": when, "known_at": when, "reason": "left the S&P 500 and stopped trading"}
+        data.provenance["delisting_events"] = events
+        dropped = data.provenance.get("dropped_no_data") or []
+        data.provenance["universe_selection"] = (
+            f"TRADABLE_UNIVERSE 'SP500_PIT': point-in-time S&P 500 membership ({len(names)} names that were members "
+            f"since {head['start']}); data.members says who was a member each day. {len(dropped)} former members have "
+            "no free price history and are absent — a smaller, reported survivorship effect.")
+        data.provenance["membership"] = minfo
+        cpu = TIMEOUT_S * 4
+    elif head.get("tradable"):
         names = codeserver.tradable_universe(head["tradable"])
         universe = list(dict.fromkeys(head["universe"] + names))
         say(f"Loading prices for {len(universe)} tickers (first run downloads them; later runs use the cache)…")
@@ -164,6 +196,8 @@ def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] 
         arrays["rf"] = data.rf.to_numpy(np.float64)
         arrays["vix"] = data.vix.to_numpy(np.float64)
         arrays["observed"] = data.observed.to_numpy(bool)
+        if members is not None:
+            arrays["members"] = members.to_numpy(bool)
         arrays["dates"] = data.close.index.values.astype("datetime64[ns]").astype(np.int64)
         if bm is not None:
             arrays["benchmark"] = bm.reindex(data.close.index).to_numpy(np.float64)

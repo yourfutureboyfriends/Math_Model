@@ -67,16 +67,17 @@ CITES = {
 def _etf_prices():
     import pandas as pd
     import yfinance as yf
-    try:
-        if time.time() - ETF_CACHE.stat().st_mtime < 7 * 86400:
-            return pd.read_pickle(ETF_CACHE)
-    except Exception:
-        pass
+    from api.quant import cachefmt
+    m = cachefmt.mtime(ETF_CACHE)
+    if m and time.time() - m < 7 * 86400:
+        got = cachefmt.read(ETF_CACHE)
+        if got is not None:
+            return got
     syms = sorted(set(TREND_ETFS) | set(SECTOR_ETFS))
     df = yf.download(syms, period="max", interval="1d", auto_adjust=True, group_by="ticker", threads=True, progress=False)
     closes = pd.DataFrame({s: df[s]["Close"] for s in syms if s in df.columns.get_level_values(0)})
     ETF_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    closes.to_pickle(ETF_CACHE)
+    cachefmt.write(closes, ETF_CACHE)
     return closes
 
 

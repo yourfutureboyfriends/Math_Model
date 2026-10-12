@@ -250,7 +250,92 @@ def prepare(spec: Dict[str, Any]) -> Dict[str, Any]:
 
 def simulate(spec: Dict[str, Any], prep: Dict[str, Any], extra_lag: int = 0, vol_target_off: bool = False
              ) -> Dict[str, Any]:
-    """Run the strategy. Returns daily net/gross returns, costs, exposures and rebalance log."""
+    """Run the strategy on the shared ledger engine (api/quant/codelab.backtest): units + cash, fills only at
+    observed prices, costs settled into cash, cash earning the T-bill rate. Targets come from the same
+    decide()/rebalance schedule as before; the outputs keep their shape for backtest.py and the trader.
+    Cost mapping: the spec's all-in `bps` per side → commission (spread/impact models off, as before);
+    `borrow_bps` → borrow fee. next_close execution: the close is the execution price (one bar later)."""
+    from api.quant import codelab, rates
+    if vol_target_off:
+        spec = {**spec, "risk": {**spec["risk"], "vol_target": None}}
+    pan, uni = prep["pan"], prep["uni"]
+    cols = list(uni) + ([spec["fallback"]] if spec["fallback"] and spec["fallback"] not in uni else [])
+    close = pan["close"][cols]
+    idx = close.index
+    start_i = int(idx.searchsorted(pd.Timestamp(spec["start"])))
+    C = close.to_numpy(float)
+    T, M = C.shape
+    nu = len(uni)
+    score = prep["score"].reindex(idx).to_numpy(float)
+    filt = prep["filter"].reindex(idx).to_numpy(float) if prep["filter"] is not None else None
+    vol = prep["vol"].reindex(idx).to_numpy(float)
+    with np.errstate(all="ignore"):
+        rcc = C[1:] / C[:-1] - 1
+    rcc = np.vstack([np.full((1, M), np.nan), rcc])
+    hist = rcc[:, :nu]
+    reb = _rebalance_mask(idx, spec["rebalance"])
+    fb_col = cols.index(spec["fallback"]) if spec["fallback"] else None
+    lb = spec["risk"]["vol_lookback"]
+
+    def decide(t: int) -> np.ndarray:
+        elig = np.isfinite(C[t, :nu])
+        if filt is not None:
+            elig &= np.nan_to_num(filt[t], nan=0.0) > 0
+        n_live = int(np.isfinite(C[t, :nu]).sum())
+        w_u = target_weights(spec, score[t], elig, vol[t], n_live)
+        w_u = apply_risk(spec, w_u, hist[max(0, t - lb + 1):t + 1])
+        w = np.zeros(M)
+        w[:nu] = w_u
+        if fb_col is not None:
+            free = max(0.0, 1.0 - np.abs(w_u).sum()) if spec["weighting"] == "equal_universe" else (1.0 if not (w_u != 0).any() else 0.0)
+            if free > 0 and np.isfinite(C[t, fb_col]):
+                w[fb_col] += free
+        return w
+
+    W = np.full((T, M), np.nan)
+    log: List[Dict[str, Any]] = []
+    last_target = None
+    for t in range(max(0, start_i - 1), T - 1):
+        if not reb[t]:
+            continue
+        w = decide(t)
+        row = t + extra_lag                                     # a delayed decision trades extra_lag bars later
+        if row < T - 1:
+            W[row] = w
+        prev = last_target
+        last_target = w
+        if prev is None or (np.sign(prev) != np.sign(w)).any() or np.abs(prev - w).sum() > 0.05:
+            ins = [cols[i] for i in np.flatnonzero((w != 0) & ((prev == 0) if prev is not None else True))]
+            outs = [cols[i] for i in np.flatnonzero((w == 0) & (prev != 0))] if prev is not None else []
+            log.append({"date": idx[t].strftime("%Y-%m-%d"), "in": ins[:12], "out": outs[:12],
+                        "holdings": int((w != 0).sum()), "gross": round(float(np.abs(w).sum()), 3)})
+    exec_px = pan["open"][cols] if spec["execution"] == "next_open" else close
+    data = codelab.Data(close, exec_px, pan["high"][cols], pan["low"][cols], pan["volume"][cols].fillna(1.0).where(lambda v: v > 0, 1.0),
+                        rf=rates.daily(idx) if rates.known() else None, observed=close.notna())
+    costs = {"commission_bps": spec["costs"]["bps"], "spread_mult": 0.0, "impact_coef_bps": 0.0, "sec_fee_bps": 0.0,
+             "borrow_fee": spec["costs"]["borrow_bps"] / 1e4, "no_trade_band": 0.0, "max_gross": 4.0}
+    Wf = pd.DataFrame(W, index=idx, columns=cols)
+    first_date = str(idx[start_i].date()) if start_i < T else str(idx[-1].date())
+    res = codelab.backtest(Wf, data, costs, first_date)
+    ret = res["ret"].reindex(idx[start_i:]).fillna(0.0)
+    standing = Wf.ffill().fillna(0.0).reindex(idx[start_i:])
+    cost = sum(res[k].reindex(idx[start_i:]).fillna(0.0) for k in ("commission", "spread", "impact", "fees", "borrow"))
+    long_, short_ = res["long"].reindex(idx[start_i:]).fillna(0.0), res["short"].reindex(idx[start_i:]).fillna(0.0)
+    today = decide(T - 1)
+    return {"dates": [d.strftime("%Y-%m-%d") for d in idx[start_i:]], "net": ret.to_numpy(),
+            "gross": res["gross"].reindex(idx[start_i:]).fillna(0.0).to_numpy(), "cost": cost.to_numpy(),
+            "gross_exp": (long_ + short_).to_numpy(), "net_exp": (long_ - short_).to_numpy(),
+            "holdings": (standing.abs() > 1e-6).sum(axis=1).to_numpy(), "turnover_total": float(res["turnover"].sum()),
+            "log": log, "cols": cols, "today": today, "last_close_date": idx[-1].strftime("%Y-%m-%d"),
+            "score_today": score[T - 1], "filter_today": (filt[T - 1] if filt is not None else None),
+            "vol_today": vol[T - 1], "ledger": res["ledger"], "execution_report": res["execution"],
+            "engine": codelab.ENGINE_VERSION}
+
+
+def simulate_legacy(spec: Dict[str, Any], prep: Dict[str, Any], extra_lag: int = 0, vol_target_off: bool = False
+                    ) -> Dict[str, Any]:
+    """The pre-ledger weight-fraction simulator, kept only for shadow reconciliation tests (see
+    test_engine_migration.py). Not used by any live path."""
     if vol_target_off:
         spec = {**spec, "risk": {**spec["risk"], "vol_target": None}}
     pan, uni = prep["pan"], prep["uni"]

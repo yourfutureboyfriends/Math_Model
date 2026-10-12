@@ -51,3 +51,25 @@ Also found and fixed while doing this:
 - **User strategy, hand-picked 80 names:** 21.0% CAGR (sandbox).
 - **The same strategy on the full 698-name tradable US universe:** 17.1% CAGR, Sharpe 0.98, max drawdown −29.8%, with 22 listings ending while held. The hand-picked list flattered the result by about 4 points a year.
 - **None of these is a validated edge:** the universe is today's list (retrospective), and the trials were sequential.
+
+## Follow-up (same day): remaining items
+
+Work was split with another tool editing the engine and Code Lab files at the same time (it replaced the
+inferred-delisting rule with explicit dated delisting events — the better policy, now the engine's). This
+follow-up only touches other files.
+
+| Item | Status | Where |
+|---|---|---|
+| Deploy failing (400) from the Strategy library | **Fixed.** Server-computed entries (multi-manager, multi-strategy, 13F) have no code; deploy assumed they did. They now deploy from the server's own result. Routing: 13F → Fundamental trader, portfolios → Macro, TRADABLE_UNIVERSE code → Technical (it was being sent to Macro because its literal UNIVERSE is just SPY) | `trader.code_universe`, `eval_code_spec`, `classify` |
+| Point-in-time universe | **Done for the S&P 500.** `TRADABLE_UNIVERSE = "SP500_PIT"`: every name that was a member since START, membership snapshots since 1996 plus Wikipedia's current list after the history ends; `data.members` (dates × tickers) gives who was a member each day; renames mapped; removed names without free prices reported; explicit delisting events generated only when a name had left the index *and* stopped trading | `membership.py`, `sandbox.run`, `sandbox_child.py` |
+| Older formula engine onto the ledger | **Done.** `engine.simulate` now runs on `codelab.backtest` (same decisions/schedule; outputs unchanged in shape). Shadow reconciliation: identical to the legacy simulator at zero cost (next-open and next-close), within 0.2–0.5% with costs (fees paid from cash instead of from weights). Cash now earns the T-bill rate per the shared contract | `engine.py`, `test_engine_migration.py` |
+| Persistent jobs | **Done.** Jobs are stored in `quant_jobs`; results survive restarts; jobs running during a restart are marked *interrupted* | `jobs.py` |
+| Portable caches | **Done.** Parquet (pyarrow), atomic writes, a manifest per series; legacy pickles are read once and migrated; unreadable files count as missing | `data.py`, `cachefmt.py`, `stock_backtest.py`, `strategy_lab.py`, `factor_library.py` |
+| Multi-currency | **Done in the data layer** (minor units, FX as of each bar, opens at the previous FX close, venue transaction taxes in the engine) — those edits sit in the other tool's files (`codeserver.py`, `codelab.py`) for it to integrate; `instruments.py` is committed here | `instruments.py` |
+
+Your strategy under each universe (same code, same costs): hand-picked 80 → 21.0% CAGR; today's 700
+tradable US names → 17.1%; point-in-time S&P 500 → 13.2% (Sharpe 0.71, max drawdown −37.7%; 151 former
+members without free prices). Each step that removes hindsight lowers the result.
+
+Still open: the stock auto-trader (`auto_trader.py`) keeps its own trade-based paper book (with FX); it was not
+moved onto the shared ledger in this pass.

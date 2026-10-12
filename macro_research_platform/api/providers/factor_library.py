@@ -54,13 +54,12 @@ def factors() -> pd.DataFrame:
     """Daily factor returns (decimal), columns Mkt-RF, SMB, HML, RMW, CMA, RF, Mom."""
     if _mem["df"] is not None and time.time() - _mem["ts"] < 3600:
         return _mem["df"]
+    from api.quant import cachefmt
     path = CACHE / "ff_daily.pkl"
     df = None
-    try:
-        if time.time() - path.stat().st_mtime < TTL:
-            df = pd.read_pickle(path)
-    except Exception:
-        pass
+    m = cachefmt.mtime(path)
+    if m and time.time() - m < TTL:
+        df = cachefmt.read(path)
     if df is None:
         try:
             parts = []
@@ -70,12 +69,11 @@ def factors() -> pd.DataFrame:
                 parts.append(_parse(r.content))
             df = parts[0].join(parts[1], how="left")
             CACHE.mkdir(parents=True, exist_ok=True)
-            df.to_pickle(path)
+            cachefmt.write(df, path)
         except Exception as e:
             logger.warning("[factors] download failed: %s", e)
-            try:
-                df = pd.read_pickle(path)                 # stale beats nothing
-            except Exception:
+            df = cachefmt.read(path)                      # stale beats nothing
+            if df is None:
                 raise RuntimeError("Factor library unavailable (no network and no cached copy).") from e
     _mem.update(ts=time.time(), df=df)
     return df
