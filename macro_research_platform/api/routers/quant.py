@@ -57,9 +57,9 @@ def _spec_error(e: Exception):
     raise HTTPException(400, str(e))
 
 
-async def _bt(fn, *a, **k):
+async def _bt(fn, *a, _timeout: float = 240, **k):
     async with _sem:
-        return await asyncio.wait_for(asyncio.to_thread(fn, *a, **k), timeout=240)
+        return await asyncio.wait_for(asyncio.to_thread(fn, *a, **k), timeout=_timeout)
 
 
 # ── Quant Lab ────────────────────────────────────────────────────────────────
@@ -232,6 +232,7 @@ class AnalyzeIn(BaseModel):
     mc_paths: int = 2000
     max_leverage: float = 2.0
     dd_limit: float = 0.5
+    provenance: Optional[Dict[str, Any]] = None     # from the engine; registers the run as a trial
 
 
 class CodeCheckIn(BaseModel):
@@ -259,6 +260,47 @@ async def code_data(request: Request, universe: str = Query(..., max_length=1200
         _spec_error(e)
 
 
+class JobIn(BaseModel):
+    code: str
+    costs: Optional[Dict[str, float]] = None
+
+
+@router.post("/api/v1/quant/code/jobs")
+async def code_job_submit(body: JobIn, request: Request):
+    """Run a strategy that needs the server (TRADABLE_UNIVERSE: hundreds of tickers) as a background job in the
+    sandbox. Poll GET …/jobs/{id}; DELETE cancels."""
+    from api.quant import jobs, sandbox
+    u = _user(request)
+    try:
+        head = sandbox.check(body.code)
+    except sandbox.SandboxError as e:
+        _spec_error(e)
+    if not head.get("tradable"):
+        raise HTTPException(400, "Only TRADABLE_UNIVERSE strategies run as server jobs — others run in your browser.")
+    try:
+        j = jobs.submit(u["username"], "code_run", lambda job: sandbox.run(body.code, body.costs, job))
+    except ValueError as e:
+        raise HTTPException(429, str(e))
+    return j.view(False)
+
+
+@router.get("/api/v1/quant/code/jobs/{job_id}")
+async def code_job_status(job_id: str, request: Request):
+    from api.quant import jobs
+    u = _user(request)
+    j = jobs.get(job_id, u["username"], u["role"] == "admin")
+    if not j:
+        raise HTTPException(404, "Unknown job (finished jobs are kept for an hour; a server restart clears them).")
+    return j.view()
+
+
+@router.delete("/api/v1/quant/code/jobs/{job_id}")
+async def code_job_cancel(job_id: str, request: Request):
+    from api.quant import jobs
+    u = _user(request)
+    return {"cancelled": jobs.cancel(job_id, u["username"], u["role"] == "admin")}
+
+
 @router.post("/api/v1/quant/code/check")
 async def code_check(body: CodeCheckIn, request: Request):
     """Static check against the deploy sandbox's rules (does not run the code)."""
@@ -274,12 +316,12 @@ async def code_check(body: CodeCheckIn, request: Request):
 async def code_analyze(body: AnalyzeIn, request: Request):
     """Deep analysis + Monte Carlo (bootstrap, leverage/Kelly) of a daily return series — numbers only."""
     from api.quant import codeserver
-    _user(request)
+    u = _user(request)
     if not 1 <= body.mc_years <= 30 or not 200 <= body.mc_paths <= 5000 or not 1 <= body.max_leverage <= 4 or not 0.1 <= body.dd_limit <= 0.9:
         raise HTTPException(400, "Monte Carlo: 1–30 years, 200–5000 paths, max leverage 1–4×, drawdown limit 10–90%.")
     try:
         return await _bt(codeserver.analyze, body.dates, body.returns, body.benchmark, body.label, body.benchmark_label,
-                         body.mc_years, body.mc_paths, body.max_leverage, body.dd_limit)
+                         body.mc_years, body.mc_paths, body.max_leverage, body.dd_limit, u["username"], body.provenance)
     except ValueError as e:
         _spec_error(e)
 
@@ -323,7 +365,7 @@ async def quant_trader(request: Request, refresh: bool = False, book: str = Quer
     from api.quant import trader
     _user(request)
     try:
-        return await _bt(trader.book, refresh, book)
+        return await _bt(trader.book, refresh, book, _timeout=900)     # large-universe code strategies run in the sandbox
     except asyncio.TimeoutError:
         raise HTTPException(504, "Updating the Quant Trader took too long — try again shortly.")
 
@@ -334,9 +376,12 @@ async def quant_deploy(body: DeployIn, request: Request):
     u = _user(request, ("pm", "quant"))
     spec = body.spec or _member_spec({"strategy_id": body.strategy_id, "template": body.template})
     try:
-        d = await _bt(trader.deploy, u["username"], spec, body.capital, body.strategy_id, body.book)
+        d = await _bt(trader.deploy, u["username"], spec, body.capital, body.strategy_id, body.book, _timeout=900)
     except engine.SpecError as e:
         _spec_error(e)
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "Deploying took longer than 15 minutes (a first download of hundreds of tickers?) — "
+                                 "try again; the data is cached now.")
     await asyncio.to_thread(_audit, u["username"], "quant_deploy",
                             f"Deployed '{d['name']}' to the {trader.BOOK_LABEL.get(d.get('book'), 'Macro')} Quant Trader with ${body.capital:,.0f} (live from {d['deployed_at']})")
     return d

@@ -96,9 +96,11 @@ def run(spec_in: Dict[str, Any], n_trials: int = 1, trial_sharpes: Optional[Sequ
         out["daily_dates"] = dates
         out["daily_benchmark"] = bench
         return out
-    rb: Dict[str, Any] = {"psr": _r(robust.psr(net), 3)}
+    from api.quant import rates
+    ex = rates.excess(net, dates)                      # skill is judged on returns above cash
+    rb: Dict[str, Any] = {"psr": _r(robust.psr(ex), 3)}
     trials = list(trial_sharpes or [])
-    dsr = robust.deflated_sharpe(net, n_trials, [s / math.sqrt(252) for s in trials if s is not None])
+    dsr = robust.deflated_sharpe(ex, n_trials, [s / math.sqrt(252) for s in trials if s is not None])
     rb["deflated_sharpe"] = {"dsr": _r(dsr.get("dsr"), 3), "trials": dsr.get("trials", n_trials),
                              "sr0_annual": dsr.get("sr0_annual")}
     rb["is_oos"] = robust.is_oos(net, dates)
@@ -106,14 +108,14 @@ def run(spec_in: Dict[str, Any], n_trials: int = 1, trial_sharpes: Optional[Sequ
     rb["cost_sensitivity"] = []
     for k in (0, 1, 2, 3):
         rk = gross - k * cost if k != 1 else net
-        rb["cost_sensitivity"].append({"multiple": k, "bps": spec["costs"]["bps"] * k, "sharpe": _r(robust.sharpe(rk), 3),
+        rb["cost_sensitivity"].append({"multiple": k, "bps": spec["costs"]["bps"] * k, "sharpe": _r(robust.sharpe(rk, dates), 3),
                                        "cagr": robust.metrics(rk, dates)["cagr"]})
     lag = engine.simulate(spec, prep, extra_lag=1)
     lr = lag["net"][-len(net):]
-    rb["one_day_delay"] = {"sharpe": _r(robust.sharpe(lr), 3), "cagr": robust.metrics(lr, dates)["cagr"]}
+    rb["one_day_delay"] = {"sharpe": _r(robust.sharpe(lr, dates), 3), "cagr": robust.metrics(lr, dates)["cagr"]}
     if spec["risk"]["vol_target"] is not None:
         nv = engine.simulate(spec, prep, vol_target_off=True)["net"][-len(net):]
-        rb["without_vol_target"] = {"sharpe": _r(robust.sharpe(nv), 3), "cagr": robust.metrics(nv, dates)["cagr"],
+        rb["without_vol_target"] = {"sharpe": _r(robust.sharpe(nv, dates), 3), "cagr": robust.metrics(nv, dates)["cagr"],
                                     "max_drawdown": robust.metrics(nv, dates)["max_drawdown"]}
     try:                                   # is it just known factor premia? (Fama–French 5 + momentum)
         from api.providers import factor_library

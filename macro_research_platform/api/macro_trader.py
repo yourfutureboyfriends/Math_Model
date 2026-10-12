@@ -10,7 +10,8 @@ Cycle (after each US close, or on demand):
   3. read the model's target weights (tactical by default) and rebalance — placing orders
      for the next open — when the month has changed since the last rebalance, the most
      likely regime has changed, or any position has drifted more than `drift_threshold`
-     from its target. Uninvested weight stays in cash (0% interest — conservative).
+     from its target. Uninvested weight stays in cash: 0% by default (conservative), or the T-bill rate less a
+     spread when settings.cash_yield = "tbill" (accrued per trading day, api/quant/rates.py).
 Never places real orders.
 """
 from __future__ import annotations
@@ -28,7 +29,10 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 DEFAULTS: Dict[str, Any] = {"enabled": True, "capital": 1_000_000.0, "portfolio": "tactical",
-                            "drift_threshold": 0.05, "cost_bps": 5.0}
+                            "drift_threshold": 0.05, "cost_bps": 5.0,
+                            # cash remuneration is a choice, not a universal assumption: "none" (the original
+                            # conservative behaviour) or "tbill" (T-bill rate less cash_spread, api/quant/rates.py)
+                            "cash_yield": "none", "cash_spread": 0.0}
 ETFS = ["SPY", "EFA", "EEM", "TLT", "IEF", "TIP", "LQD", "HYG", "GLD", "DBC"]
 # tactical / strategic: the macro model's portfolios. all_weather / all_weather_tilt: Bridgewater's All Weather
 # construction (equal risk to each growth/inflation environment), the second tilted to the current quadrant.
@@ -94,7 +98,11 @@ def update_settings(changes: Dict[str, Any]) -> Dict[str, Any]:
             raise ValueError("drift threshold must be 1%–50%")
         if k == "cost_bps" and not 0 <= float(v) <= 100:
             raise ValueError("cost must be 0–100 bp")
-        s[k] = v if k in ("enabled", "portfolio") else float(v)
+        if k == "cash_yield" and v not in ("none", "tbill"):
+            raise ValueError("cash_yield must be 'none' or 'tbill'")
+        if k == "cash_spread" and not 0 <= float(v) <= 0.05:
+            raise ValueError("cash spread must be 0–5% (annual, decimal)")
+        s[k] = v if k in ("enabled", "portfolio", "cash_yield") else float(v)
     with _db() as c:
         _put(c, "settings", s)
         _log(c, "Settings: " + ", ".join(f"{k} → {v}" for k, v in changes.items()))
@@ -193,8 +201,19 @@ def _cycle(s: Dict[str, Any], tg: Dict[str, Any], bars: Dict[str, Any]) -> Dict[
         asof = min(last_dates)
         px = {sym: float(b["Close"][b.index <= asof].iloc[-1]) for sym, b in bars.items() if (b.index <= asof).any()}
         mv = {sym: sh * px[sym] for sym, sh in pos.items() if sym in px}
-        nav = cash + sum(mv.values())
         d = asof.strftime("%Y-%m-%d")
+        # interest on idle cash since the last mark (only when enabled; never back-paid when switched on)
+        thru = _get(c, "interest_through")
+        if s.get("cash_yield", "none") == "tbill" and thru and d > thru:
+            from api.quant import rates
+            interest = rates.accrue(cash, thru, d, cash_spread=float(s.get("cash_spread", 0.0)))
+            if interest:
+                cash += interest
+                _put(c, "cash", cash)
+                _log(c, f"Interest on cash {thru} → {d}: ${interest:,.2f}")
+        if not thru or d > thru:
+            _put(c, "interest_through", d)
+        nav = cash + sum(mv.values())
         c.execute("INSERT INTO macro_trader_nav (date, nav, cash, gross) VALUES (?,?,?,?) ON CONFLICT(date) DO UPDATE SET nav = excluded.nav, cash = excluded.cash, gross = excluded.gross",
                   (d, nav, cash, sum(abs(v) for v in mv.values())))
         # 3) rebalance decision

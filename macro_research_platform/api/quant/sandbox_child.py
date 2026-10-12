@@ -19,7 +19,10 @@ def main() -> None:
     cols = meta["tickers"]
     frames = {f: pd.DataFrame(z[f], index=idx, columns=cols) for f in ("close", "open", "high", "low", "volume")}
     data = codelab.Data(frames["close"], frames["open"], frames["high"], frames["low"], frames["volume"],
-                        rf=pd.Series(z["rf"], index=idx), vix=pd.Series(z["vix"], index=idx))
+                        rf=pd.Series(z["rf"], index=idx) if meta.get("rf_known", True) else None,
+                        vix=pd.Series(z["vix"], index=idx),
+                        observed=pd.DataFrame(z["observed"], index=idx, columns=cols) if "observed" in z.files else None,
+                        rf_known=meta.get("rf_known", True), provenance=meta.get("provenance"))
     bm = pd.Series(z["benchmark"], index=idx) if "benchmark" in z.files else None
     # warm pandas' lazy imports before locking down
     pd.DataFrame({"a": [1.0, 2.0]}).rolling(2).mean().ewm(span=2).std().rank(axis=1)
@@ -64,7 +67,9 @@ def main() -> None:
     try:
         sys.addaudithook(hook)
         st = codelab.load_strategy(code, {"__builtins__": safe_builtins})
-        out = codelab.evaluate(st["strategy"], data, st["params"], meta["start"], meta["costs"] or None, bm)
+        out = codelab.evaluate(st["strategy"], data, st["params"], meta["start"], meta["costs"] or None, bm,
+                               st["holdout"], st["code_hash"])
+        out["provenance"]["runtime"] = f"server sandbox — pandas {pd.__version__}, numpy {np.__version__}"
     except Exception as e:                                    # report the user's error, not ours
         tb = traceback.extract_tb(e.__traceback__)
         where = next((f" (line {f.lineno})" for f in reversed(tb) if f.filename == "<strategy>"), "")

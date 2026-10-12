@@ -7,6 +7,7 @@
 //   * Optimiser: six weighting methods on either book or any tickers, ranked walk-forward.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Activity, Briefcase, Cpu, Globe2, CheckCircle2, Loader2, MinusCircle, Play, Plus, RefreshCw, Scale, X, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
@@ -169,6 +170,7 @@ function AutoLive() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [edit, setEdit] = useState<any>(null);
+  const [dialog, ask] = useConfirm();
 
   const load = useCallback(async () => {
     try { setData(await getJSON('/api/v1/auto/status')); setErr(null); } catch (e: any) { setErr(e.message); }
@@ -190,6 +192,7 @@ function AutoLive() {
   const risk = data.risk ?? {};
   return (
     <div className="space-y-2">
+      {dialog}
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-surface-1 border border-border text-2xs">
         <span className="px-1.5 py-0.5 border border-amber/50 text-amber uppercase tracking-wide">Paper — simulated, no real orders</span>
         <span className={cn('px-1.5 py-0.5 border', s?.enabled ? 'border-green/50 text-green' : 'border-border text-text-tertiary')}>
@@ -227,8 +230,9 @@ function AutoLive() {
               act('save', '/api/v1/auto/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             }}
               disabled={!!busy} className="px-2 py-0.5 border border-bloomberg text-bloomberg">Save</button>
-            <button onClick={() => {
-              const cap = window.prompt('Reset the paper book and start with how much virtual capital (USD)?', String(s?.capital ?? 1000000));
+            <button onClick={async () => {
+              const cap = await ask({ title: 'Reset the paper book?', body: 'All paper positions and history are cleared.', confirmLabel: 'Reset', danger: true,
+                input: { label: 'Start with virtual capital (USD)', defaultValue: String(s?.capital ?? 1000000), type: 'number' } });
               if (cap && Number(cap) > 0) act('reset', '/api/v1/auto/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ capital: Number(cap) }) });
             }} className="px-2 py-0.5 border border-red/50 text-red">Reset book…</button>
           </div>
@@ -293,7 +297,7 @@ function AutoLive() {
                   <td className="text-right px-2"><span className="text-red">{num(p.stop)}</span> / <span className="text-green">{num(p.target)}</span></td>
                   <td className={cn('text-right px-2', (p.unrealized_usd ?? 0) >= 0 ? 'text-green' : 'text-red')}>{usd(p.unrealized_usd)}<div className="text-[10px]">{p.open_r == null ? '' : `${p.open_r >= 0 ? '+' : ''}${p.open_r.toFixed(2)}R`}</div></td>
                   <td className="px-1"><button title="Close at the latest close" disabled={!!busy}
-                    onClick={() => window.confirm(`Close ${p.symbol} in the paper book at the latest close?`) && act('close', `/api/v1/auto/positions/${p.id}/close`, { method: 'POST' })}
+                    onClick={async () => { if (await ask({ title: `Close ${p.symbol}?`, body: 'Closes it in the paper book at the latest close.', confirmLabel: 'Close position' })) act('close', `/api/v1/auto/positions/${p.id}/close`, { method: 'POST' }); }}
                     className="text-text-tertiary hover:text-red"><X className="w-3 h-3" /></button></td>
                 </tr>
               ))}

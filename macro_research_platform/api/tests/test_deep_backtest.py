@@ -15,14 +15,18 @@ def _series(n=2520, mu=0.0004, sd=0.01, seed=1):
     return [x.strftime("%Y-%m-%d") for x in d], rng.normal(mu, sd, n)
 
 
-def test_summary_and_drawdowns_are_consistent():
+def test_summary_and_drawdowns_are_consistent(monkeypatch):
+    from api.quant import rates
+    monkeypatch.setattr(rates, "daily", lambda idx: pd.Series(0.04 / 252, index=pd.DatetimeIndex(pd.to_datetime(list(idx)))))
     dates, r = _series()
     rep = deep.report(dates, r, 252, label="s")
     s = rep["summary"]
     eq = np.cumprod(1 + r)
     assert s["max_drawdown"] == pytest.approx((eq / np.maximum.accumulate(eq) - 1).min(), abs=1e-4)
     assert rep["drawdowns"][0]["depth"] == pytest.approx(s["max_drawdown"], abs=1e-4)          # worst episode = max drawdown
-    assert s["sharpe"] == pytest.approx(r.mean() / r.std(ddof=1) * math.sqrt(252), rel=1e-3)
+    ex = r - 0.04 / 252                                                                         # Sharpe is on returns above cash
+    assert s["sharpe"] == pytest.approx(ex.mean() / ex.std(ddof=1) * math.sqrt(252), rel=1e-3)
+    assert s["cash_rate"] == pytest.approx(0.04, abs=1e-4)
     tot = 1.0
     for y in rep["calendar"]:
         tot *= 1 + y["total"]

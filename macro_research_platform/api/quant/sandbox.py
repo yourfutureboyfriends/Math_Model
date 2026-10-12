@@ -22,6 +22,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -83,14 +84,15 @@ def check(code: str) -> Dict[str, Any]:
     for node in tree.body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             name = node.targets[0].id
-            if name in ("UNIVERSE", "START", "PARAMS", "BENCHMARK"):
+            if name in ("UNIVERSE", "START", "PARAMS", "BENCHMARK", "HOLDOUT", "TRADABLE_UNIVERSE"):
                 try:
                     header[name] = ast.literal_eval(node.value)
                 except Exception:
                     raise SandboxError(f"{name} must be a plain literal (list, string or dict of lists).")
     uni = header.get("UNIVERSE")
-    if not isinstance(uni, (list, tuple)) or not 1 <= len(uni) <= 80 or not all(isinstance(u, str) for u in uni):
-        raise SandboxError("UNIVERSE must be a literal list of 1–80 ticker strings.")
+    from api.quant.codelab import UNIVERSE_LIMIT
+    if not isinstance(uni, (list, tuple)) or not 1 <= len(uni) <= UNIVERSE_LIMIT or not all(isinstance(u, str) for u in uni):
+        raise SandboxError(f"UNIVERSE must be a literal list of 1–{UNIVERSE_LIMIT} ticker strings.")
     if not any(isinstance(n, ast.FunctionDef) and n.name == "strategy" for n in tree.body):
         raise SandboxError("Define a top-level function strategy(data, **params).")
     params = header.get("PARAMS") or {}
@@ -102,7 +104,9 @@ def check(code: str) -> Dict[str, Any]:
     if n > 48:
         raise SandboxError(f"PARAMS has {n} combinations — keep it to 48 or fewer.")
     return {"universe": [str(u).upper() for u in uni], "start": str(header.get("START") or "2005-01-01")[:10],
-            "params": params, "benchmark": str(header.get("BENCHMARK") or "SPY").upper()}
+            "params": params, "benchmark": str(header.get("BENCHMARK") or "SPY").upper(),
+            "holdout": str(header["HOLDOUT"])[:10] if header.get("HOLDOUT") else None,
+            "tradable": str(header["TRADABLE_UNIVERSE"]).upper() if header.get("TRADABLE_UNIVERSE") else None}
 
 
 def _profile(tmp: Path) -> str:
@@ -120,9 +124,9 @@ def _profile(tmp: Path) -> str:
 """
 
 
-def _limits():                                  # runs in the child before exec
+def _limits(cpu: int = TIMEOUT_S):              # runs in the child before exec
     import resource
-    resource.setrlimit(resource.RLIMIT_CPU, (TIMEOUT_S, TIMEOUT_S))
+    resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
     resource.setrlimit(resource.RLIMIT_FSIZE, (50_000_000, 50_000_000))
     try:
         resource.setrlimit(resource.RLIMIT_NOFILE, (256, 256))
@@ -133,23 +137,40 @@ def _limits():                                  # runs in the child before exec
     os.setsid()
 
 
-def run(code: str, costs: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
-    """Evaluate user code in the sandbox; returns codelab.evaluate()'s JSON-able output."""
-    from api.quant import codeserver
+def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] = None) -> Dict[str, Any]:
+    """Evaluate user code in the sandbox; returns codelab.evaluate()'s JSON-able output. `job` (api/quant/jobs.py)
+    receives progress and can cancel the run (the child process is killed)."""
+    from api.quant import codelab, codeserver
     head = check(code)
-    data = codeserver.load_data(head["universe"], head["start"])
+    say = (lambda m: job.progress(m)) if job is not None else (lambda m: None)
+    if head.get("tradable"):
+        names = codeserver.tradable_universe(head["tradable"])
+        universe = list(dict.fromkeys(head["universe"] + names))
+        say(f"Loading prices for {len(universe)} tickers (first run downloads them; later runs use the cache)…")
+        data = codeserver.load_data(universe, head["start"], limit=codelab.LARGE_UNIVERSE_LIMIT, allow_missing=True)
+        data.provenance["universe_selection"] = (f"TRADABLE_UNIVERSE '{head['tradable']}': today's list of "
+                                                 f"{len(names)} names — retrospective / survivor-selected (names that failed "
+                                                 "or were delisted earlier are absent)")
+        cpu = TIMEOUT_S * 4
+    else:
+        data = codeserver.load_data(head["universe"], head["start"])
+        cpu = TIMEOUT_S
+    if job is not None and job.cancelled:
+        raise SandboxError("Cancelled.")
     bm = codeserver._index_series(head["benchmark"], data.close.index[0].strftime("%Y-%m-%d"))
     tmp = Path(tempfile.mkdtemp(prefix="qsbx_")).resolve()
     try:
         arrays = {f: getattr(data, f).to_numpy(np.float64) for f in ("close", "open", "high", "low", "volume")}
         arrays["rf"] = data.rf.to_numpy(np.float64)
         arrays["vix"] = data.vix.to_numpy(np.float64)
+        arrays["observed"] = data.observed.to_numpy(bool)
         arrays["dates"] = data.close.index.values.astype("datetime64[ns]").astype(np.int64)
         if bm is not None:
             arrays["benchmark"] = bm.reindex(data.close.index).to_numpy(np.float64)
         np.savez(tmp / "data.npz", **arrays)
         (tmp / "meta.json").write_text(json.dumps({"tickers": data.tickers, "start": head["start"],
-                                                   "params": head["params"], "costs": costs or {}}))
+                                                   "params": head["params"], "costs": costs or {},
+                                                   "rf_known": data.rf_known, "provenance": data.provenance}))
         (tmp / "strategy.py").write_text(code)
         cmd = [sys.executable, "-I", str(CHILD), str(tmp), str(ENGINE)]
         if sys.platform == "darwin" and shutil.which("sandbox-exec"):
@@ -157,16 +178,29 @@ def run(code: str, costs: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
             cmd = ["sandbox-exec", "-f", str(tmp / "profile.sb")] + cmd
         env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp), "TMPDIR": str(tmp), "LANG": "C.UTF-8",
                "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
-        try:
-            p = subprocess.run(cmd, cwd=tmp, env=env, capture_output=True, text=True, timeout=TIMEOUT_S + 10,
-                               preexec_fn=_limits if os.name == "posix" else None)
-        except subprocess.TimeoutExpired:
-            raise SandboxError(f"The strategy ran longer than {TIMEOUT_S} s and was stopped.")
+        say(f"Running your strategy in the sandbox ({len(data.tickers)} tickers × {len(data.close)} days)…")
+        out_f, err_f = open(tmp / "stdout.txt", "w"), open(tmp / "stderr.txt", "w")   # files: no pipe-buffer deadlock
+        p = subprocess.Popen(cmd, cwd=tmp, env=env, stdout=out_f, stderr=err_f, text=True,
+                             preexec_fn=(lambda: _limits(cpu)) if os.name == "posix" else None)
+        t0 = time.time()
+        while p.poll() is None:
+            if job is not None and job.cancelled:
+                p.kill()
+                p.wait()
+                raise SandboxError("Cancelled.")
+            if time.time() - t0 > cpu + 30:
+                p.kill()
+                p.wait()
+                raise SandboxError(f"The strategy ran longer than {cpu} s and was stopped.")
+            time.sleep(0.25)
+        out_f.close()
+        err_f.close()
+        stderr_text = (tmp / "stderr.txt").read_text(errors="replace")[-20000:]
         out_file = tmp / "result.json"
         if p.returncode in (-24, -9, 152, 137):                     # SIGXCPU / SIGKILL from the CPU limit
-            raise SandboxError(f"The strategy used more than {TIMEOUT_S} s of CPU and was stopped.")
+            raise SandboxError(f"The strategy used more than {cpu} s of CPU and was stopped.")
         if p.returncode != 0 or not out_file.exists():
-            err = (p.stderr or "").strip().splitlines()
+            err = stderr_text.strip().splitlines()
             msg = next((l for l in reversed(err) if l.strip()), f"exit code {p.returncode}")
             raise SandboxError(f"Strategy failed: {msg[-400:]}")
         res = json.loads(out_file.read_text())

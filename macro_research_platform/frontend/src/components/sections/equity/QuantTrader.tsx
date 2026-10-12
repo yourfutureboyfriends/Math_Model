@@ -1,6 +1,7 @@
 // Three separate paper traders: Macro (asset-class model book + macro algos), Fundamental (stocks chosen on company
 // fundamentals) and Technical (stocks on price/volume + the stock entry-model book). api/quant/trader.py keeps them apart.
 import { useCallback, useEffect, useState } from 'react';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Loader2, RefreshCw, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
@@ -74,24 +75,26 @@ function Algos({ book }: { book: 'macro' | 'fundamental' | 'technical' }) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dialog, ask] = useConfirm();
   const load = useCallback((refresh = false) => {
     setBusy(true); setErr(null);
     api(`/api/v1/quant/trader?book=${book}${refresh ? '&refresh=true' : ''}`).then(setD).catch((e) => setErr(e.message)).finally(() => setBusy(false));
   }, [book]);
   useEffect(() => load(), [load]);
   const stop = async (dep: any) => {
-    if (!window.confirm(`Stop “${dep.name}”? Its paper record ends today.`)) return;
+    if (!(await ask({ title: `Stop “${dep.name}”?`, body: 'Its paper record ends today.', confirmLabel: 'Stop', danger: true }))) return;
     try { await api(`/api/v1/quant/trader/deployments/${dep.id}`, { method: 'DELETE' }); load(true); } catch (e: any) { setErr(e.message); }
   };
   if (!d) return err ? <ErrorNote msg={err} /> : <div className="flex items-center gap-2 text-2xs text-text-tertiary p-3"><Loader2 className="w-3 h-3 animate-spin" />Updating deployed algos…</div>;
   if (!d.deployments.length) return (
     <div className="p-4 border border-dashed border-border text-2xs text-text-secondary">
-      No {book} algos deployed yet. Open the <a href="#quant-lab" className="underline text-bloomberg">Quant Lab</a>, backtest a {({ macro: 'cross-asset / ETF', fundamental: 'value or quality (company-fundamentals)', technical: 'stock momentum, reversal or low-volatility' } as const)[book]} template or your own formula, then press <b>Deploy</b> — it is routed to this trader automatically.
+      No {book} algos deployed yet. Open the <a href="#quant-lab" className="underline text-bloomberg">Quant Lab</a>, run a {({ macro: 'cross-asset / ETF', fundamental: 'value or quality (company-fundamentals)', technical: 'stock momentum, reversal or low-volatility' } as const)[book]} strategy from the library or your own code, then press <b>Deploy</b> — it is routed to this trader automatically.
       {d.errors?.length > 0 && <ErrorNote msg={d.errors.map((e: any) => `${e.name}: ${e.error}`).join(' · ')} />}
     </div>
   );
   return (
     <div className="space-y-3">
+      {dialog}
       <ErrorNote msg={err} />
       <div className="flex items-center gap-2 text-2xs">
         <span className="px-2 py-0.5 border border-amber/50 text-amber">PAPER — SIMULATED</span>

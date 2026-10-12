@@ -36,10 +36,22 @@ def _r(x, d=4):
     return None if x is None or (isinstance(x, float) and not math.isfinite(x)) else round(float(x), d)
 
 
+def _cash(idx: pd.DatetimeIndex, ppy: float) -> pd.Series:
+    """T-bill return per period (daily rate scaled to the sampling frequency); 0 where unknown."""
+    from api.quant import rates
+    try:
+        return rates.daily(idx) * (252 / ppy) if len(idx) else pd.Series(dtype=float)
+    except Exception:                                    # noqa: BLE001
+        return pd.Series(0.0, index=idx)
+
+
 def _stats(r: pd.Series, ppy: float) -> Dict[str, Any]:
+    """Sharpe and Sortino are on returns above T-bills (the cash an investor could hold instead)."""
     r = r.dropna()
     if len(r) < 3:
         return {}
+    ex = r - _cash(r.index, ppy).to_numpy()
+    ex_down = ex[ex < 0].std() * math.sqrt(ppy) if (ex < 0).sum() > 2 else None
     eq = (1 + r).cumprod()
     yrs = len(r) / ppy
     cagr = eq.iloc[-1] ** (1 / yrs) - 1 if eq.iloc[-1] > 0 and yrs > 0 else None
@@ -53,8 +65,8 @@ def _stats(r: pd.Series, ppy: float) -> Dict[str, Any]:
     wins, losses = r[r > 0], r[r < 0]
     streak = lambda sign: max((len(list(g)) for k, g in itertools.groupby(np.sign(r.values)) if k == sign), default=0)
     return {"total_return": _r(eq.iloc[-1] - 1), "cagr": _r(cagr), "vol": _r(vol),
-            "sharpe": _r(r.mean() / r.std() * math.sqrt(ppy)) if r.std() > 0 else None,
-            "sortino": _r(r.mean() * ppy / down) if down else None, "calmar": _r(cagr / -mdd) if cagr is not None and mdd < 0 else None,
+            "sharpe": _r(ex.mean() / ex.std() * math.sqrt(ppy)) if ex.std() > 0 else None,
+            "sortino": _r(ex.mean() * ppy / ex_down) if ex_down else None, "cash_rate": _r(float((r - ex).mean() * ppy)), "calmar": _r(cagr / -mdd) if cagr is not None and mdd < 0 else None,
             "max_drawdown": _r(mdd), "avg_drawdown": _r(float(dd[dd < 0].mean())) if (dd < 0).any() else 0.0, "ulcer_index": _r(ulcer),
             "ulcer_performance": _r(cagr / ulcer) if cagr is not None and ulcer > 0 else None,
             "skew": _r(float(r.skew()), 2), "excess_kurtosis": _r(float(r.kurt()), 2),
@@ -291,7 +303,8 @@ def report(dates: Sequence[str], returns: Sequence[float], ppy: float = 252, ben
     if len(rm) > 13:
         r12 = (1 + rm).rolling(12).apply(np.prod, raw=True) - 1
         v12 = rm.rolling(12).std() * math.sqrt(12)
-        s12 = rm.rolling(12).mean() / rm.rolling(12).std() * math.sqrt(12)
+        exm = rm - _cash(rm.index, 12).to_numpy() if ppy > 13 else rm - _cash(rm.index, ppy).to_numpy()
+        s12 = exm.rolling(12).mean() / exm.rolling(12).std() * math.sqrt(12)
         if bm is not None:
             cv = rm.rolling(24).cov(bm)
             beta24 = cv / bm.rolling(24).var()
@@ -321,13 +334,15 @@ def report(dates: Sequence[str], returns: Sequence[float], ppy: float = 252, ben
     years = []
     for y, g in r.groupby(r.index.year):
         if len(g) >= (ppy / 2 if ppy > 13 else 6):
+            ge = g - _cash(g.index, ppy).to_numpy()
             years.append({"year": int(y), "return": _r(float(np.prod(1 + g.fillna(0)) - 1)),
-                          "sharpe": _r(g.mean() / g.std() * math.sqrt(ppy), 2) if g.std() > 0 else None})
+                          "sharpe": _r(ge.mean() / ge.std() * math.sqrt(ppy), 2) if ge.std() > 0 else None})
     sh = [y["sharpe"] for y in years if y["sharpe"] is not None]
     robust = {"bootstrap": _bootstrap(r, ppy), "first_half": _stats(r.iloc[:half], ppy), "second_half": _stats(r.iloc[half:], ppy),
               "by_year": years, "pct_years_positive_sharpe": _r(float(np.mean([s > 0 for s in sh])), 3) if sh else None,
               "sharpe_dispersion": _r(float(np.std(sh)), 2) if len(sh) > 2 else None,
-              "psr": _r(_psr(r), 3), "min_track_record_years": _r(_min_trl(r, ppy), 1)}
+              "psr": _r(_psr(r - _cash(r.index, ppy).to_numpy()), 3),
+              "min_track_record_years": _r(_min_trl(r - _cash(r.index, ppy).to_numpy(), ppy), 1)}
     out = {"label": label, "benchmark_label": benchmark_label if b is not None else None, "frequency": "daily" if ppy >= 200 else "weekly" if ppy >= 40 else "monthly",
            "start": idx[0].strftime("%Y-%m-%d"), "end": idx[-1].strftime("%Y-%m-%d"),
            "summary": _stats(r, ppy), "benchmark_summary": _stats(b, ppy) if b is not None else None,

@@ -28,18 +28,26 @@ def _arr(b64, shape):
 
 def _prepare(code):
     st = codelab.load_strategy(code)
-    return json.dumps({k: st[k] for k in ("universe", "start", "params", "benchmark")})
+    return json.dumps({k: st[k] for k in ("universe", "start", "params", "benchmark", "holdout", "code_hash")})
 
 def _run(code, payload, costs):
     p = json.loads(payload)
     idx = pd.DatetimeIndex(pd.to_datetime(p["dates"]))
     T, cols = len(idx), p["tickers"]
     fr = {f: pd.DataFrame(_arr(p[f], (T, len(cols))), index=idx, columns=cols) for f in ("close", "open", "high", "low", "volume")}
+    obs = np.frombuffer(base64.b64decode(p["observed"]), dtype=np.uint8).reshape(T, len(cols)).astype(bool) if p.get("observed") else None
     data = codelab.Data(fr["close"], fr["open"], fr["high"], fr["low"], fr["volume"],
-                        rf=pd.Series(_arr(p["rf"], None), index=idx), vix=pd.Series(_arr(p["vix"], None), index=idx))
+                        rf=pd.Series(_arr(p["rf"], None), index=idx) if p.get("rf_known", True) else None,
+                        vix=pd.Series(_arr(p["vix"], None), index=idx),
+                        observed=pd.DataFrame(obs, index=idx, columns=cols) if obs is not None else None,
+                        rf_known=p.get("rf_known", True), provenance=p.get("provenance"))
     bm = pd.Series(_arr(p["benchmark"], None), index=idx) if p.get("benchmark") else None
     st = codelab.load_strategy(code)
-    out = codelab.evaluate(st["strategy"], data, st["params"], st["start"], json.loads(costs) or None, bm)
+    out = codelab.evaluate(st["strategy"], data, st["params"], st["start"], json.loads(costs) or None, bm,
+                           st["holdout"], st["code_hash"])
+    out["provenance"]["runtime"] = "browser (Pyodide) — pandas " + pd.__version__ + ", numpy " + np.__version__
+    if p.get("engine_version") and p["engine_version"] != codelab.ENGINE_VERSION:
+        out["provenance"]["engine_mismatch"] = f"server data prepared for engine {p['engine_version']}, browser ran {codelab.ENGINE_VERSION}"
     return json.dumps(out)
 `);
   postMessage({ type: 'ready' });

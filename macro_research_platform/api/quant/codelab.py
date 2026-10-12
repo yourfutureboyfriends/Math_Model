@@ -2,15 +2,17 @@
 Code Lab engine — one file, numpy + pandas only, so the *same* code runs on the server and in the
 browser (Pyodide). A strategy is plain Python:
 
-    UNIVERSE = ["SPY", "TLT", "GLD"]          # tickers (≤ 80)
+    UNIVERSE = ["SPY", "TLT", "GLD"]          # tickers (≤ UNIVERSE_LIMIT), one quote currency (USD)
     START = "2005-01-01"                      # optional
     PARAMS = {"lookback": [126, 252]}         # optional: grid for walk-forward optimisation
+    HOLDOUT = "2023-01-01"                    # optional: data from here never takes part in selection
 
     def strategy(data, lookback=252):
         # data.close / open / high / low / volume: DataFrames (dates × tickers), adjusted prices
         # data.rf: daily T-bill rate (Series); data.vix: VIX close (Series)
-        # return target weights (dates × tickers): +long / −short, fraction of capital.
-        # A row decided with data up to that day's close is traded at the next day's open.
+        # return target weights (dates × tickers): +long / −short, fraction of NAV.
+        # A row with values is a decision taken at that day's close and traded at the next observed
+        # open; a row left blank (all NaN) means "no decision — hold and let positions drift".
         ...
 
 Costs (all charged, all configurable — defaults are research-calibrated):
@@ -22,8 +24,10 @@ Costs (all charged, all configurable — defaults are research-calibrated):
   SEC fee        0.278 bp on sales (Section 31 rate)
   borrow         annual fee on short notional (default 0.30% general collateral)
   financing      cash earns the T-bill rate; borrowing (gross long > 100%) pays T-bill + spread (default 1.0%)
-Returns are total returns (Yahoo adjusted prices include dividends). Weights drift with prices
-between trades; a no-trade band skips small rebalances.
+Accounting: one self-financing account — units and cash, NAV = Σ units × mark + cash, costs settle
+into cash. Fills only at observed opens of assets that traded; unfillable orders stay pending; stale
+marks are flagged; ended listings settle at their last close. Returns are total returns (Yahoo
+adjusted prices include dividends). Units and assumptions: COST_SCHEMA.
 """
 from __future__ import annotations
 
@@ -33,7 +37,24 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 import numpy as np
 import pandas as pd
 
+ENGINE_VERSION = "2026.10-ledger.1"
+UNIVERSE_LIMIT = 80                   # one capability limit, shared by the loader, the sandbox and the UI
+LARGE_UNIVERSE_LIMIT = 1000           # TRADABLE_UNIVERSE strategies (server job, sandboxed) — one global cross-section
 TRADING_DAYS = 252
+COST_SCHEMA_VERSION = "2026.10"
+COST_SCHEMA: Dict[str, Dict[str, str]] = {
+    "capital": {"unit": "account currency (USD)", "meaning": "starting capital; impact depends on size"},
+    "commission_bps": {"unit": "bp per side of traded notional", "meaning": "broker commission"},
+    "spread_mult": {"unit": "multiplier (×), not bp", "meaning": "scales the modelled half-spread"},
+    "impact_coef_bps": {"unit": "bp × √(% of 63-day dollar volume)", "meaning": "square-root market impact"},
+    "sec_fee_bps": {"unit": "bp of sale notional", "meaning": "SEC Section 31 fee"},
+    "borrow_fee": {"unit": "annual decimal rate on short market value", "meaning": "stock-borrow fee"},
+    "financing_spread": {"unit": "annual decimal rate over the bill rate", "meaning": "margin interest on negative cash"},
+    "cash_spread": {"unit": "annual decimal rate under the bill rate", "meaning": "positive cash earns bill − this (0 = full T-bill)"},
+    "no_trade_band": {"unit": "fraction of NAV", "meaning": "skip adjustments smaller than this to positions that stay open (entries and exits always trade)"},
+    "max_gross": {"unit": "multiple of NAV", "meaning": "cap on gross target exposure"},
+    "delist_haircut": {"unit": "fraction", "meaning": "loss applied when a held listing ends (settled at last close × (1 − this))"},
+}
 DEFAULT_COSTS: Dict[str, float] = {
     "capital": 1_000_000.0,
     "commission_bps": 0.35,
@@ -42,20 +63,32 @@ DEFAULT_COSTS: Dict[str, float] = {
     "sec_fee_bps": 0.278,
     "borrow_fee": 0.003,
     "financing_spread": 0.010,
+    "cash_spread": 0.0,
     "no_trade_band": 0.0025,
     "max_gross": 4.0,
+    "delist_haircut": 0.0,
 }
 
 
 class Data:
-    """What a strategy sees. All frames share one date index; prices are split/dividend adjusted."""
+    """What a strategy sees. All frames share one date index; prices are split/dividend adjusted
+    (total return). `close` is the *valuation mark*: the last observed close, carried forward inside each
+    listing's history; `observed` says which days really have a bar. `open` holds only observed opens —
+    it is the execution price, and NaN means no fill is possible that day."""
 
-    def __init__(self, close, open_, high, low, volume, rf=None, vix=None):
-        self.close, self.open, self.high, self.low, self.volume = close, open_, high, low, volume
+    def __init__(self, close, open_, high, low, volume, rf=None, vix=None, observed=None, rf_known=None,
+                 provenance: Optional[Dict[str, Any]] = None):
+        self.close, self.high, self.low = close, high, low
         idx = close.index
-        self.rf = (rf.reindex(idx).ffill().fillna(0.0) if rf is not None else pd.Series(0.0, index=idx))
+        self.observed = (observed.reindex(index=idx, columns=close.columns).fillna(False).astype(bool)
+                         if observed is not None else close.notna())
+        self.open = open_.reindex(index=idx, columns=close.columns).where(lambda x: x > 0)
+        self.volume = volume.reindex(index=idx, columns=close.columns)
+        self.rf_known = (rf is not None) if rf_known is None else bool(rf_known)
+        self.rf = rf.reindex(idx).ffill().fillna(0.0) if rf is not None else pd.Series(0.0, index=idx)
         self.vix = vix.reindex(idx).ffill() if vix is not None else pd.Series(np.nan, index=idx)
         self.tickers = list(close.columns)
+        self.provenance = dict(provenance or {})
 
     def returns(self) -> pd.DataFrame:
         return self.close.pct_change(fill_method=None)
@@ -73,36 +106,50 @@ def momentum(close: pd.DataFrame, n: int, skip: int = 0) -> pd.DataFrame:
 
 
 def hold_monthly(weights: pd.DataFrame) -> pd.DataFrame:
-    """Keep each month-end's weights for the following month (trade once a month)."""
+    """Decide once a month, on the first trading day observed in each month (knowable that day — no future
+    rows needed), traded at the next open. Other rows are left blank (NaN) = no decision: hold and drift."""
     return _hold(weights, "M")
 
 
 def hold_weekly(weights: pd.DataFrame) -> pd.DataFrame:
+    """As hold_monthly, on the first trading day observed in each week."""
     return _hold(weights, "W")
 
 
 def _hold(weights: pd.DataFrame, freq: str) -> pd.DataFrame:
     w = weights.copy()
-    s = w.index.to_series()
-    last = (s.groupby(w.index.to_period(freq)).transform("max") == s).to_numpy()
-    w.loc[~last] = np.nan
-    return w.ffill()
+    per = w.index.to_period(freq)
+    first = np.r_[True, np.asarray(per[1:] != per[:-1])] if len(per) else np.zeros(0, bool)
+    w.loc[~first] = np.nan
+    return w
+
+
+def decision_mask(weights: pd.DataFrame) -> np.ndarray:
+    """Which rows are decisions. Rows left entirely blank (NaN) mean "no new decision"; any row with a value is
+    a decision to rebalance to it — even if it equals the previous target. A frame with no blank rows is a
+    decision every day."""
+    blank = weights.isna().all(axis=1).to_numpy()
+    return ~blank
 
 
 def normalize_gross(weights: pd.DataFrame, gross: float = 1.0) -> pd.DataFrame:
+    blank = weights.isna().all(axis=1)
     g = weights.abs().sum(axis=1).replace(0, np.nan)
-    return weights.div(g, axis=0).mul(gross).fillna(0.0)
+    out = weights.div(g, axis=0).mul(gross).fillna(0.0)
+    out.loc[blank] = np.nan                                 # keep "no decision" rows blank
+    return out
 
 
 def vol_target(weights: pd.DataFrame, close: pd.DataFrame, target: float = 0.10, lookback: int = 63,
                max_leverage: float = 2.0) -> pd.DataFrame:
-    """Scale the whole book so its trailing realised volatility hits `target` (no look-ahead)."""
+    """Scale the book so its trailing realised volatility hits `target` (no look-ahead). Volatility is measured
+    on the positions actually held (the latest decision carried forward)."""
     r = close.pct_change(fill_method=None).fillna(0.0)
-    port = (weights.shift(1).fillna(0.0) * r).sum(axis=1)
+    held = weights.ffill().fillna(0.0)
+    port = (held.shift(1).fillna(0.0) * r).sum(axis=1)
     vol = port.rolling(lookback, min_periods=max(20, lookback // 2)).std() * math.sqrt(TRADING_DAYS)
     scale = (target / vol).clip(upper=max_leverage).fillna(1.0)
     return weights.mul(scale, axis=0)
-
 
 # ── Transaction-cost inputs ─────────────────────────────────────────────────
 def half_spread_bps(close: pd.DataFrame, volume: pd.DataFrame, window: int = 63) -> pd.DataFrame:
@@ -127,98 +174,177 @@ def dollar_volume(close: pd.DataFrame, volume: pd.DataFrame, window: int = 63) -
 
 # ── Backtest ────────────────────────────────────────────────────────────────
 def backtest(weights: pd.DataFrame, data: Data, costs: Optional[Dict[str, float]] = None,
-             start: Optional[str] = None) -> Dict[str, Any]:
-    """Simulate target weights with full costs. Weights at row t trade at the open of t+1."""
+             start: Optional[str] = None, decisions: Optional[np.ndarray] = None) -> Dict[str, Any]:
+    """Simulate target weights as one self-financing account.
+
+    Ledger: holdings in units and a cash balance; NAV = Σ units × mark + cash every day. A decision row
+    decided at the close of day t places orders filled at the observed OPEN of t+1, only where that open
+    exists and the asset traded (volume > 0); orders that cannot fill stay pending until filled or
+    replaced by the next decision. Trading costs, fees, borrow and interest settle into cash. Marks are the
+    last observed close (stale days are counted, never treated as tradable). A position whose listing ends
+    is settled at its last observed close × (1 − delist_haircut). Returns are NAV changes."""
     cfg = {**DEFAULT_COSTS, **(costs or {})}
-    close, open_ = data.close, data.open.where(data.open > 0, data.close)
-    w = weights.reindex(index=close.index, columns=close.columns).astype(float)
-    w = w.where(close.notna(), 0.0).fillna(0.0)
-    g = w.abs().sum(axis=1)
-    w = w.mul((cfg["max_gross"] / g).clip(upper=1.0).fillna(1.0), axis=0)
+    close = data.close
+    idx, cols = close.index, list(close.columns)
+    w = weights.reindex(index=idx, columns=cols).astype(float)
+    D = decision_mask(w) if decisions is None else np.asarray(decisions, bool)
+    W = w.fillna(0.0).to_numpy()
+    g = np.abs(W).sum(axis=1)
+    W = W * np.where(g > cfg["max_gross"], cfg["max_gross"] / np.where(g > 0, g, 1.0), 1.0)[:, None]
+    M = close.to_numpy(float)
+    OBS = data.observed.to_numpy(bool) & np.isfinite(M)
+    O = data.open.to_numpy(float)
+    V = np.nan_to_num(data.volume.to_numpy(float))
     hs = half_spread_bps(close, data.volume).to_numpy() * cfg["spread_mult"] / 1e4
     adv = dollar_volume(close, data.volume).to_numpy()
-    C, O, W = close.to_numpy(float), open_.to_numpy(float), w.to_numpy()
     rf = data.rf.to_numpy(float)
-    T, N = C.shape
-    first = 0
-    if start:
-        first = int(np.searchsorted(close.index.values, np.datetime64(pd.Timestamp(start))))
+    T, N = M.shape
+    last_obs = np.array([np.flatnonzero(OBS[:, j]).max() if OBS[:, j].any() else -1 for j in range(N)])
+    first = int(np.searchsorted(idx.values, np.datetime64(pd.Timestamp(start)))) if start else 0
     first = max(first, 1)
-    Wn = np.nan_to_num(W)
-    new_decision = np.r_[True, np.any(np.abs(np.diff(Wn, axis=0)) > 1e-12, axis=1)]   # row t differs from t−1
-    nav = 1.0
-    hold = np.zeros(N)                     # current weights (fraction of NAV) after the last trade/drift
-    out = {k: np.zeros(T) for k in ("ret", "gross", "commission", "spread", "impact", "fees", "borrow", "financing",
-                                     "turnover", "long", "short")}
-    band = cfg["no_trade_band"]
+    last_dec = np.where(D, np.arange(T), -1)
+    last_dec = np.maximum.accumulate(last_dec)
+    band, cap = cfg["no_trade_band"], cfg["capital"]
+    units = np.zeros(N)
+    cash = 1.0
+    mark = np.where(OBS[first - 1], M[first - 1], np.nan)
+    target: Optional[np.ndarray] = None
+    pending = np.zeros(N, bool)
+    nav_prev = 1.0
+    keys = ("ret", "gross", "commission", "spread", "impact", "fees", "borrow", "financing", "turnover", "long", "short",
+            "cash", "nav", "unfilled", "stale_held")
+    out = {k: np.zeros(T) for k in keys}
+    events: List[Dict[str, Any]] = []
     for t in range(first, T):
-        c0, o1, c1 = C[t - 1], O[t], C[t]
-        ok0 = np.isfinite(c0) & np.isfinite(o1) & (c0 > 0)
-        ovn = np.where(ok0, o1 / np.where(ok0, c0, 1) - 1, 0.0)
-        ok1 = np.isfinite(c1) & np.isfinite(o1) & (o1 > 0)
-        intr = np.where(ok1, c1 / np.where(ok1, o1, 1) - 1, 0.0)
-        # overnight on the old book
-        r_ovn = float(hold @ ovn)
-        hold = hold * (1 + ovn) / (1 + r_ovn) if abs(1 + r_ovn) > 1e-12 else hold
-        nav_open = nav * (1 + r_ovn)
-        target = W[t - 1]                                      # decided at yesterday's close
-        delta = target - hold
-        # trade only on a new decision (or the first day); between decisions positions drift
-        trade = (np.abs(delta) > band) & (new_decision[t - 1] or t == first)
-        delta = np.where(trade & ok1, delta, 0.0)
-        tv = np.abs(delta)
-        comm = cfg["commission_bps"] / 1e4 * tv.sum()
-        spr = float(np.nansum(tv * np.nan_to_num(hs[t], nan=5e-4)))
-        dv = adv[t]
-        frac = np.where(np.isfinite(dv) & (dv > 0), tv * nav_open * cfg["capital"] / np.where(np.isfinite(dv) & (dv > 0), dv, 1), 0.0)
-        imp = float((tv * cfg["impact_coef_bps"] / 1e4 * np.sqrt(100 * frac)).sum())
-        fee = cfg["sec_fee_bps"] / 1e4 * float(np.clip(-delta, 0, None).sum())
-        hold = hold + delta
-        r_int = float(hold @ intr)
-        long_, short_ = float(hold[hold > 0].sum()), float(-hold[hold < 0].sum())
-        cash = 1.0 - float(hold.sum())                         # short proceeds sit in cash
-        rf_d = rf[t] if np.isfinite(rf[t]) else 0.0
-        fin = cash * rf_d if cash >= 0 else cash * (rf_d + cfg["financing_spread"] / TRADING_DAYS)
-        bor = short_ * cfg["borrow_fee"] / TRADING_DAYS
-        cost = comm + spr + imp + fee
-        day = (1 + r_ovn) * (1 + r_int - cost + fin - bor) - 1
-        gross_day = (1 + r_ovn) * (1 + r_int + cash * rf_d) - 1          # before costs, fees and the financing spread
-        nav *= 1 + day
-        hold = hold * (1 + intr) / (1 + r_int) if abs(1 + r_int) > 1e-12 else hold
-        o = out
-        o["ret"][t], o["gross"][t] = day, gross_day
-        o["commission"][t], o["spread"][t], o["impact"][t], o["fees"][t] = comm, spr, imp, fee
-        o["borrow"][t], o["financing"][t] = bor, fin
-        o["turnover"][t], o["long"][t], o["short"][t] = tv.sum(), long_, short_
-        if nav <= 0:
+        # 1) the decision taken at yesterday's close becomes today's orders
+        if D[t - 1] or (t == first and last_dec[t - 1] >= 0):
+            target = W[t - 1] if D[t - 1] else W[last_dec[t - 1]]
+            pending = np.ones(N, bool)
+        # 2) listings that ended: settle at the last observed close (documented policy)
+        ended = np.flatnonzero((units != 0) & (t > last_obs) & (last_obs >= 0))
+        for j in ended:
+            value = units[j] * M[last_obs[j], j] * (1 - cfg["delist_haircut"])
+            cash += value
+            events.append({"date": str(idx[t].date()), "ticker": cols[j], "event": "listing ended — settled at last close",
+                           "value": round(float(value), 6)})
+            units[j] = 0.0
+            pending[j] = False
+        # 3) the opening market: only observed opens of assets that traded are executable
+        exe = np.isfinite(O[t]) & (O[t] > 0) & OBS[t] & (V[t] > 0)
+        mark_open = np.where(exe, O[t], mark)
+        held_val = np.where(units != 0, units * np.nan_to_num(mark_open), 0.0)
+        nav_open = float(held_val.sum() + cash)
+        comm = spr = imp = fee = turn = 0.0
+        if nav_open <= 0:
             out["ret"][t] = -1.0
+            events.append({"date": str(idx[t].date()), "ticker": None, "event": "insolvent: NAV ≤ 0, simulation stopped"})
+            for k in keys:
+                out[k][t + 1:] = np.nan
             break
-    idx = close.index[first:]
-    res = {k: pd.Series(v[first:], index=idx) for k, v in out.items()}
-    res["weights_last"] = {k: round(float(v), 4) for k, v in zip(close.columns, W[-1]) if abs(v) > 1e-4}
+        if target is not None and pending.any():
+            px = np.where(exe, O[t], np.nan)
+            dv = adv[t]
+            okdv = np.isfinite(dv) & (dv > 0)
+
+            def order(nav_eff):
+                want = target * nav_eff / np.where(exe, O[t], 1.0)
+                dl = np.where(pending & exe, want - units, 0.0)
+                nt = np.abs(dl) * np.nan_to_num(px)
+                # the band suppresses small *adjustments* to positions held and kept; opening a new position or
+                # closing one always trades (otherwise a 700-name book of 0.14% positions could never be bought)
+                sm = (nt <= band * nav_open) & (units != 0) & (target != 0)
+                dl, nt = np.where(sm, 0.0, dl), np.where(sm, 0.0, nt)
+                c_ = cfg["commission_bps"] / 1e4 * nt.sum()
+                s_ = float((nt * np.nan_to_num(hs[t], nan=5e-4)).sum())
+                fr = np.where(okdv, nt * cap / np.where(okdv, dv, 1.0), 0.0)
+                i_ = float((nt * cfg["impact_coef_bps"] / 1e4 * np.sqrt(100 * fr)).sum())
+                f_ = cfg["sec_fee_bps"] / 1e4 * float(nt[dl < 0].sum())
+                return dl, nt, c_, s_, i_, f_
+            # size orders against NAV *after* this rebalance's costs, so fees come out of what is bought rather
+            # than leaving an unintended margin loan (fixed point; converges in a few steps for realistic costs)
+            nav_eff = nav_open
+            for _ in range(30):
+                delta, notional, comm, spr, imp, fee = order(nav_eff)
+                nxt = nav_open - (comm + spr + imp + fee)
+                if abs(nxt - nav_eff) < 1e-13:
+                    break
+                nav_eff = nxt
+            pending &= ~exe                                    # executable orders are done (filled or within band)
+            if notional.any():
+                units = units + delta
+                cash -= float(np.nansum(delta * px)) + comm + spr + imp + fee
+                turn = float(notional.sum() / nav_open)
+            # orders still open: assets whose target differs from what is held and cannot trade today
+            cur_w = np.where(units != 0, units * np.nan_to_num(mark_open), 0.0) / nav_open
+            out["unfilled"][t] = float((pending & (np.abs(target - cur_w) > band)).sum())
+        # 4) the close: observed closes update marks; others stay stale
+        mark = np.where(OBS[t], M[t], mark)
+        out["stale_held"][t] = float(((units != 0) & ~OBS[t]).sum())
+        mv = np.where(units != 0, units * np.nan_to_num(mark), 0.0)
+        short_mv = float(-mv[mv < 0].sum())
+        # 5) one trading day of interest on cash and borrow on shorts
+        rf_d = rf[t] if np.isfinite(rf[t]) else 0.0
+        fin = cash * (rf_d - cfg["cash_spread"] / TRADING_DAYS) if cash >= 0 else cash * (rf_d + cfg["financing_spread"] / TRADING_DAYS)
+        spread_part = (cash * cfg["financing_spread"] / TRADING_DAYS if cash < 0 else -cash * cfg["cash_spread"] / TRADING_DAYS)
+        bor = short_mv * cfg["borrow_fee"] / TRADING_DAYS
+        cash += fin - bor
+        nav = float(mv.sum() + cash)
+        trading = comm + spr + imp + fee
+        out["ret"][t] = nav / nav_prev - 1
+        out["gross"][t] = (nav + trading + bor - spread_part) / nav_prev - 1   # before costs, borrow and rate spreads
+        for k, v in (("commission", comm), ("spread", spr), ("impact", imp), ("fees", fee), ("borrow", bor), ("financing", fin)):
+            out[k][t] = v / nav_prev
+        out["turnover"][t] = turn
+        out["long"][t] = float(mv[mv > 0].sum() / nav) if nav > 0 else np.nan
+        out["short"][t] = short_mv / nav if nav > 0 else np.nan
+        out["cash"][t], out["nav"][t] = cash, nav
+        nav_prev = nav
+    sl = slice(first, T)
+    res: Dict[str, Any] = {k: pd.Series(v[sl], index=idx[sl]).dropna() for k, v in out.items()}
+    ld = int(last_dec[-1]) if len(last_dec) and last_dec[-1] >= 0 else None
+    res["weights_last"] = ({c: round(float(x), 4) for c, x in zip(cols, W[ld]) if abs(x) > 1e-4} if ld is not None else {})
+    navf = float(out["nav"][T - 1]) if T else 1.0
+    held = np.where(units != 0, units * np.nan_to_num(mark), 0.0)
+    res["holdings_last"] = {c: round(float(x / navf), 4) for c, x in zip(cols, held) if navf > 0 and abs(x / navf) > 1e-4}
+    res["ledger"] = {"units": {c: float(u) for c, u in zip(cols, units) if u}, "cash": float(cash), "nav": navf,
+                     "securities": float(held.sum()), "reconciles": bool(abs(held.sum() + cash - navf) < 1e-9)}
+    res["events"] = events[-200:]
+    res["execution"] = {"unfilled_order_days": int((out["unfilled"][sl] > 0).sum()),
+                        "stale_position_days": int(out["stale_held"][sl].sum()), "listings_ended": len(events),
+                        "rf_known": bool(data.rf_known)}
     return res
 
 
-# ── Statistics ──────────────────────────────────────────────────────────────
+# ── Statistics (one definition, mirrored exactly by api/quant/robust.py) ────
+def years_between(first: pd.Timestamp, last: pd.Timestamp) -> float:
+    """Calendar years spanned by a return series (first to last return date), at least one day."""
+    return max((pd.Timestamp(last) - pd.Timestamp(first)).days, 1) / 365.25
+
+
 def metrics(ret: pd.Series, rf: Optional[pd.Series] = None) -> Dict[str, Optional[float]]:
+    """Return statistics. Sharpe and Sortino use returns above the reference rate (`rf`, daily, decimal);
+    std with ddof=1, annualised by √252. Max drawdown includes the starting capital. CAGR uses calendar years."""
     r = ret.dropna()
     if len(r) < 20:
         return {}
     eq = (1 + r).cumprod()
-    yrs = len(r) / TRADING_DAYS
+    yrs = years_between(r.index[0], r.index[-1])
     ex = r - (rf.reindex(r.index).fillna(0.0) if rf is not None else 0.0)
-    sd = float(ex.std())
-    dd = eq / eq.cummax() - 1
+    sd = float(ex.std(ddof=1))
+    peak = np.maximum.accumulate(np.r_[1.0, eq.to_numpy()])[1:]
+    dd = eq.to_numpy() / peak - 1
     down = ex[ex < 0]
+    mdd = float(dd.min())
     cagr = float(eq.iloc[-1] ** (1 / yrs) - 1) if eq.iloc[-1] > 0 else -1.0
-    return {"cagr": round(cagr, 4), "vol": round(float(r.std() * math.sqrt(TRADING_DAYS)), 4),
+    return {"cagr": round(cagr, 4), "vol": round(float(r.std(ddof=1) * math.sqrt(TRADING_DAYS)), 4),
             "sharpe": round(float(ex.mean() / sd * math.sqrt(TRADING_DAYS)), 3) if sd > 0 else None,
-            "sortino": round(float(ex.mean() / down.std() * math.sqrt(TRADING_DAYS)), 3) if len(down) > 5 and down.std() > 0 else None,
-            "max_drawdown": round(float(dd.min()), 4),
-            "calmar": round(cagr / abs(float(dd.min())), 3) if dd.min() < 0 else None,
+            "sortino": round(float(ex.mean() / down.std(ddof=1) * math.sqrt(TRADING_DAYS)), 3) if len(down) > 5 and down.std(ddof=1) > 0 else None,
+            "max_drawdown": round(mdd, 4),
+            "calmar": round(cagr / abs(mdd), 3) if mdd < 0 else None,
             "log_growth": round(float(np.log1p(r.clip(lower=-0.999)).mean() * TRADING_DAYS), 4),
             "hit_rate": round(float((r > 0).mean()), 3), "years": round(yrs, 1),
-            "total_return": round(float(eq.iloc[-1] - 1), 4)}
+            "total_return": round(float(eq.iloc[-1] - 1), 4),
+            "cash_rate": round(float((r - ex).mean() * TRADING_DAYS), 4)}
 
 
 def cost_summary(res: Dict[str, Any]) -> Dict[str, float]:
@@ -233,7 +359,6 @@ def cost_summary(res: Dict[str, Any]) -> Dict[str, float]:
     out["total_trading"] = round(sum(out[k] for k in ("commission", "spread", "impact", "fees")), 5)
     return out
 
-
 # ── Walk-forward optimisation ───────────────────────────────────────────────
 def grid(params: Dict[str, Sequence[Any]]) -> List[Dict[str, Any]]:
     combos: List[Dict[str, Any]] = [{}]
@@ -242,40 +367,78 @@ def grid(params: Dict[str, Sequence[Any]]) -> List[Dict[str, Any]]:
     return combos
 
 
-def walk_forward(run: Callable[[Dict[str, Any]], pd.Series], params: Dict[str, Sequence[Any]],
-                 warmup_years: int = 5, objective: str = "log_growth") -> Dict[str, Any]:
-    """Each January, pick the parameter set with the best `objective` on all data before it (net of
-    costs) and trade it for the year — the stitched record is out-of-sample. `run(p)` returns daily
-    net returns for parameters p over the full history."""
-    combos = grid(params)
-    if len(combos) > 48:
-        raise ValueError(f"{len(combos)} parameter combinations — keep the grid to 48 or fewer.")
-    series = [run(p) for p in combos]
+def select_walk_forward(series: List[pd.Series], combos: List[Dict[str, Any]], warmup_years: int = 5,
+                        objective: str = "log_growth", rf: Optional[pd.Series] = None) -> List[Dict[str, Any]]:
+    """For each calendar year after the warm-up, the parameter set with the best `objective` on returns
+    strictly before 1 January of that year. Standalone return paths are used only for this scoring (they
+    depend only on data up to the scoring date); the account itself is simulated once, continuously."""
     idx = series[0].index
     years = sorted(set(idx.year))
-    start_year = years[0] + warmup_years
-    oos = pd.Series(np.nan, index=idx)
-    chosen = []
+    if not years:
+        return []
+    out = []
     for y in years:
-        if y < start_year:
+        if y < years[0] + warmup_years:
             continue
-        past = idx < pd.Timestamp(f"{y}-01-01")
+        cut = pd.Timestamp(f"{y}-01-01")
         scores = []
         for s in series:
-            m = metrics(s[past])
-            scores.append(m.get(objective) if m.get(objective) is not None else -1e9)
-        best = int(np.argmax(scores))
-        cur = (idx >= pd.Timestamp(f"{y}-01-01")) & (idx < pd.Timestamp(f"{y + 1}-01-01"))
-        oos[cur] = series[best][cur]
-        chosen.append({"year": y, "params": combos[best], "trailing": round(float(scores[best]), 4)})
-    full = [metrics(s[idx >= pd.Timestamp(f"{start_year}-01-01")]) for s in series]
-    in_best = int(np.argmax([f.get(objective) or -1e9 for f in full]))
-    return {"oos": oos.dropna(), "chosen": chosen, "combos": combos,
-            "in_sample_best": {"params": combos[in_best], **full[in_best]},
-            "all": [{"params": c, **f} for c, f in zip(combos, full)]}
+            m = metrics(s[s.index < cut], rf)
+            v = m.get(objective)
+            scores.append(v if v is not None else -1e9)
+        b = int(np.argmax(scores))
+        out.append({"year": y, "params": combos[b], "trailing": round(float(scores[b]), 4)})
+    return out
+
+
+def walk_forward(run: Callable[[Dict[str, Any]], pd.Series], params: Dict[str, Sequence[Any]],
+                 warmup_years: int = 5, objective: str = "log_growth") -> Dict[str, Any]:
+    """Selection only (kept for callers that combine return streams, not accounts)."""
+    combos = grid(params)
+    series = [run(p) for p in combos]
+    chosen = select_walk_forward(series, combos, warmup_years, objective)
+    return {"chosen": chosen, "combos": combos}
+
+
+def _standing(W: pd.DataFrame, D: np.ndarray) -> pd.DataFrame:
+    """The target in force on each day: the latest decision carried forward (zeros before the first)."""
+    Wt = W.copy()
+    Wt.loc[~np.asarray(D, bool)] = np.nan
+    return Wt.ffill().fillna(0.0)
+
+
+def continuous_walk_forward(weight_sets: List[pd.DataFrame], chosen: List[Dict[str, Any]], combos: List[Dict[str, Any]],
+                            idx: pd.DatetimeIndex) -> tuple:
+    """One target/decision schedule following the chosen parameters year by year. On the first trading day
+    of a year whose choice differs from the last one, a decision to the new set's standing target is forced,
+    so the account trades from what it holds to what the new set wants — and pays for it."""
+    key = [repr(sorted(c.items())) for c in combos]
+    cols = weight_sets[0].columns
+    Wc = pd.DataFrame(np.nan, index=idx, columns=cols)
+    Dc = np.zeros(len(idx), bool)
+    prev = None
+    switches = []
+    for ch in chosen:
+        j = key.index(repr(sorted(ch["params"].items())))
+        Wj = weight_sets[j].reindex(index=idx, columns=cols)
+        Dj = decision_mask(Wj)
+        rows = np.flatnonzero(idx.year == ch["year"])
+        if not len(rows):
+            continue
+        Wc.iloc[rows] = Wj.iloc[rows].to_numpy()
+        Dc[rows] = Dj[rows]
+        if prev != j:
+            r0 = rows[0]
+            Wc.iloc[r0] = _standing(Wj, Dj).iloc[r0].to_numpy()
+            Dc[r0] = True
+            if prev is not None:
+                switches.append({"date": str(idx[r0].date()), "to": ch["params"]})
+        prev = j
+    return Wc, Dc, switches
 
 
 # ── Monte Carlo ─────────────────────────────────────────────────────────────
+
 def _stationary_bootstrap_idx(n: int, length: int, paths: int, mean_block: int, rng) -> np.ndarray:
     """Politis & Romano (1994): blocks of geometric length (mean `mean_block`), random starts, wrapping."""
     idx = np.empty((paths, length), dtype=np.int64)
@@ -334,11 +497,15 @@ def monte_carlo(ret: pd.Series, rf: Optional[pd.Series] = None, years: float = 1
     kelly = mu / var if var > 0 else None
     safe = [x["leverage"] for x in lev if x["p_dd"] <= dd_prob and x["leverage"] <= max_leverage]
     best_g = max(lev, key=lambda x: x["median_cagr"])
+    sharpe_ex = float(ex.mean() / ex.std(ddof=1) * math.sqrt(TRADING_DAYS)) if ex.std(ddof=1) > 0 else 0.0
+    weak = False
     if kelly is None or kelly <= 0:
         rec = 0.0                                                # no positive excess return to lever
     else:
         rec = max(safe) if safe else min(leverage_grid)
         rec = min(rec, max(0.25, math.floor(kelly / 2 * 4) / 4))   # never above half-Kelly (estimation error)
+        if sharpe_ex < 0.3:                                      # Kelly on a near-zero edge is mostly noise
+            rec, weak = min(rec, 1.0), True
     return {
         "years": years, "paths": paths, "mean_block_days": mean_block, "based_on_days": int(r.size),
         "fan": fan,
@@ -349,14 +516,17 @@ def monte_carlo(ret: pd.Series, rf: Optional[pd.Series] = None, years: float = 1
         "hist": [{"cagr": round(float((edges[i] + edges[i + 1]) / 2), 4), "count": int(counts[i])} for i in range(len(counts))],
         "leverage": lev, "kelly_full": None if kelly is None else round(kelly, 2),
         "growth_optimal_leverage": best_g["leverage"], "recommended_leverage": rec,
-        "rule": f"Largest leverage with P(drawdown > {dd_limit:.0%}) ≤ {dd_prob:.0%}, capped at {max_leverage}× and at half-Kelly.",
+        "rule": (f"Largest leverage with P(drawdown > {dd_limit:.0%}) ≤ {dd_prob:.0%}, capped at {max_leverage}× and at half-Kelly"
+                 + ("; capped at 1× because the excess-return Sharpe is below 0.3 — too weak an edge to lever." if weak else ".")),
+        "sharpe_excess": round(sharpe_ex, 3),
     }
 
 
 # ── Running user code ───────────────────────────────────────────────────────
 def load_strategy(code: str, namespace: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Execute strategy source and return its UNIVERSE / START / PARAMS / strategy. (The server never
-    calls this on user code outside the sandbox; the browser runs it in Pyodide.)"""
+    """Execute strategy source and return its UNIVERSE / START / PARAMS / HOLDOUT / strategy. (The server
+    never calls this on user code outside the sandbox; the browser runs it in Pyodide.)"""
+    import hashlib
     ns: Dict[str, Any] = {"np": np, "pd": pd, "math": math, "ewma_vol": ewma_vol, "momentum": momentum,
                           "hold_monthly": hold_monthly, "hold_weekly": hold_weekly, "normalize_gross": normalize_gross,
                           "vol_target": vol_target}
@@ -367,10 +537,14 @@ def load_strategy(code: str, namespace: Optional[Dict[str, Any]] = None) -> Dict
     if not callable(fn):
         raise ValueError("Define a function strategy(data, **params) that returns target weights.")
     uni = ns.get("UNIVERSE")
-    if not isinstance(uni, (list, tuple)) or not uni or len(uni) > 80:
-        raise ValueError("Set UNIVERSE to a list of 1–80 tickers.")
-    return {"strategy": fn, "universe": [str(u).upper() for u in uni], "start": str(ns.get("START") or "2005-01-01")[:10],
-            "params": ns.get("PARAMS") or {}, "benchmark": str(ns.get("BENCHMARK") or "SPY").upper()}
+    if not isinstance(uni, (list, tuple)) or not uni or len(uni) > UNIVERSE_LIMIT:
+        raise ValueError(f"Set UNIVERSE to a list of 1–{UNIVERSE_LIMIT} tickers (the current capability limit).")
+    holdout = ns.get("HOLDOUT")
+    tradable = ns.get("TRADABLE_UNIVERSE")
+    return {"strategy": fn, "tradable": str(tradable).upper() if tradable else None, "universe": [str(u).upper() for u in uni], "start": str(ns.get("START") or "2005-01-01")[:10],
+            "params": ns.get("PARAMS") or {}, "benchmark": str(ns.get("BENCHMARK") or "SPY").upper(),
+            "holdout": str(holdout)[:10] if holdout else None,
+            "code_hash": hashlib.sha256(code.encode()).hexdigest()[:16]}
 
 
 def run_weights(fn: Callable, data: Data, params: Dict[str, Any]) -> pd.DataFrame:
@@ -382,47 +556,96 @@ def run_weights(fn: Callable, data: Data, params: Dict[str, Any]) -> pd.DataFram
     unknown = [c for c in w.columns if c not in data.close.columns]
     if unknown:
         raise ValueError(f"Weights for tickers not in UNIVERSE: {', '.join(map(str, unknown[:5]))}")
-    w = w.replace([np.inf, -np.inf], np.nan)
-    return w
+    if not w.index.equals(data.close.index):
+        w = w.reindex(data.close.index)
+    return w.replace([np.inf, -np.inf], np.nan)
+
+
+def _data_hash(data: Data) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    h.update(np.ascontiguousarray(np.round(np.nan_to_num(data.close.to_numpy(float)), 6)).tobytes())
+    h.update(",".join(data.tickers).encode())
+    h.update(str(data.close.index[0]).encode() + str(data.close.index[-1]).encode())
+    return h.hexdigest()[:16]
+
+
+def _segment(ret: pd.Series, rf: pd.Series, a: Optional[str], b: Optional[str]) -> Dict[str, Any]:
+    s = ret
+    if a:
+        s = s[s.index >= pd.Timestamp(a)]
+    if b:
+        s = s[s.index < pd.Timestamp(b)]
+    return metrics(s, rf)
 
 
 def evaluate(fn: Callable, data: Data, params: Dict[str, Sequence[Any]], start: str,
-             costs: Optional[Dict[str, float]] = None, benchmark: Optional[pd.Series] = None) -> Dict[str, Any]:
-    """Backtest (walk-forward if PARAMS has more than one combination). Returns everything the UI shows
-    except the Monte Carlo and the deep analysis, which run on the resulting daily returns."""
+             costs: Optional[Dict[str, float]] = None, benchmark: Optional[pd.Series] = None,
+             holdout: Optional[str] = None, code_hash: Optional[str] = None) -> Dict[str, Any]:
+    """Backtest as one account (walk-forward when PARAMS has several combinations). Also returns the
+    universe-matched equal-weight baseline under the same costs, the benchmark, segment statistics for an
+    untouched holdout (if HOLDOUT is set) and a provenance record."""
     combos = grid(params)
-    cache: Dict[str, Dict[str, Any]] = {}
-
-    def full(p):
-        key = repr(sorted(p.items()))
-        if key not in cache:
-            cache[key] = backtest(run_weights(fn, data, p), data, costs, start)
-        return cache[key]
+    if len(combos) > 48:
+        raise ValueError(f"{len(combos)} parameter combinations — keep the grid to 48 or fewer.")
+    weight_sets = [run_weights(fn, data, p) for p in combos]
     if len(combos) > 1:
-        wf = walk_forward(lambda p: full(p)["ret"], params)
-        ret = wf["oos"]
-        # cost series of the chosen parameter set each year
-        parts = {k: [] for k in ("commission", "spread", "impact", "fees", "borrow", "financing", "turnover", "long", "short", "gross")}
-        for ch in wf["chosen"]:
-            r = full(ch["params"])
-            m = r["ret"].index.year == ch["year"]
-            for k in parts:
-                parts[k].append(r[k][m])
-        res = {k: pd.concat(v) if v else pd.Series(dtype=float) for k, v in parts.items()}
-        res["ret"] = ret
-        res["weights_last"] = full(wf["chosen"][-1]["params"])["weights_last"] if wf["chosen"] else {}
-        opt = {"walk_forward": True, "chosen": wf["chosen"], "in_sample_best": wf["in_sample_best"], "grid": wf["all"],
-               "oos_start": str(ret.index[0].date()) if len(ret) else None}
+        # holdout years never take part in selection
+        sel_end = pd.Timestamp(holdout) if holdout else None
+        standalone = []
+        for Wp in weight_sets:
+            r = backtest(Wp, data, costs, start)["ret"]
+            standalone.append(r[r.index < sel_end] if sel_end is not None else r)
+        chosen = select_walk_forward(standalone, combos, rf=data.rf)
+        if holdout:                                            # keep the last pre-holdout choice through the holdout
+            last = chosen[-1] if chosen else None
+            for y in sorted(set(data.close.index.year)):
+                if pd.Timestamp(f"{y}-01-01") >= sel_end and last and all(c["year"] != y for c in chosen):
+                    chosen.append({"year": y, "params": last["params"], "trailing": None})
+        if not chosen:
+            raise ValueError("Not enough history for walk-forward selection (needs more than the 5-year warm-up).")
+        Wc, Dc, switches = continuous_walk_forward(weight_sets, chosen, combos, data.close.index)
+        oos_start = str(pd.Timestamp(f"{chosen[0]['year']}-01-01").date())
+        res = backtest(Wc, data, costs, oos_start, decisions=Dc)
+        full_ins = [metrics(backtest(Wp, data, costs, oos_start)["ret"], data.rf) for Wp in weight_sets]
+        ins_obj = [f.get("log_growth") if f.get("log_growth") is not None else -1e9 for f in full_ins]
+        b = int(np.argmax(ins_obj))
+        opt = {"walk_forward": True, "chosen": chosen, "switches": switches, "oos_start": oos_start,
+               "in_sample_best": {"params": combos[b], **full_ins[b]},
+               "grid": [{"params": c, **f} for c, f in zip(combos, full_ins)],
+               "note": "One continuous account: switching parameter sets trades from current holdings to the new "
+                       "targets and pays those costs."}
     else:
-        res = full(combos[0])
+        res = backtest(weight_sets[0], data, costs, start)
         opt = {"walk_forward": False, "params": combos[0]}
     ret = res["ret"]
+    first_day = str(ret.index[0].date()) if len(ret) else start
+    # universe-matched baseline: equal weight of every listed name, rebalanced monthly, same costs and start
+    listed = data.observed.astype(float).where(data.observed)
+    ew = hold_monthly(listed.div(listed.sum(axis=1), axis=0).fillna(0.0))
+    base = backtest(ew, data, costs, first_day)["ret"]
     out = {"metrics": metrics(ret, data.rf), "metrics_gross": metrics(res["gross"], data.rf), "costs": cost_summary(res),
-           "optimisation": opt, "weights_last": res["weights_last"],
-           "dates": [d.strftime("%Y-%m-%d") for d in ret.index], "returns": [round(float(x), 7) for x in ret.values],
-           "gross": [round(float(x), 7) for x in res["gross"].reindex(ret.index).fillna(0).values]}
+           "optimisation": opt, "weights_last": res["weights_last"], "holdings_last": res["holdings_last"],
+           "ledger": res["ledger"], "execution": res["execution"], "events": res["events"][-50:],
+           "baseline_equal_weight": metrics(base.reindex(ret.index).fillna(0.0), data.rf),
+           "dates": [d.strftime("%Y-%m-%d") for d in ret.index], "returns": [round(float(x), 8) for x in ret.values],
+           "gross": [round(float(x), 8) for x in res["gross"].reindex(ret.index).fillna(0).values],
+           "baseline_returns": [round(float(x), 8) for x in base.reindex(ret.index).fillna(0).values]}
     if benchmark is not None:
-        b = benchmark.reindex(ret.index).pct_change(fill_method=None).fillna(0.0)
-        out["benchmark"] = [round(float(x), 7) for x in b.values]
-        out["benchmark_metrics"] = metrics(b, data.rf)
+        bm = benchmark.reindex(ret.index).pct_change(fill_method=None).fillna(0.0)
+        out["benchmark"] = [round(float(x), 8) for x in bm.values]
+        out["benchmark_metrics"] = metrics(bm, data.rf)
+        out["benchmark_definition"] = ("frictionless total return (adjusted close), 100% invested from the first "
+                                       "record day; no costs, no cash")
+    if holdout:
+        out["holdout"] = {"start": holdout, "in_sample": _segment(ret, data.rf, None, holdout),
+                          "holdout": _segment(ret, data.rf, holdout, None),
+                          "baseline_holdout": _segment(base.reindex(ret.index).fillna(0.0), data.rf, holdout, None)}
+    out["provenance"] = {"engine_version": ENGINE_VERSION, "cost_schema_version": COST_SCHEMA_VERSION,
+                         "costs": {**DEFAULT_COSTS, **(costs or {})}, "params": params, "universe": data.tickers,
+                         "data_first": str(data.close.index[0].date()), "data_last": str(data.close.index[-1].date()),
+                         "data_hash": _data_hash(data), "code_hash": code_hash, "rf_known": data.rf_known,
+                         "record_type": ("walk-forward (selection out-of-sample)" if opt["walk_forward"] else
+                                         "exploratory backtest (single specification, full history)"),
+                         **data.provenance}
     return out

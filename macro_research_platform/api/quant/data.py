@@ -19,7 +19,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 CACHE = Path(__file__).resolve().parent.parent.parent / "data" / "processed" / "quant" / "ohlcv"
 MAX_AGE_S = 18 * 3600
-MAX_SYMBOLS = 80
+from api.quant.codelab import UNIVERSE_LIMIT as MAX_SYMBOLS   # one capability limit for loader, sandbox and UI
 _SYMBOL = re.compile(r"^\^?[A-Z0-9][A-Z0-9.\-^=]{0,14}$")
 _lock = threading.Lock()
 
@@ -129,6 +129,23 @@ def _path(sym: str) -> Path:
     return CACHE / f"{sym.replace('^', '_I_').replace('=', '_E_')}.pkl"
 
 
+def _write_manifest(sym: str, df: pd.DataFrame) -> None:
+    """Sidecar describing a cached series: when and how it was fetched, what it covers and with which library
+    versions — so a stale or incompatible cache is visible, and pickles are never the only record."""
+    import hashlib
+    import json
+    import numpy as np
+    try:
+        body = {"symbol": sym, "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "source": "Yahoo Finance",
+                "adjustment": "auto_adjust=True (splits and dividends folded into OHLC; total return)",
+                "rows": int(len(df)), "first": str(df.index.min().date()), "last": str(df.index.max().date()),
+                "close_sha256": hashlib.sha256(np.ascontiguousarray(df["Close"].to_numpy(float)).tobytes()).hexdigest()[:16],
+                "pandas": pd.__version__, "numpy": np.__version__, "format": "pickle (trusted, written by this server only)"}
+        _path(sym).with_suffix(".json").write_text(json.dumps(body))
+    except Exception:                                         # noqa: BLE001 — the manifest must never block data
+        pass
+
+
 def _fresh(sym: str) -> Optional[pd.DataFrame]:
     p = _path(sym)
     try:
@@ -158,10 +175,15 @@ def _download(symbols: List[str]) -> Dict[str, pd.DataFrame]:
     return out
 
 
+LAST_REPORT = threading.local()
+
+
 def load(symbols: Sequence[str]) -> Tuple[Dict[str, pd.DataFrame], List[str]]:
-    """{symbol: OHLCV DataFrame} for the symbols, and the list with no data."""
+    """{symbol: OHLCV DataFrame} for the symbols, and the list with no data. Symbols served from an
+    out-of-date cache because the download failed are listed in `LAST_REPORT.stale` (this thread)."""
     syms, _ = clean_symbols(symbols)
     have: Dict[str, pd.DataFrame] = {}
+    stale: List[str] = []
     with _lock:
         need = []
         for s in syms:
@@ -180,20 +202,25 @@ def load(symbols: Sequence[str]) -> Tuple[Dict[str, pd.DataFrame], List[str]]:
             for s in need:
                 if s in got:
                     got[s].to_pickle(_path(s))
+                    _write_manifest(s, got[s])
                     have[s] = got[s]
-                else:                                   # stale cache beats nothing
+                else:                                   # stale cache beats nothing — but say so
                     try:
                         have[s] = pd.read_pickle(_path(s))
+                        stale.append(s)
                     except Exception:
                         pass
     missing = [s for s in syms if s not in have]
+    LAST_REPORT.stale = stale
     return have, missing
 
 
-def panel(symbols: Sequence[str], start: Optional[str] = None, end: Optional[str] = None
+def panel(symbols: Sequence[str], start: Optional[str] = None, end: Optional[str] = None, fill: bool = True
           ) -> Tuple[Dict[str, pd.DataFrame], List[str]]:
-    """Aligned (dates × symbols) frames {close, open, high, low, volume} on the union of
-    trading days; prices forward-filled only inside each symbol's own history."""
+    """Aligned (dates × symbols) frames {close, open, high, low, volume} on the union of trading days.
+    fill=True: prices forward-filled inside each symbol's own history (convenient marks; hides missing bars).
+    fill=False: raw observations — NaN wherever a symbol has no bar that day (the Code Lab uses this and
+    keeps an explicit `observed` mask)."""
     data, missing = load(symbols)
     if not data:
         return {}, missing
@@ -208,7 +235,7 @@ def panel(symbols: Sequence[str], start: Optional[str] = None, end: Optional[str
     out = {}
     for field, col in (("close", "Close"), ("open", "Open"), ("high", "High"), ("low", "Low"), ("volume", "Volume")):
         frame = pd.DataFrame({s: d[col] for s, d in data.items()}).reindex(idx)
-        if field != "volume":
+        if field != "volume" and fill:
             last = {s: d.index.max() for s, d in data.items()}
             ff = frame.ffill()
             for s in frame.columns:                       # no carrying a delisted price forward

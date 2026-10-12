@@ -4,6 +4,8 @@ Quant Lab persistence (application DB, own tables):
   * quant_runs        — every distinct spec a user has backtested within a strategy's lineage;
                         the count is the number of trials the Deflated Sharpe corrects for
   * quant_deployments — strategies paper-traded by the Quant Trader (frozen spec + start date)
+  * code_runs         — the Code Lab trial registry: every run (successful or not) with code / data /
+                        config hashes, engine version, record type, holdout use and headline metrics
 """
 from __future__ import annotations
 
@@ -43,6 +45,14 @@ def init() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT, strategy_id INTEGER, name TEXT NOT NULL,
                 owner TEXT NOT NULL, spec TEXT NOT NULL, deployed_at TEXT NOT NULL, capital REAL NOT NULL,
                 active INTEGER NOT NULL DEFAULT 1, backtest TEXT, created_at TEXT, stopped_at TEXT);
+        """)
+        c.executescript("""
+            CREATE TABLE IF NOT EXISTS code_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, family TEXT NOT NULL,
+                code_hash TEXT, data_hash TEXT, config_hash TEXT, engine_version TEXT, record_type TEXT,
+                holdout TEXT, universe TEXT, first_date TEXT, last_date TEXT, sharpe REAL, cagr REAL,
+                provenance TEXT, ts TEXT);
+            CREATE INDEX IF NOT EXISTS ix_code_runs ON code_runs(owner, family);
         """)
         cols = {r[1] for r in c.execute("PRAGMA table_info(quant_deployments)").fetchall()}
         if "book" not in cols:                      # macro vs fundamental trader (added later; old rows classified on read)
@@ -150,3 +160,30 @@ def stop_deployment(did: int) -> None:
     init()
     with _conn() as c:
         c.execute("UPDATE quant_deployments SET active = 0, stopped_at = ? WHERE id = ?", (_now(), did))
+
+
+# ── Code Lab trial registry ──────────────────────────────────────────────────
+def register_code_run(owner: str, family: str, prov: Dict[str, Any], metrics: Dict[str, Any]) -> Dict[str, Any]:
+    """Record a Code Lab run and return the family's trial history: how many distinct specifications have been
+    tried (code × config), their Sharpe ratios (for the deflated Sharpe) and how often the holdout was seen."""
+    import hashlib
+    init()
+    cfg = hashlib.sha256(json.dumps({"costs": prov.get("costs"), "params": prov.get("params")}, sort_keys=True, default=str)
+                         .encode()).hexdigest()[:16]
+    with _conn() as c:
+        c.execute("INSERT INTO code_runs (owner, family, code_hash, data_hash, config_hash, engine_version, record_type, "
+                  "holdout, universe, first_date, last_date, sharpe, cagr, provenance, ts) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  (owner, family[:120], prov.get("code_hash"), prov.get("data_hash"), cfg, prov.get("engine_version"),
+                   prov.get("record_type"), prov.get("holdout"), json.dumps(prov.get("universe") or [])[:4000],
+                   prov.get("data_first"), prov.get("data_last"), metrics.get("sharpe"), metrics.get("cagr"),
+                   json.dumps(prov, default=str)[:20000], _now()))
+        rows = c.execute("SELECT code_hash, config_hash, sharpe, holdout, ts FROM code_runs WHERE owner = ? AND family = ? "
+                         "ORDER BY id", (owner, family[:120])).fetchall()
+    distinct: Dict[Tuple[str, str], Optional[float]] = {}
+    for r in rows:
+        distinct[(r["code_hash"], r["config_hash"])] = r["sharpe"]
+    hold = prov.get("holdout")
+    views = sum(1 for r in rows if hold and r["holdout"] and r["holdout"] <= (prov.get("data_last") or "9999"))
+    return {"family": family, "runs": len(rows), "distinct_trials": len(distinct),
+            "trial_sharpes": [s for s in distinct.values() if s is not None],
+            "holdout_views": views if hold else 0, "first_run": rows[0]["ts"] if rows else None}

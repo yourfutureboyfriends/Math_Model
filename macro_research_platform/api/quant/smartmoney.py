@@ -58,6 +58,7 @@ FUNDS: Dict[str, Dict[str, str]] = {
     "1029160": {"name": "Soros Fund Management", "style": "fundamental"},
 }
 _ETF_WORDS = re.compile(r"\b(ETF|TRUST|FUND|SPDR|ISHARES|INVESCO QQQ|VANGUARD|PROSHARES|DIREXION|SELECT SECTOR|INDEX)\b", re.I)
+_TICKER = re.compile(r"[A-Z]{1,5}(-[A-Z])?")
 _lock = threading.Lock()
 _status: Dict[str, Any] = {"state": "idle"}
 
@@ -137,7 +138,9 @@ def _figi_retry(cusips: List[str]) -> Dict[str, Optional[str]]:
             if r.status_code != 200:
                 break
             for c, res in zip(batch, r.json()):
-                data = [d for d in (res.get("data") or []) if d.get("exchCode") in ("US", "UN", "UW", "UQ", "UA", "UP")] or (res.get("data") or [])
+                eq = [d for d in (res.get("data") or []) if d.get("marketSector") == "Equity"
+                      and "Common" in str(d.get("securityType") or d.get("securityType2") or "")]
+                data = [d for d in eq if d.get("exchCode") in ("US", "UN", "UW", "UQ", "UA", "UP")] or eq
                 cache[c] = data[0].get("ticker") if data else None
         except Exception:
             break
@@ -186,7 +189,9 @@ def build(max_workers: int = 4) -> Dict[str, Any]:
     for f in panel:
         for r in f["top"]:
             t = tick.get(r["cusip"])
-            r["ticker"] = None if (t is None or _ETF_WORDS.search(r["issuer"] or "")) else t.replace("/", "-").replace(".", "-")
+            t = t.replace("/", "-").replace(".", "-") if t else None
+            valid = bool(t and _TICKER.fullmatch(t))                    # common shares only (no '*', bonds, warrants)
+            r["ticker"] = t if valid and not _ETF_WORDS.search(r["issuer"] or "") else None
     out = {"filings": panel, "built": time.strftime("%Y-%m-%d %H:%M")}
     (CACHE / "panel.json").parent.mkdir(parents=True, exist_ok=True)
     (CACHE / "panel.json").write_text(json.dumps(out))
@@ -306,39 +311,57 @@ def portfolio(kind: str, n: int = 20, start: str = "2015-01-01") -> pd.DataFrame
 
 
 def evaluate(kind: str, n: int = 20, start: str = "2015-01-01", costs: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
-    """Backtest a 13F strategy with the Code Lab engine (full costs), vs SPY."""
+    """Backtest a 13F strategy with the Code Lab ledger engine (full costs), vs SPY. Decisions are taken only on
+    the monthly signal dates; between them positions drift. A trusted server job, so the universe may exceed
+    the user-code limit (it is named here, not silently raised)."""
     from api.quant import codelab, codeserver
-    from api.quant import data as qdata
     W = portfolio(kind, n, start)
     tickers = [t for t in W.columns if W[t].abs().sum() > 0]
     warm = (pd.Timestamp(start) - pd.Timedelta(days=30)).strftime("%Y-%m-%d")
-    pan, missing = qdata.panel(tickers, start=warm)
-    cols = [t for t in tickers if t in pan["close"].columns]
-    irx = codeserver._index_series("^IRX", warm)
-    vix = codeserver._index_series("^VIX", warm)
-    d = codelab.Data(pan["close"][cols], pan["open"][cols], pan["high"][cols], pan["low"][cols], pan["volume"][cols],
-                     rf=(irx / 100 / 252) if irx is not None else None, vix=vix)
-    Wd = W[cols].reindex(d.close.index, method="ffill").fillna(0.0)
-    # positions in names with no price yet (pre-IPO data gaps) sit in cash; renormalise to the rest
-    live = Wd.where(d.close.notna(), 0.0)
-    Wd = live.div(live.sum(axis=1).replace(0, np.nan), axis=0).mul(Wd.sum(axis=1), axis=0).fillna(0.0)
+    d = None
+    dropped: List[str] = []
+    for _ in range(3):                                         # drop tickers Yahoo has no history for (reported)
+        try:
+            d = codeserver.load_data(tickers, warm, limit=None)
+            break
+        except ValueError as e:
+            msg = str(e)
+            if not msg.startswith("No price data for:"):
+                raise
+            bad = [t.strip() for t in msg.split(":", 1)[1].split("—")[0].split(",")]
+            dropped += bad
+            tickers = [t for t in tickers if t not in bad]
+    if d is None:
+        raise ValueError("Could not load prices for the 13F holdings.")
+    cols = d.tickers
+    idx = d.close.index
+    Wd = pd.DataFrame(np.nan, index=idx, columns=cols)
+    for dt, row in W[cols].iterrows():                         # a decision on the first session on/after each signal date
+        pos = idx.searchsorted(dt)
+        if pos >= len(idx):
+            continue
+        obs = d.observed.iloc[pos]
+        live = row.where(obs, 0.0)
+        tot = live.sum()
+        Wd.iloc[pos] = (live / tot * row.sum()).to_numpy() if tot > 0 else 0.0
     res = codelab.backtest(Wd, d, costs, start)
     spy = codeserver._index_series("SPY", warm)
     ret = res["ret"]
     b = spy.reindex(ret.index).pct_change(fill_method=None).fillna(0.0) if spy is not None else None
-    last = W.iloc[-1] if len(W) else pd.Series(dtype=float)
-    unmapped = sum(1 for t in tickers if t not in cols)
     return {"metrics": codelab.metrics(ret, d.rf), "metrics_gross": codelab.metrics(res["gross"], d.rf),
             "costs": codelab.cost_summary(res), "optimisation": {"walk_forward": False, "params": {"n": n}},
-            "weights_last": {k: round(float(v), 4) for k, v in last.items() if v > 0},
-            "dates": [x.strftime("%Y-%m-%d") for x in ret.index], "returns": [round(float(x), 7) for x in ret.values],
-            "gross": [round(float(x), 7) for x in res["gross"].values],
-            "benchmark": [round(float(x), 7) for x in b.values] if b is not None else None,
+            "weights_last": res["weights_last"], "holdings_last": res["holdings_last"], "ledger": res["ledger"],
+            "execution": res["execution"], "events": res["events"][-50:],
+            "dates": [x.strftime("%Y-%m-%d") for x in ret.index], "returns": [round(float(x), 8) for x in ret.values],
+            "gross": [round(float(x), 8) for x in res["gross"].values],
+            "benchmark": [round(float(x), 8) for x in b.values] if b is not None else None,
             "benchmark_metrics": codelab.metrics(b, d.rf) if b is not None else None,
-            "data_notes": {"tickers_used": len(cols), "tickers_without_prices": unmapped, "missing": missing[:20],
+            "provenance": {"engine_version": codelab.ENGINE_VERSION, "record_type": "rule-based, point-in-time from 13F "
+                           "filing dates (no parameters fitted)", "tickers": len(cols), **d.provenance},
+            "data_notes": {"tickers_used": len(cols), "tickers_without_prices": len(dropped), "missing": dropped[:20],
                            "unpriced_weight_share": unmapped_share(kind, start),
                            "note": "Holdings without a price (mostly companies since acquired) are skipped; the next-ranked "
-                                   "name takes their place."}}
+                                   "name takes their place. Listings that end while held are settled at their last close."}}
 
 
 def latest_view() -> Dict[str, Any]:

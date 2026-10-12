@@ -5,6 +5,7 @@
  * making) lives alongside. Reads /api/v1/quant/* (api/routers/quant.py).
  */
 import { useCallback, useEffect, useState } from 'react';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { ArrowLeftRight, BookOpen, Code2, FlaskConical, Library as LibraryIcon, Save, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -75,14 +76,16 @@ export function QuantLabSection() {
 
 function Mine({ rows, me, isAdmin, onOpen, onChanged }: { rows: any[]; me?: string; isAdmin: boolean; onOpen: (s: any) => void; onChanged: () => void }) {
   const [err, setErr] = useState<string | null>(null);
+  const [dialog, ask] = useConfirm();
   const del = async (s: any) => {
-    if (!window.confirm(`Delete “${s.name}”?`)) return;
+    if (!(await ask({ title: `Delete “${s.name}”?`, body: 'The saved code is removed. Deployments already running keep their frozen copy.', confirmLabel: 'Delete', danger: true }))) return;
     try { await api(`/api/v1/quant/strategies/${s.id}`, { method: 'DELETE' }); onChanged(); } catch (e: any) { setErr(e.message); }
   };
   const code = rows.filter((s) => s.spec?.kind === 'code');
   const legacy = rows.filter((s) => s.spec?.kind !== 'code');
   return (
     <div className="space-y-2">
+      {dialog}
       <ErrorNote msg={err} />
       {!code.length && <div className="text-2xs text-text-tertiary">No saved code strategies yet — write one in Code & test and press Save.</div>}
       {code.map((s) => (

@@ -30,7 +30,12 @@ def _years(dates: Sequence[str]) -> float:
     return max((date.fromisoformat(dates[-1]) - date.fromisoformat(dates[0])).days / 365.25, 1 / 365.25)
 
 
-def sharpe(r: np.ndarray) -> Optional[float]:
+def sharpe(r: np.ndarray, dates: Optional[Sequence[str]] = None) -> Optional[float]:
+    """Annualised Sharpe ratio of returns above the T-bill rate (when dates are given)."""
+    from api.quant import rates
+    r = np.asarray(r, float)
+    if dates is not None and len(dates) == len(r):
+        r = rates.excess(r, dates)
     r = r[np.isfinite(r)]
     if r.size < 20 or r.std(ddof=1) == 0:
         return None
@@ -38,7 +43,11 @@ def sharpe(r: np.ndarray) -> Optional[float]:
 
 
 def metrics(r: np.ndarray, dates: Sequence[str]) -> Dict[str, Any]:
+    """Headline statistics. Sharpe and Sortino use returns above the T-bill rate — at 4–5% bill yields, a
+    raw-return Sharpe flatters every strategy, most of all low-risk ones."""
+    from api.quant import rates
     r = np.nan_to_num(np.asarray(r, float))
+    ex = rates.excess(r, dates) if len(dates) == len(r) else r
     eq = np.cumprod(1 + r)
     yrs = _years(dates)
     cagr = float(eq[-1] ** (1 / yrs) - 1) if eq[-1] > 0 else -1.0
@@ -50,12 +59,14 @@ def metrics(r: np.ndarray, dates: Sequence[str]) -> Dict[str, Any]:
     for u in under:
         cur = cur + 1 if u else 0
         longest = max(longest, cur)
-    down = r[r < 0]
-    sortino = float(r.mean() * PPY / (down.std(ddof=1) * math.sqrt(PPY))) if down.size > 2 and down.std() > 0 else None
+    down = ex[ex < 0]
+    sortino = float(ex.mean() * PPY / (down.std(ddof=1) * math.sqrt(PPY))) if down.size > 2 and down.std() > 0 else None
+    ex_vol = float(ex.std(ddof=1) * math.sqrt(PPY)) if ex.size > 2 else 0.0
     mdd = float(dd.min()) if dd.size else 0.0
     t_stat = float(r.mean() / (r.std(ddof=1) / math.sqrt(r.size))) if r.size > 2 and r.std() > 0 else None
     return {"total_return": round(float(eq[-1] - 1), 4), "cagr": round(cagr, 4), "vol": round(vol, 4),
-            "sharpe": None if vol == 0 else round(float(r.mean() * PPY / vol), 3),
+            "sharpe": None if ex_vol == 0 else round(float(ex.mean() * PPY / ex_vol), 3),
+            "cash_rate": round(float((r - ex).mean() * PPY), 4),
             "sortino": round(sortino, 3) if sortino is not None else None,
             "max_drawdown": round(mdd, 4), "calmar": round(cagr / abs(mdd), 3) if mdd < 0 else None,
             "longest_underwater_days": int(longest), "hit_rate_days": round(float((r[r != 0] > 0).mean()), 3) if (r != 0).any() else None,

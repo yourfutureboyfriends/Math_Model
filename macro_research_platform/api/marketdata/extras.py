@@ -356,7 +356,10 @@ MANAGERS = {"0001067983": "Berkshire Hathaway (Buffett)", "0001350694": "Bridgew
             "0001336528": "Pershing Square (Ackman)", "0001649339": "Scion Asset Management (Burry)", "0001656456": "Appaloosa (Tepper)",
             "0001061768": "Baupost Group (Klarman)", "0001423053": "Citadel Advisors (Griffin)", "0001167483": "Tiger Global",
             "0001040273": "Third Point (Loeb)", "0001697748": "ARK Investment (Wood)", "0001536411": "Duquesne Family Office (Druckenmiller)",
-            "0001029160": "Soros Fund Management", "0001791786": "Elliott Investment Management", "0001103804": "Viking Global"}
+            "0001029160": "Soros Fund Management", "0001791786": "Elliott Investment Management", "0001103804": "Viking Global",
+            "0001273087": "Millennium Management", "0001179392": "Two Sigma Investments", "0001009207": "D. E. Shaw & Co.",
+            "0001167557": "AQR Capital Management", "0001603466": "Point72 Asset Management", "0001595888": "Jane Street Group",
+            "0001061165": "Lone Pine Capital", "0001135730": "Coatue Management"}
 FIGI_CACHE = Path(__file__).resolve().parents[2] / "data" / "processed" / "cusip_tickers.json"
 
 
@@ -487,10 +490,19 @@ def thirteen_f(cik: str = "0001067983") -> Dict[str, Any]:
                 a["shares"] += x["shares"] or 0
             return out
         A, B = agg(cur), agg(prev)
-        # SEC switched value reporting from thousands to dollars in 2023 — normalise
-        scale = 1000 if cur_period < "2023-01-01" else 1
+        # SEC switched value reporting from thousands to dollars in 2023 — normalise. Some filers kept reporting in
+        # thousands afterwards: a book under $200m with many positions is read as thousands (Baupost showed $0.0bn)
+        raw_total = sum(v["value"] for v in A.values())
+        scale = 1000 if cur_period < "2023-01-01" or (raw_total < 2e8 and len(A) >= 5) else 1
         total = sum(v["value"] for v in A.values()) * scale or 1
         tick = _cusip_tickers([v["cusip"] for v in sorted(A.values(), key=lambda v: -v["value"])[:60]])
+        try:                                          # second OpenFIGI pass for ADRs and new share classes (cached)
+            from api.quant.smartmoney import _figi_retry
+            miss = [c for c, t in tick.items() if not t]
+            if miss:
+                tick.update({c: t for c, t in _figi_retry(miss[:40]).items() if t})
+        except Exception:                             # noqa: BLE001 — the screen works without it
+            pass
         by_name = _sec_names()
         for v in A.values():          # OpenFIGI misses some foreign-domiciled CUSIPs (Chubb's H1467Z104): match the SEC name
             if not tick.get(v["cusip"]):

@@ -192,7 +192,7 @@ def _one(dep: Dict[str, Any]) -> Dict[str, Any]:
             "deployed_at": dep["deployed_at"], "capital": dep["capital"], "nav": round(nav, 2),
             "live_days": int(live.size), "live_return": round(cum, 4),
             "live_max_drawdown": round(float((eq / peak - 1).min()), 4) if eq.size else None,
-            "live_sharpe": robust.sharpe(live) if live.size >= 20 else None,
+            "live_sharpe": robust.sharpe(live, live_dates) if live.size >= 20 else None,
             "expected_range": band, "status": status, "backtest": dep.get("backtest"),
             "rebalance": spec.get("rebalance"), "universe": spec.get("universe"), "book": book_of(dep),
             "positions": positions, "curve": [{"date": d, "nav": round(dep["capital"] * float(v), 2)}

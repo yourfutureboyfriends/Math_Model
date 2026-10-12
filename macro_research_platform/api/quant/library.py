@@ -447,7 +447,7 @@ def _portfolio(members: List[Dict[str, Any]]) -> Dict[str, Any]:
     sh = R.rolling(756, min_periods=252).mean() / R.rolling(756, min_periods=252).std()
     w = (1 / vol).where(sh > 0)
     w = w.div(w.sum(axis=1), axis=0)
-    w = codelab.hold_monthly(w).shift(1)                      # decided at month-end, applied from the next day
+    w = codelab.hold_monthly(w).ffill().shift(1)              # decided on the month's first day, applied from the next
     port = (w * R).sum(axis=1, min_count=1).dropna()
     port = port[w.reindex(port.index).sum(axis=1) > 0]
     dates = [d.strftime("%Y-%m-%d") for d in port.index]
@@ -456,6 +456,8 @@ def _portfolio(members: List[Dict[str, Any]]) -> Dict[str, Any]:
     ev = {"metrics": codelab.metrics(port, rf), "metrics_gross": None, "costs": None,
           "optimisation": {"walk_forward": True, "members": list(R.columns), "oos_start": dates[0] if dates else None},
           "weights_last": {k: round(float(v), 4) for k, v in last.items() if v > 0},
+          "provenance": {"engine_version": codelab.ENGINE_VERSION, "record_type": "combination of the members' out-of-sample "
+                         "return streams (allocation decided monthly from past data only)"},
           "dates": dates, "returns": [round(float(x), 7) for x in port.values]}
     spy = codeserver._index_series("SPY", dates[0])
     if spy is not None:
@@ -542,6 +544,8 @@ def _multi_manager(members: List[Dict[str, Any]]) -> Dict[str, Any]:
                             "variants": [{"label": labels[k], **codelab.metrics(v[0].reindex(book.index).fillna(0.0), rf)} for k, v in variants.items()],
                             "events": events[-40:], "n_events": len(events)},
            "weights_last": {k: float(v) for k, v in (last.items() if last is not None else []) if v > 0},
+           "provenance": {"engine_version": codelab.ENGINE_VERSION, "record_type": "multi-manager simulation over the "
+                          "members' out-of-sample return streams (pod rules applied causally)"},
            "dates": dates, "returns": [round(float(x), 7) for x in book.values]}
     spy = codeserver._index_series("SPY", dates[0])
     if spy is not None:

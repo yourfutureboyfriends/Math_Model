@@ -6,6 +6,7 @@
  * This is the foundation the risk/attribution/trade features build on.
  */
 import { marketTag, marketTitle } from '@/lib/marketTag';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Briefcase, ChevronDown, ChevronUp, Plus, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { Donut } from '@/components/ui/Donut';
@@ -55,6 +56,7 @@ export function PositionsSection() {
   const [showForm, setShowForm] = useState(false);
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 }>({ key: 'gross', dir: -1 });
   const fileRef = useRef<HTMLInputElement>(null);
+  const [dialog, ask] = useConfirm();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,7 +90,7 @@ export function PositionsSection() {
   };
 
   const remove = async (id: number, symbol: string) => {
-    if (!window.confirm(`Remove ${symbol} from the book? This deletes the position record (use an order to trade out).`)) return;
+    if (!(await ask({ title: `Remove ${symbol} from the book?`, body: 'This deletes the position record (use an order to trade out).', confirmLabel: 'Remove', danger: true }))) return;
     setBusy(true);
     try { await fetch(`/api/v1/portfolio/positions/${id}`, { method: 'DELETE' }); await load(); }
     finally { setBusy(false); }
@@ -157,6 +159,7 @@ export function PositionsSection() {
 
   return (
     <div id="portfolio-positions" className="terminal-section">
+      {dialog}
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><Briefcase className="w-3 h-3" /></span>

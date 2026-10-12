@@ -129,3 +129,11 @@ def test_code_api_check_analyze_and_save(client, monkeypatch):  # noqa: F811
     bad = client.post("/api/v1/quant/strategies", json={"spec": {"kind": "code", "name": "Bad", "code": "import os"}})
     assert bad.status_code == 400
     assert client.get("/api/v1/quant/code/engine").text.startswith('"""')
+
+
+def test_monte_carlo_does_not_lever_a_weak_edge():
+    idx = pd.bdate_range("2010-01-01", periods=2500)
+    weak = pd.Series(np.random.default_rng(9).normal(0.00004, 0.002, 2500), index=idx)   # Sharpe ≈ 0.3 or less
+    mc = codelab.monte_carlo(weak, years=5, paths=300)
+    if mc["sharpe_excess"] < 0.3:
+        assert mc["recommended_leverage"] <= 1.0

@@ -4,6 +4,7 @@
  * (deployment runs the code in the server's sandbox). Engine: api/quant/codelab.py.
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Loader2, Play, Rocket, Save, ShieldCheck, ShieldAlert, Terminal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
@@ -34,7 +35,7 @@ def strategy(data, lookback=252, target_vol=0.10):
 `;
 
 export const COST_DEFAULTS = { capital: 1_000_000, commission_bps: 0.35, spread_mult: 1, impact_coef_bps: 11.21, borrow_fee: 0.003,
-  financing_spread: 0.01, no_trade_band: 0.0025 };
+  financing_spread: 0.01, cash_spread: 0, no_trade_band: 0.0025, delist_haircut: 0 };
 export type Costs = typeof COST_DEFAULTS;
 const MC_DEFAULTS = { mc_years: 10, max_leverage: 2, dd_limit: 0.5 };
 
@@ -125,14 +126,45 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
   const [note, setNote] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
   const [analysis, setAnalysis] = useState<any>(null);
-  const [check, setCheck] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [check, setCheck] = useState<{ ok: boolean; error?: string; tradable?: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [capital, setCapital] = useState(1_000_000);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [dialog, ask] = useConfirm();
+
+  const runOnServer = async (chk: any) => {
+    // TRADABLE_UNIVERSE: hundreds of tickers — run in the server sandbox as a background job (one global cross-section)
+    const job = await api('/api/v1/quant/code/jobs', { json: { code, costs } });
+    setJobId(job.id);
+    let j = job;
+    while (j.state === 'queued' || j.state === 'running') {
+      setStatus(`${j.message} (${Math.round(j.elapsed_s ?? 0)} s)`);
+      await new Promise((res) => setTimeout(res, 2000));
+      j = await api(`/api/v1/quant/code/jobs/${job.id}`);
+    }
+    setJobId(null);
+    if (j.state !== 'done') throw new Error(j.state === 'cancelled' ? 'Cancelled.' : (j.error || 'The job failed.'));
+    return { ...j.result, benchmark_label: chk.benchmark };
+  };
+
+  const cancelJob = async () => {
+    if (jobId) await api(`/api/v1/quant/code/jobs/${jobId}`, { method: 'DELETE' }).catch(() => {});
+  };
 
   const run = useCallback(async () => {
     setBusy(true); setErr(null); setNote(null); setLog([]); setResult(null); setAnalysis(null);
-    api('/api/v1/quant/code/check', { json: { code } }).then(setCheck).catch(() => setCheck(null));
+    let chk: any = null;
+    try { chk = await api('/api/v1/quant/code/check', { json: { code } }); setCheck(chk); } catch { setCheck(null); }
     try {
+      if (chk?.ok && chk.tradable) {
+        const r = await runOnServer(chk);
+        setResult(r);
+        setStatus('Monte Carlo and deep analysis…');
+        const a = await api('/api/v1/quant/code/analyze', { json: { dates: r.dates, returns: r.returns, benchmark: r.benchmark, label: name || 'Strategy', benchmark_label: chk.benchmark, provenance: r.provenance, ...mc } });
+        setAnalysis(a);
+        setStatus(null);
+        return;
+      }
       const sh = getWorker(setStatus, (s) => setLog((l) => [...l.slice(-200), s]));
       await sh.ready;
       setStatus('Reading your code…');
@@ -143,11 +175,11 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
       const { result: r } = await call(sh.worker, { type: 'run', code, data, costs }, 'result', 300_000);
       setResult({ ...r, benchmark_label: header.benchmark });
       setStatus('Monte Carlo and deep analysis…');
-      const a = await api('/api/v1/quant/code/analyze', { json: { dates: r.dates, returns: r.returns, benchmark: r.benchmark, label: name || 'Strategy', benchmark_label: header.benchmark, ...mc } });
+      const a = await api('/api/v1/quant/code/analyze', { json: { dates: r.dates, returns: r.returns, benchmark: r.benchmark, label: name || 'Strategy', benchmark_label: header.benchmark, provenance: r.provenance, ...mc } });
       setAnalysis(a);
       setStatus(null);
     } catch (e: any) { setErr(e.message); setStatus(null); } finally { setBusy(false); }
-  }, [code, costs, mc, name]);
+  }, [code, costs, mc, name]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async (asNew: boolean) => {
     setErr(null);
@@ -160,7 +192,8 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
     } catch (e: any) { setErr(e.message); }
   };
   const deploy = async () => {
-    if (!window.confirm(`Deploy “${name || 'this strategy'}” with $${capital.toLocaleString()} of paper capital? The server re-runs your code daily in a locked-down sandbox; no real orders.`)) return;
+    if (!(await ask({ title: `Deploy “${name || 'this strategy'}”?`, confirmLabel: 'Deploy',
+      body: `Paper capital $${capital.toLocaleString()}. The server re-runs your code daily in a locked-down sandbox; no real orders are placed.` }))) return;
     setErr(null); setBusy(true); setStatus('Running your code in the server sandbox…');
     try {
       const d = await api('/api/v1/quant/trader/deploy', { json: { spec: { kind: 'code', name: name || 'Code strategy', code, costs }, capital, strategy_id: strategyId } });
@@ -172,6 +205,7 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
 
   return (
     <div className="space-y-3">
+      {dialog}
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-3">
         <div className="space-y-2">
           <div className="flex flex-wrap items-end gap-2">
@@ -192,9 +226,10 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
           {check && (
             <div className={cn('text-[10px] flex items-center gap-1', check.ok ? 'text-text-tertiary' : 'text-amber')}>
               {check.ok ? <ShieldCheck className="w-3 h-3" /> : <ShieldAlert className="w-3 h-3" />}
-              {check.ok ? 'Deployable: passes the server sandbox rules.' : `Runs here, but can't be deployed: ${check.error}`}
+              {check.ok ? (check.tradable ? `Tradable universe '${check.tradable}': runs on the server as a sandboxed job (hundreds of tickers); deployable.` : 'Deployable: passes the server sandbox rules.') : `Runs here, but can't be deployed: ${check.error}`}
             </div>)}
-          {status && <div className="flex items-center gap-2 text-2xs text-text-secondary"><Loader2 className="w-3 h-3 animate-spin" />{status}</div>}
+          {status && <div className="flex items-center gap-2 text-2xs text-text-secondary"><Loader2 className="w-3 h-3 animate-spin" />{status}
+            {jobId && <button onClick={cancelJob} className="ml-2 px-2 py-0.5 border border-border hover:border-red hover:text-red">Cancel</button>}</div>}
           <ErrorNote msg={err} />
           {note && <div className="px-3 py-2 border border-green/40 bg-green/5 text-xs text-green">{note}</div>}
           {log.length > 0 && (
@@ -205,13 +240,15 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
           <div className="p-3 bg-surface-1 border border-border space-y-2">
             <div className="text-xs font-semibold text-text-primary">Costs & execution</div>
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Capital ($)" hint="Size matters: market impact grows with the square root of your share of daily volume"><input type="number" className={inputCls} value={costs.capital} onChange={set('capital')} /></Field>
-              <Field label="Commission (bp)" hint="Per side, of traded notional. 0.35 bp ≈ $0.0035/share at $100"><input type="number" step={0.05} className={inputCls} value={costs.commission_bps} onChange={set('commission_bps')} /></Field>
-              <Field label="Spread ×" hint="Multiplier on the modelled half-spread (from each asset's volatility and dollar volume)"><input type="number" step={0.25} className={inputCls} value={costs.spread_mult} onChange={set('spread_mult')} /></Field>
-              <Field label="Impact coef (bp)" hint="bp × √(% of daily dollar volume). 11.2 = AQR live-trade calibration (Frazzini, Israel & Moskowitz 2018)"><input type="number" step={0.5} className={inputCls} value={costs.impact_coef_bps} onChange={set('impact_coef_bps')} /></Field>
-              <Field label="Borrow fee (/yr)" hint="Annual fee on short notional; 0.3% = general collateral"><input type="number" step={0.001} className={inputCls} value={costs.borrow_fee} onChange={set('borrow_fee')} /></Field>
-              <Field label="Margin spread (/yr)" hint="Borrowing above 100% gross long pays the T-bill rate plus this"><input type="number" step={0.0025} className={inputCls} value={costs.financing_spread} onChange={set('financing_spread')} /></Field>
-              <Field label="No-trade band" hint="Skip rebalancing a position by less than this fraction of capital"><input type="number" step={0.0025} className={inputCls} value={costs.no_trade_band} onChange={set('no_trade_band')} /></Field>
+              <Field label="Capital (USD)" hint="Account currency USD. Size matters: market impact grows with the square root of your share of daily volume"><input type="number" className={inputCls} value={costs.capital} onChange={set('capital')} /></Field>
+              <Field label="Commission (bp / side)" hint="Basis points of traded notional, each side. 0.35 bp ≈ $0.0035/share at $100"><input type="number" step={0.05} className={inputCls} value={costs.commission_bps} onChange={set('commission_bps')} /></Field>
+              <Field label="Spread multiplier (×)" hint="A multiplier, not basis points: scales the modelled half-spread (from each asset's volatility and dollar volume)"><input type="number" step={0.25} className={inputCls} value={costs.spread_mult} onChange={set('spread_mult')} /></Field>
+              <Field label="Impact (bp × √%ADV)" hint="Basis points × √(% of 63-day dollar volume traded). 11.2 = AQR live-trade calibration (Frazzini, Israel & Moskowitz 2018)"><input type="number" step={0.5} className={inputCls} value={costs.impact_coef_bps} onChange={set('impact_coef_bps')} /></Field>
+              <Field label="Borrow fee (annual, decimal)" hint="0.003 = 0.3% a year on short market value (general collateral)"><input type="number" step={0.001} className={inputCls} value={costs.borrow_fee} onChange={set('borrow_fee')} /></Field>
+              <Field label="Margin spread (annual, decimal)" hint="Negative cash pays the T-bill rate plus this; 0.01 = 1%"><input type="number" step={0.0025} className={inputCls} value={costs.financing_spread} onChange={set('financing_spread')} /></Field>
+              <Field label="No-trade band (fraction of NAV)" hint="Skip trades smaller than this fraction of NAV; 0.0025 = 0.25%"><input type="number" step={0.0025} className={inputCls} value={costs.no_trade_band} onChange={set('no_trade_band')} /></Field>
+              <Field label="Cash yield cut (annual, decimal)" hint="Positive cash earns the T-bill rate minus this. 0 = full T-bill (institutional); many retail brokers pay far less"><input type="number" step={0.0025} className={inputCls} value={costs.cash_spread} onChange={set('cash_spread')} /></Field>
+              <Field label="Delisting haircut (fraction)" hint="A held listing that ends is settled at its last close × (1 − this)"><input type="number" step={0.05} className={inputCls} value={costs.delist_haircut} onChange={set('delist_haircut')} /></Field>
               <button onClick={() => setCosts(COST_DEFAULTS)} className="self-end text-[10px] underline text-text-tertiary">reset to research defaults</button>
             </div>
           </div>
@@ -247,20 +284,22 @@ function ApiHelp() {
 }
 
 // ── Results (shared with the strategy library) ──────────────────────────────
-function curve(dates: string[], rets: number[], bench?: number[] | null, gross?: number[] | null) {
+function curve(dates: string[], rets: number[], bench?: number[] | null, gross?: number[] | null, base?: number[] | null) {
   const n = dates.length, step = Math.max(1, Math.ceil(n / 900));
-  let e = 1, g = 1, b = 1;
+  let e = 1, g = 1, b = 1, q = 1;
   const rows: any[] = [];
   for (let i = 0; i < n; i++) {
-    e *= 1 + rets[i]; if (gross) g *= 1 + gross[i]; if (bench) b *= 1 + (bench[i] || 0);
-    if (i % step === 0 || i === n - 1) rows.push({ date: dates[i], net: +e.toFixed(4), ...(gross ? { gross: +g.toFixed(4) } : {}), ...(bench ? { bench: +b.toFixed(4) } : {}) });
+    e *= 1 + rets[i]; if (gross) g *= 1 + gross[i]; if (bench) b *= 1 + (bench[i] || 0); if (base) q *= 1 + (base[i] || 0);
+    if (i % step === 0 || i === n - 1) rows.push({ date: dates[i], net: +e.toFixed(4), ...(gross ? { gross: +g.toFixed(4) } : {}),
+      ...(bench ? { bench: +b.toFixed(4) } : {}), ...(base ? { base: +q.toFixed(4) } : {}) });
   }
   return rows;
 }
 
 export function CodeResults({ r, a }: { r: any; a: any | null }) {
   const m = r.metrics ?? {}, g = r.metrics_gross, c = r.costs, b = r.benchmark_metrics, opt = r.optimisation ?? {};
-  const rows = useMemo(() => curve(r.dates, r.returns, r.benchmark, r.gross), [r]);
+  const rows = useMemo(() => curve(r.dates, r.returns, r.benchmark, r.gross, r.baseline_returns), [r]);
+  const ew = r.baseline_equal_weight, prov = r.provenance ?? {}, ex = r.execution, reg = a?.registry;
   const mc = a?.monte_carlo;
   return (
     <div className="space-y-3">
@@ -271,15 +310,18 @@ export function CodeResults({ r, a }: { r: any; a: any | null }) {
         { label: 'Volatility', value: pct(m.vol) },
         { label: 'Trading costs /yr', value: c ? pct(c.total_trading, 2) : '—', sub: c ? `turnover ${num(c.turnover, 1)}×/yr` : undefined, tone: c && c.total_trading > 0.01 ? 'warn' : null },
         { label: 'Calmar', value: num(m.calmar) },
-        { label: r.benchmark_label || 'Benchmark', value: b ? spct(b.cagr) : '—', sub: b ? `Sharpe ${num(b.sharpe)} · DD ${pct(b.max_drawdown, 0)}` : undefined },
-        { label: 'Record', value: opt.walk_forward ? 'Out-of-sample' : 'Full sample', sub: `${r.dates[0]} → ${r.dates[r.dates.length - 1]}` },
+        { label: ew ? 'Equal-weight universe' : (r.benchmark_label || 'Benchmark'), value: ew ? spct(ew.cagr) : b ? spct(b.cagr) : '—',
+          sub: ew ? `same names & costs · Sharpe ${num(ew.sharpe)}` : b ? `Sharpe ${num(b.sharpe)} · DD ${pct(b.max_drawdown, 0)}` : undefined,
+          tone: ew && m.cagr != null && ew.cagr != null && ew.cagr > m.cagr ? 'warn' : null },
+        { label: 'Record', value: opt.walk_forward ? 'Walk-forward' : 'Exploratory', sub: `${r.dates[0]} → ${r.dates[r.dates.length - 1]}` },
       ]} />
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
         <div className="xl:col-span-2">
-          <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Growth of $1 — net of all costs{r.gross ? ', before costs' : ''}{r.benchmark ? `, and ${r.benchmark_label || 'benchmark'}` : ''}</div>
+          <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Growth of $1 — net of all costs{r.gross ? ', before costs' : ''}{r.baseline_returns ? ', equal-weight universe (same costs)' : ''}{r.benchmark ? `, and ${r.benchmark_label || 'benchmark'}` : ''}</div>
           <LineChart rows={rows} x="date" height={260} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`}
             lines={[{ key: 'net', label: 'Net', color: CATEGORICAL[0] }, ...(r.gross ? [{ key: 'gross', label: 'Before costs', color: CATEGORICAL[3] }] : []),
-              ...(r.benchmark ? [{ key: 'bench', label: r.benchmark_label || 'Benchmark', color: CATEGORICAL[6] }] : [])]} />
+              ...(r.baseline_returns ? [{ key: 'base', label: 'Equal-weight universe', color: CATEGORICAL[2] }] : []),
+              ...(r.benchmark ? [{ key: 'bench', label: `${r.benchmark_label || 'Benchmark'} (frictionless)`, color: CATEGORICAL[6] }] : [])]} />
         </div>
         {c ? (
           <div className="space-y-2">
@@ -289,13 +331,15 @@ export function CodeResults({ r, a }: { r: any; a: any | null }) {
                 { label: 'Financing (net)', value: -c.financing_net, note: 'Positive = paid; negative = interest earned on cash' }]} />
             <div className="text-[10px] text-text-tertiary">Average long {pct(c.avg_long, 0)} · short {pct(c.avg_short, 0)} of capital.</div>
             {r.weights_last && Object.keys(r.weights_last).length > 0 && (
-              <BarList title="Current target weights" diverging fmt={(v) => `${(v * 100).toFixed(1)}%`}
-                data={Object.entries(r.weights_last).sort((x: any, y: any) => Math.abs(y[1]) - Math.abs(x[1])).slice(0, 12).map(([k, v]) => ({ label: k, value: v as number }))} />)}
+              <BarList title="Latest target (what the model wants)" diverging fmt={(v) => `${(v * 100).toFixed(1)}%`}
+                data={Object.entries(r.weights_last).sort((x: any, y: any) => Math.abs(y[1]) - Math.abs(x[1])).slice(0, 12).map(([k, v]) => ({ label: k, value: v as number, sub: r.holdings_last ? `held ${((r.holdings_last[k] ?? 0) * 100).toFixed(1)}%` : undefined }))} />)}
+            {r.holdings_last && <div className="text-[10px] text-text-tertiary">“held” is the simulated account after drift and unfilled orders — a target is not a position.</div>}
           </div>
         ) : r.weights_last && (
           <BarList title="Current allocation" fmt={(v) => `${(v * 100).toFixed(1)}%`}
             data={Object.entries(r.weights_last).map(([k, v]) => ({ label: k, value: v as number }))} />)}
       </div>
+      <RecordPanel r={r} prov={prov} ex={ex} reg={reg} />
       {opt.walk_forward && opt.chosen && <Optimisation opt={opt} m={m} />}
       {opt.variants && <Variants opt={opt} />}
       {a?.factor_lens && <FactorLens f={a.factor_lens} />}
@@ -316,13 +360,48 @@ function Optimisation({ opt, m }: { opt: any; m: any }) {
     <div className="p-3 bg-surface-1 border border-border text-[11px] space-y-1">
       <div className="text-xs font-semibold text-text-primary">Walk-forward optimisation</div>
       <div className="text-text-secondary">
-        {opt.grid?.length ?? '?'} parameter sets; each January the set with the best long-run growth on data up to then was traded for the year.
+        {opt.grid?.length ?? '?'} parameter sets; each January the set with the best long-run growth on data up to then was traded for the year, in one continuous account (switches trade from current holdings and pay the costs{opt.switches ? ` — ${opt.switches.length} switch${opt.switches.length === 1 ? '' : 'es'}` : ''}).
         Out-of-sample from {opt.oos_start}: CAGR {spct(m.cagr)}, Sharpe {num(m.sharpe)}.
         {ib && <> Picking the best set with hindsight would have shown CAGR {spct(ib.cagr)} / Sharpe {num(ib.sharpe)} — the gap is the overfitting a single backtest hides.</>}
       </div>
       <div className="flex flex-wrap gap-1 font-mono">
         {changes.map((c: any) => <span key={c.year} className="px-1.5 py-0.5 border border-border">{c.year}: {Object.entries(c.params).map(([k, v]) => `${k}=${v}`).join(', ')}</span>)}
       </div>
+    </div>
+  );
+}
+
+function RecordPanel({ r, prov, ex, reg }: { r: any; prov: any; ex: any; reg: any }) {
+  const h = r.holdout;
+  return (
+    <div className="p-3 bg-surface-1 border border-border text-[11px] space-y-2">
+      <div className="flex flex-wrap items-baseline gap-2">
+        <div className="text-xs font-semibold text-text-primary">What this record is</div>
+        <span className="px-1.5 border border-border text-text-secondary">{reg?.record_label || prov.record_type || 'backtest'}</span>
+        {reg && <span className="text-text-tertiary">trial {reg.distinct_trials} of this family ({reg.runs} runs) · deflated Sharpe {reg.deflated_sharpe != null ? pct(reg.deflated_sharpe, 0) : '—'} probability of real skill after all trials</span>}
+      </div>
+      {prov.rf_known === false && <div className="text-amber">The T-bill rate was unavailable: cash earned 0% and Sharpe is on raw returns. Statistics will differ when the rate loads.</div>}
+      {prov.engine_mismatch && <div className="text-amber">{prov.engine_mismatch}</div>}
+      {prov.stale_symbols?.length > 0 && <div className="text-amber">Served from an out-of-date cache (download failed): {prov.stale_symbols.join(', ')}.</div>}
+      {h && (
+        <table className="font-mono"><tbody>
+          <tr><td className="pr-3 text-text-tertiary">Before holdout ({h.start})</td><td className="pr-3">CAGR {spct(h.in_sample?.cagr)}</td><td>Sharpe {num(h.in_sample?.sharpe)}</td></tr>
+          <tr><td className="pr-3 text-text-tertiary">Holdout</td><td className="pr-3">CAGR {spct(h.holdout?.cagr)}</td><td>Sharpe {num(h.holdout?.sharpe)}</td></tr>
+          <tr><td className="pr-3 text-text-tertiary">Equal-weight universe, holdout</td><td className="pr-3">CAGR {spct(h.baseline_holdout?.cagr)}</td><td>Sharpe {num(h.baseline_holdout?.sharpe)}</td></tr>
+        </tbody></table>)}
+      {ex && <div className="text-text-secondary">Execution: {ex.unfilled_order_days} day(s) with orders that could not fill (no opening print or no volume) · {ex.stale_position_days} position-day(s) valued at a stale price · {ex.listings_ended} listing(s) ended while held (settled at last close).</div>}
+      <details><summary className="cursor-pointer text-text-tertiary">Provenance</summary>
+        <div className="mt-1 grid grid-cols-1 md:grid-cols-2 gap-x-4 font-mono text-[10px] text-text-tertiary">
+          <div>engine {prov.engine_version} · cost schema {prov.cost_schema_version}</div><div>runtime {prov.runtime ?? 'server'}</div>
+          <div>data {prov.data_first} → {prov.data_last} · hash {prov.data_hash}</div><div>code hash {prov.code_hash ?? '—'}</div>
+          <div className="md:col-span-2 font-sans">{prov.adjustment}</div>
+          <div className="md:col-span-2 font-sans">{prov.universe_selection}</div>
+          {r.benchmark_definition && <div className="md:col-span-2 font-sans">Benchmark: {r.benchmark_definition}</div>}
+        </div>
+      </details>
+      {r.events?.length > 0 && (
+        <details><summary className="cursor-pointer text-text-tertiary">{r.events.length} account event(s)</summary>
+          <ul className="mt-1 font-mono text-[10px] text-text-tertiary">{r.events.map((e: any, i: number) => <li key={i}>{e.date} {e.ticker ?? ''} {e.event}</li>)}</ul></details>)}
     </div>
   );
 }

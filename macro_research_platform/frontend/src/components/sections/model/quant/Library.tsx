@@ -1,6 +1,7 @@
 /** Strategy library — institutional strategies as code, each walk-forward optimised net of costs,
  *  with Monte Carlo sizing. Reads /api/v1/quant/library. */
 import { useEffect, useState } from 'react';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Code2, Loader2, Rocket, BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api, ErrorNote, num, pct, spct, tone } from './shared';
@@ -48,6 +49,7 @@ export function Library({ onOpenCode, canDeploy }: { onOpenCode: (code: string, 
   const [res, setRes] = useState<Record<string, any>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [dialog, ask] = useConfirm();
 
   const load = () => api('/api/v1/quant/library').then((j) => setRows(j.strategies)).catch((e) => setErr(e.message));
   useEffect(() => { load(); }, []);
@@ -64,8 +66,10 @@ export function Library({ onOpenCode, canDeploy }: { onOpenCode: (code: string, 
     } catch (e: any) { setErr(e.message); } finally { setBusy(null); }
   };
   const deploy = async (s: any) => {
-    const cap = Number(window.prompt(`Paper capital to deploy “${s.name}” with (USD):`, '1000000'));
-    if (!cap) return;
+    const raw = await ask({ title: `Deploy “${s.name}”`, body: 'Paper trading only — no real orders.', confirmLabel: 'Deploy',
+      input: { label: 'Paper capital (USD)', defaultValue: '1000000', type: 'number' } });
+    const cap = Number(raw);
+    if (!raw || !(cap > 0)) return;
     setErr(null);
     try {
       const d = await api('/api/v1/quant/trader/deploy', { json: { spec: { kind: 'library', library: s.id, name: s.name }, capital: cap } });
@@ -76,6 +80,7 @@ export function Library({ onOpenCode, canDeploy }: { onOpenCode: (code: string, 
   if (!rows) return err ? <ErrorNote msg={err} /> : <div className="flex items-center gap-2 text-2xs text-text-tertiary"><Loader2 className="w-3 h-3 animate-spin" />Loading the library…</div>;
   return (
     <div className="space-y-2">
+      {dialog}
       <div className="text-[11px] text-text-secondary leading-relaxed">
         Published constructions from AQR, Man AHL, Bridgewater, Robeco and landmark papers, written as editable code. Every record is
         <b> out-of-sample</b> (parameters from a small grid taken from each paper, re-chosen each January using only past data) and
