@@ -89,6 +89,24 @@ def clean_symbols(symbols: Sequence[str]) -> Tuple[List[str], List[str]]:
     return ok, bad
 
 
+# Today's GICS sector SPDR for the large-cap list (sscore(n, 1) hedges each stock with its sector).
+# Using today's map is a mild look-ahead: GOOGL/META/DIS/T/VZ moved to Communication Services in 2018
+# (XLC only exists from then; earlier dates fall back to the benchmark) and V/MA to Financials in 2023.
+SECTOR_ETF: Dict[str, str] = {
+    **{s: "XLK" for s in ("AAPL", "MSFT", "NVDA", "CSCO", "ORCL", "INTC", "ADBE", "CRM", "AVGO", "TXN", "QCOM", "IBM", "AMD", "MU")},
+    **{s: "XLC" for s in ("GOOGL", "GOOG", "META", "T", "VZ", "DIS", "NFLX", "CMCSA")},
+    **{s: "XLY" for s in ("AMZN", "HD", "MCD", "NKE", "LOW", "TSLA", "SBUX", "BKNG")},
+    **{s: "XLF" for s in ("BRK-B", "JPM", "V", "MA", "BAC", "GS", "MS", "WFC", "C", "AXP", "BLK", "SCHW")},
+    **{s: "XLV" for s in ("JNJ", "UNH", "MRK", "ABBV", "PFE", "TMO", "ABT", "LLY", "AMGN", "BMY", "GILD", "CVS")},
+    **{s: "XLP" for s in ("PG", "KO", "PEP", "WMT", "COST", "PM", "MO", "CL", "MDLZ")},
+    **{s: "XLE" for s in ("XOM", "CVX", "COP", "SLB", "EOG")},
+    **{s: "XLI" for s in ("HON", "CAT", "UPS", "BA", "GE", "RTX", "LMT", "DE", "UNP")},
+    **{s: "XLU" for s in ("NEE", "DUK", "SO")},
+    **{s: "XLB" for s in ("LIN", "APD", "SHW")},
+    **{s: "XLRE" for s in ("PLD", "AMT", "EQIX")},
+}
+
+
 def resolve_universe(universe: Dict) -> Tuple[List[str], bool]:
     """Symbols for a universe spec {preset} or {symbols}; plus whether it is survivorship-biased."""
     preset = (universe or {}).get("preset")

@@ -17,7 +17,7 @@ import { CotView, EdgeBoard, NowView } from '@/components/markets/EdgeViews';
 import { PredView, RelatedOdds } from '@/components/markets/PredMarkets';
 import { ValuationHub } from '@/components/markets/ValuationHub';
 import { CfView, CredView, FacView, PortView } from '@/components/markets/ResearchViews';
-import { CbrtView, EcosView, SprdView, TechView } from '@/components/markets/ToolkitViews';
+import { CbrtView, EcosView, EtfaView, SprdView, TechView } from '@/components/markets/ToolkitViews';
 import { AllWeatherPanel, DebtCyclesPanel, EnvironmentsPanel, HolyGrailPanel, WorldOrderPanel } from '@/components/markets/BridgewaterViews';
 import { CacsView, CdrView, ChartView, DataView, DdisView, DvdcView, FsrcView, FxcaView, IlbeView, MembView, MgmtView, MrgrView, OvdvView, PgeoView, YasView } from '@/components/markets/TerminalPlus';
 import { BreadthView, ImpmView, RiskView, UoaView, VolView } from '@/components/markets/InsightViews';
@@ -283,6 +283,7 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'EDGE' && <EdgeBoard onGo={onGo} onOpen={open} />}
     {code === 'COT' && <CotView />}
     {code === 'PRED' && <PredView />}
+    {code === 'ETFA' && <EtfaView onOpen={(s) => open(s)} />}
     {code === 'CRED' && <><CredView /><RelatedOdds terms={['recession', 'default', 'bankruptcy', 'fed', 'rate cut']} title="Macro odds that move credit" limit={4} className="mt-3" /></>}
     {code === 'PORT' && <PortView onOpen={open} />}
     {code === 'SPRD' && <SprdView seed={seed} />}

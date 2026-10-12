@@ -1,7 +1,7 @@
 // PRED: prediction markets — every open event on Kalshi and Polymarket, searchable, with price
 // history, the live order book, today's movers, the same question on both venues, and the macro
 // questions (the next Fed decision vs fed funds futures). Read-only market data.
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
 import { ErrorBox, Loading, Panel, useJSON } from './shared';
@@ -22,7 +22,7 @@ const Venue = ({ v }: { v: string }) => <span className={cn('text-[9px] uppercas
 type Open = { venue: string; id: string } | null;
 
 export function PredView() {
-  const [tab, setTab] = useState<'browse' | 'movers' | 'cross' | 'macro' | 'follow'>('browse');
+  const [tab, setTab] = useState<'browse' | 'movers' | 'cross' | 'arb' | 'macro' | 'follow'>('browse');
   const [open, setOpen] = useState<Open>(() => {
     try {
       const h = JSON.parse(sessionStorage.getItem('pred_open') || 'null');
@@ -34,7 +34,7 @@ export function PredView() {
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-1 text-[11px]">
-        {([['browse', 'All markets'], ['movers', 'Movers'], ['cross', 'Kalshi vs Polymarket'], ['macro', 'Macro & Fed'], ['follow', `Following (${fol.list.length})`]] as const).map(([k, l]) =>
+        {([['browse', 'All markets'], ['movers', 'Movers'], ['cross', 'Kalshi vs Polymarket'], ['arb', 'Arbitrage'], ['macro', 'Macro & Fed'], ['follow', `Following (${fol.list.length})`]] as const).map(([k, l]) =>
           <Chip key={k} on={tab === k} onClick={() => setTab(k)}>{l}</Chip>)}
         <span className="ml-auto text-text-tertiary">Read-only: odds, volume and order books — no trading.</span>
       </div>
@@ -43,6 +43,7 @@ export function PredView() {
           {tab === 'browse' && <Browse onOpen={setOpen} />}
           {tab === 'movers' && <Movers onOpen={setOpen} />}
           {tab === 'cross' && <Cross onOpen={setOpen} />}
+          {tab === 'arb' && <Arb />}
           {tab === 'macro' && <Macro onOpen={setOpen} />}
           {tab === 'follow' && <Following onOpen={setOpen} />}
         </div>
@@ -233,6 +234,136 @@ function Cross({ onOpen }: { onOpen: (o: Open) => void }) {
                 <td className={cn('text-right', Math.abs(o.gap) >= 0.05 ? 'text-amber font-semibold' : 'text-text-tertiary')}>{PT(o.gap) || '0'}</td></tr>))}</tbody></table>
         </div>))}</div>
     </div>
+  );
+}
+
+// ── Cross-venue arbitrage ───────────────────────────────────────────────────
+const C = (v: number | null | undefined) => (v == null ? '—' : `${(v * 100).toFixed(1)}¢`);
+const usd0 = (v: number | null | undefined) => (v == null ? '—' : `$${Math.round(v).toLocaleString()}`);
+const DIR: Record<string, string> = { poly_yes_kalshi_no: 'YES Polymarket + NO Kalshi', kalshi_yes_poly_no: 'YES Kalshi + NO Polymarket' };
+
+function Arb() {
+  const [kFee, setKFee] = useState(0.07);
+  const [pFee, setPFee] = useState(0);
+  const [onlyPos, setOnlyPos] = useState(true);
+  const [sel, setSel] = useState<number | null>(null);
+  const { data: d, error } = useJSON<any>(`/api/v1/mkt/pred/arb?kalshi_fee=${kFee}&poly_fee=${pFee}`, 120_000);
+  const rows = (d?.rows ?? []).filter((r: any) => !onlyPos || r.edge > 0);
+  return (
+    <div className="space-y-2">
+      <Panel title="Polymarket ↔ Kalshi arbitrage" right={
+        <div className="flex items-center gap-3 text-[11px] text-text-secondary">
+          <label>Kalshi fee rate <input type="number" step={0.005} min={0} max={0.2} value={kFee} onChange={(e) => setKFee(Number(e.target.value))} className="w-16 bg-surface-1 border border-border px-1 font-mono" /></label>
+          <label>Polymarket fee <input type="number" step={0.001} min={0} max={0.1} value={pFee} onChange={(e) => setPFee(Number(e.target.value))} className="w-16 bg-surface-1 border border-border px-1 font-mono" /></label>
+          <label><input type="checkbox" checked={onlyPos} onChange={(e) => setOnlyPos(e.target.checked)} /> positive edge only</label>
+        </div>}>
+        <div className="text-[10px] text-text-tertiary mb-2 leading-relaxed">
+          Buy YES on one venue and NO on the other: one of them pays $1. If both cost less than $1 after fees, the difference is locked in —
+          <b className="text-text-secondary"> provided both venues resolve the question the same way</b>. Kalshi's taker fee is ⌈rate × contracts × P × (1−P)⌉; most Polymarket markets charge none.
+        </div>
+        {error && !d && <ErrorBox msg={error} />}
+        {!d && !error && <Loading label="Matching questions across both venues and reading their order books…" />}
+        {d && (
+          <>
+            <div className="text-[11px] text-text-secondary mb-1">{d.matched_questions} questions matched · {d.arbs} with size available at a positive edge after fees · as of {d.as_of}</div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px] font-mono">
+                <thead><tr className="text-text-tertiary">
+                  {['Question', 'Trade', 'YES', 'NO', 'Edge/ct', 'Size', 'Profit', 'Ann.', 'vs UST', 'Closes', ''].map((h) => <th key={h} className={cn('font-normal px-1.5 whitespace-nowrap', h === 'Question' || h === 'Trade' ? 'text-left' : 'text-right')}>{h}</th>)}
+                </tr></thead>
+                <tbody>{rows.map((r: any, i: number) => {
+                  const x = r.executable;
+                  const beats = r.annualized != null && r.treasury_yield != null ? r.annualized > r.treasury_yield : null;
+                  return (<Fragment key={i}>
+                    <tr onClick={() => setSel(sel === i ? null : i)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-2', sel === i && 'bg-surface-2')}>
+                      <td className="py-0.5 pr-1.5 font-sans text-text-primary max-w-[320px] truncate" title={r.poly_question}>{r.poly_question}</td>
+                      <td className="px-1.5 font-sans text-text-secondary whitespace-nowrap">{DIR[r.dir]}</td>
+                       <td className="px-1.5 whitespace-nowrap text-right">{C(r.yes_price)}</td> <td className="px-1.5 whitespace-nowrap text-right">{C(r.no_price)}</td>
+                      <td className={cn('px-1.5 whitespace-nowrap text-right', r.edge > 0 ? 'text-green' : 'text-text-tertiary')}>{C(x?.edge_per_contract ?? r.edge)}</td>
+                       <td className="px-1.5 whitespace-nowrap text-right">{x?.contracts ? big(x.contracts) : '—'}</td>
+                      <td className={cn('px-1.5 whitespace-nowrap text-right', (x?.profit ?? 0) > 0 && 'text-green')}>{x?.contracts ? usd0(x.profit) : '—'}</td>
+                       <td className="px-1.5 whitespace-nowrap text-right">{r.annualized == null ? '—' : `${(r.annualized * 100).toFixed(1)}%`}</td>
+                      <td className={cn('px-1.5 whitespace-nowrap text-right', beats == null ? 'text-text-tertiary' : beats ? 'text-green' : 'text-amber')}>{r.treasury_yield == null ? '—' : `${(r.treasury_yield * 100).toFixed(1)}%`}</td>
+                       <td className="px-1.5 whitespace-nowrap text-right text-text-tertiary">{r.end}</td>
+                       <td className="px-1.5 whitespace-nowrap text-right">{r.flags.length ? <span className="text-amber" title={r.flags.join('\n')}>⚠ {r.flags.length}</span> : ''}</td>
+                    </tr>
+                    {sel === i && <tr><td colSpan={11} className="font-sans"><ArbDetail r={r} /></td></tr>}
+                  </Fragment>);
+                })}</tbody>
+              </table>
+            </div>
+            {!rows.length && <div className="text-[11px] text-text-tertiary py-2">No positive-edge pairs right now — the venues are in line after fees.</div>}
+            <div className="text-[10px] text-text-tertiary mt-2">{d.note}</div>
+          </>
+        )}
+      </Panel>
+      <ArbCheck kFee={kFee} pFee={pFee} />
+    </div>
+  );
+}
+
+function ArbDetail({ r }: { r: any }) {
+  const x = r.executable;
+  return (
+    <div className="mt-2 border border-border bg-surface-1 p-2 text-[11px] space-y-2">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+        <div><Venue v="Polymarket" /> <span className="text-text-primary">{r.poly_question}</span>
+          <div className="text-text-tertiary">Event: {r.poly_event} · YES {P(r.poly_yes)}</div>
+          {r.poly_slug && <a className="text-bloomberg underline" href={`https://polymarket.com/event/${r.poly_slug}`} target="_blank" rel="noreferrer">Open on Polymarket ↗</a>}
+          <div className="mt-1 text-[10px] text-text-secondary whitespace-pre-wrap max-h-32 overflow-auto">{r.poly_rules || 'No rules text.'}</div></div>
+        <div><Venue v="Kalshi" /> <span className="text-text-primary">{r.kalshi_question}</span>
+          <div className="text-text-tertiary">Ticker {r.kalshi_ticker} · YES {P(r.kalshi_yes)}</div>
+          {r.kalshi_series && <a className="text-bloomberg underline" href={`https://kalshi.com/markets/${String(r.kalshi_series).toLowerCase()}`} target="_blank" rel="noreferrer">Open on Kalshi ↗</a>}
+          <div className="mt-1 text-[10px] text-text-secondary whitespace-pre-wrap max-h-32 overflow-auto">{r.kalshi_rules || 'No rules text.'}</div></div>
+      </div>
+      <div className="font-mono">
+        {DIR[r.dir]}: {C(r.yes_price)} + {C(r.no_price)} at the touch, cost incl. fees {C(r.cost)} → edge {C(r.edge)} per $1 contract.
+        {x?.contracts ? ` Walking both books: ${big(x.contracts)} contracts for ${usd0(x.outlay)} (fees ${usd0(x.fees)}) → ${usd0(x.profit)} locked if both resolve alike.` : x?.error ? ` Order books unavailable: ${x.error}` : ' No size at a positive edge once the books are walked.'}
+        {' '}Match: {r.match_how === 'fed' ? 'Fed decision (meeting + bps)' : `wording ${(r.match * 100).toFixed(0)}%`}.
+      </div>
+      {r.flags.length > 0 && <ul className="list-disc pl-4 text-amber">{r.flags.map((f: string) => <li key={f}>{f}</li>)}</ul>}
+    </div>
+  );
+}
+
+function ArbCheck({ kFee, pFee }: { kFee: number; pFee: number }) {
+  const [poly, setPoly] = useState('');
+  const [kal, setKal] = useState('');
+  const [res, setRes] = useState<any>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true); setErr(null); setRes(null);
+    try {
+      const r = await fetch(`/api/v1/mkt/pred/arb/check?poly=${encodeURIComponent(poly)}&kalshi=${encodeURIComponent(kal)}&kalshi_fee=${kFee}&poly_fee=${pFee}`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.detail || `HTTP ${r.status}`);
+      setRes(j);
+    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <Panel title="Check a pair yourself">
+      <div className="flex flex-wrap items-end gap-2 text-[11px]">
+        <label className="flex-1 min-w-[260px]"><span className="block text-text-tertiary">Polymarket question URL / slug</span>
+          <input value={poly} onChange={(e) => setPoly(e.target.value)} placeholder="https://polymarket.com/event/…/will-…" className="w-full bg-surface-1 border border-border px-2 py-1 font-mono" /></label>
+        <label className="w-64"><span className="block text-text-tertiary">Kalshi market ticker</span>
+          <input value={kal} onChange={(e) => setKal(e.target.value.toUpperCase())} placeholder="KXFEDDECISION-26OCT-H0" className="w-full bg-surface-1 border border-border px-2 py-1 font-mono" /></label>
+        <button onClick={run} disabled={busy || !poly || !kal} className="px-3 py-1 bg-bloomberg text-bg disabled:opacity-50">{busy ? 'Checking…' : 'Check'}</button>
+      </div>
+      {err && <div className="mt-2"><ErrorBox msg={err} /></div>}
+      {res && (
+        <div className="mt-2 text-[11px] space-y-1">
+          <div><Venue v="Polymarket" /> {res.poly.question} — bid {C(res.poly.bid)} / ask {C(res.poly.ask)} · closes {res.poly.end}</div>
+          <div><Venue v="Kalshi" /> {res.kalshi.question} — bid {C(res.kalshi.bid)} / ask {C(res.kalshi.ask)} · closes {res.kalshi.end}</div>
+          <table className="w-full font-mono"><tbody>{res.directions.map((d: any) => (
+            <tr key={d.dir} className="border-t border-border-subtle">
+              <td className="font-sans text-text-secondary">{DIR[d.dir]}</td><td className="text-right">{C(d.yes_price)} + {C(d.no_price)}</td>
+              <td className={cn('text-right', d.edge > 0 ? 'text-green' : 'text-text-tertiary')}>edge {C(d.edge)}</td>
+              <td className="text-right">{d.executable?.contracts ? `${big(d.executable.contracts)} ct → ${usd0(d.executable.profit)}` : 'no size'}</td></tr>))}</tbody></table>
+          <div className="text-[10px] text-text-tertiary">Read both rules texts before trading — same words can settle on different sources or times.</div>
+        </div>
+      )}
+    </Panel>
   );
 }
 

@@ -732,6 +732,38 @@ async def mkt_pred_related(q: str = Query(..., min_length=2, max_length=300), li
     return await _run(predmarkets.related, q.split(","), limit, timeout=120)
 
 
+@router.get("/api/v1/mkt/etfarb")
+async def mkt_etf_premium():
+    """ETF premiums / discounts to NAV across ~50 liquid ETFs."""
+    from api.marketdata import etfarb
+    return await _run(etfarb.snapshot, timeout=120)
+
+
+@router.get("/api/v1/mkt/pred/arb")
+async def mkt_pred_arb(kalshi_fee: float = Query(0.07, ge=0, le=0.2), poly_fee: float = Query(0.0, ge=0, le=0.1),
+                       min_edge: float = Query(-0.03, ge=-0.5, le=0.5)):
+    """Cross-venue arbitrage: the same yes/no question on Polymarket and Kalshi, priced at executable asks after fees."""
+    from api.marketdata import predarb
+    return await _run(predarb.scan, kalshi_fee, poly_fee, min_edge, timeout=180)
+
+
+@router.get("/api/v1/mkt/pred/arb/check")
+async def mkt_pred_arb_check(poly: str = Query(..., min_length=3, max_length=300), kalshi: str = Query(..., min_length=3, max_length=120),
+                             kalshi_fee: float = Query(0.07, ge=0, le=0.2), poly_fee: float = Query(0.0, ge=0, le=0.1)):
+    """Arbitrage check for a pair you choose: a Polymarket question (URL, slug or token id) and a Kalshi market ticker."""
+    from api.marketdata import predarb
+
+    def run():
+        try:
+            return predarb.check(poly, kalshi, kalshi_fee, poly_fee)
+        except ValueError as e:
+            return {"error": str(e)}
+    out = await _run(run, timeout=60)
+    if isinstance(out, dict) and out.get("error") and len(out) == 1:
+        raise HTTPException(400, out["error"])
+    return out
+
+
 @router.get("/api/v1/mkt/pred/{layer}")
 async def mkt_pred_layer(layer: str, sports: bool = False):
     """movers / cross (same question on both venues) / macro (Fed odds vs futures and macro markets)."""

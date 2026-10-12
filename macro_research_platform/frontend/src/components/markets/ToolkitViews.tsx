@@ -331,3 +331,52 @@ export function EcosView({ seed }: { seed?: string }) {
     </div>
   );
 }
+
+// ── ETFA: ETF premium / discount to NAV ─────────────────────────────────────
+export function EtfaView({ onOpen }: { onOpen?: (s: string) => void }) {
+  const { data: d, error } = useJSON<any>('/api/v1/mkt/etfarb', 900_000);
+  const [group, setGroup] = useState('');
+  if (error && !d) return <ErrorBox msg={error} />;
+  if (!d) return <Loading label="Reading ETF NAVs…" />;
+  const rows = d.rows.filter((r: any) => !group || r.group === group);
+  const bp = (v: number | null) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(1)}bp`);
+  const bn = (v: number | null) => (v == null ? '—' : v >= 1e9 ? `$${(v / 1e9).toFixed(1)}bn` : `$${(v / 1e6).toFixed(0)}m`);
+  const why = d.groups.find((g: any) => g.group === group)?.why;
+  return (
+    <div className="space-y-2">
+      <Panel title="ETF premium / discount to NAV">
+        <div className="flex flex-wrap gap-1 text-[11px] mb-2">
+          <button onClick={() => setGroup('')} className={cn('px-2 py-0.5 border rounded-sm', !group ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>All</button>
+          {d.groups.map((g: any) => (
+            <button key={g.group} onClick={() => setGroup(g.group)} className={cn('px-2 py-0.5 border rounded-sm', group === g.group ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>
+              {g.group} <span className="font-mono text-text-tertiary">{bp(g.median_bp)}</span>
+            </button>))}
+        </div>
+        {why && <div className="text-[11px] text-amber mb-2">{why}</div>}
+        <div className="overflow-x-auto">
+          <table className="w-full text-[11px] font-mono">
+            <thead><tr className="text-text-tertiary">
+              {['ETF', 'Name', 'Group', 'Close', 'NAV', 'Premium', 'Since close', 'AUM', 'Expense'].map((h, i) => <th key={h} className={cn('font-normal px-1.5', i < 3 ? 'text-left' : 'text-right')}>{h}</th>)}
+            </tr></thead>
+            <tbody>{rows.map((r: any) => {
+              const flag = d.flagged.includes(r.symbol);
+              return (
+                <tr key={r.symbol} className="border-t border-border-subtle hover:bg-surface-2">
+                  <td className="px-1.5 py-0.5"><button className="text-bloomberg hover:underline" onClick={() => onOpen?.(r.symbol)}>{r.symbol}</button></td>
+                  <td className="px-1.5 font-sans text-text-secondary max-w-[220px] truncate">{r.name}</td>
+                  <td className="px-1.5 font-sans text-text-tertiary whitespace-nowrap">{r.group}</td>
+                  <td className="px-1.5 text-right">{fmtPrice(r.close)}</td><td className="px-1.5 text-right">{fmtPrice(r.nav)}</td>
+                  <td className={cn('px-1.5 text-right', flag ? 'text-amber font-semibold' : r.premium_bp >= 0 ? 'text-green' : 'text-red')}>{bp(r.premium_bp)}</td>
+                  <td className="px-1.5 text-right text-text-tertiary">{bp(r.move_since_close_bp)}</td>
+                  <td className="px-1.5 text-right">{bn(r.aum)}</td>
+                  <td className="px-1.5 text-right">{r.expense_pct == null ? '—' : `${Number(r.expense_pct).toFixed(2)}%`}</td>
+                </tr>);
+            })}</tbody>
+          </table>
+        </div>
+        <div className="text-[10px] text-text-tertiary mt-2">{d.note}{d.missing.length ? ` No NAV from Yahoo for: ${d.missing.join(', ')}.` : ''}
+          {d.unreliable?.length ? ` Set aside (NAV looks stale): ${d.unreliable.map((u: any) => `${u.symbol} NAV ${u.nav} vs close ${u.close}`).join('; ')}.` : ''}</div>
+      </Panel>
+    </div>
+  );
+}

@@ -251,7 +251,8 @@ TEMPLATES: List[Dict[str, Any]] = [
         "evidence": "The textbook equity stat-arb model run by quant market-neutral desks: model each stock's residual "
                     "(after removing market beta) as an Ornstein–Uhlenbeck process and trade its s-score. Sharpe ≈1.4 "
                     "1997–2007 on US stocks, then much weaker as the trade got crowded — the Aug-2007 quant crash hit it "
-                    "hardest (Avellaneda & Lee 2010; Khandani & Lo 2007). Daily turnover: costs decide it.",
+                    "hardest (Avellaneda & Lee 2010; Khandani & Lo 2007). Daily turnover: costs decide it. Hedging each "
+                    "stock with its sector ETF instead (signal -sscore(60, 1)) scores about the same on this universe.",
         "citation": "Avellaneda & Lee (2010); Khandani & Lo (2007)",
         "spec": {"universe": {"preset": "us_megacaps"}, "signal": "-sscore(60)",
                  "selection": {"mode": "long_short", "n": 8}, "weighting": "inverse_vol",
@@ -303,6 +304,37 @@ TEMPLATES: List[Dict[str, Any]] = [
                  "selection": {"mode": "long_short", "n": 10}, "weighting": "inverse_vol",
                  "risk": {"vol_target": 0.08, "max_weight": 0.15, "max_gross": 2.0},
                  "rebalance": "monthly", "costs": {"bps": 3, "borrow_bps": 50}},
+    },
+    {
+        "id": "vrp_timed_spy",
+        "name": "Volatility risk premium timing (S&P 500)",
+        "family": "Volatility",
+        "description": "Hold SPY while implied volatility (VIX) is above the S&P's realised 1-month volatility; switch to "
+                       "Treasuries (IEF) when realised volatility overtakes implied — the market is in stress. Weekly.",
+        "evidence": "Implied volatility is usually above realised: option sellers are paid a risk premium. The premium "
+                    "predicts equity returns (Bollerslev, Tauchen & Zhou 2009), and when it turns negative the market is "
+                    "in a high-volatility regime where drawdowns cluster. Over 2005–26 here: Sharpe ≈0.74 vs 0.64 "
+                    "buy-and-hold, max drawdown ≈−39% vs −55%. Lags sharp V-shaped rebounds.",
+        "citation": "Bollerslev, Tauchen & Zhou (2009); Carr & Wu (2009)",
+        "spec": {"universe": {"symbols": ["SPY"]}, "signal": "vix - 100 * sqrt(252) * std(mkt / delay(mkt, 1) - 1, 21)",
+                 "selection": {"mode": "threshold", "min_score": 0}, "weighting": "equal_universe", "fallback": "IEF",
+                 "rebalance": "weekly", "costs": {"bps": 2}},
+    },
+    {
+        "id": "short_vol_term_structure",
+        "name": "Short volatility with a term-structure filter (SVXY)",
+        "family": "Volatility",
+        "description": "Hold the short-VIX-futures ETF SVXY only while the VIX curve is in contango (3-month VIX above "
+                       "spot VIX) and implied volatility exceeds realised; otherwise short Treasuries (SHY). Daily.",
+        "evidence": "Selling VIX futures in contango harvests the roll-down and the volatility premium (Simon & "
+                    "Campasano 2014) — the trade behind most option-market-making P&L. It is short a crash: on 5 Feb "
+                    "2018 inverse-VIX funds lost ~90% in a day (XIV was liquidated). The filter cut the worst drawdown "
+                    "here from −95% to about −59%, but a one-day gap can still exceed any filter. SVXY is −0.5× since 2018.",
+        "citation": "Simon & Campasano (2014); Whaley (2013)",
+        "spec": {"universe": {"symbols": ["SVXY"]},
+                 "signal": "where(vix3m > vix, vix - 100 * sqrt(252) * std(mkt / delay(mkt, 1) - 1, 21), nan)",
+                 "selection": {"mode": "threshold", "min_score": 0}, "weighting": "equal_universe", "fallback": "SHY",
+                 "rebalance": "daily", "execution": "next_close", "costs": {"bps": 5}},
     },
 ]
 

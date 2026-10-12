@@ -185,10 +185,15 @@ def _kalshi_events(pages: int = 10) -> List[Dict[str, Any]]:
         params = {"status": "open", "limit": 200, "with_nested_markets": "true"}
         if cursor:
             params["cursor"] = cursor
-        try:
-            j = _get(f"{KALSHI}/events", params=params)
-        except Exception as e:
-            logger.info("[pred] kalshi page: %s", e)
+        j = None
+        for attempt in range(3):                       # Kalshi rate-limits bursts: back off rather than stop early
+            try:
+                j = _get(f"{KALSHI}/events", params=params)
+                break
+            except Exception as e:
+                logger.info("[pred] kalshi page (try %s): %s", attempt + 1, e)
+                time.sleep(1.5 * (attempt + 1))
+        if j is None:
             break
         raw.extend(j.get("events") or [])
         cursor = j.get("cursor")
@@ -247,10 +252,25 @@ def refresher_start(every: float = 240.0) -> None:
     threading.Thread(target=loop, name="pred-refresh", daemon=True).start()
 
 
+_last_good: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
+
+
+def _keep_complete(venue: str, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """A refresh cut short by rate limits returns a fraction of the venue — keep the last complete list
+    (up to an hour old) rather than silently dropping most questions."""
+    prev = _last_good.get(venue)
+    if prev and len(events) < 0.5 * len(prev[1]) and time.time() - prev[0] < 3600:
+        logger.info("[pred] %s refresh returned %s events (last %s) — keeping the previous list", venue, len(events), len(prev[1]))
+        return prev[1]
+    if events:
+        _last_good[venue] = (time.time(), events)
+    return events
+
+
 def _build_catalog() -> Dict[str, Any]:
     with ThreadPoolExecutor(2) as ex:
         fp, fk = ex.submit(_poly_events), ex.submit(_kalshi_events)
-        poly, kal = fp.result(), fk.result()
+        poly, kal = _keep_complete("Polymarket", fp.result()), _keep_complete("Kalshi", fk.result())
     if not poly and not kal:
         raise Upstream("Neither Polymarket nor Kalshi answered.")
     events = poly + kal

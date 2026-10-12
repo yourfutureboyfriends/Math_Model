@@ -114,31 +114,30 @@ def f_resid(ctx, n=252):
     return _resid(ctx, _win(n, "resid", 20))
 
 
-@_fn("sscore", "sscore(n=60)", "Avellaneda–Lee s-score: in each n-day window, regress the asset's returns on the "
-     "benchmark's, fit an Ornstein–Uhlenbeck process to the cumulative residual and measure how far it sits from "
+@_fn("sscore", "sscore(n=60, sector=0)", "Avellaneda–Lee s-score: in each n-day window, regress the asset's returns on the "
+     "benchmark's (sector=1: on its sector ETF — large caps only, others use the benchmark), fit an Ornstein–Uhlenbeck process to the cumulative residual and measure how far it sits from "
      "equilibrium in equilibrium standard deviations (centred across the universe). Blank where the residual does "
      "not mean-revert within ~n/2 days. Trade −sscore: buy below −1.25, sell above +1.25.", "Stat arb")
-def f_sscore(ctx, n=60):
+def f_sscore(ctx, n=60, sector=0):
     n = _win(n, "sscore", 20)
     r = ctx.close.pct_change(fill_method=None).to_numpy(float)
-    m = ctx.mkt_series.reindex(ctx.close.index).pct_change(fill_method=None).to_numpy(float)
+    M = ctx.factor_returns(bool(sector)).to_numpy(float)
     T, N = r.shape
     out = np.full((T, N), np.nan)
     b_max = math.exp(-2.0 / n)                                   # mean-reversion half-life under ≈ n/2.9 days
     for t in range(n, T):
-        rw, mw = r[t - n + 1:t + 1], m[t - n + 1:t + 1]
-        if not np.isfinite(mw).all():
-            continue
-        cols = np.flatnonzero(np.isfinite(rw).all(axis=0))
+        rw, mw = r[t - n + 1:t + 1], M[t - n + 1:t + 1]
+        cols = np.flatnonzero(np.isfinite(rw).all(axis=0) & np.isfinite(mw).all(axis=0))
         if cols.size == 0:
             continue
-        rw = rw[:, cols]
-        mc = mw - mw.mean()
-        vm = mc @ mc
-        if vm <= 0:
+        rw, mw = rw[:, cols], mw[:, cols]
+        mc = mw - mw.mean(axis=0)
+        vm = (mc * mc).sum(axis=0)
+        okc = vm > 0
+        if not okc.any():
             continue
-        beta = mc @ (rw - rw.mean(axis=0)) / vm
-        eps = rw - rw.mean(axis=0) - np.outer(mc, beta)           # OLS residuals (sum to zero)
+        beta = np.where(okc, (mc * (rw - rw.mean(axis=0))).sum(axis=0) / np.where(okc, vm, 1), 0.0)
+        eps = rw - rw.mean(axis=0) - mc * beta                   # OLS residuals per asset (sum to zero)
         x = np.cumsum(eps, axis=0)
         xl, xn = x[:-1], x[1:]
         xlc = xl - xl.mean(axis=0)
@@ -312,7 +311,10 @@ VARIABLES: Dict[str, str] = {
     "volume": "Shares traded.",
     "mkt": "The benchmark's close (default SPY), the same for every asset — e.g. a market filter mkt > sma(mkt, 200).",
     "nan": "Missing value — means 'no position' in a signal.",
+    "vix": "CBOE VIX — S&P 500 30-day implied volatility in vol points (20 = 20%), the same for every asset.",
+    "vix3m": "CBOE 3-month VIX (from 2007). vix3m > vix = normal upward term structure (contango); below = stress.",
 }
+_INDEX_VARS = {"vix": "^VIX", "vix3m": "^VIX3M"}
 
 # Point-in-time fundamentals from SEC filings (US-listed SEC filers only; blank for ETFs and
 # non-US stocks). Each value appears the day after its filing became public, as first filed.
@@ -358,6 +360,28 @@ class Ctx:
         self._fund_loader = fundamentals_loader
         self._fund: Optional[Dict[str, pd.DataFrame]] = None
 
+    def factor_returns(self, sector: bool) -> pd.DataFrame:
+        """Daily hedge-factor returns per asset: its sector ETF (where mapped and trading), else the benchmark."""
+        m = self.mkt_series.reindex(self.close.index).pct_change(fill_method=None)
+        out = pd.DataFrame({c: m for c in self.close.columns}, index=self.close.index)
+        if not sector:
+            return out
+        from api.quant import data as qdata
+        etfs = sorted({qdata.SECTOR_ETF[c] for c in self.close.columns if c in qdata.SECTOR_ETF})
+        if not etfs:
+            return out
+        start = self.close.index[0].strftime("%Y-%m-%d")
+        try:
+            pan, _ = qdata.panel(etfs, start=start)
+        except Exception as e:                                   # noqa: BLE001
+            raise ExprError(f"Sector ETF prices unavailable: {e}")
+        sr = pan["close"].reindex(self.close.index).pct_change(fill_method=None) if pan else pd.DataFrame()
+        for c in self.close.columns:
+            e = qdata.SECTOR_ETF.get(c)
+            if e and e in sr:
+                out[c] = sr[e].where(sr[e].notna(), m)
+        return out
+
     def _fundamentals(self) -> Dict[str, pd.DataFrame]:
         """Loaded once per evaluation, only if a formula uses a fundamental."""
         if self._fund is None:
@@ -390,6 +414,18 @@ class Ctx:
             return self.fundamental(name)
         if name == "mkt":
             return pd.DataFrame(np.repeat(self.mkt_series.to_numpy()[:, None], self.close.shape[1], axis=1),
+                                index=self.close.index, columns=self.close.columns)
+        if name in _INDEX_VARS:
+            from api.quant import data as qdata
+            sym = _INDEX_VARS[name]
+            try:
+                pan, _ = qdata.panel([sym], start=self.close.index[0].strftime("%Y-%m-%d"))
+                ser = pan["close"][sym].reindex(self.close.index).ffill(limit=3) if pan else None
+            except Exception as e:                               # noqa: BLE001
+                raise ExprError(f"{sym} is unavailable: {e}")
+            if ser is None or ser.notna().sum() == 0:
+                raise ExprError(f"{sym} is unavailable right now.")
+            return pd.DataFrame(np.repeat(ser.to_numpy()[:, None], self.close.shape[1], axis=1),
                                 index=self.close.index, columns=self.close.columns)
         v = {"close": self.close, "open": self.open, "high": self.high, "low": self.low, "volume": self.volume}[name]
         if v is None:
