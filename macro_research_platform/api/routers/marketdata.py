@@ -513,6 +513,40 @@ async def mkt_filings(symbol: str, limit: int = Query(120, ge=10, le=400)):
     return await _run(research.filings, symbol, limit, timeout=90)
 
 
+@router.get("/api/v1/mkt/tech/{symbol}")
+async def mkt_technicals(symbol: str):
+    """Technical analysis: indicators, vote summary, trend, levels, and how each signal has worked on this stock."""
+    from api.marketdata import toolkit
+    return await _run(toolkit.technicals, symbol, timeout=90)
+
+
+@router.get("/api/v1/mkt/sprd")
+async def mkt_spread(a: str = Query(..., min_length=1, max_length=20), b: str = Query(..., min_length=1, max_length=20),
+                     years: int = Query(5, ge=1, le=10), entry: float = Query(2.0, ge=0.5, le=4.0), exit: float = Query(0.5, ge=0.0, le=2.0)):
+    """Pairs / spread analysis with cointegration, half-life and an out-of-sample z-score backtest."""
+    from api.marketdata import toolkit
+    return await _run(toolkit.spread, a, b, years, entry, exit, timeout=120)
+
+
+@router.get("/api/v1/mkt/cbrt")
+async def mkt_central_banks():
+    """Policy rates of ~40 central banks (BIS)."""
+    from api.marketdata import toolkit
+    return await _run(toolkit.central_banks, timeout=120)
+
+
+@router.get("/api/v1/mkt/ecos/search")
+async def mkt_fred_search(q: str = Query(..., min_length=2, max_length=120)):
+    from api.marketdata import toolkit
+    return await _run(toolkit.fred_search, q, timeout=45)
+
+
+@router.get("/api/v1/mkt/ecos/series/{sid}")
+async def mkt_fred_series(sid: str):
+    from api.marketdata import toolkit
+    return await _run(toolkit.fred_series, sid, timeout=90)
+
+
 @router.get("/api/v1/mkt/cred")
 async def mkt_credit():
     """Credit spreads (ICE BofA OAS) by rating and region."""
