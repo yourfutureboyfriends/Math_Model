@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 CACHE = Path(__file__).resolve().parent.parent.parent / "data" / "processed" / "quant" / "ohlcv"
 MAX_AGE_S = 18 * 3600
 from api.quant.codelab import UNIVERSE_LIMIT as MAX_SYMBOLS   # one capability limit for loader, sandbox and UI
-_SYMBOL = re.compile(r"^\^?[A-Z0-9][A-Z0-9.\-^=]{0,14}$")
+_SYMBOL = re.compile(r"^\^?[A-Z0-9][A-Z0-9.\-^=&]{0,14}$")      # '&' occurs in real tickers: M&M.NS, PE&OLES.MX
 _lock = threading.Lock()
 
 PRESETS: Dict[str, Dict] = {
@@ -201,7 +201,22 @@ def _fresh(sym: str) -> Optional[pd.DataFrame]:
     return None
 
 
+BATCH = 150                            # tickers per Yahoo request — thousands in one call fail or time out
+
+
 def _download(symbols: List[str]) -> Dict[str, pd.DataFrame]:
+    out: Dict[str, pd.DataFrame] = {}
+    for i in range(0, len(symbols), BATCH):
+        try:
+            out.update(_download_batch(symbols[i:i + BATCH]))
+        except Exception as e:                               # noqa: BLE001 — one failed batch must not lose the rest
+            logger.warning("[quant] batch %s–%s failed: %s", i, i + BATCH, e)
+        if len(symbols) > BATCH:
+            time.sleep(1.0)                                   # be polite to Yahoo between batches
+    return out
+
+
+def _download_batch(symbols: List[str]) -> Dict[str, pd.DataFrame]:
     import yfinance as yf
     out: Dict[str, pd.DataFrame] = {}
     if not symbols:

@@ -104,6 +104,7 @@ def test_zero_volume_bar_is_not_executable_and_stale_marks_are_flagged():
 def test_ended_listing_is_settled_at_last_close():
     close = np.r_[[100.0] * 20, [80.0] * 5, [np.nan] * 15]
     d = mk({"A": close, "B": [10.0] * 40})
+    d.provenance["delisting_events"] = {"A": {"effective_date": str(IDX[25].date()), "known_at": str(IDX[25].date())}}
     res = cl.backtest(target(d, {0: [1.0, 0.0]}), d, {**Z, "delist_haircut": 0.25})
     assert res["ledger"]["units"] == {}
     assert res["ledger"]["cash"] == pytest.approx(0.8 * 0.75, rel=1e-9)
@@ -247,3 +248,63 @@ def test_no_trade_band_never_blocks_entries_or_exits():
     assert res["turnover"].iloc[0] == pytest.approx(1.0, rel=1e-9)                       # bought despite 0.2% < band
     assert res["turnover"].iloc[20] == pytest.approx(1.0, rel=1e-9)                      # and sold
     assert res["ledger"]["units"] == {}
+
+
+def test_missing_tail_does_not_predict_delisting_and_prefix_is_stable():
+    obs = {"A": np.r_[[True]*20, [False]*5, [True]*15], "B": np.ones(40, bool)}
+    full = mk({"A": [100.0]*40, "B": [100.0]*40}, observed=obs)
+    prefix = mk({"A": [100.0]*25, "B": [100.0]*25}, observed={k:v[:25] for k,v in obs.items()})
+    cost = {**Z, "delist_haircut": .25}
+    a = cl.backtest(target(full, {0:[1.,0.]}),full,cost)
+    b = cl.backtest(target(prefix, {0:[1.,0.]}),prefix,cost)
+    pd.testing.assert_series_equal(a["nav"].iloc[:24],b["nav"])
+    assert b["ledger"]["nav"] == pytest.approx(1.)
+    assert b["execution"]["listings_ended"] == 0
+    assert b["execution"]["stale_position_days"] > 0
+
+
+def test_delisting_waits_until_announcement_is_known():
+    d = mk({"A": [100.0]*40})
+    d.provenance["delisting_events"] = {"A":{"effective_date":str(IDX[10].date()), "known_at":str(IDX[20].date())}}
+    res = cl.backtest(target(d,{0:[1.]}),d,{**Z,"delist_haircut":.25})
+    assert res["nav"].loc[IDX[19]] == pytest.approx(1.)
+    assert res["nav"].loc[IDX[20]] == pytest.approx(.75)
+    assert res["ledger"]["units"] == {}
+
+
+def test_recent_missing_bar_is_stale_not_a_delisting():
+    close = np.r_[[100.0] * 39, [np.nan]]                                                # today's bar not in yet
+    d = mk({"A": close, "B": [10.0] * 40})
+    res = cl.backtest(target(d, {0: [1.0, 0.0]}), d, Z)
+    assert "A" in res["ledger"]["units"] and not res["events"]
+
+
+# ── P1 #5: account-currency conversion and venue taxes ──────────────────────
+def test_flat_foreign_stock_with_moving_fx_changes_usd_nav():
+    # GBp quote stays at 100 (= £1.00); GBP/USD moves 1.25 → 1.30: the USD position gains 4%
+    close_usd = np.r_[[1.25] * 20, [1.30] * 20]
+    d = mk({"HSBA.L": close_usd})
+    d.instruments["HSBA.L"] = {"country": "GB", "currency": "GBP", "sec_fee": False, "tax_buy_bps": 50.0, "tax_sell_bps": 0.0}
+    res = cl.backtest(target(d, {0: [1.0]}), d, Z)
+    nav = res["ledger"]["nav"]
+    assert nav == pytest.approx((1 / 1.005) * 1.30 / 1.25, rel=1e-6)                   # 0.5% stamp duty on the purchase
+    assert res["fees"].sum() == pytest.approx(0.005 / 1.005, rel=1e-6)
+
+
+def test_minor_units_and_fx_conversion_in_the_data_layer(monkeypatch):
+    from api.quant import codeserver, data as qdata
+    idx = pd.bdate_range("2024-01-01", periods=30)
+    gbp = pd.DataFrame({"HSBA.L": [100.0] * 30})                                         # 100 GBp = £1
+    fx = pd.DataFrame({"GBP=X": np.r_[[0.80] * 15, [0.75] * 15]})                        # £ per $1
+    for f in (gbp, fx):
+        f.index = idx
+
+    def fake_panel(syms, start=None, end=None, fill=True):
+        src = fx if syms == ["GBP=X"] else gbp
+        return {k: src.copy() for k in ("close", "open", "high", "low")} | {"volume": src * 0 + 1e6}, []
+    monkeypatch.setattr(qdata, "panel", fake_panel)
+    inst = {"HSBA.L": {"currency": "GBP", "quote_currency": "GBp", "unit_divisor": 100.0, "fx_ticker": "GBP=X"}}
+    out, info = codeserver._to_account_currency(fake_panel(["HSBA.L"])[0], ["HSBA.L"], inst, "2024-01-01", None)
+    assert out["close"]["HSBA.L"].iloc[0] == pytest.approx(1 / 0.80)                    # £1 → $1.25
+    assert out["close"]["HSBA.L"].iloc[20] == pytest.approx(1 / 0.75)
+    assert out["open"]["HSBA.L"].iloc[15] == pytest.approx(1 / 0.80)                    # open uses the previous FX close

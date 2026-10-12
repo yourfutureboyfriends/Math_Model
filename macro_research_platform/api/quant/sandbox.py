@@ -59,7 +59,14 @@ def check(code: str) -> Dict[str, Any]:
     try:
         tree = ast.parse(code)
     except SyntaxError as e:
-        raise SandboxError(f"Syntax error on line {e.lineno}: {e.msg}")
+        line = (code.splitlines()[e.lineno - 1].strip() if e.lineno and e.lineno <= len(code.splitlines()) else "")
+        hint = ""
+        first = line.split(" ", 1)[0] if line else ""
+        for kw in ("import", "from", "def", "return", "if", "for"):
+            if first != kw and first.endswith(kw) and len(first) <= len(kw) + 2:
+                hint = f" — did you mean '{kw}'? ('{first[:len(first) - len(kw)]}' looks like a stray keystroke)"
+                break
+        raise SandboxError(f"Syntax error on line {e.lineno}: {e.msg}" + (f": `{line[:120]}`" if line else "") + hint)
     for node in ast.walk(tree):
         line = getattr(node, "lineno", "?")
         if isinstance(node, ast.Import):
@@ -183,7 +190,7 @@ def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] 
         data.provenance["universe_selection"] = (f"TRADABLE_UNIVERSE '{head['tradable']}': today's list of "
                                                  f"{len(names)} names — retrospective / survivor-selected (names that failed "
                                                  "or were delisted earlier are absent)")
-        cpu = TIMEOUT_S * 4
+        cpu = TIMEOUT_S * (4 if len(universe) <= 1000 else 12)        # a 3,000-name global cross-section takes longer
     else:
         data = codeserver.load_data(head["universe"], head["start"])
         cpu = TIMEOUT_S

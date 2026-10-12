@@ -14,24 +14,146 @@ import { CATEGORICAL } from '@/lib/chartPalette';
 import { DeepReport } from './DeepReport';
 import { api, ErrorNote, Field, inputCls, num, pct, spct, tone, usd } from './shared';
 
-export const STARTER = `# Your strategy. Runs in your browser (Python 3 + numpy + pandas).
-# Return target weights: dates × tickers, fraction of capital (+long / −short).
-# A row decided with data up to that day's close is traded at the next day's open,
-# net of commission, spread, market impact, fees, borrow and financing.
-UNIVERSE = ["SPY", "EFA", "EEM", "TLT", "IEF", "GLD", "DBC"]
-START = "2007-01-01"
-# Optional: a small grid — each January the best set on past data (net of costs) is used,
-# so the record you see is out-of-sample (walk-forward).
-PARAMS = {"lookback": [126, 252], "target_vol": [0.10, 0.12]}
+export const STARTER = `# Shared USD US-listed stock universe. Sparse decisions for ledger.2.
+# Keeps the prior equity selection; adds a weekly market stress budget.
+# Retrospective universe, no proven future alpha. No leverage or live orders.
+# Equity momentum research strategy: paste into Quant Lab, replace UNIVERSE as needed.
+# The configured server universe supports up to 1000 symbols in one USD cross-section.
+# Only price/volume signals: no claims of fundamental quality or guaranteed alpha.
+import numpy as np
+import pandas as pd
+
+UNIVERSE = ["SPY"]
+TRADABLE_UNIVERSE = "US"
+START = "2011-01-03"
+BENCHMARK = "SPY"
+PARAMS = {}
 
 
-def strategy(data, lookback=252, target_vol=0.10):
-    px = data.close                                   # also: data.open/high/low/volume, data.rf, data.vix
-    trend = momentum(px, lookback, 21) > 0            # helpers: momentum, ewma_vol, vol_target,
-    w = trend / ewma_vol(px, 63)                      #          normalize_gross, hold_monthly, hold_weekly
-    w = normalize_gross(w)                            # sum |w| = 1
-    w = vol_target(w, px, target_vol, max_leverage=2.0)
-    return hold_monthly(w)                            # trade once a month
+def equity_targets(data, core_symbol="SPY", core_share=0.30, broad_share=0.35, picks=15,
+             target_vol=0.20, max_stock=0.08, min_traded_value=10000000.0,
+             participation=0.01, capital=1000000.0, risk_off=0.65, **params):
+    px = data.close.astype(float)
+    volume = data.volume.reindex(index=px.index, columns=px.columns).astype(float)
+    if not isinstance(px.index, pd.DatetimeIndex) or not px.index.is_unique or not px.index.is_monotonic_increasing:
+        raise ValueError("Dates must be unique and increasing")
+    if core_symbol not in px.columns:
+        raise ValueError("Include the tradable core ETF in UNIVERSE")
+    if not px.columns.is_unique or len(px.columns) > 1000:
+        raise ValueError("Use at most 1000 unique tickers")
+    if np.isinf(px.to_numpy()).any() or (px <= 0).any().any():
+        raise ValueError("Prices must be positive; missing histories are allowed")
+    if params or not 0 <= core_share <= 0.8 or not 0 <= broad_share <= 1-core_share or not 0.05 <= target_vol <= 0.30:
+        raise ValueError("Unknown parameters or invalid core_share/target_vol")
+    if isinstance(picks,bool) or not isinstance(picks,int) or not 5 <= picks <= 50:
+        raise ValueError("picks must be an integer from 5 through 50")
+    if not 0 < max_stock <= .10 or min_traded_value <= 0 or capital <= 0 or not 0 < participation <= .02 or not 0 <= risk_off <= 1:
+        raise ValueError("Invalid concentration, liquidity, capital or regime settings")
+    ret = px.pct_change(fill_method=None)
+    ready = px.notna().rolling(253,min_periods=253).sum().eq(253)
+    vol = ret.rolling(63,min_periods=63).std()*np.sqrt(252)
+    adv = (px*volume).rolling(63,min_periods=63).mean()
+    liquid = (adv >= min_traded_value) & (volume > 0)
+    eligible = ready & liquid & ((vol >= .03) & (vol <= 1.0))
+    eligible.loc[:,core_symbol] = False
+    mom12 = px.shift(21)/px.shift(252)-1
+    mom6 = px.shift(21)/px.shift(126)-1
+    # Cross-sectional ranks avoid hand-picked absolute score coefficients.
+    score = .6*mom12.where(eligible).rank(axis=1,pct=True) + .4*mom6.where(eligible).rank(axis=1,pct=True)
+    # Requiring positive momentum is a hypothesis, not an optimized threshold.
+    score = score.where(eligible & (mom12 > 0) & (mom6 > 0))
+    regime = px[core_symbol] >= px[core_symbol].rolling(200,min_periods=200).mean()
+    core_ready = ready[core_symbol] & (volume[core_symbol] > 0)
+    weights = np.zeros(px.shape)
+    last = np.zeros(len(px.columns))
+    core_index = list(px.columns).index(core_symbol)
+    previous = []
+    # First observed trading day of each month; determined without future calendar rows.
+    months = px.index.to_period("M")
+    decisions = np.r_[True, months[1:] != months[:-1]]
+    next_ready = True
+    for t in range(len(px)):
+        if not core_ready.iloc[t]:
+            weights[t] = 0.0
+            last = np.zeros(len(px.columns))
+            next_ready = True
+            continue
+        if decisions[t] or next_ready:
+            candidate = np.zeros(len(px.columns))
+            ranks = score.iloc[t].rank(ascending=False,method="first")
+            # Keep incumbents within top 1.5*picks to reduce unnecessary turnover.
+            keep = [j for j in previous if pd.notna(ranks.iloc[j]) and ranks.iloc[j] <= 1.5*picks]
+            keep = sorted(keep,key=lambda j:float(ranks.iloc[j]))[:picks]
+            ordered = np.argsort(ranks.fillna(1e9).to_numpy())
+            selected = list(keep)
+            for j in ordered:
+                if len(selected) >= picks: break
+                if j not in selected and pd.notna(ranks.iloc[j]): selected.append(int(j))
+            previous = selected
+            budget = .98*(1.0 if regime.iloc[t] else risk_off)
+            if selected:
+                inv = 1/np.sqrt(vol.iloc[t,selected].to_numpy())
+                allocation = inv/inv.sum()*budget*(1-core_share-broad_share)
+                capacity = adv.iloc[t,selected].to_numpy()*participation/capital
+                candidate[selected] = allocation
+                # Residual stock budget stays cash; never hides concentration in core.
+                candidate[core_index] = budget*core_share
+            else:
+                candidate[core_index] = budget*core_share
+            # Blend a diversified equity sleeve with concentrated momentum.
+            broad = eligible.iloc[t].to_numpy()
+            if broad.any():
+                candidate[broad] += budget*broad_share/float(broad.sum())
+            stock_mask = np.ones(len(px.columns),dtype=bool)
+            stock_mask[core_index] = False
+            capacity = adv.iloc[t].fillna(0).to_numpy()*participation/capital
+            candidate[stock_mask] = np.minimum(np.minimum(candidate[stock_mask],max_stock),capacity[stock_mask])
+            active = candidate > 0
+            history = ret.iloc[max(0,t-62):t+1,active].to_numpy()
+            if len(history)==63 and np.isfinite(history).all():
+                cov = np.atleast_2d(np.cov(history,rowvar=False,ddof=1))*252
+                a = candidate[active]
+                risk = np.sqrt(max(float(a@cov@a),0))
+                candidate *= min(1.,target_vol/risk) if risk>0 else 1.
+            else:
+                candidate *= 0
+            last = candidate
+            next_ready = False
+        # Sell invalid / zero-volume names on the next execution opportunity.
+        valid_now = ready.iloc[t].to_numpy() & (volume.iloc[t].to_numpy()>0)
+        last = np.where(valid_now,last,0)
+        weights[t] = last
+    return pd.DataFrame(weights,index=px.index,columns=px.columns)
+
+
+def strategy(data, stress_budget=0.50, stress_drawdown=0.15, stress_vol=0.30, **params):
+    if not .20 <= stress_budget <= .98 or not .05 <= stress_drawdown <= .30 or not .15 <= stress_vol <= .60:
+        raise ValueError("Invalid market stress settings")
+    # Upstream parameters remain the previous frozen equity specification.
+    targets = equity_targets(data, **params)
+    px = data.close["SPY"]
+    market_return = px.pct_change(fill_method=None)
+    market_vol = market_return.rolling(20,min_periods=20).std()*np.sqrt(252)
+    market_dd = px/px.rolling(252,min_periods=252).max()-1.
+    stress = (market_dd <= -stress_drawdown) | (market_vol >= stress_vol)
+    months = px.index.to_period("M")
+    weeks = px.index.to_period("W")
+    monthly = np.r_[True, months[1:]!=months[:-1]]
+    weekly = np.r_[True, weeks[1:]!=weeks[:-1]]
+    out = np.full(targets.shape,np.nan)
+    last = np.zeros(len(targets.columns))
+    initialized = False
+    for t in range(len(targets)):
+        if monthly[t] or (not initialized and targets.iloc[t].sum()>0):
+            last = targets.iloc[t].to_numpy().copy()
+            if stress.iloc[t] and last.sum()>stress_budget:
+                last *= stress_budget/last.sum()
+            out[t] = last
+            initialized = last.sum()>0
+        elif weekly[t] and stress.iloc[t] and last.sum()>stress_budget:
+            last = last*stress_budget/last.sum()
+            out[t] = last
+    return pd.DataFrame(out,index=targets.index,columns=targets.columns)
 `;
 
 export const COST_DEFAULTS = { capital: 1_000_000, commission_bps: 0.35, spread_mult: 1, impact_coef_bps: 11.21, borrow_fee: 0.003,
@@ -276,7 +398,9 @@ function ApiHelp() {
         <li><code>data.close/open/high/low/volume</code> — DataFrames, dates × UNIVERSE, adjusted for splits and dividends.</li>
         <li><code>data.rf</code> daily T-bill rate · <code>data.vix</code> VIX close.</li>
         <li>Helpers: <code>momentum(px, n, skip)</code>, <code>ewma_vol(px, halflife)</code>, <code>vol_target(w, px, target)</code>, <code>normalize_gross(w)</code>, <code>hold_monthly(w)</code>, <code>hold_weekly(w)</code>; <code>np</code>, <code>pd</code>, <code>math</code>.</li>
-        <li>Optional: <code>START</code>, <code>BENCHMARK</code>, <code>PARAMS</code> (≤ 48 combinations, walk-forward).</li>
+        <li>Universe: <code>TRADABLE_UNIVERSE = "US"</code> uses the shared configured US listings in a server job. Remove that line for a custom <code>UNIVERSE</code> (up to 80 symbols). USD only; no live trading.</li>
+        <li><code>data.observed</code> flags actual bars. Return all-NaN rows between decisions to hold and drift; populated rows request a rebalance at the next observed open.</li>
+        <li>Optional: <code>START</code>, <code>BENCHMARK</code>, <code>PARAMS</code> (≤ 48 combinations, walk-forward), <code>HOLDOUT</code>.</li>
         <li><code>print()</code> shows in Output. In the browser you can also import scipy, scikit-learn or statsmodels; deployable code is limited to numpy, pandas and math.</li>
       </ul>
     </details>

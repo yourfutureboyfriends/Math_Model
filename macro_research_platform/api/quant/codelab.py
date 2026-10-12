@@ -26,7 +26,7 @@ Costs (all charged, all configurable — defaults are research-calibrated):
   financing      cash earns the T-bill rate; borrowing (gross long > 100%) pays T-bill + spread (default 1.0%)
 Accounting: one self-financing account — units and cash, NAV = Σ units × mark + cash, costs settle
 into cash. Fills only at observed opens of assets that traded; unfillable orders stay pending; stale
-marks are flagged; ended listings settle at their last close. Returns are total returns (Yahoo
+marks are flagged; explicitly dated delistings settle at their last observed mark; missing tails stay stale. Returns are total returns (Yahoo
 adjusted prices include dividends). Units and assumptions: COST_SCHEMA.
 """
 from __future__ import annotations
@@ -37,9 +37,9 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 import numpy as np
 import pandas as pd
 
-ENGINE_VERSION = "2026.10-ledger.1"
+ENGINE_VERSION = "2026.10-ledger.2"
 UNIVERSE_LIMIT = 80                   # one capability limit, shared by the loader, the sandbox and the UI
-LARGE_UNIVERSE_LIMIT = 1000           # TRADABLE_UNIVERSE strategies (server job, sandboxed) — one global cross-section
+LARGE_UNIVERSE_LIMIT = 4000           # TRADABLE_UNIVERSE strategies (server job, sandboxed) — one global cross-section
 TRADING_DAYS = 252
 COST_SCHEMA_VERSION = "2026.10"
 COST_SCHEMA: Dict[str, Dict[str, str]] = {
@@ -47,7 +47,8 @@ COST_SCHEMA: Dict[str, Dict[str, str]] = {
     "commission_bps": {"unit": "bp per side of traded notional", "meaning": "broker commission"},
     "spread_mult": {"unit": "multiplier (×), not bp", "meaning": "scales the modelled half-spread"},
     "impact_coef_bps": {"unit": "bp × √(% of 63-day dollar volume)", "meaning": "square-root market impact"},
-    "sec_fee_bps": {"unit": "bp of sale notional", "meaning": "SEC Section 31 fee"},
+    "sec_fee_bps": {"unit": "bp of sale notional", "meaning": "SEC Section 31 fee (US listings only)"},
+    "venue_taxes": {"unit": "bp of traded value, per instrument", "meaning": "stamp duties / FTTs by listing country (api/quant/instruments.py)"},
     "borrow_fee": {"unit": "annual decimal rate on short market value", "meaning": "stock-borrow fee"},
     "financing_spread": {"unit": "annual decimal rate over the bill rate", "meaning": "margin interest on negative cash"},
     "cash_spread": {"unit": "annual decimal rate under the bill rate", "meaning": "positive cash earns bill − this (0 = full T-bill)"},
@@ -77,7 +78,7 @@ class Data:
     it is the execution price, and NaN means no fill is possible that day."""
 
     def __init__(self, close, open_, high, low, volume, rf=None, vix=None, observed=None, rf_known=None,
-                 provenance: Optional[Dict[str, Any]] = None):
+                 provenance: Optional[Dict[str, Any]] = None, instruments: Optional[Dict[str, Dict[str, Any]]] = None):
         self.close, self.high, self.low = close, high, low
         idx = close.index
         self.observed = (observed.reindex(index=idx, columns=close.columns).fillna(False).astype(bool)
@@ -89,6 +90,9 @@ class Data:
         self.vix = vix.reindex(idx).ffill() if vix is not None else pd.Series(np.nan, index=idx)
         self.tickers = list(close.columns)
         self.provenance = dict(provenance or {})
+        # per-instrument metadata (account currency USD): prices arrive already converted to USD; taxes in bp
+        self.instruments = {c: dict((instruments or {}).get(c) or {"country": "US", "currency": "USD", "sec_fee": True})
+                            for c in self.tickers}
 
     def returns(self) -> pd.DataFrame:
         return self.close.pct_change(fill_method=None)
@@ -181,8 +185,8 @@ def backtest(weights: pd.DataFrame, data: Data, costs: Optional[Dict[str, float]
     decided at the close of day t places orders filled at the observed OPEN of t+1, only where that open
     exists and the asset traded (volume > 0); orders that cannot fill stay pending until filled or
     replaced by the next decision. Trading costs, fees, borrow and interest settle into cash. Marks are the
-    last observed close (stale days are counted, never treated as tradable). A position whose listing ends
-    is settled at its last observed close × (1 − delist_haircut). Returns are NAV changes."""
+    last observed close (stale days are counted, never treated as tradable). An explicitly dated, already-known delisting
+    is settled at its last observed mark × (1 − delist_haircut); missing tails remain stale holdings. Returns are NAV changes."""
     cfg = {**DEFAULT_COSTS, **(costs or {})}
     close = data.close
     idx, cols = close.index, list(close.columns)
@@ -199,12 +203,28 @@ def backtest(weights: pd.DataFrame, data: Data, costs: Optional[Dict[str, float]
     adv = dollar_volume(close, data.volume).to_numpy()
     rf = data.rf.to_numpy(float)
     T, N = M.shape
-    last_obs = np.array([np.flatnonzero(OBS[:, j]).max() if OBS[:, j].any() else -1 for j in range(N)])
+    # A missing tail is not evidence of delisting; future observations must not change history.
+    listing_events = data.provenance.get("delisting_events", {})
+    if not isinstance(listing_events, dict):
+        raise ValueError("delisting_events must map tickers to effective_date and known_at")
+    settlement_dates = {}
+    for symbol, event in listing_events.items():
+        if symbol not in cols or not isinstance(event, dict) or not event.get("effective_date") or not event.get("known_at"):
+            raise ValueError("Invalid explicit delisting event")
+        effective, known = pd.Timestamp(event["effective_date"]), pd.Timestamp(event["known_at"])
+        if effective.tzinfo is not None or known.tzinfo is not None:
+            raise ValueError("Delisting dates use timezone-naive exchange session dates")
+        settlement_dates[cols.index(symbol)] = max(effective, known)
+    settled = np.zeros(N, dtype=bool)
     first = int(np.searchsorted(idx.values, np.datetime64(pd.Timestamp(start)))) if start else 0
     first = max(first, 1)
     last_dec = np.where(D, np.arange(T), -1)
     last_dec = np.maximum.accumulate(last_dec)
     band, cap = cfg["no_trade_band"], cfg["capital"]
+    inst = [data.instruments.get(c, {}) for c in cols]
+    sec_mask = np.array([1.0 if i.get("sec_fee", True) else 0.0 for i in inst])        # SEC fee: US listings only
+    tax_buy = np.array([float(i.get("tax_buy_bps") or 0.0) for i in inst])             # venue transaction taxes
+    tax_sell = np.array([float(i.get("tax_sell_bps") or 0.0) for i in inst])
     units = np.zeros(N)
     cash = 1.0
     mark = np.where(OBS[first - 1], M[first - 1], np.nan)
@@ -220,17 +240,21 @@ def backtest(weights: pd.DataFrame, data: Data, costs: Optional[Dict[str, float]
         if D[t - 1] or (t == first and last_dec[t - 1] >= 0):
             target = W[t - 1] if D[t - 1] else W[last_dec[t - 1]]
             pending = np.ones(N, bool)
-        # 2) listings that ended: settle at the last observed close (documented policy)
-        ended = np.flatnonzero((units != 0) & (t > last_obs) & (last_obs >= 0))
-        for j in ended:
-            value = units[j] * M[last_obs[j], j] * (1 - cfg["delist_haircut"])
-            cash += value
-            events.append({"date": str(idx[t].date()), "ticker": cols[j], "event": "listing ended — settled at last close",
-                           "value": round(float(value), 6)})
-            units[j] = 0.0
-            pending[j] = False
+        # 2) only an explicitly dated, already-known listing event permits settlement.
+        # Missing observations retain stale valuation marks and pending orders, never free cash.
+        for j, settlement in settlement_dates.items():
+            if not settled[j] and idx[t] >= settlement:
+                if units[j] != 0:
+                    value = units[j] * float(mark[j]) * (1 - cfg["delist_haircut"])
+                    cash += value
+                    events.append({"date": str(idx[t].date()), "ticker": cols[j],
+                                   "event": "listing ended — explicit event settled at last observed mark",
+                                   "value": round(float(value), 6)})
+                units[j] = 0.0
+                pending[j] = False
+                settled[j] = True
         # 3) the opening market: only observed opens of assets that traded are executable
-        exe = np.isfinite(O[t]) & (O[t] > 0) & OBS[t] & (V[t] > 0)
+        exe = np.isfinite(O[t]) & (O[t] > 0) & OBS[t] & (V[t] > 0) & ~settled
         mark_open = np.where(exe, O[t], mark)
         held_val = np.where(units != 0, units * np.nan_to_num(mark_open), 0.0)
         nav_open = float(held_val.sum() + cash)
@@ -258,7 +282,8 @@ def backtest(weights: pd.DataFrame, data: Data, costs: Optional[Dict[str, float]
                 s_ = float((nt * np.nan_to_num(hs[t], nan=5e-4)).sum())
                 fr = np.where(okdv, nt * cap / np.where(okdv, dv, 1.0), 0.0)
                 i_ = float((nt * cfg["impact_coef_bps"] / 1e4 * np.sqrt(100 * fr)).sum())
-                f_ = cfg["sec_fee_bps"] / 1e4 * float(nt[dl < 0].sum())
+                sells, buys = np.where(dl < 0, nt, 0.0), np.where(dl > 0, nt, 0.0)
+                f_ = float((sells * (cfg["sec_fee_bps"] * sec_mask + tax_sell)).sum() + (buys * tax_buy).sum()) / 1e4
                 return dl, nt, c_, s_, i_, f_
             # size orders against NAV *after* this rebalance's costs, so fees come out of what is bought rather
             # than leaving an unintended margin loan (fixed point; converges in a few steps for realistic costs)
@@ -310,7 +335,8 @@ def backtest(weights: pd.DataFrame, data: Data, costs: Optional[Dict[str, float]
                      "securities": float(held.sum()), "reconciles": bool(abs(held.sum() + cash - navf) < 1e-9)}
     res["events"] = events[-200:]
     res["execution"] = {"unfilled_order_days": int((out["unfilled"][sl] > 0).sum()),
-                        "stale_position_days": int(out["stale_held"][sl].sum()), "listings_ended": len(events),
+                        "stale_position_days": int(out["stale_held"][sl].sum()), "listings_ended": sum(e["event"].startswith("listing ended") for e in events),
+                        "delisting_policy": "explicit effective_date and known_at only; missing tails retain stale marks",
                         "rf_known": bool(data.rf_known)}
     return res
 

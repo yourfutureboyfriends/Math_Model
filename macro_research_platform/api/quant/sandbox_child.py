@@ -75,6 +75,9 @@ def main() -> None:
     except Exception as e:                                    # report the user's error, not ours
         tb = traceback.extract_tb(e.__traceback__)
         where = next((f" (line {f.lineno})" for f in reversed(tb) if f.filename == "<strategy>"), "")
+        if not where and tb:                                  # failure inside the platform: name the engine location
+            f = tb[-1]
+            where = f" (in the engine: {f.filename.rsplit('/', 1)[-1]}:{f.lineno}, {f.name})"
         out = {"error": f"{type(e).__name__}: {e}{where}"[:500]}
     with open(result_path, "w") as f:
         json.dump(out, f)

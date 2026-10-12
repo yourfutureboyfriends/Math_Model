@@ -25,7 +25,7 @@ function loadDraft(): { code: string; name: string; id: number | null } {
     const d = JSON.parse(localStorage.getItem('quantlab.code') || 'null');
     if (d?.code) return { code: d.code, name: d.name ?? '', id: d.id ?? null };
   } catch { /* storage unavailable */ }
-  return { code: STARTER, name: 'Trend-filtered risk parity', id: null };
+  return { code: STARTER, name: 'Universal equity momentum with stress control', id: null };
 }
 
 export function QuantLabSection() {
