@@ -1270,7 +1270,7 @@ async def lifespan(app: FastAPI):
             import threading
             from api.marketdata import edge
             from api.marketdata import insights
-            from api.marketdata import predmarkets, research
+            from api.marketdata import predmarkets, research, funds, fixed_income
             predmarkets.refresher_start()          # keeps PRED and the odds panels warm (Kalshi + Polymarket)
 
             def _warm():
@@ -1278,7 +1278,7 @@ async def lifespan(app: FastAPI):
                 # rate-limited, which then breaks ordinary quote screens for a while
                 import time as _t
                 _t.sleep(90)
-                for f in (research.credit, insights.vol, insights.risk, edge.cot, edge.trade, insights.breadth, edge.ports_trade, insights.implied_moves, insights.uoa, edge.board):
+                for f in (research.credit, fixed_income.treasuries, funds.etf_screener, insights.vol, insights.risk, edge.cot, edge.trade, insights.breadth, edge.ports_trade, insights.implied_moves, insights.uoa, edge.board):
                     try:
                         f()
                     except Exception as e:                       # one slow source must not stop the rest

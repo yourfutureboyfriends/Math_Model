@@ -18,6 +18,7 @@ import { PredView, RelatedOdds } from '@/components/markets/PredMarkets';
 import { ValuationHub } from '@/components/markets/ValuationHub';
 import { CfView, CredView, FacView, PortView } from '@/components/markets/ResearchViews';
 import { CbrtView, EcosView, SprdView, TechView } from '@/components/markets/ToolkitViews';
+import { CacsView, CdrView, ChartView, DataView, DdisView, DvdcView, FsrcView, FxcaView, IlbeView, MembView, MgmtView, MrgrView, OvdvView, PgeoView, YasView } from '@/components/markets/TerminalPlus';
 import { BreadthView, ImpmView, RiskView, UoaView, VolView } from '@/components/markets/InsightViews';
 import { AuctView, EiaView, InsdView, IpoView, ThirteenFView, WetrView, WirpView } from '@/components/markets/ExtrasViews';
 import { CountryView, RegionBar, RegionMonitor } from '@/components/markets/RegionViews';
@@ -152,6 +153,11 @@ function SecurityBody({ code, symbol, d, isFund, onGo }: { code: string; symbol:
         {code === 'VAL' && <ValuationHub symbol={symbol} onGo={onGo} />}
         {code === 'CF' && <CfView symbol={symbol} />}
         {code === 'TECH' && <TechView symbol={symbol} />}
+        {code === 'OVDV' && <OvdvView symbol={symbol} />}
+        {code === 'CACS' && <CacsView symbol={symbol} />}
+        {code === 'MGMT' && <MgmtView symbol={symbol} />}
+        {code === 'PGEO' && <PgeoView symbol={symbol} />}
+        {code === 'DDIS' && <DdisView symbol={symbol} />}
         {code === 'FAC' && <FacView symbol={symbol} />}
         {code === 'CN' && <News symbol={symbol} />}
         {code === 'SEAS' && <SeasView symbol={symbol} />}
@@ -279,6 +285,16 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'CRED' && <><CredView /><RelatedOdds terms={['recession', 'default', 'bankruptcy', 'fed', 'rate cut']} title="Macro odds that move credit" limit={4} className="mt-3" /></>}
     {code === 'PORT' && <PortView onOpen={open} />}
     {code === 'SPRD' && <SprdView seed={seed} />}
+    {code === 'CHART' && <ChartView seed={seed} />}
+    {code === 'DATA' && <DataView seed={seed} />}
+    {code === 'YAS' && <YasView />}
+    {code === 'ILBE' && <IlbeView />}
+    {code === 'FXCA' && <FxcaView />}
+    {code === 'MRGR' && <MrgrView onOpen={open} />}
+    {code === 'MEMB' && <MembView seed={seed} onOpen={open} />}
+    {code === 'FSRC' && <FsrcView onOpen={open} />}
+    {code === 'DVDC' && <DvdcView onOpen={open} />}
+    {code === 'CDR' && <CdrView />}
     {code === 'CBRT' && <><CbrtView /><RelatedOdds terms={['fed', 'ecb', 'bank of england', 'boj', 'rate cut', 'rate hike']} title="Next decisions — betting-market odds" limit={6} className="mt-3" /></>}
     {code === 'ECOS' && <EcosView seed={seed} />}
     {code === 'NOW' && <NowView />}

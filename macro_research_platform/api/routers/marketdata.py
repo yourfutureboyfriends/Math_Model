@@ -547,6 +547,124 @@ async def mkt_fred_series(sid: str):
     return await _run(toolkit.fred_series, sid, timeout=90)
 
 
+# ── Fixed income / FX ───────────────────────────────────────────────────────
+@router.get("/api/v1/mkt/ilbe")
+async def mkt_breakevens():
+    from api.marketdata import fixed_income
+    return await _run(fixed_income.breakevens, timeout=90)
+
+
+@router.get("/api/v1/mkt/tsy")
+async def mkt_treasuries():
+    from api.marketdata import fixed_income
+    return await _run(fixed_income.treasuries, timeout=120)
+
+
+@router.get("/api/v1/mkt/yas")
+async def mkt_bond_calc(coupon: float = Query(..., ge=0, le=0.5), maturity: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
+                        price: Optional[float] = Query(None, gt=0, lt=1000), ytm: Optional[float] = Query(None, gt=-0.05, lt=1.0),
+                        settle: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"), freq: int = Query(2, ge=1, le=12)):
+    from api.marketdata import fixed_income
+    if price is None and ytm is None:
+        raise HTTPException(422, "Give a price or a yield.")
+    return await _run(fixed_income.bond_calc, coupon, maturity, price, ytm, settle, freq, timeout=20)
+
+
+@router.get("/api/v1/mkt/fxca")
+async def mkt_fx_carry():
+    from api.marketdata import fixed_income
+    return await _run(fixed_income.fx_carry, timeout=120)
+
+
+# ── Corporate ────────────────────────────────────────────────────────────────
+@router.get("/api/v1/mkt/cacs")
+async def mkt_actions_calendar(days: int = Query(14, ge=1, le=30)):
+    from api.marketdata import corporate
+    return await _run(corporate.actions_calendar, days, timeout=90)
+
+
+@router.get("/api/v1/mkt/cacs/{symbol}")
+async def mkt_actions(symbol: str):
+    from api.marketdata import corporate
+    return await _run(corporate.actions, symbol, timeout=60)
+
+
+@router.get("/api/v1/mkt/mgmt/{symbol}")
+async def mkt_management(symbol: str):
+    from api.marketdata import corporate
+    return await _run(corporate.management, symbol, timeout=90)
+
+
+@router.get("/api/v1/mkt/pgeo/{symbol}")
+async def mkt_segments(symbol: str):
+    from api.marketdata import corporate
+    return await _run(corporate.segments, symbol, timeout=120)
+
+
+@router.get("/api/v1/mkt/ddis/{symbol}")
+async def mkt_debt(symbol: str):
+    from api.marketdata import corporate
+    return await _run(corporate.debt_maturities, symbol, timeout=90)
+
+
+@router.get("/api/v1/mkt/ma")
+async def mkt_deals():
+    from api.marketdata import corporate
+    return await _run(corporate.deals, timeout=180)
+
+
+# ── Funds / indices ──────────────────────────────────────────────────────────
+@router.get("/api/v1/mkt/memb/{code}")
+async def mkt_members(code: str):
+    from api.marketdata import funds
+    return await _run(funds.index_members, code, timeout=90)
+
+
+@router.get("/api/v1/mkt/fsrc")
+async def mkt_fund_screener():
+    from api.marketdata import funds
+    return await _run(funds.etf_screener, timeout=180)
+
+
+@router.get("/api/v1/mkt/fsrc/compare")
+async def mkt_fund_compare(a: str = Query(..., max_length=15), b: str = Query(..., max_length=15)):
+    from api.marketdata import funds
+    return await _run(funds.etf_compare, a, b, timeout=90)
+
+
+# ── Workbench ────────────────────────────────────────────────────────────────
+@router.get("/api/v1/mkt/g")
+async def mkt_formula_chart(e: List[str] = Query(..., max_length=6), period: str = Query("5y", pattern="^(1y|2y|5y|10y|20y|max)$")):
+    """Formula charts over instruments and FRED series."""
+    from api.marketdata import workbench
+    return await _run(workbench.formula_chart, e, period, timeout=120)
+
+
+@router.get("/api/v1/mkt/bdp")
+async def mkt_data_grid(symbols: str = Query(..., max_length=1500), fields: str = Query("", max_length=600)):
+    from api.marketdata import workbench
+    return await _run(workbench.data_grid, symbols.split(","), [f for f in fields.split(",") if f], timeout=120)
+
+
+@router.get("/api/v1/mkt/bdh")
+async def mkt_history_grid(symbols: str = Query(..., max_length=800), period: str = "1y", interval: str = "1d",
+                           field: str = Query("close", pattern="^(close|return|volume)$")):
+    from api.marketdata import workbench
+    return await _run(workbench.history_grid, symbols.split(","), period, interval, field, timeout=120)
+
+
+@router.get("/api/v1/mkt/ovdv/{symbol}")
+async def mkt_vol_surface(symbol: str):
+    from api.marketdata import workbench
+    return await _run(workbench.vol_surface, symbol, timeout=120)
+
+
+@router.get("/api/v1/mkt/cdr")
+async def mkt_exchanges():
+    from api.marketdata import workbench
+    return await _run(workbench.exchanges, timeout=20)
+
+
 @router.get("/api/v1/mkt/cred")
 async def mkt_credit():
     """Credit spreads (ICE BofA OAS) by rating and region."""

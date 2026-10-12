@@ -429,6 +429,14 @@ def fred_series(sid: str) -> Dict[str, Any]:
 
     def build():
         import requests
+        if not os.getenv("FRED_API_KEY"):
+            # no key: FRED's public CSV download still serves the data (without the metadata)
+            from api.marketdata.insights import _fred
+            d = _fred(sid, years=120)
+            if not d:
+                raise NotFound(f"FRED has no series {sid}.")
+            return {"id": sid, "title": sid, "units": "", "frequency": None, "frequency_short": None, "sa": None, "notes": "",
+                    "updated": None, "rows": [{"date": k, "value": v} for k, v in sorted(d.items())], "source": "FRED, Federal Reserve Bank of St. Louis"}
         key = _fred_key()
         meta = requests.get("https://api.stlouisfed.org/fred/series", params={"series_id": sid, "api_key": key, "file_type": "json"}, timeout=30)
         if meta.status_code == 400:
