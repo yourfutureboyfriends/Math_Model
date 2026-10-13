@@ -148,7 +148,7 @@ def load_data(universe: Sequence[str], start: str, end: Optional[str] = None,
     account = inst_mod.account_currency(account)
     from api.quant import options as opt_mod
     specs = opt_mod.parse(options) if options else []
-    universe = list(dict.fromkeys([str(u).upper() for u in universe] + [o["underlying"] for o in specs]))
+    universe = list(dict.fromkeys([str(u).upper() for u in universe] + [o["underlying"] for o in specs if o["underlying"] != "*"]))
     syms, bad = qdata.clean_symbols(universe)
     if bad:
         raise ValueError(f"Invalid ticker(s): {', '.join(bad[:5])}")
@@ -218,7 +218,14 @@ def load_data(universe: Sequence[str], start: str, end: Optional[str] = None,
     share_px, conv = micro.pop("share_px"), micro.pop("conv")
     opt_frames: Dict[str, pd.DataFrame] = {}
     settle = None
+    option_expansion = None
     if specs:
+        templates = specs
+        specs = opt_mod.expand(options, cols)
+        option_expansion = {"template_count": len(templates), "loaded_underlyings": len(cols),
+                            "generated_series": len(specs), "wildcard": any(o["underlying"] == "*" for o in templates),
+                            "availability": "synthetic contracts; actual exchange/broker option listing unverified",
+                            "skipped_missing_history": sorted(set(universe) - set(cols))}
         missing_u = [o["underlying"] for o in specs if o["underlying"] not in cols]
         if missing_u:
             raise ValueError(f"No price data for option underlying(s): {', '.join(sorted(set(missing_u)))}.")
@@ -256,7 +263,7 @@ def load_data(universe: Sequence[str], start: str, end: Optional[str] = None,
             "universe_selection": "user-specified list (if chosen from today's market, results are retrospective / "
                                   "survivor-selected — names that failed or were delisted earlier are absent)",
             "first_observation": {c: str(marks[c].first_valid_index().date()) for c in cols if marks[c].first_valid_index() is not None},
-            "market_rules": micro.pop("info")}
+            "market_rules": micro.pop("info"), "option_expansion": option_expansion}
     return codelab.Data(marks, pan["open"][cols], pan["high"][cols].ffill(), pan["low"][cols].ffill(),
                         pan["volume"][cols], rf=rf, vix=vix, observed=observed, rf_known=rf is not None, provenance=prov,
                         instruments=inst, account_currency=account, usd_per_unit=usd_per_unit, settle=settle,

@@ -65,7 +65,8 @@ def parse(raw: Any) -> List[Dict[str, Any]]:
         kind = str(o.get("type") or "").lower()
         if not u or kind not in ("call", "put"):
             raise ValueError(f"OPTIONS[{i}]: needs 'underlying' and 'type' ('call' or 'put').")
-        if "moneyness" in o and "delta" in o:
+        canonical = set(o) == KEYS and (o.get("delta") is None or float(o.get("moneyness", 1.0)) == 1.0)
+        if "moneyness" in o and "delta" in o and not canonical:
             raise ValueError(f"OPTIONS[{i}]: give 'moneyness' or 'delta', not both.")
         m = float(o.get("moneyness", 1.0))
         d = o.get("delta")
@@ -88,6 +89,28 @@ def parse(raw: Any) -> List[Dict[str, Any]]:
         names.add(name)
         out.append({"name": name, "underlying": u, "type": kind, "moneyness": m,
                     "delta": float(d) if d is not None else None, "expiry": exp, "months": months, "tenor_days": tenor})
+    return out
+
+
+def expand(raw: Any, universe: Sequence[str]) -> List[Dict[str, Any]]:
+    """Expand '*' templates across every loaded underlying, never a sampled subset.
+
+    The 12-definition limit remains a limit on user-authored templates, not on generated instruments.
+    These are synthetic models; expansion does not verify that an exchange or broker lists the contracts.
+    """
+    templates = parse(raw)
+    names = list(dict.fromkeys(str(u).upper() for u in universe))
+    out, used = [], set()
+    for template in templates:
+        targets = names if template['underlying'] == '*' else [template['underlying']]
+        for u in targets:
+            item = dict(template, underlying=u)
+            if template['underlying'] == '*':
+                item['name'] = u + '__' + template['name'].replace('*', 'ALL')
+            if item['name'] in used or item['name'] in names:
+                raise ValueError(f"OPTIONS: instrument name collision {item['name']}.")
+            used.add(item['name'])
+            out.append(item)
     return out
 
 
