@@ -30,7 +30,7 @@ export function WorkspaceBar({ onCollapseAll, visibleCount }: Props) {
   }, [ws]);
 
   return (
-    <div className="sticky top-16 z-30 bg-bg/95 backdrop-blur border-b border-border-subtle px-4">
+    <div className="sticky top-16 z-30 bg-bg border-b border-border-subtle px-4">
       <div className="flex items-center gap-1 h-9">
         <div role="tablist" aria-label="Workspaces" className="flex items-center gap-0.5 min-w-0 flex-1 overflow-x-auto [scrollbar-width:none]">
           {WORKSPACES.map((w) => {

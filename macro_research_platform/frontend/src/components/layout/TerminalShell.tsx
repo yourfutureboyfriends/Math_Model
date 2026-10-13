@@ -279,9 +279,12 @@ export function TerminalShell({
       }
     };
 
+    // When the parent controls the active section (App, with an IntersectionObserver) this handler would only
+    // measure ~40 sections on every scroll event for nothing — a forced layout per frame.
+    if (controlled) return;
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [setActiveSection]);
+  }, [setActiveSection, controlled]);
 
   const handleNavigate = (sectionId: string) => {
     setActiveSection(sectionId);

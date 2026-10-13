@@ -1,7 +1,7 @@
 // App.tsx — Root component with auth and routing
 // Phase 4 Step 5: Dashboard content extracted to pages/DashboardPage.tsx
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { TerminalShell } from './components/layout/TerminalShell';
 import { LoginScreen } from './components/LoginScreen';
 import { ChangePasswordScreen } from './components/account/AccountPanels';
@@ -95,6 +95,10 @@ function App() {
     reconnectWebSocket();
   };
 
+  // One stable page element: changing the highlighted section while scrolling must not re-render the whole dashboard
+  // (only the sidebar and detail panel read it).
+  const page = useMemo(() => (hubMode === 'markets' ? <MarketsPage /> : <DashboardPage />), [hubMode]);
+
   if (!isAuthenticated) return <LoginScreen />;
   if (mustChangePassword) return <ChangePasswordScreen />;
 
@@ -137,7 +141,7 @@ function App() {
         onNavigate={handleNavigate}
         sidebar={hubMode === 'markets' ? (collapsed) => <MarketsSidebar collapsed={collapsed} /> : undefined}
       >
-        {hubMode === 'markets' ? <MarketsPage /> : <DashboardPage />}
+        {page}
       </TerminalShell>
 
       {/* Click-to-chart: any panel opens a full interactive chart (openChart) */}

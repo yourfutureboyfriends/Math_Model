@@ -648,6 +648,16 @@ button, a, [role="button"],
     margin-bottom: var(--space-4);
   }
 
+  /* Scrolling performance: the dashboard is one long page (~150 sections, ~13k elements). Off-screen sections are
+     skipped for layout and paint until they come near the viewport. Not while a section holds a fixed-position
+     element (an open dialog or popover), which containment would otherwise trap inside the section. */
+  @media screen {
+    .terminal-section:not(:has(.fixed)) {
+      content-visibility: auto;
+      contain-intrinsic-size: auto 640px;
+    }
+  }
+
   /* ─── SIGNAL TAGS ───────────────────────────────────── */
   .signal-tag {
     display: inline-flex;
