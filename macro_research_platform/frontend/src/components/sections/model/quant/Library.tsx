@@ -73,7 +73,7 @@ export function Library({ onOpenCode, canDeploy }: { onOpenCode: (code: string, 
     setErr(null);
     try {
       const d = await api('/api/v1/quant/trader/deploy', { json: { spec: { kind: 'library', library: s.id, name: s.name }, capital: cap } });
-      setNote(`Deployed “${d.name}” to the ${d.book} Quant Trader — live from the session after ${d.deployed_at}.`);
+      setNote(`Deployed “${d.name}” to the ${d.book} Quant Trader — live from the session after ${d.deployed_at}.${d.preparing ? ' Its backtest is being prepared in the background (a large universe can take a few minutes) — it already shows in the trader as preparing.' : ''}`);
     } catch (e: any) { setErr(e.message); }
   };
 

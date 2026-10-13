@@ -130,6 +130,7 @@ def _compute(dep: Dict[str, Any]) -> Dict[str, Any]:
 
 def _raw_from_code(cres: Dict[str, Any]) -> Dict[str, Any]:
     return {"daily_dates": cres["dates"], "daily_returns": cres["returns"], "daily_benchmark": cres.get("benchmark"),
+            "metrics": {k: (cres.get("metrics") or {}).get(k) for k in ("cagr", "vol", "sharpe", "max_drawdown")},
             "positions": [{"symbol": k, "target_weight": v, "signal": None} for k, v in (cres.get("weights_last") or {}).items()],
             "currency": ((cres.get("provenance") or {}).get("account_currency") or "USD").upper()}
 
@@ -206,48 +207,67 @@ def deploy(owner: str, spec_in: Dict[str, Any], capital: float, strategy_id: Opt
         raise engine.SpecError(f"This strategy trades {BOOK_TRADES[natural]}, so it belongs in the {BOOK_LABEL[natural]} Quant Trader.")
     # Live from the next session after the latest close in the data.
     d = store.deploy(owner, spec["name"], spec, res["period"]["last_close"], float(capital), strategy_id, summary, natural)
+    if d:                                                       # the trader page opens instantly with it
+        _save_raw(d, {"daily_dates": res["daily_dates"], "daily_returns": list(map(float, res["daily_returns"])),
+                      "positions": [{"symbol": x["symbol"], "target_weight": x["target_weight"], "signal": x.get("signal")}
+                                    for x in res["positions"]], "currency": "USD"})
     invalidate()
     return d
 
 
 def _deploy_code(owner: str, spec_in: Dict[str, Any], capital: float, strategy_id: Optional[int],
                  book: Optional[str]) -> Dict[str, Any]:
-    from api.quant import library, sandbox
+    """Deploy at once: validate the code, classify it, check the capital and record the deployment (live from the
+    session after the latest close). Its backtest is computed in the background — the trader shows it as preparing
+    meanwhile — so deploying never waits for a full re-run of a large universe."""
+    from api.quant import codeserver, library, sandbox
     kind = spec_in.get("kind")
     spec = {"kind": kind, "name": str(spec_in.get("name") or "Code strategy")[:80]}
     if kind == "library":
         lib = library.get(str(spec_in.get("library")))
         spec.update(library=lib["id"], name=str(spec_in.get("name") or lib["name"])[:80])
+        code = lib.get("code")
     else:
-        try:
-            sandbox.check(spec_in.get("code") or "")
-        except sandbox.SandboxError as e:
-            raise engine.SpecError(str(e))
-        spec["code"] = spec_in["code"]
-    if isinstance(spec_in.get("costs"), dict):
-        spec["costs"] = {k: float(v) for k, v in spec_in["costs"].items() if isinstance(v, (int, float))}
+        code = spec_in.get("code") or ""
+        spec["code"] = code
     try:
-        res = eval_code_spec(spec)
+        head = sandbox.check(code) if code else None
     except sandbox.SandboxError as e:
         raise engine.SpecError(str(e))
-    ccy = ((res.get("provenance") or {}).get("account_currency") or "USD").upper()
-    from api.quant import codeserver
-    cap_usd = capital * float(codeserver.usd_per(ccy, [res["dates"][-1]]).iloc[-1])
+    if isinstance(spec_in.get("costs"), dict):
+        spec["costs"] = {k: float(v) for k, v in spec_in["costs"].items() if isinstance(v, (int, float))}
+    ccy = (head or {}).get("account") or "USD"
+    cap_usd = capital * float(codeserver.usd_per(ccy, [time.strftime("%Y-%m-%d")]).iloc[-1])
     if not 1_000 <= cap_usd <= 1_000_000_000:
         raise engine.SpecError(f"Capital must be worth between $1,000 and $1bn (the account is in {ccy}: "
                                f"{capital:,.0f} {ccy} ≈ ${cap_usd:,.0f}).")
-    m = res.get("metrics") or {}
-    summary = {k: m.get(k) for k in ("cagr", "vol", "sharpe", "max_drawdown")}
-    summary["period"] = {"start": res["dates"][0], "end": res["dates"][-1], "last_close": res["dates"][-1]}
-    summary["currency"] = ccy
     natural = classify(spec)
     if book and book != natural:
         raise engine.SpecError(f"This strategy trades {BOOK_TRADES[natural]}, so it belongs in the {BOOK_LABEL[natural]} Quant Trader.")
-    d = store.deploy(owner, spec["name"], spec, res["dates"][-1], float(capital), strategy_id, summary, natural)
-    if d and res.get("returns"):
-        _save_raw(d, _raw_from_code(res))                       # the trader page opens instantly with it
+    spy = codeserver._index_series("SPY", time.strftime("%Y-%m-%d", time.gmtime(time.time() - 30 * 86400)))
+    last_close = str(spy.dropna().index[-1].date()) if spy is not None and len(spy.dropna()) else time.strftime("%Y-%m-%d")
+    d = store.deploy(owner, spec["name"], spec, last_close, float(capital), strategy_id,
+                     {"pending": True, "currency": ccy}, natural)
+    threading.Thread(target=_prepare_deployment, args=(d,), daemon=True, name=f"deploy-{d['id']}").start()
     invalidate()
-    return d
+    return {**d, "preparing": True}
+
+
+def _prepare_deployment(dep: Dict[str, Any]) -> None:
+    """Background: the new deployment's backtest (light) → its cached result and the summary shown on its card."""
+    try:
+        raw = _compute(dep)
+        m = raw.get("metrics") or {}
+        dates = raw["daily_dates"]
+        store.update_backtest(dep["id"], {**{k: m.get(k) for k in ("cagr", "vol", "sharpe", "max_drawdown")},
+                                          "period": {"start": dates[0], "end": dates[-1], "last_close": dates[-1]},
+                                          "currency": raw.get("currency") or "USD"})
+    except Exception as e:                                       # noqa: BLE001 — shown on the card and as an alert
+        logger.warning("[quant-trader] deployment %s could not be prepared: %s", dep["id"], e)
+        store.update_backtest(dep["id"], {"error": str(e)[:300]})
+        store.raise_alert(dep["id"], "failed", "Medium", f"Deployed algo “{dep['name']}” could not be prepared: {str(e)[:200]}")
+    finally:
+        invalidate()
 
 
 def forget(deployment_id: int) -> None:

@@ -187,12 +187,12 @@ def _limits(cpu: int = TIMEOUT_S):              # runs in the child before exec
     os.setsid()
 
 
-def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] = None, light: bool = False) -> Dict[str, Any]:
-    """Evaluate user code in the sandbox; returns codelab.evaluate()'s JSON-able output. `job` (api/quant/jobs.py)
-    receives progress and can cancel the run (the child process is killed)."""
+def _prepare(code: str, head: Dict[str, Any], costs: Optional[Dict[str, float]], light: bool, tmp: Path,
+             say, cancelled=lambda: False) -> Dict[str, Any]:
+    """Load and validate the data for a run and write it into `tmp` for the sandbox child (data.npz, meta.json,
+    strategy.py). Returns the CPU allowance and the size. Runs in a helper process for large universes, so the web
+    server stays responsive while thousands of price histories are prepared."""
     from api.quant import codelab, codeserver
-    head = check(code)
-    say = (lambda m: job.progress(m)) if job is not None else (lambda m: None)
     members = None
     if head.get("tradable") == "SP500_PIT":
         from api.quant import membership
@@ -247,43 +247,67 @@ def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] 
         data = codeserver.account_session_data(data, head["calendar"])
         if members is not None:
             members = members.reindex(index=data.close.index, columns=data.tickers).fillna(False)
-    if job is not None and job.cancelled:
+    if cancelled():
         raise SandboxError("Cancelled.")
     bm = codeserver.benchmark_series(head["benchmark"], data.close.index[0].strftime("%Y-%m-%d"), data.account_currency)
+    arrays = {f: getattr(data, f).to_numpy(np.float64) for f in ("close", "open", "high", "low", "volume")}
+    arrays["rf"] = data.rf.to_numpy(np.float64)
+    arrays["vix"] = data.vix.to_numpy(np.float64)
+    arrays["observed"] = data.observed.to_numpy(bool)
+    arrays["usd_per_unit"] = data.usd_per_unit.to_numpy(np.float64)
+    micro_cols = {}
+    frames = {k: getattr(data, k, None) for k in ("tick_bps", "lot_value", "div_yield", "fx", "rf_ccy", "settle")}
+    frames.update({f"opt_{k}": v for k, v in data.opt.items()})          # synthetic options' analytics
+    frames.update({f"fund_{k}": v for k, v in data.fund.items()})        # point-in-time fundamentals
+    for k, fr in frames.items():                                           # market rules (float32 keeps it small)
+        if fr is not None:
+            arrays[f"m_{k}"] = fr.to_numpy(np.float32)
+            micro_cols[k] = [str(c) for c in fr.columns]
+    if members is not None:
+        arrays["members"] = members.to_numpy(bool)
+    arrays["dates"] = data.close.index.values.astype("datetime64[ns]").astype(np.int64)
+    if bm is not None:
+        arrays["benchmark"] = bm.reindex(data.close.index).to_numpy(np.float64)
+    np.savez(tmp / "data.npz", **arrays)
+    (tmp / "meta.json").write_text(json.dumps({"tickers": data.tickers, "start": head["start"],
+                                               "params": head["params"], "costs": costs or {},
+                                               "rf_known": data.rf_known, "provenance": data.provenance,
+                                               "instruments": data.instruments, "account_currency": data.account_currency,
+                                               "micro_cols": micro_cols, "light": light}))
+    (tmp / "strategy.py").write_text(code)
+    return {"cpu": cpu, "tickers": len(data.tickers), "days": len(data.close)}
+
+
+def _prepare_proc(code: str, costs: Optional[Dict[str, float]], light: bool, tmp: str, q) -> None:
+    """Helper-process entry point: prepare the data, sending progress and the outcome through `q`."""
+    try:
+        out = _prepare(code, check(code), costs, light, Path(tmp), lambda m: q.put(("progress", m)))
+        q.put(("done", out))
+    except Exception as e:                                      # noqa: BLE001 — reported to the parent
+        q.put(("error", f"{type(e).__name__}: {e}"))
+
+
+def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] = None, light: bool = False) -> Dict[str, Any]:
+    """Evaluate user code in the sandbox; returns codelab.evaluate()'s JSON-able output. `job` (api/quant/jobs.py)
+    receives progress and can cancel the run (the child process is killed)."""
+    from api.quant import codelab
+    head = check(code)
+    say = (lambda m: job.progress(m)) if job is not None else (lambda m: None)
+    cancelled = (lambda: job.cancelled) if job is not None else (lambda: False)
     tmp = Path(tempfile.mkdtemp(prefix="qsbx_")).resolve()
     try:
-        arrays = {f: getattr(data, f).to_numpy(np.float64) for f in ("close", "open", "high", "low", "volume")}
-        arrays["rf"] = data.rf.to_numpy(np.float64)
-        arrays["vix"] = data.vix.to_numpy(np.float64)
-        arrays["observed"] = data.observed.to_numpy(bool)
-        arrays["usd_per_unit"] = data.usd_per_unit.to_numpy(np.float64)
-        micro_cols = {}
-        frames = {k: getattr(data, k, None) for k in ("tick_bps", "lot_value", "div_yield", "fx", "rf_ccy", "settle")}
-        frames.update({f"opt_{k}": v for k, v in data.opt.items()})          # synthetic options' analytics
-        frames.update({f"fund_{k}": v for k, v in data.fund.items()})        # point-in-time fundamentals
-        for k, fr in frames.items():                                           # market rules (float32 keeps it small)
-            if fr is not None:
-                arrays[f"m_{k}"] = fr.to_numpy(np.float32)
-                micro_cols[k] = [str(c) for c in fr.columns]
-        if members is not None:
-            arrays["members"] = members.to_numpy(bool)
-        arrays["dates"] = data.close.index.values.astype("datetime64[ns]").astype(np.int64)
-        if bm is not None:
-            arrays["benchmark"] = bm.reindex(data.close.index).to_numpy(np.float64)
-        np.savez(tmp / "data.npz", **arrays)
-        (tmp / "meta.json").write_text(json.dumps({"tickers": data.tickers, "start": head["start"],
-                                                   "params": head["params"], "costs": costs or {},
-                                                   "rf_known": data.rf_known, "provenance": data.provenance,
-                                                   "instruments": data.instruments, "account_currency": data.account_currency,
-                                                   "micro_cols": micro_cols, "light": light}))
-        (tmp / "strategy.py").write_text(code)
+        if head.get("tradable") or len(head["universe"]) > codelab.UNIVERSE_LIMIT:
+            prep = _prepare_elsewhere(code, costs, light, tmp, say, cancelled)
+        else:
+            prep = _prepare(code, head, costs, light, tmp, say, cancelled)
+        cpu = prep["cpu"]
         cmd = [sys.executable, "-I", str(CHILD), str(tmp), str(ENGINE)]
         if sys.platform == "darwin" and shutil.which("sandbox-exec"):
             (tmp / "profile.sb").write_text(_profile(tmp))
             cmd = ["sandbox-exec", "-f", str(tmp / "profile.sb")] + cmd
         env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp), "TMPDIR": str(tmp), "LANG": "C.UTF-8",
                "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
-        say(f"Running your strategy in the sandbox ({len(data.tickers)} tickers × {len(data.close)} days)…")
+        say(f"Running your strategy in the sandbox ({prep['tickers']} tickers × {prep['days']} days)…")
         out_f, err_f = open(tmp / "stdout.txt", "w"), open(tmp / "stderr.txt", "w")   # files: no pipe-buffer deadlock
         p = subprocess.Popen(cmd, cwd=tmp, env=env, stdout=out_f, stderr=err_f, text=True,
                              preexec_fn=(lambda: _limits(cpu)) if os.name == "posix" else None)
@@ -314,3 +338,34 @@ def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] 
         return res
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _prepare_elsewhere(code: str, costs: Optional[Dict[str, float]], light: bool, tmp: Path, say, cancelled) -> Dict[str, Any]:
+    """_prepare in a separate process (spawned), relaying progress; killed on cancel."""
+    import multiprocessing as mp
+    import queue as _queue
+    ctx = mp.get_context("spawn")
+    q = ctx.Queue()
+    proc = ctx.Process(target=_prepare_proc, args=(code, costs, light, str(tmp), q), daemon=True)
+    proc.start()
+    try:
+        while True:
+            if cancelled():
+                proc.kill()
+                raise SandboxError("Cancelled.")
+            try:
+                kind, val = q.get(timeout=0.5)
+            except _queue.Empty:
+                if not proc.is_alive():
+                    raise SandboxError(f"Data preparation stopped unexpectedly (exit code {proc.exitcode}).")
+                continue
+            if kind == "progress":
+                say(val)
+            elif kind == "done":
+                return val
+            else:
+                raise SandboxError(val)
+    finally:
+        proc.join(timeout=5)
+        if proc.is_alive():
+            proc.kill()

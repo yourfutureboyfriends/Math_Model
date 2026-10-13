@@ -89,31 +89,38 @@ def lot_size(symbol: str, country: str, hk: Optional[Dict[str, int]] = None) -> 
     return LOTS.get(country, 1)
 
 
+_PH_BANDS = (np.array([0.0099, 0.495, 4.99, 49.95, 999.5]), np.array([1_000_000, 10_000, 1000, 100, 10, 5], float))
+
+
 def lot_frame_value(country: str, lot: int, price):
-    """Shares per lot at each price (only the Philippines varies lots with price)."""
+    """Shares per lot at each price (only the Philippines varies lots with price). Vectorised."""
+    p = np.asarray(price, float)
     if country == "PH":
-        return np.vectorize(lambda p: _ph_lot(p) if np.isfinite(p) else np.nan, otypes=[float])(price)
-    return np.full(np.shape(price), float(lot))
+        ups, lots = _PH_BANDS
+        out = lots[np.searchsorted(ups, p, side="left")]
+        return np.where(np.isfinite(p), out, np.nan)
+    return np.full(p.shape, float(lot))
 
 
 # ── Tick sizes (quote units) ────────────────────────────────────────────────
-def _bands(table: Sequence[tuple]) -> Callable[[float], float]:
-    def f(p: float) -> float:
-        for upto, tick in table:
-            if p < upto:
-                return tick
-        return table[-1][1]
-    return f
+class _bands:
+    """A tick table: tick for prices below each threshold. Callable on a scalar or a whole array (vectorised)."""
+
+    def __init__(self, table: Sequence[tuple]):
+        self.ups = np.array([u for u, _ in table], float)
+        self.ticks = np.array([t for _, t in table], float)
+
+    def __call__(self, p):
+        i = np.searchsorted(self.ups, np.asarray(p, float), side="right")
+        return self.ticks[np.minimum(i, len(self.ticks) - 1)]
 
 
-def _mifid(p: float) -> float:
-    """Typical liquid-band MiFID II tick: a 1-2-5 step of about 2–5 bp of price."""
-    raw = p * 0.0002
-    e = 10 ** math.floor(math.log10(raw)) if raw > 0 else 0.0001
-    for m in (1, 2, 5, 10):
-        if raw <= m * e:
-            return m * e
-    return 10 * e
+def _mifid(p):
+    """Typical liquid-band MiFID II tick: a 1-2-5 step of about 2–5 bp of price (scalar or array)."""
+    raw = np.asarray(p, float) * 0.0002
+    e = 10.0 ** np.floor(np.log10(np.where(raw > 0, raw, 1e-4)))
+    m = np.where(raw <= e, 1.0, np.where(raw <= 2 * e, 2.0, np.where(raw <= 5 * e, 5.0, 10.0)))
+    return m * e
 
 
 INF = float("inf")
@@ -151,8 +158,7 @@ def half_tick_bps(country: str, quote_price: np.ndarray) -> np.ndarray:
     out = np.full(p.shape, np.nan)
     ok = np.isfinite(p) & (p > 0)
     if ok.any():
-        ticks = np.vectorize(f, otypes=[float])(p[ok])
-        out[ok] = 0.5 * ticks / p[ok] * 1e4
+        out[ok] = 0.5 * np.asarray(f(p[ok]), float) / p[ok] * 1e4
     return out
 
 

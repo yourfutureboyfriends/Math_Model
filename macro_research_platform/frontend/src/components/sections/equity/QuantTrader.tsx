@@ -132,6 +132,11 @@ function Algos({ book }: { book: 'macro' | 'fundamental' | 'technical' }) {
       )}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
         {d.deployments.map((x: any) => <AlgoCard key={x.id} x={x} canManage={canManage} onStop={stop} />)}
+        {pending.map((x: any) => (
+          <div key={x.id} className="p-3 bg-surface-1 border border-dashed border-border text-2xs text-text-secondary flex items-center gap-2">
+            <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+            <span><b className="text-text-primary">{x.name}</b> — preparing its backtest in the background (a large universe can take a few minutes); it appears here when ready.</span>
+          </div>))}
       </div>
       {d.exposure.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-2">
@@ -189,8 +194,15 @@ const AlgoCard = memo(function AlgoCard({ x, canManage, onStop }: { x: any; canM
           <div className="font-mono">{money(x.nav, x.currency || 'USD')}</div>
           {x.currency && x.currency !== 'USD' && <div className="text-[10px] text-text-tertiary font-mono">≈ {usd(x.nav_usd)}</div>}</div>
         <div><div className="text-text-tertiary text-[10px]">Live return</div><div className={cn('font-mono', x.live_return > 0 ? 'text-green' : x.live_return < 0 ? 'text-red' : '')}>{spct(x.live_return, 2)}</div></div>
-        <div><div className="text-text-tertiary text-[10px]">Backtest</div><div className="font-mono">{spct(x.backtest?.cagr)} · SR {num(x.backtest?.sharpe)}</div></div>
+        <div><div className="text-text-tertiary text-[10px]">Backtest</div>
+          {x.backtest?.pending ? <div className="inline-flex items-center gap-1 text-text-tertiary"><Loader2 className="w-3 h-3 animate-spin" />preparing…</div>
+            : x.backtest?.error ? <div className="text-red truncate" title={x.backtest.error}>failed — hover for why</div>
+            : <div className="font-mono">{spct(x.backtest?.cagr)} · SR {num(x.backtest?.sharpe)}</div>}</div>
       </div>
+      {x.live_days === 0 && (
+        <div className="text-[10px] text-text-tertiary">
+          Paper trading starts with the first close after {x.deployed_at}; its return shows from then (US close ≈ 20:00 UTC).
+        </div>)}
       {x.record && x.live_days > 0 && (
         <div className="text-[10px] text-text-tertiary" title="Each final session is recorded once and never recomputed; the latest stays provisional until the next close">
           Record: {x.record.frozen_days} session{x.record.frozen_days === 1 ? '' : 's'} locked{x.record.provisional ? ` · ${x.record.provisional} provisional` : ''}

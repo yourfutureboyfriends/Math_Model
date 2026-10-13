@@ -173,6 +173,12 @@ def list_deployments(active_only: bool = True) -> List[Dict[str, Any]]:
     return [_row(r) for r in rows]
 
 
+def update_backtest(did: int, summary: Dict[str, Any]) -> None:
+    init()
+    with _conn() as c:
+        c.execute("UPDATE quant_deployments SET backtest = ? WHERE id = ?", (json.dumps(summary, default=str), did))
+
+
 def stop_deployment(did: int) -> None:
     init()
     with _conn() as c:

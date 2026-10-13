@@ -423,11 +423,11 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
   const deploy = async () => {
     if (!(await ask({ title: `Deploy “${name || 'this strategy'}”?`, confirmLabel: 'Deploy',
       body: `Paper capital ${money(capital, ccy)}${ccy !== 'USD' ? ` (the account is kept in ${ccy})` : ''}. The server re-runs your code daily in a locked-down sandbox; no real orders are placed.` }))) return;
-    setErr(null); setBusy(true); setStatus('Running your code in the server sandbox…');
+    setErr(null); setBusy(true); setStatus('Deploying…');
     try {
       const d = await api('/api/v1/quant/trader/deploy', { json: { spec: { kind: 'code', name: name || 'Code strategy', code, costs: runCosts }, capital, strategy_id: strategyId } });
       const label = ({ macro: 'Macro', fundamental: 'Fundamental', technical: 'Technical' } as Record<string, string>)[d.book] ?? 'Macro';
-      setNote(`Deployed “${d.name}” to the ${label} Quant Trader — live from the session after ${d.deployed_at}.`);
+      setNote(`Deployed “${d.name}” to the ${label} Quant Trader — live from the session after ${d.deployed_at}.${d.preparing ? ' Its backtest is being prepared in the background (a large universe can take a few minutes) — it already shows in the trader as preparing.' : ''}`);
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); setStatus(null); }
   };
   const loadTemplate = async (id: string) => {

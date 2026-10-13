@@ -232,3 +232,32 @@ def test_live_record_is_append_only_and_revisions_are_counted(monkeypatch):
     r2[4] = -0.05                                                                # a data revision of a recorded day
     d2, live2, _, rev2, _ = trader._frozen_live(dep, dates, r2, r2, mask)
     assert live2[1] == pytest.approx(0.01) and rev2 == 1                         # the record keeps what was recorded
+
+
+def test_code_deploy_returns_at_once_and_prepares_in_the_background(monkeypatch):
+    import threading
+    import time as _t
+    from api.quant import codeserver, store, trader
+    saved, updated = {}, {}
+    gate = threading.Event()
+    def slow_compute(dep):
+        gate.wait(5)                                                     # a long sandbox run
+        return {"daily_dates": ["2024-01-02", "2024-01-03"], "daily_returns": [0.0, 0.01], "positions": [],
+                "currency": "USD", "metrics": {"cagr": 0.1, "vol": 0.2, "sharpe": 0.5, "max_drawdown": -0.1}}
+    monkeypatch.setattr(trader, "_compute", slow_compute)
+    monkeypatch.setattr(store, "deploy", lambda owner, name, spec, at, cap, sid, summary, book: saved.update(
+        id=501, name=name, spec=spec, deployed_at=at, backtest=summary, book=book) or dict(saved))
+    monkeypatch.setattr(store, "update_backtest", lambda did, s: updated.update({did: s}))
+    monkeypatch.setattr(codeserver, "usd_per", lambda ccy, ds: pd.Series([1.0]))
+    monkeypatch.setattr(codeserver, "_index_series", lambda sym, start: pd.Series([1.0, 2.0], index=pd.to_datetime(["2024-01-02", "2024-01-03"])))
+    monkeypatch.setattr(trader, "classify", lambda spec: "technical")
+    code = 'UNIVERSE = ["SPY"]\ndef strategy(data):\n    return data.close * 0 + 1\n'
+    t0 = _t.time()
+    d = trader.deploy("me", {"kind": "code", "name": "fast", "code": code}, 100000)
+    assert _t.time() - t0 < 2 and d["preparing"] and d["backtest"]["pending"] and d["deployed_at"] == "2024-01-03"
+    gate.set()
+    for _ in range(100):
+        if 501 in updated:
+            break
+        _t.sleep(0.05)
+    assert updated[501]["sharpe"] == 0.5 and updated[501]["period"]["end"] == "2024-01-03"
