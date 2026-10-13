@@ -153,7 +153,7 @@ class BusinessConditionsNowcast:
                 continue
 
             # Convert monthly to quarterly (last month of quarter)
-            quarterly = series.resample("Q").last()
+            quarterly = series.resample("QE").last()
             quarterly_data[name] = quarterly
 
         if len(quarterly_data) < 3:

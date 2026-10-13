@@ -1,0 +1,19 @@
+# Build context is the project root (api/Dockerfile); keep images small and secret-free.
+.git
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+frontend
+investor-portal
+node_modules
+**/node_modules
+data/processed/fred_cache
+logs
+*.log
+*.db
+*.sqlite3
+.env
+.env.*
+outputs
+backups

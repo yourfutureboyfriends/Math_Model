@@ -9,9 +9,11 @@ module.exports = {
     'plugin:@typescript-eslint/recommended',
     'plugin:react-hooks/recommended',
   ],
-  ignorePatterns: ['dist', '.eslintrc.cjs'],
+  ignorePatterns: ['dist', '.eslintrc.cjs', 'vite.config.ts', 'src/types/api-generated.ts'],
   parser: '@typescript-eslint/parser',
-  plugins: ['react-refresh', 'custom-rules'],
+  // Type-aware rules (prefer-optional-chain / prefer-nullish-coalescing) need the TS project.
+  parserOptions: { project: ['./tsconfig.json'], tsconfigRootDir: __dirname },
+  plugins: ['react-refresh'],
   rules: {
     'react-refresh/only-export-components': [
       'warn',

@@ -8,23 +8,23 @@ export default {
     extend: {
       colors: {
         /* Bloomberg Terminal Design System — Institutional */
-        bg: '#06090c',
-        'surface-1': '#0d1117',
-        'surface-2': '#131920',
-        'surface-3': '#1a2230',
-        'surface-4': '#1e2736',
-        border: '#1e2d3d',
-        'border-subtle': '#151f2e',
-        'border-strong': '#2a3f55',
+        bg: 'rgb(var(--c-bg) / <alpha-value>)',
+        'surface-1': 'rgb(var(--c-surface-1) / <alpha-value>)',
+        'surface-2': 'rgb(var(--c-surface-2) / <alpha-value>)',
+        'surface-3': 'rgb(var(--c-surface-3) / <alpha-value>)',
+        'surface-4': 'rgb(var(--c-surface-4) / <alpha-value>)',
+        border: 'rgb(var(--c-border) / <alpha-value>)',
+        'border-subtle': 'rgb(var(--c-border-subtle) / <alpha-value>)',
+        'border-strong': 'rgb(var(--c-border-strong) / <alpha-value>)',
 
         /* Text hierarchy */
-        'text-primary': '#e8edf2',
-        'text-secondary': '#8895a4',
-        'text-tertiary': '#4a5568',
-        'text-inverse': '#090c0f',
+        'text-primary': 'rgb(var(--c-text-primary) / <alpha-value>)',
+        'text-secondary': 'rgb(var(--c-text-secondary) / <alpha-value>)',
+        'text-tertiary': 'rgb(var(--c-text-tertiary) / <alpha-value>)',
+        'text-inverse': 'rgb(var(--c-text-inverse) / <alpha-value>)',
 
         /* Bloomberg orange — primary terminal accent */
-        bloomberg: '#f07030',
+        bloomberg: 'rgb(var(--c-bloomberg) / <alpha-value>)',
         'bloomberg-dim': 'rgba(240, 112, 48, 0.15)',
         'bloomberg-muted': 'rgba(240, 112, 48, 0.08)',
         'bloomberg-border': 'rgba(240, 112, 48, 0.30)',
@@ -36,15 +36,15 @@ export default {
         'accent-border': 'rgba(0, 212, 170, 0.25)',
 
         /* Semantic colors (data only) */
-        green: '#22c55e',
+        green: 'rgb(var(--c-green) / <alpha-value>)',
         'green-dim': 'rgba(34, 197, 94, 0.12)',
-        red: '#ef4444',
+        red: 'rgb(var(--c-red) / <alpha-value>)',
         'red-dim': 'rgba(239, 68, 68, 0.12)',
-        amber: '#f59e0b',
+        amber: 'rgb(var(--c-amber) / <alpha-value>)',
         'amber-dim': 'rgba(245, 158, 11, 0.12)',
-        blue: '#3b82f6',
+        blue: 'rgb(var(--c-blue) / <alpha-value>)',
         'blue-dim': 'rgba(59, 130, 246, 0.12)',
-        purple: '#a855f7',
+        purple: 'rgb(var(--c-purple) / <alpha-value>)',
         'purple-dim': 'rgba(168, 85, 247, 0.12)',
 
         /* Legacy aliases for compatibility */
@@ -62,9 +62,9 @@ export default {
 
         /* Text legacy */
         text: {
-          primary: '#e8edf2',
-          secondary: '#8895a4',
-          muted: '#4a5568',
+          primary: 'rgb(var(--c-text-primary) / <alpha-value>)',
+          secondary: 'rgb(var(--c-text-secondary) / <alpha-value>)',
+          muted: 'rgb(var(--c-text-tertiary) / <alpha-value>)',
         },
 
         /* Accent legacy */

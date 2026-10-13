@@ -1,5 +1,6 @@
 // Command Palette — keyboard-driven navigation with per-session favorites and recent history.
 
+import { panelLabel } from '@/lib/panels';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, CornerDownLeft, Star, Clock, Zap, TrendingUp, AlertTriangle, Target } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -11,6 +12,8 @@ interface CommandItem {
   category: 'section' | 'action' | 'filter' | 'recent' | 'favorite';
   icon?: React.ReactNode;
   action: () => void;
+  /** Phase 8 — why this item was surfaced (shown as a tag on suggested items). */
+  reason?: string;
 }
 
 interface CommandPaletteProps {
@@ -26,62 +29,99 @@ interface CommandPaletteProps {
 
 const sections = [
   // Morning & Overview
-  { id: 'morning-brief', label: 'Morning Brief', icon: '🌅', priority: 'high' },
-  { id: 'master-signal', label: 'Master Signal', icon: '◆', priority: 'high' },
-  { id: 'key-metrics', label: 'Key Metrics', icon: '📊', priority: 'high' },
+  { id: 'morning-brief', label: 'Morning Brief', priority: 'high' },
+  { id: 'master-signal', label: 'Master Signal', priority: 'high' },
+  { id: 'key-metrics', label: 'Key Metrics', priority: 'high' },
 
   // Regime
-  { id: 'regime', label: 'Regime Classification', icon: '🎯', priority: 'high' },
-  { id: 'regime-playbook', label: 'Regime Playbook', icon: '📖', priority: 'high' },
-  { id: 'regime-transition', label: 'Regime Transition', icon: '↔️', priority: 'medium' },
+  { id: 'regime', label: 'Regime Classification', priority: 'high' },
+  { id: 'regime-playbook', label: 'Regime Playbook', priority: 'high' },
+  { id: 'regime-transition', label: 'Transition Matrix', priority: 'medium' },
 
   // Signals
-  { id: 'signals', label: 'ML Signals', icon: '🤖', priority: 'high' },
-  { id: 'ensemble', label: 'Ensemble', icon: '🔀', priority: 'high' },
-  { id: 'signal-stack', label: 'Signal Stack', icon: '📚', priority: 'medium' },
-  { id: 'sector-allocation', label: 'Sector Allocation', icon: '📈', priority: 'medium' },
-  { id: 'factor-rotation', label: 'Factor Rotation', icon: '🔄', priority: 'medium' },
-  { id: 'cot-positioning', label: 'COT Positioning', icon: '📉', priority: 'medium' },
-  { id: 'model-agreement', label: 'Model Agreement', icon: '✓', priority: 'medium' },
+  { id: 'signals', label: 'ML Signals', priority: 'high' },
+  { id: 'ensemble', label: 'Ensemble', priority: 'high' },
+  { id: 'signal-stack', label: 'Signal Stack', priority: 'medium' },
+  { id: 'sector-allocation', label: 'Sector Allocation', priority: 'medium' },
+  { id: 'factor-rotation', label: 'Factor Rotation', priority: 'medium' },
+  { id: 'cot-positioning', label: 'COT Positioning', priority: 'medium' },
+  { id: 'model-agreement', label: 'Model Agreement', priority: 'medium' },
 
   // Risk
-  { id: 'risk-indicators', label: 'Risk Indicators', icon: '⚠️', priority: 'high' },
-  { id: 'risk-analytics', label: 'Risk Analytics', icon: '🛡️', priority: 'high' },
-  { id: 'debt-cycle', label: 'Debt Cycle', icon: '📉', priority: 'medium' },
-  { id: 'advanced', label: 'Advanced Indicators', icon: '🔬', priority: 'low' },
-  { id: 'correlation', label: 'Correlation Regime', icon: '📊', priority: 'medium' },
+  { id: 'risk-indicators', label: 'Risk Indicators', priority: 'high' },
+  { id: 'risk-analytics', label: 'Risk Analytics', priority: 'high' },
+  { id: 'debt-cycle', label: 'Debt Cycle', priority: 'medium' },
+  { id: 'advanced', label: 'Advanced Indicators', priority: 'low' },
+  { id: 'correlation', label: 'Correlation Regime', priority: 'medium' },
 
   // Forecasts
-  { id: 'nowcast', label: 'GDP Nowcast', icon: '📍', priority: 'medium' },
-  { id: 'liquidity', label: 'Liquidity', icon: '💧', priority: 'medium' },
-  { id: 'sentiment', label: 'Sentiment', icon: '😊', priority: 'medium' },
+  { id: 'nowcast', label: 'GDP Nowcast', priority: 'medium' },
+  { id: 'liquidity', label: 'Liquidity', priority: 'medium' },
+  { id: 'sentiment', label: 'Sentiment', priority: 'medium' },
 
   // Strategy
-  { id: 'gmo-forecasts', label: 'GMO 7-Year Forecasts', icon: '🔮', priority: 'medium' },
-  { id: 'valuation', label: 'Valuation', icon: '💰', priority: 'medium' },
-  { id: 'expected-returns', label: 'Expected Returns', icon: '📈', priority: 'high' },
-  { id: 'international', label: 'International Macro', icon: '🌍', priority: 'low' },
-  { id: 'reflexivity', label: 'Reflexivity Monitor', icon: '🪞', priority: 'low' },
-  { id: 'transmission', label: 'Transmission', icon: '📡', priority: 'low' },
-  { id: 'factor-decomposition', label: 'Factor Decomp', icon: '🧮', priority: 'low' },
-  { id: 'risk-parity', label: 'Risk Parity', icon: '⚖️', priority: 'low' },
-  { id: 'momentum-veto', label: 'Momentum Veto', icon: '✋', priority: 'medium' },
-  { id: 'horizon-tension', label: 'Horizon Tensions', icon: '⏳', priority: 'medium' },
-  { id: 'cta-trend', label: 'CTA Trends', icon: '📊', priority: 'low' },
-  { id: 'news-sentiment', label: 'News Sentiment', icon: '📰', priority: 'low' },
-  { id: 'trade-ideas', label: 'Trade Ideas', icon: '💡', priority: 'high' },
+  { id: 'gmo-forecasts', label: 'Long-Run Return Assumptions', priority: 'medium' },
+  { id: 'valuation', label: 'Valuation', priority: 'medium' },
+  { id: 'expected-returns', label: 'Expected Returns', priority: 'high' },
+  { id: 'international', label: 'International Macro', priority: 'low' },
+  { id: 'reflexivity', label: 'Reflexivity Monitor', priority: 'low' },
+  { id: 'transmission', label: 'Transmission', priority: 'low' },
+  { id: 'factor-decomposition', label: 'Factor Decomp', priority: 'low' },
+  { id: 'risk-parity', label: 'Risk Parity', priority: 'low' },
+  { id: 'momentum-veto', label: 'Momentum Veto', priority: 'medium' },
+  { id: 'horizon-tension', label: 'Horizon Tensions', priority: 'medium' },
+  { id: 'cta-trend', label: 'CTA Trends', priority: 'low' },
+  { id: 'news-sentiment', label: 'News Sentiment', priority: 'low' },
+  { id: 'trade-ideas', label: 'Trade Ideas', priority: 'high' },
 
   // Portfolio
-  { id: 'portfolio', label: 'Portfolio Analyser', icon: '💼', priority: 'high' },
-  { id: 'equity-research', label: 'Equity Research', icon: '🔍', priority: 'medium' },
-  { id: 'data-to-watch', label: 'Data to Watch', icon: '👀', priority: 'low' },
-  { id: 'investment-memo', label: 'Investment Memo', icon: '📝', priority: 'low' },
-  { id: 'business-layer', label: 'Business Layer', icon: '🏢', priority: 'low' },
-  { id: 'economic-calendar', label: 'Economic Calendar', icon: '📅', priority: 'medium' },
+  { id: 'portfolio', label: 'Portfolio Analyser', priority: 'high' },
+  { id: 'equity-research', label: 'Equity Research', priority: 'medium' },
+  { id: 'investment-memo', label: 'Investment Memo', priority: 'low' },
+  { id: 'business-layer', label: 'Business Layer', priority: 'low' },
+  { id: 'economic-calendar', label: 'Economic Calendar', priority: 'medium' },
 
   // System
-  { id: 'system-health', label: 'System Health', icon: '🔧', priority: 'medium' },
+  { id: 'system-health', label: 'System Health', priority: 'medium' },
+
+  // Institutional / overhaul panels
+  { id: 'anomalies', label: 'Anomalies', priority: 'high' },
+  { id: 'signal-story', label: 'Signal Storytelling', priority: 'medium' },
+  { id: 'correlation-matrix', label: 'Correlation Matrix', priority: 'medium' },
+  { id: 'regime-outlook', label: 'Regime Outlook', priority: 'medium' },
+  { id: 'factor-exposure', label: 'Factor Exposure', priority: 'high' },
+  { id: 'fund-cockpit', label: 'Fund Cockpit', priority: 'high' },
+  { id: 'var-stress', label: 'VaR & Stress', priority: 'high' },
+  { id: 'portfolio-positions', label: 'Positions', priority: 'high' },
+  { id: 'trade-workflow', label: 'Trade Workflow', priority: 'medium' },
+  { id: 'system-audit', label: 'Audit & Compliance', priority: 'low' },
 ];
+
+/**
+ * Phase 7A — natural-language routing registry.
+ * Extra searchable keywords per section so entity-style queries ("spy factor exposure",
+ * "correlation spy tlt", "why is growth up", "gold regime") resolve instantly by
+ * fuzzy token match — no LLM call. Keyword strings are matched alongside the label.
+ */
+const NL_KEYWORDS: Record<string, string> = {
+  'correlation-matrix': 'correlation matrix heatmap cross asset pairwise spy tlt gld vix dxy pair',
+  'anomalies': 'anomaly anomalies outlier zscore z-score outside normal range sigma stale flagged',
+  'signal-story': 'why growth inflation liquidity risk explanation driver storytelling attribution contribution',
+  'regime-outlook': 'regime transition probability forward slowdown expansion shift persistence early warning',
+  'factor-exposure': 'spy factor exposure beta risk model loading systematic',
+  'var-stress': 'var value at risk stress test scenario tail loss drawdown',
+  'fund-cockpit': 'fund nav aum track record sharpe limits compliance pre-trade rebalance orders',
+  'portfolio-positions': 'position portfolio holdings book pnl exposure',
+  'trade-workflow': 'trade idea what-if pre-trade sizing workflow',
+  'correlation': 'correlation regime breakdown spy tlt gold dxy',
+  'liquidity': 'liquidity dxy dollar financial conditions fed',
+  'valuation': 'valuation expensive cheap pe cape multiple',
+  'expected-returns': 'expected returns forecast capital market assumptions',
+  'risk-analytics': 'risk analytics var stress scenario tail',
+  'regime': 'regime classification goldilocks reflation stagflation slowdown expansion current',
+  'gmo-forecasts': 'gmo forecast 7 year real return asset class',
+  'news-sentiment': 'news sentiment headlines feed',
+};
 
 export function CommandPalette({
   isOpen,
@@ -99,22 +139,73 @@ export function CommandPalette({
   // Favorites start empty each session (no persistent storage in sandboxed environment).
   // Destructure only the getter; a future toggle-star feature can add the setter back.
   const [favorites] = useState<string[]>([]);
-  const [recent, setRecent] = useState<string[]>([]);
+  // Recently-used sections persist across reloads (per user) in localStorage.
+  const recentKey = `macroos.recentSections.${(() => { try { return localStorage.getItem('macro_user') || 'default'; } catch { return 'default'; } })()}`;
+  const [recent, setRecent] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(recentKey);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : [];
+    } catch { return []; }
+  });
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Add a section to the in-session recent list (capped at 5)
+  // Add a section to the recent list (capped at 5) and persist it.
   const addToRecent = useCallback((sectionId: string) => {
-    setRecent((prev) => [sectionId, ...prev.filter((id) => id !== sectionId)].slice(0, 5));
-  }, []);
+    setRecent((prev) => {
+      const next = [sectionId, ...prev.filter((id) => id !== sectionId)].slice(0, 5);
+      try { localStorage.setItem(recentKey, JSON.stringify(next)); } catch { /* storage unavailable */ }
+      return next;
+    });
+  }, [recentKey]);
+
+  // Phase 7B / 8 — suggested queries surfaced from current anomalies + regime, each
+  // carrying an explicit reason it was surfaced (transparent personalization).
+  const [suggestions, setSuggestions] = useState<CommandItem[]>([]);
+  useEffect(() => {
+    if (!isOpen) return;
+    let alive = true;
+    (async () => {
+      const items: CommandItem[] = [];
+      try {
+        const a = await fetch('/api/v1/anomalies').then((r) => r.json());
+        (a?.metrics || []).filter((m: any) => m.is_anomalous).slice(0, 2).forEach((m: any) => {
+          items.push({
+            id: `sugg-anom-${m.ticker}`, category: 'action',
+            label: `${m.metric} ${m.z_score >= 0 ? '+' : ''}${m.z_score}σ — view Anomalies`,
+            reason: 'Surfaced: outside 2σ historical range',
+            icon: <AlertTriangle className="w-4 h-4 text-amber" />,
+            action: () => { addToRecent('anomalies'); onNavigate('anomalies'); onClose(); },
+          } as CommandItem);
+        });
+      } catch { /* ignore */ }
+      items.push({
+        id: 'sugg-regime', category: 'action',
+        label: `${currentRegime} regime — transition outlook`,
+        reason: 'Surfaced: relevant to current regime',
+        icon: <Target className="w-4 h-4 text-bloomberg" />,
+        action: () => { addToRecent('regime-outlook'); onNavigate('regime-outlook'); onClose(); },
+      } as CommandItem);
+      if (alive) setSuggestions(items);
+    })();
+    return () => { alive = false; };
+    // Only re-run when the palette opens or the regime changes; the action closures
+    // intentionally capture the current onNavigate/onClose (stable enough) — including them
+    // in deps re-runs the effect every render and cancels the fetch before it resolves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, currentRegime]);
 
   const commands: CommandItem[] = [
+    // Phase 7B — surfaced suggestions (only when not searching) at the very top
+    ...(query ? [] : suggestions),
+
     // Favorites (pinned for the session)
     ...favorites
       .filter(id => sections.find(s => s.id === id))
       .map(id => sections.find(s => s.id === id)!)
       .map((section) => ({
         id: `fav-${section.id}`,
-        label: section.label,
+        label: panelLabel(section.id, section.label),
         category: 'favorite' as const,
         icon: <Star className="w-4 h-4 text-amber" />,
         action: () => {
@@ -130,7 +221,7 @@ export function CommandPalette({
       .map(id => sections.find(s => s.id === id)!)
       .map((section) => ({
         id: `recent-${section.id}`,
-        label: section.label,
+        label: panelLabel(section.id, section.label),
         category: 'recent' as const,
         icon: <Clock className="w-4 h-4 text-text-tertiary" />,
         action: () => {
@@ -143,9 +234,9 @@ export function CommandPalette({
     // All sections
     ...sections.map((section) => ({
       id: section.id,
-      label: section.label,
+      label: panelLabel(section.id, section.label),
       category: 'section' as const,
-      icon: section.icon ? <span className="text-sm">{section.icon}</span> : null,
+      icon: null,   // no emoji icons: plain, consistent list
       action: () => {
         addToRecent(section.id);
         onNavigate(section.id);
@@ -189,7 +280,7 @@ export function CommandPalette({
     },
     {
       id: 'quick-morning',
-      label: 'Open Morning Brief',
+      label: 'Open Daily Brief',
       shortcut: 'M',
       category: 'action' as const,
       icon: <TrendingUp className="w-4 h-4 text-green" />,
@@ -242,18 +333,29 @@ export function CommandPalette({
     },
   ];
 
-  // UPGRADE-7: Filter commands based on query and active tab
+  // Phase 7A — fuzzy natural-language routing: every query token must appear in the
+  // command's label OR its NL keyword registry, so "spy factor exposure" -> Factor Exposure
+  // and "correlation spy tlt" -> Correlation Matrix. Instant, no LLM.
+  const searchText = (cmd: CommandItem) => {
+    const baseId = cmd.id.replace(/^(fav|recent)-/, '');
+    return `${cmd.label} ${NL_KEYWORDS[baseId] || ''}`.toLowerCase();
+  };
   const filteredCommands = commands.filter((cmd) => {
-    if (query) return cmd.label.toLowerCase().includes(query.toLowerCase());
+    if (query) {
+      const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+      const text = searchText(cmd);
+      return tokens.every((t) => text.includes(t));
+    }
     if (activeTab === 'favorites') return cmd.category === 'favorite';
     if (activeTab === 'recent') return cmd.category === 'recent';
     return true;
   });
 
+  const suggestedCommands = filteredCommands.filter((c) => c.id.startsWith('sugg-'));
   const favoriteCommands = filteredCommands.filter((c) => c.category === 'favorite');
   const recentCommands = filteredCommands.filter((c) => c.category === 'recent');
   const sectionCommands = filteredCommands.filter((c) => c.category === 'section');
-  const actionCommands = filteredCommands.filter((c) => c.category === 'action');
+  const actionCommands = filteredCommands.filter((c) => c.category === 'action' && !c.id.startsWith('sugg-'));
 
   // Reset selection when query or tab changes
   useEffect(() => {
@@ -293,13 +395,14 @@ export function CommandPalette({
           e.preventDefault();
           onClose();
           break;
-        case 'Tab':
+        case 'Tab': {
           e.preventDefault();
           // Cycle through tabs
           const tabs: ('all' | 'favorites' | 'recent')[] = ['all', 'favorites', 'recent'];
           const currentIndex = tabs.indexOf(activeTab);
           setActiveTab(tabs[(currentIndex + 1) % tabs.length]);
           break;
+        }
       }
     },
     [isOpen, filteredCommands, selectedIndex, onClose, activeTab]
@@ -373,6 +476,21 @@ export function CommandPalette({
 
         {/* Command list */}
         <div className="max-h-[400px] overflow-y-auto">
+          {/* Suggested (Phase 7B) — surfaced from live anomalies + current regime */}
+          {suggestedCommands.length > 0 && !query && (
+            <div>
+              <div className="px-4 py-2 text-2xs text-bloomberg uppercase tracking-wider bg-surface-1 flex items-center gap-2">
+                <Zap className="w-3 h-3" />
+                Suggested
+              </div>
+              <div>
+                {suggestedCommands.map((cmd) => (
+                  <CommandRow key={cmd.id} cmd={cmd} isSelected={filteredCommands.indexOf(cmd) === selectedIndex} />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Favorites */}
           {favoriteCommands.length > 0 && !query && (
             <div>
@@ -519,6 +637,11 @@ function CommandRow({
         <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center">{cmd.icon}</span>
       )}
       <span className="text-sm flex-1">{cmd.label}</span>
+      {cmd.reason && (
+        <span className="text-2xs text-amber/80 font-mono border border-amber/30 px-1 py-0.5 rounded-sm">
+          {cmd.reason}
+        </span>
+      )}
       {cmd.shortcut && (
         <kbd className="px-1.5 py-0.5 text-2xs text-text-tertiary font-mono bg-surface-1 border border-border-subtle rounded">
           {cmd.shortcut}

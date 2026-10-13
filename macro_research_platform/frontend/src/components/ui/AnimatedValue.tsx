@@ -6,7 +6,7 @@
 import { useAnimatedNumber, useFlashOnChange } from '@/hooks/useAnimatedNumber'
 
 interface AnimatedValueProps {
-  value: number
+  value: number | string | null | undefined
   decimals?: number
   prefix?: string
   suffix?: string
@@ -14,6 +14,19 @@ interface AnimatedValueProps {
   className?: string
   colorize?: boolean // green if positive, red if negative
   flashOnChange?: boolean
+}
+
+function normalizeNumericInput(value: unknown, fallback: number = 0): number {
+  if (typeof value === 'number' && !isNaN(value) && isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value)
+    if (!isNaN(parsed) && isFinite(parsed)) {
+      return parsed
+    }
+  }
+  return fallback
 }
 
 export function AnimatedValue({
@@ -29,8 +42,9 @@ export function AnimatedValue({
   const displayed = useAnimatedNumber(value, { duration, decimals, prefix, suffix })
   const flashClass = useFlashOnChange(value)
 
+  const normalizedValue = normalizeNumericInput(value, 0)
   const colorClass = colorize
-    ? value >= 0
+    ? normalizedValue >= 0
       ? 'positive'
       : 'negative'
     : ''

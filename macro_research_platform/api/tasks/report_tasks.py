@@ -3,10 +3,10 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from datetime import datetime
+from typing import Dict, Any
 
-from celery_app import app
+from api.celery_app import app
 
 logger = logging.getLogger(__name__)
 
