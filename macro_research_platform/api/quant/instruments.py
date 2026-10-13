@@ -76,7 +76,16 @@ def meta(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
     from api.markets import country_of, fx_ticker, minor_unit_factor
     rows = _universe_rows()
     out = {}
+    from api.markets import asset_type
     for s in symbols:
+        if asset_type(s) == "Crypto":                          # BTC-USD: spot, quoted in its suffix currency, no stock taxes
+            q = s.rsplit("-", 1)[1]
+            q = "USD" if q in ("USDT", "USDC") else q
+            out[s] = {"country": "CRYPTO", "quote_currency": q, "currency": q if q in ("USD", "EUR", "GBP") else "USD",
+                      "unit_divisor": 1.0, "fx_ticker": fx_ticker(q if q in ("USD", "EUR", "GBP") else "USD"),
+                      "tax_buy_bps": 0.0, "tax_sell_bps": 0.0, "tax_note": None, "sec_fee": False, "asset_class": "crypto",
+                      "name": s, "sector": "Crypto", "region": None, "market_class": None}
+            continue
         country = country_of(s)
         row = rows.get(s) or rows.get(s.replace("-", ".")) or {}
         q = _quote_ccy(s, country, row) if country != "US" else "USD"
@@ -85,5 +94,5 @@ def meta(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
         out[s] = {"country": country, "quote_currency": q, "currency": ccy, "unit_divisor": divisor,
                   "fx_ticker": fx_ticker(ccy), "tax_buy_bps": buy, "tax_sell_bps": sell, "tax_note": why,
                   "sec_fee": country == "US", "name": row.get("name"), "sector": row.get("sector"),
-                  "region": row.get("region"), "market_class": row.get("market_class")}
+                  "region": row.get("region"), "market_class": row.get("market_class"), "asset_class": "equity"}
     return out

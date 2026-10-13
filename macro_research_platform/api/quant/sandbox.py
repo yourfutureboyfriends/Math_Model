@@ -256,7 +256,7 @@ def _prepare(code: str, head: Dict[str, Any], costs: Optional[Dict[str, float]],
     arrays["observed"] = data.observed.to_numpy(bool)
     arrays["usd_per_unit"] = data.usd_per_unit.to_numpy(np.float64)
     micro_cols = {}
-    frames = {k: getattr(data, k, None) for k in ("tick_bps", "lot_value", "div_yield", "fx", "rf_ccy", "settle")}
+    frames = {k: getattr(data, k, None) for k in ("tick_bps", "lot_value", "div_yield", "fx", "rf_ccy", "settle", "share_px")}
     frames.update({f"opt_{k}": v for k, v in data.opt.items()})          # synthetic options' analytics
     frames.update({f"fund_{k}": v for k, v in data.fund.items()})        # point-in-time fundamentals
     for k, fr in frames.items():                                           # market rules (float32 keeps it small)

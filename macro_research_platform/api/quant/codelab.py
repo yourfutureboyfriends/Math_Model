@@ -70,6 +70,10 @@ COST_SCHEMA: Dict[str, Dict[str, str]] = {
     "dividend_wht": {"unit": "1 = on, 0 = off", "meaning": "tax withheld at source on dividends of listings in another currency than the account's (api/quant/market_rules.py)"},
     "wht_treaty_cap": {"unit": "decimal rate", "meaning": "withholding is the listing country's statutory non-resident rate capped at this treaty rate (1 = no treaty relief)"},
     "board_lots": {"unit": "1 = on, 0 = off", "meaning": "orders rounded to whole board lots (JP 100, HK per stock, TW 1,000 …), sized at `capital`"},
+    "crypto_fee_bps": {"unit": "bp of traded value", "meaning": "crypto exchange taker fee (Coinbase Advanced / Kraken / Binance ≈ 10–40 bp)"},
+    "commission_per_share": {"unit": "account currency per share", "meaning": "broker per-share commission (e.g. IBKR Pro Fixed $0.005)"},
+    "commission_min": {"unit": "account currency per order", "meaning": "minimum commission per order (e.g. IBKR $1)"},
+    "commission_max_pct": {"unit": "fraction of the order's value (0 = no cap)", "meaning": "commission cap (e.g. IBKR 1%)"},
     "exec_price": {"unit": "0 = next open, 1 = next day's VWAP (≈ (O+H+L+C)/4), 2 = next close (market-on-close)", "meaning": "where orders decided at a close are filled"},
     "max_participation": {"unit": "fraction of 63-day average daily traded value, per asset per day (0 = no cap)", "meaning": "volume limit: larger orders fill over several days (the rest stays pending)"},
     "borrow_tiers": {"unit": "1 = on, 0 = off", "meaning": "stock-borrow fee rises for less liquid names: ≥$100m/day the base fee, $20–100m 0.75%, $5–20m 2%, under $5m 5% a year"},
@@ -95,6 +99,10 @@ DEFAULT_COSTS: Dict[str, float] = {
     "wht_treaty_cap": 0.15,
     "board_lots": 1.0,
     "exec_price": 0.0,
+    "crypto_fee_bps": 10.0,
+    "commission_per_share": 0.0,
+    "commission_min": 0.0,
+    "commission_max_pct": 0.0,
     "max_participation": 0.10,
     "borrow_tiers": 1.0,
     "maintenance_margin": 0.25,
@@ -117,7 +125,7 @@ class Data:
     def __init__(self, close, open_, high, low, volume, rf=None, vix=None, observed=None, rf_known=None,
                  provenance: Optional[Dict[str, Any]] = None, instruments: Optional[Dict[str, Dict[str, Any]]] = None,
                  account_currency: str = "USD", usd_per_unit=None, tick_bps=None, lot_value=None, div_yield=None,
-                 fx=None, rf_ccy=None, settle=None, options=None, fundamentals=None):
+                 fx=None, rf_ccy=None, settle=None, options=None, fundamentals=None, share_px=None):
         self.close, self.high, self.low = close, high, low
         idx = close.index
         self.observed = (observed.reindex(index=idx, columns=close.columns).fillna(False).astype(bool)
@@ -146,6 +154,7 @@ class Data:
         #   rf_ccy     daily short rate of each listing currency (NaN = unknown) — the hedge's carry
         frame = lambda x: None if x is None else x.reindex(index=idx, columns=close.columns)
         self.tick_bps, self.lot_value, self.div_yield = frame(tick_bps), frame(lot_value), frame(div_yield)
+        self.share_px = frame(share_px)                        # traded share price, account currency (per-share fees)
         self.fx = fx.reindex(idx) if fx is not None else None
         self.rf_ccy = rf_ccy.reindex(idx) if rf_ccy is not None else None
         # synthetic options (OPTIONS = [...]): `settle` holds each expiring contract's settlement value on its expiry
@@ -171,7 +180,7 @@ class Data:
                  rf_known=self.rf_known, provenance=self.provenance, instruments=self.instruments,
                  account_currency=self.account_currency, usd_per_unit=self.usd_per_unit.iloc[:n],
                  tick_bps=cut(self.tick_bps), lot_value=cut(self.lot_value), div_yield=cut(self.div_yield),
-                 fx=cut(self.fx), rf_ccy=cut(self.rf_ccy), settle=cut(self.settle),
+                 fx=cut(self.fx), rf_ccy=cut(self.rf_ccy), settle=cut(self.settle), share_px=cut(self.share_px),
                  options={k: v.iloc[:n] for k, v in self.opt.items()} or None,
                  fundamentals={k: v.iloc[:n] for k, v in self.fund.items()} or None)
         d.members = self.members.iloc[:n] if getattr(self, "members", None) is not None else None
@@ -222,6 +231,199 @@ def _hold(weights: pd.DataFrame, freq: str) -> pd.DataFrame:
     first = np.r_[True, np.asarray(per[1:] != per[:-1])] if len(per) else np.zeros(0, bool)
     w.loc[~first] = np.nan
     return w
+
+
+# ── Indicator library (vectorised over every ticker; causal: each value uses data up to that row) ──
+def sma(x: pd.DataFrame, n: int = 20) -> pd.DataFrame:
+    """Simple moving average."""
+    return x.rolling(n, min_periods=n).mean()
+
+
+def ema(x: pd.DataFrame, n: int = 20) -> pd.DataFrame:
+    """Exponential moving average (span n)."""
+    return x.ewm(span=n, min_periods=n, adjust=False).mean()
+
+
+def wma(x: pd.DataFrame, n: int = 20) -> pd.DataFrame:
+    """Linearly weighted moving average."""
+    w = np.arange(1, n + 1, dtype=float)
+    return x.rolling(n, min_periods=n).apply(lambda a: float(np.dot(a, w) / w.sum()), raw=True)
+
+
+def hma(x: pd.DataFrame, n: int = 20) -> pd.DataFrame:
+    """Hull moving average."""
+    return wma(2 * wma(x, max(n // 2, 1)) - wma(x, n), max(int(math.sqrt(n)), 1))
+
+
+def rsi(x: pd.DataFrame, n: int = 14) -> pd.DataFrame:
+    """Relative strength index (Wilder), 0–100."""
+    d = x.diff()
+    up = d.clip(lower=0).ewm(alpha=1 / n, min_periods=n, adjust=False).mean()
+    dn = (-d.clip(upper=0)).ewm(alpha=1 / n, min_periods=n, adjust=False).mean()
+    return 100 - 100 / (1 + up / dn.replace(0, np.nan))
+
+
+def macd(x: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int = 9) -> Dict[str, pd.DataFrame]:
+    """MACD line, signal line and histogram."""
+    line = ema(x, fast) - ema(x, slow)
+    sig = line.ewm(span=signal, min_periods=signal, adjust=False).mean()
+    return {"macd": line, "signal": sig, "hist": line - sig}
+
+
+def bollinger(x: pd.DataFrame, n: int = 20, k: float = 2.0) -> Dict[str, pd.DataFrame]:
+    """Bollinger bands: middle, upper, lower, %b and bandwidth."""
+    mid = sma(x, n)
+    sd = x.rolling(n, min_periods=n).std()
+    up, lo = mid + k * sd, mid - k * sd
+    return {"middle": mid, "upper": up, "lower": lo, "pct_b": (x - lo) / (up - lo), "width": (up - lo) / mid}
+
+
+def true_range(data: "Data") -> pd.DataFrame:
+    pc = data.close.shift(1)
+    return np.fmax(np.fmax(data.high - data.low, (data.high - pc).abs()), (data.low - pc).abs())
+
+
+def atr(data: "Data", n: int = 14) -> pd.DataFrame:
+    """Average true range (Wilder)."""
+    return true_range(data).ewm(alpha=1 / n, min_periods=n, adjust=False).mean()
+
+
+def adx(data: "Data", n: int = 14) -> pd.DataFrame:
+    """Average directional index (trend strength, 0–100)."""
+    up, dn = data.high.diff(), -data.low.diff()
+    plus = up.where((up > dn) & (up > 0), 0.0)
+    minus = dn.where((dn > up) & (dn > 0), 0.0)
+    tr = atr(data, n)
+    pdi = 100 * plus.ewm(alpha=1 / n, adjust=False).mean() / tr
+    mdi = 100 * minus.ewm(alpha=1 / n, adjust=False).mean() / tr
+    dx = 100 * (pdi - mdi).abs() / (pdi + mdi).replace(0, np.nan)
+    return dx.ewm(alpha=1 / n, min_periods=n, adjust=False).mean()
+
+
+def stochastic(data: "Data", n: int = 14, d: int = 3) -> Dict[str, pd.DataFrame]:
+    """Stochastic oscillator %K and %D (0–100)."""
+    lo, hi = data.low.rolling(n, min_periods=n).min(), data.high.rolling(n, min_periods=n).max()
+    k = 100 * (data.close - lo) / (hi - lo).replace(0, np.nan)
+    return {"k": k, "d": k.rolling(d, min_periods=d).mean()}
+
+
+def williams_r(data: "Data", n: int = 14) -> pd.DataFrame:
+    """Williams %R (−100–0)."""
+    lo, hi = data.low.rolling(n, min_periods=n).min(), data.high.rolling(n, min_periods=n).max()
+    return -100 * (hi - data.close) / (hi - lo).replace(0, np.nan)
+
+
+def cci(data: "Data", n: int = 20) -> pd.DataFrame:
+    """Commodity channel index."""
+    tp = (data.high + data.low + data.close) / 3
+    m = tp.rolling(n, min_periods=n).mean()
+    md = tp.rolling(n, min_periods=n).apply(lambda a: float(np.mean(np.abs(a - a.mean()))), raw=True)
+    return (tp - m) / (0.015 * md.replace(0, np.nan))
+
+
+def roc(x: pd.DataFrame, n: int = 10) -> pd.DataFrame:
+    """Rate of change over n rows."""
+    return x / x.shift(n) - 1
+
+
+def zscore(x: pd.DataFrame, n: int = 20) -> pd.DataFrame:
+    """Rolling z-score."""
+    return (x - x.rolling(n, min_periods=n).mean()) / x.rolling(n, min_periods=n).std()
+
+
+def donchian(data: "Data", n: int = 20) -> Dict[str, pd.DataFrame]:
+    """Donchian channel of the previous n sessions (excludes today, so a breakout is today's close above it)."""
+    return {"upper": data.high.rolling(n, min_periods=n).max().shift(1), "lower": data.low.rolling(n, min_periods=n).min().shift(1)}
+
+
+def keltner(data: "Data", n: int = 20, k: float = 2.0) -> Dict[str, pd.DataFrame]:
+    """Keltner channel: EMA ± k × ATR."""
+    mid, a = ema(data.close, n), atr(data, n)
+    return {"middle": mid, "upper": mid + k * a, "lower": mid - k * a}
+
+
+def obv(data: "Data") -> pd.DataFrame:
+    """On-balance volume."""
+    return (np.sign(data.close.diff()).fillna(0.0) * data.volume.fillna(0.0)).cumsum()
+
+
+def mfi(data: "Data", n: int = 14) -> pd.DataFrame:
+    """Money flow index (volume-weighted RSI, 0–100)."""
+    tp = (data.high + data.low + data.close) / 3
+    flow = tp * data.volume
+    pos = flow.where(tp.diff() > 0, 0.0).rolling(n, min_periods=n).sum()
+    neg = flow.where(tp.diff() < 0, 0.0).rolling(n, min_periods=n).sum()
+    return 100 - 100 / (1 + pos / neg.replace(0, np.nan))
+
+
+def vwap(data: "Data", n: int = 20) -> pd.DataFrame:
+    """Rolling volume-weighted average price over n sessions (typical price)."""
+    tp = (data.high + data.low + data.close) / 3
+    return (tp * data.volume).rolling(n, min_periods=n).sum() / data.volume.rolling(n, min_periods=n).sum().replace(0, np.nan)
+
+
+def beta(x: pd.DataFrame, market: pd.Series, n: int = 252) -> pd.DataFrame:
+    """Rolling beta of each column's returns to a market return series."""
+    r, m = x.pct_change(fill_method=None), market.pct_change(fill_method=None)
+    cov = r.rolling(n, min_periods=n // 2).cov(m)
+    return cov.div(m.rolling(n, min_periods=n // 2).var(), axis=0)
+
+
+def drawdown(x: pd.DataFrame) -> pd.DataFrame:
+    """Distance below the running high (≤ 0)."""
+    return x / x.cummax() - 1
+
+
+# ── Scheduling and universe selection ────────────────────────────────────────
+def rebalance(weights: pd.DataFrame, every: Any = "M") -> pd.DataFrame:
+    """Decide on a schedule: "D", "W", "M", "Q", "Y" (first observed session of each period) or an integer n (every n
+    sessions). Other rows blank = hold."""
+    if isinstance(every, int):
+        w = weights.copy()
+        keep = np.zeros(len(w), bool)
+        keep[::max(every, 1)] = True
+        w.loc[~keep] = np.nan
+        return w
+    if str(every).upper() == "D":
+        return weights
+    return _hold(weights, {"W": "W", "M": "M", "Q": "Q", "Y": "Y", "A": "Y"}[str(every).upper()])
+
+
+def top_liquid(data: "Data", n: int = 100, lookback: int = 63) -> pd.DataFrame:
+    """True for the n most traded names each day (63-day average traded value in USD; known that day) — a dynamic
+    universe like QuantConnect's coarse selection."""
+    tv = (data.close.mul(data.usd_per_unit, axis=0) * data.volume).rolling(lookback, min_periods=lookback // 2).mean()
+    return tv.rank(axis=1, ascending=False) <= n
+
+
+# ── Custom charts (plot) ─────────────────────────────────────────────────────
+_CHARTS: Dict[str, Dict[str, Dict[str, float]]] = {}
+INDICATORS = ['sma', 'ema', 'wma', 'hma', 'rsi', 'macd', 'bollinger', 'true_range', 'atr', 'adx', 'stochastic', 'williams_r', 'cci', 'roc', 'zscore', 'donchian', 'keltner', 'obv', 'mfi', 'vwap', 'beta', 'drawdown', 'rebalance', 'top_liquid', 'plot']
+
+
+def plot(chart: str, name: str, values: Any, date: Any = None) -> None:
+    """Add a series to a custom chart in the results: plot("Signals", "SPY RSI", rsi(data.close)["SPY"]) for a whole
+    series, or plot(chart, name, value, date) for one point (ctx.plot does that for you in on_bar)."""
+    c = _CHARTS.setdefault(str(chart)[:60], {})
+    s = c.setdefault(str(name)[:60], {})
+    if len(c) > 12 or len(_CHARTS) > 12:
+        return
+    if isinstance(values, pd.Series):
+        v = values.dropna()
+        s.update({str(pd.Timestamp(k).date()): float(x) for k, x in v.items() if np.isfinite(x)})
+    elif date is not None and values is not None and np.isfinite(float(values)):
+        s[str(pd.Timestamp(date).date())] = float(values)
+
+
+def _charts_out(max_points: int = 1000) -> Dict[str, Any]:
+    out = {}
+    for chart, series in _CHARTS.items():
+        out[chart] = {}
+        for name, pts in series.items():
+            items = sorted(pts.items())
+            step = max(1, len(items) // max_points)
+            out[chart][name] = [[d, round(v, 6)] for d, v in items[::step]]
+    return out
 
 
 def decision_mask(weights: pd.DataFrame) -> np.ndarray:
@@ -341,6 +543,32 @@ class Ctx:
         self._cond.append({"ticker": ticker, "weight": float(weight), "price": float(price), "kind": "stop",
                            "days": days, "placed": str(self.date.date())})
 
+    def stop_limit(self, ticker: str, weight: float, stop: float, limit: float, days: Optional[int] = None) -> None:
+        """Once the price trades through `stop`, becomes a limit order at `limit` (filled that day if the range reaches
+        it, else stays as a limit order)."""
+        self._cond.append({"ticker": ticker, "weight": float(weight), "price": float(stop), "limit": float(limit),
+                           "kind": "stop_limit", "days": days, "placed": str(self.date.date())})
+
+    def trailing_stop(self, ticker: str, weight: float, trail: float, days: Optional[int] = None) -> None:
+        """A stop that follows the price: for a sell, `trail` (e.g. 0.10) below the highest high since it was placed;
+        for a buy, that far above the lowest low. Fills at the stop, or at the open when it gaps through."""
+        px = float(self.close.get(ticker, np.nan))
+        self._cond.append({"ticker": ticker, "weight": float(weight), "trail": float(trail), "kind": "trailing",
+                           "peak": px, "trough": px, "price": float("nan"), "days": days, "placed": str(self.date.date())})
+
+    def bracket(self, ticker: str, weight: float, take_profit: float, stop_loss: float, days: Optional[int] = None) -> None:
+        """Two linked exits — a limit at `take_profit` and a stop at `stop_loss`, both to `weight` (usually 0): whichever
+        fills first cancels the other (one-cancels-other)."""
+        g = f"oco{len(self._cond)}-{self.i}"
+        self._cond.append({"ticker": ticker, "weight": float(weight), "price": float(take_profit), "kind": "limit",
+                           "days": days, "placed": str(self.date.date()), "oco": g})
+        self._cond.append({"ticker": ticker, "weight": float(weight), "price": float(stop_loss), "kind": "stop",
+                           "days": days, "placed": str(self.date.date()), "oco": g})
+
+    def plot(self, chart: str, name: str, value: float) -> None:
+        """Add today's value to a custom chart in the results."""
+        plot(chart, name, value, self.date)
+
     def cancel(self, ticker: Optional[str] = None) -> None:
         self._cond = [o for o in self._cond if ticker is not None and o["ticker"] != ticker]
 
@@ -433,6 +661,8 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
     tax_sell = np.array([float(i.get("tax_sell_bps") or 0.0) for i in inst])
     # converting currency to buy (or back after selling) a listing in another currency
     fx_cost = np.array([cfg["fx_cost_bps"] if (i.get("currency") or "USD") != data.account_currency else 0.0 for i in inst])
+    fx_cost = fx_cost + np.array([cfg["crypto_fee_bps"] if i.get("asset_class") == "crypto" else 0.0 for i in inst])
+    is_fx = np.array([i.get("asset_class") == "fx" for i in inst])
     # dividend withholding: statutory non-resident rate capped at the treaty rate; listings in the account currency
     # are domestic (nothing withheld)
     wht = np.array([min(float(i.get("wht") or 0.0), cfg["wht_treaty_cap"])
@@ -463,6 +693,39 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
     MEM = data.members.reindex(index=idx, columns=cols).fillna(False).to_numpy(bool) if getattr(data, "members", None) is not None else None
     mark_prev_close = None
     units = np.zeros(N)
+    per_share, cmin, cmax = float(cfg["commission_per_share"]), float(cfg["commission_min"]), float(cfg["commission_max_pct"])
+    SH = (data.share_px.to_numpy(float) if data.share_px is not None else M)
+    SH = np.where(np.isfinite(SH) & (SH > 0), SH, M)
+    # order log and round-trip trades (average-cost accounting per asset; quantities at `capital`)
+    fills: List[tuple] = []
+    trades: List[Dict[str, Any]] = []
+    tpos, tavg, tentry, treal, tcost, tmax = (np.zeros(N), np.zeros(N), [None] * N, np.zeros(N), np.zeros(N), np.zeros(N))
+
+    def _fill(t_, j, dq, price, cost, kind):
+        fills.append((t_, j, dq, price, cost, kind))
+        pos = tpos[j]
+        if pos == 0 or np.sign(pos) == np.sign(dq):
+            if pos == 0:
+                tentry[j], treal[j], tcost[j], tmax[j] = t_, 0.0, 0.0, 0.0
+            tavg[j] = (tavg[j] * abs(pos) + price * abs(dq)) / (abs(pos) + abs(dq))
+            tpos[j] = pos + dq
+            tcost[j] += cost
+            tmax[j] = max(tmax[j], abs(tpos[j]) * tavg[j])
+            return
+        close = min(abs(dq), abs(pos))
+        treal[j] += close * (price - tavg[j]) * np.sign(pos)
+        tcost[j] += cost
+        tpos[j] = pos + dq
+        if abs(tpos[j]) < 1e-12 or np.sign(tpos[j]) != np.sign(pos):
+            trades.append({"ticker": cols[j], "side": "long" if pos > 0 else "short", "entry": str(idx[tentry[j]].date()),
+                           "exit": str(idx[t_].date()), "days": int((idx[t_] - idx[tentry[j]]).days),
+                           "pnl": (treal[j] - tcost[j]) * cap, "return": (treal[j] - tcost[j]) / tmax[j] if tmax[j] > 0 else 0.0,
+                           "costs": tcost[j] * cap})
+            rest = tpos[j] if abs(tpos[j]) > 1e-12 else 0.0
+            tpos[j], treal[j], tcost[j], tmax[j] = 0.0, 0.0, 0.0, 0.0
+            if rest:                                          # flipped: the remainder opens a new trade
+                tentry[j], tavg[j], tpos[j], tmax[j] = t_, price, rest, abs(rest) * price
+
     pnl_asset = np.zeros(N)
     fx_asset = np.zeros(N)
     margin_calls = 0
@@ -516,6 +779,7 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
             if not settled[j] and idx[t] >= settlement:
                 if units[j] != 0:
                     value = units[j] * float(mark[j]) * (1 - cfg["delist_haircut"])
+                    _fill(t, j, float(-units[j]), float(mark[j]) * (1 - cfg["delist_haircut"]), 0.0, "delisted")
                     day_pnl[j] += value - units[j] * float(np.nan_to_num(lv[j]))
                     cash += value
                     events.append({"date": str(idx[t].date()), "ticker": cols[j],
@@ -575,17 +839,26 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
                     dl = np.where(lot, np.round(dl / np.where(lot, lu, 1.0)) * np.where(lot, lu, 1.0), dl)
                     nt = np.abs(dl) * np.nan_to_num(px)
                     resid[0] = float(np.abs(req - nt).sum())
-                c_ = cfg["commission_bps"] / 1e4 * nt.sum()
-                s_ = float((nt * np.nan_to_num(hs[t], nan=5e-4)).sum())
+                cv = cfg["commission_bps"] / 1e4 * nt
+                if per_share or cmin:
+                    # broker model: per share with a minimum and a cap per order (share counts at `capital`)
+                    traded = nt > 0
+                    shares = np.where(traded, nt * cap / np.where(traded & (SH[t] > 0), SH[t], np.inf), 0.0)
+                    fee_ps = np.where(traded, np.maximum(shares * per_share, cmin) / cap, 0.0)
+                    if cmax > 0:
+                        fee_ps = np.minimum(fee_ps, cmax * nt)
+                    cv = cv + fee_ps
+                sv = nt * np.nan_to_num(hs[t], nan=5e-4)
                 fr = np.where(okdv, nt * cap / np.where(okdv, dv, 1.0), 0.0)
-                i_ = float((nt * cfg["impact_coef_bps"] / 1e4 * np.sqrt(100 * fr)).sum())
+                iv = nt * cfg["impact_coef_bps"] / 1e4 * np.sqrt(100 * fr)
                 sells, buys = np.where(dl < 0, nt, 0.0), np.where(dl > 0, nt, 0.0)
-                f_ = float((sells * (cfg["sec_fee_bps"] * sec_mask + tax_sell)).sum() + (buys * tax_buy).sum()
-                           + (nt * fx_cost).sum()) / 1e4
-                return dl, nt, c_, s_, i_, f_
+                fv = (sells * (cfg["sec_fee_bps"] * sec_mask + tax_sell) + buys * tax_buy + nt * fx_cost) / 1e4
+                per_asset[0] = cv + sv + iv + fv
+                return dl, nt, float(cv.sum()), float(sv.sum()), float(iv.sum()), float(fv.sum())
             # size orders against NAV *after* this rebalance's costs, so fees come out of what is bought rather
             # than leaving an unintended margin loan (fixed point; converges in a few steps for realistic costs)
             nav_eff = nav_open
+            per_asset = [np.zeros(N)]
             resid = [0.0]
             capped = [np.zeros(N, bool)]
             for _ in range(30):
@@ -600,6 +873,8 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
             day_pnl += np.where(exe & (units != 0), units * (np.nan_to_num(px) - np.nan_to_num(lv)), 0.0)
             lv = np.where(exe, px, lv)
             if notional.any():
+                for j in np.nonzero(delta)[0]:
+                    _fill(t, j, float(delta[j]), float(px[j]), float(per_asset[0][j]), "order")
                 units = units + delta
                 cash -= float(np.nansum(delta * px)) + comm + spr + imp + fee
                 turn = float(notional.sum() / nav_open)
@@ -625,8 +900,25 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
                 nav_now = float(np.where(units != 0, units * np.nan_to_num(np.where(OBS[t], M[t], mark)), 0.0).sum() + cash)
                 cur_w = units[j] * O[t, j] / nav_now if nav_now > 0 else 0.0
                 buy = o["weight"] > cur_w
-                op_, hi_, lo_, k_ = O[t, j], Hh_[t, j], Ll_[t, j], o["price"]
-                hit = ((lo_ <= k_) if buy else (hi_ >= k_)) if o["kind"] == "limit" else ((hi_ >= k_) if buy else (lo_ <= k_))
+                op_, hi_, lo_ = O[t, j], Hh_[t, j], Ll_[t, j]
+                if o["kind"] == "trailing":                       # the stop level from the extreme up to yesterday
+                    o["price"] = o["trough"] * (1 + o["trail"]) if buy else o["peak"] * (1 - o["trail"])
+                k_ = o["price"]
+                if o["kind"] == "limit":
+                    hit = (lo_ <= k_) if buy else (hi_ >= k_)
+                elif o["kind"] == "stop_limit" and not o.get("armed"):
+                    hit = (hi_ >= k_) if buy else (lo_ <= k_)
+                    if hit:                                       # triggered: now a limit order at its limit price
+                        o["armed"], o["armed_at"] = True, t
+                        lim = o["limit"]
+                        hit = (lo_ <= lim) if buy else (hi_ >= lim)
+                elif o["kind"] == "stop_limit":
+                    lim = o["limit"]
+                    hit = (lo_ <= lim) if buy else (hi_ >= lim)
+                else:                                             # stop, trailing
+                    hit = (hi_ >= k_) if buy else (lo_ <= k_)
+                if o["kind"] == "trailing" and not hit:
+                    o["peak"], o["trough"] = max(o["peak"], hi_), min(o["trough"], lo_)
                 if not hit:
                     if o["days"] is not None:
                         o["days"] -= 1
@@ -636,6 +928,12 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
                     continue
                 if o["kind"] == "limit":
                     fpx = min(op_, k_) if buy else max(op_, k_)
+                elif o["kind"] == "stop_limit":
+                    lim = o["limit"]
+                    if o.get("armed_at") == t:                   # triggered today: filled around the stop, within the limit
+                        fpx = min(max(op_, k_), lim) if buy else max(min(op_, k_), lim)
+                    else:                                         # an armed limit from an earlier day
+                        fpx = min(op_, lim) if buy else max(op_, lim)
                 else:
                     fpx = max(op_, k_) if buy else min(op_, k_)
                 dl_j = o["weight"] * nav_now / fpx - units[j]
@@ -647,6 +945,7 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
                 f1 = nt_j * ((cfg["sec_fee_bps"] * sec_mask[j] + tax_sell[j]) if dl_j < 0 else tax_buy[j]) / 1e4 + nt_j * fx_cost[j] / 1e4
                 day_pnl[j] += units[j] * (fpx - float(np.nan_to_num(lv[j])))
                 lv[j] = fpx
+                _fill(t, j, float(dl_j), float(fpx), float(c1 + s1 + i1 + f1), o["kind"])
                 units[j] += dl_j
                 cash -= dl_j * fpx + c1 + s1 + i1 + f1
                 comm += c1
@@ -658,8 +957,9 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
                 pending[j] = False
                 cond_fills += 1
                 fills_today.append({"date": str(idx[t].date()), "ticker": o["ticker"], "kind": o["kind"], "price": round(float(fpx), 6),
-                                    "weight": o["weight"], "placed": o["placed"]})
-            ctx._cond = keep
+                                    "weight": o["weight"], "placed": o["placed"], **({"oco": o["oco"]} if o.get("oco") else {})})
+            filled_groups = {f.get("oco") for f in fills_today if f.get("oco")}
+            ctx._cond = [o for o in keep if not o.get("oco") or o["oco"] not in filled_groups]   # one cancels other
             ctx.fills = fills_today
             events.extend({**f, "event": f"{f['kind']} order filled"} for f in fills_today)
         elif on_bar is not None:
@@ -671,6 +971,7 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
             ex_ = np.isfinite(SET[t])
             if ex_.any():
                 for j in np.where(ex_ & (units != 0))[0]:
+                    _fill(t, j, float(-units[j]), float(SET[t, j]), 0.0, "expiry")
                     day_pnl[j] += units[j] * (SET[t, j] - float(np.nan_to_num(lv[j])))
                     cash += units[j] * SET[t, j]
                     events.append({"date": str(idx[t].date()), "ticker": cols[j], "event": "option expired — settled",
@@ -683,7 +984,7 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
         lv = np.where(OBS[t], M[t], lv)
         out["stale_held"][t] = float(((units != 0) & ~OBS[t]).sum())
         mv = np.where(units != 0, units * np.nan_to_num(mark), 0.0)
-        short_vec = np.where((mv < 0) & ~is_opt, -mv, 0.0)       # stock borrow: options are written, not borrowed
+        short_vec = np.where((mv < 0) & ~is_opt & ~is_fx, -mv, 0.0)   # stock borrow: options are written, FX is a forward
         short_mv = float(short_vec.sum())
         if NOTL is not None:                                   # underlying value controlled by option positions
             opt_notional[t] = float(np.nansum(np.abs(mv) * np.nan_to_num(NOTL[t])))
@@ -738,7 +1039,7 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
         pnl_asset += day_pnl / nav_prev
         # margin: NAV must cover maintenance on gross stock value plus margin on written options; otherwise the broker
         # cuts every position at the next execution to bring the requirement back to 80% of NAV
-        req = cfg["maintenance_margin"] * float(np.abs(mv[~is_opt]).sum())
+        req = cfg["maintenance_margin"] * float(np.abs(mv[~is_opt & ~is_fx]).sum()) + 0.05 * float(np.abs(mv[is_fx]).sum())
         if NOTL is not None:
             req += cfg["option_margin"] * float(np.nansum(np.where(is_opt & (mv < 0), -mv * np.nan_to_num(NOTL[t]), 0.0)))
         if req > 0 and nav < req and nav > 0:
@@ -776,6 +1077,12 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
     res["ledger"] = {"units": {c: float(u) for c, u in zip(cols, units) if u}, "cash": float(cash), "nav": navf,
                      "securities": float(held.sum()), "reconciles": bool(abs(held.sum() + cash - navf) < 1e-9)}
     res["events"] = events[-200:]
+    open_trades = [{"ticker": cols[j], "side": "long" if tpos[j] > 0 else "short", "entry": str(idx[tentry[j]].date()),
+                    "unrealised": round(float((tpos[j] * (float(np.nan_to_num(mark[j])) - tavg[j]) + treal[j] - tcost[j]) * cap), 2)}
+                   for j in np.nonzero(tpos)[0] if tentry[j] is not None]
+    res["fills"] = fills
+    res["trades"] = trades
+    res["open_trades"] = open_trades
     res["brinson"] = {"by": gkey, "groups": glabels, **{k: v.tolist() for k, v in br.items()}, "cash": br_cash}
     res["attribution"] = {"pnl": {c: float(x) for c, x in zip(cols, pnl_asset) if x},
                           "fx": {c: float(x) for c, x in zip(cols, fx_asset) if x}}
@@ -806,12 +1113,15 @@ def years_between(first: pd.Timestamp, last: pd.Timestamp) -> float:
 
 def metrics(ret: pd.Series, rf: Optional[pd.Series] = None) -> Dict[str, Optional[float]]:
     """Return statistics. Sharpe and Sortino use returns above the reference rate (`rf`, daily, decimal);
-    std with ddof=1, annualised by √252. Max drawdown includes the starting capital. CAGR uses calendar years."""
+    std with ddof=1, annualised by √(periods a year) — 252, or the calendar's own count when it differs by more than 5%
+    (crypto trades every day; a global union calendar has ~260 sessions). Max drawdown includes the starting capital.
+    CAGR uses calendar years."""
     r = ret.dropna()
     if len(r) < 20:
         return {}
     eq = (1 + r).cumprod()
     yrs = years_between(r.index[0], r.index[-1])
+    ppy = periods_per_year(r.index)
     ex = r - (rf.reindex(r.index).fillna(0.0) if rf is not None else 0.0)
     sd = float(ex.std(ddof=1))
     peak = np.maximum.accumulate(np.r_[1.0, eq.to_numpy()])[1:]
@@ -819,21 +1129,29 @@ def metrics(ret: pd.Series, rf: Optional[pd.Series] = None) -> Dict[str, Optiona
     down = ex[ex < 0]
     mdd = float(dd.min())
     cagr = float(eq.iloc[-1] ** (1 / yrs) - 1) if eq.iloc[-1] > 0 else -1.0
-    return {"cagr": round(cagr, 4), "vol": round(float(r.std(ddof=1) * math.sqrt(TRADING_DAYS)), 4),
-            "sharpe": round(float(ex.mean() / sd * math.sqrt(TRADING_DAYS)), 3) if sd > 0 else None,
-            "sortino": round(float(ex.mean() / down.std(ddof=1) * math.sqrt(TRADING_DAYS)), 3) if len(down) > 5 and down.std(ddof=1) > 0 else None,
+    return {"cagr": round(cagr, 4), "vol": round(float(r.std(ddof=1) * math.sqrt(ppy)), 4),
+            "sharpe": round(float(ex.mean() / sd * math.sqrt(ppy)), 3) if sd > 0 else None,
+            "sortino": round(float(ex.mean() / down.std(ddof=1) * math.sqrt(ppy)), 3) if len(down) > 5 and down.std(ddof=1) > 0 else None,
             "max_drawdown": round(mdd, 4),
             "calmar": round(cagr / abs(mdd), 3) if mdd < 0 else None,
-            "log_growth": round(float(np.log1p(r.clip(lower=-0.999)).mean() * TRADING_DAYS), 4),
+            "log_growth": round(float(np.log1p(r.clip(lower=-0.999)).mean() * ppy), 4),
             "hit_rate": round(float((r > 0).mean()), 3), "years": round(yrs, 1),
             "total_return": round(float(eq.iloc[-1] - 1), 4),
-            "cash_rate": round(float((r - ex).mean() * TRADING_DAYS), 4)}
+            "cash_rate": round(float((r - ex).mean() * ppy), 4)}
+
+
+def periods_per_year(index: pd.DatetimeIndex) -> float:
+    """Rows a year: 252 unless the calendar itself differs by more than 5% (the same rule as the deep report)."""
+    if len(index) < 2:
+        return float(TRADING_DAYS)
+    actual = (len(index) - 1) / years_between(index[0], index[-1])
+    return actual if abs(actual / TRADING_DAYS - 1) > 0.05 else float(TRADING_DAYS)
 
 
 def cost_summary(res: Dict[str, Any]) -> Dict[str, float]:
     """Average annual drag of each cost item (fraction of NAV per year)."""
-    n = max(len(res["ret"]), 1)
-    yr = TRADING_DAYS / n
+    r = res["ret"]
+    yr = 1.0 / years_between(r.index[0], r.index[-1]) if len(r) > 1 else 1.0      # totals per calendar year
     out = {k: round(float(res[k].sum()) * yr, 5) for k in ("commission", "spread", "impact", "fees", "borrow")}
     out["dividend_tax"] = round(float(res["dividend_tax"].sum()) * yr, 5) if "dividend_tax" in res else 0.0
     out["hedge_pnl"] = round(float(res["hedge"].sum()) * yr, 5) if "hedge" in res else 0.0
@@ -1067,7 +1385,8 @@ def load_strategy(code: str, namespace: Optional[Dict[str, Any]] = None) -> Dict
     ns: Dict[str, Any] = {"np": np, "pd": pd, "math": math, "ewma_vol": ewma_vol, "momentum": momentum,
                           "hold_monthly": hold_monthly, "hold_weekly": hold_weekly, "normalize_gross": normalize_gross,
                           "vol_target": vol_target, "on_rolls": on_rolls, "cov_shrink": cov_shrink, "optimize": optimize,
-                          "min_variance": min_variance, "risk_parity": risk_parity, "style_exposures": style_exposures}
+                          "min_variance": min_variance, "risk_parity": risk_parity, "style_exposures": style_exposures,
+                          **{k: globals()[k] for k in INDICATORS}}
     if namespace:
         ns.update(namespace)
     exec(compile(code, "<strategy>", "exec"), ns)                    # noqa: S102 — see docstring
@@ -1421,13 +1740,42 @@ def capacity_curve(rerun: Callable[[Dict[str, float]], Dict[str, Any]], data: Da
 
 
 # ── Attribution and risk ─────────────────────────────────────────────────────
+def trade_report(res: Dict[str, Any], data: Data, capital: float) -> Dict[str, Any]:
+    """Order log and round-trip trade statistics (QuantConnect-style): every fill with its quantity at `capital`,
+    price and costs; closed trades by average-cost accounting; win rate, profit-loss ratio, expectancy, holding time."""
+    idx, cols = data.close.index, data.tickers
+    fills = res.get("fills") or []
+    tr = res.get("trades") or []
+    pnl = np.array([x["pnl"] for x in tr], float)
+    wins, losses = pnl[pnl > 0], pnl[pnl < 0]
+    stats = {"orders": len(fills), "closed_trades": len(tr), "open_trades": len(res.get("open_trades") or []),
+             "win_rate": round(float((pnl > 0).mean()), 4) if len(pnl) else None,
+             "avg_win": round(float(wins.mean()), 2) if len(wins) else None,
+             "avg_loss": round(float(losses.mean()), 2) if len(losses) else None,
+             "profit_loss_ratio": round(float(wins.mean() / -losses.mean()), 3) if len(wins) and len(losses) else None,
+             "profit_factor": round(float(wins.sum() / -losses.sum()), 3) if len(wins) and len(losses) and losses.sum() else None,
+             "expectancy": round(float(pnl.mean()), 2) if len(pnl) else None,
+             "avg_days_held": round(float(np.mean([x["days"] for x in tr])), 1) if tr else None,
+             "largest_win": round(float(pnl.max()), 2) if len(pnl) else None, "largest_loss": round(float(pnl.min()), 2) if len(pnl) else None,
+             "total_costs": round(float(sum(f[4] for f in fills) * capital), 2),
+             "long_trades": sum(1 for x in tr if x["side"] == "long"), "short_trades": sum(1 for x in tr if x["side"] == "short")}
+    orders = [{"date": str(idx[t].date()), "ticker": cols[j], "side": "buy" if dq > 0 else "sell",
+               "quantity": round(abs(dq) * capital, 4), "price": round(price, 6), "value": round(abs(dq) * price * capital, 2),
+               "costs": round(cost * capital, 2), "type": kind} for t, j, dq, price, cost, kind in fills[-2000:]]
+    recent = [{**x, "pnl": round(x["pnl"], 2), "return": round(x["return"], 4), "costs": round(x["costs"], 2)} for x in tr[-300:]]
+    return {"stats": stats, "orders": orders, "orders_total": len(fills), "closed": recent, "open": (res.get("open_trades") or [])[:100],
+            "note": f"Quantities and money at the run's capital ({capital:,.0f} {data.account_currency}); prices are adjusted "
+                    "(dividends reinvested), so quantities are adjusted shares. Trades: average-cost, closed when the position "
+                    "returns to zero or flips; P&L after that trade's costs."}
+
+
 def attribution(res: Dict[str, Any], data: Data) -> Dict[str, Any]:
     """Where the return came from: each holding's P&L (and, for foreign listings, how much of it was the currency),
     grouped by sector, country and currency, next to costs, financing, taxes and the FX hedge. Sums of daily
     contributions (arithmetic, fraction of NAV), shown per year."""
     pnl, fx = res["attribution"]["pnl"], res["attribution"]["fx"]
-    n = max(len(res["ret"]), 1)
-    yr = TRADING_DAYS / n
+    rr = res["ret"]
+    yr = 1.0 / years_between(rr.index[0], rr.index[-1]) if len(rr) > 1 else 1.0
     info = data.instruments
     groups: Dict[str, Dict[str, float]] = {"sector": {}, "country": {}, "currency": {}}
     for t, v in pnl.items():
@@ -1790,6 +2138,7 @@ def evaluate(fn: Optional[Callable], data: Data, params: Dict[str, Sequence[Any]
     universe-matched equal-weight baseline under the same costs, the benchmark, segment statistics for an
     untouched holdout (if HOLDOUT is set), validation (look-ahead check, PBO), capacity, attribution, ex-ante risk,
     the signal's information coefficients (if the code defines signal()) and a provenance record."""
+    _CHARTS.clear()
     combos = grid(params)
     if len(combos) > 48:
         raise ValueError(f"{len(combos)} parameter combinations — keep the grid to 48 or fewer.")
@@ -1879,6 +2228,8 @@ def evaluate(fn: Optional[Callable], data: Data, params: Dict[str, Sequence[Any]
     out["validation"] = {"causality": caus,
                          "pbo": pbo(standalone) if len(standalone) > 1 else None,
                          "cpcv": cpcv(standalone) if len(standalone) > 1 else None}
+    out["trades"] = trade_report(res, data, (costs or {}).get("capital", DEFAULT_COSTS["capital"]))
+    out["charts"] = _charts_out()
     out["attribution"] = attribution(res, data)
     out["risk"] = risk_model(data, res["holdings_last"], benchmark)
     if out["risk"] is not None and checks:

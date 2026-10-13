@@ -233,3 +233,91 @@ def test_result_first_then_checks_without_rerunning_the_strategy():
     k = cl.research_checks()
     assert k["causality"]["passed"] is True and len(k["capacity"]["levels"]) == 4
     assert len(calls) - n == 2                                   # only the two look-ahead re-runs, not a full re-run
+
+
+def test_trailing_stop_follows_the_high_and_bracket_cancels_its_twin():
+    close = [100.0, 100.0, 110.0, 120.0, 118.0, 104.0, 100.0, 100.0]
+    d = _bars(close, high=[c + 1 for c in close], low=[c - 1 for c in close], open_=close)
+    def on_bar(ctx):
+        if ctx.i == 0:
+            ctx.target({"A": 1.0})
+        if ctx.i == 1:
+            ctx.trailing_stop("A", 0.0, 0.10)                   # 10% below the highest high
+    r = cl.backtest(None, d, Z, on_bar=on_bar)
+    f = [e for e in r["events"] if e["event"] == "trailing order filled"]
+    assert f and f[0]["price"] == 104.0                          # peak high 121 → stop 108.9; it opened at 104 (gap): filled there
+    def on_bar2(ctx):
+        if ctx.i == 0:
+            ctx.target({"A": 1.0})
+        if ctx.i == 1:
+            ctx.bracket("A", 0.0, take_profit=115.0, stop_loss=90.0)
+    r2 = cl.backtest(None, d, Z, on_bar=on_bar2)
+    kinds = [e["event"] for e in r2["events"] if e["event"].endswith("order filled")]
+    assert kinds == ["limit order filled"]                       # take-profit hit; the stop was cancelled
+
+
+def test_trade_log_and_statistics():
+    close = [100.0] * 5 + [110.0] * 5 + [100.0] * 5 + [90.0] * 5
+    d = _bars(close)
+    w = pd.DataFrame(np.nan, index=d.close.index, columns=["A"])
+    w.iloc[0], w.iloc[7], w.iloc[10], w.iloc[17] = 1.0, 0.0, 1.0, 0.0           # a winning and a losing round trip
+    r = cl.backtest(w, d, {**Z, "capital": 100_000})
+    rep = cl.trade_report(r, d, 100_000)
+    st = rep["stats"]
+    assert st["closed_trades"] == 2 and st["win_rate"] == 0.5 and st["orders"] == 4
+    assert rep["closed"][0]["pnl"] == pytest.approx(10_000, rel=1e-6) and rep["closed"][1]["pnl"] < 0
+    assert rep["orders"][0]["side"] == "buy" and rep["orders"][0]["quantity"] == pytest.approx(1000.0)
+
+
+def test_broker_per_share_commission_with_minimum_and_cap():
+    d = _bars([50.0] * 10)
+    w = pd.DataFrame(np.nan, index=d.close.index, columns=["A"])
+    w.iloc[0] = 0.5
+    ib = {**Z, "capital": 100_000, "commission_per_share": 0.005, "commission_min": 1.0, "commission_max_pct": 0.01}
+    r = cl.backtest(w, d, ib)
+    shares = 50_000 / 50.0
+    assert r["commission"].sum() * 100_000 == pytest.approx(max(shares * 0.005, 1.0), rel=1e-3)   # $5 for 1,000 shares
+    small = cl.backtest(w * 0.001, d, ib)                                            # $50 order → the $1 minimum
+    assert small["commission"].sum() * 100_000 == pytest.approx(min(1.0, 0.01 * 50), rel=1e-2)     # capped at 1%: $0.50
+
+
+def test_indicators_are_causal_and_sane():
+    d = market(n=3, T=400)
+    assert cl.rsi(d.close).stack().dropna().between(0, 100).all()
+    m = cl.macd(d.close)
+    assert np.allclose((m["macd"] - m["signal"]).dropna(), m["hist"].dropna())
+    a = cl.atr(d)
+    assert (a.dropna() >= 0).all().all()
+    full = cl.bollinger(d.close)["upper"]
+    part = cl.bollinger(d.close.iloc[:300])["upper"]
+    assert np.allclose(full.iloc[:300].dropna(), part.dropna())                  # no look-ahead
+    mask = cl.top_liquid(d, 2)
+    assert (mask.sum(axis=1).iloc[100:] == 2).all()
+    w = d.close * 0 + 1 / 3
+    assert cl.decision_mask(cl.rebalance(w, "Q")).sum() <= 7
+
+
+def test_fx_pairs_and_crypto_are_recognised_and_futures_refused():
+    from api.quant import codeserver, instruments
+    assert codeserver.fx_pair("EURUSD=X") == ("EUR", "USD") and codeserver.fx_pair("JPY=X") == ("USD", "JPY")
+    assert codeserver.fx_pair("CL=F") is None
+    codeserver.check_tradable(["SPY", "BTC-USD", "EURUSD=X"])
+    with pytest.raises(ValueError, match="futures"):
+        codeserver.check_tradable(["CL=F"])
+    with pytest.raises(ValueError, match="index"):
+        codeserver.check_tradable(["^GSPC"])
+    m = instruments.meta(["BTC-USD", "ETH-EUR"])
+    assert m["BTC-USD"]["asset_class"] == "crypto" and m["BTC-USD"]["currency"] == "USD" and not m["BTC-USD"]["sec_fee"]
+    assert m["ETH-EUR"]["currency"] == "EUR"
+
+
+def test_crypto_pays_the_exchange_fee_and_calendar_annualisation():
+    idx = pd.date_range("2022-01-01", periods=730, freq="D")                       # every day, like crypto
+    px = pd.DataFrame({"BTC-USD": np.linspace(100, 150, 730)}, index=idx)
+    d = cl.Data(px, px, px, px, px * 0 + 1e9, rf=pd.Series(0.0, index=idx),
+                instruments={"BTC-USD": {"country": "CRYPTO", "currency": "USD", "asset_class": "crypto", "sec_fee": False}})
+    w = pd.DataFrame(np.nan, index=idx, columns=["BTC-USD"])
+    w.iloc[0] = 1.0
+    r = cl.backtest(w, d, {**Z, "crypto_fee_bps": 10.0})
+    assert r["fees"].sum() == pytest.approx(0.001 / 1.001, rel=1e-6)
+    assert cl.periods_per_year(idx) == pytest.approx(365, rel=0.01)

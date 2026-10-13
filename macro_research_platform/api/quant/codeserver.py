@@ -29,17 +29,29 @@ _FOREIGN = re.compile(r"\.[A-Z]{1,3}$")                 # Yahoo exchange suffix:
 ADJUSTMENT = "Yahoo Finance daily bars, auto_adjust=True (splits and dividends folded into prices: total return)"
 
 
+_FX_PAIR = re.compile(r"^(?:([A-Z]{3})([A-Z]{3})|([A-Z]{3}))=X$")
+
+
+def fx_pair(sym: str) -> Optional[tuple]:
+    """(base, quote) of a Yahoo FX symbol: EURUSD=X → (EUR, USD); JPY=X → (USD, JPY)."""
+    m = _FX_PAIR.match(sym)
+    if not m:
+        return None
+    return (m.group(1), m.group(2)) if m.group(1) else ("USD", m.group(3))
+
+
 def check_tradable(symbols: Sequence[str]) -> None:
-    """Refuse what the Code Lab cannot account for correctly — indices, FX and futures quotes — instead of
-    'trading' them. Stocks and ETFs of any listing are converted to the account currency (see load_data)."""
+    """Refuse what the Code Lab cannot account for correctly — indices and futures — instead of 'trading' them.
+    Stocks and ETFs of any listing are converted to the account currency; crypto (BTC-USD) trades as a spot asset and
+    FX pairs (EURUSD=X, JPY=X) as total-return instruments (see load_data)."""
     idx = [s for s in symbols if s.startswith("^")]
     if idx:
         raise ValueError(f"{', '.join(idx[:5])} {'is an index' if len(idx) == 1 else 'are indices'} — not tradable. "
                          "Use data.vix for the VIX, or an ETF that tracks the index.")
-    fx = [s for s in symbols if "=" in s]
-    if fx:
-        raise ValueError(f"{', '.join(fx[:5])}: FX and futures quotes are not tradable in the Code Lab (no contract, "
-                         "margin or currency accounting yet).")
+    fut = [s for s in symbols if "=" in s and not fx_pair(s)]
+    if fut:
+        raise ValueError(f"{', '.join(fut[:5])}: futures are not tradable in the Code Lab — Yahoo's continuous contracts are "
+                         "not roll-adjusted, so their returns jump at every roll. Use an ETF on the same market.")
 
 
 TRADABLE_UNIVERSES = {
@@ -155,6 +167,8 @@ def load_data(universe: Sequence[str], start: str, end: Optional[str] = None,
     if not syms or (limit is not None and len(syms) > limit):
         raise ValueError(f"UNIVERSE needs 1–{limit} tickers (the current capability limit).")
     check_tradable(syms)
+    fx_syms = [x for x in syms if fx_pair(x)]
+    syms = [x for x in syms if not fx_pair(x)] or ["SPY"]          # FX pairs are built separately (below)
     warm = (pd.Timestamp(start) - pd.Timedelta(days=int(WARMUP_DAYS * 1.45))).strftime("%Y-%m-%d")
     pan, missing = qdata.panel(syms, start=warm, end=end, fill=False)
     stale = list(getattr(qdata.LAST_REPORT, "stale", []) or [])
@@ -216,9 +230,25 @@ def load_data(universe: Sequence[str], start: str, end: Optional[str] = None,
                                          marks * usd_per_unit.reindex(idx).to_numpy()[:, None])
         micro["info"]["fundamentals"] = finfo
     share_px, conv = micro.pop("share_px"), micro.pop("conv")
+    micro["share_px"] = (share_px * conv).reindex(columns=cols)   # traded share price in the account currency
     opt_frames: Dict[str, pd.DataFrame] = {}
     settle = None
     option_expansion = None
+    if fx_syms:
+        fxb = _fx_instruments(fx_syms, idx, account, warm, end)
+        names = list(fxb["close"].columns)
+        marks = pd.concat([marks, fxb["close"]], axis=1)
+        observed = pd.concat([observed, fxb["observed"]], axis=1)
+        pan = dict(pan)
+        for f in ("open", "high", "low", "volume"):
+            pan[f] = pd.concat([pan[f][cols], fxb[f if f != "volume" else "volume"]], axis=1)
+        for k in ("tick_bps",):
+            micro[k] = pd.concat([micro[k], fxb["tick_bps"]], axis=1)
+        for k in ("lot_value", "div_yield", "share_px"):
+            micro[k] = micro[k].reindex(columns=list(micro[k].columns) + names)
+        inst.update(fxb["instruments"])
+        cols = cols + names
+        micro["info"]["fx_pairs"] = fxb["info"]
     if specs:
         templates = specs
         specs = opt_mod.expand(options, cols)
@@ -268,6 +298,49 @@ def load_data(universe: Sequence[str], start: str, end: Optional[str] = None,
                         pan["volume"][cols], rf=rf, vix=vix, observed=observed, rf_known=rf is not None, provenance=prov,
                         instruments=inst, account_currency=account, usd_per_unit=usd_per_unit, settle=settle,
                         options=opt_frames or None, fundamentals=fund or None, **micro)
+
+
+def _fx_instruments(symbols: List[str], idx: pd.DatetimeIndex, account: str, start: str, end: Optional[str]) -> Dict[str, Any]:
+    """FX pairs as total-return instruments: long the base currency against the quote, collateral in the account.
+    Daily return = spot return of the pair + (base rate − quote rate) carry + the account's cash rate (the cash used to
+    'buy' the instrument stops earning it, so the net is spot + carry). Values in the account currency (a return index).
+    Spreads: half a pip-ish — 0.5 bp for majors, 2 bp otherwise."""
+    from api.quant import rates
+    raw, missing = qdata.panel(symbols, start=start, end=end, fill=False)
+    if missing:
+        raise ValueError(f"No price history for: {', '.join(missing[:5])}.")
+    majors = {"EUR", "USD", "JPY", "GBP", "CHF", "AUD", "CAD", "NZD"}
+    out = {k: {} for k in ("close", "open", "high", "low", "volume", "observed", "tick_bps")}
+    inst, info = {}, {}
+    acct_rf = rates.daily(idx, account)
+    for s in symbols:
+        base, quote = fx_pair(s)
+        c = raw["close"][s].reindex(idx)
+        o = raw["open"][s].reindex(idx)
+        ok = c.notna() & (c > 0)
+        cc = c.where(ok).ffill()
+        spot = cc.pct_change(fill_method=None).fillna(0.0)
+        rb = rates.daily(idx, base) if rates.known(base) else pd.Series(0.0, index=idx)
+        rq = rates.daily(idx, quote) if rates.known(quote) else pd.Series(0.0, index=idx)
+        r = spot + (rb - rq) + acct_rf
+        level = (1 + r.where(ok.cumsum() > 0, 0.0)).cumprod() * 100.0
+        level = level.where(ok.cumsum() > 0)
+        out["close"][s] = level
+        out["open"][s] = level.shift(1) * (o / cc.shift(1)).where(o > 0)
+        out["high"][s] = level
+        out["low"][s] = level
+        out["volume"][s] = pd.Series(1e9, index=idx).where(ok)     # FX trades round the clock in size: never volume-limited
+        out["observed"][s] = ok
+        out["tick_bps"][s] = pd.Series(0.5 if base in majors and quote in majors else 2.0, index=idx)
+        inst[s] = {"country": "FX", "quote_currency": account, "currency": account, "unit_divisor": 1.0, "fx_ticker": None,
+                   "tax_buy_bps": 0.0, "tax_sell_bps": 0.0, "tax_note": None, "sec_fee": False, "wht": 0.0, "lot_size": 1,
+                   "asset_class": "fx", "base": base, "quote": quote, "name": f"{base}/{quote}", "sector": "Currencies",
+                   "region": None, "market_class": None}
+        info[s] = {"base": base, "quote": quote, "carry": "base − quote short rates" if rates.known(base) and rates.known(quote)
+                   else "unknown for " + ", ".join(x for x in (base, quote) if not rates.known(x)) + " (carry 0)"}
+    frames = {k: pd.DataFrame(v, index=idx) for k, v in out.items()}
+    frames["observed"] = frames["observed"].fillna(False).astype(bool)
+    return {**frames, "instruments": inst, "info": info}
 
 
 def fundamental_frames(names: Sequence[str], tickers: List[str], idx: pd.DatetimeIndex, close_usd: pd.DataFrame
@@ -538,7 +611,7 @@ def data_payload(universe: Sequence[str], start: str, benchmark: str = "SPY", ac
            "usd_per_unit": _b64(d.usd_per_unit.to_numpy()), "micro_cols": {}}
     for f in ("close", "open", "high", "low", "volume"):
         out[f] = _b64(getattr(d, f).to_numpy())
-    frames = {k: getattr(d, k) for k in ("tick_bps", "lot_value", "div_yield", "fx", "rf_ccy", "settle")}
+    frames = {k: getattr(d, k) for k in ("tick_bps", "lot_value", "div_yield", "fx", "rf_ccy", "settle", "share_px")}
     frames.update({f"opt_{k}": v.astype(float) for k, v in d.opt.items()})
     frames.update({f"fund_{k}": v for k, v in d.fund.items()})
     for k, fr in frames.items():                                                # market rules, options
@@ -689,6 +762,6 @@ def account_session_data(data: codelab.Data, calendar: str) -> codelab.Data:
                         rf_known=data.rf_known, provenance=provenance, instruments=data.instruments,
                         account_currency=data.account_currency, usd_per_unit=data.usd_per_unit.loc[idx],
                         **{k: (getattr(data, k).loc[idx] if getattr(data, k) is not None else None)
-                           for k in ("tick_bps", "lot_value", "div_yield", "fx", "rf_ccy", "settle")},
+                           for k in ("tick_bps", "lot_value", "div_yield", "fx", "rf_ccy", "settle", "share_px")},
                         options={k: v.loc[idx] for k, v in data.opt.items()} or None,
                         fundamentals={k: v.loc[idx] for k, v in data.fund.items()} or None)

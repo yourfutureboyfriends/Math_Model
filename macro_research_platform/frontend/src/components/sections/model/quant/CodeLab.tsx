@@ -13,7 +13,7 @@ import { BarList } from '@/components/ui/BarList';
 import { CATEGORICAL } from '@/lib/chartPalette';
 import { DeepReport } from './DeepReport';
 import { TEMPLATES } from './templates';
-import { Attribution, Capacity, Risk, Signal, Validation } from './ResearchPanels';
+import { Attribution, Capacity, Charts, Heatmap, Risk, Signal, Trades, Validation } from './ResearchPanels';
 import { api, ErrorNote, Field, inputCls, money, num, pct, spct, tone, usd } from './shared';
 
 export const STARTER = `# Global configured equities; USD valuations/FX and venue costs supplied by Macro Terminal.
@@ -138,7 +138,22 @@ export const UNIVERSE_LIMIT = 80;   // api/quant/codelab.py UNIVERSE_LIMIT: larg
 export const COST_DEFAULTS = { capital: 1_000_000, commission_bps: 0.35, spread_mult: 1, impact_coef_bps: 11.21, borrow_fee: 0.003,
   financing_spread: 0.01, cash_spread: 0, no_trade_band: 0.0025, delist_haircut: 0, fx_cost_bps: 2,
   fx_hedge_cost_bps: 15, dividend_wht: 1, wht_treaty_cap: 0.15, board_lots: 1, exec_price: 0, max_participation: 0.1,
-  borrow_tiers: 1, maintenance_margin: 0.25 };
+  borrow_tiers: 1, maintenance_margin: 0.25, commission_per_share: 0, commission_min: 0, commission_max_pct: 0, crypto_fee_bps: 10 };
+
+// Broker fee models (approximate public pricing, 2025; check your broker's schedule). `spread_mult` > 1 for
+// payment-for-order-flow brokers: no commission, but fills slightly worse than the quoted midpoint model.
+const BROKERS: { id: string; name: string; set: Partial<Costs>; note: string }[] = [
+  { id: 'inst', name: 'Institutional (default)', set: { commission_bps: 0.35, commission_per_share: 0, commission_min: 0, commission_max_pct: 0, spread_mult: 1 },
+    note: '0.35 bp of value — a large algorithmic trader' },
+  { id: 'ibkr_fixed', name: 'IBKR Pro — Fixed', set: { commission_bps: 0, commission_per_share: 0.005, commission_min: 1, commission_max_pct: 0.01, spread_mult: 1 },
+    note: '$0.005/share, $1 minimum, 1% maximum per order (US)' },
+  { id: 'ibkr_tiered', name: 'IBKR Pro — Tiered', set: { commission_bps: 0, commission_per_share: 0.004, commission_min: 0.35, commission_max_pct: 0.01, spread_mult: 1 },
+    note: '≈$0.0035/share + exchange/regulatory ≈ $0.004, $0.35 minimum, 1% maximum (US, small volume tier)' },
+  { id: 'zero', name: '$0 commission (IBKR Lite, Schwab, Fidelity, Robinhood, Alpaca)', set: { commission_bps: 0, commission_per_share: 0, commission_min: 0, commission_max_pct: 0, spread_mult: 1.15 },
+    note: 'No commission; routed for payment for order flow — fills modelled 15% worse on the spread' },
+  { id: 'ibkr_global', name: 'IBKR Pro — non-US markets', set: { commission_bps: 5, commission_per_share: 0, commission_min: 3, commission_max_pct: 0, spread_mult: 1 },
+    note: '≈0.05% of value, ≈3 (account currency) minimum per order — Europe/Asia tiered schedules vary by exchange' },
+];
 export type Costs = typeof COST_DEFAULTS;
 const MC_DEFAULTS = { mc_years: 10, max_leverage: 2, dd_limit: 0.5 };
 
@@ -217,6 +232,8 @@ const CTX_FIELDS: [string, string][] = [
   ['opt("delta")', 'option analytics up to today'], ['fund("book_to_price")', 'fundamentals up to today'], ['info', 'instrument metadata'],
   ['target({"SPY": 0.5})', 'market orders to these weights'], ['limit("SPY", 1.0, 400.0)', 'limit order to a weight'],
   ['stop("SPY", 0.0, 380.0)', 'stop order to a weight'], ['cancel()', 'cancel open limit/stop orders'], ['orders', 'open limit/stop orders'],
+  ['stop_limit("SPY", 0.0, 380.0, 375.0)', 'stop that becomes a limit'], ['trailing_stop("SPY", 0.0, 0.10)', 'stop trailing 10% behind'],
+  ['bracket("SPY", 0.0, 450.0, 380.0)', 'take-profit + stop, one cancels the other'], ['plot("Chart", "name", value)', "today's point on a custom chart"],
 ];
 const NAMES: [string, string][] = [
   ['momentum(data.close, 252, 21)', 'return over n days, skipping the last `skip`'], ['ewma_vol(data.close, 42)', 'annualised EWMA volatility'],
@@ -226,6 +243,16 @@ const NAMES: [string, string][] = [
   ['optimize(expected, cov, risk_aversion=5.0, max_weight=0.1)', 'mean–variance QP with constraints'],
   ['min_variance(cov)', 'minimum-variance weights'], ['risk_parity(cov)', 'equal risk contribution'],
   ['style_exposures(data, date)', 'tickers × momentum, volatility, size, value, quality'],
+  ['sma(data.close, 50)', 'simple moving average'], ['ema(data.close, 20)', 'exponential moving average'], ['wma(data.close, 20)', 'weighted MA'],
+  ['hma(data.close, 20)', 'Hull MA'], ['rsi(data.close, 14)', 'RSI 0–100'], ['macd(data.close)', '{macd, signal, hist}'],
+  ['bollinger(data.close, 20, 2)', '{middle, upper, lower, pct_b, width}'], ['atr(data, 14)', 'average true range'],
+  ['adx(data, 14)', 'trend strength 0–100'], ['stochastic(data, 14)', '{k, d}'], ['williams_r(data, 14)', '−100–0'],
+  ['cci(data, 20)', 'commodity channel index'], ['roc(data.close, 10)', 'rate of change'], ['zscore(data.close, 20)', 'rolling z-score'],
+  ['donchian(data, 20)', '{upper, lower} of the previous n days'], ['keltner(data, 20)', '{middle, upper, lower}'],
+  ['obv(data)', 'on-balance volume'], ['mfi(data, 14)', 'money flow index'], ['vwap(data, 20)', 'rolling VWAP'],
+  ['beta(data.close, data.close["SPY"], 252)', 'rolling beta'], ['drawdown(data.close)', 'below running high'],
+  ['rebalance(w, "M")', 'decide D/W/M/Q/Y or every n sessions'], ['top_liquid(data, 100)', 'the n most traded names each day'],
+  ['plot("Chart", "series", values)', 'a custom chart in the results'],
   ['UNIVERSE = ["SPY"]', 'tickers to trade'], ['TRADABLE_UNIVERSE = "GLOBAL"', 'a named universe, country or region'],
   ['ACCOUNT_CURRENCY = "USD"', 'the account currency'], ['FX_HEDGE = 1.0', 'share of currency risk hedged'],
   ['OPTIONS = [{"underlying": "SPY", "type": "put", "moneyness": 0.95}]', 'synthetic listed options'],
@@ -501,6 +528,15 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
               <Field label="Treaty cap on dividend tax" hint="Withholding = the listing country's statutory non-resident rate, capped at this treaty rate. 0.15 is the usual treaty rate for portfolio dividends; 1 = no treaty relief"><input type="number" step={0.05} className={inputCls} value={costs.wht_treaty_cap} onChange={set('wht_treaty_cap')} /></Field>
               <label className="flex items-center gap-1 text-[10px] text-text-secondary self-end" title="Tax withheld at source on dividends of listings in another currency than the account's"><input type="checkbox" checked={!!costs.dividend_wht} onChange={flag('dividend_wht')} />Dividend withholding tax</label>
               <label className="flex items-center gap-1 text-[10px] text-text-secondary self-end" title="Orders rounded to whole board lots (JP 100, HK per stock, TW 1,000 …) at the capital above; small books can't hold some names"><input type="checkbox" checked={!!costs.board_lots} onChange={flag('board_lots')} />Whole board lots</label>
+              <Field label="Broker fee model" hint={BROKERS.map((b) => `${b.name}: ${b.note}`).join('\n')}>
+                <select className={inputCls} value="" onChange={(e) => { const b = BROKERS.find((x) => x.id === e.target.value); if (b) { setCosts({ ...costs, ...b.set }); setNote(`Costs set to ${b.name}: ${b.note}.`); } }}>
+                  <option value="">Choose a broker…</option>
+                  {BROKERS.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select></Field>
+              <Field label={`Per share (${ccy})`} hint="Broker commission per share (0 = none); uses traded share prices"><input type="number" step={0.0005} className={inputCls} value={costs.commission_per_share} onChange={set('commission_per_share')} /></Field>
+              <Field label={`Min per order (${ccy})`} hint="Minimum commission per order"><input type="number" step={0.05} className={inputCls} value={costs.commission_min} onChange={set('commission_min')} /></Field>
+              <Field label="Max per order (fraction)" hint="Commission cap as a fraction of the order's value; 0.01 = 1%; 0 = no cap"><input type="number" step={0.001} className={inputCls} value={costs.commission_max_pct} onChange={set('commission_max_pct')} /></Field>
+              <Field label="Crypto fee (bp)" hint="Exchange taker fee on crypto trades: Binance ≈ 10, Kraken Pro ≈ 25–40, Coinbase Advanced ≈ 40–60 (small accounts)"><input type="number" step={1} className={inputCls} value={costs.crypto_fee_bps} onChange={set('crypto_fee_bps')} /></Field>
               <Field label="Fill at" hint="Orders decided at a close fill at the next session's open (default), its VWAP (≈ average of open, high, low and close) or its close (market-on-close)">
                 <select className={inputCls} value={costs.exec_price} onChange={(e) => setCosts({ ...costs, exec_price: Number(e.target.value) })}>
                   <option value={0}>next open</option><option value={1}>next-day VWAP</option><option value={2}>next close</option></select></Field>
@@ -543,8 +579,10 @@ function ApiHelp() {
         <li>Optional: <code>ACCOUNT_CURRENCY</code>, <code>FX_HEDGE</code> (0–1), <code>START</code>, <code>BENCHMARK</code> (converted to the account currency), <code>PARAMS</code> (≤ 48 combinations, walk-forward), <code>HOLDOUT</code>.</li>
         <li><b>Options</b>: <code>OPTIONS = [{'{'}"underlying": "SPY", "type": "put", "moneyness": 0.95{'}'}]</code> adds a column <code>SPY_P95_1M</code> (keys: <code>type</code> call/put, <code>moneyness</code> K/S or <code>delta</code> 0.05–0.95, <code>expiry</code> monthly/weekly/quarterly, <code>months</code>, or <code>tenor_days</code>; up to 12). Its weight is the <i>underlying notional</i> as a fraction of NAV (−1.0 = write on 100% of NAV); expiring contracts settle at intrinsic value and a standing weight rolls into the next contract. <code>data.opt["delta" | "elasticity" | "iv" | "strike" | "dte" | "spot" | "roll"]</code>; <code>on_rolls(w, data, name)</code> decides only at expiries. Prices are modelled (Black–Scholes on the VIX family where it exists, else realised vol × the market's implied/realised ratio, with skew) — not quotes; see the library's Options strategies.</li>
         <li>Portfolio construction: <code>cov_shrink(returns)</code> (Ledoit–Wolf), <code>optimize(expected, cov, risk_aversion, max_weight, long_only, gross, net, prev, turnover_penalty, groups, group_max, exposures, factor_bounds)</code> (an exact quadratic programme; e.g. <code>exposures=style_exposures(data, date), factor_bounds={'{'}"momentum": (-0.1, 0.1){'}'}</code>), <code>min_variance(cov)</code>, <code>risk_parity(cov)</code>.</li>
+        <li><b>Indicators</b>: <code>sma ema wma hma rsi macd bollinger atr adx stochastic williams_r cci roc zscore donchian keltner obv mfi vwap beta drawdown</code> (whole frames at once, causal). Scheduling: <code>rebalance(w, "W" | "M" | "Q" | n)</code>. Dynamic universe: <code>top_liquid(data, 100)</code>. Custom charts: <code>plot("Chart", "series", values)</code>.</li>
+        <li><b>Asset classes</b>: stocks and ETFs (any market), crypto (<code>BTC-USD</code>, <code>ETH-USD</code> — every day, exchange fee), forex pairs (<code>EURUSD=X</code>, <code>JPY=X</code> — spot + carry, ≈5% margin) and modelled options (<code>OPTIONS</code>). Futures are refused (no roll-adjusted free data).</li>
         <li><b>Fundamentals</b>: <code>FUNDAMENTALS = True</code> (or a list: book_to_price, earnings_yield, roe, gross_profitability, fcf_yield, market_cap, eps_ttm, …) adds point-in-time SEC data as <code>data.fund["…"]</code> — each figure from the day after it was filed, as first filed (US filers).</li>
-        <li><b>Event-driven</b>: define <code>on_bar(ctx, **params)</code> instead of <code>strategy</code>. It runs after every close and sees only the past: <code>ctx.history("close", n)</code>, <code>ctx.positions</code>, <code>ctx.nav</code>, <code>ctx.cash</code>, <code>ctx.fills</code>, <code>ctx.state</code> (yours). Orders: <code>ctx.target({'{'}"SPY": 0.5{'}'})</code>, <code>ctx.limit("SPY", 1.0, 400)</code>, <code>ctx.stop("SPY", 0.0, 380)</code>, <code>ctx.cancel()</code>. Optional <code>setup(data, **params)</code> precomputes indicators (read with <code>ctx.pre(name)</code>; checked for look-ahead).</li>
+        <li><b>Event-driven</b>: define <code>on_bar(ctx, **params)</code> instead of <code>strategy</code>. It runs after every close and sees only the past: <code>ctx.history("close", n)</code>, <code>ctx.positions</code>, <code>ctx.nav</code>, <code>ctx.cash</code>, <code>ctx.fills</code>, <code>ctx.state</code> (yours). Orders: <code>ctx.target({'{'}"SPY": 0.5{'}'})</code>, <code>ctx.limit("SPY", 1.0, 400)</code>, <code>ctx.stop("SPY", 0.0, 380)</code>, <code>ctx.stop_limit(…)</code>, <code>ctx.trailing_stop("SPY", 0.0, 0.1)</code>, <code>ctx.bracket("SPY", 0.0, 450, 380)</code>, <code>ctx.cancel()</code>, <code>ctx.plot(…)</code>. Optional <code>setup(data, **params)</code> precomputes indicators (read with <code>ctx.pre(name)</code>; checked for look-ahead).</li>
         <li>Optional <code>signal(data, **params)</code> returning scores (dates × tickers): the lab reports its information coefficient by horizon, quintile returns and turnover.</li>
         <li>Every run is checked for look-ahead (decisions recomputed from earlier data must match) and, with PARAMS, for overfitting (PBO); you also get attribution, today's ex-ante risk with crisis stress tests and a capacity curve.</li>
         <li><code>print()</code> shows in Output. In the browser you can also import scipy, scikit-learn or statsmodels; deployable code is limited to numpy, pandas and math.</li>
@@ -598,8 +636,8 @@ function curve(dates: string[], rets: number[], bench?: number[] | null, gross?:
   return rows;
 }
 
-const RESULT_TABS = [['summary', 'Summary'], ['validation', 'Validation'], ['risk', 'Risk'], ['attribution', 'Attribution'],
-  ['signal', 'Signal'], ['deep', 'Deep report']] as const;
+const RESULT_TABS = [['summary', 'Summary'], ['trades', 'Trades'], ['validation', 'Validation'], ['risk', 'Risk'], ['attribution', 'Attribution'],
+  ['charts', 'Charts'], ['signal', 'Signal'], ['deep', 'Deep report']] as const;
 type ResultTab = (typeof RESULT_TABS)[number][0];
 
 export function CodeResults({ r, a }: { r: any; a: any | null }) {
@@ -624,7 +662,7 @@ export function CodeResults({ r, a }: { r: any; a: any | null }) {
       ]} />
       <Verdict r={r} reg={reg} />
       <div className="flex flex-wrap border border-border w-fit" role="tablist" aria-label="Result sections">
-        {RESULT_TABS.filter(([k]) => k !== 'signal' || r.signal).map(([k, l]) => (
+        {RESULT_TABS.filter(([k]) => (k !== 'signal' || r.signal) && (k !== 'trades' || r.trades) && (k !== 'charts' || (r.charts && Object.keys(r.charts).length))).map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
             className={cn('px-3 py-1 text-2xs', tab === k ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary')}>{l}</button>))}
       </div>
@@ -671,6 +709,7 @@ export function CodeResults({ r, a }: { r: any; a: any | null }) {
         <div className="space-y-3">
           <Validation v={r.validation} />
           {opt.walk_forward && opt.chosen && <Optimisation opt={opt} m={m} />}
+          <Heatmap opt={opt} />
           {opt.variants && <Variants opt={opt} />}
           <Capacity c={r.capacity} />
         </div>)}
@@ -681,6 +720,8 @@ export function CodeResults({ r, a }: { r: any; a: any | null }) {
           {mc ? <MonteCarlo mc={mc} /> : a === null && <div className="flex items-center gap-2 text-2xs text-text-tertiary"><Loader2 className="w-3 h-3 animate-spin" />Monte Carlo…</div>}
         </div>)}
       {tab === 'attribution' && <Attribution a={r.attribution} />}
+      {tab === 'trades' && <Trades t={r.trades} />}
+      {tab === 'charts' && <Charts c={r.charts} />}
       {tab === 'signal' && <Signal s={r.signal} />}
       {tab === 'deep' && (a?.deep ? <DeepReport d={a.deep} />
         : <div className="flex items-center gap-2 text-2xs text-text-tertiary"><Loader2 className="w-3 h-3 animate-spin" />Deep analysis…</div>)}

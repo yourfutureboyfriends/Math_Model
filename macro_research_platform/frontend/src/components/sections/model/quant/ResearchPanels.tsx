@@ -6,6 +6,8 @@
 import { ShieldAlert, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BarList } from '@/components/ui/BarList';
+import { LineChart } from '@/components/ui/LineChart';
+import { CATEGORICAL } from '@/lib/chartPalette';
 import { num, pct, spct, usd } from './shared';
 
 const Card = ({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) => (
@@ -173,4 +175,109 @@ export function Signal({ s }: { s: any }) {
       </div>
     </Card>
   );
+}
+
+/** Order log and round-trip trade statistics, with a CSV download of the orders. */
+export function Trades({ t }: { t: any }) {
+  if (!t) return null;
+  const s = t.stats ?? {};
+  const csv = () => {
+    const head = ['date', 'ticker', 'side', 'quantity', 'price', 'value', 'costs', 'type'];
+    const rows = [head.join(','), ...(t.orders ?? []).map((o: any) => head.map((k) => o[k]).join(','))];
+    const url = URL.createObjectURL(new Blob([rows.join('\n')], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'orders.csv'; a.click();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <Card title="Trades and orders" sub={`${s.orders ?? 0} orders · ${s.closed_trades ?? 0} closed round trips · ${s.open_trades ?? 0} open`}>
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 font-mono">
+        {[['Win rate', pct(s.win_rate, 1)], ['Profit/loss ratio', num(s.profit_loss_ratio)], ['Profit factor', num(s.profit_factor)],
+          ['Expectancy / trade', usd(s.expectancy)], ['Avg win', usd(s.avg_win)], ['Avg loss', usd(s.avg_loss)],
+          ['Largest win', usd(s.largest_win)], ['Largest loss', usd(s.largest_loss)], ['Avg days held', num(s.avg_days_held, 1)],
+          ['Long / short', `${s.long_trades ?? 0} / ${s.short_trades ?? 0}`], ['Total costs', usd(s.total_costs)], ['Orders', String(s.orders ?? 0)]].map(([l, v]) => (
+          <div key={l}><div className="text-[10px] font-sans text-text-tertiary">{l}</div><div>{v}</div></div>))}
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+        <div className="overflow-auto max-h-72">
+          <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Latest closed trades</div>
+          <table className="w-full font-mono"><thead className="text-text-tertiary"><tr>{['Ticker', 'Side', 'Entry', 'Exit', 'Days', 'P&L', 'Return'].map((h) => <th key={h} className="text-left font-normal px-1">{h}</th>)}</tr></thead>
+            <tbody>{(t.closed ?? []).slice().reverse().slice(0, 100).map((x: any, i: number) => (
+              <tr key={i} className="border-t border-border-subtle"><td className="px-1">{x.ticker}</td><td className="px-1">{x.side}</td><td className="px-1">{x.entry}</td>
+                <td className="px-1">{x.exit}</td><td className="px-1">{x.days}</td>
+                <td className={cn('px-1', x.pnl < 0 ? 'text-red' : 'text-green')}>{usd(x.pnl)}</td><td className="px-1">{spct(x.return, 1)}</td></tr>))}</tbody></table>
+        </div>
+        <div className="overflow-auto max-h-72">
+          <div className="flex items-baseline gap-2 mb-1">
+            <div className="text-[10px] uppercase tracking-wide text-text-tertiary">Order log (latest {(t.orders ?? []).length} of {t.orders_total})</div>
+            <button onClick={csv} className="ml-auto text-[10px] underline text-text-tertiary">download CSV</button>
+          </div>
+          <table className="w-full font-mono"><thead className="text-text-tertiary"><tr>{['Date', 'Ticker', 'Side', 'Qty', 'Price', 'Value', 'Costs', 'Type'].map((h) => <th key={h} className="text-left font-normal px-1">{h}</th>)}</tr></thead>
+            <tbody>{(t.orders ?? []).slice().reverse().slice(0, 150).map((o: any, i: number) => (
+              <tr key={i} className="border-t border-border-subtle"><td className="px-1">{o.date}</td><td className="px-1">{o.ticker}</td>
+                <td className={cn('px-1', o.side === 'buy' ? 'text-green' : 'text-red')}>{o.side}</td><td className="px-1">{num(o.quantity, 2)}</td>
+                <td className="px-1">{num(o.price, 4)}</td><td className="px-1">{usd(o.value)}</td><td className="px-1">{usd(o.costs, 2)}</td><td className="px-1">{o.type}</td></tr>))}</tbody></table>
+        </div>
+      </div>
+      {t.open?.length > 0 && <div className="text-text-secondary">Open: {t.open.slice(0, 12).map((x: any) => `${x.ticker} (${x.side}, since ${x.entry}, ${usd(x.unrealised)})`).join(' · ')}{t.open.length > 12 ? ` · +${t.open.length - 12} more` : ''}</div>}
+      <div className="text-text-tertiary">{t.note}</div>
+    </Card>
+  );
+}
+
+/** Custom charts from plot() / ctx.plot(). */
+export function Charts({ c }: { c: any }) {
+  const charts = Object.entries(c ?? {}) as [string, Record<string, [string, number][]>][];
+  if (!charts.length) return <div className="text-2xs text-text-tertiary">No custom charts — call plot("Chart", "series", values) in your code (or ctx.plot in on_bar).</div>;
+  return (
+    <div className="space-y-3">
+      {charts.map(([name, series]) => {
+        const keys = Object.keys(series);
+        const map = new Map<string, any>();
+        keys.forEach((k, i) => series[k].forEach(([d, v]) => { const row = map.get(d) ?? { date: d }; row[`s${i}`] = v; map.set(d, row); }));
+        const rows = Array.from(map.values()).sort((a, b) => (a.date < b.date ? -1 : 1));
+        return (
+          <Card key={name} title={name}>
+            <LineChart rows={rows} x="date" height={200} fmt={(v) => num(v, 3)} lines={keys.map((k, i) => ({ key: `s${i}`, label: k, color: CATEGORICAL[i % CATEGORICAL.length] }))} />
+          </Card>);
+      })}
+    </div>
+  );
+}
+
+/** Parameter sensitivity: every PARAMS combination's out-of-sample result, as a heatmap for two parameters. */
+export function Heatmap({ opt }: { opt: any }) {
+  const grid = opt?.grid as any[] | undefined;
+  if (!grid || grid.length < 2) return null;
+  const keys = Object.keys(grid[0].params ?? {});
+  const metric = (g: any) => g.sharpe as number | null;
+  const vals = grid.map(metric).filter((v): v is number => v != null && Number.isFinite(v));
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const color = (v: number | null) => {
+    if (v == null) return 'transparent';
+    const x = hi > lo ? (v - lo) / (hi - lo) : 0.5;
+    return `rgba(57, 135, 229, ${0.15 + 0.75 * x})`;
+  };
+  const chosen = JSON.stringify(opt.in_sample_best?.params ?? {});
+  if (keys.length === 2) {
+    const xs = Array.from(new Set(grid.map((g) => JSON.stringify(g.params[keys[0]])))).map((x) => JSON.parse(x));
+    const ys = Array.from(new Set(grid.map((g) => JSON.stringify(g.params[keys[1]])))).map((x) => JSON.parse(x));
+    const at = (a: any, b: any) => grid.find((g) => g.params[keys[0]] === a && g.params[keys[1]] === b);
+    return (
+      <Card title="Parameter sensitivity" sub={`Sharpe of each ${keys[0]} × ${keys[1]} combination over the out-of-sample years · outlined = best in hindsight`}>
+        <table className="font-mono">
+          <thead><tr><th className="px-2 text-left font-normal text-text-tertiary">{keys[1]} ↓ / {keys[0]} →</th>{xs.map((x) => <th key={String(x)} className="px-2 font-normal text-text-tertiary">{String(x)}</th>)}</tr></thead>
+          <tbody>{ys.map((y) => (
+            <tr key={String(y)}><td className="px-2 text-text-tertiary">{String(y)}</td>
+              {xs.map((x) => { const g = at(x, y); const v = g ? metric(g) : null; return (
+                <td key={String(x)} className={cn('px-3 py-1 text-center', g && JSON.stringify(g.params) === chosen && 'outline outline-2 outline-bloomberg')} style={{ background: color(v) }}
+                  title={g ? `CAGR ${spct(g.cagr)} · max DD ${pct(g.max_drawdown)}` : ''}>{num(v)}</td>); })}</tr>))}</tbody>
+        </table>
+        <div className="text-text-tertiary">A good parameter sits in a broad region of similar results; an isolated bright cell is usually overfit.</div>
+      </Card>);
+  }
+  return (
+    <Card title="Parameter sensitivity" sub="Sharpe of each PARAMS combination over the out-of-sample years">
+      <BarList title="" fmt={(v) => num(v)} data={grid.map((g) => ({ label: Object.entries(g.params).map(([k, v]) => `${k}=${v}`).join(', '), value: metric(g) ?? 0 }))} />
+    </Card>);
 }
