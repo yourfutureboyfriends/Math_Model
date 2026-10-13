@@ -191,6 +191,11 @@ const AlgoCard = memo(function AlgoCard({ x, canManage, onStop }: { x: any; canM
         <div><div className="text-text-tertiary text-[10px]">Live return</div><div className={cn('font-mono', x.live_return > 0 ? 'text-green' : x.live_return < 0 ? 'text-red' : '')}>{spct(x.live_return, 2)}</div></div>
         <div><div className="text-text-tertiary text-[10px]">Backtest</div><div className="font-mono">{spct(x.backtest?.cagr)} · SR {num(x.backtest?.sharpe)}</div></div>
       </div>
+      {x.record && x.live_days > 0 && (
+        <div className="text-[10px] text-text-tertiary" title="Each final session is recorded once and never recomputed; the latest stays provisional until the next close">
+          Record: {x.record.frozen_days} session{x.record.frozen_days === 1 ? '' : 's'} locked{x.record.provisional ? ` · ${x.record.provisional} provisional` : ''}
+          {x.record.revised_days > 0 && <span className="text-amber"> · {x.record.revised_days} would read differently on today’s data (the record keeps what was recorded)</span>}
+        </div>)}
       {band.p5 != null && (
         <div className="text-[10px] text-text-tertiary">
           Expected range for {x.live_days} sessions: {spct(band.p5)} to {spct(band.p95)}.

@@ -132,6 +132,15 @@ async def get_alerts_data() -> Dict[str, Any]:
             "active": True,
         })
 
+    # Paper-trading alerts from the Quant Traders (an algo below its expected range, a failing deployment)
+    try:
+        from api.quant import store as _qstore
+        for q in _qstore.recent_alerts(7):
+            alerts.append({"id": f"quant-{q['id']}", "type": "Quant Trader", "severity": q["severity"],
+                           "message": q["message"], "timestamp": q["ts"], "active": True})
+    except Exception as e:                                     # noqa: BLE001 — market alerts stand alone
+        logger.info("quant alerts unavailable: %s", e)
+
     # Default alert if none triggered
     if not alerts:
         alerts.append({

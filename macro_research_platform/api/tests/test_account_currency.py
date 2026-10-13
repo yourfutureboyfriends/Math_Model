@@ -152,6 +152,7 @@ def test_sandbox_charges_venue_taxes_and_reports_the_account_currency(monkeypatc
 def test_paper_book_adds_currencies_up_in_usd(monkeypatch, tmp_path):
     from api.quant import trader
     monkeypatch.setattr(trader, "DISK", tmp_path)                 # an empty result cache
+    monkeypatch.setattr(trader, "FREEZE", False)                  # no writes to the app's paper record
     dates = [d.strftime("%Y-%m-%d") for d in pd.bdate_range("2024-01-01", periods=40)]
     monkeypatch.setattr(trader, "eval_code_spec", lambda spec, light=False: {
         "dates": dates, "returns": [0.0] * 40, "weights_last": {"7203.T": 1.0},
@@ -185,6 +186,8 @@ def test_fx_conversion_cost_only_on_cross_currency_trades():
 def test_trader_serves_cached_results_and_refreshes_in_the_background(monkeypatch, tmp_path):
     from api.quant import store, trader
     monkeypatch.setattr(trader, "DISK", tmp_path)
+    monkeypatch.setattr(trader, "FREEZE", False)
+    monkeypatch.setattr(trader, "_alerts", lambda *a: None)
     dates = [d.strftime("%Y-%m-%d") for d in pd.bdate_range("2024-01-01", periods=40)]
     calls = []
     def fake(spec, light=False):
@@ -211,3 +214,21 @@ def test_trader_serves_cached_results_and_refreshes_in_the_background(monkeypatc
     assert len(row["positions"]) == trader.SHOW_POSITIONS and row["positions_other"]["count"] == 60 - trader.SHOW_POSITIONS
     assert second["positions_total"] == 60 and len(second["exposure"]) == trader.SHOW_EXPOSURE
     assert second["exposure_other"]["count"] == 60 - trader.SHOW_EXPOSURE
+
+
+
+def test_live_record_is_append_only_and_revisions_are_counted(monkeypatch):
+    from api.quant import store, trader
+    mem = {}
+    monkeypatch.setattr(store, "live_returns", lambda did: dict(mem.get(did, {})))
+    monkeypatch.setattr(store, "append_live", lambda did, rows: mem.setdefault(did, {}).update({d: (a, b) for d, a, b in rows}))
+    dates = [d.strftime("%Y-%m-%d") for d in pd.bdate_range("2024-01-01", periods=10)]
+    dep = {"id": 77, "deployed_at": dates[2]}
+    mask = np.array([d > dep["deployed_at"] for d in dates])
+    r1 = np.full(10, 0.01)
+    d1, live1, _, rev1, prov1 = trader._frozen_live(dep, dates, r1, r1, mask)
+    assert prov1 == dates[-1] and len(mem[77]) == 6 and rev1 == 0              # 7 live days: 6 final + 1 provisional
+    r2 = r1.copy()
+    r2[4] = -0.05                                                                # a data revision of a recorded day
+    d2, live2, _, rev2, _ = trader._frozen_live(dep, dates, r2, r2, mask)
+    assert live2[1] == pytest.approx(0.01) and rev2 == 1                         # the record keeps what was recorded

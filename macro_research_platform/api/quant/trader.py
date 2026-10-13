@@ -271,11 +271,10 @@ def _one(dep: Dict[str, Any], res: Optional[Dict[str, Any]] = None) -> Dict[str,
     else:
         r_usd, cap_usd = r, dep["capital"]
     live_mask = np.array([d > dep["deployed_at"] for d in dates])
-    pre, live = r[~live_mask], r[live_mask]
-    live_dates = [d for d, k in zip(dates, live_mask) if k]
+    pre = r[~live_mask]
+    live_dates, live, live_usd, revised, provisional = _frozen_live(dep, dates, r, r_usd, live_mask)
     cum = float(np.prod(1 + live) - 1) if live.size else 0.0
     nav = dep["capital"] * (1 + cum)
-    live_usd = r_usd[live_mask]
     nav_usd = cap_usd * float(np.prod(1 + live_usd)) if live_usd.size else cap_usd
     band = ab.bootstrap_range(pre, int(live.size)) if live.size >= 5 else {}
     status = "on track"
@@ -295,6 +294,8 @@ def _one(dep: Dict[str, Any], res: Optional[Dict[str, Any]] = None) -> Dict[str,
             "deployed_at": dep["deployed_at"], "capital": dep["capital"], "nav": round(nav, 2), "currency": ccy,
             "capital_usd": round(cap_usd, 2), "nav_usd": round(nav_usd, 2),
             "live_days": int(live.size), "live_return": round(cum, 4),
+            "record": {"frozen_days": int(live.size) - (1 if provisional else 0), "provisional": provisional,
+                       "revised_days": revised},
             "live_max_drawdown": round(float((eq / peak - 1).min()), 4) if eq.size else None,
             "live_sharpe": robust.sharpe(live, live_dates) if live.size >= 20 else None,
             "expected_range": band, "status": status, "backtest": dep.get("backtest"),
@@ -302,6 +303,45 @@ def _one(dep: Dict[str, Any], res: Optional[Dict[str, Any]] = None) -> Dict[str,
             "positions": positions, "curve": [{"date": d, "nav": round(dep["capital"] * float(v), 2)}
                                                for d, v in zip(live_dates, eq)][-500:],
             "_live": dict(zip(live_dates, live_usd.tolist()))}
+
+
+FREEZE = True
+
+
+def _frozen_live(dep: Dict[str, Any], dates: List[str], r: np.ndarray, r_usd: np.ndarray, live_mask: np.ndarray):
+    """The live record is append-only: every session after deployment except the latest (which the data source can
+    still revise) is written once and from then on read back, never recomputed — so a data revision or an engine
+    change cannot rewrite past paper results. Returns (dates, returns, USD returns, revised days, provisional date)."""
+    idx = np.where(live_mask)[0]
+    if not FREEZE or not len(idx):
+        return [dates[i] for i in idx], r[idx], r_usd[idx], 0, None
+    frozen = store.live_returns(dep["id"])
+    final = idx[:-1]                                             # the last session stays provisional
+    new = [(dates[i], float(r[i]), float(r_usd[i])) for i in final if dates[i] not in frozen]
+    if new:
+        store.append_live(dep["id"], new)
+        frozen.update({d: (a, b) for d, a, b in new})
+    revised = sum(1 for i in final if dates[i] in frozen and abs(frozen[dates[i]][0] - float(r[i])) > 1e-6)
+    out_d = sorted(frozen)
+    out_r = [frozen[d][0] for d in out_d]
+    out_u = [frozen[d][1] for d in out_d]
+    prov = dates[idx[-1]] if dates[idx[-1]] not in frozen else None
+    if prov:
+        out_d.append(prov)
+        out_r.append(float(r[idx[-1]]))
+        out_u.append(float(r_usd[idx[-1]]))
+    return out_d, np.asarray(out_r, float), np.asarray(out_u, float), revised, prov
+
+
+def _alerts(rows: List[Dict[str, Any]], errors: List[Dict[str, Any]], which: str) -> None:
+    """Paper-trading alerts into the platform's alert panel (once per algo, kind and day)."""
+    for x in rows:
+        if x["status"] == "below range":
+            store.raise_alert(x["id"], "below_range", "High",
+                              f"{BOOK_LABEL[which]} algo “{x['name']}” is below its expected range: {x['live_return']:+.1%} "
+                              f"after {x['live_days']} sessions, worse than 95% of its backtest paths — review it.")
+    for e in errors:
+        store.raise_alert(e["id"], "failed", "Medium", f"{BOOK_LABEL[which]} algo “{e['name']}” could not be updated: {e['error'][:200]}")
 
 
 def _sector_of(symbols: List[str]) -> Dict[str, str]:
@@ -377,6 +417,10 @@ def _build(which: str, deps: Optional[List[Dict[str, Any]]] = None, key: Optiona
         except Exception as e:                                   # one broken strategy must not hide the book
             logger.warning("[quant-trader] deployment %s failed: %s", d["id"], e)
             errors.append({"id": d["id"], "name": d["name"], "error": str(e)[:200]})
+    try:
+        _alerts(rows, errors, which)
+    except Exception as e:                                       # noqa: BLE001 — alerts never break the book
+        logger.info("[quant-trader] alerts: %s", e)
     capital = sum(r["capital_usd"] for r in rows)                # in USD: deployments may keep other currencies
     nav = sum(r["nav_usd"] for r in rows)
     # Book NAV series: each deployment's NAV carried flat before it went live.

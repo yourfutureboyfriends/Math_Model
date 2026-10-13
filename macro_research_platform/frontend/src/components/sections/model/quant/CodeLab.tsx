@@ -480,11 +480,16 @@ function curve(dates: string[], rets: number[], bench?: number[] | null, gross?:
   return rows;
 }
 
+const RESULT_TABS = [['summary', 'Summary'], ['validation', 'Validation'], ['risk', 'Risk'], ['attribution', 'Attribution'],
+  ['signal', 'Signal'], ['deep', 'Deep report']] as const;
+type ResultTab = (typeof RESULT_TABS)[number][0];
+
 export function CodeResults({ r, a }: { r: any; a: any | null }) {
   const m = r.metrics ?? {}, g = r.metrics_gross, c = r.costs, b = r.benchmark_metrics, opt = r.optimisation ?? {};
   const rows = useMemo(() => curve(r.dates, r.returns, r.benchmark, r.gross, r.baseline_returns), [r]);
   const ew = r.baseline_equal_weight, prov = r.provenance ?? {}, ex = r.execution, reg = a?.registry;
   const mc = a?.monte_carlo;
+  const [tab, setTab] = useState<ResultTab>('summary');
   return (
     <div className="space-y-3">
       <KpiStrip cols={8} items={[
@@ -499,6 +504,13 @@ export function CodeResults({ r, a }: { r: any; a: any | null }) {
           tone: ew && m.cagr != null && ew.cagr != null && ew.cagr > m.cagr ? 'warn' : null },
         { label: 'Record', value: opt.walk_forward ? 'Walk-forward' : 'Exploratory', sub: `${r.dates[0]} → ${r.dates[r.dates.length - 1]}` },
       ]} />
+      <Verdict r={r} reg={reg} />
+      <div className="flex flex-wrap border border-border w-fit" role="tablist" aria-label="Result sections">
+        {RESULT_TABS.filter(([k]) => k !== 'signal' || r.signal).map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+            className={cn('px-3 py-1 text-2xs', tab === k ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary')}>{l}</button>))}
+      </div>
+      {tab === 'summary' && (<>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
         <div className="xl:col-span-2">
           <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Growth of {r.account_currency && r.account_currency !== 'USD' ? `1 ${r.account_currency}` : '$1'} — net of all costs{r.gross ? ', before costs' : ''}{r.baseline_returns ? ', equal-weight universe (same costs)' : ''}{r.benchmark ? `, and ${r.benchmark_label || 'benchmark'}` : ''}</div>
@@ -536,23 +548,63 @@ export function CodeResults({ r, a }: { r: any; a: any | null }) {
             data={Object.entries(r.weights_last).map(([k, v]) => ({ label: k, value: v as number }))} />)}
       </div>
       <RecordPanel r={r} prov={prov} ex={ex} reg={reg} />
-      <Validation v={r.validation} />
-      <Signal s={r.signal} />
-      <Attribution a={r.attribution} />
-      <Risk r={r.risk} />
-      <Capacity c={r.capacity} />
-      {opt.walk_forward && opt.chosen && <Optimisation opt={opt} m={m} />}
-      {opt.variants && <Variants opt={opt} />}
-      {a?.factor_lens && <FactorLens f={a.factor_lens} />}
-      {mc ? <MonteCarlo mc={mc} /> : a === null && <div className="flex items-center gap-2 text-2xs text-text-tertiary"><Loader2 className="w-3 h-3 animate-spin" />Monte Carlo…</div>}
-      {a?.deep && (
-        <div className="border border-border p-3">
-          <div className="text-xs font-semibold text-text-primary mb-2">Deep analysis</div>
-          <DeepReport d={a.deep} />
+        </>)}
+      {tab === 'validation' && (
+        <div className="space-y-3">
+          <Validation v={r.validation} />
+          {opt.walk_forward && opt.chosen && <Optimisation opt={opt} m={m} />}
+          {opt.variants && <Variants opt={opt} />}
+          <Capacity c={r.capacity} />
         </div>)}
+      {tab === 'risk' && (
+        <div className="space-y-3">
+          <Risk r={r.risk} />
+          {a?.factor_lens && <FactorLens f={a.factor_lens} />}
+          {mc ? <MonteCarlo mc={mc} /> : a === null && <div className="flex items-center gap-2 text-2xs text-text-tertiary"><Loader2 className="w-3 h-3 animate-spin" />Monte Carlo…</div>}
+        </div>)}
+      {tab === 'attribution' && <Attribution a={r.attribution} />}
+      {tab === 'signal' && <Signal s={r.signal} />}
+      {tab === 'deep' && (a?.deep ? <DeepReport d={a.deep} />
+        : <div className="flex items-center gap-2 text-2xs text-text-tertiary"><Loader2 className="w-3 h-3 animate-spin" />Deep analysis…</div>)}
     </div>
   );
 }
+
+/** One line on whether to trust the result: look-ahead, overfitting, out-of-sample, baseline, risk-adjusted return,
+ *  capacity — each a pass or a named problem. */
+function Verdict({ r, reg }: { r: any; reg: any }) {
+  const v = r.validation ?? {}, m = r.metrics ?? {}, ew = r.baseline_equal_weight, opt = r.optimisation ?? {};
+  const checks: { label: string; ok: boolean | null; why: string; critical?: boolean }[] = [
+    { label: 'No look-ahead', ok: v.causality?.passed ?? null, critical: true,
+      why: v.causality?.passed === false ? 'decisions use future data — the result cannot be trusted' : v.causality?.passed ? 'decisions only use past data' : 'not checked' },
+    ...(v.pbo?.pbo != null ? [{ label: 'Not overfit (PBO)', ok: v.pbo.pbo < 0.5, why: `probability of overfitting ${pct(v.pbo.pbo, 0)}` }] : []),
+    ...(reg?.deflated_sharpe != null ? [{ label: 'Survives multiple testing', ok: reg.deflated_sharpe >= 0.9,
+      why: `deflated Sharpe ${pct(reg.deflated_sharpe, 0)} after ${reg.distinct_trials} trial${reg.distinct_trials === 1 ? '' : 's'}` }] : []),
+    { label: 'Out-of-sample record', ok: !!opt.walk_forward, why: opt.walk_forward ? 'walk-forward' : 'single specification over the full history (exploratory)' },
+    ...(ew ? [{ label: 'Beats equal weight', ok: m.cagr != null && ew.cagr != null && m.cagr > ew.cagr,
+      why: `${spct(m.cagr)} vs ${spct(ew.cagr)} for the same names, same costs` }] : []),
+    { label: 'Worth the risk', ok: m.sharpe != null ? m.sharpe >= 0.5 : null, why: `Sharpe ${num(m.sharpe)} above cash, after costs` },
+    ...(r.capacity ? [{ label: 'Scales', ok: (r.capacity.capacity ?? 0) >= 1e7, why: r.capacity.capacity ? `capacity ≈ ${usd(r.capacity.capacity)}` : 'loses half its Sharpe below $1m' }] : []),
+  ];
+  const known = checks.filter((c) => c.ok !== null);
+  const passed = known.filter((c) => c.ok).length;
+  const fatal = checks.some((c) => c.critical && c.ok === false);
+  // "promising" needs enough evidence: at least four checks run and only one failed
+  const level = fatal ? 'fatal' : known.length && passed === known.length ? 'pass' : known.length >= 4 && passed === known.length - 1 ? 'caveat' : 'weak';
+  const tone = { fatal: 'border-red/60 bg-red/5', pass: 'border-green/50 bg-green/5', caveat: 'border-amber/50 bg-amber/5', weak: 'border-red/40 bg-red/5' }[level];
+  const head = { fatal: 'Do not trust this result', pass: 'Passes every check', caveat: 'Promising, with one caveat', weak: 'Weak evidence' }[level];
+  return (
+    <div className={cn('p-2.5 border text-[11px] space-y-1.5', tone)}>
+      <div className="text-xs font-semibold text-text-primary">{head} <span className="font-normal text-text-tertiary">— {passed} of {known.length} checks passed</span></div>
+      <div className="flex flex-wrap gap-1">
+        {checks.map((c) => (
+          <span key={c.label} title={c.why} className={cn('px-1.5 py-0.5 border', c.ok === null ? 'border-border text-text-tertiary' : c.ok ? 'border-green/50 text-green' : 'border-red/50 text-red')}>
+            {c.ok === null ? '·' : c.ok ? '✓' : '✗'} {c.label}{c.ok === false ? `: ${c.why}` : ''}</span>))}
+      </div>
+    </div>
+  );
+}
+
 
 function Optimisation({ opt, m }: { opt: any; m: any }) {
   const ib = opt.in_sample_best;

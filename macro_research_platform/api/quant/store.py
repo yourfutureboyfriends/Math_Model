@@ -8,6 +8,9 @@ Quant Lab persistence (application DB, own tables):
                         config hashes, engine version, record type, holdout use and headline metrics
   * code_results      — stored Code Lab results (compressed JSON) for reopening and side-by-side comparison;
                         the newest RESULTS_KEEP per user are kept
+  * paper_daily       — each deployment's live daily return, written once when the session is final and never
+                        recomputed: the paper track record is append-only, like a real one
+  * quant_alerts      — paper-trading alerts (an algo below its expected range, a deployment failing)
 """
 from __future__ import annotations
 
@@ -61,6 +64,12 @@ def init() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, label TEXT NOT NULL, code_hash TEXT,
                 engine_version TEXT, record_type TEXT, summary TEXT, body BLOB NOT NULL, code TEXT, ts TEXT);
             CREATE INDEX IF NOT EXISTS ix_code_results ON code_results(owner, id);
+            CREATE TABLE IF NOT EXISTS paper_daily (
+                deployment_id INTEGER NOT NULL, date TEXT NOT NULL, ret REAL NOT NULL, ret_usd REAL NOT NULL,
+                recorded_at TEXT, PRIMARY KEY (deployment_id, date));
+            CREATE TABLE IF NOT EXISTS quant_alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, deployment_id INTEGER, kind TEXT NOT NULL, day TEXT NOT NULL,
+                severity TEXT NOT NULL, message TEXT NOT NULL, ts TEXT, UNIQUE (deployment_id, kind, day));
         """)
         cols = {r[1] for r in c.execute("PRAGMA table_info(quant_deployments)").fetchall()}
         if "book" not in cols:                      # macro vs fundamental trader (added later; old rows classified on read)
@@ -224,6 +233,45 @@ def delete_result(owner: str, rid: int) -> bool:
     init()
     with _conn() as c:
         return c.execute("DELETE FROM code_results WHERE owner = ? AND id = ?", (owner, rid)).rowcount > 0
+
+
+def live_returns(deployment_id: int) -> Dict[str, Tuple[float, float]]:
+    """The frozen live record: {date: (return in the account currency, return in USD)}."""
+    init()
+    with _conn() as c:
+        rows = c.execute("SELECT date, ret, ret_usd FROM paper_daily WHERE deployment_id = ? ORDER BY date",
+                         (deployment_id,)).fetchall()
+    return {r["date"]: (r["ret"], r["ret_usd"]) for r in rows}
+
+
+def append_live(deployment_id: int, rows: List[Tuple[str, float, float]]) -> None:
+    """Record final sessions once; a date already recorded is never overwritten."""
+    if not rows:
+        return
+    init()
+    now = _now()
+    with _conn() as c:
+        c.executemany("INSERT OR IGNORE INTO paper_daily (deployment_id, date, ret, ret_usd, recorded_at) VALUES (?,?,?,?,?)",
+                      [(deployment_id, d, float(r), float(ru), now) for d, r, ru in rows])
+
+
+def raise_alert(deployment_id: Optional[int], kind: str, severity: str, message: str) -> bool:
+    """Record an alert once per deployment, kind and day; True if it is new."""
+    init()
+    day = _now()[:10]
+    with _conn() as c:
+        cur = c.execute("INSERT OR IGNORE INTO quant_alerts (deployment_id, kind, day, severity, message, ts) VALUES (?,?,?,?,?,?)",
+                        (deployment_id, kind, day, severity, message[:500], _now()))
+        return cur.rowcount > 0
+
+
+def recent_alerts(days: int = 7) -> List[Dict[str, Any]]:
+    init()
+    from datetime import timedelta
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+    with _conn() as c:
+        rows = c.execute("SELECT * FROM quant_alerts WHERE day >= ? ORDER BY id DESC LIMIT 50", (since,)).fetchall()
+    return [dict(r) for r in rows]
 
 
 def register_code_run(owner: str, family: str, prov: Dict[str, Any], metrics: Dict[str, Any]) -> Dict[str, Any]:
