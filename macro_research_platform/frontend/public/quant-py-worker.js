@@ -53,12 +53,17 @@ def _run(code, payload, costs):
         data.opt["roll"] = data.opt["roll"].fillna(0).astype(bool)
     bm = pd.Series(_arr(p["benchmark"], None), index=idx) if p.get("benchmark") else None
     st = codelab.load_strategy(code)
+    # the result first; research_checks() adds the slower checks right after (message 'checks')
     out = codelab.evaluate(st["strategy"], data, st["params"], st["start"], codelab.run_costs(st, json.loads(costs)) or None, bm,
-                           st["holdout"], st["code_hash"], signal=st.get("signal"), on_bar=st.get("on_bar"), setup=st.get("setup"))
+                           st["holdout"], st["code_hash"], signal=st.get("signal"), on_bar=st.get("on_bar"), setup=st.get("setup"),
+                           checks=False)
     out["provenance"]["runtime"] = "browser (Pyodide) — pandas " + pd.__version__ + ", numpy " + np.__version__
     if p.get("engine_version") and p["engine_version"] != codelab.ENGINE_VERSION:
         out["provenance"]["engine_mismatch"] = f"server data prepared for engine {p['engine_version']}, browser ran {codelab.ENGINE_VERSION}"
     return json.dumps(out)
+
+def _checks():
+    return json.dumps(codelab.research_checks())
 `);
   postMessage({ type: 'ready' });
 }
@@ -90,6 +95,10 @@ onmessage = async (ev) => {
       postMessage({ type: 'status', text: 'Running your strategy…' });
       const r = py.globals.get('_run')(m.code, JSON.stringify(m.data), JSON.stringify(m.costs || {}));
       postMessage({ type: 'result', id: m.id, result: JSON.parse(r) });
+    } else if (m.type === 'checks') {
+      postMessage({ type: 'status', text: 'Checking for look-ahead, capacity and factor risk…' });
+      const r = py.globals.get('_checks')();
+      postMessage({ type: 'checked', id: m.id, checks: JSON.parse(r) });
     }
   } catch (e) {
     postMessage({ type: 'error', id: m.id, error: pyError(e) });

@@ -456,6 +456,7 @@ async def quant_undeploy(did: int, request: Request):
     if not d:
         raise HTTPException(404, "deployment not found")
     await asyncio.to_thread(store.stop_deployment, did)
+    trader.forget(did)                                    # its cached result; the locked daily record stays
     trader.invalidate()
     await asyncio.to_thread(_audit, u["username"], "quant_stop", f"Stopped '{d['name']}' in the Quant Trader")
     return {"stopped": did}

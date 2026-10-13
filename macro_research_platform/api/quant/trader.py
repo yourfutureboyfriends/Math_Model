@@ -250,6 +250,14 @@ def _deploy_code(owner: str, spec_in: Dict[str, Any], capital: float, strategy_i
     return d
 
 
+def forget(deployment_id: int) -> None:
+    """Drop a stopped deployment's cached result (the append-only daily record is kept as its history)."""
+    try:
+        (DISK / f"{int(deployment_id)}.json").unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def invalidate() -> None:
     with _lock:
         _cache.clear()

@@ -1702,6 +1702,39 @@ def signal_report(sig: pd.DataFrame, data: Data, start: Optional[str] = None, ho
     return out
 
 
+_LAST_RUN: Dict[str, Any] = {}
+
+
+def research_checks() -> Dict[str, Any]:
+    """The slower checks for the run evaluate(checks=False) just made: look-ahead re-runs, capacity, the factor risk
+    model and signal research — so a result can be shown first and completed a moment later."""
+    L = _LAST_RUN
+    if not L:
+        raise ValueError("No run to check — run the strategy first.")
+    data, combos = L["data"], L["combos"]
+    out: Dict[str, Any] = {}
+    if L["on_bar"] is not None:
+        setup = L["setup"]
+        raw = lambda f, d, p: f(d, **p)
+        out["causality"] = (_quiet(causality_check, _setup_table(setup), data, combos[0], _setup_table(setup)(data, **combos[0]),
+                                   runner=raw) if setup is not None else
+                            {"passed": True, "cuts": [], "note": "Event-driven: on_bar only sees data up to each bar (causal by construction)."})
+    else:
+        out["causality"] = _quiet(causality_check, L["fn"], data, combos[0], L["weight_sets"][0])
+    if L["n"] <= 400:
+        out["capacity"] = capacity_curve(L["rerun"], data, L["costs"])
+    try:
+        out["factor_model"] = factor_risk(data, L["holdings"])
+    except Exception as e:                                      # noqa: BLE001
+        out["factor_model"] = {"error": f"{type(e).__name__}: {str(e)[:160]}"}
+    if L["signal"] is not None:
+        try:
+            out["signal"] = signal_report(_quiet(run_weights, L["signal"], data, combos[0]), data, L["first_day"])
+        except Exception as e:                                  # noqa: BLE001
+            out["signal"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
+    return out
+
+
 def _setup_table(setup: Callable) -> Callable:
     """setup(data) → {name: Series/DataFrame}, as one wide table (for the look-ahead check)."""
     def f(data, **p):
@@ -1855,11 +1888,18 @@ def evaluate(fn: Optional[Callable], data: Data, params: Dict[str, Sequence[Any]
             out["risk"]["factor_model"] = {"error": f"{type(e).__name__}: {str(e)[:160]}"}
     if checks and len(data.tickers) <= 400:
         out["capacity"] = capacity_curve(rerun, data, costs)
-    if signal is not None:
+    if signal is not None and checks:
         try:
             out["signal"] = signal_report(_quiet(run_weights, signal, data, combos[0]), data, first_day)
         except Exception as e:                                  # noqa: BLE001 — the backtest stands without it
             out["signal"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
+    if not checks:
+        # keep what the slower checks need, so research_checks() can add them afterwards without re-running the strategy
+        _LAST_RUN.clear()
+        _LAST_RUN.update(fn=fn, data=data, combos=combos, weight_sets=weight_sets, rerun=rerun, costs=costs,
+                         holdings=res["holdings_last"], signal=signal, setup=setup, on_bar=on_bar, first_day=first_day,
+                         n=len(data.tickers))
+        out["checks_pending"] = True
     if holdout:
         out["holdout"] = {"start": holdout, "in_sample": _segment(ret, data.rf, None, holdout),
                           "holdout": _segment(ret, data.rf, holdout, None),

@@ -219,3 +219,17 @@ def test_setup_is_checked_for_look_ahead_in_event_mode():
     assert ok["validation"]["causality"]["passed"] is True
     bad = cl.evaluate(None, d, {}, "2015-06-01", Z, on_bar=on_bar, setup=lambda data: {"ma": data.close - data.close.mean()})
     assert bad["validation"]["causality"]["passed"] is False
+
+
+def test_result_first_then_checks_without_rerunning_the_strategy():
+    d = market(n=6, T=900)
+    calls = []
+    def strat(data, lookback=63):
+        calls.append(1)
+        return mom(data, lookback)
+    r = cl.evaluate(strat, d, {}, "2015-06-01", Z, checks=False)
+    assert r["checks_pending"] and r["validation"]["causality"] is None and "capacity" not in r
+    n = len(calls)
+    k = cl.research_checks()
+    assert k["causality"]["passed"] is True and len(k["capacity"]["levels"]) == 4
+    assert len(calls) - n == 2                                   # only the two look-ahead re-runs, not a full re-run

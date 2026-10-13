@@ -199,10 +199,10 @@ def test_evaluate_is_prefix_stable_and_later_prices_cannot_change_earlier_result
         w = (m.rank(axis=1) == 2).astype(float)
         return cl.hold_monthly(w.where(m.notna().all(axis=1)))
 
-    full = cl.evaluate(strat, d, {"lb": [21, 63]}, "2014-01-01")
+    full = cl.evaluate(strat, d, {"lb": [21, 63]}, "2014-01-01", checks=False)
     cut = pd.Timestamp("2020-06-30")
     pre = cl.Data(d.close[:cut], d.open[:cut], d.high[:cut], d.low[:cut], d.volume[:cut], rf=d.rf[:cut])
-    part = cl.evaluate(strat, pre, {"lb": [21, 63]}, "2014-01-01")
+    part = cl.evaluate(strat, pre, {"lb": [21, 63]}, "2014-01-01", checks=False)
     n = len(part["returns"])
     np.testing.assert_allclose(full["returns"][:n], part["returns"], rtol=0, atol=1e-12)
     assert [c["params"] for c in full["optimisation"]["chosen"] if c["year"] <= 2020] == [c["params"] for c in part["optimisation"]["chosen"]]
@@ -210,7 +210,7 @@ def test_evaluate_is_prefix_stable_and_later_prices_cannot_change_earlier_result
     shocked = d.close.copy()
     shocked.loc[shocked.index > cut] *= 1.5
     sd = cl.Data(shocked, shocked.shift(1).fillna(shocked.iloc[0]), shocked, shocked, d.volume, rf=d.rf)
-    pert = cl.evaluate(strat, sd, {"lb": [21, 63]}, "2014-01-01")
+    pert = cl.evaluate(strat, sd, {"lb": [21, 63]}, "2014-01-01", checks=False)
     np.testing.assert_allclose(pert["returns"][:n - 1], part["returns"][:n - 1], rtol=0, atol=1e-12)
 
 
@@ -219,7 +219,7 @@ def test_evaluate_reports_baseline_holdout_and_provenance():
 
     def strat(data):
         return cl.hold_monthly(pd.DataFrame({"A": 1.0, "B": 0.0}, index=data.close.index))
-    r = cl.evaluate(strat, d, {}, "2015-01-01", holdout="2020-01-01", code_hash="abc")
+    r = cl.evaluate(strat, d, {}, "2015-01-01", holdout="2020-01-01", code_hash="abc", checks=False)
     assert r["baseline_equal_weight"]["cagr"] is not None
     assert r["holdout"]["holdout"]["years"] > 1 and r["holdout"]["in_sample"]["years"] > 4
     p = r["provenance"]

@@ -12,6 +12,7 @@ import { KpiStrip } from '@/components/ui/KpiStrip';
 import { BarList } from '@/components/ui/BarList';
 import { CATEGORICAL } from '@/lib/chartPalette';
 import { DeepReport } from './DeepReport';
+import { TEMPLATES } from './templates';
 import { Attribution, Capacity, Risk, Signal, Validation } from './ResearchPanels';
 import { api, ErrorNote, Field, inputCls, money, num, pct, spct, tone, usd } from './shared';
 
@@ -172,6 +173,18 @@ function getWorker(onStatus: (s: string) => void, onStdout: (s: string) => void)
   return shared;
 }
 
+/** Fold research_checks() output into a result shown before the checks ran. */
+function mergeChecks(r: any, k: any) {
+  const { checks_pending, ...rest } = r;  // eslint-disable-line @typescript-eslint/no-unused-vars
+  return {
+    ...rest,
+    validation: { ...(r.validation ?? {}), causality: k.causality ?? r.validation?.causality },
+    ...(k.capacity ? { capacity: k.capacity } : {}),
+    ...(k.signal ? { signal: k.signal } : {}),
+    risk: r.risk ? { ...r.risk, ...(k.factor_model ? { factor_model: k.factor_model } : {}) } : r.risk,
+  };
+}
+
 function call(worker: Worker, msg: Msg, expect: string, timeoutMs: number): Promise<any> {
   const id = Math.random().toString(36).slice(2);
   return new Promise((res, rej) => {
@@ -188,12 +201,84 @@ function call(worker: Worker, msg: Msg, expect: string, timeoutMs: number): Prom
 }
 
 // ── Editor ──────────────────────────────────────────────────────────────────
+// Completions: what strategy code can use (api/quant/codelab.py).
+const DATA_FIELDS: [string, string][] = [
+  ['close', 'closes (dates × tickers), account currency, adjusted'], ['open', 'opens — the execution price'], ['high', 'highs'],
+  ['low', 'lows'], ['volume', 'share volume'], ['observed', 'True where a real bar exists'], ['rf', 'daily cash rate (Series)'],
+  ['vix', 'VIX close (Series)'], ['info', 'tickers × country, currency, sector, region'], ['instruments', 'per-ticker metadata dict'],
+  ['account_currency', 'the account currency'], ['usd_per_unit', 'USD per account unit (Series)'], ['members', 'index membership (SP500_PIT)'],
+  ['opt', 'option analytics: delta, iv, strike, dte, spot, roll …'], ['fund', 'point-in-time fundamentals (FUNDAMENTALS)'],
+  ['option_names', 'synthetic option columns'], ['tickers', 'column names'], ['returns()', 'daily returns'],
+];
+const CTX_FIELDS: [string, string][] = [
+  ['history("close", 252)', 'rows up to today (field, last n)'], ['close', "today's closes"], ['positions', 'weights held now'],
+  ['units', 'units held'], ['nav', 'account value'], ['cash', 'cash balance'], ['fills', "the last session's fills"],
+  ['state', 'your dict, kept between bars'], ['date', 'this bar'], ['pre("name")', 'a setup() series up to today'],
+  ['opt("delta")', 'option analytics up to today'], ['fund("book_to_price")', 'fundamentals up to today'], ['info', 'instrument metadata'],
+  ['target({"SPY": 0.5})', 'market orders to these weights'], ['limit("SPY", 1.0, 400.0)', 'limit order to a weight'],
+  ['stop("SPY", 0.0, 380.0)', 'stop order to a weight'], ['cancel()', 'cancel open limit/stop orders'], ['orders', 'open limit/stop orders'],
+];
+const NAMES: [string, string][] = [
+  ['momentum(data.close, 252, 21)', 'return over n days, skipping the last `skip`'], ['ewma_vol(data.close, 42)', 'annualised EWMA volatility'],
+  ['vol_target(w, data.close, 0.10)', 'scale weights to a volatility target'], ['normalize_gross(w)', 'gross exposure to 1'],
+  ['hold_monthly(w)', 'decide on the first session of each month'], ['hold_weekly(w)', 'decide weekly'],
+  ['on_rolls(w, data, "SPY_P100_1M")', 'decide on option expiries'], ['cov_shrink(returns)', 'Ledoit–Wolf covariance'],
+  ['optimize(expected, cov, risk_aversion=5.0, max_weight=0.1)', 'mean–variance QP with constraints'],
+  ['min_variance(cov)', 'minimum-variance weights'], ['risk_parity(cov)', 'equal risk contribution'],
+  ['style_exposures(data, date)', 'tickers × momentum, volatility, size, value, quality'],
+  ['UNIVERSE = ["SPY"]', 'tickers to trade'], ['TRADABLE_UNIVERSE = "GLOBAL"', 'a named universe, country or region'],
+  ['ACCOUNT_CURRENCY = "USD"', 'the account currency'], ['FX_HEDGE = 1.0', 'share of currency risk hedged'],
+  ['OPTIONS = [{"underlying": "SPY", "type": "put", "moneyness": 0.95}]', 'synthetic listed options'],
+  ['FUNDAMENTALS = True', 'point-in-time SEC fundamentals'], ['START = "2010-01-01"', 'first record date'],
+  ['BENCHMARK = "SPY"', 'comparison series'], ['PARAMS = {"lookback": [126, 252]}', 'walk-forward grid'],
+  ['HOLDOUT = "2023-01-01"', 'untouched holdout from this date'],
+  ['def strategy(data, **params):', 'target weights for every date'], ['def on_bar(ctx, **params):', 'event-driven: after every close'],
+  ['def setup(data, **params):', 'precomputed indicators for on_bar'], ['def signal(data, **params):', 'scores for IC analysis'],
+];
+
+function suggest(value: string, pos: number): { from: number; items: [string, string][] } | null {
+  const before = value.slice(0, pos);
+  const m = before.match(/\b(data|ctx)\.(\w*)$/);
+  if (m) {
+    const list = m[1] === 'data' ? DATA_FIELDS : CTX_FIELDS;
+    const items = list.filter(([k]) => k.startsWith(m[2]) && k !== m[2]);
+    return items.length ? { from: pos - m[2].length, items: items.slice(0, 8) } : null;
+  }
+  const w = before.match(/(?:^|[^\w.])([A-Za-z_]\w{1,})$/);
+  if (w) {
+    const items = NAMES.filter(([k]) => k.toLowerCase().startsWith(w[1].toLowerCase()) && k !== w[1]);
+    return items.length ? { from: pos - w[1].length, items: items.slice(0, 8) } : null;
+  }
+  return null;
+}
+
 function CodeEditor({ value, onChange, onRun }: { value: string; onChange: (v: string) => void; onRun: () => void }) {
   const ta = useRef<HTMLTextAreaElement>(null);
   const gutter = useRef<HTMLDivElement>(null);
+  const [sug, setSug] = useState<{ from: number; to: number; items: [string, string][] } | null>(null);
+  const [sel, setSel] = useState(0);
   const lines = value.split('\n').length;
+  const refresh = (el: HTMLTextAreaElement, v: string) => {
+    const pos = el.selectionStart;
+    const s = el.selectionStart === el.selectionEnd ? suggest(v, pos) : null;
+    setSug(s ? { ...s, to: pos } : null);
+    setSel(0);
+  };
+  const accept = (el: HTMLTextAreaElement, text: string) => {
+    if (!sug) return;
+    const next = value.slice(0, sug.from) + text + value.slice(sug.to);
+    onChange(next);
+    setSug(null);
+    requestAnimationFrame(() => { el.focus(); el.selectionStart = el.selectionEnd = sug.from + text.length; });
+  };
   const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); onRun(); return; }
+    if (sug) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSel((x) => (x + 1) % sug.items.length); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setSel((x) => (x - 1 + sug.items.length) % sug.items.length); return; }
+      if (e.key === 'Escape') { e.preventDefault(); setSug(null); return; }
+      if (e.key === 'Tab' || e.key === 'Enter') { e.preventDefault(); accept(e.currentTarget, sug.items[sel][0]); return; }
+    }
     if (e.key === 'Tab') {
       e.preventDefault();
       const el = e.currentTarget, s = el.selectionStart, end = el.selectionEnd;
@@ -203,14 +288,24 @@ function CodeEditor({ value, onChange, onRun }: { value: string; onChange: (v: s
     }
   };
   return (
-    <div className="flex border border-border bg-surface-1 font-mono text-[12px] leading-[18px] h-[460px]">
+    <div className="relative flex border border-border bg-surface-1 font-mono text-[12px] leading-[18px] h-[460px]">
       <div ref={gutter} className="select-none text-right pr-2 pl-2 py-2 text-text-tertiary overflow-hidden bg-surface-2/40" aria-hidden>
         {Array.from({ length: lines }, (_, i) => <div key={i}>{i + 1}</div>)}
       </div>
-      <textarea ref={ta} value={value} spellCheck={false} aria-label="Strategy code"
-        onChange={(e) => onChange(e.target.value)} onKeyDown={onKey}
+      <textarea ref={ta} value={value} spellCheck={false} aria-label="Strategy code" aria-autocomplete="list"
+        onChange={(e) => { onChange(e.target.value); refresh(e.target, e.target.value); }} onKeyDown={onKey}
+        onClick={() => setSug(null)} onBlur={() => setTimeout(() => setSug(null), 150)}
         onScroll={(e) => { if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop; }}
         className="flex-1 resize-none bg-transparent p-2 outline-none text-text-primary whitespace-pre overflow-auto" />
+      {sug && (
+        <div role="listbox" aria-label="Suggestions" className="absolute left-12 right-2 bottom-2 max-h-48 overflow-auto bg-surface-2 border border-border shadow-lg text-[11px]">
+          {sug.items.map(([k, d], i) => (
+            <div key={k} role="option" aria-selected={i === sel} onMouseDown={(e) => { e.preventDefault(); if (ta.current) accept(ta.current, k); }}
+              className={cn('flex gap-3 px-2 py-0.5 cursor-pointer', i === sel ? 'bg-bloomberg/20' : 'hover:bg-surface-1')}>
+              <span className="text-text-primary">{k}</span><span className="ml-auto font-sans text-text-tertiary truncate">{d}</span>
+            </div>))}
+          <div className="px-2 py-0.5 font-sans text-[10px] text-text-tertiary border-t border-border">Tab / Enter to insert · ↑↓ to choose · Esc to close</div>
+        </div>)}
     </div>
   );
 }
@@ -300,8 +395,18 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
       setStatus('Monte Carlo and deep analysis…');
       const a = await api('/api/v1/quant/code/analyze', { json: { dates: r.dates, returns: r.returns, benchmark: r.benchmark, label: name || 'Strategy', benchmark_label: header.benchmark, provenance: r.provenance, ...mc } });
       setAnalysis(a);
+      // the slower checks (look-ahead re-runs, capacity, factor risk, signal research) fill in after the result is shown
+      let full = { ...r, benchmark_label: header.benchmark };
+      setStatus('Checking for look-ahead, capacity and factor risk…');
+      try {
+        const { checks } = await call(sh.worker, { type: 'checks' }, 'checked', 600_000);
+        full = mergeChecks(full, checks);
+        setResult(full);
+      } catch (e: any) {
+        setNote(`Result shown; the extra checks did not finish (${e.message}).`);
+      }
       setStatus(null);
-      storeRun({ ...r, benchmark_label: header.benchmark }, a);
+      storeRun(full, a);
     } catch (e: any) { setErr(e.message); setStatus(null); } finally { setBusy(false); }
   }, [code, runCosts, mc, name]);   // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -325,6 +430,14 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
       setNote(`Deployed “${d.name}” to the ${label} Quant Trader — live from the session after ${d.deployed_at}.`);
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); setStatus(null); }
   };
+  const loadTemplate = async (id: string) => {
+    const t = TEMPLATES.find((x) => x.id === id);
+    if (!t) return;
+    if (code.trim() && code.trim() !== t.code.trim() && !(await ask({ title: `Replace the editor with “${t.name}”?`,
+      body: `${t.about}\n\nYour current code is replaced (save it first if you want to keep it).`, confirmLabel: 'Replace' }))) return;
+    setCode(t.code); setName(t.name); setStrategyId(null); setResult(null); setAnalysis(null); setErr(null);
+    setNote(`Loaded the “${t.name}” template — press Run.`);
+  };
   const set = (k: keyof Costs) => (e: React.ChangeEvent<HTMLInputElement>) => setCosts({ ...costs, [k]: Number(e.target.value) });
   const flag = (k: keyof Costs) => (e: React.ChangeEvent<HTMLInputElement>) => setCosts({ ...costs, [k]: e.target.checked ? 1 : 0 });
 
@@ -335,6 +448,11 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
         <div className="space-y-2">
           <div className="flex flex-wrap items-end gap-2">
             <Field label="Name" className="w-64"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="My strategy" /></Field>
+            <Field label="Start from a template" className="w-56">
+              <select className={inputCls} value="" onChange={(e) => loadTemplate(e.target.value)}>
+                <option value="">Choose…</option>
+                {TEMPLATES.map((t) => <option key={t.id} value={t.id} title={t.about}>{t.name}</option>)}
+              </select></Field>
             <button onClick={run} disabled={busy} className="inline-flex items-center gap-1 px-3 py-1 text-2xs bg-bloomberg text-bg disabled:opacity-50" aria-label="Run (Ctrl/⌘ + Enter)" title="Ctrl/⌘ + Enter">
               {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}Run
             </button>
@@ -575,8 +693,8 @@ export function CodeResults({ r, a }: { r: any; a: any | null }) {
 function Verdict({ r, reg }: { r: any; reg: any }) {
   const v = r.validation ?? {}, m = r.metrics ?? {}, ew = r.baseline_equal_weight, opt = r.optimisation ?? {};
   const checks: { label: string; ok: boolean | null; why: string; critical?: boolean }[] = [
-    { label: 'No look-ahead', ok: v.causality?.passed ?? null, critical: true,
-      why: v.causality?.passed === false ? 'decisions use future data — the result cannot be trusted' : v.causality?.passed ? 'decisions only use past data' : 'not checked' },
+    { label: 'No look-ahead', ok: r.checks_pending ? null : v.causality?.passed ?? null, critical: true,
+      why: r.checks_pending ? 'checking…' : v.causality?.passed === false ? 'decisions use future data — the result cannot be trusted' : v.causality?.passed ? 'decisions only use past data' : 'not checked' },
     ...(v.pbo?.pbo != null ? [{ label: 'Not overfit (PBO)', ok: v.pbo.pbo < 0.5, why: `probability of overfitting ${pct(v.pbo.pbo, 0)}` }] : []),
     ...(reg?.deflated_sharpe != null ? [{ label: 'Survives multiple testing', ok: reg.deflated_sharpe >= 0.9,
       why: `deflated Sharpe ${pct(reg.deflated_sharpe, 0)} after ${reg.distinct_trials} trial${reg.distinct_trials === 1 ? '' : 's'}` }] : []),
@@ -595,7 +713,7 @@ function Verdict({ r, reg }: { r: any; reg: any }) {
   const head = { fatal: 'Do not trust this result', pass: 'Passes every check', caveat: 'Promising, with one caveat', weak: 'Weak evidence' }[level];
   return (
     <div className={cn('p-2.5 border text-[11px] space-y-1.5', tone)}>
-      <div className="text-xs font-semibold text-text-primary">{head} <span className="font-normal text-text-tertiary">— {passed} of {known.length} checks passed</span></div>
+      <div className="text-xs font-semibold text-text-primary">{head} <span className="font-normal text-text-tertiary">— {passed} of {known.length} checks passed{r.checks_pending ? ' · look-ahead, capacity and factor checks still running…' : ''}</span></div>
       <div className="flex flex-wrap gap-1">
         {checks.map((c) => (
           <span key={c.label} title={c.why} className={cn('px-1.5 py-0.5 border', c.ok === null ? 'border-border text-text-tertiary' : c.ok ? 'border-green/50 text-green' : 'border-red/50 text-red')}>
