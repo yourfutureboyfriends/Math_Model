@@ -35,7 +35,7 @@ def test_missing_fx_drops_only_that_currency_and_reports_it(monkeypatch):
     inst = {"VOD.L": {"currency": "GBP", "quote_currency": "GBp", "unit_divisor": 100.0, "fx_ticker": "GBP=X"},
             "PETR4.SA": {"currency": "BRL", "quote_currency": "BRL", "unit_divisor": 1.0, "fx_ticker": "BRL=X"}}
     pan = {k: px.copy() for k in ("close", "open", "high", "low", "volume")}
-    out, info = codeserver._to_account_currency(pan, list(px.columns), inst, "2024-01-01", None)
+    out, info, _ = codeserver._to_account_currency(pan, list(px.columns), inst, "2024-01-01", None)
     assert info["dropped_no_fx"] == ["PETR4.SA"] and info["missing_fx"] == ["BRL"]
     assert out["close"]["VOD.L"].iloc[-1] == pytest.approx(1 / 0.8)                   # 100p = £1 = $1.25
 

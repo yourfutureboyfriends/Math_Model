@@ -16,6 +16,7 @@ optionally a benchmark on the same dates and a trade list.
 """
 from __future__ import annotations
 
+import contextvars
 import itertools
 import logging
 import math
@@ -36,11 +37,15 @@ def _r(x, d=4):
     return None if x is None or (isinstance(x, float) and not math.isfinite(x)) else round(float(x), d)
 
 
+_CCY: contextvars.ContextVar = contextvars.ContextVar("deep_report_currency", default="USD")
+
+
 def _cash(idx: pd.DatetimeIndex, ppy: float) -> pd.Series:
-    """T-bill return per period (daily rate scaled to the sampling frequency); 0 where unknown."""
+    """Cash return per period in the report's currency (US T-bills for USD; daily rate scaled to the sampling
+    frequency); 0 where unknown."""
     from api.quant import rates
     try:
-        return rates.daily(idx) * (252 / ppy) if len(idx) else pd.Series(dtype=float)
+        return rates.daily(idx, _CCY.get()) * (252 / ppy) if len(idx) else pd.Series(dtype=float)
     except Exception:                                    # noqa: BLE001
         return pd.Series(0.0, index=idx)
 
@@ -269,7 +274,16 @@ def _trades(trades: List[Dict[str, Any]], group_key: Optional[str]) -> Dict[str,
 
 def report(dates: Sequence[str], returns: Sequence[float], ppy: float = 252, benchmark: Optional[Sequence[float]] = None,
            trades: Optional[List[Dict[str, Any]]] = None, label: str = "Strategy", benchmark_label: str = "Benchmark",
-           trade_group: Optional[str] = None) -> Dict[str, Any]:
+           trade_group: Optional[str] = None, ccy: str = "USD") -> Dict[str, Any]:
+    """`ccy`: the currency the returns are in — excess returns are measured over that currency's cash rate."""
+    token = _CCY.set(ccy or "USD")
+    try:
+        return _report(dates, returns, ppy, benchmark, trades, label, benchmark_label, trade_group)
+    finally:
+        _CCY.reset(token)
+
+
+def _report(dates, returns, ppy, benchmark, trades, label, benchmark_label, trade_group) -> Dict[str, Any]:
     idx = pd.to_datetime(list(dates))
     # periods per year from the dates themselves: a global calendar (Gulf markets trade on Sundays) has more than 252
     # sessions a year, a weekly-sampled curve ~52 — assuming the nominal figure would misstate CAGR and volatility

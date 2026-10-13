@@ -73,3 +73,43 @@ members without free prices). Each step that removes hindsight lowers the result
 
 Still open: the stock auto-trader (`auto_trader.py`) keeps its own trade-based paper book (with FX); it was not
 moved onto the shared ledger in this pass.
+
+## Follow-up (13 Oct): any listing, any account currency — engine `2026.10-ledger.3`
+
+| Item | Status | Where |
+|---|---|---|
+| Account currency | **Done.** `ACCOUNT_CURRENCY = "EUR"` (38 currencies; default USD). Every listing is converted local → USD → account at as-of FX (closes at that day's FX closes, opens at the previous closes); a listing already in the account currency is not converted; a missing account-currency FX history is an error, never a silent USD account. Prices, NAV, costs, capital and the benchmark are all in the account currency | `codeserver._to_account_currency`, `benchmark_series`, `instruments.ACCOUNT_CURRENCIES` |
+| Cash rate per currency | **Done.** As-of only: OECD 3-month interbank rates (monthly averages, usable from the 15th of the next month), spliced with €STR (EUR) and SONIA (GBP) where the OECD series ends; central-bank discount rates for INR/BRL/TRY; the US T-bill for USD pegs (HKD, SAR, QAR, AED, BHD, OMR), labelled a proxy; otherwise unknown (cash earns 0, flagged). Sharpe, the deep report and the Monte Carlo use the account currency's rate; the factor lens converts to USD first | `rates.py` (`daily(…, ccy)`, `describe`), `deep.report(…, ccy)`, `codeserver.analyze` |
+| FX conversion cost | **Added.** `fx_cost_bps` (default 2 bp of traded value) on trades in a listing whose currency differs from the account's — broker FX fee plus dealing spread; retail platforms charge 25–100 bp, so set it to your broker's | `codelab.backtest`, `COST_SCHEMA` |
+| Cost model in other currencies | **Done.** The spread model is calibrated on US dollar volume; traded value is scaled to USD (`usd_per_unit`) so a stock costs the same whatever the account currency (tested) | `codelab.half_spread_bps` |
+| Venue taxes in the sandbox | **Bug fixed.** The sandbox child (which runs every TRADABLE_UNIVERSE job and every deployment) did not receive instrument metadata: stamp duties / FTTs were never charged there and the SEC fee was charged on every sale. The browser payload had the same gap. Both now carry it (regression test) | `sandbox.run`, `sandbox_child.py`, `data_payload`, `quant-py-worker.js` |
+| Universe selection | **Done.** `TRADABLE_UNIVERSE` takes a named universe, a region (`EUROPE`, `ASIA_PACIFIC`, `AMERICAS`, `MIDDLE_EAST_AFRICA`), any listing country (`"JP"`) or a combination (`"JP+HK"`, `["GB", "DE"]`). A literal `UNIVERSE` of up to 4,000 tickers runs as a server job (≤ 80 still run in the browser) | `codeserver.tradable_universe`, `/api/v1/quant/code/universes` |
+| Instrument data for strategies | **Done.** `data.info` (country, currency, sector, region, market class), `data.account_currency`; results report holdings by currency, country and sector | `codelab.Data.info`, `exposure_breakdown` |
+| Paper traders | **Done.** A code deployment keeps its account currency (NAV shown in it); books add deployments up in USD at as-of FX; deploy capital is checked as $1k–$1bn equivalent | `trader._one`, `book`, `_deploy_code` |
+
+The four items first listed as not modelled are now modelled — see the next section.
+
+Your global strategy after this follow-up (same code, sandbox, 3,100 names): USD account 19.3% CAGR, Sharpe 0.98,
+max drawdown −33.5% (was 19.5% before stamp duties and FX costs were charged in the sandbox); the same strategy in
+a EUR account 20.3%, Sharpe 1.02 (the dollar rose against the euro over the period). About 21% of the book is in
+Taiwan-dollar stocks — a concentrated currency and country bet the new exposure panel makes visible.
+
+## Follow-up (13 Oct, later): market rules and options — engine `2026.10-ledger.4`
+
+| Item | Status | Where |
+|---|---|---|
+| Board lots | **Modelled.** Orders round to whole lots at the run's `capital` (JP 100, CN 100, TW 1,000, TH/MY/ID/SG/BR 100, PH by price band, **Hong Kong per stock from HKEX's published list of securities**, single shares elsewhere); a full exit may sell an odd lot; the untraded remainder is reported. `board_lots` 0/1 | `market_rules.py`, `codelab.backtest` |
+| Tick sizes | **Modelled.** Exchange tick tables (JP, HK, CN, TW, KR, IN, ASEAN, AU, Americas, SA, TR; MiFID II liquid band elsewhere) on the traded (not dividend-adjusted) price: half a tick floors the spread model | `market_rules.half_tick_bps`, `half_spread_bps(tick_bps=)` |
+| Dividend withholding | **Modelled.** Yahoo cash dividends (cached weekly) give ex-date yields; long holdings of listings in another currency than the account's lose the listing country's statutory non-resident rate, capped at a treaty rate (`wht_treaty_cap`, default 15%) | `corpactions.py`, `market_rules.WHT` |
+| FX hedging | **Modelled.** `FX_HEDGE = 0…1` (or the UI field): daily-settled forwards on each currency's exposure — the hedged share of currency moves is given back, the interest differential (account − foreign short rate) is earned or paid, roll costs `fx_hedge_cost_bps` (15 bp/yr). Currencies without a free rate history stay unhedged and are listed | `codelab.backtest` (step 6) |
+| Options | **New.** `OPTIONS = [...]` declares synthetic listed options (call/put; strike by moneyness or delta; monthly / weekly / quarterly / fixed-tenor expiries). Black–Scholes–Merton on the traded price, dividend yield and the currency's short rate, with implied vol from CBOE's indices where they exist (VIX term structure 9D–6M for S&P 500 ETFs, VXN, VXD, GVZ, OVX) or realised vol × the market's implied/realised ratio, plus skew. A weight on an option is the **underlying notional** (−1.0 = write on 100% of NAV). Expiring contracts settle at intrinsic value; standing weights roll. Option spreads (0.75–2.5% of premium, ≥ half a tick) + $0.65/contract; 100-share contracts as board lots; no stock-borrow on written options | `options.py`, `codelab.backtest`, `data.opt`, `on_rolls` |
+| Option library | **New.** CBOE PutWrite, BuyWrite, 95-110 Collar, delta-hedged short straddle (variance risk premium) | `library.py` |
+
+Model check against a real index — CBOE S&P 500 PutWrite (^PUT), 2008–2026, synthetic SPY version with costs:
+monthly correlation 0.96; 8.1% vs 7.2% a year; worst drawdown −36.7% vs −37.1%; 2008 −27.6% vs −26.2%;
+2022 −7.3% vs −7.7%; 2020 −3.1% vs +2.1% (the index sells at mid-day on expiry Friday, the model at the next
+open — after a crash that gap matters). Library results (with costs): BuyWrite 8.0% (≈ PutWrite, as put–call
+parity says), Collar 7.7% with a −22% worst drawdown (S&P −52%), delta-hedged straddle 3.6% at 2.9% volatility.
+
+Option prices are a model, not quotes: crash-day skew, spreads that widen in stress, early exercise of American
+options and pin risk are not in it.

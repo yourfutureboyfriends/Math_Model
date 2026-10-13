@@ -6,6 +6,8 @@ Quant Lab persistence (application DB, own tables):
   * quant_deployments — strategies paper-traded by the Quant Trader (frozen spec + start date)
   * code_runs         — the Code Lab trial registry: every run (successful or not) with code / data /
                         config hashes, engine version, record type, holdout use and headline metrics
+  * code_results      — stored Code Lab results (compressed JSON) for reopening and side-by-side comparison;
+                        the newest RESULTS_KEEP per user are kept
 """
 from __future__ import annotations
 
@@ -15,6 +17,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 _ready = False
+RESULTS_KEEP = 50
+RESULT_MAX_BYTES = 12_000_000
 
 
 def _conn() -> sqlite3.Connection:
@@ -53,6 +57,10 @@ def init() -> None:
                 holdout TEXT, universe TEXT, first_date TEXT, last_date TEXT, sharpe REAL, cagr REAL,
                 provenance TEXT, ts TEXT);
             CREATE INDEX IF NOT EXISTS ix_code_runs ON code_runs(owner, family);
+            CREATE TABLE IF NOT EXISTS code_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, label TEXT NOT NULL, code_hash TEXT,
+                engine_version TEXT, record_type TEXT, summary TEXT, body BLOB NOT NULL, code TEXT, ts TEXT);
+            CREATE INDEX IF NOT EXISTS ix_code_results ON code_results(owner, id);
         """)
         cols = {r[1] for r in c.execute("PRAGMA table_info(quant_deployments)").fetchall()}
         if "book" not in cols:                      # macro vs fundamental trader (added later; old rows classified on read)
@@ -163,6 +171,61 @@ def stop_deployment(did: int) -> None:
 
 
 # ── Code Lab trial registry ──────────────────────────────────────────────────
+def save_result(owner: str, label: str, result: Dict[str, Any], analysis: Optional[Dict[str, Any]] = None,
+                code: Optional[str] = None) -> Dict[str, Any]:
+    """Store a Code Lab result (and its analysis) compressed; keep the newest RESULTS_KEEP per user."""
+    import zlib
+    init()
+    body = zlib.compress(json.dumps({"result": result, "analysis": analysis}, default=str).encode(), 6)
+    if len(body) > RESULT_MAX_BYTES:
+        raise ValueError("Result too large to store.")
+    m = result.get("metrics") or {}
+    prov = result.get("provenance") or {}
+    v = result.get("validation") or {}
+    summary = {k: m.get(k) for k in ("cagr", "vol", "sharpe", "max_drawdown", "calmar")}
+    summary.update(period=[(result.get("dates") or [None])[0], (result.get("dates") or [None])[-1]],
+                   trading_costs=(result.get("costs") or {}).get("total_trading"),
+                   causality=(v.get("causality") or {}).get("passed"), pbo=(v.get("pbo") or {}).get("pbo"),
+                   capacity=(result.get("capacity") or {}).get("capacity"), account=result.get("account_currency"),
+                   tickers=len(prov.get("universe") or []))
+    with _conn() as c:
+        cur = c.execute("INSERT INTO code_results (owner, label, code_hash, engine_version, record_type, summary, body, code, ts) "
+                        "VALUES (?,?,?,?,?,?,?,?,?)",
+                        (owner, label[:120], prov.get("code_hash"), prov.get("engine_version"), prov.get("record_type"),
+                         json.dumps(summary, default=str), body, (code or "")[:200_000], _now()))
+        rid = cur.lastrowid
+        c.execute("DELETE FROM code_results WHERE owner = ? AND id NOT IN (SELECT id FROM code_results WHERE owner = ? "
+                  "ORDER BY id DESC LIMIT ?)", (owner, owner, RESULTS_KEEP))
+    return {"id": rid, "label": label[:120], "summary": summary}
+
+
+def list_results(owner: str) -> List[Dict[str, Any]]:
+    init()
+    with _conn() as c:
+        rows = c.execute("SELECT id, label, code_hash, engine_version, record_type, summary, ts FROM code_results "
+                         "WHERE owner = ? ORDER BY id DESC", (owner,)).fetchall()
+    return [{**dict(r), "summary": json.loads(r["summary"] or "{}")} for r in rows]
+
+
+def get_result(owner: str, rid: int) -> Optional[Dict[str, Any]]:
+    import zlib
+    init()
+    with _conn() as c:
+        r = c.execute("SELECT id, label, code_hash, engine_version, record_type, summary, body, code, ts FROM code_results "
+                      "WHERE owner = ? AND id = ?", (owner, rid)).fetchone()
+    if not r:
+        return None
+    body = json.loads(zlib.decompress(r["body"]).decode())
+    return {"id": r["id"], "label": r["label"], "ts": r["ts"], "code": r["code"], "summary": json.loads(r["summary"] or "{}"),
+            **body}
+
+
+def delete_result(owner: str, rid: int) -> bool:
+    init()
+    with _conn() as c:
+        return c.execute("DELETE FROM code_results WHERE owner = ? AND id = ?", (owner, rid)).rowcount > 0
+
+
 def register_code_run(owner: str, family: str, prov: Dict[str, Any], metrics: Dict[str, Any]) -> Dict[str, Any]:
     """Record a Code Lab run and return the family's trial history: how many distinct specifications have been
     tried (code × config), their Sharpe ratios (for the deflated Sharpe) and how often the holdout was seen."""

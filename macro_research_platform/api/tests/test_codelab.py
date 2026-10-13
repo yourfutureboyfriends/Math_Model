@@ -105,7 +105,7 @@ def test_sandbox_runs_code_in_a_separate_process(monkeypatch):
     d = _data(k=2)
     d.close.columns = d.open.columns = d.high.columns = d.low.columns = d.volume.columns = ["SPY", "TLT"]
     d.tickers = ["SPY", "TLT"]
-    monkeypatch.setattr(codeserver, "load_data", lambda u, s, end=None: d)
+    monkeypatch.setattr(codeserver, "load_data", lambda u, s, end=None, **kw: d)
     monkeypatch.setattr(codeserver, "_index_series", lambda sym, start: d.close["SPY"])
     code = 'UNIVERSE = ["SPY", "TLT"]\nSTART = "2013-01-01"\ndef strategy(data):\n    return hold_monthly(data.close * 0 + 0.5)\n'
     res = sandbox.run(code)
@@ -116,7 +116,7 @@ def test_sandbox_runs_code_in_a_separate_process(monkeypatch):
 
 def test_code_api_check_analyze_and_save(client, monkeypatch):  # noqa: F811
     from api.quant import codeserver
-    monkeypatch.setattr(codeserver, "rf_for", lambda dates: pd.Series(0.0, index=pd.to_datetime(dates)))
+    monkeypatch.setattr(codeserver, "rf_for", lambda dates, account="USD": pd.Series(0.0, index=pd.to_datetime(dates)))
     good = 'UNIVERSE = ["SPY"]\ndef strategy(data):\n    return data.close * 0 + 1\n'
     assert client.post("/api/v1/quant/code/check", json={"code": good}).json()["ok"] is True
     assert client.post("/api/v1/quant/code/check", json={"code": "import os"}).json()["ok"] is False
@@ -137,3 +137,19 @@ def test_monte_carlo_does_not_lever_a_weak_edge():
     mc = codelab.monte_carlo(weak, years=5, paths=300)
     if mc["sharpe_excess"] < 0.3:
         assert mc["recommended_leverage"] <= 1.0
+
+
+def test_stored_runs_round_trip_and_are_private(client):  # noqa: F811
+    res = {"metrics": {"cagr": 0.1, "sharpe": 1.0}, "dates": ["2020-01-02", "2021-01-04"], "returns": [0.0, 0.01],
+           "provenance": {"code_hash": "abc", "engine_version": "x", "universe": ["SPY"]},
+           "validation": {"causality": {"passed": True}, "pbo": {"pbo": 0.2}}}
+    r = client.post("/api/v1/quant/code/runs", json={"label": "My run", "result": res, "code": "UNIVERSE = ['SPY']"})
+    assert r.status_code == 200
+    rid = r.json()["id"]
+    lst = client.get("/api/v1/quant/code/runs").json()["runs"]
+    row = next(x for x in lst if x["id"] == rid)
+    assert row["summary"]["sharpe"] == 1.0 and row["summary"]["causality"] is True and row["summary"]["pbo"] == 0.2
+    full = client.get(f"/api/v1/quant/code/runs/{rid}").json()
+    assert full["result"]["returns"] == [0.0, 0.01] and full["code"].startswith("UNIVERSE")
+    assert client.delete(f"/api/v1/quant/code/runs/{rid}").json()["deleted"] is True
+    assert client.get(f"/api/v1/quant/code/runs/{rid}").status_code == 404

@@ -53,7 +53,8 @@ class SandboxError(ValueError):
 
 
 def check(code: str) -> Dict[str, Any]:
-    """Static checks; returns the literal header (UNIVERSE, START, PARAMS, BENCHMARK)."""
+    """Static checks; returns the literal header (UNIVERSE, START, PARAMS, BENCHMARK, HOLDOUT, TRADABLE_UNIVERSE,
+    ACCOUNT_CALENDAR, ACCOUNT_CURRENCY)."""
     if not code or len(code) > MAX_CODE:
         raise SandboxError(f"Code must be 1–{MAX_CODE:,} characters.")
     try:
@@ -91,17 +92,56 @@ def check(code: str) -> Dict[str, Any]:
     for node in tree.body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             name = node.targets[0].id
-            if name in ("UNIVERSE", "START", "PARAMS", "BENCHMARK", "HOLDOUT", "TRADABLE_UNIVERSE"):
+            if name in ("UNIVERSE", "START", "PARAMS", "BENCHMARK", "HOLDOUT", "TRADABLE_UNIVERSE", "ACCOUNT_CALENDAR",
+                        "ACCOUNT_CURRENCY", "FX_HEDGE", "OPTIONS", "FUNDAMENTALS"):
                 try:
                     header[name] = ast.literal_eval(node.value)
                 except Exception:
                     raise SandboxError(f"{name} must be a plain literal (list, string or dict of lists).")
     uni = header.get("UNIVERSE")
-    from api.quant.codelab import UNIVERSE_LIMIT
-    if not isinstance(uni, (list, tuple)) or not 1 <= len(uni) <= UNIVERSE_LIMIT or not all(isinstance(u, str) for u in uni):
-        raise SandboxError(f"UNIVERSE must be a literal list of 1–{UNIVERSE_LIMIT} ticker strings.")
-    if not any(isinstance(n, ast.FunctionDef) and n.name == "strategy" for n in tree.body):
-        raise SandboxError("Define a top-level function strategy(data, **params).")
+    from api.quant.codelab import LARGE_UNIVERSE_LIMIT, tradable_spec, universe_error
+    if isinstance(uni, str):
+        uni = [uni]
+    if not uni and isinstance(header.get("OPTIONS"), (list, tuple)):     # options-only: trade the underlyings
+        uni = list(dict.fromkeys(str(o.get("underlying", "")).upper() for o in header["OPTIONS"] if isinstance(o, dict)))
+    if not uni:
+        raise SandboxError(universe_error(code))
+    if not isinstance(uni, (list, tuple)) or not 1 <= len(uni) <= LARGE_UNIVERSE_LIMIT or not all(isinstance(u, str) and u for u in uni):
+        raise SandboxError(f"UNIVERSE must be a literal list of 1–{LARGE_UNIVERSE_LIMIT} ticker strings.")
+    tradable = header.get("TRADABLE_UNIVERSE")
+    if tradable is not None and not (isinstance(tradable, str) or (isinstance(tradable, (list, tuple))
+                                                                   and all(isinstance(t, str) for t in tradable))):
+        raise SandboxError('TRADABLE_UNIVERSE must be a string ("GLOBAL", "JP+HK") or a list of strings.')
+    acc = header.get("ACCOUNT_CURRENCY")
+    if acc is not None and not isinstance(acc, str):
+        raise SandboxError('ACCOUNT_CURRENCY must be a currency code string, e.g. "EUR".')
+    from api.quant import options as opt_mod
+    try:
+        opts = opt_mod.parse(header.get("OPTIONS"))
+    except ValueError as e:
+        raise SandboxError(str(e))
+    from api.quant.codelab import FUNDAMENTAL_NAMES, fundamentals_spec
+    fh = header.get("FUNDAMENTALS")
+    if fh is not None and not (isinstance(fh, (bool, str)) or (isinstance(fh, (list, tuple)) and all(isinstance(x, str) for x in fh))):
+        raise SandboxError("FUNDAMENTALS must be True or a list of names.")
+    funds = fundamentals_spec(fh)
+    if any(n not in FUNDAMENTAL_NAMES for n in funds):
+        raise SandboxError(f"Unknown FUNDAMENTALS. Available: {', '.join(FUNDAMENTAL_NAMES)}.")
+    hedge = header.get("FX_HEDGE")
+    if hedge is not None and (isinstance(hedge, bool) or not isinstance(hedge, (int, float)) or not 0 <= hedge <= 1):
+        raise SandboxError("FX_HEDGE must be a number from 0 (unhedged) to 1 (fully hedged).")
+    from api.quant import instruments
+    try:
+        account = instruments.account_currency(acc)
+    except ValueError as e:
+        raise SandboxError(str(e))
+    if not any(isinstance(n, ast.FunctionDef) and n.name in ("strategy", "on_bar") for n in tree.body):
+        raise SandboxError("Define a top-level function strategy(data, **params) — or on_bar(ctx, **params) for an "
+                           "event-driven strategy.")
+    calendar = header.get("ACCOUNT_CALENDAR")
+    if calendar is not None and (not isinstance(calendar, str) or calendar.upper() not in [u.upper() for u in uni]
+                                 or not header.get("TRADABLE_UNIVERSE")):
+        raise SandboxError("ACCOUNT_CALENDAR must be a ticker in UNIVERSE and requires a named server universe")
     params = header.get("PARAMS") or {}
     if not isinstance(params, dict) or not all(isinstance(v, (list, tuple)) and v for v in params.values()):
         raise SandboxError("PARAMS must be a dict of non-empty lists.")
@@ -113,7 +153,10 @@ def check(code: str) -> Dict[str, Any]:
     return {"universe": [str(u).upper() for u in uni], "start": str(header.get("START") or "2005-01-01")[:10],
             "params": params, "benchmark": str(header.get("BENCHMARK") or "SPY").upper(),
             "holdout": str(header["HOLDOUT"])[:10] if header.get("HOLDOUT") else None,
-            "tradable": str(header["TRADABLE_UNIVERSE"]).upper() if header.get("TRADABLE_UNIVERSE") else None}
+            "tradable": tradable_spec(tradable), "account": account,
+            "fx_hedge": float(hedge) if hedge is not None else None, "options": opts, "fundamentals": funds,
+            "mode": "event" if any(isinstance(n, ast.FunctionDef) and n.name == "on_bar" for n in tree.body) else "weights",
+            "calendar": calendar.upper() if calendar else None}
 
 
 def _profile(tmp: Path) -> str:
@@ -144,7 +187,7 @@ def _limits(cpu: int = TIMEOUT_S):              # runs in the child before exec
     os.setsid()
 
 
-def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] = None) -> Dict[str, Any]:
+def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] = None, light: bool = False) -> Dict[str, Any]:
     """Evaluate user code in the sandbox; returns codelab.evaluate()'s JSON-able output. `job` (api/quant/jobs.py)
     receives progress and can cancel the run (the child process is killed)."""
     from api.quant import codelab, codeserver
@@ -156,7 +199,8 @@ def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] 
         names, minfo = membership.universe_since(head["start"])
         universe = list(dict.fromkeys(head["universe"] + names))
         say(f"Loading prices for {len(universe)} past and present S&P 500 members (first run downloads them)…")
-        data = codeserver.load_data(universe, head["start"], limit=codelab.LARGE_UNIVERSE_LIMIT, allow_missing=True)
+        data = codeserver.load_data(universe, head["start"], limit=codelab.LARGE_UNIVERSE_LIMIT, allow_missing=True,
+                                    account=head["account"], options=head["options"], fundamentals=head["fundamentals"])
         members = membership.members_frame(data.close.index, data.tickers)
         # Explicit delisting events (the engine settles only these): a former member whose trading stopped more
         # than 10 sessions before the data ends AND that had already left the index by then — two independent
@@ -186,23 +230,41 @@ def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] 
         names = codeserver.tradable_universe(head["tradable"])
         universe = list(dict.fromkeys(head["universe"] + names))
         say(f"Loading prices for {len(universe)} tickers (first run downloads them; later runs use the cache)…")
-        data = codeserver.load_data(universe, head["start"], limit=codelab.LARGE_UNIVERSE_LIMIT, allow_missing=True)
+        data = codeserver.load_data(universe, head["start"], limit=codelab.LARGE_UNIVERSE_LIMIT, allow_missing=True,
+                                    account=head["account"], options=head["options"], fundamentals=head["fundamentals"])
         data.provenance["universe_selection"] = (f"TRADABLE_UNIVERSE '{head['tradable']}': today's list of "
                                                  f"{len(names)} names — retrospective / survivor-selected (names that failed "
                                                  "or were delisted earlier are absent)")
         cpu = TIMEOUT_S * (4 if len(universe) <= 1000 else 12)        # a 3,000-name global cross-section takes longer
     else:
-        data = codeserver.load_data(head["universe"], head["start"])
-        cpu = TIMEOUT_S
+        big = len(head["universe"]) > codelab.UNIVERSE_LIMIT
+        if big:
+            say(f"Loading prices for {len(head['universe'])} tickers (first run downloads them; later runs use the cache)…")
+        data = codeserver.load_data(head["universe"], head["start"], limit=codelab.LARGE_UNIVERSE_LIMIT,
+                                    account=head["account"], options=head["options"], fundamentals=head["fundamentals"])
+        cpu = TIMEOUT_S * (4 if big else 1)
+    if head.get("calendar"):
+        data = codeserver.account_session_data(data, head["calendar"])
+        if members is not None:
+            members = members.reindex(index=data.close.index, columns=data.tickers).fillna(False)
     if job is not None and job.cancelled:
         raise SandboxError("Cancelled.")
-    bm = codeserver._index_series(head["benchmark"], data.close.index[0].strftime("%Y-%m-%d"))
+    bm = codeserver.benchmark_series(head["benchmark"], data.close.index[0].strftime("%Y-%m-%d"), data.account_currency)
     tmp = Path(tempfile.mkdtemp(prefix="qsbx_")).resolve()
     try:
         arrays = {f: getattr(data, f).to_numpy(np.float64) for f in ("close", "open", "high", "low", "volume")}
         arrays["rf"] = data.rf.to_numpy(np.float64)
         arrays["vix"] = data.vix.to_numpy(np.float64)
         arrays["observed"] = data.observed.to_numpy(bool)
+        arrays["usd_per_unit"] = data.usd_per_unit.to_numpy(np.float64)
+        micro_cols = {}
+        frames = {k: getattr(data, k, None) for k in ("tick_bps", "lot_value", "div_yield", "fx", "rf_ccy", "settle")}
+        frames.update({f"opt_{k}": v for k, v in data.opt.items()})          # synthetic options' analytics
+        frames.update({f"fund_{k}": v for k, v in data.fund.items()})        # point-in-time fundamentals
+        for k, fr in frames.items():                                           # market rules (float32 keeps it small)
+            if fr is not None:
+                arrays[f"m_{k}"] = fr.to_numpy(np.float32)
+                micro_cols[k] = [str(c) for c in fr.columns]
         if members is not None:
             arrays["members"] = members.to_numpy(bool)
         arrays["dates"] = data.close.index.values.astype("datetime64[ns]").astype(np.int64)
@@ -211,7 +273,9 @@ def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] 
         np.savez(tmp / "data.npz", **arrays)
         (tmp / "meta.json").write_text(json.dumps({"tickers": data.tickers, "start": head["start"],
                                                    "params": head["params"], "costs": costs or {},
-                                                   "rf_known": data.rf_known, "provenance": data.provenance}))
+                                                   "rf_known": data.rf_known, "provenance": data.provenance,
+                                                   "instruments": data.instruments, "account_currency": data.account_currency,
+                                                   "micro_cols": micro_cols, "light": light}))
         (tmp / "strategy.py").write_text(code)
         cmd = [sys.executable, "-I", str(CHILD), str(tmp), str(ENGINE)]
         if sys.platform == "darwin" and shutil.which("sandbox-exec"):

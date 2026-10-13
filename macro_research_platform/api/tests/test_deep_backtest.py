@@ -17,7 +17,7 @@ def _series(n=2520, mu=0.0004, sd=0.01, seed=1):
 
 def test_summary_and_drawdowns_are_consistent(monkeypatch):
     from api.quant import rates
-    monkeypatch.setattr(rates, "daily", lambda idx: pd.Series(0.04 / 252, index=pd.DatetimeIndex(pd.to_datetime(list(idx)))))
+    monkeypatch.setattr(rates, "daily", lambda idx, ccy="USD": pd.Series(0.04 / 252, index=pd.DatetimeIndex(pd.to_datetime(list(idx)))))
     dates, r = _series()
     rep = deep.report(dates, r, 252, label="s")
     s = rep["summary"]

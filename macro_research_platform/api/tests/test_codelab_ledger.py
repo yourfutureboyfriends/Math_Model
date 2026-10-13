@@ -233,7 +233,7 @@ def test_metrics_match_robust(monkeypatch):
     idx = pd.bdate_range("2015-01-01", periods=1500)
     r = pd.Series(np.random.default_rng(4).normal(0.0004, 0.011, 1500), index=idx)
     rf = pd.Series(0.03 / 252, index=idx)
-    monkeypatch.setattr(rates, "daily", lambda i: pd.Series(0.03 / 252, index=pd.DatetimeIndex(pd.to_datetime(list(i)))))
+    monkeypatch.setattr(rates, "daily", lambda i, ccy="USD": pd.Series(0.03 / 252, index=pd.DatetimeIndex(pd.to_datetime(list(i)))))
     a = cl.metrics(r, rf)
     b = robust.metrics(r.to_numpy(), [d.strftime("%Y-%m-%d") for d in idx])
     for k in ("cagr", "vol", "sharpe", "sortino", "max_drawdown", "calmar"):
@@ -285,7 +285,7 @@ def test_flat_foreign_stock_with_moving_fx_changes_usd_nav():
     close_usd = np.r_[[1.25] * 20, [1.30] * 20]
     d = mk({"HSBA.L": close_usd})
     d.instruments["HSBA.L"] = {"country": "GB", "currency": "GBP", "sec_fee": False, "tax_buy_bps": 50.0, "tax_sell_bps": 0.0}
-    res = cl.backtest(target(d, {0: [1.0]}), d, Z)
+    res = cl.backtest(target(d, {0: [1.0]}), d, {**Z, "fx_cost_bps": 0.0})                      # stamp duty alone
     nav = res["ledger"]["nav"]
     assert nav == pytest.approx((1 / 1.005) * 1.30 / 1.25, rel=1e-6)                   # 0.5% stamp duty on the purchase
     assert res["fees"].sum() == pytest.approx(0.005 / 1.005, rel=1e-6)
@@ -304,7 +304,7 @@ def test_minor_units_and_fx_conversion_in_the_data_layer(monkeypatch):
         return {k: src.copy() for k in ("close", "open", "high", "low")} | {"volume": src * 0 + 1e6}, []
     monkeypatch.setattr(qdata, "panel", fake_panel)
     inst = {"HSBA.L": {"currency": "GBP", "quote_currency": "GBp", "unit_divisor": 100.0, "fx_ticker": "GBP=X"}}
-    out, info = codeserver._to_account_currency(fake_panel(["HSBA.L"])[0], ["HSBA.L"], inst, "2024-01-01", None)
+    out, info, _ = codeserver._to_account_currency(fake_panel(["HSBA.L"])[0], ["HSBA.L"], inst, "2024-01-01", None)
     assert out["close"]["HSBA.L"].iloc[0] == pytest.approx(1 / 0.80)                    # £1 → $1.25
     assert out["close"]["HSBA.L"].iloc[20] == pytest.approx(1 / 0.75)
     assert out["open"]["HSBA.L"].iloc[15] == pytest.approx(1 / 0.80)                    # open uses the previous FX close

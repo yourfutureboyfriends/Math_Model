@@ -3,7 +3,7 @@
  * cost, walk-forward optimised, Monte-Carlo'd and deep-analysed; save it or deploy it to a paper trader
  * (deployment runs the code in the server's sandbox). Engine: api/quant/codelab.py.
  */
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Loader2, Play, Rocket, Save, ShieldCheck, ShieldAlert, Terminal } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -12,152 +12,132 @@ import { KpiStrip } from '@/components/ui/KpiStrip';
 import { BarList } from '@/components/ui/BarList';
 import { CATEGORICAL } from '@/lib/chartPalette';
 import { DeepReport } from './DeepReport';
-import { api, ErrorNote, Field, inputCls, num, pct, spct, tone, usd } from './shared';
+import { Attribution, Capacity, Risk, Signal, Validation } from './ResearchPanels';
+import { api, ErrorNote, Field, inputCls, money, num, pct, spct, tone, usd } from './shared';
 
-export const STARTER = `# Shared USD US-listed stock universe. Sparse decisions for ledger.2.
-# Keeps the prior equity selection; adds a weekly market stress budget.
-# Retrospective universe, no proven future alpha. No leverage or live orders.
-# Equity momentum research strategy: paste into Quant Lab, replace UNIVERSE as needed.
-# The configured server universe supports up to 1000 symbols in one USD cross-section.
-# Only price/volume signals: no claims of fundamental quality or guaranteed alpha.
+export const STARTER = `# Global configured equities; USD valuations/FX and venue costs supplied by Macro Terminal.
+# Server-job strategy. Account sessions use ACWI's observed calendar.
+# Today's global constituents remain retrospective, not historically unbiased.
 import numpy as np
 import pandas as pd
 
-UNIVERSE = ["SPY"]
-TRADABLE_UNIVERSE = "US"
+UNIVERSE = ["ACWI", "SPY"]
+TRADABLE_UNIVERSE = "GLOBAL"
+ACCOUNT_CALENDAR = "ACWI"
 START = "2011-01-03"
-BENCHMARK = "SPY"
-PARAMS = {}
+BENCHMARK = "ACWI"
+PARAMS = {"core_share": [0.30, 0.50], "weight_mode": ["plain", "buffered", "shrunk"]}
 
 
-def equity_targets(data, core_symbol="SPY", core_share=0.30, broad_share=0.35, picks=15,
-             target_vol=0.20, max_stock=0.08, min_traded_value=10000000.0,
-             participation=0.01, capital=1000000.0, risk_off=0.65, **params):
+def strategy(data, core_share=0.30, weight_mode="buffered", picks=30,
+             broad_share=0.30, target_vol=0.20, max_stock=0.04,
+             country_cap=0.20, us_stock_cap=0.40, min_traded_value=10000000.0,
+             stress_budget=0.50, **params):
+    if params or weight_mode not in ["plain","buffered","shrunk"]:
+        raise ValueError("Unknown parameters or weighting mode")
+    if not 0 <= core_share <= .8 or not 0 <= broad_share <= 1-core_share:
+        raise ValueError("Invalid sleeve allocation")
+    if not .05 <= target_vol <= .30 or not 0 < max_stock <= .10 or not 0 < country_cap <= .5:
+        raise ValueError("Invalid risk limits")
+    if not 0 < us_stock_cap <= .5 or not .20 <= stress_budget <= .98 or min_traded_value <= 0:
+        raise ValueError("Invalid country, stress or liquidity settings")
+    if isinstance(picks,bool) or not isinstance(picks,int) or not 10 <= picks <= 100:
+        raise ValueError("picks must be an integer from 10 to 100")
+    if data.provenance.get("account_currency") != "USD":
+        raise ValueError("Global research requires the platform's USD-converted data loader")
     px = data.close.astype(float)
-    volume = data.volume.reindex(index=px.index, columns=px.columns).astype(float)
-    if not isinstance(px.index, pd.DatetimeIndex) or not px.index.is_unique or not px.index.is_monotonic_increasing:
+    if "ACWI" not in px.columns or len(px.columns)>4000 or not px.columns.is_unique:
+        raise ValueError("Include ACWI and use no more than 4000 unique instruments")
+    if not px.index.is_unique or not px.index.is_monotonic_increasing:
         raise ValueError("Dates must be unique and increasing")
-    if core_symbol not in px.columns:
-        raise ValueError("Include the tradable core ETF in UNIVERSE")
-    if not px.columns.is_unique or len(px.columns) > 1000:
-        raise ValueError("Use at most 1000 unique tickers")
     if np.isinf(px.to_numpy()).any() or (px <= 0).any().any():
-        raise ValueError("Prices must be positive; missing histories are allowed")
-    if params or not 0 <= core_share <= 0.8 or not 0 <= broad_share <= 1-core_share or not 0.05 <= target_vol <= 0.30:
-        raise ValueError("Unknown parameters or invalid core_share/target_vol")
-    if isinstance(picks,bool) or not isinstance(picks,int) or not 5 <= picks <= 50:
-        raise ValueError("picks must be an integer from 5 through 50")
-    if not 0 < max_stock <= .10 or min_traded_value <= 0 or capital <= 0 or not 0 < participation <= .02 or not 0 <= risk_off <= 1:
-        raise ValueError("Invalid concentration, liquidity, capital or regime settings")
+        raise ValueError("Bad price observations must be cleaned by the data loader")
+    observed = data.observed.reindex(index=px.index,columns=px.columns).fillna(False)
+    volume = data.volume.reindex(index=px.index,columns=px.columns)
+    countries = [data.instruments[c].get("country","") for c in px.columns]
+    groups = {c:np.array([i for i,x in enumerate(countries) if x==c],dtype=int) for c in sorted(set(countries)) if c}
+    core_index = list(px.columns).index("ACWI")
+    stock = np.ones(len(px.columns),dtype=bool)
+    stock[core_index] = False
+    if "SPY" in px.columns: stock[list(px.columns).index("SPY")] = False
     ret = px.pct_change(fill_method=None)
-    ready = px.notna().rolling(253,min_periods=253).sum().eq(253)
+    ready = observed.rolling(253,min_periods=253).sum() >= 220
+    valid = observed & (volume>0) & px.notna()
+    # USD price times actual share volume; avoids comparing JPY/GBp values to dollars.
+    adv = (px*volume).where(observed & (volume>0)).rolling(63,min_periods=45).mean()
     vol = ret.rolling(63,min_periods=63).std()*np.sqrt(252)
-    adv = (px*volume).rolling(63,min_periods=63).mean()
-    liquid = (adv >= min_traded_value) & (volume > 0)
-    eligible = ready & liquid & ((vol >= .03) & (vol <= 1.0))
-    eligible.loc[:,core_symbol] = False
-    mom12 = px.shift(21)/px.shift(252)-1
-    mom6 = px.shift(21)/px.shift(126)-1
-    # Cross-sectional ranks avoid hand-picked absolute score coefficients.
-    score = .6*mom12.where(eligible).rank(axis=1,pct=True) + .4*mom6.where(eligible).rank(axis=1,pct=True)
-    # Requiring positive momentum is a hypothesis, not an optimized threshold.
-    score = score.where(eligible & (mom12 > 0) & (mom6 > 0))
-    regime = px[core_symbol] >= px[core_symbol].rolling(200,min_periods=200).mean()
-    core_ready = ready[core_symbol] & (volume[core_symbol] > 0)
-    weights = np.zeros(px.shape)
-    last = np.zeros(len(px.columns))
-    core_index = list(px.columns).index(core_symbol)
-    previous = []
-    # First observed trading day of each month; determined without future calendar rows.
-    months = px.index.to_period("M")
-    decisions = np.r_[True, months[1:] != months[:-1]]
-    next_ready = True
+    eligible = ready & valid & (adv>=min_traded_value) & (vol>=.03) & (vol<=1.)
+    eligible.iloc[:,~stock] = False
+    mom12 = px.shift(21)/px.shift(252)-1.
+    mom6 = px.shift(21)/px.shift(126)-1.
+    score = .6*mom12.where(eligible).rank(axis=1,pct=True)+.4*mom6.where(eligible).rank(axis=1,pct=True)
+    score = score.where((mom12>0)&(mom6>0))
+    tax = np.array([float(data.instruments[c].get("tax_buy_bps") or 0)+float(data.instruments[c].get("tax_sell_bps") or 0) for c in px.columns])
+    if weight_mode != "plain":
+        # Cost hurdle proxy, not a calibrated forecast: four modeled annual round trips.
+        score = score-np.minimum(4*tax/10000/.20,.25)
+    moving_average = px["ACWI"].rolling(200,min_periods=200).mean()
+    market_vol = ret["ACWI"].rolling(20,min_periods=20).std()*np.sqrt(252)
+    market_dd = px["ACWI"]/px["ACWI"].rolling(252,min_periods=252).max()-1.
+    stress = (market_vol>=.30)|(market_dd<=-.15)
+    months = px.index.to_period("M");weeks=px.index.to_period("W")
+    monthly = np.r_[True,months[1:]!=months[:-1]]
+    weekly = np.r_[True,weeks[1:]!=weeks[:-1]]
+    out = np.full(px.shape,np.nan)
+    last = np.zeros(len(px.columns));previous=[];initialized=False
     for t in range(len(px)):
-        if not core_ready.iloc[t]:
-            weights[t] = 0.0
-            last = np.zeros(len(px.columns))
-            next_ready = True
-            continue
-        if decisions[t] or next_ready:
+        if not valid["ACWI"].iloc[t] or not ready["ACWI"].iloc[t]:continue
+        if monthly[t] or not initialized:
             candidate = np.zeros(len(px.columns))
-            ranks = score.iloc[t].rank(ascending=False,method="first")
-            # Keep incumbents within top 1.5*picks to reduce unnecessary turnover.
-            keep = [j for j in previous if pd.notna(ranks.iloc[j]) and ranks.iloc[j] <= 1.5*picks]
-            keep = sorted(keep,key=lambda j:float(ranks.iloc[j]))[:picks]
-            ordered = np.argsort(ranks.fillna(1e9).to_numpy())
-            selected = list(keep)
-            for j in ordered:
-                if len(selected) >= picks: break
-                if j not in selected and pd.notna(ranks.iloc[j]): selected.append(int(j))
-            previous = selected
-            budget = .98*(1.0 if regime.iloc[t] else risk_off)
-            if selected:
-                inv = 1/np.sqrt(vol.iloc[t,selected].to_numpy())
-                allocation = inv/inv.sum()*budget*(1-core_share-broad_share)
-                capacity = adv.iloc[t,selected].to_numpy()*participation/capital
-                candidate[selected] = allocation
-                # Residual stock budget stays cash; never hides concentration in core.
-                candidate[core_index] = budget*core_share
-            else:
-                candidate[core_index] = budget*core_share
-            # Blend a diversified equity sleeve with concentrated momentum.
+            budget = .98*(1. if px["ACWI"].iloc[t]>=moving_average.iloc[t] else .85)
+            candidate[core_index] = budget*core_share
             broad = eligible.iloc[t].to_numpy()
-            if broad.any():
-                candidate[broad] += budget*broad_share/float(broad.sum())
-            stock_mask = np.ones(len(px.columns),dtype=bool)
-            stock_mask[core_index] = False
-            capacity = adv.iloc[t].fillna(0).to_numpy()*participation/capital
-            candidate[stock_mask] = np.minimum(np.minimum(candidate[stock_mask],max_stock),capacity[stock_mask])
-            active = candidate > 0
-            history = ret.iloc[max(0,t-62):t+1,active].to_numpy()
+            if broad.any():candidate[broad] += budget*broad_share/broad.sum()
+            ranks = score.iloc[t].rank(ascending=False,method="first")
+            buffer = 1. if weight_mode=="plain" else 1.8
+            kept = [j for j in previous if pd.notna(ranks.iloc[j]) and ranks.iloc[j]<=buffer*picks]
+            selected = sorted(kept,key=lambda j:float(ranks.iloc[j]))[:picks]
+            for j in np.argsort(ranks.fillna(1e9).to_numpy()):
+                if len(selected)>=picks:break
+                if j not in selected and pd.notna(ranks.iloc[j]):selected.append(int(j))
+            previous = selected
+            if selected:
+                v = vol.iloc[t,selected].to_numpy()
+                allocation = 1/np.sqrt(v)
+                if weight_mode=="shrunk":
+                    h = ret.iloc[t-62:t+1,selected].to_numpy()
+                    if np.isfinite(h).all():
+                        # EPO-inspired covariance regularization on selected names only.
+                        # This is a constrained rank proxy, not a published EPO replication.
+                        covariance = np.atleast_2d(np.cov(h,rowvar=False))*252
+                        covariance = .5*covariance+.5*np.diag(np.diag(covariance))
+                        view = np.maximum(score.iloc[t,selected].to_numpy(),.01)
+                        allocation = np.maximum(np.linalg.solve(covariance+np.eye(len(selected))*1e-6,view),0)
+                if allocation.sum()>0:candidate[selected] += allocation/allocation.sum()*budget*(1-core_share-broad_share)
+            candidate[stock] = np.minimum(candidate[stock],max_stock)
+            for country,indices in groups.items():
+                indices = indices[stock[indices]]
+                total = candidate[indices].sum()
+                limit = us_stock_cap if country=="US" else country_cap
+                if total>limit:candidate[indices] *= limit/total
+            # Exact portfolio variance by projection, not an O(N squared) full-universe covariance.
+            active=candidate>0;history=ret.iloc[max(0,t-62):t+1,active].to_numpy()
             if len(history)==63 and np.isfinite(history).all():
-                cov = np.atleast_2d(np.cov(history,rowvar=False,ddof=1))*252
-                a = candidate[active]
-                risk = np.sqrt(max(float(a@cov@a),0))
-                candidate *= min(1.,target_vol/risk) if risk>0 else 1.
-            else:
-                candidate *= 0
-            last = candidate
-            next_ready = False
-        # Sell invalid / zero-volume names on the next execution opportunity.
-        valid_now = ready.iloc[t].to_numpy() & (volume.iloc[t].to_numpy()>0)
-        last = np.where(valid_now,last,0)
-        weights[t] = last
-    return pd.DataFrame(weights,index=px.index,columns=px.columns)
-
-
-def strategy(data, stress_budget=0.50, stress_drawdown=0.15, stress_vol=0.30, **params):
-    if not .20 <= stress_budget <= .98 or not .05 <= stress_drawdown <= .30 or not .15 <= stress_vol <= .60:
-        raise ValueError("Invalid market stress settings")
-    # Upstream parameters remain the previous frozen equity specification.
-    targets = equity_targets(data, **params)
-    px = data.close["SPY"]
-    market_return = px.pct_change(fill_method=None)
-    market_vol = market_return.rolling(20,min_periods=20).std()*np.sqrt(252)
-    market_dd = px/px.rolling(252,min_periods=252).max()-1.
-    stress = (market_dd <= -stress_drawdown) | (market_vol >= stress_vol)
-    months = px.index.to_period("M")
-    weeks = px.index.to_period("W")
-    monthly = np.r_[True, months[1:]!=months[:-1]]
-    weekly = np.r_[True, weeks[1:]!=weeks[:-1]]
-    out = np.full(targets.shape,np.nan)
-    last = np.zeros(len(targets.columns))
-    initialized = False
-    for t in range(len(targets)):
-        if monthly[t] or (not initialized and targets.iloc[t].sum()>0):
-            last = targets.iloc[t].to_numpy().copy()
-            if stress.iloc[t] and last.sum()>stress_budget:
-                last *= stress_budget/last.sum()
-            out[t] = last
-            initialized = last.sum()>0
+                risk=np.std(history@candidate[active],ddof=1)*np.sqrt(252)
+                if risk>0:candidate*=min(1.,target_vol/risk)
+            else:candidate*=0.
+            if stress.iloc[t] and candidate.sum()>stress_budget:candidate*=stress_budget/candidate.sum()
+            last=candidate;out[t]=last;initialized=last.sum()>0
         elif weekly[t] and stress.iloc[t] and last.sum()>stress_budget:
-            last = last*stress_budget/last.sum()
-            out[t] = last
-    return pd.DataFrame(out,index=targets.index,columns=targets.columns)
+            last=last*stress_budget/last.sum();out[t]=last
+    return pd.DataFrame(out,index=px.index,columns=px.columns)
 `;
 
+export const UNIVERSE_LIMIT = 80;   // api/quant/codelab.py UNIVERSE_LIMIT: larger lists run on the server
 export const COST_DEFAULTS = { capital: 1_000_000, commission_bps: 0.35, spread_mult: 1, impact_coef_bps: 11.21, borrow_fee: 0.003,
-  financing_spread: 0.01, cash_spread: 0, no_trade_band: 0.0025, delist_haircut: 0 };
+  financing_spread: 0.01, cash_spread: 0, no_trade_band: 0.0025, delist_haircut: 0, fx_cost_bps: 2,
+  fx_hedge_cost_bps: 15, dividend_wht: 1, wht_treaty_cap: 0.15, board_lots: 1, exec_price: 0, max_participation: 0.1,
+  borrow_tiers: 1, maintenance_margin: 0.25 };
 export type Costs = typeof COST_DEFAULTS;
 const MC_DEFAULTS = { mc_years: 10, max_leverage: 2, dd_limit: 0.5 };
 
@@ -248,15 +228,29 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
   const [note, setNote] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
   const [analysis, setAnalysis] = useState<any>(null);
-  const [check, setCheck] = useState<{ ok: boolean; error?: string; tradable?: string | null } | null>(null);
+  const [check, setCheck] = useState<{ ok: boolean; error?: string; tradable?: string | null; account?: string; universe?: string[]; fx_hedge?: number | null; options?: any[]; mode?: string; params?: Record<string, any[]> } | null>(null);
   const [busy, setBusy] = useState(false);
   const [capital, setCapital] = useState(1_000_000);
   const [jobId, setJobId] = useState<string | null>(null);
   const [dialog, ask] = useConfirm();
 
+  const ccy = check?.ok ? check.account ?? 'USD' : 'USD';
+  // keep the header (account currency, universe size) current while editing, without running anything
+  useEffect(() => {
+    const t = setTimeout(() => { api('/api/v1/quant/code/check', { json: { code } }).then(setCheck).catch(() => {}); }, 800);
+    return () => clearTimeout(t);
+  }, [code]);
+  // the server sandbox: big universes, and event-driven strategies with a PARAMS grid (a Python loop per bar per
+  // parameter set is several times faster natively than in the browser)
+  const combos = (chk: any) => Object.values(chk?.params ?? {}).reduce((n: number, v: any) => n * (Array.isArray(v) ? v.length : 1), 1);
+  const onServer = (chk: any) => chk?.ok && (chk.tradable || (chk.universe?.length ?? 0) > UNIVERSE_LIMIT || (chk.mode === 'event' && combos(chk) > 1));
+
+  // FX hedge: the code's FX_HEDGE unless overridden here (null = follow the code)
+  const [hedge, setHedge] = useState<number | null>(null);
+  const runCosts = useMemo(() => (hedge == null ? costs : { ...costs, fx_hedge: hedge }), [costs, hedge]);
   const runOnServer = async (chk: any) => {
-    // TRADABLE_UNIVERSE: hundreds of tickers — run in the server sandbox as a background job (one global cross-section)
-    const job = await api('/api/v1/quant/code/jobs', { json: { code, costs } });
+    // TRADABLE_UNIVERSE or a long UNIVERSE list: run in the server sandbox as a background job (one cross-section)
+    const job = await api('/api/v1/quant/code/jobs', { json: { code, costs: runCosts } });
     setJobId(job.id);
     let j = job;
     while (j.state === 'queued' || j.state === 'running') {
@@ -269,6 +263,12 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
     return { ...j.result, benchmark_label: chk.benchmark };
   };
 
+  // every run is stored for reopening and comparison (Runs & compare tab); a failed save never blocks the result
+  const storeRun = (r: any, a: any) => {
+    api('/api/v1/quant/code/runs', { json: { label: name || 'Strategy', result: r, analysis: a, code } })
+      .then((j) => setNote(`Stored as run #${j.id} — reopen or compare it in Runs & compare.`)).catch(() => {});
+  };
+
   const cancelJob = async () => {
     if (jobId) await api(`/api/v1/quant/code/jobs/${jobId}`, { method: 'DELETE' }).catch(() => {});
   };
@@ -278,13 +278,14 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
     let chk: any = null;
     try { chk = await api('/api/v1/quant/code/check', { json: { code } }); setCheck(chk); } catch { setCheck(null); }
     try {
-      if (chk?.ok && chk.tradable) {
+      if (onServer(chk)) {
         const r = await runOnServer(chk);
         setResult(r);
         setStatus('Monte Carlo and deep analysis…');
         const a = await api('/api/v1/quant/code/analyze', { json: { dates: r.dates, returns: r.returns, benchmark: r.benchmark, label: name || 'Strategy', benchmark_label: chk.benchmark, provenance: r.provenance, ...mc } });
         setAnalysis(a);
         setStatus(null);
+        storeRun(r, a);
         return;
       }
       const sh = getWorker(setStatus, (s) => setLog((l) => [...l.slice(-200), s]));
@@ -292,16 +293,17 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
       setStatus('Reading your code…');
       const { header } = await call(sh.worker, { type: 'prepare', code }, 'prepared', 60_000);
       setStatus(`Loading prices for ${header.universe.length} ticker${header.universe.length > 1 ? 's' : ''}…`);
-      const data = await api(`/api/v1/quant/code/data?universe=${encodeURIComponent(header.universe.join(','))}&start=${header.start}&benchmark=${encodeURIComponent(header.benchmark)}`);
+      const data = await api(`/api/v1/quant/code/data?universe=${encodeURIComponent(header.universe.join(','))}&start=${header.start}&benchmark=${encodeURIComponent(header.benchmark)}&account=${encodeURIComponent(header.account || 'USD')}${header.options?.length ? `&options=${encodeURIComponent(JSON.stringify(header.options))}` : ''}${header.fundamentals?.length ? `&fundamentals=${encodeURIComponent(header.fundamentals.join(','))}` : ''}`);
       setStatus('Backtesting (net of costs)…');
-      const { result: r } = await call(sh.worker, { type: 'run', code, data, costs }, 'result', 300_000);
+      const { result: r } = await call(sh.worker, { type: 'run', code, data, costs: runCosts }, 'result', 600_000);
       setResult({ ...r, benchmark_label: header.benchmark });
       setStatus('Monte Carlo and deep analysis…');
       const a = await api('/api/v1/quant/code/analyze', { json: { dates: r.dates, returns: r.returns, benchmark: r.benchmark, label: name || 'Strategy', benchmark_label: header.benchmark, provenance: r.provenance, ...mc } });
       setAnalysis(a);
       setStatus(null);
+      storeRun({ ...r, benchmark_label: header.benchmark }, a);
     } catch (e: any) { setErr(e.message); setStatus(null); } finally { setBusy(false); }
-  }, [code, costs, mc, name]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [code, runCosts, mc, name]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async (asNew: boolean) => {
     setErr(null);
@@ -315,15 +317,16 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
   };
   const deploy = async () => {
     if (!(await ask({ title: `Deploy “${name || 'this strategy'}”?`, confirmLabel: 'Deploy',
-      body: `Paper capital $${capital.toLocaleString()}. The server re-runs your code daily in a locked-down sandbox; no real orders are placed.` }))) return;
+      body: `Paper capital ${money(capital, ccy)}${ccy !== 'USD' ? ` (the account is kept in ${ccy})` : ''}. The server re-runs your code daily in a locked-down sandbox; no real orders are placed.` }))) return;
     setErr(null); setBusy(true); setStatus('Running your code in the server sandbox…');
     try {
-      const d = await api('/api/v1/quant/trader/deploy', { json: { spec: { kind: 'code', name: name || 'Code strategy', code, costs }, capital, strategy_id: strategyId } });
+      const d = await api('/api/v1/quant/trader/deploy', { json: { spec: { kind: 'code', name: name || 'Code strategy', code, costs: runCosts }, capital, strategy_id: strategyId } });
       const label = ({ macro: 'Macro', fundamental: 'Fundamental', technical: 'Technical' } as Record<string, string>)[d.book] ?? 'Macro';
       setNote(`Deployed “${d.name}” to the ${label} Quant Trader — live from the session after ${d.deployed_at}.`);
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); setStatus(null); }
   };
   const set = (k: keyof Costs) => (e: React.ChangeEvent<HTMLInputElement>) => setCosts({ ...costs, [k]: Number(e.target.value) });
+  const flag = (k: keyof Costs) => (e: React.ChangeEvent<HTMLInputElement>) => setCosts({ ...costs, [k]: e.target.checked ? 1 : 0 });
 
   return (
     <div className="space-y-3">
@@ -339,7 +342,7 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
             {canSave && strategyId && <button onClick={() => save(true)} disabled={busy} className="px-3 py-1 text-2xs border border-border hover:border-bloomberg">Save copy</button>}
             {canDeploy && (
               <span className="inline-flex items-end gap-1 ml-auto">
-                <Field label="Paper capital" className="w-32"><input type="number" className={inputCls} value={capital} onChange={(e) => setCapital(Number(e.target.value))} /></Field>
+                <Field label={`Paper capital (${ccy})`} className="w-32"><input type="number" className={inputCls} value={capital} onChange={(e) => setCapital(Number(e.target.value))} /></Field>
                 <button onClick={deploy} disabled={busy || check?.ok === false} title={check?.ok === false ? check.error : undefined}
                   className="inline-flex items-center gap-1 px-3 py-1 text-2xs border border-bloomberg text-bloomberg disabled:opacity-40"><Rocket className="w-3 h-3" />Deploy</button>
               </span>)}
@@ -348,7 +351,9 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
           {check && (
             <div className={cn('text-[10px] flex items-center gap-1', check.ok ? 'text-text-tertiary' : 'text-amber')}>
               {check.ok ? <ShieldCheck className="w-3 h-3" /> : <ShieldAlert className="w-3 h-3" />}
-              {check.ok ? (check.tradable ? `Tradable universe '${check.tradable}': runs on the server as a sandboxed job (hundreds of tickers); deployable.` : 'Deployable: passes the server sandbox rules.') : `Runs here, but can't be deployed: ${check.error}`}
+              {check.ok
+                ? `${check.tradable ? `Tradable universe '${check.tradable}'` : `${check.universe?.length ?? 0} ticker${(check.universe?.length ?? 0) === 1 ? '' : 's'}`}${check.options?.length ? ` + ${check.options.length} option${check.options.length === 1 ? '' : 's'} (${check.options.map((o: any) => o.name).join(', ')})` : ''} · account in ${ccy} · ${onServer(check) ? 'runs on the server as a sandboxed job' : 'runs in your browser'}; deployable.`
+                : `Runs here, but can't be deployed: ${check.error}`}
             </div>)}
           {status && <div className="flex items-center gap-2 text-2xs text-text-secondary"><Loader2 className="w-3 h-3 animate-spin" />{status}
             {jobId && <button onClick={cancelJob} className="ml-2 px-2 py-0.5 border border-border hover:border-red hover:text-red">Cancel</button>}</div>}
@@ -362,14 +367,28 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
           <div className="p-3 bg-surface-1 border border-border space-y-2">
             <div className="text-xs font-semibold text-text-primary">Costs & execution</div>
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Capital (USD)" hint="Account currency USD. Size matters: market impact grows with the square root of your share of daily volume"><input type="number" className={inputCls} value={costs.capital} onChange={set('capital')} /></Field>
+              <Field label={`Capital (${ccy})`} hint={`In the account currency (ACCOUNT_CURRENCY = "${ccy}"). Size matters: market impact grows with the square root of your share of daily traded value`}><input type="number" className={inputCls} value={costs.capital} onChange={set('capital')} /></Field>
               <Field label="Commission (bp / side)" hint="Basis points of traded notional, each side. 0.35 bp ≈ $0.0035/share at $100"><input type="number" step={0.05} className={inputCls} value={costs.commission_bps} onChange={set('commission_bps')} /></Field>
               <Field label="Spread multiplier (×)" hint="A multiplier, not basis points: scales the modelled half-spread (from each asset's volatility and dollar volume)"><input type="number" step={0.25} className={inputCls} value={costs.spread_mult} onChange={set('spread_mult')} /></Field>
               <Field label="Impact (bp × √%ADV)" hint="Basis points × √(% of 63-day dollar volume traded). 11.2 = AQR live-trade calibration (Frazzini, Israel & Moskowitz 2018)"><input type="number" step={0.5} className={inputCls} value={costs.impact_coef_bps} onChange={set('impact_coef_bps')} /></Field>
               <Field label="Borrow fee (annual, decimal)" hint="0.003 = 0.3% a year on short market value (general collateral)"><input type="number" step={0.001} className={inputCls} value={costs.borrow_fee} onChange={set('borrow_fee')} /></Field>
-              <Field label="Margin spread (annual, decimal)" hint="Negative cash pays the T-bill rate plus this; 0.01 = 1%"><input type="number" step={0.0025} className={inputCls} value={costs.financing_spread} onChange={set('financing_spread')} /></Field>
+              <Field label="Margin spread (annual, decimal)" hint={`Negative cash pays the ${ccy} cash rate plus this; 0.01 = 1%`}><input type="number" step={0.0025} className={inputCls} value={costs.financing_spread} onChange={set('financing_spread')} /></Field>
               <Field label="No-trade band (fraction of NAV)" hint="Skip trades smaller than this fraction of NAV; 0.0025 = 0.25%"><input type="number" step={0.0025} className={inputCls} value={costs.no_trade_band} onChange={set('no_trade_band')} /></Field>
-              <Field label="Cash yield cut (annual, decimal)" hint="Positive cash earns the T-bill rate minus this. 0 = full T-bill (institutional); many retail brokers pay far less"><input type="number" step={0.0025} className={inputCls} value={costs.cash_spread} onChange={set('cash_spread')} /></Field>
+              <Field label="Cash yield cut (annual, decimal)" hint={`Positive cash earns the ${ccy} short rate minus this (US T-bills for USD). 0 = the full rate (institutional); many retail brokers pay far less`}><input type="number" step={0.0025} className={inputCls} value={costs.cash_spread} onChange={set('cash_spread')} /></Field>
+              <Field label="FX conversion (bp)" hint={`Basis points of traded value, charged only when a listing's currency differs from the account's (${ccy}). ≈1–2 bp at an institutional broker for majors; retail platforms often charge 25–100 bp`}><input type="number" step={0.5} className={inputCls} value={costs.fx_cost_bps} onChange={set('fx_cost_bps')} /></Field>
+              <Field label="FX hedge ratio (0–1)" hint={`Share of each foreign currency's exposure hedged with daily-settled forwards: removes that share of the currency's moves and earns/pays the interest differential (${ccy} rate − foreign rate). Blank = the code's FX_HEDGE (${check?.ok && check.fx_hedge != null ? check.fx_hedge : 'not set: 0'}). Currencies with no free rate history stay unhedged`}>
+                <input type="number" step={0.25} min={0} max={1} className={inputCls} value={hedge ?? ''} placeholder={check?.ok && check.fx_hedge != null ? String(check.fx_hedge) : '0'}
+                  onChange={(e) => setHedge(e.target.value === '' ? null : Math.min(1, Math.max(0, Number(e.target.value))))} /></Field>
+              <Field label="Hedge cost (bp / yr)" hint="Forward-roll dealing costs per year on the hedged notional; the interest differential itself is modelled separately"><input type="number" step={5} className={inputCls} value={costs.fx_hedge_cost_bps} onChange={set('fx_hedge_cost_bps')} /></Field>
+              <Field label="Treaty cap on dividend tax" hint="Withholding = the listing country's statutory non-resident rate, capped at this treaty rate. 0.15 is the usual treaty rate for portfolio dividends; 1 = no treaty relief"><input type="number" step={0.05} className={inputCls} value={costs.wht_treaty_cap} onChange={set('wht_treaty_cap')} /></Field>
+              <label className="flex items-center gap-1 text-[10px] text-text-secondary self-end" title="Tax withheld at source on dividends of listings in another currency than the account's"><input type="checkbox" checked={!!costs.dividend_wht} onChange={flag('dividend_wht')} />Dividend withholding tax</label>
+              <label className="flex items-center gap-1 text-[10px] text-text-secondary self-end" title="Orders rounded to whole board lots (JP 100, HK per stock, TW 1,000 …) at the capital above; small books can't hold some names"><input type="checkbox" checked={!!costs.board_lots} onChange={flag('board_lots')} />Whole board lots</label>
+              <Field label="Fill at" hint="Orders decided at a close fill at the next session's open (default), its VWAP (≈ average of open, high, low and close) or its close (market-on-close)">
+                <select className={inputCls} value={costs.exec_price} onChange={(e) => setCosts({ ...costs, exec_price: Number(e.target.value) })}>
+                  <option value={0}>next open</option><option value={1}>next-day VWAP</option><option value={2}>next close</option></select></Field>
+              <Field label="Max participation (of ADV)" hint="Largest share of an asset's average daily traded value you trade in one day; bigger orders fill over several days. 0.1 = 10%; 0 = no limit"><input type="number" step={0.01} className={inputCls} value={costs.max_participation} onChange={set('max_participation')} /></Field>
+              <Field label="Maintenance margin" hint="Margin call when NAV < this × gross stock value (+ 15% of written options' notional): every position is cut. 0.25 = Reg-T"><input type="number" step={0.05} className={inputCls} value={costs.maintenance_margin} onChange={set('maintenance_margin')} /></Field>
+              <label className="flex items-center gap-1 text-[10px] text-text-secondary self-end" title="Stock borrow costs more for thinly traded names: ≥$100m/day the base fee, $20–100m 0.75%, $5–20m 2%, under $5m 5% a year"><input type="checkbox" checked={!!costs.borrow_tiers} onChange={flag('borrow_tiers')} />Hard-to-borrow tiers</label>
               <Field label="Delisting haircut (fraction)" hint="A held listing that ends is settled at its last close × (1 − this)"><input type="number" step={0.05} className={inputCls} value={costs.delist_haircut} onChange={set('delist_haircut')} /></Field>
               <button onClick={() => setCosts(COST_DEFAULTS)} className="self-end text-[10px] underline text-text-tertiary">reset to research defaults</button>
             </div>
@@ -383,6 +402,7 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
             </div>
           </div>
           <ApiHelp />
+          <UniverseHelp />
         </div>
       </div>
       {result && <CodeResults r={result} a={analysis} />}
@@ -396,13 +416,53 @@ function ApiHelp() {
       <summary className="cursor-pointer text-xs font-semibold text-text-primary">What your code can use</summary>
       <ul className="mt-2 space-y-1 list-disc pl-4">
         <li><code>data.close/open/high/low/volume</code> — DataFrames, dates × UNIVERSE, adjusted for splits and dividends.</li>
-        <li><code>data.rf</code> daily T-bill rate · <code>data.vix</code> VIX close.</li>
+        <li>Prices are in the account currency (<code>ACCOUNT_CURRENCY</code>, default USD), converted at as-of FX: closes at that day's rate, opens at the previous close.</li>
+        <li><code>data.rf</code> daily cash rate of the account currency · <code>data.vix</code> VIX close · <code>data.account_currency</code>.</li>
+        <li><code>data.info</code> — tickers × country, currency, sector, region, market_class (e.g. <code>data.info["sector"]</code> to neutralise by sector) · <code>data.members</code> for SP500_PIT.</li>
         <li>Helpers: <code>momentum(px, n, skip)</code>, <code>ewma_vol(px, halflife)</code>, <code>vol_target(w, px, target)</code>, <code>normalize_gross(w)</code>, <code>hold_monthly(w)</code>, <code>hold_weekly(w)</code>; <code>np</code>, <code>pd</code>, <code>math</code>.</li>
-        <li>Universe: <code>TRADABLE_UNIVERSE = "US"</code> uses the shared configured US listings in a server job. Remove that line for a custom <code>UNIVERSE</code> (up to 80 symbols). USD only; no live trading.</li>
+        <li>Universe: <code>TRADABLE_UNIVERSE = "GLOBAL"</code> (or a country, region or <code>"JP+HK"</code> — see below) trades that universe in a server job. Without it, <code>UNIVERSE</code> is your own list of any listings (VOD.L, 7203.T, 0700.HK…): up to {UNIVERSE_LIMIT} run in your browser, longer lists on the server. No live trading.</li>
         <li><code>data.observed</code> flags actual bars. Return all-NaN rows between decisions to hold and drift; populated rows request a rebalance at the next observed open.</li>
-        <li>Optional: <code>START</code>, <code>BENCHMARK</code>, <code>PARAMS</code> (≤ 48 combinations, walk-forward), <code>HOLDOUT</code>.</li>
+        <li>Optional: <code>ACCOUNT_CURRENCY</code>, <code>FX_HEDGE</code> (0–1), <code>START</code>, <code>BENCHMARK</code> (converted to the account currency), <code>PARAMS</code> (≤ 48 combinations, walk-forward), <code>HOLDOUT</code>.</li>
+        <li><b>Options</b>: <code>OPTIONS = [{'{'}"underlying": "SPY", "type": "put", "moneyness": 0.95{'}'}]</code> adds a column <code>SPY_P95_1M</code> (keys: <code>type</code> call/put, <code>moneyness</code> K/S or <code>delta</code> 0.05–0.95, <code>expiry</code> monthly/weekly/quarterly, <code>months</code>, or <code>tenor_days</code>; up to 12). Its weight is the <i>underlying notional</i> as a fraction of NAV (−1.0 = write on 100% of NAV); expiring contracts settle at intrinsic value and a standing weight rolls into the next contract. <code>data.opt["delta" | "elasticity" | "iv" | "strike" | "dte" | "spot" | "roll"]</code>; <code>on_rolls(w, data, name)</code> decides only at expiries. Prices are modelled (Black–Scholes on the VIX family where it exists, else realised vol × the market's implied/realised ratio, with skew) — not quotes; see the library's Options strategies.</li>
+        <li>Portfolio construction: <code>cov_shrink(returns)</code> (Ledoit–Wolf), <code>optimize(expected, cov, risk_aversion, max_weight, long_only, gross, net, prev, turnover_penalty, groups, group_max, exposures, factor_bounds)</code> (an exact quadratic programme; e.g. <code>exposures=style_exposures(data, date), factor_bounds={'{'}"momentum": (-0.1, 0.1){'}'}</code>), <code>min_variance(cov)</code>, <code>risk_parity(cov)</code>.</li>
+        <li><b>Fundamentals</b>: <code>FUNDAMENTALS = True</code> (or a list: book_to_price, earnings_yield, roe, gross_profitability, fcf_yield, market_cap, eps_ttm, …) adds point-in-time SEC data as <code>data.fund["…"]</code> — each figure from the day after it was filed, as first filed (US filers).</li>
+        <li><b>Event-driven</b>: define <code>on_bar(ctx, **params)</code> instead of <code>strategy</code>. It runs after every close and sees only the past: <code>ctx.history("close", n)</code>, <code>ctx.positions</code>, <code>ctx.nav</code>, <code>ctx.cash</code>, <code>ctx.fills</code>, <code>ctx.state</code> (yours). Orders: <code>ctx.target({'{'}"SPY": 0.5{'}'})</code>, <code>ctx.limit("SPY", 1.0, 400)</code>, <code>ctx.stop("SPY", 0.0, 380)</code>, <code>ctx.cancel()</code>. Optional <code>setup(data, **params)</code> precomputes indicators (read with <code>ctx.pre(name)</code>; checked for look-ahead).</li>
+        <li>Optional <code>signal(data, **params)</code> returning scores (dates × tickers): the lab reports its information coefficient by horizon, quintile returns and turnover.</li>
+        <li>Every run is checked for look-ahead (decisions recomputed from earlier data must match) and, with PARAMS, for overfitting (PBO); you also get attribution, today's ex-ante risk with crisis stress tests and a capacity curve.</li>
         <li><code>print()</code> shows in Output. In the browser you can also import scipy, scikit-learn or statsmodels; deployable code is limited to numpy, pandas and math.</li>
       </ul>
+    </details>
+  );
+}
+
+function UniverseHelp() {
+  const [cat, setCat] = useState<any>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const load = () => { if (!cat) api('/api/v1/quant/code/universes').then(setCat).catch((e) => setErr(e.message)); };
+  return (
+    <details className="p-3 bg-surface-1 border border-border text-[11px] text-text-secondary" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) load(); }}>
+      <summary className="cursor-pointer text-xs font-semibold text-text-primary">Universes & currencies</summary>
+      <ErrorNote msg={err} />
+      {!cat && !err && <div className="mt-2 text-text-tertiary">Loading…</div>}
+      {cat && (
+        <div className="mt-2 space-y-2">
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-0.5">TRADABLE_UNIVERSE · {cat.total.toLocaleString()} stocks</div>
+            <ul className="space-y-0.5">{cat.universes.map((u: any) => (
+              <li key={u.name}><code>"{u.name}"</code>{u.count != null && <span className="text-text-tertiary"> · {u.count.toLocaleString()}</span>} — {u.about}</li>))}</ul>
+            <div className="mt-1">…or a listing country, alone or combined: <code>"JP"</code>, <code>"GB+DE+FR"</code>, <code>["HK", "CN"]</code>.</div>
+            <div className="mt-1 flex flex-wrap gap-1 font-mono">{cat.countries.map((c: any) => (
+              <span key={c.code} title={`${c.name ?? c.code} · quoted in ${c.currencies.join(', ')}`} className="px-1 border border-border">{c.code} {c.count}</span>))}</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-0.5">ACCOUNT_CURRENCY — prices, NAV, costs and cash interest in that currency</div>
+            <table className="w-full"><tbody>{cat.account_currencies.map((c: any) => (
+              <tr key={c.code} className="border-t border-border-subtle align-top">
+                <td className="pr-2 font-mono">{c.code}</td>
+                <td className={cn(!c.known && 'text-amber')}>{c.known ? `${c.source}${c.kind === 'proxy' ? ' (pegged: proxy)' : ''}${c.stale_since ? ` · no data since ${c.stale_since}` : ''}` : 'no free cash-rate series: cash earns 0'}</td>
+              </tr>))}</tbody></table>
+          </div>
+        </div>)}
     </details>
   );
 }
@@ -441,7 +501,7 @@ export function CodeResults({ r, a }: { r: any; a: any | null }) {
       ]} />
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
         <div className="xl:col-span-2">
-          <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Growth of $1 — net of all costs{r.gross ? ', before costs' : ''}{r.baseline_returns ? ', equal-weight universe (same costs)' : ''}{r.benchmark ? `, and ${r.benchmark_label || 'benchmark'}` : ''}</div>
+          <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Growth of {r.account_currency && r.account_currency !== 'USD' ? `1 ${r.account_currency}` : '$1'} — net of all costs{r.gross ? ', before costs' : ''}{r.baseline_returns ? ', equal-weight universe (same costs)' : ''}{r.benchmark ? `, and ${r.benchmark_label || 'benchmark'}` : ''}</div>
           <LineChart rows={rows} x="date" height={260} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`}
             lines={[{ key: 'net', label: 'Net', color: CATEGORICAL[0] }, ...(r.gross ? [{ key: 'gross', label: 'Before costs', color: CATEGORICAL[3] }] : []),
               ...(r.baseline_returns ? [{ key: 'base', label: 'Equal-weight universe', color: CATEGORICAL[2] }] : []),
@@ -451,19 +511,36 @@ export function CodeResults({ r, a }: { r: any; a: any | null }) {
           <div className="space-y-2">
             <BarList title="Average cost per year (% of capital)" fmt={(v) => `${(v * 100).toFixed(2)}%`}
               data={[{ label: 'Market impact', value: c.impact }, { label: 'Spread', value: c.spread }, { label: 'Commission', value: c.commission },
-                { label: 'SEC fees', value: c.fees }, { label: 'Borrow', value: c.borrow },
+                { label: 'Fees, taxes & FX', value: c.fees, note: 'SEC fee on US sales, stamp duties and transaction taxes by listing country, FX conversion on cross-currency trades' }, { label: 'Borrow', value: c.borrow },
+                ...(c.dividend_tax ? [{ label: 'Dividend withholding', value: c.dividend_tax, note: 'Tax withheld at source on foreign dividends' }] : []),
+                ...(c.hedge_pnl ? [{ label: 'FX hedge (net)', value: -c.hedge_pnl, note: 'Positive = the hedge cost money (currency gains given up, rate differential, roll costs); negative = it earned' }] : []),
                 { label: 'Financing (net)', value: -c.financing_net, note: 'Positive = paid; negative = interest earned on cash' }]} />
             <div className="text-[10px] text-text-tertiary">Average long {pct(c.avg_long, 0)} · short {pct(c.avg_short, 0)} of capital.</div>
             {r.weights_last && Object.keys(r.weights_last).length > 0 && (
               <BarList title="Latest target (what the model wants)" diverging fmt={(v) => `${(v * 100).toFixed(1)}%`}
-                data={Object.entries(r.weights_last).sort((x: any, y: any) => Math.abs(y[1]) - Math.abs(x[1])).slice(0, 12).map(([k, v]) => ({ label: k, value: v as number, sub: r.holdings_last ? `held ${((r.holdings_last[k] ?? 0) * 100).toFixed(1)}%` : undefined }))} />)}
+                data={Object.entries(r.weights_last).sort((x: any, y: any) => Math.abs(y[1]) - Math.abs(x[1])).slice(0, 12).map(([k, v]) => {
+                  const isOpt = !!r.provenance?.market_rules?.options?.[k];
+                  return { label: isOpt ? `${k} (notional)` : k, value: v as number,
+                    sub: r.holdings_last ? `held ${((r.holdings_last[k] ?? 0) * 100).toFixed(1)}%${isOpt ? ' in premium' : ''}` : undefined };
+                })} />)}
             {r.holdings_last && <div className="text-[10px] text-text-tertiary">“held” is the simulated account after drift and unfilled orders — a target is not a position.</div>}
+            {r.exposure?.currency && Object.keys(r.exposure.currency).length > 1 && (
+              <BarList title={`Currency exposure (account ${r.account_currency ?? 'USD'})`} diverging fmt={(v) => `${(v * 100).toFixed(1)}%`}
+                data={Object.entries(r.exposure.currency).slice(0, 10).map(([k, v]) => ({ label: k, value: v as number }))} />)}
+            {r.exposure?.country && Object.keys(r.exposure.country).length > 1 && (
+              <BarList title="Holdings by listing country" diverging fmt={(v) => `${(v * 100).toFixed(1)}%`}
+                data={Object.entries(r.exposure.country).slice(0, 10).map(([k, v]) => ({ label: k, value: v as number }))} />)}
           </div>
         ) : r.weights_last && (
           <BarList title="Current allocation" fmt={(v) => `${(v * 100).toFixed(1)}%`}
             data={Object.entries(r.weights_last).map(([k, v]) => ({ label: k, value: v as number }))} />)}
       </div>
       <RecordPanel r={r} prov={prov} ex={ex} reg={reg} />
+      <Validation v={r.validation} />
+      <Signal s={r.signal} />
+      <Attribution a={r.attribution} />
+      <Risk r={r.risk} />
+      <Capacity c={r.capacity} />
       {opt.walk_forward && opt.chosen && <Optimisation opt={opt} m={m} />}
       {opt.variants && <Variants opt={opt} />}
       {a?.factor_lens && <FactorLens f={a.factor_lens} />}
@@ -504,7 +581,10 @@ function RecordPanel({ r, prov, ex, reg }: { r: any; prov: any; ex: any; reg: an
         <span className="px-1.5 border border-border text-text-secondary">{reg?.record_label || prov.record_type || 'backtest'}</span>
         {reg && <span className="text-text-tertiary">trial {reg.distinct_trials} of this family ({reg.runs} runs) · deflated Sharpe {reg.deflated_sharpe != null ? pct(reg.deflated_sharpe, 0) : '—'} probability of real skill after all trials</span>}
       </div>
-      {prov.rf_known === false && <div className="text-amber">The T-bill rate was unavailable: cash earned 0% and Sharpe is on raw returns. Statistics will differ when the rate loads.</div>}
+      {prov.rf_known === false && <div className="text-amber">{prov.cash_rate?.note || `The ${prov.account_currency || 'USD'} cash rate was unavailable`}: cash earned 0% and Sharpe is on raw returns.</div>}
+      {prov.cash_rate?.kind === 'proxy' && <div className="text-text-secondary">{prov.cash_rate.note}.</div>}
+      {prov.cash_rate?.stale_since && <div className="text-amber">The {prov.account_currency} cash rate has no observation since {prov.cash_rate.stale_since}; the last value is carried forward.</div>}
+      {prov.fx?.dropped_no_fx?.length > 0 && <div className="text-amber">No FX history for {prov.fx.missing_fx.join(', ')}: {prov.fx.dropped_no_fx.length} listing(s) left out.</div>}
       {prov.engine_mismatch && <div className="text-amber">{prov.engine_mismatch}</div>}
       {prov.stale_symbols?.length > 0 && <div className="text-amber">Served from an out-of-date cache (download failed): {prov.stale_symbols.join(', ')}.</div>}
       {h && (
@@ -514,11 +594,19 @@ function RecordPanel({ r, prov, ex, reg }: { r: any; prov: any; ex: any; reg: an
           <tr><td className="pr-3 text-text-tertiary">Equal-weight universe, holdout</td><td className="pr-3">CAGR {spct(h.baseline_holdout?.cagr)}</td><td>Sharpe {num(h.baseline_holdout?.sharpe)}</td></tr>
         </tbody></table>)}
       {ex && <div className="text-text-secondary">Execution: {ex.unfilled_order_days} day(s) with orders that could not fill (no opening print or no volume) · {ex.stale_position_days} position-day(s) valued at a stale price · {ex.listings_ended} listing(s) ended while held (settled at last close).</div>}
+      {ex?.option_notional_avg != null && <div className="text-text-secondary">Options: underlying notional averaged {pct(ex.option_notional_avg, 0)} of NAV (peak {pct(ex.option_notional_max, 0)}) · {ex.options_expired} contract expir{ex.options_expired === 1 ? 'y' : 'ies'} settled. Option prices are modelled, not historical quotes ({Object.values(prov.market_rules?.options ?? {}).map((o: any) => o.vol_source).filter((v, i, a) => a.indexOf(v) === i).join('; ')}).</div>}
+      {ex && (ex.board_lots || ex.fx_hedged?.length > 0 || ex.fx_unhedged?.length > 0) && (
+        <div className="text-text-secondary">
+          {ex.board_lots && <>Board lots: on average {pct(ex.lot_residual_avg, 3)} of NAV per day left untraded by rounding to whole lots{prov.market_rules?.board_lot_listings ? ` (${Object.keys(prov.market_rules.board_lot_listings).length} listing(s) trade in lots)` : ''}. </>}
+          {ex.fx_hedged?.length > 0 && <>Hedged: {ex.fx_hedged.join(', ')}. </>}
+          {ex.fx_unhedged?.length > 0 && <span className="text-amber">Unhedged (no free short-rate history to price the forward): {ex.fx_unhedged.join(', ')}.</span>}
+        </div>)}
       <details><summary className="cursor-pointer text-text-tertiary">Provenance</summary>
         <div className="mt-1 grid grid-cols-1 md:grid-cols-2 gap-x-4 font-mono text-[10px] text-text-tertiary">
           <div>engine {prov.engine_version} · cost schema {prov.cost_schema_version}</div><div>runtime {prov.runtime ?? 'server'}</div>
           <div>data {prov.data_first} → {prov.data_last} · hash {prov.data_hash}</div><div>code hash {prov.code_hash ?? '—'}</div>
           <div className="md:col-span-2 font-sans">{prov.adjustment}</div>
+          {prov.account_currency && <div className="md:col-span-2 font-sans">Account {prov.account_currency} · cash: {prov.cash_rate?.source ?? 'none'}{prov.fx?.pairs ? ` · ${Object.keys(prov.fx.pairs).length} listing(s) converted at as-of FX` : ''}</div>}
           <div className="md:col-span-2 font-sans">{prov.universe_selection}</div>
           {r.benchmark_definition && <div className="md:col-span-2 font-sans">Benchmark: {r.benchmark_definition}</div>}
         </div>

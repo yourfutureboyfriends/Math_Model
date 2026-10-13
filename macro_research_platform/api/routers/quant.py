@@ -12,7 +12,8 @@ from pydantic import BaseModel
 router = APIRouter(tags=["quant"])
 _results: "OrderedDict[tuple, tuple]" = OrderedDict()
 _RESULT_TTL = 1800
-_sem = asyncio.Semaphore(2)               # at most two backtests at once
+_sem = asyncio.Semaphore(2)               # at most two heavy jobs at once (backtests, trader books, library runs)
+_sem_fast = asyncio.Semaphore(4)          # interactive Code Lab requests: never queued behind the heavy ones
 
 
 class SpecIn(BaseModel):
@@ -57,8 +58,8 @@ def _spec_error(e: Exception):
     raise HTTPException(400, str(e))
 
 
-async def _bt(fn, *a, _timeout: float = 240, **k):
-    async with _sem:
+async def _bt(fn, *a, _timeout: float = 240, _fast: bool = False, **k):
+    async with (_sem_fast if _fast else _sem):
         return await asyncio.wait_for(asyncio.to_thread(fn, *a, **k), timeout=_timeout)
 
 
@@ -250,13 +251,19 @@ async def code_engine(request: Request):
 
 @router.get("/api/v1/quant/code/data")
 async def code_data(request: Request, universe: str = Query(..., max_length=1200), start: str = "2005-01-01",
-                    benchmark: str = "SPY"):
-    """Prices, T-bill rate and VIX for a strategy's UNIVERSE (float32, base64) for the browser."""
+                    benchmark: str = "SPY", account: str = Query("USD", max_length=3),
+                    options: Optional[str] = Query(None, max_length=4000),
+                    fundamentals: Optional[str] = Query(None, max_length=600)):
+    """Prices (in the account currency), its cash rate and VIX for a strategy's UNIVERSE (float32, base64) for the
+    browser."""
     from api.quant import codeserver
     _user(request)
     try:
-        return await _bt(codeserver.data_payload, [u for u in universe.split(",") if u.strip()], start[:10], benchmark.upper())
-    except ValueError as e:
+        import json as _json
+        opts = _json.loads(options) if options else None
+        return await _bt(codeserver.data_payload, [u for u in universe.split(",") if u.strip()], start[:10], benchmark.upper(),
+                         account.upper(), opts, [f for f in (fundamentals or "").split(",") if f.strip()] or None, _fast=True)
+    except ValueError as e:                    # includes malformed OPTIONS JSON (json.JSONDecodeError)
         _spec_error(e)
 
 
@@ -275,8 +282,10 @@ async def code_job_submit(body: JobIn, request: Request):
         head = sandbox.check(body.code)
     except sandbox.SandboxError as e:
         _spec_error(e)
-    if not head.get("tradable"):
-        raise HTTPException(400, "Only TRADABLE_UNIVERSE strategies run as server jobs — others run in your browser.")
+    from api.quant.codelab import UNIVERSE_LIMIT
+    if not head.get("tradable") and len(head["universe"]) <= UNIVERSE_LIMIT and head.get("mode") != "event":
+        raise HTTPException(400, f"Only TRADABLE_UNIVERSE strategies, UNIVERSE lists over {UNIVERSE_LIMIT} tickers or "
+                                 "event-driven strategies run as server jobs — others run in your browser.")
     try:
         j = jobs.submit(u["username"], "code_run", lambda job: sandbox.run(body.code, body.costs, job))
     except ValueError as e:
@@ -301,6 +310,57 @@ async def code_job_cancel(job_id: str, request: Request):
     return {"cancelled": jobs.cancel(job_id, u["username"], u["role"] == "admin")}
 
 
+class RunIn(BaseModel):
+    label: str
+    result: Dict[str, Any]
+    analysis: Optional[Dict[str, Any]] = None
+    code: Optional[str] = None
+
+
+@router.post("/api/v1/quant/code/runs")
+async def code_run_save(body: RunIn, request: Request):
+    """Store a Code Lab result for reopening and comparison (newest 50 per user kept)."""
+    from api.quant import store
+    u = _user(request)
+    try:
+        return await asyncio.to_thread(store.save_result, u["username"], body.label, body.result, body.analysis, body.code)
+    except ValueError as e:
+        raise HTTPException(413, str(e))
+
+
+@router.get("/api/v1/quant/code/runs")
+async def code_runs_list(request: Request):
+    from api.quant import store
+    u = _user(request)
+    return {"runs": await asyncio.to_thread(store.list_results, u["username"])}
+
+
+@router.get("/api/v1/quant/code/runs/{rid}")
+async def code_run_get(rid: int, request: Request):
+    from api.quant import store
+    u = _user(request)
+    r = await asyncio.to_thread(store.get_result, u["username"], rid)
+    if not r:
+        raise HTTPException(404, "Unknown run.")
+    return r
+
+
+@router.delete("/api/v1/quant/code/runs/{rid}")
+async def code_run_delete(rid: int, request: Request):
+    from api.quant import store
+    u = _user(request)
+    return {"deleted": await asyncio.to_thread(store.delete_result, u["username"], rid)}
+
+
+@router.get("/api/v1/quant/code/universes")
+async def code_universes(request: Request):
+    """What TRADABLE_UNIVERSE and ACCOUNT_CURRENCY accept: named universes, listing countries with counts and
+    currencies, and each account currency's cash-rate source."""
+    from api.quant import codeserver
+    _user(request)
+    return await _bt(codeserver.tradable_catalog, _fast=True)
+
+
 @router.post("/api/v1/quant/code/check")
 async def code_check(body: CodeCheckIn, request: Request):
     """Static check against the deploy sandbox's rules (does not run the code)."""
@@ -321,7 +381,8 @@ async def code_analyze(body: AnalyzeIn, request: Request):
         raise HTTPException(400, "Monte Carlo: 1–30 years, 200–5000 paths, max leverage 1–4×, drawdown limit 10–90%.")
     try:
         return await _bt(codeserver.analyze, body.dates, body.returns, body.benchmark, body.label, body.benchmark_label,
-                         body.mc_years, body.mc_paths, body.max_leverage, body.dd_limit, u["username"], body.provenance)
+                         body.mc_years, body.mc_paths, body.max_leverage, body.dd_limit, u["username"], body.provenance,
+                         _fast=True)
     except ValueError as e:
         _spec_error(e)
 
@@ -434,7 +495,11 @@ async def quant_deep(body: DeepIn, request: Request):
         spec = body.spec or _member_spec({"strategy_id": body.strategy_id, "template": body.template})
 
     def build():
-        if (spec or {}).get("kind") in ("code", "library"):
+        if dep is not None:                                    # the trader's cached result: no re-run
+            raw, _ = trader.deployment_result(dep)
+            res = {"daily_dates": raw["daily_dates"], "daily_returns": raw["daily_returns"],
+                   "daily_benchmark": raw.get("daily_benchmark"), "spec": {"name": spec.get("name"), "benchmark": "SPY", **spec}}
+        elif (spec or {}).get("kind") in ("code", "library"):
             cres = trader.eval_code_spec(spec)
             res = {"daily_dates": cres["dates"], "daily_returns": cres["returns"], "daily_benchmark": cres.get("benchmark"),
                    "spec": {"name": spec.get("name"), "benchmark": "SPY", **spec}}

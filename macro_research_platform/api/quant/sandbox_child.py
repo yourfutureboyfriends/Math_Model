@@ -22,7 +22,17 @@ def main() -> None:
                         rf=pd.Series(z["rf"], index=idx) if meta.get("rf_known", True) else None,
                         vix=pd.Series(z["vix"], index=idx),
                         observed=pd.DataFrame(z["observed"], index=idx, columns=cols) if "observed" in z.files else None,
-                        rf_known=meta.get("rf_known", True), provenance=meta.get("provenance"))
+                        rf_known=meta.get("rf_known", True), provenance=meta.get("provenance"),
+                        instruments=meta.get("instruments"), account_currency=meta.get("account_currency") or "USD",
+                        usd_per_unit=z["usd_per_unit"] if "usd_per_unit" in z.files else None,
+                        options={k[4:]: pd.DataFrame(z[f"m_{k}"].astype(np.float64), index=idx, columns=c)
+                                 for k, c in (meta.get("micro_cols") or {}).items() if k.startswith("opt_")} or None,
+                        **{k: pd.DataFrame(z[f"m_{k}"].astype(np.float64), index=idx, columns=c)
+                           for k, c in (meta.get("micro_cols") or {}).items() if not k.startswith(("opt_", "fund_"))},
+                        fundamentals={k[5:]: pd.DataFrame(z[f"m_{k}"].astype(np.float64), index=idx, columns=c)
+                                      for k, c in (meta.get("micro_cols") or {}).items() if k.startswith("fund_")} or None)
+    if "roll" in data.opt:
+        data.opt["roll"] = data.opt["roll"].fillna(0).astype(bool)
     bm = pd.Series(z["benchmark"], index=idx) if "benchmark" in z.files else None
     # point-in-time index membership (TRADABLE_UNIVERSE = "SP500_PIT"): True where the ticker was a member that day
     data.members = pd.DataFrame(z["members"], index=idx, columns=cols) if "members" in z.files else None
@@ -69,8 +79,9 @@ def main() -> None:
     try:
         sys.addaudithook(hook)
         st = codelab.load_strategy(code, {"__builtins__": safe_builtins})
-        out = codelab.evaluate(st["strategy"], data, st["params"], meta["start"], meta["costs"] or None, bm,
-                               st["holdout"], st["code_hash"])
+        out = codelab.evaluate(st["strategy"], data, st["params"], meta["start"], codelab.run_costs(st, meta["costs"]) or None, bm,
+                               st["holdout"], st["code_hash"], signal=None if meta.get("light") else st.get("signal"),
+                               on_bar=st.get("on_bar"), setup=st.get("setup"), light=bool(meta.get("light")))
         out["provenance"]["runtime"] = f"server sandbox — pandas {pd.__version__}, numpy {np.__version__}"
     except Exception as e:                                    # report the user's error, not ours
         tb = traceback.extract_tb(e.__traceback__)

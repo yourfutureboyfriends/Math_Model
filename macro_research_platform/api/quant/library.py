@@ -361,6 +361,164 @@ def strategy(data, entry=2.0, lookback=252):
     return w.fillna(0)
 """,
     },
+    {
+        "id": "cboe_putwrite",
+        "name": "Cash-secured put writing (CBOE PutWrite)",
+        "source": "CBOE S&P 500 PutWrite Index (PUT); Ungar & Moran (2009) 'The Cash-Secured PutWrite Strategy'",
+        "family": "Options",
+        "summary": "Each monthly expiry, sell one-month at-the-money S&P 500 (SPY) puts on 100% of NAV; the cash stays "
+                   "in T-bills as collateral.",
+        "evidence": "Index options are priced above the volatility that follows (the volatility risk premium): PUT has "
+                    "matched the S&P 500's return since 1986 with about two-thirds of its volatility, but loses like the "
+                    "market in crashes. Synthetic options (Black–Scholes on the VIX term structure) — the model tracks "
+                    "CBOE's real PUT index with a 0.96 monthly correlation.",
+        "code": '''UNIVERSE = ["SPY"]
+START = "2008-01-02"
+OPTIONS = [{"underlying": "SPY", "type": "put", "moneyness": 1.0}]
+# Option weights are underlying notional: -1.0 = write puts on 100% of NAV.
+
+
+def strategy(data):
+    w = data.close * 0
+    w["SPY_P100_1M"] = -1.0
+    return on_rolls(w, data, "SPY_P100_1M")
+''',
+    },
+    {
+        "id": "cboe_buywrite",
+        "name": "Covered calls (CBOE BuyWrite)",
+        "source": "CBOE S&P 500 BuyWrite Index (BXM); Whaley (2002); Israelov & Nielsen (AQR, 2014) 'Covered Call "
+                  "Strategies: One Fact and Eight Myths'",
+        "family": "Options",
+        "summary": "Hold the S&P 500 (SPY) and sell one-month at-the-money calls on it at each monthly expiry.",
+        "evidence": "Trades the upside for the call premium: lower volatility than the index, similar long-run return "
+                    "over 1986–2020. AQR shows the return is the equity premium plus a short-volatility premium — and "
+                    "an unintended short on equity momentum.",
+        "code": '''UNIVERSE = ["SPY"]
+START = "2008-01-02"
+OPTIONS = [{"underlying": "SPY", "type": "call", "moneyness": 1.0}]
+
+
+def strategy(data):
+    w = data.close * 0
+    w["SPY"] = 1.0
+    w["SPY_C100_1M"] = -1.0
+    return on_rolls(w, data, "SPY_C100_1M")
+''',
+    },
+    {
+        "id": "cboe_collar",
+        "name": "Protective collar (CBOE CLL)",
+        "source": "CBOE S&P 500 95-110 Collar Index (CLL); Szado & Schneeweis (2010) 'Loosening Your Collar'",
+        "family": "Options",
+        "summary": "Hold the S&P 500, buy three-month 5% out-of-the-money puts each quarter and finance them by selling "
+                   "one-month 10% out-of-the-money calls each month.",
+        "evidence": "The textbook hedge: the puts cap crash losses (2008, 2020), the calls pay for most of them. Costs "
+                    "show what insurance takes from long-run return.",
+        "code": '''UNIVERSE = ["SPY"]
+START = "2008-01-02"
+OPTIONS = [{"underlying": "SPY", "type": "put", "moneyness": 0.95, "expiry": "quarterly"},
+           {"underlying": "SPY", "type": "call", "moneyness": 1.10}]
+
+
+def strategy(data):
+    w = data.close * 0
+    w["SPY"] = 1.0
+    w["SPY_P95_Q"] = 1.0
+    w["SPY_C110_1M"] = -1.0
+    roll = data.opt["roll"].any(axis=1)
+    return w.where(roll, np.nan, axis=0)
+''',
+    },
+    {
+        "id": "index_put_spreads",
+        "name": "Index put credit spreads",
+        "source": "AQR (2018) 'Understanding the Volatility Risk Premium'; Israelov & Nielsen (2014); OCC bull put spread",
+        "family": "Options",
+        "summary": "On S&P 500, Nasdaq-100 and Dow ETFs, sell a 20-delta put and buy a 7-delta put at each monthly expiry "
+                   "when implied volatility is at least 1.15× realised; risk 0.5% of NAV per spread (5% in total), take "
+                   "profit at half the credit, stop at twice it, close 10 days before expiry.",
+        "evidence": "Defined-risk harvesting of the index volatility premium: the long wing caps the crash loss that sinks "
+                    "naked put writers. Credit and maximum loss come from modelled (VIX-family) option prices, so results "
+                    "are indicative; real fills at quoted bid/ask matter more for spreads than for single options.",
+        "code": '''UNIVERSE = ["SPY", "QQQ", "DIA"]
+START = "2010-01-04"
+# Bull put (credit) spreads on index ETFs whose implied volatility comes from a CBOE index (VIX, VXN, VXD):
+# short a 20-delta put, long a 7-delta put, monthly expiry. Option weights are underlying notional.
+OPTIONS = [
+    {"underlying": "SPY", "type": "put", "delta": 0.2, "name": "SPY_PSHORT"}, {"underlying": "SPY", "type": "put", "delta": 0.07, "name": "SPY_PWING"}, {"underlying": "SPY", "type": "put", "delta": 0.5, "name": "SPY_PATM"},
+    {"underlying": "QQQ", "type": "put", "delta": 0.2, "name": "QQQ_PSHORT"}, {"underlying": "QQQ", "type": "put", "delta": 0.07, "name": "QQQ_PWING"}, {"underlying": "QQQ", "type": "put", "delta": 0.5, "name": "QQQ_PATM"},
+    {"underlying": "DIA", "type": "put", "delta": 0.2, "name": "DIA_PSHORT"}, {"underlying": "DIA", "type": "put", "delta": 0.07, "name": "DIA_PWING"}, {"underlying": "DIA", "type": "put", "delta": 0.5, "name": "DIA_PATM"},
+]
+
+
+def strategy(data, risk_per_trade=0.005, portfolio_risk_cap=0.05, profit_take=0.50, stop_multiple=2.0,
+             close_dte=10, iv_rv_hurdle=1.15, max_notional=1.0):
+    idx = data.close.index
+    names = [u for u in ("SPY", "QQQ", "DIA") if f"{u}_PSHORT" in data.close.columns]
+    px, opt = data.close, data.opt
+    rv = data.close[names].pct_change().rolling(21, min_periods=15).std() * np.sqrt(252)
+    w = pd.DataFrame(np.nan, index=idx, columns=data.close.columns)
+    cur = pd.Series(0.0, index=data.close.columns)
+    state = {u: None for u in names}                  # open spread: notional and entry credit (per unit of spot)
+    for t in range(len(idx)):
+        changed = False
+        for u in names:
+            s, l, a = f"{u}_PSHORT", f"{u}_PWING", f"{u}_PATM"
+            spot = opt["spot"][s].iloc[t]
+            if not np.isfinite(spot):
+                continue
+            value = (px[s].iloc[t] - px[l].iloc[t]) / spot          # spread value per unit of spot
+            st = state[u]
+            if st is not None:                                        # manage: take profit, stop, or close early
+                if (value <= (1 - profit_take) * st["credit"] or value >= stop_multiple * st["credit"]
+                        or opt["dte"][s].iloc[t] <= close_dte or opt["roll"][s].iloc[t]):
+                    cur[[s, l]] = 0.0
+                    state[u] = None
+                    changed = True
+            if state[u] is None and opt["roll"][s].iloc[t]:           # a new contract was struck at this close
+                iv, r = opt["iv"][a].iloc[t], rv[u].iloc[t]
+                width = (opt["strike"][s].iloc[t] - opt["strike"][l].iloc[t]) / spot     # USD-listed: strike and spot in USD
+                if np.isfinite(iv) and np.isfinite(r) and r > 0 and iv / r >= iv_rv_hurdle and value > 0 and width > value:
+                    open_risk = sum(v["risk"] for v in state.values() if v)
+                    risk = min(risk_per_trade, portfolio_risk_cap - open_risk)
+                    if risk > 0:
+                        n = min(risk / (width - value), max_notional)      # max loss = notional × (width − credit)
+                        cur[s], cur[l] = -n, n
+                        state[u] = {"credit": value, "risk": n * (width - value)}
+                        changed = True
+        if changed:
+            w.iloc[t] = cur.values
+    return w
+''',
+    },
+    {
+        "id": "delta_hedged_straddle",
+        "name": "Delta-hedged short straddle (volatility risk premium)",
+        "source": "Coval & Shumway (2001) 'Expected Option Returns'; Carr & Wu (2009) 'Variance Risk Premiums'; "
+                  "Israelov & Nielsen (AQR, 2015)",
+        "family": "Options",
+        "summary": "Sell one-month at-the-money S&P 500 straddles on 50% of NAV at each expiry and hedge their delta "
+                   "with SPY every day, so what remains is implied minus realised volatility.",
+        "evidence": "Index implied volatility has exceeded subsequent realised volatility in most months since 1990 "
+                    "(VIX ≈ 19 vs realised ≈ 15 on average); delta-hedged option sellers earn the gap and lose sharply "
+                    "in volatility spikes. Daily hedging costs are charged.",
+        "code": '''UNIVERSE = ["SPY"]
+START = "2008-01-02"
+OPTIONS = [{"underlying": "SPY", "type": "put", "moneyness": 1.0}, {"underlying": "SPY", "type": "call", "moneyness": 1.0}]
+PARAMS = {"notional": [0.5]}
+
+
+def strategy(data, notional=0.5):
+    d = data.opt["delta"].fillna(0.0)
+    w = pd.DataFrame(0.0, index=data.close.index, columns=data.close.columns)
+    w["SPY_P100_1M"] = -notional
+    w["SPY_C100_1M"] = -notional
+    # short options have delta -notional × (Δput + Δcall); holding that much SPY neutralises it
+    w["SPY"] = notional * (d["SPY_P100_1M"] + d["SPY_C100_1M"])
+    return w
+''',
+    },
 ]
 
 SMART_MONEY: List[Dict[str, Any]] = [

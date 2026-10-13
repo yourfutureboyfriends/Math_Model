@@ -28,7 +28,7 @@ def _arr(b64, shape):
 
 def _prepare(code):
     st = codelab.load_strategy(code)
-    return json.dumps({k: st[k] for k in ("universe", "start", "params", "benchmark", "holdout", "code_hash")})
+    return json.dumps({k: st[k] for k in ("universe", "start", "params", "benchmark", "holdout", "code_hash", "account", "tradable", "fx_hedge", "options", "fundamentals")})
 
 def _run(code, payload, costs):
     p = json.loads(payload)
@@ -40,11 +40,21 @@ def _run(code, payload, costs):
                         rf=pd.Series(_arr(p["rf"], None), index=idx) if p.get("rf_known", True) else None,
                         vix=pd.Series(_arr(p["vix"], None), index=idx),
                         observed=pd.DataFrame(obs, index=idx, columns=cols) if obs is not None else None,
-                        rf_known=p.get("rf_known", True), provenance=p.get("provenance"))
+                        rf_known=p.get("rf_known", True), provenance=p.get("provenance"),
+                        instruments=p.get("instruments"), account_currency=p.get("account_currency") or "USD",
+                        usd_per_unit=pd.Series(_arr(p["usd_per_unit"], None), index=idx) if p.get("usd_per_unit") else None,
+                        options={k[4:]: pd.DataFrame(_arr(p["m_" + k], (T, len(c))), index=idx, columns=c)
+                                 for k, c in (p.get("micro_cols") or {}).items() if k.startswith("opt_")} or None,
+                        **{k: pd.DataFrame(_arr(p["m_" + k], (T, len(c))), index=idx, columns=c)
+                           for k, c in (p.get("micro_cols") or {}).items() if not k.startswith(("opt_", "fund_"))},
+                        fundamentals={k[5:]: pd.DataFrame(_arr(p["m_" + k], (T, len(c))), index=idx, columns=c)
+                                      for k, c in (p.get("micro_cols") or {}).items() if k.startswith("fund_")} or None)
+    if "roll" in data.opt:
+        data.opt["roll"] = data.opt["roll"].fillna(0).astype(bool)
     bm = pd.Series(_arr(p["benchmark"], None), index=idx) if p.get("benchmark") else None
     st = codelab.load_strategy(code)
-    out = codelab.evaluate(st["strategy"], data, st["params"], st["start"], json.loads(costs) or None, bm,
-                           st["holdout"], st["code_hash"])
+    out = codelab.evaluate(st["strategy"], data, st["params"], st["start"], codelab.run_costs(st, json.loads(costs)) or None, bm,
+                           st["holdout"], st["code_hash"], signal=st.get("signal"), on_bar=st.get("on_bar"), setup=st.get("setup"))
     out["provenance"]["runtime"] = "browser (Pyodide) — pandas " + pd.__version__ + ", numpy " + np.__version__
     if p.get("engine_version") and p["engine_version"] != codelab.ENGINE_VERSION:
         out["provenance"]["engine_mismatch"] = f"server data prepared for engine {p['engine_version']}, browser ran {codelab.ENGINE_VERSION}"

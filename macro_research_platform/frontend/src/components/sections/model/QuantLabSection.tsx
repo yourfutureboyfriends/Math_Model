@@ -6,16 +6,17 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
-import { ArrowLeftRight, BookOpen, Code2, FlaskConical, Library as LibraryIcon, Save, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, BookOpen, Code2, FlaskConical, History, Library as LibraryIcon, Save, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { CodeLab, STARTER } from './quant/CodeLab';
 import { Library } from './quant/Library';
 import { RelValue } from './quant/RelValue';
+import { Runs } from './quant/Runs';
 import { api, ErrorNote } from './quant/shared';
 
 const TABS = [
-  ['code', 'Code & test', Code2], ['library', 'Strategy library', LibraryIcon], ['mine', 'My strategies', Save],
+  ['code', 'Code & test', Code2], ['runs', 'Runs & compare', History], ['library', 'Strategy library', LibraryIcon], ['mine', 'My strategies', Save],
   ['relval', 'Arb & market making', ArrowLeftRight], ['research', 'Research', BookOpen],
 ] as const;
 type Tab = (typeof TABS)[number][0];
@@ -66,6 +67,7 @@ export function QuantLabSection() {
       </div>
       {tab === 'code' && <CodeLab code={code} setCode={setCode} name={name} setName={setName} strategyId={strategyId} setStrategyId={setStrategyId}
         canSave={canSave} canDeploy={canDeploy} onSaved={loadMine} />}
+      {tab === 'runs' && <Runs onOpenCode={(c, n) => openCode(c, n)} />}
       {tab === 'library' && <Library onOpenCode={(c, n) => openCode(c, n)} canDeploy={canDeploy} />}
       {tab === 'mine' && <Mine rows={mine} me={user?.username} isAdmin={user?.role === 'admin'} onOpen={(s) => openCode(s.spec.code, s.name, s.id)} onChanged={loadMine} />}
       {tab === 'relval' && (meta ? <RelValue meta={meta} /> : <div className="text-2xs text-text-tertiary">Loading…</div>)}
@@ -108,6 +110,8 @@ function Mine({ rows, me, isAdmin, onOpen, onChanged }: { rows: any[]; me?: stri
 function Research() {
   const notes: [string, string][] = [
     ['Costs are modelled, not assumed', 'Every trade pays commission (0.35 bp ≈ $0.0035/share), half the bid-ask spread (from each asset\'s volatility and dollar volume — ≈0.1 bp for SPY, 2–3 bp for a $50m/day stock, 15 bp for a $2m/day small cap), square-root market impact calibrated on $1.7tn of AQR live trades (11.2 bp × √% of daily volume; Frazzini, Israel & Moskowitz 2018), the SEC fee on sales, a borrow fee on shorts and margin interest above 100% long. Cash earns T-bills. Impact grows with capital, so test at the size you would trade.'],
+    ['Any market, any currency', 'TRADABLE_UNIVERSE trades the platform\'s ~3,100 largest companies across 40+ markets — all of them ("GLOBAL"), a region, a listing country ("JP") or a mix ("JP+HK"); a UNIVERSE list can name any listing (VOD.L, 7203.T, 0700.HK). ACCOUNT_CURRENCY (38 currencies) sets the account: every price is converted at the FX rate known at the time (opens at the previous FX close), cash earns that currency\'s own short rate (OECD interbank, €STR, SONIA; the US bill for dollar pegs), and cross-currency trades pay an FX conversion cost on top of stamp duties and transaction taxes by venue. Each result shows the book\'s currency and country exposure — foreign stocks carry their currency risk unhedged.'],
+    ['Options — modelled, then checked against the real thing', 'Free data has no history of option quotes, so OPTIONS = [...] prices listed-style contracts every day with Black–Scholes–Merton: the underlying\'s traded price and dividend yield, its currency\'s short rate, and implied volatility from CBOE\'s indices where they exist (VIX term structure for S&P 500 ETFs, VXN, VXD, GVZ, OVX; else realised volatility × the market\'s implied/realised ratio), with a put-heavy skew. Contracts are struck on expiry days, settle at intrinsic value, and roll. Weights on options are underlying notional, so −1.0 writes on 100% of NAV. The model\'s cash-secured put-write tracks CBOE\'s real PutWrite index with a 0.96 monthly correlation (2008–2026: 8.1% vs 7.2% a year, worst drawdown −37% vs −37%). It cannot show what quotes would: skew shifts, wide spreads in a crash, early exercise. Option spreads (0.75–2.5% of premium, at least half a tick) and $0.65 a contract are charged; whole contracts at your capital.'],
     ['Walk-forward, not best-fit', 'A PARAMS grid is not searched for the best backtest. Each January the parameter set with the highest long-run growth on data up to then is used for that year, so the stitched record is out-of-sample. The gap to the hindsight-best set is shown — it is the overfitting a single backtest hides (Bailey & López de Prado 2014). Keep grids small and economically motivated.'],
     ['Maximum money = maximum growth, not maximum leverage', 'Wealth compounds at the average log return, which peaks at the Kelly leverage (excess return ÷ variance) and falls beyond it — more leverage eventually means less money. Because the edge is estimated with error, the lab recommends at most half-Kelly and the largest leverage keeping P(drawdown beyond your limit) ≤ 5%, capped at your margin limit (Thorp 2006; MacLean, Thorp & Ziemba 2010).'],
     ['Monte Carlo that respects regimes', 'Futures are simulated by a stationary block bootstrap of the strategy\'s own daily net returns (blocks averaging a month), which keeps volatility clustering and crash dynamics that an independent-day simulation erases (Politis & Romano 1994). It cannot invent regimes the history never saw — a strategy tested only since 2010 has never met a 2008.'],

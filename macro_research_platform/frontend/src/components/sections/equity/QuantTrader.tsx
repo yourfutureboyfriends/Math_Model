@@ -1,6 +1,6 @@
 // Three separate paper traders: Macro (asset-class model book + macro algos), Fundamental (stocks chosen on company
 // fundamentals) and Technical (stocks on price/volume + the stock entry-model book). api/quant/trader.py keeps them apart.
-import { useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Loader2, RefreshCw, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -9,7 +9,7 @@ import { KpiStrip } from '@/components/ui/KpiStrip';
 import { Donut } from '@/components/ui/Donut';
 import { useAuth } from '@/context/AuthContext';
 import { CATEGORICAL } from '@/lib/chartPalette';
-import { api, ErrorNote, num, pct, Pills, spct, tone, usd } from '@/components/sections/model/quant/shared';
+import { api, ErrorNote, money, num, pct, Pills, spct, tone, usd } from '@/components/sections/model/quant/shared';
 import { DeepAnalysis } from '@/components/sections/model/quant/DeepReport';
 
 const STATUS: Record<string, string> = {
@@ -76,16 +76,30 @@ function Algos({ book }: { book: 'macro' | 'fundamental' | 'technical' }) {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dialog, ask] = useConfirm();
-  const load = useCallback((refresh = false) => {
-    setBusy(true); setErr(null);
+  const load = useCallback((refresh = false, quiet = false) => {
+    if (!quiet) setBusy(true);
+    setErr(null);
     api(`/api/v1/quant/trader?book=${book}${refresh ? '&refresh=true' : ''}`).then(setD).catch((e) => setErr(e.message)).finally(() => setBusy(false));
   }, [book]);
   useEffect(() => load(), [load]);
+  // the server answers at once from its latest results and refreshes stale algos in the background: poll quietly
+  useEffect(() => {
+    if (!d?.refreshing) return;
+    const t = setTimeout(() => load(false, true), 15_000);
+    return () => clearTimeout(t);
+  }, [d, load]);
+  const [showAll, setShowAll] = useState(false);
   const stop = async (dep: any) => {
     if (!(await ask({ title: `Stop “${dep.name}”?`, body: 'Its paper record ends today.', confirmLabel: 'Stop', danger: true }))) return;
     try { await api(`/api/v1/quant/trader/deployments/${dep.id}`, { method: 'DELETE' }); load(true); } catch (e: any) { setErr(e.message); }
   };
   if (!d) return err ? <ErrorNote msg={err} /> : <div className="flex items-center gap-2 text-2xs text-text-tertiary p-3"><Loader2 className="w-3 h-3 animate-spin" />Updating deployed algos…</div>;
+  const pending = (d.pending ?? []) as any[];
+  if (!d.deployments.length && pending.length) return (
+    <div className="flex items-center gap-2 p-3 text-2xs text-text-secondary border border-border">
+      <Loader2 className="w-3 h-3 animate-spin" />Preparing {pending.map((x) => `“${x.name}”`).join(', ')} for the first time — a large universe can take a few minutes; this page updates by itself.
+    </div>
+  );
   if (!d.deployments.length) return (
     <div className="p-4 border border-dashed border-border text-2xs text-text-secondary">
       No {book} algos deployed yet. Open the <a href="#quant-lab" className="underline text-bloomberg">Quant Lab</a>, run a {({ macro: 'cross-asset / ETF', fundamental: 'value or quality (company-fundamentals)', technical: 'stock momentum, reversal or low-volatility' } as const)[book]} strategy from the library or your own code, then press <b>Deploy</b> — it is routed to this trader automatically.
@@ -99,15 +113,16 @@ function Algos({ book }: { book: 'macro' | 'fundamental' | 'technical' }) {
       <div className="flex items-center gap-2 text-2xs">
         <span className="px-2 py-0.5 border border-amber/50 text-amber">PAPER — SIMULATED</span>
         <span className="text-text-tertiary">Each algo trades at the next open after its signal, with its costs. Live = days after deployment only.</span>
+        {d.refreshing && <span className="inline-flex items-center gap-1 text-text-tertiary"><Loader2 className="w-3 h-3 animate-spin" />{pending.length ? `preparing ${pending.length} new algo${pending.length > 1 ? 's' : ''}…` : 'updating with today’s data…'}</span>}
         <button onClick={() => load(true)} disabled={busy} aria-label="Refresh" className="ml-auto px-2 py-1 border border-border hover:border-bloomberg disabled:opacity-50">
           {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}</button>
       </div>
       <KpiStrip items={[
-        { label: 'Book NAV', value: usd(d.nav), sub: `capital ${usd(d.capital)}`, accent: true },
+        { label: 'Book NAV (USD)', value: usd(d.nav), sub: `capital ${usd(d.capital)}${d.deployments?.some((x: any) => x.currency && x.currency !== 'USD') ? ' · other-currency accounts converted at as-of FX' : ''}`, accent: true },
         { label: 'Return', value: spct(d.return, 2), tone: tone(d.return) },
         { label: 'Algos running', value: String(d.deployments.length) },
         { label: 'Gross exposure', value: d.gross_exposure == null ? '—' : `${num(d.gross_exposure)}×` },
-        { label: 'Positions', value: String(d.exposure.length) },
+        { label: 'Positions', value: String(d.positions_total ?? d.exposure.length) },
         { label: 'Updated', value: String(d.as_of).slice(11, 16) + ' UTC' },
       ]} />
       {d.curve.length > 1 && (
@@ -116,49 +131,36 @@ function Algos({ book }: { book: 'macro' | 'fundamental' | 'technical' }) {
         </div>
       )}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
-        {d.deployments.map((x: any) => {
-          const band = x.expected_range ?? {};
-          return (
-            <div key={x.id} className="p-3 bg-surface-1 border border-border space-y-1.5">
-              <div className="flex items-start gap-2">
-                <div className="min-w-0">
-                  <div className="text-xs font-semibold text-text-primary truncate" title={x.name}>{x.name}</div>
-                  <div className="text-[10px] text-text-tertiary">live since {x.deployed_at} · {x.live_days} sessions · {x.rebalance} · by {x.owner}</div>
-                </div>
-                <span className={cn('ml-auto shrink-0 px-2 py-0.5 border text-[10px] uppercase', STATUS[x.status] ?? STATUS['too early'])}>{x.status}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-2xs">
-                <div><div className="text-text-tertiary text-[10px]">NAV</div><div className="font-mono">{usd(x.nav)}</div></div>
-                <div><div className="text-text-tertiary text-[10px]">Live return</div><div className={cn('font-mono', x.live_return > 0 ? 'text-green' : x.live_return < 0 ? 'text-red' : '')}>{spct(x.live_return, 2)}</div></div>
-                <div><div className="text-text-tertiary text-[10px]">Backtest</div><div className="font-mono">{spct(x.backtest?.cagr)} · SR {num(x.backtest?.sharpe)}</div></div>
-              </div>
-              {band.p5 != null && (
-                <div className="text-[10px] text-text-tertiary">
-                  Backtest-implied range for {x.live_days} sessions: {spct(band.p5)} to {spct(band.p95)} (median {spct(band.p50)}).
-                  {x.status === 'below range' && <span className="text-red"> Worse than 95% of backtest paths — review it.</span>}
-                </div>
-              )}
-              {x.positions.length > 0 && (
-                <div className="text-[10px] font-mono text-text-secondary break-words">
-                  {x.positions.slice(0, 10).map((p: any) => `${p.symbol} ${spct(p.weight, 0)}`).join(' · ')}{x.positions.length > 10 ? ` · +${x.positions.length - 10} more` : ''}
-                </div>
-              )}
-              <DeepAnalysis request={['/api/v1/quant/deep', { deployment_id: x.id }]} title="Deep analysis of this algo" />
-              {canManage && <button onClick={() => stop(x)} className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] border border-border text-text-secondary hover:border-red hover:text-red"><Square className="w-2.5 h-2.5" />Stop</button>}
-            </div>
-          );
-        })}
+        {d.deployments.map((x: any) => <AlgoCard key={x.id} x={x} canManage={canManage} onStop={stop} />)}
       </div>
       {d.exposure.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-2">
           <div className="p-3 bg-surface-1 border border-border">
-            <Donut title="Book exposure (longs)" fmt={(v) => usd(v)} data={d.exposure.filter((e: any) => e.usd > 0).map((e: any) => ({ label: e.symbol, value: e.usd }))} />
+            <Donut title="Book exposure by sector (longs)" fmt={(v) => usd(v)}
+              data={(d.by_sector ?? []).filter((e: any) => e.usd > 0).map((e: any) => ({ label: e.sector, value: e.usd }))} />
           </div>
           <div className="p-3 bg-surface-1 border border-border overflow-x-auto">
-            <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Combined target positions</div>
-            <table className="w-full text-2xs font-mono"><tbody>{d.exposure.map((e: any) => (
-              <tr key={e.symbol} className="border-t border-border-subtle"><td>{e.symbol}</td>
-                <td className={cn('text-right', e.usd < 0 && 'text-red')}>{usd(e.usd)}</td><td className="text-right text-text-tertiary">{pct(e.weight)}</td></tr>))}</tbody></table>
+            <div className="flex items-baseline gap-2 mb-1">
+              <div className="text-[10px] uppercase tracking-wide text-text-tertiary">Largest combined positions</div>
+              <div className="text-[10px] text-text-tertiary">{d.positions_total ?? d.exposure.length} in total</div>
+            </div>
+            <table className="w-full text-2xs font-mono"><tbody>
+              {(showAll ? d.exposure : d.exposure.slice(0, 15)).map((e: any) => (
+                <tr key={e.symbol} className="border-t border-border-subtle"><td>{e.symbol}</td>
+                  <td className="font-sans text-text-tertiary truncate max-w-[10rem]">{e.sector}</td>
+                  <td className={cn('text-right', e.usd < 0 && 'text-red')}>{usd(e.usd)}</td><td className="text-right text-text-tertiary">{pct(e.weight)}</td></tr>))}
+              {(() => {
+                const hidden = showAll ? [] : d.exposure.slice(15);
+                const n = hidden.length + (d.exposure_other?.count ?? 0);
+                const v = hidden.reduce((a: number, e: any) => a + e.usd, 0) + (d.exposure_other?.usd ?? 0);
+                return n > 0 ? (
+                  <tr className="border-t border-border-subtle text-text-tertiary"><td colSpan={2} className="font-sans">Other {n} position{n === 1 ? '' : 's'}</td>
+                    <td className="text-right">{usd(v)}</td><td className="text-right">{d.nav ? pct(v / d.nav) : '—'}</td></tr>) : null;
+              })()}
+            </tbody></table>
+            {d.exposure.length > 15 && (
+              <button onClick={() => setShowAll(!showAll)} className="mt-1 text-[10px] underline text-text-tertiary">
+                {showAll ? 'show fewer' : `show top ${d.exposure.length}`}</button>)}
           </div>
         </div>
       )}
@@ -166,3 +168,49 @@ function Algos({ book }: { book: 'macro' | 'fundamental' | 'technical' }) {
     </div>
   );
 }
+
+/** One deployed algo: headline numbers, range check, its five largest holdings (expandable), deep analysis on demand. */
+const AlgoCard = memo(function AlgoCard({ x, canManage, onStop }: { x: any; canManage: boolean; onStop: (x: any) => void }) {
+  const [more, setMore] = useState(false);
+  const band = x.expected_range ?? {};
+  const shown = more ? x.positions : x.positions.slice(0, 5);
+  const hiddenCount = (x.positions_count ?? x.positions.length) - shown.length;
+  return (
+    <div className="p-3 bg-surface-1 border border-border space-y-1.5">
+      <div className="flex items-start gap-2">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold text-text-primary truncate" title={x.name}>{x.name}</div>
+          <div className="text-[10px] text-text-tertiary">live since {x.deployed_at} · {x.live_days} sessions{x.rebalance ? ` · ${x.rebalance}` : ''} · by {x.owner}</div>
+        </div>
+        <span className={cn('ml-auto shrink-0 px-2 py-0.5 border text-[10px] uppercase', STATUS[x.status] ?? STATUS['too early'])}>{x.status}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-2xs">
+        <div><div className="text-text-tertiary text-[10px]">NAV{x.currency && x.currency !== 'USD' ? ` (${x.currency})` : ''}</div>
+          <div className="font-mono">{money(x.nav, x.currency || 'USD')}</div>
+          {x.currency && x.currency !== 'USD' && <div className="text-[10px] text-text-tertiary font-mono">≈ {usd(x.nav_usd)}</div>}</div>
+        <div><div className="text-text-tertiary text-[10px]">Live return</div><div className={cn('font-mono', x.live_return > 0 ? 'text-green' : x.live_return < 0 ? 'text-red' : '')}>{spct(x.live_return, 2)}</div></div>
+        <div><div className="text-text-tertiary text-[10px]">Backtest</div><div className="font-mono">{spct(x.backtest?.cagr)} · SR {num(x.backtest?.sharpe)}</div></div>
+      </div>
+      {band.p5 != null && (
+        <div className="text-[10px] text-text-tertiary">
+          Expected range for {x.live_days} sessions: {spct(band.p5)} to {spct(band.p95)}.
+          {x.status === 'below range' && <span className="text-red"> Worse than 95% of backtest paths — review it.</span>}
+        </div>
+      )}
+      {x.positions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 text-[10px] font-mono">
+          {shown.map((p: any) => (
+            <span key={p.symbol} className={cn('px-1.5 py-0.5 border border-border', p.weight < 0 && 'text-red')}>{p.symbol} {spct(p.weight, 1)}</span>))}
+          {hiddenCount > 0 && (
+            <button onClick={() => setMore(!more)} className="px-1.5 py-0.5 text-text-tertiary underline">
+              {more ? 'fewer' : `+${hiddenCount} more`}</button>)}
+          {more && x.positions_other && <span className="text-text-tertiary">and {x.positions_other.count} smaller ({spct(x.positions_other.weight, 1)})</span>}
+        </div>
+      )}
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0"><DeepAnalysis request={['/api/v1/quant/deep', { deployment_id: x.id }]} title="Deep analysis" /></div>
+        {canManage && <button onClick={() => onStop(x)} className="shrink-0 inline-flex items-center gap-1 px-2 py-2 text-[10px] border border-border text-text-secondary hover:border-red hover:text-red"><Square className="w-2.5 h-2.5" />Stop</button>}
+      </div>
+    </div>
+  );
+});
