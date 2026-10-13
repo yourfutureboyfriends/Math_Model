@@ -11,6 +11,7 @@ import { useAuth } from '@/context/AuthContext';
 import { CATEGORICAL } from '@/lib/chartPalette';
 import { api, ErrorNote, money, num, pct, Pills, spct, tone, usd } from '@/components/sections/model/quant/shared';
 import { DeepAnalysis } from '@/components/sections/model/quant/DeepReport';
+import { LivePerformance } from './LivePerformance';
 
 const STATUS: Record<string, string> = {
   'on track': 'border-green/50 text-green', 'too early': 'border-border text-text-tertiary',
@@ -125,6 +126,7 @@ function Algos({ book }: { book: 'macro' | 'fundamental' | 'technical' }) {
         { label: 'Positions', value: String(d.positions_total ?? d.exposure.length) },
         { label: 'Updated', value: String(d.as_of).slice(11, 16) + ' UTC' },
       ]} />
+      <LivePerformance book={book} deployments={d.deployments} />
       {d.curve.length > 1 && (
         <div className="p-3 bg-surface-1 border border-border">
           <LineChart rows={d.curve} x="date" height={200} baseline={d.capital} fmt={(v) => usd(v)} lines={[{ key: 'nav', label: `${({ macro: 'Macro', fundamental: 'Fundamental', technical: 'Technical' } as const)[book]} algos NAV`, color: CATEGORICAL[0] }]} />

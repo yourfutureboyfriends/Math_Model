@@ -492,3 +492,142 @@ def _build(which: str, deps: Optional[List[Dict[str, Any]]] = None, key: Optiona
         with _lock:
             _cache[which] = {"ts": time.time(), "key": key, "data": out}
     return out
+
+
+# ── Live (intraday) marking ──────────────────────────────────────────────────
+LIVE_TTL = 60
+LIVE_NAMES_PER_ALGO = 300                    # largest holdings, covering nearly all of the weight
+_live_cache: Dict[str, Any] = {}
+_live_building: set = set()
+_live_lock = threading.Lock()
+_bars: Dict[str, Any] = {}                   # last good 5-minute bars per symbol: {sym: (time, bars)}
+BARS_TTL = 120                               # Yahoo 5-minute bars change every 5 minutes
+
+
+def _intraday(symbols: List[str]) -> Dict[str, Any]:
+    """5-minute bars of the last few sessions per symbol (Yahoo, ~15-minute delayed for some venues):
+    {sym: (DataFrame[Open, Close] with a UTC index, local session dates)}."""
+    import pandas as pd
+    from api.marketdata.core import yahoo_download
+    out: Dict[str, Any] = {}
+    now = time.time()
+    todo = [s for s in symbols if not (s in _bars and now - _bars[s][0] < BARS_TTL)]
+    for i in range(0, len(todo), 150):
+        part = todo[i:i + 150]
+        try:
+            df = yahoo_download(part, period="5d", interval="5m", auto_adjust=False, prepost=False, group_by="ticker", threads=True)
+        except Exception as e:                                   # noqa: BLE001 — keep the last good bars
+            logger.warning("[trader] intraday download failed: %s", str(e)[:120])
+            continue
+        if df is None or not len(df):
+            continue
+        for s in part:
+            try:
+                sub = (df[s] if isinstance(df.columns, pd.MultiIndex) else df)[["Open", "Close"]].dropna()
+            except Exception:                                    # noqa: BLE001
+                continue
+            if len(sub):
+                local = sub.index.tz_convert(sub.index.tz) if sub.index.tz is not None else sub.index
+                out[s] = (sub.set_axis(pd.DatetimeIndex(sub.index).tz_convert("UTC") if sub.index.tz is not None
+                                       else pd.DatetimeIndex(sub.index).tz_localize("UTC")),
+                          [str(x.date()) for x in local])
+                _bars[s] = (now, out[s])
+    return {s: _bars[s][1] for s in symbols if s in _bars}
+
+
+def live(which: str) -> Dict[str, Any]:
+    """Live marking without waiting on the download: the last result at once (refreshed in the background when over a
+    minute old); the very first request returns {"pending": true} while the first pricing runs."""
+    hit = _live_cache.get(which)
+    if hit and time.time() - hit[0] < LIVE_TTL:
+        return hit[1]
+    with _live_lock:
+        start = which not in _live_building
+        _live_building.add(which)
+    if start:
+        def run():
+            try:
+                _live_build(which)
+            except Exception as e:                               # noqa: BLE001
+                logger.warning("[trader] live marking failed: %s", str(e)[:160])
+            finally:
+                _live_building.discard(which)
+        threading.Thread(target=run, daemon=True, name=f"live-{which}").start()
+    if hit:
+        return {**hit[1], "refreshing": True}
+    return {"book": which, "pending": True, "algos": [], "book_path": []}
+
+
+def _live_build(which: str) -> Dict[str, Any]:
+    """Provisional intraday P&L of each deployed algo's current holdings (and the book), from 5-minute prices:
+    positions bought at today's open are measured from that open, others from the previous close. Local-currency
+    price moves (intraday FX is not applied); the official record still updates at each close."""
+    import pandas as pd
+    deps = [d for d in store.list_deployments(active_only=True) if which == "all" or book_of(d) == which]
+    algos = []
+    for d in deps:
+        c = _cached(d)
+        if not c:
+            continue
+        raw = c[0]
+        pos = sorted(((p["symbol"], float(p["target_weight"])) for p in raw.get("positions", []) if p["target_weight"]),
+                     key=lambda x: -abs(x[1]))
+        tot = sum(abs(w) for _, w in pos) or 1.0
+        keep, acc = [], 0.0
+        for sym, w in pos:
+            if len(keep) >= LIVE_NAMES_PER_ALGO or acc / tot >= 0.98:
+                break
+            if re.match(r"^[A-Z0-9.\-^=]+$", sym) and not re.match(r"^[A-Z]{1,5}_[PC]", sym):
+                keep.append((sym, w))
+                acc += abs(w)
+        frozen = store.live_returns(d["id"])
+        algos.append({"dep": d, "pos": keep, "coverage": acc / tot, "first_live": not frozen})
+    syms = sorted({s for a in algos for s, _ in a["pos"]})
+    bars = _intraday(syms) if syms else {}
+    now = pd.Timestamp.now(tz="UTC")
+    grid = pd.date_range(now.floor("D") - pd.Timedelta(hours=16), now.ceil("5min"), freq="5min")
+    rows, book_paths, weights = [], [], []
+    for a in algos:
+        d = a["dep"]
+        path = pd.Series(0.0, index=grid)
+        covered = 0.0
+        for sym, w in a["pos"]:
+            b = bars.get(sym)
+            if not b:
+                continue
+            df, dates = b
+            sessions = sorted(set(dates))
+            today = sessions[-1]
+            if today <= d["deployed_at"]:
+                continue                                         # no live session yet for this market
+            mask = [x == today for x in dates]
+            day = df[mask]
+            if not len(day):
+                continue
+            prev = df[[x < today for x in dates]]
+            # bought at this session's open (the first live session), else held from the previous close
+            ref = float(day["Open"].iloc[0]) if a["first_live"] or not len(prev) else float(prev["Close"].iloc[-1])
+            if not ref > 0:
+                continue
+            chg = (day["Close"] / ref - 1).reindex(grid, method="ffill")
+            path = path.add(w * chg.fillna(0.0), fill_value=0.0)
+            covered += abs(w)
+        started = path.ne(0).cummax()
+        path = path[started] if started.any() else path.iloc[-1:]
+        nav_usd = float(d["capital"])
+        rows.append({"id": d["id"], "name": d["name"], "book": book_of(d), "today": round(float(path.iloc[-1]), 5) if len(path) else 0.0,
+                     "coverage": round(a["coverage"], 3), "names_priced": len(a["pos"]), "first_live_session": a["first_live"],
+                     "path": [{"t": t.isoformat(), "r": round(float(v), 5)} for t, v in path.iloc[::max(1, len(path) // 150)].items()]})
+        book_paths.append(path)
+        weights.append(nav_usd)
+    book_path = []
+    if book_paths:
+        allp = pd.concat(book_paths, axis=1).ffill().fillna(0.0)
+        tw = sum(weights) or 1.0
+        bp = (allp * [w / tw for w in weights]).sum(axis=1)
+        book_path = [{"t": t.isoformat(), "r": round(float(v), 5)} for t, v in bp.iloc[::max(1, len(bp) // 150)].items()]
+    out = {"book": which, "as_of": now.isoformat(), "algos": rows, "book_path": book_path,
+           "note": "Provisional: current holdings marked at 5-minute prices (some venues ~15 min delayed), local-currency moves; "
+                   "positions bought at today's open are measured from it. The locked record updates at each close."}
+    _live_cache[which] = (time.time(), out)
+    return out

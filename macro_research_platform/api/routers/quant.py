@@ -448,6 +448,19 @@ async def quant_deploy(body: DeployIn, request: Request):
     return d
 
 
+@router.get("/api/v1/quant/trader/live")
+async def quant_trader_live(request: Request, book: str = Query("all")):
+    """Intraday (provisional) P&L of deployed algos from 5-minute prices — book = macro / fundamental / technical / all."""
+    from api.quant import trader
+    _user(request)
+    if book not in ("all",) + trader.BOOKS:
+        raise HTTPException(400, "book must be macro, fundamental, technical or all")
+    try:
+        return await _bt(trader.live, book, _timeout=90, _fast=True)
+    except Exception as e:                                      # noqa: BLE001 — live prices are best-effort
+        raise HTTPException(503, f"Live prices unavailable: {str(e)[:200]}")
+
+
 @router.delete("/api/v1/quant/trader/deployments/{did}")
 async def quant_undeploy(did: int, request: Request):
     from api.quant import store, trader
