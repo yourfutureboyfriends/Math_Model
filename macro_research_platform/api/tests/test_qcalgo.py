@@ -25,15 +25,12 @@ def _run(code, data, start="2019-06-03", costs=None):
 
 
 # ── indicators: LEAN definitions ──
-def test_ema_seeded_with_first_value_and_wilder_rsi():
+def test_ema_seeded_with_sma_and_wilder_rsi():
     e = qcalgo.ExponentialMovingAverage(3)
     for v in (1, 2, 3, 4):
         e.update(None, v)
-    k = 0.5
-    want = 1
-    for v in (2, 3, 4):
-        want = k * v + (1 - k) * want
-    assert e.is_ready and abs(e.current.value - want) < 1e-12
+    # LEAN: the value at the 3rd input is mean(1, 2, 3) = 2; then 0.5·4 + 0.5·2 = 3
+    assert e.is_ready and abs(e.current.value - 3.0) < 1e-12
     r = qcalgo.RelativeStrengthIndex(2)
     for v in (10, 11, 10, 12):                     # changes +1, −1, +2
         r.update(None, v)
@@ -199,3 +196,94 @@ def test_sandbox_rejects_special_methods_and_other_bases():
         sandbox.check(OK_CLASS.replace("    def __init__(self, n):", "    def __getattr__(self, n):"))
     with pytest.raises(sandbox.SandboxError):
         sandbox.check(OK_CLASS.replace('        self.add_equity("SPY")', '        self.add_equity("SPY")\n        self.add_future("ES")'))
+
+
+# ── account model: buying power, settlement, locates, tax lots ──
+def _acct(body, data=None, start="2019-06-03"):
+    code = "class A(QCAlgorithm):\n    def initialize(self):\n        self.set_start_date(2019, 6, 3)\n" + body
+    return _run(code, data or _data())
+
+
+def test_cash_account_refuses_shorts_and_unsettled_cash():
+    res, algo = _acct('''        self.set_brokerage_model(BrokerageName.DEFAULT, AccountType.CASH)
+        self.add_equity("AAA")
+        self.add_equity("BBB")
+        self._step = 0
+    def on_data(self, data):
+        self._step += 1
+        if self._step == 1:
+            self.short = self.market_order("BBB", -10)
+            self.set_holdings("AAA", 0.9)
+        elif self._step == 3:
+            self.liquidate("AAA")
+        elif self._step == 4:
+            self.rebuy = self.set_holdings("BBB", 0.5)        # the AAA proceeds have not settled yet (T+2 in 2019)
+        elif self._step == 7:
+            self.later = self.set_holdings("BBB", 0.5)        # now they have
+''')
+    assert algo.short.status == "invalid" and "cannot sell short" in algo._rejected[0]["reason"]
+    assert algo.rebuy and algo.rebuy[0].status == "invalid" and "settled cash" in algo.rebuy[0]._algo._rejected[-1]["reason"]
+    assert algo.later and algo.later[0].status in ("submitted", "filled")
+
+
+def test_margin_account_caps_gross_at_twice_portfolio_value():
+    res, algo = _acct('''        self.add_equity("AAA")
+        self._done = False
+    def on_data(self, data):
+        if not self._done:
+            self.ok = self.set_holdings("AAA", 1.5)
+            self.too_much = self.market_order("AAA", 10 * self.portfolio.total_portfolio_value / data["AAA"].close)
+            self._done = True
+''')
+    assert algo.ok[0].status == "filled" and algo.too_much.status == "invalid"
+    assert "buying power" in algo._rejected[-1]["reason"]
+
+
+def test_short_locate_refused_for_penny_stock():
+    d = _data()
+    for f in ("close", "open", "high", "low"):
+        getattr(d, f)["BBB"] = getattr(d, f)["BBB"] / 40          # ~ $2.50 a share
+    res, algo = _acct('''        self.add_equity("BBB")
+        self._done = False
+    def on_data(self, data):
+        if not self._done:
+            self.short = self.market_order("BBB", -100)
+            self._done = True
+''', d)
+    assert algo.short.status == "invalid" and "located" in algo._rejected[-1]["reason"]
+
+
+def test_tax_lots_fifo_and_holding_period():
+    algo = qcalgo.QCAlgorithm()
+    algo._ctx = type("C", (), {"i": 0})()
+    algo._book_lots("X", 10, 100.0, "2020-01-02", 0)
+    algo._book_lots("X", 10, 110.0, "2021-06-01", 1)
+    algo._book_lots("X", -15, 120.0, "2021-07-01", 2)       # 10 from 2020 (long-term) + 5 from 2021 (short-term)
+    assert abs(algo._realized["long_term"] - 10 * 20) < 1e-9 and abs(algo._realized["short_term"] - 5 * 10) < 1e-9
+    assert algo.tax_lots("X") == [{"shares": 5, "price": 110.0, "date": "2021-06-01"}]
+
+
+def test_selector_sees_point_in_time_fundamentals():
+    data = _data(tickers=("AAA", "BBB", "CCC"))
+    idx, cols = data.close.index, data.close.columns
+    mcap = pd.DataFrame(np.nan, index=idx, columns=cols)
+    mcap.loc[:, "AAA"], mcap.loc[:, "BBB"] = 5e9, 9e10                 # CCC: no filing → NaN
+    mcap.loc[idx >= idx[250], "AAA"] = 2e11                          # a later filing makes AAA the largest
+    data = codelab.Data(data.close, data.open, data.high, data.low, data.volume, fundamentals={"market_cap": mcap})
+    data.members = pd.DataFrame(True, index=idx, columns=cols)
+    code = '''
+class F(QCAlgorithm):
+    def initialize(self):
+        self.set_start_date(2019, 6, 3)
+        self.add_universe(self.pick)
+        self._seen = []
+    def pick(self, funds):
+        have = [f for f in funds if f.has_fundamental_data and f.market_cap > 0]
+        top = sorted(have, key=lambda f: -f.market_cap)[:1]
+        self._seen.append(str(top[0].symbol) if top else None)
+        return [f.symbol for f in top]
+'''
+    h = qcalgo.static_header(code)
+    assert h["fundamentals"] == ["market_cap"]
+    res, algo = _run(code, data)
+    assert algo._seen[0] == "BBB" and algo._seen[-1] == "AAA" and "CCC" not in algo._seen

@@ -8,6 +8,7 @@ Fixed income and FX on free official data:
   fx_carry()          FXCA — carry vs the dollar from central-bank policy rates, carry-to-risk, implied forwards
 """
 from __future__ import annotations
+from api.market_dates import weekly_last
 
 import logging
 import math
@@ -70,7 +71,7 @@ def breakevens() -> Dict[str, Any]:
             rows.append({"id": sid, "name": names.get(sid, sid), "kind": kinds.get(sid), "last": last, "date": s.index[-1].strftime("%Y-%m-%d"),
                          "chg_1m_bp": chg(30), "chg_1y_bp": chg(365), "percentile_10y": float((w < last).mean()), "min_10y": float(w.min()), "max_10y": float(w.max())})
         df = pd.DataFrame(frames).ffill(limit=40)
-        wk = df.resample("W-FRI").last()
+        wk = weekly_last(df)
         wk = wk[wk.index >= wk.index[-1] - pd.Timedelta(days=365 * 10)]
         hist = [{"date": d.strftime("%Y-%m-%d"), **{k: (round(float(v), 3) if pd.notna(v) else None) for k, v in r.items()}} for d, r in wk.iterrows()]
         get = {r["id"]: r["last"] for r in rows}

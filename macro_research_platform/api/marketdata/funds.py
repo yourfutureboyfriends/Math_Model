@@ -115,6 +115,18 @@ def index_members(code: str) -> Dict[str, Any]:
             rows = _wiki_members(code)
             src = "Wikipedia constituents list (no weights published for free)"
         rows.sort(key=lambda r: -(r.get("weight") or 0))
+        # the source may leave sectors blank (SSGA's holdings file now has "-"): fill from the platform's instrument data
+        missing = [r["symbol"] for r in rows if not r.get("sector") and r.get("symbol")]
+        if missing:
+            try:
+                from api.quant import instruments
+                meta = instruments.meta([str(m).replace(".", "-") if "." in str(m) and str(m).count(".") == 1 and len(str(m).split(".")[1]) == 1 else str(m) for m in missing])
+                by = {k.replace("-", "."): v for k, v in meta.items()} | meta
+                for r in rows:
+                    if not r.get("sector"):
+                        r["sector"] = (by.get(r["symbol"]) or {}).get("sector")
+            except Exception:                                      # noqa: BLE001 — sectors are optional
+                pass
         sectors: Dict[str, float] = {}
         for r in rows:
             if r.get("sector") and r.get("weight"):

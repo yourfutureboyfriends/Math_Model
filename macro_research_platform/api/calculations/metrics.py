@@ -171,6 +171,22 @@ def calculate_sector_allocation(
             "conviction": conviction,
         })
 
+    # every GICS sector is shown: those the regime's playbook does not mention carry no playbook weight, and their signal
+    # comes from relative strength alone
+    for sector in ("Technology", "Healthcare", "Financials", "Energy", "Utilities", "Consumer", "Consumer Staples",
+                   "Industrials", "Materials", "Real Estate", "Communication"):
+        if sector in weights:
+            continue
+        st = stats.get(sector)
+        score = round(2 * st["percentile"] - 1, 2) if st else None
+        z = round(st["z"], 2) if st and st.get("z") is not None else None
+        signal = "Neutral" if z is None else "Overweight" if z > 0.5 else "Underweight" if z < -0.5 else "Neutral"
+        rationale = f"not in the {regime} playbook; signal from relative strength only"
+        if st:
+            rationale += f" — {st.get('etf', sector)} 3m vs SPY {st['relativeReturn']:+.1%} ({st['percentile']:.0%} of past year)"
+        sectors.append({"name": sector, "score": score, "z_score": z, "allocation": 0.0, "rationale": rationale,
+                        "signal": signal, "playbookStance": "Not in playbook", "conviction": "Low"})
+
     scored = [x["score"] for x in sectors if x["score"] is not None]
     return {
         "sectors": sectors,

@@ -61,7 +61,7 @@ except ImportError:                            # pragma: no cover — the browse
     except ImportError:
         _qc = None
 
-ENGINE_VERSION = "2026.10-ledger.5"
+ENGINE_VERSION = "2026.10-ledger.6"   # .6: walk-forward grid rows from each set's own account (no re-runs); share orders
 UNIVERSE_LIMIT = 80                   # one capability limit, shared by the loader, the sandbox and the UI
 LARGE_UNIVERSE_LIMIT = 4000           # server jobs (TRADABLE_UNIVERSE or a long UNIVERSE list) — one global cross-section
 TRADING_DAYS = 252
@@ -1214,7 +1214,8 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
                         "exec_price": ["next open", "next-day VWAP", "next close"][xmode],
                         "max_participation": maxp, "participation_capped_days": int((out["capped"][sl] > 0).sum()),
                         "margin_calls": margin_calls,
-                        **({"mode": "event-driven", "conditional_fills": cond_fills, "open_orders": len(ctx._cond)}
+                        **({"mode": "event-driven", "conditional_fills": cond_fills, "open_orders": len(ctx._cond),
+                            **({"algorithm": ctx.report} if getattr(ctx, "report", None) else {})}
                            if on_bar is not None else {}),
                         **({"option_notional_avg": round(float(np.nanmean(opt_notional[sl])), 3),
                             "option_notional_max": round(float(np.nanmax(opt_notional[sl])), 3),
@@ -1539,6 +1540,8 @@ def load_strategy(code: str, namespace: Optional[Dict[str, Any]] = None) -> Dict
         ns.setdefault("BENCHMARK", qc.get("benchmark") or "SPY")
         if qc["dynamic_universe"]:
             ns.setdefault("TRADABLE_UNIVERSE", "SP500_PIT")
+        if qc.get("fundamentals"):
+            ns.setdefault("FUNDAMENTALS", qc["fundamentals"])
     if not callable(fn) and not callable(ob):
         raise ValueError("Define strategy(data, **params) returning target weights, or on_bar(ctx, **params) for an "
                          "event-driven strategy.")
@@ -2300,9 +2303,10 @@ def evaluate(fn: Optional[Callable], data: Data, params: Dict[str, Sequence[Any]
     elif len(combos) > 1:
         # holdout years never take part in selection
         sel_end = pd.Timestamp(holdout) if holdout else None
-        standalone = []
+        standalone, own = [], []
         for Wp in weight_sets:
             r = backtest(Wp, data, costs, start)["ret"]
+            own.append(r)
             standalone.append(r[r.index < sel_end] if sel_end is not None else r)
         chosen = select_walk_forward(standalone, combos, rf=data.rf)
         if holdout:                                            # keep the last pre-holdout choice through the holdout
@@ -2316,14 +2320,17 @@ def evaluate(fn: Optional[Callable], data: Data, params: Dict[str, Sequence[Any]
         oos_start = str(pd.Timestamp(f"{chosen[0]['year']}-01-01").date())
         res = backtest(Wc, data, costs, oos_start, decisions=Dc)
         rerun = lambda c: backtest(Wc, data, c, oos_start, decisions=Dc)
-        full_ins = [metrics(backtest(Wp, data, costs, oos_start)["ret"], data.rf) for Wp in weight_sets]
+        # each parameter set's own account (the run that scored it), measured over the out-of-sample years — no extra
+        # fresh-start backtests (they cost one full ledger run per set)
+        full_ins = [metrics(r[r.index >= pd.Timestamp(oos_start)], data.rf) for r in own]
         ins_obj = [f.get("log_growth") if f.get("log_growth") is not None else -1e9 for f in full_ins]
         b = int(np.argmax(ins_obj))
         opt = {"walk_forward": True, "chosen": chosen, "switches": switches, "oos_start": oos_start,
                "in_sample_best": {"params": combos[b], **full_ins[b]},
                "grid": [{"params": c, **f} for c, f in zip(combos, full_ins)],
                "note": "One continuous account: switching parameter sets trades from current holdings to the new "
-                       "targets and pays those costs."}
+                       "targets and pays those costs. Grid rows: each set's own account (started with the data) over "
+                       "the out-of-sample years."}
     else:
         res = backtest(weight_sets[0], data, costs, start)
         opt = {"walk_forward": False, "params": combos[0]}

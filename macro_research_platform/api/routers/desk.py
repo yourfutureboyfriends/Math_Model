@@ -52,7 +52,7 @@ async def _fund_block() -> Dict[str, Any]:
             "limits": {"overall": limits["overall"], "breaches": limits["breaches"],
                        "warnings": limits["warnings"], "top_utilization": top},
             "track_record": {k: rec.get(k) for k in ("available", "observations", "total_return",
-                                                    "annualized_vol", "sharpe", "max_drawdown")}}
+                                                    "annualized_vol", "sharpe", "max_drawdown", "ratio_note")}}
 
 
 async def _macro_block() -> Dict[str, Any]:

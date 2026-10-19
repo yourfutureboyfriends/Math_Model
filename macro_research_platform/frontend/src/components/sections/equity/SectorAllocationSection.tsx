@@ -189,7 +189,8 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
             <thead>
               <tr className="border-b border-border bg-surface-2">
                 <th className="text-left py-2 px-2 text-2xs text-text-tertiary uppercase font-medium">Sector</th>
-                <th className="text-left py-2 px-2 text-2xs text-text-tertiary uppercase font-medium">Signal</th>
+                <th className="text-left py-2 px-2 text-2xs text-text-tertiary uppercase font-medium" title="The regime playbook's stance (policy)">Playbook</th>
+                <th className="text-left py-2 px-2 text-2xs text-text-tertiary uppercase font-medium" title="The playbook stance unless relative strength clearly contradicts it (z beyond ±0.5)">Signal</th>
                 <th className="text-right py-2 px-2 text-2xs text-text-tertiary uppercase font-medium">Score</th>
                 <th className="text-center py-2 px-2 text-2xs text-text-tertiary uppercase font-medium" title={epsAvailable ? undefined : (earningsData?.reason || 'EPS-revision feed unavailable')}>
                   EPS Rev{!epsAvailable && <span className="text-amber ml-0.5" aria-label="feed unavailable">*</span>}
@@ -208,6 +209,7 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
                   )}
                 >
                   <td className="py-2 px-2 text-sm text-text-primary">{sector.name}</td>
+                  <td className="py-2 px-2 text-2xs text-text-tertiary">{(sector as any).playbookStance ?? '—'}</td>
                   <td className="py-2 px-2">
                     <span className={getSignalTag(sector.signal)}>
                       {sector.signal}

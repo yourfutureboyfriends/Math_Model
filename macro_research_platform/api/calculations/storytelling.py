@@ -51,7 +51,12 @@ def explain_growth(spx_level: Optional[float], spx_history: Optional[List[float]
         _contrib("SPX 1M return", recent * 100, recent, "%"),
         _contrib("SPX 6M return", trailing * 100, trailing, "%"),
     ]
-    text = (f"Growth {trend}: S&P 500 {recent * 100:+.1f}% over 1M "
+    # the level (score) and its direction (trend) are separate facts: a high score that is falling is "strong but
+    # slowing", not "deteriorating" next to another panel's "bullish"
+    level = "strong" if score >= 0.6 else "weak" if score <= 0.4 else "moderate"
+    move = {"improving": "and improving", "deteriorating": "but slowing" if level == "strong" else "and slowing",
+            "stable": "and steady"}.get(trend, "")
+    text = (f"Growth {level} {move}: S&P 500 {recent * 100:+.1f}% over 1M "
             f"(vs {trailing * 100:+.1f}% over 6M) → score {score:.2f}.")
     return _pack("Growth", score, trend, text, contributions)
 

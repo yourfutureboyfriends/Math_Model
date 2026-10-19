@@ -96,3 +96,22 @@ def ny_fx_closes(hourly, now=None) -> dict:
         if complete and not before.empty:
             out[day.isoformat()] = float(before.iloc[-1])
     return out
+
+
+def weekly_last(obj, how: str = "last"):
+    """Weekly (Friday) resample whose final label is the last real observation, not the coming Friday — a week in
+    progress must not be dated in the future ("as of 2026-10-23" on a Monday). how: last | prod."""
+    import pandas as pd
+    r = obj.resample("W-FRI")
+    out = r.last() if how == "last" else r.prod()
+    return clip_week_labels(out, obj.index.max())
+
+
+def clip_week_labels(obj, last_obs):
+    import pandas as pd
+    if len(obj) and obj.index[-1] > last_obs:
+        idx = list(obj.index)
+        idx[-1] = pd.Timestamp(last_obs)
+        obj = obj.copy()
+        obj.index = pd.DatetimeIndex(idx, name=obj.index.name)
+    return obj

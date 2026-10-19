@@ -4,6 +4,7 @@ rotation graph (RRG) and FX forwards from covered interest parity (FRD). Free da
 Yahoo prices, FRED short-term rates.
 """
 from __future__ import annotations
+from api.market_dates import weekly_last
 
 import math
 from typing import Any, Dict, List, Optional
@@ -67,7 +68,7 @@ def correlation(symbols: List[str], period: str = "1y", freq: str = "daily") -> 
     def fetch():
         px = _closes(syms, period).ffill()
         if freq == "weekly":
-            px = px.resample("W-FRI").last()
+            px = weekly_last(px)
         # log returns on each instrument's own trading days, aligned (different holidays per market)
         rets = np.log(px).diff().dropna(how="all")
         rets = rets.dropna(axis=1, thresh=int(len(rets) * 0.6))
@@ -133,7 +134,7 @@ def rrg(universe: str = "us_sectors", tail: int = 8, benchmark: Optional[str] = 
 
     def fetch():
         syms = [m[0] for m in members]
-        px = _closes(syms + [bench], "3y").ffill().resample("W-FRI").last().dropna(how="all")
+        px = weekly_last(_closes(syms + [bench], "3y").ffill()).dropna(how="all")
         if bench not in px:
             raise NotFound(f"No prices for the benchmark {bench}.")
         out = []

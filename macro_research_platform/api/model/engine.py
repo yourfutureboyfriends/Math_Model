@@ -217,6 +217,7 @@ async def run_model(params: Optional[Dict] = None, user: str = "system", persist
                             "Gold history starts in 2000 and commodities in 2002."],
         },
     }
+    result["computed_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M+00:00")
     _CACHE[key] = (time.time(), result)
     if result.get("available"):
         await asyncio.to_thread(_save_snapshot, key, result)

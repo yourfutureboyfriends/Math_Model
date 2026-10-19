@@ -1326,6 +1326,23 @@ async def lifespan(app: FastAPI):
         )
         logger.info("[STARTUP] Scheduled daily_nav_snapshot at 21:30 UTC weekdays")
 
+        # The cron only fires while the server is up: when it starts after today's close and today's NAV is missing,
+        # record it now (same day, so the marks are still today's). Earlier missed days stay as gaps — a snapshot taken
+        # later would use later prices.
+        async def _nav_catch_up():
+            from datetime import datetime as _dt, timezone as _tz
+            from api import fund_store
+            now = _dt.now(_tz.utc)
+            if now.weekday() < 5 and (now.hour, now.minute) >= (21, 30):
+                have = {r.get("date") for r in (fund_store.nav_history() or [])} if hasattr(fund_store, "nav_history") else set()
+                if now.date().isoformat() not in have:
+                    try:
+                        await take_nav_snapshot()
+                        logger.info("[STARTUP] daily_nav_snapshot caught up for %s", now.date())
+                    except Exception as e:                                # noqa: BLE001
+                        logger.warning("[STARTUP] NAV catch-up failed: %s", e)
+        _scheduler.add_job(func=_nav_catch_up, trigger="date", id="nav_catch_up", replace_existing=True)
+
         # FIXED: Phase 7 - Add new consolidated data refresh jobs
         # Price refresh every 60 seconds via new provider architecture
         _scheduler.add_job(
@@ -4189,6 +4206,27 @@ async def get_fx_rates():
                               "change1m": ch1m, "vol1m": _realized_vol(closes, 21),
                               "trend": (None if ch1m is None else "UP" if ch1m > 1 else "DOWN" if ch1m < -1 else "FLAT"),
                               "as_of": days[-1], "available": True})
+    # Live spot: the latest 5-minute bar of the session in progress (FX trades around the clock); the daily change is
+    # measured from the last completed New York close, and both times are reported.
+    def _live(ticker):
+        try:
+            import yfinance as yf
+            h = yf.Ticker(ticker).history(period="1d", interval="5m")
+            if h is None or h.empty:
+                return None
+            ts = h.index[-1]
+            return float(h["Close"].iloc[-1]), (ts.tz_convert("UTC") if ts.tzinfo else ts).strftime("%Y-%m-%d %H:%M UTC")
+        except Exception:
+            return None
+    lives = await asyncio.gather(*[asyncio.to_thread(_live, t) for _, _, t, _ in flat], return_exceptions=True)
+    for (g, pair, ticker, dp), lv in zip(flat, lives):
+        row = next((x for x in result[g] if x["pair"] == pair), None)
+        if row is None or not row.get("available") or isinstance(lv, Exception) or not lv:
+            continue
+        price, when = lv
+        close = row["spot"]
+        row.update({"close": close, "close_as_of": row["as_of"], "spot": round(price, dp), "live_at": when,
+                    "change1d": round((price / close - 1) * 100, 3) if close else row["change1d"]})
     dxy_dated = await _fetch_dated_closes_literal("DX-Y.NYB")
     dxy = None
     if dxy_dated:

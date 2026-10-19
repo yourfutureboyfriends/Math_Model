@@ -155,9 +155,15 @@ def auctions(kind: str = "Note", limit: int = 30) -> Dict[str, Any]:
         r.raise_for_status()
         out = []
         for a in r.json():
-            tot = _f(a.get("totalAccepted")) or 0
-            share = lambda k: (_f(a.get(k)) or 0) / tot if tot else None
-            out.append({"cusip": a.get("cusip"), "term": a.get("securityTerm"), "auction_date": str(a.get("auctionDate"))[:10],
+            # bidder shares of the competitive awards (TreasuryDirect's current field names; the older ones as fallback)
+            ind = _f(a.get("indirectBiddersCompetitiveParAwarded")) or _f(a.get("indirectBidderAccepted"))
+            dirc = _f(a.get("directBiddersCompetitiveParAwarded")) or _f(a.get("directBidderAccepted"))
+            pd_ = _f(a.get("primaryDealersCompetitiveParAwarded")) or _f(a.get("primaryDealerAccepted"))
+            tot = sum(x for x in (ind, dirc, pd_) if x) or _f(a.get("totalAccepted")) or 0
+            parts = {"indirectBidderAccepted": ind, "directBidderAccepted": dirc, "primaryDealerAccepted": pd_}
+            share = lambda k: (parts.get(k) or 0) / tot if tot and parts.get(k) is not None else None
+            when = a.get("auctionDate") or a.get("competitiveAuctionCloseDate")
+            out.append({"cusip": a.get("cusip"), "term": a.get("securityTerm"), "auction_date": str(when)[:10] if when else None,
                         "issue_date": str(a.get("issueDate"))[:10], "maturity": str(a.get("maturityDate"))[:10],
                         "high_yield": _f(a.get("highYield")) or _f(a.get("highDiscountRate")) or _f(a.get("highInvestmentRate")),
                         "bid_to_cover": _f(a.get("bidToCoverRatio")), "size_bn": (_f(a.get("offeringAmount")) or 0) / 1e9,

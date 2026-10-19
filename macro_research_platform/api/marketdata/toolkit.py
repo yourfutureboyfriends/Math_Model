@@ -11,6 +11,7 @@ Analysis tools on free data:
   fred_series(id)   ECOS — one FRED series with its metadata
 """
 from __future__ import annotations
+from api.market_dates import weekly_last
 
 import io
 import logging
@@ -373,7 +374,7 @@ def central_banks() -> Dict[str, Any]:
                         "change_1y_bp": (last - float(y1.iloc[-1])) * 100 if len(y1) else None,
                         "hikes_12m": int((moves12 > 1e-9).sum()), "cuts_12m": int((moves12 < -1e-9).sum()),
                         "peak_6y": float(sr.max()), "trough_6y": float(sr.min())})
-            wk = sr.resample("W-FRI").last().dropna()
+            wk = weekly_last(sr).dropna()
             hist[area] = wk
         H = pd.DataFrame(hist)
         rows = [{"date": d.strftime("%Y-%m-%d"), **{k: (round(float(v), 3) if pd.notna(v) else None) for k, v in r_.items()}} for d, r_ in H.iterrows()]

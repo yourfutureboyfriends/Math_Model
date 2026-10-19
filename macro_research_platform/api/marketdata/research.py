@@ -11,6 +11,7 @@ Research functions built on free official data:
                                  historical replays)
 """
 from __future__ import annotations
+from api.market_dates import weekly_last
 
 import concurrent.futures as cf
 import logging
@@ -230,7 +231,7 @@ def credit() -> Dict[str, Any]:
                         "percentile": pct, "z": z, "min": float(s.min()), "max": float(s.max()), "start": s.index[0].strftime("%Y-%m-%d"),
                         "unit": "%" if sid.endswith("EY") else "% (spread)"})
         df = pd.DataFrame(frames).ffill()
-        wk = df.resample("W-FRI").last().dropna(how="all")
+        wk = weekly_last(df).dropna(how="all")
         hist = [{"date": d.strftime("%Y-%m-%d"), **{k: (round(float(v), 3) if v == v else None) for k, v in r.items()}} for d, r in wk.iterrows()]
         derived = {}
         if {"BAMLH0A0HYM2", "BAMLC0A0CM"} <= set(df):
@@ -404,7 +405,7 @@ def portfolio_risk(holdings: List[Dict[str, Any]]) -> Dict[str, Any]:
     yrs = len(port_s) / 252
     cagr = float(eq.iloc[-1] ** (1 / yrs) - 1) if yrs > 0 and eq.iloc[-1] > 0 else None
     # weekly returns for beta / correlation / risk contribution (robust to markets closing at different hours)
-    Rw = (1 + R).resample("W-FRI").prod() - 1
+    Rw = weekly_last(1 + R, how="prod") - 1
     Rw = Rw.iloc[1:]
     pw = Rw.to_numpy() @ w
     cov = np.cov(Rw.to_numpy().T) * 52 if len(syms) > 1 else np.array([[float(np.var(Rw.iloc[:, 0])) * 52]])
@@ -413,7 +414,7 @@ def portfolio_risk(holdings: List[Dict[str, Any]]) -> Dict[str, Any]:
     contrib = (w * (cov @ w)) / pvar if pvar > 0 else np.zeros_like(w)
     spx_w = None
     if "^GSPC" in prox:
-        spx_w = prox["^GSPC"].resample("W-FRI").last().pct_change().reindex(Rw.index)
+        spx_w = weekly_last(prox["^GSPC"]).pct_change().reindex(Rw.index)
     beta = None
     if spx_w is not None:
         ok = spx_w.notna()
@@ -438,7 +439,7 @@ def portfolio_risk(holdings: List[Dict[str, Any]]) -> Dict[str, Any]:
             g[r[key]] = g.get(r[key], 0.0) + r["weight"]
         return sorted(({"name": k, "weight": v} for k, v in g.items()), key=lambda x: -abs(x["weight"]))
     # factor shocks: univariate weekly betas of each holding to each proxy (captures what usually moves with it)
-    pxw = prox.resample("W-FRI").last()
+    pxw = weekly_last(prox)
     shocks = []
     betas: Dict[str, Dict[str, float]] = {}
     for p in SHOCK_PROXIES:

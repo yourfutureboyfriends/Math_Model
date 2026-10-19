@@ -161,8 +161,8 @@ function BookTiles({ d }: { d: Desk }) {
       <Tile label="Limits" value={f.limits?.overall ?? '—'} className={STATUS_TONE[f.limits?.overall ?? ''] ?? ''}
         sub={`${f.limits?.breaches.length ?? 0} breach · ${f.limits?.warnings.length ?? 0} warn`} />
       {tr?.available && (
-        <Tile label="Track record" value={`Sharpe ${tr.sharpe?.toFixed(2) ?? '—'}`}
-          sub={`${fmtPct(tr.total_return ?? null, 1)} total · max DD ${fmtPct(tr.max_drawdown ?? null, 1)}`} />
+        <Tile label="Track record" value={tr.sharpe == null ? `${tr.observations ?? 0} days` : `Sharpe ${tr.sharpe.toFixed(2)}`}
+          sub={`${fmtPct(tr.total_return ?? null, 2)} total · max DD ${fmtPct(tr.max_drawdown ?? null, 2)}${tr.sharpe == null ? ' · ratios from 60 days' : ''}`} />
       )}
     </>
   );

@@ -102,6 +102,7 @@ function NavTab({ ov }: { ov: any }) {
             <Stat label="Max DD" value={pctSigned(tr.max_drawdown)} tone="text-red" />
             <Stat label="Hit rate" value={pct(tr.hit_rate, 0)} />
             <Stat label="Days" value={String(tr.observations)} />
+            {tr.ratio_note && <div className="col-span-2 md:col-span-6 text-[10px] text-text-tertiary">{tr.ratio_note} (returns are not annualised before a full year).</div>}
           </div>
         ) : (
           <div className="text-xs text-text-secondary">

@@ -5,9 +5,16 @@ blocks the IP, which took the running platform's data offline. Tests that need F
 without a key. Set MACRO_LIVE_FRED=1 to run them against the real API.
 """
 import os
+import tempfile
 
 if os.environ.get("MACRO_LIVE_FRED") != "1":
     os.environ["FRED_API_KEY"] = ""
+
+# Tests never touch the running platform's database: every module resolves the app database through DATABASE_URL
+# (api/core/app_db.py), so point it at a throwaway file before anything imports the config. (Deploys, stops and audit
+# entries from test runs were landing in the live audit log.) MACRO_TEST_REAL_DB=1 opts out.
+if os.environ.get("MACRO_TEST_REAL_DB") != "1":
+    os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(tempfile.mkdtemp(prefix="macro_test_db_"), "app.db")
 
 
 import pytest

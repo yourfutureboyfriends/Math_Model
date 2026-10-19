@@ -22,6 +22,7 @@ interface FXPair {
   vol1m: number | null;
   trendSignal: string;
   asOf?: string | null;
+  liveAt?: string | null;
 }
 
 interface FXData {
@@ -52,7 +53,7 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
 
   const toPair = (p: any): FXPair => ({
     pair: p.pair, spot: p.spot ?? null, change1d: p.change1d ?? null, change1w: p.change1w ?? null,
-    change1m: p.change1m ?? null, vol1m: p.vol1m ?? null, trendSignal: p.trend ?? '--', asOf: p.as_of,
+    change1m: p.change1m ?? null, vol1m: p.vol1m ?? null, trendSignal: p.trend ?? '--', asOf: p.close_as_of ?? p.as_of, liveAt: p.live_at ?? null,
   });
 
   // Build FX data from store prices (fallback when the fx-rates endpoint isn't loaded yet)
@@ -209,7 +210,8 @@ export function FXMonitorSection({ data: propData }: FXMonitorSectionProps) {
               >
                 <div className="text-2xs text-text-tertiary uppercase">{fx.pair}</div>
                 <div className="font-mono text-lg">{fmtFx(fx.spot)}</div>
-                {fx.asOf && <div className="text-2xs text-text-tertiary">NY close {fx.asOf} · 1D</div>}
+                {fx.liveAt ? <div className="text-2xs text-text-tertiary">live {fx.liveAt.slice(11)} · 1D vs NY close {fx.asOf}</div>
+                  : fx.asOf && <div className="text-2xs text-text-tertiary">NY close {fx.asOf} · 1D</div>}
                 <div className="flex items-center justify-between text-xs mt-1">
                   <span className={cn(
                     (fx.change1d ?? 0) > 0 ? 'text-green' : (fx.change1d ?? 0) < 0 ? 'text-red' : 'text-text-secondary'

@@ -25,13 +25,15 @@ Semantics (API version qc-compat/1, DAILY resolution — every result says so):
                 stop-limit and trailing-stop orders are checked against each later session's range (gap-through fills
                 at the open). Quantities are shares; participation caps can split a market order over days
                 (PARTIALLY_FILLED events). Costs, borrow, margin calls, lots: the Code Lab's cost model.
-  indicators    stateful, updated bar by bar with LEAN's definitions (SMA, EMA seeded from the first value, Wilder RSI
-                and ATR, MACD, Bollinger Bands on population standard deviation, ROC, momentum, max/min, std, ADX).
+  indicators    stateful, updated bar by bar with LEAN's definitions (SMA, EMA seeded with the SMA of its first n inputs,
+                Wilder RSI and ATR, MACD, Bollinger Bands on population standard deviation, ROC, momentum, max/min of the
+                close, std, ADX) — checked against LEAN's own reference data (api/tests/test_qcalgo_lean_parity.py).
   warm-up       indicators are primed from the history before the start date, bar by bar; set_warm_up(n) also calls
                 on_data for those bars with is_warming_up = True (orders are refused, as in LEAN).
   universes     add_universe(selector) runs the selector each session on every point-in-time S&P 500 member with a
-                bar (fields: symbol, price, volume, dollar_volume; no historical market cap); additions and removals
-                call on_securities_changed. self.universe.etf("SPY" | "IVV" | "VOO") = point-in-time S&P 500.
+                bar (symbol, price, volume, dollar_volume, and SEC point-in-time fundamentals with LEAN's names when used:
+                market_cap, valuation_ratios.*, operation_ratios.*, earning_reports.*); additions and removals call
+                on_securities_changed. self.universe.etf("SPY" | "IVV" | "VOO") = point-in-time S&P 500.
   not available historical option / future chains, consolidators, intraday bars, custom data, alpha/portfolio
                 framework models, live brokerages — the importer's compatibility report lists them by line.
 """
@@ -274,7 +276,8 @@ class SimpleMovingAverage(Indicator):
 
 
 class ExponentialMovingAverage(Indicator):
-    """LEAN: the first value is the input itself; then k·x + (1 − k)·previous with k = 2/(n + 1)."""
+    """LEAN: 0 until ready; the value at sample n is the simple average of the first n inputs; then
+    k·x + (1 − k)·previous with k = 2/(n + 1)."""
 
     def __init__(self, period: int, smoothing_factor: Optional[float] = None, name: str = ""):
         super().__init__(name or f"EMA({period})")
@@ -282,10 +285,17 @@ class ExponentialMovingAverage(Indicator):
         self.period = self.warm_up_period = int(period)
         self.k = smoothing_factor if smoothing_factor is not None else 2.0 / (period + 1)
         self._v: Optional[float] = None
+        self._seed: List[float] = []
 
     def _compute(self, value):
         x = self._x(value)
-        self._v = x if self._v is None else self.k * x + (1 - self.k) * self._v
+        if self._v is None:
+            self._seed.append(x)
+            if len(self._seed) < self.period:
+                return 0.0
+            self._v = sum(self._seed) / self.period
+            return self._v
+        self._v = self.k * x + (1 - self.k) * self._v
         return self._v
 
 
@@ -456,13 +466,13 @@ class Maximum(Indicator):
         self._w: deque = deque(maxlen=self.period)
 
     def _compute(self, value):
-        self._w.append(value.high if isinstance(value, TradeBar) else self._x(value))
+        self._w.append(self._x(value))                    # LEAN's helpers feed the close
         return max(self._w)
 
 
 class Minimum(Maximum):
     def _compute(self, value):
-        self._w.append(value.low if isinstance(value, TradeBar) else self._x(value))
+        self._w.append(self._x(value))
         return min(self._w)
 
 
@@ -492,9 +502,12 @@ class AverageDirectionalIndex(Indicator):
         t = self._tr.current.value
         pdi = 100 * self._pdm.current.value / t if t else 0.0
         ndi = 100 * self._ndm.current.value / t if t else 0.0
+        if self._tr.samples < self.period:                  # LEAN: DI is 0 until the smoothed sums are ready
+            return 0.0
         self.positive_directional_index, self.negative_directional_index = IndicatorDataPoint(None, pdi), IndicatorDataPoint(None, ndi)
-        dx = 100 * abs(pdi - ndi) / (pdi + ndi) if pdi + ndi else 0.0
-        self._adx.update(None, dx)
+        if pdi + ndi == 0:
+            return 50.0
+        self._adx.update(None, 100 * abs(pdi - ndi) / (pdi + ndi))
         return self._adx.current.value
 
 
@@ -859,17 +872,52 @@ class _DollarVolume:
     Top = top
 
 
-class Fundamental:
-    """What a universe selector receives per stock and session. Historical market cap and Morningstar fields are not
-    available (no free point-in-time source) — has_fundamental_data is False."""
+class _Field(float):
+    """A Morningstar-style multi-period field: usable as a number, or via .value / .one_year / .twelve_months."""
 
-    def __init__(self, symbol: Symbol, price: float, volume: float):
+    @property
+    def value(self):
+        return float(self)
+
+    one_year = twelve_months = three_months = value
+
+
+class _Group:
+    def __init__(self, **kv):
+        for k, v in kv.items():
+            setattr(self, k, v)
+
+
+# LEAN Fundamental field → Code Lab point-in-time fundamental (SEC filings as first filed, from the next session)
+FUND_FIELDS = {"market_cap": "market_cap", "pe_ratio": "earnings_yield", "earning_yield": "earnings_yield",
+               "pb_ratio": "book_to_price", "book_value_yield": "book_to_price", "ps_ratio": "sales_to_price",
+               "sales_yield": "sales_to_price", "fcf_yield": "fcf_yield", "roe": "roe", "gross_margin": "gross_profitability",
+               "debt_to_assets": "leverage", "basic_eps": "eps_ttm", "diluted_eps": "eps_ttm"}
+
+
+class Fundamental:
+    """What a universe selector receives per stock and session: price, volume, dollar volume, and — when the selector uses
+    them — point-in-time fundamentals from SEC filings (US filers): market_cap; valuation_ratios.pe_ratio, pb_ratio,
+    ps_ratio, earning_yield, fcf_yield; operation_ratios.roe, gross_margin, debt_to_assets;
+    earning_reports.basic_eps.twelve_months. Missing values are NaN; has_fundamental_data says whether any exist."""
+
+    def __init__(self, symbol: Symbol, price: float, volume: float, fund: Optional[Dict[str, float]] = None):
         self.symbol, self.price, self.volume = symbol, price, volume
         self.dollar_volume = price * volume
-        self.has_fundamental_data = False
-        self.market_cap = None
-        self.Symbol, self.Price, self.Volume, self.DollarVolume, self.HasFundamentalData = (
-            symbol, price, volume, self.dollar_volume, False)
+        f = fund or {}
+        g = lambda k: float(f.get(k, np.nan)) if f.get(k) is not None else float("nan")
+        inv = lambda k: (1.0 / g(k)) if g(k) and np.isfinite(g(k)) and g(k) > 0 else float("nan")
+        self.has_fundamental_data = any(np.isfinite(v) for v in f.values() if v is not None)
+        self.market_cap = g("market_cap")
+        self.valuation_ratios = _Group(pe_ratio=inv("earnings_yield"), earning_yield=g("earnings_yield"),
+                                       pb_ratio=inv("book_to_price"), book_value_yield=g("book_to_price"),
+                                       ps_ratio=inv("sales_to_price"), sales_yield=g("sales_to_price"), fcf_yield=g("fcf_yield"))
+        self.operation_ratios = _Group(roe=_Field(g("roe")), gross_margin=_Field(g("gross_profitability")),
+                                       debt_to_assets=_Field(g("leverage")))
+        self.earning_reports = _Group(basic_eps=_Field(g("eps_ttm")), diluted_eps=_Field(g("eps_ttm")))
+        self.Symbol, self.Price, self.Volume, self.DollarVolume, self.HasFundamentalData, self.MarketCap = (
+            symbol, price, volume, self.dollar_volume, self.has_fundamental_data, self.market_cap)
+        self.ValuationRatios, self.OperationRatios, self.EarningReports = self.valuation_ratios, self.operation_ratios, self.earning_reports
 
 
 CoarseFundamental = Fundamental
@@ -927,6 +975,12 @@ class QCAlgorithm:
         self._approx: set = set()
         self._params: Dict[str, Any] = {}
         self._log: List[str] = []
+        # account model (LEAN-style pre-trade checks): margin (Reg-T 2× buying power) or cash (settled cash, no shorts)
+        self._account = AccountType.MARGIN
+        self._unsettled: List[tuple] = []                  # (settlement session position, proceeds)
+        self._lots: Dict[str, List[List[Any]]] = {}       # symbol → FIFO lots [shares (signed), price, date]
+        self._realized = {"short_term": 0.0, "long_term": 0.0}
+        self._rejected: List[Dict[str, Any]] = []
         self.benchmark = None
         # PascalCase aliases (the older LEAN Python API)
         self.Portfolio, self.Securities, self.Transactions, self.Schedule = self.portfolio, self.securities, self.transactions, self.schedule
@@ -979,7 +1033,8 @@ class QCAlgorithm:
         pass
 
     def set_brokerage_model(self, *a, **k) -> None:
-        pass
+        if AccountType.CASH in a or k.get("account_type") == AccountType.CASH or k.get("accountType") == AccountType.CASH:
+            self._account = AccountType.CASH
 
     def set_security_initializer(self, *a, **k) -> None:
         self._approx.add("set_security_initializer: ignored (the Code Lab's cost and fill models apply)")
@@ -1103,10 +1158,10 @@ class QCAlgorithm:
         return self._reg(symbol, Momentum(period))
 
     def max(self, symbol, period: int, *a, **k) -> Maximum:
-        return self._reg(symbol, Maximum(period), True)
+        return self._reg(symbol, Maximum(period))
 
     def min(self, symbol, period: int, *a, **k) -> Minimum:
-        return self._reg(symbol, Minimum(period), True)
+        return self._reg(symbol, Minimum(period))
 
     def std(self, symbol, period: int, *a, **k) -> StandardDeviation:
         return self._reg(symbol, StandardDeviation(period))
@@ -1136,6 +1191,13 @@ class QCAlgorithm:
             raise ValueError(f"Order for {t}: not in the universe (add_equity it, or select it in add_universe).")
         if not q:
             return OrderTicket(self, 0, Symbol(t), 0.0, kind, tag)
+        reason = self._pretrade(t, q, prices.get("limit") or prices.get("price"))
+        if reason:
+            tk = OrderTicket(self, 0, Symbol(t), q, kind, tag, **prices)
+            tk.status = OrderStatus.INVALID
+            self._rejected.append({"time": str(self.time)[:10], "symbol": t, "quantity": q, "type": kind, "reason": reason})
+            self._emit(OrderEvent(0, tk.symbol, self.time, OrderStatus.INVALID, message=reason))
+            return tk
         engine_kind = {OrderType.MARKET: "market", OrderType.MARKET_ON_OPEN: "market", OrderType.MARKET_ON_CLOSE: "moc",
                        OrderType.LIMIT: "limit", OrderType.STOP_MARKET: "stop", OrderType.STOP_LIMIT: "stop_limit",
                        OrderType.TRAILING_STOP: "trailing"}[kind]
@@ -1145,6 +1207,109 @@ class QCAlgorithm:
         self._tickets[oid] = tk
         self._emit(OrderEvent(oid, tk.symbol, self.time, OrderStatus.SUBMITTED, message=tag))
         return tk
+
+    # ── account model ──
+    def _price(self, t: str, hint=None) -> float:
+        if hint:
+            return float(hint)
+        sec = self.securities.get(t)
+        px = sec.price if sec is not None and np.isfinite(sec.price) else float(self._ctx.close.get(t, np.nan))
+        return px
+
+    def _open_quantity_all(self, t: Optional[str] = None) -> float:
+        return sum(tk.quantity - tk.quantity_filled for tk in self.transactions.get_open_orders(t))
+
+    def _reserved(self, buys_only: bool) -> float:
+        tot = 0.0
+        for tk in self.transactions.get_open_orders():
+            rem = tk.quantity - tk.quantity_filled
+            if buys_only and rem <= 0:
+                continue
+            tot += abs(rem) * (self._price(_sym(tk.symbol), tk.prices.get("limit") or tk.prices.get("price")) or 0.0)
+        return tot
+
+    def settled_cash(self) -> float:
+        """Cash minus sale proceeds not yet settled (T+2 before 2024-05-28, T+1 after; cash accounts trade on this)."""
+        i = self._ctx.i
+        return self.portfolio.cash - sum(a for due, a in self._unsettled if due > i)
+
+    def _adv(self, t: str) -> float:
+        d, i = self._ctx._data, self._ctx.i
+        sl = slice(max(0, i - 62), i + 1)
+        v = (d.close[t].iloc[sl] * d.volume[t].iloc[sl]).where(d.observed[t].iloc[sl])
+        return float(v.mean()) if v.notna().any() else 0.0
+
+    def _pretrade(self, t: str, q: float, price_hint=None) -> Optional[str]:
+        """LEAN-style pre-trade validation; a reason string rejects the order (status INVALID)."""
+        px = self._price(t, price_hint)
+        if not np.isfinite(px) or px <= 0:
+            return "No price for this security yet"
+        cur = self.portfolio[t].quantity + self._open_quantity_all(t)
+        new = cur + q
+        grows = abs(new) > abs(cur) + 1e-9 or (cur != 0 and np.sign(new) != np.sign(cur) and new != 0)
+        if self._account == AccountType.CASH:
+            if new < -1e-9:
+                return "Cash accounts cannot sell short"
+            if q > 0:
+                need = q * px
+                avail = self.settled_cash() - self._reserved(buys_only=True)
+                if need > avail + 1e-6:
+                    return (f"Insufficient settled cash: the order needs ${need:,.0f}, settled cash available is ${avail:,.0f} "
+                            "(sale proceeds settle T+1; T+2 before 28 May 2024)")
+            return None
+        if grows:
+            # gross exposure once every open order and this one have filled: Σ |shares held + pending| × price
+            names = {k for k, h in self.portfolio.items() if h.invested} | {_sym(tk.symbol) for tk in self.transactions.get_open_orders()} | {t}
+            gross = 0.0
+            for k in names:
+                qk = self.portfolio[k].quantity + self._open_quantity_all(k) + (q if k == t else 0.0)
+                pk = px if k == t else self._price(k)
+                gross += abs(qk) * (pk if np.isfinite(pk) else 0.0)
+            limit = 2.0 * self.portfolio.total_portfolio_value               # Reg-T initial margin: 50%
+            if gross > limit + 1e-6:
+                return (f"Insufficient buying power: gross exposure would be ${gross:,.0f} against ${limit:,.0f} "
+                        "(2× portfolio value, Reg-T initial margin)")
+            if new < -1e-9 and (cur >= 0 or new < cur):
+                if px < 5.0 or self._adv(t) < 5e6:
+                    return ("No shares located to borrow (policy assumption: no shorting below $5 a share or under "
+                            "$5m average daily traded value)")
+        return None
+
+    def tax_lots(self, symbol) -> List[Dict[str, Any]]:
+        """Open lots (FIFO) for a symbol: shares (negative = short), price, date opened."""
+        return [{"shares": s_, "price": p_, "date": d_} for s_, p_, d_ in self._lots.get(_sym(symbol), [])]
+
+    def _book_lots(self, t: str, shares: float, px: float, when: str, i: int) -> None:
+        lots = self._lots.setdefault(t, [])
+        rem = shares
+        while abs(rem) > 1e-9 and lots and np.sign(lots[0][0]) != np.sign(rem):
+            lot = lots[0]
+            closed = min(abs(rem), abs(lot[0])) * np.sign(lot[0])           # signed, as the lot
+            pnl = closed * (px - lot[1])
+            held = (pd.Timestamp(when) - pd.Timestamp(lot[2])).days
+            # US rules: more than a year held → long-term; short sales are short-term
+            self._realized["long_term" if (closed > 0 and held > 365) else "short_term"] += pnl
+            lot[0] -= closed
+            rem += closed
+            if abs(lot[0]) < 1e-9:
+                lots.pop(0)
+        if abs(rem) > 1e-9:
+            lots.append([rem, px, when])
+        if shares < 0:                                                    # sale proceeds settle later
+            lag = 1 if pd.Timestamp(when) >= pd.Timestamp("2024-05-28") else 2
+            self._unsettled.append((i + lag, -shares * px))
+
+    def _report(self) -> Dict[str, Any]:
+        reasons: Dict[str, int] = {}
+        for r in self._rejected:
+            key = r["reason"].split(":")[0]
+            reasons[key] = reasons.get(key, 0) + 1
+        return {"api_version": API_VERSION, "account_type": self._account,
+                "orders": len(self._tickets), "rejected": len(self._rejected), "rejected_by_reason": reasons,
+                "rejected_last": self._rejected[-20:],
+                "realized_pnl": {k: round(v, 2) for k, v in self._realized.items()},
+                "open_lots": sum(len(v) for v in self._lots.values()), "approximations": sorted(self._approx),
+                "log_tail": self._log[-30:]}
 
     def market_order(self, symbol, quantity: float, asynchronous: bool = False, tag: str = "", *a, **k) -> OrderTicket:
         return self._order(symbol, quantity, OrderType.MARKET, tag)
@@ -1245,6 +1410,7 @@ class QCAlgorithm:
         trailing_stop_order)
     SetHoldings, Liquidate, CalculateOrderQuantity, Debug, Log, Error, Plot, Quit, Symbol, GetParameter = (
         set_holdings, liquidate, calculate_order_quantity, debug, debug, debug, plot, quit, symbol, get_parameter)
+    SettledCash, TaxLots = settled_cash, tax_lots
 
 
 class _Quit(Exception):
@@ -1297,7 +1463,9 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
         obs = d.observed.iloc[i].to_numpy()
         ok = obs & (mem.iloc[i].to_numpy() if mem is not None else np.ones(len(cols), bool))
         px, vol = d.close.iloc[i].to_numpy(), d.volume.iloc[i].to_numpy()
-        funds = [Fundamental(Symbol(c), float(px[k]), float(vol[k])) for k, c in enumerate(cols) if ok[k] and c not in st["static"]]
+        fr = {n: d.fund[n].iloc[i].to_numpy() for n in getattr(d, "fund", {}) or {}}
+        funds = [Fundamental(Symbol(c), float(px[k]), float(vol[k]), {n: v[k] for n, v in fr.items()} if fr else None)
+                 for k, c in enumerate(cols) if ok[k] and c not in st["static"]]
         chosen = set()
         for f in algo._selectors:
             chosen |= {_sym(s) for s in (f(funds) or [])}
@@ -1342,6 +1510,7 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
                 h.average_price = ((h.average_price * abs(prev_q)) + px * abs(ex["shares"])) / abs(h.quantity)
             elif abs(h.quantity) <= 1e-9:
                 h.average_price = 0.0
+            algo._book_lots(t, round(ex["shares"], 6), px, ex["date"], ctx.i)
             for oid in ids:
                 tk = algo._tickets.get(oid)
                 if tk is None or abs(qty_left) < 1e-9:
@@ -1406,6 +1575,7 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
             _handler(algo, "on_data")(Slice(algo.time, bars))
         if i == len(idx) - 1:
             _handler(algo, "on_end_of_algorithm")()
+        ctx.report = algo._report()
 
     on_bar.state = st
     return on_bar
@@ -1419,7 +1589,7 @@ SUPPORTED = {
     "roc", "rocp", "momp", "mom", "max", "min", "std", "adx", "register_indicator", "warm_up_indicator",
     "market_order", "market_on_open_order", "market_on_close_order", "limit_order", "stop_market_order",
     "stop_limit_order", "trailing_stop_order", "set_holdings", "liquidate", "calculate_order_quantity", "debug", "log",
-    "error", "plot", "quit", "symbol", "get_parameter", "schedule", "portfolio", "securities", "transactions", "time", "is_warming_up",
+    "error", "plot", "quit", "symbol", "get_parameter", "settled_cash", "tax_lots", "schedule", "portfolio", "securities", "transactions", "time", "is_warming_up",
     "date_rules", "time_rules", "universe", "universe_settings", "settings", "set_brokerage_model", "set_time_zone",
 }
 APPROXIMATED = {
@@ -1442,8 +1612,7 @@ UNSUPPORTED = {
     "set_portfolio_construction": "the Algorithm Framework is not available",
     "set_execution": "the Algorithm Framework is not available", "set_risk_management": "the Algorithm Framework is not available",
     "set_universe_selection": "use add_universe(selector) instead", "option_chain_provider": "no option chains",
-    "fundamentals": "no free point-in-time Morningstar data (SEC filings: use the Code Lab's FUNDAMENTALS)",
-    "market_cap": "no free point-in-time market capitalisation", "object_store": "no object store",
+    "object_store": "no object store", "asset_classification": "no point-in-time sector codes (data.info has today's sector)",
     "download": "no network access from strategy code", "train": "no background training",
 }
 
@@ -1575,6 +1744,7 @@ def static_header(code: str) -> Dict[str, Any]:
             elif m == "set_brokerage_model":
                 src = ast.unparse(n)
                 h["broker"] = "ibkr" if "Interactive" in src or "INTERACTIVE" in src else "alpaca" if "Alpaca" in src or "ALPACA" in src else None
+                h["account_type"] = "cash" if ("AccountType.CASH" in src or "AccountType.Cash" in src) else "margin"
     for n in ast.walk(tree):
         line = getattr(n, "lineno", None)
         if isinstance(n, ast.Attribute):
@@ -1588,6 +1758,12 @@ def static_header(code: str) -> Dict[str, Any]:
                 note("approximated", line, n.attr, APPROXIMATED[a])
         elif isinstance(n, ast.ImportFrom) and n.module not in ("AlgorithmImports", "math", "datetime"):
             note("unsupported", line, f"from {n.module} import", "only AlgorithmImports, math and datetime")
+    used = {_snake(n.attr) for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+    need = sorted({FUND_FIELDS[u] for u in used if u in FUND_FIELDS})
+    if need:
+        h["fundamentals"] = need
+        note("approximated", None, "fundamentals", "point-in-time SEC filings (US filers, as first filed, from the next "
+             "session) in place of Morningstar: " + ", ".join(need))
     if not h["universe"] and not h["dynamic_universe"]:
         raise ValueError("initialize() adds no securities (add_equity('SPY') …) and no universe.")
     h["report"] = sorted(rep, key=lambda r: ({"unsupported": 0, "approximated": 1}[r["level"]], r["line"] or 0))

@@ -410,7 +410,7 @@ async def stage_rebalance(body: StageIn, request: Request):
             "thesis": f"Rebalance ({body.regime or 'current regime'}): {o.get('action', 'ADJUST')} "
                       f"{o.get('side')} {o.get('quantity')} @ ~{o.get('price')}",
             "conviction": "MEDIUM", "rationale": "Regime rebalance engine",
-            "suggested_size": o.get("quantity"), "book": body.book}, user))
+            "suggested_size": o.get("quantity"), "book": body.book, "allow_duplicate": True}, user))
         await _thread(lambda i=idea, o=o: blotter_store.set_order_fields(
             i["id"], side=str(o.get("side", "BUY")).upper(), quantity=float(o.get("quantity") or 0)))
         created.append(idea)
@@ -465,7 +465,7 @@ async def create_order(body: OrderIn, request: Request):
         "symbol": body.symbol, "direction": "LONG" if signed > 0 else "SHORT",
         "thesis": body.thesis or f"{body.side.upper()} {abs(body.quantity):g} {body.symbol.upper()}",
         "conviction": body.conviction, "rationale": "Order ticket",
-        "suggested_size": abs(body.quantity), "book": body.book}, user))
+        "suggested_size": abs(body.quantity), "book": body.book, "allow_duplicate": True}, user))
     await _thread(lambda: blotter_store.set_order_fields(idea["id"], side=body.side.upper(),
                                                          quantity=abs(body.quantity)))
     await _thread(lambda: audit_store.add_decision(

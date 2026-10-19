@@ -33,12 +33,14 @@ def exposures_pct_nav(summary: Dict, nav: float) -> Dict[str, Optional[float]]:
 
 
 def track_record(navs: Sequence[float], periods_per_year: int = 252,
-                 risk_free_annual: float = 0.0) -> Dict:
+                 risk_free_annual: float = 0.0, min_ratio_obs: int = 60) -> Dict:
     """Performance statistics from a chronological NAV series (one value per day).
 
     Returns total/annualized return, annualized vol, Sharpe and Sortino (excess of
     risk_free_annual, a decimal), max and current drawdown, Calmar, hit rate and best/
-    worst day. Needs at least 2 observations; ratios need at least 3 returns.
+    worst day. Needs at least 2 observations. Following performance-presentation practice (GIPS), a return is
+    annualized only once a full year of history exists, and Sharpe / Sortino / Calmar need `min_ratio_obs` returns —
+    a week of NAVs otherwise produces meaningless ratios (a Sharpe of 15 on a 0.02% move).
     """
     v = np.asarray([x for x in navs if x is not None], dtype=float)
     if v.size < 2 or np.any(v <= 0):
@@ -51,15 +53,17 @@ def track_record(navs: Sequence[float], periods_per_year: int = 252,
     rf_p = (1.0 + risk_free_annual) ** (1.0 / periods_per_year) - 1.0
     ex = r - rf_p
     vol = float(r.std(ddof=1) * np.sqrt(periods_per_year)) if n > 1 else None
+    enough = n >= max(3, min_ratio_obs)
     sharpe = (float(ex.mean() / r.std(ddof=1) * np.sqrt(periods_per_year))
-              if n > 2 and r.std(ddof=1) > 0 else None)
+              if enough and r.std(ddof=1) > 0 else None)
     downside = float(np.sqrt(np.mean(np.minimum(ex, 0.0) ** 2)))
     sortino = (float(ex.mean() / downside * np.sqrt(periods_per_year))
-               if n > 2 and downside > 0 else None)
+               if enough and downside > 0 else None)
     peak = np.maximum.accumulate(v)
     dd = v / peak - 1.0
     max_dd = float(dd.min())
-    calmar = (ann_ret / abs(max_dd)) if max_dd < 0 else None
+    calmar = (ann_ret / abs(max_dd)) if max_dd < 0 and n >= periods_per_year else None
+    ann_out = ann_ret if n >= periods_per_year else None
 
     def _r(x, k=4):
         return None if x is None else round(x, k)
@@ -68,7 +72,8 @@ def track_record(navs: Sequence[float], periods_per_year: int = 252,
         "available": True,
         "observations": int(v.size),
         "total_return": _r(total),
-        "annualized_return": _r(ann_ret),
+        "annualized_return": _r(ann_out),
+        "ratio_note": None if enough else f"{n} daily returns — risk-adjusted ratios need at least {min_ratio_obs}",
         "annualized_vol": _r(vol),
         "sharpe": _r(sharpe, 2),
         "sortino": _r(sortino, 2),

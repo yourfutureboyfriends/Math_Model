@@ -124,7 +124,11 @@ function RangeBar({ label, lo, hi, v, type }: { label: string; lo?: number | nul
 
 function QuoteHeaderDense({ q, vwap }: { q: any; vwap?: number | null }) {
   const { ext, cells } = quoteCells(q);
-  const filled = cells.map((c) => (c[0] === 'Avg price' ? [c[0], vwap != null ? fmtPrice(vwap, q.type) : '—'] as [string, string] : c));
+  // company fields mean nothing for a currency, an index or a coin
+  const companyOnly = new Set(['Mkt cap', 'P/E TTM', 'P/E fwd', 'Float', 'Div yield', 'EPS TTM', 'Turnover %']);
+  const nonEquity = ['FX', 'Index', 'Crypto', 'Future', 'Commodity'].includes(q.type);
+  const filled = cells.filter((c) => !(nonEquity && companyOnly.has(c[0])))
+    .map((c) => (c[0] === 'Avg price' ? [c[0], vwap != null ? fmtPrice(vwap, q.type) : '—'] as [string, string] : c));
   return (
     <div className="bg-surface-1 border border-border p-2 flex flex-wrap gap-x-6 gap-y-2">
       <div className="min-w-[200px]">
@@ -141,9 +145,10 @@ function QuoteHeaderDense({ q, vwap }: { q: any; vwap?: number | null }) {
           <RangeBar label="52-week range" lo={q.week52_low} hi={q.week52_high} v={q.price} type={q.type} />
         </div>
       </div>
-      <dl className="flex-1 grid grid-cols-3 sm:grid-cols-6 gap-x-4 gap-y-1 text-[11px] min-w-[300px]">
+      {/* columns from the space the panel actually has (a window breakpoint packed six columns into a narrow pane) */}
+      <dl className="flex-1 grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-x-4 gap-y-1 text-[11px] min-w-[300px]">
         {filled.map(([k, v, tone]) => (
-          <div key={k} className="flex justify-between gap-2"><dt className="text-text-tertiary whitespace-nowrap">{k}</dt><dd className={cn('font-mono tabular-nums text-right', tone ?? 'text-text-primary')}>{v}</dd></div>))}
+          <div key={k} className="flex justify-between gap-2 min-w-0"><dt className="text-text-tertiary whitespace-nowrap">{k}</dt><dd className={cn('font-mono tabular-nums text-right truncate', tone ?? 'text-text-primary')}>{v}</dd></div>))}
       </dl>
     </div>
   );

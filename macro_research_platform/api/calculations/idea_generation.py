@@ -20,6 +20,11 @@ from typing import Dict, List
 from api.calculations.regime import REGIME_CHARACTERISTICS
 from api.calculations.factor_model import FACTOR_PROXIES, FACTOR_LABELS
 
+# Instruments a trade idea can actually be executed in, where the factor's measurement proxy is not tradable
+# (the VIX index itself cannot be bought or sold; VIXY holds short-dated VIX futures).
+TRADE_PROXY: Dict[str, tuple] = {"volatility": ("VIXY", "VIX itself is not tradable — VIXY holds 1–2 month VIX futures "
+                                                        "(it decays in contango)")}
+
 
 def desired_tilts(regime_key: str) -> Dict[str, int]:
     """Translate a regime's biases into a desired sign (+1 long / -1 short / 0 neutral)
@@ -68,7 +73,7 @@ def generate_ideas(dollar_exposures: Dict[str, float], regime_key: str,
     ideas: List[Dict] = []
     for factor, want in tilts.items():
         cur = float(dollar_exposures.get(factor, 0.0))
-        proxy = FACTOR_PROXIES.get(factor, factor)
+        proxy = TRADE_PROXY[factor][0] if factor in TRADE_PROXY else FACTOR_PROXIES.get(factor, factor)
         label = FACTOR_LABELS.get(factor, factor)
         direction = "LONG" if want > 0 else "SHORT"
         want_word = "increase" if want > 0 else "reduce"
@@ -86,7 +91,8 @@ def generate_ideas(dollar_exposures: Dict[str, float], regime_key: str,
             "factor": factor, "label": label, "proxy": proxy,
             "direction": direction, "kind": kind,
             "current_exposure": round(cur, 2),
-            "rationale": f"{regime_name}: {want_word} {label} exposure. {action}",
+            "rationale": f"{regime_name}: {want_word} {label} exposure. {action}"
+                         + (f" ({TRADE_PROXY[factor][1]}.)" if factor in TRADE_PROXY else ""),
             "severity": round(severity, 2),
         })
 

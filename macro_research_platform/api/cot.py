@@ -63,6 +63,9 @@ def summarize(name: str, code: str, asset_class: str, rows: List[Dict]) -> Optio
         "extreme_long": idx is not None and idx >= EXTREME_HIGH,
         "extreme_short": idx is not None and idx <= EXTREME_LOW,
         "extreme": idx is not None and (idx >= EXTREME_HIGH or idx <= EXTREME_LOW),
+        # crowded positioning is read contrarian: a crowded short tends to be covered (fade it), a crowded long unwound
+        "contrarian_signal": ("FADE_SHORT" if idx is not None and idx <= EXTREME_LOW else
+                              "FADE_LONG" if idx is not None and idx >= EXTREME_HIGH else "NEUTRAL"),
     }
 
 

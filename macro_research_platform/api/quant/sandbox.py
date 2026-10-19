@@ -42,6 +42,7 @@ ALLOWED_IMPORTS = {"numpy": "np", "pandas": "pd", "math": None, "datetime": None
 CLASS_BASES = {"QCAlgorithm", "object"}
 DUNDER_METHODS = {"__init__", "__repr__", "__str__", "__len__", "__lt__", "__le__", "__gt__", "__ge__", "__eq__", "__hash__"}
 QC_PRIVATE = {"_ctx", "_capital", "_tickets", "_indicators", "_selectors", "_warm", "_approx", "_log", "_params", "_algo",
+              "_account", "_unsettled", "_lots", "_realized", "_rejected", "_seed",
               "_d", "_b", "_w", "_v", "_args", "_bars", "_fn", "_a", "_ma", "_buf", "_prev", "_prev_close"}
 BANNED_NAMES = {"eval", "exec", "compile", "open", "getattr", "setattr", "delattr", "globals", "locals", "vars",
                 "input", "breakpoint", "help", "exit", "quit", "memoryview", "type", "super", "classmethod",
@@ -143,6 +144,8 @@ def check(code: str) -> Dict[str, Any]:
                        "BENCHMARK": qc.get("benchmark") or "SPY"})
         if qc["dynamic_universe"]:
             header["TRADABLE_UNIVERSE"] = "SP500_PIT"
+        if qc.get("fundamentals"):
+            header["FUNDAMENTALS"] = qc["fundamentals"]
     for node in tree.body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             name = node.targets[0].id

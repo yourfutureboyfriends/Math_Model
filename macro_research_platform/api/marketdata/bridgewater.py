@@ -19,6 +19,7 @@ These follow the frameworks as Bridgewater describes them publicly; the data, pr
 terminal's own and are stated with each result.
 """
 from __future__ import annotations
+from api.market_dates import weekly_last
 
 import concurrent.futures as cf
 import io
@@ -255,7 +256,7 @@ def all_weather(target_vol: float = 0.10, max_leverage: float = 2.0) -> Dict[str
                     "worst_year_label": int(annual.idxmin())}
         perf = [{"key": k, "label": labels[k], **stats(v)} for k, v in series.items()]
         curves = pd.DataFrame({k: (1 + v).cumprod() * 100 for k, v in series.items()})
-        wk = curves.resample("W-FRI").last()
+        wk = weekly_last(curves)
         rows = [{"date": d.strftime("%Y-%m-%d"), **{k: round(float(x), 2) for k, x in r.items() if pd.notna(x)}} for d, r in wk.iterrows()]
         # balance check: monthly returns in each growth/inflation environment
         Q = _quadrants()
@@ -457,7 +458,7 @@ def holy_grail(symbols: List[str], years: int = 3) -> Dict[str, Any]:
             cols[s] = (df[s] if isinstance(df.columns, pd.MultiIndex) else df)["Close"].dropna()
         except Exception:
             continue
-    P = pd.DataFrame(cols).resample("W-FRI").last().dropna(how="all")
+    P = weekly_last(pd.DataFrame(cols)).dropna(how="all")
     R = P.pct_change().dropna(how="all")
     R = R.loc[:, R.notna().sum() > 52]
     if R.shape[1] < 2:

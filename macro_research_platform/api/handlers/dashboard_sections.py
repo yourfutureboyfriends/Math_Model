@@ -36,7 +36,8 @@ PRICE_TICKERS: Dict[str, str] = {
 # Sector proxies for the sector-allocation playbook (names as in calculate_sector_allocation).
 SECTOR_PROXIES = {"Technology": "XLK", "Healthcare": "XLV", "Financials": "XLF", "Energy": "XLE",
                   "Utilities": "XLU", "Consumer": "XLY", "Consumer Staples": "XLP",
-                  "Industrials": "XLI", "Materials": "XLB", "Small Cap": "IWM"}
+                  "Industrials": "XLI", "Materials": "XLB", "Real Estate": "XLRE", "Communication": "XLC",
+                  "Small Cap": "IWM"}
 PRICE_TICKERS.update({etf: etf for etf in SECTOR_PROXIES.values() if etf not in PRICE_TICKERS})
 # ETFs whose trailing P/E feeds the CMA earnings yields.
 PE_TICKERS = ["SPY", "IWM", "EFA", "EEM"]

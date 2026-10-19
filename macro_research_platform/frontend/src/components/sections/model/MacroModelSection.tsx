@@ -99,7 +99,7 @@ export function MacroModelSection() {
         <div className="section-header-left">
           <span className="section-tag"><Cpu className="w-3 h-3" /></span>
           <h2 className="section-title">Macro Model</h2>
-          {data && <span className="text-2xs text-text-tertiary font-mono">v{data.version} · data to {data.as_of} · run {data.run_id ?? '—'} · params {data.params_hash}</span>}
+          {data && <span className="text-2xs text-text-tertiary font-mono">v{data.version} · data to {data.as_of} · {data.run_id ? `run ${data.run_id}` : (data as any).snapshot ? `computed ${String((data as any).snapshot.saved_at).slice(0, 16).replace('T', ' ')} UTC` : (data as any).computed_at ? `computed ${String((data as any).computed_at).slice(0, 16).replace('T', ' ')} UTC` : 'not yet recorded'} · params {data.params_hash}</span>}
         </div>
         <div className="flex items-center gap-1">
           {canRun && (

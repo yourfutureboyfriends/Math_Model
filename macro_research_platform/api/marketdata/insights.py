@@ -14,6 +14,7 @@ Market internals and risk (free data):
                     breadth — each as a z-score, combined into a risk-on / risk-off reading
 """
 from __future__ import annotations
+from api.market_dates import weekly_last
 
 import csv
 import io
@@ -337,7 +338,7 @@ def risk() -> Dict[str, Any]:
             f = {k: ex.submit(_fred, k) for k in ("T10Y3M", "T10Y2Y", "BAMLH0A0HYM2", "NFCI")}
             fred = {k: v.result() for k, v in f.items()}
         mk = yf.download(["^VIX", "DX-Y.NYB", "HG=F", "GC=F", "^GSPC"], period="6y", interval="1d", auto_adjust=True, progress=False)["Close"]
-        weekly = lambda s: s.resample("W-FRI").last().dropna()
+        weekly = lambda s: weekly_last(s).dropna()
         ser = {
             "curve_3m10y": weekly(pd.Series(fred["T10Y3M"], dtype=float).set_axis(pd.to_datetime(list(fred["T10Y3M"])))),
             "curve_2s10s": weekly(pd.Series(fred["T10Y2Y"], dtype=float).set_axis(pd.to_datetime(list(fred["T10Y2Y"])))),

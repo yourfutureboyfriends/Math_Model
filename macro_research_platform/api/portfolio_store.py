@@ -196,11 +196,24 @@ def add_trade_idea(data: Dict[str, Any], user: str = "system") -> Dict[str, Any]
     symbol = str(data.get("symbol", "")).strip().upper()
     if not symbol:
         raise ValueError("symbol is required")
+    direction = str(data.get("direction", "LONG")).upper()
+    dup = None
+    if data.get("side") is None and data.get("quantity") is None and not data.get("allow_duplicate"):
+        # the same open idea twice (a double click) is one idea — orders (side + quantity) are never merged
+        with _conn() as conn:
+            cols = {r["name"] for r in conn.execute("PRAGMA table_info(pm_trade_ideas)")}
+            order_filter = " AND side IS NULL AND quantity IS NULL" if {"side", "quantity"} <= cols else ""
+            dup = conn.execute("SELECT * FROM pm_trade_ideas WHERE symbol = ? AND direction = ? AND state IN "
+                               "('Proposed', 'Under Review', 'Approved')" + order_filter + " ORDER BY id DESC LIMIT 1",
+                               (symbol, direction)).fetchone()
+    if dup is not None:
+        d = dict(dup); d["state_history"] = _json.loads(d["state_history"] or "[]"); d["duplicate"] = True
+        return d
     now = _now()
     hist = [{"state": "Proposed", "at": now, "by": user}]
     row = {
         "symbol": symbol,
-        "direction": str(data.get("direction", "LONG")).upper(),
+        "direction": direction,
         "thesis": data.get("thesis"),
         "conviction": str(data.get("conviction", "MEDIUM")).upper(),
         "state": "Proposed",
