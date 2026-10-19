@@ -86,6 +86,11 @@ export function ExpectedReturnsSection({ data }: ExpectedReturnsSectionProps) {
                       <span className="signal-tag neutral text-2xs">
                         {(scenario.probability * 100).toFixed(0)}%
                       </span>
+                      {(scenario as any).fromMonths != null && (
+                        <span className="text-2xs text-text-tertiary font-mono" title="Transitions counted out of the current quadrant's months; returns from that many months of 60/40 history">
+                          n={(scenario as any).transitionCount ?? 0}/{(scenario as any).fromMonths} · {(scenario as any).months}m ret
+                        </span>
+                      )}
                     </div>
                     <span className={`font-mono text-sm font-medium ${scenario.expectedReturn >= 0 ? 'text-green' : 'text-red'}`}>
                       {scenario.expectedReturn >= 0 ? '+' : ''}{(scenario.expectedReturn * 100).toFixed(1)}%

@@ -14,6 +14,7 @@ interface FactorScore {
   quality?: number;
   interpretation?: string;
   rotationSignal?: string;
+  excludedUnstable?: string[];
 }
 
 const FACTOR_META: { key: keyof FactorScore; label: string; ticker: string }[] = [
@@ -71,7 +72,8 @@ export function FactorRotationSection({ data: dataProp }: { data?: FactorScore }
               .slice()
               .sort((a, b) => b.score - a.score)
               .map((f) => {
-                const tag = signalTag(f.score);
+                const unstable = data?.excludedUnstable?.includes(f.key);
+                const tag = unstable ? { label: 'UNSTABLE OOS — NO CALL', cls: 'text-text-tertiary' } : signalTag(f.score);
                 return (
                   <div key={f.key} className="flex items-center gap-2 text-xs">
                     <span className="w-24 shrink-0">
@@ -79,10 +81,10 @@ export function FactorRotationSection({ data: dataProp }: { data?: FactorScore }
                       <span className="text-2xs text-text-tertiary ml-1">{f.label}</span>
                     </span>
                     <div className="flex-1 h-2.5 bg-surface-3">
-                      <div className={cn('h-2.5', barColor(f.score))} style={{ width: `${Math.round(f.score * 100)}%` }} />
+                      <div className={cn('h-2.5', unstable ? 'bg-text-tertiary/40' : barColor(f.score))} style={{ width: `${Math.round(f.score * 100)}%` }} />
                     </div>
                     <span className="w-10 text-right font-mono tabular-nums text-text-primary">{f.score.toFixed(2)}</span>
-                    <span className={cn('w-28 text-right text-2xs font-medium', tag.cls)}>{tag.label}</span>
+                    <span className={cn('w-28 text-right text-2xs font-medium', tag.cls)} title={unstable ? 'Its out-of-sample test (Factor Validation) flags it unstable, so it is left out of the rotation call' : undefined}>{tag.label}</span>
                   </div>
                 );
               })}

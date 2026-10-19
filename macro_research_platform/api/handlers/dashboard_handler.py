@@ -611,6 +611,10 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         if _k == 'SPX':
             _spx_closes = _closes
         _pc = _pct_change(_closes, 1) if _closes else None
+        # FX trades around the clock: the live quote is measured from the last completed New York
+        # close, the same rule the FX board uses — close-to-close showed +0.16% beside the board's −0.27%.
+        if _k == 'EURUSD' and _closes and prices.get('EURUSD'):
+            _pc = (float(prices['EURUSD']) / _closes[-1] - 1) * 100
         _chg[_k] = (_pc / 100.0) if _pc is not None else None
         _chg_asof[_k] = _days[-1] if _days else None
     # Yields move in basis points, not percent: the 10Y's daily change in bp from ^TNX.
@@ -684,7 +688,15 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         regime_name, growth_score, inflation_score,
         sector_stats=build_sector_stats(_sections), confidence=regime_confidence)
 
-    factor_rotation = build_factor_rotation(_sections)
+    # Out-of-sample factor stability has a consequence: unstable factors drop out of the rotation call.
+    from api.calculations.signal_governance import factor_consequences
+    _fstab = {}
+    try:
+        from api.handlers.governance import factor_validation
+        _fstab = factor_consequences(await _dash_asyncio.wait_for(factor_validation(), timeout=8.0))
+    except Exception as e:
+        logger.info("[dashboard_handler] factor validation not ready: %s", e)
+    factor_rotation = build_factor_rotation(_sections, _fstab)
     momentum_veto = build_momentum_veto(_sections)
     correlation_regime = build_correlation_regime(_sections)
     debt_cycle = build_debt_cycle(_sections)
@@ -705,20 +717,41 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     if _cta_trends is not None:
         _votes["CTA trend"] = _cta_trends["aggregateScore"] > 0
     _n_bull = sum(_votes.values())
-    ensemble_score = round((growth_score + (1 - recession_data["probability"]) + risk_score
-                            + liquidity_score) / 4, 2)
+    # Governance: weight each input by its out-of-sample evidence (walk-forward scorecards), and count
+    # votes driven by the same data once. Equal weights gave the VIX vol-regime input full weight while
+    # its own backtest lost money (Sharpe −0.32, −27%).
+    from api.calculations.signal_governance import evidence_weights, independence_agreement
+    _cards = {}
+    try:
+        from api.handlers.governance import signal_backtests
+        _bt = await _dash_asyncio.wait_for(signal_backtests(21), timeout=8.0)
+        _cards = {c["id"]: c for c in (_bt or {}).get("signals") or []}
+    except Exception as e:      # evidence still computing / unavailable: inputs count as unvalidated
+        logger.info("[dashboard_handler] signal evidence not ready: %s", e)
     _components = [("Growth signal", growth_score), ("1 − recession probability", 1 - recession_data["probability"]),
                    ("Risk-appetite signal", risk_score), ("Liquidity signal", liquidity_score)]
+    _evidence = {"Growth signal": _cards.get("momentum_12_1"),            # growth is SPX-momentum based
+                 "Risk-appetite signal": _cards.get("vol_regime")}        # risk appetite is VIX based
+    _weighted = evidence_weights(_components, _evidence)
+    ensemble_score = round(sum(r["contribution"] for r in _weighted), 2)
+    _drivers = {"Growth (SPX momentum)": "equity prices", "Risk appetite (VIX)": "equity prices",
+                "12-1 momentum": "equity prices", "CTA trend": "equity prices",
+                "Liquidity (DXY/rates)": "dollar & rates", "Recession model": "macro data"}
+    _indep = independence_agreement(_votes, _drivers)
     ensemble = EnsembleData(
         score=ensemble_score,
         conviction="High" if ensemble_score > 0.7 else "Medium" if ensemble_score > 0.5 else "Low",
-        agreement=round(max(_n_bull, len(_votes) - _n_bull) / len(_votes), 2),
+        agreement=_indep["agreement"],
         riskBudget=round(risk_score * 0.8 + 0.1, 2),
-        mode="Equal-weight",   # fixed equal weights — nothing adapts (was labelled "Dynamic")
+        mode="Evidence-weighted" if _cards else "Equal-weight (evidence pending)",
         bullishPct=round(_n_bull / len(_votes) * 100, 1),
-        components=[{"name": n, "score": round(v, 2), "weight": 0.25, "contribution": round(v * 0.25, 3)}
-                    for n, v in _components],
-        votes=[{"model": k, "bullish": bool(v)} for k, v in _votes.items()],
+        components=[{"name": r["name"], "score": round(r["score"], 2), "weight": r["weight"],
+                     "contribution": r["contribution"], "status": r["status"], "reason": r["reason"]}
+                    for r in _weighted],
+        votes=[{"model": k, "bullish": bool(v), "driver": _drivers.get(k, k)} for k, v in _votes.items()],
+        rawAgreement=_indep["raw_agreement"],
+        effectiveVotes=_indep["effective_votes"],
+        driverShares=_indep["drivers"],
     )
 
     # Signal Stack - constructed from calculated signals
@@ -876,7 +909,15 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     _model_agreement = {
         "agreementScore": round(ensemble.agreement, 2),
         "agreementLabel": "High" if ensemble.agreement > 0.75 else "Medium" if ensemble.agreement >= 0.6 else "Low",
-        "disagreements": [],
+        # raw = share of all votes; agreementScore counts each data driver once
+        "rawAgreement": ensemble.rawAgreement, "effectiveVotes": ensemble.effectiveVotes,
+        "driverShares": ensemble.driverShares,
+        # inputs voting against the majority (was always empty)
+        "disagreements": [{"model": k, "indicator": f"{'bullish' if v else 'bearish'} vs majority "
+                                                     f"{'bullish' if _n_bull * 2 > len(_votes) else 'bearish'} ({_drivers.get(k, k)})",
+                           "impact": "Dissent", "color": "warning"}
+                          for k, v in _votes.items() if _n_bull * 2 != len(_votes) and bool(v) != (_n_bull * 2 > len(_votes))],
+        "inputs": ensemble.components,
         "lastUpdated": now.isoformat(),
     }
     _summary = (f"{regime_name.title()} regime ({regime_confidence:.0%} confidence, "

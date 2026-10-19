@@ -16,7 +16,10 @@ interface Scorecard {
   strategy_sharpe: number; strategy_max_drawdown: number; strategy_total_return: number;
   forward_return_by_state: Record<string, StateStat>;
   confusion_matrix: Record<string, { Up: number; Down: number }>;
+  governance_status?: 'PASS' | 'WEAK' | 'FAIL'; governance_reason?: string;
 }
+// which composite-score input each scorecard is the evidence for (api/handlers/dashboard_handler.py)
+const ENSEMBLE_INPUT: Record<string, string> = { momentum_12_1: 'growth signal', vol_regime: 'risk-appetite signal' };
 interface Resp { available: boolean; reason?: string; period_days?: number; methodology?: string; signals: Scorecard[]; }
 
 const pct = (v: number, dp = 1) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(dp)}%`;
@@ -64,6 +67,13 @@ export function SignalScorecardSection() {
                   <span className="text-sm font-medium text-text-primary">{s.label}</span>
                   <span className="text-2xs text-text-tertiary">{s.horizon_days}d fwd · {s.observations} obs</span>
                 </div>
+                {s.governance_status && (
+                  <div className="text-2xs mb-1" title={s.governance_reason}>
+                    <span className={s.governance_status === 'FAIL' ? 'text-red' : s.governance_status === 'PASS' ? 'text-green' : 'text-amber'}>
+                      {s.governance_status}{ENSEMBLE_INPUT[s.id] ? ` — ${ENSEMBLE_INPUT[s.id]} ${s.governance_status === 'FAIL' ? 'retired from' : s.governance_status === 'WEAK' ? 'at half weight in' : 'at full weight in'} the composite` : ''}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-baseline gap-2 mb-2">
                   <span className={`text-2xl font-mono font-bold ${hitTone(s.hit_rate)}`}>{(s.hit_rate * 100).toFixed(0)}%</span>
                   <span className="text-2xs text-text-tertiary uppercase tracking-wider">hit rate</span>

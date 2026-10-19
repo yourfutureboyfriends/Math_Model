@@ -15,6 +15,8 @@ interface MasterSignalSectionProps {
 export function MasterSignalSection({ data }: MasterSignalSectionProps) {
   // Use macro store for live ensemble data
   const ensemble = useMacroStore((state) => state.ensemble);
+  // raw ensemble: per-input evidence status/weights and the independence-adjusted agreement
+  const ensRaw = useMacroStore((state) => (state.fullDashboard as any)?.ensemble) as any;
   const isLoading = useMacroStore((state) => state.meta.dataStatus === 'loading');
 
   if (isLoading && !data) {
@@ -161,8 +163,11 @@ export function MasterSignalSection({ data }: MasterSignalSectionProps) {
 
           {/* Agreement */}
           <div className="text-right">
-            <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-0.5">
-              AGREEMENT
+            <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-0.5"
+              title={ensRaw?.effectiveVotes != null
+                ? `Each data driver counted once (${ensRaw.effectiveVotes} independent drivers: ${Object.entries(ensRaw.driverShares ?? {}).map(([d, v]) => `${d} ${Math.round((v as number) * 100)}% bullish`).join(', ')}). Raw vote share ${Math.round((ensRaw.rawAgreement ?? 0) * 100)}%.`
+                : undefined}>
+              AGREEMENT{ensRaw?.effectiveVotes != null && <span className="normal-case"> · {ensRaw.effectiveVotes} drivers</span>}
             </div>
             <div className={cn(
               'text-sm font-mono font-bold',

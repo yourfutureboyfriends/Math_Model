@@ -114,7 +114,13 @@ def ttl_cache(seconds: float, offload: bool = False):
             if fut is None:
                 fut = loop.create_task(_asyncio.to_thread(_asyncio.run, fn(*args, **kwargs)))
                 inflight[fkey] = fut
-                fut.add_done_callback(lambda _f: inflight.pop(fkey, None))
+
+                def _done(f, fkey=fkey, key=key):
+                    inflight.pop(fkey, None)
+                    # cache here too, so a caller that stopped waiting (wait_for timeout) doesn't waste the result
+                    if not f.cancelled() and f.exception() is None:
+                        _ASYNC_TTL_CACHE[key] = (_time.time() + seconds, f.result())
+                fut.add_done_callback(_done)
             value = await _asyncio.shield(fut)
             _ASYNC_TTL_CACHE[key] = (_time.time() + seconds, value)
             return value

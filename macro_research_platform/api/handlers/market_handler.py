@@ -370,7 +370,7 @@ async def get_commodities_data() -> Dict[str, Any]:
 
     groups: Dict[str, list] = {"energy": [], "metals": [], "agriculture": []}
     spot_by_symbol: Dict[str, float] = {}
-    for (group, sym, name, _tick, dp, fallback), closes in zip(specs, closes_list):
+    for (group, sym, name, tick, dp, fallback), closes in zip(specs, closes_list):
         if closes:
             spot = closes[-1]
             row = {
@@ -381,6 +381,9 @@ async def get_commodities_data() -> Dict[str, Any]:
                 "change1m": _pct_change(closes, 21),
                 "change3m": _pct_change(closes, 63),
                 "week52Percentile": _percentile_52w(closes, spot),
+                # Yahoo's =F series is a continuous contract that rolls before expiry, so it can
+                # already quote the next month (CL=F was Dec while the CMDTY curve's front was Nov).
+                "ticker": tick, "basis": "continuous front month (rolls before expiry)",
             }
         else:
             # No data: null, never a hard-coded spot (2050 gold was shown with gold at 4,100+).

@@ -71,6 +71,28 @@ export function ModelAgreementSection({ data }: ModelAgreementSectionProps) {
           <span className="ml-auto text-2xs text-text-tertiary">{rows.length} disagreement{rows.length === 1 ? '' : 's'}</span>
         </div>
 
+        {(d.effectiveVotes != null || d.inputs?.length) && (
+          <div className="border border-border bg-surface-1 p-2 text-2xs text-text-secondary space-y-1">
+            {d.effectiveVotes != null && (
+              <div>Agreement counts each data driver once ({d.effectiveVotes} drivers: {Object.entries(d.driverShares ?? {}).map(([k, v]) => `${k} ${Math.round((v as number) * 100)}% bullish`).join(' · ')}); raw vote share {d.rawAgreement != null ? Math.round(d.rawAgreement * 100) + '%' : '—'}.</div>
+            )}
+            {d.inputs?.length > 0 && (
+              <table className="w-full mt-1">
+                <thead><tr className="text-text-tertiary uppercase"><th className="text-left font-medium">Score input</th><th className="text-right font-medium">Weight</th><th className="text-left font-medium pl-3">Out-of-sample evidence</th></tr></thead>
+                <tbody>
+                  {d.inputs.map((c: any) => (
+                    <tr key={c.name} className="border-t border-border-subtle">
+                      <td className="py-1 text-text-primary">{c.name}</td>
+                      <td className="py-1 text-right font-mono">{c.weight != null ? `${Math.round(c.weight * 100)}%` : '—'}</td>
+                      <td className="py-1 pl-3"><span className={c.status === 'FAIL' ? 'text-red' : c.status === 'PASS' ? 'text-green' : 'text-amber'}>{c.status ?? '—'}</span> <span className="text-text-tertiary">{c.reason}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
         {/* Disagreements table, or an "all agree" note */}
         {rows.length > 0 ? (
           <div className="border border-border bg-surface-1 overflow-hidden">

@@ -839,6 +839,8 @@ class FactorRotationData(BaseModel):
     quality: Optional[float] = None
     interpretation: str = ""
     rotationSignal: Optional[str] = None
+    # factors excluded from the rotation call because their out-of-sample test flags them unstable
+    excludedUnstable: List[str] = []
 
 
 class RegionMacro(BaseModel):
@@ -884,6 +886,11 @@ class EnsembleData(BaseModel):
     # real composition instead of reconstructing it.
     components: Optional[List[Dict[str, Any]]] = None
     votes: Optional[List[Dict[str, Any]]] = None
+    # Independence-adjusted agreement: `agreement` counts each data driver once; rawAgreement is the
+    # plain vote share; effectiveVotes = number of distinct drivers.
+    rawAgreement: Optional[float] = None
+    effectiveVotes: Optional[int] = None
+    driverShares: Optional[Dict[str, float]] = None
 
     @field_validator('score', 'agreement', 'riskBudget', mode='before')
     @classmethod

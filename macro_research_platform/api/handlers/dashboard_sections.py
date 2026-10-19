@@ -386,10 +386,12 @@ def build_international_macro(inp: SectionInputs, us_regime: str, us_confidence:
 _FACTORS = [("momentum", "MTUM"), ("value", "VLUE"), ("growth", "IWF"), ("quality", "QUAL")]
 
 
-def build_factor_rotation(inp: SectionInputs):
+def build_factor_rotation(inp: SectionInputs, stability: Optional[Dict[str, Dict]] = None):
     """Factor score = percentile (0-1) of the factor ETF's 3-month return relative to SPY
-    within its own trailing year."""
+    within its own trailing year. Factors flagged unstable out-of-sample (/api/v1/factor-validation)
+    keep their score but are left out of the leader/laggard rotation call."""
     from api.schemas.models import FactorRotationData
+    stability = stability or {}
     scores, rel = {}, {}
     for name, etf in _FACTORS:
         al = inp.aligned(etf, "SPY")
@@ -399,13 +401,21 @@ def build_factor_rotation(inp: SectionInputs):
             rel[name] = s["relativeReturn"]
     if not rel:
         return None
-    leader = max(rel, key=rel.get)
-    laggard = min(rel, key=rel.get)
+    excluded = [k for k in rel if (stability.get(k) or {}).get("unstable")]
+    usable = {k: v for k, v in rel.items() if k not in excluded}
+    if usable:
+        leader = max(usable, key=usable.get)
+        laggard = min(usable, key=usable.get)
+        call = f"{leader.title()} over {laggard.title()}" if leader != laggard else leader.title()
+    else:
+        call = "No call — every factor fails its out-of-sample test"
     return FactorRotationData(
         **scores,
         interpretation=("3m return vs SPY: " + ", ".join(f"{k} {v:+.1%}" for k, v in rel.items())
-                        + ". Score = percentile of that spread over the past year."),
-        rotationSignal=f"{leader.title()} over {laggard.title()}" if leader != laggard else leader.title(),
+                        + ". Score = percentile of that spread over the past year."
+                        + (f" Excluded from the call (unstable out-of-sample): {', '.join(excluded)}." if excluded else "")),
+        rotationSignal=call,
+        excludedUnstable=excluded,
     )
 
 
@@ -901,6 +911,8 @@ def build_regime_transitions(inp: SectionInputs, cycle_regime: str, now) -> Opti
         "secondMostLikely": second["regime"] if second else None,
         "secondProbability": second["prob"] if second else None,
         "transitions": tm["matrix"],
+        # Sample behind each probability: transitions counted per from→to cell.
+        "transitionCounts": tm["counts"],
         "monthsAnalysed": tm["observations"],
         "warning": (f"{first['regime']} is {first['prob']:.0%} likely next month"
                     if first and first["prob"] >= 0.3 else ""),
@@ -950,6 +962,8 @@ def build_expected_returns(inp: SectionInputs, transitions: Optional[Dict[str, A
     sf = _sixty_forty(inp.monthly_prices)
     port = ms.conditional_return_stats(sf, labels, current) if sf else None
     scenarios = []
+    _counts = ((transitions or {}).get("transitionCounts") or {}).get(current, {})
+    _from_n = sum(_counts.values())
     for nxt, prob in sorted(((transitions or {}).get("transitions") or {}).get(current, {}).items(),
                             key=lambda kv: kv[1], reverse=True):
         st = ms.conditional_return_stats(sf, labels, nxt) if sf else None
@@ -957,7 +971,9 @@ def build_expected_returns(inp: SectionInputs, transitions: Optional[Dict[str, A
             scenarios.append({"scenario": nxt, "probability": prob,
                               "expectedReturn": round(st["annualReturn"], 4),
                               "confidenceInterval": [round(st["ci95"][0], 4), round(st["ci95"][1], 4)],
-                              "months": st["months"]})
+                              "months": st["months"],
+                              # sample behind the probability: n of the current quadrant's N months moved here
+                              "transitionCount": _counts.get(nxt), "fromMonths": _from_n or None})
     return ExpectedReturnsResult(
         sectors=[],
         weightedPortfolioReturn=round(port["annualReturn"] * 100, 1) if port else None,

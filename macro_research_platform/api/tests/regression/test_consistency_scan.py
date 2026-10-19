@@ -53,11 +53,13 @@ def test_risk_budget_single_number(client, dash):
     assert _close(brief.get("position_modifier"), rb, 1e-9)
 
 
-def test_ensemble_score_is_mean_of_its_components(dash):
+def test_ensemble_score_is_weighted_sum_of_its_components(dash):
     comps = dash["ensemble"]["components"]
-    assert len(comps) == 4 and all(c["weight"] == 0.25 for c in comps)
-    assert _close(sum(c["score"] for c in comps) / 4, dash["ensemble"]["score"], 0.011)
-    assert dash["ensemble"]["mode"] == "Equal-weight"
+    assert len(comps) == 4 and abs(sum(c["weight"] for c in comps) - 1) < 0.01
+    assert _close(sum(c["score"] * c["weight"] for c in comps), dash["ensemble"]["score"], 0.011)
+    # an input whose own out-of-sample test lost money carries no weight
+    assert all(c["weight"] == 0 for c in comps if c.get("status") == "FAIL")
+    assert dash["ensemble"]["mode"] in ("Evidence-weighted", "Equal-weight (evidence pending)")
 
 
 def test_hy_spread_agrees(client, dash):

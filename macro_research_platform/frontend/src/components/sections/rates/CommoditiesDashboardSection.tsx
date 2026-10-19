@@ -23,6 +23,8 @@ interface Commodity {
   change1m: number;
   change3m: number;
   week52Percentile: number;
+  ticker?: string;
+  basis?: string;
 }
 
 interface CommodityData {
@@ -94,10 +96,10 @@ export const CommoditiesDashboardSection = memo(function CommoditiesDashboardSec
     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
       {commodities.slice(0, 4).map(c => (
         <button
-          key={c.symbol} type="button" onClick={() => openChart(`${c.symbol}=F`, `${c.name} (front-month future)`)} title={`Chart ${c.name}`}
+          key={c.symbol} type="button" onClick={() => openChart(`${c.symbol}=F`, `${c.name} (continuous ${c.symbol}=F)`)} title={`Chart ${c.name} — ${c.ticker ?? c.symbol + '=F'}: ${c.basis ?? 'continuous front month'}; the CMDTY curve shows each listed contract`}
           className="p-2 border border-border-subtle bg-surface-2 text-left hover:border-bloomberg/60 transition-colors"
         >
-          <div className="text-2xs text-text-tertiary truncate">{c.name}</div>
+          <div className="text-2xs text-text-tertiary truncate">{c.name} <span className="opacity-70">{c.ticker ?? `${c.symbol}=F`} cont.</span></div>
           <div className="font-mono">{fmtPrice(c.spot, 2)}</div>
           <div className="flex items-center justify-between text-2xs">
             <span className={cn(

@@ -138,11 +138,12 @@ export function DataExplorerSection({ data: dataProp }: DataExplorerSectionProps
           <SectionHeader
             title="Strategy Summary"
             dataKey="businessLayer"
+            // The layer is a written summary; the list fields are empty today, so "0 items" read as missing data.
             count={
-              (data.businessLayer?.expectedReturns?.length || 0) +
+              ((data.businessLayer?.expectedReturns?.length || 0) +
               (data.businessLayer?.positionSizing?.length || 0) +
               (data.businessLayer?.signalScorecard?.length || 0) +
-              (data.businessLayer?.decisionLog?.length || 0)
+              (data.businessLayer?.decisionLog?.length || 0)) || undefined
             }
           />
           {expanded.businessLayer && <JsonDisplay data={data.businessLayer} />}

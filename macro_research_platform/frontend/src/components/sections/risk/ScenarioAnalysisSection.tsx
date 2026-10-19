@@ -16,6 +16,9 @@ interface Scenario {
   description: string;
   trigger: string;
   regime_shift: string;
+  transitionCount?: number | null;
+  fromMonths?: number | null;
+  returnMonths?: number | null;
 }
 
 interface ScenarioData {
@@ -130,6 +133,11 @@ export function ScenarioAnalysisSection({ data }: Props) {
                   <span className="text-sm font-mono font-bold text-bloomberg">
                     {(scenario.probability * 100).toFixed(0)}%
                   </span>
+                  {scenario.fromMonths != null && (
+                    <span className="text-2xs text-text-tertiary font-mono" title="Transitions counted: months that moved here out of all months in the current quadrant (FRED since 1985)">
+                      n={scenario.transitionCount ?? 0}/{scenario.fromMonths}
+                    </span>
+                  )}
                 </div>
               </div>
               {getScenarioIcon(scenario.expectedReturn)}
@@ -143,6 +151,7 @@ export function ScenarioAnalysisSection({ data }: Props) {
               </div>
               <div className="text-2xs text-text-tertiary mt-1">
                 95% CI: [{(scenario.confidenceInterval[0] * 100).toFixed(1)}%, {(scenario.confidenceInterval[1] * 100).toFixed(1)}%]
+                {scenario.returnMonths != null && <> · {scenario.returnMonths} months of returns</>}
               </div>
             </div>
 

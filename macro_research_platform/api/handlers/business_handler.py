@@ -598,8 +598,12 @@ async def get_scenario_data() -> Dict[str, Any]:
             "confidenceInterval": sc["confidenceInterval"],
             "description": (f"Historical annualized 60/40 (SPY/TLT) return in {q} months "
                             f"({sc.get('months')} months since inception of the ETFs)."),
+            "transitionCount": sc.get("transitionCount"), "fromMonths": sc.get("fromMonths"),
+            "returnMonths": sc.get("months"),
             "trigger": (f"Growth/inflation quadrant {'stays' if q == current else 'moves to'} {q} "
-                        f"next month (empirical probability {sc['probability']:.0%})."),
+                        f"next month (empirical probability {sc['probability']:.0%}"
+                        + (f" — {sc['transitionCount']} of {sc['fromMonths']} {current} months" if sc.get("fromMonths") else "")
+                        + ")."),
             "regime_shift": q,
         })
     return {"regime": (dashboard.regime.current or "").lower() or None,
