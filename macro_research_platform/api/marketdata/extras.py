@@ -583,10 +583,17 @@ def eia_history(weeks: int = 520) -> Dict[str, Any]:
 
 # ── IPO calendar (Finnhub, free key) ─────────────────────────────────────────
 def ipo_calendar(days_back: int = 30, days_ahead: int = 45) -> Dict[str, Any]:
+    """Nasdaq's IPO calendar (no key: priced, expected, filed, withdrawn); Finnhub's only as the fallback
+    (it listed 0 upcoming deals while Nasdaq's had dozens filed)."""
     import os
+    try:
+        from api.marketdata.freedata import nasdaq_ipos
+        return nasdaq_ipos(1, 1)
+    except Exception as e:
+        logger.info("[ipo] Nasdaq calendar unavailable (%s); trying Finnhub", e)
     key = os.getenv("FINNHUB_API_KEY") or ""
     if not key:
-        raise NotFound("The IPO calendar needs a free Finnhub key (FINNHUB_API_KEY).")
+        raise NotFound("The IPO calendar is unavailable: Nasdaq's feed failed and no Finnhub key is set.")
 
     def fetch():
         import requests

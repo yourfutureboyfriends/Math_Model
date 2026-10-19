@@ -32,6 +32,7 @@ const POLL_MS = 30_000;
 const SOURCE_LABELS: Record<string, string> = {
   fred: 'FRED (macro)',
   market_data: 'Market Data',
+  quote_freshness: 'Quote freshness',
   database: 'Database',
 };
 

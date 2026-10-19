@@ -823,8 +823,21 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
 
     # ── Compute all optional-section data inline (avoids recursive handler calls) ──
 
-    # GDP Nowcast — Atlanta Fed GDPNow via FRED.
-    _nowcast = build_nowcast(_sections, now)
+    # Free public series (Shiller CAPE, AAII, CBOE put/call, NY Fed nowcast), each cached in-process and bounded
+    # by a timeout so a slow upstream leaves its panel without that input instead of stalling the dashboard.
+    from api.marketdata import freedata as _fd
+
+    async def _free(fn):
+        try:
+            return await _dash_asyncio.wait_for(_dash_asyncio.to_thread(fn), timeout=8.0)
+        except Exception as e:
+            logger.info("[dashboard_handler] %s unavailable: %s", getattr(fn, "__name__", fn), e)
+            return None
+    _cape, _aaii, _pc, _nyfed = await _dash_asyncio.gather(
+        _free(_fd.shiller_cape), _free(_fd.aaii_sentiment), _free(_fd.cboe_put_call), _free(_fd.nyfed_nowcast))
+
+    # GDP Nowcast — Atlanta Fed GDPNow via FRED, with the NY Fed Staff Nowcast.
+    _nowcast = build_nowcast(_sections, now, nyfed=_nyfed)
 
     # Liquidity / financial conditions. The model score (DXY 60%, Fed funds − 10Y 40%) is
     # shown next to the standard reference, the Chicago Fed NFCI; Fed stance comes from the
@@ -866,10 +879,10 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     }
 
     # Sentiment — VIX level / term structure (^VIX3M) / 1m change, cross-asset 3m momentum.
-    _sentiment = build_sentiment(_sections, vix_level, risk_score, now)
+    _sentiment = build_sentiment(_sections, vix_level, risk_score, now, aaii=_aaii, put_call=_pc)
 
     # Valuation — SPY trailing P/E, 10Y TIPS real yield (z-scored), equity yield gap.
-    _valuation = build_valuation(_sections, now)
+    _valuation = build_valuation(_sections, now, cape=_cape)
 
     # News Sentiment — REAL headline-level sentiment from live RSS news (was a VIX-derived stub).
     _news_sentiment = await _dash_asyncio.to_thread(_build_news_sentiment, regime_name, now)  # blocking feed I/O

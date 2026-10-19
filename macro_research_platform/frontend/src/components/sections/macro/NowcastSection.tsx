@@ -64,32 +64,33 @@ export function NowcastSection({ data }: NowcastSectionProps) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider">
-              QoQ Ann{anyData.quarter ? ` · ${anyData.quarter}` : ''}
+              {(anyData.models ?? []).some((m: any) => m.model.startsWith('Atlanta')) ? 'Atlanta GDPNow' : 'QoQ Ann'}{anyData.quarter ? ` · ${anyData.quarter}` : ''}
             </div>
             <div className={cn('text-base font-mono font-bold', signColor(data.nowcastQoQ))}>
               {fmtSigned(data.nowcastQoQ)}
             </div>
           </div>
-          <div className="p-2 bg-surface-1 border border-border">
-            <div className="text-2xs text-text-tertiary uppercase tracking-wider">YoY</div>
-            <div className={cn('text-base font-mono font-bold', signColor(data.nowcastYoY))}>
-              {fmtSigned(data.nowcastYoY)}
+          {(anyData.models ?? []).filter((m: any) => m.model.startsWith('NY Fed')).map((m: any) => (
+            <div key={m.model} className="p-2 bg-surface-1 border border-border" title={`${m.model}, as of ${m.asOf}`}>
+              <div className="text-2xs text-text-tertiary uppercase tracking-wider">NY Fed Staff · {m.quarter?.replace(':', '')}</div>
+              <div className={cn('text-base font-mono font-bold', signColor(m.value))}>{fmtSigned(m.value)}</div>
+              <div className="text-2xs text-text-tertiary">{isNum(m.change4w) ? `${m.change4w >= 0 ? '+' : ''}${m.change4w.toFixed(2)}pp in 4 wks` : ''}</div>
             </div>
-          </div>
-          <div className="p-2 bg-surface-1 border border-border">
-            <div className="text-2xs text-text-tertiary uppercase tracking-wider">95% CI</div>
+          ))}
+          <div className="p-2 bg-surface-1 border border-border" title={anyData.bandType ?? 'Shown when both nowcasts cover the same quarter'}>
+            <div className="text-2xs text-text-tertiary uppercase tracking-wider">Model range</div>
             <div className="text-base font-mono text-text-primary">
-              {isNum(ci?.lower) && isNum(ci?.upper)
-                ? `${ci.lower.toFixed(1)} to ${ci.upper.toFixed(1)}%`
-                : '—'}
+              {Array.isArray(ci) && isNum(ci[0]) && isNum(ci[1]) ? `${ci[0].toFixed(2)} to ${ci[1].toFixed(2)}%`
+                : isNum(ci?.lower) && isNum(ci?.upper) ? `${ci.lower.toFixed(1)} to ${ci.upper.toFixed(1)}%` : '—'}
             </div>
+            <div className="text-2xs text-text-tertiary">GDPNow vs NY Fed</div>
           </div>
-          <div className="p-2 bg-surface-1 border border-border">
-            <div className="text-2xs text-text-tertiary uppercase tracking-wider">RMSE</div>
-            <div className="text-base font-mono text-text-primary">
-              {isNum(ci?.rmse) ? `±${ci.rmse.toFixed(2)}pp` : '—'}
+          {(anyData.models ?? []).filter((m: any) => isNum(m.nextQuarter)).map((m: any) => (
+            <div key={`${m.model}-next`} className="p-2 bg-surface-1 border border-border">
+              <div className="text-2xs text-text-tertiary uppercase tracking-wider">Next quarter (NY Fed)</div>
+              <div className={cn('text-base font-mono font-bold', signColor(m.nextQuarter))}>{fmtSigned(m.nextQuarter)}</div>
             </div>
-          </div>
+          ))}
         </div>
 
         {/* Components */}

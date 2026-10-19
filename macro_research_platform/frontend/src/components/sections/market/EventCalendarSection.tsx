@@ -1,5 +1,6 @@
 // Economic Calendar — official US release dates (FRED release calendar) and FOMC decisions,
-// with each release's latest print. No consensus forecasts: there is no licensed source here.
+// with each release's latest print, the consensus forecast from the free weekly feed the Markets ECO screen
+// records, and the last ten days' results (actual as first published vs forecast).
 
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -16,9 +17,20 @@ interface CalendarEvent {
   series_id?: string;
   affected_assets?: string[];
   source?: string;
+  forecast?: string | null;
+  forecast_label?: string | null;
+  actual?: number | null;
+  surprise?: number | null;
+}
+
+interface RecentResult {
+  date: string; time: string | null; event: string; impact: string;
+  forecast: string | null; actual: number | null; surprise: number | null; previous: string | null;
 }
 
 interface CalendarData {
+  recent?: RecentResult[];
+  consensus_source?: string;
   upcoming?: CalendarEvent[];
   this_week?: CalendarEvent[];
   blackout_active?: boolean;
@@ -128,6 +140,7 @@ export function EventCalendarSection({ data: initial }: Props) {
                   <th className="font-normal pb-1.5">ET</th>
                   <th className="font-normal pb-1.5">Release</th>
                   <th className="font-normal pb-1.5 text-center">Imp</th>
+                  <th className="font-normal pb-1.5 text-right">Forecast</th>
                   <th className="font-normal pb-1.5 text-right">Previous</th>
                   <th className="font-normal pb-1.5 text-right hidden sm:table-cell">Period</th>
                 </tr>
@@ -145,6 +158,10 @@ export function EventCalendarSection({ data: initial }: Props) {
                       <td className="py-1.5 text-center">
                         <span className={`inline-flex items-center justify-center w-5 h-5 text-2xs font-bold font-mono ${IMP_CLASS[e.importance]}`}>{e.importance[0]}</span>
                       </td>
+                      <td className="py-1.5 text-right font-mono text-bloomberg" title={e.forecast_label ? `Consensus for "${e.forecast_label}" (feed units)` : 'No consensus in the free feed for this release'}>
+                        {e.forecast ?? <span className="text-text-tertiary">—</span>}
+                        {e.forecast_label?.match(/[mqy]\/[mqy]$/) && <span className="ml-1 text-[9px] text-text-tertiary">{e.forecast_label.match(/[mqy]\/[mqy]$/)![0]}</span>}
+                      </td>
                       <td className="py-1.5 text-right font-mono text-text-primary">{e.previous ?? <span className="text-text-tertiary">—</span>}</td>
                       <td className="py-1.5 text-right text-text-tertiary hidden sm:table-cell">{period(e.previous_period)}</td>
                     </tr>
@@ -157,8 +174,36 @@ export function EventCalendarSection({ data: initial }: Props) {
                 {showAll ? 'Show fewer' : `Show all ${events.length}`}
               </button>
             )}
+            {(data?.recent?.length ?? 0) > 0 && (
+              <div className="mt-3">
+                <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Last 10 days — actual vs consensus</div>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle text-left">
+                      <th className="font-normal pb-1">Date</th><th className="font-normal pb-1">Release</th>
+                      <th className="font-normal pb-1 text-right">Actual</th><th className="font-normal pb-1 text-right">Forecast</th>
+                      <th className="font-normal pb-1 text-right">Surprise</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data!.recent!.filter((r) => rank[(r.impact?.toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH') ?? 'LOW'] >= rank[minImp]).slice(0, 15).map((r) => (
+                      <tr key={`${r.date}-${r.event}`} className="border-b border-border-subtle last:border-0">
+                        <td className="py-1 text-text-secondary whitespace-nowrap">{new Date(`${r.date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</td>
+                        <td className="py-1 text-text-secondary">{r.event}</td>
+                        <td className="py-1 text-right font-mono text-text-primary">{r.actual ?? '—'}</td>
+                        <td className="py-1 text-right font-mono text-text-tertiary">{r.forecast ?? '—'}</td>
+                        <td className={`py-1 text-right font-mono ${r.surprise == null ? 'text-text-tertiary' : r.surprise > 0 ? 'text-green' : r.surprise < 0 ? 'text-red' : 'text-text-secondary'}`}>
+                          {r.surprise == null ? '—' : `${r.surprise > 0 ? '+' : ''}${r.surprise}`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             <div className="mt-2 text-[10px] text-text-tertiary">
               Official release dates (FRED release calendar; Federal Reserve FOMC calendar). Previous = latest published print.
+              {data?.consensus_source ? ` Forecast: ${data.consensus_source}` : ''}
               {data?.sources_failed?.length ? ` Unavailable: ${data.sources_failed.join(', ')}.` : ''}
             </div>
           </>

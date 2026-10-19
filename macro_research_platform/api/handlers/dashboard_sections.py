@@ -421,26 +421,40 @@ def build_factor_rotation(inp: SectionInputs, stability: Optional[Dict[str, Dict
 
 # ── GDP nowcast ─────────────────────────────────────────────────────────────────
 
-def build_nowcast(inp: SectionInputs, now) -> Optional[Dict[str, Any]]:
-    """Atlanta Fed GDPNow (FRED GDPNOW): real GDP growth, QoQ SAAR, for the latest quarter."""
+def build_nowcast(inp: SectionInputs, now, nyfed: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """Atlanta Fed GDPNow (FRED GDPNOW) and the New York Fed Staff Nowcast: real GDP growth, QoQ SAAR. When both
+    cover the same quarter their range is shown as the band (two independent models, not a statistical interval)."""
     s = inp.series("GDPNOW")
-    if not s:
+    if not s and not nyfed:
         return None
-    q = date.fromisoformat(s.latest_date)
-    quarter = f"{q.year}Q{(q.month - 1) // 3 + 1}"
+    quarter, gdpnow = None, None
+    if s:
+        q = date.fromisoformat(s.latest_date)
+        quarter = f"{q.year}Q{(q.month - 1) // 3 + 1}"
+        gdpnow = round(s.latest, 2)
+    ny = (nyfed or {}).get("nowcast")
+    ny_q = (nyfed or {}).get("quarter")
+    same_q = ny is not None and gdpnow is not None and ny_q == quarter
+    models = ([{"model": "Atlanta Fed GDPNow", "value": gdpnow, "quarter": quarter, "asOf": s.latest_date}] if s else []) + (
+        [{"model": "NY Fed Staff Nowcast", "value": ny, "quarter": ny_q, "asOf": nyfed["latest"]["date"],
+          "nextQuarter": nyfed.get("next_quarter"), "change4w": nyfed.get("change_4w")}] if ny is not None else [])
+    head = gdpnow if gdpnow is not None else ny
     return {
         "available": True,
-        "gdpNowcast": round(s.latest, 2),
-        "nowcastQoQ": round(s.latest, 2),
+        "gdpNowcast": head,
+        "nowcastQoQ": head,
         "nowcastYoY": None,
-        "quarter": quarter,
-        "confidenceInterval": None,
+        "quarter": quarter or ny_q,
+        "confidenceInterval": [min(gdpnow, ny), max(gdpnow, ny)] if same_q else None,
+        "bandType": "range of the two Fed nowcasts" if same_q else None,
+        "models": models,
         "components": [],
         "revisionHistory": [{"date": d, "value": round(v, 2)}
-                            for d, v in zip(s.dates[-8:], s.values[-8:])],
-        "methodology": f"Atlanta Fed GDPNow (FRED: GDPNOW), real GDP QoQ SAAR for {quarter}. "
-                       "No YoY or confidence band is published with this series.",
-        "source": "FRED GDPNOW",
+                            for d, v in zip(s.dates[-8:], s.values[-8:])] if s else [],
+        "methodology": (f"Atlanta Fed GDPNow (FRED: GDPNOW), real GDP QoQ SAAR for {quarter}"
+                        + (f"; New York Fed Staff Nowcast {ny:.2f}% for {ny_q} (dynamic factor model, weekly)" if ny is not None else "")
+                        + (". Band = the range of the two." if same_q else ". No band: the two cover different quarters or one is missing.")),
+        "source": "FRED GDPNOW" + ("; New York Fed Staff Nowcast" if ny is not None else ""),
         "lastUpdated": now.isoformat(),
     }
 
@@ -521,9 +535,10 @@ def build_trend_signals(inp: SectionInputs, now) -> Optional[Dict[str, Any]]:
 # ── Sentiment ───────────────────────────────────────────────────────────────────
 
 def build_sentiment(inp: SectionInputs, vix_level: Optional[float], risk_score: Optional[float],
-                    now) -> Optional[Dict[str, Any]]:
+                    now, aaii: Optional[Dict[str, Any]] = None,
+                    put_call: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """Market-implied sentiment: VIX level (the risk signal), VIX term structure (VIX3M/VIX),
-    VIX 1m change and cross-asset 3m momentum. AAII survey data isn't sourced → omitted."""
+    VIX 1m change and cross-asset 3m momentum; survey sentiment (AAII) and the CBOE put/call ratios."""
     vix_closes, vix3m_closes = inp.closes("VIX"), inp.closes("VIX3M")
     vix_now = vix_level if vix_level is not None else (vix_closes[-1] if vix_closes else None)
     vix3m = vix3m_closes[-1] if vix3m_closes else None
@@ -538,6 +553,15 @@ def build_sentiment(inp: SectionInputs, vix_level: Optional[float], risk_score: 
                        "signal": "fear rising" if vix_1m > 0 else "fear easing"})
     if ratio is not None:
         gauges.append({"name": "VIX3M / VIX − 1", "value": round(ratio - 1, 4), "signal": structure})
+    if put_call and put_call.get("latest"):
+        pcl = put_call["latest"]
+        gauges.append({"name": f"CBOE equity put/call ({pcl['date']})", "value": pcl.get("equity"), "format": "ratio",
+                       "signal": put_call.get("contrarian"), "tenDayAverage": put_call.get("equity_10d_avg"),
+                       "total": pcl.get("total"), "index": pcl.get("index")})
+    if aaii and aaii.get("latest"):
+        al = aaii["latest"]
+        gauges.append({"name": f"AAII bull − bear ({al['date']})", "value": al["spread"], "format": "points",
+                       "signal": aaii.get("contrarian"), "percentile": aaii.get("spread_percentile")})
     momentum = []
     for label, key in (("SPX", "SPX"), ("NDX", "NDX"), ("TLT", "TLT"), ("Gold", "GLD"), ("DXY", "DXY")):
         m = ms.period_return(inp.closes(key), ms.TRADING_DAYS_3M)
@@ -561,25 +585,41 @@ def build_sentiment(inp: SectionInputs, vix_level: Optional[float], risk_score: 
         "gauges": gauges,
         "vixTermStructure": {"ratio": _r(ratio, 3), "structure": structure,
                              "vix": _r(vix_now, 2), "vix3m": _r(vix3m, 2)} if ratio is not None else None,
-        "aaiiSentiment": None,
+        "aaiiSentiment": ({"bullish": aaii["latest"]["bullish"], "neutral": aaii["latest"]["neutral"],
+                           "bearish": aaii["latest"]["bearish"], "spread": aaii["latest"]["spread"],
+                           "spreadPercentile": aaii.get("spread_percentile"), "date": aaii["latest"]["date"],
+                           "averageBullish": aaii.get("average_bullish"), "averageBearish": aaii.get("average_bearish"),
+                           "contrarian": aaii.get("contrarian")} if aaii and aaii.get("latest") else None),
+        "putCall": ({k: put_call["latest"].get(k) for k in ("date", "total", "equity", "index", "spx")}
+                    | {"equity10dAvg": put_call.get("equity_10d_avg"), "contrarian": put_call.get("contrarian")}
+                    if put_call and put_call.get("latest") else None),
         "crossAssetMomentum": {
             "averageMomentum": _r(sum(m["momentum3m"] for m in momentum) / len(momentum), 4) if momentum else None,
             "assets": momentum, "regime": regime},
         "contrarianSignal": contrarian if structure else None,
         "description": (f"Risk appetite from VIX ({vix_now:.1f})" if vix_now is not None else "Risk appetite")
                        + (f"; VIX term structure {structure} (VIX3M/VIX {ratio:.2f})." if ratio else ".")
-                       + " AAII survey not sourced.",
-        "source": "Yahoo (^VIX, ^VIX3M, index/ETF closes)",
+                       + (f" AAII bull−bear {aaii['latest']['spread']:+.1f} pts ({aaii['latest']['date']})." if aaii and aaii.get("latest") else " AAII unavailable.")
+                       + (f" Equity put/call {put_call['latest']['equity']:.2f}." if put_call and put_call.get("latest") else ""),
+        "source": "Yahoo (^VIX, ^VIX3M, index/ETF closes); AAII sentiment survey; Cboe daily market statistics",
         "lastUpdated": now.isoformat(),
     }
 
 
 # ── Valuation ───────────────────────────────────────────────────────────────────
 
-def build_valuation(inp: SectionInputs, now) -> Optional[Dict[str, Any]]:
-    """SPY trailing P/E (Yahoo), 10Y TIPS real yield (FRED DFII10, z-scored vs ~3y), and
-    the equity yield gap (earnings yield − real yield)."""
+def build_valuation(inp: SectionInputs, now, cape: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """Shiller CAPE (with its history: percentile and z-score since 1990), SPY trailing P/E (Yahoo), 10Y TIPS
+    real yield (FRED DFII10, z-scored vs ~3y), and the equity yield gaps (earnings yield − real yield)."""
     metrics = []
+    if cape and cape.get("latest"):
+        z = cape.get("z_since_1990")
+        metrics.append({"name": f"Shiller CAPE ({cape['latest_month']})", "value": cape["latest"],
+                        "historicalMean": cape.get("mean_since_1990"), "zScore": z,
+                        "percentile": cape.get("percentile_since_1990"),
+                        "signal": ("n/a" if z is None else "expensive" if z > 1 else "cheap" if z < -1 else "fair"),
+                        "interpretation": (f"Percentile {cape.get('percentile_since_1990')} since 1990, "
+                                           f"{cape.get('percentile_all')} since 1881 (mean {cape.get('mean_all')}). {cape.get('source')}.")})
     real = inp.series("DFII10")
     if real:
         mean, z, pct = ms.zscore_and_percentile(real.latest, real.values[:-1])
@@ -602,6 +642,12 @@ def build_valuation(inp: SectionInputs, now) -> Optional[Dict[str, Any]]:
                             "historicalMean": None, "zScore": None, "percentile": None,
                             "signal": "n/a",
                             "interpretation": f"Earnings yield {100.0 / pe:.2f}% − TIPS {real.latest:.2f}%"})
+    if cape and cape.get("earnings_yield_pct") is not None and real:
+        cg = cape["earnings_yield_pct"] - real.latest
+        metrics.append({"name": "CAPE yield gap (1/CAPE − real yield)", "value": round(cg, 2),
+                        "historicalMean": None, "zScore": None, "percentile": None,
+                        "signal": "equities rich vs TIPS" if cg < 1 else "equities cheap vs TIPS" if cg > 4 else "fair",
+                        "interpretation": f"Cyclically adjusted earnings yield {cape['earnings_yield_pct']:.2f}% − TIPS {real.latest:.2f}%"})
     if not metrics:
         return None
     return {

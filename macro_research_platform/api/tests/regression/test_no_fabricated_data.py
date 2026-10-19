@@ -9,10 +9,13 @@ Both must now return honest structured absence with NO invented numbers.
 import os
 
 
-def test_earnings_revisions_no_fabricated_sector_table(client):
-    """Without a Finnhub key, the endpoint must NOT return the old fake sector numbers."""
-    if os.getenv("FINNHUB_API_KEY"):
-        return  # with a real key, real data is expected; this guards the keyless fallback
+def test_earnings_revisions_no_fabricated_sector_table(client, monkeypatch):
+    """When the estimates feed fails, the endpoint returns structured absence — never the old fake sector numbers."""
+    from api.marketdata import eps_revisions
+
+    def boom():
+        raise RuntimeError("feed down")
+    monkeypatch.setattr(eps_revisions, "sector_revisions", boom)
     r = client.get("/api/earnings/revisions")
     assert r.status_code == 200
     data = r.json()

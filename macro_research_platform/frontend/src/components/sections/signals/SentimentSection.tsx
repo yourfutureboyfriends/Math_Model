@@ -95,9 +95,17 @@ export function SentimentSection({ data: dataProp }: SentimentSectionProps) {
               <div key={idx} className="bg-surface-2 p-2 rounded">
                 <div className="text-2xs text-text-tertiary uppercase">{gauge.name}</div>
                 <div className="flex items-baseline gap-2">
-                  <span className={`font-mono font-medium ${gauge.value > 0 ? 'text-green' : gauge.value < 0 ? 'text-red' : 'text-text-secondary'}`}>
-                    {fmtChange(gauge.value)}
-                  </span>
+                  {(gauge as any).format === 'ratio' ? (
+                    <span className="font-mono font-medium text-text-primary">{gauge.value != null ? gauge.value.toFixed(2) : '—'}</span>
+                  ) : (gauge as any).format === 'points' ? (
+                    <span className={`font-mono font-medium ${gauge.value > 0 ? 'text-green' : gauge.value < 0 ? 'text-red' : 'text-text-secondary'}`}>
+                      {gauge.value != null ? `${gauge.value > 0 ? '+' : ''}${gauge.value.toFixed(1)} pts` : '—'}
+                    </span>
+                  ) : (
+                    <span className={`font-mono font-medium ${gauge.value > 0 ? 'text-green' : gauge.value < 0 ? 'text-red' : 'text-text-secondary'}`}>
+                      {fmtChange(gauge.value)}
+                    </span>
+                  )}
                   <span className="text-2xs text-text-tertiary">{gauge.signal}</span>
                 </div>
               </div>
@@ -122,10 +130,14 @@ export function SentimentSection({ data: dataProp }: SentimentSectionProps) {
             <div>
               <div className="text-2xs text-text-tertiary uppercase mb-1">AAII Sentiment</div>
               <div className="text-sm font-medium text-text-primary">
-                {data.aaiiSentiment.signal || '—'}
+                {(data.aaiiSentiment as any).bullish != null
+                  ? `${(data.aaiiSentiment as any).bullish}% bull · ${(data.aaiiSentiment as any).bearish}% bear`
+                  : (data.aaiiSentiment.signal || '—')}
               </div>
               <div className="text-2xs text-text-secondary">
-                Spread: {fmtChange(data.aaiiSentiment.bullBearSpread ?? null)}
+                {(data.aaiiSentiment as any).spread != null
+                  ? `Spread ${(data.aaiiSentiment as any).spread > 0 ? '+' : ''}${(data.aaiiSentiment as any).spread} pts · ${(data.aaiiSentiment as any).spreadPercentile}th pct since 1987 · contrarian ${(data.aaiiSentiment as any).contrarian} · week of ${(data.aaiiSentiment as any).date}`
+                  : `Spread: ${fmtChange(data.aaiiSentiment.bullBearSpread ?? null)}`}
               </div>
             </div>
           )}

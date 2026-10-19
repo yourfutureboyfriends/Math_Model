@@ -112,6 +112,70 @@ def _previous(series: str, how: str, unit: str) -> Optional[Dict]:
 _CACHE: Dict[str, tuple] = {}
 
 
+# Research calendar release → the consensus feed's title(s) (Forex Factory weekly feed, the same one the
+# Markets ECO screen records). The feed's own title is shown with the forecast, so units are explicit.
+_CONSENSUS_TITLES = {
+    "Employment Situation (payrolls)": [r"^Non-Farm Employment Change$"],
+    "Consumer Price Index": [r"^CPI y/y$", r"^CPI m/m$"],
+    "Gross Domestic Product": [r"^(Advance|Prelim|Final) GDP q/q$", r"^GDP q/q$"],
+    "Personal Income & Outlays (core PCE)": [r"^Core PCE Price Index y/y$", r"^Core PCE Price Index m/m$"],
+    "Retail Sales": [r"^Retail Sales m/m$"],
+    "Producer Price Index": [r"^PPI y/y$", r"^PPI m/m$"],
+    "Initial Jobless Claims": [r"^Unemployment Claims$"],
+    "JOLTS Job Openings": [r"^JOLTS Job Openings$"],
+    "Industrial Production": [r"^Industrial Production m/m$"],
+    "Housing Starts": [r"^Housing Starts$"],
+    "New Home Sales": [r"^New Home Sales$"],
+    "Durable Goods Orders": [r"^Durable Goods Orders m/m$"],
+    "Factory Orders (full M3 report)": [r"^Factory Orders m/m$"],
+    "International Trade": [r"^Trade Balance$"],
+    "UMich Consumer Sentiment": [r"^(Prelim|Revised) UoM Consumer Sentiment$"],
+    "Employment Cost Index": [r"^Employment Cost Index q/q$"],
+    "FOMC rate decision": [r"^Federal Funds Rate$"],
+}
+
+
+def _consensus_feed(days_back: int = 10) -> List[Dict]:
+    """US rows of the consensus feed (forecast; actual as first published; surprise). [] when unreachable."""
+    try:
+        from api.marketdata import econ
+        return econ.calendar(days_back, ["USD"], "Low").get("events") or []
+    except Exception as e:
+        logger.info("[calendar] consensus feed unavailable: %s", e)
+        return []
+
+
+def attach_consensus(rows: List[Dict], feed: List[Dict]) -> List[Dict]:
+    """Add forecast / forecast_label (and actual / surprise once released) to each calendar row whose
+    release the feed lists on the same New York date. Rows without a match keep forecast None."""
+    import re
+    by_day: Dict[str, List[Dict]] = {}
+    for f in feed:
+        by_day.setdefault(str(f.get("date"))[:10], []).append(f)
+    for r in rows:
+        day = datetime.fromisoformat(r["release_datetime"]).astimezone(_ET).date().isoformat()
+        cands = by_day.get(day) or []
+        for pat in _CONSENSUS_TITLES.get(r["event_name"], []):
+            hit = next((f for f in cands if re.match(pat, f.get("title") or "")), None)
+            if hit:
+                r["forecast"] = hit.get("forecast")
+                r["forecast_label"] = hit.get("title")
+                if hit.get("actual") is not None:
+                    r["actual"], r["surprise"] = hit.get("actual"), hit.get("surprise")
+                break
+    return rows
+
+
+def recent_results(feed: List[Dict], today: date, days: int = 10) -> List[Dict]:
+    """Released US prints of the last `days` days with forecast, actual (first published) and surprise."""
+    lo = (today - timedelta(days=days)).isoformat()
+    out = [{"date": str(f["date"])[:10], "time": str(f["date"])[11:16] or None, "event": f.get("title"),
+            "impact": f.get("impact"), "forecast": f.get("forecast"), "actual": f.get("actual"),
+            "surprise": f.get("surprise"), "previous": f.get("previous")}
+           for f in feed if lo <= str(f.get("date"))[:10] <= today.isoformat() and f.get("actual") is not None]
+    return sorted(out, key=lambda r: (r["date"], r["time"] or ""), reverse=True)
+
+
 def get_calendar() -> Dict:
     """build_calendar() cached 30 min, or 2 min when some releases could not be loaded."""
     import time
@@ -196,7 +260,13 @@ def build_calendar(today: Optional[date] = None, horizon_days: int = 45) -> Dict
     nxt = next((r for r in rows if datetime.fromisoformat(r["release_datetime"]) > now_et), None)
     minutes = int((datetime.fromisoformat(nxt["release_datetime"]) - now_et).total_seconds() // 60) if nxt else None
     week_end = (today + timedelta(days=7)).isoformat()
+    feed = _consensus_feed()
+    attach_consensus(rows, feed)
     return {
+        "recent": recent_results(feed, today),
+        "consensus_source": ("Forex Factory weekly calendar feed (forecast), recorded from first sighting; actuals as "
+                             "first published (ALFRED for the US). Surprise = actual − forecast in the feed's units."
+                             if feed else "consensus feed unavailable"),
         "upcoming": rows,
         "this_week": [r for r in rows if r["release_datetime"][:10] <= week_end],
         "minutes_to_next": minutes,

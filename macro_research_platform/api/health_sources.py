@@ -87,6 +87,94 @@ def _probe_market() -> Dict[str, Any]:
                 "detail": str(e)[:120]}
 
 
+# ── Market-quote freshness ──────────────────────────────────────────────────
+# A reachable feed can still serve an old quote (Yahoo FX bars land a day late; a frozen quote
+# looks "live"). Each instrument's latest 5-minute bar is compared with what its market's hours
+# say it should be.
+_FRESH_BASKET = [("SPY", "nyse"), ("^VIX", "nyse"), ("EURUSD=X", "fx"), ("CL=F", "cme")]
+_FRESH_TTL = 300
+_FRESH_CACHE: Dict[str, Any] = {"data": None, "ts": 0.0}
+
+
+def _nyse_open(t_ny) -> bool:
+    import holidays as _hol
+    if t_ny.weekday() >= 5 or t_ny.date() in _hol.financial_holidays("NYSE", years=t_ny.year):
+        return False
+    m = t_ny.hour * 60 + t_ny.minute
+    return 9 * 60 + 30 <= m < 16 * 60
+
+
+def _round_the_clock_open(t_ny, daily_break: bool) -> bool:
+    """FX (Sun 17:00 – Fri 17:00 New York) and CME Globex (same week, with a 17:00–18:00 break)."""
+    wd, m = t_ny.weekday(), t_ny.hour * 60 + t_ny.minute
+    if wd == 5 or (wd == 4 and m >= 17 * 60) or (wd == 6 and m < (18 if daily_break else 17) * 60):
+        return False
+    return not (daily_break and 17 * 60 <= m < 18 * 60)
+
+
+def market_open(kind: str, now_utc) -> bool:
+    from zoneinfo import ZoneInfo
+    t = now_utc.astimezone(ZoneInfo("America/New_York"))
+    return _nyse_open(t) if kind == "nyse" else _round_the_clock_open(t, kind == "cme")
+
+
+def last_open_minute(kind: str, now_utc, step_min: int = 5, max_days: int = 6):
+    """The most recent time (stepping back) its market was open — what the latest bar should be near."""
+    from datetime import timedelta
+    t = now_utc
+    for _ in range(max_days * 24 * 60 // step_min):
+        if market_open(kind, t):
+            return t
+        t -= timedelta(minutes=step_min)
+    return None
+
+
+def quote_staleness(kind: str, last_bar_utc, now_utc, tolerance_min: int = 30) -> Dict[str, Any]:
+    """{status, age_min, expected_since}: stale when the last bar is more than `tolerance_min`
+    older than the last moment the market was open (5-minute bars are stamped at their start)."""
+    age = (now_utc - last_bar_utc).total_seconds() / 60
+    ref = last_open_minute(kind, now_utc)
+    lag = (ref - last_bar_utc).total_seconds() / 60 if ref else 0
+    return {"status": "stale" if lag > tolerance_min else "fresh", "age_min": round(age),
+            "open_now": market_open(kind, now_utc),
+            "behind_market_min": round(max(lag, 0))}
+
+
+def _probe_quote_freshness() -> Dict[str, Any]:
+    now = time.time()
+    if _FRESH_CACHE["data"] and now - _FRESH_CACHE["ts"] < _FRESH_TTL:
+        return _FRESH_CACHE["data"]
+    t0 = time.perf_counter()
+    rows, n_stale, n_missing = {}, 0, 0
+    try:
+        import yfinance as yf
+        now_utc = datetime.now(timezone.utc)
+        for sym, kind in _FRESH_BASKET:
+            try:
+                h = yf.Ticker(sym).history(period="5d", interval="5m")
+                if h is None or h.empty:
+                    raise ValueError("no bars")
+                ts = h.index[-1]
+                ts = ts.tz_convert("UTC") if ts.tzinfo else ts.tz_localize("UTC")
+                r = quote_staleness(kind, ts.to_pydatetime(), now_utc)
+                r["last_bar"] = ts.strftime("%Y-%m-%d %H:%M UTC")
+                n_stale += r["status"] == "stale"
+            except Exception as e:
+                r = {"status": "missing", "detail": str(e)[:80]}
+                n_missing += 1
+            rows[sym] = r
+        ms = round((time.perf_counter() - t0) * 1000)
+        status = "live" if not (n_stale or n_missing) else ("down" if n_missing == len(rows) else "degraded")
+        bad = [f"{k} {v.get('behind_market_min', '?')}m behind" if v["status"] == "stale" else f"{k} missing"
+               for k, v in rows.items() if v["status"] != "fresh"]
+        out = {"status": status, "latency_ms": ms, "instruments": rows,
+               "detail": ("all quotes current for their market hours" if not bad else "; ".join(bad))}
+    except Exception as e:
+        out = {"status": "down", "latency_ms": round((time.perf_counter() - t0) * 1000), "detail": str(e)[:120]}
+    _FRESH_CACHE.update(data=out, ts=now)
+    return out
+
+
 def _resolve_sqlite_path() -> str | None:
     from api.config import DATABASE_URL
     if not DATABASE_URL or not DATABASE_URL.startswith("sqlite"):
@@ -136,6 +224,7 @@ def get_sources_health(force: bool = False) -> Dict[str, Any]:
     sources = {
         "fred": _probe_fred(),
         "market_data": _probe_market(),
+        "quote_freshness": _probe_quote_freshness(),
         "database": _probe_db(),
     }
     checked = _now_iso()

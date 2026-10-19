@@ -43,3 +43,33 @@ def test_factor_consequences_short_names():
                      {"factor": "Size (IWM−SPY)", "available": False}]}
     out = factor_consequences(v)
     assert out["momentum"]["unstable"] and not out["value"]["unstable"] and "size" not in out
+
+
+def test_decision_log_is_append_only():
+    import sqlite3
+    import pytest
+    from api.audit_store import add_decision, init_audit_db
+    from api.core.app_db import app_db_path
+    init_audit_db()
+    row = add_decision("test_action", "append-only check", user="tester")
+    conn = sqlite3.connect(app_db_path())
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        conn.execute("UPDATE decision_log SET rationale='x' WHERE id=?", (row["id"],))
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        conn.execute("DELETE FROM decision_log WHERE id=?", (row["id"],))
+    conn.close()
+
+
+def test_quote_staleness_respects_market_hours():
+    from datetime import datetime, timezone
+    from api.health_sources import quote_staleness
+    # Monday 20 Oct 2026 15:00 New York (19:00 UTC): NYSE open
+    now = datetime(2026, 10, 20, 19, 0, tzinfo=timezone.utc)
+    assert quote_staleness("nyse", datetime(2026, 10, 20, 18, 50, tzinfo=timezone.utc), now)["status"] == "fresh"
+    assert quote_staleness("nyse", datetime(2026, 10, 19, 19, 55, tzinfo=timezone.utc), now)["status"] == "stale"
+    # Saturday: Friday's last bar is current for equities and FX
+    sat = datetime(2026, 10, 24, 15, 0, tzinfo=timezone.utc)
+    assert quote_staleness("nyse", datetime(2026, 10, 23, 19, 55, tzinfo=timezone.utc), sat)["status"] == "fresh"
+    assert quote_staleness("fx", datetime(2026, 10, 23, 20, 55, tzinfo=timezone.utc), sat)["status"] == "fresh"
+    # FX a day behind on a weekday is stale
+    assert quote_staleness("fx", datetime(2026, 10, 19, 18, 0, tzinfo=timezone.utc), now)["status"] == "stale"

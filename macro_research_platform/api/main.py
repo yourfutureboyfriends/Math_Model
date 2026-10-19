@@ -1278,6 +1278,19 @@ async def lifespan(app: FastAPI):
                 # rate-limited, which then breaks ordinary quote screens for a while
                 import time as _t
                 _t.sleep(90)
+                # Research-mode function screens that load cold in 7–13 s: ECO (calendar, the default 14-day
+                # view), ECST, RMON (world country matrix) and MRGR (SEC merger deals)
+                from api.marketdata import econ as _econ, countries as _countries, corporate as _corporate
+                from api.marketdata import freedata as _freedata, eps_revisions as _eps
+                for f in (lambda: _econ.calendar(14, None, "Low"), lambda: _econ.surprise_index("2010-01-01"),
+                          _countries.world_data, _corporate.deals,
+                          _freedata.shiller_cape, _freedata.aaii_sentiment, _freedata.nyfed_nowcast,
+                          _freedata.cboe_put_call, _eps.sector_revisions):
+                    try:
+                        f()
+                    except Exception as e:
+                        logger.info(f"[STARTUP] warm-up research screen: {e}")
+                    _t.sleep(5)
                 for f in (research.credit, fixed_income.treasuries, funds.etf_screener, bridgewater.environments, bridgewater.debt_cycles, bridgewater.world_order, insights.vol, insights.risk, edge.cot, edge.trade, insights.breadth, edge.ports_trade, insights.implied_moves, insights.uoa, edge.board):
                     try:
                         f()
@@ -1498,7 +1511,9 @@ async def lifespan(app: FastAPI):
                        quadrants_v1, stream_agreement_v1, factor_validation_v1,
                        risk_parity_compare_v1, regime_transition_v1, event_vol_v1,
                        correlation_matrix_v1, anomalies_v1, signal_attribution_v1,
-                       get_cycle_risk_v1, _model_latest]
+                       get_cycle_risk_v1, _model_latest,
+                       # out-of-sample evidence the ensemble weights by (6h cache)
+                       signals_backtest_v1]
         except Exception as e:
             logger.warning(f"[warm] could not resolve endpoint targets: {e}")
             return
@@ -3851,102 +3866,42 @@ async def get_blackout_calendar():
 
 @app.get("/api/earnings/revisions")
 async def get_earnings_revisions():
-    """
-    Returns earnings estimate revision data from Finnhub API.
-    """
+    """Sector EPS revisions (free: Yahoo analyst estimates for each SPDR sector ETF's top-10 holdings — see
+    api/marketdata/eps_revisions.py), with macro-vs-earnings divergences against the regime sector signals.
+    Structured absence (available: false, no sectors) when the estimates can't be fetched — never invented numbers."""
+    from api.marketdata.eps_revisions import sector_revisions
     try:
-        import requests
-
-        finnhub_key = os.getenv("FINNHUB_API_KEY", "")
-        if not finnhub_key:
-            # HONEST ABSENCE (was a hardcoded fake sector table stamped with now()): real
-            # per-sector EPS-revision data requires the Finnhub feed, which isn't configured
-            # here. Return structured unavailability so the frontend shows "—" for the EPS
-            # overlay rather than fabricated percentages — the regime-based sector allocation
-            # underneath is real and unaffected.
-            logger.info("FINNHUB_API_KEY not set — earnings-revision overlay unavailable (no fabricated fallback).")
-            return {
-                "available": False,
-                "reason": "Sector EPS-revision data requires a Finnhub API key (FINNHUB_API_KEY not configured).",
-                "sectors": {},
-                "divergences": [],
-                "updated_at": datetime.now().isoformat(),
-            }
-
-        # S&P 500 bellwethers
-        tickers = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "JPM", "GS", "XOM", "UNH"]
-        ticker_data = []
-        revision_scores = []
-
-        for ticker in tickers:
-            try:
-                url = f"https://finnhub.io/api/v1/stock/recommendation?symbol={ticker}&token={finnhub_key}"
-                response = requests.get(url, timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    if data and len(data) > 0:
-                        # Get most recent recommendation
-                        latest = data[0]
-                        strong_buy = latest.get("strongBuy", 0)
-                        buy = latest.get("buy", 0)
-                        hold = latest.get("hold", 0)
-                        sell = latest.get("sell", 0)
-                        strong_sell = latest.get("strongSell", 0)
-
-                        upgrades = strong_buy + buy
-                        downgrades = sell + strong_sell
-                        total = upgrades + downgrades + hold
-
-                        revision_score = (upgrades - downgrades) / total if total > 0 else 0
-                        revision_scores.append(revision_score)
-
-                        ticker_data.append({
-                            "symbol": ticker,
-                            "strongBuy": strong_buy,
-                            "buy": buy,
-                            "hold": hold,
-                            "sell": sell,
-                            "strongSell": strong_sell,
-                            "revision_score": round(revision_score, 2),
-                        })
-            except Exception as e:
-                logger.warning(f"Failed to fetch {ticker}: {e}")
-                continue
-
-        # Calculate aggregate metrics
-        if revision_scores:
-            positive_count = sum(1 for s in revision_scores if s > 0)
-            revision_breadth = positive_count / len(revision_scores)
-            avg_revision_score = sum(revision_scores) / len(revision_scores)
-
-            if revision_breadth > 0.6:
-                signal = "BULLISH"
-            elif revision_breadth < 0.4:
-                signal = "BEARISH"
-            else:
-                signal = "NEUTRAL"
-        else:
-            revision_breadth = None
-            avg_revision_score = None
-            signal = "UNAVAILABLE"
-
-        return {
-            "revision_breadth": round(revision_breadth, 2) if revision_breadth is not None else None,
-            "revision_score": round(avg_revision_score, 2) if avg_revision_score is not None else None,
-            "signal": signal,
-            "tickers": ticker_data,
-            "last_updated": datetime.now().isoformat(),
-        }
+        rev = await asyncio.wait_for(asyncio.to_thread(sector_revisions), timeout=90)
     except Exception as e:
-        logger.error(f"Earnings revisions error: {e}", exc_info=True)
-        return {
-            "error": str(e),
-            "revision_breadth": None,
-            "revision_score": None,
-            "signal": "UNAVAILABLE",
-            "tickers": [],
-            "last_updated": datetime.now().isoformat(),
-        }
+        logger.info("[earnings/revisions] unavailable: %s", e)
+        return {"available": False, "reason": f"Sector EPS-revision data unavailable ({type(e).__name__}).",
+                "sectors": {}, "divergences": [], "updated_at": datetime.now().isoformat()}
+    macro = {}
+    try:
+        from api.handlers.dashboard_handler import get_dashboard_data
+        dash = await asyncio.wait_for(get_dashboard_data(mode="live"), timeout=20)
+        macro = {s.get("name"): s.get("signal") for s in ((dash.sectorAllocation or {}).get("sectors") or [])}
+    except Exception as e:
+        logger.debug("[earnings/revisions] sector signals unavailable: %s", e)
+    sectors, divs = {}, []
+    for name, r in rev["sectors"].items():
+        if not r.get("available"):
+            continue
+        sig = macro.get(name) or ""
+        div_type = ("macro overweight, estimates falling" if "Overweight" in sig and r["direction"] == "DOWN"
+                    else "macro underweight, estimates rising" if "Underweight" in sig and r["direction"] == "UP" else None)
+        sectors[name] = {"eps_revision_pct": r["eps_revision_pct"], "direction": r["direction"], "beats_rate": None,
+                         "breadth": r["breadth"], "analysts_up_30d": r["analysts_up_30d"],
+                         "analysts_down_30d": r["analysts_down_30d"], "etf": r["etf"],
+                         "constituents_used": r["constituents_used"], "macro_signal": sig or None,
+                         "divergence": div_type is not None, "divergence_type": div_type}
+        if div_type:
+            divs.append({"sector": name, "type": div_type, "revision_pct": r["eps_revision_pct"], "macro_signal": sig})
+    return {"available": bool(sectors), "sectors": sectors, "divergences": divs,
+            "strongest_positive_revision": rev.get("strongest_positive_revision"),
+            "strongest_negative_revision": rev.get("strongest_negative_revision"),
+            "method": rev.get("method"), "source": rev.get("source"),
+            "updated_at": rev.get("computed_at")}
 
 
 @app.get("/api/cot")

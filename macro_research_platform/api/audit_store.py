@@ -1,7 +1,7 @@
 """
 Audit store — decision log + point-in-time system snapshots (Phase 8).
 
-Two immutable, append-only tables in the same SQLite DB:
+Two tables in the same SQLite DB; decision_log is append-only (UPDATE/DELETE triggers abort):
 - decision_log: every material action (override, approval, param change) with user,
   timestamp, before/after state and a required rationale.
 - pit_snapshots: periodic snapshots of key system state (regime, signals, portfolio risk)
@@ -39,6 +39,14 @@ def init_audit_db() -> None:
             )
             """
         )
+        # Append-only, enforced by the database: any UPDATE or DELETE on the decision log aborts,
+        # whatever code path (or sqlite shell) attempts it. Corrections are new rows.
+        conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS decision_log_no_update BEFORE UPDATE ON decision_log "
+            "BEGIN SELECT RAISE(ABORT, 'decision_log is append-only'); END")
+        conn.execute(
+            "CREATE TRIGGER IF NOT EXISTS decision_log_no_delete BEFORE DELETE ON decision_log "
+            "BEGIN SELECT RAISE(ABORT, 'decision_log is append-only'); END")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS pit_snapshots (

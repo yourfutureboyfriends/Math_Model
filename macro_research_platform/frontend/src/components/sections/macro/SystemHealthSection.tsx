@@ -79,13 +79,24 @@ export function SystemHealthSection() {
           <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Data sources</div>
           {sources && Object.entries(sources.sources).map(([name, p]) => (
             <div key={name} className="flex items-baseline justify-between text-xs py-0.5" title={p.detail}>
-              <span className="text-text-secondary capitalize">{name.replace('_', ' ')}</span>
+              <span className="text-text-secondary capitalize">{name.replace(/_/g, ' ')}</span>
               <span className="font-mono">
                 <span className={tone(p.status)}>{p.status}</span>
                 <span className="text-text-tertiary"> · {p.latency_ms == null ? '—' : `${p.latency_ms} ms`}</span>
               </span>
             </div>
           ))}
+          {(sources?.sources as any)?.quote_freshness?.instruments && (
+            <div className="mt-1 pl-2 space-y-0.5">
+              {Object.entries((sources!.sources as any).quote_freshness.instruments as Record<string, any>).map(([sym, q]) => (
+                <div key={sym} className="flex justify-between text-2xs text-text-tertiary" title={q.detail ?? `last 5-minute bar ${q.last_bar}`}>
+                  <span className="font-mono">{sym}</span>
+                  <span><span className={q.status === 'fresh' ? 'text-green' : q.status === 'stale' ? 'text-amber' : 'text-red'}>{q.status}</span>
+                    {q.age_min != null && ` · ${q.age_min}m old · market ${q.open_now ? 'open' : 'closed'}`}</span>
+                </div>
+              ))}
+            </div>
+          )}
           {breaker && (
             <div className="mt-1 pt-1 border-t border-border-subtle text-2xs text-text-tertiary">
               FRED circuit breaker: <span className={breaker.open ? 'text-red' : 'text-green'}>{breaker.open ? `open, retry in ${Math.round(breaker.retry_in_s)}s` : 'closed'}</span>
