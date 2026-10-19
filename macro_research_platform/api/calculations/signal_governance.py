@@ -17,6 +17,13 @@ from __future__ import annotations
 from typing import Dict, List, Optional, Sequence, Tuple
 
 STATUS_MULT = {"PASS": 1.0, "WEAK": 0.5, "UNVALIDATED": 0.5, "FAIL": 0.0}
+# composite input → the walk-forward test of that exact input (api/handlers/governance._input_scorecards)
+INPUT_EVIDENCE = {"Growth signal": "input_growth", "1 − recession probability": "input_recession",
+                  "Risk-appetite signal": "input_risk", "Liquidity signal": "input_liquidity"}
+
+
+def evidence_for(cards: Dict[str, Dict]) -> Dict[str, Optional[Dict]]:
+    return {name: cards.get(cid) for name, cid in INPUT_EVIDENCE.items()}
 
 
 def evidence_status(card: Optional[Dict]) -> Tuple[str, str]:
@@ -32,6 +39,10 @@ def evidence_status(card: Optional[Dict]) -> Tuple[str, str]:
         return "FAIL", f"lost money out-of-sample ({desc}) — retired from the score"
     if p is None or p > 0.10:
         return "WEAK", f"hit rate not distinguishable from 50% ({desc}) — half weight"
+    bh = card.get("buy_hold_sharpe")
+    if bh is not None and sh is not None and sh < bh:
+        # a mostly-bullish signal in a rising market "wins" on drift alone; it must beat simply holding
+        return "WEAK", f"no better than holding the index ({desc}; buy-and-hold Sharpe {bh:.2f}) — half weight"
     return "PASS", f"survives out-of-sample ({desc})"
 
 
@@ -84,3 +95,33 @@ def factor_consequences(validation: Optional[Dict]) -> Dict[str, Dict]:
         out[short] = {"unstable": bool(r.get("unstable")), "r2_is": r.get("in_sample_r2"),
                       "r2_oos": r.get("out_of_sample_r2"), "verdict": r.get("verdict")}
     return out
+
+
+def cluster_votes(series: Dict[str, Sequence[int]], threshold: float = 0.5) -> Dict:
+    """Group votes whose day-by-day positions (+1 / −1, 0 = no vote) correlate at |ρ| ≥ threshold (connected
+    components). Correlation uses the days both voted. Returns {corr, groups: {vote: group label}}."""
+    import numpy as np
+    names = list(series)
+    corr: Dict[str, Dict[str, Optional[float]]] = {a: {} for a in names}
+    parent = {n: n for n in names}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            x, y = np.asarray(series[a], float), np.asarray(series[b], float)
+            n = min(x.size, y.size)
+            x, y = x[-n:], y[-n:]
+            m = (x != 0) & (y != 0)
+            r = float(np.corrcoef(x[m], y[m])[0, 1]) if m.sum() > 30 and x[m].std() > 0 and y[m].std() > 0 else None
+            corr[a][b] = corr[b][a] = round(r, 2) if r is not None else None
+            if r is not None and abs(r) >= threshold:
+                parent[find(a)] = find(b)
+    roots: Dict[str, List[str]] = {}
+    for n in names:
+        roots.setdefault(find(n), []).append(n)
+    groups = {n: " + ".join(sorted(members)) if len(members) > 1 else n for members in roots.values() for n in members}
+    return {"corr": corr, "groups": groups, "threshold": threshold, "independent_groups": len(roots)}

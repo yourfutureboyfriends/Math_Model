@@ -73,3 +73,21 @@ def test_quote_staleness_respects_market_hours():
     assert quote_staleness("fx", datetime(2026, 10, 23, 20, 55, tzinfo=timezone.utc), sat)["status"] == "fresh"
     # FX a day behind on a weekday is stale
     assert quote_staleness("fx", datetime(2026, 10, 19, 18, 0, tzinfo=timezone.utc), now)["status"] == "stale"
+
+
+def test_must_beat_buy_and_hold_to_pass():
+    card = {**_card(0.5, 0.4, 0.6, 0.01), "buy_hold_sharpe": 0.7}
+    assert evidence_status(card)[0] == "WEAK"
+    assert evidence_status({**card, "buy_hold_sharpe": 0.4})[0] == "PASS"
+
+
+def test_cluster_votes_groups_correlated_series():
+    import numpy as np
+    from api.calculations.signal_governance import cluster_votes
+    rng = np.random.default_rng(0)
+    a = np.sign(rng.normal(size=500))
+    b = np.where(rng.random(500) < 0.9, a, -a)          # ~0.8 correlated with a
+    c = np.sign(rng.normal(size=500))                   # independent
+    out = cluster_votes({"a": a.tolist(), "b": b.tolist(), "c": c.tolist()})
+    assert out["groups"]["a"] == out["groups"]["b"] == "a + b" and out["groups"]["c"] == "c"
+    assert out["independent_groups"] == 2

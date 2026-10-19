@@ -88,6 +88,7 @@ def test_overview_reports_yield_moves_in_basis_points(monkeypatch):
     assert "change_1d" not in tnx                      # no misleading % change of a yield level
 
 
+@pytest.mark.network
 def test_cross_listing_detection():
     """Foreign companies' lines on another market are dropped; domestic companies (including
     Hong Kong's mainland-Chinese majors and dual primaries) are kept."""

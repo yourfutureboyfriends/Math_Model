@@ -7,6 +7,7 @@ Locks:
 - The risk-label collision: recommendations must use "Risk Appetite" (not "Risk Score", which
   collided with the header's complementary risk-level metric) and an unambiguous position stance.
 """
+import pytest
 
 
 def _cpi_dates(events, key_event="event", key_date="date"):
@@ -28,6 +29,7 @@ def test_cpi_date_consistent_across_panels(client):
     assert h[0] == c[0] == e[0], f"CPI date disagreement — horizon {h[0]}, calendar {c[0]}, event-vol {e[0]}"
 
 
+@pytest.mark.network
 def test_recommendations_risk_labels_unambiguous(client):
     r = client.get("/api/business/recommendations")
     assert r.status_code == 200

@@ -7,6 +7,7 @@ Locks the regime-classifier consistency fix and the label-accuracy fixes.
   must carry the complementary cycle_regime for context.
 - Labels: forecasts methodology must not claim bare "GMO Model" (it's a building-block ERP model).
 """
+import pytest
 
 QUADRANTS = {"Goldilocks", "Reflation", "Slowdown", "Stagflation"}
 
@@ -33,6 +34,7 @@ def test_regime_transition_is_stable_across_calls(client):
     assert a == b, f"regime flip-flopped between identical calls: {a} -> {b}"
 
 
+@pytest.mark.network
 def test_forecasts_methodology_not_falsely_labeled_gmo(client):
     r = client.get("/api/forecasts/longterm")
     assert r.status_code == 200

@@ -5,6 +5,7 @@ Locks the class of bug behind prior recession-probability / momentum out-of-rang
 percentages, probabilities and scores must stay within their declared ranges on the live
 dashboard payload.
 """
+import pytest
 
 
 def _num(v):
@@ -14,6 +15,7 @@ def _num(v):
     return v
 
 
+@pytest.mark.network
 def test_dashboard_scores_and_probabilities_in_range(client):
     r = client.get("/api/dashboard")
     assert r.status_code == 200

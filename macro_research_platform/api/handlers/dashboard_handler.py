@@ -717,11 +717,10 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     if _cta_trends is not None:
         _votes["CTA trend"] = _cta_trends["aggregateScore"] > 0
     _n_bull = sum(_votes.values())
-    # Governance: weight each input by its out-of-sample evidence (walk-forward scorecards), and count
-    # votes driven by the same data once. Equal weights gave the VIX vol-regime input full weight while
-    # its own backtest lost money (Sharpe −0.32, −27%).
+    # Governance: weight each input by its own out-of-sample evidence (walk-forward test of the input as it votes,
+    # since 2000), and count votes driven by the same data once.
     from api.calculations.signal_governance import evidence_weights, independence_agreement
-    _cards = {}
+    _cards, _bt = {}, None
     try:
         from api.handlers.governance import signal_backtests
         _bt = await _dash_asyncio.wait_for(signal_backtests(21), timeout=8.0)
@@ -730,13 +729,24 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         logger.info("[dashboard_handler] signal evidence not ready: %s", e)
     _components = [("Growth signal", growth_score), ("1 − recession probability", 1 - recession_data["probability"]),
                    ("Risk-appetite signal", risk_score), ("Liquidity signal", liquidity_score)]
-    _evidence = {"Growth signal": _cards.get("momentum_12_1"),            # growth is SPX-momentum based
-                 "Risk-appetite signal": _cards.get("vol_regime")}        # risk appetite is VIX based
+    from api.calculations.signal_governance import evidence_for
+    _evidence = evidence_for(_cards)      # each input's own walk-forward test, since 2000
     _weighted = evidence_weights(_components, _evidence)
     ensemble_score = round(sum(r["contribution"] for r in _weighted), 2)
+    # Driver groups measured from the votes' own day-by-day correlation since 2000 (|ρ| ≥ 0.5 = same driver);
+    # the hand grouping is the fallback while the evidence is still computing.
     _drivers = {"Growth (SPX momentum)": "equity prices", "Risk appetite (VIX)": "equity prices",
                 "12-1 momentum": "equity prices", "CTA trend": "equity prices",
                 "Liquidity (DXY/rates)": "dollar & rates", "Recession model": "macro data"}
+    _vc = (_bt or {}).get("vote_clusters") if isinstance(_bt, dict) else None
+    if _vc and _vc.get("groups"):
+        _vid = {"Growth (SPX momentum)": "input_growth", "Risk appetite (VIX)": "input_risk",
+                "12-1 momentum": "momentum_12_1", "CTA trend": "trend_200d",
+                "Liquidity (DXY/rates)": "input_liquidity", "Recession model": "input_recession"}
+        _short = {"input_growth": "growth", "input_risk": "risk", "momentum_12_1": "momentum", "trend_200d": "trend",
+                  "input_liquidity": "liquidity", "input_recession": "recession"}
+        _drivers = {k: " + ".join(_short.get(x, x) for x in _vc["groups"][v].split(" + "))
+                    for k, v in _vid.items() if v in _vc["groups"]} or _drivers
     _indep = independence_agreement(_votes, _drivers)
     ensemble = EnsembleData(
         score=ensemble_score,

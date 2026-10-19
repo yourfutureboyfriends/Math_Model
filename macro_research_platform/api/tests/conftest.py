@@ -17,7 +17,39 @@ if os.environ.get("MACRO_TEST_REAL_DB") != "1":
     os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(tempfile.mkdtemp(prefix="macro_test_db_"), "app.db")
 
 
+# MACRO_TEST_OFFLINE=1: refuse every outside connection (localhost still works), so the suite is fast and
+# deterministic; tests marked `network` (they read live Yahoo / FRED / feeds) are skipped.
+_OFFLINE = os.environ.get("MACRO_TEST_OFFLINE") == "1"
+if _OFFLINE:
+    # yfinance talks through libcurl (curl_cffi), which bypasses Python sockets: send all proxied traffic to a
+    # closed local port so it fails at once too
+    for _k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"):
+        os.environ[_k] = "http://127.0.0.1:9"
+    os.environ["NO_PROXY"] = os.environ["no_proxy"] = "localhost,127.0.0.1,::1,testserver"
+    import socket as _socket
+    _orig_connect = _socket.socket.connect
+
+    def _guarded_connect(self, address):
+        host = address[0] if isinstance(address, tuple) else address
+        if isinstance(host, str) and host not in ("127.0.0.1", "::1", "localhost") and not host.startswith("/"):
+            raise OSError(f"network disabled in offline test mode ({host})")
+        return _orig_connect(self, address)
+    _socket.socket.connect = _guarded_connect
+
+
 import pytest
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "network: reads live outside data (skipped with MACRO_TEST_OFFLINE=1)")
+
+
+def pytest_collection_modifyitems(config, items):
+    if _OFFLINE:
+        skip = pytest.mark.skip(reason="needs the network (MACRO_TEST_OFFLINE=1)")
+        for it in items:
+            if "network" in it.keywords:
+                it.add_marker(skip)
 
 
 @pytest.fixture(autouse=True, scope="session")

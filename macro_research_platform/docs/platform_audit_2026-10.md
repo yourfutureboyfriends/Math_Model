@@ -143,6 +143,18 @@ answers) were closed on 19 Oct — see below.
 | Portfolio | Brinson–Fachler (Carino-linked) vs SPY on the holdings actually held; ex-ante / ex-post tracking error; liquidity-adjusted VaR and days to liquidate; FIFO lots; FX on non-USD positions; TCA of all fills; trade-idea P&L; book sector exposure beside the regime targets; news per holding with tone vs the position |
 | Features | Data-driven Daily Brief (overnight moves in σ, changes since the last brief, today's releases with consensus, earnings, positioning, ranked priorities); 2-year composite-signal history; My Desk P&L by book and strategy with limit headroom; field / news alerts with webhook or email delivery (opt-in in .env); AI answers cite numbered sources that open the screen; CSV / JSON data API with an Excel link builder; team notes and shared watchlists; anomaly click-through; WEI sparklines and valuation; earnings-aware entries (wait inside 5 days, half size inside 10) |
 
+### Follow-up (19 Oct, later)
+* Each composite input is now tested exactly as it votes, walk-forward since 2000 (S&P buy-and-hold Sharpe 0.42),
+  and must beat holding the index to PASS: growth, liquidity and 1 − recession are WEAK (½ weight each, ⅓ after
+  normalising), risk appetite FAILS (−35% long/short) and is retired. The 5-year window had failed liquidity and
+  recession on the 2022–24 inversion alone.
+* Agreement groups are measured, not assigned: votes correlating at |ρ| ≥ 0.5 since 2000 form one driver — equity
+  prices (growth, risk, momentum, trend) and rates/curve (liquidity, recession): 2 independent drivers, not 6.
+* The composite history uses point-in-time weights (evidence available before each date, refreshed monthly).
+* `MACRO_TEST_OFFLINE=1` runs the suite with all outside traffic refused (sockets and libcurl); the 6 tests that read
+  live data are marked `network` and skipped there.
+* Still open: an on-screen check of the new panels needs a signed-in session.
+
 ## Decisions (19 Oct 2026)
 * The four 8-Jul positions (AAPL 150, SPY −50, MSFT 40, GLD 30) were removed at the owner's request, logged in the
   decision log; backup `api/backups/macro_terminal_2026-10-19_pre_position_removal.db`.
