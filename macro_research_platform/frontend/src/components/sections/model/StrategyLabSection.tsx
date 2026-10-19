@@ -90,6 +90,8 @@ export function StrategyLabSection() {
                 <div key={k} className={cn('px-3 py-2 bg-surface-1 border', k === 'combined' ? 'border-bloomberg/50' : 'border-border')}>
                   <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-text-tertiary">
                     <span className="inline-block w-2 h-2 rounded-sm" style={{ background: COLOR[k] }} />{SHORT[k]}
+                    {['low_vol', 'residual_momentum', 'combined'].includes(k) && (
+                      <span className="ml-auto normal-case text-amber" title="Uses today's large caps: companies that failed or shrank are missing, which flatters these returns">survivors</span>)}
                   </div>
                   <div className="flex items-baseline gap-2 mt-0.5">
                     <span className="font-mono text-sm text-text-primary">{num(p.sharpe)}</span><span className="text-[10px] text-text-tertiary">Sharpe</span>

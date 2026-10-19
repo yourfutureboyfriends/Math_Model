@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/Badge';
 import { ArrowUp, ArrowDown, Globe, TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useApiData } from '@/hooks/useApiData';
+import { useMacroStore } from '@/store/macroStore';
 
 interface SectorRec {
   sector: string;
@@ -74,6 +75,12 @@ const FACTOR_COLORS: Record<string, string> = {
 
 export function EquityResearchSection({ data }: EquityResearchSectionProps) {
   const { data: _apiEq } = useApiData<any>("/api/equity-research");
+  // the regime view of the same sectors (Sector Allocation), shown beside the relative-strength rating
+  const regimeSectors = useMacroStore((st) => ((st.fullDashboard as any)?.sectorAllocation?.sectors ?? []) as any[]);
+  const regimeOf = (sector: string) => {
+    const key = sector === 'Consumer Discretionary' ? 'Consumer' : sector === 'Health Care' ? 'Healthcare' : sector;
+    return regimeSectors.find((x) => x.name === key)?.signal as string | undefined;
+  };
   if (!data && _apiEq) (data as any) = { equityResearch: _apiEq };
   const [activeTab, setActiveTab] = useState<'sectors' | 'factors' | 'valuation' | 'countries'>('sectors');
 
@@ -141,12 +148,19 @@ export function EquityResearchSection({ data }: EquityResearchSectionProps) {
             <div className="p-3 bg-surface-1 border border-border">
               <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Sector Ratings <span className="normal-case">— relative strength: 3M return vs SPY, percentile of the past year (regime-based tilts are in Sector Allocation)</span></div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {Object.entries(sectorRatings).map(([sector, rating]) => (
-                  <div key={sector} className="flex items-center justify-between px-2 py-1 bg-surface-2 border border-border-subtle">
-                    <span className="text-xs text-text-primary">{sector}</span>
-                    <span className={`text-xs font-mono ${ratingTone(rating)}`}>{rating}</span>
-                  </div>
-                ))}
+                {Object.entries(sectorRatings).map(([sector, rating]) => {
+                  const reg = regimeOf(sector);
+                  const agree = reg && String(reg).toLowerCase() === String(rating).toLowerCase();
+                  return (
+                    <div key={sector} className="flex items-center justify-between gap-2 px-2 py-1 bg-surface-2 border border-border-subtle">
+                      <span className="text-xs text-text-primary">{sector}</span>
+                      <span className="text-right leading-tight">
+                        <span className={`text-xs font-mono ${ratingTone(rating)}`}>{rating}</span>
+                        {reg && <span className="block text-[10px] text-text-tertiary" title="Sector Allocation's regime view">regime: {reg}{agree ? ' · agree' : ' · differ'}</span>}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

@@ -62,7 +62,7 @@ export function AdvancedIndicatorsSection({ data }: AdvancedIndicatorsSectionPro
   const rawIndicators: Array<[string, any]> = [
     ['Sahm Rule', anyData.sahmRule],
     ['Credit Impulse', anyData.creditImpulse],
-    ['LEI Composite', anyData.leiComposite ?? anyData.lei],
+    ['Activity (CFNAI 3M)', anyData.leiComposite ?? anyData.lei],
     ['Risk Parity', anyData.riskParity],
   ];
   const indicators = rawIndicators

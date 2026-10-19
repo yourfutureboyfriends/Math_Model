@@ -39,7 +39,7 @@ export function RiskParityCompareSection() {
         <div className="section-header-left">
           <span className="section-tag"><Scale className="w-3 h-3" /></span>
           <h2 className="section-title">Risk Parity Comparison</h2>
-          {data && <DataLineagePopover lineage={{ source: `${(data.universe || []).join(', ')} · ${data.observations} obs`, fetched_at: data.as_of, formula: 'Static full-sample weights per scheme, backtested on the same real returns', notes: (data.citations || []).join('; ') }} />}
+          {data && <DataLineagePopover lineage={{ source: `${(data.universe || []).join(', ')} · ${data.observations} obs`, fetched_at: data.as_of, formula: `Walk-forward: weights re-estimated every ${data.rebalance_days} days from the trailing ${data.lookback_days}; out-of-sample ${data.period?.start ?? ''} → ${data.period?.end ?? ''}; ${data.costs ?? ''}`, notes: (data.citations || []).join('; ') }} />}
         </div>
         <button onClick={() => load()} title="Refresh" aria-label="Refresh" className="p-1 text-text-tertiary hover:text-bloomberg">
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />

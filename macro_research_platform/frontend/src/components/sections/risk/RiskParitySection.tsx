@@ -61,6 +61,7 @@ export function RiskParitySection({ data: dataProp }: RiskParitySectionProps) {
             <div className="text-base font-mono font-bold text-text-primary">
               {leverage != null ? `${leverage.toFixed(2)}x` : '—'}
             </div>
+            {leverage != null && <div className="text-2xs text-text-tertiary">gross {(leverage * 100).toFixed(0)}% to reach the vol target</div>}
           </div>
           <div className="p-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase mb-0.5">Status</div>
@@ -114,7 +115,8 @@ export function RiskParitySection({ data: dataProp }: RiskParitySectionProps) {
                   <th className="text-right py-2 px-3 text-2xs text-text-tertiary uppercase font-medium">Vol</th>
                   <th className="text-right py-2 px-3 text-2xs text-text-tertiary uppercase font-medium">Base Wgt</th>
                   <th className="text-right py-2 px-3 text-2xs text-text-tertiary uppercase font-medium" title="3-month trend (t-stat ≥ 1); does not change the risk-parity weight">3M Trend</th>
-                  <th className="text-right py-2 px-3 text-2xs text-text-tertiary uppercase font-medium">Target %</th>
+                  <th className="text-right py-2 px-3 text-2xs text-text-tertiary uppercase font-medium" title="Unlevered: sums to 100%">Target %</th>
+                  <th className="text-right py-2 px-3 text-2xs text-text-tertiary uppercase font-medium" title="Target × leverage — what is held to reach the volatility target">At target vol</th>
                 </tr>
               </thead>
               <tbody>
@@ -137,6 +139,10 @@ export function RiskParitySection({ data: dataProp }: RiskParitySectionProps) {
                     </td>
                     <td className="py-2 px-3 text-right font-mono text-xs text-bloomberg">
                       {item.targetAllocationPct != null ? `${item.targetAllocationPct.toFixed(1)}%` : item.adjustedWeight != null ? `${(item.adjustedWeight * 100).toFixed(1)}%` : '—'}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-xs text-text-secondary">
+                      {leverage != null && (item.targetAllocationPct != null || item.adjustedWeight != null)
+                        ? `${((item.targetAllocationPct ?? item.adjustedWeight * 100) * leverage).toFixed(1)}%` : '—'}
                     </td>
                   </tr>
                 ))}

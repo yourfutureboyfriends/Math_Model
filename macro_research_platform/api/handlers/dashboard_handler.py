@@ -723,35 +723,43 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
 
     # Signal Stack - constructed from calculated signals
     # Build reasoning for signal stack
-    signal_stack_reasoning = f"RISK {'ON' if risk_score > 0.5 else 'OFF'} consensus: Growth signal strong ({growth_score:.2f})"
+    # one vocabulary per layer, each word describing that layer's own reading (the old text called growth "strong"
+    # whatever its value, and mixed BULLISH / OVERWEIGHT / RISK_ON / DEFENSIVE across layers)
+    _g = "STRONG" if growth_score > 0.6 else "WEAK" if growth_score < 0.4 else "NEUTRAL"
+    _i = "ELEVATED" if inflation_score > 0.6 else "SUBDUED" if inflation_score < 0.4 else "NEUTRAL"
+    _l = "LOOSE" if liquidity_score > 0.6 else "TIGHT" if liquidity_score < 0.4 else "NEUTRAL"
+    _r = "RISK_ON" if risk_score > 0.6 else "RISK_OFF" if risk_score < 0.4 else "NEUTRAL"
+    signal_stack_reasoning = (f"RISK {'ON' if risk_score > 0.5 else 'OFF'} consensus: growth {_g.lower()} ({growth_score:.2f}), "
+                              f"inflation {_i.lower()} ({inflation_score:.2f}), liquidity {_l.lower()} ({liquidity_score:.2f}), "
+                              f"risk appetite {_r.lower().replace('_', '-')} ({risk_score:.2f})")
 
     signal_stack = SignalStackData(
         layers=[
             SignalStackLayer(
                 layer="Growth",
                 priority=1,
-                signal="BULLISH" if growth_score > 0.6 else "BEARISH" if growth_score < 0.4 else "NEUTRAL",
+                signal=_g,
                 conviction=growth_score if growth_score > 0.5 else 1 - growth_score,
                 override=None
             ),
             SignalStackLayer(
                 layer="Inflation",
                 priority=2,
-                signal="OVERWEIGHT" if inflation_score > 0.6 else "UNDERWEIGHT" if inflation_score < 0.4 else "NEUTRAL",
+                signal=_i,
                 conviction=inflation_score if inflation_score > 0.5 else 1 - inflation_score,
                 override=None
             ),
             SignalStackLayer(
                 layer="Liquidity",
                 priority=3,
-                signal="RISK_ON" if liquidity_score > 0.6 else "RISK_OFF" if liquidity_score < 0.4 else "NEUTRAL",
+                signal=_l,
                 conviction=liquidity_score if liquidity_score > 0.5 else 1 - liquidity_score,
                 override=None
             ),
             SignalStackLayer(
                 layer="Risk",
                 priority=4,
-                signal="RISK_ON" if risk_score > 0.6 else "DEFENSIVE" if risk_score < 0.4 else "NEUTRAL",
+                signal=_r,
                 conviction=risk_score if risk_score > 0.5 else 1 - risk_score,
                 override=None
             ),

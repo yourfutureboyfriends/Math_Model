@@ -1158,6 +1158,7 @@ class FullRiskData(BaseModel):
     riskAdjustedReturns: Dict[str, Any]
     correlation: Dict[str, Any]
     volatility: float
+    basis: Optional[str] = None          # which portfolio these numbers describe (book or labelled reference)
 
 
 class FactorData(BaseModel):

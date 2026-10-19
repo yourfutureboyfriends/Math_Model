@@ -207,11 +207,10 @@ export function TradeIdeasSection({ data }: Props) {
 
       <div className="mt-3 text-2xs text-text-tertiary flex items-center justify-between">
         <span>Regime: {data.regime || 'Unknown'}</span>
-        <span>
-          Last updated: {data.generated_at
-            ? new Date(data.generated_at).toLocaleTimeString()
-            : 'Real-time'}
-        </span>
+        {(() => {
+          const ts = (data as any).generated_at ?? (data as any).lastUpdated ?? (data as any).timestamp;
+          return ts ? <span>Updated {new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span> : null;
+        })()}
       </div>
     </section>
   );

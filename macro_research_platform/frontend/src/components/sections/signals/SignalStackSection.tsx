@@ -52,6 +52,10 @@ export function SignalStackSection() {
 
   const getSignalColor = (signal: string) => {
     if (!signal) return 'text-text-secondary';
+    if (['WEAK', 'TIGHT', 'RISK_OFF'].includes(signal)) return 'text-red';
+    if (['STRONG', 'LOOSE'].includes(signal)) return 'text-green';
+    if (signal === 'ELEVATED') return 'text-amber';
+    if (signal === 'SUBDUED') return 'text-blue';
     if (signal.includes('DEFENSIVE') || signal.includes('VETO') || signal.includes('UNDERWEIGHT'))
       return 'text-red';
     if (signal.includes('RISK_ON') || signal.includes('OVERWEIGHT') || signal.includes('BULLISH')) return 'text-green';

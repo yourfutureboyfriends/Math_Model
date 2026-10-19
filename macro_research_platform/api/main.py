@@ -3018,10 +3018,13 @@ async def risk_parity_compare_v1():
     return {
         "available": True, "universe": labels, "observations": len(common),
         "out_of_sample_days": len(common) - 1 - lookback,
+        "period": {"start": common[lookback + 1] if len(common) > lookback + 1 else None, "end": common[-1]},
+        "costs": "before trading costs (monthly rebalancing turnover is not charged)",
         "lookback_days": lookback, "rebalance_days": rebalance,
         "results": rows,
         "risk_contribution_uncertainty": bands,
-        "note": f"Walk-forward, out-of-sample: weights re-estimated every {rebalance} trading days "
+        "note": f"Walk-forward, out-of-sample {common[lookback + 1] if len(common) > lookback + 1 else ''} → {common[-1]}, "
+                f"before trading costs: weights re-estimated every {rebalance} trading days "
                 f"from the trailing {lookback} days only; 'weights' are the latest estimate. "
                 "Per 'Risk Parity and its Discontents' (2025), pure risk weighting often does not beat 60/40.",
         "citations": ["Risk Parity and its Discontents (SSRN 2025)",

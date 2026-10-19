@@ -58,7 +58,7 @@ DEBT_SERIES = {"private": "QUSPAM770A", "public": "QUSGAM770A", "total": "QUSCAM
                "dsr": "TDSP"}
 # NFCI: Chicago Fed National Financial Conditions Index (weekly; < 0 = looser than average).
 # DFEDTARU: FOMC target range upper bound (changes only on policy decisions).
-OTHER_FRED = ["DFII10", "GDPNOW", "TOTBKCR", "GDP", "BAMLH0A0HYM2", "NFCI", "DFEDTARU"]
+OTHER_FRED = ["DFII10", "GDPNOW", "TOTBKCR", "GDP", "BAMLH0A0HYM2", "NFCI", "DFEDTARU", "CFNAIMA3", "CFNAI", "WEI"]
 
 _PE_CACHE: Dict[str, tuple] = {}          # ETF -> (ts, trailing P/E)
 _PE_TTL = 3600
@@ -605,8 +605,8 @@ def build_valuation(inp: SectionInputs, now) -> Optional[Dict[str, Any]]:
 # ── Advanced indicators ─────────────────────────────────────────────────────────
 
 def build_advanced_indicators(inp: SectionInputs, sahm: DatedSeries, now) -> Dict[str, Any]:
-    """Sahm rule (FRED SAHMREALTIME), credit impulse (FRED TOTBKCR vs GDP), LEI
-    (unavailable: OECD CLI for the US discontinued), inverse-vol risk-parity weights."""
+    """Sahm rule (FRED SAHMREALTIME), credit impulse (FRED TOTBKCR vs GDP), activity composite (Chicago Fed CFNAI
+    3-month average, with the NY Fed Weekly Economic Index), inverse-vol risk-parity weights."""
     if sahm:
         sv = sahm.latest
         sahm_block = {"value": round(sv, 2),
@@ -624,13 +624,30 @@ def build_advanced_indicators(inp: SectionInputs, sahm: DatedSeries, now) -> Dic
                     if ci is not None else
                     {"value": None, "signal": "Unavailable", "description": "Bank credit / GDP history unavailable"})
 
-    lei_block = {"value": None, "change": None, "signal": "Unavailable",
-                 "description": "No leading-index source wired (OECD US CLI discontinued; Conference Board LEI not on FRED)"}
+    # Activity composite in place of the (paid) Conference Board LEI: the Chicago Fed National Activity Index, 3-month
+    # average (85 indicators; below −0.70 after an expansion has marked recessions), with the NY Fed Weekly Economic
+    # Index as the timelier read
+    ma3, cf, wei = inp.series("CFNAIMA3"), inp.series("CFNAI"), inp.series("WEI")
+    if ma3:
+        v = ma3.latest
+        prev = ma3.values[-4] if len(ma3.values) >= 4 else None
+        lei_block = {"value": round(v, 2), "change": None if prev is None else round(v - prev, 2),
+                     "signal": "Recession risk" if v <= -0.7 else "Below trend" if v < 0 else "Above trend",
+                     "threshold": -0.7,
+                     "description": (f"Chicago Fed National Activity Index, 3-month average (FRED CFNAIMA3, {ma3.latest_date})"
+                                     + (f"; monthly {cf.latest:+.2f}" if cf else "")
+                                     + (f"; NY Fed Weekly Economic Index {wei.latest:.2f} ({wei.latest_date})" if wei else "")
+                                     + ". Below −0.70 has marked recessions.")}
+    else:
+        lei_block = {"value": None, "change": None, "signal": "Unavailable",
+                     "description": "Chicago Fed activity index (FRED CFNAIMA3) unavailable"}
 
     al = inp.aligned("SPY", "TLT", "DBC")
     w = ms.inverse_vol_weights(al, 60) if al else None
     corr = ms.trailing_correlation(al["SPY"], al["TLT"], 60) if al else None
-    rp_block = ({"regime": "Stress" if (corr is not None and corr > 0.2) else "Normal",
+    # what this reads is the stock–bond hedge (correlation), not whether risk contributions are balanced (the Risk
+    # Parity panel's "Balanced") — named for what it measures
+    rp_block = ({"regime": "Bonds not hedging" if (corr is not None and corr > 0.2) else "Bonds hedging",
                  "allocations": {"stocks": round(w["SPY"], 2), "bonds": round(w["TLT"], 2),
                                  "commodities": round(w["DBC"], 2)},
                  "description": "Inverse 60d-vol weights for SPY/TLT/DBC"

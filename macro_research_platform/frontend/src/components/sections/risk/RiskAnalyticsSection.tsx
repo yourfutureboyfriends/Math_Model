@@ -168,6 +168,7 @@ export function RiskAnalyticsSection() {
         </div>
       </div>
 
+      {(data as any)?.basis && <div className="text-2xs text-text-tertiary">Portfolio: {(data as any).basis}</div>}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="p-3 border border-border-subtle bg-surface-2">
           <div className="text-2xs text-text-tertiary uppercase">Annual return</div>
