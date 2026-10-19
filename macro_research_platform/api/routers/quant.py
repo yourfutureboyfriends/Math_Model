@@ -690,5 +690,8 @@ def _audit(user: str, action: str, text: str) -> None:
         pass
 
 
-from api.routers.options_engine import router as options_engine_router
-router.include_router(options_engine_router)
+try:                                   # the options decision engine (work in progress, not yet in version control)
+    from api.routers.options_engine import router as options_engine_router
+    router.include_router(options_engine_router)
+except ImportError:                    # pragma: no cover — absent in a clean checkout
+    pass
