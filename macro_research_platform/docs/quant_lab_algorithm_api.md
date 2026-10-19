@@ -53,7 +53,7 @@ Top-level `PARAMS = {"name": [values]}` still drives walk-forward; read the curr
 | Margin | maintenance margin with a forced cut (margin call) | LEAN models per-security buying power |
 | Holdings | shares; `portfolio[s].quantity / invested / average_price / unrealized_profit`, `total_portfolio_value`, `cash` | same names |
 | Orders | `OrderTicket` (`status`, `quantity_filled`, `average_fill_price`, `cancel()`), `OrderEvent` (SUBMITTED → PARTIALLY_FILLED → FILLED / CANCELED), `transactions.get_open_orders / cancel_open_orders` | a market order already sent to the next open cannot be cancelled |
-| Indicators | stateful, updated bar by bar: SMA, EMA (seeded with the first value), Wilder RSI / ATR, Bollinger (population σ), MACD, ROC/ROCP, momentum, max/min, std, ADX; `RollingWindow` | LEAN definitions |
+| Indicators | stateful, updated bar by bar: SMA, EMA (seeded with the SMA of its first n inputs), Wilder RSI / ATR, Bollinger (population σ), MACD, ROC/ROCP, momentum, max/min of the close, std, ADX; `RollingWindow` | matched to LEAN's reference values |
 | Warm-up | indicators are primed bar by bar on the history before the start; `set_warm_up(n)` also calls `on_data` for those n bars with `is_warming_up` (orders refused) | same |
 | Universes | `add_universe(selector)` runs each session on **point-in-time S&P 500 members** with a bar (`symbol, price, volume, dollar_volume`); additions/removals call `on_securities_changed`; `universe.etf("SPY")` = point-in-time S&P 500 | no market cap or Morningstar fields; other ETFs' historical constituents are not free |
 | History | `history(symbols, n | timedelta)` → DataFrame (symbol, time) × OHLCV, never past the current bar | same shape |
@@ -87,12 +87,13 @@ the API does not use internally; `self` cannot be reassigned; methods are reache
 | Margin calls, forced liquidation | **done** (account-level) |
 | Dynamic universes, security-change events | **done** on point-in-time S&P 500 |
 | Point-in-time membership | S&P 500 **done**; QQQ / sector ETFs — no free source |
-| Point-in-time fundamentals | SEC XBRL (US) in vectorised strategies; not yet exposed to selectors |
+| Point-in-time fundamentals | **done** — SEC XBRL (US) in vectorised strategies and in universe selectors with LEAN names (market_cap, valuation_ratios, operation_ratios, earning_reports) |
 | Delisted securities | partly — removed S&P members with free price history; 161 without are reported |
 | Multi-currency accounting, FX | **done** (vectorised and event engines) |
 | Strategy-language issues (`hasattr`, `_`, classes) | **done**; compile-time checks with line numbers |
 | Intraday data | **not available** free beyond Yahoo's short windows (2 years hourly) |
 | Historical option / futures chains, assignment on real contracts | **not available** free (options research uses labelled model prices) |
-| Settlement delays (T+1), cash accounts, tax lots, short-sale locates | **not done** |
+| Settlement delays, cash accounts, buying-power reservations, rejected-order reasons | **done** — cash accounts trade on settled cash (T+2 before 28 May 2024, T+1 after); margin accounts Reg-T 2× net of open orders; rejected orders carry a reason |
+| Tax lots, short-sale locates | **done** — FIFO lots with short/long-term realised P&L; shorts refused under $5 or $5m average traded value (policy assumption — no free borrow data) |
 | Live broker integration | **out of scope by policy** (paper only) |
-| Deterministic parity tests against known QuantConnect algorithms | **not done** — needs LEAN reference outputs on the same data |
+| Parity with LEAN | **indicators done** — 16 tests against LEAN's own reference data (api/tests/test_qcalgo_lean_parity.py); whole-algorithm parity still needs LEAN runs on identical data |
