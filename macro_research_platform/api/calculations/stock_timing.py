@@ -244,6 +244,37 @@ def verdict(setup: Optional[float], timing: Optional[Dict], market: Optional[Dic
     return {"code": "AVOID", "label": "Avoid — evidence negative", "detail": "Trend and/or fundamentals point down."}
 
 
+EARNINGS_WAIT_DAYS = 5        # an entry this close to a report waits for it (gap risk)
+EARNINGS_HALF_SIZE_DAYS = 10  # within this window the position is half size
+
+
+def earnings_gate(earnings: List[Dict], today, verdict_: Dict[str, str], lv: Optional[Dict]) -> Dict:
+    """Make the entry earnings-aware. Returns {next_date, days, applied, verdict, levels}: a BUY / BUY_SMALL within
+    EARNINGS_WAIT_DAYS calendar days of the next report becomes WAIT; within EARNINGS_HALF_SIZE_DAYS the share count
+    is halved."""
+    from datetime import date as _date
+    upcoming = sorted(e["date"] for e in earnings or [] if e.get("date") and e["date"] >= today.isoformat()
+                      and e.get("reported") is None)
+    nxt = upcoming[0] if upcoming else None
+    days = (_date.fromisoformat(nxt) - today).days if nxt else None
+    v, out_lv, applied = verdict_, lv, None
+    if days is not None and verdict_.get("code") in ("BUY", "BUY_SMALL"):
+        if days <= EARNINGS_WAIT_DAYS:
+            v = {"code": "WAIT", "label": f"Buy candidate — earnings in {days} day{'s' if days != 1 else ''}",
+                 "detail": f"Reports {nxt}: wait for the result rather than carry the gap risk into it "
+                           f"(was: {verdict_.get('label')})."}
+            applied = "wait"
+        elif days <= EARNINGS_HALF_SIZE_DAYS and lv and lv.get("shares"):
+            half = int(lv["shares"] // 2)
+            ratio = half / lv["shares"] if lv["shares"] else 0
+            out_lv = {**lv, "shares": half, "notional": round(lv["notional"] * ratio, 2),
+                      "notional_local": round(lv["notional_local"] * ratio, 2), "pct_nav": round(lv["pct_nav"] * ratio, 4),
+                      "risk_usd": round(lv["risk_usd"] * ratio, 2),
+                      "sizing_basis": lv["sizing_basis"] + f"; halved — earnings {nxt}"}
+            applied = "half_size"
+    return {"next_date": nxt, "days": days, "applied": applied, "verdict": v, "levels": out_lv}
+
+
 def levels(price: float, timing: Optional[Dict], high_52w: Optional[float], target_mean: Optional[float],
            nav: Optional[float], risk_per_trade: float = 0.005, max_position_pct: float = 0.10,
            px_to_usd: float = 1.0) -> Optional[Dict]:

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Activity, RefreshCw } from 'lucide-react';
 import { AnomalyBadge } from '@/components/ui/AnomalyBadge';
 import { DataLineagePopover } from '@/components/ui/DataLineagePopover';
+import { openChart } from '@/components/ui/ChartModal';
 
 export function AnomaliesStripSection() {
   const [data, setData] = useState<any>(null);
@@ -59,8 +60,11 @@ export function AnomaliesStripSection() {
           {(flagged.length ? flagged : metrics.slice(0, 4)).map((m: any) => (
             <div key={m.ticker}
               className={`flex items-center gap-2 px-2 py-1.5 border text-xs ${m.is_anomalous ? 'border-amber/40 bg-amber-dim' : 'border-border bg-surface-1'}`}>
-              <span className="font-mono text-text-secondary uppercase text-2xs tracking-wider">{m.metric}</span>
-              <span className="font-mono font-bold text-text-primary tabular-nums">{fmt(m)}</span>
+              <button type="button" onClick={() => openChart(m.ticker, `${m.metric} (${m.ticker})`)} title={`Chart ${m.metric} — ${m.ticker}`}
+                className="flex items-center gap-2 hover:text-bloomberg">
+                <span className="font-mono text-text-secondary uppercase text-2xs tracking-wider">{m.metric}</span>
+                <span className="font-mono font-bold text-text-primary tabular-nums">{fmt(m)}</span>
+              </button>
               <AnomalyBadge zScore={m.z_score} isAnomalous={m.is_anomalous} />
               <span className="text-2xs text-text-tertiary">μ {m.historical_mean.toLocaleString()}</span>
               <DataLineagePopover lineage={{

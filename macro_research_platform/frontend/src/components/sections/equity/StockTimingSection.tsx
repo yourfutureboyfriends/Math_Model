@@ -212,6 +212,12 @@ export function StockTimingSection() {
               <span className="ml-auto font-mono text-sm text-text-primary">{px(data.price)} <span className="text-2xs text-text-tertiary">{data.currency} · close {data.as_of}</span></span>
             </div>
             <div className="text-2xs text-text-secondary mt-1">{v?.detail}</div>
+            {data?.next_earnings?.next_date && (
+              <div className={cn('text-2xs mt-1', data.next_earnings.applied ? 'text-amber' : 'text-text-tertiary')}>
+                Next earnings {data.next_earnings.next_date} ({data.next_earnings.days} days)
+                {data.next_earnings.applied === 'wait' ? ' — entry waits for the report' : data.next_earnings.applied === 'half_size' ? ' — size halved for the report' : ''}
+              </div>
+            )}
             <div className="text-[10px] text-text-tertiary mt-1 font-mono">
               {marketTitle(data)}{data.listing_country && data.listing_country !== data.country ? ` (listed in ${data.listing_country})` : ''} · quoted in {data.currency}
               {data.market?.index ? ` · regime vs ${data.market.index}` : ''}

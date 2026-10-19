@@ -36,6 +36,7 @@ Rules:
 - If a tool returns an error or nothing, say the data is unavailable — never guess or invent numbers.
 - Be concise and structured: short paragraphs or bullets, key numbers in **bold**, units and currencies stated.
 - Say how current the data is (dates) and name the source (e.g. "SEC 10-Q", "Yahoo Finance", "FRED").
+- Every tool result starts with "[n]". Cite the number after each fact you take from it, like "revenue rose 12% [2]".
 - Distinguish facts from interpretation. Give balanced views (bull and bear points) when asked for opinions.
 - You give general research, not personalised investment advice; don't tell the user to buy or sell.
 - Today is {today}. The user is currently looking at: {context}."""
@@ -224,6 +225,34 @@ def run_tool(name: str, args: Dict[str, Any]) -> Tuple[bool, str]:
         return False, json.dumps({"error": str(e)[:300]})
 
 
+# ── Citations: each tool result → its source and the terminal screen that shows it ──
+_CITE = {  # tool: (source, markets function code or None, research panel or None)
+    "search_instrument": ("Yahoo Finance search", None, None),
+    "get_quote": ("Yahoo Finance quote", "DES", None),
+    "get_profile": ("Yahoo Finance profile", "DES", None),
+    "get_financials": ("SEC EDGAR filings / Yahoo", "FA", None),
+    "get_earnings": ("Yahoo Finance earnings", "ERN", None),
+    "get_analyst_ratings": ("Yahoo Finance analyst data", "ANR", None),
+    "get_holders": ("Yahoo Finance holders / SEC Form 4", "HDS", None),
+    "get_news": ("RSS news / SEC filings", "N", None),
+    "run_dcf": ("Terminal DCF model", "DCF", None),
+    "get_peers": ("Yahoo Finance peers", "RV", None),
+    "get_movers": ("Yahoo Finance movers", "MOST", None),
+    "screen_stocks": ("Yahoo Finance screener", "EQS", None),
+    "get_market_overview": ("Yahoo Finance / FRED", "WEI", None),
+    "get_macro_view": ("Terminal macro model (FRED, Yahoo)", None, "master-signal"),
+}
+
+
+def citation(n: int, name: str, args: Dict[str, Any], ok: bool) -> Dict[str, Any]:
+    src, code, panel = _CITE.get(name, (name, None, None))
+    sym = (args or {}).get("symbol")
+    label = f"{name.replace('get_', '').replace('_', ' ')}{f' {sym}' if sym else ''}{(' “' + str(args['query']) + '”') if (args or {}).get('query') else ''}"
+    return {"n": n, "tool": name, "label": label, "source": src, "ok": ok, "symbol": sym,
+            "target": ({"mode": "markets", "code": code, "symbol": sym} if code else
+                       {"mode": "research", "panel": panel} if panel else None)}
+
+
 # ── Providers ────────────────────────────────────────────────────────────────
 def _ollama_models() -> List[str]:
     try:
@@ -303,13 +332,15 @@ def chat(history: List[Dict[str, str]], context: Optional[str] = None, model: Op
         if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str):
             msgs.append({"role": m["role"], "content": m["content"][:4000]})
     calls: List[Dict[str, Any]] = []
+    cites: List[Dict[str, Any]] = []
     seen: Dict[Tuple[str, str], Tuple[bool, str]] = {}
     for _ in range(MAX_ROUNDS):
         reply = _complete(cfg, msgs, use_model)
         tcs = reply.get("tool_calls") or []
         if not tcs:
             return {"reply": (reply.get("content") or "").strip() or "I couldn't produce an answer — try rephrasing.",
-                    "tool_calls": calls, "provider": cfg["provider"], "model": use_model, "seconds": round(time.time() - t0, 1)}
+                    "tool_calls": calls, "citations": cites,
+                    "provider": cfg["provider"], "model": use_model, "seconds": round(time.time() - t0, 1)}
         msgs.append({"role": "assistant", "content": reply.get("content") or "", "tool_calls": tcs})
         for tc in tcs[:4]:
             fn = tc.get("function") or {}
@@ -322,8 +353,11 @@ def chat(history: List[Dict[str, str]], context: Optional[str] = None, model: Op
                 ok, out = seen[key]
             else:
                 ok, out = run_tool(fn.get("name", ""), args)
+                n = len(calls) + 1
+                out = f"[{n}] source: {_CITE.get(fn.get('name', ''), (fn.get('name'),))[0]}\n{out}"
                 seen[key] = (ok, out)
                 calls.append({"name": fn.get("name"), "args": args, "ok": ok})
+                cites.append(citation(n, fn.get("name", ""), args, ok))
             msgs.append({"role": "tool", "tool_call_id": tc.get("id") or fn.get("name"), "name": fn.get("name"), "content": out})
     # Out of rounds: ask for a final answer without tools.
     msgs.append({"role": "user", "content": "Answer now using the data gathered above."})
@@ -331,4 +365,5 @@ def chat(history: List[Dict[str, str]], context: Optional[str] = None, model: Op
     r = requests.post(f"{cfg['base_url']}/chat/completions", json=body, headers={"Authorization": f"Bearer {cfg['key']}"}, timeout=240)
     content = r.json()["choices"][0]["message"].get("content", "") if r.ok else ""
     return {"reply": content.strip() or "I gathered data but couldn't finish the answer.", "tool_calls": calls,
+            "citations": cites,
             "provider": cfg["provider"], "model": use_model, "seconds": round(time.time() - t0, 1)}

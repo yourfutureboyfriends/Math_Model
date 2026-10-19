@@ -82,6 +82,7 @@ export function DataExplorerSection({ data: dataProp }: DataExplorerSectionProps
         </div>
       </div>
 
+      <ExportBuilder />
       <div className="space-y-2">
         {/* Metadata */}
         <div className="border border-border bg-surface-1">
@@ -192,6 +193,32 @@ export function DataExplorerSection({ data: dataProp }: DataExplorerSectionProps
           <span>Raw data from API — verify all fields populated correctly</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+// Spreadsheet / API access: build a CSV URL for any Yahoo symbol, FRED series or the composite history.
+function ExportBuilder() {
+  const [ids, setIds] = useState('SPY,^VIX,fred:CPIAUCSL,model:composite');
+  const [start, setStart] = useState('2022-01-01');
+  const [freq, setFreq] = useState('M');
+  const path = `/api/v1/data/history?ids=${encodeURIComponent(ids.replace(/\s+/g, ''))}&start=${start}&freq=${freq}&format=csv`;
+  const full = `${window.location.origin}${path}`;
+  const inp = 'bg-surface-2 border border-border px-2 py-1 text-xs text-text-primary';
+  return (
+    <div className="mb-3 p-2 border border-border bg-surface-1 space-y-1.5">
+      <div className="text-2xs text-text-tertiary uppercase tracking-wider">Export / spreadsheet link</div>
+      <div className="flex flex-wrap gap-2 items-center">
+        <input value={ids} onChange={(e) => setIds(e.target.value)} className={`${inp} flex-1 min-w-[16rem] font-mono`} aria-label="Series ids" />
+        <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className={inp} aria-label="Start date" />
+        <select value={freq} onChange={(e) => setFreq(e.target.value)} className={inp} aria-label="Frequency">
+          <option value="D">Daily</option><option value="W">Weekly</option><option value="M">Monthly</option></select>
+        <a href={path} download="terminal_data.csv" className="px-2 py-1 text-xs border border-bloomberg text-bloomberg hover:bg-bloomberg/10">Download CSV</a>
+        <button type="button" onClick={() => navigator.clipboard?.writeText(full)} className="px-2 py-1 text-xs border border-border text-text-secondary hover:text-text-primary">Copy URL</button>
+      </div>
+      <div className="text-[10px] text-text-tertiary">Ids: a Yahoo symbol (SPY, ^VIX, EURUSD=X), fred:SERIES, model:composite. Excel: Data → From Web → paste the URL.
+        Latest values: <span className="font-mono">/api/v1/data/latest?ids=…</span> (also field:macro.regime, field:macro.composite …).</div>
     </div>
   );
 }

@@ -1645,6 +1645,10 @@ from api.routers.stock import router as stock_router  # stock entry timing + scr
 app.include_router(stock_router)
 from api.routers.portfolios import router as portfolios_router  # model review, optimiser, auto book
 app.include_router(portfolios_router)
+from api.routers.portfolio_analytics import router as portfolio_analytics_router  # Brinson, TE, LVaR, lots, TCA
+app.include_router(portfolio_analytics_router)
+from api.routers.data_export import router as data_export_router  # spreadsheet / API access (CSV, JSON)
+app.include_router(data_export_router)
 from api.routers.strategies import router as strategies_router  # Strategy Lab
 app.include_router(strategies_router)
 from api.routers.quant import router as quant_router  # Quant Lab + Quant Trader + Macro Trader
@@ -1908,6 +1912,19 @@ async def _enrich_positions(raw_positions: list) -> dict:
             prices[sym] = closes[-1] if closes else None
 
     enriched = [enrich_position(p, prices.get(str(p["symbol"]).upper())) for p in raw_positions]
+    # FX: non-USD listings are valued in USD (local values kept) so weights and totals add up across currencies
+    from api.handlers.portfolio_analytics import _usd_per_unit
+    fx = dict(zip(symbols, await _aio.gather(*[_aio.to_thread(_usd_per_unit, s) for s in symbols]))) if symbols else {}
+    for p in enriched:
+        ccy, usd = fx.get(str(p["symbol"]).upper(), ("USD", 1.0))
+        p["currency"], p["usd_per_unit"] = ccy, usd
+        if usd and abs(usd - 1.0) > 1e-12:
+            for k in ("market_value", "unrealized_pnl"):
+                if p.get(k) is not None:
+                    p[f"{k}_local"] = p[k]
+                    p[k] = round(p[k] * usd, 2)
+        elif not usd:
+            p["fx_unavailable"] = True
     add_weights(enriched)
     return {
         "positions": enriched,
@@ -3136,6 +3153,26 @@ async def stream_agreement_v1():
     return result
 
 
+@app.get("/api/v1/central-banks/next")
+@ttl_cache(1800, offload=True)
+async def central_banks_next_v1():
+    """Each major central bank's next decision with the free consensus (survey forecast; fed funds futures for the Fed)."""
+    from api.handlers.cb_decisions import next_decisions
+    return await asyncio.to_thread(next_decisions)
+
+
+@app.get("/api/v1/signals/composite-history")
+async def composite_history_v1(weeks: int = 104):
+    """Weekly history of the composite signal and its four inputs, re-evaluated with data as of each date, with the
+    S&P 500's forward 1-month return (api/handlers/composite_history.py)."""
+    from api.handlers.composite_history import composite_history
+    try:
+        return await composite_history(max(8, min(int(weeks), 260)))
+    except Exception as e:
+        logger.warning("[composite-history] %s", e)
+        return {"available": False, "reason": f"{type(e).__name__}: {str(e)[:160]}", "points": []}
+
+
 @app.get("/api/v1/factor-validation")
 async def factor_validation_v1():
     """Factor out-of-sample validation (Phase 4, AQR discipline): for each macro factor, fit the
@@ -3880,7 +3917,9 @@ async def get_earnings_revisions():
     try:
         from api.handlers.dashboard_handler import get_dashboard_data
         dash = await asyncio.wait_for(get_dashboard_data(mode="live"), timeout=20)
-        macro = {s.get("name"): s.get("signal") for s in ((dash.sectorAllocation or {}).get("sectors") or [])}
+        sa = dash.sectorAllocation
+        sa = sa.model_dump() if hasattr(sa, "model_dump") else (sa or {})
+        macro = {s.get("name"): s.get("signal") for s in (sa.get("sectors") or [])}
     except Exception as e:
         logger.debug("[earnings/revisions] sector signals unavailable: %s", e)
     sectors, divs = {}, []
@@ -4169,6 +4208,25 @@ async def get_global_markets():
     ]
     closes_list = await asyncio.gather(*[_fetch_closes_literal(t) for _, _, t in indices],
                                        return_exceptions=True)
+    # Valuation from a tracking ETF (index P/E is not free): trailing P/E and dividend yield, cached a day.
+    proxy = {"^GSPC": "SPY", "^IXIC": "QQQ", "^FTSE": "EWU", "^GDAXI": "EWG", "^STOXX50E": "FEZ", "^N225": "EWJ",
+             "^HSI": "EWH", "000001.SS": "MCHI", "^AXJO": "EWA", "^NSEI": "INDA"}
+
+    def _val(etf):
+        from api.marketdata.core import _cached
+
+        def fetch():
+            import yfinance as yf
+            i = yf.Ticker(etf).info or {}
+            pe, dy = i.get("trailingPE"), i.get("yield") or i.get("dividendYield")
+            return {"etf": etf, "pe": round(float(pe), 1) if pe else None,
+                    "earnings_yield_pct": round(100 / float(pe), 2) if pe else None,
+                    "dividend_yield_pct": round(float(dy) * (100 if dy < 1 else 1), 2) if dy else None}
+        try:
+            return _cached(f"wei:val:{etf}", 86400, fetch)
+        except Exception:
+            return {"etf": etf, "pe": None, "earnings_yield_pct": None, "dividend_yield_pct": None}
+    vals = await asyncio.gather(*[asyncio.to_thread(_val, proxy[t]) for _, _, t in indices])
     markets = []
     for (name, region, ticker), closes in zip(indices, closes_list):
         if isinstance(closes, Exception) or not closes:
@@ -4180,6 +4238,9 @@ async def get_global_markets():
             "name": name, "region": region, "ticker": ticker,
             "level": round(float(closes[-1]), 2),
             "change1d": _pct_change(closes, 1),
+            "change1m": _pct_change(closes, 21),
+            "spark": [round(float(c), 2) for c in closes[-63:]],          # ~3 months of closes
+            "valuation": vals[indices.index((name, region, ticker))],
             "available": True,
         })
     ok = [m for m in markets if m.get("available")]
@@ -4187,7 +4248,7 @@ async def get_global_markets():
         "markets": markets,
         "available": len(ok) > 0,
         "regions_covered": sorted({m["region"] for m in ok}),
-        "source": "Yahoo Finance (yfinance) — live index closes",
+        "source": "Yahoo Finance (yfinance) — live index closes; valuation from a tracking ETF (trailing P/E, yield)",
         "as_of": datetime.now().isoformat(),
     }
 

@@ -217,6 +217,8 @@ async def analyze(sym: str, with_history: bool = True) -> Dict[str, Any]:
                    None if cls["asset_type"] == "Index" else nav, px_to_usd=px_to_usd or 0.0)
     v = st.verdict(setup, timing, market, (lv or {}).get("reward_risk"),
                    target_is_consensus=(lv or {}).get("target_basis") == "consensus price target")
+    gate = st.earnings_gate(raw["earnings"], today, v, lv)      # no new entry into an imminent report
+    v, lv = gate["verdict"], gate["levels"]
     out: Dict[str, Any] = {
         "symbol": sym, "available": True, "name": info.get("shortName") or info.get("longName") or sym,
         "sector": info.get("sector"), "currency": quote_ccy, "exchange": info.get("fullExchangeName") or info.get("exchange"),
@@ -226,6 +228,7 @@ async def analyze(sym: str, with_history: bool = True) -> Dict[str, Any]:
         "components": comps, "weights": st.SETUP_WEIGHTS, "levels": lv,
         "revisions": raw["revisions"][:12],
         "earnings": [e for e in raw["earnings"]][:6],
+        "next_earnings": {k: gate[k] for k in ("next_date", "days", "applied")},
         "valuation": {k: info.get(k) for k in ("trailingPE", "forwardPE", "priceToBook", "beta", "marketCap")},
     }
     if with_history:

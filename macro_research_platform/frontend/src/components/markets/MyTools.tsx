@@ -51,18 +51,22 @@ export function WatchlistsView({ onOpen }: { onOpen: (s: string) => void }) {
       <div className="flex flex-wrap items-center gap-1">
         {lists.map((l) => (
           <button key={l.id} onClick={() => setActive(l.id)} className={cn('px-3 py-1 text-2xs border', l.id === active ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary hover:text-text-primary')}>
-            {l.name} <span className="text-text-tertiary">{l.symbols.length}</span></button>))}
+            {l.name}{l.shared_by ? <span className="text-text-tertiary"> · {l.shared_by}</span> : l.shared ? <span className="text-green"> · shared</span> : null} <span className="text-text-tertiary">{l.symbols.length}</span></button>))}
         <button onClick={create} className="px-2 py-1 text-2xs border border-dashed border-border text-text-tertiary hover:text-text-primary inline-flex items-center gap-1"><Plus className="w-3 h-3" />New list</button>
       </div>
       <ErrorBox msg={err} />
       {list && (
-        <Panel title={list.name} right={<div className="flex items-center gap-2">
+        <Panel title={list.read_only ? `${list.name} — shared by ${list.shared_by}` : list.name} right={list.read_only ? <span className="text-2xs text-text-tertiary">read-only</span> : <div className="flex items-center gap-2">
+          <label className="text-2xs text-text-tertiary inline-flex items-center gap-1 cursor-pointer" title="Colleagues see this list (read-only) in their watchlists">
+            <input type="checkbox" checked={!!list.shared} onChange={async (e) => {
+              try { const u = await call(`/api/v1/mkt/watchlists/${list.id}`, 'PUT', { shared: e.target.checked }); setLists((ls) => ls!.map((l) => (l.id === u.id ? { ...l, ...u } : l))); } catch (e2: any) { setErr(e2.message); }
+            }} />Share with team</label>
           <button onClick={() => { const n = window.prompt('Rename watchlist', list.name); if (n) save(list.symbols, n); }} className="text-2xs text-text-tertiary hover:text-text-primary">Rename</button>
           <button onClick={remove} className="text-2xs text-text-tertiary hover:text-red">Delete</button></div>}>
-          <form onSubmit={(e) => { e.preventDefault(); const s = add.trim().toUpperCase(); if (s && !list.symbols.includes(s)) save([...list.symbols, s]); setAdd(''); }} className="flex gap-2 mb-3">
+          {!list.read_only && <form onSubmit={(e) => { e.preventDefault(); const s = add.trim().toUpperCase(); if (s && !list.symbols.includes(s)) save([...list.symbols, s]); setAdd(''); }} className="flex gap-2 mb-3">
             <input value={add} onChange={(e) => setAdd(e.target.value)} placeholder="Add a ticker — e.g. NVDA, 7203.T, EURUSD=X, GC=F, BTC-USD" className={cn(inp, 'flex-1 font-mono')} />
             <button className="px-3 py-1 text-xs bg-bloomberg text-text-inverse">Add</button>
-          </form>
+          </form>}
           {list.symbols.length === 0 ? <div className="text-2xs text-text-tertiary">Empty — add tickers above, or use “+ Watch” on any instrument page.</div> : (
             <table className="w-full text-xs"><thead><tr className="text-2xs text-text-tertiary"><th className="text-left font-normal">Symbol</th><th className="text-right font-normal">Last</th>
               <th className="text-right font-normal">Day</th><th className="text-right font-normal">1 month</th><th className="text-right font-normal hidden sm:table-cell">Trend</th><th /></tr></thead>
@@ -72,7 +76,7 @@ export function WatchlistsView({ onOpen }: { onOpen: (s: string) => void }) {
                   <td className="text-right font-mono">{q ? fmtPrice(q.price, symType(s)) : '…'}</td>
                   <td className="text-right"><Chg v={q?.change_1d} /></td><td className="text-right"><Chg v={q?.change_1m} d={1} /></td>
                   <td className="text-right hidden sm:table-cell"><Spark values={q?.spark} /></td>
-                  <td className="text-right"><button onClick={() => save(list.symbols.filter((x: string) => x !== s))} aria-label={`Remove ${s}`} className="p-1 text-text-tertiary hover:text-red"><X className="w-3 h-3" /></button></td>
+                  <td className="text-right">{!list.read_only && <button onClick={() => save(list.symbols.filter((x: string) => x !== s))} aria-label={`Remove ${s}`} className="p-1 text-text-tertiary hover:text-red"><X className="w-3 h-3" /></button>}</td>
                 </tr>); })}</tbody></table>
           )}
           <div className="text-[10px] text-text-tertiary mt-2">Prices refresh every minute while this tab is open (daily bars; exchange delays apply).</div>
@@ -85,7 +89,7 @@ export function WatchlistsView({ onOpen }: { onOpen: (s: string) => void }) {
 export function useAddToWatchlist() {
   return useCallback(async (symbol: string) => {
     const j = await call('/api/v1/mkt/watchlists');
-    const lists = j.watchlists as any[];
+    const lists = (j.watchlists as any[]).filter((l) => !l.read_only);
     const target = lists.length === 1 ? lists[0] : lists.find((l) => l.name === window.prompt(`Add ${symbol} to which list?\n${lists.map((l) => l.name).join(', ')}`, lists[0]?.name));
     if (!target) return null;
     if (target.symbols.includes(symbol)) return target.name;
@@ -114,7 +118,8 @@ export function AlertsView({ seed }: { seed?: string }) {
   const create = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr(null);
     try {
-      await call('/api/v1/mkt/alerts', 'POST', { ...form, symbol: form.symbol.toUpperCase(), value: Number(form.value) });
+      const isField = form.kind.startsWith('field_') || form.kind === 'news_mentions';
+      await call('/api/v1/mkt/alerts', 'POST', { ...form, symbol: isField ? form.symbol.trim() : form.symbol.toUpperCase(), value: Number(form.value || 0) });
       setForm({ ...form, value: '', note: '' }); load();
       if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
     } catch (e2: any) { setErr(e2.message); } finally { setBusy(false); }
@@ -125,13 +130,25 @@ export function AlertsView({ seed }: { seed?: string }) {
     <div className="space-y-3">
       <Panel title="New alert">
         <form onSubmit={create} className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
+          {form.kind.startsWith('field_') ? (
+            <label className="text-[10px] uppercase text-text-tertiary">Field
+              <input required list="alert-fields" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })}
+                className={cn(inp, 'w-full font-mono')} placeholder="macro.composite or fred:UNRATE" />
+              <datalist id="alert-fields">{Object.entries(data?.fields?.fields ?? {}).map(([k, v]: any) => <option key={k} value={k}>{v.label}</option>)}</datalist></label>
+          ) : form.kind === 'news_mentions' ? (
+            <label className="text-[10px] uppercase text-text-tertiary">Keyword<input required value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })}
+              className={cn(inp, 'w-full')} placeholder="tariff" /></label>
+          ) : (
           <label className="text-[10px] uppercase text-text-tertiary">Symbol<input required value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })}
             onBlur={() => setLookup(form.symbol.trim().toUpperCase())} className={cn(inp, 'w-full font-mono')} placeholder="AAPL" /></label>
+          )}
           <label className="text-[10px] uppercase text-text-tertiary col-span-2">Condition
             <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} className={cn(inp, 'w-full')}>
               {Object.entries(data?.kinds ?? { above: 'Price rises above', below: 'Price falls below', change_up: "Day's gain exceeds %", change_down: "Day's loss exceeds %" })
                 .map(([k, l]) => <option key={k} value={k}>{l as string}</option>)}</select></label>
-          <label className="text-[10px] uppercase text-text-tertiary">{form.kind.startsWith('change') ? 'Percent' : 'Price'}<input required type="number" step="any" min="0" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} className={cn(inp, 'w-full font-mono')} /></label>
+          {form.kind === 'field_changes' || form.kind === 'news_mentions' ? <div /> : (
+          <label className="text-[10px] uppercase text-text-tertiary">{form.kind.startsWith('change') ? 'Percent' : form.kind.startsWith('field_') ? 'Level' : 'Price'}<input required type="number" step="any" min={form.kind.startsWith('field_') ? undefined : '0'} value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} className={cn(inp, 'w-full font-mono')} /></label>
+          )}
           <label className="text-[10px] uppercase text-text-tertiary">Note<input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className={cn(inp, 'w-full')} placeholder="optional" /></label>
           <button disabled={busy} className="px-3 py-1.5 text-xs bg-bloomberg text-text-inverse inline-flex items-center justify-center gap-1 disabled:opacity-50"><Bell className="w-3 h-3" />Create</button>
         </form>
@@ -139,16 +156,20 @@ export function AlertsView({ seed }: { seed?: string }) {
           <span className="text-text-tertiary">Last <span className="font-mono text-text-primary">{fmtPrice(px, symType(lookup))}</span> · quick level:</span>
           {[-10, -5, 5, 10].map((p) => <button key={p} type="button" onClick={() => level(p)}
             className={cn('px-1.5 border border-border font-mono hover:border-bloomberg', p > 0 ? 'text-green' : 'text-red')}>{p > 0 ? '+' : ''}{p}%</button>)}</div>}
-        <div className="text-[10px] text-text-tertiary mt-2">Checked every 5 minutes. A triggered alert pops up in the terminal (and as a browser notification if you allow it) and stays in the list below.</div>
+        <div className="text-[10px] text-text-tertiary mt-2">Checked every 5 minutes. Prices, model fields (composite, regime, recession probability, signals), sentiment, nowcasts, valuation, any FRED series (fred:ID) or news keywords.
+          A triggered alert pops up in the terminal (and as a browser notification if you allow it){data?.delivery?.webhook ? ', is posted to the configured webhook' : ''}{data?.delivery?.email ? ', is emailed' : ''} and stays in the list below.
+          {!data?.delivery?.webhook && !data?.delivery?.email && ' Email / chat delivery: set ALERT_WEBHOOK_URL or ALERT_SMTP_* in .env.'}</div>
       </Panel>
       <ErrorBox msg={err} />
       <Panel title="Your alerts" right={<button onClick={check} disabled={busy} className="text-2xs text-text-tertiary hover:text-text-primary disabled:opacity-40">Check now</button>}>
         {!data ? (err ? null : <Loading />) : data.alerts.length === 0 ? <div className="text-2xs text-text-tertiary">No alerts yet.</div> : (
           <table className="w-full text-xs"><tbody>{data.alerts.map((a: any) => (
             <tr key={a.id} className="border-t border-border-subtle">
-              <td className="py-1.5 font-mono text-text-primary">{a.symbol}</td>
-              <td className="text-text-secondary">{a.label} <span className="font-mono text-text-primary">{a.kind.startsWith('change') ? `${a.value}%` : fmtPrice(a.value, symType(a.symbol))}</span>{a.note && <span className="text-text-tertiary"> · {a.note}</span>}</td>
-              <td className="text-2xs">{a.active ? <span className="text-green">● watching</span> : <span className="text-amber">triggered {localStamp(a.triggered_at)} at {fmtPrice(a.triggered_price, symType(a.symbol))}</span>}</td>
+              <td className="py-1.5 font-mono text-text-primary">{a.field_label ?? a.symbol}</td>
+              <td className="text-text-secondary">{a.label} {a.kind === 'field_changes' ? <span className="text-text-tertiary">from {a.baseline}</span>
+                : a.kind === 'news_mentions' ? null
+                : <span className="font-mono text-text-primary">{a.kind.startsWith('change') ? `${a.value}%` : a.kind.startsWith('field_') ? a.value : fmtPrice(a.value, symType(a.symbol))}</span>}{a.note && <span className="text-text-tertiary"> · {a.note}</span>}</td>
+              <td className="text-2xs">{a.active ? <span className="text-green">● watching</span> : <span className="text-amber" title={a.triggered_text ?? undefined}>triggered {localStamp(a.triggered_at)}{a.triggered_text ? ` — ${a.triggered_text}` : ` at ${fmtPrice(a.triggered_price, symType(a.symbol))}`}</span>}</td>
               <td className="text-right"><button onClick={() => del(a.id)} aria-label="Delete alert" className="p-1 text-text-tertiary hover:text-red"><Trash2 className="w-3 h-3" /></button></td>
             </tr>))}</tbody></table>)}
       </Panel>
@@ -166,7 +187,7 @@ export function AlertToasts({ onOpen }: { onOpen: (s: string) => void }) {
       fresh.forEach((a) => {
         seen.add(a.id);
         if ('Notification' in window && Notification.permission === 'granted') {
-          try { new Notification(`${a.symbol}: ${a.label} ${a.kind.startsWith('change') ? `${a.value}%` : a.value}`, { body: `Triggered at ${a.triggered_price ?? '—'}` }); } catch { /* blocked */ }
+          try { new Notification(a.triggered_text ?? `${a.symbol}: ${a.label} ${a.kind.startsWith('change') ? `${a.value}%` : a.value}`, { body: a.triggered_text ? (a.note || 'Macro Terminal alert') : `Triggered at ${a.triggered_price ?? '—'}` }); } catch { /* blocked */ }
         }
       });
       if (j.alerts.length) setItems(j.alerts);
@@ -182,9 +203,10 @@ export function AlertToasts({ onOpen }: { onOpen: (s: string) => void }) {
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-subtle"><span className="text-2xs font-semibold text-amber inline-flex items-center gap-1"><Bell className="w-3 h-3" />{items.length} alert{items.length > 1 ? 's' : ''} triggered</span>
         <button onClick={dismiss} aria-label="Dismiss" className="text-text-tertiary hover:text-text-primary"><X className="w-3.5 h-3.5" /></button></div>
       <ul className="max-h-48 overflow-y-auto">{items.map((a) => (
-        <li key={a.id}><button onClick={() => onOpen(a.symbol)} className="w-full text-left px-3 py-1.5 text-2xs hover:bg-surface-3">
+        <li key={a.id}><button onClick={() => { if (!a.field_label) onOpen(a.symbol); }} className="w-full text-left px-3 py-1.5 text-2xs hover:bg-surface-3">
+          {a.field_label ? <span className="text-text-primary">{a.triggered_text ?? a.field_label}</span> : <>
           <span className="font-mono text-text-primary">{a.symbol}</span> <span className="text-text-secondary">{a.label} {a.kind.startsWith('change') ? `${a.value}%` : fmtPrice(a.value, symType(a.symbol))}</span>
-          <span className="text-text-tertiary"> · at {fmtPrice(a.triggered_price, symType(a.symbol))}</span></button></li>))}</ul>
+          <span className="text-text-tertiary"> · at {fmtPrice(a.triggered_price, symType(a.symbol))}</span></>}</button></li>))}</ul>
     </div>
   );
 }
@@ -260,5 +282,37 @@ export function JournalView({ seed, onOpen }: { seed?: string; onOpen: (s: strin
           </div>))}</div>
       )}
     </div>
+  );
+}
+
+
+/** Team notes on a symbol or a panel: visible to every signed-in colleague, deletable by the author. */
+export function TeamNotes({ target, title = 'Team notes' }: { target: string; title?: string }) {
+  const [notes, setNotes] = useState<any[] | null>(null);
+  const [text, setText] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(() => call(`/api/v1/mkt/notes?target=${encodeURIComponent(target)}`).then((j) => setNotes(j.notes)).catch((e) => setErr(e.message)), [target]);
+  useEffect(() => { load(); }, [load]);
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    try { await call('/api/v1/mkt/notes', 'POST', { target, text }); setText(''); load(); } catch (e2: any) { setErr(e2.message); }
+  };
+  const del = async (id: number) => { try { await call(`/api/v1/mkt/notes/${id}`, 'DELETE'); load(); } catch (e2: any) { setErr(e2.message); } };
+  return (
+    <Panel title={`${title} · ${target}`}>
+      <form onSubmit={add} className="flex gap-2 mb-2">
+        <input value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} placeholder="Add a note for the team…" className={cn(inp, 'flex-1')} />
+        <button className="px-3 py-1 text-xs bg-bloomberg text-text-inverse">Post</button>
+      </form>
+      <ErrorBox msg={err} />
+      {!notes ? null : notes.length === 0 ? <div className="text-2xs text-text-tertiary">No notes yet.</div> : (
+        <ul className="space-y-1.5">{notes.map((n) => (
+          <li key={n.id} className="text-xs">
+            <div className="flex items-center gap-2 text-2xs text-text-tertiary"><span className="text-text-secondary">{n.author}</span>{localStamp(n.created_at)}
+              <button onClick={() => del(n.id)} className="ml-auto hover:text-red" aria-label="Delete note" title="Only the author can delete"><Trash2 className="w-3 h-3" /></button></div>
+            <div className="text-text-primary whitespace-pre-wrap">{n.text}</div>
+          </li>))}</ul>)}
+    </Panel>
   );
 }

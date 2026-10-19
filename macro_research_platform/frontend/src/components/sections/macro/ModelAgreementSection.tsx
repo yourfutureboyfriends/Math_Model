@@ -1,6 +1,8 @@
 // Phase 8 — Model Agreement Section (Redesigned)
 // Model consensus with terminal aesthetic
 
+import { LineChart } from '@/components/ui/LineChart';
+import { useApiData } from '@/hooks/useApiData';
 import { CheckCircle, AlertTriangle, XCircle, Activity } from 'lucide-react';
 import { ComputedTag } from '@/components/ui/ComputedTag';
 import type { ModelAgreementData } from '@/types';
@@ -93,6 +95,8 @@ export function ModelAgreementSection({ data }: ModelAgreementSectionProps) {
           </div>
         )}
 
+        <CompositeHistory />
+
         {/* Disagreements table, or an "all agree" note */}
         {rows.length > 0 ? (
           <div className="border border-border bg-surface-1 overflow-hidden">
@@ -125,6 +129,27 @@ export function ModelAgreementSection({ data }: ModelAgreementSectionProps) {
             <CheckCircle className="w-3.5 h-3.5" /> All models agree — no material disagreements.
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+
+// Weekly composite-signal history (inputs re-evaluated with data as of each date, today's evidence weights).
+function CompositeHistory() {
+  const { data } = useApiData<any>('/api/v1/signals/composite-history?weeks=104');
+  if (!data?.available || !data.points?.length) return null;
+  const st = data.forward_return_by_state ?? {};
+  const f = (v: number | null | undefined) => (v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(2)}%`);
+  return (
+    <div className="border border-border bg-surface-1 p-2">
+      <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Composite signal — 2 years, weekly</div>
+      <LineChart rows={data.points} x="date" height={200} fmt={(v) => v.toFixed(2)} refs={[{ value: 0.6, label: 'bullish' }, { value: 0.4, label: 'bearish' }]}
+        lines={[{ key: 'composite', label: 'Composite', color: '#3987e5' }, { key: 'growth', label: 'Growth', color: '#199e70' },
+          { key: 'liquidity', label: 'Liquidity', color: '#c98500' }]} />
+      <div className="text-[10px] text-text-tertiary mt-1">
+        S&amp;P 500 next month: composite &gt; 0.6 {f(st['composite > 0.6']?.avg_spx_1m)} ({st['composite > 0.6']?.weeks ?? 0} wks) ·
+        &lt; 0.4 {f(st['composite < 0.4']?.avg_spx_1m)} ({st['composite < 0.4']?.weeks ?? 0} wks) · all {f(st.all?.avg_spx_1m)}. {data.method}
       </div>
     </div>
   );

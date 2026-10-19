@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bot, ChevronRight, List, Loader2, Send, Sparkles, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { setHubMode } from '@/lib/hubMode';
 import { fmtPrice, Spark, apiError, symType } from './shared';
 
 const KEY = 'mkt_rail';
@@ -74,7 +75,22 @@ function RailWatchlist({ current, onOpen }: { current?: string; onOpen: (s: stri
   );
 }
 
-type Turn = { role: 'user' | 'assistant'; content: string; tools?: { name: string; args: any; ok: boolean }[]; meta?: string };
+type Citation = { n: number; label: string; source: string; ok: boolean; target: { mode: string; code?: string; symbol?: string | null; panel?: string } | null };
+type Turn = { role: 'user' | 'assistant'; content: string; tools?: { name: string; args: any; ok: boolean }[]; citations?: Citation[]; meta?: string };
+
+/** Open the screen a citation's data comes from. */
+function openCitation(c: Citation) {
+  const t = c.target;
+  if (!t) return;
+  if (t.mode === 'markets' && t.code) {
+    const code = t.code.toLowerCase();
+    window.location.hash = t.symbol ? `#mkt/${code}/${encodeURIComponent(t.symbol)}` : `#mkt/${code}`;
+    setHubMode('markets');
+  } else if (t.mode === 'research' && t.panel) {
+    setHubMode('research');
+    setTimeout(() => document.getElementById(t.panel!)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+  }
+}
 const TOOL_LABEL: Record<string, string> = { search_instrument: 'Searched instruments', get_quote: 'Quote', get_profile: 'Profile', get_financials: 'Financials',
   get_earnings: 'Earnings', get_analyst_ratings: 'Analyst ratings', get_holders: 'Holders', get_news: 'News', run_dcf: 'DCF', get_peers: 'Peers',
   get_movers: 'Movers', screen_stocks: 'Screener', get_market_overview: 'World markets', get_macro_view: 'Macro model' };
@@ -113,7 +129,7 @@ export function AiChat({ context, compact }: { context?: string; compact?: boole
         body: JSON.stringify({ messages: next.map(({ role, content }) => ({ role, content })), context, model: deep ? deepModel : undefined }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(apiError(j, r.status));
-      setTurns([...next, { role: 'assistant', content: j.reply, tools: j.tool_calls, meta: `${j.model} · ${j.seconds}s` }]);
+      setTurns([...next, { role: 'assistant', content: j.reply, tools: j.tool_calls, citations: j.citations, meta: `${j.model} · ${j.seconds}s` }]);
     } catch (e: any) {
       setTurns([...next, { role: 'assistant', content: `⚠ ${e.message}` }]);
     } finally { setBusy(false); }
@@ -143,6 +159,16 @@ export function AiChat({ context, compact }: { context?: string; compact?: boole
                 <span key={k} className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border', c.ok ? 'border-border text-text-tertiary' : 'border-red/40 text-red')}
                   title={JSON.stringify(c.args)}><Wrench className="w-2.5 h-2.5" />{TOOL_LABEL[c.name] ?? c.name}{c.args?.symbol ? ` ${c.args.symbol}` : ''}</span>))}</div>)}
             {t.role === 'assistant' ? <Rich text={t.content} /> : t.content}
+            {t.role === 'assistant' && (t.citations?.length ?? 0) > 0 && (
+              <div className="mt-1 pt-1 border-t border-border-subtle space-y-0.5">
+                <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Sources</div>
+                {t.citations!.map((c) => (
+                  <button key={c.n} type="button" onClick={() => openCitation(c)} disabled={!c.target}
+                    className={cn('block text-left text-[10px]', c.target ? 'hover:text-bloomberg' : '', c.ok ? 'text-text-tertiary' : 'text-red')}
+                    title={c.target ? 'Open the screen this data comes from' : undefined}>
+                    [{c.n}] {c.label} — {c.source}{!c.ok && ' (failed)'}
+                  </button>))}
+              </div>)}
             {t.meta && <div className="text-[10px] text-text-tertiary">{t.meta}</div>}
           </div>))}
         {busy && <div className="flex items-center gap-2 text-xs text-text-tertiary"><Loader2 className="w-3.5 h-3.5 animate-spin" />Researching… {elapsed}s

@@ -167,6 +167,9 @@ export const PureAlphaSection = lazy(() =>
   import('./equity/PureAlphaSection').then(m => ({ default: m.PureAlphaSection }))
 );
 
+export const PortfolioAnalyticsSection = lazy(() =>
+  import('./equity/PortfolioAnalyticsSection').then(m => ({ default: m.PortfolioAnalyticsSection }))
+);
 export const PerformanceAttributionSection = lazy(() =>
   import('./equity/PerformanceAttributionSection').then(m => ({ default: m.PerformanceAttributionSection }))
 );

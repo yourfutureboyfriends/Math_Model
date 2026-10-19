@@ -212,6 +212,33 @@ async def get_morning_brief_data() -> Dict[str, Any]:
     position_modifier = ens.get("riskBudget")
     model_caution = (confidence is not None and confidence < 0.6) or risk < 40
 
+    # Data-driven sections: overnight moves, changes since the last brief, today's releases, earnings, positioning.
+    from api.handlers import daily_brief as _db
+    holdings = []
+    try:
+        from api import portfolio_store
+        holdings = [p["symbol"] for p in await asyncio.to_thread(portfolio_store.list_positions, None)]
+    except Exception:
+        pass
+    rec_p = (dashboard.recession.probability if getattr(dashboard, "recession", None) else None)
+    state = {"regime": regime.title(), "composite": ens.get("score"), "conviction": ens.get("conviction"),
+             "growth": (growth / 100) if growth is not None else None,
+             "inflation": (inflation / 100) if inflation is not None else None,
+             "liquidity": (dashboard.scores.liquidity / 100) if dashboard.scores.liquidity is not None else None,
+             "risk": (risk / 100) if risk is not None else None, "recession": rec_p, "vix": vix, "ten_year": ten_yr}
+
+    async def _safe(fn, *a, default=None, timeout=25):
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(fn, *a), timeout=timeout)
+        except Exception as e:
+            logger.info("[brief] %s unavailable: %s", getattr(fn, "__name__", fn), e)
+            return default
+    moves, diff, releases, earnings, pos = await asyncio.gather(
+        _safe(_db.overnight_moves, default=[]), _safe(_db.snapshot_and_diff, state, default={"changes": []}),
+        _safe(_db.todays_releases, default=[]), _safe(_db.earnings_this_week, holdings, default=None),
+        _safe(_db.positioning, default={}))
+    ranked = _db.priorities(moves, diff, releases, earnings, pos)
+
     # Signal scores are 0-100 composites, not rates: label them as scores.
     summary = (f"{regime.title()} regime; growth signal {growth:.0f}/100, inflation signal {inflation:.0f}/100.")
     if spx:
@@ -239,7 +266,15 @@ async def get_morning_brief_data() -> Dict[str, Any]:
         "duration_months": duration,
         "confidence": confidence,
         "headline": f"Macro regime: {regime.title()} — growth signal {growth:.0f}/100, inflation signal {inflation:.0f}/100",
-        "priorities": [{"type": "signal", "priority": i+1, "title": p, "implication": "Action required"} for i, p in enumerate(priorities[:3])],
+        # ranked facts with their own implications; the regime notes only fill in on a day with nothing specific
+        "priorities": (ranked[:6] if ranked else
+                       [{"type": "regime", "priority": i + 1, "title": p, "implication": "Standing regime guidance",
+                         "severity": "LOW"} for i, p in enumerate(priorities[:3])]),
+        "overnight": moves,
+        "sinceLastBrief": diff,
+        "todaysReleases": releases,
+        "earnings": earnings,
+        "positioning": pos,
         "risks": [{"type": "market", "text": r, "severity": "WARNING" if i == 0 else "INFO"} for i, r in enumerate(risks[:3])],
         "conviction_trades": trades,
         "position_modifier": round(position_modifier, 2),

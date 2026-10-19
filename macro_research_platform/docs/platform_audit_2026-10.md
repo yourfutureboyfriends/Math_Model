@@ -109,10 +109,8 @@ ETFA, SPRD, CBRT, ECOS, CRED, PORT, PRED, NOW, FLOW, SHIP, FLY, QUAK, EIA, WETR,
 WCRS, EQS, 13F, IPO, EVTS, ECO, ECST, ALRT, AI, JRNL, LP, and security pages (DES, GP, FA, ERN, ANR, HDS, DVD, OMON,
 HP, BETA).
 
-Open: **IPO** shows 0 upcoming deals in 45 days (Finnhub's free calendar; Nasdaq's free IPO calendar lists
-upcoming, priced and filed deals); **ECO / ECST / RMON / MRGR** first loads exceed 8 s (cold caches — warm them at
-start); **ALRT** alerts are price-only (Bloomberg alerts fire on any field, news or a formula); **AI** answers carry no
-citations to the panels they read.
+Open items listed here on 18 Oct (IPO coverage, cold ECO/ECST/RMON/MRGR loads, price-only alerts, uncited AI
+answers) were closed on 19 Oct — see below.
 
 ## What professionals have that the platform lacks (priority order)
 
@@ -134,7 +132,18 @@ citations to the panels they read.
 10. **Intraday and derivatives data** — tick/minute history, option chains, futures curves history: the free-data
     ceiling; the paid options listed earlier (ThetaData, Polygon, ORATS) close it.
 
+## Closed on 19 Oct 2026
+
+| Item | What was done |
+|---|---|
+| Labels | WTI shown as the continuous contract (CL=F rolls ahead of the CMDTY front month); header EUR/USD change measured from the last NY close like the FX board; Data Explorer no longer shows "0 items"; scenario probabilities carry their sample (n of N months) |
+| Signal governance | Ensemble weights follow out-of-sample evidence (PASS 1, WEAK ½, untested ½, FAIL 0) — the VIX vol-regime input (Sharpe −0.30, −26%) is retired from the score; agreement counts each data driver once (3 drivers, raw share shown too); factors that fail their out-of-sample test drop out of the rotation call |
+| Data monitoring | Quote-freshness check per market's hours (SPY, VIX, EUR/USD, WTI) in System Health; decision log append-only by database trigger; the 297 test rows removed (backup `api/backups/macro_terminal_2026-10-19_pre_audit_cleanup.db`); ECO / ECST / RMON / MRGR, the free series and EPS revisions warmed at start |
+| Free data added | Calendar consensus + actual vs forecast (weekly feed, ALFRED actuals); Shiller CAPE with history (95.7th pct since 1990); NY Fed Staff Nowcast beside GDPNow (their range as the band); AAII; CBOE put/call; Nasdaq IPO calendar; sector EPS revisions (Yahoo estimates, top-10 holdings); next central-bank decisions (fed funds futures; survey consensus when listed) |
+| Portfolio | Brinson–Fachler (Carino-linked) vs SPY on the holdings actually held; ex-ante / ex-post tracking error; liquidity-adjusted VaR and days to liquidate; FIFO lots; FX on non-USD positions; TCA of all fills; trade-idea P&L; book sector exposure beside the regime targets; news per holding with tone vs the position |
+| Features | Data-driven Daily Brief (overnight moves in σ, changes since the last brief, today's releases with consensus, earnings, positioning, ranked priorities); 2-year composite-signal history; My Desk P&L by book and strategy with limit headroom; field / news alerts with webhook or email delivery (opt-in in .env); AI answers cite numbered sources that open the screen; CSV / JSON data API with an Excel link builder; team notes and shared watchlists; anomaly click-through; WEI sparklines and valuation; earnings-aware entries (wait inside 5 days, half size inside 10) |
+
 ## Decisions for you
-* Remove the 297 test-generated audit rows ("quant" user, "Test trend", 9–19 Oct)? They are in the compliance log.
 * Keep or remove the four positions (AAPL 150, SPY −50, MSFT 40, GLD 30) created within one minute on 8 Jul?
-* Four accounts still use default passwords (analyst, pm, quant, risk).
+* Four accounts still use default passwords (analyst, pm, quant, risk). Each must change it at first sign-in (enforced);
+  change or disable them in Admin if they are not in use.

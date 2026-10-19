@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BarList } from '@/components/ui/BarList';
+import { useApiData } from '@/hooks/useApiData';
 import { Globe, RefreshCw } from 'lucide-react';
 
 type Cell = { value: number | null; period: string | null; source: string; state: string; status: string;
@@ -114,6 +115,8 @@ export function RegionalMacroSection() {
               ))}
             </div>
           )}
+
+          <NextDecisions />
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex gap-1">
@@ -266,5 +269,29 @@ function RegionRows({ region, rows, tab }: { region: string; rows: Economy[]; ta
         </tr>
       ))}
     </>
+  );
+}
+
+
+// Next central-bank decisions with the free consensus (survey forecast; fed funds futures for the Fed).
+function NextDecisions() {
+  const { data } = useApiData<any>('/api/v1/central-banks/next', [], { refreshMs: 1_800_000 });
+  const banks: any[] = data?.banks ?? [];
+  if (!banks.length) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-2xs text-text-tertiary uppercase tracking-wider mr-1">Next decisions</span>
+      {banks.map((b) => {
+        const mi = b.market_implied;
+        const pct = mi?.probabilities?.[mi.most_likely];
+        return (
+          <span key={b.bank} title={b.note ?? [b.consensus_source, mi && `${mi.source}: ${Object.entries(mi.probabilities).map(([k, v]: any) => `${k} ${Math.round(v * 100)}%`).join(', ')}`].filter(Boolean).join(' · ')}
+            className={`text-2xs font-mono px-1.5 py-0.5 border ${b.date ? 'border-border text-text-secondary' : 'border-border-subtle text-text-tertiary'}`}>
+            {b.currency} {b.date ? b.date.slice(5) : '—'}
+            {b.consensus && <span className="text-bloomberg"> cons. {b.consensus}</span>}
+            {mi && <span className="text-text-primary"> {mi.most_likely} {pct != null ? `${Math.round(pct * 100)}%` : ''}</span>}
+          </span>);
+      })}
+    </div>
   );
 }

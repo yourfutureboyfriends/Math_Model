@@ -30,6 +30,7 @@ interface Position {
   weight_pct: number | null;
   net_weight_pct?: number | null;
   country?: string; country_name?: string; market_class?: string; region?: string; asset_type?: string;
+  currency?: string; usd_per_unit?: number | null; market_value_local?: number | null;
   price_available: boolean;
 }
 interface Summary {
@@ -295,6 +296,9 @@ export function PositionsSection() {
                       <span className="ml-1 text-[10px] font-mono text-text-tertiary" title={marketTitle(p)}>{marketTag(p)}</span>
                     )}
                     <span className="ml-1 text-2xs text-text-tertiary">{p.asset_class}</span>
+                    {p.currency && p.currency !== 'USD' && (
+                      <span className="ml-1 text-[10px] font-mono text-amber" title={`Quoted in ${p.currency}; values shown in USD at ${p.usd_per_unit ?? '—'} USD per unit${p.market_value_local != null ? ` (local value ${p.market_value_local.toLocaleString()})` : ''}`}>{p.currency}</span>
+                    )}
                   </td>
                   <td className="py-2 px-3 text-xs text-text-secondary">{p.book}</td>
                   <td className={`py-2 px-3 text-right font-mono text-sm ${p.quantity < 0 ? 'text-red' : 'text-text-primary'}`}>{p.quantity}</td>

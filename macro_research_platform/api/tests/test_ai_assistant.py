@@ -38,6 +38,10 @@ def test_tool_loop_feeds_results_and_dedupes(cfg, monkeypatch):
     tool_msgs = [m for m in fake.seen[1] if m["role"] == "tool"]
     assert len(tool_msgs) == 2 and '"price":123.4' in tool_msgs[0]["content"]
     assert "AAPL" in fake.seen[0][0]["content"]                     # context reaches the system prompt
+    # each tool result is numbered for citation, and the reply lists the sources with the screen to open
+    assert tool_msgs[0]["content"].startswith("[1] source: Yahoo Finance quote")
+    assert out["citations"] == [{"n": 1, "tool": "get_quote", "label": "quote AAPL", "source": "Yahoo Finance quote",
+                                 "ok": True, "symbol": "AAPL", "target": {"mode": "markets", "code": "DES", "symbol": "AAPL"}}]
 
 
 def test_unknown_tool_and_errors_are_reported(cfg, monkeypatch):

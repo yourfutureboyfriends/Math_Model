@@ -9,10 +9,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { openChart } from '@/components/ui/ChartModal';
 import { Globe, RefreshCw } from 'lucide-react';
 import { DataLineagePopover } from '@/components/ui/DataLineagePopover';
+import { Sparkline } from '@/components/ui/Sparkline';
 
 interface WorldIndex {
   name: string; region: string; ticker: string;
   level: number | null; change1d: number | null; available?: boolean;
+  change1m?: number | null; spark?: number[];
+  valuation?: { etf: string; pe: number | null; earnings_yield_pct: number | null; dividend_yield_pct: number | null };
 }
 
 export function GlobalMarketsSection() {
@@ -72,7 +75,16 @@ export function GlobalMarketsSection() {
                     </div>
                     <div className={`text-2xs font-mono tabular-nums ${m.change1d == null ? 'text-text-tertiary' : up ? 'text-green' : 'text-red'}`}>
                       {m.change1d == null ? '—' : `${up ? '+' : ''}${m.change1d.toFixed(2)}%`}
+                      {m.change1m != null && <span className="text-text-tertiary"> · 1M {m.change1m >= 0 ? '+' : ''}{m.change1m.toFixed(1)}%</span>}
                     </div>
+                    {m.spark && m.spark.length > 1 && (
+                      <div className="mt-1"><Sparkline data={m.spark} height={22} direction={(m.spark[m.spark.length - 1] >= m.spark[0]) ? 'up' : 'down'} /></div>
+                    )}
+                    {m.valuation?.pe != null && (
+                      <div className="text-[10px] text-text-tertiary font-mono" title={`Trailing P/E and dividend yield of ${m.valuation.etf} (tracking ETF; index P/E is not free)`}>
+                        P/E {m.valuation.pe} · E/Y {m.valuation.earnings_yield_pct}%{m.valuation.dividend_yield_pct != null ? ` · DY ${m.valuation.dividend_yield_pct}%` : ''}
+                      </div>
+                    )}
                   </>
                 )}
               </button>

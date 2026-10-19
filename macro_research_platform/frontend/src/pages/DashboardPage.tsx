@@ -56,6 +56,7 @@ import {
   EnsembleSection,
   SignalStorySection,
   PerformanceAttributionSection,
+  PortfolioAnalyticsSection,
   SystemHealthSection,
   DataProvidersSection,
   SystemAuditSection,
@@ -770,6 +771,11 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Performance Attribution">
           <Suspense fallback={<SectionSkeleton />}>
             <PerformanceAttributionSection />
+          </Suspense>
+        </ErrorBoundary>
+        <ErrorBoundary sectionName="Book analytics">
+          <Suspense fallback={<SectionSkeleton />}>
+            <PortfolioAnalyticsSection />
           </Suspense>
         </ErrorBoundary>
       </div>

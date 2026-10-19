@@ -992,6 +992,12 @@ async def _user_op(fn, *a):
 class WatchlistIn(BaseModel):
     name: Optional[str] = None
     symbols: Optional[List[str]] = None
+    shared: Optional[bool] = None
+
+
+class NoteIn(BaseModel):
+    target: str
+    text: str
 
 
 class AlertIn(BaseModel):
@@ -1041,7 +1047,7 @@ async def mkt_watchlist_create(body: WatchlistIn, request: Request):
 @router.put("/api/v1/mkt/watchlists/{wid}")
 async def mkt_watchlist_update(wid: int, body: WatchlistIn, request: Request):
     from api.marketdata import usertools
-    return await _user_op(usertools.update_watchlist, _owner(request), wid, body.name, body.symbols)
+    return await _user_op(usertools.update_watchlist, _owner(request), wid, body.name, body.symbols, body.shared)
 
 
 @router.delete("/api/v1/mkt/watchlists/{wid}")
@@ -1051,10 +1057,33 @@ async def mkt_watchlist_delete(wid: int, request: Request):
     return {"deleted": wid}
 
 
+@router.get("/api/v1/mkt/notes")
+async def mkt_notes(target: str, request: Request):
+    from api.marketdata import usertools
+    _owner(request)
+    return {"notes": await _user_op(usertools.list_notes, target)}
+
+
+@router.post("/api/v1/mkt/notes")
+async def mkt_note_add(body: NoteIn, request: Request):
+    from api.marketdata import usertools
+    return await _user_op(usertools.add_note, _owner(request), body.target, body.text)
+
+
+@router.delete("/api/v1/mkt/notes/{nid}")
+async def mkt_note_delete(nid: int, request: Request):
+    from api.marketdata import usertools
+    await _user_op(usertools.delete_note, _owner(request), nid)
+    return {"deleted": nid}
+
+
 @router.get("/api/v1/mkt/alerts")
 async def mkt_alerts(request: Request):
     from api.marketdata import usertools
-    return {"alerts": await _user_op(usertools.list_alerts, _owner(request)), "kinds": usertools.ALERT_KINDS}
+    from api.marketdata import field_alerts
+    from api.notify import channels
+    return {"alerts": await _user_op(usertools.list_alerts, _owner(request)), "kinds": usertools.ALERT_KINDS,
+            "fields": field_alerts.describe(), "delivery": {"in_app": True, "browser": True, **channels()}}
 
 
 @router.get("/api/v1/mkt/alerts/triggered")

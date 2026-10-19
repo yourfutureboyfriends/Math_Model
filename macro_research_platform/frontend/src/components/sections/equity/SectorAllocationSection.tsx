@@ -61,6 +61,9 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
   if (!data) data = (_fullDash as any)?.["sectorAllocation"] as any;
 
   const { data: earningsData } = useApiData<EarningsData>('/api/earnings/revisions');
+  // the book's actual net sector exposure (look-through), beside the regime target
+  const { data: exposure } = useApiData<any>('/api/v1/portfolio/sector-exposure');
+  const bookW: Record<string, number> | null = exposure?.available ? exposure.net_weight : null;
 
   // Use macro store for regime context
   const regime = useMacroStore((state) => state.regime);
@@ -190,6 +193,7 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
               <tr className="border-b border-border bg-surface-2">
                 <th className="text-left py-2 px-2 text-2xs text-text-tertiary uppercase font-medium">Sector</th>
                 <th className="text-left py-2 px-2 text-2xs text-text-tertiary uppercase font-medium" title="The regime playbook's stance (policy)">Playbook</th>
+                <th className="text-right py-2 px-2 text-2xs text-text-tertiary uppercase font-medium" title={`Regime target weight vs the book's actual net exposure (% of NAV, look-through)${exposure?.available ? '' : ' — sign in to see the book'}`}>Target / Book</th>
                 <th className="text-left py-2 px-2 text-2xs text-text-tertiary uppercase font-medium" title="The playbook stance unless relative strength clearly contradicts it (z beyond ±0.5)">Signal</th>
                 <th className="text-right py-2 px-2 text-2xs text-text-tertiary uppercase font-medium">Score</th>
                 <th className="text-center py-2 px-2 text-2xs text-text-tertiary uppercase font-medium" title={epsAvailable ? undefined : (earningsData?.reason || 'EPS-revision feed unavailable')}>
@@ -210,6 +214,14 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
                 >
                   <td className="py-2 px-2 text-sm text-text-primary">{sector.name}</td>
                   <td className="py-2 px-2 text-2xs text-text-tertiary">{(sector as any).playbookStance ?? '—'}</td>
+                  <td className="py-2 px-2 text-right font-mono text-2xs">
+                    {(() => {
+                      const t = (data?.sectors?.find((x: any) => x.name === sector.name) as any)?.allocation;
+                      const b = bookW ? bookW[sector.name] ?? 0 : null;
+                      return <>{t != null ? `${(t * 100).toFixed(0)}%` : '—'}<span className="text-text-tertiary"> / </span>
+                        <span className={b == null ? 'text-text-tertiary' : b < 0 ? 'text-red' : 'text-text-primary'}>{b == null ? '—' : `${(b * 100).toFixed(2)}%`}</span></>;
+                    })()}
+                  </td>
                   <td className="py-2 px-2">
                     <span className={getSignalTag(sector.signal)}>
                       {sector.signal}

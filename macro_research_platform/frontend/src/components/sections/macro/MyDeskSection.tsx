@@ -9,6 +9,7 @@
  *
  * Data: /api/v1/desk (see api/routers/desk.py).
  */
+import { TeamNotes } from '@/components/markets/MyTools';
 import { ArrowRight, CheckCircle2, LayoutDashboard } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useDesk, type Desk, type DeskLimit, type DeskPrint } from '@/hooks/useDesk';
@@ -214,11 +215,41 @@ function RoleBody({ d }: { d: Desk }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5"><BookTiles d={d} /></div>
+      <BookPnl fund={d.fund as any} />
+      <div>
+        <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Limit headroom</div>
+        <LimitBars rows={d.fund.limits?.top_utilization ?? []} />
+      </div>
       <div className="grid grid-cols-3 gap-1.5"><MacroTiles d={d} /></div>
       {(pending > 0 || approved > 0) && (
         <div className="text-2xs text-text-tertiary">Orders: {pending} awaiting approval · {approved} approved</div>
       )}
     </div>
+  );
+}
+
+// P&L by book (fund) and by strategy (paper traders): latest session and unrealized.
+function BookPnl({ fund }: { fund: any }) {
+  const books: any[] = fund?.by_book ?? [];
+  const strats: any[] = fund?.by_strategy ?? [];
+  if (!books.length && !strats.length) return null;
+  const tone = (v: number | null | undefined) => (v == null ? 'text-text-tertiary' : v > 0 ? 'text-green' : v < 0 ? 'text-red' : 'text-text-secondary');
+  return (
+    <table className="w-full text-xs">
+      <thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle">
+        <th className="text-left font-normal py-1">Book / strategy</th><th className="text-right font-normal">Gross / NAV</th>
+        <th className="text-right font-normal">Day P&amp;L</th><th className="text-right font-normal">Unrealized</th></tr></thead>
+      <tbody>
+        {books.map((b) => (
+          <tr key={b.book} className="border-b border-border-subtle"><td className="py-0.5">{b.book} <span className="text-text-tertiary">· {b.positions} pos</span></td>
+            <td className="text-right font-mono">{money(b.gross)}</td><td className={`text-right font-mono ${tone(b.day_pnl)}`}>{money(b.day_pnl)}</td>
+            <td className={`text-right font-mono ${tone(b.unrealized_pnl)}`}>{money(b.unrealized_pnl)}</td></tr>))}
+        {strats.map((st) => (
+          <tr key={st.strategy} className="border-b border-border-subtle last:border-0" title={`as of ${st.as_of}`}><td className="py-0.5 text-text-secondary">{st.strategy}</td>
+            <td className="text-right font-mono">{money(st.nav)}</td><td className={`text-right font-mono ${tone(st.day_pnl)}`}>{money(st.day_pnl)}</td>
+            <td className="text-right text-text-tertiary">—</td></tr>))}
+      </tbody>
+    </table>
   );
 }
 
@@ -278,6 +309,7 @@ export function MyDeskSection() {
             </div>
           </div>
           <div className="lg:col-span-3 min-w-0"><RoleBody d={d} /></div>
+          <div className="lg:col-span-5"><TeamNotes target="desk" title="Desk notes" /></div>
         </div>
       )}
     </section>

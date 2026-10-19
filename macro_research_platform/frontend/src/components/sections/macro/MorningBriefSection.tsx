@@ -8,7 +8,8 @@ import { fmtProbability } from '@/utils/format';
 import { api } from '@/lib/apiClient';
 
 interface Priority {
-  type: 'calendar' | 'tension' | 'signal';
+  type: string;
+  severity?: string;
   priority: number;
   title: string;
   time?: string;
@@ -44,6 +45,7 @@ interface MorningBriefSectionData {
   conviction_trades: ConvictionTrade[];
   position_modifier: number | null;
   model_caution: boolean;
+  raw: any;
 }
 
 export function MorningBriefSection() {
@@ -63,10 +65,11 @@ export function MorningBriefSection() {
           duration_months: (response as any).duration_months ?? null,
           confidence: (response as any).confidence ?? null,
           priorities: ((response as any).priorities || []).map((p: any, i: number) => ({
-            type: 'signal',
+            type: typeof p === 'string' ? 'signal' : (p.type ?? 'signal'),
+            severity: typeof p === 'string' ? undefined : p.severity,
             priority: i + 1,
             title: typeof p === 'string' ? p : p.title,
-            implication: typeof p === 'string' ? 'Action required' : p.implication
+            implication: typeof p === 'string' ? '' : p.implication
           })),
           risks: ((response as any).risks || []).map((r: any) => ({
             type: r.type || 'market',
@@ -83,7 +86,8 @@ export function MorningBriefSection() {
             thesis: t.thesis || t.rationale
           })),
           position_modifier: (response as any).position_modifier ?? null,
-          model_caution: (response as any).model_caution ?? false
+          model_caution: (response as any).model_caution ?? false,
+          raw: response,
         };
         setData(transformed);
       } catch (e) {
@@ -157,7 +161,8 @@ export function MorningBriefSection() {
 
   const getPriorityIcon = (type: string) => {
     switch (type) {
-      case 'calendar': return Calendar;
+      case 'calendar': case 'release': case 'earnings': return Calendar;
+      case 'move': case 'change': return TrendingUp;
       case 'tension': return TrendingUp;
       default: return Target;
     }
@@ -215,7 +220,7 @@ export function MorningBriefSection() {
                 const Icon = getPriorityIcon(priority.type);
                 return (
                   <div key={idx} className="flex items-start gap-3 p-2 bg-surface-1 rounded">
-                    <span className="text-amber font-mono font-bold">{idx + 1}</span>
+                    <span className={`font-mono font-bold ${priority.severity === 'HIGH' ? 'text-red' : priority.severity === 'LOW' ? 'text-text-tertiary' : 'text-amber'}`}>{idx + 1}</span>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <Icon className="w-3 h-3 text-text-tertiary" />
@@ -243,6 +248,8 @@ export function MorningBriefSection() {
             </div>
           </div>
         )}
+
+        <BriefFacts raw={data.raw} />
 
         {/* Key Risks */}
         {(risks?.length ?? 0) > 0 && (
@@ -316,5 +323,65 @@ export function MorningBriefSection() {
         )}
       </div>
     </section>
+  );
+}
+
+
+// Overnight moves, changes since the previous brief, today's releases, earnings and positioning (all from data).
+function BriefFacts({ raw }: { raw: any }) {
+  if (!raw) return null;
+  const moves: any[] = raw.overnight ?? [];
+  const diff = raw.sinceLastBrief;
+  const rel: any[] = raw.todaysReleases ?? [];
+  const earn = raw.earnings;
+  const pos = raw.positioning ?? {};
+  const tone = (v: number) => (v > 0 ? 'text-green' : v < 0 ? 'text-red' : 'text-text-secondary');
+  return (
+    <div className="mb-4 grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
+      {moves.length > 0 && (
+        <div className="p-2 bg-surface-1 rounded">
+          <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Overnight &amp; latest session</div>
+          <div className="grid grid-cols-2 gap-x-4">
+            {moves.map((m) => (
+              <div key={m.ticker} className="flex justify-between py-0.5" title={`${m.ticker}, ${m.as_of}; σ = vs its last 60 daily moves`}>
+                <span className="text-text-secondary">{m.name}</span>
+                <span className={`font-mono ${tone(m.change)}`}>{m.change > 0 ? '+' : ''}{m.change.toFixed(2)}{m.unit === 'bp' ? 'bp' : '%'}
+                  {m.sigma != null && Math.abs(m.sigma) >= 1.5 && <span className="text-amber"> {m.sigma > 0 ? '+' : ''}{m.sigma}σ</span>}</span>
+              </div>))}
+          </div>
+        </div>
+      )}
+      <div className="p-2 bg-surface-1 rounded space-y-2">
+        <div>
+          <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Since the last brief{diff?.since ? ` (${diff.since})` : ''}</div>
+          {diff?.changes?.length ? diff.changes.map((c: any) => <div key={c.item} className="text-text-secondary">{c.text}</div>)
+            : <div className="text-text-tertiary">{diff?.note ?? 'No material change in the model readings.'}</div>}
+        </div>
+        <div>
+          <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Today's US releases</div>
+          {rel.length ? rel.map((r) => (
+            <div key={r.event} className="text-text-secondary"><span className="font-mono text-text-tertiary">{r.time_et}</span> {r.event}
+              {r.forecast && <span className="text-bloomberg"> · cons. {r.forecast}</span>}{r.previous && <span className="text-text-tertiary"> · prev. {r.previous}</span>}</div>))
+            : <div className="text-text-tertiary">None scheduled.</div>}
+        </div>
+        {earn?.available && (
+          <div>
+            <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Earnings this week</div>
+            <div className="text-text-secondary">
+              {earn.holdings?.length ? <span className="text-amber">Holdings: {earn.holdings.map((e: any) => `${e.symbol} ${String(e.datetime).slice(5, 10)}`).join(', ')}. </span> : 'No holdings report. '}
+              Largest: {(earn.large_caps ?? []).slice(0, 6).map((e: any) => `${e.symbol} ${String(e.datetime).slice(5, 10)}`).join(', ') || '—'}
+            </div>
+          </div>
+        )}
+        <div>
+          <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Positioning</div>
+          <div className="text-text-secondary">
+            {pos.aaii?.latest ? `AAII bull−bear ${pos.aaii.latest.spread > 0 ? '+' : ''}${pos.aaii.latest.spread} pts (${pos.aaii.spread_percentile}th pct). ` : ''}
+            {pos.put_call?.latest ? `Equity put/call ${pos.put_call.latest.equity} (10d ${pos.put_call.equity_10d_avg}). ` : ''}
+            {pos.cot_extremes?.length ? `CFTC extremes: ${pos.cot_extremes.map((c: any) => `${c.market} (${c.cot_index})`).join(', ')}.` : 'No CFTC extremes.'}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

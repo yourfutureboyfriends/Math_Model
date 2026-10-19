@@ -32,7 +32,7 @@ import { Chart, Financials, News, useQuote } from '@/components/markets/TickerVi
 import { MoversView, ScreenerView } from '@/components/markets/ScreenerView';
 import { AnrView, BetaView, DcfView, DvdView, ErnView, FundHoldingsView, HdsView, HpView, NotApplicable, OmonView, RvView } from '@/components/markets/SecurityFunctions';
 import { BtmmView, CmdtyView, CompView, CryptoView, EvtsView, GcView, ImapView, NewsView, WcrsView } from '@/components/markets/GlobalFunctions';
-import { AlertsView, AlertToasts, JournalView, WatchlistsView, useAddToWatchlist } from '@/components/markets/MyTools';
+import { AlertsView, AlertToasts, JournalView, TeamNotes, WatchlistsView, useAddToWatchlist } from '@/components/markets/MyTools';
 import { ErrorBox, fmtPrice, Loading, TYPE_COLOR } from '@/components/markets/shared';
 import { WorldMap } from '@/components/markets/WorldMap';
 import { AiChat, RightRail } from '@/components/markets/RightRail';
@@ -140,6 +140,7 @@ function SecurityBody({ code, symbol, d, isFund, onGo }: { code: string; symbol:
   return (
     <>
         {code === 'DES' && <QuoteWorkstation q={d} onOpen={(s) => onGo('DES', s)} onGo={onGo} />}
+        {code === 'DES' && <div className="mt-3"><TeamNotes target={symbol} /></div>}
         {code === 'GP' && <Chart symbol={symbol} height={560} />}
         {code === 'FA' && <Financials symbol={symbol} />}
         {code === 'ERN' && <ErnView symbol={symbol} />}

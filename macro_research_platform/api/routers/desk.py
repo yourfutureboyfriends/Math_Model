@@ -43,7 +43,39 @@ async def _fund_block() -> Dict[str, Any]:
     day_pnl = (history[-1]["nav"] - history[-2]["nav"]) if len(history) >= 2 else None
     top = sorted((l for l in limits["limits"] if l.get("utilization") is not None),
                  key=lambda l: -l["utilization"])[:5]
+    # P&L by book: unrealized, and the latest session's move on today's holdings (qty × close change)
+    from api.handlers.market_handler import _fetch_closes_literal
+    syms = sorted({str(p["symbol"]).upper() for p in raw})
+    closes = dict(zip(syms, await asyncio.gather(*[_fetch_closes_literal(s) for s in syms]))) if syms else {}
+    books: Dict[str, Dict[str, Any]] = {}
+    for p in state.get("positions") or raw:
+        s = str(p["symbol"]).upper()
+        b = books.setdefault(p.get("book") or "—", {"book": p.get("book") or "—", "positions": 0, "gross": 0.0,
+                                                     "unrealized_pnl": 0.0, "day_pnl": 0.0})
+        b["positions"] += 1
+        b["gross"] += abs(p.get("market_value") or 0)
+        b["unrealized_pnl"] += p.get("unrealized_pnl") or 0
+        c = closes.get(s) or []
+        if len(c) >= 2:
+            b["day_pnl"] += float(p["quantity"]) * (c[-1] - c[-2])
+    by_book = [{k: (round(v, 2) if isinstance(v, float) else v) for k, v in b.items()} for b in books.values()]
+
+    def _strategies():
+        out = []
+        with portfolio_store._conn() as c:
+            for name, table, col in (("Technical trader (paper)", "auto_nav", "equity"),
+                                     ("Macro trader (paper)", "macro_trader_nav", "nav")):
+                try:
+                    rows = c.execute(f"SELECT date, {col} AS v FROM {table} ORDER BY date DESC LIMIT 2").fetchall()
+                except Exception:
+                    continue
+                if rows:
+                    out.append({"strategy": name, "as_of": rows[0]["date"], "nav": round(rows[0]["v"], 2),
+                                "day_pnl": round(rows[0]["v"] - rows[1]["v"], 2) if len(rows) > 1 else None})
+        return out
+    strategies = await asyncio.to_thread(_strategies)
     return {"available": True, "fund_name": settings.get("fund_name"),
+            "by_book": by_book, "by_strategy": strategies,
             "base_currency": settings.get("base_currency"), "nav": state["nav"],
             "unrealized_pnl": state["summary"].get("total_unrealized_pnl"),
             "realized_pnl": state["realized_pnl"], "last_day_pnl": day_pnl,
