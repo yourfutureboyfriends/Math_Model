@@ -143,7 +143,8 @@ answers) were closed on 19 Oct — see below.
 | Portfolio | Brinson–Fachler (Carino-linked) vs SPY on the holdings actually held; ex-ante / ex-post tracking error; liquidity-adjusted VaR and days to liquidate; FIFO lots; FX on non-USD positions; TCA of all fills; trade-idea P&L; book sector exposure beside the regime targets; news per holding with tone vs the position |
 | Features | Data-driven Daily Brief (overnight moves in σ, changes since the last brief, today's releases with consensus, earnings, positioning, ranked priorities); 2-year composite-signal history; My Desk P&L by book and strategy with limit headroom; field / news alerts with webhook or email delivery (opt-in in .env); AI answers cite numbered sources that open the screen; CSV / JSON data API with an Excel link builder; team notes and shared watchlists; anomaly click-through; WEI sparklines and valuation; earnings-aware entries (wait inside 5 days, half size inside 10) |
 
-## Decisions for you
-* Keep or remove the four positions (AAPL 150, SPY −50, MSFT 40, GLD 30) created within one minute on 8 Jul?
-* Four accounts still use default passwords (analyst, pm, quant, risk). Each must change it at first sign-in (enforced);
-  change or disable them in Admin if they are not in use.
+## Decisions (19 Oct 2026)
+* The four 8-Jul positions (AAPL 150, SPY −50, MSFT 40, GLD 30) were removed at the owner's request, logged in the
+  decision log; backup `api/backups/macro_terminal_2026-10-19_pre_position_removal.db`.
+* Default passwords on the analyst, pm, quant and risk accounts: left as they are by the owner's choice (a change is
+  still forced at first sign-in).
