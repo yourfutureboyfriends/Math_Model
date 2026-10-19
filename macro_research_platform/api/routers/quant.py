@@ -241,12 +241,14 @@ class CodeCheckIn(BaseModel):
 
 
 @router.get("/api/v1/quant/code/engine")
-async def code_engine(request: Request):
-    """The backtest engine's source — loaded by the browser so tests run the exact server code."""
+async def code_engine(request: Request, module: str = Query("codelab", pattern="^(codelab|qcalgo)$")):
+    """The backtest engine's source (and the QuantConnect-style API beside it) — loaded by the browser so tests run the
+    exact server code."""
     from fastapi.responses import PlainTextResponse
     from api.quant import sandbox
     _user(request)
-    return PlainTextResponse(sandbox.ENGINE.read_text(), headers={"Cache-Control": "private, max-age=300"})
+    f = sandbox.QCALGO if module == "qcalgo" else sandbox.ENGINE
+    return PlainTextResponse(f.read_text(), headers={"Cache-Control": "private, max-age=300"})
 
 
 @router.get("/api/v1/quant/code/data")
@@ -364,12 +366,27 @@ async def code_universes(request: Request):
 @router.post("/api/v1/quant/code/check")
 async def code_check(body: CodeCheckIn, request: Request):
     """Static check against the deploy sandbox's rules (does not run the code)."""
-    from api.quant import sandbox
+    from api.quant import qcalgo, sandbox
     _user(request)
     try:
         return {"ok": True, **sandbox.check(body.code)}
     except sandbox.SandboxError as e:
-        return {"ok": False, "error": str(e)}
+        out = {"ok": False, "error": str(e)}
+        if "QCAlgorithm" in body.code:                   # a QuantConnect-style algorithm: the line-by-line report too
+            try:
+                out["qc"] = qcalgo.static_header(body.code)
+            except Exception as e2:                       # noqa: BLE001 — the header itself is unreadable
+                out["qc"] = {"report": [], "error": str(e2)}
+        return out
+
+
+@router.get("/api/v1/quant/code/api")
+async def code_api(request: Request):
+    """The QuantConnect-compatible algorithm API: what is supported, approximated (daily data) and unavailable."""
+    from api.quant import qcalgo
+    _user(request)
+    return {"version": qcalgo.API_VERSION, "supported": sorted(qcalgo.SUPPORTED), "approximated": qcalgo.APPROXIMATED,
+            "unsupported": qcalgo.UNSUPPORTED, "names": sorted(qcalgo.NAMES)}
 
 
 @router.post("/api/v1/quant/code/analyze")
@@ -671,3 +688,7 @@ def _audit(user: str, action: str, text: str) -> None:
         audit_store.add_decision(action, text, user=user, target="trader")
     except Exception:
         pass
+
+
+from api.routers.options_engine import router as options_engine_router
+router.include_router(options_engine_router)

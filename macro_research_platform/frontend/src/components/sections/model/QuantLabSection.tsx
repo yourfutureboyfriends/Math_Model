@@ -6,18 +6,19 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
-import { ArrowLeftRight, BookOpen, Code2, FlaskConical, History, Library as LibraryIcon, Save, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, BookOpen, CandlestickChart, Code2, FlaskConical, History, Library as LibraryIcon, Save, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { CodeLab, STARTER } from './quant/CodeLab';
 import { Library } from './quant/Library';
+import { OptionsResearch } from './quant/OptionsResearch';
 import { RelValue } from './quant/RelValue';
 import { Runs } from './quant/Runs';
 import { api, ErrorNote } from './quant/shared';
 
 const TABS = [
   ['code', 'Code & test', Code2], ['runs', 'Runs & compare', History], ['library', 'Strategy library', LibraryIcon], ['mine', 'My strategies', Save],
-  ['relval', 'Arb & market making', ArrowLeftRight], ['research', 'Research', BookOpen],
+  ['options', 'Options research', CandlestickChart], ['relval', 'Arb & market making', ArrowLeftRight], ['research', 'Research', BookOpen],
 ] as const;
 type Tab = (typeof TABS)[number][0];
 
@@ -72,6 +73,7 @@ export function QuantLabSection() {
       {tab === 'mine' && <Mine rows={mine} me={user?.username} isAdmin={user?.role === 'admin'} onOpen={(s) => openCode(s.spec.code, s.name, s.id)} onChanged={loadMine} />}
       {tab === 'relval' && (meta ? <RelValue meta={meta} /> : <div className="text-2xs text-text-tertiary">Loading…</div>)}
       {tab === 'research' && <Research />}
+      {tab === 'options' && <OptionsResearch />}
     </div>
   );
 }

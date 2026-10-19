@@ -9,6 +9,11 @@ def main() -> None:
     tmp, engine_path = sys.argv[1], sys.argv[2]
     import numpy as np
     import pandas as pd
+    if len(sys.argv) > 3:                                      # the QuantConnect-style API, imported by the engine
+        qspec = importlib.util.spec_from_file_location("qcalgo", sys.argv[3])
+        qmod = importlib.util.module_from_spec(qspec)
+        sys.modules["qcalgo"] = qmod
+        qspec.loader.exec_module(qmod)
     spec = importlib.util.spec_from_file_location("codelab", engine_path)
     codelab = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(codelab)
@@ -67,18 +72,20 @@ def main() -> None:
         "abs", "all", "any", "bool", "dict", "divmod", "enumerate", "filter", "float", "frozenset", "int", "isinstance",
         "len", "list", "map", "max", "min", "pow", "print", "range", "reversed", "round", "set", "slice", "sorted",
         "str", "sum", "tuple", "zip", "ValueError", "KeyError", "IndexError", "TypeError", "ZeroDivisionError",
-        "Exception", "ArithmeticError", "RuntimeError", "True", "False", "None", "__build_class__")}
+        "Exception", "ArithmeticError", "RuntimeError", "True", "False", "None", "__build_class__", "hasattr", "callable",
+        "next", "iter", "StopIteration", "AttributeError", "NotImplementedError", "LookupError")}
     real_import = __builtins__["__import__"] if isinstance(__builtins__, dict) else __builtins__.__import__
 
     def limited_import(name, *a, **k):
-        if name.split(".")[0] not in ("numpy", "pandas", "math"):
+        if name.split(".")[0] not in ("numpy", "pandas", "math", "datetime"):
             raise ImportError(f"import of '{name}' is not allowed")
         return real_import(name, *a, **k)
     safe_builtins["__import__"] = limited_import
     out = {}
     try:
         sys.addaudithook(hook)
-        st = codelab.load_strategy(code, {"__builtins__": safe_builtins})
+        st = codelab.load_strategy(code, {"__builtins__": safe_builtins, "__name__": "strategy"})
+        data = codelab.until(data, st.get("end"))                 # set_end_date: nothing after it is visible
         out = codelab.evaluate(st["strategy"], data, st["params"], meta["start"], codelab.run_costs(st, meta["costs"]) or None, bm,
                                st["holdout"], st["code_hash"], signal=None if meta.get("light") else st.get("signal"),
                                on_bar=st.get("on_bar"), setup=st.get("setup"), light=bool(meta.get("light")))

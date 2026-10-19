@@ -1617,6 +1617,8 @@ from api.routers.strategies import router as strategies_router  # Strategy Lab
 app.include_router(strategies_router)
 from api.routers.quant import router as quant_router  # Quant Lab + Quant Trader + Macro Trader
 app.include_router(quant_router)
+from api.routers.optresearch import router as optresearch_router  # Quant Lab → Options research
+app.include_router(optresearch_router)
 from api.routers.data_sources import router as data_sources_router  # SEC EDGAR, ALFRED, DBnomics, factors
 app.include_router(data_sources_router)
 from api.routers.marketdata import router as marketdata_router  # Markets mode: universal search/quotes/screener

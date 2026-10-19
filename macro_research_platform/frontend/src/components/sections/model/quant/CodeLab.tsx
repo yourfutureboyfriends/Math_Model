@@ -168,13 +168,15 @@ function getWorker(onStatus: (s: string) => void, onStdout: (s: string) => void)
       const r = await fetch('/api/v1/quant/code/engine');
       if (!r.ok) throw new Error(r.status === 401 ? 'Sign in to run code.' : `Could not load the engine (HTTP ${r.status}).`);
       const engine = await r.text();
+      const rq = await fetch('/api/v1/quant/code/engine?module=qcalgo');
+      const qcalgo = rq.ok ? await rq.text() : '';             // the QuantConnect-style API (optional)
       await new Promise<void>((res, rej) => {
         const h = (ev: MessageEvent<Msg>) => {
           if (ev.data.type === 'ready') { worker.removeEventListener('message', h); res(); }
           if (ev.data.type === 'error') { worker.removeEventListener('message', h); rej(new Error(ev.data.error)); }
         };
         worker.addEventListener('message', h);
-        worker.postMessage({ type: 'init', engine });
+        worker.postMessage({ type: 'init', engine, qcalgo });
       });
     })();
     ready.catch(() => { shared = null; });
@@ -263,8 +265,31 @@ const NAMES: [string, string][] = [
   ['def setup(data, **params):', 'precomputed indicators for on_bar'], ['def signal(data, **params):', 'scores for IC analysis'],
 ];
 
+// QuantConnect-style algorithms (api/quant/qcalgo.py): self.<method> inside a QCAlgorithm class
+const SELF_FIELDS: [string, string][] = [
+  ['set_start_date(2016, 1, 1)', 'first trading day (literal)'], ['set_end_date(2024, 12, 31)', 'last day (literal)'],
+  ['set_cash(100000)', 'starting capital'], ['set_benchmark("SPY")', 'benchmark'], ['set_warm_up(200)', 'bars before the start fed to on_data / indicators'],
+  ['add_equity("SPY", Resolution.DAILY)', 'add a security → .symbol'], ['add_universe(self.select)', 'selector on point-in-time S&P 500 members'],
+  ['schedule.on(self.date_rules.month_start("SPY"), self.time_rules.after_market_open("SPY", 30), self.rebalance)', 'scheduled event (daily: at the close decision)'],
+  ['set_holdings(symbol, 0.5)', 'target a fraction of portfolio value'], ['liquidate(symbol)', 'sell everything in symbol'],
+  ['market_order(symbol, 100)', 'shares at the next open'], ['market_on_close_order(symbol, 100)', 'shares at the next close'],
+  ['limit_order(symbol, 100, price)', 'limit order (ticket)'], ['stop_market_order(symbol, -100, price)', 'stop'],
+  ['stop_limit_order(symbol, -100, stop, limit)', 'stop-limit'], ['trailing_stop_order(symbol, -100, 0.1)', 'trailing stop (10%)'],
+  ['ema(symbol, 50)', 'EMA (stateful)'], ['sma(symbol, 200)', 'SMA'], ['rsi(symbol, 14)', 'Wilder RSI'], ['atr(symbol, 14)', 'ATR'],
+  ['bb(symbol, 20, 2)', 'Bollinger Bands'], ['macd(symbol, 12, 26, 9)', 'MACD'], ['adx(symbol, 14)', 'ADX'], ['roc(symbol, 21)', 'rate of change'],
+  ['history(symbol, 60)', 'last 60 daily bars (symbol, time) × OHLCV'], ['portfolio[symbol].quantity', 'shares held'],
+  ['portfolio.total_portfolio_value', 'NAV'], ['securities[symbol].price', 'latest close'], ['transactions.get_open_orders()', 'working orders'],
+  ['is_warming_up', 'True during set_warm_up'], ['time', 'current bar time'], ['debug("…")', 'log a line'], ['plot("chart", "series", value)', 'custom chart'],
+  ['get_parameter("name")', 'current PARAMS value'],
+];
+
 function suggest(value: string, pos: number): { from: number; items: [string, string][] } | null {
   const before = value.slice(0, pos);
+  const sm = before.match(/\bself\.(\w*)$/);
+  if (sm && value.includes('QCAlgorithm')) {
+    const items = SELF_FIELDS.filter(([k]) => k.startsWith(sm[1]) && k !== sm[1]);
+    return items.length ? { from: pos - sm[1].length, items } : null;
+  }
   const m = before.match(/\b(data|ctx)\.(\w*)$/);
   if (m) {
     const list = m[1] === 'data' ? DATA_FIELDS : CTX_FIELDS;
@@ -500,6 +525,7 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
                 ? `${check.tradable ? `Tradable universe '${check.tradable}'` : `${check.universe?.length ?? 0} ticker${(check.universe?.length ?? 0) === 1 ? '' : 's'}`}${check.options?.length ? ` + ${check.options.length} option${check.options.length === 1 ? '' : 's'} (${check.options.map((o: any) => o.name).join(', ')})` : ''} · account in ${ccy} · ${onServer(check) ? 'runs on the server as a sandboxed job' : 'runs in your browser'}; deployable.`
                 : `Runs here, but can't be deployed: ${check.error}`}
             </div>)}
+          {(check as any)?.qc && <QcReport qc={(check as any).qc} />}
           {status && <div className="flex items-center gap-2 text-2xs text-text-secondary"><Loader2 className="w-3 h-3 animate-spin" />{status}
             {jobId && <button onClick={cancelJob} className="ml-2 px-2 py-0.5 border border-border hover:border-red hover:text-red">Cancel</button>}</div>}
           <ErrorNote msg={err} />
@@ -926,3 +952,31 @@ function MonteCarlo({ mc }: { mc: any }) {
 }
 
 export { usd };
+
+
+/** QuantConnect compatibility report for an imported LEAN algorithm (static — nothing is executed to produce it). */
+function QcReport({ qc }: { qc: any }) {
+  const rows: any[] = qc.report ?? [];
+  const unsupported = rows.filter((r) => r.level === 'unsupported');
+  return (
+    <details open={unsupported.length > 0} className="text-[10px] border border-border bg-surface-1 px-2 py-1">
+      <summary className="cursor-pointer text-text-secondary">
+        QuantConnect algorithm <span className="font-mono">{qc.class}</span> · {qc.api_version ?? 'qc-compat'} ·{' '}
+        {unsupported.length ? <span className="text-red">{unsupported.length} unsupported</span> : <span className="text-green">runs here</span>}
+        {rows.length - unsupported.length > 0 && <span className="text-amber"> · {rows.length - unsupported.length} approximated</span>}
+        {qc.universe?.length > 0 && <span className="text-text-tertiary"> · {qc.universe.join(', ')}</span>}
+        {qc.dynamic_universe && <span className="text-text-tertiary"> · dynamic universe on point-in-time S&amp;P 500</span>}
+        {qc.start && <span className="text-text-tertiary"> · {qc.start}{qc.end ? ` → ${qc.end}` : ''}</span>}
+      </summary>
+      {qc.error && <div className="text-red">{qc.error}</div>}
+      <div className="mt-1 space-y-0.5 font-mono">
+        {rows.map((r, i) => (
+          <div key={i} className="flex gap-2">
+            <span className={r.level === 'unsupported' ? 'text-red' : 'text-amber'}>{r.level}</span>
+            <span className="text-text-tertiary">line {r.line ?? '—'}</span><span>{r.feature}</span><span className="text-text-secondary">— {r.message}</span>
+          </div>))}
+        {rows.length === 0 && <div className="text-text-tertiary">Every construct maps directly (daily bars; orders fill at the next open unless market-on-close).</div>}
+      </div>
+    </details>
+  );
+}

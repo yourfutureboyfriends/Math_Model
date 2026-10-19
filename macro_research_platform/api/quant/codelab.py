@@ -47,10 +47,19 @@ adjusted prices include dividends). Units and assumptions: COST_SCHEMA.
 from __future__ import annotations
 
 import math
+from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
+
+try:                                           # the QuantConnect-style API (api/quant/qcalgo.py; beside this file in Pyodide)
+    from api.quant import qcalgo as _qc
+except ImportError:                            # pragma: no cover — the browser engine
+    try:
+        import qcalgo as _qc
+    except ImportError:
+        _qc = None
 
 ENGINE_VERSION = "2026.10-ledger.5"
 UNIVERSE_LIMIT = 80                   # one capability limit, shared by the loader, the sandbox and the UI
@@ -495,6 +504,14 @@ class Ctx:
         self.fills: List[Dict[str, Any]] = []                # executions of the latest session
         self._targets: Dict[str, float] = {}
         self._cond: List[Dict[str, Any]] = []
+        # share-quantity orders (the QuantConnect-style API, api/quant/qcalgo.py): deltas in shares per ticker, filled at
+        # the next execution; with hold_by_default, names without an order keep their shares (no standing weights)
+        self.capital = 1.0
+        self.hold_by_default = False
+        self._unit_orders: Dict[str, float] = {}
+        self._unit_ids: Dict[str, List[int]] = {}
+        self.executions: List[Dict[str, Any]] = []           # every fill since the previous bar (market and conditional)
+        self._next_id = 1
 
     # data, causal
     def history(self, field: str = "close", n: Optional[int] = None) -> pd.DataFrame:
@@ -572,6 +589,44 @@ class Ctx:
     def cancel(self, ticker: Optional[str] = None) -> None:
         self._cond = [o for o in self._cond if ticker is not None and o["ticker"] != ticker]
 
+    # share-quantity orders (used by the QuantConnect-style API; usable directly too)
+    def order_shares(self, ticker: str, shares: float, kind: str = "market", price: Optional[float] = None,
+                     limit: Optional[float] = None, trail: Optional[float] = None, days: Optional[int] = None) -> int:
+        """Buy (+) or sell (−) `shares` of `ticker`. kind: market (next execution: the next open by default),
+        moc (market-on-close: the next session's close), limit, stop, stop_limit (price = stop, limit = limit),
+        trailing (trail = fraction). Returns an order id; fills appear in ctx.executions with that id."""
+        if not shares:
+            return 0
+        oid = self._next_id
+        self._next_id += 1
+        du = float(shares) / self.capital                          # engine units (per 1 of starting capital)
+        if kind == "market":
+            self._unit_orders[ticker] = self._unit_orders.get(ticker, 0.0) + du
+            self._unit_ids.setdefault(ticker, []).append(oid)
+            return oid
+        o = {"ticker": ticker, "du": du, "kind": kind, "days": days, "placed": str(self.date.date()), "id": oid,
+             "weight": float("nan"), "price": float("nan") if price is None else float(price)}
+        if kind == "stop_limit":
+            o["limit"] = float(limit)
+        if kind == "trailing":
+            px = float(self.close.get(ticker, np.nan))
+            o.update({"trail": float(trail), "peak": px, "trough": px, "buy": shares > 0})
+        self._cond.append(o)
+        return oid
+
+    def cancel_order(self, oid: int) -> bool:
+        n = len(self._cond)
+        self._cond = [o for o in self._cond if o.get("id") != oid]
+        if len(self._cond) < n:
+            return True
+        for t, ids in self._unit_ids.items():                      # a market order not yet sent to the market
+            if oid in ids and t in self._unit_orders:
+                ids.remove(oid)
+                if not ids:
+                    self._unit_orders.pop(t, None)
+                return True
+        return False
+
     @property
     def orders(self) -> List[Dict[str, Any]]:
         return list(self._cond)
@@ -604,6 +659,7 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
         D = np.zeros(len(idx), bool)
         W = np.zeros((len(idx), len(cols)))
         ctx = Ctx(data, pre or {})
+        ctx.capital = float(cfg["capital"])
         col_of = {c: j for j, c in enumerate(cols)}
         Hh_, Ll_ = data.high.to_numpy(float), data.low.to_numpy(float)
         cond_fills = 0
@@ -698,11 +754,13 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
     SH = np.where(np.isfinite(SH) & (SH > 0), SH, M)
     # order log and round-trip trades (average-cost accounting per asset; quantities at `capital`)
     fills: List[tuple] = []
+    fill_ids: List[Optional[tuple]] = []                        # order ids behind each fill (share-quantity orders)
     trades: List[Dict[str, Any]] = []
     tpos, tavg, tentry, treal, tcost, tmax = (np.zeros(N), np.zeros(N), [None] * N, np.zeros(N), np.zeros(N), np.zeros(N))
 
-    def _fill(t_, j, dq, price, cost, kind):
+    def _fill(t_, j, dq, price, cost, kind, ids=None):
         fills.append((t_, j, dq, price, cost, kind))
+        fill_ids.append(ids)
         pos = tpos[j]
         if pos == 0 or np.sign(pos) == np.sign(dq):
             if pos == 0:
@@ -742,20 +800,41 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
             "cash", "nav", "unfilled", "stale_held", "dividend_tax", "hedge", "lot_residual", "capped")
     out = {k: np.zeros(T) for k in keys}
     events: List[Dict[str, Any]] = []
+    UT = np.full((T, N), np.nan) if on_bar is not None else None  # absolute unit targets from share orders, by decision day
+    UID: Dict[int, Dict[int, List[int]]] = defaultdict(dict)    # order ids behind them
+    ut_active = np.full(N, np.nan)                               # unit targets still being worked
+    ut_ids: Dict[int, List[int]] = {}
+    seen, hold = [0], [False]
     def _bar(t, nav, cash, mv):
         """Event mode: give on_bar the account after day t's close; record its market orders as a decision on t."""
         ctx.i, ctx.date, ctx.nav, ctx.cash = t, idx[t], nav, cash
         ctx.units = pd.Series(units, index=cols)
         ctx.positions = pd.Series(mv / nav if nav > 0 else mv * 0, index=cols)
         ctx._targets = {}
+        ctx._unit_orders, ctx._unit_ids = {}, {}
+        ctx.executions = [{"ids": list(fill_ids[k] or ()), "date": str(idx[f[0]].date()), "ticker": cols[f[1]],
+                           "shares": f[2] * cap, "price": f[3], "cost": f[4] * cap, "kind": f[5]}
+                          for k, f in enumerate(fills[seen[0]:], start=seen[0])]
+        seen[0] = len(fills)
         on_bar(ctx, **(params or {}))
-        if ctx._targets:
+        if ctx.hold_by_default and not hold[0]:
+            hold[0] = True
+            target[:] = np.nan                                  # QuantConnect semantics: no standing weights
+        if ctx._targets or ctx._unit_orders:
             row = np.zeros(N) if ctx._targets.pop("__replace__", None) else target.copy()
             for k, v in ctx._targets.items():
                 if k not in col_of:
                     raise ValueError(f"ctx.target: unknown ticker {k}")
                 row[col_of[k]] = v
-            gr = np.abs(row).sum()
+            for k, du in ctx._unit_orders.items():
+                if k not in col_of:
+                    raise ValueError(f"order: unknown ticker {k}")
+                j = col_of[k]
+                base = UT[t, j] if np.isfinite(UT[t, j]) else (ut_active[j] if np.isfinite(ut_active[j]) else units[j])
+                UT[t, j] = base + du
+                UID[t][j] = list(ctx._unit_ids.get(k, []))
+                row[j] = np.nan
+            gr = np.nansum(np.abs(row))
             if gr > cfg["max_gross"]:
                 row = row * cfg["max_gross"] / gr
             W[t], D[t] = row, True
@@ -773,6 +852,11 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
         if D[t - 1] or (t == first and last_dec[t - 1] >= 0):
             target = W[t - 1] if D[t - 1] else W[last_dec[t - 1]]
             pending = np.ones(N, bool)
+            if on_bar is not None and D[t - 1]:
+                fresh = np.isfinite(UT[t - 1])
+                ut_active = np.where(fresh, UT[t - 1], ut_active)
+                for j_, ids_ in UID.get(t - 1, {}).items():
+                    ut_ids[j_] = ut_ids.get(j_, []) + ids_
         # 2) only an explicitly dated, already-known listing event permits settlement.
         # Missing observations retain stale valuation marks and pending orders, never free cash.
         for j, settlement in settlement_dates.items():
@@ -807,22 +891,34 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
             for k in keys:
                 out[k][t + 1:] = np.nan
             break
+        ids_now: Dict[int, tuple] = {}
         if target is not None and pending.any():
             px = np.where(exe, EXP[t], np.nan)
             # 63-day average traded value; a listing too new for one uses yesterday's (never "unlimited")
             dv = np.where(np.isfinite(adv[t]), adv[t], V[t - 1] * np.nan_to_num(M[t - 1]))
             okdv = np.isfinite(dv) & (dv > 0)
 
+            # share-quantity orders and "hold" targets exist only in event mode; weight strategies keep the plain path
+            u_ord = np.isfinite(ut_active) if on_bar is not None else None
+            t_hold = np.isnan(target) if on_bar is not None else None
+            mixed = on_bar is not None and (u_ord.any() or t_hold.any())
+
             def order(nav_eff):
                 per_unit = np.where(exe, EXP[t], 1.0)
                 if SPOT_O is not None:
                     per_unit = np.where(is_opt & np.isfinite(SPOT_O[t]), SPOT_O[t], per_unit)
-                want = target * nav_eff / per_unit
+                if mixed:
+                    want = np.where(u_ord, ut_active, np.where(t_hold, units, np.nan_to_num(target) * nav_eff / per_unit))
+                else:
+                    want = target * nav_eff / per_unit
                 dl = np.where(pending & exe, want - units, 0.0)
                 nt = np.abs(dl) * np.nan_to_num(px)
                 # the band suppresses small *adjustments* to positions held and kept; opening a new position or
-                # closing one always trades (otherwise a 700-name book of 0.14% positions could never be bought)
+                # closing one always trades (otherwise a 700-name book of 0.14% positions could never be bought);
+                # share-quantity orders are never suppressed
                 sm = (nt <= band * nav_open) & (units != 0) & (target != 0)
+                if mixed:
+                    sm &= ~u_ord
                 dl, nt = np.where(sm, 0.0, dl), np.where(sm, 0.0, nt)
                 if maxp > 0:
                     # volume limit: at most max_participation of the asset's average daily traded value today
@@ -869,12 +965,18 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
                 nav_eff = nxt
             pending &= ~exe                                    # executable orders are done (filled or within band)
             pending |= capped[0]                               # …except what the volume limit held back
+            if on_bar is not None and u_ord.any():                  # share orders (or a share-mode margin cut) working
+                ids_now = {j_: tuple(v) for j_, v in ut_ids.items() if np.isfinite(ut_active[j_])}   # before clearing
+                done_u = exe & ~capped[0] & np.isfinite(ut_active)  # share orders fully worked
+                for j_ in np.nonzero(done_u)[0]:
+                    ut_ids.pop(int(j_), None)
+                ut_active = np.where(done_u, np.nan, ut_active)
             out["capped"][t] = float(capped[0].sum())
             day_pnl += np.where(exe & (units != 0), units * (np.nan_to_num(px) - np.nan_to_num(lv)), 0.0)
             lv = np.where(exe, px, lv)
             if notional.any():
                 for j in np.nonzero(delta)[0]:
-                    _fill(t, j, float(delta[j]), float(px[j]), float(per_asset[0][j]), "order")
+                    _fill(t, j, float(delta[j]), float(px[j]), float(per_asset[0][j]), "order", ids_now.get(int(j)))
                 units = units + delta
                 cash -= float(np.nansum(delta * px)) + comm + spr + imp + fee
                 turn = float(notional.sum() / nav_open)
@@ -899,12 +1001,20 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
                     continue
                 nav_now = float(np.where(units != 0, units * np.nan_to_num(np.where(OBS[t], M[t], mark)), 0.0).sum() + cash)
                 cur_w = units[j] * O[t, j] / nav_now if nav_now > 0 else 0.0
-                buy = o["weight"] > cur_w
+                buy = (o["du"] > 0) if "du" in o else o["weight"] > cur_w
+                if o["kind"] == "moc":                            # market-on-close: the next session's close
+                    fpx = M[t, j]
+                    if not np.isfinite(fpx):
+                        keep.append(o)
+                        continue
+                    o["price"] = float(fpx)
                 op_, hi_, lo_ = O[t, j], Hh_[t, j], Ll_[t, j]
                 if o["kind"] == "trailing":                       # the stop level from the extreme up to yesterday
                     o["price"] = o["trough"] * (1 + o["trail"]) if buy else o["peak"] * (1 - o["trail"])
                 k_ = o["price"]
-                if o["kind"] == "limit":
+                if o["kind"] == "moc":
+                    hit = True
+                elif o["kind"] == "limit":
                     hit = (lo_ <= k_) if buy else (hi_ >= k_)
                 elif o["kind"] == "stop_limit" and not o.get("armed"):
                     hit = (hi_ >= k_) if buy else (lo_ <= k_)
@@ -926,7 +1036,9 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
                             continue
                     keep.append(o)
                     continue
-                if o["kind"] == "limit":
+                if o["kind"] == "moc":
+                    fpx = float(M[t, j])
+                elif o["kind"] == "limit":
                     fpx = min(op_, k_) if buy else max(op_, k_)
                 elif o["kind"] == "stop_limit":
                     lim = o["limit"]
@@ -936,7 +1048,7 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
                         fpx = min(op_, lim) if buy else max(op_, lim)
                 else:
                     fpx = max(op_, k_) if buy else min(op_, k_)
-                dl_j = o["weight"] * nav_now / fpx - units[j]
+                dl_j = o["du"] if "du" in o else o["weight"] * nav_now / fpx - units[j]
                 nt_j = abs(dl_j) * fpx
                 dv_j = adv[t, j] if np.isfinite(adv[t, j]) else V[t - 1, j] * np.nan_to_num(M[t - 1, j])
                 c1 = cfg["commission_bps"] / 1e4 * nt_j
@@ -945,7 +1057,7 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
                 f1 = nt_j * ((cfg["sec_fee_bps"] * sec_mask[j] + tax_sell[j]) if dl_j < 0 else tax_buy[j]) / 1e4 + nt_j * fx_cost[j] / 1e4
                 day_pnl[j] += units[j] * (fpx - float(np.nan_to_num(lv[j])))
                 lv[j] = fpx
-                _fill(t, j, float(dl_j), float(fpx), float(c1 + s1 + i1 + f1), o["kind"])
+                _fill(t, j, float(dl_j), float(fpx), float(c1 + s1 + i1 + f1), o["kind"], (o["id"],) if "id" in o else None)
                 units[j] += dl_j
                 cash -= dl_j * fpx + c1 + s1 + i1 + f1
                 comm += c1
@@ -953,8 +1065,11 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
                 imp += i1
                 fee += f1
                 turn += nt_j / nav_now if nav_now > 0 else 0.0
-                target[j] = o["weight"]
-                pending[j] = False
+                target[j] = o["weight"]                           # NaN for share orders: hold the new position
+                if "du" in o and np.isfinite(ut_active[j]):
+                    ut_active[j] += dl_j                         # a working market order still aims at the same change
+                else:
+                    pending[j] = False
                 cond_fills += 1
                 fills_today.append({"date": str(idx[t].date()), "ticker": o["ticker"], "kind": o["kind"], "price": round(float(fpx), 6),
                                     "weight": o["weight"], "placed": o["placed"], **({"oco": o["oco"]} if o.get("oco") else {})})
@@ -1047,7 +1162,10 @@ def backtest(weights: Optional[pd.DataFrame], data: Data, costs: Optional[Dict[s
             cur = mv / nav
             if SPOT_C is not None:
                 cur = np.where(is_opt, units * np.nan_to_num(SPOT_C[t]) / nav, cur)
-            target = cur * k
+            if hold[0]:
+                ut_active = np.where(units != 0, units * k, ut_active)    # share mode: cut the holdings themselves
+            else:
+                target = cur * k
             pending = units != 0
             margin_calls += 1
             events.append({"date": str(idx[t].date()), "ticker": None,
@@ -1366,7 +1484,22 @@ def run_costs(st: Dict[str, Any], costs: Optional[Dict[str, float]]) -> Dict[str
     out = dict(costs or {})
     if st.get("fx_hedge") is not None and "fx_hedge" not in out:
         out["fx_hedge"] = st["fx_hedge"]
+    qc = st.get("qc") or {}
+    if qc.get("capital") and "capital" not in out:                   # set_cash(...)
+        out["capital"] = qc["capital"]
+    if qc.get("broker") == "ibkr" and "commission_per_share" not in out:   # set_brokerage_model(InteractiveBrokers…)
+        out.update({"commission_bps": 0.0, "commission_per_share": 0.005, "commission_min": 1.0, "commission_max_pct": 0.01})
+    elif qc.get("broker") == "alpaca" and "commission_per_share" not in out:
+        out.update({"commission_bps": 0.0, "commission_per_share": 0.0, "commission_min": 0.0, "spread_mult": 1.15})
     return out
+
+
+def until(data: "Data", end: Optional[str]) -> "Data":
+    """The data up to and including `end` (set_end_date) — nothing after it is visible."""
+    if not end:
+        return data
+    n = int(data.close.index.searchsorted(pd.Timestamp(end), side="right"))
+    return data if n >= len(data.close) else data.truncate(n)
 
 
 def tradable_spec(x: Any) -> Optional[str]:
@@ -1389,9 +1522,23 @@ def load_strategy(code: str, namespace: Optional[Dict[str, Any]] = None) -> Dict
                           **{k: globals()[k] for k in INDICATORS}}
     if namespace:
         ns.update(namespace)
+    qc = None
+    if _qc is not None and "QCAlgorithm" in code:
+        import ast as _ast
+        if _qc.find_class(_ast.parse(code)) is not None:
+            qc = _qc.static_header(code)
+            ns.update(_qc.NAMES)
+            code = _qc.prepare_source(code)
     exec(compile(code, "<strategy>", "exec"), ns)                    # noqa: S102 — see docstring
     fn = ns.get("strategy")
     ob = ns.get("on_bar")
+    if qc is not None:                                               # a QuantConnect-style algorithm class
+        fn, ob = None, _qc.adapter(ns[qc["class"]], qc)
+        ns.setdefault("UNIVERSE", qc["universe"] or [qc.get("benchmark") or "SPY"])
+        ns.setdefault("START", qc.get("start") or "2015-01-01")
+        ns.setdefault("BENCHMARK", qc.get("benchmark") or "SPY")
+        if qc["dynamic_universe"]:
+            ns.setdefault("TRADABLE_UNIVERSE", "SP500_PIT")
     if not callable(fn) and not callable(ob):
         raise ValueError("Define strategy(data, **params) returning target weights, or on_bar(ctx, **params) for an "
                          "event-driven strategy.")
@@ -1419,7 +1566,8 @@ def load_strategy(code: str, namespace: Optional[Dict[str, Any]] = None) -> Dict
             "universe": [str(u).upper() for u in uni], "start": str(ns.get("START") or "2005-01-01")[:10],
             "params": ns.get("PARAMS") or {}, "benchmark": str(ns.get("BENCHMARK") or "SPY").upper(),
             "holdout": str(holdout)[:10] if holdout else None,
-            "code_hash": hashlib.sha256(code.encode()).hexdigest()[:16]}
+            "code_hash": hashlib.sha256(code.encode()).hexdigest()[:16],
+            "qc": qc, "end": (qc or {}).get("end")}
 
 
 def run_weights(fn: Callable, data: Data, params: Dict[str, Any]) -> pd.DataFrame:

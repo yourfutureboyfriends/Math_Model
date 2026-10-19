@@ -215,11 +215,12 @@ def load_data(universe: Sequence[str], start: str, end: Optional[str] = None,
     raw = pan["close"][cols]
     observed = raw.notna()
     # carry the last observed close forward, but only inside each listing's own history
-    marks = raw.ffill()
-    for c in cols:
-        last = raw[c].last_valid_index()
-        if last is not None:
-            marks.loc[marks.index > last, c] = np.nan
+    rv = raw.to_numpy(float)
+    have = np.isfinite(rv)
+    last_pos = np.where(have.any(axis=0), len(rv) - 1 - np.argmax(have[::-1], axis=0), len(rv))
+    mv = pd.DataFrame(rv).ffill().to_numpy().copy()
+    mv[np.arange(len(rv))[:, None] > last_pos[None, :]] = np.nan
+    marks = pd.DataFrame(mv, index=raw.index, columns=raw.columns)
     idx = raw.index
     rf = rates.daily(idx, account) if rates.known(account) else None
     vix = _index_series("^VIX", warm)
@@ -542,24 +543,33 @@ def _to_account_currency(pan: Dict[str, pd.DataFrame], cols: List[str], inst: Di
         bad = [c for c, i in inst.items() if i["currency"] in missing]
         info["dropped_no_fx"], info["missing_fx"] = bad, missing
     out = {k: v.copy() for k, v in pan.items()}
+    # one conversion factor per currency (not per instrument), applied to whole column blocks at once
+    acct_c, acct_o = leg(acct, False).to_numpy(float), leg(acct, True).to_numpy(float)
+    factors: Dict[str, tuple] = {}
+    conv_cols: Dict[str, List[str]] = {}
+    divs: Dict[str, float] = {}
     for c in cols:
         i = inst[c]
         local, div = i["currency"], float(i.get("unit_divisor") or 1.0)
         if local in missing:
             continue
-        if local == account:
-            factor_close = factor_open = pd.Series(1.0, index=idx)
-        else:
-            lc = fx.get(local)                                    # local units per USD (None = USD)
-            factor_close = leg(acct, False) / leg(lc, False)
-            factor_open = leg(acct, True) / leg(lc, True)
+        if local != account:
+            if local not in factors:
+                lc = fx.get(local)                                # local units per USD (None = USD)
+                factors[local] = (acct_c / leg(lc, False).to_numpy(float), acct_o / leg(lc, True).to_numpy(float))
             info["pairs"][c] = {"quote": i["quote_currency"], "unit_divisor": div,
                                 "via": "/".join(x for x in (i.get("fx_ticker"), f"{account}=X" if acct is not None else None) if x)}
         if local == account and div == 1.0:
             continue
+        conv_cols.setdefault(local, []).append(c)
+        divs[c] = div
+    ones = np.ones(len(idx))
+    for local, cs in conv_cols.items():
+        fc, fo = factors.get(local, (ones, ones))
+        d = np.array([divs[c] for c in cs])[None, :]
         for f in ("close", "high", "low"):
-            out[f][c] = pan[f][c] / div * factor_close
-        out["open"][c] = pan["open"][c] / div * factor_open
+            out[f][cs] = pan[f][cs].to_numpy(float) / d * fc[:, None]
+        out["open"][cs] = pan["open"][cs].to_numpy(float) / d * fo[:, None]
     return out, info, usd_per_unit
 
 

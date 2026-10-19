@@ -70,8 +70,13 @@ def load(symbols: Sequence[str]) -> Tuple[Dict[str, pd.DataFrame], List[str]]:
     have: Dict[str, pd.DataFrame] = {}
     with _lock:
         need = []
-        for s in symbols:
-            f = _read(s, fresh_only=True)
+        if len(symbols) > 50:                                   # Parquet reads release the GIL: read in parallel
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(8) as ex:
+                frames_ = list(ex.map(lambda x: _read(x, fresh_only=True), symbols))
+        else:
+            frames_ = [_read(x, fresh_only=True) for x in symbols]
+        for s, f in zip(symbols, frames_):
             if f is not None:
                 have[s] = f
             else:
@@ -96,17 +101,32 @@ def frames(symbols: Sequence[str], index: pd.DatetimeIndex) -> Tuple[pd.DataFram
     """(share price in the quote unit, dividend yield on ex-dates) on `index` × symbols, plus symbols without data.
     The share price is the last observed close carried forward; the yield is 0 except on ex-dates (an ex-date
     that is not a session of the index counts on the next one)."""
+    import numpy as np
     got, missing = load(list(symbols))
-    px, dy = {}, {}
-    for s, df in got.items():
-        c = df["Close"].where(df["Close"] > 0)
-        d = df["Dividends"].fillna(0.0)
-        y = (d / c.shift(1)).where(d > 0, 0.0).fillna(0.0).clip(upper=0.5)   # a >50% "dividend" is a data error
-        px[s] = c.reindex(c.index.union(index)).ffill().reindex(index)
-        y = y[y > 0]
-        pos = index.searchsorted(y.index)                                    # an ex-date off the index: next session
-        keep = (pos < len(index)) & (y.index >= index[0])                  # nothing before the window
-        dy[s] = pd.Series(y.to_numpy()[keep], index=index[pos[keep]]).groupby(level=0).sum().reindex(index, fill_value=0.0)
     cols = list(symbols)
-    return (pd.DataFrame(px, index=index).reindex(columns=cols),
-            pd.DataFrame(dy, index=index).reindex(columns=cols).fillna(0.0), missing)
+    px = np.full((len(index), len(cols)), np.nan)
+    dy = np.zeros((len(index), len(cols)))
+    ix = index.values
+    for j, s in enumerate(cols):
+        df = got.get(s)
+        if df is None:
+            continue
+        if not df.index.is_unique:
+            df = df[~df.index.duplicated(keep="last")]
+        c = df["Close"].where(df["Close"] > 0)
+        cv = c.to_numpy(float)
+        # the last close on or before each session (as-of), carried forward — positional, no per-column reindexing
+        k = np.searchsorted(df.index.values, ix, side="right") - 1
+        valid = np.isfinite(cv)
+        lastv = pd.Series(np.where(valid, cv, np.nan)).ffill().to_numpy()
+        px[:, j] = np.where(k >= 0, lastv[np.maximum(k, 0)], np.nan)
+        d = df["Dividends"].fillna(0.0).to_numpy(float)
+        prev = np.r_[np.nan, cv[:-1]]
+        y = np.where(d > 0, d / prev, 0.0)
+        y = np.clip(np.nan_to_num(y), None, 0.5)                             # a >50% "dividend" is a data error
+        hit = y > 0
+        if hit.any():
+            pos = index.searchsorted(df.index[hit])                           # an ex-date off the index: next session
+            keep = (pos < len(index)) & (df.index[hit] >= index[0])          # nothing before the window
+            np.add.at(dy[:, j], pos[keep], y[hit][keep])
+    return (pd.DataFrame(px, index=index, columns=cols), pd.DataFrame(dy, index=index, columns=cols), missing)

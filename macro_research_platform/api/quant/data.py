@@ -246,8 +246,13 @@ def load(symbols: Sequence[str]) -> Tuple[Dict[str, pd.DataFrame], List[str]]:
     stale: List[str] = []
     with _lock:
         need = []
-        for s in syms:
-            f = _fresh(s)
+        if len(syms) > 50:                              # Parquet reads release the GIL: read thousands in parallel
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(8) as ex:
+                frames = list(ex.map(_fresh, syms))
+        else:
+            frames = [_fresh(s) for s in syms]
+        for s, f in zip(syms, frames):
             if f is not None:
                 have[s] = f
             else:
@@ -290,15 +295,28 @@ def panel(symbols: Sequence[str], start: Optional[str] = None, end: Optional[str
         idx = idx[idx >= pd.Timestamp(start)]
     if end:
         idx = idx[idx <= pd.Timestamp(end)]
-    out = {}
-    for field, col in (("close", "Close"), ("open", "Open"), ("high", "High"), ("low", "Low"), ("volume", "Volume")):
-        frame = pd.DataFrame({s: d[col] for s, d in data.items()}).reindex(idx)
-        if field != "volume" and fill:
-            last = {s: d.index.max() for s, d in data.items()}
-            ff = frame.ffill()
-            for s in frame.columns:                       # no carrying a delisted price forward
-                ff.loc[ff.index > last[s], s] = float("nan")
-            frame = ff
-        out[field] = frame
+    # Assembled positionally: one index lookup per symbol, written straight into arrays (aligning thousands of
+    # series column by column through pandas took minutes for a global universe).
     order = [s for s in symbols if s in data]
-    return {k: v[order] for k, v in out.items()}, missing
+    import numpy as np
+    fields = (("close", "Close"), ("open", "Open"), ("high", "High"), ("low", "Low"), ("volume", "Volume"))
+    arr = {f: np.full((len(idx), len(order)), np.nan) for f, _ in fields}
+    last_pos = np.full(len(order), -1)
+    for j, s in enumerate(order):
+        d = data[s]
+        if not d.index.is_unique:
+            d = d[~d.index.duplicated(keep="last")]
+        pos = idx.get_indexer(d.index)
+        hit = pos >= 0
+        if hit.any():
+            last_pos[j] = pos[hit].max()
+        for f, col in fields:
+            arr[f][pos[hit], j] = d[col].to_numpy(float)[hit]
+    out = {}
+    for f, _ in fields:
+        a = arr[f]
+        if f != "volume" and fill:
+            a = pd.DataFrame(a).ffill().to_numpy().copy()
+            a[np.arange(len(idx))[:, None] > last_pos[None, :]] = np.nan     # no carrying a delisted price forward
+        out[f] = pd.DataFrame(a, index=idx, columns=order)
+    return out, missing

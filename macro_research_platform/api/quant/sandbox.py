@@ -31,10 +31,18 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 CHILD = HERE / "sandbox_child.py"
 ENGINE = HERE / "codelab.py"
+QCALGO = HERE / "qcalgo.py"                      # the QuantConnect-style API, loaded beside the engine
 TIMEOUT_S = 240
 MAX_CODE = 40_000
 
-ALLOWED_IMPORTS = {"numpy": "np", "pandas": "pd", "math": None}
+ALLOWED_IMPORTS = {"numpy": "np", "pandas": "pd", "math": None, "datetime": None}
+# Algorithm classes (QuantConnect-style): the class may derive from QCAlgorithm (or nothing / object, for helper classes
+# such as SymbolData); methods may be named like these dunders and nothing else; `self._name` is allowed only for names
+# the code itself assigns on self and that the API does not use internally.
+CLASS_BASES = {"QCAlgorithm", "object"}
+DUNDER_METHODS = {"__init__", "__repr__", "__str__", "__len__", "__lt__", "__le__", "__gt__", "__ge__", "__eq__", "__hash__"}
+QC_PRIVATE = {"_ctx", "_capital", "_tickets", "_indicators", "_selectors", "_warm", "_approx", "_log", "_params", "_algo",
+              "_d", "_b", "_w", "_v", "_args", "_bars", "_fn", "_a", "_ma", "_buf", "_prev", "_prev_close"}
 BANNED_NAMES = {"eval", "exec", "compile", "open", "getattr", "setattr", "delattr", "globals", "locals", "vars",
                 "input", "breakpoint", "help", "exit", "quit", "memoryview", "type", "super", "classmethod",
                 "staticmethod", "property", "object", "__import__", "__builtins__", "dir", "id", "hash"}
@@ -68,6 +76,13 @@ def check(code: str) -> Dict[str, Any]:
                 hint = f" — did you mean '{kw}'? ('{first[:len(first) - len(kw)]}' looks like a stray keystroke)"
                 break
         raise SandboxError(f"Syntax error on line {e.lineno}: {e.msg}" + (f": `{line[:120]}`" if line else "") + hint)
+    # what the code assigns on self (`self._spy = …`) and its class names (methods are reached only through instances)
+    self_attrs = {t.attr for n in ast.walk(tree) if isinstance(n, (ast.Assign, ast.AugAssign, ast.AnnAssign))
+                  for t in (n.targets if isinstance(n, ast.Assign) else [n.target])
+                  if isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name) and t.value.id == "self"}
+    class_names = {n.name for n in ast.walk(tree) if isinstance(n, ast.ClassDef)}
+    object_bases = {id(b) for n in ast.walk(tree) if isinstance(n, ast.ClassDef) for b in n.bases
+                    if isinstance(b, ast.Name) and b.id == "object"}
     for node in ast.walk(tree):
         line = getattr(node, "lineno", "?")
         if isinstance(node, ast.Import):
@@ -75,20 +90,59 @@ def check(code: str) -> Dict[str, Any]:
                 if a.name not in ALLOWED_IMPORTS:
                     raise SandboxError(f"Line {line}: only numpy, pandas and math can be imported (not '{a.name}').")
         elif isinstance(node, ast.ImportFrom):
-            if node.module != "math":
-                raise SandboxError(f"Line {line}: 'from … import' is only allowed for math.")
+            if node.module not in ("math", "datetime", "AlgorithmImports") and not (node.module or "").startswith("QuantConnect"):
+                raise SandboxError(f"Line {line}: 'from … import' is only allowed for math, datetime and AlgorithmImports.")
         elif isinstance(node, ast.Name):
-            if node.id.startswith("_") or node.id in BANNED_NAMES:
+            if id(node) in object_bases:
+                continue
+            if node.id == "self" and isinstance(node.ctx, (ast.Store, ast.Del)):
+                raise SandboxError(f"Line {line}: 'self' cannot be reassigned.")
+            if (node.id.startswith("_") and node.id != "_") or node.id in BANNED_NAMES:
                 raise SandboxError(f"Line {line}: '{node.id}' is not available in strategy code.")
         elif isinstance(node, ast.Attribute):
             a = node.attr
-            if a.startswith("_") or a in BANNED_ATTRS or a.startswith("read_") or (a.startswith("to_") and a not in ALLOWED_TO):
-                raise SandboxError(f"Line {line}: '.{a}' is not available in strategy code (no file, network or internals access).")
+            own = (isinstance(node.value, ast.Name) and node.value.id == "self" and a.startswith("_")
+                   and not a.startswith("__") and a in self_attrs and a not in QC_PRIVATE)
+            if (a.startswith("_") and not own) or a in BANNED_ATTRS or a.startswith("read_") or (a.startswith("to_") and a not in ALLOWED_TO):
+                hint = (" — on self, private names must be assigned in your own code (self._x = …) and must not be one "
+                        "the API uses internally" if isinstance(node.value, ast.Name) and node.value.id == "self" and a.startswith("_") else "")
+                raise SandboxError(f"Line {line}: '.{a}' is not available in strategy code (no file, network or internals access){hint}.")
+            if isinstance(node.value, ast.Name) and node.value.id in class_names:
+                raise SandboxError(f"Line {line}: '{node.value.id}.{a}' — use an instance (self.{a}), not the class.")
         elif isinstance(node, (ast.Global, ast.Nonlocal, ast.AsyncFunctionDef, ast.Await, ast.Yield, ast.YieldFrom)):
             raise SandboxError(f"Line {line}: {type(node).__name__} is not supported in strategy code.")
         elif isinstance(node, ast.ClassDef):
-            raise SandboxError(f"Line {line}: classes are not supported in strategy code — use functions.")
+            bad = [b for b in node.bases if not (isinstance(b, ast.Name) and b.id in CLASS_BASES)]
+            if bad or node.keywords or node.decorator_list:
+                raise SandboxError(f"Line {line}: class {node.name} — classes may derive only from QCAlgorithm (an "
+                                   "algorithm) or nothing (a helper class), without decorators or metaclasses.")
+            for f in node.body:
+                if isinstance(f, ast.FunctionDef):
+                    if f.decorator_list:
+                        raise SandboxError(f"Line {f.lineno}: method decorators are not supported.")
+                    if f.name.startswith("__") and f.name not in DUNDER_METHODS:
+                        raise SandboxError(f"Line {f.lineno}: special method {f.name} is not supported.")
+                    if f.name == "__init__" and any(isinstance(b, ast.Name) and b.id == "QCAlgorithm" for b in node.bases):
+                        raise SandboxError(f"Line {f.lineno}: put the set-up in initialize(self), not __init__, in a "
+                                           "QCAlgorithm class.")
+                elif not isinstance(f, (ast.Assign, ast.AnnAssign, ast.Expr, ast.Pass)):
+                    raise SandboxError(f"Line {getattr(f, 'lineno', line)}: only methods and simple attributes in a class body.")
     header: Dict[str, Any] = {}
+    qc = None
+    from api.quant import qcalgo
+    if qcalgo.find_class(tree) is not None:
+        try:
+            qc = qcalgo.static_header(code)
+        except ValueError as e:
+            raise SandboxError(str(e))
+        blocking = [r for r in qc["report"] if r["level"] == "unsupported"]
+        if blocking:
+            raise SandboxError("Not supported here: " + "; ".join(f"line {r['line']}: {r['feature']} — {r['message']}"
+                                                                    for r in blocking[:4]))
+        header.update({"UNIVERSE": qc["universe"] or [qc.get("benchmark") or "SPY"], "START": qc.get("start") or "2015-01-01",
+                       "BENCHMARK": qc.get("benchmark") or "SPY"})
+        if qc["dynamic_universe"]:
+            header["TRADABLE_UNIVERSE"] = "SP500_PIT"
     for node in tree.body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             name = node.targets[0].id
@@ -135,7 +189,7 @@ def check(code: str) -> Dict[str, Any]:
         account = instruments.account_currency(acc)
     except ValueError as e:
         raise SandboxError(str(e))
-    if not any(isinstance(n, ast.FunctionDef) and n.name in ("strategy", "on_bar") for n in tree.body):
+    if qc is None and not any(isinstance(n, ast.FunctionDef) and n.name in ("strategy", "on_bar") for n in tree.body):
         raise SandboxError("Define a top-level function strategy(data, **params) — or on_bar(ctx, **params) for an "
                            "event-driven strategy.")
     calendar = header.get("ACCOUNT_CALENDAR")
@@ -155,14 +209,14 @@ def check(code: str) -> Dict[str, Any]:
             "holdout": str(header["HOLDOUT"])[:10] if header.get("HOLDOUT") else None,
             "tradable": tradable_spec(tradable), "account": account,
             "fx_hedge": float(hedge) if hedge is not None else None, "options": opts, "fundamentals": funds,
-            "mode": "event" if any(isinstance(n, ast.FunctionDef) and n.name == "on_bar" for n in tree.body) else "weights",
-            "calendar": calendar.upper() if calendar else None}
+            "mode": "event" if qc is not None or any(isinstance(n, ast.FunctionDef) and n.name == "on_bar" for n in tree.body) else "weights",
+            "calendar": calendar.upper() if calendar else None, "qc": qc}
 
 
 def _profile(tmp: Path) -> str:
     py_prefix = Path(sys.prefix).resolve()
     base = Path(sys.base_prefix).resolve()
-    allow_read = [str(py_prefix), str(base), str(tmp), str(ENGINE), str(CHILD)]
+    allow_read = [str(py_prefix), str(base), str(tmp), str(ENGINE), str(CHILD), str(QCALGO)]
     reads = " ".join(f'(subpath "{p}")' if not p.endswith(".py") else f'(literal "{p}")' for p in allow_read)
     return f"""(version 1)
 (allow default)
@@ -301,7 +355,7 @@ def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] 
         else:
             prep = _prepare(code, head, costs, light, tmp, say, cancelled)
         cpu = prep["cpu"]
-        cmd = [sys.executable, "-I", str(CHILD), str(tmp), str(ENGINE)]
+        cmd = [sys.executable, "-I", str(CHILD), str(tmp), str(ENGINE), str(QCALGO)]
         if sys.platform == "darwin" and shutil.which("sandbox-exec"):
             (tmp / "profile.sb").write_text(_profile(tmp))
             cmd = ["sandbox-exec", "-f", str(tmp / "profile.sb")] + cmd

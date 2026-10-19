@@ -7,7 +7,7 @@
 const PYODIDE = 'https://cdn.jsdelivr.net/pyodide/v314.0.5/full/';
 let py = null;
 
-async function init(engine) {
+async function init(engine, qcalgo) {
   postMessage({ type: 'status', text: 'Loading Python (first time ≈10 s)…' });
   const { loadPyodide } = await import(PYODIDE + 'pyodide.mjs');   // module worker (importScripts is blocked in some embedded browsers)
   py = await loadPyodide({ indexURL: PYODIDE });
@@ -15,6 +15,7 @@ async function init(engine) {
   py.setStderr({ batched: (s) => postMessage({ type: 'stdout', text: s }) });
   postMessage({ type: 'status', text: 'Loading numpy and pandas…' });
   await py.loadPackage(['numpy', 'pandas']);
+  if (qcalgo) py.FS.writeFile('/home/pyodide/qcalgo.py', qcalgo);   // the QuantConnect-style API, imported by the engine
   py.FS.writeFile('/home/pyodide/codelab.py', engine);
   await py.runPythonAsync(`
 import sys, json, base64
@@ -85,7 +86,7 @@ function pyError(e) {
 onmessage = async (ev) => {
   const m = ev.data;
   try {
-    if (m.type === 'init') { if (!py) await init(m.engine); else postMessage({ type: 'ready' }); return; }
+    if (m.type === 'init') { if (!py) await init(m.engine, m.qcalgo); else postMessage({ type: 'ready' }); return; }
     if (!py) throw new Error('Python is not loaded yet.');
     if (m.type === 'prepare') {
       await withPackages(m.code);
