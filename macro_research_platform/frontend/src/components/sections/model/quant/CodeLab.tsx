@@ -568,7 +568,7 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
           {code.includes('QCAlgorithm') && leanOk?.available && !(check as any)?.qc?.dynamic_universe
             && !/there is no module|could not be read/.test((check as any)?.error ?? '')
             && ((check as any)?.ok === false || ((check as any)?.qc?.report ?? []).some((r: any) => r.level !== 'approximated')) && (
-            <div className="text-[10px] text-bloomberg">The built-in layer flags something here — <b>Run on real LEAN</b> runs this algorithm unmodified on QuantConnect's own engine (daily US equities; dynamic universes and custom data stay on the built-in layer).</div>)}
+            <div className="text-[10px] text-bloomberg">The built-in layer flags something here — <b>Run on real LEAN</b> runs this algorithm unmodified on QuantConnect's own engine (daily US equities, crypto and FX; dynamic universes and custom data stay on the built-in layer).</div>)}
           {lean && <LeanResult r={lean} />}
           <CustomData />
           {status && <div className="flex items-center gap-2 text-2xs text-text-secondary"><Loader2 className="w-3 h-3 animate-spin" />{status}
@@ -658,7 +658,7 @@ function ApiHelp() {
         <li>Every run is checked for look-ahead (decisions recomputed from earlier data must match) and, with PARAMS, for overfitting (PBO); you also get attribution, today's ex-ante risk with crisis stress tests and a capacity curve.</li>
         <li><b>Python</b>: ordinary Python — your own classes and inheritance, decorators, <code>@dataclass</code>, properties, <code>super()</code> — and numpy, pandas, scipy, scikit-learn, statsmodels plus the standard library without I/O (math, statistics, collections, itertools, functools, datetime, re, json…), in the browser and when deployed. Not available: files, network, <code>os</code>/<code>sys</code>/<code>subprocess</code>, <code>eval</code>/<code>exec</code>, and the engine's internals (they hold future prices).</li>
         <li><b>Multi-file QuantConnect projects</b>: paste each extra file below a line <code># file: alpha.py</code> (folders: <code># file: alphas/rsi.py</code> → <code>import alphas.rsi</code>); <code>main.py</code> is everything above the first marker.</li>
-        <li><b>Real LEAN</b>: a QuantConnect algorithm can also run on QuantConnect's own engine (button next to Run) — exact LEAN behaviour on the platform's daily US-equity data. Dynamic universes and custom data use the built-in layer.</li>
+        <li><b>Real LEAN</b>: a QuantConnect algorithm can also run on QuantConnect's own engine (button next to Run) — exact LEAN behaviour on the platform's daily US-equity, crypto and FX data. Dynamic universes and custom data use the built-in layer.</li>
         <li><b>Custom data</b>: upload a CSV (below the editor) and use <code>CUSTOM_DATA = ["name"]</code> → <code>data.custom["name"]</code> (as of each session; <code>_new</code> marks fresh rows).</li>
         <li><b>Server runs</b> happen in a throwaway Docker container — no network, read-only filesystem, no capabilities, unprivileged — or a process sandbox when Docker is not running. <code>print()</code> shows in Output.</li>
       </ul>
@@ -1093,7 +1093,8 @@ function LeanResult({ r }: { r: any }) {
         {stats.map(([k, v]) => <div key={k} className="flex justify-between gap-2"><span className="text-text-tertiary truncate">{k}</span><span className="text-text-primary">{String(v)}</span></div>)}
       </div>
       {r.runtime_errors?.length > 0 && <div className="text-red">{r.runtime_errors.join(' | ')}</div>}
-      {r.data?.skipped?.length > 0 && <div className="text-amber">Not run on LEAN (no US-equity data): {r.data.skipped.join(', ')}</div>}
+      {r.data?.skipped?.length > 0 && <div className="text-amber">Not run on LEAN (no data in a format LEAN takes): {r.data.skipped.join(', ')}</div>}
+      {r.data?.notes?.length > 0 && <div className="text-amber">{r.data.notes.join(' · ')}</div>}
       <div className="text-text-tertiary">Data: {r.data?.source} · {r.data?.data_start} → {r.data?.data_end}. Isolation: {r.isolation}.</div>
     </div>
   );

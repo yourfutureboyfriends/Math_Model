@@ -142,6 +142,36 @@ class Symbol:
         return Symbol(ticker)
 
 
+# quote currencies, longest first: BTCUSDT → BTC / USDT (not BTCU / SDT)
+_CRYPTO_QUOTES = ("FDUSD", "USDT", "USDC", "BUSD", "TUSD", "USDP", "DAI", "USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF",
+                  "BTC", "ETH", "BNB")
+_STABLE = {"USDT", "USDC", "BUSD", "TUSD", "USDP", "DAI", "FDUSD"}
+
+
+def crypto_pair(ticker: str):
+    """'BTCUSDT' / 'BTC-USDT' / 'BTC/USDT' → ('BTC', 'USDT'); None when no known quote currency ends it."""
+    t = str(ticker).upper().replace("/", "-")
+    if "-" in t:
+        b, q = t.split("-", 1)
+        return (b, q) if b and q else None
+    for q in _CRYPTO_QUOTES:
+        if t.endswith(q) and len(t) > len(q):
+            return t[:-len(q)], q
+    return None
+
+
+def crypto_yahoo(ticker: str):
+    """The free daily series for a crypto pair: Yahoo's BASE-QUOTE; a stablecoin quote uses BASE-USD (≈ 1:1). Returns
+    (yahoo ticker, approximation note or None)."""
+    p = crypto_pair(ticker)
+    if p is None:
+        return str(ticker).upper(), None
+    b, q = p
+    if q in _STABLE:
+        return f"{b}-USD", f"{b}{q}: priced from {b}-USD ({q} taken as 1 USD)"
+    return f"{b}-{q}", None
+
+
 def _sym(x: Any) -> str:
     return x.value if isinstance(x, Symbol) else (x.symbol.value if isinstance(x, Security) else str(x).upper())
 
@@ -1857,8 +1887,10 @@ class QCAlgorithm:
         return self._add(_sym(ticker), resolution)
 
     def add_crypto(self, ticker: str, resolution: str = Resolution.DAILY, *a, **k) -> Security:
-        t = _sym(ticker)
-        return self._add(t[:-3] + "-" + t[-3:] if "-" not in t and len(t) > 3 else t, resolution)
+        t, approx = crypto_yahoo(_sym(ticker))
+        if approx:
+            self._approx.add(approx)
+        return self._add(t, resolution)
 
     def add_option(self, *a, **k):
         raise NotImplementedError("add_option: no free historical option chains. Use the Options research tab "
@@ -2625,8 +2657,10 @@ def _read_call(m: str, args: List[Any], n, h: Dict[str, Any], note) -> None:
     t = args[0].upper()
     if m == "add_forex":
         t = t if t.endswith("=X") else f"{t}=X"
-    elif m == "add_crypto" and "-" not in t:
-        t = t[:-3] + "-" + t[-3:]
+    elif m == "add_crypto":
+        t, approx = crypto_yahoo(t)
+        if approx:
+            note("approximated", n.lineno, f"add_crypto('{args[0]}')", approx)
     if t not in h["universe"]:
         h["universe"].append(t)
     if len(args) > 1 and args[1] not in (None, Resolution.DAILY):

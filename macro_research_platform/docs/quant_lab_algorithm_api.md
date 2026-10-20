@@ -63,8 +63,8 @@ Top-level `PARAMS = {"name": [values]}` still drives walk-forward; read the curr
 | | Built-in layer (default, `Run`) | Real LEAN (`Run on real LEAN`) |
 |---|---|---|
 | Engine | a Python re-implementation of LEAN's API (qc-compat) on the Code Lab engine | QuantConnect's own LEAN, unmodified (`quantconnect/lean` image) |
-| Data | platform daily data: any market, FX, crypto, point-in-time S&P 500 universes, SEC fundamentals, custom uploads | the same daily US-equity prices written in LEAN's format (factor 1: already adjusted) |
-| Use when | universes, custom data, non-US listings, research checks (look-ahead, capacity, Monte Carlo) | exact LEAN behaviour for anything LEAN supports on daily US equities |
+| Data | platform daily data: any market, FX, crypto, point-in-time S&P 500 universes, SEC fundamentals, custom uploads | the same daily prices in LEAN's format: US equities (factor 1, already adjusted), crypto pairs on any LEAN venue (USD pairs stand in for stablecoin pairs), FX pairs; bid = ask (no free spread) |
+| Use when | universes, custom data, non-US listings, research checks (look-ahead, capacity, Monte Carlo) | exact LEAN behaviour for anything LEAN supports on daily US equities, crypto and FX |
 
 Real LEAN runs in a container with no network and dropped capabilities; it needs Docker running and the image
 (~40 GB unpacked). Dynamic universes and custom data stay on the built-in layer (QuantConnect's universe data is not

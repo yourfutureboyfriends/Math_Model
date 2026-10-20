@@ -1,7 +1,7 @@
 """
 Run a QuantConnect algorithm on QuantConnect's own LEAN engine (the official `quantconnect/lean` Docker image), unmodified,
-with the platform's free daily prices converted to LEAN's data format — so anything LEAN supports on daily US equity
-data runs exactly as LEAN runs it, not through a re-implementation.
+with the platform's free daily prices converted to LEAN's data format — US equities, crypto pairs (any venue LEAN knows:
+Coinbase, Binance, Kraken, …) and FX pairs (Oanda, FXCM) — so the algorithm runs exactly as LEAN runs it.
 
 Data written per run (api/quant/leanrun.prepare):
   equity/usa/daily/<ticker>.zip       <ticker>.csv rows "YYYYMMDD 00:00,open,high,low,close,volume", prices × 10,000
@@ -11,6 +11,9 @@ LEAN's market-hours and symbol-properties databases come from the image.
 
 Isolation: the container has no network, every capability dropped, no privilege escalation, memory / CPU / process
 caps; only the algorithm, the run's data and a results folder are mounted.
+
+Crypto: trade and quote bars per venue (a USD pair also stands in for its stablecoin pairs, 1 stablecoin = 1 USD); FX: bid
+and ask bars. Free daily data has no spread, so bid = ask = the traded price.
 
 Not available on this path (free data): minute / second / tick data, options and futures chains, QuantConnect's
 fundamental and alternative datasets (coarse / fine universes) — those algorithms run on the Python layer instead.
@@ -97,19 +100,76 @@ def write_daily(root: Path, ticker: str, frame: pd.DataFrame) -> int:
     return len(rows)
 
 
+CRYPTO_VENUES = ("coinbase", "binance", "binanceus", "kraken", "bitfinex", "bybit")
+FX_VENUES = ("oanda", "fxcm")
+
+
+def _bars_csv(f: pd.DataFrame, quote: bool) -> str:
+    """Unscaled daily rows; quote=True writes bid and ask bars (both at the traded price — free data has no spread)."""
+    out = []
+    for d, o, h, l, c, v in zip(f.index, f["open"], f["high"], f["low"], f["close"], f["volume"]):
+        px = f"{o:.10g},{h:.10g},{l:.10g},{c:.10g}"
+        out.append(f"{d:%Y%m%d} 00:00,{px},0,{px},0" if quote else f"{d:%Y%m%d} 00:00,{px},{float(v or 0):.10g}")
+    return "\n".join(out) + "\n"
+
+
+def _write_zip(path: Path, inner: str, body: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(inner, body)
+
+
+def write_crypto(root: Path, base: str, quote: str, frame: pd.DataFrame) -> List[str]:
+    """A crypto pair's daily trade and quote bars for every venue LEAN might ask (Market.COINBASE, BINANCE, …); a USD
+    pair also stands in for its stablecoin pairs (USDT, USDC, BUSD)."""
+    f = frame.dropna(subset=["close"]).fillna({"volume": 0})
+    for c in ("open", "high", "low"):
+        f[c] = f[c].fillna(f["close"])
+    pairs = [f"{base}{quote}".lower()] + ([f"{base}{s}".lower() for s in ("usdt", "usdc", "busd", "fdusd")]
+                                          if quote == "USD" else [])
+    trade, quotes = _bars_csv(f, False), _bars_csv(f, True)
+    for venue in CRYPTO_VENUES:
+        for pair in pairs:
+            d = root / "crypto" / venue / "daily"
+            _write_zip(d / f"{pair}_trade.zip", f"{pair}.csv", trade)
+            _write_zip(d / f"{pair}_quote.zip", f"{pair}.csv", quotes)
+    return pairs
+
+
+def write_forex(root: Path, pair: str, frame: pd.DataFrame) -> None:
+    f = frame.dropna(subset=["close"]).fillna({"volume": 0})
+    for c in ("open", "high", "low"):
+        f[c] = f[c].fillna(f["close"])
+    for venue in FX_VENUES:
+        _write_zip(root / "forex" / venue / "daily" / f"{pair.lower()}.zip", f"{pair.lower()}.csv", _bars_csv(f, True))
+
+
+def classify(ticker: str):
+    """('equity', lean ticker) | ('crypto', (base, quote)) | ('forex', pair) | (None, None)."""
+    t = str(ticker).upper()
+    m = re.fullmatch(r"([A-Z]{6})=X", t)
+    if m:
+        return "forex", m.group(1)
+    if re.fullmatch(r"[A-Z0-9]{2,10}-(USD|USDT|USDC|EUR|GBP|JPY|BTC|ETH)", t):
+        b, q = t.split("-")
+        return "crypto", (b, q)
+    lt = lean_ticker(t)
+    return ("equity", lt) if lt else (None, None)
+
+
 def prepare(tickers: List[str], start: str, root: Path, say=lambda m: None) -> Dict[str, Any]:
     """Convert the platform's daily prices for `tickers` (+ SPY, LEAN's default benchmark) into LEAN's format."""
     from api.quant import codeserver
     want = list(dict.fromkeys([t.upper() for t in tickers] + ["SPY"]))
-    mapped = {t: lean_ticker(t) for t in want}
-    skipped = [t for t, m in mapped.items() if m is None]
-    usable = [t for t, m in mapped.items() if m is not None]
+    kinds = {t: classify(t) for t in want}
+    skipped = [t for t, (k, _) in kinds.items() if k is None]
+    usable = [t for t, (k, _) in kinds.items() if k is not None]
     if not usable:
-        raise LeanError("No US-equity tickers to run on LEAN (non-US listings run on the Python layer).")
-    say(f"Converting daily prices for {len(usable)} tickers to LEAN's format…")
+        raise LeanError("No tickers LEAN can take (US equities, crypto pairs, FX pairs).")
+    say(f"Converting daily prices for {len(usable)} instruments to LEAN's format…")
     warm = (pd.Timestamp(start) - pd.Timedelta(days=500)).strftime("%Y-%m-%d")    # history before the start for warm-up
     d = codeserver.load_data(usable, warm, allow_missing=True)
-    rows = {}
+    rows, notes = {}, []
     for t in usable:
         if t not in d.close.columns:
             skipped.append(t)
@@ -117,8 +177,20 @@ def prepare(tickers: List[str], start: str, root: Path, say=lambda m: None) -> D
         obs = d.observed[t]
         fr = pd.DataFrame({"open": d.open[t], "high": d.high[t], "low": d.low[t], "close": d.close[t],
                            "volume": d.volume[t]})[obs]
-        rows[t] = write_daily(root, mapped[t], fr)
-    return {"tickers": rows, "skipped": skipped, "data_start": str(d.close.index[0].date()),
+        kind, key = kinds[t]
+        if kind == "equity":
+            rows[t] = write_daily(root, key, fr)
+        elif kind == "crypto":
+            pairs = write_crypto(root, key[0], key[1], fr)
+            rows[t] = int(len(fr))
+            if len(pairs) > 1:
+                notes.append(f"{t} also stands in for {', '.join(p.upper() for p in pairs[1:])} (stablecoin = 1 USD)")
+        else:
+            write_forex(root, key, fr)
+            rows[t] = int(len(fr))
+    if any(kinds[t][0] in ("crypto", "forex") for t in rows):
+        notes.append("crypto and FX bid/ask are both the traded price (free daily data has no spread)")
+    return {"tickers": rows, "skipped": skipped, "notes": notes, "data_start": str(d.close.index[0].date()),
             "data_end": str(d.close.index[-1].date())}
 
 
@@ -128,6 +200,9 @@ def _docker_cmd(name: str, algo_dir: Path, data_dir: Path, results: Path, cls: s
         p = data_dir / "equity" / "usa" / sub
         if p.exists():
             mounts += ["-v", f"{p}:{LEAN_DATA}/equity/usa/{sub}:ro"]
+    for cls_dir in ("crypto", "forex"):
+        for venue in sorted((data_dir / cls_dir).glob("*/daily")) if (data_dir / cls_dir).exists() else []:
+            mounts += ["-v", f"{venue}:{LEAN_DATA}/{cls_dir}/{venue.parent.name}/daily:ro"]
     return ["docker", "run", "--rm", "--name", name, "--network", "none", "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges", "--memory", "6g", "--memory-swap", "6g", "--cpus", "2",
             "--pids-limit", "512", "--ulimit", f"cpu={cpu}:{cpu}",
