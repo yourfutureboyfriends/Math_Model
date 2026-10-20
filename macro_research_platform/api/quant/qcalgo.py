@@ -2354,6 +2354,11 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
                     ind.update(b)
                 else:
                     ind.update(b.time, b.close)
+        for b_ in getattr(algo, "_betas", []):
+            for t in (b_.target, b_.reference):
+                bb = bar_of(d, t, i)
+                if bb is not None:
+                    b_.update_pair(bb.time, t, bb.close)
         idx = d.close.index
         nxt = idx[i + 1].to_pydatetime() if i + 1 < len(idx) else None    # the trading calendar, not future prices
         for t, c in list(algo._consolidators):
@@ -2429,7 +2434,7 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
                 q = want if abs(qty_left) >= abs(want) - 1e-6 else qty_left
                 status = tk._fill(q, px, ex["date"])
                 qty_left -= q
-                algo._emit(OrderEvent(oid, tk.symbol, algo.time, status, px, q))
+                algo._emit(OrderEvent(tk.order_id, tk.symbol, algo.time, status, px, q))   # the ticket's id (stable across updates)
 
     def on_bar(ctx, **params):
         d = ctx._data
@@ -2556,9 +2561,43 @@ def _snake(name: str) -> str:
 
 
 def find_class(tree: ast.Module) -> Optional[ast.ClassDef]:
-    for n in tree.body:
-        if isinstance(n, ast.ClassDef) and any(isinstance(b, ast.Name) and b.id == "QCAlgorithm" for b in n.bases):
-            return n
+    """The algorithm: a class deriving from QCAlgorithm directly or through your own base classes; when several do, the
+    last one that defines initialize() (the most derived)."""
+    classes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
+    by_name = {c.name: c for c in classes}
+
+    def is_algo(c, seen=()):
+        for b in c.bases:
+            nm = b.id if isinstance(b, ast.Name) else b.attr if isinstance(b, ast.Attribute) else None
+            if nm in ("QCAlgorithm", "QCAlgorithmFramework"):
+                return True
+            if nm in by_name and nm not in seen and is_algo(by_name[nm], seen + (c.name,)):
+                return True
+        return False
+
+    def defines_init(c, seen=()):
+        if any(isinstance(f, ast.FunctionDef) and f.name in ("initialize", "Initialize") for f in c.body):
+            return True
+        return any(isinstance(b, ast.Name) and b.id in by_name and b.id not in seen and defines_init(by_name[b.id], seen + (c.name,))
+                   for b in c.bases)
+    algos = [c for c in classes if is_algo(c)]
+    with_init = [c for c in algos if defines_init(c)]
+    return (with_init or algos or [None])[-1]
+
+
+def _init_of(tree: ast.Module, cls: ast.ClassDef) -> Optional[ast.FunctionDef]:
+    """initialize() of the algorithm class, or of the nearest base class in the file that defines it."""
+    by_name = {c.name: c for c in tree.body if isinstance(c, ast.ClassDef)}
+    todo, seen = [cls], set()
+    while todo:
+        c = todo.pop(0)
+        if c.name in seen:
+            continue
+        seen.add(c.name)
+        f = next((f for f in c.body if isinstance(f, ast.FunctionDef) and f.name in ("initialize", "Initialize")), None)
+        if f is not None:
+            return f
+        todo += [by_name[b.id] for b in c.bases if isinstance(b, ast.Name) and b.id in by_name]
     return None
 
 
@@ -2578,7 +2617,7 @@ def _lit(node) -> Any:
 
 def _read_call(m: str, args: List[Any], n, h: Dict[str, Any], note) -> None:
     if not args or not isinstance(args[0], str):
-        note("unsupported", n.lineno, m, UNRESOLVED)
+        note("unsupported", n.lineno, m, UNRESOLVED, discover=True)
         return
     t = args[0].upper()
     if m == "add_forex":
@@ -2598,18 +2637,18 @@ def static_header(code: str) -> Dict[str, Any]:
     cls = find_class(tree)
     if cls is None:
         raise ValueError("No class derived from QCAlgorithm.")
-    init = next((f for f in cls.body if isinstance(f, ast.FunctionDef) and f.name in ("initialize", "Initialize")), None)
+    init = _init_of(tree, cls)
     if init is None:
         raise ValueError("The algorithm has no initialize(self) method.")
     h: Dict[str, Any] = {"universe": [], "dynamic_universe": False, "class": cls.name}
     rep: List[Dict[str, Any]] = []
     seen = set()
 
-    def note(level, line, feature, msg):
+    def note(level, line, feature, msg, discover=False):
         key = (level, feature, line)
         if key not in seen:
             seen.add(key)
-            rep.append({"level": level, "line": line, "feature": feature, "message": msg})
+            rep.append({"level": level, "line": line, "feature": feature, "message": msg, **({"discover": True} if discover else {})})
     # literal names: class attributes and assignments in initialize (`tickers = [...]`, `self._tickers = [...]`);
     # a call inside `for t in <literal list>:` is read once per element
     env: Dict[str, Any] = {}
@@ -2649,23 +2688,32 @@ def static_header(code: str) -> Dict[str, Any]:
     for n in ast.walk(init):
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and isinstance(n.func.value, ast.Name) and n.func.value.id == "self":
             m = _snake(n.func.attr)
-            if m in ("add_equity", "add_forex", "add_crypto") and n.args:
+            if m in ("add_equity", "add_forex", "add_crypto", "add_cfd", "add_index") and n.args:
                 firsts = resolve(n.args[0], n)
                 rest = [_lit(a) for a in n.args[1:]]
                 for f0 in firsts:
-                    _read_call(m, [f0] + rest, n, h, note)
+                    if m == "add_index" and isinstance(f0, str):
+                        f0 = _INDEX_STATIC.get(f0.upper().lstrip("^"), f0 if f0.startswith("^") else "^" + f0.upper())
+                    _read_call("add_equity" if m in ("add_cfd", "add_index") else m, [f0] + rest, n, h, note)
                 continue
             args = [_lit(a) for a in n.args]
             if m in ("set_start_date", "set_end_date"):
                 v = args[0] if len(args) == 1 else (date(*args[:3]) if len(args) >= 3 and all(isinstance(a, int) for a in args[:3]) else None)
                 if v is None:
-                    note("unsupported", n.lineno, m, "the date must be a literal: set_start_date(2015, 1, 1)")
+                    note("unsupported", n.lineno, m, "the date is not a literal — read by running initialize()", discover=True)
                 else:
                     h["start" if m == "set_start_date" else "end"] = str(v)[:10]
-            elif m == "set_cash" and args and isinstance(args[0], (int, float)):
-                h["capital"] = float(args[0])
-            elif m == "set_benchmark" and args and isinstance(args[0], str):
-                h["benchmark"] = args[0].upper()
+            elif m == "set_cash":
+                amt = next((a for a in reversed(args) if isinstance(a, (int, float)) and not isinstance(a, bool)), None)
+                if amt is not None:
+                    h["capital"] = float(amt)
+                else:
+                    note("unsupported", n.lineno, m, "the amount is not a literal — read by running initialize()", discover=True)
+            elif m == "set_benchmark":
+                if args and isinstance(args[0], str):
+                    h["benchmark"] = args[0].upper()
+                else:
+                    note("unsupported", n.lineno, m, "the benchmark is not a literal — read by running initialize()", discover=True)
             elif m in ("set_universe_selection", "add_universe_selection"):
                 src = ast.unparse(n)
                 if "Fundamental" in src or "Coarse" in src:
@@ -2708,27 +2756,90 @@ def static_header(code: str) -> Dict[str, Any]:
                 note("approximated", line, n.attr, APPROXIMATED[a])
         elif isinstance(n, ast.Name) and n.id in APPROXIMATED:
             note("approximated", line, n.id, APPROXIMATED[n.id])
+    _check_unknown(tree, cls, note)
     used = {_snake(n.attr) for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
     need = sorted({FUND_FIELDS[u] for u in used if u in FUND_FIELDS})
     if need:
         h["fundamentals"] = need
         note("approximated", None, "fundamentals", "point-in-time SEC filings (US filers, as first filed, from the next "
              "session) in place of Morningstar: " + ", ".join(need))
-    if not h["universe"] and not h["dynamic_universe"] and not any(r["message"] == UNRESOLVED for r in rep):
+    if not h["universe"] and not h["dynamic_universe"] and not any(r.get("discover") for r in rep):
         if h.get("custom"):
             h["universe"] = [h.get("benchmark") or "SPY"]          # custom data only: the benchmark sets the calendar
-        else:
-            raise ValueError("initialize() adds no securities (add_equity('SPY') …) and no universe.")
-    h["report"] = sorted(rep, key=lambda r: ({"unsupported": 0, "approximated": 1}[r["level"]], r["line"] or 0))
+        else:                                                      # built in code (a variable, a model): run it to see
+            note("unsupported", init.lineno, "universe", "no ticker is readable without running initialize()", discover=True)
+    h["report"] = sorted(rep, key=lambda r: ({"unsupported": 0, "check": 1, "approximated": 2}.get(r["level"], 3), r["line"] or 0))
     h["api_version"] = API_VERSION
     return h
 
 
 UNRESOLVED = "the ticker must be a literal (or a literal list looped over) in initialize()"
+_INDEX_STATIC = {"SPX": "^GSPC", "NDX": "^NDX", "VIX": "^VIX", "DJI": "^DJI", "RUT": "^RUT"}
+
+
+def _known_algo_attrs() -> set:
+    a = QCAlgorithm()
+    names = set(dir(a)) | set(a.__dict__)
+    return names | {_snake(n) for n in names} | {_pascal(n) for n in names if n.islower()}
+
+
+def _check_unknown(tree: ast.Module, cls: ast.ClassDef, note) -> None:
+    """Report, before running, every `self.X` on the algorithm and every global name the layer does not provide — so a
+    gap shows up as a line in the report, not as an error halfway through a backtest."""
+    import builtins
+    import symtable
+    known = _known_algo_attrs()
+    mine = set()
+    for c in ast.walk(tree):
+        if isinstance(c, ast.ClassDef):
+            for b in c.body:
+                if isinstance(b, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    mine.add(b.name)
+                elif isinstance(b, ast.Assign):
+                    mine |= {t.id for t in b.targets if isinstance(t, ast.Name)}
+                elif isinstance(b, ast.AnnAssign) and isinstance(b.target, ast.Name):
+                    mine.add(b.target.id)
+        if isinstance(c, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
+            for t in (c.targets if isinstance(c, ast.Assign) else [c.target]):
+                for e in ([t] + (list(t.elts) if isinstance(t, (ast.Tuple, ast.List)) else [])):
+                    if isinstance(e, ast.Attribute) and isinstance(e.value, ast.Name) and e.value.id == "self":
+                        mine.add(e.attr)
+        if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == "setattr" and len(c.args) > 1 \
+                and isinstance(c.args[1], ast.Constant):
+            mine.add(str(c.args[1].value))
+    mine |= {_snake(n) for n in mine} | {_pascal(n) for n in mine}
+    for fn in [b for b in cls.body if isinstance(b, ast.FunctionDef)]:
+        for c in ast.walk(fn):
+            if isinstance(c, ast.Attribute) and isinstance(c.value, ast.Name) and c.value.id == "self" \
+                    and isinstance(c.ctx, ast.Load) and c.attr not in known and _snake(c.attr) not in known \
+                    and c.attr not in mine and _snake(c.attr) not in mine:
+                kind = "unsupported" if _snake(c.attr) in UNSUPPORTED else "check"
+                note(kind, c.lineno, f"self.{c.attr}", UNSUPPORTED.get(_snake(c.attr)) or
+                     "not part of the compatibility layer — the run stops with an error if this line executes")
+    # global names: referenced somewhere, defined nowhere in the file, not a builtin, not provided by the layer
+    try:
+        top = symtable.symtable(ast.unparse(tree), "<strategy>", "exec")
+    except SyntaxError:
+        return
+    defined = {s_.get_name() for s_ in top.get_symbols() if s_.is_assigned() or s_.is_imported() or s_.is_namespace()}
+    refs = {}
+
+    def walk(t):
+        for s_ in t.get_symbols():
+            if s_.is_referenced() and (t is top or s_.is_global()):
+                refs.setdefault(s_.get_name(), None)
+        for ch in t.get_children():
+            walk(ch)
+    walk(top)
+    provided = set(NAMES) | set(dir(builtins)) | {"np", "pd", "math", "self", "cls", "AlgorithmImports"}
+    lines = {n.id: n.lineno for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    for name in sorted(set(refs) - defined - provided):
+        note("check", lines.get(name), name, "not defined in this file or by the compatibility layer — the run stops "
+             "with a NameError if this line executes")
 
 
 def needs_discovery(header: Dict[str, Any]) -> bool:
-    return any(r["message"] == UNRESOLVED for r in header.get("report") or [])
+    return any(r.get("discover") or r["message"] == UNRESOLVED for r in header.get("report") or [])
 
 
 def discover(cls) -> Dict[str, Any]:
@@ -2747,8 +2858,10 @@ def discover(cls) -> Dict[str, Any]:
         if isinstance(m, ManualUniverseSelectionModel):
             for t in m.symbols:
                 algo._add(t, Resolution.DAILY)
+    hdr = getattr(algo, "_hdr", {}) or {}
     return {"universe": [t for t in algo.securities.keys()], "custom": list(algo._custom.keys()),
-            "dynamic_universe": bool(algo._selectors), "error": err}
+            "dynamic_universe": bool(algo._selectors), "error": err,
+            **{k: hdr[k] for k in ("start", "end", "capital", "benchmark") if k in hdr}}
 
 
 def resolve(header: Dict[str, Any], found: Dict[str, Any]) -> Dict[str, Any]:
@@ -2759,8 +2872,12 @@ def resolve(header: Dict[str, Any], found: Dict[str, Any]) -> Dict[str, Any]:
         h["custom"] = list(dict.fromkeys(list(h.get("custom") or []) + list(found["custom"])))
     if found.get("dynamic_universe"):
         h["dynamic_universe"] = True
+    for k in ("start", "end", "capital", "benchmark"):
+        if found.get(k) is not None and h.get(k) is None:
+            h[k] = found[k]
     msg = "resolved by running initialize() in the sandbox" + (f" (it stopped early: {found['error']})" if found.get("error") else "")
-    h["report"] = [dict(r, level="approximated", message=msg) if r["message"] == UNRESOLVED else r for r in h.get("report") or []]
+    h["report"] = [{**{k: v for k, v in r.items() if k != "discover"}, "level": "approximated", "message": msg}
+                   if (r.get("discover") or r["message"] == UNRESOLVED) else r for r in h.get("report") or []]
     h["discovered"] = True
     return h
 
@@ -2799,3 +2916,924 @@ NAMES = {k: v for k, v in globals().items() if k in (
     # consolidators, object store
     "Calendar", "TradeBarConsolidator", "TradeBarConsolidatorBase", "ObjectStore", "PythonData")}
 NAMES.update({"timedelta": timedelta, "datetime": datetime, "date": date})
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Breadth: the rest of the commonly used LEAN surface, and both naming styles everywhere
+# ════════════════════════════════════════════════════════════════════════════
+def _pascal(name: str) -> str:
+    return "".join(w[:1].upper() + w[1:] for w in name.split("_") if w)
+
+
+def _case_getattr(self, name: str):
+    """LEAN Python accepts SetHoldings and set_holdings, IsReady and is_ready: whichever spelling is missing resolves to
+    the other; anything else is a clear 'not in the compatibility layer' error instead of a bare AttributeError."""
+    if name.startswith("_"):
+        raise AttributeError(name)
+    for alt in ({_snake(name), _snake(name).replace("warmup", "warm_up")} if any(c.isupper() for c in name)
+                else {_pascal(name), _pascal(name.replace("warm_up", "warmup"))}):
+        if alt != name:
+            try:
+                return object.__getattribute__(self, alt)
+            except AttributeError:
+                pass
+    raise AttributeError(f"'{type(self).__name__}' has no '{name}' in the QuantConnect compatibility layer ({API_VERSION}); "
+                         "see Code Lab → QuantConnect API for what is available")
+
+
+class _Updated(list):
+    """indicator.updated += handler (C#-style event, as LEAN Python allows); handler(sender, point)."""
+
+    def __iadd__(self, fn):
+        if callable(fn):
+            self.append(fn)
+            return self
+        return list.__iadd__(self, fn)
+
+    def __isub__(self, fn):
+        if fn in self:
+            self.remove(fn)
+        return self
+
+
+_orig_ind_init = Indicator.__init__
+
+
+def _ind_init(self, name: str = ""):
+    _orig_ind_init(self, name)
+    self.updated = _Updated()
+
+
+Indicator.__init__ = _ind_init
+
+
+class _BarIndicator(Indicator):
+    needs_bars = True
+
+    def _bar(self, value) -> TradeBar:
+        if not isinstance(value, TradeBar):
+            raise ValueError(f"{type(self).__name__} needs trade bars (created with its self.<helper>(), or register_indicator "
+                             "with a symbol).")
+        return value
+
+
+class LinearWeightedMovingAverage(Indicator):
+    def __init__(self, period: int, name: str = ""):
+        super().__init__(name or f"LWMA({period})")
+        self._args = (period, name)
+        self.period = self.warm_up_period = int(period)
+        self._w: deque = deque(maxlen=self.period)
+
+    def _compute(self, value):
+        self._w.append(self._x(value))
+        n = len(self._w)
+        wts = range(1, n + 1)
+        return sum(w * x for w, x in zip(wts, self._w)) / sum(wts)
+
+
+class HullMovingAverage(Indicator):
+    def __init__(self, period: int, name: str = ""):
+        super().__init__(name or f"HMA({period})")
+        self._args = (period, name)
+        p = int(period)
+        self.period = p
+        self._a, self._b = LinearWeightedMovingAverage(max(1, p // 2)), LinearWeightedMovingAverage(p)
+        self._h = LinearWeightedMovingAverage(max(1, int(round(math.sqrt(p)))))
+        self.warm_up_period = p + self._h.period - 1
+
+    def _compute(self, value):
+        x = self._x(value)
+        self._a.update(None, x)
+        self._b.update(None, x)
+        if not self._b.is_ready:
+            return None
+        self._h.update(None, 2 * self._a.current.value - self._b.current.value)
+        return self._h.current.value
+
+
+class DoubleExponentialMovingAverage(Indicator):
+    def __init__(self, period: int, name: str = ""):
+        super().__init__(name or f"DEMA({period})")
+        self._args = (period, name)
+        self.period = int(period)
+        self.warm_up_period = 2 * self.period - 1
+        self._e1, self._e2 = ExponentialMovingAverage(period), ExponentialMovingAverage(period)
+
+    def _compute(self, value):
+        self._e1.update(None, self._x(value))
+        if not self._e1.is_ready:
+            return 0.0
+        self._e2.update(None, self._e1.current.value)
+        return 2 * self._e1.current.value - self._e2.current.value if self._e2.is_ready else self._e1.current.value
+
+
+class TripleExponentialMovingAverage(Indicator):
+    def __init__(self, period: int, name: str = ""):
+        super().__init__(name or f"TEMA({period})")
+        self._args = (period, name)
+        self.period = int(period)
+        self.warm_up_period = 3 * self.period - 2
+        self._e = [ExponentialMovingAverage(period) for _ in range(3)]
+
+    def _compute(self, value):
+        v = self._x(value)
+        for k, e in enumerate(self._e):
+            e.update(None, v)
+            if not e.is_ready:
+                return self._e[0].current.value if k else 0.0
+            v = e.current.value
+        e1, e2, e3 = (e.current.value for e in self._e)
+        return 3 * e1 - 3 * e2 + e3
+
+
+class KaufmanAdaptiveMovingAverage(Indicator):
+    def __init__(self, period: int, fast_ema_period: int = 2, slow_ema_period: int = 30, name: str = ""):
+        super().__init__(name or f"KAMA({period})")
+        self._args = (period, fast_ema_period, slow_ema_period, name)
+        self.period = int(period)
+        self.warm_up_period = self.period + 1
+        self._w: deque = deque(maxlen=self.period + 1)
+        self._fast, self._slow = 2 / (fast_ema_period + 1), 2 / (slow_ema_period + 1)
+        self._v: Optional[float] = None
+
+    def _compute(self, value):
+        x = self._x(value)
+        self._w.append(x)
+        if len(self._w) <= self.period:
+            return x
+        if self._v is None:
+            self._v = self._w[-2]
+        w = list(self._w)
+        vol = sum(abs(w[k] - w[k - 1]) for k in range(1, len(w)))
+        er = abs(w[-1] - w[0]) / vol if vol else 0.0
+        sc = (er * (self._fast - self._slow) + self._slow) ** 2
+        self._v = self._v + sc * (x - self._v)
+        return self._v
+
+
+class Trix(Indicator):
+    def __init__(self, period: int, name: str = ""):
+        super().__init__(name or f"TRIX({period})")
+        self._args = (period, name)
+        self.period = int(period)
+        self.warm_up_period = 3 * self.period
+        self._e = [ExponentialMovingAverage(period) for _ in range(3)]
+        self._prev: Optional[float] = None
+
+    def _compute(self, value):
+        v = self._x(value)
+        for e in self._e:
+            e.update(None, v)
+            if not e.is_ready:
+                return 0.0
+            v = e.current.value
+        out = 100 * (v / self._prev - 1) if self._prev else 0.0
+        self._prev = v
+        return out
+
+
+class AbsolutePriceOscillator(Indicator):
+    def __init__(self, fast_period: int, slow_period: int, moving_average_type=MovingAverageType.SIMPLE, name: str = ""):
+        super().__init__(name or f"APO({fast_period},{slow_period})")
+        self._args = (fast_period, slow_period, moving_average_type, name)
+        self.fast, self.slow = _ma(moving_average_type, fast_period), _ma(moving_average_type, slow_period)
+        self.warm_up_period = int(slow_period)
+
+    def _compute(self, value):
+        x = self._x(value)
+        self.fast.update(None, x)
+        self.slow.update(None, x)
+        return self.fast.current.value - self.slow.current.value if self.slow.is_ready else 0.0
+
+
+class PercentagePriceOscillator(AbsolutePriceOscillator):
+    def _compute(self, value):
+        d = super()._compute(value)
+        s = self.slow.current.value
+        return 100 * d / s if self.slow.is_ready and s else 0.0
+
+
+class ChandeMomentumOscillator(Indicator):
+    def __init__(self, period: int, name: str = ""):
+        super().__init__(name or f"CMO({period})")
+        self._args = (period, name)
+        self.period = int(period)
+        self.warm_up_period = self.period + 1
+        self._w: deque = deque(maxlen=self.period + 1)
+
+    def _compute(self, value):
+        self._w.append(self._x(value))
+        w = list(self._w)
+        ch = [w[k] - w[k - 1] for k in range(1, len(w))]
+        up, dn = sum(c for c in ch if c > 0), -sum(c for c in ch if c < 0)
+        return 100 * (up - dn) / (up + dn) if up + dn else 0.0
+
+
+class LogReturn(Indicator):
+    def __init__(self, period: int = 1, name: str = ""):
+        super().__init__(name or f"LOGR({period})")
+        self._args = (period, name)
+        self.period = int(period)
+        self.warm_up_period = self.period + 1
+        self._w: deque = deque(maxlen=self.period + 1)
+
+    def _compute(self, value):
+        self._w.append(self._x(value))
+        return math.log(self._w[-1] / self._w[0]) if len(self._w) == self._w.maxlen and self._w[0] > 0 and self._w[-1] > 0 else 0.0
+
+
+class Delay(Indicator):
+    def __init__(self, period: int, name: str = ""):
+        super().__init__(name or f"DELAY({period})")
+        self._args = (period, name)
+        self.period = int(period)
+        self.warm_up_period = self.period + 1
+        self._w: deque = deque(maxlen=self.period + 1)
+
+    def _compute(self, value):
+        self._w.append(self._x(value))
+        return self._w[0]
+
+
+class Identity(Indicator):
+    def __init__(self, name: str = ""):
+        super().__init__(name or "IDENTITY")
+        self._args = (name,)
+
+    def _compute(self, value):
+        return self._x(value)
+
+
+class TrueRange(_BarIndicator):
+    def __init__(self, name: str = ""):
+        super().__init__(name or "TR")
+        self._args = (name,)
+        self.warm_up_period = 2
+        self._prev: Optional[float] = None
+
+    def _compute(self, value):
+        b = self._bar(value)
+        tr = b.high - b.low if self._prev is None else max(b.high - b.low, abs(b.high - self._prev), abs(b.low - self._prev))
+        self._prev = b.close
+        return tr
+
+
+class NormalizedAverageTrueRange(_BarIndicator):
+    def __init__(self, period: int, name: str = ""):
+        super().__init__(name or f"NATR({period})")
+        self._args = (period, name)
+        self.period = self.warm_up_period = int(period)
+        self._atr = AverageTrueRange(period)
+
+    def _compute(self, value):
+        b = self._bar(value)
+        self._atr.update(b)
+        return 100 * self._atr.current.value / b.close if b.close else 0.0
+
+
+class CommodityChannelIndex(_BarIndicator):
+    def __init__(self, period: int, moving_average_type=MovingAverageType.SIMPLE, name: str = ""):
+        super().__init__(name or f"CCI({period})")
+        self._args = (period, moving_average_type, name)
+        self.period = self.warm_up_period = int(period)
+        self._w: deque = deque(maxlen=self.period)
+
+    def _compute(self, value):
+        b = self._bar(value)
+        tp = (b.high + b.low + b.close) / 3
+        self._w.append(tp)
+        m = sum(self._w) / len(self._w)
+        md = sum(abs(x - m) for x in self._w) / len(self._w)
+        return (tp - m) / (0.015 * md) if md else 0.0
+
+
+class Stochastic(_BarIndicator):
+    """fast_stoch (raw %K over `period`), stoch_k (SMA of it over k_period), stoch_d (SMA of %K over d_period);
+    the current value is fast_stoch, as LEAN."""
+
+    def __init__(self, period: int, k_period: int, d_period: int, name: str = ""):
+        super().__init__(name or f"STO({period},{k_period},{d_period})")
+        self._args = (period, k_period, d_period, name)
+        self.period = int(period)
+        self.warm_up_period = self.period + max(int(k_period), 1) + max(int(d_period), 1) - 2
+        self._hi: deque = deque(maxlen=self.period)
+        self._lo: deque = deque(maxlen=self.period)
+        self._k, self._d = SimpleMovingAverage(k_period), SimpleMovingAverage(d_period)
+        self.fast_stoch, self.stoch_k, self.stoch_d = IndicatorDataPoint(), IndicatorDataPoint(), IndicatorDataPoint()
+
+    def _compute(self, value):
+        b = self._bar(value)
+        self._hi.append(b.high)
+        self._lo.append(b.low)
+        hh, ll = max(self._hi), min(self._lo)
+        fast = 100 * (b.close - ll) / (hh - ll) if hh > ll else 0.0
+        self._k.update(None, fast)
+        self._d.update(None, self._k.current.value)
+        self.fast_stoch = IndicatorDataPoint(b.time, fast)
+        self.stoch_k = IndicatorDataPoint(b.time, self._k.current.value)
+        self.stoch_d = IndicatorDataPoint(b.time, self._d.current.value)
+        return fast
+
+
+class WilliamsPercentR(_BarIndicator):
+    def __init__(self, period: int, name: str = ""):
+        super().__init__(name or f"WILR({period})")
+        self._args = (period, name)
+        self.period = self.warm_up_period = int(period)
+        self._hi: deque = deque(maxlen=self.period)
+        self._lo: deque = deque(maxlen=self.period)
+
+    def _compute(self, value):
+        b = self._bar(value)
+        self._hi.append(b.high)
+        self._lo.append(b.low)
+        hh, ll = max(self._hi), min(self._lo)
+        return -100 * (hh - b.close) / (hh - ll) if hh > ll else 0.0
+
+
+class AroonOscillator(_BarIndicator):
+    def __init__(self, up_period: int, down_period: int, name: str = ""):
+        super().__init__(name or f"AROON({up_period},{down_period})")
+        self._args = (up_period, down_period, name)
+        self.up_period, self.down_period = int(up_period), int(down_period)
+        self.warm_up_period = max(self.up_period, self.down_period) + 1
+        self._hi: deque = deque(maxlen=self.up_period + 1)
+        self._lo: deque = deque(maxlen=self.down_period + 1)
+        self.aroon_up, self.aroon_down = IndicatorDataPoint(), IndicatorDataPoint()
+
+    def _compute(self, value):
+        b = self._bar(value)
+        self._hi.append(b.high)
+        self._lo.append(b.low)
+        hi, lo = list(self._hi), list(self._lo)
+        since_hi = len(hi) - 1 - max(range(len(hi)), key=lambda k: (hi[k], k))
+        since_lo = len(lo) - 1 - min(range(len(lo)), key=lambda k: (lo[k], -k))
+        up = 100 * (self.up_period - since_hi) / self.up_period
+        dn = 100 * (self.down_period - since_lo) / self.down_period
+        self.aroon_up, self.aroon_down = IndicatorDataPoint(b.time, up), IndicatorDataPoint(b.time, dn)
+        return up - dn
+
+
+class DonchianChannel(_BarIndicator):
+    def __init__(self, upper_period: int, lower_period: Optional[int] = None, name: str = ""):
+        super().__init__(name or f"DCH({upper_period})")
+        lower_period = int(lower_period or upper_period)
+        self._args = (upper_period, lower_period, name)
+        self.warm_up_period = max(int(upper_period), lower_period)
+        self._hi: deque = deque(maxlen=int(upper_period))
+        self._lo: deque = deque(maxlen=lower_period)
+        self.upper_band, self.lower_band = IndicatorDataPoint(), IndicatorDataPoint()
+
+    def _compute(self, value):
+        b = self._bar(value)
+        self._hi.append(b.high)
+        self._lo.append(b.low)
+        u, l = max(self._hi), min(self._lo)
+        self.upper_band, self.lower_band = IndicatorDataPoint(b.time, u), IndicatorDataPoint(b.time, l)
+        return (u + l) / 2
+
+
+class KeltnerChannels(_BarIndicator):
+    def __init__(self, period: int, k: float, moving_average_type=MovingAverageType.SIMPLE, name: str = ""):
+        super().__init__(name or f"KCH({period},{k})")
+        self._args = (period, k, moving_average_type, name)
+        self.period = self.warm_up_period = int(period)
+        self.k = float(k)
+        self.middle_band, self.average_true_range = _ma(moving_average_type, period), AverageTrueRange(period, moving_average_type)
+        self.upper_band, self.lower_band = IndicatorDataPoint(), IndicatorDataPoint()
+
+    def _compute(self, value):
+        b = self._bar(value)
+        self.middle_band.update(None, b.close)
+        self.average_true_range.update(b)
+        m, a = self.middle_band.current.value, self.average_true_range.current.value
+        self.upper_band, self.lower_band = IndicatorDataPoint(b.time, m + self.k * a), IndicatorDataPoint(b.time, m - self.k * a)
+        return m
+
+
+class OnBalanceVolume(_BarIndicator):
+    def __init__(self, name: str = ""):
+        super().__init__(name or "OBV")
+        self._args = (name,)
+        self.warm_up_period = 2
+        self._prev: Optional[float] = None
+        self._v = 0.0
+
+    def _compute(self, value):
+        b = self._bar(value)
+        if self._prev is not None:
+            self._v += b.volume if b.close > self._prev else -b.volume if b.close < self._prev else 0.0
+        self._prev = b.close
+        return self._v
+
+
+class VolumeWeightedAveragePriceIndicator(_BarIndicator):
+    def __init__(self, period: int, name: str = ""):
+        super().__init__(name or f"VWAP({period})")
+        self._args = (period, name)
+        self.period = self.warm_up_period = int(period)
+        self._w: deque = deque(maxlen=self.period)
+
+    def _compute(self, value):
+        b = self._bar(value)
+        self._w.append(((b.high + b.low + b.close) / 3, b.volume))
+        v = sum(x[1] for x in self._w)
+        return sum(x[0] * x[1] for x in self._w) / v if v else b.close
+
+
+class MoneyFlowIndex(_BarIndicator):
+    def __init__(self, period: int, name: str = ""):
+        super().__init__(name or f"MFI({period})")
+        self._args = (period, name)
+        self.period = int(period)
+        self.warm_up_period = self.period + 1
+        self._prev: Optional[float] = None
+        self._pos: deque = deque(maxlen=self.period)
+        self._neg: deque = deque(maxlen=self.period)
+
+    def _compute(self, value):
+        b = self._bar(value)
+        tp = (b.high + b.low + b.close) / 3
+        mf = tp * b.volume
+        if self._prev is not None:
+            self._pos.append(mf if tp > self._prev else 0.0)
+            self._neg.append(mf if tp < self._prev else 0.0)
+        self._prev = tp
+        p, n = sum(self._pos), sum(self._neg)
+        return 100.0 if n == 0 and p > 0 else (100 * p / (p + n) if p + n else 50.0)
+
+
+class ParabolicStopAndReverse(_BarIndicator):
+    def __init__(self, af_start: float = 0.02, af_increment: float = 0.02, af_max: float = 0.2, name: str = ""):
+        super().__init__(name or "PSAR")
+        self._args = (af_start, af_increment, af_max, name)
+        self.warm_up_period = 2
+        self._s, self._i, self._m = af_start, af_increment, af_max
+        self._long, self._sar, self._ep, self._af, self._prev = True, None, None, af_start, None
+
+    def _compute(self, value):
+        b = self._bar(value)
+        if self._prev is None:
+            self._prev = b
+            return b.close
+        if self._sar is None:
+            self._long = b.close >= self._prev.close
+            self._sar = self._prev.low if self._long else self._prev.high
+            self._ep = b.high if self._long else b.low
+        else:
+            self._sar = self._sar + self._af * (self._ep - self._sar)
+            if self._long:
+                self._sar = min(self._sar, self._prev.low, b.low)
+                if b.low < self._sar:
+                    self._long, self._sar, self._ep, self._af = False, self._ep, b.low, self._s
+                elif b.high > self._ep:
+                    self._ep, self._af = b.high, min(self._af + self._i, self._m)
+            else:
+                self._sar = max(self._sar, self._prev.high, b.high)
+                if b.high > self._sar:
+                    self._long, self._sar, self._ep, self._af = True, self._ep, b.high, self._s
+                elif b.low < self._ep:
+                    self._ep, self._af = b.low, min(self._af + self._i, self._m)
+        self._prev = b
+        return self._sar
+
+
+class Beta(Indicator):
+    """Beta of `target` returns on `reference` returns over `period` sessions (fed with both symbols' closes)."""
+
+    def __init__(self, target, reference, period: int, name: str = ""):
+        super().__init__(name or f"BETA({_sym(target)},{_sym(reference)},{period})")
+        self._args = (target, reference, period, name)
+        self.target, self.reference = _sym(target), _sym(reference)
+        self.period = int(period)
+        self.warm_up_period = self.period + 1
+        self._last: Dict[str, Any] = {}
+        self._prev: Dict[str, float] = {}
+        self._rt: deque = deque(maxlen=self.period)
+        self._rr: deque = deque(maxlen=self.period)
+
+    def update_pair(self, time, symbol: str, close: float) -> None:
+        self._last[symbol] = (time, close)
+        if all(k in self._last for k in (self.target, self.reference)) and \
+                self._last[self.target][0] == self._last[self.reference][0]:
+            t, r = self._last[self.target][1], self._last[self.reference][1]
+            if self.target in self._prev:
+                self._rt.append(t / self._prev[self.target] - 1)
+                self._rr.append(r / self._prev[self.reference] - 1)
+            self._prev = {self.target: t, self.reference: r}
+            self.samples += 1
+            if len(self._rr) > 2:
+                rr, rt = np.array(self._rr), np.array(self._rt)
+                v = float(np.var(rr, ddof=1))
+                if v > 0:
+                    self.current = IndicatorDataPoint(time, float(np.cov(rt, rr, ddof=1)[0, 1] / v))
+            for cb in self.updated:
+                cb(self, self.current)
+            self._last.clear()
+
+    def _compute(self, value):
+        return None
+
+
+class _Composite(Indicator):
+    """IndicatorExtensions: an indicator over another indicator's values, or a combination of two."""
+
+    def __init__(self, name: str, fn: Callable[[], Optional[float]], sources: List[Indicator], warm: int):
+        super().__init__(name)
+        self._fn = fn
+        self.warm_up_period = warm
+        for s_ in sources:
+            s_.updated += (lambda sender, pt: self._tick(pt))
+
+    def _tick(self, pt) -> None:
+        self.samples += 1
+        v = self._fn()
+        if v is not None and np.isfinite(v):
+            self.current = IndicatorDataPoint(pt.time, v)
+        for cb in self.updated:
+            cb(self, self.current)
+
+    def _compute(self, value):
+        return None
+
+
+class IndicatorExtensions:
+    @staticmethod
+    def _over(inner: Indicator, outer: Indicator, name: str) -> Indicator:
+        def fn():
+            if inner.is_ready:
+                outer.update(None, inner.current.value)
+            return outer.current.value
+        return _Composite(name, fn, [inner], inner.warm_up_period + outer.warm_up_period - 1)
+
+    @staticmethod
+    def sma(indicator: Indicator, period: int, *a) -> Indicator:
+        return IndicatorExtensions._over(indicator, SimpleMovingAverage(period), f"SMA({period}) of {indicator.name}")
+
+    @staticmethod
+    def ema(indicator: Indicator, period: int, *a) -> Indicator:
+        return IndicatorExtensions._over(indicator, ExponentialMovingAverage(period), f"EMA({period}) of {indicator.name}")
+
+    @staticmethod
+    def of(second: Indicator, first: Indicator, *a) -> Indicator:
+        return IndicatorExtensions._over(first, second, f"{second.name} of {first.name}")
+
+    @staticmethod
+    def _combine(a, b, op, sym) -> Indicator:
+        val = (lambda x: x.current.value if isinstance(x, Indicator) else float(x))
+        srcs = [x for x in (a, b) if isinstance(x, Indicator)]
+        name = f"{getattr(a, 'name', a)} {sym} {getattr(b, 'name', b)}"
+        return _Composite(name, lambda: op(val(a), val(b)), srcs, max(x.warm_up_period for x in srcs))
+
+    @staticmethod
+    def plus(a, b) -> Indicator:
+        return IndicatorExtensions._combine(a, b, lambda x, y: x + y, "+")
+
+    @staticmethod
+    def minus(a, b) -> Indicator:
+        return IndicatorExtensions._combine(a, b, lambda x, y: x - y, "-")
+
+    @staticmethod
+    def times(a, b) -> Indicator:
+        return IndicatorExtensions._combine(a, b, lambda x, y: x * y, "×")
+
+    @staticmethod
+    def over(a, b) -> Indicator:
+        return IndicatorExtensions._combine(a, b, lambda x, y: x / y if y else float("nan"), "/")
+
+    SMA, EMA, Of, Plus, Minus, Times, Over = sma, ema, of, plus, minus, times, over
+
+
+# ── QCAlgorithm: more of LEAN's helpers ──────────────────────────────────────
+def _bars_ind(ind) -> bool:
+    return isinstance(ind, (AverageTrueRange, AverageDirectionalIndex)) or getattr(ind, "needs_bars", False)
+
+
+def _helper(cls_):
+    def make(self, symbol, *a, **k):
+        ind = cls_(*a, **{kk: v for kk, v in k.items() if kk not in ("resolution", "selector")})
+        return self._reg(symbol, ind, _bars_ind(ind))
+    make.__doc__ = f"{cls_.__name__}, created and updated with each daily bar."
+    return make
+
+
+for _n, _c in {"wma": LinearWeightedMovingAverage, "lwma": LinearWeightedMovingAverage, "hma": HullMovingAverage,
+               "dema": DoubleExponentialMovingAverage, "tema": TripleExponentialMovingAverage,
+               "kama": KaufmanAdaptiveMovingAverage, "trix": Trix, "apo": AbsolutePriceOscillator,
+               "ppo": PercentagePriceOscillator, "cmo": ChandeMomentumOscillator, "logr": LogReturn,
+               "tr": TrueRange, "natr": NormalizedAverageTrueRange, "cci": CommodityChannelIndex, "sto": Stochastic,
+               "wilr": WilliamsPercentR, "aroon": AroonOscillator, "dch": DonchianChannel, "kch": KeltnerChannels,
+               "obv": OnBalanceVolume, "vwap": VolumeWeightedAveragePriceIndicator, "mfi": MoneyFlowIndex,
+               "psar": ParabolicStopAndReverse, "delay": Delay, "identity": Identity}.items():
+    setattr(QCAlgorithm, _n, _helper(_c))
+
+
+def _beta(self, target, reference, period: int, *a, **k) -> Beta:
+    b = Beta(target, reference, period)
+    self._betas.append(b)
+    return b
+
+
+def _record(self, key: str, value) -> None:
+    hdr = self.__dict__.setdefault("_hdr", {})
+    hdr[key] = value
+
+
+def _date_of(args) -> Optional[str]:
+    if len(args) >= 3 and all(isinstance(a, (int, np.integer)) for a in args[:3]):
+        return str(date(int(args[0]), int(args[1]), int(args[2])))
+    if args and isinstance(args[0], (datetime, date, pd.Timestamp)):
+        return str(pd.Timestamp(args[0]).date())
+    if args and isinstance(args[0], str):
+        return str(pd.Timestamp(args[0]).date())
+    return None
+
+
+def _set_start_date(self, *a, **k):
+    d = _date_of(a)
+    if d:
+        _record(self, "start", d)
+        self.start_date = pd.Timestamp(d).to_pydatetime()
+
+
+def _set_end_date(self, *a, **k):
+    d = _date_of(a)
+    if d:
+        _record(self, "end", d)
+        self.end_date = pd.Timestamp(d).to_pydatetime()
+
+
+def _set_cash(self, *a, **k):
+    amt = next((x for x in reversed(a) if isinstance(x, (int, float)) and not isinstance(x, bool)), None)
+    if amt is not None:
+        _record(self, "capital", float(amt))
+
+
+_orig_set_benchmark = QCAlgorithm.set_benchmark
+
+
+def _set_benchmark(self, symbol):
+    _orig_set_benchmark(self, symbol)
+    _record(self, "benchmark", _sym(symbol))
+
+
+_INDEX = {"SPX": "^GSPC", "NDX": "^NDX", "VIX": "^VIX", "DJI": "^DJI", "RUT": "^RUT", "SPY": "SPY"}
+
+
+def _add_index(self, ticker: str, resolution=Resolution.DAILY, *a, **k) -> Security:
+    t = _INDEX.get(_sym(ticker).lstrip("^"), _sym(ticker) if _sym(ticker).startswith("^") else "^" + _sym(ticker))
+    return self._add(t, resolution)
+
+
+class _Notify:
+    def __getattr__(self, name):                       # email / sms / web / telegram: no live channel in backtests
+        return lambda *a, **k: True
+
+
+def _train(self, *a, **k):
+    fn = next((x for x in a if callable(x)), None)
+    if fn is not None:
+        self._approx.add("train: runs the function immediately (no background training in a backtest)")
+        fn()
+
+
+_extra = {
+    "beta": _beta, "set_start_date": _set_start_date, "set_end_date": _set_end_date, "set_cash": _set_cash,
+    "set_benchmark": _set_benchmark, "add_index": _add_index, "add_cfd": QCAlgorithm.add_equity,
+    "set_warmup": QCAlgorithm.set_warm_up, "train": _train,
+    "buy": lambda self, symbol, quantity, *a, **k: self.market_order(symbol, abs(quantity), tag=k.get("tag", "")),
+    "sell": lambda self, symbol, quantity, *a, **k: self.market_order(symbol, -abs(quantity), tag=k.get("tag", "")),
+    "order": lambda self, symbol, quantity, *a, **k: self.market_order(symbol, quantity, tag=k.get("tag", "")),
+    "is_market_open": lambda self, symbol=None: True,
+    "set_account_currency": lambda self, ccy, *a, **k: (None if str(ccy).upper() == "USD" else self._approx.add(
+        "set_account_currency: use ACCOUNT_CURRENCY = \"…\" at the top of the file for a non-USD account")),
+    "set_run_mode": lambda self, *a, **k: None, "set_runtime_statistic": lambda self, name, value: _record(self, f"stat:{name}", str(value)),
+    "set_parameters": lambda self, params: self.__dict__.setdefault("_params", {}).update(params or {}),
+    "set_security_initializer": QCAlgorithm.set_security_initializer,
+    "on_margin_call": lambda self, requests: requests, "on_margin_call_warning": lambda self: None,
+    "on_dividends": lambda self, dividends: None, "on_splits": lambda self, splits: None,
+    "on_delistings": lambda self, delistings: None, "on_symbol_changed_events": lambda self, events: None,
+    "on_brokerage_message": lambda self, message: None, "on_assignment_order_event": lambda self, event: None,
+}
+for _n, _f in _extra.items():
+    setattr(QCAlgorithm, _n, _f)
+
+_orig_qc_init = QCAlgorithm.__init__
+
+
+def _qc_init(self):
+    _orig_qc_init(self)
+    self._betas: List[Beta] = []
+    self._hdr: Dict[str, Any] = {}
+    self.notify = self.Notify = _Notify()
+
+
+QCAlgorithm.__init__ = _qc_init
+QCAlgorithm.utc_time = property(lambda self: self.time)
+
+# ── portfolio, holdings, securities, transactions, events, slices ───────────
+SecurityHolding.unrealized_profit_percent = property(
+    lambda self: (self.price / self.average_price - 1) * (1 if self.quantity > 0 else -1)
+    if self.average_price and np.isfinite(self.price) and self.invested else 0.0)
+SecurityHolding.holdings_cost = property(lambda self: self.quantity * self.average_price)
+SecurityHolding.absolute_quantity = property(lambda self: abs(self.quantity))
+SecurityHolding.average_price_ = SecurityHolding.average_price if hasattr(SecurityHolding, "average_price") else None
+Portfolio.total_unrealized_profit = property(lambda self: sum(h.unrealized_profit for h in self.values()))
+Portfolio.total_absolute_holdings_cost = property(lambda self: sum(abs(h.holdings_cost) for h in self.values()))
+Portfolio.total_margin_used = property(lambda self: 0.5 * self.total_holdings_value)
+Portfolio.get_buying_power = lambda self, *a, **k: 2.0 * self.total_portfolio_value - self.total_holdings_value
+Portfolio.keys_ = dict.keys
+
+
+class _Exchange:
+    exchange_open = True
+    ExchangeOpen = True
+
+    def date_is_open(self, *a, **k) -> bool:
+        return True
+
+    DateIsOpen = date_is_open
+
+
+Security.holdings = property(lambda self: getattr(self, "_holding", None) or SecurityHolding(self.symbol))
+Security.is_tradable = property(lambda self: not getattr(self, "_custom_type", None))
+Security.exchange = property(lambda self: _Exchange())
+Security.ask_price = Security.bid_price = property(lambda self: self.price)
+Security.is_delisted = False
+Security.fundamentals = None
+
+Transactions.get_orders = lambda self, *a, **k: list(self._algo._tickets.values())
+Transactions.get_order_by_id = lambda self, order_id: self._algo._tickets.get(order_id)
+Transactions.cancel_order = lambda self, order_id, *a, **k: (self._algo._tickets[order_id].cancel()
+                                                           if order_id in self._algo._tickets else False)
+Transactions.orders_count = property(lambda self: len(self._algo._tickets))
+OrderEvent.quantity = property(lambda self: self.fill_quantity)
+OrderEvent.absolute_fill_quantity = property(lambda self: abs(self.fill_quantity))
+OrderEvent.order_fee = property(lambda self: 0.0)
+
+_orig_slice_init = Slice.__init__
+
+
+def _slice_init(self, time, bars):
+    _orig_slice_init(self, time, bars)
+    # prices are split- and dividend-adjusted, so these corporate-action collections are always empty
+    self.splits, self.dividends, self.delistings, self.symbol_changed_events = (_SymbolDict(), _SymbolDict(),
+                                                                                _SymbolDict(), _SymbolDict())
+    self.quote_bars, self.ticks = _SymbolDict(), _SymbolDict()
+
+
+Slice.__init__ = _slice_init
+Slice.has_data = property(lambda self: len(self._b) > 0)
+
+# both spellings on every object strategy code touches
+for _cls in (QCAlgorithm, Security, SecurityHolding, Portfolio, Slice, TradeBar, OrderTicket, OrderEvent, Indicator,
+             IndicatorDataPoint, RollingWindow, Insight, Fundamental, PortfolioTarget, ObjectStore, Transactions, Schedule,
+             DateRules, TimeRules, SecurityChanges, _Group, TradeBarConsolidator, _SubscriptionManager, AlphaModel,
+             PortfolioConstructionModel, RiskManagementModel, ExecutionModel, _UniverseHelper, _Settings, _UniverseSettings):
+    if "__getattr__" not in _cls.__dict__:
+        _cls.__getattr__ = _case_getattr
+
+NAMES.update({k: v for k, v in globals().items() if k in (
+    "LinearWeightedMovingAverage", "HullMovingAverage", "DoubleExponentialMovingAverage", "TripleExponentialMovingAverage",
+    "KaufmanAdaptiveMovingAverage", "Trix", "AbsolutePriceOscillator", "PercentagePriceOscillator",
+    "ChandeMomentumOscillator", "LogReturn", "Delay", "Identity", "TrueRange", "NormalizedAverageTrueRange",
+    "CommodityChannelIndex", "Stochastic", "WilliamsPercentR", "AroonOscillator", "DonchianChannel", "KeltnerChannels",
+    "OnBalanceVolume", "VolumeWeightedAveragePriceIndicator", "MoneyFlowIndex", "ParabolicStopAndReverse", "Beta",
+    "IndicatorExtensions", "Indicator", "PythonIndicator")})
+NAMES["PythonIndicator"] = Indicator                     # custom indicators: subclass and implement update / _compute
+NAMES["QCAlgorithmFramework"] = QCAlgorithm
+
+
+class UpdateOrderFields:
+    """ticket.update(UpdateOrderFields(stop_price=…, limit_price=…, quantity=…, tag=…)) — LEAN's order update."""
+
+    def __init__(self, quantity=None, limit_price=None, stop_price=None, trigger_price=None, trailing_amount=None, tag=None,
+                 **k):
+        self.quantity = k.get("Quantity", quantity)
+        self.limit_price = k.get("LimitPrice", limit_price)
+        self.stop_price = k.get("StopPrice", stop_price)
+        self.trailing_amount = k.get("TrailingAmount", trailing_amount)
+        self.tag = k.get("Tag", tag)
+
+    def __setattr__(self, name, value):                 # fields.LimitPrice = 101 works too
+        object.__setattr__(self, _snake(name) if any(c.isupper() for c in name) else name, value)
+
+
+def _ticket_update(self, fields: UpdateOrderFields):
+    """Cancel-and-replace the working order with the new prices / quantity (the ticket keeps its id)."""
+    if self.status not in (OrderStatus.SUBMITTED, OrderStatus.PARTIALLY_FILLED):
+        return _Response(False, "the order is no longer open")
+    algo = self._algo
+    q = float(fields.quantity) if fields.quantity is not None else self.quantity
+    price = fields.stop_price if fields.stop_price is not None else (
+        fields.limit_price if self.order_type == OrderType.LIMIT and fields.limit_price is not None else self.prices.get("price"))
+    limit = fields.limit_price if self.order_type == OrderType.STOP_LIMIT and fields.limit_price is not None else self.prices.get("limit")
+    trail = fields.trailing_amount if fields.trailing_amount is not None else self.prices.get("trail")
+    kind = {OrderType.LIMIT: "limit", OrderType.STOP_MARKET: "stop", OrderType.STOP_LIMIT: "stop_limit",
+            OrderType.TRAILING_STOP: "trailing"}.get(self.order_type)
+    if kind is None:
+        return _Response(False, "market orders fill at the next open and cannot be updated")
+    ids = [oid for oid, tk in algo._tickets.items() if tk is self]
+    for oid in ids:
+        algo._ctx.cancel_order(oid)
+    rem = q - self.quantity_filled
+    new_id = algo._ctx.order_shares(_sym(self.symbol), rem, kind, price=price, limit=limit, trail=trail)
+    algo._tickets[new_id] = self
+    self.quantity = q
+    self.prices.update({k_: v for k_, v in (("price", price), ("limit", limit), ("trail", trail)) if v is not None})
+    if fields.tag is not None:
+        self.tag = fields.tag
+    algo._emit(OrderEvent(self.order_id, self.symbol, algo.time, OrderStatus.UPDATE_SUBMITTED, message=self.tag))
+    return _Response(True, "")
+
+
+class _Response:
+    def __init__(self, ok: bool, message: str):
+        self.is_success, self.error_message = ok, message
+        self.IsSuccess, self.ErrorMessage = ok, message
+
+
+OrderTicket.update = _ticket_update
+OrderTicket.update_stop_price = lambda self, p, tag=None: self.update(UpdateOrderFields(stop_price=p, tag=tag))
+OrderTicket.update_limit_price = lambda self, p, tag=None: self.update(UpdateOrderFields(limit_price=p, tag=tag))
+OrderTicket.update_quantity = lambda self, q, tag=None: self.update(UpdateOrderFields(quantity=q, tag=tag))
+OrderTicket.get = lambda self, field, *a: {"stop_price": self.prices.get("price"), "limit_price": self.prices.get("limit")}.get(
+    _snake(str(field)), None)
+NAMES["UpdateOrderFields"] = UpdateOrderFields
+NAMES["OrderField"] = type("OrderField", (), {"STOP_PRICE": "stop_price", "LIMIT_PRICE": "limit_price",
+                                              "StopPrice": "stop_price", "LimitPrice": "limit_price"})
+
+
+# custom-data plumbing names used inside PythonData subclasses (get_source / reader are never called — the uploaded CSV
+# is the data — but the class body must still import cleanly)
+class SubscriptionDataSource:
+    def __init__(self, source=None, transport=None, format=None, *a, **k):
+        self.source, self.transport, self.format = source, transport, format
+
+
+class SubscriptionTransportMedium(_Enum):
+    LOCAL_FILE, REMOTE_FILE, REST, STREAMING, OBJECT_STORE = "local", "remote", "rest", "streaming", "object_store"
+    LocalFile, RemoteFile, Rest, Streaming, ObjectStore = LOCAL_FILE, REMOTE_FILE, REST, STREAMING, OBJECT_STORE
+
+
+class FileFormat(_Enum):
+    CSV, UNFOLDING_COLLECTION, ZIP_ENTRY_NAME, INDEX = "csv", "unfolding", "zip", "index"
+    Csv, UnfoldingCollection, ZipEntryName, Index = CSV, UNFOLDING_COLLECTION, ZIP_ENTRY_NAME, INDEX
+
+
+NAMES.update({"SubscriptionDataSource": SubscriptionDataSource, "SubscriptionTransportMedium": SubscriptionTransportMedium,
+              "FileFormat": FileFormat})
+
+
+UNSUPPORTED.pop("train", None)
+APPROXIMATED["train"] = "runs the function immediately (no background training in a backtest)"
+
+
+def _alias_both_spellings(cls) -> None:
+    """Class-level aliases (Symbol.Create / Symbol.create, Insight.Price / Insight.price, constants): what instance
+    __getattr__ cannot cover, because it is reached through the class itself."""
+    for name, val in list(cls.__dict__.items()):
+        if name.startswith("_") or isinstance(val, property):
+            continue                                       # properties: instance __getattr__ covers them (no setter clash)
+        alts = {_snake(name)} if any(ch.isupper() for ch in name) else {_pascal(name)}
+        for alt in alts:
+            if alt and alt != name and alt not in cls.__dict__ and not any(alt in b.__dict__ for b in cls.__mro__[1:]):
+                try:
+                    setattr(cls, alt, val)
+                except (AttributeError, TypeError):
+                    pass
+
+
+for _cls in {v for v in list(globals().values()) if isinstance(v, type) and v.__module__ == __name__}:
+    _alias_both_spellings(_cls)
+
+
+
+# ── C# collections: Keys / Values / Count are properties, and iterating yields key–value pairs ─────────
+class _KVP(str):
+    """What iterating Portfolio / Securities / a Slice yields: the ticker (a str, so `symbol in …`, dict lookups and
+    printing work as before) that also carries LEAN's KeyValuePair fields — kvp.Key, kvp.Value."""
+
+    def __new__(cls, key, value):
+        o = str.__new__(cls, str(key))
+        o.key = o.Key = Symbol(str(key))
+        o.value = o.Value = value
+        return o
+
+
+def _dict_like(cls, getter):
+    cls.Keys = property(lambda self: [Symbol(k) for k in dict.keys(self)] if issubclass(cls, dict) else list(self.keys()))
+    cls.Values = property(lambda self: list(dict.values(self)) if issubclass(cls, dict) else list(self.values()))
+    cls.Count = property(lambda self: len(self))
+    cls.count = property(lambda self: len(self)) if "count" not in cls.__dict__ else cls.__dict__["count"]
+
+
+for _c in (_SymbolDict, Portfolio):
+    _dict_like(_c, None)
+    _c.__iter__ = lambda self: iter([_KVP(k, dict.__getitem__(self, k)) for k in dict.keys(self)])
+
+Slice.Keys = property(lambda self: self.keys())
+Slice.Values = property(lambda self: self.values())
+Slice.Count = property(lambda self: len(self))
+Slice.__iter__ = lambda self: iter([_KVP(b.symbol, b) for b in self._b.values()])
+ObjectStore.Keys = property(lambda self: list(self._d))

@@ -161,16 +161,18 @@ def check(code: str) -> Dict[str, Any]:
             raise SandboxError(str(e))
         if qcalgo.needs_discovery(qc):                     # tickers built at run time: run initialize() in the sandbox
             found = discover(code)
-            if found.get("universe") or found.get("dynamic_universe"):
+            if found.get("universe") or found.get("dynamic_universe") or found.get("custom"):
                 qc = qcalgo.resolve(qc, found)
             elif found.get("error"):
                 raise SandboxError(f"initialize() could not be run to find its tickers: {found['error']}")
+            else:
+                raise SandboxError("initialize() adds no securities (add_equity('SPY') …) and no universe.")
         blocking = [r for r in qc["report"] if r["level"] == "unsupported"]
+        header.update({"UNIVERSE": qc["universe"] or [qc.get("benchmark") or "SPY"], "START": qc.get("start") or "2015-01-01",
+                       "BENCHMARK": qc.get("benchmark") or "SPY"})
         if blocking:
             raise SandboxError("Not supported here: " + "; ".join(f"line {r['line']}: {r['feature']} — {r['message']}"
                                                                     for r in blocking[:4]))
-        header.update({"UNIVERSE": qc["universe"] or [qc.get("benchmark") or "SPY"], "START": qc.get("start") or "2015-01-01",
-                       "BENCHMARK": qc.get("benchmark") or "SPY"})
         if qc["dynamic_universe"]:
             header["TRADABLE_UNIVERSE"] = "SP500_PIT"
         if qc.get("fundamentals"):
@@ -178,8 +180,17 @@ def check(code: str) -> Dict[str, Any]:
     for node in tree.body:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             name = node.targets[0].id
+            if qc is not None and name != "PARAMS":
+                continue                  # a QuantConnect file: module variables are the user's, the header is the algorithm's
             if name in ("UNIVERSE", "START", "PARAMS", "BENCHMARK", "HOLDOUT", "TRADABLE_UNIVERSE", "ACCOUNT_CALENDAR",
                         "ACCOUNT_CURRENCY", "FX_HEDGE", "OPTIONS", "FUNDAMENTALS", "CUSTOM_DATA"):
+                if qc is not None and name == "PARAMS":
+                    try:
+                        v = ast.literal_eval(node.value)
+                    except Exception:
+                        continue
+                    if not (isinstance(v, dict) and all(isinstance(x, (list, tuple)) and x for x in v.values())):
+                        continue
                 try:
                     header[name] = ast.literal_eval(node.value)
                 except Exception:

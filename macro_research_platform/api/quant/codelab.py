@@ -1553,13 +1553,15 @@ def load_strategy(code: str, namespace: Optional[Dict[str, Any]] = None) -> Dict
         qc = _qc.resolve(qc, _qc.discover(ns[qc["class"]]))
     if qc is not None:                                               # a QuantConnect-style algorithm class
         fn, ob = None, _qc.adapter(ns[qc["class"]], qc)
-        ns.setdefault("UNIVERSE", qc["universe"] or [qc.get("benchmark") or "SPY"])
-        ns.setdefault("START", qc.get("start") or "2015-01-01")
-        ns.setdefault("BENCHMARK", qc.get("benchmark") or "SPY")
-        if qc["dynamic_universe"]:
-            ns.setdefault("TRADABLE_UNIVERSE", "SP500_PIT")
-        if qc.get("fundamentals"):
-            ns.setdefault("FUNDAMENTALS", qc["fundamentals"])
+        # the header comes from the algorithm — module variables named UNIVERSE / START … are the user's own
+        hdr = {"UNIVERSE": qc["universe"] or [qc.get("benchmark") or "SPY"], "START": qc.get("start") or "2015-01-01",
+               "BENCHMARK": qc.get("benchmark") or "SPY",
+               "TRADABLE_UNIVERSE": "SP500_PIT" if qc["dynamic_universe"] else None,
+               "FUNDAMENTALS": qc.get("fundamentals"), "CUSTOM_DATA": None, "HOLDOUT": None, "OPTIONS": None,
+               "ACCOUNT_CURRENCY": None, "FX_HEDGE": None,
+               "PARAMS": ns.get("PARAMS") if isinstance(ns.get("PARAMS"), dict) and all(
+                   isinstance(v, (list, tuple)) for v in ns["PARAMS"].values()) else None}
+        ns = {**ns, **hdr}
     if not callable(fn) and not callable(ob):
         raise ValueError("Define strategy(data, **params) returning target weights, or on_bar(ctx, **params) for an "
                          "event-driven strategy.")

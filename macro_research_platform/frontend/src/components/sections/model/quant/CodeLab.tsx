@@ -973,12 +973,14 @@ export { usd };
 function QcReport({ qc }: { qc: any }) {
   const rows: any[] = qc.report ?? [];
   const unsupported = rows.filter((r) => r.level === 'unsupported');
+  const checks = rows.filter((r) => r.level === 'check');
   return (
     <details open={unsupported.length > 0} className="text-[10px] border border-border bg-surface-1 px-2 py-1">
       <summary className="cursor-pointer text-text-secondary">
         QuantConnect algorithm <span className="font-mono">{qc.class}</span> · {qc.api_version ?? 'qc-compat'} ·{' '}
         {unsupported.length ? <span className="text-red">{unsupported.length} unsupported</span> : <span className="text-green">runs here</span>}
-        {rows.length - unsupported.length > 0 && <span className="text-amber"> · {rows.length - unsupported.length} approximated</span>}
+        {checks.length > 0 && <span className="text-red"> · {checks.length} not in the layer</span>}
+        {rows.length - unsupported.length - checks.length > 0 && <span className="text-amber"> · {rows.length - unsupported.length - checks.length} approximated</span>}
         {qc.universe?.length > 0 && <span className="text-text-tertiary"> · {qc.universe.join(', ')}</span>}
         {qc.dynamic_universe && <span className="text-text-tertiary"> · dynamic universe on point-in-time S&amp;P 500</span>}
         {qc.start && <span className="text-text-tertiary"> · {qc.start}{qc.end ? ` → ${qc.end}` : ''}</span>}
@@ -987,7 +989,7 @@ function QcReport({ qc }: { qc: any }) {
       <div className="mt-1 space-y-0.5 font-mono">
         {rows.map((r, i) => (
           <div key={i} className="flex gap-2">
-            <span className={r.level === 'unsupported' ? 'text-red' : 'text-amber'}>{r.level}</span>
+            <span className={r.level === 'unsupported' || r.level === 'check' ? 'text-red' : 'text-amber'}>{r.level === 'check' ? 'not in layer' : r.level}</span>
             <span className="text-text-tertiary">line {r.line ?? '—'}</span><span>{r.feature}</span><span className="text-text-secondary">— {r.message}</span>
           </div>))}
         {rows.length === 0 && <div className="text-text-tertiary">Every construct maps directly (daily bars; orders fill at the next open unless market-on-close).</div>}
