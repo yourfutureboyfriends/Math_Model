@@ -438,6 +438,10 @@ async def code_check(body: CodeCheckIn, request: Request):
         if "QCAlgorithm" in body.code:                   # a QuantConnect-style algorithm: the line-by-line report too
             try:
                 out["qc"] = qcalgo.static_header(body.code)
+                if "there is no module" in str(e):           # values read by running initialize() wait on that file
+                    for r in out["qc"]["report"]:
+                        if r.get("discover"):
+                            r["message"] = "read by running initialize() once the missing project file is added"
             except Exception as e2:                       # noqa: BLE001 — the header itself is unreadable
                 out["qc"] = {"report": [], "error": str(e2)}
         return out

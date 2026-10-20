@@ -565,7 +565,9 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
                 : `Runs here, but can't be deployed: ${check.error}`}
             </div>)}
           {(check as any)?.qc && <QcReport qc={(check as any).qc} />}
-          {code.includes('QCAlgorithm') && leanOk?.available && ((check as any)?.ok === false || ((check as any)?.qc?.report ?? []).some((r: any) => r.level !== 'approximated')) && (
+          {code.includes('QCAlgorithm') && leanOk?.available && !(check as any)?.qc?.dynamic_universe
+            && !/there is no module|could not be read/.test((check as any)?.error ?? '')
+            && ((check as any)?.ok === false || ((check as any)?.qc?.report ?? []).some((r: any) => r.level !== 'approximated')) && (
             <div className="text-[10px] text-bloomberg">The built-in layer flags something here — <b>Run on real LEAN</b> runs this algorithm unmodified on QuantConnect's own engine (daily US equities; dynamic universes and custom data stay on the built-in layer).</div>)}
           {lean && <LeanResult r={lean} />}
           <CustomData />
