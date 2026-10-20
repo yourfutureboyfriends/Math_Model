@@ -112,6 +112,7 @@ def brinson(book: Optional[str] = None, benchmark: str = "SPY", max_days: int = 
     # cost basis for the NAV path: avg cost of today's positions (trades are reflected in holdings)
     cost = {str(p["symbol"]).upper(): float(p.get("avg_cost") or 0) for p in pos}
     daily_eff, rp_list, rb_list, used = [], [], [], []
+    last_day = days[-1]
     for i in range(1, len(days)):
         d0, d = days[i - 1], days[i]
         h = hold[d0]                                   # held over the session d0 → d
@@ -130,13 +131,16 @@ def brinson(book: Optional[str] = None, benchmark: str = "SPY", max_days: int = 
         pr = {sec: contrib[sec] / pw[sec] for sec in pw if abs(pw[sec]) > 1e-12}
         pw["Cash"] = 1 - sum(pw.values())
         pr["Cash"] = 0.0
+        # benchmark weights at the start of this session, backed out from today's by each sector's move since
+        bw_d = pa.backed_out_weights(bw, {sec: (etf_px[SECTOR_ETF[sec]].get(d0) or {}).get("c") for sec in bw},
+                                     {sec: (etf_px[SECTOR_ETF[sec]].get(last_day) or {}).get("c") for sec in bw})
         brr = {sec: etf_r[sec].get(d, 0.0) for sec in bw}
         for sec in pw:                                  # segments outside the benchmark's sectors
             if sec not in brr:
                 brr[sec] = bench_r[d] if sec.startswith("Benchmark") else 0.0
-        daily_eff.append(pa.brinson_day(pw, pr, bw, brr))
+        daily_eff.append(pa.brinson_day(pw, pr, bw_d, brr))
         rp_list.append(sum(pw[s] * pr.get(s, 0) for s in pw))
-        rb_list.append(sum(bw[s] * brr[s] for s in bw))
+        rb_list.append(sum(bw_d[s] * brr[s] for s in bw_d))
         used.append(d)
     if not daily_eff:
         return {"available": False, "reason": "No sessions with holdings and prices."}
@@ -157,9 +161,10 @@ def brinson(book: Optional[str] = None, benchmark: str = "SPY", max_days: int = 
                                   if te and len(used) >= 20 else None),
             "method": ("Brinson–Fachler per session on the holdings actually held (rebuilt from positions and trades), "
                        "returns on NAV including cash; Carino-linked so effects sum to the geometric active return. "
-                       f"Benchmark: {benchmark} with its current sector weights (Yahoo) and SPDR sector ETF returns."),
-            "limitations": ("Benchmark sector weights are today's, not each day's; holdings outside the benchmark's "
-                            "sectors (ETFs, the benchmark itself) are their own segments; cash earns 0.")}
+                       f"Benchmark: {benchmark} sector weights (Yahoo, backed out to each day) and SPDR sector ETF returns."),
+            "limitations": ("Benchmark sector weights each day are backed out from today's by each sector ETF's price "
+                            "change since (exact for a cap-weighted index without reconstitution); holdings outside the "
+                            "benchmark's sectors (ETFs, the benchmark itself) are their own segments; cash earns 0.")}
 
 
 def tracking_error(book: Optional[str] = None, benchmark: str = "SPY") -> Dict[str, Any]:

@@ -1,16 +1,17 @@
 """
 Sector EPS revisions from free analyst-estimate data (Yahoo Finance "eps_trend" / "eps_revisions").
 
-For each SPDR sector ETF, its ten largest holdings (Yahoo fund data): the change in the consensus next-fiscal-year
-EPS estimate over the last 30 days, and analysts revising up vs down in that window. The sector figure is the
-holding-weighted average of the constituents' changes. Cached 12 hours; analysts revise slowly.
+Every S&P 500 member (SPY's daily holdings file, with index weights): the change in the consensus next-fiscal-year
+EPS estimate over the last 30 days, and analysts revising up vs down in that window. A sector's figure is the
+index-weighted average of its members' changes. If the holdings file can't be read, each SPDR sector ETF's ten
+largest holdings are used instead. Cached 12 hours; analysts revise slowly.
 """
 from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from api.marketdata.core import _cached, NotFound
 
@@ -72,15 +73,79 @@ def _safe_stock(sym: str):
         return None
 
 
+# GICS (SSGA file) and Yahoo sector names → the allocation table's names
+_GICS = {"Information Technology": "Technology", "Technology": "Technology", "Financials": "Financials",
+         "Financial Services": "Financials", "Health Care": "Healthcare", "Healthcare": "Healthcare",
+         "Consumer Discretionary": "Consumer", "Consumer Cyclical": "Consumer", "Consumer Staples": "Consumer Staples",
+         "Consumer Defensive": "Consumer Staples", "Industrials": "Industrials", "Energy": "Energy",
+         "Utilities": "Utilities", "Materials": "Materials", "Basic Materials": "Materials", "Real Estate": "Real Estate",
+         "Communication Services": "Communication"}
+
+
+def _yahoo_sector(sym: str) -> Optional[str]:
+    try:
+        import yfinance as yf
+        return (yf.Ticker(sym).info or {}).get("sector")
+    except Exception:
+        return None
+
+
+def _index_wide() -> Dict[str, Dict[str, Any]]:
+    """Per sector: index-weighted revision across all S&P 500 members."""
+    from api.marketdata.funds import index_members
+    members = [m for m in index_members("SPX")["members"] if m.get("symbol") and m.get("weight")]
+    if len(members) < 400:
+        raise NotFound("S&P 500 holdings incomplete")
+    for m in members:
+        m["yf"] = str(m["symbol"]).replace(".", "-")             # BRK.B → BRK-B
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        stocks = list(ex.map(lambda m: _safe_stock(m["yf"]), members))
+        missing = [m for m in members if not m.get("sector")]
+        for m, sec in zip(missing, ex.map(lambda m: _yahoo_sector(m["yf"]), missing)):
+            m["sector"] = sec
+    by: Dict[str, List] = {}
+    for m, st in zip(members, stocks):
+        sec = _GICS.get(m.get("sector") or "")
+        if sec and st and st.get("revision_pct") is not None:
+            by.setdefault(sec, []).append((st, m["weight"], m))
+    out = {}
+    for name, etf in SECTOR_ETF.items():
+        rows = by.get(name) or []
+        if not rows:
+            out[name] = {"etf": etf, "available": False, "constituents": []}
+            continue
+        wsum = sum(w for _, w, _ in rows)
+        rev = sum(st["revision_pct"] * w for st, w, _ in rows) / wsum
+        up = sum(st["analysts_up_30d"] or 0 for st, _, _ in rows)
+        down = sum(st["analysts_down_30d"] or 0 for st, _, _ in rows)
+        n_up = sum(1 for st, _, _ in rows if st["revision_pct"] > UP_DOWN_BAND)
+        n_dn = sum(1 for st, _, _ in rows if st["revision_pct"] < -UP_DOWN_BAND)
+        movers = sorted(rows, key=lambda r: -abs(r[0]["revision_pct"]) * r[1])[:5]
+        out[name] = {"etf": etf, "available": True, "eps_revision_pct": round(rev, 2),
+                     "direction": "UP" if rev > UP_DOWN_BAND else "DOWN" if rev < -UP_DOWN_BAND else "FLAT",
+                     "analysts_up_30d": up, "analysts_down_30d": down,
+                     "breadth": round((up - down) / (up + down), 2) if up + down else None,
+                     "companies_up": n_up, "companies_down": n_dn,
+                     "coverage_weight": round(wsum, 4), "constituents_used": len(rows),
+                     "constituents": [{**st, "weight": round(w, 5), "name": m.get("name")} for st, w, m in movers]}
+    return out
+
+
 def sector_revisions() -> Dict[str, Any]:
     def fetch():
-        out = {}
-        for name, etf in SECTOR_ETF.items():
-            try:
-                out[name] = _sector(name, etf)
-            except Exception as e:
-                logger.info("[eps] sector %s failed: %s", name, e)
-                out[name] = {"etf": etf, "available": False, "constituents": []}
+        out, basis = None, "all S&P 500 members, index-weighted"
+        try:
+            out = _index_wide()
+        except Exception as e:
+            logger.info("[eps] index-wide revisions failed (%s); using sector ETF top holdings", e)
+        if not out or not any(v.get("available") for v in out.values()):
+            basis, out = f"each SPDR sector ETF's {TOP_N} largest holdings", {}
+            for name, etf in SECTOR_ETF.items():
+                try:
+                    out[name] = _sector(name, etf)
+                except Exception as e:
+                    logger.info("[eps] sector %s failed: %s", name, e)
+                    out[name] = {"etf": etf, "available": False, "constituents": []}
         ok = {k: v for k, v in out.items() if v.get("available")}
         if not ok:
             raise NotFound("No sector EPS-revision data (Yahoo estimates unavailable).")
@@ -88,7 +153,8 @@ def sector_revisions() -> Dict[str, Any]:
         weakest = min(ok, key=lambda k: ok[k]["eps_revision_pct"])
         return {"sectors": out, "strongest_positive_revision": strongest, "strongest_negative_revision": weakest,
                 "computed_at": datetime.now().isoformat(timespec="seconds"),
-                "method": (f"Holding-weighted 30-day change in the consensus next-fiscal-year EPS estimate of each SPDR "
-                           f"sector ETF's {TOP_N} largest holdings; analysts revising up/down over 30 days."),
+                "basis": basis,
+                "method": (f"Weighted 30-day change in the consensus next-fiscal-year EPS estimate — {basis}; "
+                           "analysts revising up/down over 30 days."),
                 "source": "Yahoo Finance analyst estimates (eps_trend, eps_revisions) and ETF holdings"}
     return _cached("eps:sector_revisions", 12 * 3600, fetch)

@@ -243,7 +243,7 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
                       </span>
                     )}
                   </td>
-                  <td className="py-2 px-2 text-center">
+                  <td className="py-2 px-2 text-center" title={(() => { const e: any = (earningsData as any)?.sectors?.[sector.name]; return e ? `${e.companies_up ?? '—'} companies revised up, ${e.companies_down ?? '—'} down (30 days); ${(earningsData as any)?.basis ?? ''}` : undefined; })()}>
                     {sector.eps_revision_pct == null ? (
                       <span className="text-xs text-text-tertiary" title="EPS-revision feed unavailable">—</span>
                     ) : (

@@ -153,7 +153,13 @@ answers) were closed on 19 Oct — see below.
 * The composite history uses point-in-time weights (evidence available before each date, refreshed monthly).
 * `MACRO_TEST_OFFLINE=1` runs the suite with all outside traffic refused (sockets and libcurl); the 6 tests that read
   live data are marked `network` and skipped there.
-* Still open: an on-screen check of the new panels needs a signed-in session.
+* Brinson benchmark weights are backed out to each day from today's by each sector's price change (no longer today's
+  weights for every day); EPS revisions cover all ~500 S&P 500 members, index-weighted (was each sector ETF's top 10).
+* Central banks without a listed consensus show the curve's read: 1-year (or 2-year) government yield minus the
+  policy rate (ECB, BoJ, BoC, RBA); the BoE, RBNZ and SNB have no free short-end curve here.
+* Background warm loops no longer start under tests, so a test run cannot hang at shutdown on a live fetch.
+* Still open: an on-screen check of the new panels needs a signed-in session; whole-algorithm parity with LEAN needs
+  the LEAN Docker image (a multi-GB download, not yet approved).
 
 ## Decisions (19 Oct 2026)
 * The four 8-Jul positions (AAPL 150, SPY −50, MSFT 40, GLD 30) were removed at the owner's request, logged in the

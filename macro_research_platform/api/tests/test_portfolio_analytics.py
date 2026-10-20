@@ -98,3 +98,10 @@ def test_earnings_gate_waits_then_halves():
     assert far["applied"] is None and far["levels"]["shares"] == 100
     watch = earnings_gate([{"date": "2026-10-20", "reported": None}], today, {"code": "WATCH"}, lv)
     assert watch["verdict"]["code"] == "WATCH"
+
+
+def test_backed_out_weights_reverse_relative_performance():
+    from api.calculations.portfolio_analytics import backed_out_weights
+    # A doubled since then and B flat: today 2/3 vs 1/3 means they were equal then
+    w = backed_out_weights({"A": 2 / 3, "B": 1 / 3}, {"A": 50, "B": 100}, {"A": 100, "B": 100})
+    assert w["A"] == pytest.approx(0.5) and w["B"] == pytest.approx(0.5)

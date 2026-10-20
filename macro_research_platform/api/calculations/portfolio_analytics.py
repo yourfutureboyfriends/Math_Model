@@ -94,6 +94,17 @@ def carino_link(daily: Sequence[Dict[str, Dict[str, float]]], port_rets: Sequenc
     return out
 
 
+def backed_out_weights(w_today: Dict[str, float], price_then: Dict[str, float], price_now: Dict[str, float]) -> Dict[str, float]:
+    """Benchmark sector weights on an earlier day, backed out from today's by each sector's price change since:
+    w_then ∝ w_today ÷ (P_now / P_then). Exact for a cap-weighted index without reconstitution between the dates."""
+    raw = {}
+    for s, w in w_today.items():
+        a, b = price_then.get(s), price_now.get(s)
+        raw[s] = w / (b / a) if a and b else w
+    tot = sum(raw.values())
+    return {s: v / tot for s, v in raw.items()} if tot else dict(w_today)
+
+
 # ── Tracking error ───────────────────────────────────────────────────────────
 def ex_ante_tracking_error(active_w: Sequence[float], cov_daily) -> float:
     import numpy as np

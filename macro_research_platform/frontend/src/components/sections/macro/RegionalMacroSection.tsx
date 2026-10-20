@@ -283,13 +283,16 @@ function NextDecisions() {
       <span className="text-2xs text-text-tertiary uppercase tracking-wider mr-1">Next decisions</span>
       {banks.map((b) => {
         const mi = b.market_implied;
-        const pct = mi?.probabilities?.[mi.most_likely];
+        const pct = mi?.probabilities && mi.most_likely ? mi.probabilities[mi.most_likely] : null;
         return (
-          <span key={b.bank} title={b.note ?? [b.consensus_source, mi && `${mi.source}: ${Object.entries(mi.probabilities).map(([k, v]: any) => `${k} ${Math.round(v * 100)}%`).join(', ')}`].filter(Boolean).join(' · ')}
+          <span key={b.bank} title={[b.note, b.consensus_source,
+            mi?.probabilities && `${mi.source}: ${Object.entries(mi.probabilities).map(([k, v]: any) => `${k} ${Math.round(v * 100)}%`).join(', ')}`,
+            mi?.spread_bp != null && `${mi.tenor_years}y yield ${mi.yield}% vs policy ${mi.policy_rate}% (${mi.curve_date}) — rough read, includes term premium`].filter(Boolean).join(' · ')}
             className={`text-2xs font-mono px-1.5 py-0.5 border ${b.date ? 'border-border text-text-secondary' : 'border-border-subtle text-text-tertiary'}`}>
             {b.currency} {b.date ? b.date.slice(5) : '—'}
             {b.consensus && <span className="text-bloomberg"> cons. {b.consensus}</span>}
-            {mi && <span className="text-text-primary"> {mi.most_likely} {pct != null ? `${Math.round(pct * 100)}%` : ''}</span>}
+            {mi?.most_likely && <span className="text-text-primary"> {mi.most_likely} {pct != null ? `${Math.round(pct * 100)}%` : ''}</span>}
+            {mi?.read && <span className={mi.read === 'hikes priced' ? 'text-red' : mi.read === 'cuts priced' ? 'text-green' : 'text-text-secondary'}> {mi.read} ({mi.spread_bp > 0 ? '+' : ''}{mi.spread_bp}bp)</span>}
           </span>);
       })}
     </div>

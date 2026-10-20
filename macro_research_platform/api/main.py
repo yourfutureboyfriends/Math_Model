@@ -1463,6 +1463,9 @@ async def lifespan(app: FastAPI):
             await _asyncio.sleep(45)
 
     try:
+        # not under tests: a warm loop mid-fetch holds the test client's shutdown (and pytest's exit) for minutes
+        if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("MACRO_NO_BACKGROUND") == "1":
+            raise RuntimeError("background loops disabled (tests / MACRO_NO_BACKGROUND)")
         _BACKGROUND_TASKS.add(_asyncio.create_task(_dashboard_warm_loop()))
         logger.info("[STARTUP] Dashboard cache warm loop started")
     except Exception as e:
@@ -1487,6 +1490,8 @@ async def lifespan(app: FastAPI):
             await _asyncio.sleep(480)  # < the 600s history TTL
 
     try:
+        if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("MACRO_NO_BACKGROUND") == "1":
+            raise RuntimeError("background loops disabled (tests / MACRO_NO_BACKGROUND)")
         _BACKGROUND_TASKS.add(_asyncio.create_task(_risk_warm_loop()))
         logger.info("[STARTUP] Risk price-history warm loop started")
     except Exception as e:
@@ -1533,6 +1538,8 @@ async def lifespan(app: FastAPI):
             await _asyncio.sleep(20)  # < every TTL, so caches never lapse
 
     try:
+        if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("MACRO_NO_BACKGROUND") == "1":
+            raise RuntimeError("background loops disabled (tests / MACRO_NO_BACKGROUND)")
         _BACKGROUND_TASKS.add(_asyncio.create_task(_endpoints_warm_loop()))
         logger.info("[STARTUP] Slow-endpoint warm loop started")
     except Exception as e:
@@ -1559,6 +1566,8 @@ async def lifespan(app: FastAPI):
             await _asyncio.sleep(300)  # every 5 minutes
 
     try:
+        if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("MACRO_NO_BACKGROUND") == "1":
+            raise RuntimeError("background loops disabled (tests / MACRO_NO_BACKGROUND)")
         _BACKGROUND_TASKS.add(_asyncio.create_task(_pit_snapshot_loop()))
         logger.info("[STARTUP] Point-in-time snapshot loop started")
     except Exception as e:
@@ -3158,7 +3167,18 @@ async def stream_agreement_v1():
 async def central_banks_next_v1():
     """Each major central bank's next decision with the free consensus (survey forecast; fed funds futures for the Fed)."""
     from api.handlers.cb_decisions import next_decisions
-    return await asyncio.to_thread(next_decisions)
+    policy, curves = None, None
+    try:
+        gm = await get_global_macro_v1()
+        policy = {r["code"]: (r.get("policy") or {}).get("rate") for r in gm.get("economies") or []}
+    except Exception as e:
+        logger.info("[cb-next] policy rates unavailable: %s", e)
+    try:
+        from api.marketdata.curves import curves as _curves
+        curves = (await asyncio.to_thread(_curves)).get("curves")
+    except Exception as e:
+        logger.info("[cb-next] curves unavailable: %s", e)
+    return await asyncio.to_thread(next_decisions, policy, curves)
 
 
 @app.get("/api/v1/signals/composite-history")
@@ -3933,13 +3953,14 @@ async def get_earnings_revisions():
                          "breadth": r["breadth"], "analysts_up_30d": r["analysts_up_30d"],
                          "analysts_down_30d": r["analysts_down_30d"], "etf": r["etf"],
                          "constituents_used": r["constituents_used"], "macro_signal": sig or None,
+                         "companies_up": r.get("companies_up"), "companies_down": r.get("companies_down"),
                          "divergence": div_type is not None, "divergence_type": div_type}
         if div_type:
             divs.append({"sector": name, "type": div_type, "revision_pct": r["eps_revision_pct"], "macro_signal": sig})
     return {"available": bool(sectors), "sectors": sectors, "divergences": divs,
             "strongest_positive_revision": rev.get("strongest_positive_revision"),
             "strongest_negative_revision": rev.get("strongest_negative_revision"),
-            "method": rev.get("method"), "source": rev.get("source"),
+            "method": rev.get("method"), "basis": rev.get("basis"), "source": rev.get("source"),
             "updated_at": rev.get("computed_at")}
 
 

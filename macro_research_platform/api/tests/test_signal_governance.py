@@ -91,3 +91,12 @@ def test_cluster_votes_groups_correlated_series():
     out = cluster_votes({"a": a.tolist(), "b": b.tolist(), "c": c.tolist()})
     assert out["groups"]["a"] == out["groups"]["b"] == "a + b" and out["groups"]["c"] == "c"
     assert out["independent_groups"] == 2
+
+
+def test_curve_implied_policy_read():
+    from api.handlers.cb_decisions import curve_implied
+    pts = [{"tenor": 0.25, "yield": 2.59}, {"tenor": 1.0, "yield": 2.91}, {"tenor": 2.0, "yield": 3.05}]
+    r = curve_implied(2.0, pts)
+    assert r["tenor_years"] == 1.0 and r["spread_bp"] == 91 and r["read"] == "hikes priced"
+    assert curve_implied(3.33, [{"tenor": 2.0, "yield": 3.33}])["read"] == "on hold"
+    assert curve_implied(None, pts) is None and curve_implied(2.0, []) is None
