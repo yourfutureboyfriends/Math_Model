@@ -251,3 +251,14 @@ class VixTiming(QCAlgorithm):
     sandbox._DISCOVERED.clear()
     r = leanrun.run(code, timeout=900)
     assert int(r["statistics"]["Total Orders"]) >= 3 and not r["runtime_errors"]    # in and out around March 2020
+
+
+@pytest.mark.network
+def test_crypto_volume_is_in_units_of_the_asset():
+    """Yahoo's BTC-USD volume is dollars; the loader converts it to BTC so traded value (close × volume), impact,
+    capacity and LEAN's bars are right — not inflated by the price."""
+    from api.quant import codeserver
+    d = codeserver.load_data(["BTC-USD", "SPY"], "2024-01-01", allow_missing=True)
+    btc = d.volume["BTC-USD"].dropna()
+    assert 1e3 < btc.median() < 1e7                     # coins per day, not ~$3e10
+    assert (d.close["BTC-USD"] * d.volume["BTC-USD"]).dropna().median() > 1e9          # ≈ dollars traded

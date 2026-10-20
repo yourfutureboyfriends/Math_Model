@@ -199,6 +199,12 @@ def load_data(universe: Sequence[str], start: str, end: Optional[str] = None,
             if f == "close":
                 bad_bars = {c: int(n) for c, n in bad.sum().items() if n}
     inst = inst_mod.meta(cols)
+    # Yahoo reports crypto volume in the quote currency (BTC-USD: dollars); everything downstream (traded value = close ×
+    # volume for impact, capacity and participation caps, OBV / VWAP, LEAN's bars) expects units of the asset, as for shares
+    crypto = [c for c in cols if inst[c].get("asset_class") == "crypto"]
+    if crypto:
+        pan["volume"] = pan["volume"].copy()
+        pan["volume"][crypto] = pan["volume"][crypto] / pan["close"][crypto].where(pan["close"][crypto] > 0)
     minor = {c for c, i in inst.items() if float(i.get("unit_divisor") or 1.0) != 1.0}
     unit_fixes = _rescale_minor_units(pan, [c for c in cols if c in minor])
     unit_flips = _scrub_unit_flips(pan, cols)

@@ -346,6 +346,7 @@ def write_crypto(root: Path, base: str, quote: str, frame: pd.DataFrame) -> List
     f = frame.dropna(subset=["close"]).fillna({"volume": 0})
     for c in ("open", "high", "low"):
         f[c] = f[c].fillna(f["close"])
+    # volume is already in units of the base asset (codeserver.load_data converts Yahoo's quote-currency volume)
     pairs = [f"{base}{quote}".lower()] + ([f"{base}{s}".lower() for s in ("usdt", "usdc", "busd", "fdusd")]
                                           if quote == "USD" else [])
     trade, quotes = _bars_csv(f, False), _bars_csv(f, True)
