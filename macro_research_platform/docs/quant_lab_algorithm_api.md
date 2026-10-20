@@ -58,6 +58,17 @@ Top-level `PARAMS = {"name": [values]}` still drives walk-forward; read the curr
 | Universes | `add_universe(selector)` runs each session on **point-in-time S&P 500 members** with a bar (`symbol, price, volume, dollar_volume`); additions/removals call `on_securities_changed`; `universe.etf("SPY")` = point-in-time S&P 500 | no market cap or Morningstar fields; other ETFs' historical constituents are not free |
 | History | `history(symbols, n | timedelta)` → DataFrame (symbol, time) × OHLCV, never past the current bar | same shape |
 
+## How the universe is found
+
+The importer reads `initialize()` without running it to learn which prices to load. When a ticker comes from something
+it cannot follow — a module constant, a comprehension, a helper function — it **runs `initialize()` inside the sandbox**
+(the container on the server; in the browser where the code already runs) with no data and records what was added;
+the report lists those lines as "resolved by running initialize()". Calls that need prices (history, warm-up) are
+skipped in that pass.
+
+Universe selectors also receive `asset_classification.morningstar_sector_code` (today's sector for every date — free
+sector history does not exist; industry codes are NaN) and `MorningstarSectorCode.TECHNOLOGY` etc.
+
 ## Algorithm Framework
 
 ```python

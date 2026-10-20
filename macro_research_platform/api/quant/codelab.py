@@ -1549,6 +1549,8 @@ def load_strategy(code: str, namespace: Optional[Dict[str, Any]] = None) -> Dict
     exec(compile(code, "<strategy>", "exec"), ns)                    # noqa: S102 — see docstring
     fn = ns.get("strategy")
     ob = ns.get("on_bar")
+    if qc is not None and _qc.needs_discovery(qc):                   # tickers the static reader could not follow
+        qc = _qc.resolve(qc, _qc.discover(ns[qc["class"]]))
     if qc is not None:                                               # a QuantConnect-style algorithm class
         fn, ob = None, _qc.adapter(ns[qc["class"]], qc)
         ns.setdefault("UNIVERSE", qc["universe"] or [qc.get("benchmark") or "SPY"])

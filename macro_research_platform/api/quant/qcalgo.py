@@ -929,6 +929,27 @@ class _Group:
             setattr(self, k, v)
 
 
+class MorningstarSectorCode(_Enum):
+    BASIC_MATERIALS, CONSUMER_CYCLICAL, FINANCIAL_SERVICES, REAL_ESTATE = 101, 102, 103, 104
+    CONSUMER_DEFENSIVE, HEALTHCARE, UTILITIES = 205, 206, 207
+    COMMUNICATION_SERVICES, ENERGY, INDUSTRIALS, TECHNOLOGY = 308, 309, 310, 311
+    BasicMaterials, ConsumerCyclical, FinancialServices, RealEstate = 101, 102, 103, 104
+    ConsumerDefensive, Healthcare, Utilities = 205, 206, 207
+    CommunicationServices, Energy, Industrials, Technology = 308, 309, 310, 311
+
+
+# Yahoo and GICS sector names → Morningstar sector codes (LEAN's asset_classification.morningstar_sector_code)
+_MS_SECTOR = {"technology": 311, "information technology": 311, "financial services": 103, "financials": 103,
+              "healthcare": 206, "health care": 206, "consumer cyclical": 102, "consumer discretionary": 102,
+              "consumer defensive": 205, "consumer staples": 205, "energy": 309, "utilities": 207, "industrials": 310,
+              "basic materials": 101, "materials": 101, "real estate": 104, "communication services": 308,
+              "communication": 308, "telecommunication services": 308}
+
+
+def morningstar_sector(name: Optional[str]) -> float:
+    return float(_MS_SECTOR.get(str(name or "").strip().lower(), float("nan")))
+
+
 # LEAN Fundamental field → Code Lab point-in-time fundamental (SEC filings as first filed, from the next session)
 FUND_FIELDS = {"market_cap": "market_cap", "pe_ratio": "earnings_yield", "earning_yield": "earnings_yield",
                "pb_ratio": "book_to_price", "book_value_yield": "book_to_price", "ps_ratio": "sales_to_price",
@@ -942,7 +963,8 @@ class Fundamental:
     ps_ratio, earning_yield, fcf_yield; operation_ratios.roe, gross_margin, debt_to_assets;
     earning_reports.basic_eps.twelve_months. Missing values are NaN; has_fundamental_data says whether any exist."""
 
-    def __init__(self, symbol: Symbol, price: float, volume: float, fund: Optional[Dict[str, float]] = None):
+    def __init__(self, symbol: Symbol, price: float, volume: float, fund: Optional[Dict[str, float]] = None,
+                 sector: Optional[str] = None):
         self.symbol, self.price, self.volume = symbol, price, volume
         self.dollar_volume = price * volume
         f = fund or {}
@@ -956,6 +978,12 @@ class Fundamental:
         self.operation_ratios = _Group(roe=_Field(g("roe")), gross_margin=_Field(g("gross_profitability")),
                                        debt_to_assets=_Field(g("leverage")))
         self.earning_reports = _Group(basic_eps=_Field(g("eps_ttm")), diluted_eps=_Field(g("eps_ttm")))
+        # today's sector for every date (point-in-time sector history is not free) — reported as approximated
+        code = morningstar_sector(sector)
+        self.asset_classification = _Group(morningstar_sector_code=code, MorningstarSectorCode=code,
+                                           morningstar_industry_group_code=float("nan"), morningstar_industry_code=float("nan"),
+                                           sector_name=sector)
+        self.AssetClassification = self.asset_classification
         self.Symbol, self.Price, self.Volume, self.DollarVolume, self.HasFundamentalData, self.MarketCap = (
             symbol, price, volume, self.dollar_volume, self.has_fundamental_data, self.market_cap)
         self.ValuationRatios, self.OperationRatios, self.EarningReports = self.valuation_ratios, self.operation_ratios, self.earning_reports
@@ -2342,7 +2370,9 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
         ok = obs & (mem.iloc[i].to_numpy() if mem is not None else np.ones(len(cols), bool))
         px, vol = d.close.iloc[i].to_numpy(), d.volume.iloc[i].to_numpy()
         fr = {n: d.fund[n].iloc[i].to_numpy() for n in getattr(d, "fund", {}) or {}}
-        funds = [Fundamental(Symbol(c), float(px[k]), float(vol[k]), {n: v[k] for n, v in fr.items()} if fr else None)
+        info = getattr(d, "instruments", {}) or {}
+        funds = [Fundamental(Symbol(c), float(px[k]), float(vol[k]), {n: v[k] for n, v in fr.items()} if fr else None,
+                             (info.get(c) or {}).get("sector"))
                  for k, c in enumerate(cols) if ok[k] and c not in st["static"]]
         chosen = set()
         for f in algo._selectors:
@@ -2500,6 +2530,8 @@ APPROXIMATED = {
     "Resolution.HOUR": "hourly data is not available here — runs on daily bars",
     "Resolution.SECOND": "runs on daily bars", "Resolution.TICK": "runs on daily bars",
     "dollar_volume": "selection by daily dollar volume of point-in-time S&P 500 members",
+    "asset_classification": "today's sector as a Morningstar sector code for every date (no free sector history; "
+                            "industry codes are NaN)",
     "VolumeWeightedAveragePriceExecutionModel": "fills like ImmediateExecutionModel (next open) — no intraday volume profile",
     "StandardDeviationExecutionModel": "fills like ImmediateExecutionModel (next open) — no intraday prices",
     "SpreadExecutionModel": "fills like ImmediateExecutionModel (next open) — no quotes",
@@ -2509,7 +2541,7 @@ UNSUPPORTED = {
     "add_option": "no free historical option chains", "add_future": "no free roll-adjusted futures history",
     "add_index_option": "no free historical option chains", "add_future_option": "no free historical option chains",
     "option_chain_provider": "no option chains",
-    "asset_classification": "no point-in-time sector codes (data.info has today's sector)",
+
     "download": "no network access from strategy code", "train": "no background training",
 }
 
@@ -2546,7 +2578,7 @@ def _lit(node) -> Any:
 
 def _read_call(m: str, args: List[Any], n, h: Dict[str, Any], note) -> None:
     if not args or not isinstance(args[0], str):
-        note("unsupported", n.lineno, m, "the ticker must be a literal (or a literal list looped over) in initialize()")
+        note("unsupported", n.lineno, m, UNRESOLVED)
         return
     t = args[0].upper()
     if m == "add_forex":
@@ -2657,7 +2689,8 @@ def static_header(code: str) -> Dict[str, Any]:
             elif m == "add_universe":
                 h["dynamic_universe"] = True
                 note("approximated", n.lineno, "add_universe", "selection runs each session on point-in-time S&P 500 "
-                     "members (price, volume, dollar volume; no historical market cap or Morningstar fields)")
+                     "members: price, volume, dollar volume, point-in-time SEC fundamentals (market cap, valuation and "
+                     "operation ratios, EPS) and today's sector")
             elif m == "set_brokerage_model":
                 src = ast.unparse(n)
                 h["broker"] = "ibkr" if "Interactive" in src or "INTERACTIVE" in src else "alpaca" if "Alpaca" in src or "ALPACA" in src else None
@@ -2681,13 +2714,54 @@ def static_header(code: str) -> Dict[str, Any]:
         h["fundamentals"] = need
         note("approximated", None, "fundamentals", "point-in-time SEC filings (US filers, as first filed, from the next "
              "session) in place of Morningstar: " + ", ".join(need))
-    if not h["universe"] and not h["dynamic_universe"]:
+    if not h["universe"] and not h["dynamic_universe"] and not any(r["message"] == UNRESOLVED for r in rep):
         if h.get("custom"):
             h["universe"] = [h.get("benchmark") or "SPY"]          # custom data only: the benchmark sets the calendar
         else:
             raise ValueError("initialize() adds no securities (add_equity('SPY') …) and no universe.")
     h["report"] = sorted(rep, key=lambda r: ({"unsupported": 0, "approximated": 1}[r["level"]], r["line"] or 0))
     h["api_version"] = API_VERSION
+    return h
+
+
+UNRESOLVED = "the ticker must be a literal (or a literal list looped over) in initialize()"
+
+
+def needs_discovery(header: Dict[str, Any]) -> bool:
+    return any(r["message"] == UNRESOLVED for r in header.get("report") or [])
+
+
+def discover(cls) -> Dict[str, Any]:
+    """Run the algorithm's initialize() without data to learn what it adds — for tickers the static reader cannot follow
+    (variables, constants, comprehensions, helpers). Only ever called where user code may run (the browser, the
+    sandbox). Calls that need prices (history, warm-up) fail harmlessly here: what was added before them is kept."""
+    algo = cls()
+    algo._ctx = None
+    algo.time = datetime(2000, 1, 1)
+    err = None
+    try:
+        _handler(algo, "initialize")()
+    except Exception as e:                                      # noqa: BLE001 — partial discovery is still useful
+        err = f"{type(e).__name__}: {str(e)[:160]}"
+    for m in getattr(algo._framework, "models", lambda: [])():
+        if isinstance(m, ManualUniverseSelectionModel):
+            for t in m.symbols:
+                algo._add(t, Resolution.DAILY)
+    return {"universe": [t for t in algo.securities.keys()], "custom": list(algo._custom.keys()),
+            "dynamic_universe": bool(algo._selectors), "error": err}
+
+
+def resolve(header: Dict[str, Any], found: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge a discovery run into the static header; the unreadable-ticker notes become approximations."""
+    h = dict(header)
+    h["universe"] = list(dict.fromkeys(list(h.get("universe") or []) + [str(t).upper() for t in found.get("universe") or []]))
+    if found.get("custom"):
+        h["custom"] = list(dict.fromkeys(list(h.get("custom") or []) + list(found["custom"])))
+    if found.get("dynamic_universe"):
+        h["dynamic_universe"] = True
+    msg = "resolved by running initialize() in the sandbox" + (f" (it stopped early: {found['error']})" if found.get("error") else "")
+    h["report"] = [dict(r, level="approximated", message=msg) if r["message"] == UNRESOLVED else r for r in h.get("report") or []]
+    h["discovered"] = True
     return h
 
 
@@ -2706,7 +2780,8 @@ def prepare_source(code: str) -> str:
 
 NAMES = {k: v for k, v in globals().items() if k in (
     "QCAlgorithm", "Resolution", "OrderStatus", "OrderDirection", "OrderType", "MovingAverageType",
-    "DataNormalizationMode", "BrokerageName", "AccountType", "DayOfWeek", "Market", "SecurityType", "Symbol", "TradeBar", "Slice",
+    "DataNormalizationMode", "BrokerageName", "AccountType", "DayOfWeek", "Market", "SecurityType", "MorningstarSectorCode",
+    "Symbol", "TradeBar", "Slice",
     "RollingWindow", "SimpleMovingAverage", "ExponentialMovingAverage", "WildersMovingAverage", "RelativeStrengthIndex",
     "AverageTrueRange", "BollingerBands", "MovingAverageConvergenceDivergence", "RateOfChange", "RateOfChangePercent",
     "Momentum", "Maximum", "Minimum", "StandardDeviation", "AverageDirectionalIndex", "IndicatorDataPoint",

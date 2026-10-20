@@ -21,6 +21,8 @@ def main() -> None:
     spec = importlib.util.spec_from_file_location("codelab", engine_path)
     codelab = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(codelab)
+    if "--discover" in sys.argv:
+        return _discover_only(tmp, codelab)
     z = np.load(f"{tmp}/data.npz", allow_pickle=False)
     meta = json.loads(open(f"{tmp}/meta.json").read())
     code = open(f"{tmp}/strategy.py").read()
@@ -50,6 +52,30 @@ def main() -> None:
     # warm pandas' lazy imports before locking down
     pd.DataFrame({"a": [1.0, 2.0]}).rolling(2).mean().ewm(span=2).std().rank(axis=1)
 
+    hook, safe_builtins, result_path = _policy(tmp)
+    out = {}
+    try:
+        sys.addaudithook(hook)
+        st = codelab.load_strategy(code, {"__builtins__": safe_builtins, "__name__": "strategy"})
+        data = codelab.until(data, st.get("end"))                 # set_end_date: nothing after it is visible
+        out = codelab.evaluate(st["strategy"], data, st["params"], meta["start"], codelab.run_costs(st, meta["costs"]) or None, bm,
+                               st["holdout"], st["code_hash"], signal=None if meta.get("light") else st.get("signal"),
+                               on_bar=st.get("on_bar"), setup=st.get("setup"), light=bool(meta.get("light")))
+        out["provenance"]["runtime"] = f"server sandbox — pandas {pd.__version__}, numpy {np.__version__}"
+    except Exception as e:                                    # report the user's error, not ours
+        tb = traceback.extract_tb(e.__traceback__)
+        where = next((f" (line {f.lineno})" for f in reversed(tb) if f.filename == "<strategy>"), "")
+        if not where and tb:                                  # failure inside the platform: name the engine location
+            f = tb[-1]
+            where = f" (in the engine: {f.filename.rsplit('/', 1)[-1]}:{f.lineno}, {f.name})"
+        out = {"error": f"{type(e).__name__}: {e}{where}"[:500]}
+    with open(result_path, "w") as f:
+        json.dump(out, f)
+
+
+def _policy(tmp):
+    """The run-time lockdown: an audit hook (no sockets, subprocesses, ctypes or file writes except result.json) and the
+    builtins and import function strategy code gets."""
     # what strategy code itself may import (the static check in sandbox.py says the same); libraries import what they
     # need internally — the hook below still refuses sockets, subprocesses, ctypes and file writes at run time
     USER_IMPORTS = {"numpy", "pandas", "scipy", "sklearn", "statsmodels", "math", "cmath", "statistics", "random",
@@ -86,22 +112,26 @@ def main() -> None:
             raise ImportError(f"import of '{name}' is not allowed in strategy code")
         return real_import(name, globals, locals, fromlist, level)
     safe_builtins["__import__"] = limited_import
+    return hook, safe_builtins, result_path
+
+
+def _discover_only(tmp, codelab) -> None:
+    """--discover: run the algorithm's initialize() without data and write what it added (universe, custom data)."""
+    import ast as _ast
+    import types as _types
+    hook, safe_builtins, result_path = _policy(tmp)
+    code = open(f"{tmp}/strategy.py").read()
     out = {}
     try:
         sys.addaudithook(hook)
-        st = codelab.load_strategy(code, {"__builtins__": safe_builtins, "__name__": "strategy"})
-        data = codelab.until(data, st.get("end"))                 # set_end_date: nothing after it is visible
-        out = codelab.evaluate(st["strategy"], data, st["params"], meta["start"], codelab.run_costs(st, meta["costs"]) or None, bm,
-                               st["holdout"], st["code_hash"], signal=None if meta.get("light") else st.get("signal"),
-                               on_bar=st.get("on_bar"), setup=st.get("setup"), light=bool(meta.get("light")))
-        out["provenance"]["runtime"] = f"server sandbox — pandas {pd.__version__}, numpy {np.__version__}"
-    except Exception as e:                                    # report the user's error, not ours
-        tb = traceback.extract_tb(e.__traceback__)
-        where = next((f" (line {f.lineno})" for f in reversed(tb) if f.filename == "<strategy>"), "")
-        if not where and tb:                                  # failure inside the platform: name the engine location
-            f = tb[-1]
-            where = f" (in the engine: {f.filename.rsplit('/', 1)[-1]}:{f.lineno}, {f.name})"
-        out = {"error": f"{type(e).__name__}: {e}{where}"[:500]}
+        q = sys.modules["qcalgo"]
+        cls_name = q.find_class(_ast.parse(code)).name
+        ns = {"__builtins__": safe_builtins, "__name__": "strategy", **q.NAMES}
+        sys.modules.setdefault("strategy", _types.ModuleType("strategy"))
+        exec(compile(q.prepare_source(code), "<strategy>", "exec"), ns)      # noqa: S102 — inside the sandbox
+        out = q.discover(ns[cls_name])
+    except Exception as e:                                                   # noqa: BLE001
+        out = {"error": f"{type(e).__name__}: {str(e)[:300]}"}
     with open(result_path, "w") as f:
         json.dump(out, f)
 

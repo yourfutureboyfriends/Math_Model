@@ -159,6 +159,12 @@ def check(code: str) -> Dict[str, Any]:
             qc = qcalgo.static_header(code)
         except ValueError as e:
             raise SandboxError(str(e))
+        if qcalgo.needs_discovery(qc):                     # tickers built at run time: run initialize() in the sandbox
+            found = discover(code)
+            if found.get("universe") or found.get("dynamic_universe"):
+                qc = qcalgo.resolve(qc, found)
+            elif found.get("error"):
+                raise SandboxError(f"initialize() could not be run to find its tickers: {found['error']}")
         blocking = [r for r in qc["report"] if r["level"] == "unsupported"]
         if blocking:
             raise SandboxError("Not supported here: " + "; ".join(f"line {r['line']}: {r['feature']} — {r['message']}"
@@ -309,7 +315,7 @@ def ensure_image() -> None:
     _DOCKER.update(ok=None)
 
 
-def _docker_cmd(tmp: Path, name: str, cpu: int) -> list:
+def _docker_cmd(tmp: Path, name: str, cpu: int, extra: Optional[list] = None) -> list:
     """A throwaway container: no network, read-only root, no capabilities, no privilege escalation, an unprivileged
     user, memory / CPU / process caps; only the run's temp folder (data in, result out) and the engine are mounted."""
     return ["docker", "run", "--rm", "--name", name, "--network", "none", "--read-only",
@@ -319,7 +325,52 @@ def _docker_cmd(tmp: Path, name: str, cpu: int) -> list:
             "-v", f"{tmp}:/work:rw", "-v", f"{CHILD}:/engine/sandbox_child.py:ro",
             "-v", f"{ENGINE}:/engine/codelab.py:ro", "-v", f"{QCALGO}:/engine/qcalgo.py:ro",
             "-e", "HOME=/tmp", IMAGE,
-            "python", "-I", "/engine/sandbox_child.py", "/work", "/engine/codelab.py", "/engine/qcalgo.py"]
+            "python", "-I", "/engine/sandbox_child.py", "/work", "/engine/codelab.py", "/engine/qcalgo.py", *(extra or [])]
+
+
+_DISCOVERED: Dict[str, Dict[str, Any]] = {}
+
+
+def discover(code: str, timeout: int = 60) -> Dict[str, Any]:
+    """Run a QuantConnect algorithm's initialize() in the sandbox (container, else the process sandbox) without data, to
+    learn the tickers it adds when the static reader cannot follow them. Cached by the code's hash."""
+    import hashlib
+    import uuid
+    key = hashlib.sha256(code.encode()).hexdigest()
+    if key in _DISCOVERED:
+        return _DISCOVERED[key]
+    tmp = Path(tempfile.mkdtemp(prefix="qdisc_")).resolve()
+    try:
+        (tmp / "strategy.py").write_text(code)
+        dk = docker_status()
+        name = None
+        if dk["docker"]:
+            name = f"qdisc-{uuid.uuid4().hex[:12]}"
+            os.chmod(tmp, 0o777)
+            cmd, env = _docker_cmd(tmp, name, timeout, ["--discover"]), {**os.environ}
+        else:
+            cmd = [sys.executable, "-I", str(CHILD), str(tmp), str(ENGINE), str(QCALGO), "--discover"]
+            if sys.platform == "darwin" and shutil.which("sandbox-exec"):
+                (tmp / "profile.sb").write_text(_profile(tmp))
+                cmd = ["sandbox-exec", "-f", str(tmp / "profile.sb")] + cmd
+            env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp), "TMPDIR": str(tmp), "LANG": "C.UTF-8"}
+        try:
+            subprocess.run(cmd, cwd=tmp, env=env, capture_output=True, text=True, timeout=timeout + 30,
+                           preexec_fn=(lambda: _limits(timeout)) if os.name == "posix" and name is None else None)
+        except subprocess.TimeoutExpired:
+            if name:
+                subprocess.run(["docker", "kill", name], capture_output=True, timeout=20)
+            return {"universe": [], "error": "initialize() took too long to discover the universe"}
+        try:
+            out = json.loads((tmp / "result.json").read_text())
+        except Exception:                                                    # noqa: BLE001
+            out = {"universe": [], "error": "discovery produced no result"}
+        if len(_DISCOVERED) > 200:
+            _DISCOVERED.clear()
+        _DISCOVERED[key] = out
+        return out
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _profile(tmp: Path) -> str:
