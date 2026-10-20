@@ -9,7 +9,7 @@ import pytest
 from api.quant import codelab, customdata, qcalgo, sandbox
 from api.tests.test_qcalgo import _data
 
-TICKERS = ("SPY", "QQQ", "TLT", "GLD", "IEF", "XLK", "XLF", "XLE", "AAA", "BBB")
+TICKERS = ("SPY", "QQQ", "TLT", "GLD", "IEF", "XLK", "XLF", "XLE", "AAA", "BBB", "BTC-USD", "ETH-USD")
 
 CORPUS = {
 "basic_template_pascal": '''
@@ -344,6 +344,30 @@ class Collections(QCAlgorithm):
         self.Debug(f"{n} {len(held)}")
 ''',
 
+"crypto_venues_selectors": '''
+from AlgorithmImports import *
+class AbanicoWalkForwardAtr(QCAlgorithm):
+    def Initialize(self):
+        self.SetStartDate(2019, 6, 3)
+        self.SetCash(10000)
+        self.SetTimeZone(TimeZones.UTC)
+        self.SetBrokerageModel(BrokerageName.COINBASE, AccountType.CASH)
+        self.btc = self.AddCrypto("BTCUSD", Resolution.Daily, Market.COINBASE).Symbol
+        self.eth = self.add_crypto("ETHUSD", Resolution.DAILY, Market.Binance).symbol
+        self.atr = self.ATR(self.btc, 14, MovingAverageType.Wilders)
+        self.hi = self.MAX(self.btc, 20, Resolution.Daily, Field.High)
+        self.mid = self.SMA(self.btc, 20, Resolution.Daily, Field.TypicalPrice)
+        self.venue = (Market.KRAKEN, Market.Bybit, BrokerageName.KRAKEN, TimeZones.NEW_YORK, SecurityType.CRYPTO)
+    def OnData(self, data):
+        if not (self.atr.IsReady and self.hi.IsReady):
+            return
+        price = self.Securities[self.btc].Price
+        if price >= self.hi.Current.Value and not self.Portfolio[self.btc].Invested:
+            self.SetHoldings(self.btc, 0.9)
+        elif self.Portfolio[self.btc].Invested and price < self.mid.Current.Value - 2 * self.atr.Current.Value:
+            self.Liquidate(self.btc)
+''',
+
 "custom_data_signal": '''
 from AlgorithmImports import *
 class Signal(PythonData):
@@ -458,3 +482,15 @@ def test_failed_discovery_names_the_error():
     bad = MULTI_FILE.replace("return datetime(2019, 6, 3)", "return undefined_name")
     with pytest.raises(sandbox.SandboxError, match="NameError"):
         sandbox.check(bad)
+
+
+
+def test_field_selector_feeds_the_chosen_price():
+    st = codelab.load_strategy(CORPUS["crypto_venues_selectors"])
+    d = _data(n=600, tickers=TICKERS, seed=7)
+    codelab.backtest(None, d, {"capital": 100_000}, st["start"], on_bar=st["on_bar"])
+    algo = st["on_bar"].state["algo"]
+    last = algo.time
+    hi20 = d.high["BTC-USD"].loc[:last].tail(20).max()
+    assert abs(algo.hi.current.value - hi20) < 1e-9                  # MAX over highs, not closes
+    assert algo.venue == ("kraken", "bybit", "kraken", "America/New_York", "crypto")

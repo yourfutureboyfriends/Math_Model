@@ -2350,7 +2350,10 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
             if b is None:
                 continue
             for ind in inds:
-                if getattr(ind, "_bars", False):
+                sel = getattr(ind, "_selector", None)
+                if sel is not None:
+                    ind.update(b.time, float(sel(b)))
+                elif getattr(ind, "_bars", False):
                     ind.update(b)
                 else:
                     ind.update(b.time, b.close)
@@ -3853,3 +3856,105 @@ Slice.Values = property(lambda self: self.values())
 Slice.Count = property(lambda self: len(self))
 Slice.__iter__ = lambda self: iter([_KVP(b.symbol, b) for b in self._b.values()])
 ObjectStore.Keys = property(lambda self: list(self._d))
+
+
+# ── label enums: every LEAN member works (unknown ones pass through as their name) ──────────────────────
+class _PassThroughMeta(type):
+    """Market.COINBASE, BrokerageName.KRAKEN, TimeZones.TOKYO …: these only label things on daily data, so any member LEAN
+    has resolves (to its lower-case name) instead of stopping the algorithm."""
+
+    def __getattr__(cls, name):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return _snake(name)
+
+
+class Market(_Enum, metaclass=_PassThroughMeta):
+    USA, OANDA, FXCM, DUKASCOPY, BITFINEX, GDAX, COINBASE, BINANCE, BINANCE_US, KRAKEN, BYBIT, BITSTAMP = (
+        "usa", "oanda", "fxcm", "dukascopy", "bitfinex", "coinbase", "coinbase", "binance", "binanceus", "kraken", "bybit",
+        "bitstamp")
+    CME, CBOT, NYMEX, COMEX, ICE, CFE, CBOE, NASDAQ, NYSE, INDIA, NSE, SGX, HKFE, EUREX, OSE, JAPAN, FTX, INTERACTIVE_BROKERS = (
+        "cme", "cbot", "nymex", "comex", "ice", "cfe", "cboe", "nasdaq", "nyse", "india", "nse", "sgx", "hkfe", "eurex",
+        "ose", "japan", "ftx", "interactivebrokers")
+
+
+class BrokerageName(_Enum, metaclass=_PassThroughMeta):
+    DEFAULT, INTERACTIVE_BROKERS_BROKERAGE, ALPACA, TRADIER_BROKERAGE, QUANTCONNECT_BROKERAGE = (
+        "default", "ibkr", "alpaca", "tradier", "default")
+    COINBASE, GDAX, BINANCE, BINANCE_US, KRAKEN, BITFINEX, BYBIT, OANDA_BROKERAGE, FXCM_BROKERAGE, TD_AMERITRADE, CHARLES_SCHWAB = (
+        "coinbase", "coinbase", "binance", "binanceus", "kraken", "bitfinex", "bybit", "oanda", "fxcm", "tdameritrade",
+        "schwab")
+
+
+class SecurityType(_Enum, metaclass=_PassThroughMeta):
+    EQUITY, FOREX, CRYPTO, CRYPTO_FUTURE, CFD, INDEX, OPTION, FUTURE, FUTURE_OPTION, INDEX_OPTION, BASE = (
+        "equity", "forex", "crypto", "cryptofuture", "cfd", "index", "option", "future", "futureoption", "indexoption", "base")
+
+
+class DataNormalizationMode(_Enum, metaclass=_PassThroughMeta):
+    ADJUSTED, RAW, SPLIT_ADJUSTED, TOTAL_RETURN, FORWARD_PANAMA_CANAL, BACKWARDS_RATIO = (
+        "adjusted", "raw", "split_adjusted", "total_return", "forward_panama_canal", "backwards_ratio")
+
+
+class TimeZones(_Enum, metaclass=_PassThroughMeta):
+    NEW_YORK, UTC, CHICAGO, LONDON, TOKYO, HONG_KONG, SINGAPORE, SYDNEY, FRANKFURT, PARIS, ZURICH, TORONTO, KOLKATA = (
+        "America/New_York", "UTC", "America/Chicago", "Europe/London", "Asia/Tokyo", "Asia/Hong_Kong", "Asia/Singapore",
+        "Australia/Sydney", "Europe/Berlin", "Europe/Paris", "Europe/Zurich", "America/Toronto", "Asia/Kolkata")
+
+
+class OptionRight(_Enum, metaclass=_PassThroughMeta):
+    CALL, PUT = "call", "put"
+
+
+class OptionStyle(_Enum, metaclass=_PassThroughMeta):
+    AMERICAN, EUROPEAN = "american", "european"
+
+
+class Field:
+    """Indicator input selectors: self.sma(symbol, 20, Resolution.DAILY, Field.HIGH)."""
+    OPEN = staticmethod(lambda b: b.open)
+    HIGH = staticmethod(lambda b: b.high)
+    LOW = staticmethod(lambda b: b.low)
+    CLOSE = VALUE = staticmethod(lambda b: b.close)
+    VOLUME = staticmethod(lambda b: b.volume)
+    AVERAGE = staticmethod(lambda b: (b.open + b.high + b.low + b.close) / 4)
+    MEDIAN = staticmethod(lambda b: (b.high + b.low) / 2)
+    TYPICAL_PRICE = staticmethod(lambda b: (b.high + b.low + b.close) / 3)
+    WEIGHTED_CLOSE = staticmethod(lambda b: (b.high + b.low + 2 * b.close) / 4)
+    SEVEN_BAR = SDEV = None
+
+
+for _cls in (Market, BrokerageName, SecurityType, DataNormalizationMode, TimeZones, OptionRight, OptionStyle, Field):
+    _alias_both_spellings(_cls)
+for _n in ("Open", "High", "Low", "Close", "Value", "Volume", "Average", "Median", "TypicalPrice", "WeightedClose"):
+    setattr(Field, _n, getattr(Field, _snake(_n).upper()))
+NAMES.update({"Market": Market, "BrokerageName": BrokerageName, "SecurityType": SecurityType,
+              "DataNormalizationMode": DataNormalizationMode, "TimeZones": TimeZones, "OptionRight": OptionRight,
+              "OptionStyle": OptionStyle, "Field": Field})
+
+# ── indicator selectors: a callable (Field.HIGH, lambda bar: …) after the period feeds that value, not the close ──
+_SELECTOR_HELPERS = ("sma", "ema", "rsi", "bb", "macd", "roc", "rocp", "momp", "mom", "max", "min", "std", "wma", "lwma",
+                     "hma", "dema", "tema", "kama", "trix", "apo", "ppo", "cmo", "logr", "delay", "identity")
+
+
+def _with_selector(fn):
+    def wrapped(self, symbol, *a, **k):
+        sel = k.pop("selector", None)
+        rest = []
+        for x in a:
+            if sel is None and callable(x) and not isinstance(x, type) and not isinstance(x, str):
+                sel = x
+            else:
+                rest.append(x)
+        ind = fn(self, symbol, *rest, **k)
+        if sel is not None:
+            ind._selector = sel
+        return ind
+    wrapped.__doc__ = fn.__doc__
+    return wrapped
+
+
+for _n in _SELECTOR_HELPERS:
+    if _n in QCAlgorithm.__dict__:
+        setattr(QCAlgorithm, _n, _with_selector(QCAlgorithm.__dict__[_n]))
+        setattr(QCAlgorithm, _n.upper(), getattr(QCAlgorithm, _n))
