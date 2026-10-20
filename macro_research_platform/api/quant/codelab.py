@@ -1516,6 +1516,79 @@ def tradable_spec(x: Any) -> Optional[str]:
     return "+".join(toks) or None
 
 
+import re as _re
+
+# Multi-file projects (QuantConnect's main.py + alpha.py + …): further files follow a marker line in the same editor —
+#     # file: alpha.py            (also "# ---- alpha.py ----"; folders: "# file: alphas/rsi.py" → import alphas.rsi)
+_FILE_MARK = _re.compile(r"^\s*#\s*(?:-{2,}\s*)?(?:file\s*[:=]\s*)?([A-Za-z_][\w]*(?:/[A-Za-z_][\w]*)*\.py)\s*(?:-{2,})?\s*$",
+                         _re.IGNORECASE)
+
+
+def split_project(code: str):
+    """(main source, {module name: source}) — line numbers of every part are preserved (other parts become blank
+    lines), so errors still point at the line in the editor."""
+    lines = code.splitlines()
+    marks = [(k, m.group(1)) for k, ln in enumerate(lines) if (m := _FILE_MARK.match(ln)) and (
+        "file" in ln.lower() or "--" in ln)]
+    if not marks:
+        return code, {}
+    parts = {}
+    bounds = marks + [(len(lines), None)]
+    main = lines[:marks[0][0]]
+    for (k, fname), (k2, _) in zip(bounds[:-1], bounds[1:]):
+        body = [""] * (k + 1) + lines[k + 1:k2]
+        if fname.lower() in ("main.py",):
+            main = main + [""] * (k + 1 - len(main)) + lines[k + 1:k2]
+            continue
+        parts[fname[:-3].replace("/", ".")] = "\n".join(body)
+    return "\n".join(main + [""] * (len(lines) - len(main))), parts
+
+
+def _exec_project(code: str, ns: Dict[str, Any]) -> None:
+    """Execute the main file in `ns`; project files are importable modules, executed on first import with the same
+    builtins and platform names (np, pd, the QuantConnect API)."""
+    import builtins as _bi
+    import sys as _sys
+    import types as _types
+    main, files = split_project(code)
+    if files:
+        base = {k: v for k, v in ns.items() if not k.startswith("__")}
+        b = ns.get("__builtins__", _bi)
+        b = dict(b) if isinstance(b, dict) else dict(vars(b))
+        real_import = b["__import__"]
+        loaded: Dict[str, Any] = {}
+
+        def project_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if level == 0 and (name in files or any(f.startswith(name + ".") for f in files)):
+                mods = [name.split(".")[:k + 1] for k in range(name.count(".") + 1)]
+                for parts in mods:
+                    mname = ".".join(parts)
+                    if mname in loaded:
+                        continue
+                    m = _types.ModuleType(mname)
+                    m.__dict__.update({**base, "__builtins__": b, "__name__": mname})
+                    if mname not in files:
+                        m.__path__ = []                                  # a package folder
+                    loaded[mname] = m
+                    _sys.modules[mname] = m
+                    if mname in files:
+                        exec(compile(files[mname], f"<{mname.replace('.', '/')}.py>", "exec"), m.__dict__)  # noqa: S102
+                    if len(parts) > 1:
+                        setattr(loaded[".".join(parts[:-1])], parts[-1], m)
+                if fromlist:
+                    mod = loaded[name]
+                    for f in fromlist or ():
+                        sub = f"{name}.{f}"
+                        if sub in files and sub not in loaded:
+                            project_import(sub)
+                    return mod
+                return loaded[name.split(".")[0]]
+            return real_import(name, globals, locals, fromlist, level)
+        b["__import__"] = project_import
+        ns["__builtins__"] = b
+    exec(compile(main, "<strategy>", "exec"), ns)                            # noqa: S102 — see load_strategy
+
+
 def _custom_spec(value, qc) -> List[str]:
     names = list((qc or {}).get("custom") or [])
     vals = [] if value in (None, False, "", []) else ([value] if isinstance(value, str) else list(value))
@@ -1546,11 +1619,14 @@ def load_strategy(code: str, namespace: Optional[Dict[str, Any]] = None) -> Dict
             qc = _qc.static_header(code)
             ns.update(_qc.NAMES)
             code = _qc.prepare_source(code)
-    exec(compile(code, "<strategy>", "exec"), ns)                    # noqa: S102 — see docstring
+    _exec_project(code, ns)                                         # noqa: S102 — see docstring (multi-file aware)
     fn = ns.get("strategy")
     ob = ns.get("on_bar")
-    if qc is not None and _qc.needs_discovery(qc):                   # tickers the static reader could not follow
+    if qc is not None and _qc.needs_discovery(qc):                   # values the static reader could not follow
         qc = _qc.resolve(qc, _qc.discover(ns[qc["class"]]))
+        blocking = [r for r in qc["report"] if r["level"] == "unsupported" and r["message"].startswith("could not be read")]
+        if blocking:
+            raise ValueError(f"line {blocking[0]['line']}: {blocking[0]['feature']} {blocking[0]['message']}")
     if qc is not None:                                               # a QuantConnect-style algorithm class
         fn, ob = None, _qc.adapter(ns[qc["class"]], qc)
         # the header comes from the algorithm — module variables named UNIVERSE / START … are the user's own

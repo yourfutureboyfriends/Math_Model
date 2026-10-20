@@ -333,6 +333,31 @@ async def code_job_submit(body: JobIn, request: Request):
     return j.view(False)
 
 
+@router.get("/api/v1/quant/lean/status")
+async def lean_status(request: Request):
+    """Whether algorithms can run on QuantConnect's real LEAN engine here (Docker + the quantconnect/lean image)."""
+    from api.quant import leanrun
+    _user(request)
+    return await asyncio.to_thread(leanrun.status, True)
+
+
+@router.post("/api/v1/quant/lean/jobs")
+async def lean_job_submit(body: JobIn, request: Request):
+    """Backtest a QuantConnect algorithm on real LEAN (unmodified engine, platform daily data) as a background job;
+    poll GET /api/v1/quant/code/jobs/{id}."""
+    from api.quant import jobs, leanrun, sandbox
+    u = _user(request)
+    try:
+        sandbox.check(body.code)
+    except sandbox.SandboxError as e:
+        _spec_error(e)
+    try:
+        j = jobs.submit(u["username"], "lean_run", lambda job: leanrun.run(body.code, job))
+    except ValueError as e:
+        raise HTTPException(429, str(e))
+    return j.view(False)
+
+
 @router.get("/api/v1/quant/code/jobs/{job_id}")
 async def code_job_status(job_id: str, request: Request):
     from api.quant import jobs

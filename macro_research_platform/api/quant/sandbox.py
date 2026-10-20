@@ -110,13 +110,24 @@ def check(code: str) -> Dict[str, Any]:
     clash = sorted(self_attrs & QC_PRIVATE)
     if clash and "QCAlgorithm" in code:
         raise SandboxError(f"self.{clash[0]} is a name the QuantConnect API uses internally — pick another name.")
+    from api.quant.codelab import split_project
+    project = {name.split(".")[0] for name in split_project(code)[1]}       # the project's own files (# file: alpha.py)
     for node in ast.walk(tree):
         line = getattr(node, "lineno", "?")
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             mods = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or ""]
+            if isinstance(node, ast.ImportFrom) and node.level:              # relative import inside the project
+                continue
             for m in mods:
                 root = m.split(".")[0]
+                if root in project and root not in BLOCKED_IMPORT_ROOTS:
+                    continue
                 if root in BLOCKED_IMPORT_ROOTS or root not in ALLOWED_IMPORT_ROOTS:
+                    if root not in BLOCKED_IMPORT_ROOTS:
+                        raise SandboxError(f"Line {line}: there is no module '{m}'. If it is a file of your QuantConnect "
+                                           f"project, paste it below a line '# file: {m.replace('.', '/')}.py'. Available "
+                                           "libraries: numpy, pandas, scipy, scikit-learn, statsmodels and the standard "
+                                           "library without I/O.")
                     raise SandboxError(f"Line {line}: '{m}' cannot be imported in strategy code (no file, network or "
                                        f"system access). Available: numpy, pandas, scipy, scikit-learn, statsmodels, math, "
                                        f"statistics, datetime, collections, itertools, functools, dataclasses, typing, re, json …")

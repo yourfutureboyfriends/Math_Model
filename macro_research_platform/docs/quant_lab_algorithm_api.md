@@ -58,6 +58,24 @@ Top-level `PARAMS = {"name": [values]}` still drives walk-forward; read the curr
 | Universes | `add_universe(selector)` runs each session on **point-in-time S&P 500 members** with a bar (`symbol, price, volume, dollar_volume`); additions/removals call `on_securities_changed`; `universe.etf("SPY")` = point-in-time S&P 500 | no market cap or Morningstar fields; other ETFs' historical constituents are not free |
 | History | `history(symbols, n | timedelta)` → DataFrame (symbol, time) × OHLCV, never past the current bar | same shape |
 
+## Two engines
+
+| | Built-in layer (default, `Run`) | Real LEAN (`Run on real LEAN`) |
+|---|---|---|
+| Engine | a Python re-implementation of LEAN's API (qc-compat) on the Code Lab engine | QuantConnect's own LEAN, unmodified (`quantconnect/lean` image) |
+| Data | platform daily data: any market, FX, crypto, point-in-time S&P 500 universes, SEC fundamentals, custom uploads | the same daily US-equity prices written in LEAN's format (factor 1: already adjusted) |
+| Use when | universes, custom data, non-US listings, research checks (look-ahead, capacity, Monte Carlo) | exact LEAN behaviour for anything LEAN supports on daily US equities |
+
+Real LEAN runs in a container with no network and dropped capabilities; it needs Docker running and the image
+(~40 GB unpacked). Dynamic universes and custom data stay on the built-in layer (QuantConnect's universe data is not
+free, and LEAN would fetch custom data over the network).
+
+## Multi-file projects
+
+QuantConnect projects with several files: paste each extra file below a marker line —
+`# file: alpha.py` (folders: `# file: alphas/rsi.py` → `import alphas.rsi`). Everything above the first marker is
+`main.py`. The files are importable in both engines; line numbers in errors stay the editor's.
+
 ## How the universe is found
 
 The importer reads `initialize()` without running it to learn which prices to load. When a ticker comes from something

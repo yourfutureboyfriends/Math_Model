@@ -2875,9 +2875,25 @@ def resolve(header: Dict[str, Any], found: Dict[str, Any]) -> Dict[str, Any]:
     for k in ("start", "end", "capital", "benchmark"):
         if found.get(k) is not None and h.get(k) is None:
             h[k] = found[k]
-    msg = "resolved by running initialize() in the sandbox" + (f" (it stopped early: {found['error']})" if found.get("error") else "")
-    h["report"] = [{**{k: v for k, v in r.items() if k != "discover"}, "level": "approximated", "message": msg}
-                   if (r.get("discover") or r["message"] == UNRESOLVED) else r for r in h.get("report") or []]
+    field = {"set_start_date": "start", "set_end_date": "end", "set_cash": "capital", "set_benchmark": "benchmark"}
+    err = found.get("error")
+
+    def done(r) -> bool:
+        k = field.get(r["feature"])
+        return (found.get(k) is not None) if k else bool(found.get("universe") or found.get("dynamic_universe"))
+    out = []
+    for r in h.get("report") or []:
+        if not (r.get("discover") or r["message"] == UNRESOLVED):
+            out.append(r)
+            continue
+        base = {k: v for k, v in r.items() if k != "discover"}
+        if done(r):
+            out.append({**base, "level": "approximated", "message": "resolved by running initialize() in the sandbox"
+                        + (f" (it stopped early: {err})" if err else "")})
+        else:
+            out.append({**base, "level": "unsupported", "message": "could not be read: running initialize() failed with "
+                        + (err or "no value set") + " — fix that error and check again"})
+    h["report"] = out
     h["discovered"] = True
     return h
 

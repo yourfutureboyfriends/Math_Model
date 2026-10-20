@@ -428,6 +428,27 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
       .then((j) => setNote(`Stored as run #${j.id} — reopen or compare it in Runs & compare.`)).catch(() => {});
   };
 
+  // QuantConnect algorithms on QuantConnect's own LEAN engine (unmodified; platform daily data) as a server job
+  const [lean, setLean] = useState<any>(null);
+  const [leanOk, setLeanOk] = useState<any>(null);
+  useEffect(() => { api('/api/v1/quant/lean/status').then(setLeanOk).catch(() => setLeanOk(null)); }, []);
+  const runLean = async () => {
+    setBusy(true); setErr(null); setNote(null); setLean(null);
+    try {
+      const job = await api('/api/v1/quant/lean/jobs', { json: { code } });
+      setJobId(job.id);
+      let j = job;
+      while (j.state === 'queued' || j.state === 'running') {
+        setStatus(`${j.message} (${Math.round(j.elapsed_s ?? 0)} s)`);
+        await new Promise((res) => setTimeout(res, 2000));
+        j = await api(`/api/v1/quant/code/jobs/${job.id}`);
+      }
+      setJobId(null);
+      if (j.state !== 'done') throw new Error(j.state === 'cancelled' ? 'Cancelled.' : (j.error || 'The LEAN run failed.'));
+      setLean(j.result);
+    } catch (e: any) { setErr(e.message); } finally { setStatus(null); setBusy(false); }
+  };
+
   const cancelJob = async () => {
     if (jobId) await api(`/api/v1/quant/code/jobs/${jobId}`, { method: 'DELETE' }).catch(() => {});
   };
@@ -520,6 +541,12 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
             <button onClick={run} disabled={busy} className="inline-flex items-center gap-1 px-3 py-1 text-2xs bg-bloomberg text-bg disabled:opacity-50" aria-label="Run (Ctrl/⌘ + Enter)" title="Ctrl/⌘ + Enter">
               {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}Run
             </button>
+            {code.includes('QCAlgorithm') && (
+              <button onClick={runLean} disabled={busy || !leanOk?.available}
+                title={leanOk?.available ? `Run on QuantConnect's own LEAN engine (${leanOk.image}) with the platform's daily data` : `Real LEAN unavailable: ${leanOk?.reason ?? 'checking…'}`}
+                className="inline-flex items-center gap-1 px-3 py-1 text-2xs border border-bloomberg text-bloomberg disabled:opacity-40">
+                <Play className="w-3 h-3" />Run on real LEAN
+              </button>)}
             {canSave && <button onClick={() => save(false)} disabled={busy} className="inline-flex items-center gap-1 px-3 py-1 text-2xs border border-border hover:border-bloomberg"><Save className="w-3 h-3" />{strategyId ? 'Save' : 'Save as'}</button>}
             {canSave && strategyId && <button onClick={() => save(true)} disabled={busy} className="px-3 py-1 text-2xs border border-border hover:border-bloomberg">Save copy</button>}
             {canDeploy && (
@@ -538,6 +565,9 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
                 : `Runs here, but can't be deployed: ${check.error}`}
             </div>)}
           {(check as any)?.qc && <QcReport qc={(check as any).qc} />}
+          {code.includes('QCAlgorithm') && leanOk?.available && ((check as any)?.ok === false || ((check as any)?.qc?.report ?? []).some((r: any) => r.level !== 'approximated')) && (
+            <div className="text-[10px] text-bloomberg">The built-in layer flags something here — <b>Run on real LEAN</b> runs this algorithm unmodified on QuantConnect's own engine (daily US equities; dynamic universes and custom data stay on the built-in layer).</div>)}
+          {lean && <LeanResult r={lean} />}
           <CustomData />
           {status && <div className="flex items-center gap-2 text-2xs text-text-secondary"><Loader2 className="w-3 h-3 animate-spin" />{status}
             {jobId && <button onClick={cancelJob} className="ml-2 px-2 py-0.5 border border-border hover:border-red hover:text-red">Cancel</button>}</div>}
@@ -625,6 +655,8 @@ function ApiHelp() {
         <li>Optional <code>signal(data, **params)</code> returning scores (dates × tickers): the lab reports its information coefficient by horizon, quintile returns and turnover.</li>
         <li>Every run is checked for look-ahead (decisions recomputed from earlier data must match) and, with PARAMS, for overfitting (PBO); you also get attribution, today's ex-ante risk with crisis stress tests and a capacity curve.</li>
         <li><b>Python</b>: ordinary Python — your own classes and inheritance, decorators, <code>@dataclass</code>, properties, <code>super()</code> — and numpy, pandas, scipy, scikit-learn, statsmodels plus the standard library without I/O (math, statistics, collections, itertools, functools, datetime, re, json…), in the browser and when deployed. Not available: files, network, <code>os</code>/<code>sys</code>/<code>subprocess</code>, <code>eval</code>/<code>exec</code>, and the engine's internals (they hold future prices).</li>
+        <li><b>Multi-file QuantConnect projects</b>: paste each extra file below a line <code># file: alpha.py</code> (folders: <code># file: alphas/rsi.py</code> → <code>import alphas.rsi</code>); <code>main.py</code> is everything above the first marker.</li>
+        <li><b>Real LEAN</b>: a QuantConnect algorithm can also run on QuantConnect's own engine (button next to Run) — exact LEAN behaviour on the platform's daily US-equity data. Dynamic universes and custom data use the built-in layer.</li>
         <li><b>Custom data</b>: upload a CSV (below the editor) and use <code>CUSTOM_DATA = ["name"]</code> → <code>data.custom["name"]</code> (as of each session; <code>_new</code> marks fresh rows).</li>
         <li><b>Server runs</b> happen in a throwaway Docker container — no network, read-only filesystem, no capabilities, unprivileged — or a process sandbox when Docker is not running. <code>print()</code> shows in Output.</li>
       </ul>
@@ -1042,5 +1074,25 @@ function CustomData() {
             </tr>))}</tbody></table>)}
       </div>
     </details>
+  );
+}
+
+
+/** A backtest from QuantConnect's own LEAN engine: its statistics, equity curve and orders, as LEAN reports them. */
+function LeanResult({ r }: { r: any }) {
+  const stats: [string, any][] = Object.entries(r.statistics ?? {});
+  const curve = (r.equity_curve ?? []).map((p: any) => ({ date: p.date, equity: p.equity }));
+  return (
+    <div className="border border-bloomberg/40 bg-surface-1 p-2 space-y-2 text-[11px]">
+      <div className="text-xs font-semibold text-text-primary">Real LEAN result <span className="font-normal text-text-tertiary">· {r.engine} · {r.image}{r.image_date ? ` (${r.image_date})` : ''} · {r.order_count} orders</span></div>
+      {curve.length > 1 && <LineChart rows={curve} x="date" height={220} fmt={(v) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+        lines={[{ key: 'equity', label: 'Equity (LEAN)', color: '#3987e5' }]} />}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-0.5 font-mono">
+        {stats.map(([k, v]) => <div key={k} className="flex justify-between gap-2"><span className="text-text-tertiary truncate">{k}</span><span className="text-text-primary">{String(v)}</span></div>)}
+      </div>
+      {r.runtime_errors?.length > 0 && <div className="text-red">{r.runtime_errors.join(' | ')}</div>}
+      {r.data?.skipped?.length > 0 && <div className="text-amber">Not run on LEAN (no US-equity data): {r.data.skipped.join(', ')}</div>}
+      <div className="text-text-tertiary">Data: {r.data?.source} · {r.data?.data_start} → {r.data?.data_end}. Isolation: {r.isolation}.</div>
+    </div>
   );
 }

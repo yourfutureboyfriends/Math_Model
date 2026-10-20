@@ -407,3 +407,54 @@ def test_header_values_from_variables_are_discovered():
     q = st["qc"]
     assert q["start"] == "2019-06-03" and q["end"] == "2020-12-31" and q["capital"] == 100000.0
     assert q["benchmark"] == "QQQ" and set(q["universe"]) == {"QQQ", "TLT"}
+
+
+MULTI_FILE = '''from AlgorithmImports import *
+from alpha import ReversalAlpha
+from helpers.dates import start_of
+class ShortTermReversalAlgorithm(QCAlgorithm):
+    def initialize(self):
+        self.set_start_date(start_of())
+        self.set_cash(100000)
+        self.universe_settings.resolution = Resolution.DAILY
+        self.add_universe(self.select)
+        self.add_alpha(ReversalAlpha())
+        self.set_portfolio_construction(EqualWeightingPortfolioConstructionModel())
+    def select(self, fundamental):
+        return [f.symbol for f in sorted(fundamental, key=lambda f: f.dollar_volume)[-3:]]
+# file: alpha.py
+from AlgorithmImports import *
+class ReversalAlpha(AlphaModel):
+    def update(self, algorithm, data):
+        out = []
+        for symbol in data.keys():
+            h = algorithm.history(symbol, 6)
+            if len(h) == 6 and h["close"].iloc[-1] < h["close"].iloc[0]:
+                out.append(Insight.price(symbol, timedelta(days=5), InsightDirection.UP))
+        return out
+# file: helpers/dates.py
+from datetime import datetime
+def start_of():
+    return datetime(2019, 6, 3)
+'''
+
+
+def test_multi_file_project_imports_checks_and_runs():
+    h = sandbox.check(MULTI_FILE)                                   # server: discovery in the sandbox, project imports
+    assert h["start"] == "2019-06-03" and h["qc"]["dynamic_universe"]
+    st = codelab.load_strategy(MULTI_FILE)
+    assert not [r for r in st["qc"]["report"] if r["level"] in ("unsupported", "check")]
+    d = _data(n=600, tickers=TICKERS, seed=7)
+    codelab.backtest(None, d, {"capital": 100_000}, st["start"], on_bar=st["on_bar"])
+    assert st["on_bar"].state["algo"]._framework.count >= 0
+
+
+def test_unknown_module_says_how_to_add_a_project_file():
+    with pytest.raises(sandbox.SandboxError, match="# file: alpha.py"):
+        sandbox.check(MULTI_FILE.split("# file: alpha.py")[0])
+
+
+def test_failed_discovery_names_the_error():
+    bad = MULTI_FILE.replace("return datetime(2019, 6, 3)", "return undefined_name")
+    with pytest.raises(sandbox.SandboxError, match="NameError"):
+        sandbox.check(bad)

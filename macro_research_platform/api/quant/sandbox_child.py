@@ -128,7 +128,7 @@ def _discover_only(tmp, codelab) -> None:
         cls_name = q.find_class(_ast.parse(code)).name
         ns = {"__builtins__": safe_builtins, "__name__": "strategy", **q.NAMES}
         sys.modules.setdefault("strategy", _types.ModuleType("strategy"))
-        exec(compile(q.prepare_source(code), "<strategy>", "exec"), ns)      # noqa: S102 — inside the sandbox
+        codelab._exec_project(q.prepare_source(code), ns)                    # noqa: S102 — inside the sandbox
         out = q.discover(ns[cls_name])
     except Exception as e:                                                   # noqa: BLE001
         out = {"error": f"{type(e).__name__}: {str(e)[:300]}"}
