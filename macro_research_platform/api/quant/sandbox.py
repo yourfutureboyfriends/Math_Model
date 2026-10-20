@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -34,27 +35,53 @@ ENGINE = HERE / "codelab.py"
 QCALGO = HERE / "qcalgo.py"                      # the QuantConnect-style API, loaded beside the engine
 TIMEOUT_S = 240
 MAX_CODE = 40_000
+IMAGE = "macro-quant-sandbox:1"                  # built from api/quant/sandbox_image/Dockerfile (ensure_image)
+IMAGE_DIR = HERE / "sandbox_image"
+_DOCKER: Dict[str, Any] = {"ok": None, "at": 0.0, "why": None}
 
-ALLOWED_IMPORTS = {"numpy": "np", "pandas": "pd", "math": None, "datetime": None}
-# Algorithm classes (QuantConnect-style): the class may derive from QCAlgorithm (or nothing / object, for helper classes
-# such as SymbolData); methods may be named like these dunders and nothing else; `self._name` is allowed only for names
-# the code itself assigns on self and that the API does not use internally.
-CLASS_BASES = {"QCAlgorithm", "object"}
-DUNDER_METHODS = {"__init__", "__repr__", "__str__", "__len__", "__lt__", "__le__", "__gt__", "__ge__", "__eq__", "__hash__"}
+# Isolation lives at the process / container level (see run): a throwaway Docker container with no network, a
+# read-only root filesystem, no capabilities and an unprivileged user; macOS sandbox-exec + an audit hook when Docker is
+# not running. The code check below is therefore a short blocklist, not a whitelist of Python: any class, decorator,
+# super(), properties, private names and the scientific stack are allowed.
+ALLOWED_IMPORT_ROOTS = {
+    # data and science
+    "numpy", "pandas", "scipy", "sklearn", "statsmodels", "math", "cmath", "statistics", "random", "decimal", "fractions",
+    "numbers",
+    # standard library without I/O
+    "datetime", "time", "calendar", "zoneinfo", "collections", "itertools", "functools", "operator", "heapq", "bisect",
+    "array", "copy", "enum", "dataclasses", "typing", "abc", "re", "string", "textwrap", "json", "hashlib", "uuid",
+    "warnings", "contextlib", "pprint",
+    # QuantConnect imports (names are provided by the platform)
+    "AlgorithmImports", "QuantConnect", "System",
+}
+BLOCKED_IMPORT_ROOTS = {"os", "sys", "subprocess", "socket", "ctypes", "cffi", "importlib", "builtins", "shutil", "pathlib",
+                        "io", "pickle", "marshal", "shelve", "multiprocessing", "threading", "concurrent", "signal",
+                        "requests", "urllib", "http", "ftplib", "smtplib", "asyncio", "code", "codeop", "gc", "inspect",
+                        "pty", "resource", "mmap", "tempfile", "glob", "webbrowser"}
+# kept for the static report of what the API uses internally (and the engine-integrity rule below)
 QC_PRIVATE = {"_ctx", "_capital", "_tickets", "_indicators", "_selectors", "_warm", "_approx", "_log", "_params", "_algo",
-              "_account", "_unsettled", "_lots", "_realized", "_rejected", "_seed",
-              "_d", "_b", "_w", "_v", "_args", "_bars", "_fn", "_a", "_ma", "_buf", "_prev", "_prev_close"}
-BANNED_NAMES = {"eval", "exec", "compile", "open", "getattr", "setattr", "delattr", "globals", "locals", "vars",
-                "input", "breakpoint", "help", "exit", "quit", "memoryview", "type", "super", "classmethod",
-                "staticmethod", "property", "object", "__import__", "__builtins__", "dir", "id", "hash"}
-BANNED_ATTRS = {"load", "save", "savez", "savez_compressed", "fromfile", "tofile", "memmap", "loadtxt", "savetxt",
-                "genfromtxt", "fromregex", "ctypeslib", "ctypes", "lib", "f2py", "testing", "distutils", "DataSource",
-                "eval", "query", "io", "api", "HDFStore", "ExcelWriter", "ExcelFile", "plotting", "plot", "style",
-                "system", "popen", "environ", "getenv", "os", "sys", "builtins", "modules", "import_module",
-                "frame", "f_globals", "f_locals", "f_back", "gi_frame", "cr_frame", "tb_frame", "code", "format",
-                "format_map", "mro", "subclasses", "options", "set_option", "util", "core", "compat", "errors"}
+              "_account", "_unsettled", "_lots", "_realized", "_rejected", "_framework", "_consolidators", "_store"}
+# engine internals: the backtest context holds the whole price history, including the future — reading it would be
+# look-ahead, so these stay out of reach even though the sandbox would contain any damage
+ENGINE_INTERNALS = {"_ctx", "_data", "_framework", "_consolidators", "_store", "_tickets", "_capital"}
+# escape hatches out of Python's object model (harmless inside the container, blocked anyway as defence in depth)
+BANNED_DUNDERS = {"__class__", "__bases__", "__base__", "__subclasses__", "__mro__", "__globals__", "__code__",
+                  "__closure__", "__builtins__", "__dict__", "__func__", "__self__", "__getattribute__", "__reduce__",
+                  "__reduce_ex__", "__loader__", "__spec__", "__import__", "__traceback__", "__frame__", "__defaults__",
+                  "__kwdefaults__", "__init_subclass__", "__set_name__", "__module__"}
+BANNED_NAMES = {"eval", "exec", "compile", "open", "__import__", "__builtins__", "globals", "locals", "vars", "input",
+                "breakpoint", "help", "exit", "quit", "memoryview"}
+BANNED_ATTRS = {"system", "popen", "environ", "getenv", "putenv", "spawn", "fork", "f_globals", "f_locals", "f_back",
+                "gi_frame", "cr_frame", "ag_frame", "tb_frame", "tb_next", "f_code", "co_code", "subclasses", "mro",
+                "import_module", "fromfile", "tofile", "memmap", "loadtxt", "savetxt", "genfromtxt", "DataSource",
+                "HDFStore", "ExcelWriter", "ExcelFile", "ctypeslib"}
+NUMPY_FILE_IO = {"load", "save", "savez", "savez_compressed"}       # np.load / np.save (object_store.save is fine)
+# pandas / numpy I/O: read_* and to_* writers (to_numpy, to_dict … stay allowed). Data comes in through the platform
+# (prices, fundamentals, custom data uploads, the object store), never from paths or URLs in strategy code.
 ALLOWED_TO = {"to_numpy", "to_frame", "to_period", "to_series", "to_dict", "to_list", "to_timestamp", "to_numeric",
-              "to_datetime", "to_timedelta", "to_offset"}
+              "to_datetime", "to_timedelta", "to_offset", "to_pydatetime", "to_string", "to_records", "to_markdown"}
+CLASS_BASES = {"QCAlgorithm", "object"}                  # (legacy name; any base is accepted now)
+DUNDER_METHODS = set()                                   # (legacy name; any special method except the banned ones)
 
 
 class SandboxError(ValueError):
@@ -77,57 +104,53 @@ def check(code: str) -> Dict[str, Any]:
                 hint = f" — did you mean '{kw}'? ('{first[:len(first) - len(kw)]}' looks like a stray keystroke)"
                 break
         raise SandboxError(f"Syntax error on line {e.lineno}: {e.msg}" + (f": `{line[:120]}`" if line else "") + hint)
-    # what the code assigns on self (`self._spy = …`) and its class names (methods are reached only through instances)
     self_attrs = {t.attr for n in ast.walk(tree) if isinstance(n, (ast.Assign, ast.AugAssign, ast.AnnAssign))
                   for t in (n.targets if isinstance(n, ast.Assign) else [n.target])
                   if isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name) and t.value.id == "self"}
-    class_names = {n.name for n in ast.walk(tree) if isinstance(n, ast.ClassDef)}
-    object_bases = {id(b) for n in ast.walk(tree) if isinstance(n, ast.ClassDef) for b in n.bases
-                    if isinstance(b, ast.Name) and b.id == "object"}
+    clash = sorted(self_attrs & QC_PRIVATE)
+    if clash and "QCAlgorithm" in code:
+        raise SandboxError(f"self.{clash[0]} is a name the QuantConnect API uses internally — pick another name.")
     for node in ast.walk(tree):
         line = getattr(node, "lineno", "?")
-        if isinstance(node, ast.Import):
-            for a in node.names:
-                if a.name not in ALLOWED_IMPORTS:
-                    raise SandboxError(f"Line {line}: only numpy, pandas and math can be imported (not '{a.name}').")
-        elif isinstance(node, ast.ImportFrom):
-            if node.module not in ("math", "datetime", "AlgorithmImports") and not (node.module or "").startswith("QuantConnect"):
-                raise SandboxError(f"Line {line}: 'from … import' is only allowed for math, datetime and AlgorithmImports.")
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            mods = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or ""]
+            for m in mods:
+                root = m.split(".")[0]
+                if root in BLOCKED_IMPORT_ROOTS or root not in ALLOWED_IMPORT_ROOTS:
+                    raise SandboxError(f"Line {line}: '{m}' cannot be imported in strategy code (no file, network or "
+                                       f"system access). Available: numpy, pandas, scipy, scikit-learn, statsmodels, math, "
+                                       f"statistics, datetime, collections, itertools, functools, dataclasses, typing, re, json …")
         elif isinstance(node, ast.Name):
-            if id(node) in object_bases:
-                continue
-            if node.id == "self" and isinstance(node.ctx, (ast.Store, ast.Del)):
-                raise SandboxError(f"Line {line}: 'self' cannot be reassigned.")
-            if (node.id.startswith("_") and node.id != "_") or node.id in BANNED_NAMES:
+            if node.id in BANNED_NAMES or node.id in BANNED_DUNDERS:
                 raise SandboxError(f"Line {line}: '{node.id}' is not available in strategy code.")
         elif isinstance(node, ast.Attribute):
             a = node.attr
-            own = (isinstance(node.value, ast.Name) and node.value.id == "self" and a.startswith("_")
-                   and not a.startswith("__") and a in self_attrs and a not in QC_PRIVATE)
-            if (a.startswith("_") and not own) or a in BANNED_ATTRS or a.startswith("read_") or (a.startswith("to_") and a not in ALLOWED_TO):
-                hint = (" — on self, private names must be assigned in your own code (self._x = …) and must not be one "
-                        "the API uses internally" if isinstance(node.value, ast.Name) and node.value.id == "self" and a.startswith("_") else "")
-                raise SandboxError(f"Line {line}: '.{a}' is not available in strategy code (no file, network or internals access){hint}.")
-            if isinstance(node.value, ast.Name) and node.value.id in class_names:
-                raise SandboxError(f"Line {line}: '{node.value.id}.{a}' — use an instance (self.{a}), not the class.")
-        elif isinstance(node, (ast.Global, ast.Nonlocal, ast.AsyncFunctionDef, ast.Await, ast.Yield, ast.YieldFrom)):
-            raise SandboxError(f"Line {line}: {type(node).__name__} is not supported in strategy code.")
+            if a in BANNED_DUNDERS or a in BANNED_ATTRS or a.startswith("read_") or (
+                    a.startswith("to_") and a not in ALLOWED_TO and a[3:] in ("csv", "excel", "json", "parquet", "pickle",
+                                                                            "hdf", "sql", "feather", "stata", "html",
+                                                                            "xml", "clipboard", "latex", "gbq", "orc")):
+                raise SandboxError(f"Line {line}: '.{a}' is not available in strategy code (no file, network or "
+                                   "interpreter internals; data comes in through the platform).")
+            if a in NUMPY_FILE_IO and isinstance(node.value, ast.Name) and node.value.id in ("np", "numpy"):
+                raise SandboxError(f"Line {line}: np.{a} reads or writes files — use self.object_store for state.")
+            if a in ENGINE_INTERNALS and not (a == "_data" and isinstance(node.value, ast.Name) and node.value.id == "self"
+                                               and a in self_attrs):
+                raise SandboxError(f"Line {line}: '.{a}' is the backtest engine's internal state (it holds future prices) — "
+                                   "use the API (history, securities, portfolio) instead.")
+        elif isinstance(node, (ast.AsyncFunctionDef, ast.Await, ast.AsyncFor, ast.AsyncWith)):
+            raise SandboxError(f"Line {line}: async code is not supported in strategy code.")
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and re.search(r"\{[^{}]*\.__\w+__", node.value):
+            raise SandboxError(f"Line {line}: format strings that reach interpreter internals ('{{x.__…__}}') are not allowed.")
         elif isinstance(node, ast.ClassDef):
-            bad = [b for b in node.bases if not (isinstance(b, ast.Name) and b.id in CLASS_BASES)]
-            if bad or node.keywords or node.decorator_list:
-                raise SandboxError(f"Line {line}: class {node.name} — classes may derive only from QCAlgorithm (an "
-                                   "algorithm) or nothing (a helper class), without decorators or metaclasses.")
+            if any(k.arg == "metaclass" for k in node.keywords):
+                raise SandboxError(f"Line {line}: class {node.name} — metaclasses are not supported.")
             for f in node.body:
-                if isinstance(f, ast.FunctionDef):
-                    if f.decorator_list:
-                        raise SandboxError(f"Line {f.lineno}: method decorators are not supported.")
-                    if f.name.startswith("__") and f.name not in DUNDER_METHODS:
-                        raise SandboxError(f"Line {f.lineno}: special method {f.name} is not supported.")
-                    if f.name == "__init__" and any(isinstance(b, ast.Name) and b.id == "QCAlgorithm" for b in node.bases):
-                        raise SandboxError(f"Line {f.lineno}: put the set-up in initialize(self), not __init__, in a "
-                                           "QCAlgorithm class.")
-                elif not isinstance(f, (ast.Assign, ast.AnnAssign, ast.Expr, ast.Pass)):
-                    raise SandboxError(f"Line {getattr(f, 'lineno', line)}: only methods and simple attributes in a class body.")
+                if isinstance(f, ast.FunctionDef) and f.name in BANNED_DUNDERS:
+                    raise SandboxError(f"Line {f.lineno}: special method {f.name} is not supported.")
+                if (isinstance(f, ast.FunctionDef) and f.name == "__init__"
+                        and any(isinstance(b_, ast.Name) and b_.id == "QCAlgorithm" for b_ in node.bases)):
+                    raise SandboxError(f"Line {f.lineno}: put the set-up in initialize(self), not __init__, in a "
+                                       "QCAlgorithm class.")
     header: Dict[str, Any] = {}
     qc = None
     from api.quant import qcalgo
@@ -150,7 +173,7 @@ def check(code: str) -> Dict[str, Any]:
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             name = node.targets[0].id
             if name in ("UNIVERSE", "START", "PARAMS", "BENCHMARK", "HOLDOUT", "TRADABLE_UNIVERSE", "ACCOUNT_CALENDAR",
-                        "ACCOUNT_CURRENCY", "FX_HEDGE", "OPTIONS", "FUNDAMENTALS"):
+                        "ACCOUNT_CURRENCY", "FX_HEDGE", "OPTIONS", "FUNDAMENTALS", "CUSTOM_DATA"):
                 try:
                     header[name] = ast.literal_eval(node.value)
                 except Exception:
@@ -195,6 +218,15 @@ def check(code: str) -> Dict[str, Any]:
     if qc is None and not any(isinstance(n, ast.FunctionDef) and n.name in ("strategy", "on_bar") for n in tree.body):
         raise SandboxError("Define a top-level function strategy(data, **params) — or on_bar(ctx, **params) for an "
                            "event-driven strategy.")
+    from api.quant import customdata
+    try:
+        custom = list(dict.fromkeys(customdata.spec(header.get("CUSTOM_DATA")) + list((qc or {}).get("custom") or [])))
+    except ValueError as e:
+        raise SandboxError(str(e))
+    known = {m["name"] for m in customdata.catalog()}
+    missing = [n for n in custom if n not in known]
+    if missing:
+        raise SandboxError(f"Custom data '{missing[0]}' has not been uploaded — Quant Lab → Custom data.")
     calendar = header.get("ACCOUNT_CALENDAR")
     if calendar is not None and (not isinstance(calendar, str) or calendar.upper() not in [u.upper() for u in uni]
                                  or not header.get("TRADABLE_UNIVERSE")):
@@ -213,7 +245,81 @@ def check(code: str) -> Dict[str, Any]:
             "tradable": tradable_spec(tradable), "account": account,
             "fx_hedge": float(hedge) if hedge is not None else None, "options": opts, "fundamentals": funds,
             "mode": "event" if qc is not None or any(isinstance(n, ast.FunctionDef) and n.name == "on_bar" for n in tree.body) else "weights",
-            "calendar": calendar.upper() if calendar else None, "qc": qc}
+            "calendar": calendar.upper() if calendar else None, "qc": qc, "custom": custom}
+
+
+STORE_DIR = HERE.parents[1] / "data" / "processed" / "quant_object_store"     # gitignored
+
+
+def _store_path(cls_name: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9_]", "_", cls_name)[:80] or "algorithm"
+    return STORE_DIR / f"{safe}.json"
+
+
+def load_object_store(cls_name: str) -> Dict[str, str]:
+    try:
+        return json.loads(_store_path(cls_name).read_text())
+    except Exception:                                                        # noqa: BLE001 — none saved yet
+        return {}
+
+
+def save_object_store(cls_name: str, data: Dict[str, str]) -> None:
+    if not isinstance(data, dict) or sum(len(str(k)) + len(str(v)) for k, v in data.items()) > 10_000_000:
+        return
+    STORE_DIR.mkdir(parents=True, exist_ok=True)
+    _store_path(cls_name).write_text(json.dumps({str(k): str(v) for k, v in data.items()}))
+
+
+def docker_status(refresh: bool = False) -> Dict[str, Any]:
+    """Whether runs go to a container: the docker CLI, a running daemon and the sandbox image. Cached for a minute."""
+    now = time.time()
+    if not refresh and _DOCKER["ok"] is not None and now - _DOCKER["at"] < 60:
+        return {"docker": _DOCKER["ok"], "reason": _DOCKER["why"], "image": IMAGE}
+    ok, why = False, None
+    if os.getenv("MACRO_SANDBOX_DOCKER", "1") == "0":
+        why = "disabled (MACRO_SANDBOX_DOCKER=0)"
+    elif not shutil.which("docker"):
+        why = "docker is not installed"
+    else:
+        try:
+            r = subprocess.run(["docker", "image", "inspect", IMAGE, "--format", "{{.Id}}"], capture_output=True,
+                               text=True, timeout=8)
+            if r.returncode == 0:
+                ok = True
+            elif "Cannot connect" in (r.stderr or "") or "daemon" in (r.stderr or ""):
+                why = "Docker is not running"
+            else:
+                why = f"the sandbox image {IMAGE} is not built (python -m api.quant.sandbox --build)"
+        except Exception as e:                                              # noqa: BLE001
+            why = f"docker check failed ({type(e).__name__})"
+    _DOCKER.update(ok=ok, at=now, why=why)
+    return {"docker": ok, "reason": why, "image": IMAGE}
+
+
+def ensure_image() -> None:
+    """Build the sandbox image (python:3.12-slim + the platform's numpy / pandas / scipy / scikit-learn / statsmodels)."""
+    import numpy as _np, pandas as _pd
+    args = ["--build-arg", f"NUMPY={_np.__version__}", "--build-arg", f"PANDAS={_pd.__version__}"]
+    for mod, arg in (("scipy", "SCIPY"), ("sklearn", "SKLEARN"), ("statsmodels", "STATSMODELS")):
+        try:
+            args += ["--build-arg", f"{arg}={__import__(mod).__version__}"]
+        except ImportError:
+            pass
+    subprocess.run(["docker", "build", "-t", IMAGE, *args, str(IMAGE_DIR)], check=True)
+    _DOCKER.update(ok=None)
+
+
+def _docker_cmd(tmp: Path, name: str, cpu: int) -> list:
+    """A throwaway container: no network, read-only root, no capabilities, no privilege escalation, an unprivileged
+    user, memory / CPU / process caps; only the run's temp folder (data in, result out) and the engine are mounted."""
+    return ["docker", "run", "--rm", "--name", name, "--network", "none", "--read-only",
+            "--tmpfs", "/tmp:rw,size=256m", "--memory", "4g", "--memory-swap", "4g", "--cpus", "2",
+            "--pids-limit", "256", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+            "--ulimit", f"cpu={cpu}:{cpu}", "--ulimit", "nofile=256:256",
+            "-v", f"{tmp}:/work:rw", "-v", f"{CHILD}:/engine/sandbox_child.py:ro",
+            "-v", f"{ENGINE}:/engine/codelab.py:ro", "-v", f"{QCALGO}:/engine/qcalgo.py:ro",
+            "-e", "HOME=/tmp", IMAGE,
+            "python", "-I", "/engine/sandbox_child.py", "/work", "/engine/codelab.py", "/engine/qcalgo.py"]
 
 
 def _profile(tmp: Path) -> str:
@@ -300,6 +406,7 @@ def _prepare(code: str, head: Dict[str, Any], costs: Optional[Dict[str, float]],
         data = codeserver.load_data(head["universe"], head["start"], limit=codelab.LARGE_UNIVERSE_LIMIT,
                                     account=head["account"], options=head["options"], fundamentals=head["fundamentals"])
         cpu = TIMEOUT_S * (4 if big else 1)
+    codeserver.attach_custom(data, head.get("custom"))
     if head.get("calendar"):
         data = codeserver.account_session_data(data, head["calendar"])
         if members is not None:
@@ -316,6 +423,7 @@ def _prepare(code: str, head: Dict[str, Any], costs: Optional[Dict[str, float]],
     frames = {k: getattr(data, k, None) for k in ("tick_bps", "lot_value", "div_yield", "fx", "rf_ccy", "settle", "share_px")}
     frames.update({f"opt_{k}": v for k, v in data.opt.items()})          # synthetic options' analytics
     frames.update({f"fund_{k}": v for k, v in data.fund.items()})        # point-in-time fundamentals
+    frames.update({f"cust_{k}": v for k, v in data.custom.items()})       # uploaded custom data
     for k, fr in frames.items():                                           # market rules (float32 keeps it small)
         if fr is not None:
             arrays[f"m_{k}"] = fr.to_numpy(np.float32)
@@ -358,33 +466,52 @@ def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] 
         else:
             prep = _prepare(code, head, costs, light, tmp, say, cancelled)
         cpu = prep["cpu"]
-        cmd = [sys.executable, "-I", str(CHILD), str(tmp), str(ENGINE), str(QCALGO)]
-        if sys.platform == "darwin" and shutil.which("sandbox-exec"):
-            (tmp / "profile.sb").write_text(_profile(tmp))
-            cmd = ["sandbox-exec", "-f", str(tmp / "profile.sb")] + cmd
-        env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp), "TMPDIR": str(tmp), "LANG": "C.UTF-8",
-               "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
-        say(f"Running your strategy in the sandbox ({prep['tickers']} tickers × {prep['days']} days)…")
+        qc_class = (head.get("qc") or {}).get("class")
+        if qc_class:                                       # the algorithm's object store from earlier runs
+            (tmp / "object_store.json").write_text(json.dumps({qc_class: load_object_store(qc_class)}))
+        dk = docker_status()
+        container = None
+        if dk["docker"]:
+            import uuid
+            container = f"qsbx-{uuid.uuid4().hex[:12]}"
+            os.chmod(tmp, 0o777)                        # the container's unprivileged user writes result.json here
+            cmd = _docker_cmd(tmp, container, cpu)
+            env = {**os.environ}
+            where = "an isolated container (no network, read-only, unprivileged)"
+        else:
+            cmd = [sys.executable, "-I", str(CHILD), str(tmp), str(ENGINE), str(QCALGO)]
+            if sys.platform == "darwin" and shutil.which("sandbox-exec"):
+                (tmp / "profile.sb").write_text(_profile(tmp))
+                cmd = ["sandbox-exec", "-f", str(tmp / "profile.sb")] + cmd
+            env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp), "TMPDIR": str(tmp), "LANG": "C.UTF-8",
+                   "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
+            where = f"the process sandbox ({dk['reason']})"
+        say(f"Running your strategy in {where} — {prep['tickers']} tickers × {prep['days']} days…")
         out_f, err_f = open(tmp / "stdout.txt", "w"), open(tmp / "stderr.txt", "w")   # files: no pipe-buffer deadlock
         p = subprocess.Popen(cmd, cwd=tmp, env=env, stdout=out_f, stderr=err_f, text=True,
-                             preexec_fn=(lambda: _limits(cpu)) if os.name == "posix" else None)
+                             preexec_fn=(lambda: _limits(cpu)) if os.name == "posix" and container is None else None)
+
+        def _stop():
+            if container:
+                subprocess.run(["docker", "kill", container], capture_output=True, timeout=20)
+            p.kill()
+            p.wait()
         t0 = time.time()
         while p.poll() is None:
             if job is not None and job.cancelled:
-                p.kill()
-                p.wait()
+                _stop()
                 raise SandboxError("Cancelled.")
-            if time.time() - t0 > cpu + 30:
-                p.kill()
-                p.wait()
+            if time.time() - t0 > cpu + (90 if container else 30):
+                _stop()
                 raise SandboxError(f"The strategy ran longer than {cpu} s and was stopped.")
             time.sleep(0.25)
         out_f.close()
         err_f.close()
         stderr_text = (tmp / "stderr.txt").read_text(errors="replace")[-20000:]
         out_file = tmp / "result.json"
-        if p.returncode in (-24, -9, 152, 137):                     # SIGXCPU / SIGKILL from the CPU limit
-            raise SandboxError(f"The strategy used more than {cpu} s of CPU and was stopped.")
+        if p.returncode in (-24, -9, 152, 137):                     # SIGXCPU / SIGKILL from the CPU or memory limit
+            raise SandboxError(f"The strategy used more than {cpu} s of CPU{' or 4 GB of memory' if container else ''} "
+                               "and was stopped.")
         if p.returncode != 0 or not out_file.exists():
             err = stderr_text.strip().splitlines()
             msg = next((l for l in reversed(err) if l.strip()), f"exit code {p.returncode}")
@@ -392,6 +519,12 @@ def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] 
         res = json.loads(out_file.read_text())
         if res.get("error"):
             raise SandboxError(res["error"])
+        store = (((res.get("execution") or {}).get("algorithm") or {}).get("object_store") or {})
+        if qc_class and store.get("class") == qc_class:
+            save_object_store(qc_class, store.get("data") or {})
+        res.setdefault("provenance", {})["isolation"] = ("docker container (no network, read-only filesystem, no "
+                                                         "capabilities, unprivileged user)" if container else
+                                                         f"process sandbox ({dk['reason']})")
         return res
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -426,3 +559,9 @@ def _prepare_elsewhere(code: str, costs: Optional[Dict[str, float]], light: bool
         proc.join(timeout=5)
         if proc.is_alive():
             proc.kill()
+
+
+if __name__ == "__main__":                       # python -m api.quant.sandbox --build
+    if "--build" in sys.argv:
+        ensure_image()
+        print(docker_status(refresh=True))

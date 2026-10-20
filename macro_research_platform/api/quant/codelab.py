@@ -134,7 +134,7 @@ class Data:
     def __init__(self, close, open_, high, low, volume, rf=None, vix=None, observed=None, rf_known=None,
                  provenance: Optional[Dict[str, Any]] = None, instruments: Optional[Dict[str, Dict[str, Any]]] = None,
                  account_currency: str = "USD", usd_per_unit=None, tick_bps=None, lot_value=None, div_yield=None,
-                 fx=None, rf_ccy=None, settle=None, options=None, fundamentals=None, share_px=None):
+                 fx=None, rf_ccy=None, settle=None, options=None, fundamentals=None, share_px=None, custom=None):
         self.close, self.high, self.low = close, high, low
         idx = close.index
         self.observed = (observed.reindex(index=idx, columns=close.columns).fillna(False).astype(bool)
@@ -174,6 +174,9 @@ class Data:
         self.option_names = list(self.opt["notional"].columns) if "notional" in self.opt else []
         # point-in-time fundamentals (FUNDAMENTALS = [...]): data.fund["book_to_price"] etc., dates × tickers
         self.fund = {k: v.reindex(index=idx, columns=close.columns) for k, v in (fundamentals or {}).items()}
+        # uploaded custom data (CUSTOM_DATA = [...]): data.custom["name"] — dates × its columns, as of each session
+        # (a row dated d is known from d's close); `_new` = 1 on sessions that received a fresh row
+        self.custom = {k: v.reindex(idx) for k, v in (custom or {}).items()}
 
     def __getattr__(self, name: str):
         # only reached for attributes that do not exist: explain live-trading fields instead of a bare AttributeError
@@ -191,7 +194,8 @@ class Data:
                  tick_bps=cut(self.tick_bps), lot_value=cut(self.lot_value), div_yield=cut(self.div_yield),
                  fx=cut(self.fx), rf_ccy=cut(self.rf_ccy), settle=cut(self.settle), share_px=cut(self.share_px),
                  options={k: v.iloc[:n] for k, v in self.opt.items()} or None,
-                 fundamentals={k: v.iloc[:n] for k, v in self.fund.items()} or None)
+                 fundamentals={k: v.iloc[:n] for k, v in self.fund.items()} or None,
+                 custom={k: v.iloc[:n] for k, v in self.custom.items()} or None)
         d.members = self.members.iloc[:n] if getattr(self, "members", None) is not None else None
         return d
 
@@ -1512,6 +1516,12 @@ def tradable_spec(x: Any) -> Optional[str]:
     return "+".join(toks) or None
 
 
+def _custom_spec(value, qc) -> List[str]:
+    names = list((qc or {}).get("custom") or [])
+    vals = [] if value in (None, False, "", []) else ([value] if isinstance(value, str) else list(value))
+    return list(dict.fromkeys([str(v).strip().lower() for v in vals] + names))
+
+
 def load_strategy(code: str, namespace: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Execute strategy source and return its UNIVERSE / START / PARAMS / HOLDOUT / strategy. (The server
     never calls this on user code outside the sandbox; the browser runs it in Pyodide.)"""
@@ -1523,6 +1533,12 @@ def load_strategy(code: str, namespace: Optional[Dict[str, Any]] = None) -> Dict
                           **{k: globals()[k] for k in INDICATORS}}
     if namespace:
         ns.update(namespace)
+    # classes defined in the strategy name their module; dataclasses, typing and pickle-free helpers look it up in
+    # sys.modules, so give the strategy a module entry (an empty one — the namespace itself stays private)
+    import sys as _sys
+    import types as _types
+    ns.setdefault("__name__", "strategy")
+    _sys.modules.setdefault(str(ns["__name__"]), _types.ModuleType(str(ns["__name__"])))
     qc = None
     if _qc is not None and "QCAlgorithm" in code:
         import ast as _ast
@@ -1570,7 +1586,8 @@ def load_strategy(code: str, namespace: Optional[Dict[str, Any]] = None) -> Dict
             "params": ns.get("PARAMS") or {}, "benchmark": str(ns.get("BENCHMARK") or "SPY").upper(),
             "holdout": str(holdout)[:10] if holdout else None,
             "code_hash": hashlib.sha256(code.encode()).hexdigest()[:16],
-            "qc": qc, "end": (qc or {}).get("end")}
+            "qc": qc, "end": (qc or {}).get("end"),
+            "custom": _custom_spec(ns.get("CUSTOM_DATA"), qc)}
 
 
 def run_weights(fn: Callable, data: Data, params: Dict[str, Any]) -> pd.DataFrame:

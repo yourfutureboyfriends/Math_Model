@@ -606,11 +606,22 @@ def _b64(a: np.ndarray) -> str:
     return base64.b64encode(np.ascontiguousarray(a, dtype=np.float32).tobytes()).decode()
 
 
+def attach_custom(d, names: Optional[Sequence[str]]) -> None:
+    """Uploaded custom datasets (api/quant/customdata.py), aligned as of each session, onto the Data object."""
+    if names:
+        from api.quant import customdata
+        d.custom = customdata.frames(names, d.close.index)
+        d.provenance["custom_data"] = {n: {k: v for k, v in m.items() if k != "owner"}
+                                       for m in customdata.catalog() for n in names if m.get("name") == n}
+
+
 def data_payload(universe: Sequence[str], start: str, benchmark: str = "SPY", account: str = "USD",
-                 options: Optional[List[Dict[str, Any]]] = None, fundamentals: Optional[Sequence[str]] = None) -> Dict[str, Any]:
+                 options: Optional[List[Dict[str, Any]]] = None, fundamentals: Optional[Sequence[str]] = None,
+                 custom: Optional[Sequence[str]] = None) -> Dict[str, Any]:
     """Compact data for the browser: float32 arrays (base64), row-major dates × tickers, plus the observed
     mask, whether the reference rate is known, instrument metadata and the data provenance."""
     d = load_data(universe, start, account=account, options=options, fundamentals=fundamentals)
+    attach_custom(d, custom)
     bm = benchmark_series(benchmark, d.close.index[0].strftime("%Y-%m-%d"), d.account_currency)
     out = {"dates": [x.strftime("%Y-%m-%d") for x in d.close.index], "tickers": d.tickers,
            "rf": _b64(d.rf.to_numpy()), "vix": _b64(d.vix.to_numpy()), "rf_known": d.rf_known,
@@ -624,6 +635,7 @@ def data_payload(universe: Sequence[str], start: str, benchmark: str = "SPY", ac
     frames = {k: getattr(d, k) for k in ("tick_bps", "lot_value", "div_yield", "fx", "rf_ccy", "settle", "share_px")}
     frames.update({f"opt_{k}": v.astype(float) for k, v in d.opt.items()})
     frames.update({f"fund_{k}": v for k, v in d.fund.items()})
+    frames.update({f"cust_{k}": v for k, v in getattr(d, "custom", {}).items()})
     for k, fr in frames.items():                                                # market rules, options
         if fr is not None:
             out[f"m_{k}"] = _b64(fr.to_numpy())
@@ -638,6 +650,7 @@ def evaluate_code(code: str, costs: Optional[Dict[str, float]] = None, trusted: 
         raise PermissionError("User code is not executed on the server — it runs in your browser or the deploy sandbox.")
     st = codelab.load_strategy(code)
     d = load_data(st["universe"], st["start"], account=st["account"], options=st["options"], fundamentals=st["fundamentals"])
+    attach_custom(d, st.get("custom"))
     bm = benchmark_series(st["benchmark"], d.close.index[0].strftime("%Y-%m-%d"), d.account_currency)
     return codelab.evaluate(st["strategy"], d, st["params"], st["start"], codelab.run_costs(st, costs), bm, st["holdout"],
                             st["code_hash"], signal=None if light else st.get("signal"), on_bar=st.get("on_bar"),

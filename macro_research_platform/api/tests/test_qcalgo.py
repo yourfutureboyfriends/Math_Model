@@ -176,12 +176,14 @@ def test_sandbox_admits_algorithm_classes():
 
 
 @pytest.mark.parametrize("snippet,why", [
-    ("x = self._ctx", "API-internal private name"),
-    ("x = self._never_assigned", "private name not assigned by the code"),
-    ("x = A.on_data", "method through the class"),
-    ("self = 1", "reassigning self"),
+    ("x = self._ctx", "the engine context (holds future prices)"),
+    ("x = self._ctx._data", "the engine's full price history"),
     ("x = ().__class__", "dunder access"),
     ("x = self.__dict__", "dunder on self"),
+    ("x = eval('1')", "eval"),
+    ("import os", "os import"),
+    ("x = np.load('f.npy')", "numpy file I/O"),
+    ("x = '{0.__class__}'.format(1)", "format-string escape"),
 ])
 def test_sandbox_rejects_escapes(snippet, why):
     code = OK_CLASS.replace("        _ = self._h.n", "        " + snippet)
@@ -189,13 +191,35 @@ def test_sandbox_rejects_escapes(snippet, why):
         sandbox.check(code)
 
 
-def test_sandbox_rejects_special_methods_and_other_bases():
+def test_sandbox_admits_ordinary_python():
+    """Isolation is the container's job: classes, inheritance, decorators, super(), properties, private names, the
+    scientific stack and reaching methods through a class are all ordinary Python and allowed."""
+    code = OK_CLASS.replace("class Helper(object):", """import scipy.stats as ss
+from dataclasses import dataclass
+from collections import defaultdict
+@dataclass
+class Cfg:
+    n: int = 3
+class Base:
+    @property
+    def k(self):
+        return 2
+    @staticmethod
+    def f(x):
+        return x
+class Helper(Base):""").replace("        _ = self._h.n", "        _ = (self._h.n, self._never_assigned_ok if False else 0, A.on_data, ss.norm.cdf(0), defaultdict(list))")
+    assert sandbox.check(code)["universe"] == ["SPY"]
+
+
+def test_sandbox_still_refuses_metaclasses_banned_dunders_and_unavailable_data():
     with pytest.raises(sandbox.SandboxError):
-        sandbox.check(OK_CLASS.replace("class Helper(object):", "class Helper(dict):"))
+        sandbox.check(OK_CLASS.replace("class Helper(object):", "class Helper(object, metaclass=type):"))
     with pytest.raises(sandbox.SandboxError):
-        sandbox.check(OK_CLASS.replace("    def __init__(self, n):", "    def __getattr__(self, n):"))
+        sandbox.check(OK_CLASS.replace("    def __init__(self, n):", "    def __getattribute__(self, n):"))
     with pytest.raises(sandbox.SandboxError):
         sandbox.check(OK_CLASS.replace('        self.add_equity("SPY")', '        self.add_equity("SPY")\n        self.add_future("ES")'))
+    with pytest.raises(sandbox.SandboxError):              # overwriting a name the API uses internally
+        sandbox.check(OK_CLASS.replace("        self._h = Helper(3)", "        self._log = []"))
 
 
 # ── account model: buying power, settlement, locates, tax lots ──

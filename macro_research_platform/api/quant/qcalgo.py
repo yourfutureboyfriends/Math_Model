@@ -34,8 +34,12 @@ Semantics (API version qc-compat/1, DAILY resolution — every result says so):
                 bar (symbol, price, volume, dollar_volume, and SEC point-in-time fundamentals with LEAN's names when used:
                 market_cap, valuation_ratios.*, operation_ratios.*, earning_reports.*); additions and removals call
                 on_securities_changed. self.universe.etf("SPY" | "IVV" | "VOO") = point-in-time S&P 500.
-  not available historical option / future chains, consolidators, intraday bars, custom data, alpha/portfolio
-                framework models, live brokerages — the importer's compatibility report lists them by line.
+  framework     alpha → portfolio construction → risk → execution models (LEAN's built-ins and your own), insights with
+                periods in sessions, manual and fundamental universe selection models.
+  consolidators daily bars → weekly / monthly / quarterly / yearly / n-session bars (Calendar, TradeBarConsolidator).
+  storage       object_store kept between server runs of the same algorithm class; add_data(…, "name") = uploaded CSV.
+  not available historical option / future chains, intraday bars, live brokerages — the importer's compatibility
+                report lists them by line.
 """
 from __future__ import annotations
 
@@ -107,6 +111,12 @@ class DayOfWeek(_Enum):
 
 class Market(_Enum):
     USA = "usa"
+    Usa = USA
+
+
+class SecurityType(_Enum):
+    EQUITY, FOREX, CRYPTO, CFD, INDEX, OPTION, FUTURE = "equity", "forex", "crypto", "cfd", "index", "option", "future"
+    Equity, Forex, Crypto, Cfd, Index, Option, Future = EQUITY, FOREX, CRYPTO, CFD, INDEX, OPTION, FUTURE
 
 
 # ── symbols and data ─────────────────────────────────────────────────────────
@@ -143,6 +153,37 @@ class TradeBar:
         self.value = self.price = c
         self.period = timedelta(days=1)
         self.Open, self.High, self.Low, self.Close, self.Volume, self.Value = o, h, l, c, v, c
+
+
+class PythonData:
+    """Custom data (LEAN's PythonData). Subclass it — get_source / reader are not called: the data is the CSV uploaded
+    under the name passed to add_data (Quant Lab → Custom data), aligned as of each session. A point exposes .value
+    (the 'value' column, else the first), .time, .symbol and every column: point["sentiment"] or point.sentiment."""
+
+    def __init__(self, symbol=None, time=None, values: Optional[Dict[str, float]] = None):
+        self.symbol = Symbol(_sym(symbol)) if symbol is not None else None
+        self.time = self.end_time = time
+        self._v = dict(values or {})
+        self.value = float(self._v.get("value", next(iter(self._v.values()), float("nan"))))
+        self.price = self.close = self.value
+        self.Value, self.Symbol, self.Time = self.value, self.symbol, time
+
+    def __getitem__(self, k):
+        return self._v[str(k).lower()]
+
+    def __getattr__(self, k):
+        v = self.__dict__.get("_v") or {}
+        if k.lower() in v:
+            return v[k.lower()]
+        raise AttributeError(k)
+
+    def get_source(self, *a, **k):
+        return None
+
+    def reader(self, *a, **k):
+        return None
+
+    GetSource, Reader = get_source, reader
 
 
 class Slice:
@@ -930,8 +971,28 @@ class SecurityChanges:
 
 
 class PortfolioTarget:
-    def __init__(self, symbol, quantity_or_percent: float):
+    """A target holding. In the framework `quantity` is shares (PortfolioTarget.percent converts a fraction of portfolio
+    value); in a set_holdings([...]) list it is a fraction, as in LEAN."""
+
+    def __init__(self, symbol, quantity_or_percent: float, tag: str = ""):
         self.symbol, self.quantity = Symbol(_sym(symbol)), float(quantity_or_percent)
+        self.percent_target = None
+        self.tag = tag
+        self.Symbol, self.Quantity = self.symbol, self.quantity
+
+    @staticmethod
+    def percent(algorithm, symbol, percent: float, *a, **k) -> Optional["PortfolioTarget"]:
+        t = _sym(symbol)
+        px = algorithm._price(t)
+        if not px or not np.isfinite(px):
+            return None
+        tpv = algorithm.portfolio.total_portfolio_value * (1 - algorithm.settings.free_portfolio_value_percentage)
+        q = math.floor(abs(percent) * tpv / px) * (1 if percent >= 0 else -1)
+        tg = PortfolioTarget(t, q)
+        tg.percent_target = float(percent)
+        return tg
+
+    Percent = percent
 
 
 class _Settings:
@@ -946,6 +1007,715 @@ class _UniverseSettings:
         self.resolution = Resolution.DAILY
         self.leverage = 1.0
         self.data_normalization_mode = DataNormalizationMode.ADJUSTED
+
+
+# ── Algorithm Framework (alpha → portfolio construction → risk → execution) ──
+class InsightDirection(_Enum):
+    UP, DOWN, FLAT = 1, -1, 0
+    Up, Down, Flat = UP, DOWN, FLAT
+
+
+class InsightType(_Enum):
+    PRICE, VOLATILITY = "price", "volatility"
+    Price, Volatility = PRICE, VOLATILITY
+
+
+class PortfolioBias(_Enum):
+    LONG, SHORT, LONG_SHORT = 1, -1, 0
+    Long, Short, LongShort = LONG, SHORT, LONG_SHORT
+
+
+def _period_days(period) -> int:
+    """An insight period in sessions: timedelta → its days (≥ 1), an int → that many daily bars, a Resolution → 1."""
+    if isinstance(period, timedelta):
+        return max(1, int(round(period.total_seconds() / 86400)))
+    if isinstance(period, (int, float)) and not isinstance(period, bool):
+        return max(1, int(period))
+    return 1
+
+
+class Insight:
+    """A prediction: symbol, direction (UP / DOWN / FLAT), how long it holds (period), optional magnitude, confidence and
+    weight. Active from the session it is emitted until its period (in sessions on daily data) has passed."""
+
+    def __init__(self, symbol, period, type=InsightType.PRICE, direction=InsightDirection.FLAT, magnitude=None,
+                 confidence=None, source_model=None, weight=None, tag=""):
+        self.symbol = Symbol(_sym(symbol))
+        self.period = period
+        self.type, self.direction = type, int(direction)
+        self.magnitude, self.confidence, self.weight = magnitude, confidence, weight
+        self.source_model, self.tag = source_model, tag
+        self.generated_time = self.close_time = None
+        self._bars = _period_days(period)
+        self._born = None
+        self.Symbol, self.Direction, self.Period, self.Magnitude, self.Confidence, self.Weight = (
+            self.symbol, self.direction, period, magnitude, confidence, weight)
+
+    @staticmethod
+    def price(symbol, period, direction, magnitude=None, confidence=None, source_model=None, weight=None, tag="") -> "Insight":
+        return Insight(symbol, period, InsightType.PRICE, direction, magnitude, confidence, source_model, weight, tag)
+
+    Price = price
+
+    @staticmethod
+    def group(*insights) -> List["Insight"]:
+        return list(insights[0]) if len(insights) == 1 and isinstance(insights[0], (list, tuple)) else list(insights)
+
+    Group = group
+
+    def is_active(self, i: int) -> bool:
+        return self._born is not None and i < self._born + self._bars
+
+    def __repr__(self):
+        return f"Insight({self.symbol} {['DOWN', 'FLAT', 'UP'][self.direction + 1]} {self._bars}d)"
+
+
+def _call(obj, snake: str, *args):
+    """A model method by its snake_case or PascalCase name (LEAN Python accepts both)."""
+    pas = "".join(w[:1].upper() + w[1:] for w in snake.split("_"))
+    fn = getattr(obj, pas, None) if type(obj).__dict__.get(pas) or any(pas in c.__dict__ for c in type(obj).__mro__[:-1]
+                                                                     if c.__module__ != __name__) else None
+    return (fn or getattr(obj, snake))(*args)
+
+
+def _as_list(x) -> list:
+    if x is None:
+        return []
+    if isinstance(x, (list, tuple)):
+        return list(x)
+    if isinstance(x, Insight):
+        return [x]
+    return list(x)
+
+
+class AlphaModel:
+    """Override update(algorithm, data) → list of Insight; optionally on_securities_changed(algorithm, changes)."""
+
+    def __init__(self, *a, **k):
+        self.name = type(self).__name__
+
+    def update(self, algorithm, data) -> List[Insight]:
+        return []
+
+    def on_securities_changed(self, algorithm, changes) -> None:
+        pass
+
+
+class NullAlphaModel(AlphaModel):
+    pass
+
+
+class ConstantAlphaModel(AlphaModel):
+    """The same insight for every security, re-emitted when the previous one expires."""
+
+    def __init__(self, type, direction, period, magnitude=None, confidence=None, weight=None):
+        super().__init__()
+        self.type, self.direction, self.period = type, direction, period
+        self.magnitude, self.confidence, self.weight = magnitude, confidence, weight
+        self._last: Dict[str, int] = {}
+
+    def update(self, algorithm, data):
+        out, i, n = [], algorithm._ctx.i, _period_days(self.period)
+        for t in list(algorithm.securities.keys()):
+            if t in data and (t not in self._last or i - self._last[t] >= n):
+                self._last[t] = i
+                out.append(Insight(t, self.period, self.type, self.direction, self.magnitude, self.confidence,
+                                   self.name, self.weight))
+        return out
+
+
+class EmaCrossAlphaModel(AlphaModel):
+    """UP when the fast EMA crosses above the slow one, DOWN when below (LEAN's model); insight period = fast bars."""
+
+    def __init__(self, fast_period: int = 12, slow_period: int = 26, resolution=Resolution.DAILY):
+        super().__init__()
+        self.fast_period, self.slow_period = int(fast_period), int(slow_period)
+        self._s: Dict[str, Dict[str, Any]] = {}
+
+    def on_securities_changed(self, algorithm, changes):
+        for sec in changes.added_securities:
+            t = _sym(sec)
+            if t not in self._s:
+                f, s = algorithm.ema(t, self.fast_period), algorithm.ema(t, self.slow_period)
+                algorithm.warm_up_indicator(t, f)
+                algorithm.warm_up_indicator(t, s)
+                self._s[t] = {"fast": f, "slow": s, "above": None}
+        for sec in changes.removed_securities:
+            self._s.pop(_sym(sec), None)
+
+    def update(self, algorithm, data):
+        out = []
+        for t, st in self._s.items():
+            f, s = st["fast"], st["slow"]
+            if not (f.is_ready and s.is_ready) or t not in data:
+                continue
+            above = f.current.value > s.current.value
+            if st["above"] is not None and above != st["above"]:
+                out.append(Insight.price(t, timedelta(days=self.fast_period),
+                                         InsightDirection.UP if above else InsightDirection.DOWN, source_model=self.name))
+            st["above"] = above
+        return out
+
+
+class MacdAlphaModel(AlphaModel):
+    """Direction of the MACD histogram (normalised by price) beyond a small bounce threshold; LEAN's model."""
+
+    def __init__(self, fast_period: int = 12, slow_period: int = 26, signal_period: int = 9,
+                 moving_average_type=MovingAverageType.EXPONENTIAL, resolution=Resolution.DAILY):
+        super().__init__()
+        self.args = (int(fast_period), int(slow_period), int(signal_period), moving_average_type)
+        self._s: Dict[str, Dict[str, Any]] = {}
+        self.bounce = 0.01
+
+    def on_securities_changed(self, algorithm, changes):
+        for sec in changes.added_securities:
+            t = _sym(sec)
+            if t not in self._s:
+                m = algorithm.macd(t, *self.args)
+                algorithm.warm_up_indicator(t, m)
+                self._s[t] = {"macd": m, "dir": InsightDirection.FLAT}
+        for sec in changes.removed_securities:
+            self._s.pop(_sym(sec), None)
+
+    def update(self, algorithm, data):
+        out = []
+        for t, st in self._s.items():
+            m = st["macd"]
+            px = algorithm.securities[t].price if t in algorithm.securities else float("nan")
+            if not m.is_ready or not px or not np.isfinite(px) or t not in data:
+                continue
+            nh = (m.current.value - m.signal.current.value) / px
+            d = InsightDirection.UP if nh > self.bounce else InsightDirection.DOWN if nh < -self.bounce else InsightDirection.FLAT
+            if d != st["dir"]:
+                st["dir"] = d
+                out.append(Insight.price(t, timedelta(days=self.args[0]), d, source_model=self.name))
+        return out
+
+
+class RsiAlphaModel(AlphaModel):
+    """RSI below 30 → UP, above 70 → DOWN, emitted when the state changes (LEAN's model); period = RSI period."""
+
+    def __init__(self, period: int = 14, resolution=Resolution.DAILY):
+        super().__init__()
+        self.period = int(period)
+        self._s: Dict[str, Dict[str, Any]] = {}
+
+    def on_securities_changed(self, algorithm, changes):
+        for sec in changes.added_securities:
+            t = _sym(sec)
+            if t not in self._s:
+                r = algorithm.rsi(t, self.period, MovingAverageType.WILDERS)
+                algorithm.warm_up_indicator(t, r)
+                self._s[t] = {"rsi": r, "state": "middle"}
+        for sec in changes.removed_securities:
+            self._s.pop(_sym(sec), None)
+
+    def update(self, algorithm, data):
+        out = []
+        for t, st in self._s.items():
+            r = st["rsi"]
+            if not r.is_ready or t not in data:
+                continue
+            v = r.current.value
+            state = "low" if v < 30 else "high" if v > 70 else "middle"
+            if state != st["state"] and state != "middle":
+                out.append(Insight.price(t, timedelta(days=self.period),
+                                         InsightDirection.UP if state == "low" else InsightDirection.DOWN,
+                                         source_model=self.name))
+            st["state"] = state
+        return out
+
+
+class HistoricalReturnsAlphaModel(AlphaModel):
+    """Direction of each security's return over the lookback, with that return as the magnitude."""
+
+    def __init__(self, lookback: int = 1, resolution=Resolution.DAILY):
+        super().__init__()
+        self.lookback = int(lookback)
+
+    def update(self, algorithm, data):
+        out = []
+        for t in list(algorithm.securities.keys()):
+            if t not in data:
+                continue
+            h = algorithm.history(t, self.lookback + 1)
+            if len(h) < self.lookback + 1:
+                continue
+            c = h["close"].to_numpy()
+            r = c[-1] / c[0] - 1
+            out.append(Insight.price(t, timedelta(days=self.lookback), InsightDirection.UP if r > 0 else
+                                     InsightDirection.DOWN if r < 0 else InsightDirection.FLAT, magnitude=float(r),
+                                     source_model=self.name))
+        return out
+
+
+class PortfolioConstructionModel:
+    """Override create_targets(algorithm, insights) → list of PortfolioTarget. `rebalance`: a Resolution (every
+    session), a timedelta, a function of the time returning the next rebalance time, or None (only when insights
+    change)."""
+
+    def __init__(self, rebalance=Resolution.DAILY, portfolio_bias=PortfolioBias.LONG_SHORT, *a, **k):
+        self.rebalance, self.portfolio_bias = rebalance, portfolio_bias
+        self._next = None
+
+    def create_targets(self, algorithm, insights) -> List["PortfolioTarget"]:
+        return []
+
+    def on_securities_changed(self, algorithm, changes) -> None:
+        pass
+
+    def _due(self, algorithm) -> bool:
+        r, now = self.rebalance, algorithm.time
+        if r is None:
+            return False
+        if isinstance(r, str):                               # a Resolution: every session on daily data
+            return True
+        if isinstance(r, timedelta):
+            if self._next is None or now >= self._next:
+                self._next = now + r
+                return True
+            return False
+        if callable(r):
+            if self._next is None or now >= self._next:
+                nxt = r(now)
+                self._next = nxt if isinstance(nxt, datetime) else now + timedelta(days=1)
+                return True
+        return False
+
+    def _bias_ok(self, d: int) -> bool:
+        return not ((self.portfolio_bias == PortfolioBias.LONG and d < 0) or (self.portfolio_bias == PortfolioBias.SHORT and d > 0))
+
+    def _weights_to_targets(self, algorithm, weights: Dict[str, float], insights: List[Insight]) -> List["PortfolioTarget"]:
+        tg = [PortfolioTarget.percent(algorithm, t, w) for t, w in weights.items()]
+        for ins in insights:                                 # filtered out by the bias → flat
+            if ins.symbol.value not in weights:
+                tg.append(PortfolioTarget(ins.symbol, 0))
+        return [t for t in tg if t is not None]
+
+
+class NullPortfolioConstructionModel(PortfolioConstructionModel):
+    def __init__(self, *a, **k):
+        super().__init__(None)
+
+
+class EqualWeightingPortfolioConstructionModel(PortfolioConstructionModel):
+    """Equal weight across the active insights' directions (FLAT → 0), as LEAN."""
+
+    def create_targets(self, algorithm, insights):
+        act = [i for i in insights if self._bias_ok(i.direction)]
+        n = sum(1 for i in act if i.direction != 0)
+        w = {i.symbol.value: (i.direction / n if n else 0.0) for i in act}
+        return self._weights_to_targets(algorithm, w, insights)
+
+
+class InsightWeightingPortfolioConstructionModel(PortfolioConstructionModel):
+    """Weights ∝ each insight's |weight| (scaled down so gross ≤ 100%), signed by direction."""
+
+    _attr = "weight"
+
+    def create_targets(self, algorithm, insights):
+        act = [i for i in insights if self._bias_ok(i.direction) and getattr(i, self._attr) is not None]
+        tot = sum(abs(float(getattr(i, self._attr))) for i in act)
+        scale = 1.0 / tot if tot > 1 else 1.0
+        w = {i.symbol.value: i.direction * abs(float(getattr(i, self._attr))) * scale for i in act}
+        return self._weights_to_targets(algorithm, w, insights)
+
+
+class ConfidenceWeightingPortfolioConstructionModel(InsightWeightingPortfolioConstructionModel):
+    _attr = "confidence"
+
+
+class RiskParityPortfolioConstructionModel(PortfolioConstructionModel):
+    """Inverse-volatility weights (60 sessions) across the insights' directions — a simple risk-parity allocation."""
+
+    def __init__(self, rebalance=Resolution.DAILY, portfolio_bias=PortfolioBias.LONG_SHORT, lookback: int = 60, *a, **k):
+        super().__init__(rebalance, portfolio_bias)
+        self.lookback = int(lookback)
+
+    def create_targets(self, algorithm, insights):
+        act = [i for i in insights if self._bias_ok(i.direction) and i.direction != 0]
+        inv = {}
+        for i in act:
+            h = algorithm.history(i.symbol, self.lookback + 1)
+            r = h["close"].pct_change().dropna() if len(h) > 2 else None
+            sd = float(r.std()) if r is not None and len(r) > 2 else 0.0
+            if sd > 0:
+                inv[i.symbol.value] = (i.direction, 1.0 / sd)
+        tot = sum(v for _, v in inv.values())
+        w = {t: d * v / tot for t, (d, v) in inv.items()} if tot else {}
+        return self._weights_to_targets(algorithm, w, insights)
+
+
+class RiskManagementModel:
+    """Override manage_risk(algorithm, targets) → targets that override the portfolio model's for their symbols."""
+
+    def manage_risk(self, algorithm, targets) -> List["PortfolioTarget"]:
+        return []
+
+    def on_securities_changed(self, algorithm, changes) -> None:
+        pass
+
+
+class NullRiskManagementModel(RiskManagementModel):
+    pass
+
+
+class MaximumDrawdownPercentPerSecurity(RiskManagementModel):
+    """Flatten a holding once its unrealized loss exceeds the limit (LEAN: 5%)."""
+
+    def __init__(self, maximum_drawdown_percent: float = 0.05):
+        self.limit = abs(float(maximum_drawdown_percent))
+
+    def manage_risk(self, algorithm, targets):
+        out = []
+        for t, h in algorithm.portfolio.items():
+            if h.invested and h.average_price and np.isfinite(h.price):
+                pnl = (h.price / h.average_price - 1) * (1 if h.quantity > 0 else -1)
+                if pnl < -self.limit:
+                    out.append(PortfolioTarget(t, 0))
+        return out
+
+
+class MaximumUnrealizedProfitPercentPerSecurity(RiskManagementModel):
+    """Take profit: flatten a holding once its unrealized gain exceeds the limit (LEAN: 5%)."""
+
+    def __init__(self, maximum_unrealized_profit_percent: float = 0.05):
+        self.limit = abs(float(maximum_unrealized_profit_percent))
+
+    def manage_risk(self, algorithm, targets):
+        out = []
+        for t, h in algorithm.portfolio.items():
+            if h.invested and h.average_price and np.isfinite(h.price):
+                pnl = (h.price / h.average_price - 1) * (1 if h.quantity > 0 else -1)
+                if pnl > self.limit:
+                    out.append(PortfolioTarget(t, 0))
+        return out
+
+
+class MaximumDrawdownPercentPortfolio(RiskManagementModel):
+    """Flatten everything once the portfolio is down more than the limit from its start (or, trailing, its peak)."""
+
+    def __init__(self, maximum_drawdown_percent: float = 0.05, is_trailing: bool = False):
+        self.limit, self.trailing = abs(float(maximum_drawdown_percent)), bool(is_trailing)
+        self._ref = None
+
+    def manage_risk(self, algorithm, targets):
+        v = algorithm.portfolio.total_portfolio_value
+        if self._ref is None or (self.trailing and v > self._ref):
+            self._ref = v
+        if self._ref and v / self._ref - 1 < -self.limit:
+            self._ref = v                                       # reset after liquidating, as LEAN
+            return [PortfolioTarget(t, 0) for t, h in algorithm.portfolio.items() if h.invested]
+        return []
+
+
+class TrailingStopRiskManagementModel(RiskManagementModel):
+    """Flatten a holding once it falls the given fraction from its best price since entry."""
+
+    def __init__(self, maximum_drawdown_percent: float = 0.05):
+        self.limit = abs(float(maximum_drawdown_percent))
+        self._best: Dict[str, float] = {}
+
+    def manage_risk(self, algorithm, targets):
+        out = []
+        for t, h in algorithm.portfolio.items():
+            if not h.invested or not np.isfinite(h.price):
+                self._best.pop(t, None)
+                continue
+            long = h.quantity > 0
+            b = self._best.get(t, h.price)
+            b = max(b, h.price) if long else min(b, h.price)
+            self._best[t] = b
+            dd = (h.price / b - 1) if long else (b / h.price - 1)
+            if dd < -self.limit:
+                out.append(PortfolioTarget(t, 0))
+                self._best.pop(t, None)
+        return out
+
+
+class CompositeRiskManagementModel(RiskManagementModel):
+    def __init__(self, *models):
+        self.models = list(models[0]) if len(models) == 1 and isinstance(models[0], (list, tuple)) else list(models)
+
+    def manage_risk(self, algorithm, targets):
+        out = []
+        for m in self.models:
+            out += _as_list(_call(m, "manage_risk", algorithm, targets))
+        return out
+
+
+class ExecutionModel:
+    """Override execute(algorithm, targets): place the orders that move holdings to the targets."""
+
+    def execute(self, algorithm, targets) -> None:
+        pass
+
+    def on_securities_changed(self, algorithm, changes) -> None:
+        pass
+
+
+class NullExecutionModel(ExecutionModel):
+    pass
+
+
+class ImmediateExecutionModel(ExecutionModel):
+    """Market orders for the difference between each target and holdings plus open orders (LEAN)."""
+
+    def execute(self, algorithm, targets):
+        for tg in targets:
+            t = _sym(tg.symbol)
+            q = tg.quantity - algorithm.portfolio[t].quantity - algorithm._open_quantity_all(t)
+            if abs(q) >= 1:
+                algorithm.market_order(t, math.floor(abs(q)) * (1 if q > 0 else -1), tag="framework")
+
+
+# daily data: these execute at the next session's open like ImmediateExecutionModel (reported)
+VolumeWeightedAveragePriceExecutionModel = StandardDeviationExecutionModel = SpreadExecutionModel = ImmediateExecutionModel
+
+
+class UniverseSelectionModel:
+    pass
+
+
+class ManualUniverseSelectionModel(UniverseSelectionModel):
+    """A fixed list of securities (read without running the code, like add_equity)."""
+
+    def __init__(self, symbols=None, *a, **k):
+        self.symbols = [_sym(s) for s in (symbols or [])]
+
+
+class FundamentalUniverseSelectionModel(UniverseSelectionModel):
+    """select(fundamentals) → symbols each session on point-in-time S&P 500 members (as add_universe)."""
+
+    def __init__(self, selector=None, *a, **k):
+        self.selector = selector
+
+    def select(self, algorithm, fundamentals):
+        return self.selector(fundamentals) if self.selector else []
+
+
+CoarseFundamentalUniverseSelectionModel = FundamentalUniverseSelectionModel
+
+
+class _Framework:
+    """The per-algorithm framework state: models, active insights per symbol, last targets."""
+
+    def __init__(self):
+        self.alphas: List[Any] = []
+        self.pcm: Any = None
+        self.execution: Any = None
+        self.risk: List[Any] = []
+        self.active: Dict[str, Insight] = {}
+        self.emitted: List[Insight] = []
+        self.targets: Dict[str, Any] = {}
+        self.count = 0
+        self.used = False
+
+    def models(self) -> list:
+        return self.alphas + [m for m in (self.pcm, self.execution) if m is not None] + self.risk
+
+    def securities_changed(self, algo, changes) -> None:
+        for m in self.models():
+            if hasattr(m, "on_securities_changed") or hasattr(m, "OnSecuritiesChanged"):
+                _call(m, "on_securities_changed", algo, changes)
+
+    def step(self, algo, data) -> None:
+        """One session: insights from the alphas → targets (when insights change or the model's rebalance is due) →
+        risk adjustments → execution."""
+        if not self.used:
+            return
+        i = algo._ctx.i
+        new = list(self.emitted)
+        self.emitted.clear()
+        for a in self.alphas:
+            new += _as_list(_call(a, "update", algo, data))
+        for ins in new:
+            ins._born = i
+            ins.generated_time = algo.time
+            ins.close_time = algo.time + timedelta(days=ins._bars)
+            self.active[ins.symbol.value] = ins
+        self.count += len(new)
+        expired = [t for t, ins in self.active.items() if not ins.is_active(i)]
+        pcm = self.pcm or NullPortfolioConstructionModel()
+        due = pcm._due(algo) if isinstance(pcm, PortfolioConstructionModel) else True
+        if new or expired or due:
+            for t in expired:                                   # an insight whose period ended no longer counts
+                self.active.pop(t, None)
+            live = list(self.active.values())
+            tg = _as_list(_call(pcm, "create_targets", algo, live))
+            got = {_sym(t.symbol) for t in tg}
+            if not isinstance(pcm, NullPortfolioConstructionModel):
+                tg += [PortfolioTarget(t, 0) for t in expired if t not in got and algo.portfolio[t].invested]
+            for t in tg:
+                self.targets[_sym(t.symbol)] = t
+        adj = []
+        for r in self.risk:
+            adj += _as_list(_call(r, "manage_risk", algo, list(self.targets.values())))
+        for t in adj:
+            self.targets[_sym(t.symbol)] = t
+        if self.targets:
+            _call(self.execution or ImmediateExecutionModel(), "execute", algo, list(self.targets.values()))
+            # targets reached (or already flat) are done; unfilled ones stay for the next session
+            self.targets = {s: t for s, t in self.targets.items()
+                            if abs(t.quantity - algo.portfolio[s].quantity - algo._open_quantity_all(s)) >= 1}
+
+
+# ── consolidators: daily bars → weekly, monthly, quarterly or n-session bars ──
+class Calendar(_Enum):
+    WEEKLY, MONTHLY, QUARTERLY, YEARLY = "W", "M", "Q", "Y"
+    Weekly, Monthly, Quarterly, Yearly = WEEKLY, MONTHLY, QUARTERLY, YEARLY
+
+
+class _Event:
+    """`consolidator.data_consolidated += handler` (handler(sender, bar)), as in LEAN."""
+
+    def __init__(self):
+        self.handlers: List[Callable] = []
+
+    def __iadd__(self, fn):
+        self.handlers.append(fn)
+        return self
+
+    def __isub__(self, fn):
+        if fn in self.handlers:
+            self.handlers.remove(fn)
+        return self
+
+    def fire(self, sender, bar) -> None:
+        for h in list(self.handlers):
+            h(sender, bar)
+
+
+class TradeBarConsolidator:
+    """Builds bars from daily bars: a Calendar period (WEEKLY / MONTHLY / QUARTERLY / YEARLY), a whole number of sessions,
+    or a timedelta of whole days (7 → weekly, 30/31 → monthly, else that many sessions). A bar is emitted on the last
+    session of its period. Intraday periods need intraday data, which the platform does not have."""
+
+    def __init__(self, period):
+        if isinstance(period, timedelta):
+            d = period.total_seconds() / 86400
+            if d < 1:
+                raise NotImplementedError("consolidating into intraday bars needs intraday data — only daily bars are "
+                                          "available. Use a period of one or more days, or Calendar.WEEKLY / MONTHLY.")
+            d = int(round(d))
+            period = Calendar.WEEKLY if d == 7 else Calendar.MONTHLY if d in (28, 29, 30, 31) else d
+        elif callable(period) and not isinstance(period, str):
+            period = Calendar.WEEKLY
+        elif isinstance(period, str) and period in (Resolution.MINUTE, Resolution.HOUR, Resolution.SECOND, Resolution.TICK):
+            raise NotImplementedError(f"consolidating {period} bars needs intraday data — only daily bars are available.")
+        elif period == Resolution.DAILY:
+            period = 1
+        self.period = period
+        self.data_consolidated = _Event()
+        self.DataConsolidated = self.data_consolidated
+        self.consolidated = None
+        self._bars: List[TradeBar] = []
+
+    def _close(self) -> None:
+        b = self._bars
+        bar = TradeBar(b[0].symbol, b[0].time, b[0].open, max(x.high for x in b), min(x.low for x in b), b[-1].close,
+                       sum(x.volume for x in b))
+        bar.end_time = b[-1].time
+        bar.period = b[-1].time - b[0].time + timedelta(days=1)
+        self._bars = []
+        self.consolidated = bar
+        self.data_consolidated.fire(self, bar)
+
+    def update(self, bar: TradeBar, next_time=None) -> None:
+        self._bars.append(bar)
+        if isinstance(self.period, int):
+            if len(self._bars) >= self.period:
+                self._close()
+            return
+        ends = next_time is None or pd.Timestamp(next_time).to_period(self.period) != pd.Timestamp(bar.time).to_period(self.period)
+        if ends:
+            self._close()
+
+    Update = update
+
+
+TradeBarConsolidatorBase = TradeBarConsolidator
+
+
+class _SubscriptionManager:
+    def __init__(self, algo):
+        self._a = algo
+
+    def add_consolidator(self, symbol, consolidator) -> None:
+        self._a._consolidators.append((_sym(symbol), consolidator))
+
+    def remove_consolidator(self, symbol, consolidator) -> None:
+        self._a._consolidators = [(s, c) for s, c in self._a._consolidators if c is not consolidator]
+
+    AddConsolidator, RemoveConsolidator = add_consolidator, remove_consolidator
+
+
+# ── object store: state kept between backtests (per algorithm class) ─────────
+class ObjectStore:
+    """save / read text, save_bytes / read_bytes, save_json / read_json, contains_key, delete, keys. Kept between runs
+    of the same algorithm class on the server (10 MB); a browser run keeps it for that run only."""
+
+    LIMIT = 10_000_000
+
+    def __init__(self, seed: Optional[Dict[str, str]] = None):
+        self._d: Dict[str, str] = dict(seed or {})
+
+    def _size(self) -> int:
+        return sum(len(k) + len(v) for k, v in self._d.items())
+
+    def save(self, key: str, value) -> bool:
+        v = value if isinstance(value, str) else str(value)
+        old = self._d.get(str(key))
+        self._d[str(key)] = v
+        if self._size() > self.LIMIT:
+            if old is None:
+                self._d.pop(str(key))
+            else:
+                self._d[str(key)] = old
+            raise ValueError("object store limit (10 MB) reached")
+        return True
+
+    def read(self, key: str) -> str:
+        if str(key) not in self._d:
+            raise KeyError(f"object store has no key '{key}'")
+        return self._d[str(key)]
+
+    def save_bytes(self, key: str, data) -> bool:
+        import base64
+        return self.save(key, "b64:" + base64.b64encode(bytes(data)).decode())
+
+    def read_bytes(self, key: str) -> bytes:
+        import base64
+        v = self.read(key)
+        return base64.b64decode(v[4:]) if v.startswith("b64:") else v.encode()
+
+    def save_json(self, key: str, obj) -> bool:
+        import json as _json
+        return self.save(key, _json.dumps(obj, default=str))
+
+    def read_json(self, key: str):
+        import json as _json
+        return _json.loads(self.read(key))
+
+    def contains_key(self, key: str) -> bool:
+        return str(key) in self._d
+
+    def delete(self, key: str) -> bool:
+        return self._d.pop(str(key), None) is not None
+
+    @property
+    def keys(self) -> List[str]:
+        return list(self._d)
+
+    def get_file_path(self, key: str):
+        raise NotImplementedError("object_store.get_file_path: strategy code has no file access — use save / read.")
+
+    Save, Read, SaveBytes, ReadBytes, ContainsKey, Delete, GetFilePath = (
+        save, read, save_bytes, read_bytes, contains_key, delete, get_file_path)
+    SaveJson, ReadJson = save_json, read_json
+
+
+OBJECT_STORE_SEED: Dict[str, Dict[str, str]] = {}           # class name → stored keys (set by the runner)
 
 
 # ── the algorithm base class ─────────────────────────────────────────────────
@@ -982,6 +1752,12 @@ class QCAlgorithm:
         self._realized = {"short_term": 0.0, "long_term": 0.0}
         self._rejected: List[Dict[str, Any]] = []
         self.benchmark = None
+        self._framework = _Framework()
+        self._custom: Dict[str, Security] = {}
+        self._consolidators: List[tuple] = []
+        self.subscription_manager = _SubscriptionManager(self)
+        self.object_store = ObjectStore(OBJECT_STORE_SEED.get(type(self).__name__))
+        self.SubscriptionManager, self.ObjectStore = self.subscription_manager, self.object_store
         # PascalCase aliases (the older LEAN Python API)
         self.Portfolio, self.Securities, self.Transactions, self.Schedule = self.portfolio, self.securities, self.transactions, self.schedule
         self.DateRules, self.TimeRules, self.UniverseSettings, self.Settings = self.date_rules, self.time_rules, self.universe_settings, self.settings
@@ -1065,6 +1841,19 @@ class QCAlgorithm:
 
     add_index_option = add_future_option = add_option
 
+    def add_data(self, data_type=None, ticker: Optional[str] = None, resolution=None, *a, **k) -> Security:
+        """Custom data uploaded under `ticker` (Quant Lab → Custom data): delivered in on_data as slice[symbol] on the
+        sessions with a fresh row, and through history(symbol). Not tradable."""
+        name = str(ticker if ticker is not None else data_type).strip().lower()
+        d = getattr(self._ctx, "_data", None) if self._ctx is not None else None
+        if d is not None and name not in getattr(d, "custom", {}):
+            raise ValueError(f"Custom data '{name}' is not loaded — upload it (Quant Lab → Custom data) and keep the "
+                             "name a literal in add_data(…, \"name\").")
+        sec = Security(name, resolution or Resolution.DAILY)
+        sec._custom_type = data_type if isinstance(data_type, type) else PythonData
+        self._custom[name] = sec
+        return sec
+
     def remove_security(self, symbol) -> None:
         t = _sym(symbol)
         sec = self.securities.get(t)
@@ -1109,6 +1898,13 @@ class QCAlgorithm:
             lo = max(0, i + 1 - int(periods))
         frames = []
         for s in syms:
+            cust = getattr(d, "custom", {}).get(s.lower())
+            if cust is not None and s.lower() in self._custom:
+                f = cust.iloc[lo:i + 1]
+                f = f[f["_new"] > 0].drop(columns=["_new"])
+                f.index.name = "time"
+                frames.append(pd.concat({s.lower(): f}, names=["symbol"]))
+                continue
             if s not in d.close.columns:
                 continue
             sl = slice(lo, i + 1)
@@ -1126,7 +1922,16 @@ class QCAlgorithm:
         return ind
 
     def register_indicator(self, symbol, indicator: Indicator, *a, **k) -> None:
-        self._reg(symbol, indicator, isinstance(indicator, (AverageTrueRange, AverageDirectionalIndex)))
+        """Updated with each daily bar — or, given a consolidator (or a Calendar / timedelta period), with its bars."""
+        bars = isinstance(indicator, (AverageTrueRange, AverageDirectionalIndex))
+        src = a[0] if a else k.get("consolidator") or k.get("resolution")
+        if src is not None and not (isinstance(src, str) and src == Resolution.DAILY):
+            c = src if isinstance(src, TradeBarConsolidator) else TradeBarConsolidator(src)
+            if not isinstance(src, TradeBarConsolidator):
+                self.subscription_manager.add_consolidator(symbol, c)
+            c.data_consolidated += (lambda sender, bar: indicator.update(bar) if bars else indicator.update(bar.time, bar.close))
+            return
+        self._reg(symbol, indicator, bars)
 
     def sma(self, symbol, period: int, *a, **k) -> SimpleMovingAverage:
         return self._reg(symbol, SimpleMovingAverage(period))
@@ -1177,8 +1982,65 @@ class QCAlgorithm:
                 indicator.update(bar if isinstance(indicator, (AverageTrueRange, AverageDirectionalIndex)) else t,
                                  None if isinstance(indicator, (AverageTrueRange, AverageDirectionalIndex)) else r.close)
 
-    def consolidate(self, *a, **k):
-        raise NotImplementedError("consolidate / consolidators: only daily bars are available.")
+    def consolidate(self, symbol, period, handler=None, *a, **k) -> TradeBarConsolidator:
+        """Weekly / monthly / n-session bars built from daily bars: handler(bar) on the last session of each period."""
+        if handler is None and a and callable(a[0]):
+            handler = a[0]
+        if not callable(handler):
+            raise ValueError("consolidate(symbol, period, handler): the handler must be a method or function.")
+        c = TradeBarConsolidator(period)
+        c.data_consolidated += (lambda sender, bar: handler(bar))
+        self.subscription_manager.add_consolidator(symbol, c)
+        return c
+
+    # ── Algorithm Framework ──
+    def set_alpha(self, model) -> None:
+        self._framework.alphas = [model]
+        self._framework.used = True
+
+    def add_alpha(self, model) -> None:
+        self._framework.alphas.append(model)
+        self._framework.used = True
+
+    def set_portfolio_construction(self, model) -> None:
+        self._framework.pcm = model
+        self._framework.used = True
+
+    def set_execution(self, model) -> None:
+        self._framework.execution = model
+        self._framework.used = True
+
+    def set_risk_management(self, model) -> None:
+        self._framework.risk = [model]
+        self._framework.used = True
+
+    def add_risk_management(self, model) -> None:
+        self._framework.risk.append(model)
+        self._framework.used = True
+
+    def set_universe_selection(self, model) -> None:
+        if isinstance(model, ManualUniverseSelectionModel):
+            for t in model.symbols:
+                self._add(t, self.universe_settings.resolution)
+        elif isinstance(model, FundamentalUniverseSelectionModel):
+            self.add_universe(lambda funds: _call(model, "select", self, funds))
+        else:
+            raise NotImplementedError("set_universe_selection: ManualUniverseSelectionModel([...]) or "
+                                      "FundamentalUniverseSelectionModel(selector) are supported.")
+
+    add_universe_selection = set_universe_selection
+
+    def emit_insights(self, *insights) -> List[Insight]:
+        ins = Insight.group(*insights)
+        self._framework.emitted += ins
+        self._framework.used = True
+        return ins
+
+    @property
+    def insights(self) -> List[Insight]:
+        return list(self._framework.active.values())
+
+    Insights = insights
 
     # orders
     def _order(self, symbol, quantity: float, kind: str, tag: str = "", **prices) -> OrderTicket:
@@ -1188,6 +2050,8 @@ class QCAlgorithm:
             self._log.append(f"{self.time}: order for {t} ignored during warm-up")
             return OrderTicket(self, 0, Symbol(t), q, kind, tag)
         if t not in self._ctx._data.close.columns:
+            if t.lower() in self._custom:
+                raise ValueError(f"Order for {t}: custom data is not tradable.")
             raise ValueError(f"Order for {t}: not in the universe (add_equity it, or select it in add_universe).")
         if not q:
             return OrderTicket(self, 0, Symbol(t), 0.0, kind, tag)
@@ -1299,7 +2163,7 @@ class QCAlgorithm:
             lag = 1 if pd.Timestamp(when) >= pd.Timestamp("2024-05-28") else 2
             self._unsettled.append((i + lag, -shares * px))
 
-    def _report(self) -> Dict[str, Any]:
+    def _report(self, final: bool = False) -> Dict[str, Any]:
         reasons: Dict[str, int] = {}
         for r in self._rejected:
             key = r["reason"].split(":")[0]
@@ -1309,7 +2173,12 @@ class QCAlgorithm:
                 "rejected_last": self._rejected[-20:],
                 "realized_pnl": {k: round(v, 2) for k, v in self._realized.items()},
                 "open_lots": sum(len(v) for v in self._lots.values()), "approximations": sorted(self._approx),
-                "log_tail": self._log[-30:]}
+                "log_tail": self._log[-30:],
+                **({"framework": {"insights": self._framework.count, "active_insights": len(self._framework.active),
+                                  "models": [type(m).__name__ for m in self._framework.models()]}}
+                   if self._framework.used else {}),
+                **({"object_store": {"class": type(self).__name__, "data": dict(self.object_store._d)}}
+                   if self.object_store._d else {})}
 
     def market_order(self, symbol, quantity: float, asynchronous: bool = False, tag: str = "", *a, **k) -> OrderTicket:
         return self._order(symbol, quantity, OrderType.MARKET, tag)
@@ -1400,8 +2269,8 @@ class QCAlgorithm:
     Initialize, OnData = initialize, on_data
     SetStartDate, SetEndDate, SetCash, SetBenchmark, SetWarmUp, SetBrokerageModel, SetTimeZone = (
         set_start_date, set_end_date, set_cash, set_benchmark, set_warm_up, set_brokerage_model, set_time_zone)
-    AddEquity, AddForex, AddCrypto, AddOption, AddFuture, AddUniverse, RemoveSecurity = (
-        add_equity, add_forex, add_crypto, add_option, add_future, add_universe, remove_security)
+    AddEquity, AddForex, AddCrypto, AddOption, AddFuture, AddUniverse, RemoveSecurity, AddData = (
+        add_equity, add_forex, add_crypto, add_option, add_future, add_universe, remove_security, add_data)
     History, RegisterIndicator, WarmUpIndicator, Consolidate = history, register_indicator, warm_up_indicator, consolidate
     SMA, EMA, RSI, ATR, BB, MACD, ROC, ROCP, MOMP, MOM, MAX, MIN, STD, ADX = (
         sma, ema, rsi, atr, bb, macd, roc, rocp, momp, mom, max, min, std, adx)
@@ -1411,6 +2280,9 @@ class QCAlgorithm:
     SetHoldings, Liquidate, CalculateOrderQuantity, Debug, Log, Error, Plot, Quit, Symbol, GetParameter = (
         set_holdings, liquidate, calculate_order_quantity, debug, debug, debug, plot, quit, symbol, get_parameter)
     SettledCash, TaxLots = settled_cash, tax_lots
+    SetAlpha, AddAlpha, SetPortfolioConstruction, SetExecution, SetRiskManagement, AddRiskManagement = (
+        set_alpha, add_alpha, set_portfolio_construction, set_execution, set_risk_management, add_risk_management)
+    SetUniverseSelection, AddUniverseSelection, EmitInsights = set_universe_selection, add_universe_selection, emit_insights
 
 
 class _Quit(Exception):
@@ -1454,6 +2326,12 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
                     ind.update(b)
                 else:
                     ind.update(b.time, b.close)
+        idx = d.close.index
+        nxt = idx[i + 1].to_pydatetime() if i + 1 < len(idx) else None    # the trading calendar, not future prices
+        for t, c in list(algo._consolidators):
+            b = bar_of(d, t, i)
+            if b is not None:
+                c.update(b, nxt)
 
     def select(algo, d, i, ctx) -> None:
         if not algo._selectors:
@@ -1478,7 +2356,9 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
             rem_s = [algo.securities.get(t) or Security(t, Resolution.DAILY) for t in removed]
             for t in removed:
                 dict.pop(algo.securities, t, None)
-            _handler(algo, "on_securities_changed")(SecurityChanges(add_s, rem_s))
+            ch = SecurityChanges(add_s, rem_s)
+            _handler(algo, "on_securities_changed")(ch)
+            algo._framework.securities_changed(algo, ch)
 
     def sync(algo, ctx, i):
         d = ctx._data
@@ -1538,6 +2418,8 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
             st["algo"] = algo
             st["static"] = set(algo.securities.keys())
             st["dynamic"] = set()
+            if algo._framework.used and algo.securities:          # framework models see the initial securities
+                algo._framework.securities_changed(algo, SecurityChanges(list(algo.securities.values()), []))
             # prime indicators bar by bar on the history before the start; set_warm_up(n) replays its last n bars
             # through on_data with is_warming_up (orders refused)
             first_live = max(i, 0)
@@ -1571,11 +2453,23 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
             if dr._fn(idx[i], idx, i):
                 cb()
         bars = {t: b for t in algo.securities.keys() if (b := bar_of(d, t, i)) is not None}
+        for name, sec in algo._custom.items():                        # custom data: sessions with a fresh row
+            cf = getattr(d, "custom", {}).get(name)
+            if cf is not None and cf["_new"].iloc[i] > 0:
+                row = {k: float(v) for k, v in cf.iloc[i].items() if k != "_new"}
+                pt = sec._custom_type(name, algo.time, row) if sec._custom_type is not PythonData else PythonData(name, algo.time, row)
+                if not isinstance(pt, PythonData) or pt.symbol is None:
+                    pt = PythonData(name, algo.time, row)
+                bars[_sym(sec.symbol)] = pt
+                sec.price = pt.value
         if bars:
-            _handler(algo, "on_data")(Slice(algo.time, bars))
-        if i == len(idx) - 1:
+            sl = Slice(algo.time, bars)
+            _handler(algo, "on_data")(sl)
+            algo._framework.step(algo, sl)
+        last = i == len(idx) - 1
+        if last:
             _handler(algo, "on_end_of_algorithm")()
-        ctx.report = algo._report()
+        ctx.report = algo._report(final=last)
 
     on_bar.state = st
     return on_bar
@@ -1591,6 +2485,9 @@ SUPPORTED = {
     "stop_limit_order", "trailing_stop_order", "set_holdings", "liquidate", "calculate_order_quantity", "debug", "log",
     "error", "plot", "quit", "symbol", "get_parameter", "settled_cash", "tax_lots", "schedule", "portfolio", "securities", "transactions", "time", "is_warming_up",
     "date_rules", "time_rules", "universe", "universe_settings", "settings", "set_brokerage_model", "set_time_zone",
+    "set_alpha", "add_alpha", "set_portfolio_construction", "set_execution", "set_risk_management", "add_risk_management",
+    "set_universe_selection", "add_universe_selection", "emit_insights", "insights", "consolidate", "subscription_manager",
+    "add_consolidator", "object_store", "add_data",
 }
 APPROXIMATED = {
     "after_market_open": "runs at the session's close decision (daily data)",
@@ -1603,16 +2500,16 @@ APPROXIMATED = {
     "Resolution.HOUR": "hourly data is not available here — runs on daily bars",
     "Resolution.SECOND": "runs on daily bars", "Resolution.TICK": "runs on daily bars",
     "dollar_volume": "selection by daily dollar volume of point-in-time S&P 500 members",
+    "VolumeWeightedAveragePriceExecutionModel": "fills like ImmediateExecutionModel (next open) — no intraday volume profile",
+    "StandardDeviationExecutionModel": "fills like ImmediateExecutionModel (next open) — no intraday prices",
+    "SpreadExecutionModel": "fills like ImmediateExecutionModel (next open) — no quotes",
+    "MeanVarianceOptimizationPortfolioConstructionModel": "not built in — use RiskParityPortfolioConstructionModel or your own create_targets",
 }
 UNSUPPORTED = {
     "add_option": "no free historical option chains", "add_future": "no free roll-adjusted futures history",
     "add_index_option": "no free historical option chains", "add_future_option": "no free historical option chains",
-    "consolidate": "consolidators need intraday bars", "subscription_manager": "custom subscriptions are not available",
-    "add_data": "custom data sources are not available", "set_alpha": "the Algorithm Framework is not available",
-    "set_portfolio_construction": "the Algorithm Framework is not available",
-    "set_execution": "the Algorithm Framework is not available", "set_risk_management": "the Algorithm Framework is not available",
-    "set_universe_selection": "use add_universe(selector) instead", "option_chain_provider": "no option chains",
-    "object_store": "no object store", "asset_classification": "no point-in-time sector codes (data.info has today's sector)",
+    "option_chain_provider": "no option chains",
+    "asset_classification": "no point-in-time sector codes (data.info has today's sector)",
     "download": "no network access from strategy code", "train": "no background training",
 }
 
@@ -1737,6 +2634,26 @@ def static_header(code: str) -> Dict[str, Any]:
                 h["capital"] = float(args[0])
             elif m == "set_benchmark" and args and isinstance(args[0], str):
                 h["benchmark"] = args[0].upper()
+            elif m in ("set_universe_selection", "add_universe_selection"):
+                src = ast.unparse(n)
+                if "Fundamental" in src or "Coarse" in src:
+                    h["dynamic_universe"] = True
+                for c in ast.walk(n):                              # Symbol.create("SPY", …) / "SPY" in the manual list
+                    if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr in ("create", "Create") \
+                            and c.args and isinstance(_lit(c.args[0]), str):
+                        _read_call("add_equity", [_lit(c.args[0])], n, h, note)
+                    elif isinstance(c, (ast.List, ast.Tuple)):
+                        for e in c.elts:
+                            if isinstance(_lit(e), str):
+                                _read_call("add_equity", [_lit(e)], n, h, note)
+            elif m == "add_data":
+                lits = [a for a in args if isinstance(a, str)]
+                if lits:
+                    h.setdefault("custom", []).append(lits[0].strip().lower())
+                    note("approximated", n.lineno, "add_data", "custom data = the CSV uploaded under this name (Quant Lab "
+                         "→ Custom data), as of each session; get_source / reader are not called")
+                else:
+                    note("unsupported", n.lineno, "add_data", "the dataset name must be a literal: add_data(MyData, \"name\")")
             elif m == "add_universe":
                 h["dynamic_universe"] = True
                 note("approximated", n.lineno, "add_universe", "selection runs each session on point-in-time S&P 500 "
@@ -1756,8 +2673,8 @@ def static_header(code: str) -> Dict[str, Any]:
                 note("unsupported", line, n.attr, UNSUPPORTED[a])
             elif a in APPROXIMATED:
                 note("approximated", line, n.attr, APPROXIMATED[a])
-        elif isinstance(n, ast.ImportFrom) and n.module not in ("AlgorithmImports", "math", "datetime"):
-            note("unsupported", line, f"from {n.module} import", "only AlgorithmImports, math and datetime")
+        elif isinstance(n, ast.Name) and n.id in APPROXIMATED:
+            note("approximated", line, n.id, APPROXIMATED[n.id])
     used = {_snake(n.attr) for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
     need = sorted({FUND_FIELDS[u] for u in used if u in FUND_FIELDS})
     if need:
@@ -1765,7 +2682,10 @@ def static_header(code: str) -> Dict[str, Any]:
         note("approximated", None, "fundamentals", "point-in-time SEC filings (US filers, as first filed, from the next "
              "session) in place of Morningstar: " + ", ".join(need))
     if not h["universe"] and not h["dynamic_universe"]:
-        raise ValueError("initialize() adds no securities (add_equity('SPY') …) and no universe.")
+        if h.get("custom"):
+            h["universe"] = [h.get("benchmark") or "SPY"]          # custom data only: the benchmark sets the calendar
+        else:
+            raise ValueError("initialize() adds no securities (add_equity('SPY') …) and no universe.")
     h["report"] = sorted(rep, key=lambda r: ({"unsupported": 0, "approximated": 1}[r["level"]], r["line"] or 0))
     h["api_version"] = API_VERSION
     return h
@@ -1786,9 +2706,21 @@ def prepare_source(code: str) -> str:
 
 NAMES = {k: v for k, v in globals().items() if k in (
     "QCAlgorithm", "Resolution", "OrderStatus", "OrderDirection", "OrderType", "MovingAverageType",
-    "DataNormalizationMode", "BrokerageName", "AccountType", "DayOfWeek", "Market", "Symbol", "TradeBar", "Slice",
+    "DataNormalizationMode", "BrokerageName", "AccountType", "DayOfWeek", "Market", "SecurityType", "Symbol", "TradeBar", "Slice",
     "RollingWindow", "SimpleMovingAverage", "ExponentialMovingAverage", "WildersMovingAverage", "RelativeStrengthIndex",
     "AverageTrueRange", "BollingerBands", "MovingAverageConvergenceDivergence", "RateOfChange", "RateOfChangePercent",
     "Momentum", "Maximum", "Minimum", "StandardDeviation", "AverageDirectionalIndex", "IndicatorDataPoint",
-    "PortfolioTarget", "SecurityChanges", "Fundamental", "CoarseFundamental", "OrderEvent", "OrderTicket")}
+    "PortfolioTarget", "SecurityChanges", "Fundamental", "CoarseFundamental", "OrderEvent", "OrderTicket",
+    # Algorithm Framework
+    "Insight", "InsightDirection", "InsightType", "PortfolioBias", "AlphaModel", "NullAlphaModel", "ConstantAlphaModel",
+    "EmaCrossAlphaModel", "MacdAlphaModel", "RsiAlphaModel", "HistoricalReturnsAlphaModel", "PortfolioConstructionModel",
+    "NullPortfolioConstructionModel", "EqualWeightingPortfolioConstructionModel", "InsightWeightingPortfolioConstructionModel",
+    "ConfidenceWeightingPortfolioConstructionModel", "RiskParityPortfolioConstructionModel", "RiskManagementModel",
+    "NullRiskManagementModel", "MaximumDrawdownPercentPerSecurity", "MaximumUnrealizedProfitPercentPerSecurity",
+    "MaximumDrawdownPercentPortfolio", "TrailingStopRiskManagementModel", "CompositeRiskManagementModel", "ExecutionModel",
+    "NullExecutionModel", "ImmediateExecutionModel", "VolumeWeightedAveragePriceExecutionModel",
+    "StandardDeviationExecutionModel", "SpreadExecutionModel", "UniverseSelectionModel", "ManualUniverseSelectionModel",
+    "FundamentalUniverseSelectionModel", "CoarseFundamentalUniverseSelectionModel",
+    # consolidators, object store
+    "Calendar", "TradeBarConsolidator", "TradeBarConsolidatorBase", "ObjectStore", "PythonData")}
 NAMES.update({"timedelta": timedelta, "datetime": datetime, "date": date})

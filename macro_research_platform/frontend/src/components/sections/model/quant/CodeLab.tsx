@@ -226,6 +226,7 @@ const DATA_FIELDS: [string, string][] = [
   ['account_currency', 'the account currency'], ['usd_per_unit', 'USD per account unit (Series)'], ['members', 'index membership (SP500_PIT)'],
   ['opt', 'option analytics: delta, iv, strike, dte, spot, roll …'], ['fund', 'point-in-time fundamentals (FUNDAMENTALS)'],
   ['option_names', 'synthetic option columns'], ['tickers', 'column names'], ['returns()', 'daily returns'],
+  ['custom["name"]', 'uploaded custom data (CUSTOM_DATA), as of each session'],
 ];
 const CTX_FIELDS: [string, string][] = [
   ['history("close", 252)', 'rows up to today (field, last n)'], ['close', "today's closes"], ['positions', 'weights held now'],
@@ -259,6 +260,8 @@ const NAMES: [string, string][] = [
   ['ACCOUNT_CURRENCY = "USD"', 'the account currency'], ['FX_HEDGE = 1.0', 'share of currency risk hedged'],
   ['OPTIONS = [{"underlying": "SPY", "type": "put", "moneyness": 0.95}]', 'synthetic listed options'],
   ['FUNDAMENTALS = True', 'point-in-time SEC fundamentals'], ['START = "2010-01-01"', 'first record date'],
+  ['CUSTOM_DATA = ["name"]', 'an uploaded CSV (Quant Lab → Custom data)'],
+  ['import scipy.stats as st', 'scipy, scikit-learn, statsmodels are available'],
   ['BENCHMARK = "SPY"', 'comparison series'], ['PARAMS = {"lookback": [126, 252]}', 'walk-forward grid'],
   ['HOLDOUT = "2023-01-01"', 'untouched holdout from this date'],
   ['def strategy(data, **params):', 'target weights for every date'], ['def on_bar(ctx, **params):', 'event-driven: after every close'],
@@ -281,6 +284,15 @@ const SELF_FIELDS: [string, string][] = [
   ['portfolio.total_portfolio_value', 'NAV'], ['securities[symbol].price', 'latest close'], ['transactions.get_open_orders()', 'working orders'],
   ['is_warming_up', 'True during set_warm_up'], ['time', 'current bar time'], ['debug("…")', 'log a line'], ['plot("chart", "series", value)', 'custom chart'],
   ['get_parameter("name")', 'current PARAMS value'],
+  ['set_alpha(EmaCrossAlphaModel(12, 26))', 'Algorithm Framework: insights'], ['add_alpha(MyAlpha())', 'another alpha model'],
+  ['set_portfolio_construction(EqualWeightingPortfolioConstructionModel())', 'insights → targets'],
+  ['set_risk_management(MaximumDrawdownPercentPerSecurity(0.05))', 'risk model'], ['set_execution(ImmediateExecutionModel())', 'targets → orders'],
+  ['set_universe_selection(ManualUniverseSelectionModel([Symbol.create("SPY", SecurityType.EQUITY, Market.USA)]))', 'framework universe'],
+  ['emit_insights(Insight.price(symbol, timedelta(days=5), InsightDirection.UP))', 'insights from your own code'],
+  ['consolidate(symbol, Calendar.WEEKLY, self.on_week)', 'weekly / monthly bars from daily'],
+  ['register_indicator(symbol, indicator, Calendar.WEEKLY)', 'an indicator on weekly bars'],
+  ['object_store.save("key", text)', 'state kept between runs'], ['object_store.read("key")', 'read it back'],
+  ['add_data(MyData, "name")', 'uploaded custom data → slice[symbol].value'],
 ];
 
 function suggest(value: string, pos: number): { from: number; items: [string, string][] } | null {
@@ -440,7 +452,7 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
       setStatus('Reading your code…');
       const { header } = await call(sh.worker, { type: 'prepare', code }, 'prepared', 60_000);
       setStatus(`Loading prices for ${header.universe.length} ticker${header.universe.length > 1 ? 's' : ''}…`);
-      const data = await api(`/api/v1/quant/code/data?universe=${encodeURIComponent(header.universe.join(','))}&start=${header.start}&benchmark=${encodeURIComponent(header.benchmark)}&account=${encodeURIComponent(header.account || 'USD')}${header.options?.length ? `&options=${encodeURIComponent(JSON.stringify(header.options))}` : ''}${header.fundamentals?.length ? `&fundamentals=${encodeURIComponent(header.fundamentals.join(','))}` : ''}`);
+      const data = await api(`/api/v1/quant/code/data?universe=${encodeURIComponent(header.universe.join(','))}&start=${header.start}&benchmark=${encodeURIComponent(header.benchmark)}&account=${encodeURIComponent(header.account || 'USD')}${header.options?.length ? `&options=${encodeURIComponent(JSON.stringify(header.options))}` : ''}${header.fundamentals?.length ? `&fundamentals=${encodeURIComponent(header.fundamentals.join(','))}` : ''}${header.custom?.length ? `&custom=${encodeURIComponent(header.custom.join(','))}` : ''}`);
       setStatus('Backtesting (net of costs)…');
       const { result: r } = await call(sh.worker, { type: 'run', code, data, costs: runCosts }, 'result', 600_000);
       setResult({ ...r, benchmark_label: header.benchmark });
@@ -526,6 +538,7 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
                 : `Runs here, but can't be deployed: ${check.error}`}
             </div>)}
           {(check as any)?.qc && <QcReport qc={(check as any).qc} />}
+          <CustomData />
           {status && <div className="flex items-center gap-2 text-2xs text-text-secondary"><Loader2 className="w-3 h-3 animate-spin" />{status}
             {jobId && <button onClick={cancelJob} className="ml-2 px-2 py-0.5 border border-border hover:border-red hover:text-red">Cancel</button>}</div>}
           <ErrorNote msg={err} />
@@ -611,7 +624,9 @@ function ApiHelp() {
         <li><b>Event-driven</b>: define <code>on_bar(ctx, **params)</code> instead of <code>strategy</code>. It runs after every close and sees only the past: <code>ctx.history("close", n)</code>, <code>ctx.positions</code>, <code>ctx.nav</code>, <code>ctx.cash</code>, <code>ctx.fills</code>, <code>ctx.state</code> (yours). Orders: <code>ctx.target({'{'}"SPY": 0.5{'}'})</code>, <code>ctx.limit("SPY", 1.0, 400)</code>, <code>ctx.stop("SPY", 0.0, 380)</code>, <code>ctx.stop_limit(…)</code>, <code>ctx.trailing_stop("SPY", 0.0, 0.1)</code>, <code>ctx.bracket("SPY", 0.0, 450, 380)</code>, <code>ctx.cancel()</code>, <code>ctx.plot(…)</code>. Optional <code>setup(data, **params)</code> precomputes indicators (read with <code>ctx.pre(name)</code>; checked for look-ahead).</li>
         <li>Optional <code>signal(data, **params)</code> returning scores (dates × tickers): the lab reports its information coefficient by horizon, quintile returns and turnover.</li>
         <li>Every run is checked for look-ahead (decisions recomputed from earlier data must match) and, with PARAMS, for overfitting (PBO); you also get attribution, today's ex-ante risk with crisis stress tests and a capacity curve.</li>
-        <li><code>print()</code> shows in Output. In the browser you can also import scipy, scikit-learn or statsmodels; deployable code is limited to numpy, pandas and math.</li>
+        <li><b>Python</b>: ordinary Python — your own classes and inheritance, decorators, <code>@dataclass</code>, properties, <code>super()</code> — and numpy, pandas, scipy, scikit-learn, statsmodels plus the standard library without I/O (math, statistics, collections, itertools, functools, datetime, re, json…), in the browser and when deployed. Not available: files, network, <code>os</code>/<code>sys</code>/<code>subprocess</code>, <code>eval</code>/<code>exec</code>, and the engine's internals (they hold future prices).</li>
+        <li><b>Custom data</b>: upload a CSV (below the editor) and use <code>CUSTOM_DATA = ["name"]</code> → <code>data.custom["name"]</code> (as of each session; <code>_new</code> marks fresh rows).</li>
+        <li><b>Server runs</b> happen in a throwaway Docker container — no network, read-only filesystem, no capabilities, unprivileged — or a process sandbox when Docker is not running. <code>print()</code> shows in Output.</li>
       </ul>
     </details>
   );
@@ -976,6 +991,53 @@ function QcReport({ qc }: { qc: any }) {
             <span className="text-text-tertiary">line {r.line ?? '—'}</span><span>{r.feature}</span><span className="text-text-secondary">— {r.message}</span>
           </div>))}
         {rows.length === 0 && <div className="text-text-tertiary">Every construct maps directly (daily bars; orders fill at the next open unless market-on-close).</div>}
+      </div>
+    </details>
+  );
+}
+
+
+/** Uploaded custom datasets: CUSTOM_DATA = ["name"] in a strategy, or self.add_data(MyData, "name") in an algorithm. */
+function CustomData() {
+  const [list, setList] = useState<any[] | null>(null);
+  const [name, setName] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => api('/api/v1/quant/custom-data').then((j: any) => setList(j.datasets)).catch(() => setList([])), []);
+  useEffect(() => { load(); }, [load]);
+  const upload = async (file: File) => {
+    const n = (name || file.name.replace(/\.[^.]+$/, '')).toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/^[^a-z]+/, '').slice(0, 40);
+    if (!n) { setErr('Give the dataset a name (letters, digits, _).'); return; }
+    setBusy(true); setErr(null);
+    try {
+      await api('/api/v1/quant/custom-data', { method: 'POST', json: { name: n, csv: await file.text() } });
+      setName(''); load();
+    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const del = async (n: string) => { try { await api(`/api/v1/quant/custom-data/${n}`, { method: 'DELETE' }); load(); } catch (e: any) { setErr(e.message); } };
+  return (
+    <details className="text-[11px]">
+      <summary className="cursor-pointer text-text-tertiary">Custom data {list?.length ? `(${list.length})` : ''}</summary>
+      <div className="mt-1 p-2 border border-border bg-surface-1 space-y-1.5">
+        <div className="text-text-tertiary">A CSV with a date column and numeric columns. Use it with <span className="font-mono">CUSTOM_DATA = ["name"]</span> →
+          <span className="font-mono"> data.custom["name"]</span>, or <span className="font-mono">self.add_data(PythonData, "name")</span> in an algorithm. Each row is known from its date's close.</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="name (optional)" className={cn(inputCls, 'w-40 font-mono')} />
+          <label className={cn('px-2 py-1 border border-border cursor-pointer hover:border-bloomberg', busy && 'opacity-50')}>
+            {busy ? 'Uploading…' : 'Upload CSV'}
+            <input type="file" accept=".csv,text/csv" className="hidden" disabled={busy}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.currentTarget.value = ''; }} />
+          </label>
+        </div>
+        {err && <div className="text-amber">{err}</div>}
+        {list && list.length > 0 && (
+          <table className="w-full"><tbody>{list.map((d) => (
+            <tr key={d.name} className="border-t border-border-subtle">
+              <td className="py-0.5 font-mono text-text-primary">{d.name}</td>
+              <td className="text-text-tertiary">{d.columns.join(', ')}</td>
+              <td className="text-text-tertiary">{d.first} → {d.last} · {d.rows} rows · {d.owner}</td>
+              <td className="text-right"><button onClick={() => del(d.name)} className="text-text-tertiary hover:text-red">Delete</button></td>
+            </tr>))}</tbody></table>)}
       </div>
     </details>
   );

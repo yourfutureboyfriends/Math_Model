@@ -170,3 +170,7 @@ data/processed/auto_backtest.json
 data/processed/strategy_lab.json
 data/processed/backtest/
 data/processed/fundamentals/
+
+# Quant Lab object store (strategy state between runs)
+data/processed/quant_object_store/
+data/processed/quant_custom_data/

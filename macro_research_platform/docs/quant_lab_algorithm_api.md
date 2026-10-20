@@ -58,20 +58,71 @@ Top-level `PARAMS = {"name": [values]}` still drives walk-forward; read the curr
 | Universes | `add_universe(selector)` runs each session on **point-in-time S&P 500 members** with a bar (`symbol, price, volume, dollar_volume`); additions/removals call `on_securities_changed`; `universe.etf("SPY")` = point-in-time S&P 500 | no market cap or Morningstar fields; other ETFs' historical constituents are not free |
 | History | `history(symbols, n | timedelta)` → DataFrame (symbol, time) × OHLCV, never past the current bar | same shape |
 
+## Algorithm Framework
+
+```python
+class Trend(QCAlgorithm):
+    def initialize(self):
+        self.set_start_date(2018, 1, 1)
+        self.set_universe_selection(ManualUniverseSelectionModel(
+            [Symbol.create(t, SecurityType.EQUITY, Market.USA) for t in ["SPY", "TLT", "GLD"]]))
+        self.set_alpha(EmaCrossAlphaModel(20, 60))                       # insights
+        self.set_portfolio_construction(EqualWeightingPortfolioConstructionModel())   # insights → targets
+        self.add_risk_management(MaximumDrawdownPercentPerSecurity(0.10))             # targets adjusted
+        self.set_execution(ImmediateExecutionModel())                                  # targets → orders
+```
+
+Each session after `on_data`: new insights from the alpha models (and `emit_insights`), expired ones dropped (an
+insight's period counts sessions); targets are rebuilt when insights change or the portfolio model's `rebalance` is
+due; risk models adjust them; the execution model orders the difference. Your own models subclass `AlphaModel`
+(`update`), `PortfolioConstructionModel` (`create_targets`), `RiskManagementModel` (`manage_risk`) or `ExecutionModel`
+(`execute`), snake_case or PascalCase.
+
+| Built in | |
+|---|---|
+| Alpha | `ConstantAlphaModel`, `EmaCrossAlphaModel`, `MacdAlphaModel`, `RsiAlphaModel`, `HistoricalReturnsAlphaModel`, `NullAlphaModel` |
+| Portfolio | `EqualWeighting…`, `InsightWeighting…`, `ConfidenceWeighting…`, `RiskParity…` (inverse volatility), `Null…`; `portfolio_bias` |
+| Risk | `MaximumDrawdownPercentPerSecurity`, `MaximumUnrealizedProfitPercentPerSecurity`, `MaximumDrawdownPercentPortfolio`, `TrailingStopRiskManagementModel`, `CompositeRiskManagementModel` |
+| Execution | `ImmediateExecutionModel`; VWAP / standard-deviation / spread models fill like it (no intraday data — reported) |
+| Universe | `ManualUniverseSelectionModel([...])` (read without running the code), `FundamentalUniverseSelectionModel(selector)` |
+
+## Consolidators, object store, custom data
+
+* `self.consolidate(symbol, Calendar.WEEKLY | MONTHLY | QUARTERLY | YEARLY | n_sessions | timedelta(days=7), handler)`;
+  `TradeBarConsolidator(period)` with `data_consolidated += handler`, `subscription_manager.add_consolidator`;
+  `register_indicator(symbol, indicator, Calendar.WEEKLY)` feeds an indicator weekly bars. Bars close on the last
+  session of their period. Intraday periods are refused (no intraday data).
+* `self.object_store.save / read / save_json / read_json / save_bytes / read_bytes / contains_key / delete / keys` —
+  kept between server runs of the same algorithm class (10 MB); a browser run keeps it for that run.
+* Custom data: upload a CSV (date column + numeric columns) under a name in Code Lab, then
+  `self.add_data(MyData, "name")` (a `PythonData` subclass; `get_source` / `reader` are not called) — `slice[symbol]`
+  on sessions with a fresh row (`.value`, `.time`, `point["column"]`), `history(symbol)`. Plain strategies:
+  `CUSTOM_DATA = ["name"]` → `data.custom["name"]`. A row dated d is known from d's close.
+
 ## Not available (the report flags these by line and the run is refused)
 
-Historical option and futures chains (`add_option`, `add_future`, …), consolidators, minute/second/tick data, custom
-data, the Algorithm Framework (`set_alpha`, `set_portfolio_construction`, `set_execution`, `set_risk_management`),
-object store, downloads, live brokerages.
+Historical option and futures chains (`add_option`, `add_future`, …), minute/second/tick data and intraday
+consolidation, downloads from strategy code, live brokerages.
 
-## Sandbox rules for algorithm classes
+## Isolation and what code may do
 
-Classes may derive only from `QCAlgorithm` (the algorithm) or nothing/`object` (helpers such as `SymbolData`), without
-decorators or metaclasses. Allowed special methods: `__init__` (helpers only — the algorithm uses `initialize`),
-`__repr__`, `__str__`, `__len__`, comparisons, `__hash__`. `self._name` is allowed for names the code itself assigns and
-the API does not use internally; `self` cannot be reassigned; methods are reached only through instances
-(`Class.method` is refused). Imports: numpy, pandas, math, datetime, `AlgorithmImports`. Built-ins add `hasattr`,
-`callable`, `next`, `iter`. Dunder access, `getattr`, `type`, file/network access remain blocked, as before.
+Server runs (deployments, large universes, event-driven jobs) execute in a **throwaway Docker container** per run —
+no network, read-only root filesystem, every capability dropped, no privilege escalation, an unprivileged user, 4 GB /
+2 CPU / 256-process caps; only the run's data folder and the engine are mounted. Without Docker the run falls back to
+a separate process under macOS `sandbox-exec` (no network, no writes outside a temp folder, no reading `/Users`) with
+an audit hook refusing sockets, subprocesses, ctypes and file writes. Browser runs are isolated by the browser.
+
+Because the walls are at the process level, the code check is a short blocklist, not a whitelist of Python:
+
+* allowed — any classes and inheritance (including from your own classes and `PythonData` / framework base classes),
+  decorators, `@dataclass`, properties, `super()`, private names, reaching methods through a class, `getattr`;
+  imports of numpy, pandas, scipy, scikit-learn, statsmodels and the standard library without I/O (math, statistics,
+  random, datetime, collections, itertools, functools, operator, heapq, bisect, copy, enum, dataclasses, typing, re,
+  json, hashlib, …);
+* refused — `os`, `sys`, `subprocess`, `socket`, `importlib`, `pickle`, threading and other system modules; `eval`,
+  `exec`, `compile`, `open`; interpreter internals (`__class__`, `__globals__`, `__subclasses__`, frames, metaclasses);
+  pandas / numpy file I/O; and the **engine's internals** (`_ctx`, `_data`, …), which hold the whole price history —
+  reading them would be look-ahead, not a security matter.
 
 ## Status against the engine-gap review (2026-10)
 
@@ -93,6 +144,10 @@ the API does not use internally; `self` cannot be reassigned; methods are reache
 | Strategy-language issues (`hasattr`, `_`, classes) | **done**; compile-time checks with line numbers |
 | Intraday data | **not available** free beyond Yahoo's short windows (2 years hourly) |
 | Historical option / futures chains, assignment on real contracts | **not available** free (options research uses labelled model prices) |
+| Algorithm Framework (alpha, portfolio construction, risk, execution, universe models) | **done** (daily) |
+| Consolidators | **done** for daily → weekly / monthly / quarterly / yearly / n-session bars; intraday not available |
+| Object store, custom data | **done** (server store per algorithm class; CSV uploads) |
+| Python language limits | **lifted** — isolation moved to a per-run container; a short blocklist remains |
 | Settlement delays, cash accounts, buying-power reservations, rejected-order reasons | **done** — cash accounts trade on settled cash (T+2 before 28 May 2024, T+1 after); margin accounts Reg-T 2× net of open orders; rejected orders carry a reason |
 | Tax lots, short-sale locates | **done** — FIFO lots with short/long-term realised P&L; shorts refused under $5 or $5m average traded value (policy assumption — no free borrow data) |
 | Live broker integration | **out of scope by policy** (paper only) |

@@ -14,6 +14,10 @@ def main() -> None:
         qmod = importlib.util.module_from_spec(qspec)
         sys.modules["qcalgo"] = qmod
         qspec.loader.exec_module(qmod)
+        try:                                                     # object store saved by earlier runs (per class)
+            qmod.OBJECT_STORE_SEED.update(json.loads(open(f"{tmp}/object_store.json").read()))
+        except OSError:
+            pass
     spec = importlib.util.spec_from_file_location("codelab", engine_path)
     codelab = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(codelab)
@@ -33,7 +37,9 @@ def main() -> None:
                         options={k[4:]: pd.DataFrame(z[f"m_{k}"].astype(np.float64), index=idx, columns=c)
                                  for k, c in (meta.get("micro_cols") or {}).items() if k.startswith("opt_")} or None,
                         **{k: pd.DataFrame(z[f"m_{k}"].astype(np.float64), index=idx, columns=c)
-                           for k, c in (meta.get("micro_cols") or {}).items() if not k.startswith(("opt_", "fund_"))},
+                           for k, c in (meta.get("micro_cols") or {}).items() if not k.startswith(("opt_", "fund_", "cust_"))},
+                        custom={k[5:]: pd.DataFrame(z[f"m_{k}"].astype(np.float64), index=idx, columns=c)
+                                for k, c in (meta.get("micro_cols") or {}).items() if k.startswith("cust_")} or None,
                         fundamentals={k[5:]: pd.DataFrame(z[f"m_{k}"].astype(np.float64), index=idx, columns=c)
                                       for k, c in (meta.get("micro_cols") or {}).items() if k.startswith("fund_")} or None)
     if "roll" in data.opt:
@@ -44,42 +50,41 @@ def main() -> None:
     # warm pandas' lazy imports before locking down
     pd.DataFrame({"a": [1.0, 2.0]}).rolling(2).mean().ewm(span=2).std().rank(axis=1)
 
-    ALLOWED_MODULES = ("numpy", "pandas", "math", "dateutil", "pytz", "tzdata", "datetime", "_", "encodings",
-                       "collections", "functools", "itertools", "operator", "re", "decimal", "numbers", "warnings",
-                       "typing", "abc", "copy", "textwrap", "string", "calendar", "time", "zoneinfo", "bisect",
-                       "heapq", "weakref", "contextlib", "enum", "inspect", "dis", "opcode", "keyword", "token",
-                       "tokenize", "linecache", "codecs", "unicodedata", "struct", "statistics", "fractions", "random")
+    # what strategy code itself may import (the static check in sandbox.py says the same); libraries import what they
+    # need internally — the hook below still refuses sockets, subprocesses, ctypes and file writes at run time
+    USER_IMPORTS = {"numpy", "pandas", "scipy", "sklearn", "statsmodels", "math", "cmath", "statistics", "random",
+                    "decimal", "fractions", "numbers", "datetime", "time", "calendar", "zoneinfo", "collections",
+                    "itertools", "functools", "operator", "heapq", "bisect", "array", "copy", "enum", "dataclasses",
+                    "typing", "abc", "re", "string", "textwrap", "json", "hashlib", "uuid", "warnings", "contextlib",
+                    "pprint"}
     result_path = f"{tmp}/result.json"
 
     def hook(event, args):
         if event in ("socket.connect", "socket.bind", "socket.getaddrinfo", "socket.__new__", "subprocess.Popen",
                      "os.system", "os.exec", "os.posix_spawn", "os.spawn", "os.fork", "os.forkpty", "os.kill",
-                     "os.putenv", "ctypes.dlopen", "ctypes.dlsym", "ctypes.cdata", "os.remove", "os.rename",
+                     "ctypes.dlopen", "ctypes.dlsym", "ctypes.cdata", "os.remove", "os.rename",
                      "os.rmdir", "os.mkdir", "shutil.rmtree", "os.chmod", "os.symlink", "os.link", "pty.spawn",
-                     "webbrowser.open", "urllib.Request", "http.client.connect", "code.__new__", "function.__new__"):
+                     "webbrowser.open", "urllib.Request", "http.client.connect"):
+            # (code.__new__ / function.__new__ are allowed: patsy and statsmodels build functions at import; strategy
+            # code cannot reach types.CodeType — the static check blocks the types module and dunder access)
             raise PermissionError(f"blocked: {event}")
         if event == "open":
             path, mode = str(args[0]), args[1] if len(args) > 1 else "r"
             writing = isinstance(mode, str) and any(c in mode for c in "wax+")
             if writing and path != result_path:
                 raise PermissionError("blocked: file write")
-        if event == "import":
-            name = str(args[0])
-            if not name.startswith(ALLOWED_MODULES):
-                raise PermissionError(f"blocked: import {name}")
 
-    safe_builtins = {k: __builtins__[k] if isinstance(__builtins__, dict) else getattr(__builtins__, k) for k in (
-        "abs", "all", "any", "bool", "dict", "divmod", "enumerate", "filter", "float", "frozenset", "int", "isinstance",
-        "len", "list", "map", "max", "min", "pow", "print", "range", "reversed", "round", "set", "slice", "sorted",
-        "str", "sum", "tuple", "zip", "ValueError", "KeyError", "IndexError", "TypeError", "ZeroDivisionError",
-        "Exception", "ArithmeticError", "RuntimeError", "True", "False", "None", "__build_class__", "hasattr", "callable",
-        "next", "iter", "StopIteration", "AttributeError", "NotImplementedError", "LookupError")}
-    real_import = __builtins__["__import__"] if isinstance(__builtins__, dict) else __builtins__.__import__
+    import builtins as _b
+    BANNED = {"eval", "exec", "compile", "open", "__import__", "globals", "locals", "vars", "input", "breakpoint", "help",
+              "exit", "quit", "memoryview", "__loader__", "__spec__"}
+    safe_builtins = {k: getattr(_b, k) for k in dir(_b) if k not in BANNED and not (k.startswith("__") and k not in
+                                                                                  ("__build_class__", "__name__"))}
+    real_import = _b.__import__
 
-    def limited_import(name, *a, **k):
-        if name.split(".")[0] not in ("numpy", "pandas", "math", "datetime"):
-            raise ImportError(f"import of '{name}' is not allowed")
-        return real_import(name, *a, **k)
+    def limited_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if level == 0 and name.split(".")[0] not in USER_IMPORTS:
+            raise ImportError(f"import of '{name}' is not allowed in strategy code")
+        return real_import(name, globals, locals, fromlist, level)
     safe_builtins["__import__"] = limited_import
     out = {}
     try:

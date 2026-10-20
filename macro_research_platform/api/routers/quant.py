@@ -255,7 +255,8 @@ async def code_engine(request: Request, module: str = Query("codelab", pattern="
 async def code_data(request: Request, universe: str = Query(..., max_length=1200), start: str = "2005-01-01",
                     benchmark: str = "SPY", account: str = Query("USD", max_length=3),
                     options: Optional[str] = Query(None, max_length=4000),
-                    fundamentals: Optional[str] = Query(None, max_length=600)):
+                    fundamentals: Optional[str] = Query(None, max_length=600),
+                    custom: Optional[str] = Query(None, max_length=600)):
     """Prices (in the account currency), its cash rate and VIX for a strategy's UNIVERSE (float32, base64) for the
     browser."""
     from api.quant import codeserver
@@ -264,9 +265,46 @@ async def code_data(request: Request, universe: str = Query(..., max_length=1200
         import json as _json
         opts = _json.loads(options) if options else None
         return await _bt(codeserver.data_payload, [u for u in universe.split(",") if u.strip()], start[:10], benchmark.upper(),
-                         account.upper(), opts, [f for f in (fundamentals or "").split(",") if f.strip()] or None, _fast=True)
+                         account.upper(), opts, [f for f in (fundamentals or "").split(",") if f.strip()] or None,
+                         [c.strip().lower() for c in (custom or "").split(",") if c.strip()] or None, _fast=True)
     except ValueError as e:                    # includes malformed OPTIONS JSON (json.JSONDecodeError)
         _spec_error(e)
+
+
+class CustomDataIn(BaseModel):
+    name: str
+    csv: str
+
+
+@router.get("/api/v1/quant/custom-data")
+async def custom_data_list(request: Request):
+    """Uploaded custom datasets usable as CUSTOM_DATA = [...] or self.add_data(…, "name")."""
+    from api.quant import customdata
+    _user(request)
+    return {"datasets": await asyncio.to_thread(customdata.catalog)}
+
+
+@router.post("/api/v1/quant/custom-data")
+async def custom_data_upload(body: CustomDataIn, request: Request):
+    """Upload (or replace) a CSV: a date column and numeric columns, up to 5 MB."""
+    from api.quant import customdata
+    u = _user(request)
+    try:
+        return await asyncio.to_thread(customdata.save, body.name, body.csv, u["username"])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.delete("/api/v1/quant/custom-data/{name}")
+async def custom_data_delete(name: str, request: Request):
+    from api.quant import customdata
+    u = _user(request)
+    try:
+        return {"deleted": await asyncio.to_thread(customdata.delete, name, u["username"], u["role"] == "admin")}
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except PermissionError as e:
+        raise HTTPException(403, str(e))
 
 
 class JobIn(BaseModel):

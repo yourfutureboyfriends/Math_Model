@@ -29,7 +29,7 @@ def _arr(b64, shape):
 
 def _prepare(code):
     st = codelab.load_strategy(code)
-    return json.dumps({k: st[k] for k in ("universe", "start", "params", "benchmark", "holdout", "code_hash", "account", "tradable", "fx_hedge", "options", "fundamentals")})
+    return json.dumps({k: st[k] for k in ("universe", "start", "params", "benchmark", "holdout", "code_hash", "account", "tradable", "fx_hedge", "options", "fundamentals", "custom")})
 
 def _run(code, payload, costs):
     p = json.loads(payload)
@@ -47,7 +47,9 @@ def _run(code, payload, costs):
                         options={k[4:]: pd.DataFrame(_arr(p["m_" + k], (T, len(c))), index=idx, columns=c)
                                  for k, c in (p.get("micro_cols") or {}).items() if k.startswith("opt_")} or None,
                         **{k: pd.DataFrame(_arr(p["m_" + k], (T, len(c))), index=idx, columns=c)
-                           for k, c in (p.get("micro_cols") or {}).items() if not k.startswith(("opt_", "fund_"))},
+                           for k, c in (p.get("micro_cols") or {}).items() if not k.startswith(("opt_", "fund_", "cust_"))},
+                        custom={k[5:]: pd.DataFrame(_arr(p["m_" + k], (T, len(c))), index=idx, columns=c)
+                                for k, c in (p.get("micro_cols") or {}).items() if k.startswith("cust_")} or None,
                         fundamentals={k[5:]: pd.DataFrame(_arr(p["m_" + k], (T, len(c))), index=idx, columns=c)
                                       for k, c in (p.get("micro_cols") or {}).items() if k.startswith("fund_")} or None)
     if "roll" in data.opt:
