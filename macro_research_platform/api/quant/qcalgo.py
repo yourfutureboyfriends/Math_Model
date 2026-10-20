@@ -1960,31 +1960,55 @@ class QCAlgorithm:
         return getattr(self, "_params", {}).get(name, default)
 
     # data
-    def history(self, symbols, periods=None, resolution=None, *a, **k) -> pd.DataFrame:
-        """Daily bars up to the current session (never later): DataFrame indexed by (symbol, time) with open, high,
-        low, close, volume — `periods` bars, or a timedelta / (start, end) span."""
-        one = isinstance(symbols, (str, Symbol, Security))
-        syms = [_sym(symbols)] if one else [_sym(s) for s in symbols]
+    def history(self, *args, **kw) -> pd.DataFrame:
+        """Daily bars up to the current session (never later): DataFrame indexed by (symbol, time) with open, high, low,
+        close, volume. Every LEAN form: history(symbols, n), history(symbols, timedelta), history(symbols, start, end),
+        history(symbols, start), a data type first (history(TradeBar, symbols, …)), and the keywords periods / start /
+        end / resolution. history[TradeBar](…) returns TradeBar objects instead of a DataFrame."""
+        args = list(args)
+        if args and isinstance(args[0], type):                         # history(TradeBar, symbols, …)
+            args.pop(0)
+        symbols = args.pop(0) if args else kw.pop("symbols", kw.pop("symbol", None))
+        span = [x for x in args if not (isinstance(x, str) and x in _RESOLUTIONS)]
+        periods, start, end = kw.get("periods"), kw.get("start"), kw.get("end")
+        if span and isinstance(span[0], (datetime, date, str)) and not _is_number(span[0]):
+            start = span[0]
+            end = span[1] if len(span) > 1 and not _is_number(span[1]) else end
+        elif span:
+            periods = span[0]
+        if symbols is None:
+            syms = list(self.securities.keys())
+        elif isinstance(symbols, (str, Symbol, Security)):
+            syms = [_sym(symbols)]
+        else:
+            syms = [_sym(s) for s in symbols]
         d = self._ctx._data
         i = self._ctx.i
-        if isinstance(periods, timedelta):
-            lo = max(0, int(d.close.index.searchsorted(d.close.index[i] - periods)))
+        idx = d.close.index
+        hi = i
+        if end is not None:                                             # bars that ended by `end`; never past today
+            hi = min(i, int(idx.searchsorted(_as_ts(end), side="left")) - 1)
+        if start is not None:
+            lo = int(idx.searchsorted(_as_ts(start), side="left"))
+        elif isinstance(periods, timedelta):
+            lo = int(idx.searchsorted(idx[hi] - periods, side="right")) if hi >= 0 else 0
         elif periods is None:
             lo = 0
         else:
-            lo = max(0, i + 1 - int(periods))
+            lo = hi + 1 - int(periods)
+        lo = max(0, lo)
         frames = []
         for s in syms:
             cust = getattr(d, "custom", {}).get(s.lower())
             if cust is not None and s.lower() in self._custom:
-                f = cust.iloc[lo:i + 1]
+                f = cust.iloc[lo:hi + 1]
                 f = f[f["_new"] > 0].drop(columns=["_new"])
                 f.index.name = "time"
                 frames.append(pd.concat({s.lower(): f}, names=["symbol"]))
                 continue
-            if s not in d.close.columns:
+            if s not in d.close.columns or hi < lo:
                 continue
-            sl = slice(lo, i + 1)
+            sl = slice(lo, hi + 1)
             obs = d.observed[s].iloc[sl]
             f = pd.DataFrame({"open": d.open[s].iloc[sl], "high": d.high[s].iloc[sl], "low": d.low[s].iloc[sl],
                               "close": d.close[s].iloc[sl], "volume": d.volume[s].iloc[sl]})[obs.to_numpy()]
@@ -2914,6 +2938,7 @@ def discover(cls) -> Dict[str, Any]:
                 algo._add(t, Resolution.DAILY)
     hdr = getattr(algo, "_hdr", {}) or {}
     return {"universe": [t for t in algo.securities.keys()], "custom": list(algo._custom.keys()),
+            "custom_sources": _custom_sources(algo, hdr.get("start"), hdr.get("end")),
             "dynamic_universe": bool(algo._selectors), "error": err,
             **{k: hdr[k] for k in ("start", "end", "capital", "benchmark") if k in hdr}}
 
@@ -4013,7 +4038,7 @@ for _n in _SELECTOR_HELPERS:
 
 # ── C# generics: RollingWindow[float](10), RollingWindow[TradeBar](5), List[Symbol](), Dictionary[Symbol, float]() …
 # Python has no type parameters at run time, so the [T] part is accepted and ignored on every class the layer provides.
-class List(list):
+class _NetList(list):
     """System.Collections.Generic.List[T]: a Python list that also answers Add / Count / Contains / Remove …"""
     Add = list.append
     AddRange = list.extend
@@ -4040,7 +4065,7 @@ class List(list):
         return list(self)
 
     def ToList(self):
-        return List(self)
+        return _NetList(self)
 
 
 class Dictionary(dict):
@@ -4090,10 +4115,118 @@ def _generic(cls, _params):
     return cls
 
 
-for _v in list(NAMES.values()) + [List, Dictionary, HashSet]:
+for _v in list(NAMES.values()) + [_NetList, Dictionary, HashSet]:
     if isinstance(_v, type) and _v.__module__ == __name__ and "__class_getitem__" not in _v.__dict__:
         try:
             _v.__class_getitem__ = classmethod(_generic)
         except (TypeError, AttributeError):
             pass
-NAMES.update({"List": List, "Dictionary": Dictionary, "HashSet": HashSet})
+NAMES.update({"List": _NetList, "Dictionary": Dictionary, "HashSet": HashSet})
+
+
+# ── history(): every LEAN call form, plus history[TradeBar](…) → TradeBar objects ───────────────────────────────
+_RESOLUTIONS = {"tick", "second", "minute", "hour", "daily"}
+
+
+def _is_number(x) -> bool:
+    return isinstance(x, (int, float, np.integer, np.floating)) and not isinstance(x, bool)
+
+
+def _as_ts(x) -> pd.Timestamp:
+    t = pd.Timestamp(x)
+    return t.tz_localize(None) if t.tzinfo is not None else t
+
+
+class _HistoryMethod:
+    """self.history(...) → DataFrame; self.history[TradeBar](...) → a list of TradeBar, oldest first."""
+    def __init__(self, fn):
+        self.fn = fn
+
+    def __get__(self, obj, owner=None):
+        if obj is None:
+            return self
+        fn = self.fn
+
+        class Bound:
+            def __call__(_, *a, **k):
+                return fn(obj, *a, **k)
+
+            def __getitem__(_, _type):
+                def bars(*a, **k):
+                    df = fn(obj, *a, **k)
+                    return [TradeBar(Symbol(sym), t.to_pydatetime(), r.open, r.high, r.low, r.close, r.volume)
+                            for (sym, t), r in df.iterrows()] if len(df) else []
+                return bars
+        return Bound()
+
+
+QCAlgorithm.history = QCAlgorithm.History = _HistoryMethod(QCAlgorithm.__dict__["history"])
+
+
+# ── custom data sources: what each PythonData class's own get_source returns over the backtest (for real LEAN, which
+# reads them; the files are fetched by the platform because LEAN's container has no network) ────────────────────────
+class _DiscoverConfig:
+    def __init__(self, ticker: str):
+        self.symbol = self.Symbol = Symbol(ticker)
+        self.resolution = self.Resolution = Resolution.DAILY
+        self.market = self.Market = "usa"
+        self.is_custom_data = self.IsCustomData = True
+        self.time_zone = self.TimeZone = "America/New_York"
+        self.type = self.Type = None
+
+
+def _user_method(inst, *names):
+    for k in type(inst).__mro__:
+        if k is PythonData or k is object:
+            break
+        for n in names:
+            if n in k.__dict__:
+                return getattr(inst, n)
+    return None
+
+
+def _custom_sources(algo, start, end) -> List[Dict[str, Any]]:
+    out = []
+    lo = pd.Timestamp(start or "2010-01-01")
+    hi = pd.Timestamp(end) if end else pd.Timestamp.today().normalize()
+    dates = sorted({lo, hi, *pd.date_range(lo, hi, freq="MS")})
+    for name, sec in getattr(algo, "_custom", {}).items():
+        cls = getattr(sec, "_custom_type", None)
+        rec = {"ticker": name, "class": getattr(cls, "__name__", None), "sources": [], "error": None}
+        out.append(rec)
+        if not isinstance(cls, type) or cls is PythonData:
+            continue
+        try:
+            inst = cls()
+            gs = _user_method(inst, "get_source", "GetSource")
+            if gs is None:
+                rec["error"] = "no get_source"
+                continue
+            seen = {}
+            for d in dates:
+                src = gs(_DiscoverConfig(name), d.to_pydatetime(), False)
+                if src is None:
+                    continue
+                url = str(getattr(src, "source", getattr(src, "Source", src)))
+                seen[url] = str(getattr(src, "transport", getattr(src, "TransportMedium", "")) or "")
+                if len(seen) > 40:
+                    rec["error"] = "get_source returns a different file for each date (over 40): not supported"
+                    break
+            rec["sources"] = [{"url": u, "transport": t} for u, t in seen.items()]
+        except Exception as e:                                                # noqa: BLE001
+            rec["error"] = f"{type(e).__name__}: {str(e)[:160]}"
+    return out
+
+
+# ── last: every PascalCase / UPPER twin of a QCAlgorithm method is the same object as its snake_case name. Twins bound in
+# the class body go stale when the snake_case method is replaced later in this file (SetStartDate kept the no-op) ──
+def _sync_twins(cls) -> None:
+    import inspect
+    for n in [x for x in dir(cls) if not x.startswith("_") and x == x.lower()]:
+        raw = inspect.getattr_static(cls, n)
+        for twin in {_pascal(n), n.upper()} - {n}:
+            if hasattr(cls, twin) and inspect.getattr_static(cls, twin) is not raw:
+                setattr(cls, twin, raw)
+
+
+_sync_twins(QCAlgorithm)

@@ -348,7 +348,7 @@ async def lean_job_submit(body: JobIn, request: Request):
     from api.quant import jobs, leanrun, sandbox
     u = _user(request)
     try:
-        sandbox.check(body.code)
+        await asyncio.to_thread(sandbox.check, body.code, False)     # custom data comes from the algorithm's get_source
     except sandbox.SandboxError as e:
         _spec_error(e)
     try:

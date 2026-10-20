@@ -174,3 +174,5 @@ data/processed/fundamentals/
 # Quant Lab object store (strategy state between runs)
 data/processed/quant_object_store/
 data/processed/quant_custom_data/
+data/processed/lean_plugin/
+data/processed/lean_custom/

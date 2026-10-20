@@ -433,7 +433,7 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
   const [leanOk, setLeanOk] = useState<any>(null);
   useEffect(() => { api('/api/v1/quant/lean/status').then(setLeanOk).catch(() => setLeanOk(null)); }, []);
   const runLean = async () => {
-    setBusy(true); setErr(null); setNote(null); setLean(null);
+    setBusy(true); setErr(null); setNote(null); setLean(null); setResult(null); setAnalysis(null);
     try {
       const job = await api('/api/v1/quant/lean/jobs', { json: { code } });
       setJobId(job.id);
@@ -449,12 +449,15 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
     } catch (e: any) { setErr(e.message); } finally { setStatus(null); setBusy(false); }
   };
 
+  const isQc = code.includes('QCAlgorithm');
+  const leanFirst = isQc && !!leanOk?.available;     // QuantConnect algorithms run on real LEAN whenever it is installed
+
   const cancelJob = async () => {
     if (jobId) await api(`/api/v1/quant/code/jobs/${jobId}`, { method: 'DELETE' }).catch(() => {});
   };
 
   const run = useCallback(async () => {
-    setBusy(true); setErr(null); setNote(null); setLog([]); setResult(null); setAnalysis(null);
+    setBusy(true); setErr(null); setNote(null); setLog([]); setResult(null); setAnalysis(null); setLean(null);
     let chk: any = null;
     try { chk = await api('/api/v1/quant/code/check', { json: { code } }); setCheck(chk); } catch { setCheck(null); }
     try {
@@ -494,6 +497,7 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
       storeRun(full, a);
     } catch (e: any) { setErr(e.message); setStatus(null); } finally { setBusy(false); }
   }, [code, runCosts, mc, name]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const primaryRun = leanFirst ? runLean : run;
 
   const save = async (asNew: boolean) => {
     setErr(null);
@@ -538,15 +542,17 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
                 <option value="">Choose…</option>
                 {TEMPLATES.map((t) => <option key={t.id} value={t.id} title={t.about}>{t.name}</option>)}
               </select></Field>
-            <button onClick={run} disabled={busy} className="inline-flex items-center gap-1 px-3 py-1 text-2xs bg-bloomberg text-bg disabled:opacity-50" aria-label="Run (Ctrl/⌘ + Enter)" title="Ctrl/⌘ + Enter">
-              {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}Run
+            <button onClick={primaryRun} disabled={busy} className="inline-flex items-center gap-1 px-3 py-1 text-2xs bg-bloomberg text-bg disabled:opacity-50" aria-label="Run (Ctrl/⌘ + Enter)"
+              title={leanFirst ? `Ctrl/⌘ + Enter · runs on QuantConnect's own LEAN engine (${leanOk.image}), unmodified, with the platform's free data` : 'Ctrl/⌘ + Enter'}>
+              {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}Run{leanFirst ? ' (LEAN)' : ''}
             </button>
-            {code.includes('QCAlgorithm') && (
-              <button onClick={runLean} disabled={busy || !leanOk?.available}
-                title={leanOk?.available ? `Run on QuantConnect's own LEAN engine (${leanOk.image}) with the platform's daily data` : `Real LEAN unavailable: ${leanOk?.reason ?? 'checking…'}`}
-                className="inline-flex items-center gap-1 px-3 py-1 text-2xs border border-bloomberg text-bloomberg disabled:opacity-40">
-                <Play className="w-3 h-3" />Run on real LEAN
+            {isQc && leanFirst && (
+              <button onClick={run} disabled={busy} title="The platform's Python re-implementation of LEAN's API: adds look-ahead, capacity and Monte Carlo checks and paper deployment; approximates LEAN"
+                className="inline-flex items-center gap-1 px-3 py-1 text-2xs border border-border text-text-secondary hover:border-bloomberg disabled:opacity-40">
+                <Play className="w-3 h-3" />Run on built-in layer
               </button>)}
+            {isQc && !leanFirst && leanOk && (
+              <span className="text-[10px] text-amber" title={leanOk?.reason}>Real LEAN unavailable ({leanOk?.reason ?? 'checking…'}) — running on the built-in layer</span>)}
             {canSave && <button onClick={() => save(false)} disabled={busy} className="inline-flex items-center gap-1 px-3 py-1 text-2xs border border-border hover:border-bloomberg"><Save className="w-3 h-3" />{strategyId ? 'Save' : 'Save as'}</button>}
             {canSave && strategyId && <button onClick={() => save(true)} disabled={busy} className="px-3 py-1 text-2xs border border-border hover:border-bloomberg">Save copy</button>}
             {canDeploy && (
@@ -556,7 +562,7 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
                   className="inline-flex items-center gap-1 px-3 py-1 text-2xs border border-bloomberg text-bloomberg disabled:opacity-40"><Rocket className="w-3 h-3" />Deploy</button>
               </span>)}
           </div>
-          <CodeEditor value={code} onChange={setCode} onRun={run} />
+          <CodeEditor value={code} onChange={setCode} onRun={primaryRun} />
           {check && (
             <div className={cn('text-[10px] flex items-center gap-1', check.ok ? 'text-text-tertiary' : 'text-amber')}>
               {check.ok ? <ShieldCheck className="w-3 h-3" /> : <ShieldAlert className="w-3 h-3" />}
@@ -565,10 +571,8 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
                 : `Runs here, but can't be deployed: ${check.error}`}
             </div>)}
           {(check as any)?.qc && <QcReport qc={(check as any).qc} />}
-          {code.includes('QCAlgorithm') && leanOk?.available && !(check as any)?.qc?.dynamic_universe
-            && !/there is no module|could not be read/.test((check as any)?.error ?? '')
-            && ((check as any)?.ok === false || ((check as any)?.qc?.report ?? []).some((r: any) => r.level !== 'approximated')) && (
-            <div className="text-[10px] text-bloomberg">The built-in layer flags something here — <b>Run on real LEAN</b> runs this algorithm unmodified on QuantConnect's own engine (daily US equities, crypto and FX; dynamic universes and custom data stay on the built-in layer).</div>)}
+          {leanFirst && (
+            <div className="text-[10px] text-bloomberg">QuantConnect algorithm — <b>Run</b> executes it unmodified on QuantConnect's own LEAN engine with the platform's free data (US equities, point-in-time S&amp;P 500 universes with SEC fundamentals, crypto, FX, custom data from your get_source). The report below is the built-in layer's; it does not limit a LEAN run.</div>)}
           {lean && <LeanResult r={lean} />}
           <CustomData />
           {status && <div className="flex items-center gap-2 text-2xs text-text-secondary"><Loader2 className="w-3 h-3 animate-spin" />{status}
@@ -658,7 +662,7 @@ function ApiHelp() {
         <li>Every run is checked for look-ahead (decisions recomputed from earlier data must match) and, with PARAMS, for overfitting (PBO); you also get attribution, today's ex-ante risk with crisis stress tests and a capacity curve.</li>
         <li><b>Python</b>: ordinary Python — your own classes and inheritance, decorators, <code>@dataclass</code>, properties, <code>super()</code> — and numpy, pandas, scipy, scikit-learn, statsmodels plus the standard library without I/O (math, statistics, collections, itertools, functools, datetime, re, json…), in the browser and when deployed. Not available: files, network, <code>os</code>/<code>sys</code>/<code>subprocess</code>, <code>eval</code>/<code>exec</code>, and the engine's internals (they hold future prices).</li>
         <li><b>Multi-file QuantConnect projects</b>: paste each extra file below a line <code># file: alpha.py</code> (folders: <code># file: alphas/rsi.py</code> → <code>import alphas.rsi</code>); <code>main.py</code> is everything above the first marker.</li>
-        <li><b>Real LEAN</b>: a QuantConnect algorithm can also run on QuantConnect's own engine (button next to Run) — exact LEAN behaviour on the platform's daily US-equity, crypto and FX data. Dynamic universes and custom data use the built-in layer.</li>
+        <li><b>Real LEAN</b>: a QuantConnect algorithm runs on QuantConnect's own engine by default (Run) — exact LEAN behaviour on the platform's free daily data: US equities, point-in-time S&amp;P 500 universes (LEAN's coarse and SPY-constituent files) with SEC fundamentals in <code>Fundamental</code>, crypto, FX, and custom data fetched from the algorithm's own <code>get_source</code>. Minute / hour requests are served as daily (the run says so). <b>Run on built-in layer</b> uses the Python re-implementation (paper deployment, look-ahead and Monte Carlo checks).</li>
         <li><b>Custom data</b>: upload a CSV (below the editor) and use <code>CUSTOM_DATA = ["name"]</code> → <code>data.custom["name"]</code> (as of each session; <code>_new</code> marks fresh rows).</li>
         <li><b>Server runs</b> happen in a throwaway Docker container — no network, read-only filesystem, no capabilities, unprivileged — or a process sandbox when Docker is not running. <code>print()</code> shows in Output.</li>
       </ul>

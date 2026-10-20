@@ -2,6 +2,8 @@
 indicators, history DataFrames, universes, the Algorithm Framework, consolidators, order tickets, scheduling, the
 scientific stack, the object store, custom data and non-literal set-up values. Each must import with nothing unsupported
 and nothing unknown, and run to the end. A new gap in the compatibility layer shows up here as a failing case."""
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -542,3 +544,18 @@ def test_generic_brackets_on_every_layer_class():
     for x in range(5):
         w.add(float(x))
     assert list(w) == [4.0, 3.0, 2.0] and w[0:2] == [4.0, 3.0] and w.most_recently_removed == 1.0 and w.samples == 5
+
+
+def test_pascal_and_snake_twins_are_the_same_method():
+    """SetStartDate is set_start_date, SMA is sma, History is history — never a stale copy bound earlier."""
+    import inspect
+    Q = qcalgo.QCAlgorithm
+    for n in [x for x in dir(Q) if not x.startswith("_") and x == x.lower()]:
+        raw = inspect.getattr_static(Q, n)
+        for twin in {qcalgo._pascal(n), n.upper()} - {n}:
+            if hasattr(Q, twin):
+                assert inspect.getattr_static(Q, twin) is raw, (n, twin)
+    a = Q()
+    a.SetStartDate(2020, 1, 2)
+    a.SetEndDate(datetime(2021, 3, 4))
+    assert a._hdr["start"] == "2020-01-02" and a._hdr["end"] == "2021-03-04"

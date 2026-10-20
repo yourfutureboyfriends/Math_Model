@@ -82,7 +82,11 @@ function pyError(e) {
   const strat = lines.filter((l) => l.includes('"<strategy>"'));
   const last = lines[lines.length - 1];
   const where = strat.length ? strat[strat.length - 1].trim().replace(/^File "<strategy>", /, '') : '';
-  return where ? `${last}  (${where})` : last;
+  // raised inside the platform's QuantConnect layer, below the user's line: say so (the gap is ours, not the code's)
+  const after = strat.length ? lines.slice(lines.lastIndexOf(strat[strat.length - 1]) + 1) : [];
+  const inner = after.filter((l) => /File ".*(qcalgo|codelab)\.py", line \d+, in /.test(l)).pop();
+  const layer = inner ? inner.trim().replace(/^File ".*\/([^/"]+)", line (\d+), in (.*)$/, ' — raised inside the platform\'s QuantConnect compatibility layer ($1:$2, $3): if the call is valid on QuantConnect the gap is the layer\'s, and "Run on real LEAN" runs it on QuantConnect\'s own engine') : '';
+  return where ? `${last}  (${where})${layer}` : last;
 }
 
 onmessage = async (ev) => {

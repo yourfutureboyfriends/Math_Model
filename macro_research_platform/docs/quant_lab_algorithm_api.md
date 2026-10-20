@@ -61,15 +61,25 @@ Top-level `PARAMS = {"name": [values]}` still drives walk-forward; read the curr
 
 ## Two engines
 
-| | Built-in layer (default, `Run`) | Real LEAN (`Run on real LEAN`) |
+QuantConnect algorithms run on **real LEAN by default** whenever Docker and the image are available — the only way to
+behave exactly like QuantConnect is to run QuantConnect's engine. The built-in layer is the fallback (Docker off) and
+the engine for paper deployment and the research checks.
+
+| | Real LEAN (`Run`) | Built-in layer (`Run on built-in layer`) |
 |---|---|---|
-| Engine | a Python re-implementation of LEAN's API (qc-compat) on the Code Lab engine | QuantConnect's own LEAN, unmodified (`quantconnect/lean` image) |
-| Data | platform daily data: any market, FX, crypto, point-in-time S&P 500 universes, SEC fundamentals, custom uploads | the same daily prices in LEAN's format: US equities (factor 1, already adjusted), crypto pairs on any LEAN venue (USD pairs stand in for stablecoin pairs), FX pairs; bid = ask (no free spread) |
-| Use when | universes, custom data, non-US listings, research checks (look-ahead, capacity, Monte Carlo) | exact LEAN behaviour for anything LEAN supports on daily US equities, crypto and FX |
+| Engine | QuantConnect's own LEAN, unmodified (`quantconnect/lean` image) | a Python re-implementation of LEAN's API (qc-compat) on the Code Lab engine |
+| Prices | the platform's daily prices in LEAN's format: US equities (factor 1, already adjusted), crypto pairs on any LEAN venue (USD pairs stand in for stablecoin pairs), FX pairs; bid = ask (no free spread) | platform daily data: any market, FX, crypto |
+| Universes | LEAN's own coarse and SPY-constituent files written per session from the point-in-time S&P 500 membership; `add_universe`, `universe.etf("SPY")`, the selection models run natively | point-in-time S&P 500 through the layer's selector |
+| Fundamentals | a fundamental-data provider plugin fills `Fundamental`: `has_fundamental_data`, today's Morningstar sector code, SEC EDGAR filings point in time (market cap, shares, EPS, P/E, P/B, P/S, earnings / book / sales / FCF yield, ROE, ROA, gross / net margin, debt-to-assets, revenue, net income, gross profit, assets, liabilities, equity, free cash flow). Other Morningstar fields read as LEAN's defaults (0 / NaN); the run lists the ones used | the same SEC values and sector codes |
+| Custom data | the algorithm's own `get_source` is run (sandbox) to find its URLs; the platform fetches them (public http/https only, ≤ 50 MB, cached a day) and LEAN runs the algorithm's own `reader` on them | the CSV uploaded under the `add_data` name |
+| Resolution | free data is daily: tick / second / minute / hour requests (including LEAN's minute default when none is given) are served as daily and listed in the run's notes | daily |
+| Use when | exact QuantConnect behaviour | paper deployment; look-ahead, capacity and Monte Carlo checks; non-US listings |
 
 Real LEAN runs in a container with no network and dropped capabilities; it needs Docker running and the image
-(~40 GB unpacked). Dynamic universes and custom data stay on the built-in layer (QuantConnect's universe data is not
-free, and LEAN would fetch custom data over the network).
+(~40 GB unpacked). The platform adds two things around the unmodified engine: a fundamental-data provider plugin
+(`api/quant/lean_plugin`, compiled in the image, offline) and a thin subclass of the algorithm (`zzQuantLabDaily`,
+appended to `main.py`) that maps finer resolutions to daily. Not available on free data: intraday bars, options and
+futures chains, QuantConnect's alternative datasets.
 
 ## Multi-file projects
 

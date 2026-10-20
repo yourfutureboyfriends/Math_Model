@@ -65,10 +65,17 @@ def main() -> None:
     except Exception as e:                                    # report the user's error, not ours
         tb = traceback.extract_tb(e.__traceback__)
         where = next((f" (line {f.lineno})" for f in reversed(tb) if f.filename == "<strategy>"), "")
+        last_user = max((k for k, f in enumerate(tb) if f.filename == "<strategy>"), default=None)
+        inner = [f for f in tb[last_user + 1:] if f.filename.endswith(("qcalgo.py", "codelab.py"))] if last_user is not None else []
+        if inner:                                             # raised inside the platform's layer, below the user's line
+            f = inner[-1]
+            where += (f" — raised inside the platform's QuantConnect compatibility layer ({f.filename.rsplit('/', 1)[-1]}:"
+                      f"{f.lineno}, {f.name}): if the call is valid on QuantConnect the gap is the layer's, and \"Run on real LEAN\" runs it on "
+                      f"QuantConnect's own engine")
         if not where and tb:                                  # failure inside the platform: name the engine location
             f = tb[-1]
             where = f" (in the engine: {f.filename.rsplit('/', 1)[-1]}:{f.lineno}, {f.name})"
-        out = {"error": f"{type(e).__name__}: {e}{where}"[:500]}
+        out = {"error": f"{type(e).__name__}: {e}{where}"[:800]}
     with open(result_path, "w") as f:
         json.dump(out, f)
 

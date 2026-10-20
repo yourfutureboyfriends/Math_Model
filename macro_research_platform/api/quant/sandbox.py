@@ -88,7 +88,7 @@ class SandboxError(ValueError):
     pass
 
 
-def check(code: str) -> Dict[str, Any]:
+def check(code: str, uploads_required: bool = True) -> Dict[str, Any]:
     """Static checks; returns the literal header (UNIVERSE, START, PARAMS, BENCHMARK, HOLDOUT, TRADABLE_UNIVERSE,
     ACCOUNT_CALENDAR, ACCOUNT_CURRENCY)."""
     if not code or len(code) > MAX_CODE:
@@ -253,7 +253,7 @@ def check(code: str) -> Dict[str, Any]:
         raise SandboxError(str(e))
     known = {m["name"] for m in customdata.catalog()}
     missing = [n for n in custom if n not in known]
-    if missing:
+    if missing and uploads_required:          # real LEAN reads the algorithm's own get_source instead of an upload
         raise SandboxError(f"Custom data '{missing[0]}' has not been uploaded — Quant Lab → Custom data.")
     calendar = header.get("ACCOUNT_CALENDAR")
     if calendar is not None and (not isinstance(calendar, str) or calendar.upper() not in [u.upper() for u in uni]
