@@ -583,25 +583,37 @@ class AverageDirectionalIndex(Indicator):
 
 
 class RollingWindow:
-    """window[0] is the newest value. add(), count, size, is_ready."""
+    """window[0] is the newest value. add(), count, size, is_ready, is_full, samples, most_recently_removed; slices
+    (window[0:5]) return lists, newest first."""
 
     def __init__(self, size: int):
         self.size = int(size)
         self._d: deque = deque(maxlen=self.size)
+        self.samples = 0
+        self.most_recently_removed = None
 
     def add(self, x) -> None:
+        if len(self._d) == self.size:
+            self.most_recently_removed = self._d[-1]
         self._d.appendleft(x)
+        self.samples += 1
 
     Add = add
 
     def __getitem__(self, i):
-        return self._d[i]
+        return list(self._d)[i] if isinstance(i, slice) else self._d[i]
 
     def __len__(self):
         return len(self._d)
 
     def __iter__(self):
         return iter(self._d)
+
+    def __contains__(self, x):
+        return x in self._d
+
+    def __repr__(self):
+        return f"RollingWindow({list(self._d)!r}, size={self.size})"
 
     @property
     def count(self) -> int:
@@ -613,10 +625,15 @@ class RollingWindow:
     def is_ready(self) -> bool:
         return len(self._d) == self.size
 
-    IsReady = is_ready
+    IsReady = is_full = IsFull = is_ready
+    Size = property(lambda self: self.size)
+    Samples = property(lambda self: self.samples)
+    MostRecentlyRemoved = property(lambda self: self.most_recently_removed)
 
     def reset(self) -> None:
         self._d.clear()
+
+    Reset = reset
 
 
 # ── portfolio, securities, orders ────────────────────────────────────────────
@@ -3992,3 +4009,91 @@ for _n in _SELECTOR_HELPERS:
     if _n in QCAlgorithm.__dict__:
         setattr(QCAlgorithm, _n, _with_selector(QCAlgorithm.__dict__[_n]))
         setattr(QCAlgorithm, _n.upper(), getattr(QCAlgorithm, _n))
+
+
+# ── C# generics: RollingWindow[float](10), RollingWindow[TradeBar](5), List[Symbol](), Dictionary[Symbol, float]() …
+# Python has no type parameters at run time, so the [T] part is accepted and ignored on every class the layer provides.
+class List(list):
+    """System.Collections.Generic.List[T]: a Python list that also answers Add / Count / Contains / Remove …"""
+    Add = list.append
+    AddRange = list.extend
+    Contains = list.__contains__
+    IndexOf = list.index
+    Insert = list.insert
+    Clear = list.clear
+    Reverse = list.reverse
+    Count = property(len)
+
+    def Remove(self, x) -> bool:
+        if x in self:
+            self.remove(x)
+            return True
+        return False
+
+    def RemoveAt(self, i) -> None:
+        del self[i]
+
+    def Sort(self, key=None) -> None:
+        self.sort(key=key)
+
+    def ToArray(self):
+        return list(self)
+
+    def ToList(self):
+        return List(self)
+
+
+class Dictionary(dict):
+    """System.Collections.Generic.Dictionary[K, V]: a Python dict with Add / ContainsKey / TryGetValue / Keys / Values …"""
+    def Add(self, k, v) -> None:
+        if k in self:
+            raise KeyError(f"An item with the same key has already been added: {k}")
+        self[k] = v
+
+    ContainsKey = dict.__contains__
+    Clear = dict.clear
+    Count = property(len)
+    Keys = property(lambda self: list(self.keys()))
+    Values = property(lambda self: list(self.values()))
+
+    def ContainsValue(self, v) -> bool:
+        return v in self.values()
+
+    def Remove(self, k) -> bool:
+        return self.pop(k, _MISSING) is not _MISSING
+
+    def TryGetValue(self, k, default=None):
+        """Python form of C#'s out parameter: returns (found, value)."""
+        return (True, self[k]) if k in self else (False, default)
+
+
+_MISSING = object()
+
+
+class HashSet(set):
+    Add = set.add
+    Contains = set.__contains__
+    Clear = set.clear
+    Count = property(len)
+    UnionWith = set.update
+    IntersectWith = set.intersection_update
+    ExceptWith = set.difference_update
+
+    def Remove(self, x) -> bool:
+        if x in self:
+            self.discard(x)
+            return True
+        return False
+
+
+def _generic(cls, _params):
+    return cls
+
+
+for _v in list(NAMES.values()) + [List, Dictionary, HashSet]:
+    if isinstance(_v, type) and _v.__module__ == __name__ and "__class_getitem__" not in _v.__dict__:
+        try:
+            _v.__class_getitem__ = classmethod(_generic)
+        except (TypeError, AttributeError):
+            pass
+NAMES.update({"List": List, "Dictionary": Dictionary, "HashSet": HashSet})

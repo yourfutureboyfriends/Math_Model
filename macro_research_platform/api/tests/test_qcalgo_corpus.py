@@ -383,6 +383,43 @@ class CustomSignalAlgo(QCAlgorithm):
             v = data[self.signal].Value
             self.SetHoldings(self.spy, 1.0 if v > 0 else 0.0)
 ''',
+
+"generics_windows_collections": '''
+from AlgorithmImports import *
+class WindowedBreakout(QCAlgorithm):
+    def Initialize(self):
+        self.SetStartDate(2019, 6, 3)
+        self.SetCash(100000)
+        self.syms = List[Symbol]()
+        for t in ["SPY", "QQQ"]:
+            self.syms.Add(self.AddEquity(t, Resolution.Daily).Symbol)
+        self.bars = Dictionary[Symbol, RollingWindow[TradeBar]]()
+        self.closes = {s: RollingWindow[float](20) for s in self.syms}
+        self.sma = {s: self.SMA(s, 10, Resolution.Daily) for s in self.syms}
+        self.smaWin = {s: RollingWindow[IndicatorDataPoint](3) for s in self.syms}
+        for s in self.syms:
+            self.bars.Add(s, RollingWindow[TradeBar](5))
+            self.sma[s].Updated += lambda sender, updated, s=s: self.smaWin[s].Add(updated)
+        self.seen = HashSet[str]()
+    def OnData(self, data):
+        for s in self.syms:
+            if not data.ContainsKey(s) or data[s] is None:
+                continue
+            self.bars[s].Add(data[s])
+            self.closes[s].Add(data[s].Close)
+            self.seen.Add(str(s))
+            w = self.closes[s]
+            if not (w.IsReady and self.bars[s].IsFull and self.smaWin[s].IsReady):
+                continue
+            hi = max(w[1:20])
+            rising = self.smaWin[s][0].Value > self.smaWin[s][2].Value
+            if w[0] > hi and rising and not self.Portfolio[s].Invested:
+                self.SetHoldings(s, 0.5)
+            elif w[0] < self.bars[s][4].Low and self.Portfolio[s].Invested:
+                self.Liquidate(s)
+        found, win = self.bars.TryGetValue(self.syms[0])
+        assert found and win.Size == 5 and win.Samples >= win.Count
+''',
 }
 
 
@@ -494,3 +531,14 @@ def test_field_selector_feeds_the_chosen_price():
     hi20 = d.high["BTC-USD"].loc[:last].tail(20).max()
     assert abs(algo.hi.current.value - hi20) < 1e-9                  # MAX over highs, not closes
     assert algo.venue == ("kraken", "bybit", "kraken", "America/New_York", "crypto")
+
+
+def test_generic_brackets_on_every_layer_class():
+    """C# generic syntax (RollingWindow[float], List[Symbol], Dictionary[K, V], any layer class[T]) is accepted."""
+    for name, v in qcalgo.NAMES.items():
+        if isinstance(v, type) and v.__module__ == qcalgo.__name__:
+            assert v[float] is v, name
+    w = qcalgo.RollingWindow[float](3)
+    for x in range(5):
+        w.add(float(x))
+    assert list(w) == [4.0, 3.0, 2.0] and w[0:2] == [4.0, 3.0] and w.most_recently_removed == 1.0 and w.samples == 5
