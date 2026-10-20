@@ -15,7 +15,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: macro
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-macro_terminal_secure_2024}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env (no default password)}
       POSTGRES_DB: macro_terminal
       TZ: America/New_York
     ports:
@@ -64,14 +64,14 @@ services:
   # ═════════════════════════════════════════════════════════════════════════════
   api:
     build:
-      context: ./api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api/Dockerfile
     container_name: macro-api
     restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://macro:${DB_PASSWORD:-macro_terminal_secure_2024}@timescaledb:5432/macro_terminal
+      - DATABASE_URL=postgresql+asyncpg://macro:${DB_PASSWORD:?Set DB_PASSWORD in .env (no default password)}@timescaledb:5432/macro_terminal
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
@@ -82,7 +82,8 @@ services:
     env_file:
       - .env
     volumes:
-      - ./api:/app
+      - ./api:/app/api
+      - ./src:/app/src
       - api_logs:/app/logs
       - api_data:/app/data
     networks:
@@ -112,13 +113,13 @@ services:
   # ═════════════════════════════════════════════════════════════════════════════
   celery-worker:
     build:
-      context: ./api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api/Dockerfile
     container_name: macro-celery-worker
     restart: unless-stopped
-    command: celery -A celery_app worker --loglevel=info --concurrency=4 -Q pipeline,signals,reports,default
+    command: celery -A api.celery_app worker --loglevel=info --concurrency=4 -Q pipeline,signals,reports,default
     environment:
-      - DATABASE_URL=postgresql+asyncpg://macro:${DB_PASSWORD:-macro_terminal_secure_2024}@timescaledb:5432/macro_terminal
+      - DATABASE_URL=postgresql+asyncpg://macro:${DB_PASSWORD:?Set DB_PASSWORD in .env (no default password)}@timescaledb:5432/macro_terminal
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
@@ -129,7 +130,8 @@ services:
     env_file:
       - .env
     volumes:
-      - ./api:/app
+      - ./api:/app/api
+      - ./src:/app/src
       - celery_logs:/app/logs
       - api_data:/app/data
     networks:
@@ -151,13 +153,13 @@ services:
   # ═════════════════════════════════════════════════════════════════════════════
   celery-beat:
     build:
-      context: ./api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api/Dockerfile
     container_name: macro-celery-beat
     restart: unless-stopped
-    command: celery -A celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler
+    command: celery -A api.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler
     environment:
-      - DATABASE_URL=postgresql+asyncpg://macro:${DB_PASSWORD:-macro_terminal_secure_2024}@timescaledb:5432/macro_terminal
+      - DATABASE_URL=postgresql+asyncpg://macro:${DB_PASSWORD:?Set DB_PASSWORD in .env (no default password)}@timescaledb:5432/macro_terminal
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
@@ -167,7 +169,8 @@ services:
     env_file:
       - .env
     volumes:
-      - ./api:/app
+      - ./api:/app/api
+      - ./src:/app/src
       - celery_logs:/app/logs
     networks:
       - macro-network
@@ -180,11 +183,11 @@ services:
   # ═════════════════════════════════════════════════════════════════════════════
   flower:
     build:
-      context: ./api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api/Dockerfile
     container_name: macro-flower
     restart: unless-stopped
-    command: celery -A celery_app flower --port=5555
+    command: celery -A api.celery_app flower --port=5555
     ports:
       - "5555:5555"
     environment:

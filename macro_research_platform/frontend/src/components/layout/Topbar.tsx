@@ -2,10 +2,15 @@
 // Row 1: Branding | Function keys | Session badges | Data status | Time | Tools
 // Row 2: Market ticker strip
 
+import { setHubMode, useHubMode } from '@/lib/hubMode';
+import { DAY_END, DAY_START, setThemeSetting, useTheme, type ThemeSetting } from '@/lib/theme';
 import { useState, useEffect, useMemo } from 'react';
-import { Download, Maximize, AlertTriangle, LayoutGrid, RefreshCw } from 'lucide-react';
+import { Download, Maximize, AlertTriangle, LayoutGrid, RefreshCw, FunctionSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMacroStore, selectMeta, selectIsLoading } from '@/store/macroStore';
+import { SystemStatusBadge } from '@/components/SystemStatusBadge';
+import { DataHealthIndicator } from '@/components/DataHealthIndicator';
+import { DataIntegrityIndicator } from '@/components/DataIntegrityIndicator';
 import {
   fmtPriceInt,
   fmtVol,
@@ -20,7 +25,14 @@ interface TickerItem {
   val: string;
   chg?: string;
   colorClass?: string;
+  /** Session the 1-day change belongs to (instruments close on different days, e.g. FX). */
+  asOf?: string | null;
 }
+
+// Ticker label → keyMetrics.changeAsOf key.
+const ASOF_KEY: Record<string, string> = {
+  SPX: 'SPX', NDX: 'NDX', VIX: 'VIX', DXY: 'DXY', 'EUR/USD': 'EURUSD', GOLD: 'GLD', WTI: 'WTI',
+};
 
 interface TopbarProps {
   latestDate?: string;
@@ -30,6 +42,7 @@ interface TopbarProps {
   onRefresh?: () => void;
   onCommandPalette?: () => void;
   onAlertsPanel?: () => void;
+  onModelInfo?: () => void;
   currentRegime?: string;
 }
 
@@ -72,7 +85,7 @@ function buildTicker(
       { sym: '2Y', val: '—' },
       { sym: 'DXY', val: '—' },
       { sym: 'EUR/USD', val: '—' },
-      { sym: 'GLD', val: '—' },
+      { sym: 'GOLD', val: '—' },
       { sym: 'WTI', val: '—' },
       { sym: 'FED', val: '—' },
     ];
@@ -105,8 +118,9 @@ function buildTicker(
     {
       sym: '10Y',
       val: fmtRate(prices.TENYR),
-      chg: changes.TENYR != null ? fmtChange(changes.TENYR) : undefined,
-      colorClass: getChangeColor(changes.TENYR),
+      // Yield change in basis points (a % change of a yield is not a meaningful quote).
+      chg: changes.TENYR_BP != null ? `${changes.TENYR_BP > 0 ? '+' : ''}${changes.TENYR_BP.toFixed(1)}bp` : undefined,
+      colorClass: getChangeColor(changes.TENYR_BP),
     },
     {
       sym: '2Y',
@@ -127,7 +141,8 @@ function buildTicker(
       colorClass: getChangeColor(changes.EURUSD),
     },
     {
-      sym: 'GLD',
+      // COMEX gold futures (GC=F), not the GLD ETF (~1/11 the price).
+      sym: 'GOLD',
       val: fmtPriceInt(prices.GLD),
       chg: changes.GLD != null ? fmtChange(changes.GLD) : undefined,
       colorClass: getChangeColor(changes.GLD),
@@ -155,6 +170,36 @@ const FN_KEYS = [
   { n: 'F7', label: 'SYSTEM',    section: 'system-health' },
 ];
 
+function ThemeToggle() {
+  const { setting, theme } = useTheme();
+  const next: Record<ThemeSetting, ThemeSetting> = { auto: 'light', light: 'dark', dark: 'auto' };
+  const label = setting === 'auto' ? `Auto (${theme})` : setting === 'light' ? 'Light' : 'Dark';
+  return (
+    <button onClick={() => setThemeSetting(next[setting])} aria-label={`Theme: ${label}. Click to change.`}
+      title={`Theme: ${label}. Auto = light ${String(DAY_START).padStart(2, '0')}:00–${DAY_END}:00 your time, dark otherwise. Click to cycle Auto → Light → Dark.`}
+      className="h-6 px-1.5 inline-flex items-center gap-1 border border-border text-[10px] font-mono uppercase text-text-tertiary hover:text-text-primary shrink-0">
+      <span aria-hidden="true">{theme === 'light' ? '☀' : '☾'}</span>
+      <span className="hidden md:inline">{setting === 'auto' ? 'Auto' : setting}</span>
+    </button>
+  );
+}
+
+function ModeSwitch() {
+  const mode = useHubMode();
+  return (
+    <div role="tablist" aria-label="Mode" className="flex border border-border ml-1">
+      {([['research', 'Research & Trading'], ['markets', 'Markets']] as const).map(([m, label]) => (
+        <button key={m} role="tab" aria-selected={mode === m} onClick={() => setHubMode(m)}
+          title={m === 'research' ? 'Macro research, signals, risk, Quant Lab and the paper traders' : 'Any stock, ETF, index, FX, future or crypto — workstation, movers, screener'}
+          className={cn('px-2 h-6 text-[10px] font-mono uppercase tracking-wider whitespace-nowrap',
+            mode === m ? 'bg-bloomberg text-bg' : 'text-text-tertiary hover:text-text-primary')}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Topbar({
   latestDate: latestDateProp,
   dataStatus: dataStatusProp,
@@ -163,6 +208,7 @@ export function Topbar({
   onRefresh,
   onCommandPalette,
   onAlertsPanel,
+  onModelInfo,
   currentRegime: currentRegimeProp,
 }: TopbarProps) {
   const [downloading, setDownloading] = useState(false);
@@ -173,6 +219,8 @@ export function Topbar({
   // Use macro store
   const prices = useMacroStore((state) => state.prices);
   const changes = useMacroStore((state) => state.changes);
+  const changeAsOfRaw = useMacroStore((state) => (state.fullDashboard as any)?.keyMetrics?.changeAsOf as Record<string, string | null> | undefined);
+  const changeAsOf = useMemo(() => changeAsOfRaw ?? {}, [changeAsOfRaw]);
   const regime = useMacroStore((state) => state.regime);
   const meta = useMacroStore(selectMeta);
 
@@ -249,8 +297,9 @@ export function Topbar({
   const dateStr = currentTime.toISOString().split('T')[0];
 
   const ticker = useMemo(
-    () => buildTicker(prices as unknown as Record<string, number | null>, changes, isLoading),
-    [prices, changes, isLoading]
+    () => buildTicker(prices as unknown as Record<string, number | null>, changes, isLoading)
+      .map((t) => ({ ...t, asOf: ASOF_KEY[t.sym] ? changeAsOf[ASOF_KEY[t.sym]] ?? null : null })),
+    [prices, changes, isLoading, changeAsOf]
   );
 
   return (
@@ -260,13 +309,14 @@ export function Topbar({
       {/* ── ROW 1: Main bar (40px) ─────────────────────────────────────────────── */}
       <div className="topbar-main-row">
 
-        {/* Branding */}
+        {/* Branding + hub mode switch */}
         <div className="flex items-center gap-2 mr-2 shrink-0">
           <span className="font-mono text-bloomberg font-bold tracking-tight" style={{ fontSize: 13 }}>▸</span>
-          <span className="font-mono text-text-primary font-bold tracking-tight" style={{ fontSize: 12, letterSpacing: '0.06em' }}>
-            MACRO OS
+          <span className="hidden sm:inline font-mono text-text-primary font-bold tracking-tight" style={{ fontSize: 12, letterSpacing: '0.06em' }}>
+            TERMINAL
           </span>
-          <span className="font-mono text-text-tertiary" style={{ fontSize: 10 }}>v8.0</span>
+          <ModeSwitch />
+          <ThemeToggle />
         </div>
 
         <div className="topbar-divider" />
@@ -336,7 +386,9 @@ export function Topbar({
         </div>
 
         {/* Mode badge */}
-        <div className="ml-auto flex items-center gap-1 shrink-0">
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          <DataIntegrityIndicator />
+          <DataHealthIndicator />
           <span className="font-mono text-bloomberg bg-bloomberg-muted border border-bloomberg-border px-2 py-0.5"
                 style={{ fontSize: 10, letterSpacing: '0.08em' }}>
             {mode}
@@ -375,6 +427,15 @@ export function Topbar({
             title="Export PDF"
           >
             <Download className={cn('w-3.5 h-3.5', downloading && 'animate-pulse')} />
+          </button>
+
+          <button
+            onClick={onModelInfo}
+            className="icon-btn"
+            style={{ width: 26, height: 26 }}
+            title="Model Info & Methodology"
+          >
+            <FunctionSquare className="w-3.5 h-3.5" />
           </button>
 
           <button
@@ -418,11 +479,16 @@ export function Topbar({
       {/* ── ROW 2: Market ticker strip (24px) ─────────────────────────────────── */}
       <div className="ticker-strip">
         {ticker.map((item) => (
-          <div key={item.sym} className="ticker-item">
+          <div key={item.sym} className="ticker-item"
+            title={item.asOf ? `1-day change for the ${item.asOf} session` : undefined}>
             <span className="ticker-sym">{item.sym}</span>
             <span className="ticker-val">{item.val}</span>
             {item.chg && (
               <span className={cn('ticker-chg', item.colorClass)}>{item.chg}</span>
+            )}
+            {/* Flag a change from an earlier session than the S&P's, so moves aren't compared across days. */}
+            {item.chg && item.asOf && changeAsOf.SPX && item.asOf < changeAsOf.SPX && (
+              <span className="text-text-tertiary" style={{ fontSize: 9 }}>({item.asOf.slice(5)})</span>
             )}
           </div>
         ))}
@@ -433,6 +499,11 @@ export function Topbar({
           <span className="font-mono text-bloomberg font-bold" style={{ fontSize: 10, letterSpacing: '0.06em' }}>
             {regime.current ? fmtRegime(regime.current).toUpperCase() : '—'}
           </span>
+        </div>
+
+        {/* Phase 5: System Status Badge */}
+        <div className="flex items-center px-2 shrink-0 border-l border-border-subtle h-full">
+          <SystemStatusBadge compact />
         </div>
       </div>
     </header>

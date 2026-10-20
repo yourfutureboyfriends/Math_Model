@@ -118,10 +118,10 @@ class BeaClient(BaseDataClient):
         end_date = datetime.now()
 
         if frequency == "quarterly":
-            dates = pd.date_range(end=end_date, periods=periods, freq="Q")
+            dates = pd.date_range(end=end_date, periods=periods, freq="QE")
             values = 20000 + np.cumsum(np.random.randn(periods) * 100)
         else:
-            dates = pd.date_range(end=end_date, periods=periods, freq="Y")
+            dates = pd.date_range(end=end_date, periods=periods, freq="YE")
             values = 20000 + np.cumsum(np.random.randn(periods) * 400)
 
         df = pd.DataFrame({series_id: values}, index=dates)

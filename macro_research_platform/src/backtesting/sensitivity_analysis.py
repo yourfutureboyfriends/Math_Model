@@ -15,7 +15,7 @@ Output: Which assumptions change the model conclusion?
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Callable
 
 import numpy as np
 import pandas as pd

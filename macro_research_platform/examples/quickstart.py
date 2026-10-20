@@ -5,7 +5,7 @@ Demonstrates basic usage of the Bridgewater-inspired macro research platform.
 """
 
 import sys
-sys.path.insert(0, '/Users/daltonyuen/Math_Model/macro_research_platform')
+sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parents[1]))
 
 from src.core import create_platform
 from src.economic_machine import CausalGraph

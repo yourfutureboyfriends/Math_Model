@@ -30,16 +30,9 @@ from src.utils.metric_interpretation import (
 # Import new sector model (functions to be adapted)
 # from src.models.portfolio_construction.sector_allocation_model import ...
 
-# Placeholder for backward compatibility
-SECTOR_CONFIG = {
-    "Technology": {"rationale": "Growth-oriented, rates-sensitive"},
-    "Healthcare": {"rationale": "Defensive, stable demand"},
-    "Financials": {"rationale": "Rates-sensitive, cyclical"},
-    "Energy": {"rationale": "Commodity-driven, inflation-sensitive"},
-    "Utilities": {"rationale": "Defensive, bond-like"},
-    "Consumer_Discretionary": {"rationale": "Cyclical, consumer-driven"},
-    "Industrials": {"rationale": "Cyclical, global trade"},
-}
+# Sector descriptions come from config/sector_rules.yaml (via src.sector_model); the old
+# inline placeholder lacked the "description" key this module reads, raising KeyError.
+from src.sector_model import SECTOR_CONFIG  # noqa: E402
 
 
 def get_sectors_by_signal(sector_signals: dict) -> dict:

@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 # Add parent to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))   # project root — never api/, it shadows `database`
 
 from api.utils.errors import (
     safe_execute,

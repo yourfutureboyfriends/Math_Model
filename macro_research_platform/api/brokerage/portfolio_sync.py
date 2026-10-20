@@ -11,11 +11,13 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
-from .alpaca_client import AlpacaClient, Position, Order, Account, get_alpaca_client
+from .alpaca_client import AlpacaClient, get_alpaca_client
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).parent.parent.parent / "macro_terminal.db"
+from api.core.app_db import app_db_path
+
+DB_PATH = Path(app_db_path())   # the application DB (not a stale copy at the project root)
 
 
 class PortfolioSync:
