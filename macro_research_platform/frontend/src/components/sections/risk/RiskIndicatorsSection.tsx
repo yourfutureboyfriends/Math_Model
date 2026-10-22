@@ -7,6 +7,7 @@ import { Shield, AlertTriangle, Globe } from 'lucide-react';
 import { AnimatedValue, SkeletonCard } from '@/components/ui';
 import type { RiskIndicatorsData, GeopoliticalRiskData } from '@/types';
 import { useMacroStore } from '@/store/macroStore';
+import { useApiData } from '@/hooks/useApiData';
 
 interface RiskIndicatorsSectionProps {
   data?: RiskIndicatorsData;
@@ -15,6 +16,9 @@ interface RiskIndicatorsSectionProps {
 
 export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicatorsSectionProps) {
   const _fullDash = useMacroStore((s) => s.fullDashboard);
+  // geopolitical / policy-uncertainty / financial-stress tail risk (GPR, EPU, STLFSI) — refreshed every 30 min
+  const { data: geoApi } = useApiData<GeopoliticalRiskData>('/api/geopolitical-risk', [], { refreshMs: 1_800_000 });
+  if (!geopoliticalData && geoApi) geopoliticalData = geoApi;
   if (!data) data = (_fullDash as any)?.["riskIndicators"] as any;
 
   if (!data) {
@@ -117,6 +121,19 @@ export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicators
               </span>
             </div>
 
+            <div className="mt-2 space-y-0.5">
+              {([['geopoliticalRisk', 'Geopolitical (GPR)'], ['policyUncertainty', 'Policy uncertainty'], ['financialStress', 'Financial stress']] as const).map(([k, label]) => {
+                const c = (geopoliticalData!.components as any)?.[k];
+                if (!c) return null;
+                return (
+                  <div key={k} className="flex items-center justify-between text-2xs" title={`${c.series}${c.asOf ? ` · as of ${c.asOf}` : ''}`}>
+                    <span className="text-text-tertiary">{label}</span>
+                    <span className="font-mono text-text-secondary">{c.zscore >= 0 ? '+' : ''}{c.zscore.toFixed(2)}σ · {c.trend.toLowerCase()}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {geopoliticalData.interpretation && <div className="mt-2 text-2xs text-text-secondary">{geopoliticalData.interpretation}</div>}
             {geopoliticalData.confidenceAdjustment > 1.0 && (
               <div className="mt-2 text-2xs text-amber">
                 Confidence widened by {((geopoliticalData.confidenceAdjustment - 1) * 100).toFixed(0)}%

@@ -248,3 +248,25 @@ def nasdaq_ipos(months_back: int = 1, months_ahead: int = 1) -> Dict[str, Any]:
     return {"ipos": rows, "source": "Nasdaq IPO calendar (api.nasdaq.com; NYSE and Nasdaq listings)",
             "note": "'expected' = scheduled with a price range; 'priced' = priced, trading; 'filed' = S-1 filed, "
                     "no date; 'withdrawn' = pulled."}
+
+
+# ── geopolitical risk: Caldara & Iacoviello's daily GPR index (newspaper-article counts of geopolitical tension,
+# 1985 = 100), free from the authors' site; plus the economic policy uncertainty and financial stress series ─────
+GPR_DAILY = "https://www.matteoiacoviello.com/gpr_files/data_gpr_daily_recent.xls"
+
+
+def gpr_daily() -> Dict[str, Any]:
+    """{dates, gpr, threats, acts, events} — the daily GPR index and its threats / acts split (cached 12 h)."""
+    def fetch():
+        import pandas as pd
+        r = _get(GPR_DAILY, timeout=60)
+        df = pd.read_excel(io.BytesIO(r.content))
+        df["date"] = pd.to_datetime(df["DAY"].astype(str), format="%Y%m%d", errors="coerce")
+        df = df.dropna(subset=["date", "GPRD"]).sort_values("date")
+        ev = df[df["event"].astype(str).str.strip().ne("") & df["event"].notna()] if "event" in df else df.iloc[0:0]
+        return {"dates": df["date"].dt.strftime("%Y-%m-%d").tolist(), "gpr": df["GPRD"].round(2).tolist(),
+                "threats": df["GPRD_THREAT"].round(2).tolist() if "GPRD_THREAT" in df else None,
+                "acts": df["GPRD_ACT"].round(2).tolist() if "GPRD_ACT" in df else None,
+                "events": [{"date": d.strftime("%Y-%m-%d"), "event": str(e)} for d, e in zip(ev["date"], ev["event"])][-40:],
+                "source": "Caldara & Iacoviello, Geopolitical Risk Index (daily), matteoiacoviello.com"}
+    return _cached("free:gpr_daily", 12 * 3600, fetch)

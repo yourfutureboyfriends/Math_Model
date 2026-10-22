@@ -1,5 +1,6 @@
 """Signal handler with real calculated data using shared calculations module."""
-from typing import Dict, Any
+import asyncio
+from typing import Any, Dict, Optional
 from datetime import datetime
 import logging
 
@@ -279,12 +280,68 @@ async def get_factor_decomposition_data() -> Dict[str, Any]:
     return await _dashboard_section("factorDecomposition", "Factor decomposition")
 
 
+def _risk_component(dates, values, series: str, smooth: int) -> Optional[Dict[str, Any]]:
+    """Latest `smooth`-period mean, its z-score against the past three years of the same mean, and the direction."""
+    import numpy as np
+    import pandas as pd
+    s = pd.Series(values, index=pd.to_datetime(dates), dtype=float).dropna().sort_index()
+    if len(s) < 60:
+        return None
+    m = s.rolling(smooth, min_periods=max(1, smooth // 2)).mean()
+    hist = m[m.index >= m.index[-1] - pd.Timedelta(days=3 * 365)]
+    sd = float(hist.std())
+    z = float((m.iloc[-1] - hist.mean()) / sd) if sd > 0 else 0.0
+    prior = m[m.index <= m.index[-1] - pd.Timedelta(days=30)]
+    chg = float(m.iloc[-1] - prior.iloc[-1]) if len(prior) else 0.0
+    trend = "Rising" if sd > 0 and chg > 0.25 * sd else "Falling" if sd > 0 and chg < -0.25 * sd else "Stable"
+    return {"value": round(float(m.iloc[-1]), 2), "zscore": round(z, 2) if np.isfinite(z) else 0.0, "trend": trend,
+            "series": series, "asOf": m.index[-1].strftime("%Y-%m-%d")}
+
+
 async def get_geopolitical_data() -> Dict[str, Any]:
-    """No geopolitical-risk data source is wired (this used to relabel the VIX as a
-    'geopolitical score'), so report it as unavailable rather than invent one."""
+    """Geopolitical tail risk from observed indices: Caldara–Iacoviello daily GPR (7-day mean), the daily US economic
+    policy uncertainty index (Baker–Bloom–Davis, FRED USEPUINDXD, 7-day mean) and the St. Louis Fed financial stress
+    index (FRED STLFSI4, weekly) — each as a z-score against its own past three years; the tail-risk score is their
+    mean."""
     from fastapi import HTTPException
-    raise HTTPException(status_code=503,
-                        detail="Geopolitical risk unavailable: no data source configured")
+    from api.marketdata import freedata
+    from api.handlers.macro_inputs import _fetch_fred_history_sync
+
+    def build():
+        comps, notes = {}, []
+        try:
+            g = freedata.gpr_daily()
+            comps["geopoliticalRisk"] = _risk_component(g["dates"], g["gpr"], "GPR daily (Caldara–Iacoviello), 7-day mean", 7)
+            recent = g.get("events") or []
+        except Exception as e:                                                 # noqa: BLE001
+            recent = []
+            notes.append(f"GPR unavailable ({type(e).__name__})")
+        for key, sid, label, smooth in (("policyUncertainty", "USEPUINDXD", "US economic policy uncertainty (daily), 7-day mean", 7),
+                                        ("financialStress", "STLFSI4", "St. Louis Fed financial stress (weekly)", 1)):
+            try:
+                ser = _fetch_fred_history_sync(sid, 3 * 365 + 60)
+                comps[key] = _risk_component(ser.dates, ser.values, label, smooth)
+            except Exception as e:                                             # noqa: BLE001
+                notes.append(f"{sid} unavailable ({type(e).__name__})")
+        return comps, notes, recent
+    comps, notes, recent = await asyncio.to_thread(build)
+    live = {k: v for k, v in comps.items() if v}
+    if not live:
+        raise HTTPException(status_code=503, detail="Geopolitical risk unavailable: " + "; ".join(notes))
+    score = round(sum(v["zscore"] for v in live.values()) / len(live), 2)
+    level = "Extreme" if score >= 2 else "Elevated" if score >= 1 else "Moderate" if score >= 0 else "Low"
+    g = live.get("geopoliticalRisk")
+    return {
+        "tailRiskScore": score, "tailRiskLevel": level, "components": comps,
+        "confidenceAdjustment": round(1 + 0.15 * max(0.0, score), 2),
+        "interpretation": (f"Geopolitical / policy / financial stress is {level.lower()} ({score:+.2f}σ vs the past three "
+                           f"years)" + (f"; geopolitical risk {g['trend'].lower()} ({g['zscore']:+.2f}σ)" if g else "")),
+        "note": "Each component is a z-score against its own past three years; the score is their mean. "
+                + (" ".join(notes) if notes else ""),
+        "notableEvents": [{**e, "event": e["event"].strip()} for e in recent[-8:]],   # the authors' labelled spikes (history)
+        "lastUpdated": max(v["asOf"] for v in live.values()),
+        "sources": ["matteoiacoviello.com (GPR)", "FRED USEPUINDXD", "FRED STLFSI4"],
+    }
 
 
 async def get_options_data() -> Dict[str, Any]:
@@ -301,16 +358,29 @@ async def get_options_data() -> Dict[str, Any]:
         iv_rank = round((vix - lo) / (hi - lo) * 100, 1) if hi > lo else None
     sentiment = (None if vix is None else "BULLISH" if vix < 15 else "NEUTRAL" if vix < 20
                  else "CAUTIOUS" if vix < 25 else "BEARISH")
+    pc = None
+    try:                                         # Cboe's free daily market statistics (total / equity / index / SPX)
+        from api.marketdata import freedata
+        pc = await asyncio.to_thread(freedata.cboe_put_call, 30)
+    except Exception:                                                          # noqa: BLE001
+        pc = None
+    latest = (pc or {}).get("latest") or {}
     return {
         "underlying": "SPX",
         "currentPrice": round(spx, 2) if spx is not None else None,
         "impliedVolRank": iv_rank,
         "impliedVolRankBasis": "VIX vs its 1y high/low (Yahoo ^VIX)",
-        "putCallRatio": None,
+        "putCallRatio": latest.get("total"),
+        "putCallRatios": {k: latest.get(k) for k in ("total", "equity", "index", "spx") if latest.get(k) is not None} or None,
+        "putCallAsOf": latest.get("date"),
+        "equityPutCall10dAvg": (pc or {}).get("equity_10d_avg"),
+        "equityPutCallPercentile30d": (pc or {}).get("equity_percentile_window"),
+        "putCallReading": (pc or {}).get("contrarian"),
         "unusualActivity": [],
         "keyLevels": {},
         "sentiment": sentiment,
-        "note": "Put/call ratio, flow and strike levels need an options data feed (not configured).",
+        "note": ("Put/call: Cboe daily market statistics. " if pc else "Put/call: Cboe statistics unavailable right now. ")
+                + "Order flow and strike-level open interest need a paid options feed (OPRA).",
         "lastUpdated": datetime.now().isoformat(),
     }
 

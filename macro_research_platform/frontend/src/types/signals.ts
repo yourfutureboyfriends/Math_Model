@@ -327,6 +327,7 @@ export interface GeopoliticalRiskComponent {
   zscore: number;
   trend: string;
   series: string;
+  asOf?: string;
 }
 
 export interface GeopoliticalRiskData {

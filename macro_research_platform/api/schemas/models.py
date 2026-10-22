@@ -3,7 +3,14 @@ Pydantic models for API request/response schemas.
 
 Extracted from main.py for better organization.
 """
-from pydantic import BaseModel, field_validator, Field
+from pydantic import BaseModel as _PydanticBase, ConfigDict, field_validator, Field
+
+
+class BaseModel(_PydanticBase):
+    """Every API model keeps fields the handler returns beyond the declared ones: FastAPI filters a response to its
+    response_model, which silently dropped real data (/api/advanced returned nulls while the handler had the Sahm rule,
+    credit impulse, LEI and risk parity; /api/risk/full lost its stress tests). Declared fields are still validated."""
+    model_config = ConfigDict(extra="allow")
 from typing import List, Dict, Optional, Any
 import numpy as np
 

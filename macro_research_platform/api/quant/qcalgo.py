@@ -2607,8 +2607,8 @@ APPROXIMATED = {
     "set_security_initializer": "ignored — the Code Lab's cost and fill models apply",
     "set_brokerage_model": "commission model mapped to the Code Lab's broker presets where known; otherwise defaults",
     "set_data_normalization_mode": "prices are split- and dividend-adjusted (total return); raw prices are not used",
-    "Resolution.MINUTE": "minute data is not available — runs on daily bars",
-    "Resolution.HOUR": "hourly data is not available here — runs on daily bars",
+    "Resolution.MINUTE": "built-in layer: daily bars; real LEAN (Run): hourly bars inside the ~2-year free window, else daily",
+    "Resolution.HOUR": "built-in layer: daily bars; real LEAN (Run): Yahoo hourly bars inside the ~2-year free window, else daily",
     "Resolution.SECOND": "runs on daily bars", "Resolution.TICK": "runs on daily bars",
     "dollar_volume": "selection by daily dollar volume of point-in-time S&P 500 members",
     "asset_classification": "today's sector as a Morningstar sector code for every date (no free sector history; "

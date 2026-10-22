@@ -82,12 +82,28 @@ def migrate() -> None:
     invalidate_cache()
 
 
+_DEFAULT_CHECK: Dict[tuple, bool] = {}     # (username, stored hash) → still the default password
+
+
 def default_credential_accounts() -> List[str]:
-    """Enabled accounts still on their seeded default password."""
+    """Enabled accounts still on their seeded default password. The (slow, deliberately) hash check runs once per
+    stored hash — a password change stores a new hash, so the answer never goes stale — which keeps the public
+    /api/auth/status cheap instead of hashing on every unauthenticated call."""
     with _conn() as c:
         rows = c.execute("SELECT username, hashed_password FROM users WHERE COALESCE(disabled,0)=0").fetchall()
-    return [r["username"] for r in rows if DEFAULT_PASSWORDS.get(r["username"]) and
-            _auth.verify_password(DEFAULT_PASSWORDS[r["username"]], r["hashed_password"])]
+    out = []
+    for r in rows:
+        default = DEFAULT_PASSWORDS.get(r["username"])
+        if not default:
+            continue
+        key = (r["username"], r["hashed_password"])
+        if key not in _DEFAULT_CHECK:
+            if len(_DEFAULT_CHECK) > 1000:
+                _DEFAULT_CHECK.clear()
+            _DEFAULT_CHECK[key] = bool(_auth.verify_password(default, r["hashed_password"]))
+        if _DEFAULT_CHECK[key]:
+            out.append(r["username"])
+    return out
 
 
 def default_credentials_active() -> bool:
