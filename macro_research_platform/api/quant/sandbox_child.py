@@ -101,11 +101,16 @@ def _policy(tmp):
         p = os.path.realpath(str(path))
         return p == root or p.startswith(root + os.sep)
 
+    # In the container (no network, read-only, no capabilities) libraries built on ctypes (xgboost, lightgbm, TA-Lib …)
+    # may call their C functions; the process sandbox (no container) refuses ctypes entirely. Strategy code itself
+    # cannot import ctypes either way (static check and the import function below).
+    in_container = os.environ.get("QL_CONTAINER") == "1"
+    ctypes_events = () if in_container else ("ctypes.dlopen", "ctypes.dlsym", "ctypes.cdata")
+
     def hook(event, args):
         if event in ("socket.connect", "socket.bind", "socket.getaddrinfo", "socket.__new__", "subprocess.Popen",
                      "os.system", "os.exec", "os.posix_spawn", "os.spawn", "os.fork", "os.forkpty", "os.kill",
-                     "ctypes.dlopen", "ctypes.dlsym", "ctypes.cdata", "pty.spawn", "webbrowser.open", "urllib.Request",
-                     "http.client.connect"):
+                     "pty.spawn", "webbrowser.open", "urllib.Request", "http.client.connect") or event in ctypes_events:
             raise PermissionError(f"blocked: {event}")
         if event == "open":
             path, mode = args[0], args[1] if len(args) > 1 else "r"

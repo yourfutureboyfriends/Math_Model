@@ -158,8 +158,9 @@ pandas, scipy, scikit-learn, statsmodels — also what the browser carries) and 
 environment** in the LEAN image (~800 packages: torch, tensorflow, keras, xgboost, lightgbm, catboost, TA-Lib, ta, arch,
 cvxpy, hmmlearn, pykalman, PyPortfolioOpt, prophet, sktime, statsforecast, numba, …). A strategy that imports
 something outside the first set runs on the server in the second, automatically. On real LEAN every library works. On
-the built-in layer, libraries that call C code through `ctypes` at run time (xgboost, lightgbm, TA-Lib) are refused by
-the run-time guard — QuantConnect algorithms using them run on real LEAN (the default `Run`).
+the built-in layer, libraries that call C code through `ctypes` at run time (xgboost, lightgbm, TA-Lib) run in the
+Docker sandbox (the container is the boundary); the macOS fallback sandbox refuses ctypes. Strategy code itself can
+never import or name `ctypes`.
 
 **Python.** The code check is a short blocklist:
 

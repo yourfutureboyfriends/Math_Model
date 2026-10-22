@@ -74,3 +74,36 @@ def test_container_run_matches_the_process_sandbox(monkeypatch):
     sandbox._DOCKER.update(ok=None)
     assert in_process["provenance"]["isolation"].startswith("process sandbox")
     assert in_container["metrics"] == in_process["metrics"]
+
+
+@pytest.mark.skipif(not sandbox.docker_status(refresh=True)["docker"] or "xgboost" not in sandbox.lean_modules(),
+                    reason="Docker, the sandbox image or the LEAN image is not available")
+def test_ctypes_libraries_run_in_the_container_but_strategy_code_cannot_reach_ctypes():
+    """xgboost / TA-Lib call C code through ctypes: allowed for libraries inside the container (QuantConnect's
+    environment); strategy code still cannot import or name ctypes."""
+    code = '''from AlgorithmImports import *
+import talib
+import numpy as np
+from xgboost import XGBClassifier
+class T(QCAlgorithm):
+    def initialize(self):
+        self.set_start_date(2021, 1, 4)
+        self.set_end_date(2021, 6, 30)
+        self.spy = self.add_equity("SPY", Resolution.DAILY).symbol
+        self.m = None
+    def on_data(self, data):
+        h = self.history(self.spy, 60, Resolution.DAILY)
+        if len(h) < 60:
+            return
+        c = h["close"].to_numpy(dtype=float)
+        r = np.nan_to_num(talib.RSI(c, timeperiod=14))
+        if self.m is None:
+            self.m = XGBClassifier(n_estimators=3, max_depth=2).fit(r[:-1].reshape(-1, 1), (np.diff(c) > 0).astype(int))
+        self.set_holdings(self.spy, float(self.m.predict_proba(np.array([[r[-1]]]))[0, 1] > 0.5))
+'''
+    assert sandbox.check(code)["runtime"] == "full"
+    res = sandbox.run(code)
+    assert "pandas" in res["provenance"]["runtime"] and len(res["returns"]) > 50
+    for bad in ("import ctypes", "x = np.ctypeslib", "import xgboost.core as xc\nx = xc.ctypes"):
+        with pytest.raises(sandbox.SandboxError):
+            sandbox.check(code.replace("class T(QCAlgorithm):", bad + "\nclass T(QCAlgorithm):"))

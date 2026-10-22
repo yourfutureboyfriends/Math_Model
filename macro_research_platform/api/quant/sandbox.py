@@ -63,7 +63,8 @@ BANNED_DUNDERS = {"__globals__", "__code__", "__closure__", "__builtins__", "__s
                   "__loader__", "__spec__", "__import__", "__traceback__", "__frame__", "__reduce__", "__reduce_ex__"}
 BANNED_NAMES = {"eval", "exec", "compile", "__import__", "__builtins__", "breakpoint"}
 BANNED_ATTRS = {"f_globals", "f_locals", "f_back", "f_code", "gi_frame", "cr_frame", "ag_frame", "tb_frame", "tb_next",
-                "co_code", "subclasses", "import_module", "system", "popen", "environ", "putenv", "fork", "spawn"}
+                "co_code", "subclasses", "import_module", "system", "popen", "environ", "putenv", "fork", "spawn",
+                "ctypes", "ctypeslib", "CDLL", "cdll", "PyDLL", "pydll", "LoadLibrary", "dlopen"}
 
 
 MAX_COMBOS = 500                                         # PARAMS grid size per run
@@ -327,7 +328,8 @@ def _docker_cmd(tmp: Path, name: str, cpu: int, extra: Optional[list] = None, ru
             *(["--user", "65534:65534", "--entrypoint", python] if full else []),
             "-v", f"{tmp}:/work:rw", "-v", f"{CHILD}:/engine/sandbox_child.py:ro",
             "-v", f"{ENGINE}:/engine/codelab.py:ro", "-v", f"{QCALGO}:/engine/qcalgo.py:ro",
-            "-e", "HOME=/tmp", "-e", "QL_SCRATCH=/tmp", "-e", "MPLCONFIGDIR=/tmp", "-e", "NUMBA_CACHE_DIR=/tmp", image,
+            "-e", "HOME=/tmp", "-e", "QL_SCRATCH=/tmp", "-e", "QL_CONTAINER=1", "-e", "MPLCONFIGDIR=/tmp",
+            "-e", "NUMBA_CACHE_DIR=/tmp", image,
             *([] if full else ["python"]),
             "-I", "/engine/sandbox_child.py", "/work", "/engine/codelab.py", "/engine/qcalgo.py", *(extra or [])]
 
@@ -644,8 +646,8 @@ def run(code: str, costs: Optional[Dict[str, float]] = None, job: Optional[Any] 
         if res.get("error"):
             err = res["error"]
             if "blocked: ctypes" in err:
-                err += (" — this library calls C code through ctypes (xgboost, lightgbm, TA-Lib …), which the built-in "
-                        "sandbox's run-time guard refuses; QuantConnect algorithms using it run on real LEAN (Run).")
+                err += (" — this library calls C code through ctypes (xgboost, lightgbm, TA-Lib …), which only the "
+                        "Docker sandbox allows; start Docker, or run QuantConnect algorithms on real LEAN (Run).")
             raise SandboxError(err)
         store = (((res.get("execution") or {}).get("algorithm") or {}).get("object_store") or {})
         if qc_class and store.get("class") == qc_class:
