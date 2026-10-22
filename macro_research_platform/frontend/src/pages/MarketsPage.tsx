@@ -37,19 +37,9 @@ import { ErrorBox, fmtPrice, Loading, TYPE_COLOR } from '@/components/markets/sh
 import { WorldMap } from '@/components/markets/WorldMap';
 import { AiChat, RightRail } from '@/components/markets/RightRail';
 
-export type MarketsRoute = { fn: string; symbol?: string };
-
-export function parseMarketsHash(h = window.location.hash): MarketsRoute {
-  const parts = h.replace(/^#mkt\/?/, '').split('/').filter(Boolean);
-  // legacy routes from the first version
-  const legacy: Record<string, string> = { overview: 'WEI', ticker: 'DES', movers: 'MOST', screener: 'EQS' };
-  const raw = (parts[0] ?? 'wei').toUpperCase();
-  const f = findFunction(legacy[raw.toLowerCase()] ?? raw);
-  const code = f?.code ?? 'WEI';
-  const symbol = parts[1] ? decodeURIComponent(parts[1]).toUpperCase() : undefined;
-  if (f?.security && !symbol) return { fn: 'WEI' };
-  return { fn: code, symbol };
-}
+export { parseMarketsHash, goMarkets, useMarketsRoute } from '@/lib/marketsRoute';
+export type { MarketsRoute } from '@/lib/marketsRoute';
+import { goMarkets, useMarketsRoute } from '@/lib/marketsRoute';
 
 function countryTerms(iso?: string): string[] {
   const code = (iso || 'US').toUpperCase();
@@ -58,23 +48,6 @@ function countryTerms(iso?: string): string[] {
   const extra: Record<string, string[]> = { US: ['fed', 'recession', 'us'], GB: ['uk', 'britain', 'bank of england'], JP: ['boj', 'yen'], CN: ['china', 'xi'],
     DE: ['germany', 'ecb'], FR: ['france', 'macron', 'ecb'], RU: ['russia', 'putin'], UA: ['ukraine', 'zelenskyy'], IL: ['israel'], IR: ['iran'], TW: ['taiwan'], KR: ['korea'] };
   return [...new Set([name.replace(/^United States$/, 'United States'), ...(extra[code] ?? [])].filter(Boolean))];
-}
-
-export function goMarkets(fn: string, symbol?: string) {
-  const f = findFunction(fn);
-  const code = (f?.code ?? 'WEI').toLowerCase();
-  window.location.hash = f?.security && symbol ? `#mkt/${code}/${encodeURIComponent(symbol)}` : `#mkt/${code}${symbol && !f?.security ? `/${encodeURIComponent(symbol)}` : ''}`;
-  window.scrollTo({ top: 0 });
-}
-
-export function useMarketsRoute(): MarketsRoute {
-  const [r, setR] = useState<MarketsRoute>(() => parseMarketsHash());
-  useEffect(() => {
-    const h = () => setR(parseMarketsHash());
-    window.addEventListener('hashchange', h);
-    return () => window.removeEventListener('hashchange', h);
-  }, []);
-  return r;
 }
 
 const GROUP_ORDER: MktFunction['group'][] = ['Markets', 'Rates & FX', 'Research', 'My tools'];

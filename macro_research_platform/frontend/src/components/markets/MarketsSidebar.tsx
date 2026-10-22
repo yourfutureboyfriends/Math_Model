@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { History } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { FUNCTIONS, findFunction, type MktFunction } from './functions';
-import { goMarkets, useMarketsRoute } from '@/pages/MarketsPage';
+import { goMarkets, useMarketsRoute } from '@/lib/marketsRoute';
 import { REGIONS, setRegion, useRegion } from '@/lib/region';
 
 const RECENT_KEY = 'mkt_recent';

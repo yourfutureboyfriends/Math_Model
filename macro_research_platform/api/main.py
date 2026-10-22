@@ -1291,12 +1291,23 @@ async def lifespan(app: FastAPI):
                     except Exception as e:
                         logger.info(f"[STARTUP] warm-up research screen: {e}")
                     _t.sleep(5)
-                for f in (research.credit, fixed_income.treasuries, funds.etf_screener, bridgewater.environments, bridgewater.debt_cycles, bridgewater.world_order, insights.vol, insights.risk, edge.cot, edge.trade, insights.breadth, edge.ports_trade, insights.implied_moves, insights.uoa, edge.board):
-                    try:
-                        f()
-                    except Exception as e:                       # one slow source must not stop the rest
-                        logger.info(f"[STARTUP] warm-up {getattr(f, '__name__', f)}: {e}")
-                    _t.sleep(20)
+                from api.marketdata import tracking as _tracking, corporate as _corp2, monitors as _monitors
+                heavy = (research.credit, fixed_income.treasuries, funds.etf_screener, bridgewater.environments,
+                         bridgewater.debt_cycles, bridgewater.world_order, insights.vol, insights.risk, edge.cot,
+                         edge.trade, insights.breadth, edge.ports_trade, insights.implied_moves, insights.uoa, edge.board,
+                         # 8–22 s cold on first open
+                         _tracking.chokepoints, lambda: _corp2.actions_calendar(14), _monitors.money_markets,
+                         lambda: _monitors.heatmap("US", 300), _countries.world_data, _corporate.deals)
+                # Every 30 minutes, paced: with stale-while-revalidate in the cache (api/marketdata/core.py) a lapsed
+                # screen is served at once and refreshed behind; this keeps every heavy screen inside that window.
+                while True:
+                    for f in heavy:
+                        try:
+                            f()
+                        except Exception as e:                   # one slow source must not stop the rest
+                            logger.info(f"[warm] markets {getattr(f, '__name__', f)}: {e}")
+                        _t.sleep(20)
+                    _t.sleep(1800)
             threading.Thread(target=_warm, name="warm-markets", daemon=True).start()
         except Exception as e:
             logger.warning(f"[STARTUP] ship collectors not started: {e}")
@@ -1508,6 +1519,7 @@ async def lifespan(app: FastAPI):
             from api.routers.market import get_rates, get_market_overview
             from api.routers.signals import get_yield_curve_signal
             from api.routers.model import model_latest as _model_latest   # 40y model + backtest: ~35s cold
+            from api.routers.business import get_morning_brief as _morning_brief
             targets = [health_check, get_cot_data, get_economic_calendar,
                        get_rates, get_market_overview, get_yield_curve_signal,
                        # Heavy v1 analytics panels — pre-warm their TTL caches so a fresh
@@ -1518,7 +1530,10 @@ async def lifespan(app: FastAPI):
                        correlation_matrix_v1, anomalies_v1, signal_attribution_v1,
                        get_cycle_risk_v1, _model_latest,
                        # out-of-sample evidence the ensemble weights by (6h cache)
-                       signals_backtest_v1]
+                       signals_backtest_v1,
+                       # 6–18 s cold: the Daily Brief, composite-signal history, next central-bank decisions,
+                       # S&P 500 EPS revisions
+                       _morning_brief, composite_history_v1, central_banks_next_v1, get_earnings_revisions]
         except Exception as e:
             logger.warning(f"[warm] could not resolve endpoint targets: {e}")
             return

@@ -1,14 +1,16 @@
 // App.tsx — Root component with auth and routing
 // Phase 4 Step 5: Dashboard content extracted to pages/DashboardPage.tsx
 
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { TerminalShell } from './components/layout/TerminalShell';
 import { LoginScreen } from './components/LoginScreen';
 import { ChangePasswordScreen } from './components/account/AccountPanels';
 import { DiagnosticsPanel } from './components/dev/DiagnosticsPanel';
 import { ChartModal } from './components/ui/ChartModal';
 import { useAuth } from './context/AuthContext';
-import { DashboardPage, MarketsPage } from './pages';
+// each mode loads on first use: the sign-in screen and the Research view no longer download Markets mode (and vice versa)
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const MarketsPage = lazy(() => import('./pages/MarketsPage').then((m) => ({ default: m.MarketsPage })));
 import { MarketsSidebar } from './components/markets/MarketsSidebar';
 import { useHubMode } from './lib/hubMode';
 import { applySkin, useMarketsSkin } from './lib/theme';
@@ -97,7 +99,10 @@ function App() {
 
   // One stable page element: changing the highlighted section while scrolling must not re-render the whole dashboard
   // (only the sidebar and detail panel read it).
-  const page = useMemo(() => (hubMode === 'markets' ? <MarketsPage /> : <DashboardPage />), [hubMode]);
+  const page = useMemo(() => (
+    <Suspense fallback={<div className="p-6 text-xs text-text-tertiary">Loading {hubMode === 'markets' ? 'Markets' : 'Research'}…</div>}>
+      {hubMode === 'markets' ? <MarketsPage /> : <DashboardPage />}
+    </Suspense>), [hubMode]);
 
   if (!isAuthenticated) return <LoginScreen />;
   if (mustChangePassword) return <ChangePasswordScreen />;

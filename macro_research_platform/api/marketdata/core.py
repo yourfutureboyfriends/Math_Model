@@ -40,6 +40,46 @@ _inflight: Dict[str, threading.Lock] = {}
 STALE_MAX = 24 * 3600
 
 
+# Stale-while-revalidate: an entry past its TTL (TTL ≥ 5 min, so live quotes are never served old) but younger than
+# SWR_FACTOR × TTL is returned at once while one background refresh runs — screens no longer wait on a cold upstream
+# fetch every time a cache lapses; only the first load after start does.
+SWR_MIN_TTL = 300
+SWR_FACTOR = 4
+_refreshing: set = set()
+
+
+def _refresh_later(key: str, fn: Callable[[], Any]) -> None:
+    with _lock:
+        if key in _refreshing:
+            return
+        _refreshing.add(key)
+
+    def go():
+        try:
+            _fill(key, fn)                    # on failure the old entry stays; past SWR_FACTOR × TTL callers wait
+        except Exception as e:                                                # noqa: BLE001 — next caller retries
+            logger.info("[cache] background refresh of %s failed: %s", key, type(e).__name__)
+        finally:
+            with _lock:
+                _refreshing.discard(key)
+    threading.Thread(target=go, name=f"swr-{key[:40]}", daemon=True).start()
+
+
+def _fill(key: str, fn: Callable[[], Any]) -> Any:
+    """Fetch and store, single-flight per key."""
+    with _lock:
+        flight = _inflight.setdefault(key, threading.Lock())
+    with flight:
+        try:
+            val = fn()
+        finally:
+            with _lock:
+                _inflight.pop(key, None)
+        with _lock:
+            _cache[key] = (time.time(), val)
+        return val
+
+
 def _cached(key: str, ttl: float, fn: Callable[[], Any]) -> Any:
     """TTL cache with single-flight: concurrent misses for one key (several launchpad windows on
     the same data) wait for a single upstream fetch instead of each calling the provider."""
@@ -47,6 +87,11 @@ def _cached(key: str, ttl: float, fn: Callable[[], Any]) -> Any:
         hit = _cache.get(key)
         if hit and time.time() - hit[0] < ttl:
             return hit[1]
+        swr = bool(hit) and ttl >= SWR_MIN_TTL and time.time() - hit[0] < SWR_FACTOR * ttl
+    if swr:
+        _refresh_later(key, fn)
+        return hit[1]
+    with _lock:
         flight = _inflight.setdefault(key, threading.Lock())
     with flight:
         with _lock:                                  # filled while we waited?

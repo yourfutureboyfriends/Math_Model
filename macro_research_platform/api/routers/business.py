@@ -3,6 +3,8 @@ from fastapi import APIRouter
 from typing import Dict, Any
 import logging
 
+from api.utils.cache import ttl_cache
+
 from api.schemas.models import (
     TradeIdeasResponse,
     DecisionLogResponse,
@@ -23,6 +25,7 @@ async def get_trade_ideas() -> TradeIdeasResponse:
 
 
 @router.get("/api/morning-brief")
+@ttl_cache(300)            # ~6 s to build (overnight moves, calendar, earnings, positioning); moves within minutes
 async def get_morning_brief() -> Dict[str, Any]:
     """Morning brief endpoint for standalone access."""
     from api.handlers.business_handler import get_morning_brief_data
