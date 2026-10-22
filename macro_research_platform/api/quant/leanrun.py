@@ -678,7 +678,7 @@ _RES_METHODS = ("add_equity", "add_crypto", "add_forex", "add_cfd", "add_index",
                 "rdv", "rvi", "sharpe_ratio", "sortino_ratio", "variance", "correlation", "regression", "hurst_exponent")
 
 
-def daily_wrapper(cls: str, hour_tickers: Optional[List[str]] = None) -> str:
+def daily_wrapper(cls: str, hour_tickers: Optional[List[str]] = None, overrides: Optional[Dict[str, Any]] = None) -> str:
     """Python appended to main.py: a subclass of the algorithm that maps tick / second / minute / hour requests to daily
     (the only free resolution) and records each mapping in /Results/quantlab-notes.txt. LEAN itself is unmodified."""
     names = sorted({n for m in _RES_METHODS for n in (m, "".join(w.upper() if w in ("sma", "ema", "rsi", "atr", "bb", "macd", "roc", "rocp", "momp", "mom", "max", "min", "std", "adx", "wma", "lwma", "hma", "dema", "tema", "kama", "trix", "apo", "ppo", "cmo", "logr", "cci", "sto", "willr", "dch", "kch", "obv", "vwap", "mfi", "psar", "natr", "tr", "sar", "lsma", "alma", "t3", "frama", "vwma", "zlema", "uo", "ao", "ad", "adosc", "rdv", "rvi") else w.capitalize() for w in m.split("_")))})
@@ -688,6 +688,8 @@ def daily_wrapper(cls: str, hour_tickers: Optional[List[str]] = None) -> str:
 import AlgorithmImports as _ql_ai
 _QL_FINE = ("Tick", "Second", "Minute", "Hour")
 _QL_HOUR = set({sorted(hour_tickers or [])!r})        # securities with real hourly bars in this run
+_QL_PARAMS = {dict((overrides or {}).get("parameters") or {})!r}   # optimiser: values get_parameter returns
+_QL_START, _QL_END = {(overrides or {}).get("start")!r}, {(overrides or {}).get("end")!r}   # optimiser: in- / out-of-sample
 _QL_SEEN = set()
 
 
@@ -758,6 +760,26 @@ class zzQuantLabDaily({cls}):
         if str(self.UniverseSettings.Resolution).split(".")[-1].capitalize() in _QL_FINE:
             _ql_note(f"universe_settings.resolution {{self.UniverseSettings.Resolution}} served as daily")
             self.UniverseSettings.Resolution = _ql_ai.Resolution.Daily
+        if _QL_START:
+            y, m, d = (int(x) for x in _QL_START.split("-"))
+            self.SetStartDate(y, m, d)
+        if _QL_END:
+            y, m, d = (int(x) for x in _QL_END.split("-"))
+            self.SetEndDate(y, m, d)
+
+    def get_parameter(self, name, *default):
+        if name in _QL_PARAMS:
+            v = _QL_PARAMS[name]
+            if default and isinstance(default[0], bool):
+                return str(v).lower() in ("1", "true", "yes")
+            if default and isinstance(default[0], int):
+                return int(float(v))
+            if default and isinstance(default[0], float):
+                return float(v)
+            return str(v)
+        return super(zzQuantLabDaily, self).GetParameter(name, *default)
+
+    GetParameter = get_parameter
 
     Initialize = initialize
 ''' + "".join(f"    {n} = _ql_wrap({n!r})\n" for n in names)
@@ -800,6 +822,13 @@ def _series(chart: Dict[str, Any], name: str) -> List[List[float]]:
     return out
 
 
+def _session(ts: float) -> str:
+    """The session a LEAN chart point belongs to: LEAN samples the day's close at the following midnight (New York),
+    so a point stamped Saturday 00:00 is Friday's close — take New York time one second earlier."""
+    t = pd.Timestamp(float(ts), unit="s", tz="UTC").tz_convert("America/New_York") - pd.Timedelta(seconds=1)
+    return t.strftime("%Y-%m-%d")
+
+
 def parse_results(results: Path) -> Dict[str, Any]:
     """LEAN's result JSON → statistics, equity curve, orders, logs."""
     main = results / "zzQuantLabDaily.json"
@@ -820,19 +849,64 @@ def parse_results(results: Path) -> Dict[str, Any]:
     log = ""
     for p in results.glob("*log*.txt"):
         log += p.read_text(errors="replace")[-8000:]
-    curve = [{"date": time.strftime("%Y-%m-%d", time.gmtime(x)), "equity": y} for x, y in eq]
+    curve = [{"date": _session(x), "equity": y} for x, y in eq]
     return {"statistics": stats, "runtime_statistics": rt, "equity_curve": curve,
-            "benchmark_curve": [{"date": time.strftime("%Y-%m-%d", time.gmtime(x)), "value": y} for x, y in bm],
+            "benchmark_curve": [{"date": _session(x), "value": y} for x, y in bm],
             "orders": [{k: o.get(k) for k in ("Id", "Symbol", "Time", "Type", "Status", "Quantity", "Price", "Tag",
                                               "id", "symbol", "time", "type", "status", "quantity", "price", "tag")
                         if k in o} for o in order_list[:500]],
             "order_count": len(order_list), "log_tail": log[-4000:]}
 
 
-def run(code: str, job: Optional[Any] = None, timeout: int = 1800) -> Dict[str, Any]:
-    """Backtest a QuantConnect algorithm on real LEAN. Returns LEAN's statistics, equity curve and orders."""
-    from api.quant import qcalgo, sandbox
-    say = (lambda m: job.progress(m)) if job is not None else (lambda m: None)
+def as_codelab(out: Dict[str, Any], label: str = "LEAN") -> Optional[Dict[str, Any]]:
+    """LEAN's result in the shape of a built-in run (dates, daily returns, benchmark returns, metrics, provenance), so
+    the same results view, deep analysis (Monte Carlo, drawdowns, factor lens) and Runs & compare work on it."""
+    from api.quant import robust
+    eq = pd.Series({pd.Timestamp(p["date"]): float(p["equity"]) for p in out.get("equity_curve") or []}).sort_index()
+    eq = eq[~eq.index.duplicated(keep="last")]
+    eq = eq[eq > 0]
+    bm = pd.Series({pd.Timestamp(p["date"]): float(p["value"]) for p in out.get("benchmark_curve") or []}).sort_index()
+    bm = bm[~bm.index.duplicated(keep="last")]
+    bm = bm[bm > 0].reindex(eq.index).ffill()
+    # LEAN samples equity every calendar day: keep NYSE sessions (SPY's trading days in the platform's data) and any
+    # other day the strategy's value moved (crypto trades 24/7), so flat weekends and holidays do not dilute
+    # volatility and Sharpe
+    keep = (eq.diff().abs() > 1e-9)
+    try:
+        from api.quant import codeserver
+        sessions = codeserver.load_data(["SPY"], str(eq.index[0].date()), allow_missing=True).close.index
+        keep |= eq.index.isin(sessions)
+    except Exception:                                                         # noqa: BLE001 — no data: weekdays
+        keep |= eq.index.weekday < 5
+    keep.iloc[0] = True
+    eq, bm = eq[keep], bm[keep]
+    if len(eq) < 3:
+        return None
+    rets = eq.pct_change().dropna()
+    dates = [d.strftime("%Y-%m-%d") for d in rets.index]
+    res: Dict[str, Any] = {"dates": dates, "returns": [round(float(x), 10) for x in rets],
+                           "metrics": robust.metrics(rets.to_numpy(), dates),
+                           "metrics_note": "headline statistics computed by the platform exactly as for built-in runs "
+                                           "(daily returns above T-bills); LEAN's own statistics are listed with the "
+                                           "LEAN result"}
+    if bm.notna().sum() > 2:
+        br = bm.pct_change().reindex(rets.index).fillna(0.0)
+        res["benchmark"] = [round(float(x), 10) for x in br]
+        res["benchmark_label"] = "SPY (LEAN benchmark)"
+        res["benchmark_metrics"] = robust.metrics(br.to_numpy(), dates)
+    st = out.get("statistics") or {}
+    res["provenance"] = {"engine": out.get("engine"), "image": out.get("image"), "image_date": out.get("image_date"),
+                         "runtime": f"QuantConnect LEAN ({out.get('image')})",
+                         "lean_statistics": st, "orders": out.get("order_count"),
+                         "data": (out.get("data") or {}).get("source"), "notes": (out.get("data") or {}).get("notes")}
+    res["engine"] = "lean"
+    return res
+
+
+def _setup(code: str, say) -> Dict[str, Any]:
+    """Everything a LEAN run needs except the algorithm folder: checks, the run's data in LEAN format, custom-data
+    files, the project's other files. Reused by every run of an optimisation."""
+    from api.quant import sandbox
     st = status(refresh=True)
     if not st["available"]:
         raise LeanError(f"Real-LEAN runs are unavailable: {st['reason']}.")
@@ -846,14 +920,12 @@ def run(code: str, job: Optional[Any] = None, timeout: int = 1800) -> Dict[str, 
         say("Finding the custom data the algorithm reads (its own get_source, run in the sandbox)…")
         custom = custom_sources(code)
     tmp = Path(tempfile.mkdtemp(prefix="qlean_")).resolve()
-    name = f"qlean-{uuid.uuid4().hex[:12]}"
+    ctx: Dict[str, Any] = {"tmp": tmp, "st": st, "head": head, "qc": qc, "runs": 0}
     try:
-        algo_dir, data_dir, results = tmp / "algo", tmp / "data", tmp / "results"
-        for p in (algo_dir, data_dir, results):
-            p.mkdir()
-        os.chmod(results, 0o777)
+        data_dir = tmp / "data"
+        data_dir.mkdir()
         from api.quant.codelab import split_project
-        main, files = split_project(code)
+        ctx["main"], ctx["files"] = split_project(code)
         mapping = {}
         if custom:
             cdir = tmp / "custom"
@@ -863,13 +935,7 @@ def run(code: str, job: Optional[Any] = None, timeout: int = 1800) -> Dict[str, 
                 f = fetch_source(c["url"])
                 shutil.copy(f, cdir / f.name)
                 mapping[c["url"].split("#", 1)[0]] = f"/Lean/Data/qlcustom/{f.name}"
-        for mod, src in files.items():                     # the project's other files, as real modules for LEAN
-            path = algo_dir / (mod.replace(".", "/") + ".py")
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(src)
-            for parent in path.relative_to(algo_dir).parents:
-                if str(parent) != ".":
-                    (algo_dir / parent / "__init__.py").touch()
+        ctx["mapping"] = mapping
         uni = bool(qc.get("dynamic_universe")) or bool(MORNINGSTAR.search(code))
         prep = prepare(head["universe"], qc.get("start") or head["start"], data_dir, say, universe=uni,
                        sec=bool(fine["used"]) or bool(re.search(r"market_cap|MarketCap", code)))
@@ -881,45 +947,169 @@ def run(code: str, job: Optional[Any] = None, timeout: int = 1800) -> Dict[str, 
             hour = write_hourly(data_dir, head["universe"], qc.get("start") or head["start"], say)
             if hour["note"]:
                 prep["notes"].append(hour["note"])
-        (algo_dir / "main.py").write_text((custom_prelude(mapping) if mapping else "") + main
-                                          + daily_wrapper(qc["class"], hour["tickers"]))
-        plug = plugin() if uni else None
-        say(f"Running on LEAN ({IMAGE}) — {len(prep['tickers'])} tickers…")
-        log_f = open(tmp / "lean.log", "w")
-        p = subprocess.Popen(_docker_cmd(name, algo_dir, data_dir, results, qc["class"], timeout, plug,
-                                         tmp / "custom" if mapping else None), stdout=log_f,
-                             stderr=subprocess.STDOUT)
-        t0 = time.time()
-        while p.poll() is None:
-            if job is not None and getattr(job, "cancelled", False):
-                subprocess.run(["docker", "kill", name], capture_output=True, timeout=30)
-                raise LeanError("Cancelled.")
-            if time.time() - t0 > timeout:
-                subprocess.run(["docker", "kill", name], capture_output=True, timeout=30)
-                raise LeanError(f"LEAN ran longer than {timeout} s and was stopped.")
-            time.sleep(0.5)
-        log_f.close()
-        console = (tmp / "lean.log").read_text(errors="replace")
+        ctx.update(data_dir=data_dir, prep=prep, hour=hour, plug=plugin() if uni else None)
+        return ctx
+    except BaseException:
+        _cleanup(ctx)
+        raise
+
+
+def _cleanup(ctx: Dict[str, Any]) -> None:
+    if os.getenv("MACRO_LEAN_KEEP"):                         # debugging: keep the run's folder (data, results, console)
+        print(f"[leanrun] kept {ctx['tmp']}")
+    else:
+        shutil.rmtree(ctx["tmp"], ignore_errors=True)
+
+
+def _execute(ctx: Dict[str, Any], job: Optional[Any] = None, timeout: int = 1800,
+             overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """One LEAN container on the prepared data. overrides: {'parameters': {...}, 'start': 'YYYY-MM-DD', 'end': …}."""
+    ctx["runs"] += 1
+    k = ctx["runs"]
+    tmp = ctx["tmp"]
+    algo_dir, results = tmp / f"algo{k}", tmp / f"results{k}"
+    algo_dir.mkdir()
+    results.mkdir()
+    os.chmod(results, 0o777)
+    for mod, src in ctx["files"].items():                    # the project's other files, as real modules for LEAN
+        path = algo_dir / (mod.replace(".", "/") + ".py")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(src)
+        for parent in path.relative_to(algo_dir).parents:
+            if str(parent) != ".":
+                (algo_dir / parent / "__init__.py").touch()
+    (algo_dir / "main.py").write_text((custom_prelude(ctx["mapping"]) if ctx["mapping"] else "") + ctx["main"]
+                                      + daily_wrapper(ctx["qc"]["class"], ctx["hour"]["tickers"], overrides))
+    name = f"qlean-{uuid.uuid4().hex[:12]}"
+    log_path = tmp / f"lean{k}.log"
+    try:
+        with open(log_path, "w") as log_f:
+            p = subprocess.Popen(_docker_cmd(name, algo_dir, ctx["data_dir"], results, ctx["qc"]["class"], timeout,
+                                             ctx["plug"], tmp / "custom" if ctx["mapping"] else None),
+                                 stdout=log_f, stderr=subprocess.STDOUT)
+            t0 = time.time()
+            while p.poll() is None:
+                if job is not None and getattr(job, "cancelled", False):
+                    subprocess.run(["docker", "kill", name], capture_output=True, timeout=30)
+                    raise LeanError("Cancelled.")
+                if time.time() - t0 > timeout:
+                    subprocess.run(["docker", "kill", name], capture_output=True, timeout=30)
+                    raise LeanError(f"LEAN ran longer than {timeout} s and was stopped.")
+                time.sleep(0.5)
+        console = log_path.read_text(errors="replace")
         try:
             out = parse_results(results)
         except LeanError:
             err = [l for l in console.splitlines() if re.search(r"ERROR|Error|Exception|Traceback|Runtime Error", l)]
             raise LeanError("LEAN did not finish: " + (" | ".join(err[-4:]) or console[-800:]))
         rt_err = [l for l in console.splitlines() if "Runtime Error" in l or "PythonException" in l]
+        notes = list(ctx["prep"]["notes"])
         qn = results / "quantlab-notes.txt"
         if qn.exists():
-            prep["notes"] += [l for l in qn.read_text().splitlines() if l][:20]
-        out.update({"engine": "QuantConnect LEAN (unmodified)", "image": IMAGE, "image_date": st.get("image_date"),
-                    "data": {**prep, "source": "platform daily prices (split- and dividend-adjusted) in LEAN format"},
+            notes += [l for l in qn.read_text().splitlines() if l][:20]
+        out.update({"engine": "QuantConnect LEAN (unmodified)", "image": IMAGE, "image_date": ctx["st"].get("image_date"),
+                    "data": {**ctx["prep"], "notes": notes,
+                             "source": "platform daily prices (split- and dividend-adjusted) in LEAN format"},
                     "runtime_errors": rt_err[-5:], "console_tail": console[-3000:],
                     "isolation": "docker: no network, capabilities dropped, no privilege escalation, memory/CPU caps"})
+        out["codelab"] = as_codelab(out)
         return out
     finally:
         try:
             subprocess.run(["docker", "rm", "-f", name], capture_output=True, timeout=20)
         except Exception:                                                     # noqa: BLE001
             pass
-        if os.getenv("MACRO_LEAN_KEEP"):                     # debugging: keep the run's folder (data, results, console)
-            print(f"[leanrun] kept {tmp}")
-        else:
-            shutil.rmtree(tmp, ignore_errors=True)
+
+
+def run(code: str, job: Optional[Any] = None, timeout: int = 1800) -> Dict[str, Any]:
+    """Backtest a QuantConnect algorithm on real LEAN. Returns LEAN's statistics, equity curve and orders."""
+    say = (lambda m: job.progress(m)) if job is not None else (lambda m: None)
+    ctx = _setup(code, say)
+    try:
+        say(f"Running on LEAN ({IMAGE}) — {len(ctx['prep']['tickers'])} tickers…")
+        return _execute(ctx, job, timeout)
+    finally:
+        _cleanup(ctx)
+
+
+# ── parameter optimisation on real LEAN (QuantConnect's optimizer, with a hold-out) ─────────────────────────────────
+PARAM_RE = re.compile(r"""\b(?:get_parameter|GetParameter)\(\s*["']([^"']+)["']\s*(?:,\s*([^)]+))?\)""")
+MAX_COMBOS = 60
+OBJECTIVES = ("sharpe", "cagr", "calmar", "sortino")
+
+
+def parameters_in(code: str) -> List[Dict[str, Any]]:
+    """The get_parameter names an algorithm reads, with their literal defaults."""
+    out = {}
+    for m in PARAM_RE.finditer(code):
+        name, default = m.group(1), (m.group(2) or "").strip()
+        out.setdefault(name, {"name": name, "default": default.strip("'\"") if default else None})
+    return list(out.values())
+
+
+def optimize(code: str, grid: Dict[str, List[Any]], split: Optional[str] = None, objective: str = "sharpe",
+             job: Optional[Any] = None, timeout: int = 1800, parallel: int = 2) -> Dict[str, Any]:
+    """Every combination of `grid` on real LEAN up to `split` (in-sample); the best by `objective` then runs on the
+    hold-out after `split`, which no combination saw. Data is prepared once."""
+    import itertools
+    from concurrent.futures import ThreadPoolExecutor
+    say = (lambda m: job.progress(m)) if job is not None else (lambda m: None)
+    if objective not in OBJECTIVES:
+        raise LeanError(f"objective must be one of {', '.join(OBJECTIVES)}")
+    names = [n for n, v in grid.items() if v]
+    if not names:
+        raise LeanError("Give at least one parameter with values to try.")
+    combos = [dict(zip(names, vals)) for vals in itertools.product(*[grid[n] for n in names])]
+    if len(combos) > MAX_COMBOS:
+        raise LeanError(f"{len(combos)} combinations — keep it to {MAX_COMBOS} or fewer.")
+    ctx = _setup(code, say)
+    try:
+        head = ctx["head"]
+        start = ctx["qc"].get("start") or head["start"]
+        if split and not (str(start) < split):
+            raise LeanError(f"The hold-out split {split} must be after the start {start}.")
+        # LEAN's end date is inclusive: in-sample ends the day before the hold-out starts (no shared session)
+        ins_end = (pd.Timestamp(split) - pd.Timedelta(days=1)).strftime("%Y-%m-%d") if split else None
+        done = {"n": 0}
+        lock = __import__("threading").Lock()
+
+        def one(params):
+            try:
+                out = _execute(ctx, job, timeout, {"parameters": params, "end": ins_end})
+                cl = out.get("codelab") or {}
+                m = cl.get("metrics") or {}
+                row = {"parameters": params, "metrics": {k: m.get(k) for k in ("cagr", "sharpe", "sortino", "calmar",
+                                                                                "max_drawdown", "vol")},
+                       "period": [cl["dates"][0], cl["dates"][-1]] if cl.get("dates") else None,
+                       "orders": out.get("order_count"), "errors": out.get("runtime_errors")[:2]}
+            except LeanError as e:
+                row = {"parameters": params, "error": str(e)[:300]}
+            with lock:
+                done["n"] += 1
+                say(f"Optimising on LEAN: {done['n']} / {len(combos)} combinations"
+                    + (f" (in-sample to {split})" if split else ""))
+            return row
+        with ThreadPoolExecutor(max_workers=max(1, parallel)) as ex:
+            rows = list(ex.map(one, combos))
+        ok = [r for r in rows if r.get("metrics") and r["metrics"].get(objective) is not None and not r.get("errors")]
+        if not ok:
+            raise LeanError("No combination finished cleanly: " + (rows[0].get("error") or str(rows[0].get("errors")))[:300])
+        ok.sort(key=lambda r: -float(r["metrics"][objective]))
+        best = ok[0]
+        result: Dict[str, Any] = {"objective": objective, "split": split, "combinations": len(combos), "rows": rows,
+                                  "best": best, "ranked": [r["parameters"] for r in ok]}
+        if split:
+            say(f"Hold-out: the best parameters on {split} → end, which no combination saw…")
+            oos = _execute(ctx, job, timeout, {"parameters": best["parameters"], "start": split})
+            result["holdout"] = {"metrics": ((oos.get("codelab") or {}).get("metrics")), "codelab": oos.get("codelab"),
+                                 "statistics": oos.get("statistics"), "orders": oos.get("order_count"),
+                                 "errors": oos.get("runtime_errors")[:2]}
+            ins, hold = best["metrics"].get(objective), (result["holdout"]["metrics"] or {}).get(objective)
+            result["decay"] = (round(float(hold) / float(ins), 2) if ins not in (None, 0) and hold is not None else None)
+        result["note"] = (f"Best of {len(combos)} tries by in-sample {objective}: the more tries, the more the best one "
+                          "is luck — judge it on the hold-out" + ("" if split else " (no hold-out was set)") + ".")
+        result["data"] = {"notes": ctx["prep"]["notes"], "data_start": ctx["prep"]["data_start"],
+                          "data_end": ctx["prep"]["data_end"]}
+        return result
+    finally:
+        _cleanup(ctx)

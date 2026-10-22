@@ -115,3 +115,26 @@ async def get_business_trade_ideas() -> Dict[str, Any]:
     """Trade ideas from business layer (alias for /api/trade-ideas)."""
     from api.handlers.business_handler import get_trade_ideas_data
     return await get_trade_ideas_data()
+
+
+# ── Daily Brief delivery (webhook / e-mail via the alert channels in .env; schedule BRIEF_DELIVERY_TIME) ──────────
+from fastapi import Request as _Request
+
+
+@router.get("/api/v1/brief/delivery")
+async def brief_delivery_status(request: _Request) -> Dict[str, Any]:
+    """Whether the Daily Brief is delivered on a schedule, through which channels, and when it was last sent."""
+    from api.core.access import require_roles
+    from api import brief_delivery
+    require_roles(request, {"pm", "analyst", "risk", "quant"})
+    return brief_delivery.status()
+
+
+@router.post("/api/v1/brief/send")
+async def brief_send(request: _Request) -> Dict[str, Any]:
+    """Send today's Daily Brief now through the configured channels (PM / admin)."""
+    from api.core.access import require_roles
+    from api import brief_delivery
+    u = require_roles(request, {"pm"})
+    out = await brief_delivery.send(f"sent by {u['username']}")
+    return out

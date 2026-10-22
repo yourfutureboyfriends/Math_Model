@@ -179,6 +179,7 @@ export function MorningBriefSection() {
               Daily Brief
             </span>
             <span className="text-text-tertiary text-xs">{date}</span>
+            <BriefDelivery />
           </div>
           {model_caution && (
             <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-dim rounded">
@@ -383,5 +384,38 @@ function BriefFacts({ raw }: { raw: any }) {
         </div>
       </div>
     </div>
+  );
+}
+
+
+/** Scheduled delivery of the brief (webhook / e-mail, configured in .env) and a "send now" button for PMs. */
+function BriefDelivery() {
+  const [st, setSt] = useState<any>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  useEffect(() => { fetch('/api/v1/brief/delivery').then((r) => (r.ok ? r.json() : null)).then(setSt).catch(() => setSt(null)); }, []);
+  if (!st) return null;
+  const channels = Object.entries(st.channels ?? {}).filter(([, on]) => on).map(([k]) => k);
+  const sched = st.schedule ?? {};
+  const send = async () => {
+    setSending(true); setMsg(null);
+    try {
+      const r = await fetch('/api/v1/brief/send', { method: 'POST' });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.detail || `HTTP ${r.status}`);
+      setMsg(j.error ? j.error : `Sent: ${Object.entries(j.sent ?? {}).map(([k, ok]) => `${k} ${ok ? '✓' : '✗'}`).join(', ')}`);
+    } catch (e: any) { setMsg(e.message); } finally { setSending(false); }
+  };
+  return (
+    <span className="text-2xs text-text-tertiary inline-flex items-center gap-2"
+      title={channels.length ? undefined : st.how}>
+      {sched.enabled ? `emailed/posted weekdays ${sched.time} ${String(sched.tz).split('/').pop()?.replace('_', ' ')}` : 'not scheduled'}
+      {' · '}{channels.length ? `via ${channels.join(' + ')}` : 'no delivery channel set'}
+      {st.last_sent && ` · last sent ${String(st.last_sent).replace('T', ' ').slice(0, 16)}`}
+      {channels.length > 0 && (
+        <button onClick={send} disabled={sending} className="px-1.5 py-0.5 border border-border hover:border-amber hover:text-amber disabled:opacity-40">
+          {sending ? 'Sending…' : 'Send now'}</button>)}
+      {msg && <span className="text-amber">{msg}</span>}
+    </span>
   );
 }

@@ -336,3 +336,60 @@ class TalibXgb(QCAlgorithm):
 '''
     r = leanrun.run(code, timeout=900)
     assert int(r["statistics"]["Total Orders"]) >= 1 and not r["runtime_errors"]
+
+
+def test_lean_result_in_the_built_in_shape_on_trading_sessions(monkeypatch):
+    """LEAN samples equity every calendar day; the converted result keeps NYSE sessions (and moving crypto days)."""
+    from api.quant import codeserver
+
+    class D:
+        close = pd.DataFrame(index=pd.bdate_range("2024-01-01", "2024-03-29"))
+    monkeypatch.setattr(codeserver, "load_data", lambda *a, **k: D)
+    days = pd.date_range("2024-01-01", "2024-03-31")
+    eq, v = [], 100000.0
+    for d in days:                                         # weekends repeat Friday's value, as LEAN's samples do
+        if d.weekday() < 5:
+            v *= 1.001
+        eq.append({"date": d.strftime("%Y-%m-%d"), "equity": v})
+    bm = [{"date": d.strftime("%Y-%m-%d"), "value": 400 + i * 0.1} for i, d in enumerate(days)]
+    r = leanrun.as_codelab({"equity_curve": eq, "benchmark_curve": bm, "statistics": {"Sharpe Ratio": "1"}})
+    assert all(pd.Timestamp(d).weekday() < 5 for d in r["dates"]) and len(r["dates"]) == len(D.close.index) - 1
+    assert len(r["benchmark"]) == len(r["returns"]) and r["metrics"]["cagr"] > 0 and r["engine"] == "lean"
+
+
+def test_session_of_a_lean_midnight_sample():
+    """LEAN stamps a day's close at the next midnight (New York): Saturday 00:00 is Friday's close."""
+    sat_midnight_ny = pd.Timestamp("2019-02-23 00:00", tz="America/New_York").timestamp()
+    assert leanrun._session(sat_midnight_ny) == "2019-02-22"
+    assert leanrun._session(pd.Timestamp("2019-02-22 10:00", tz="America/New_York").timestamp()) == "2019-02-22"
+
+
+def test_parameters_found_and_wrapper_overrides_parse():
+    import ast
+    code = 'f = self.GetParameter("fast", 20)\ns = self.get_parameter("slow")\nx = self.get_parameter("fast", 30)'
+    assert leanrun.parameters_in(code) == [{"name": "fast", "default": "20"}, {"name": "slow", "default": None}]
+    src = "class A:\n    pass\n" + leanrun.daily_wrapper("A", [], {"parameters": {"fast": 10}, "start": "2021-01-01", "end": None})
+    ast.parse(src)
+    assert "_QL_PARAMS = {'fast': 10}" in src and "_QL_START, _QL_END = '2021-01-01', None" in src
+
+
+@pytest.mark.network
+@LEAN_UP
+def test_real_lean_optimisation_with_a_holdout():
+    code = '''from AlgorithmImports import *
+class EmaOpt(QCAlgorithm):
+    def Initialize(self):
+        self.SetStartDate(2019, 1, 1)
+        self.SetEndDate(2022, 12, 31)
+        fast = self.GetParameter("fast", 20)
+        self.s = self.AddEquity("SPY", Resolution.Daily).Symbol
+        self.f, self.l = self.EMA(self.s, fast), self.EMA(self.s, 100)
+    def OnData(self, data):
+        if not self.l.IsReady: return
+        if self.f.Current.Value > self.l.Current.Value and not self.Portfolio.Invested: self.SetHoldings(self.s, 1)
+        elif self.f.Current.Value < self.l.Current.Value and self.Portfolio.Invested: self.Liquidate()
+'''
+    r = leanrun.optimize(code, {"fast": [10, 40]}, split="2021-07-01", objective="sharpe")
+    assert len(r["rows"]) == 2 and all(row["period"][1] < "2021-07-01" for row in r["rows"])      # in-sample only
+    assert r["holdout"]["codelab"]["dates"][0] >= "2021-07-01" and r["best"]["parameters"]["fast"] in (10, 40)
+    assert {row["metrics"]["sharpe"] for row in r["rows"]} != {None}

@@ -81,6 +81,19 @@ Real LEAN runs in a container with no network and dropped capabilities; it needs
 appended to `main.py`) that maps finer resolutions to daily. Not available on free data: intraday bars, options and
 futures chains, QuantConnect's alternative datasets.
 
+## Results and optimisation on real LEAN
+
+A real-LEAN run comes back with LEAN's own statistics **and** in the same shape as a built-in run: daily returns on
+NYSE sessions (LEAN's calendar-day samples are mapped to the session they close), the platform's headline statistics
+(computed exactly as for built-in runs — so the two engines compare like for like), the Monte Carlo / drawdown /
+factor-lens deep analysis, and a stored run in **Runs & compare**.
+
+**Optimise parameters on real LEAN** appears when an algorithm reads `get_parameter("name", default)`: give each
+parameter a list of values (up to 60 combinations), a hold-out date and an objective (Sharpe, CAGR, Calmar,
+Sortino). Every combination runs in-sample (up to the day before the hold-out), the best then runs on the hold-out,
+which no combination saw; the panel shows how much of its in-sample score it kept. The data is prepared once and two
+combinations run at a time.
+
 ## Multi-file projects
 
 QuantConnect projects with several files: paste each extra file below a marker line —

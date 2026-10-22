@@ -12,6 +12,7 @@ import { KpiStrip } from '@/components/ui/KpiStrip';
 import { BarList } from '@/components/ui/BarList';
 import { CATEGORICAL } from '@/lib/chartPalette';
 import { DeepReport } from './DeepReport';
+import { LeanOptimizer } from './LeanOptimizer';
 import { TEMPLATES } from './templates';
 import { Attribution, Capacity, Charts, Heatmap, Risk, Signal, Trades, Validation } from './ResearchPanels';
 import { api, ErrorNote, Field, inputCls, money, num, pct, spct, tone, usd } from './shared';
@@ -447,6 +448,14 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
       setJobId(null);
       if (j.state !== 'done') throw new Error(j.state === 'cancelled' ? 'Cancelled.' : (j.error || 'The LEAN run failed.'));
       setLean(j.result);
+      const r = j.result?.codelab;
+      if (r) {                     // LEAN's equity curve through the same results view, deep analysis and run store
+        setResult(r);
+        setStatus('Monte Carlo and deep analysis of the LEAN result…');
+        const a = await api('/api/v1/quant/code/analyze', { json: { dates: r.dates, returns: r.returns, benchmark: r.benchmark, label: `${name || 'Strategy'} (LEAN)`, benchmark_label: r.benchmark_label, provenance: r.provenance, ...mc } });
+        setAnalysis(a);
+        storeRun(r, a);
+      }
     } catch (e: any) { setErr(e.message); } finally { setStatus(null); setBusy(false); }
   };
 
@@ -575,6 +584,7 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
           {leanFirst && (
             <div className="text-[10px] text-bloomberg">QuantConnect algorithm — <b>Run</b> executes it unmodified on QuantConnect's own LEAN engine with the platform's free data (US equities, point-in-time S&amp;P 500 universes with SEC fundamentals, crypto, FX, custom data from your get_source). The report below is the built-in layer's; it does not limit a LEAN run.</div>)}
           {lean && <LeanResult r={lean} />}
+          {leanFirst && <LeanOptimizer code={code} disabled={busy} />}
           <CustomData />
           {status && <div className="flex items-center gap-2 text-2xs text-text-secondary"><Loader2 className="w-3 h-3 animate-spin" />{status}
             {jobId && <button onClick={cancelJob} className="ml-2 px-2 py-0.5 border border-border hover:border-red hover:text-red">Cancel</button>}</div>}

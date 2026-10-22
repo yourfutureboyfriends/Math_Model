@@ -1545,6 +1545,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[STARTUP] Could not start endpoints warm loop: {e}")
 
+    try:   # Daily Brief delivery on a schedule (opt-in: BRIEF_DELIVERY_TIME + an alert channel in .env)
+        from api import brief_delivery
+        if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("MACRO_NO_BACKGROUND") == "1":
+            raise RuntimeError("background loops disabled (tests / MACRO_NO_BACKGROUND)")
+        if brief_delivery.schedule()["enabled"]:
+            _BACKGROUND_TASKS.add(_asyncio.create_task(brief_delivery.loop()))
+            logger.info(f"[STARTUP] Daily Brief delivery at {brief_delivery.schedule()['time']} "
+                        f"{brief_delivery.schedule()['tz']} (weekdays)")
+    except Exception as e:
+        logger.info(f"[STARTUP] Daily Brief delivery not scheduled: {e}")
+
     try:   # live ship positions: one persistent aisstream.io connection, if a key is configured
         from api.marketdata.tracking import ais_collector
         if ais_collector():

@@ -4,7 +4,7 @@ api/macro_trader."""
 import asyncio
 import time
 from collections import OrderedDict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -353,6 +353,48 @@ async def lean_job_submit(body: JobIn, request: Request):
         _spec_error(e)
     try:
         j = jobs.submit(u["username"], "lean_run", lambda job: leanrun.run(body.code, job))
+    except ValueError as e:
+        raise HTTPException(429, str(e))
+    return j.view(False)
+
+
+class LeanParamsIn(BaseModel):
+    code: str
+
+
+class LeanOptimizeIn(BaseModel):
+    code: str
+    grid: Dict[str, List[Union[float, int, str]]]
+    split: Optional[str] = None                 # hold-out start (YYYY-MM-DD): in-sample before it, best re-run after
+    objective: str = "sharpe"
+
+
+@router.post("/api/v1/quant/lean/parameters")
+async def lean_parameters(body: LeanParamsIn, request: Request):
+    """The get_parameter names a QuantConnect algorithm reads (and their defaults), for the optimiser."""
+    from api.quant import leanrun
+    _user(request)
+    return {"parameters": leanrun.parameters_in(body.code), "objectives": list(leanrun.OBJECTIVES),
+            "max_combinations": leanrun.MAX_COMBOS}
+
+
+@router.post("/api/v1/quant/lean/optimize")
+async def lean_optimize_submit(body: LeanOptimizeIn, request: Request):
+    """Grid-search a QuantConnect algorithm's parameters on real LEAN (in-sample to `split`, then the best on the
+    hold-out) as a background job; poll GET /api/v1/quant/code/jobs/{id}."""
+    import re as _re
+    from api.quant import jobs, leanrun, sandbox
+    u = _user(request)
+    if body.split and not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", body.split):
+        raise HTTPException(400, "split must be a date (YYYY-MM-DD)")
+    try:
+        await asyncio.to_thread(sandbox.check, body.code, False)
+    except sandbox.SandboxError as e:
+        _spec_error(e)
+    grid = {k: list(dict.fromkeys(v))[:20] for k, v in body.grid.items() if v}
+    try:
+        j = jobs.submit(u["username"], "lean_optimize",
+                        lambda job: leanrun.optimize(body.code, grid, body.split, body.objective, job))
     except ValueError as e:
         raise HTTPException(429, str(e))
     return j.view(False)

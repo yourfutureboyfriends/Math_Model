@@ -177,3 +177,4 @@ data/processed/quant_custom_data/
 data/processed/lean_plugin/
 data/processed/lean_custom/
 data/processed/lean_intraday/
+data/processed/brief_delivery.json

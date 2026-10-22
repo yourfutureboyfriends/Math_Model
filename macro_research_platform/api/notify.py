@@ -36,7 +36,7 @@ def deliver(owner: str, text: str) -> dict:
             import smtplib
             from email.message import EmailMessage
             m = EmailMessage()
-            m["Subject"] = text[:120]
+            m["Subject"] = (text.strip().splitlines() or [""])[0][:120]      # one line: a newline is not a valid subject
             m["From"] = os.getenv("ALERT_EMAIL_FROM") or os.getenv("ALERT_SMTP_USER") or to
             m["To"] = to
             m.set_content(f"{text}\n\nUser: {owner}\n— Macro Terminal alerts")
