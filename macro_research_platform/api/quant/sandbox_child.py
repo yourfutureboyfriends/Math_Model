@@ -53,6 +53,7 @@ def main() -> None:
     pd.DataFrame({"a": [1.0, 2.0]}).rolling(2).mean().ewm(span=2).std().rank(axis=1)
 
     hook, safe_builtins, result_path = _policy(tmp)
+    _preload(code)
     out = {}
     try:
         sys.addaudithook(hook)
@@ -81,45 +82,119 @@ def main() -> None:
 
 
 def _policy(tmp):
-    """The run-time lockdown: an audit hook (no sockets, subprocesses, ctypes or file writes except result.json) and the
-    builtins and import function strategy code gets."""
-    # what strategy code itself may import (the static check in sandbox.py says the same); libraries import what they
-    # need internally — the hook below still refuses sockets, subprocesses, ctypes and file writes at run time
-    USER_IMPORTS = {"numpy", "pandas", "scipy", "sklearn", "statsmodels", "math", "cmath", "statistics", "random",
-                    "decimal", "fractions", "numbers", "datetime", "time", "calendar", "zoneinfo", "collections",
-                    "itertools", "functools", "operator", "heapq", "bisect", "array", "copy", "enum", "dataclasses",
-                    "typing", "abc", "re", "string", "textwrap", "json", "hashlib", "uuid", "warnings", "contextlib",
-                    "pprint"}
+    """The run-time lockdown: an audit hook (no sockets, subprocesses or ctypes; no reading the run's own folder, which
+    holds the whole price history; writes only to the scratch folder and result.json) and the builtins and import
+    function strategy code gets — every installed library except system, network and platform modules."""
+    import os
+    BLOCKED = {"os", "sys", "subprocess", "ctypes", "cffi", "importlib", "builtins", "multiprocessing", "signal", "pty",
+               "resource", "mmap", "gc", "inspect", "marshal", "code", "codeop", "webbrowser", "shutil", "tempfile",
+               "pathlib", "glob", "fcntl", "posix", "nt", "sysconfig", "site", "faulthandler", "tracemalloc", "_thread",
+               "socket", "requests", "urllib", "urllib3", "http", "httpx", "aiohttp", "ftplib", "smtplib", "websocket",
+               "websockets", "ssl", "telnetlib", "xmlrpc", "socketserver", "yfinance", "pandas_datareader",
+               "api", "codelab", "qcalgo", "sandbox", "sandbox_child", "leanrun"}
+    run_dir = os.path.realpath(tmp)
+    scratch = os.path.realpath(os.environ.get("QL_SCRATCH") or "/tmp")
     result_path = f"{tmp}/result.json"
+    result_real = os.path.realpath(result_path)
+
+    def inside(path, root):
+        p = os.path.realpath(str(path))
+        return p == root or p.startswith(root + os.sep)
 
     def hook(event, args):
         if event in ("socket.connect", "socket.bind", "socket.getaddrinfo", "socket.__new__", "subprocess.Popen",
                      "os.system", "os.exec", "os.posix_spawn", "os.spawn", "os.fork", "os.forkpty", "os.kill",
-                     "ctypes.dlopen", "ctypes.dlsym", "ctypes.cdata", "os.remove", "os.rename",
-                     "os.rmdir", "os.mkdir", "shutil.rmtree", "os.chmod", "os.symlink", "os.link", "pty.spawn",
-                     "webbrowser.open", "urllib.Request", "http.client.connect"):
-            # (code.__new__ / function.__new__ are allowed: patsy and statsmodels build functions at import; strategy
-            # code cannot reach types.CodeType — the static check blocks the types module and dunder access)
+                     "ctypes.dlopen", "ctypes.dlsym", "ctypes.cdata", "pty.spawn", "webbrowser.open", "urllib.Request",
+                     "http.client.connect"):
             raise PermissionError(f"blocked: {event}")
         if event == "open":
-            path, mode = str(args[0]), args[1] if len(args) > 1 else "r"
+            path, mode = args[0], args[1] if len(args) > 1 else "r"
+            if not isinstance(path, (str, bytes, os.PathLike)):
+                return
+            path = os.fsdecode(path)
             writing = isinstance(mode, str) and any(c in mode for c in "wax+")
-            if writing and path != result_path:
-                raise PermissionError("blocked: file write")
+            if os.path.realpath(path) == result_real:
+                return
+            if inside(path, scratch) and not inside(path, run_dir) or (inside(path, scratch) and scratch != run_dir
+                                                                         and inside(scratch, run_dir)):
+                return                                       # the scratch folder: libraries' caches, temp files
+            if writing:
+                raise PermissionError("blocked: file write outside the scratch folder")
+            if inside(path, run_dir):
+                raise PermissionError("blocked: the run's data folder (it holds the whole price history)")
+        if event in ("os.remove", "os.rename", "os.rmdir", "os.mkdir", "shutil.rmtree", "os.chmod", "os.symlink",
+                     "os.link"):
+            if not all(inside(x, scratch) for x in args[:2] if isinstance(x, (str, bytes, os.PathLike))):
+                raise PermissionError(f"blocked: {event} outside the scratch folder")
 
     import builtins as _b
-    BANNED = {"eval", "exec", "compile", "open", "__import__", "globals", "locals", "vars", "input", "breakpoint", "help",
-              "exit", "quit", "memoryview", "__loader__", "__spec__"}
+    BANNED = {"eval", "exec", "compile", "__import__", "breakpoint", "input", "help", "exit", "quit", "__loader__",
+              "__spec__"}
     safe_builtins = {k: getattr(_b, k) for k in dir(_b) if k not in BANNED and not (k.startswith("__") and k not in
                                                                                   ("__build_class__", "__name__"))}
     real_import = _b.__import__
 
     def limited_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if level == 0 and name.split(".")[0] not in USER_IMPORTS:
-            raise ImportError(f"import of '{name}' is not allowed in strategy code")
-        return real_import(name, globals, locals, fromlist, level)
+        if level == 0 and name.split(".")[0] in BLOCKED:
+            raise ImportError(f"import of '{name}' is not allowed in strategy code (system, network or engine module)")
+        try:
+            return real_import(name, globals, locals, fromlist, level)
+        except ModuleNotFoundError as e:
+            raise ModuleNotFoundError(f"{e} — not installed in this sandbox runtime") from None
     safe_builtins["__import__"] = limited_import
     return hook, safe_builtins, result_path
+
+
+HEADER_NAMES = ("UNIVERSE", "START", "PARAMS", "BENCHMARK", "HOLDOUT", "TRADABLE_UNIVERSE", "ACCOUNT_CALENDAR",
+                "ACCOUNT_CURRENCY", "FX_HEDGE", "OPTIONS", "FUNDAMENTALS", "CUSTOM_DATA")
+
+
+def _jsonable(v):
+    """Header values as JSON: tuples / sets / ranges / numpy values become lists and numbers, dates become strings."""
+    import datetime as _dt
+    if isinstance(v, (str, bool, int, float)) or v is None:
+        return v
+    if isinstance(v, dict):
+        return {str(k): _jsonable(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple, set, frozenset, range)):
+        return [_jsonable(x) for x in v]
+    if isinstance(v, (_dt.date, _dt.datetime)):
+        return v.isoformat()[:10]
+    if hasattr(v, "tolist"):
+        return _jsonable(v.tolist())
+    if hasattr(v, "item"):
+        return v.item()
+    return str(v)
+
+
+def _preload(code: str) -> None:
+    """Import the installed libraries the strategy names before the lockdown: their own start-up (loading C libraries,
+    writing caches) is library code, not strategy code. Blocked modules and the project's own files are skipped."""
+    import ast
+    import importlib
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return
+    blocked = {"os", "sys", "subprocess", "ctypes", "cffi", "importlib", "builtins", "multiprocessing", "signal", "pty",
+               "resource", "mmap", "gc", "inspect", "marshal", "code", "codeop", "webbrowser", "shutil", "tempfile",
+               "pathlib", "glob", "socket", "requests", "urllib", "urllib3", "http", "httpx", "aiohttp",
+               "api", "codelab", "qcalgo", "sandbox", "sandbox_child", "leanrun", "AlgorithmImports", "QuantConnect",
+               "System", "clr"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names = [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+            names = [node.module]
+        else:
+            continue
+        for n in names:
+            if n.split(".")[0] in blocked:
+                continue
+            try:
+                importlib.import_module(n)
+            except Exception:                               # noqa: BLE001 — a project file, or reported when run
+                pass
 
 
 def _discover_only(tmp, codelab) -> None:
@@ -128,15 +203,19 @@ def _discover_only(tmp, codelab) -> None:
     import types as _types
     hook, safe_builtins, result_path = _policy(tmp)
     code = open(f"{tmp}/strategy.py").read()
+    _preload(code)
     out = {}
     try:
         sys.addaudithook(hook)
         q = sys.modules["qcalgo"]
-        cls_name = q.find_class(_ast.parse(code)).name
+        algo_cls = q.find_class(_ast.parse(code))
         ns = {"__builtins__": safe_builtins, "__name__": "strategy", **q.NAMES}
         sys.modules.setdefault("strategy", _types.ModuleType("strategy"))
-        codelab._exec_project(q.prepare_source(code), ns)                    # noqa: S102 — inside the sandbox
-        out = q.discover(ns[cls_name])
+        codelab._exec_project(q.prepare_source(code) if algo_cls is not None else code, ns)   # noqa: S102 — sandbox
+        if algo_cls is not None:
+            out = q.discover(ns[algo_cls.name])
+        else:                                    # a plain strategy: the header values its top level computes
+            out = {"header": {k: _jsonable(ns[k]) for k in HEADER_NAMES if k in ns}}
     except Exception as e:                                                   # noqa: BLE001
         out = {"error": f"{type(e).__name__}: {str(e)[:300]}"}
     with open(result_path, "w") as f:

@@ -720,13 +720,13 @@ class Portfolio(dict):
 
     @property
     def total_portfolio_value(self) -> float:
-        return self._algo._ctx.nav * self._algo._capital
+        return self._algo._ql_ctx.nav * self._algo._ql_capital
 
     TotalPortfolioValue = total_portfolio_value
 
     @property
     def cash(self) -> float:
-        return self._algo._ctx.cash * self._algo._capital
+        return self._algo._ql_ctx.cash * self._algo._ql_capital
 
     Cash = cash
 
@@ -787,10 +787,10 @@ class OrderTicket:
     def cancel(self, tag: str = "") -> bool:
         if self.status in (OrderStatus.FILLED, OrderStatus.CANCELED, OrderStatus.INVALID):
             return False
-        ok = self._algo._ctx.cancel_order(self.order_id)
+        ok = self._algo._ql_ctx.cancel_order(self.order_id)
         if ok:
             self.status = OrderStatus.CANCELED
-            self._algo._emit(OrderEvent(self.order_id, self.symbol, self._algo.time, OrderStatus.CANCELED, message=tag))
+            self._algo._ql_emit(OrderEvent(self.order_id, self.symbol, self._algo.time, OrderStatus.CANCELED, message=tag))
         return ok
 
     Cancel = cancel
@@ -810,7 +810,7 @@ class Transactions:
         self._algo = algo
 
     def get_open_orders(self, symbol=None) -> List[OrderTicket]:
-        return [t for t in self._algo._tickets.values() if t.status in (OrderStatus.SUBMITTED, OrderStatus.PARTIALLY_FILLED)
+        return [t for t in self._algo._ql_tickets.values() if t.status in (OrderStatus.SUBMITTED, OrderStatus.PARTIALLY_FILLED)
                 and (symbol is None or t.symbol == _sym(symbol))]
 
     GetOpenOrders = get_open_orders
@@ -827,12 +827,12 @@ class Transactions:
     CancelOpenOrders = cancel_open_orders
 
     def get_order_ticket(self, order_id: int) -> Optional[OrderTicket]:
-        return self._algo._tickets.get(order_id)
+        return self._algo._ql_tickets.get(order_id)
 
     GetOrderTicket = get_order_ticket
 
     def get_order_tickets(self) -> List[OrderTicket]:
-        return list(self._algo._tickets.values())
+        return list(self._algo._ql_tickets.values())
 
 
 # ── schedule ─────────────────────────────────────────────────────────────────
@@ -930,7 +930,7 @@ class Schedule:
             raise ValueError("schedule.on(date_rule, time_rule, callback): the callback must be a method or function.")
         self.events.append((date_rule, time_rule, callback))
         if time_rule.name not in ("midnight",):
-            self._a._approx.add(f"schedule: '{time_rule.name}' runs at the session's close decision (daily data)")
+            self._a._ql_approx.add(f"schedule: '{time_rule.name}' runs at the session's close decision (daily data)")
 
     On = on
 
@@ -1058,7 +1058,7 @@ class PortfolioTarget:
     @staticmethod
     def percent(algorithm, symbol, percent: float, *a, **k) -> Optional["PortfolioTarget"]:
         t = _sym(symbol)
-        px = algorithm._price(t)
+        px = algorithm._ql_price(t)
         if not px or not np.isfinite(px):
             return None
         tpv = algorithm.portfolio.total_portfolio_value * (1 - algorithm.settings.free_portfolio_value_percentage)
@@ -1190,7 +1190,7 @@ class ConstantAlphaModel(AlphaModel):
         self._last: Dict[str, int] = {}
 
     def update(self, algorithm, data):
-        out, i, n = [], algorithm._ctx.i, _period_days(self.period)
+        out, i, n = [], algorithm._ql_ctx.i, _period_days(self.period)
         for t in list(algorithm.securities.keys()):
             if t in data and (t not in self._last or i - self._last[t] >= n):
                 self._last[t] = i
@@ -1539,7 +1539,7 @@ class ImmediateExecutionModel(ExecutionModel):
     def execute(self, algorithm, targets):
         for tg in targets:
             t = _sym(tg.symbol)
-            q = tg.quantity - algorithm.portfolio[t].quantity - algorithm._open_quantity_all(t)
+            q = tg.quantity - algorithm.portfolio[t].quantity - algorithm._ql_open_quantity_all(t)
             if abs(q) >= 1:
                 algorithm.market_order(t, math.floor(abs(q)) * (1 if q > 0 else -1), tag="framework")
 
@@ -1599,7 +1599,7 @@ class _Framework:
         risk adjustments → execution."""
         if not self.used:
             return
-        i = algo._ctx.i
+        i = algo._ql_ctx.i
         new = list(self.emitted)
         self.emitted.clear()
         for a in self.alphas:
@@ -1632,7 +1632,7 @@ class _Framework:
             _call(self.execution or ImmediateExecutionModel(), "execute", algo, list(self.targets.values()))
             # targets reached (or already flat) are done; unfilled ones stay for the next session
             self.targets = {s: t for s, t in self.targets.items()
-                            if abs(t.quantity - algo.portfolio[s].quantity - algo._open_quantity_all(s)) >= 1}
+                            if abs(t.quantity - algo.portfolio[s].quantity - algo._ql_open_quantity_all(s)) >= 1}
 
 
 # ── consolidators: daily bars → weekly, monthly, quarterly or n-session bars ──
@@ -1717,10 +1717,10 @@ class _SubscriptionManager:
         self._a = algo
 
     def add_consolidator(self, symbol, consolidator) -> None:
-        self._a._consolidators.append((_sym(symbol), consolidator))
+        self._a._ql_consolidators.append((_sym(symbol), consolidator))
 
     def remove_consolidator(self, symbol, consolidator) -> None:
-        self._a._consolidators = [(s, c) for s, c in self._a._consolidators if c is not consolidator]
+        self._a._ql_consolidators = [(s, c) for s, c in self._a._ql_consolidators if c is not consolidator]
 
     AddConsolidator, RemoveConsolidator = add_consolidator, remove_consolidator
 
@@ -1799,8 +1799,8 @@ class QCAlgorithm:
     on_end_of_day, on_warmup_finished, on_end_of_algorithm). See the module docstring for the semantics."""
 
     def __init__(self):
-        self._ctx = None
-        self._capital = 100_000.0
+        self._ql_ctx = None
+        self._ql_capital = 100_000.0
         self.portfolio = Portfolio(self)
         self.securities: Dict[str, Security] = _SymbolDict()
         self.transactions = Transactions(self)
@@ -1813,23 +1813,23 @@ class QCAlgorithm:
         self.start_date = self.end_date = None
         self.is_warming_up = False
         self.live_mode = False
-        self._tickets: Dict[int, OrderTicket] = {}
-        self._indicators: Dict[str, List[Indicator]] = {}
-        self._selectors: List[Callable] = []
-        self._warm = 0
-        self._approx: set = set()
-        self._params: Dict[str, Any] = {}
-        self._log: List[str] = []
+        self._ql_tickets: Dict[int, OrderTicket] = {}
+        self._ql_indicators: Dict[str, List[Indicator]] = {}
+        self._ql_selectors: List[Callable] = []
+        self._ql_warm = 0
+        self._ql_approx: set = set()
+        self._ql_params: Dict[str, Any] = {}
+        self._ql_log: List[str] = []
         # account model (LEAN-style pre-trade checks): margin (Reg-T 2× buying power) or cash (settled cash, no shorts)
-        self._account = AccountType.MARGIN
-        self._unsettled: List[tuple] = []                  # (settlement session position, proceeds)
-        self._lots: Dict[str, List[List[Any]]] = {}       # symbol → FIFO lots [shares (signed), price, date]
-        self._realized = {"short_term": 0.0, "long_term": 0.0}
-        self._rejected: List[Dict[str, Any]] = []
+        self._ql_account = AccountType.MARGIN
+        self._ql_unsettled: List[tuple] = []                  # (settlement session position, proceeds)
+        self._ql_lots: Dict[str, List[List[Any]]] = {}       # symbol → FIFO lots [shares (signed), price, date]
+        self._ql_realized = {"short_term": 0.0, "long_term": 0.0}
+        self._ql_rejected: List[Dict[str, Any]] = []
         self.benchmark = None
-        self._framework = _Framework()
-        self._custom: Dict[str, Security] = {}
-        self._consolidators: List[tuple] = []
+        self._ql_framework = _Framework()
+        self._ql_custom: Dict[str, Security] = {}
+        self._ql_consolidators: List[tuple] = []
         self.subscription_manager = _SubscriptionManager(self)
         self.object_store = ObjectStore(OBJECT_STORE_SEED.get(type(self).__name__))
         self.SubscriptionManager, self.ObjectStore = self.subscription_manager, self.object_store
@@ -1885,29 +1885,29 @@ class QCAlgorithm:
 
     def set_brokerage_model(self, *a, **k) -> None:
         if AccountType.CASH in a or k.get("account_type") == AccountType.CASH or k.get("accountType") == AccountType.CASH:
-            self._account = AccountType.CASH
+            self._ql_account = AccountType.CASH
 
     def set_security_initializer(self, *a, **k) -> None:
-        self._approx.add("set_security_initializer: ignored (the Code Lab's cost and fill models apply)")
+        self._ql_approx.add("set_security_initializer: ignored (the Code Lab's cost and fill models apply)")
 
     def set_warm_up(self, period, resolution=None) -> None:
         n = period.days if isinstance(period, timedelta) else int(period)
-        self._warm = max(self._warm, n)
+        self._ql_warm = max(self._ql_warm, n)
 
     def add_equity(self, ticker: str, resolution: str = Resolution.DAILY, *a, **k) -> Security:
         t = _sym(ticker)
         if resolution not in (Resolution.DAILY, None):
-            self._approx.add(f"add_equity('{t}', {resolution}): runs on daily bars")
-        return self._add(t, resolution)
+            self._ql_approx.add(f"add_equity('{t}', {resolution}): runs on daily bars")
+        return self._ql_add(t, resolution)
 
     def add_forex(self, ticker: str, resolution: str = Resolution.DAILY, *a, **k) -> Security:
-        return self._add(_sym(ticker), resolution)
+        return self._ql_add(_sym(ticker), resolution)
 
     def add_crypto(self, ticker: str, resolution: str = Resolution.DAILY, *a, **k) -> Security:
         t, approx = crypto_yahoo(_sym(ticker))
         if approx:
-            self._approx.add(approx)
-        return self._add(t, resolution)
+            self._ql_approx.add(approx)
+        return self._ql_add(t, resolution)
 
     def add_option(self, *a, **k):
         raise NotImplementedError("add_option: no free historical option chains. Use the Options research tab "
@@ -1922,13 +1922,13 @@ class QCAlgorithm:
         """Custom data uploaded under `ticker` (Quant Lab → Custom data): delivered in on_data as slice[symbol] on the
         sessions with a fresh row, and through history(symbol). Not tradable."""
         name = str(ticker if ticker is not None else data_type).strip().lower()
-        d = getattr(self._ctx, "_data", None) if self._ctx is not None else None
+        d = getattr(self._ql_ctx, "_data", None) if self._ql_ctx is not None else None
         if d is not None and name not in getattr(d, "custom", {}):
             raise ValueError(f"Custom data '{name}' is not loaded — upload it (Quant Lab → Custom data) and keep the "
                              "name a literal in add_data(…, \"name\").")
         sec = Security(name, resolution or Resolution.DAILY)
         sec._custom_type = data_type if isinstance(data_type, type) else PythonData
-        self._custom[name] = sec
+        self._ql_custom[name] = sec
         return sec
 
     def remove_security(self, symbol) -> None:
@@ -1940,14 +1940,14 @@ class QCAlgorithm:
 
     def add_universe(self, selector=None, *a, **k) -> None:
         if selector == "__SP500_PIT__":
-            self._selectors.append(lambda funds: [f.symbol for f in funds])
+            self._ql_selectors.append(lambda funds: [f.symbol for f in funds])
         elif callable(selector):
-            self._selectors.append(selector)
+            self._ql_selectors.append(selector)
         else:
             raise NotImplementedError("add_universe: pass a selector function (fundamentals → symbols) or "
                                       "self.universe.etf('SPY').")
 
-    def _add(self, t: str, resolution) -> Security:
+    def _ql_add(self, t: str, resolution) -> Security:
         if t not in self.securities:
             dict.__setitem__(self.securities, t, Security(t, resolution))
         return self.securities[t]
@@ -1957,7 +1957,7 @@ class QCAlgorithm:
 
     def get_parameter(self, name: str, default=None):
         """PARAMS = {"name": [values]} at the top of the file drives walk-forward; get_parameter reads the current one."""
-        return getattr(self, "_params", {}).get(name, default)
+        return getattr(self, "_ql_params", {}).get(name, default)
 
     # data
     def history(self, *args, **kw) -> pd.DataFrame:
@@ -1982,8 +1982,8 @@ class QCAlgorithm:
             syms = [_sym(symbols)]
         else:
             syms = [_sym(s) for s in symbols]
-        d = self._ctx._data
-        i = self._ctx.i
+        d = self._ql_ctx._data
+        i = self._ql_ctx.i
         idx = d.close.index
         hi = i
         if end is not None:                                             # bars that ended by `end`; never past today
@@ -2000,7 +2000,7 @@ class QCAlgorithm:
         frames = []
         for s in syms:
             cust = getattr(d, "custom", {}).get(s.lower())
-            if cust is not None and s.lower() in self._custom:
+            if cust is not None and s.lower() in self._ql_custom:
                 f = cust.iloc[lo:hi + 1]
                 f = f[f["_new"] > 0].drop(columns=["_new"])
                 f.index.name = "time"
@@ -2017,9 +2017,9 @@ class QCAlgorithm:
         return pd.concat(frames) if frames else pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
     # indicators (created and updated automatically with each daily bar)
-    def _reg(self, symbol, ind: Indicator, bars: bool = False) -> Indicator:
+    def _ql_reg(self, symbol, ind: Indicator, bars: bool = False) -> Indicator:
         ind._bars = bars
-        self._indicators.setdefault(_sym(symbol), []).append(ind)
+        self._ql_indicators.setdefault(_sym(symbol), []).append(ind)
         return ind
 
     def register_indicator(self, symbol, indicator: Indicator, *a, **k) -> None:
@@ -2032,48 +2032,48 @@ class QCAlgorithm:
                 self.subscription_manager.add_consolidator(symbol, c)
             c.data_consolidated += (lambda sender, bar: indicator.update(bar) if bars else indicator.update(bar.time, bar.close))
             return
-        self._reg(symbol, indicator, bars)
+        self._ql_reg(symbol, indicator, bars)
 
     def sma(self, symbol, period: int, *a, **k) -> SimpleMovingAverage:
-        return self._reg(symbol, SimpleMovingAverage(period))
+        return self._ql_reg(symbol, SimpleMovingAverage(period))
 
     def ema(self, symbol, period: int, *a, **k) -> ExponentialMovingAverage:
-        return self._reg(symbol, ExponentialMovingAverage(period))
+        return self._ql_reg(symbol, ExponentialMovingAverage(period))
 
     def rsi(self, symbol, period: int, moving_average_type=MovingAverageType.WILDERS, *a, **k) -> RelativeStrengthIndex:
-        return self._reg(symbol, RelativeStrengthIndex(period, moving_average_type))
+        return self._ql_reg(symbol, RelativeStrengthIndex(period, moving_average_type))
 
     def atr(self, symbol, period: int, moving_average_type=MovingAverageType.WILDERS, *a, **k) -> AverageTrueRange:
-        return self._reg(symbol, AverageTrueRange(period, moving_average_type), True)
+        return self._ql_reg(symbol, AverageTrueRange(period, moving_average_type), True)
 
     def bb(self, symbol, period: int, k: float, moving_average_type=MovingAverageType.SIMPLE, *a, **kw) -> BollingerBands:
-        return self._reg(symbol, BollingerBands(period, k, moving_average_type))
+        return self._ql_reg(symbol, BollingerBands(period, k, moving_average_type))
 
     def macd(self, symbol, fast: int, slow: int, signal: int, moving_average_type=MovingAverageType.EXPONENTIAL, *a, **k):
-        return self._reg(symbol, MovingAverageConvergenceDivergence(fast, slow, signal, moving_average_type))
+        return self._ql_reg(symbol, MovingAverageConvergenceDivergence(fast, slow, signal, moving_average_type))
 
     def roc(self, symbol, period: int, *a, **k) -> RateOfChange:
-        return self._reg(symbol, RateOfChange(period))
+        return self._ql_reg(symbol, RateOfChange(period))
 
     def rocp(self, symbol, period: int, *a, **k) -> RateOfChangePercent:
-        return self._reg(symbol, RateOfChangePercent(period))
+        return self._ql_reg(symbol, RateOfChangePercent(period))
 
     momp = rocp
 
     def mom(self, symbol, period: int, *a, **k) -> Momentum:
-        return self._reg(symbol, Momentum(period))
+        return self._ql_reg(symbol, Momentum(period))
 
     def max(self, symbol, period: int, *a, **k) -> Maximum:
-        return self._reg(symbol, Maximum(period))
+        return self._ql_reg(symbol, Maximum(period))
 
     def min(self, symbol, period: int, *a, **k) -> Minimum:
-        return self._reg(symbol, Minimum(period))
+        return self._ql_reg(symbol, Minimum(period))
 
     def std(self, symbol, period: int, *a, **k) -> StandardDeviation:
-        return self._reg(symbol, StandardDeviation(period))
+        return self._ql_reg(symbol, StandardDeviation(period))
 
     def adx(self, symbol, period: int, *a, **k) -> AverageDirectionalIndex:
-        return self._reg(symbol, AverageDirectionalIndex(period), True)
+        return self._ql_reg(symbol, AverageDirectionalIndex(period), True)
 
     def warm_up_indicator(self, symbol, indicator: Indicator, *a, **k) -> None:
         h = self.history(symbol, indicator.warm_up_period + 1)
@@ -2096,33 +2096,33 @@ class QCAlgorithm:
 
     # ── Algorithm Framework ──
     def set_alpha(self, model) -> None:
-        self._framework.alphas = [model]
-        self._framework.used = True
+        self._ql_framework.alphas = [model]
+        self._ql_framework.used = True
 
     def add_alpha(self, model) -> None:
-        self._framework.alphas.append(model)
-        self._framework.used = True
+        self._ql_framework.alphas.append(model)
+        self._ql_framework.used = True
 
     def set_portfolio_construction(self, model) -> None:
-        self._framework.pcm = model
-        self._framework.used = True
+        self._ql_framework.pcm = model
+        self._ql_framework.used = True
 
     def set_execution(self, model) -> None:
-        self._framework.execution = model
-        self._framework.used = True
+        self._ql_framework.execution = model
+        self._ql_framework.used = True
 
     def set_risk_management(self, model) -> None:
-        self._framework.risk = [model]
-        self._framework.used = True
+        self._ql_framework.risk = [model]
+        self._ql_framework.used = True
 
     def add_risk_management(self, model) -> None:
-        self._framework.risk.append(model)
-        self._framework.used = True
+        self._ql_framework.risk.append(model)
+        self._ql_framework.used = True
 
     def set_universe_selection(self, model) -> None:
         if isinstance(model, ManualUniverseSelectionModel):
             for t in model.symbols:
-                self._add(t, self.universe_settings.resolution)
+                self._ql_add(t, self.universe_settings.resolution)
         elif isinstance(model, FundamentalUniverseSelectionModel):
             self.add_universe(lambda funds: _call(model, "select", self, funds))
         else:
@@ -2133,91 +2133,91 @@ class QCAlgorithm:
 
     def emit_insights(self, *insights) -> List[Insight]:
         ins = Insight.group(*insights)
-        self._framework.emitted += ins
-        self._framework.used = True
+        self._ql_framework.emitted += ins
+        self._ql_framework.used = True
         return ins
 
     @property
     def insights(self) -> List[Insight]:
-        return list(self._framework.active.values())
+        return list(self._ql_framework.active.values())
 
     Insights = insights
 
     # orders
-    def _order(self, symbol, quantity: float, kind: str, tag: str = "", **prices) -> OrderTicket:
+    def _ql_order(self, symbol, quantity: float, kind: str, tag: str = "", **prices) -> OrderTicket:
         t = _sym(symbol)
         q = float(int(quantity)) if abs(quantity - int(quantity)) < 1e-9 else float(quantity)
         if self.is_warming_up:
-            self._log.append(f"{self.time}: order for {t} ignored during warm-up")
+            self._ql_log.append(f"{self.time}: order for {t} ignored during warm-up")
             return OrderTicket(self, 0, Symbol(t), q, kind, tag)
-        if t not in self._ctx._data.close.columns:
-            if t.lower() in self._custom:
+        if t not in self._ql_ctx._data.close.columns:
+            if t.lower() in self._ql_custom:
                 raise ValueError(f"Order for {t}: custom data is not tradable.")
             raise ValueError(f"Order for {t}: not in the universe (add_equity it, or select it in add_universe).")
         if not q:
             return OrderTicket(self, 0, Symbol(t), 0.0, kind, tag)
-        reason = self._pretrade(t, q, prices.get("limit") or prices.get("price"))
+        reason = self._ql_pretrade(t, q, prices.get("limit") or prices.get("price"))
         if reason:
             tk = OrderTicket(self, 0, Symbol(t), q, kind, tag, **prices)
             tk.status = OrderStatus.INVALID
-            self._rejected.append({"time": str(self.time)[:10], "symbol": t, "quantity": q, "type": kind, "reason": reason})
-            self._emit(OrderEvent(0, tk.symbol, self.time, OrderStatus.INVALID, message=reason))
+            self._ql_rejected.append({"time": str(self.time)[:10], "symbol": t, "quantity": q, "type": kind, "reason": reason})
+            self._ql_emit(OrderEvent(0, tk.symbol, self.time, OrderStatus.INVALID, message=reason))
             return tk
         engine_kind = {OrderType.MARKET: "market", OrderType.MARKET_ON_OPEN: "market", OrderType.MARKET_ON_CLOSE: "moc",
                        OrderType.LIMIT: "limit", OrderType.STOP_MARKET: "stop", OrderType.STOP_LIMIT: "stop_limit",
                        OrderType.TRAILING_STOP: "trailing"}[kind]
-        oid = self._ctx.order_shares(t, q, engine_kind, price=prices.get("price"), limit=prices.get("limit"),
+        oid = self._ql_ctx.order_shares(t, q, engine_kind, price=prices.get("price"), limit=prices.get("limit"),
                                      trail=prices.get("trail"))
         tk = OrderTicket(self, oid, Symbol(t), q, kind, tag, **prices)
-        self._tickets[oid] = tk
-        self._emit(OrderEvent(oid, tk.symbol, self.time, OrderStatus.SUBMITTED, message=tag))
+        self._ql_tickets[oid] = tk
+        self._ql_emit(OrderEvent(oid, tk.symbol, self.time, OrderStatus.SUBMITTED, message=tag))
         return tk
 
     # ── account model ──
-    def _price(self, t: str, hint=None) -> float:
+    def _ql_price(self, t: str, hint=None) -> float:
         if hint:
             return float(hint)
         sec = self.securities.get(t)
-        px = sec.price if sec is not None and np.isfinite(sec.price) else float(self._ctx.close.get(t, np.nan))
+        px = sec.price if sec is not None and np.isfinite(sec.price) else float(self._ql_ctx.close.get(t, np.nan))
         return px
 
-    def _open_quantity_all(self, t: Optional[str] = None) -> float:
+    def _ql_open_quantity_all(self, t: Optional[str] = None) -> float:
         return sum(tk.quantity - tk.quantity_filled for tk in self.transactions.get_open_orders(t))
 
-    def _reserved(self, buys_only: bool) -> float:
+    def _ql_reserved(self, buys_only: bool) -> float:
         tot = 0.0
         for tk in self.transactions.get_open_orders():
             rem = tk.quantity - tk.quantity_filled
             if buys_only and rem <= 0:
                 continue
-            tot += abs(rem) * (self._price(_sym(tk.symbol), tk.prices.get("limit") or tk.prices.get("price")) or 0.0)
+            tot += abs(rem) * (self._ql_price(_sym(tk.symbol), tk.prices.get("limit") or tk.prices.get("price")) or 0.0)
         return tot
 
     def settled_cash(self) -> float:
         """Cash minus sale proceeds not yet settled (T+2 before 2024-05-28, T+1 after; cash accounts trade on this)."""
-        i = self._ctx.i
-        return self.portfolio.cash - sum(a for due, a in self._unsettled if due > i)
+        i = self._ql_ctx.i
+        return self.portfolio.cash - sum(a for due, a in self._ql_unsettled if due > i)
 
-    def _adv(self, t: str) -> float:
-        d, i = self._ctx._data, self._ctx.i
+    def _ql_adv(self, t: str) -> float:
+        d, i = self._ql_ctx._data, self._ql_ctx.i
         sl = slice(max(0, i - 62), i + 1)
         v = (d.close[t].iloc[sl] * d.volume[t].iloc[sl]).where(d.observed[t].iloc[sl])
         return float(v.mean()) if v.notna().any() else 0.0
 
-    def _pretrade(self, t: str, q: float, price_hint=None) -> Optional[str]:
+    def _ql_pretrade(self, t: str, q: float, price_hint=None) -> Optional[str]:
         """LEAN-style pre-trade validation; a reason string rejects the order (status INVALID)."""
-        px = self._price(t, price_hint)
+        px = self._ql_price(t, price_hint)
         if not np.isfinite(px) or px <= 0:
             return "No price for this security yet"
-        cur = self.portfolio[t].quantity + self._open_quantity_all(t)
+        cur = self.portfolio[t].quantity + self._ql_open_quantity_all(t)
         new = cur + q
         grows = abs(new) > abs(cur) + 1e-9 or (cur != 0 and np.sign(new) != np.sign(cur) and new != 0)
-        if self._account == AccountType.CASH:
+        if self._ql_account == AccountType.CASH:
             if new < -1e-9:
                 return "Cash accounts cannot sell short"
             if q > 0:
                 need = q * px
-                avail = self.settled_cash() - self._reserved(buys_only=True)
+                avail = self.settled_cash() - self._ql_reserved(buys_only=True)
                 if need > avail + 1e-6:
                     return (f"Insufficient settled cash: the order needs ${need:,.0f}, settled cash available is ${avail:,.0f} "
                             "(sale proceeds settle T+1; T+2 before 28 May 2024)")
@@ -2227,25 +2227,25 @@ class QCAlgorithm:
             names = {k for k, h in self.portfolio.items() if h.invested} | {_sym(tk.symbol) for tk in self.transactions.get_open_orders()} | {t}
             gross = 0.0
             for k in names:
-                qk = self.portfolio[k].quantity + self._open_quantity_all(k) + (q if k == t else 0.0)
-                pk = px if k == t else self._price(k)
+                qk = self.portfolio[k].quantity + self._ql_open_quantity_all(k) + (q if k == t else 0.0)
+                pk = px if k == t else self._ql_price(k)
                 gross += abs(qk) * (pk if np.isfinite(pk) else 0.0)
             limit = 2.0 * self.portfolio.total_portfolio_value               # Reg-T initial margin: 50%
             if gross > limit + 1e-6:
                 return (f"Insufficient buying power: gross exposure would be ${gross:,.0f} against ${limit:,.0f} "
                         "(2× portfolio value, Reg-T initial margin)")
             if new < -1e-9 and (cur >= 0 or new < cur):
-                if px < 5.0 or self._adv(t) < 5e6:
+                if px < 5.0 or self._ql_adv(t) < 5e6:
                     return ("No shares located to borrow (policy assumption: no shorting below $5 a share or under "
                             "$5m average daily traded value)")
         return None
 
     def tax_lots(self, symbol) -> List[Dict[str, Any]]:
         """Open lots (FIFO) for a symbol: shares (negative = short), price, date opened."""
-        return [{"shares": s_, "price": p_, "date": d_} for s_, p_, d_ in self._lots.get(_sym(symbol), [])]
+        return [{"shares": s_, "price": p_, "date": d_} for s_, p_, d_ in self._ql_lots.get(_sym(symbol), [])]
 
-    def _book_lots(self, t: str, shares: float, px: float, when: str, i: int) -> None:
-        lots = self._lots.setdefault(t, [])
+    def _ql_book_lots(self, t: str, shares: float, px: float, when: str, i: int) -> None:
+        lots = self._ql_lots.setdefault(t, [])
         rem = shares
         while abs(rem) > 1e-9 and lots and np.sign(lots[0][0]) != np.sign(rem):
             lot = lots[0]
@@ -2253,7 +2253,7 @@ class QCAlgorithm:
             pnl = closed * (px - lot[1])
             held = (pd.Timestamp(when) - pd.Timestamp(lot[2])).days
             # US rules: more than a year held → long-term; short sales are short-term
-            self._realized["long_term" if (closed > 0 and held > 365) else "short_term"] += pnl
+            self._ql_realized["long_term" if (closed > 0 and held > 365) else "short_term"] += pnl
             lot[0] -= closed
             rem += closed
             if abs(lot[0]) < 1e-9:
@@ -2262,61 +2262,61 @@ class QCAlgorithm:
             lots.append([rem, px, when])
         if shares < 0:                                                    # sale proceeds settle later
             lag = 1 if pd.Timestamp(when) >= pd.Timestamp("2024-05-28") else 2
-            self._unsettled.append((i + lag, -shares * px))
+            self._ql_unsettled.append((i + lag, -shares * px))
 
-    def _report(self, final: bool = False) -> Dict[str, Any]:
+    def _ql_report(self, final: bool = False) -> Dict[str, Any]:
         reasons: Dict[str, int] = {}
-        for r in self._rejected:
+        for r in self._ql_rejected:
             key = r["reason"].split(":")[0]
             reasons[key] = reasons.get(key, 0) + 1
-        return {"api_version": API_VERSION, "account_type": self._account,
-                "orders": len(self._tickets), "rejected": len(self._rejected), "rejected_by_reason": reasons,
-                "rejected_last": self._rejected[-20:],
-                "realized_pnl": {k: round(v, 2) for k, v in self._realized.items()},
-                "open_lots": sum(len(v) for v in self._lots.values()), "approximations": sorted(self._approx),
-                "log_tail": self._log[-30:],
-                **({"framework": {"insights": self._framework.count, "active_insights": len(self._framework.active),
-                                  "models": [type(m).__name__ for m in self._framework.models()]}}
-                   if self._framework.used else {}),
+        return {"api_version": API_VERSION, "account_type": self._ql_account,
+                "orders": len(self._ql_tickets), "rejected": len(self._ql_rejected), "rejected_by_reason": reasons,
+                "rejected_last": self._ql_rejected[-20:],
+                "realized_pnl": {k: round(v, 2) for k, v in self._ql_realized.items()},
+                "open_lots": sum(len(v) for v in self._ql_lots.values()), "approximations": sorted(self._ql_approx),
+                "log_tail": self._ql_log[-30:],
+                **({"framework": {"insights": self._ql_framework.count, "active_insights": len(self._ql_framework.active),
+                                  "models": [type(m).__name__ for m in self._ql_framework.models()]}}
+                   if self._ql_framework.used else {}),
                 **({"object_store": {"class": type(self).__name__, "data": dict(self.object_store._d)}}
                    if self.object_store._d else {})}
 
     def market_order(self, symbol, quantity: float, asynchronous: bool = False, tag: str = "", *a, **k) -> OrderTicket:
-        return self._order(symbol, quantity, OrderType.MARKET, tag)
+        return self._ql_order(symbol, quantity, OrderType.MARKET, tag)
 
     def market_on_open_order(self, symbol, quantity: float, tag: str = "", *a, **k) -> OrderTicket:
-        return self._order(symbol, quantity, OrderType.MARKET_ON_OPEN, tag)
+        return self._ql_order(symbol, quantity, OrderType.MARKET_ON_OPEN, tag)
 
     def market_on_close_order(self, symbol, quantity: float, tag: str = "", *a, **k) -> OrderTicket:
-        return self._order(symbol, quantity, OrderType.MARKET_ON_CLOSE, tag)
+        return self._ql_order(symbol, quantity, OrderType.MARKET_ON_CLOSE, tag)
 
     def limit_order(self, symbol, quantity: float, limit_price: float, tag: str = "", *a, **k) -> OrderTicket:
-        return self._order(symbol, quantity, OrderType.LIMIT, tag, price=limit_price)
+        return self._ql_order(symbol, quantity, OrderType.LIMIT, tag, price=limit_price)
 
     def stop_market_order(self, symbol, quantity: float, stop_price: float, tag: str = "", *a, **k) -> OrderTicket:
-        return self._order(symbol, quantity, OrderType.STOP_MARKET, tag, price=stop_price)
+        return self._ql_order(symbol, quantity, OrderType.STOP_MARKET, tag, price=stop_price)
 
     def stop_limit_order(self, symbol, quantity: float, stop_price: float, limit_price: float, tag: str = "", *a, **k):
-        return self._order(symbol, quantity, OrderType.STOP_LIMIT, tag, price=stop_price, limit=limit_price)
+        return self._ql_order(symbol, quantity, OrderType.STOP_LIMIT, tag, price=stop_price, limit=limit_price)
 
     def trailing_stop_order(self, symbol, quantity: float, trailing_amount: float, trailing_as_percentage: bool = True,
                             tag: str = "", *a, **k) -> OrderTicket:
         if not trailing_as_percentage:
             px = self.securities[_sym(symbol)].price
             trailing_amount = trailing_amount / px if px else trailing_amount
-        return self._order(symbol, quantity, OrderType.TRAILING_STOP, tag, trail=trailing_amount)
+        return self._ql_order(symbol, quantity, OrderType.TRAILING_STOP, tag, trail=trailing_amount)
 
     def calculate_order_quantity(self, symbol, target: float) -> float:
         t = _sym(symbol)
         sec = self.securities.get(t)
-        px = sec.price if sec is not None else float(self._ctx.close.get(t, np.nan))
+        px = sec.price if sec is not None else float(self._ql_ctx.close.get(t, np.nan))
         if not px or not np.isfinite(px):
             return 0.0
         tpv = self.portfolio.total_portfolio_value * (1 - self.settings.free_portfolio_value_percentage)
         want = math.floor(abs(target) * tpv / px) * (1 if target >= 0 else -1)
-        return float(want - self.portfolio[t].quantity - self._open_quantity(t))
+        return float(want - self.portfolio[t].quantity - self._ql_open_quantity(t))
 
-    def _open_quantity(self, t: str) -> float:
+    def _ql_open_quantity(self, t: str) -> float:
         return sum(tk.quantity - tk.quantity_filled for tk in self.transactions.get_open_orders(t)
                    if tk.order_type in (OrderType.MARKET, OrderType.MARKET_ON_OPEN))
 
@@ -2351,19 +2351,19 @@ class QCAlgorithm:
 
     # output
     def debug(self, msg) -> None:
-        self._log.append(f"{self.time}: {msg}")
+        self._ql_log.append(f"{self.time}: {msg}")
         print(f"{self.time.date() if self.time is not None else ''} {msg}")
 
     log = error = debug
 
     def plot(self, chart: str, series: str, value: float) -> None:
-        if self._ctx is not None and not self.is_warming_up:
-            self._ctx.plot(chart, series, float(value))
+        if self._ql_ctx is not None and not self.is_warming_up:
+            self._ql_ctx.plot(chart, series, float(value))
 
     def quit(self, message: str = "") -> None:
         raise _Quit(message)
 
-    def _emit(self, ev: OrderEvent) -> None:
+    def _ql_emit(self, ev: OrderEvent) -> None:
         self.on_order_event(ev)
 
     # PascalCase API
@@ -2418,7 +2418,7 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
                         float(d.low[t].iloc[i]), float(d.close[t].iloc[i]), float(d.volume[t].iloc[i]))
 
     def update_indicators(algo, d, i):
-        for t, inds in algo._indicators.items():
+        for t, inds in algo._ql_indicators.items():
             b = bar_of(d, t, i)
             if b is None:
                 continue
@@ -2430,20 +2430,20 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
                     ind.update(b)
                 else:
                     ind.update(b.time, b.close)
-        for b_ in getattr(algo, "_betas", []):
+        for b_ in getattr(algo, "_ql_betas", []):
             for t in (b_.target, b_.reference):
                 bb = bar_of(d, t, i)
                 if bb is not None:
                     b_.update_pair(bb.time, t, bb.close)
         idx = d.close.index
         nxt = idx[i + 1].to_pydatetime() if i + 1 < len(idx) else None    # the trading calendar, not future prices
-        for t, c in list(algo._consolidators):
+        for t, c in list(algo._ql_consolidators):
             b = bar_of(d, t, i)
             if b is not None:
                 c.update(b, nxt)
 
     def select(algo, d, i, ctx) -> None:
-        if not algo._selectors:
+        if not algo._ql_selectors:
             return
         mem = getattr(d, "members", None)
         cols = list(d.close.columns)
@@ -2456,26 +2456,26 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
                              (info.get(c) or {}).get("sector"))
                  for k, c in enumerate(cols) if ok[k] and c not in st["static"]]
         chosen = set()
-        for f in algo._selectors:
+        for f in algo._ql_selectors:
             chosen |= {_sym(s) for s in (f(funds) or [])}
         cur = st["dynamic"]
         added = sorted(chosen - cur)
         removed = sorted(cur - chosen)
         st["dynamic"] = chosen
         if added or removed:
-            add_s = [algo._add(t, algo.universe_settings.resolution) for t in added]
+            add_s = [algo._ql_add(t, algo.universe_settings.resolution) for t in added]
             rem_s = [algo.securities.get(t) or Security(t, Resolution.DAILY) for t in removed]
             for t in removed:
                 dict.pop(algo.securities, t, None)
             ch = SecurityChanges(add_s, rem_s)
             _handler(algo, "on_securities_changed")(ch)
-            algo._framework.securities_changed(algo, ch)
+            algo._ql_framework.securities_changed(algo, ch)
 
     def sync(algo, ctx, i):
         d = ctx._data
         algo.time = d.close.index[i].to_pydatetime()
         units = ctx.units
-        cap = algo._capital
+        cap = algo._ql_capital
         for t in set(list(algo.securities.keys()) + [k for k, h in algo.portfolio.items() if h.invested]):
             if t in d.close.columns:
                 px = float(d.close[t].iloc[i])
@@ -2501,16 +2501,16 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
                 h.average_price = ((h.average_price * abs(prev_q)) + px * abs(ex["shares"])) / abs(h.quantity)
             elif abs(h.quantity) <= 1e-9:
                 h.average_price = 0.0
-            algo._book_lots(t, round(ex["shares"], 6), px, ex["date"], ctx.i)
+            algo._ql_book_lots(t, round(ex["shares"], 6), px, ex["date"], ctx.i)
             for oid in ids:
-                tk = algo._tickets.get(oid)
+                tk = algo._ql_tickets.get(oid)
                 if tk is None or abs(qty_left) < 1e-9:
                     continue
                 want = tk.quantity - tk.quantity_filled
                 q = want if abs(qty_left) >= abs(want) - 1e-6 else qty_left
                 status = tk._fill(q, px, ex["date"])
                 qty_left -= q
-                algo._emit(OrderEvent(tk.order_id, tk.symbol, algo.time, status, px, q))   # the ticket's id (stable across updates)
+                algo._ql_emit(OrderEvent(tk.order_id, tk.symbol, algo.time, status, px, q))   # the ticket's id (stable across updates)
 
     def on_bar(ctx, **params):
         d = ctx._data
@@ -2520,33 +2520,33 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
             st["ctx"] = ctx
         if "algo" not in st:
             algo = cls()
-            algo._ctx = ctx
-            algo._params = dict(params)
-            algo._capital = ctx.capital
+            algo._ql_ctx = ctx
+            algo._ql_params = dict(params)
+            algo._ql_capital = ctx.capital
             ctx.hold_by_default = True
             algo.time = d.close.index[max(i, 0)].to_pydatetime()
             _handler(algo, "initialize")()
             st["algo"] = algo
             st["static"] = set(algo.securities.keys())
             st["dynamic"] = set()
-            if algo._framework.used and algo.securities:          # framework models see the initial securities
-                algo._framework.securities_changed(algo, SecurityChanges(list(algo.securities.values()), []))
+            if algo._ql_framework.used and algo.securities:          # framework models see the initial securities
+                algo._ql_framework.securities_changed(algo, SecurityChanges(list(algo.securities.values()), []))
             # prime indicators bar by bar on the history before the start; set_warm_up(n) replays its last n bars
             # through on_data with is_warming_up (orders refused)
             first_live = max(i, 0)
-            warm_from = max(0, first_live - algo._warm + 1) if algo._warm else first_live + 1   # the n bars ending at the close before the start
+            warm_from = max(0, first_live - algo._ql_warm + 1) if algo._ql_warm else first_live + 1   # the n bars ending at the close before the start
             for k in range(0, first_live + 1):
-                algo.is_warming_up = k < first_live or algo._warm > 0
+                algo.is_warming_up = k < first_live or algo._ql_warm > 0
                 sync(algo, ctx, k) if k >= warm_from else None
                 update_indicators(algo, d, k)
-                if algo._warm and k >= warm_from:
+                if algo._ql_warm and k >= warm_from:
                     ctx_i = ctx.i
                     ctx.i = k
                     select(algo, d, k, ctx)
                     bars = {t: b for t in algo.securities.keys() if (b := bar_of(d, t, k)) is not None}
                     _handler(algo, "on_data")(Slice(algo.time, bars))
                     ctx.i = ctx_i
-            if algo._warm:
+            if algo._ql_warm:
                 algo.is_warming_up = False
                 _handler(algo, "on_warmup_finished")()
             algo.is_warming_up = False
@@ -2554,7 +2554,7 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
             select(algo, d, i, ctx)
             return
         algo = st["algo"]
-        algo._ctx = ctx
+        algo._ql_ctx = ctx
         sync(algo, ctx, i)
         process_fills(algo, ctx)
         update_indicators(algo, d, i)
@@ -2564,7 +2564,7 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
             if dr._fn(idx[i], idx, i):
                 cb()
         bars = {t: b for t in algo.securities.keys() if (b := bar_of(d, t, i)) is not None}
-        for name, sec in algo._custom.items():                        # custom data: sessions with a fresh row
+        for name, sec in algo._ql_custom.items():                        # custom data: sessions with a fresh row
             cf = getattr(d, "custom", {}).get(name)
             if cf is not None and cf["_new"].iloc[i] > 0:
                 row = {k: float(v) for k, v in cf.iloc[i].items() if k != "_new"}
@@ -2576,11 +2576,11 @@ def adapter(cls, header: Dict[str, Any]) -> Callable:
         if bars:
             sl = Slice(algo.time, bars)
             _handler(algo, "on_data")(sl)
-            algo._framework.step(algo, sl)
+            algo._ql_framework.step(algo, sl)
         last = i == len(idx) - 1
         if last:
             _handler(algo, "on_end_of_algorithm")()
-        ctx.report = algo._report(final=last)
+        ctx.report = algo._ql_report(final=last)
 
     on_bar.state = st
     return on_bar
@@ -2925,21 +2925,21 @@ def discover(cls) -> Dict[str, Any]:
     (variables, constants, comprehensions, helpers). Only ever called where user code may run (the browser, the
     sandbox). Calls that need prices (history, warm-up) fail harmlessly here: what was added before them is kept."""
     algo = cls()
-    algo._ctx = None
+    algo._ql_ctx = None
     algo.time = datetime(2000, 1, 1)
     err = None
     try:
         _handler(algo, "initialize")()
     except Exception as e:                                      # noqa: BLE001 — partial discovery is still useful
         err = f"{type(e).__name__}: {str(e)[:160]}"
-    for m in getattr(algo._framework, "models", lambda: [])():
+    for m in getattr(algo._ql_framework, "models", lambda: [])():
         if isinstance(m, ManualUniverseSelectionModel):
             for t in m.symbols:
-                algo._add(t, Resolution.DAILY)
-    hdr = getattr(algo, "_hdr", {}) or {}
-    return {"universe": [t for t in algo.securities.keys()], "custom": list(algo._custom.keys()),
+                algo._ql_add(t, Resolution.DAILY)
+    hdr = getattr(algo, "_ql_hdr", {}) or {}
+    return {"universe": [t for t in algo.securities.keys()], "custom": list(algo._ql_custom.keys()),
             "custom_sources": _custom_sources(algo, hdr.get("start"), hdr.get("end")),
-            "dynamic_universe": bool(algo._selectors), "error": err,
+            "dynamic_universe": bool(algo._ql_selectors), "error": err,
             **{k: hdr[k] for k in ("start", "end", "capital", "benchmark") if k in hdr}}
 
 
@@ -3607,7 +3607,7 @@ def _bars_ind(ind) -> bool:
 def _helper(cls_):
     def make(self, symbol, *a, **k):
         ind = cls_(*a, **{kk: v for kk, v in k.items() if kk not in ("resolution", "selector")})
-        return self._reg(symbol, ind, _bars_ind(ind))
+        return self._ql_reg(symbol, ind, _bars_ind(ind))
     make.__doc__ = f"{cls_.__name__}, created and updated with each daily bar."
     return make
 
@@ -3625,12 +3625,12 @@ for _n, _c in {"wma": LinearWeightedMovingAverage, "lwma": LinearWeightedMovingA
 
 def _beta(self, target, reference, period: int, *a, **k) -> Beta:
     b = Beta(target, reference, period)
-    self._betas.append(b)
+    self._ql_betas.append(b)
     return b
 
 
 def _record(self, key: str, value) -> None:
-    hdr = self.__dict__.setdefault("_hdr", {})
+    hdr = self.__dict__.setdefault("_ql_hdr", {})
     hdr[key] = value
 
 
@@ -3677,7 +3677,7 @@ _INDEX = {"SPX": "^GSPC", "NDX": "^NDX", "VIX": "^VIX", "DJI": "^DJI", "RUT": "^
 
 def _add_index(self, ticker: str, resolution=Resolution.DAILY, *a, **k) -> Security:
     t = _INDEX.get(_sym(ticker).lstrip("^"), _sym(ticker) if _sym(ticker).startswith("^") else "^" + _sym(ticker))
-    return self._add(t, resolution)
+    return self._ql_add(t, resolution)
 
 
 class _Notify:
@@ -3688,7 +3688,7 @@ class _Notify:
 def _train(self, *a, **k):
     fn = next((x for x in a if callable(x)), None)
     if fn is not None:
-        self._approx.add("train: runs the function immediately (no background training in a backtest)")
+        self._ql_approx.add("train: runs the function immediately (no background training in a backtest)")
         fn()
 
 
@@ -3700,10 +3700,10 @@ _extra = {
     "sell": lambda self, symbol, quantity, *a, **k: self.market_order(symbol, -abs(quantity), tag=k.get("tag", "")),
     "order": lambda self, symbol, quantity, *a, **k: self.market_order(symbol, quantity, tag=k.get("tag", "")),
     "is_market_open": lambda self, symbol=None: True,
-    "set_account_currency": lambda self, ccy, *a, **k: (None if str(ccy).upper() == "USD" else self._approx.add(
+    "set_account_currency": lambda self, ccy, *a, **k: (None if str(ccy).upper() == "USD" else self._ql_approx.add(
         "set_account_currency: use ACCOUNT_CURRENCY = \"…\" at the top of the file for a non-USD account")),
     "set_run_mode": lambda self, *a, **k: None, "set_runtime_statistic": lambda self, name, value: _record(self, f"stat:{name}", str(value)),
-    "set_parameters": lambda self, params: self.__dict__.setdefault("_params", {}).update(params or {}),
+    "set_parameters": lambda self, params: self.__dict__.setdefault("_ql_params", {}).update(params or {}),
     "set_security_initializer": QCAlgorithm.set_security_initializer,
     "on_margin_call": lambda self, requests: requests, "on_margin_call_warning": lambda self: None,
     "on_dividends": lambda self, dividends: None, "on_splits": lambda self, splits: None,
@@ -3718,12 +3718,46 @@ _orig_qc_init = QCAlgorithm.__init__
 
 def _qc_init(self):
     _orig_qc_init(self)
-    self._betas: List[Beta] = []
-    self._hdr: Dict[str, Any] = {}
+    self._ql_betas: List[Beta] = []
+    self._ql_hdr: Dict[str, Any] = {}
     self.notify = self.Notify = _Notify()
 
 
 QCAlgorithm.__init__ = _qc_init
+
+
+# The engine's own set-up runs when the object is created, so an algorithm may define __init__ (with or without
+# super().__init__()), as LEAN allows.
+def _qc_new(cls, *a, **k):
+    obj = object.__new__(cls)
+    _qc_init(obj)
+    return obj
+
+
+QCAlgorithm.__new__ = _qc_new
+QCAlgorithm.__init__ = lambda self, *a, **k: None
+
+# The backtest context (it holds the whole price history, future included) is kept off the instance: self.__dict__,
+# vars(self) and copies of the algorithm never contain it.
+_CTX: Dict[int, Any] = {}
+
+
+def _ctx_get(self):
+    return _CTX.get(id(self))
+
+
+def _ctx_set(self, value) -> None:
+    import weakref
+    k = id(self)
+    if k not in _CTX:
+        try:
+            weakref.finalize(self, _CTX.pop, k, None)
+        except TypeError:                                    # not weak-referenceable (__slots__): kept until replaced
+            pass
+    _CTX[k] = value
+
+
+QCAlgorithm._ql_ctx = property(_ctx_get, _ctx_set)
 QCAlgorithm.utc_time = property(lambda self: self.time)
 
 # ── portfolio, holdings, securities, transactions, events, slices ───────────
@@ -3757,11 +3791,11 @@ Security.ask_price = Security.bid_price = property(lambda self: self.price)
 Security.is_delisted = False
 Security.fundamentals = None
 
-Transactions.get_orders = lambda self, *a, **k: list(self._algo._tickets.values())
-Transactions.get_order_by_id = lambda self, order_id: self._algo._tickets.get(order_id)
-Transactions.cancel_order = lambda self, order_id, *a, **k: (self._algo._tickets[order_id].cancel()
-                                                           if order_id in self._algo._tickets else False)
-Transactions.orders_count = property(lambda self: len(self._algo._tickets))
+Transactions.get_orders = lambda self, *a, **k: list(self._algo._ql_tickets.values())
+Transactions.get_order_by_id = lambda self, order_id: self._algo._ql_tickets.get(order_id)
+Transactions.cancel_order = lambda self, order_id, *a, **k: (self._algo._ql_tickets[order_id].cancel()
+                                                           if order_id in self._algo._ql_tickets else False)
+Transactions.orders_count = property(lambda self: len(self._algo._ql_tickets))
 OrderEvent.quantity = property(lambda self: self.fill_quantity)
 OrderEvent.absolute_fill_quantity = property(lambda self: abs(self.fill_quantity))
 OrderEvent.order_fee = property(lambda self: 0.0)
@@ -3828,17 +3862,17 @@ def _ticket_update(self, fields: UpdateOrderFields):
             OrderType.TRAILING_STOP: "trailing"}.get(self.order_type)
     if kind is None:
         return _Response(False, "market orders fill at the next open and cannot be updated")
-    ids = [oid for oid, tk in algo._tickets.items() if tk is self]
+    ids = [oid for oid, tk in algo._ql_tickets.items() if tk is self]
     for oid in ids:
-        algo._ctx.cancel_order(oid)
+        algo._ql_ctx.cancel_order(oid)
     rem = q - self.quantity_filled
-    new_id = algo._ctx.order_shares(_sym(self.symbol), rem, kind, price=price, limit=limit, trail=trail)
-    algo._tickets[new_id] = self
+    new_id = algo._ql_ctx.order_shares(_sym(self.symbol), rem, kind, price=price, limit=limit, trail=trail)
+    algo._ql_tickets[new_id] = self
     self.quantity = q
     self.prices.update({k_: v for k_, v in (("price", price), ("limit", limit), ("trail", trail)) if v is not None})
     if fields.tag is not None:
         self.tag = fields.tag
-    algo._emit(OrderEvent(self.order_id, self.symbol, algo.time, OrderStatus.UPDATE_SUBMITTED, message=self.tag))
+    algo._ql_emit(OrderEvent(self.order_id, self.symbol, algo.time, OrderStatus.UPDATE_SUBMITTED, message=self.tag))
     return _Response(True, "")
 
 
@@ -4190,7 +4224,7 @@ def _custom_sources(algo, start, end) -> List[Dict[str, Any]]:
     lo = pd.Timestamp(start or "2010-01-01")
     hi = pd.Timestamp(end) if end else pd.Timestamp.today().normalize()
     dates = sorted({lo, hi, *pd.date_range(lo, hi, freq="MS")})
-    for name, sec in getattr(algo, "_custom", {}).items():
+    for name, sec in getattr(algo, "_ql_custom", {}).items():
         cls = getattr(sec, "_custom_type", None)
         rec = {"ticker": name, "class": getattr(cls, "__name__", None), "sources": [], "error": None}
         out.append(rec)

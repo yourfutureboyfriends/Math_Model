@@ -325,12 +325,13 @@ CRYPTO_VENUES = ("coinbase", "binance", "binanceus", "kraken", "bitfinex", "bybi
 FX_VENUES = ("oanda", "fxcm")
 
 
-def _bars_csv(f: pd.DataFrame, quote: bool) -> str:
-    """Unscaled daily rows; quote=True writes bid and ask bars (both at the traded price — free data has no spread)."""
+def _bars_csv(f: pd.DataFrame, quote: bool, stamp: str = "%Y%m%d 00:00") -> str:
+    """Unscaled rows (daily, or hourly with stamp="%Y%m%d %H:%M"); quote=True writes bid and ask bars (both at the
+    traded price — free data has no spread)."""
     out = []
     for d, o, h, l, c, v in zip(f.index, f["open"], f["high"], f["low"], f["close"], f["volume"]):
         px = f"{o:.10g},{h:.10g},{l:.10g},{c:.10g}"
-        out.append(f"{d:%Y%m%d} 00:00,{px},0,{px},0" if quote else f"{d:%Y%m%d} 00:00,{px},{float(v or 0):.10g}")
+        out.append(f"{d.strftime(stamp)},{px},0,{px},0" if quote else f"{d.strftime(stamp)},{px},{float(v or 0):.10g}")
     return "\n".join(out) + "\n"
 
 
@@ -442,6 +443,102 @@ def prepare(tickers: List[str], start: str, root: Path, say=lambda m: None, univ
     return {"tickers": rows if not universe else {t: rows[t] for t in rows if t not in names or t in tickers},
             "instruments": len(rows), "skipped": skipped, "notes": notes, "universe": uni, "membership": minfo,
             "data_start": str(d.close.index[0].date()), "data_end": str(d.close.index[-1].date())}
+
+
+# ── hourly bars: Yahoo serves free hourly history for about two years. An algorithm that asks for intraday data, with a
+# backtest inside that window, gets real hourly bars for the securities it adds (universes stay daily) ─────────────
+HOUR_WINDOW_DAYS = 720
+HOUR_MAX_TICKERS = 60
+INTRADAY_RE = re.compile(r"Resolution\.(HOUR|Hour|MINUTE|Minute|SECOND|Second|TICK|Tick)\b")
+HOUR_CACHE = Path(__file__).resolve().parents[2] / "data" / "processed" / "lean_intraday"          # gitignored
+
+
+def _yahoo_hourly(ticker: str, start: pd.Timestamp) -> pd.DataFrame:
+    """Yahoo 60-minute bars from `start` (cached a day): open, high, low, close, volume indexed by UTC bar start."""
+    import yfinance as yf
+    HOUR_CACHE.mkdir(parents=True, exist_ok=True)
+    f = HOUR_CACHE / f"{ticker.replace('/', '_').replace('=', '_')}_1h.csv"
+    if f.exists() and time.time() - f.stat().st_mtime < 86400:
+        df = pd.read_csv(f, index_col=0, parse_dates=True)
+    else:
+        lo = max(start, pd.Timestamp.today().normalize() - pd.Timedelta(days=HOUR_WINDOW_DAYS + 5))
+        df = yf.download(ticker, start=lo.strftime("%Y-%m-%d"), interval="60m", auto_adjust=True, progress=False,
+                         threads=False)
+        if df is None or df.empty:
+            return pd.DataFrame()
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [c[0] for c in df.columns]
+        df = df.rename(columns=str.lower)[["open", "high", "low", "close", "volume"]].dropna(subset=["close"])
+        df.index = pd.DatetimeIndex(df.index).tz_convert("UTC").tz_localize(None)
+        df.to_csv(f)
+    return df[df.index >= start - pd.Timedelta(days=1)]
+
+
+def equity_hour_slots(df_utc: pd.DataFrame) -> pd.DataFrame:
+    """Yahoo's US-equity hourly bars (9:30, 10:30, … 15:30 New York) in LEAN's hourly slots, each in the slot that ends
+    at or after the bar's own end (a bar is never seen before it closed): 9:30–10:30 → 10:00–11:00 … 13:30–14:30 →
+    14:00–15:00; 14:30–15:30 and 15:30–16:00 merge into 15:00–16:00 (so the slot closing at 16:00 holds the close)."""
+    ny = df_utc.copy()
+    ny.index = ny.index.tz_localize("UTC").tz_convert("America/New_York").tz_localize(None)
+    ny = ny[(ny.index.hour * 60 + ny.index.minute >= 9 * 60 + 30) & (ny.index.hour < 16)]
+    end = ny.index + pd.Timedelta(hours=1)
+    end = end.where(end.time != pd.Timestamp("16:30").time(), end - pd.Timedelta(minutes=30))   # the half-hour last bar
+    slot = end.ceil("h") - pd.Timedelta(hours=1)
+    slot = slot.where(slot.hour < 16, slot - pd.Timedelta(hours=1))
+    g = ny.groupby(slot)
+    out = pd.DataFrame({"open": g["open"].first(), "high": g["high"].max(), "low": g["low"].min(),
+                        "close": g["close"].last(), "volume": g["volume"].sum()})
+    out.index.name = None
+    return out
+
+
+def _rows(f: pd.DataFrame, scale: float) -> str:
+    fmt = (lambda x: str(int(round(x * scale)))) if scale != 1 else (lambda x: f"{x:.10g}")
+    return "\n".join(f"{t:%Y%m%d %H:%M},{fmt(o)},{fmt(h)},{fmt(l)},{fmt(c)},{(int(v) if scale != 1 else f'{v:.10g}')}"
+                      for t, o, h, l, c, v in zip(f.index, f["open"], f["high"], f["low"], f["close"],
+                                                  f["volume"].fillna(0))) + "\n"
+
+
+def write_hourly(root: Path, tickers: List[str], start: str, say=lambda m: None) -> Dict[str, Any]:
+    """Hourly LEAN files for the algorithm's own US equities and crypto pairs when the backtest starts inside Yahoo's
+    hourly window. Returns {'tickers': [...lean tickers...], 'note': …} (empty when out of the window)."""
+    lo = pd.Timestamp(start)
+    if lo < pd.Timestamp.today().normalize() - pd.Timedelta(days=HOUR_WINDOW_DAYS):
+        return {"tickers": [], "note": f"hourly bars are free only for about the last two years — this backtest starts "
+                                       f"{start}, so intraday requests are served as daily"}
+    done, skipped = [], []
+    want = [t for t in tickers if classify(t)[0] in ("equity", "crypto")][:HOUR_MAX_TICKERS]
+    say(f"Loading hourly bars for {len(want)} instruments (Yahoo, last two years)…")
+    for t in want:
+        kind, key = classify(t)
+        try:
+            df = _yahoo_hourly(t, lo)
+        except Exception:                                                     # noqa: BLE001
+            df = pd.DataFrame()
+        if df.empty:
+            skipped.append(t)
+            continue
+        if kind == "equity":
+            f = equity_hour_slots(df)
+            _write_zip(root / "equity" / "usa" / "hour" / f"{key}.zip", f"{key}.csv", _rows(f, 10000))
+            done.append(key.upper())
+        else:
+            f = df.assign(volume=df["volume"] / df["close"])                    # Yahoo: quote-currency volume
+            base, quote = key
+            pairs = [f"{base}{quote}".lower()] + ([f"{base}{s}".lower() for s in ("usdt", "usdc", "busd", "fdusd")]
+                                                  if quote == "USD" else [])
+            trade, quotes = _bars_csv(f, False, "%Y%m%d %H:%M"), _bars_csv(f, True, "%Y%m%d %H:%M")
+            for venue in CRYPTO_VENUES:
+                for pair in pairs:
+                    _write_zip(root / "crypto" / venue / "hour" / f"{pair}_trade.zip", f"{pair}.csv", trade)
+                    _write_zip(root / "crypto" / venue / "hour" / f"{pair}_quote.zip", f"{pair}.csv", quotes)
+            done += [p.upper() for p in pairs]
+    note = (f"hourly bars (Yahoo) for {', '.join(sorted(set(done))[:12])}: US-equity bars are placed in the LEAN hour "
+            "slot ending at or after their own end (up to 30 min late, never early; 14:30–16:00 merged into the "
+            "15:00–16:00 slot); minute / second requests are served as hourly") if done else ""
+    if skipped:
+        note += f"; no hourly data for {', '.join(skipped[:8])} (daily)"
+    return {"tickers": sorted(set(done)), "note": note}
 
 
 # ── custom data: the URLs an algorithm's own get_source returns are fetched here (the container has no network) and
@@ -581,7 +678,7 @@ _RES_METHODS = ("add_equity", "add_crypto", "add_forex", "add_cfd", "add_index",
                 "rdv", "rvi", "sharpe_ratio", "sortino_ratio", "variance", "correlation", "regression", "hurst_exponent")
 
 
-def daily_wrapper(cls: str) -> str:
+def daily_wrapper(cls: str, hour_tickers: Optional[List[str]] = None) -> str:
     """Python appended to main.py: a subclass of the algorithm that maps tick / second / minute / hour requests to daily
     (the only free resolution) and records each mapping in /Results/quantlab-notes.txt. LEAN itself is unmodified."""
     names = sorted({n for m in _RES_METHODS for n in (m, "".join(w.upper() if w in ("sma", "ema", "rsi", "atr", "bb", "macd", "roc", "rocp", "momp", "mom", "max", "min", "std", "adx", "wma", "lwma", "hma", "dema", "tema", "kama", "trix", "apo", "ppo", "cmo", "logr", "cci", "sto", "willr", "dch", "kch", "obv", "vwap", "mfi", "psar", "natr", "tr", "sar", "lsma", "alma", "t3", "frama", "vwma", "zlema", "uo", "ao", "ad", "adosc", "rdv", "rvi") else w.capitalize() for w in m.split("_")))})
@@ -590,7 +687,19 @@ def daily_wrapper(cls: str) -> str:
 # ── Quant Lab: free data is daily — finer resolutions requested by the algorithm are served as daily ─────────────────
 import AlgorithmImports as _ql_ai
 _QL_FINE = ("Tick", "Second", "Minute", "Hour")
+_QL_HOUR = set({sorted(hour_tickers or [])!r})        # securities with real hourly bars in this run
 _QL_SEEN = set()
+
+
+def _ql_key(x):
+    try:
+        if isinstance(x, (list, tuple)):
+            keys = [_ql_key(y) for y in x]
+            return keys[0] if keys and all(k == keys[0] for k in keys) else (None if not keys or None in keys else "*")
+        v = getattr(x, "Value", None) or getattr(x, "value", None) or x
+        return str(v).upper()
+    except Exception:
+        return None
 
 
 def _ql_note(what):
@@ -603,23 +712,34 @@ def _ql_note(what):
             pass
 
 
-def _ql_res(x, where):
+def _ql_hourly(sym):
+    return sym is not None and (sym in _QL_HOUR or (sym == "*" and bool(_QL_HOUR)))
+
+
+def _ql_res(x, where, sym=None):
     if type(x).__name__ == "Resolution" and str(x).split(".")[-1].capitalize() in _QL_FINE:
-        _ql_note(f"{{where}}: Resolution.{{str(x).split('.')[-1].upper()}} served as daily (free data is daily)")
+        name = str(x).split(".")[-1].upper()
+        if _ql_hourly(sym):
+            if name != "HOUR":
+                _ql_note(f"{{where}}: Resolution.{{name}} served as hourly (free intraday data is hourly)")
+            return _ql_ai.Resolution.HOUR
+        _ql_note(f"{{where}}: Resolution.{{name}} served as daily (no free intraday data for it)")
         return _ql_ai.Resolution.DAILY
     return x
 
 
 def _ql_wrap(name):
     def call(self, *a, **k):
-        a = tuple(_ql_res(x, name) for x in a)
+        sym = _ql_key(a[0]) if a and not isinstance(a[0], type) else (_ql_key(a[1]) if len(a) > 1 else None)
+        a = tuple(_ql_res(x, name, sym) for x in a)
         for key in ("resolution", "Resolution"):
             if key in k:
-                k[key] = _ql_res(k[key], name)
+                k[key] = _ql_res(k[key], name, sym)
         if name.lower().replace("_", "") in ("addequity", "addcrypto", "addforex", "addcfd", "addindex") and \\
                 not any(type(x).__name__ == "Resolution" for x in a) and "resolution" not in k:
-            _ql_note(f"{{name}}: no resolution given (LEAN's default is minute) — served as daily")
-            k["resolution"] = _ql_ai.Resolution.DAILY
+            hourly = _ql_hourly(sym)
+            _ql_note(f"{{name}}: no resolution given (LEAN's default is minute) — served as {{'hourly' if hourly else 'daily'}}")
+            k["resolution"] = _ql_ai.Resolution.HOUR if hourly else _ql_ai.Resolution.DAILY
         return getattr(super(zzQuantLabDaily, self), name)(*a, **k)
     call.__name__ = name
     return call
@@ -649,13 +769,14 @@ def _docker_cmd(name: str, algo_dir: Path, data_dir: Path, results: Path, cls: s
     if plug:                                                  # the free-fundamentals provider, selected in config.json
         mounts += ["-v", f"{plug['dll']}:/Lean/Launcher/bin/Debug/QuantConnect.FreeData.dll:ro",
                    "-v", f"{plug['config']}:/Lean/Launcher/bin/Debug/config.json:ro"]
-    for sub in ("daily", "map_files", "factor_files", "fundamental/coarse", "fundamental/free", "universes/etf/spy"):
+    for sub in ("daily", "hour", "map_files", "factor_files", "fundamental/coarse", "fundamental/free", "universes/etf/spy"):
         p = data_dir / "equity" / "usa" / sub
         if p.exists():
             mounts += ["-v", f"{p}:{LEAN_DATA}/equity/usa/{sub}:ro"]
     for cls_dir in ("crypto", "forex"):
-        for venue in sorted((data_dir / cls_dir).glob("*/daily")) if (data_dir / cls_dir).exists() else []:
-            mounts += ["-v", f"{venue}:{LEAN_DATA}/{cls_dir}/{venue.parent.name}/daily:ro"]
+        for res in ("daily", "hour"):
+            for venue in sorted((data_dir / cls_dir).glob(f"*/{res}")) if (data_dir / cls_dir).exists() else []:
+                mounts += ["-v", f"{venue}:{LEAN_DATA}/{cls_dir}/{venue.parent.name}/{res}:ro"]
     return ["docker", "run", "--rm", "--name", name, "--network", "none", "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges", "--memory", "6g", "--memory-swap", "6g", "--cpus", "2",
             "--pids-limit", "512", "--ulimit", f"cpu={cpu}:{cpu}",
@@ -742,7 +863,6 @@ def run(code: str, job: Optional[Any] = None, timeout: int = 1800) -> Dict[str, 
                 f = fetch_source(c["url"])
                 shutil.copy(f, cdir / f.name)
                 mapping[c["url"].split("#", 1)[0]] = f"/Lean/Data/qlcustom/{f.name}"
-        (algo_dir / "main.py").write_text((custom_prelude(mapping) if mapping else "") + main + daily_wrapper(qc["class"]))
         for mod, src in files.items():                     # the project's other files, as real modules for LEAN
             path = algo_dir / (mod.replace(".", "/") + ".py")
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -756,6 +876,13 @@ def run(code: str, job: Optional[Any] = None, timeout: int = 1800) -> Dict[str, 
         if fine["unsupplied"]:
             prep["notes"].append("Morningstar fields with no free source read as LEAN's missing-value defaults (0 / NaN): "
                                  + ", ".join(fine["unsupplied"][:12]))
+        hour = {"tickers": [], "note": ""}
+        if INTRADAY_RE.search(code):
+            hour = write_hourly(data_dir, head["universe"], qc.get("start") or head["start"], say)
+            if hour["note"]:
+                prep["notes"].append(hour["note"])
+        (algo_dir / "main.py").write_text((custom_prelude(mapping) if mapping else "") + main
+                                          + daily_wrapper(qc["class"], hour["tickers"]))
         plug = plugin() if uni else None
         say(f"Running on LEAN ({IMAGE}) — {len(prep['tickers'])} tickers…")
         log_f = open(tmp / "lean.log", "w")

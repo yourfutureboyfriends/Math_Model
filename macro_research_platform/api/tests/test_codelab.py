@@ -90,12 +90,15 @@ def test_monte_carlo_sizes_leverage_and_refuses_negative_edges():
 def test_sandbox_static_rules():
     ok = 'UNIVERSE = ["SPY"]\nPARAMS = {"n": [1, 2]}\ndef strategy(data, n=1):\n    return data.close * 0 + 1\n'
     assert sandbox.check(ok)["universe"] == ["SPY"]
+    for fine in ('UNIVERSE=["SPY"]\ndef strategy(d):\n    return d.close if d.close.__class__ else d.close',
+                 'UNIVERSE=["SP"+"Y"]\ndef strategy(d):\n    return d.close',
+                 'UNIVERSE=["SPY"]\nPARAMS={"a": list(range(50))}\ndef strategy(d, a=1):\n    return d.close'):
+        assert sandbox.check(fine)["universe"] == ["SPY"]          # ordinary Python, computed settings, bigger grids
     for bad in ('import os\nUNIVERSE=["SPY"]\ndef strategy(d):\n    return d.close',
-                'UNIVERSE=["SPY"]\ndef strategy(d):\n    return d.close.__class__',
-                'UNIVERSE=["SPY"]\ndef strategy(d):\n    return pd.read_csv("x")',
-                'UNIVERSE=["SPY"]\ndef strategy(d):\n    return open("x")',
-                'UNIVERSE=["SP"+"Y"]\ndef strategy(d):\n    return d.close',
-                'UNIVERSE=["SPY"]\nPARAMS={"a": list(range(50))}\ndef strategy(d, a=1):\n    return d.close'):
+                'import requests\nUNIVERSE=["SPY"]\ndef strategy(d):\n    return d.close',
+                'UNIVERSE=["SPY"]\ndef strategy(d):\n    return eval("d.close")',
+                'UNIVERSE=["SPY"]\ndef strategy(d):\n    return strategy.__globals__',
+                'UNIVERSE=["SPY"]\nPARAMS={"a": list(range(30)), "b": list(range(30))}\ndef strategy(d, a=1, b=1):\n    return d.close'):
         with pytest.raises(sandbox.SandboxError):
             sandbox.check(bad)
 

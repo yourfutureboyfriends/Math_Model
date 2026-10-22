@@ -32,7 +32,7 @@ def test_static_header_reads_manual_universe_symbols():
 
 def test_constant_alpha_equal_weight_holds_both_halves():
     res, algo = _run(FRAMEWORK, _data())
-    assert algo._framework.count > 0
+    assert algo._ql_framework.count > 0
     tpv = algo.portfolio.total_portfolio_value
     for t in ("AAA", "BBB"):
         h = algo.portfolio[t]
@@ -55,7 +55,7 @@ class F(QCAlgorithm):
         self.set_portfolio_construction(EqualWeightingPortfolioConstructionModel(portfolio_bias=PortfolioBias.LONG))
 '''
     res, algo = _run(code, _data())
-    assert algo._framework.count > 0 and not algo.portfolio["AAA"].invested     # DOWN insights, long-only: no position
+    assert algo._ql_framework.count > 0 and not algo.portfolio["AAA"].invested     # DOWN insights, long-only: no position
 
 
 def test_drawdown_risk_model_flattens_a_losing_position():

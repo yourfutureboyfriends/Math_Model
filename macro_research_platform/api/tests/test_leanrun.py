@@ -262,3 +262,77 @@ def test_crypto_volume_is_in_units_of_the_asset():
     btc = d.volume["BTC-USD"].dropna()
     assert 1e3 < btc.median() < 1e7                     # coins per day, not ~$3e10
     assert (d.close["BTC-USD"] * d.volume["BTC-USD"]).dropna().median() > 1e9          # ≈ dollars traded
+
+
+def test_equity_hour_slots_never_show_a_bar_early():
+    """Yahoo's 9:30-based hourly bars go into the LEAN slot ending at or after their own end; 14:30–16:00 merge."""
+    idx = pd.DatetimeIndex([f"2026-10-09 {h}:30" for h in range(13, 20)])               # UTC = 9:30 … 15:30 New York
+    df = pd.DataFrame({"open": range(7), "high": range(10, 17), "low": range(7), "close": [100.0 + i for i in range(7)],
+                       "volume": [1] * 7}, index=idx)
+    out = leanrun.equity_hour_slots(df)
+    assert [t.strftime("%H:%M") for t in out.index] == ["10:00", "11:00", "12:00", "13:00", "14:00", "15:00"]
+    last = out.iloc[-1]
+    assert last["close"] == 106.0 and last["high"] == 16 and last["volume"] == 2       # the close of the day is exact
+    for slot, ny_start in zip(out.index[:5], ["09:30", "10:30", "11:30", "12:30", "13:30"]):
+        bar_end = pd.Timestamp(f"2026-10-09 {ny_start}") + pd.Timedelta(hours=1)
+        assert slot + pd.Timedelta(hours=1) >= bar_end                                # delivered at or after its end
+
+
+def test_wrapper_serves_intraday_as_hourly_only_where_hourly_data_exists():
+    import ast
+    src = "class A:\n    pass\n" + leanrun.daily_wrapper("A", ["SPY", "BTCUSD"])
+    ast.parse(src)
+    assert "_QL_HOUR = set(['BTCUSD', 'SPY'])" in src
+
+
+@pytest.mark.network
+@LEAN_UP
+def test_real_lean_hourly_bars_inside_the_free_window():
+    start = (pd.Timestamp.today() - pd.Timedelta(days=200)).strftime("%Y, %m, %d").replace(", 0", ", ")
+    code = f'''from AlgorithmImports import *
+class Hourly(QCAlgorithm):
+    def Initialize(self):
+        self.SetStartDate({start})
+        self.spy = self.AddEquity("SPY", Resolution.Hour).Symbol
+        self.n = 0
+    def OnData(self, data):
+        if data.ContainsKey(self.spy) and data[self.spy] is not None:
+            self.n += 1
+        if not self.Portfolio.Invested:
+            self.SetHoldings(self.spy, 1)
+    def OnEndOfAlgorithm(self):
+        self.Log(f"HOURBARS {{self.n}}")
+'''
+    r = leanrun.run(code, timeout=900)
+    n = int([l for l in r["log_tail"].splitlines() if "HOURBARS" in l][-1].split()[-1])
+    assert n > 300 and not r["runtime_errors"]                    # ~6 bars a session, not 1
+    assert any("hourly bars (Yahoo)" in x for x in r["data"]["notes"])
+
+
+@pytest.mark.network
+@LEAN_UP
+def test_real_lean_runs_c_extension_libraries():
+    """QuantConnect's research environment on real LEAN: TA-Lib and xgboost (ctypes-based) just work."""
+    code = '''from AlgorithmImports import *
+import talib
+import numpy as np
+from xgboost import XGBClassifier
+class TalibXgb(QCAlgorithm):
+    def initialize(self):
+        self.set_start_date(2022, 1, 1)
+        self.set_end_date(2022, 12, 31)
+        self.spy = self.add_equity("SPY", Resolution.DAILY).symbol
+        self.model = None
+    def on_data(self, data):
+        h = self.history(self.spy, 120, Resolution.DAILY)
+        if len(h) < 120:
+            return
+        c = h["close"].to_numpy(dtype=float)
+        rsi = np.nan_to_num(talib.RSI(c, timeperiod=14))
+        if self.model is None:
+            self.model = XGBClassifier(n_estimators=5, max_depth=2).fit(rsi[:-1].reshape(-1, 1), (np.diff(c) > 0).astype(int))
+        p = self.model.predict_proba(np.array([[rsi[-1]]]))[0, 1]
+        self.set_holdings(self.spy, 1.0 if p > 0.5 else 0.0)
+'''
+    r = leanrun.run(code, timeout=900)
+    assert int(r["statistics"]["Total Orders"]) >= 1 and not r["runtime_errors"]

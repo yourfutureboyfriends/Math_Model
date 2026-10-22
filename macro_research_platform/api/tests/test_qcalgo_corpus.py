@@ -509,10 +509,11 @@ def test_multi_file_project_imports_checks_and_runs():
     assert not [r for r in st["qc"]["report"] if r["level"] in ("unsupported", "check")]
     d = _data(n=600, tickers=TICKERS, seed=7)
     codelab.backtest(None, d, {"capital": 100_000}, st["start"], on_bar=st["on_bar"])
-    assert st["on_bar"].state["algo"]._framework.count >= 0
+    assert st["on_bar"].state["algo"]._ql_framework.count >= 0
 
 
 def test_unknown_module_says_how_to_add_a_project_file():
+    """A module that is neither installed (platform or QuantConnect environment) nor a project file."""
     with pytest.raises(sandbox.SandboxError, match="# file: alpha.py"):
         sandbox.check(MULTI_FILE.split("# file: alpha.py")[0])
 
@@ -558,4 +559,4 @@ def test_pascal_and_snake_twins_are_the_same_method():
     a = Q()
     a.SetStartDate(2020, 1, 2)
     a.SetEndDate(datetime(2021, 3, 4))
-    assert a._hdr["start"] == "2020-01-02" and a._hdr["end"] == "2021-03-04"
+    assert a._ql_hdr["start"] == "2020-01-02" and a._ql_hdr["end"] == "2021-03-04"

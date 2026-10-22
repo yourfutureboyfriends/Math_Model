@@ -89,7 +89,7 @@ def test_orders_fill_with_events_and_warm_up_refuses_orders():
         statuses.setdefault(oid, []).append(s)
     assert statuses and all(v[0] == "submitted" and v[-1] == "filled" for v in statuses.values())
     # the market-on-close order fills at the next session's close, the market order at the next open
-    tk = [t for t in algo._tickets.values() if t.order_type == qcalgo.OrderType.MARKET_ON_CLOSE][0]
+    tk = [t for t in algo._ql_tickets.values() if t.order_type == qcalgo.OrderType.MARKET_ON_CLOSE][0]
     sub = pd.Timestamp(tk.time).normalize()
     nxt = data.close.index[data.close.index.searchsorted(sub, side="right")]
     assert abs(tk.average_fill_price - data.close.loc[nxt, "BBB"]) < 1e-9
@@ -176,14 +176,17 @@ def test_sandbox_admits_algorithm_classes():
 
 
 @pytest.mark.parametrize("snippet,why", [
-    ("x = self._ctx", "the engine context (holds future prices)"),
-    ("x = self._ctx._data", "the engine's full price history"),
-    ("x = ().__class__", "dunder access"),
-    ("x = self.__dict__", "dunder on self"),
+    ("x = self._ql_ctx", "the engine context (holds future prices)"),
+    ("x = self._ql_ctx._data", "the engine's full price history"),
+    ("x = self.initialize.__globals__", "a function's globals"),
+    ("x = (lambda: 0).__code__", "code objects"),
     ("x = eval('1')", "eval"),
+    ("exec('x = 1')", "exec"),
     ("import os", "os import"),
-    ("x = np.load('f.npy')", "numpy file I/O"),
-    ("x = '{0.__class__}'.format(1)", "format-string escape"),
+    ("import requests", "network"),
+    ("from api.quant import qcalgo", "the platform's engine"),
+    ("x = '{0.__globals__}'.format(self.initialize)", "format-string escape"),
+    ("x = self.__dict__['_ql_ctx']", "the engine context by name"),
 ])
 def test_sandbox_rejects_escapes(snippet, why):
     code = OK_CLASS.replace("        _ = self._h.n", "        " + snippet)
@@ -211,15 +214,32 @@ class Helper(Base):""").replace("        _ = self._h.n", "        _ = (self._h.n
     assert sandbox.check(code)["universe"] == ["SPY"]
 
 
-def test_sandbox_still_refuses_metaclasses_banned_dunders_and_unavailable_data():
-    with pytest.raises(sandbox.SandboxError):
-        sandbox.check(OK_CLASS.replace("class Helper(object):", "class Helper(object, metaclass=type):"))
+def test_sandbox_admits_python_that_used_to_be_refused():
+    """Metaclasses, any special method, async code, __class__ / __dict__ / vars(), open(), file-like objects in memory,
+    pickle, threads and any installed library pass the check (isolation and the run-time guard are the boundary)."""
+    extra = """import io, pickle, threading, asyncio, torch
+class Meta(type):
+    pass
+class Helper(object, metaclass=Meta):
+    def __eq__(self, o):
+        return True
+    def __hash__(self):
+        return 1
+async def later():
+    return 1
+"""
+    code = OK_CLASS.replace("class Helper(object):", extra + "class Helper2(object):").replace(
+        "        _ = self._h.n", "        _ = (self.__class__.__name__, self.__dict__, vars(self), io.StringIO('a'), pickle.dumps(1))")
+    assert sandbox.check(code)["universe"] == ["SPY"]
+
+
+def test_sandbox_still_refuses_banned_dunders_reserved_names_and_unavailable_data():
     with pytest.raises(sandbox.SandboxError):
         sandbox.check(OK_CLASS.replace("    def __init__(self, n):", "    def __getattribute__(self, n):"))
     with pytest.raises(sandbox.SandboxError):
         sandbox.check(OK_CLASS.replace('        self.add_equity("SPY")', '        self.add_equity("SPY")\n        self.add_future("ES")'))
     with pytest.raises(sandbox.SandboxError):              # overwriting a name the API uses internally
-        sandbox.check(OK_CLASS.replace("        self._h = Helper(3)", "        self._log = []"))
+        sandbox.check(OK_CLASS.replace("        self._h = Helper(3)", "        self._ql_log = []"))
 
 
 # ── account model: buying power, settlement, locates, tax lots ──
@@ -245,8 +265,8 @@ def test_cash_account_refuses_shorts_and_unsettled_cash():
         elif self._step == 7:
             self.later = self.set_holdings("BBB", 0.5)        # now they have
 ''')
-    assert algo.short.status == "invalid" and "cannot sell short" in algo._rejected[0]["reason"]
-    assert algo.rebuy and algo.rebuy[0].status == "invalid" and "settled cash" in algo.rebuy[0]._algo._rejected[-1]["reason"]
+    assert algo.short.status == "invalid" and "cannot sell short" in algo._ql_rejected[0]["reason"]
+    assert algo.rebuy and algo.rebuy[0].status == "invalid" and "settled cash" in algo.rebuy[0]._algo._ql_rejected[-1]["reason"]
     assert algo.later and algo.later[0].status in ("submitted", "filled")
 
 
@@ -260,7 +280,7 @@ def test_margin_account_caps_gross_at_twice_portfolio_value():
             self._done = True
 ''')
     assert algo.ok[0].status == "filled" and algo.too_much.status == "invalid"
-    assert "buying power" in algo._rejected[-1]["reason"]
+    assert "buying power" in algo._ql_rejected[-1]["reason"]
 
 
 def test_short_locate_refused_for_penny_stock():
@@ -274,16 +294,16 @@ def test_short_locate_refused_for_penny_stock():
             self.short = self.market_order("BBB", -100)
             self._done = True
 ''', d)
-    assert algo.short.status == "invalid" and "located" in algo._rejected[-1]["reason"]
+    assert algo.short.status == "invalid" and "located" in algo._ql_rejected[-1]["reason"]
 
 
 def test_tax_lots_fifo_and_holding_period():
     algo = qcalgo.QCAlgorithm()
-    algo._ctx = type("C", (), {"i": 0})()
-    algo._book_lots("X", 10, 100.0, "2020-01-02", 0)
-    algo._book_lots("X", 10, 110.0, "2021-06-01", 1)
-    algo._book_lots("X", -15, 120.0, "2021-07-01", 2)       # 10 from 2020 (long-term) + 5 from 2021 (short-term)
-    assert abs(algo._realized["long_term"] - 10 * 20) < 1e-9 and abs(algo._realized["short_term"] - 5 * 10) < 1e-9
+    algo._ql_ctx = type("C", (), {"i": 0})()
+    algo._ql_book_lots("X", 10, 100.0, "2020-01-02", 0)
+    algo._ql_book_lots("X", 10, 110.0, "2021-06-01", 1)
+    algo._ql_book_lots("X", -15, 120.0, "2021-07-01", 2)       # 10 from 2020 (long-term) + 5 from 2021 (short-term)
+    assert abs(algo._ql_realized["long_term"] - 10 * 20) < 1e-9 and abs(algo._ql_realized["short_term"] - 5 * 10) < 1e-9
     assert algo.tax_lots("X") == [{"shares": 5, "price": 110.0, "date": "2021-06-01"}]
 
 
@@ -311,3 +331,42 @@ class F(QCAlgorithm):
     assert h["fundamentals"] == ["market_cap"]
     res, algo = _run(code, data)
     assert algo._seen[0] == "BBB" and algo._seen[-1] == "AAA" and "CCC" not in algo._seen
+
+
+def test_plain_strategy_header_may_be_computed():
+    code = '''SECTORS = "KFE"
+UNIVERSE = [f"XL{s}" for s in SECTORS] + ["SPY"]
+START = "20" + "15-01-01"
+PARAMS = {"lookback": list(range(20, 101, 40))}
+def strategy(data, lookback=60):
+    return data.close.pct_change(lookback).rank(axis=1).le(2).astype(float) / 2
+'''
+    sandbox._DISCOVERED.clear()
+    h = sandbox.check(code)
+    assert h["universe"] == ["XLK", "XLF", "XLE", "SPY"] and h["start"] == "2015-01-01"
+    assert h["params"] == {"lookback": [20, 60, 100]}
+
+
+def test_unknown_library_is_reported_and_known_ones_pick_a_runtime():
+    with pytest.raises(sandbox.SandboxError, match="there is no module 'surely_not_a_module'"):
+        sandbox.check(OK_CLASS.replace("class Helper(object):", "import surely_not_a_module\nclass Helper(object):"))
+    assert sandbox.check(OK_CLASS)["runtime"] == "default"
+    if "talib" in sandbox.lean_modules():                    # QuantConnect's environment present (LEAN image)
+        assert sandbox.check(OK_CLASS.replace("class Helper(object):", "import talib\nclass Helper(object):"))["runtime"] == "full"
+
+
+def test_algorithm_may_define_init_and_never_holds_the_engine_context():
+    code = '''class A(QCAlgorithm):
+    def __init__(self):
+        self.mine = 1
+    def initialize(self):
+        self.set_start_date(2019, 6, 3)
+        self.add_equity("AAA")
+        self.seen = sorted(k for k in vars(self) if "ctx" in k)
+    def on_data(self, data):
+        if not self.portfolio.invested:
+            self.set_holdings("AAA", 1)
+'''
+    res, algo = _run(code, _data())
+    assert algo.mine == 1 and algo.seen == [] and "_ql_ctx" not in algo.__dict__
+    assert algo.portfolio["AAA"].invested                   # the engine's own set-up ran despite the custom __init__

@@ -63,7 +63,7 @@ except ImportError:                            # pragma: no cover — the browse
 
 ENGINE_VERSION = "2026.10-ledger.6"   # .6: walk-forward grid rows from each set's own account (no re-runs); share orders
 UNIVERSE_LIMIT = 80                   # one capability limit, shared by the loader, the sandbox and the UI
-LARGE_UNIVERSE_LIMIT = 4000           # server jobs (TRADABLE_UNIVERSE or a long UNIVERSE list) — one global cross-section
+LARGE_UNIVERSE_LIMIT = 12000          # server jobs (TRADABLE_UNIVERSE or a long UNIVERSE list) — one global cross-section
 TRADING_DAYS = 252
 COST_SCHEMA_VERSION = "2026.10"
 COST_SCHEMA: Dict[str, Dict[str, str]] = {

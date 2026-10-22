@@ -402,7 +402,8 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
   // the server sandbox: big universes, and event-driven strategies with a PARAMS grid (a Python loop per bar per
   // parameter set is several times faster natively than in the browser)
   const combos = (chk: any) => Object.values(chk?.params ?? {}).reduce((n: number, v: any) => n * (Array.isArray(v) ? v.length : 1), 1);
-  const onServer = (chk: any) => chk?.ok && (chk.tradable || (chk.universe?.length ?? 0) > UNIVERSE_LIMIT || (chk.mode === 'event' && combos(chk) > 1));
+  // server: a named universe, a long list, a parameter grid, or libraries the browser does not carry (torch, arch …)
+  const onServer = (chk: any) => chk?.ok && (chk.tradable || (chk.universe?.length ?? 0) > UNIVERSE_LIMIT || (chk.mode === 'event' && combos(chk) > 1) || chk.runtime === 'full');
 
   // FX hedge: the code's FX_HEDGE unless overridden here (null = follow the code)
   const [hedge, setHedge] = useState<number | null>(null);

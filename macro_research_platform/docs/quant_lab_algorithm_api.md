@@ -139,30 +139,42 @@ due; risk models adjust them; the execution model orders the difference. Your ow
   on sessions with a fresh row (`.value`, `.time`, `point["column"]`), `history(symbol)`. Plain strategies:
   `CUSTOM_DATA = ["name"]` → `data.custom["name"]`. A row dated d is known from d's close.
 
-## Not available (the report flags these by line and the run is refused)
+## Not available on free data
 
-Historical option and futures chains (`add_option`, `add_future`, …), minute/second/tick data and intraday
-consolidation, downloads from strategy code, live brokerages.
+Historical option and futures chains (`add_option`, `add_future`, …): the report flags them and the built-in layer
+refuses the run. Minute / second / tick history: on real LEAN, intraday requests get **hourly** bars from Yahoo when the
+backtest starts within about the last two years (for the securities the algorithm adds; universes stay daily), and
+daily bars otherwise — every run lists each mapping. QuantConnect's licensed alternative datasets. Live brokerages.
 
 ## Isolation and what code may do
 
-Server runs (deployments, large universes, event-driven jobs) execute in a **throwaway Docker container** per run —
-no network, read-only root filesystem, every capability dropped, no privilege escalation, an unprivileged user, 4 GB /
-2 CPU / 256-process caps; only the run's data folder and the engine are mounted. Without Docker the run falls back to
-a separate process under macOS `sandbox-exec` (no network, no writes outside a temp folder, no reading `/Users`) with
-an audit hook refusing sockets, subprocesses, ctypes and file writes. Browser runs are isolated by the browser.
+Server runs execute in a **throwaway Docker container** per run — no network, read-only root filesystem, every
+capability dropped, no privilege escalation, an unprivileged user, memory / CPU / process caps; only the run's data
+folder and the engine are mounted. Real LEAN runs in its own container the same way. Without Docker the built-in layer
+falls back to a separate process under macOS `sandbox-exec` with an audit hook. Browser runs are isolated by the browser.
 
-Because the walls are at the process level, the code check is a short blocklist, not a whitelist of Python:
+**Libraries.** Strategies may import any installed library. Two runtimes: the platform's scientific stack (numpy,
+pandas, scipy, scikit-learn, statsmodels — also what the browser carries) and **QuantConnect's own research
+environment** in the LEAN image (~800 packages: torch, tensorflow, keras, xgboost, lightgbm, catboost, TA-Lib, ta, arch,
+cvxpy, hmmlearn, pykalman, PyPortfolioOpt, prophet, sktime, statsforecast, numba, …). A strategy that imports
+something outside the first set runs on the server in the second, automatically. On real LEAN every library works. On
+the built-in layer, libraries that call C code through `ctypes` at run time (xgboost, lightgbm, TA-Lib) are refused by
+the run-time guard — QuantConnect algorithms using them run on real LEAN (the default `Run`).
 
-* allowed — any classes and inheritance (including from your own classes and `PythonData` / framework base classes),
-  decorators, `@dataclass`, properties, `super()`, private names, reaching methods through a class, `getattr`;
-  imports of numpy, pandas, scipy, scikit-learn, statsmodels and the standard library without I/O (math, statistics,
-  random, datetime, collections, itertools, functools, operator, heapq, bisect, copy, enum, dataclasses, typing, re,
-  json, hashlib, …);
-* refused — `os`, `sys`, `subprocess`, `socket`, `importlib`, `pickle`, threading and other system modules; `eval`,
-  `exec`, `compile`, `open`; interpreter internals (`__class__`, `__globals__`, `__subclasses__`, frames, metaclasses);
-  pandas / numpy file I/O; and the **engine's internals** (`_ctx`, `_data`, …), which hold the whole price history —
-  reading them would be look-ahead, not a security matter.
+**Python.** The code check is a short blocklist:
+
+* allowed — any Python: classes, inheritance, metaclasses, any special method, decorators, dataclasses, async code,
+  `__class__` / `__dict__` / `vars()`, private names (only `_ql_…` is reserved for the engine), your own `__init__`
+  on the algorithm (with or without `super().__init__()`), `open` (the run-time guard refuses the run's data folder and
+  writes outside a scratch folder), `io.StringIO`, `pickle`, threads, and computed settings in plain strategies
+  (`UNIVERSE = [f"XL{s}" for s in "KFE"]` — evaluated in the sandbox);
+* refused — system, process and network modules (`os`, `sys`, `subprocess`, `ctypes`, `importlib`, `socket`, `requests`,
+  …: there is no network — outside data comes in as custom data or a `get_source` URL on real LEAN), the platform's own
+  modules, `eval` / `exec` / `compile`, and frame / code-object / globals internals. These guard the engine's context,
+  which holds the whole price history: reaching it would be look-ahead (integrity, not security).
+
+**Limits.** Code up to 2 MB; 1,800 s per server run; universes up to 12,000 names; parameter grids up to 500
+combinations; custom data uploads up to 200 MB / 20 M rows / 2,000 columns.
 
 ## Status against the engine-gap review (2026-10)
 

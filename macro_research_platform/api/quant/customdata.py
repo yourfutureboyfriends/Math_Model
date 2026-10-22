@@ -22,9 +22,9 @@ import pandas as pd
 
 DIR = Path(__file__).resolve().parents[2] / "data" / "processed" / "quant_custom_data"      # gitignored
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
-MAX_BYTES = 5_000_000
-MAX_ROWS = 200_000
-MAX_COLS = 20
+MAX_BYTES = 200_000_000
+MAX_ROWS = 20_000_000
+MAX_COLS = 2_000
 
 
 def _path(name: str) -> Path:
