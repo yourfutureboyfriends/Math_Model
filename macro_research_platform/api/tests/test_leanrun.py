@@ -393,3 +393,37 @@ class EmaOpt(QCAlgorithm):
     assert len(r["rows"]) == 2 and all(row["period"][1] < "2021-07-01" for row in r["rows"])      # in-sample only
     assert r["holdout"]["codelab"]["dates"][0] >= "2021-07-01" and r["best"]["parameters"]["fast"] in (10, 40)
     assert {row["metrics"]["sharpe"] for row in r["rows"]} != {None}
+
+
+def test_wrapper_records_final_holdings_and_runs_the_algorithms_own_end_handler():
+    import ast
+    src = "class A:\n    pass\n" + leanrun.daily_wrapper("A", [])
+    ast.parse(src)
+    assert "def on_end_of_algorithm(self):" in src and "quantlab-holdings.json" in src
+    assert '_k.__dict__.get("on_end_of_algorithm") or _k.__dict__.get("OnEndOfAlgorithm")' in src
+
+
+@pytest.mark.network
+@LEAN_UP
+def test_lean_deployment_runs_through_today_and_holds_leans_positions():
+    """Paper trading on real LEAN: the algorithm's own end date is ignored (through the latest close) and the
+    final holdings come back as platform tickers."""
+    from api.quant import trader
+    code = '''from AlgorithmImports import *
+class H(QCAlgorithm):
+    def Initialize(self):
+        self.SetStartDate(2025, 1, 1)
+        self.SetEndDate(2025, 3, 31)
+        self.spy = self.AddEquity("SPY", Resolution.Daily).Symbol
+        self.tlt = self.AddEquity("TLT", Resolution.Daily).Symbol
+    def OnData(self, data):
+        if data.ContainsKey(self.spy) and data.ContainsKey(self.tlt) and not self.Portfolio.Invested:
+            self.SetHoldings(self.spy, 0.6)
+            self.SetHoldings(self.tlt, 0.3)
+'''
+    r = trader.eval_on_lean(code)
+    assert r["dates"][-1] > "2025-06-30"                                        # ran past the algorithm's own end
+    w = r["weights_last"]
+    assert set(w) == {"SPY", "TLT"} and 0.4 < w["SPY"] < 0.8 and 0.15 < w["TLT"] < 0.45
+    raw = trader._raw_from_code(r)
+    assert {p["symbol"] for p in raw["positions"]} == {"SPY", "TLT"} and raw["currency"] == "USD"

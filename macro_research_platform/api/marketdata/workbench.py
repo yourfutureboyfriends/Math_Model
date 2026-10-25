@@ -180,8 +180,8 @@ def formula_chart(exprs: List[str], period: str = "5y") -> Dict[str, Any]:
             val = _eval(tree, env)
         except ZeroDivisionError:
             raise NotFound(f"Division by zero in '{e}'.")
-        if not isinstance(val, pd.Series):
-            val = pd.Series(val, index=frame.index)
+        if not isinstance(val, pd.Series):                  # a constant or a scalar (e.g. "2", "mean(x)")
+            val = pd.Series(val, index=idx)
         val = val.replace([np.inf, -np.inf], np.nan)
         val = val[val.index >= pd.Timestamp(date.today() - timedelta(days=days))].dropna()
         if val.empty:

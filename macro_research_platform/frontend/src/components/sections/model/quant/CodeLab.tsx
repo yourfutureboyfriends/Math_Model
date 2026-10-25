@@ -521,7 +521,9 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
   };
   const deploy = async () => {
     if (!(await ask({ title: `Deploy “${name || 'this strategy'}”?`, confirmLabel: 'Deploy',
-      body: `Paper capital ${money(capital, ccy)}${ccy !== 'USD' ? ` (the account is kept in ${ccy})` : ''}. The server re-runs your code daily in a locked-down sandbox; no real orders are placed.` }))) return;
+      body: `Paper capital ${money(capital, ccy)}${ccy !== 'USD' ? ` (the account is kept in ${ccy})` : ''}. ${leanFirst
+        ? "This QuantConnect algorithm runs on real LEAN: the server re-runs it on QuantConnect's own engine through each latest close; the paper book follows LEAN's returns and holds LEAN's final positions."
+        : 'The server re-runs your code daily in a locked-down sandbox.'} No real orders are placed.` }))) return;
     setErr(null); setBusy(true); setStatus('Deploying…');
     try {
       const d = await api('/api/v1/quant/trader/deploy', { json: { spec: { kind: 'code', name: name || 'Code strategy', code, costs: runCosts }, capital, strategy_id: strategyId } });

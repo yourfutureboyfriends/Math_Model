@@ -19,7 +19,7 @@ import logging
 import math
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 _cache: Dict[str, tuple] = {}

@@ -132,7 +132,11 @@ def _fetch_ebp() -> List[List]:
     rows = []
     for line in r.text.strip().splitlines()[1:]:
         d, gz, ebp, prob = line.split(",")[:4]
-        m, _, y = d.split("/")
+        d = d.strip()
+        if "/" in d:                       # the file used M/D/YYYY until 2026; now ISO YYYY-MM-DD
+            m, _, y = d.split("/")
+        else:
+            y, m = d.split("-")[:2]
         rows.append([f"{y}-{int(m):02d}", float(gz), float(ebp), float(prob)])
     return rows
 

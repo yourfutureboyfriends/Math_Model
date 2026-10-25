@@ -91,8 +91,16 @@ def code_universe(spec: Dict[str, Any]) -> List[str]:
             return []
         head = sandbox.check(entry["code"])
     else:
-        head = sandbox.check(spec.get("code") or "")
+        head = sandbox.check(spec.get("code") or "", uploads_required=spec.get("engine") != "lean")
     return head["universe"] + (["__TRADABLE__"] if head.get("tradable") else [])
+
+
+def _lean_available() -> bool:
+    try:
+        from api.quant import leanrun
+        return bool(leanrun.status()["available"])
+    except Exception:                                                          # noqa: BLE001
+        return False
 
 
 def eval_code_spec(spec: Dict[str, Any], light: bool = False) -> Dict[str, Any]:
@@ -104,7 +112,28 @@ def eval_code_spec(spec: Dict[str, Any], light: bool = False) -> Dict[str, Any]:
         if not entry.get("code"):                            # portfolios and 13F strategies: the server's own result
             return library.result(spec["library"])
         return codeserver.evaluate_code(entry["code"], spec.get("costs"), trusted=True, light=light)
+    if spec.get("engine") == "lean":
+        return eval_on_lean(spec["code"])
     return sandbox.run(spec["code"], spec.get("costs"), light=light)
+
+
+def eval_on_lean(code: str) -> Dict[str, Any]:
+    """A QuantConnect algorithm deployed on real LEAN: LEAN runs it through the latest close (whatever end date the
+    algorithm sets); its daily returns and its final holdings (as target weights) feed the paper book — the same
+    point-in-time record as any deployment, so the live days are exactly what LEAN did after deployment."""
+    from api.quant import leanrun
+    out = leanrun.run(code, through_today=True)
+    cl = out.get("codelab")
+    if not cl:
+        raise engine.SpecError("LEAN produced no equity curve: " + "; ".join(out.get("runtime_errors") or [])[:200])
+    if out.get("runtime_errors"):
+        raise engine.SpecError("LEAN reported a runtime error: " + out["runtime_errors"][-1][:200])
+    h = out.get("holdings") or {}
+    weights = {}
+    for x in h.get("holdings") or []:
+        weights[x["ticker"]] = weights.get(x["ticker"], 0.0) + float(x.get("weight") or 0.0)
+    return {**cl, "weights_last": weights,
+            "provenance": {**(cl.get("provenance") or {}), "account_currency": "USD", "engine": "QuantConnect LEAN"}}
 
 
 # ── Per-deployment results: light, cached on disk, refreshed in the background ──
@@ -231,11 +260,17 @@ def _deploy_code(owner: str, spec_in: Dict[str, Any], capital: float, strategy_i
         code = spec_in.get("code") or ""
         spec["code"] = code
     try:
-        head = sandbox.check(code) if code else None
+        lean_ok = "QCAlgorithm" in (code or "") and spec_in.get("engine") != "builtin" and _lean_available()
+        head = sandbox.check(code, uploads_required=not lean_ok) if code else None   # LEAN reads get_source itself
     except sandbox.SandboxError as e:
         raise engine.SpecError(str(e))
     if isinstance(spec_in.get("costs"), dict):
         spec["costs"] = {k: float(v) for k, v in spec_in["costs"].items() if isinstance(v, (int, float))}
+    # A QuantConnect algorithm runs on real LEAN when it is installed (the engine is fixed at deployment, so the
+    # record never switches engines); engine="builtin" keeps the platform's layer.
+    if kind != "library" and (head or {}).get("qc") and spec_in.get("engine") != "builtin":
+        if _lean_available():
+            spec["engine"] = "lean"
     ccy = (head or {}).get("account") or "USD"
     cap_usd = capital * float(codeserver.usd_per(ccy, [time.strftime("%Y-%m-%d")]).iloc[-1])
     if not 1_000 <= cap_usd <= 1_000_000_000:

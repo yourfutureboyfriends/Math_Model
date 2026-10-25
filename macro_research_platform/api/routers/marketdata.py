@@ -1147,6 +1147,6 @@ async def mkt_journal_delete(jid: int, request: Request):
 
 
 @router.get("/api/v1/mkt/map")
-async def mkt_world_map():
+async def mkt_world_map_markets():
     from api.marketdata import monitors
     return await _run(monitors.world_map_markets, timeout=90)

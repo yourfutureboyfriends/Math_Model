@@ -400,7 +400,7 @@ def prepare(tickers: List[str], start: str, root: Path, say=lambda m: None, univ
     warm = (pd.Timestamp(start) - pd.Timedelta(days=500)).strftime("%Y-%m-%d")    # history before the start for warm-up
     from api.quant import codelab
     d = codeserver.load_data(usable, warm, allow_missing=True, limit=codelab.LARGE_UNIVERSE_LIMIT)
-    rows, notes, eq_frames = {}, [], {}
+    rows, notes, eq_frames, back = {}, [], {}, {}
     for t in usable:
         if t not in d.close.columns:
             skipped.append(t)
@@ -409,6 +409,13 @@ def prepare(tickers: List[str], start: str, root: Path, say=lambda m: None, univ
         fr = pd.DataFrame({"open": d.open[t], "high": d.high[t], "low": d.low[t], "close": d.close[t],
                            "volume": d.volume[t]})[obs]
         kind, key = kinds[t]
+        if kind == "equity":
+            back[key.upper()] = t
+        elif kind == "crypto":
+            back.update({p.upper(): t for p in ([f"{key[0]}{key[1]}"] + ([f"{key[0]}{q}" for q in ("USDT", "USDC", "BUSD", "FDUSD")]
+                                                                         if key[1] == "USD" else []))})
+        else:
+            back[key.upper()] = t
         if kind == "equity":
             rows[t] = write_daily(root, key, fr)
             if rows[t]:
@@ -442,6 +449,7 @@ def prepare(tickers: List[str], start: str, root: Path, say=lambda m: None, univ
         skipped = [t for t in skipped if t not in names]
     return {"tickers": rows if not universe else {t: rows[t] for t in rows if t not in names or t in tickers},
             "instruments": len(rows), "skipped": skipped, "notes": notes, "universe": uni, "membership": minfo,
+            "lean_to_platform": back,
             "data_start": str(d.close.index[0].date()), "data_end": str(d.close.index[-1].date())}
 
 
@@ -767,6 +775,29 @@ class zzQuantLabDaily({cls}):
             y, m, d = (int(x) for x in _QL_END.split("-"))
             self.SetEndDate(y, m, d)
 
+    def on_end_of_algorithm(self):
+        for _k in type(self).__mro__[1:]:                 # the algorithm's own handler first, if it has one
+            _f = _k.__dict__.get("on_end_of_algorithm") or _k.__dict__.get("OnEndOfAlgorithm")
+            if _f is not None and _k.__module__ != "QuantConnect.Algorithm":
+                _f(self)
+                break
+        try:                                             # final holdings (the paper trader's targets)
+            import json as _json
+            tv = float(self.Portfolio.TotalPortfolioValue)
+            rows = []
+            for kv in self.Portfolio:
+                h = kv.Value
+                if h.Invested:
+                    rows.append({{"symbol": str(kv.Key.Value), "quantity": float(h.Quantity),
+                                  "value": float(h.HoldingsValue), "weight": float(h.HoldingsValue) / tv if tv else 0.0}})
+            with open("/Results/quantlab-holdings.json", "w") as _f:
+                _json.dump({{"total_value": tv, "cash": float(self.Portfolio.Cash), "time": str(self.Time),
+                            "holdings": rows}}, _f)
+        except Exception as e:
+            _ql_note(f"final holdings not recorded: {{type(e).__name__}}: {{e}}")
+
+    OnEndOfAlgorithm = on_end_of_algorithm
+
     def get_parameter(self, name, *default):
         if name in _QL_PARAMS:
             v = _QL_PARAMS[name]
@@ -1004,6 +1035,15 @@ def _execute(ctx: Dict[str, Any], job: Optional[Any] = None, timeout: int = 1800
             raise LeanError("LEAN did not finish: " + (" | ".join(err[-4:]) or console[-800:]))
         rt_err = [l for l in console.splitlines() if "Runtime Error" in l or "PythonException" in l]
         notes = list(ctx["prep"]["notes"])
+        hf = results / "quantlab-holdings.json"
+        if hf.exists():
+            try:
+                h = json.loads(hf.read_text())
+                back = ctx["prep"].get("lean_to_platform") or {}
+                h["holdings"] = [{**x, "ticker": back.get(x["symbol"].upper(), x["symbol"].upper())} for x in h["holdings"]]
+                out["holdings"] = h
+            except (OSError, ValueError, KeyError):
+                pass
         qn = results / "quantlab-notes.txt"
         if qn.exists():
             notes += [l for l in qn.read_text().splitlines() if l][:20]
@@ -1021,13 +1061,15 @@ def _execute(ctx: Dict[str, Any], job: Optional[Any] = None, timeout: int = 1800
             pass
 
 
-def run(code: str, job: Optional[Any] = None, timeout: int = 1800) -> Dict[str, Any]:
-    """Backtest a QuantConnect algorithm on real LEAN. Returns LEAN's statistics, equity curve and orders."""
+def run(code: str, job: Optional[Any] = None, timeout: int = 1800, through_today: bool = False) -> Dict[str, Any]:
+    """Backtest a QuantConnect algorithm on real LEAN. Returns LEAN's statistics, equity curve, orders and final
+    holdings. through_today: run to the latest data whatever end date the algorithm sets (paper trading)."""
     say = (lambda m: job.progress(m)) if job is not None else (lambda m: None)
     ctx = _setup(code, say)
     try:
         say(f"Running on LEAN ({IMAGE}) — {len(ctx['prep']['tickers'])} tickers…")
-        return _execute(ctx, job, timeout)
+        ov = {"end": ctx["prep"]["data_end"]} if through_today else None
+        return _execute(ctx, job, timeout, ov)
     finally:
         _cleanup(ctx)
 

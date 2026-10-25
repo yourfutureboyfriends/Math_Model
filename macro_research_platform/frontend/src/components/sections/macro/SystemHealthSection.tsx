@@ -33,6 +33,12 @@ export function SystemHealthSection() {
   const [fresh, setFresh] = useState<Freshness | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [monitor, setMonitor] = useState<any>(null);       // free-data source monitor (api/source_monitor.py)
+  const [checking, setChecking] = useState(false);
+  const checkNow = async () => {
+    setChecking(true);
+    try { const r = await fetch('/api/v1/system/sources/check', { method: 'POST' }); if (r.ok) setMonitor(await r.json()); } finally { setChecking(false); }
+  };
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -41,11 +47,12 @@ export function SystemHealthSection() {
       if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`);
       return r.json();
     };
-    const [h, s, f] = await Promise.allSettled([get('/api/health'), get('/api/v1/health/sources'), get('/api/v1/freshness')]);
+    const [h, s, f, m] = await Promise.allSettled([get('/api/health'), get('/api/v1/health/sources'), get('/api/v1/freshness'), get('/api/v1/system/sources')]);
     if (h.status === 'fulfilled') setHealth(h.value);
     if (s.status === 'fulfilled') setSources(s.value);
     if (f.status === 'fulfilled') setFresh(f.value);
-    const failed = [h, s, f].filter((x) => x.status === 'rejected') as PromiseRejectedResult[];
+    if (m.status === 'fulfilled') setMonitor(m.value);
+    const failed = [h, s, f, m].filter((x) => x.status === 'rejected') as PromiseRejectedResult[];
     setError(failed.length ? failed.map((x) => x.reason?.message).join('; ') : null);
     setBusy(false);
   }, []);
@@ -143,6 +150,32 @@ export function SystemHealthSection() {
               ))}
             </>
           )}
+        </div>
+
+        <div className="border border-border bg-surface-1 p-3 lg:col-span-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-2xs text-text-tertiary uppercase tracking-wider">Free data sources — parsed and dated every {monitor?.interval_hours ?? 6} h</div>
+            <button onClick={checkNow} disabled={checking} className="text-2xs px-2 py-0.5 border border-border hover:border-bloomberg disabled:opacity-40">{checking ? 'Checking…' : 'Check now'}</button>
+          </div>
+          {!monitor?.sources?.length ? <div className="text-2xs text-text-tertiary">First check runs 5 minutes after start.</div> : (
+            <>
+              <div className="text-xs text-text-secondary mb-1">
+                {(['ok', 'stale', 'degraded', 'failing'] as const).map((k) => (
+                  <span key={k} className={`mr-3 font-mono ${k === 'ok' ? 'text-green' : k === 'failing' ? 'text-red' : 'text-amber'}`}>{monitor.summary?.[k] ?? 0} {k}</span>))}
+                <span className="text-2xs text-text-tertiary">checked {String(monitor.checked_at ?? '').replace('T', ' ').slice(0, 16)}</span>
+              </div>
+              <table className="w-full text-2xs">
+                <tbody>
+                  {monitor.sources.map((r: any) => (
+                    <tr key={r.name} className="border-b border-border-subtle last:border-0" title={`Feeds: ${r.feeds}${r.error ? `\n${r.error}` : ''}`}>
+                      <td className="py-0.5 pr-2 text-text-secondary">{r.name}</td>
+                      <td className={`py-0.5 pr-2 font-mono uppercase ${r.status === 'ok' ? 'text-green' : r.status === 'failing' ? 'text-red' : 'text-amber'}`}>{r.status}</td>
+                      <td className="py-0.5 pr-2 font-mono text-text-tertiary">{r.latest ?? '—'}{r.age_days != null && r.age_days >= 0 ? ` (${r.age_days}d)` : ''}</td>
+                      <td className="py-0.5 text-text-tertiary truncate max-w-[22rem]">{r.status === 'ok' ? '' : `${r.error ?? ''} · since ${String(r.since ?? '').slice(0, 16).replace('T', ' ')}`}</td>
+                    </tr>))}
+                </tbody>
+              </table>
+            </>)}
         </div>
       </div>
     </section>

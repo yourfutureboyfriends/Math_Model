@@ -1560,6 +1560,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[STARTUP] Could not start endpoints warm loop: {e}")
 
+    try:   # free-data source monitor: every source parsed and dated, every 6 hours (alerts on new failures)
+        if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("MACRO_NO_BACKGROUND") == "1":
+            raise RuntimeError("background loops disabled (tests / MACRO_NO_BACKGROUND)")
+        import threading as _th
+        from api import source_monitor
+        _th.Thread(target=source_monitor.loop, name="source-monitor", daemon=True).start()
+        logger.info("[STARTUP] Source monitor started (every 6 h)")
+    except Exception as e:
+        logger.info(f"[STARTUP] Source monitor not started: {e}")
+
     try:   # Daily Brief delivery on a schedule (opt-in: BRIEF_DELIVERY_TIME + an alert channel in .env)
         from api import brief_delivery
         if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("MACRO_NO_BACKGROUND") == "1":
@@ -2825,6 +2835,24 @@ def _provider_registry():
         from api.providers.adapters import build_default_registry
         _PROVIDER_REGISTRY = build_default_registry()
     return _PROVIDER_REGISTRY
+
+
+@app.get("/api/v1/system/sources")
+async def system_sources_v1():
+    """Every free data source the platform parses: does it still parse, how old is its latest observation against
+    its normal lag (ok / stale / degraded / failing), since when (api/source_monitor.py, checked every 6 h)."""
+    from api import source_monitor
+    return source_monitor.status()
+
+
+@app.post("/api/v1/system/sources/check")
+async def system_sources_check_v1(request: Request):
+    """Run the source checks now (admin / PM)."""
+    from api.core.access import require_roles
+    from api import source_monitor
+    require_roles(request, {"pm"})
+    await _aio_to_thread(source_monitor.run_checks)
+    return source_monitor.status()
 
 
 @app.get("/api/v1/providers")
@@ -4319,7 +4347,7 @@ async def get_horizon_risks():
         if finnhub_key:
             try:
                 url = f"https://finnhub.io/api/v1/calendar/economic?from={today.isoformat()}&to={horizon_end.isoformat()}&token={finnhub_key}"
-                response = requests.get(url, timeout=10)
+                response = await _aio_to_thread(lambda: requests.get(url, timeout=10))    # off the event loop
                 if response.status_code == 200:
                     data = response.json()
                     economic_events = data.get("economicCalendar", [])
