@@ -64,3 +64,44 @@ not by the existence of a button. "Evidence" names the test or the file and what
    a staging suggestion. (#7, #10, #16–#22)
 4. Analyst pitch review: versioned pitches, scenarios, kill criteria with automatic checks, PMC decision. (#9)
 5. Simulated fills with modelled spread, impact and taxes. (#8)
+
+## 4. Implemented (25 Oct 2026) — verified
+
+| Item | Status after | Commit | Verification |
+|---|---|---|---|
+| #1 cash with non-USD holdings | **Fixed** | 6bcad9d8 | Throwaway book: cash −$370,000 → $963,661 (= $1m − cost bases); NAV = cash + market value; test_fx_accounting |
+| #2 base currency | **Fixed** (USD default; GBP selectable) | 6bcad9d8 | Same book in GBP: AZN.L £12,824 exactly (pence ÷ 100, no FX); AAPL cost at entry-date GBP/USD |
+| #3 blotter currencies | **Fixed** | 6bcad9d8 | Fills store currency + rates; totals convert per row (test) |
+| #4 local vs FX P&L | **Added** | 6bcad9d8 | fx_pnl + local_pnl = unrealised (test) |
+| #5 BIFS benchmark | **Added** (proxy, from 5 Sep 2024) | 5a5cace7 | 1y +12.9% GBP, vol 10.8%; legs 13.7% / 11.9%; blend arithmetic tested on synthetic legs |
+| #25 tracking error vs benchmark | **Fixed** (base currency, BIFS) | 5a5cace7 | NAV matches the fund overview exactly; TE ≈ benchmark vol for a cash-heavy book |
+| #7 pre-trade feasibility | **Added** | 8f227cae | Live: AZN.L buy → 62 bp (50 bp SDRT), earnings and Fed flagged; offline logic tests |
+| #8 simulated fills | **Improved** | 8f227cae | close ± modelled spread + impact; taxes booked; reference price kept (test) |
+| #9 pitch review | **Added** | 8f227cae | Four-eyes enforced over HTTP; versions kept; kill criteria evaluated (tests) |
+| #10 mandate | **Added** | 8f227cae | Long-only, DM listing, max position / sector / cash, participation, days (tests) |
+| #16 technicals | **Added** | 8f227cae | Formula tests (RSI extremes, ATR, SMA, Bollinger σ, drawdown, volume z, RS) |
+
+Test suite: 1,040 passed, 5 skipped (network / Docker-gated tests included where available).
+
+## 5. Roadmap (not done)
+
+**P0 — reliable operation**
+* Brinson attribution is still against SPY and in local units: rebuild it in the base currency against the BIFS
+  benchmark at sector / country level (needs the proxy ETFs' sector and country weights; MSCI's are licensed).
+* Switch the live fund to BIFS settings (base GBP, benchmark BIFS, mandate) — a decision for the fund, not done here.
+* NAV history recorded before a base-currency change stays in the old currency: record the currency per snapshot
+  and restate or start a new series when it changes.
+* Corporate actions on held positions (splits) are not applied to quantity / cost automatically.
+
+**P1 — professional buy-side**
+* Benchmark-relative active weights by country and sector (proxy ETF holdings files).
+* Order lifecycle link: pitch → pre-trade assessment → order → fills → TCA vs the pre-trade estimate, in one view.
+* Post-trade reconciliation report (positions vs blotter), monthly performance report in GBP vs benchmark.
+* Pitch kill criterion "underperform benchmark since approval" needs the approval-date benchmark level stored
+  (column exists; filled from the next approval).
+* Earnings dates: distinguish company-confirmed from estimated (needs an IR-calendar source).
+
+**P2 — optional**
+* Intraday VWAP / TWAP execution simulation; venue selection beyond the primary listing.
+* Guidance-change tracking (paid feed).
+* Real-capital broker routing (requires separate authorisation and safeguards; not built).
