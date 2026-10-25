@@ -45,6 +45,19 @@ def init_db() -> None:
             )
             """
         )
+        # each snapshot's currency: a NAV recorded in USD must not be read as GBP after the base currency changes.
+        # Rows from before this column existed were taken in the base currency of that time — the current one, since
+        # the base could not be changed before multi-currency accounting (and its migration) arrived together.
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(nav_history)")}
+        if "currency" not in cols:
+            try:
+                conn.execute("ALTER TABLE nav_history ADD COLUMN currency TEXT")
+                row = conn.execute("SELECT value FROM fund_settings WHERE key = 'base_currency'").fetchone()
+                cur = json.loads(row["value"]) if row else DEFAULT_SETTINGS["base_currency"]
+                conn.execute("UPDATE nav_history SET currency = ? WHERE currency IS NULL", (cur,))
+            except Exception as e:                                             # another process added it first
+                if "duplicate column" not in str(e):
+                    raise
         conn.commit()
 
 
@@ -89,11 +102,12 @@ def set_limit_overrides(limits: Dict[str, Dict[str, float]]) -> None:
 
 
 def record_nav(row: Dict[str, Any]) -> Dict[str, Any]:
-    """Upsert today's NAV snapshot (one row per date)."""
+    """Upsert today's NAV snapshot (one row per date), in the fund's base currency (recorded on the row)."""
     init_db()
-    row = {**row, "recorded_at": datetime.now(timezone.utc).isoformat()}
+    row = {**row, "recorded_at": datetime.now(timezone.utc).isoformat(),
+           "currency": row.get("currency") or get_settings().get("base_currency") or "USD"}
     cols = ["date", "nav", "gross", "net", "unrealized_pnl", "realized_pnl",
-            "var95_1d", "regime", "positions", "recorded_at"]
+            "var95_1d", "regime", "positions", "recorded_at", "currency"]
     with _conn() as conn:
         conn.execute(
             f"INSERT INTO nav_history({','.join(cols)}) VALUES({','.join('?' * len(cols))}) "
@@ -103,8 +117,30 @@ def record_nav(row: Dict[str, Any]) -> Dict[str, Any]:
     return row
 
 
-def nav_history(limit: Optional[int] = None) -> List[Dict[str, Any]]:
+def nav_history(limit: Optional[int] = None, currency: Optional[str] = "current") -> List[Dict[str, Any]]:
+    """The track record in one currency: by default the fund's current base currency, from the last change of base
+    currency on (a series in another currency is never mixed in or relabelled). currency=None: every row."""
     init_db()
     with _conn() as conn:
         rows = [dict(r) for r in conn.execute("SELECT * FROM nav_history ORDER BY date")]
+    if currency:
+        cur = (get_settings().get("base_currency") or "USD") if currency == "current" else currency.upper()
+        last_other = max((i for i, r in enumerate(rows) if (r.get("currency") or cur) != cur), default=-1)
+        rows = rows[last_other + 1:]                  # the current series: after the last row in another currency
     return rows[-limit:] if limit else rows
+
+
+def nav_series() -> List[Dict[str, Any]]:
+    """The NAV record split into its runs by currency: [{currency, start, end, snapshots, current}]."""
+    rows = nav_history(currency=None)
+    cur = get_settings().get("base_currency") or "USD"
+    runs: List[Dict[str, Any]] = []
+    for r in rows:
+        c = r.get("currency") or cur
+        if runs and runs[-1]["currency"] == c:
+            runs[-1]["end"], runs[-1]["snapshots"] = r["date"], runs[-1]["snapshots"] + 1
+        else:
+            runs.append({"currency": c, "start": r["date"], "end": r["date"], "snapshots": 1})
+    for i, run in enumerate(runs):
+        run["current"] = i == len(runs) - 1 and run["currency"] == cur
+    return runs

@@ -52,6 +52,7 @@ import {
   TradeWorkflowSection,
   PreTradeDeskSection,
   PitchReviewSection,
+  TradeLifecycleSection,
   CTATrendSection,
   COTPositioningSection,
   BusinessLayerSection,
@@ -742,6 +743,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Pre-Trade Desk">
           <Suspense fallback={<SectionSkeleton />}>
             <PreTradeDeskSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Trade Lifecycle">
+          <Suspense fallback={<SectionSkeleton />}>
+            <TradeLifecycleSection />
           </Suspense>
         </ErrorBoundary>
       </div>

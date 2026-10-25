@@ -83,19 +83,27 @@ not by the existence of a button. "Evidence" names the test or the file and what
 
 Test suite: 1,040 passed, 5 skipped (network / Docker-gated tests included where available).
 
-## 5. Roadmap (not done)
+## 5. Roadmap
 
-**P0 — reliable operation**
-* Brinson attribution is still against SPY and in local units: rebuild it in the base currency against the BIFS
-  benchmark at sector / country level (needs the proxy ETFs' sector and country weights; MSCI's are licensed).
-* Switch the live fund to BIFS settings (base GBP, benchmark BIFS, mandate) — a decision for the fund, not done here.
-* NAV history recorded before a base-currency change stays in the old currency: record the currency per snapshot
-  and restate or start a new series when it changes.
-* Corporate actions on held positions (splits) are not applied to quantity / cost automatically.
+**P0 — reliable operation** — done 25 Oct 2026 (except the decision left to the fund)
+* ~~Brinson attribution against SPY in local units~~ → **done**: Brinson–Fachler in the base currency against the
+  fund's benchmark (BIFS default), sector weights from both proxy ETFs (SWDA.L, MWEQ.L), sector segments from MSCI
+  World sector UCITS ETFs; the gap between the real blend and its sector segments is shown as "benchmark
+  construction" so the effects reconcile to the real active return. Country level not done (no free country
+  return series per sector).
+* Switch the live fund to BIFS settings — superseded: BIFS now runs as its own fund (GBP, BIFS benchmark) beside the
+  original fund; its capital still needs to be set by the fund.
+* ~~NAV history currency~~ → **done**: every snapshot records its currency; a base-currency change starts a new
+  series and the old one is kept, never relabelled (`/api/v1/fund/nav-series`).
+* ~~Splits not applied~~ → **done**: daily job applies unambiguous splits (shares × ratio, cost ÷ ratio, once only,
+  audit-logged); splits with trades on/after the ex-date are listed for review; analytics put earlier fills into
+  today's share units.
 
 **P1 — professional buy-side**
 * Benchmark-relative active weights by country and sector (proxy ETF holdings files).
-* Order lifecycle link: pitch → pre-trade assessment → order → fills → TCA vs the pre-trade estimate, in one view.
+* ~~Order lifecycle link~~ → **done**: pitch → stored pre-trade assessment → order (linked) → approval → fill, with
+  TCA of each fill against its own estimate (Trade Lifecycle panel, `/api/v1/trading/lifecycle`). Simulated fills
+  match the estimate by construction; the test of the cost model needs broker fills.
 * Post-trade reconciliation report (positions vs blotter), monthly performance report in GBP vs benchmark.
 * Pitch kill criterion "underperform benchmark since approval" needs the approval-date benchmark level stored
   (column exists; filled from the next approval).

@@ -72,6 +72,7 @@ export const PANEL_LABELS: Record<string, string> = {
   'trade-recommendations': 'Allocation Recommendations',
   'pitch-review': 'Pitch Review',
   'pretrade-desk': 'Pre-Trade Desk',
+  'trade-lifecycle': 'Trade Lifecycle',
   'trade-workflow': 'Pre-Trade Analysis',
   'scenario-analysis': 'Scenario Analysis',
   'momentum-veto': 'Momentum Filter',

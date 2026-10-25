@@ -25,7 +25,8 @@ def holdings_by_day(positions: Sequence[Dict], trades: Sequence[Dict], days: Seq
     """{day: {symbol: quantity at that day's close}}.
 
     Quantity on day d = today's quantity − Σ signed quantities of trades dated after d. A symbol with no trades at
-    all is held from its position's entry_date (0 before it)."""
+    all is held from its position's entry_date (0 before it). A trade's optional "split_factor" (shares today per
+    share then) puts fills from before a split into today's share units, matching split-adjusted price history."""
     cur: Dict[str, float] = {}
     entry: Dict[str, str] = {}
     for p in positions:
@@ -38,6 +39,7 @@ def holdings_by_day(positions: Sequence[Dict], trades: Sequence[Dict], days: Seq
     for t in trades:
         s = str(t["symbol"]).upper()
         q = float(t.get("quantity") or 0) * (1 if str(t.get("side", "")).upper() in ("BUY", "COVER", "B") else -1)
+        q *= float(t.get("split_factor") or 1.0)       # a fill before a split, in today's share units
         signed.append((str(t.get("ts") or t.get("date"))[:10], s, q))
         traded.add(s)
         cur.setdefault(s, 0.0)

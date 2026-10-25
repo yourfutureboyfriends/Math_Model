@@ -65,14 +65,24 @@ def _spy_sector_weights() -> Dict[str, float]:
 
 
 def _book(book: Optional[str]):
-    from api import portfolio_store, fund_store
+    from api import blotter_store, portfolio_store, fund_store
+    blotter_store.init_db()                          # a new fund has no trades table until its first fill
     pos = portfolio_store.list_positions(book)
     with portfolio_store._conn() as c:
         q = "SELECT ts, book, symbol, side, quantity, price, commission, source FROM trades"
         rows = c.execute(q + (" WHERE book = ?" if book else ""), ((book,) if book else ())).fetchall()
-    trades = [dict(r) for r in rows]
+    trades = _split_adjusted([dict(r) for r in rows])
     st = fund_store.get_settings()
     return pos, trades, float(st.get("capital") or 0), float(st.get("realized_pnl") or 0)
+
+
+def _split_adjusted(trades: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Each fill with its split factor (shares today per share then), against split-adjusted price history."""
+    from api import corporate_actions as ca
+    known = {s: ca.splits(s) for s in {str(t["symbol"]).upper() for t in trades}}
+    for t in trades:
+        t["split_factor"] = ca.split_factor_after(str(t["symbol"]).upper(), t["ts"], known[str(t["symbol"]).upper()])
+    return trades
 
 
 def _daily_rets(px: Dict[str, Dict[str, float]], days: List[str]) -> Dict[str, float]:
@@ -165,6 +175,178 @@ def brinson(book: Optional[str] = None, benchmark: str = "SPY", max_days: int = 
             "limitations": ("Benchmark sector weights each day are backed out from today's by each sector ETF's price "
                             "change since (exact for a cap-weighted index without reconstitution); holdings outside the "
                             "benchmark's sectors (ETFs, the benchmark itself) are their own segments; cash earns 0.")}
+
+
+# MSCI World sectors (Yahoo / Morningstar sector names) → an MSCI World sector UCITS ETF (London); the segment
+# return of the benchmark in each sector. No Xtrackers MSCI World real-estate ETF exists, so real estate uses iShares
+# Developed Markets Property Yield (FTSE EPRA Nareit Developed Dividend+), labelled as a proxy.
+WORLD_SECTOR_ETF = {"Technology": "XDWT.L", "Financial Services": "XDWF.L", "Healthcare": "XDWH.L",
+                    "Consumer Cyclical": "XDWC.L", "Consumer Defensive": "XDWS.L", "Energy": "XDWE.L",
+                    "Industrials": "XDWI.L", "Basic Materials": "XDWM.L", "Utilities": "XDWU.L",
+                    "Communication Services": "XWTS.L", "Real Estate": "IWDP.L"}
+
+
+def _proxy_sector_weights(sym: str) -> Dict[str, float]:
+    """A fund's sector weights as Yahoo reports them (Morningstar sectors), normalised to 1."""
+    from api.marketdata.core import _cached
+
+    def fetch():
+        import yfinance as yf
+        return yf.Ticker(sym).funds_data.sector_weightings or {}
+    sw = _cached(f"pa:sectorw:{sym}", 24 * 3600, fetch) or {}
+    w = {_SPY_SECTOR_KEYS[k]: float(v) for k, v in sw.items() if k in _SPY_SECTOR_KEYS and v}
+    tot = sum(w.values())
+    return {k: v / tot for k, v in w.items()} if tot else {}
+
+
+def benchmark_sector_weights(code: str) -> Dict[str, Any]:
+    """The composite benchmark's sector weights: each leg's proxy ETF weights × the leg's weight."""
+    from api.calculations import benchmark as bm
+    out: Dict[str, float] = {}
+    legs = {}
+    for leg in bm.BENCHMARKS[code]["legs"]:
+        w = _proxy_sector_weights(leg["proxy"])
+        if not w:
+            raise ValueError(f"no sector weights for {leg['proxy']}")
+        legs[leg["proxy"]] = {k: round(v, 4) for k, v in w.items()}
+        for k, v in w.items():
+            out[k] = out.get(k, 0.0) + leg["weight"] * v
+    return {"weights": out, "legs": legs}
+
+
+def brinson_base(book: Optional[str] = None, code: str = "BIFS", max_days: int = 252) -> Dict[str, Any]:
+    """Brinson–Fachler attribution in the fund's base currency against a composite benchmark (e.g. BIFS): returns of
+    holdings and of the benchmark's sector segments all converted to the base currency each day (local return and
+    currency together), sector weights of the benchmark from its proxy ETFs, Carino-linked. The benchmark's own
+    return is the real blend; the gap between it and the sum of its sector segments is reported, not hidden."""
+    import pandas as pd
+    from api.calculations import benchmark as bm
+    pos, trades, _, _ = _book(book)
+    if not pos and not trades:
+        return {"available": False, "reason": "No positions or trades in this book."}
+    bk = book_in_base(book)
+    base = bk["base"]
+    bser = bm.series(code, base)
+    bench_r_s = bser["returns"]
+    if bench_r_s.empty:
+        return {"available": False, "reason": f"No history for the {code} benchmark."}
+    try:
+        bwi = benchmark_sector_weights(code)
+    except Exception as e:                                                     # noqa: BLE001
+        return {"available": False, "reason": f"Benchmark sector weights unavailable ({e})."}
+    bw = bwi["weights"]
+    syms = sorted({str(p["symbol"]).upper() for p in pos} | {str(t["symbol"]).upper() for t in trades})
+
+    def _px(s):
+        try:
+            return bm.in_base(s, base)
+        except Exception:                                                     # noqa: BLE001 — reported as unpriced
+            return pd.Series(dtype=float)
+    seg_syms = sorted(set(WORLD_SECTOR_ETF.values()))
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        px = dict(zip(syms, ex.map(_px, syms)))
+        sectors = dict(zip(syms, ex.map(_sector_of, syms)))
+        seg_px = dict(zip(seg_syms, ex.map(_px, seg_syms)))
+    unpriced = [s for s in syms if px[s].empty]
+    days_all = [d.strftime("%Y-%m-%d") for d in bench_r_s.index]
+    first = min([str(p.get("entry_date") or "9999")[:10] for p in pos] + [str(t["ts"])[:10] for t in trades])
+    prior = [d for d in days_all if d < first]
+    days = ([prior[-1]] if prior else []) + [d for d in days_all if d >= first]
+    days = days[-max_days - 1:]
+    if len(days) < 3:
+        return {"available": False, "reason": f"Fewer than three sessions since the first holding with the benchmark "
+                                              f"available (it starts {bser['start']})."}
+    P = {s: {k.strftime("%Y-%m-%d"): float(v) for k, v in px[s].items()} for s in syms}
+    SP = {e: {k.strftime("%Y-%m-%d"): float(v) for k, v in seg_px[e].items()} for e in seg_syms}
+
+    def at(series: Dict[str, float], d: str) -> Optional[float]:
+        if d in series:
+            return series[d]
+        earlier = [k for k in series if k <= d]                               # holiday on that listing: last close
+        return series[max(earlier)] if earlier else None
+    bench_r = {d.strftime("%Y-%m-%d"): float(v) for d, v in bench_r_s.items()}
+    hold = pa.holdings_by_day(pos, trades, days)
+    cost_unit = {}                                                             # base-currency cost per share today
+    for p in bk["positions"]:
+        q = float(p.get("quantity") or 0)
+        if q and p.get("cost_basis") is not None:
+            cost_unit[p["symbol"]] = float(p["cost_basis"]) / q
+    unreal_today = sum(float(p.get("unrealized_pnl") or 0) for p in bk["positions"])
+    nav_ex_unreal = bk["nav"] - unreal_today                                   # capital + realised − costs, in base
+    daily_eff, rp_list, rb_seg, rb_act, used = [], [], [], [], []
+    for i in range(1, len(days)):
+        d0, d = days[i - 1], days[i]
+        h = hold.get(d0) or {}
+        if d not in bench_r:
+            continue
+        mv, ret = {}, {}
+        for s, q in h.items():
+            a, b = at(P[s], d0), at(P[s], d)
+            if a and b:
+                mv[s], ret[s] = q * a, b / a - 1
+        unreal = sum(mv[s] - q * cost_unit.get(s, mv[s] / q) for s, q in h.items() if s in mv)
+        nav = nav_ex_unreal + unreal
+        if nav <= 0:
+            continue
+        pw, contrib = {}, {}
+        for s, v in mv.items():
+            sec = sectors[s]
+            pw[sec] = pw.get(sec, 0) + v / nav
+            contrib[sec] = contrib.get(sec, 0) + v / nav * ret[s]
+        pr = {sec: contrib[sec] / pw[sec] for sec in pw if abs(pw[sec]) > 1e-12}
+        pw["Cash"], pr["Cash"] = 1 - sum(pw.values()), 0.0
+        # the proxies' reported sector weights, held fixed: backing them out to each day (as for the S&P version)
+        # tracked both legs' real returns worse over 1m–1y — the reported weights lag, and the equal-weighted leg is
+        # rebalanced back to equal weights each quarter
+        seg_then = {sec: at(SP[WORLD_SECTOR_ETF[sec]], d0) for sec in bw}
+        bw_d = dict(bw)
+        brr = {}
+        for sec in bw:
+            a, b = seg_then[sec], at(SP[WORLD_SECTOR_ETF[sec]], d)
+            brr[sec] = b / a - 1 if a and b else bench_r[d]
+        brr["Cash"] = 0.0
+        for sec in pw:                                  # off-benchmark segments (ETFs, other): vs the benchmark itself
+            brr.setdefault(sec, bench_r[d])
+        daily_eff.append(pa.brinson_day(pw, pr, bw_d, brr))
+        rp_list.append(sum(pw[s] * pr.get(s, 0) for s in pw))
+        rb_seg.append(sum(bw_d[s] * brr[s] for s in bw_d))
+        rb_act.append(bench_r[d])
+        used.append(d)
+    if not daily_eff:
+        return {"available": False, "reason": "No sessions with holdings and prices."}
+    linked = pa.carino_link(daily_eff, rp_list, rb_seg)
+    R = math.prod(1 + r for r in rp_list) - 1
+    Bs = math.prod(1 + b for b in rb_seg) - 1
+    Ba = math.prod(1 + b for b in rb_act) - 1
+    rows = sorted(({"sector": s, **{k: round(v * 1e4, 1) for k, v in e.items()},
+                    "total_bps": round(sum(e.values()) * 1e4, 1),
+                    "benchmark_weight": round(bw.get(s, 0.0), 4)} for s, e in linked.items()
+                   if any(abs(v) > 1e-9 for v in e.values())), key=lambda r: -abs(r["total_bps"]))
+    tot = {k: round(sum(e[k] for e in linked.values()) * 1e4, 1) for k in ("allocation", "selection", "interaction")}
+    te = pa.ex_post_tracking_error(rp_list, rb_act)
+    return {"available": True, "book": book or "Firm", "benchmark": code, "benchmark_label": bm.BENCHMARKS[code]["label"],
+            "currency": base, "period": {"start": used[0], "end": used[-1], "sessions": len(used)},
+            "portfolio_return": round(R, 5), "benchmark_return": round(Ba, 5),
+            "benchmark_segments_return": round(Bs, 5),
+            "active_return_bps": round((R - Ba) * 1e4, 1),
+            "effects_bps": tot, "benchmark_construction_bps": round((Bs - Ba) * 1e4, 1),
+            "by_sector": rows, "benchmark_sector_weights": {k: round(v, 4) for k, v in sorted(bw.items(), key=lambda x: -x[1])},
+            "benchmark_leg_sector_weights": bwi["legs"], "sector_proxies": WORLD_SECTOR_ETF,
+            "unpriced": unpriced,
+            "ex_post_tracking_error": round(te, 4) if te is not None else None,
+            "information_ratio": (round((R - Ba) / te * math.sqrt(252 / len(used)), 2) if te and len(used) >= 20 else None),
+            "method": (f"Brinson–Fachler per session in {base} (each holding's and each benchmark sector's local return "
+                       "and currency move together), on the holdings actually held (rebuilt from positions and "
+                       "trades, split-adjusted), NAV including cash; Carino-linked. Benchmark sector weights: "
+                       + " + ".join(f"{leg['weight']:.0%} × {leg['proxy']}" for leg in bm.BENCHMARKS[code]["legs"])
+                       + " sector weights as reported (Yahoo/Morningstar), held fixed; sector segment returns from "
+                       "MSCI World sector ETFs. Active return = allocation + selection + interaction + benchmark "
+                       "construction."),
+            "limitations": ("Sectors are Morningstar's (as Yahoo reports them), close to but not exactly GICS. Segment "
+                            "returns are cap-weighted MSCI World sectors, so the equal-weighted half's within-sector "
+                            "return differs: that gap is the 'benchmark construction' term (the benchmark return used "
+                            "for active return is the real blend). Real estate is proxied by a developed-markets "
+                            "property ETF. Cash earns 0; realised P&L is held at today's total over the period.")}
 
 
 def book_in_base(book: Optional[str] = None) -> Dict[str, Any]:
@@ -316,13 +498,15 @@ def lots(book: Optional[str] = None) -> Dict[str, Any]:
     for p in pos:
         s = str(p["symbol"]).upper()
         mine = [t for t in trades if str(t["symbol"]).upper() == s]
-        traded = sum(float(t["quantity"]) * (1 if str(t["side"]).upper() in ("BUY", "COVER") else -1) for t in mine)
+        traded = sum(float(t["quantity"]) * (t.get("split_factor") or 1.0)
+                     * (1 if str(t["side"]).upper() in ("BUY", "COVER") else -1) for t in mine)
         opening = float(p["quantity"]) - traded
         fills = ([{"date": p.get("entry_date") or "", "side": "BUY" if opening > 0 else "SELL",
                    "quantity": abs(opening), "price": float(p.get("avg_cost") or 0), "source": "opening position"}]
                  if abs(opening) > 1e-9 else [])
-        fills += [{"date": str(t["ts"])[:10], "side": t["side"], "quantity": t["quantity"], "price": t["price"],
-                   "source": t.get("source") or "trade"} for t in mine]
+        fills += [{"date": str(t["ts"])[:10], "side": t["side"], "quantity": t["quantity"] * (t.get("split_factor") or 1.0),
+                   "price": t["price"] / (t.get("split_factor") or 1.0), "source": t.get("source") or "trade"}
+                  for t in mine]                     # in today's share units after any split
         out[s] = pa.fifo_lots(fills)
     today = date.today()
     for s, ls in out.items():
@@ -334,7 +518,8 @@ def lots(book: Optional[str] = None) -> Dict[str, Any]:
             l["holding_days"] = held
             l["term"] = None if held is None else ("long-term" if held > 365 else "short-term")
     return {"available": bool(out), "lots": out, "method": "FIFO; positions loaded without fills appear as one "
-                                                          "opening lot at their average cost and entry date."}
+                                                          "opening lot at their average cost and entry date. Fills before "
+                                                          "a split are shown in today's share units."}
 
 
 _FX_CACHE: Dict[str, Any] = {}
@@ -365,13 +550,17 @@ def _usd_per_unit(sym: str):
 def tca(limit: int = 200) -> Dict[str, Any]:
     """Fills of the fund blotter and the paper traders, against the decision price, the fill session's typical
     price and close."""
-    from api import portfolio_store
+    from api import blotter_store, portfolio_store
+    blotter_store.init_db()                          # a new fund has no trades table until its first fill
     fills = []
     with portfolio_store._conn() as c:
         tabs = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        for r in c.execute("SELECT ts, symbol, side, quantity, price, source FROM trades ORDER BY ts DESC LIMIT ?", (limit,)):
-            fills.append({"book": "Fund", "symbol": r["symbol"], "side": r["side"], "shares": r["quantity"],
-                          "fill_date": str(r["ts"])[:10], "fill_price": r["price"], "decision_date": str(r["ts"])[:10],
+        fund_fills = _split_adjusted([dict(r) for r in c.execute(
+            "SELECT ts, symbol, side, quantity, price, source FROM trades ORDER BY ts DESC LIMIT ?", (limit,))])
+        for r in fund_fills:                         # in today's share units (price history is split-adjusted)
+            k = r["split_factor"] or 1.0
+            fills.append({"book": "Fund", "symbol": r["symbol"], "side": r["side"], "shares": r["quantity"] * k,
+                          "fill_date": str(r["ts"])[:10], "fill_price": r["price"] / k, "decision_date": str(r["ts"])[:10],
                           "arrival": None})
         if "auto_orders" in tabs:
             for r in c.execute("SELECT symbol, created_date, signal_price, fill_date, fill_price, shares FROM auto_orders "

@@ -197,6 +197,12 @@ async def update_fund_settings(body: FundSettingsIn, request: Request):
     await _thread(lambda: audit_store.add_decision(
         "fund_settings_update", f"Fund settings changed: {sorted(changes)}",
         user=_m()._request_user(request), target="fund", before_state=before, after_state=after))
+    if (before.get("base_currency") or "USD") != (after.get("base_currency") or "USD"):
+        runs = await _thread(fund_store.nav_series)
+        if runs:                                       # the old record stays, in its own currency; a new series starts
+            return {**after, "nav_series": runs,
+                    "nav_note": (f"The NAV record so far is in {before.get('base_currency') or 'USD'} and is kept as it "
+                                 f"is; a new {after['base_currency']} series starts with the next snapshot.")}
     return after
 
 
@@ -278,6 +284,14 @@ async def take_nav_snapshot() -> Dict[str, Any]:
 @router.post("/api/v1/fund/snapshot")
 async def fund_snapshot():
     return {"recorded": await take_nav_snapshot()}
+
+
+@router.get("/api/v1/fund/nav-series")
+async def fund_nav_series():
+    """The NAV record's runs by currency (a change of base currency starts a new series; the old one is kept)."""
+    from api import fund_store
+    return {"series": await _thread(fund_store.nav_series),
+            "history_all": await _thread(lambda: fund_store.nav_history(currency=None))}
 
 
 # ── Risk limits & pre-trade compliance ───────────────────────────────────────
@@ -453,6 +467,8 @@ class OrderIn(BaseModel):
     book: str = "Macro"
     thesis: Optional[str] = None
     conviction: str = "MEDIUM"
+    assessment_id: Optional[int] = None    # the pre-trade assessment the order is based on (else the latest, ≤3 days)
+    pitch_id: Optional[int] = None         # the PMC-approved pitch it implements
 
 
 class DecisionNoteIn(BaseModel):
@@ -463,7 +479,8 @@ def _order_view(idea: Dict[str, Any]) -> Dict[str, Any]:
     return {k: idea.get(k) for k in ("id", "symbol", "side", "quantity", "book", "thesis",
                                      "conviction", "state", "created_by", "approved_by",
                                      "approval_note", "executed_trade_id", "created_at",
-                                     "updated_at", "state_history")}
+                                     "updated_at", "state_history", "assessment_id", "pitch_id",
+                                     "assessment_link")}
 
 
 @router.get("/api/v1/orders")
@@ -491,8 +508,21 @@ async def create_order(body: OrderIn, request: Request):
         "thesis": body.thesis or f"{body.side.upper()} {abs(body.quantity):g} {body.symbol.upper()}",
         "conviction": body.conviction, "rationale": "Order ticket",
         "suggested_size": abs(body.quantity), "book": body.book, "allow_duplicate": True}, user))
+    from api import trade_lifecycle
+    side_u = "BUY" if signed > 0 else "SELL"
+    if body.assessment_id is not None:
+        a = await _thread(trade_lifecycle.get_assessment, body.assessment_id)
+        if not a or str(a["symbol"]).upper() != body.symbol.upper() or a["side"] != side_u:
+            raise HTTPException(400, "assessment_id does not match this order's symbol and side")
+        link = "given"
+    else:
+        a = await _thread(trade_lifecycle.latest_assessment, body.symbol, side_u)
+        link = "automatic (latest assessment of this name and side, ≤3 days)" if a else None
+    pitch_id = body.pitch_id or (a or {}).get("pitch_id")
     await _thread(lambda: blotter_store.set_order_fields(idea["id"], side=body.side.upper(),
-                                                         quantity=abs(body.quantity)))
+                                                         quantity=abs(body.quantity),
+                                                         assessment_id=(a or {}).get("id"), pitch_id=pitch_id,
+                                                         assessment_link=link))
     await _thread(lambda: audit_store.add_decision(
         "order_created", f"{body.side.upper()} {abs(body.quantity):g} {body.symbol.upper()} "
                          f"({body.book}) — pre-trade {check['decision']}",

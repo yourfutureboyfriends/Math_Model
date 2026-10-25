@@ -23,11 +23,18 @@ async def _run(fn, *a, timeout: float = 120):
 
 @router.get("/api/v1/portfolio/analytics/brinson")
 @ttl_cache(900)
-async def pa_brinson(book: Optional[str] = None, benchmark: str = Query("SPY", pattern=r"^[A-Z^.\-]{1,10}$"),
+async def pa_brinson(book: Optional[str] = None,
+                     benchmark: Optional[str] = Query(None, pattern=r"^[A-Za-z0-9^._\-]{1,12}$"),
                      days: int = Query(252, ge=5, le=756)):
-    """Brinson–Fachler attribution versus the benchmark on the holdings actually held, Carino-linked."""
+    """Brinson–Fachler attribution on the holdings actually held, Carino-linked. Default: the fund's own benchmark
+    — a composite (BIFS, MSCI World) in the fund's base currency; SPY or another ticker: S&P sector ETFs, local."""
+    from api import fund_store
+    from api.calculations.benchmark import BENCHMARKS
     from api.handlers import portfolio_analytics as h
-    return await _run(h.brinson, book, benchmark, days)
+    code = (benchmark or (await asyncio.to_thread(fund_store.get_settings)).get("benchmark") or "SPY").upper()
+    if code in BENCHMARKS and code != "SPY":
+        return await _run(h.brinson_base, book, code, days, timeout=180)
+    return await _run(h.brinson, book, code, days)
 
 
 @router.get("/api/v1/portfolio/analytics/tracking-error")

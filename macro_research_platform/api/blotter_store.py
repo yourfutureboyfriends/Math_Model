@@ -15,7 +15,9 @@ from api.calculations.blotter import apply_fill
 from api.portfolio_store import _conn, init_db as _init_positions, init_ideas_db
 
 _ORDER_COLUMNS = {"side": "TEXT", "quantity": "REAL", "approved_by": "TEXT",
-                  "approval_note": "TEXT", "executed_trade_id": "INTEGER"}
+                  "approval_note": "TEXT", "executed_trade_id": "INTEGER",
+                  # what the order was based on (trade lifecycle / TCA vs the pre-trade estimate)
+                  "assessment_id": "INTEGER", "pitch_id": "INTEGER", "assessment_link": "TEXT"}
 
 
 def _now() -> str:

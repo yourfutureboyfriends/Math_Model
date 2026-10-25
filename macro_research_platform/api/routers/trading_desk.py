@@ -182,7 +182,62 @@ async def pretrade_assessment(body: PretradeIn, request: Request):
         raise HTTPException(504, "The assessment took too long (a data source is slow) — try again.")
     except ValueError as e:
         raise HTTPException(400, str(e))
+    from api import trade_lifecycle
+    r["assessment_id"] = await asyncio.to_thread(trade_lifecycle.save_assessment, r, u["username"], body.pitch_id)
     await asyncio.to_thread(_audit, u["username"], "pretrade_assessed",
-                            f"Pre-trade assessment {body.side.upper()} {r['size']['quantity']:g} {r['symbol']}: {r['assessment']['verdict']}",
+                            f"Pre-trade assessment #{r['assessment_id']} {body.side.upper()} {r['size']['quantity']:g} {r['symbol']}: {r['assessment']['verdict']}",
                             f"pretrade:{r['symbol']}", {"assessment": r["assessment"], "costs_bps": r["costs"].get("total_bps")})
     return r
+
+
+@router.get("/api/v1/trading/lifecycle")
+async def trade_lifecycle_view(request: Request, symbol: Optional[str] = Query(None, max_length=20),
+                               pitch_id: Optional[int] = None, limit: int = Query(100, ge=1, le=500)):
+    """Pitch → pre-trade assessment → order and approvals → fill, with TCA of each fill against its estimate."""
+    from api import trade_lifecycle
+    _user(request)
+    return await asyncio.to_thread(trade_lifecycle.lifecycle, symbol, pitch_id, limit)
+
+
+@router.get("/api/v1/trading/assessments/{aid}")
+async def assessment_get(aid: int, request: Request):
+    from api import trade_lifecycle
+    _user(request)
+    a = await asyncio.to_thread(trade_lifecycle.get_assessment, aid)
+    if not a:
+        raise HTTPException(404, "assessment not found")
+    return a
+
+
+# ── corporate actions (splits) ───────────────────────────────────────────────
+class SplitIn(BaseModel):
+    book: str = Field(..., max_length=60)
+    symbol: str = Field(..., max_length=20)
+    ex_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    ratio: float = Field(..., gt=0, le=1000)
+
+
+@router.get("/api/v1/corporate-actions")
+async def corporate_actions_list(request: Request):
+    """Splits on held positions: pending (with whether they need review) and already applied."""
+    from api import corporate_actions as ca
+    _user(request)
+    return {"pending": await asyncio.to_thread(ca.pending), "applied": await asyncio.to_thread(ca.applied)}
+
+
+@router.post("/api/v1/corporate-actions/apply")
+async def corporate_action_apply(body: SplitIn, request: Request):
+    """Apply one split to a position (shares × ratio, average cost ÷ ratio) — for splits the daily job left for
+    review. It must match a split in the symbol's split history (date and ratio)."""
+    from api import corporate_actions as ca
+    u = _user(request, ("pm",))
+    known = await asyncio.to_thread(ca.splits, body.symbol.upper())
+    match = [s for s in known if s["ex_date"] == body.ex_date]
+    if not match or abs(match[0]["ratio"] - body.ratio) > 1e-9:
+        recent = ", ".join("%s %g" % (s["ex_date"], s["ratio"]) for s in known[-5:]) or "none"
+        raise HTTPException(400, f"no {body.ratio:g}:1 split of {body.symbol.upper()} on {body.ex_date} in the split "
+                                 f"history (latest: {recent})")
+    try:
+        return await asyncio.to_thread(ca.apply, body.book, body.symbol, body.ex_date, body.ratio, u["username"])
+    except Exception as e:                                                     # noqa: BLE001
+        _err(e)

@@ -1,4 +1,4 @@
-// Book analytics on the actual holdings: Brinson attribution and tracking error vs the S&P 500, liquidity
+// Book analytics on the actual holdings: Brinson attribution and tracking error vs the fund's benchmark, liquidity
 // (days to liquidate, LVaR cost), FIFO lots, transaction-cost analysis of fills, and trade-idea P&L.
 // Data: /api/v1/portfolio/analytics/*, /api/v1/portfolio/lots, /tca, /ideas/performance.
 
@@ -7,7 +7,7 @@ import { useApiData } from '@/hooks/useApiData';
 import { cn } from '@/lib/utils';
 
 type Tab = 'brinson' | 'te' | 'liquidity' | 'lots' | 'tca' | 'ideas' | 'news';
-const TABS: [Tab, string][] = [['brinson', 'Attribution vs SPY'], ['te', 'Tracking error'], ['liquidity', 'Liquidity'],
+const TABS: [Tab, string][] = [['brinson', 'Attribution vs benchmark'], ['te', 'Tracking error'], ['liquidity', 'Liquidity'],
   ['lots', 'Lots'], ['tca', 'TCA'], ['ideas', 'Idea P&L'], ['news', 'News by holding']];
 
 const bps = (v: number | null | undefined) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(1)}`);
@@ -26,7 +26,7 @@ function Brinson() {
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
-        {[['Portfolio', pct(d.portfolio_return)], ['S&P 500', pct(d.benchmark_return)], ['Active (bps)', bps(d.active_return_bps)],
+        {[['Portfolio' + (d.currency ? ` (${d.currency})` : ''), pct(d.portfolio_return)], [d.benchmark_label ? `Benchmark: ${d.benchmark}` : d.benchmark ?? 'Benchmark', pct(d.benchmark_return)], ['Active (bps)', bps(d.active_return_bps)],
           ['Tracking error (ex-post)', d.ex_post_tracking_error != null ? `${(d.ex_post_tracking_error * 100).toFixed(1)}%` : '—'],
           ['Information ratio', d.information_ratio ?? '—']].map(([k, v]) => (
           <div key={k as string} className="p-2 bg-surface-2 border border-border-subtle">
@@ -46,6 +46,12 @@ function Brinson() {
               <td className={cn('text-right font-mono', tone(r.interaction))}>{bps(r.interaction)}</td>
               <td className={cn('text-right font-mono font-medium', tone(r.total_bps))}>{bps(r.total_bps)}</td>
             </tr>))}
+          {d.benchmark_construction_bps != null && (
+            <tr className="border-b border-border-subtle">
+              <td className="py-1 text-text-secondary" title="The real benchmark's return minus the return of its sector segments (proxies): e.g. the equal-weighted half's within-sector return">Benchmark construction</td>
+              <td colSpan={3} className="text-right text-2xs text-text-tertiary">real blend vs its sector proxies</td>
+              <td className={cn('text-right font-mono font-medium', tone(d.benchmark_construction_bps))}>{bps(d.benchmark_construction_bps)}</td>
+            </tr>)}
           <tr className="border-t border-border font-medium">
             <td className="py-1">Total</td>
             {(['allocation', 'selection', 'interaction'] as const).map((k) => (
@@ -54,7 +60,7 @@ function Brinson() {
           </tr>
         </tbody>
       </table>
-      <div className="text-[10px] text-text-tertiary">{d.period.start} → {d.period.end} ({d.period.sessions} sessions). {d.method} {d.limitations}</div>
+      <div className="text-[10px] text-text-tertiary">{d.benchmark_label ? `${d.benchmark_label}, in ${d.currency}. ` : ''}{d.period.start} → {d.period.end} ({d.period.sessions} sessions). {d.method} {d.limitations}</div>
     </div>
   );
 }

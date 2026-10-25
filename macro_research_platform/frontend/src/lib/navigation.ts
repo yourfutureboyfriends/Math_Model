@@ -106,6 +106,7 @@ export const navigation: NavSection[] = [
       { id: 'trade-recommendations', label: 'Trade Recommendations', icon: '◆', permission: 'trade_recommendations', highlight: true },
       { id: 'pitch-review', label: 'Pitch Review (PMC)', icon: '◆', permission: 'trade_ideas', highlight: true },
       { id: 'pretrade-desk', label: 'Pre-Trade Desk', icon: '◆', permission: 'trade_ideas', highlight: true },
+      { id: 'trade-lifecycle', label: 'Trade Lifecycle & TCA', icon: '◆', permission: 'trade_ideas', highlight: true },
       { id: 'trade-workflow', label: 'Trade Workflow', icon: '⚗', permission: 'trade_ideas', highlight: true },
       { id: 'scenario-analysis', label: 'Scenario Analysis', icon: '◆', permission: 'master_signal' },
       { id: 'momentum-veto', label: 'Momentum Veto', icon: '◆', permission: 'momentum_veto' },

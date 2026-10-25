@@ -1384,6 +1384,24 @@ async def lifespan(app: FastAPI):
                         _funds.CURRENT.reset(tok)
         _scheduler.add_job(func=_nav_catch_up, trigger="date", id="nav_catch_up", replace_existing=True)
 
+        # Stock splits on held positions (every fund): unambiguous ones applied, the rest left for review.
+        async def _apply_splits():
+            from api import corporate_actions as _ca, funds as _funds
+            for f in _funds.list_funds():
+                tok = _funds.CURRENT.set(f["id"])
+                try:
+                    r = await asyncio.to_thread(_ca.apply_pending_automatically)
+                    if r["applied"] or r["needs_review"]:
+                        logger.info("[corp-actions] fund %s: %d applied, %d for review", f["id"],
+                                    len(r["applied"]), len(r["needs_review"]))
+                except Exception as e:                                    # noqa: BLE001
+                    logger.warning("[corp-actions] fund %s failed: %s", f["id"], e)
+                finally:
+                    _funds.CURRENT.reset(tok)
+        _scheduler.add_job(func=_apply_splits, trigger=CronTrigger(hour=6, minute=5), id="apply_splits",
+                           replace_existing=True)
+        _scheduler.add_job(func=_apply_splits, trigger="date", id="apply_splits_startup", replace_existing=True)
+
         # FIXED: Phase 7 - Add new consolidated data refresh jobs
         # Price refresh every 60 seconds via new provider architecture
         _scheduler.add_job(
