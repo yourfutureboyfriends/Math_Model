@@ -15,7 +15,7 @@ from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger(__name__)
 
-_COLUMNS = ["symbol", "asset_class", "quantity", "avg_cost", "entry_date", "book", "strategy_bucket"]
+_COLUMNS = ["symbol", "asset_class", "quantity", "avg_cost", "entry_date", "book", "strategy_bucket", "cost_usd_per_unit"]
 
 
 def _db_path() -> str:
@@ -47,6 +47,14 @@ def init_db() -> None:
             )
             """
         )
+        # USD per unit of the quote currency at cost (weighted over fills): cost basis in any base currency
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(positions)")}
+        if "cost_usd_per_unit" not in cols:
+            try:
+                conn.execute("ALTER TABLE positions ADD COLUMN cost_usd_per_unit REAL")
+            except Exception as e:                                             # another process added it first
+                if "duplicate column" not in str(e):
+                    raise
         conn.commit()
 
 

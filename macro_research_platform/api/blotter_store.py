@@ -65,6 +65,15 @@ def _init_db_locked() -> None:
             )
             """
         )
+        tcols = {r["name"] for r in conn.execute("PRAGMA table_info(trades)")}
+        for col, typ in (("currency", "TEXT"), ("usd_per_unit", "REAL"), ("base_currency", "TEXT"),
+                         ("base_per_usd", "REAL"), ("est_cost_bps", "REAL"), ("taxes", "REAL"), ("reference_price", "REAL")):
+            if col not in tcols:
+                try:
+                    conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {typ}")
+                except _sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e):
+                        raise
         existing = {r["name"] for r in conn.execute("PRAGMA table_info(pm_trade_ideas)")}
         for col, typ in _ORDER_COLUMNS.items():
             if col not in existing:
@@ -78,7 +87,9 @@ def _init_db_locked() -> None:
 
 def book_fill(book: str, symbol: str, signed_qty: float, price: float, commission: float,
               user: str, source: str = "simulated", idea_id: Optional[int] = None,
-              asset_class: Optional[str] = None) -> Dict[str, Any]:
+              asset_class: Optional[str] = None, fx: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """fx: {currency, usd_per_unit, base_currency, base_per_usd, est_cost_bps, taxes, reference_price} — the
+    fill's currency and rates (amounts on the row stay in the listing's currency; totals convert with them)."""
     """Apply a fill to the book and record it. Returns the trade row."""
     init_db()
     symbol = symbol.strip().upper()
@@ -92,19 +103,32 @@ def book_fill(book: str, symbol: str, signed_qty: float, price: float, commissio
         new_qty, new_avg, realized = apply_fill(qty, avg, signed_qty, price)
 
         keep = dict(rows[0]) if rows else {}
+        fx = fx or {}
+        # USD-per-unit at cost: weighted over additions; unchanged when reducing; reset when the position flips
+        old_rate = keep.get("cost_usd_per_unit")
+        fill_rate = fx.get("usd_per_unit")
+        if qty == 0 or (qty > 0) != (new_qty > 0):
+            cost_rate = fill_rate
+        elif abs(new_qty) > abs(qty) and fill_rate and old_rate:
+            cost_rate = (abs(qty) * old_rate + abs(signed_qty) * fill_rate) / abs(new_qty)
+        else:
+            cost_rate = old_rate or fill_rate
         conn.execute("DELETE FROM positions WHERE book = ? AND UPPER(symbol) = ?", (book, symbol))
         if abs(new_qty) > 1e-12:
             conn.execute(
                 "INSERT INTO positions (symbol, asset_class, quantity, avg_cost, entry_date, book, "
-                "strategy_bucket, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "strategy_bucket, created_at, updated_at, cost_usd_per_unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (symbol, keep.get("asset_class") or asset_class or "Equity", new_qty, round(new_avg, 6),
                  keep.get("entry_date") or datetime.now().date().isoformat(), book,
-                 keep.get("strategy_bucket"), keep.get("created_at") or _now(), _now()))
+                 keep.get("strategy_bucket"), keep.get("created_at") or _now(), _now(), cost_rate))
         cur = conn.execute(
             "INSERT INTO trades (ts, book, symbol, side, quantity, price, commission, realized_pnl, "
-            "position_after, avg_cost_after, idea_id, source, user) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "position_after, avg_cost_after, idea_id, source, user, currency, usd_per_unit, base_currency, "
+            "base_per_usd, est_cost_bps, taxes, reference_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (_now(), book, symbol, side, abs(signed_qty), price, commission, round(realized, 2),
-             new_qty, round(new_avg, 6), idea_id, source, user))
+             new_qty, round(new_avg, 6), idea_id, source, user, fx.get("currency"), fill_rate,
+             fx.get("base_currency"), fx.get("base_per_usd"), fx.get("est_cost_bps"), fx.get("taxes"),
+             fx.get("reference_price")))
         trade_id = cur.lastrowid
         if idea_id is not None:
             conn.execute("UPDATE pm_trade_ideas SET executed_trade_id = ? WHERE id = ?", (trade_id, idea_id))

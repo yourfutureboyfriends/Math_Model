@@ -46,9 +46,19 @@ def commission(notional: float, cost_bps: float) -> float:
 
 def cash_balance(capital: float, positions: Iterable[Dict], realized_pnl: float,
                  commissions: float) -> float:
-    """capital − cost basis of open positions + realized P&L − commissions."""
-    basis = sum(float(p.get("quantity") or 0) * float(p.get("avg_cost") or 0) for p in positions)
+    """capital − cost basis of open positions + realized P&L − commissions, all in the fund's base currency.
+    Positions carry `cost_basis` in base currency once enriched (quantity × avg cost × FX at cost); a raw row
+    without it is taken at face value (a base-currency listing)."""
+    basis = sum(float(p["cost_basis"]) if p.get("cost_basis") is not None
+                else float(p.get("quantity") or 0) * float(p.get("avg_cost") or 0) for p in positions)
     return round(capital - basis + realized_pnl - commissions, 2)
+
+
+def to_base(amount: float, t: Dict) -> float:
+    """A blotter amount (in the listing's currency) in the fund's base currency, at the fill's own rates; rows booked
+    before rates were recorded are taken at face value."""
+    u, b = t.get("usd_per_unit"), t.get("base_per_usd")
+    return float(amount or 0) * (float(u) * float(b) if u and b else 1.0)
 
 
 def side_to_signed(side: str, quantity: float) -> float:
@@ -63,10 +73,10 @@ def side_to_signed(side: str, quantity: float) -> float:
 def blotter_totals(trades: Iterable[Dict]) -> Dict[str, float]:
     realized = comm = gross = 0.0
     n = 0
-    for t in trades:
-        realized += float(t.get("realized_pnl") or 0)
-        comm += float(t.get("commission") or 0)
-        gross += abs(float(t.get("quantity") or 0) * float(t.get("price") or 0))
+    for t in trades:                      # each row converted at its own fill rates (pence, yen … → base)
+        realized += to_base(float(t.get("realized_pnl") or 0), t)
+        comm += to_base(float(t.get("commission") or 0) + float(t.get("taxes") or 0), t)
+        gross += abs(to_base(float(t.get("quantity") or 0) * float(t.get("price") or 0), t))
         n += 1
     return {"realized_pnl": round(realized, 2), "commissions": round(comm, 2),
             "traded_notional": round(gross, 2), "trades": n}

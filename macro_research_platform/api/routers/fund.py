@@ -79,7 +79,8 @@ async def _book_state(raw: List[Dict[str, Any]], settings: Dict[str, Any],
     realized = totals["realized_pnl"] + float(settings.get("realized_pnl") or 0.0)  # + manual adj.
     nav = compute_nav(settings["capital"], summary.get("total_unrealized_pnl", 0.0),
                       realized - totals["commissions"])
-    cash = cash_balance(settings["capital"], raw, realized, totals["commissions"])
+    # cost basis in the base currency at the rate paid (enriched); raw rows only when nothing could be priced
+    cash = cash_balance(settings["capital"], enriched.get("positions") or raw, realized, totals["commissions"])
     exp = exposures_pct_nav(summary, nav)
 
     positions = enriched.get("positions", [])
@@ -554,8 +555,14 @@ async def execute_order(order_id: int, request: Request):
                                   "broker_order_id": fill.broker_order_id})
     settings = await _thread(fund_store.get_settings)
     comm = commission(signed * fill.price, settings["cost_bps"])
+    from api.calculations import fx_accounting
+    base = settings.get("base_currency") or "USD"
+    ccy, usd_unit, b_per_usd = await _thread(fx_accounting.fill_rates, o["symbol"], base)
+    fx = {"currency": ccy, "usd_per_unit": usd_unit, "base_currency": base, "base_per_usd": b_per_usd,
+          "est_cost_bps": getattr(fill, "est_cost_bps", None), "taxes": getattr(fill, "taxes", None),
+          "reference_price": getattr(fill, "reference_price", None)}
     trade = await _thread(lambda: blotter_store.book_fill(
-        o["book"], o["symbol"], signed, fill.price, comm, user, fill.source, order_id))
+        o["book"], o["symbol"], signed, fill.price, comm, user, fill.source, order_id, fx=fx))
     await _thread(lambda: portfolio_store.transition_trade_idea(
         order_id, "Executed", user, f"{fill.source} fill {abs(signed):g} @ {fill.price:.2f}"))
     await _thread(lambda: audit_store.add_decision(

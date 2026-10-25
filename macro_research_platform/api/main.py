@@ -1957,24 +1957,26 @@ async def _enrich_positions(raw_positions: list) -> dict:
             prices[sym] = closes[-1] if closes else None
 
     enriched = [enrich_position(p, prices.get(str(p["symbol"]).upper())) for p in raw_positions]
-    # FX: non-USD listings are valued in USD (local values kept) so weights and totals add up across currencies
+    # FX: every listing is valued in the fund's base currency — market value at today's rate, cost basis at the
+    # rate when it was bought (stored per position, else its entry date), unrealised split into local and FX P&L
     from api.handlers.portfolio_analytics import _usd_per_unit
+    from api.calculations import fx_accounting
+    from api import fund_store
+    base = (await _aio.to_thread(fund_store.get_settings)).get("base_currency") or "USD"
     fx = dict(zip(symbols, await _aio.gather(*[_aio.to_thread(_usd_per_unit, s) for s in symbols]))) if symbols else {}
-    for p in enriched:
-        ccy, usd = fx.get(str(p["symbol"]).upper(), ("USD", 1.0))
-        p["currency"], p["usd_per_unit"] = ccy, usd
-        if usd and abs(usd - 1.0) > 1e-12:
-            for k in ("market_value", "unrealized_pnl"):
-                if p.get(k) is not None:
-                    p[f"{k}_local"] = p[k]
-                    p[k] = round(p[k] * usd, 2)
-        elif not usd:
-            p["fx_unavailable"] = True
+
+    def _convert():
+        for p in enriched:
+            ccy, usd = fx.get(str(p["symbol"]).upper(), ("USD", 1.0))
+            p["currency"], p["usd_per_unit"] = ccy, usd
+            fx_accounting.convert_position(p, base, usd)
+    await _aio.to_thread(_convert)
     add_weights(enriched)
     return {
         "positions": enriched,
         "summary": portfolio_summary(enriched),
         "books": books_breakdown(enriched),
+        "currency": base,
         "priced_at": datetime.now().isoformat(),
     }
 
