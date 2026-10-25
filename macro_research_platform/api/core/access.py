@@ -94,7 +94,24 @@ async def auth_middleware(request: Request, call_next):
         if user.get("must_change_password") and path not in PASSWORD_CHANGE_ALLOWED:
             return JSONResponse({"detail": "Password change required", "code": "password_change_required"},
                                 status_code=403)
-    return await call_next(request)
+    # Which fund this request works on: the X-Fund header from the fund switcher, for a signed-in member of that fund;
+    # 'main' otherwise (anonymous requests never pick a fund).
+    from api import funds
+    fid = (request.headers.get("X-Fund") or "").strip().lower() or funds.MAIN
+    if fid != funds.MAIN and request.state.user and path.startswith("/api/"):
+        f = funds.get(fid)
+        if not f:
+            return JSONResponse({"detail": f"Unknown fund '{fid}'", "code": "unknown_fund"}, status_code=404)
+        if not funds.can_open(request.state.user, f):
+            return JSONResponse({"detail": f"You are not a member of fund '{f['name']}'", "code": "fund_forbidden"},
+                                status_code=403)
+    else:
+        fid = funds.MAIN
+    token_ctx = funds.CURRENT.set(fid)
+    try:
+        return await call_next(request)
+    finally:
+        funds.CURRENT.reset(token_ctx)
 
 
 def current_user(request: Request) -> Optional[dict]:

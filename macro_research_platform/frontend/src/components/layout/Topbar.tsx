@@ -11,6 +11,7 @@ import { useMacroStore, selectMeta, selectIsLoading } from '@/store/macroStore';
 import { SystemStatusBadge } from '@/components/SystemStatusBadge';
 import { DataHealthIndicator } from '@/components/DataHealthIndicator';
 import { DataIntegrityIndicator } from '@/components/DataIntegrityIndicator';
+import { FundSwitcher } from './FundSwitcher';
 import {
   fmtPriceInt,
   fmtVol,
@@ -387,6 +388,7 @@ export function Topbar({
 
         {/* Mode badge */}
         <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          <FundSwitcher />
           <DataIntegrityIndicator />
           <DataHealthIndicator />
           <span className="font-mono text-bloomberg bg-bloomberg-muted border border-bloomberg-border px-2 py-0.5"

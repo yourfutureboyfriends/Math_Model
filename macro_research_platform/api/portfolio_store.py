@@ -19,8 +19,10 @@ _COLUMNS = ["symbol", "asset_class", "quantity", "avg_cost", "entry_date", "book
 
 
 def _db_path() -> str:
-    from api.core.app_db import app_db_path
-    return app_db_path()
+    """The current fund's database (api/funds.py: each fund keeps its own positions, orders, NAV, settings, pitches
+    and audit log; the original database is the 'main' fund)."""
+    from api import funds
+    return funds.db_path()
 
 
 def _conn() -> sqlite3.Connection:

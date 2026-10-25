@@ -82,8 +82,11 @@ def params_hash(p: ModelParams) -> str:
 
 # ── Persistence ──────────────────────────────────────────────────────────────
 def _conn():
-    from api.portfolio_store import _conn as pconn
-    c = pconn()
+    # the macro model's run history is market-level, shared by every fund: always the main database
+    import sqlite3
+    from api.core.app_db import app_db_path
+    c = sqlite3.connect(app_db_path(), timeout=5)
+    c.row_factory = sqlite3.Row
     c.execute("""CREATE TABLE IF NOT EXISTS model_runs (
         id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, version TEXT, params_hash TEXT,
         params TEXT, as_of TEXT, regime_probs TEXT, strategic TEXT, tactical TEXT,

@@ -99,7 +99,9 @@ def ttl_cache(seconds: float, offload: bool = False):
 
         @_functools.wraps(fn)
         async def wrapper(*args, **kwargs):
-            key = f"{fn.__module__}.{fn.__name__}|{args!r}|{tuple(sorted(kwargs.items()))!r}"
+            # the current fund is part of the key: one fund's book analytics never answer for another
+            from api.funds import CURRENT as _FUND
+            key = f"{fn.__module__}.{fn.__name__}|{_FUND.get()}|{args!r}|{tuple(sorted(kwargs.items()))!r}"
             now = _time.time()
             hit = _ASYNC_TTL_CACHE.get(key)
             if hit is not None and hit[0] > now:

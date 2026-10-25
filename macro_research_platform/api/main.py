@@ -1341,7 +1341,19 @@ async def lifespan(app: FastAPI):
         logger.info("[STARTUP] Scheduled post_close_refresh at 21:15 UTC weekdays")
 
         # Daily NAV snapshot (the fund's track record) after the US close.
-        from api.routers.fund import take_nav_snapshot
+        from api.routers.fund import take_nav_snapshot as _take_one_snapshot
+
+        async def take_nav_snapshot():
+            """Every fund's daily NAV (each in its own database and base currency)."""
+            from api import funds as _funds
+            for f in _funds.list_funds():
+                tok = _funds.CURRENT.set(f["id"])
+                try:
+                    await _take_one_snapshot()
+                except Exception as e:                                    # noqa: BLE001 — one fund must not stop the rest
+                    logger.warning("[nav] snapshot for fund %s failed: %s", f["id"], e)
+                finally:
+                    _funds.CURRENT.reset(tok)
         _scheduler.add_job(
             func=take_nav_snapshot,
             trigger=CronTrigger(day_of_week="mon-fri", hour=21, minute=30),
@@ -1358,13 +1370,18 @@ async def lifespan(app: FastAPI):
             from api import fund_store
             now = _dt.now(_tz.utc)
             if now.weekday() < 5 and (now.hour, now.minute) >= (21, 30):
-                have = {r.get("date") for r in (fund_store.nav_history() or [])} if hasattr(fund_store, "nav_history") else set()
-                if now.date().isoformat() not in have:
+                from api import funds as _funds
+                for f in _funds.list_funds():                             # each fund's own record
+                    tok = _funds.CURRENT.set(f["id"])
                     try:
-                        await take_nav_snapshot()
-                        logger.info("[STARTUP] daily_nav_snapshot caught up for %s", now.date())
+                        have = {r.get("date") for r in (fund_store.nav_history() or [])}
+                        if now.date().isoformat() not in have:
+                            await _take_one_snapshot()
+                            logger.info("[STARTUP] daily_nav_snapshot caught up for fund %s, %s", f["id"], now.date())
                     except Exception as e:                                # noqa: BLE001
-                        logger.warning("[STARTUP] NAV catch-up failed: %s", e)
+                        logger.warning("[STARTUP] NAV catch-up failed for fund %s: %s", f["id"], e)
+                    finally:
+                        _funds.CURRENT.reset(tok)
         _scheduler.add_job(func=_nav_catch_up, trigger="date", id="nav_catch_up", replace_existing=True)
 
         # FIXED: Phase 7 - Add new consolidated data refresh jobs
@@ -1694,6 +1711,8 @@ from api.routers.portfolio_analytics import router as portfolio_analytics_router
 app.include_router(portfolio_analytics_router)
 from api.routers.trading_desk import router as trading_desk_router   # pitch review (PMC) + pre-trade feasibility
 app.include_router(trading_desk_router)
+from api.routers.funds import router as funds_router   # several funds, each in its own database
+app.include_router(funds_router)
 from api.routers.data_export import router as data_export_router  # spreadsheet / API access (CSV, JSON)
 app.include_router(data_export_router)
 from api.routers.strategies import router as strategies_router  # Strategy Lab

@@ -13,6 +13,7 @@
 // * The session survives a page reload (sessionStorage — cleared when the tab closes) until
 //   the token expires.
 
+import { currentFund } from '@/lib/fund';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
 interface User {
@@ -87,6 +88,8 @@ function installFetchWrapper() {
     if (!currentToken || !isApiUrl(url)) return original(input, init);
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
     if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${currentToken}`);
+    const fund = currentFund();                       // which fund's book (several funds, each kept apart)
+    if (fund !== 'main' && !headers.has('X-Fund')) headers.set('X-Fund', fund);
     const res = await original(input, { ...init, headers });
     if (res.status === 401 && !url.includes('/api/auth/login') && onUnauthorized) onUnauthorized();
     if (res.status === 403 && onPasswordChangeRequired) {

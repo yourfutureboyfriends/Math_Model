@@ -51,8 +51,11 @@ def overnight_moves() -> List[Dict[str, Any]]:
 
 # ── what changed since the previous brief ─────────────────────────────────────
 def _conn():
-    from api.portfolio_store import _conn as c
-    conn = c()
+    # the brief's day-over-day market snapshot is shared by every fund: always the main database
+    import sqlite3
+    from api.core.app_db import app_db_path
+    conn = sqlite3.connect(app_db_path(), timeout=5)
+    conn.row_factory = sqlite3.Row
     conn.execute("CREATE TABLE IF NOT EXISTS brief_snapshots (date TEXT PRIMARY KEY, recorded_at TEXT, state TEXT)")
     return conn
 
