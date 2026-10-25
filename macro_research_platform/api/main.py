@@ -1692,6 +1692,8 @@ from api.routers.portfolios import router as portfolios_router  # model review, 
 app.include_router(portfolios_router)
 from api.routers.portfolio_analytics import router as portfolio_analytics_router  # Brinson, TE, LVaR, lots, TCA
 app.include_router(portfolio_analytics_router)
+from api.routers.trading_desk import router as trading_desk_router   # pitch review (PMC) + pre-trade feasibility
+app.include_router(trading_desk_router)
 from api.routers.data_export import router as data_export_router  # spreadsheet / API access (CSV, JSON)
 app.include_router(data_export_router)
 from api.routers.strategies import router as strategies_router  # Strategy Lab

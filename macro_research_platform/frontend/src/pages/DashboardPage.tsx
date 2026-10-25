@@ -50,6 +50,8 @@ import {
   QuantLabSection,
   PositionsSection,
   TradeWorkflowSection,
+  PreTradeDeskSection,
+  PitchReviewSection,
   CTATrendSection,
   COTPositioningSection,
   BusinessLayerSection,
@@ -724,6 +726,22 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="Allocation Recommendations">
           <Suspense fallback={<SectionSkeleton />}>
             <TradeRecommendationsSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Pitch Review">
+          <Suspense fallback={<SectionSkeleton />}>
+            <PitchReviewSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Pre-Trade Desk">
+          <Suspense fallback={<SectionSkeleton />}>
+            <PreTradeDeskSection />
           </Suspense>
         </ErrorBoundary>
       </div>

@@ -34,6 +34,8 @@ SENSITIVE_READ_PREFIXES = (
     # the firm's own information: the brief lists the fund's holdings, the sleeve compares targets with the book,
     # the decision log and IC pack are internal records (found open in the Oct-2026 backend audit)
     "/api/morning-brief", "/api/v1/model/sleeve", "/api/business/decision-log", "/api/business/ic-pack",
+    # analyst research and the trading desk's assessments
+    "/api/v1/pitches", "/api/v1/trading",
 )
 # Market-level risk views that don't expose the book.
 OPEN_RISK_READS = {"/api/v1/risk-parity-compare"}

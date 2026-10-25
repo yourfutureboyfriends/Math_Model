@@ -151,6 +151,8 @@ class FundSettingsIn(BaseModel):
     cost_bps: Optional[float] = None
     min_trade_pct: Optional[float] = None
     benchmark: Optional[str] = None          # BIFS | MSCI_WORLD | SPY (api/calculations/benchmark.py)
+    mandate: Optional[Dict[str, Any]] = None  # long_only, developed_markets_only, max_position_pct, max_sector_pct,
+                                              # min_cash_pct, max_participation, max_days_to_execute, fx_conversion_bps
 
 
 @router.get("/api/v1/fund/settings")
@@ -174,6 +176,18 @@ async def update_fund_settings(body: FundSettingsIn, request: Request):
         changes["benchmark"] = changes["benchmark"].upper()
         if changes["benchmark"] not in BENCHMARKS:
             raise HTTPException(400, f"benchmark must be one of {', '.join(BENCHMARKS)}")
+    if "mandate" in changes:
+        from api.handlers.pretrade_feasibility import DEFAULT_MANDATE
+        bad = [k for k in changes["mandate"] if k not in DEFAULT_MANDATE]
+        if bad:
+            raise HTTPException(400, f"unknown mandate keys: {', '.join(bad)}")
+        for k, v in changes["mandate"].items():
+            if isinstance(DEFAULT_MANDATE[k], bool):
+                changes["mandate"][k] = bool(v)
+            elif not isinstance(v, (int, float)) or v < 0:
+                raise HTTPException(400, f"mandate.{k} must be a non-negative number")
+        current = (await _thread(fund_store.get_settings)).get("mandate") or {}
+        changes["mandate"] = {**DEFAULT_MANDATE, **current, **changes["mandate"]}
     if "base_currency" in changes:
         changes["base_currency"] = changes["base_currency"].upper()
         if changes["base_currency"] not in ("USD", "GBP", "EUR", "JPY", "CHF", "CAD", "AUD", "HKD", "SGD", "SEK", "NOK", "DKK"):
@@ -556,7 +570,10 @@ async def execute_order(order_id: int, request: Request):
         fill = await _thread(lambda: execution.alpaca_paper_fill(o["symbol"], signed))
     else:
         closes = await _fetch_closes_literal(o["symbol"])
-        fill = execution.simulated_fill(signed, closes[-1] if closes else None)
+        m = await _thread(execution.modelled_cost_bps, o["symbol"], signed)
+        fill = execution.simulated_fill(signed, closes[-1] if closes else None,
+                                        cost_bps=m["half_spread_bps"] + m["impact_bps"],
+                                        tax_bps=m["tax_buy_bps"] if signed > 0 else m["tax_sell_bps"])
     if not fill.filled:
         await _thread(lambda: audit_store.add_decision(
             "order_not_filled", f"Order {order_id} not filled ({fill.source}): {fill.detail}",

@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, Optional
 
 PAPER_URL = "https://paper-api.alpaca.markets"
 
@@ -27,6 +27,9 @@ class Fill:
     broker_order_id: Optional[str] = None
     status: str = "filled"
     detail: str = ""
+    reference_price: Optional[float] = None       # the decision / last close the fill is measured against
+    est_cost_bps: Optional[float] = None          # modelled half-spread + impact applied to a simulated fill
+    taxes: Optional[float] = None                 # statutory transfer taxes, in the listing's currency
 
 
 def execution_mode() -> str:
@@ -36,10 +39,45 @@ def execution_mode() -> str:
     return "simulated"
 
 
-def simulated_fill(signed_qty: float, last_price: Optional[float]) -> Fill:
+def simulated_fill(signed_qty: float, last_price: Optional[float], cost_bps: float = 0.0,
+                   tax_bps: float = 0.0) -> Fill:
+    """A paper fill at the last close moved against the order by the modelled half-spread + market impact
+    (`cost_bps`), with statutory transfer taxes (`tax_bps`) booked separately. The close is kept as the reference
+    price, so TCA measures the fill against it."""
     if not last_price or last_price <= 0:
         return Fill(False, None, signed_qty, "simulated", status="rejected", detail="no price available")
-    return Fill(True, float(last_price), signed_qty, "simulated")
+    px = float(last_price) * (1 + (1 if signed_qty > 0 else -1) * max(cost_bps, 0.0) / 1e4)
+    taxes = abs(signed_qty) * px * max(tax_bps, 0.0) / 1e4
+    return Fill(True, px, signed_qty, "simulated", reference_price=float(last_price), est_cost_bps=round(cost_bps, 2),
+                taxes=round(taxes, 4), detail=f"close {last_price:g} + {cost_bps:.1f} bp modelled spread/impact")
+
+
+def modelled_cost_bps(symbol: str, quantity: float) -> Dict[str, float]:
+    """Half-spread (liquidity / volatility model) + square-root impact at the order's share of 20-day volume, and the
+    market's statutory transfer tax rates — the same models as the pre-trade assessment."""
+    import math
+    import pandas as pd
+    from api.handlers import pretrade_feasibility as pf
+    from api.markets import classify
+    from api.quant.instruments import TAXES
+    out = {"half_spread_bps": 0.0, "impact_bps": 0.0, "tax_buy_bps": 0.0, "tax_sell_bps": 0.0}
+    try:
+        bars = pf._bars_frame(symbol, "1y")
+        if len(bars) >= 63:
+            from api.calculations import fx_accounting as fa
+            from api.quant.codelab import half_spread_bps
+            rate = fa.usd_per_unit(bars.attrs.get("currency") or "USD") or 1.0
+            hs = half_spread_bps(bars[["close"]].set_axis([symbol], axis=1), bars[["volume"]].set_axis([symbol], axis=1),
+                                 usd_per_unit=pd.Series(rate, index=bars.index))
+            out["half_spread_bps"] = float(hs.iloc[-1, 0])
+            adv = float(bars["volume"].tail(20).mean())
+            if adv > 0:
+                out["impact_bps"] = pf.IMPACT_BP * math.sqrt(abs(quantity) / adv * 100)
+    except Exception:                                                         # noqa: BLE001 — no model: close only
+        pass
+    b, s_, _ = TAXES.get((classify(symbol).get("country") or "US").upper(), (0.0, 0.0, None))
+    out["tax_buy_bps"], out["tax_sell_bps"] = b, s_
+    return out
 
 
 def alpaca_paper_fill(symbol: str, signed_qty: float, session=None,

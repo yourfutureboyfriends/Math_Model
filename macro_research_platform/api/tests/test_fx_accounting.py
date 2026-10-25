@@ -65,3 +65,13 @@ def test_fill_rate_is_weighted_into_the_position(tmp_path, monkeypatch):
     assert p["quantity"] == 400 and p["cost_usd_per_unit"] == pytest.approx((100 * 0.0070 + 300 * 0.0066) / 400)
     blotter_store.book_fill("Main", "7203.T", -200, 3000.0, 0.0, "pm", fx={"currency": "JPY", "usd_per_unit": 0.0060})
     assert portfolio_store.list_positions(None)[0]["cost_usd_per_unit"] == pytest.approx((100 * 0.0070 + 300 * 0.0066) / 400)
+
+
+def test_simulated_fill_pays_modelled_costs_and_taxes():
+    from api import execution
+    buy = execution.simulated_fill(100, 12800.0, cost_bps=3.0, tax_bps=50.0)
+    assert buy.price == pytest.approx(12800 * 1.0003) and buy.reference_price == 12800.0
+    assert buy.taxes == pytest.approx(100 * buy.price * 0.005, abs=1e-3) and buy.est_cost_bps == 3.0
+    sell = execution.simulated_fill(-100, 12800.0, cost_bps=3.0)
+    assert sell.price == pytest.approx(12800 * 0.9997) and sell.taxes == 0.0
+    assert not execution.simulated_fill(10, None).filled
