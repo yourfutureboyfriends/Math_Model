@@ -32,8 +32,10 @@ async def pa_brinson(book: Optional[str] = None, benchmark: str = Query("SPY", p
 
 @router.get("/api/v1/portfolio/analytics/tracking-error")
 @ttl_cache(900)
-async def pa_tracking_error(book: Optional[str] = None, benchmark: str = Query("SPY", pattern=r"^[A-Z^.\-]{1,10}$")):
-    """Ex-ante tracking error and beta versus the benchmark, with each active weight's contribution."""
+async def pa_tracking_error(book: Optional[str] = None,
+                            benchmark: Optional[str] = Query(None, pattern=r"^[A-Za-z0-9^._\-]{1,12}$")):
+    """Ex-ante tracking error and beta versus the benchmark (default: the fund's own — e.g. BIFS, 50% MSCI World +
+    50% MSCI World Equal Weighted in GBP), in the fund's base currency, with each active weight's contribution."""
     from api.handlers import portfolio_analytics as h
     return await _run(h.tracking_error, book, benchmark)
 
@@ -83,3 +85,17 @@ async def pa_sector_exposure(book: Optional[str] = None):
     """The book's net sector exposure (look-through), to set beside the regime sector allocation."""
     from api.handlers import portfolio_analytics as h
     return await _run(h.sector_exposure, book)
+
+
+@router.get("/api/v1/fund/benchmark")
+@ttl_cache(1800)
+async def fund_benchmark(code: Optional[str] = Query(None, pattern=r"^[A-Za-z_]{2,12}$")):
+    """The fund's benchmark in its base currency: returns over standard windows, volatility, the proxies used and
+    what the series is not (licensed MSCI levels, constituents)."""
+    from api import fund_store
+    from api.calculations import benchmark as bm
+    st = await _run(fund_store.get_settings)
+    c = (code or st.get("benchmark") or "SPY").upper()
+    if c not in bm.BENCHMARKS:
+        return {"available": False, "reason": f"Unknown benchmark {c}. Available: {', '.join(bm.BENCHMARKS)}."}
+    return await _run(bm.summary, c, st.get("base_currency") or "USD")

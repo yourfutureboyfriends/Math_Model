@@ -150,6 +150,7 @@ class FundSettingsIn(BaseModel):
     realized_pnl: Optional[float] = None
     cost_bps: Optional[float] = None
     min_trade_pct: Optional[float] = None
+    benchmark: Optional[str] = None          # BIFS | MSCI_WORLD | SPY (api/calculations/benchmark.py)
 
 
 @router.get("/api/v1/fund/settings")
@@ -168,6 +169,15 @@ async def update_fund_settings(body: FundSettingsIn, request: Request):
         raise HTTPException(400, "capital must be positive")
     if "vol_target" in changes and not (0 < changes["vol_target"] <= 1):
         raise HTTPException(400, "vol_target must be in (0, 1]")
+    if "benchmark" in changes:
+        from api.calculations.benchmark import BENCHMARKS
+        changes["benchmark"] = changes["benchmark"].upper()
+        if changes["benchmark"] not in BENCHMARKS:
+            raise HTTPException(400, f"benchmark must be one of {', '.join(BENCHMARKS)}")
+    if "base_currency" in changes:
+        changes["base_currency"] = changes["base_currency"].upper()
+        if changes["base_currency"] not in ("USD", "GBP", "EUR", "JPY", "CHF", "CAD", "AUD", "HKD", "SGD", "SEK", "NOK", "DKK"):
+            raise HTTPException(400, "base_currency must be a major ISO currency code (e.g. GBP)")
     before = await _thread(fund_store.get_settings)
     after = await _thread(fund_store.update_settings, changes)
     await _thread(lambda: audit_store.add_decision(

@@ -167,7 +167,79 @@ def brinson(book: Optional[str] = None, benchmark: str = "SPY", max_days: int = 
                             "benchmark's sectors (ETFs, the benchmark itself) are their own segments; cash earns 0.")}
 
 
-def tracking_error(book: Optional[str] = None, benchmark: str = "SPY") -> Dict[str, Any]:
+def book_in_base(book: Optional[str] = None) -> Dict[str, Any]:
+    """The book in the fund's base currency: per position market value (today's FX) and cost (FX paid), NAV =
+    capital + realised − costs + unrealised, all in base. Prices are the last daily closes."""
+    from api import blotter_store, fund_store, portfolio_store
+    from api.calculations import fx_accounting as fa
+    from api.calculations.blotter import blotter_totals
+    st = fund_store.get_settings()
+    base = st.get("base_currency") or "USD"
+    pos = portfolio_store.list_positions(book)
+    rows = []
+    for p in pos:
+        sym = str(p["symbol"]).upper()
+        b = _bars(sym, "1mo")
+        last = b[sorted(b)[-1]]["c"] if b else None
+        ccy, usd = _usd_per_unit(sym)
+        q = fa.convert_position({**p, "symbol": sym, "current_price": last, "currency": ccy}, base, usd)
+        rows.append(q)
+    tot = blotter_totals(blotter_store.list_trades(book=book))
+    unreal = sum(r.get("unrealized_pnl") or 0 for r in rows)
+    nav = float(st.get("capital") or 0) + tot["realized_pnl"] + float(st.get("realized_pnl") or 0) - tot["commissions"] + unreal
+    return {"base": base, "positions": rows, "nav": nav, "capital": float(st.get("capital") or 0),
+            "benchmark": st.get("benchmark") or "SPY"}
+
+
+def tracking_error(book: Optional[str] = None, benchmark: Optional[str] = None) -> Dict[str, Any]:
+    """Ex-ante tracking error against the fund's benchmark, in the fund's base currency: holdings' daily returns in
+    base currency (local return and currency together), weights = base-currency market value / NAV, the benchmark
+    as its own return series (e.g. the BIFS 50/50 blend), 1-year daily covariance. Euler contributions per name."""
+    import numpy as np
+    import pandas as pd
+    from api.calculations import benchmark as bm
+    bk = book_in_base(book)
+    code = (benchmark or bk["benchmark"] or "SPY").upper()
+    if code not in bm.BENCHMARKS:
+        return _tracking_error_vs_ticker(book, code)
+    pos = [p for p in bk["positions"] if p.get("market_value") is not None]
+    if not pos:
+        return {"available": False, "reason": "No priced positions."}
+    base, nav = bk["base"], bk["nav"]
+    syms = sorted({p["symbol"] for p in pos})
+    R = bm.returns_in_base(syms, base)
+    b = bm.series(code, base)["returns"].rename("__BENCH__")
+    frame = pd.concat([R, b], axis=1).dropna().tail(252)
+    if len(frame) < 60:
+        return {"available": False, "reason": f"Under 60 common sessions of history with the benchmark "
+                                              f"(it starts {bm.series(code, base)['start']})."}
+    cols = list(frame.columns)
+    cov = np.cov(frame.to_numpy(), rowvar=False)
+    mv = {s: 0.0 for s in syms}
+    for p in pos:
+        mv[p["symbol"]] += float(p["market_value"])
+    w = np.array([mv.get(c, 0.0) / nav if c != "__BENCH__" else 0.0 for c in cols])
+    active = w - np.array([1.0 if c == "__BENCH__" else 0.0 for c in cols])
+    te = pa.ex_ante_tracking_error(active, cov)
+    sig = cov @ active
+    var = float(active @ sig)
+    contrib = {("benchmark" if c == "__BENCH__" else c): round(float(active[i] * sig[i] / var), 3) if var > 0 else None
+               for i, c in enumerate(cols)}
+    k = cols.index("__BENCH__")
+    beta = float(w @ cov[:, k] / cov[k, k])
+    vol = float(np.sqrt(max(w @ cov @ w, 0.0)) * np.sqrt(252))
+    return {"available": True, "benchmark": code, "benchmark_label": bm.BENCHMARKS[code]["label"], "currency": base,
+            "as_of": str(frame.index[-1].date()), "sessions": int(len(frame)),
+            "ex_ante_tracking_error": round(te, 4), "portfolio_beta": round(beta, 3),
+            "portfolio_volatility": round(vol, 4), "nav": round(nav, 2), "invested": round(float(w.sum()), 4),
+            "cash_weight": round(1 - float(w.sum()), 4),
+            "weights": {c: round(float(w[i]), 4) for i, c in enumerate(cols) if c != "__BENCH__"},
+            "te_contribution": contrib,
+            "note": ("Returns in " + base + " (local return and currency move); benchmark from accumulating UCITS ETF "
+                     "proxies, rebalanced daily. Cash counts as an active underweight of the benchmark.")}
+
+
+def _tracking_error_vs_ticker(book: Optional[str] = None, benchmark: str = "SPY") -> Dict[str, Any]:
     """Ex-ante TE: active weights (holdings on NAV minus 100% benchmark) on a 1-year daily covariance."""
     import numpy as np
     pos, _, capital, realized = _book(book)

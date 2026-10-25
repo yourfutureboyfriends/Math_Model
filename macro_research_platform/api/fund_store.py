@@ -23,6 +23,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "realized_pnl": 0.0,            # booked P&L from closed trades (no blotter yet)
     "cost_bps": 5.0,                # transaction-cost estimate for orders
     "min_trade_pct": 0.0025,        # skip orders smaller than this fraction of NAV
+    "benchmark": "SPY",             # BIFS = 50% MSCI World + 50% MSCI World Equal Weighted, in the base currency
 }
 
 
