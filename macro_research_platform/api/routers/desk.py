@@ -160,11 +160,11 @@ async def desk(request: Request):
         return await asyncio.to_thread(accounts.list_users)
 
     async def _cb_moves():
-        from api.main import get_global_macro_v1
+        from api.routers.research import get_global_macro_v1
         return (await get_global_macro_v1()).get("recent_policy_moves", [])
 
     async def _cycle():
-        from api.main import get_cycle_risk_v1
+        from api.routers.research import get_cycle_risk_v1
         return await get_cycle_risk_v1()
 
     async def _rates():

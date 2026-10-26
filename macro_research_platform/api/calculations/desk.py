@@ -60,6 +60,19 @@ def build_queue(role: str, username: str, *, orders: List[Dict[str, Any]],
                 cb_moves: Optional[List[Dict[str, Any]]] = None,
                 cycle: Optional[Dict[str, Any]] = None,
                 today: Optional[date] = None) -> List[Dict[str, Any]]:
+    """The My Desk work queue for one person, highest priority first: orders awaiting their review (never their own —
+    four-eyes), limit warnings and breaches, stale data, accounts needing attention (administrators), central-bank
+    moves and cycle-risk alerts.
+
+    Args:
+        role: the person's role in the current fund.
+        username: the person (their own orders are excluded from their review list).
+        orders, limits, freshness, users, cb_moves, cycle: inputs gathered by the desk router; any may be missing.
+        today: date for staleness checks (tests).
+
+    Returns:
+        Queue items: {priority, kind, title, detail, target panel, ref}.
+    """
     today = today or date.today()
     is_admin = role == "admin"
     q: List[Dict[str, Any]] = []

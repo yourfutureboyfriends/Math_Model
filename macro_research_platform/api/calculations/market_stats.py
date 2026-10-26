@@ -32,6 +32,7 @@ def align_dated(series: Mapping[str, Mapping[str, float]]) -> Tuple[List[str], D
 
 
 def closes_of(dated: Mapping[str, float]) -> List[float]:
+    """Closes in date order from a {date: close} mapping."""
     return [float(dated[d]) for d in sorted(dated)]
 
 
@@ -56,6 +57,7 @@ def momentum_12_1(closes: Sequence[float]) -> Optional[Dict[str, float]]:
 
 
 def daily_returns(closes: Sequence[float]) -> np.ndarray:
+    """Simple daily returns of a close series (empty for fewer than two closes)."""
     c = np.asarray(closes, dtype=float)
     if c.size < 2:
         return np.array([])
@@ -169,6 +171,7 @@ def inverse_vol_weights(closes_by_key: Mapping[str, Sequence[float]],
 
 
 def annualized_vol(closes: Sequence[float], window: int = 60) -> Optional[float]:
+    """Annualised volatility of the last `window` daily returns (√252 scaling), or None when history is shorter."""
     r = daily_returns(closes)
     if r.size < window:
         return None

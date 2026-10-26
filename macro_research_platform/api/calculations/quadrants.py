@@ -60,6 +60,9 @@ QUADRANT_PLAYBOOK = {
 
 
 def classify_quadrant(growth_surprise: float, inflation_surprise: float) -> str:
+    """Growth × inflation quadrant from the two surprises: growth up & inflation up → Reflation, growth up & down →
+    Goldilocks, growth down & up → Stagflation, both down → Deflation (zero counts as up).
+    """
     g_up = growth_surprise >= 0
     i_up = inflation_surprise >= 0
     if g_up and i_up:

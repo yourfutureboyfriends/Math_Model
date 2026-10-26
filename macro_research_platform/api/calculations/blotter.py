@@ -41,6 +41,7 @@ def apply_fill(qty: float, avg_cost: float, fill_qty: float, fill_price: float) 
 
 
 def commission(notional: float, cost_bps: float) -> float:
+    """Commission on a fill: |notional| × cost_bps / 10,000, rounded to cents."""
     return round(abs(notional) * cost_bps / 1e4, 2)
 
 
@@ -62,6 +63,11 @@ def to_base(amount: float, t: Dict) -> float:
 
 
 def side_to_signed(side: str, quantity: float) -> float:
+    """Signed quantity for a side: BUY / LONG / COVER → +|q|, SELL / SHORT → −|q|.
+
+    Raises:
+        ValueError: an unknown side.
+    """
     s = (side or "").upper()
     if s in ("BUY", "LONG", "COVER"):
         return abs(quantity)
@@ -71,6 +77,9 @@ def side_to_signed(side: str, quantity: float) -> float:
 
 
 def blotter_totals(trades: Iterable[Dict]) -> Dict[str, float]:
+    """Totals over blotter rows in the fund's base currency, each row converted at its own fill rates: realised P&L,
+    commissions plus taxes, traded notional and the number of trades.
+    """
     realized = comm = gross = 0.0
     n = 0
     for t in trades:                      # each row converted at its own fill rates (pence, yen … → base)

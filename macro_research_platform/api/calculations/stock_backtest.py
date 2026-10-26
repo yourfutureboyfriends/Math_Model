@@ -53,6 +53,9 @@ VARIANTS = ("model", "regime_gate", "setup_only", "control")
 
 @dataclass
 class Trade:
+    """One simulated trade of the entry-model backtest: symbol, variant and label, entry / exit indices and dates,
+    entry, stop, target and exit prices, cost, setup score and exit reason.
+    """
     symbol: str
     variant: str
     label: str              # BUY / BUY_SMALL / CONTROL
@@ -72,6 +75,7 @@ class Trade:
 
     @property
     def risk(self) -> float:
+        """Initial risk per share: entry − stop."""
         return self.entry - self.stop
 
     @property
@@ -81,10 +85,12 @@ class Trade:
 
     @property
     def ret(self) -> float:
+        """Return net of costs: exit / entry − 1 − cost."""
         return self.exit / self.entry - 1 - self.cost
 
     @property
     def days(self) -> int:
+        """Sessions held, entry and exit days included."""
         return self.exit_i - self.entry_i + 1
 
 
@@ -197,6 +203,9 @@ def simulate(symbol: str, dates: Sequence[str], o, h, l, c, regime_ok: Optional[
 
 # ── Trade statistics ─────────────────────────────────────────────────────────
 def trade_stats(trades: Sequence[Trade]) -> Dict[str, Any]:
+    """Statistics over trades: count, hit rate, average R and return, profit factor, holding days and the target / stop
+    / time exit mix.
+    """
     if not trades:
         return {"trades": 0}
     r = np.array([t.r for t in trades])
@@ -231,6 +240,7 @@ def diff_test(a: Sequence[Trade], b: Sequence[Trade]) -> Optional[Dict[str, Any]
 
 
 def group_stats(trades: Sequence[Trade], key) -> List[Dict[str, Any]]:
+    """trade_stats for each group of trades given by `key(trade)`, sorted by group (None groups dropped)."""
     groups: Dict[Any, List[Trade]] = {}
     for t in trades:
         groups.setdefault(key(t), []).append(t)
@@ -239,6 +249,7 @@ def group_stats(trades: Sequence[Trade], key) -> List[Dict[str, Any]]:
 
 
 def setup_bucket(t: Trade) -> str:
+    """The setup-score bucket of a trade: 0.35–0.50, 0.50–0.70 or ≥ 0.70."""
     s = t.setup
     return "0.35–0.50" if s < 0.5 else "0.50–0.70" if s < 0.7 else "≥ 0.70"
 
@@ -288,6 +299,7 @@ def portfolio(trades: Sequence[Trade], closes: Dict[str, np.ndarray], dates: Dic
 
 
 def span_years(calendar: Sequence[str]) -> float:
+    """Years between the first and last dates of a calendar (at least one day)."""
     from datetime import date
     d0, d1 = date.fromisoformat(str(calendar[0])[:10]), date.fromisoformat(str(calendar[-1])[:10])
     return max((d1 - d0).days / 365.25, 1 / 365.25)

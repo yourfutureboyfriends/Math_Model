@@ -90,6 +90,9 @@ def sector_momentum_weights(px: np.ndarray, t: int, top: int = 3, market_col: Op
 
 
 def low_vol_weights(px: np.ndarray, t: int, quantile: float = 0.2, min_names: int = 10) -> np.ndarray:
+    """Low-volatility portfolio at day t: the least volatile `quantile` of names over the last year (at least
+    `min_names`), weighted by inverse volatility; zero weights when too few names have history.
+    """
     vol = _vol(px, t, 252)
     ok = np.isfinite(vol) & (vol > 0)
     w = np.zeros(px.shape[1])
@@ -132,6 +135,7 @@ def residual_momentum_scores(px_m: np.ndarray, idx_m: np.ndarray, m: int, lookba
 
 
 def top_equal(scores: np.ndarray, top: int) -> np.ndarray:
+    """Equal weights on the `top` highest finite scores."""
     w = np.zeros(scores.size)
     idx = np.flatnonzero(np.isfinite(scores))
     if idx.size == 0:
@@ -174,6 +178,7 @@ def run_monthly(px: np.ndarray, dates: Sequence[str], weight_fn: Callable[[int],
 
 
 def correlation(series: Dict[str, np.ndarray]) -> Dict[str, Dict[str, float]]:
+    """Pairwise correlation matrix of named return series as nested dicts."""
     keys = list(series)
     m = np.vstack([series[k] for k in keys])
     c = np.corrcoef(m)

@@ -318,6 +318,9 @@ def expected_shortfall_normal(pnl_series: Sequence[float], conf: float = 0.975) 
 
 
 def moments(pnl_series: Sequence[float]) -> Dict[str, float]:
+    """Skew and excess kurtosis of a P&L series (population moments); zeros for fewer than four points or zero
+    variance.
+    """
     p = np.asarray(pnl_series, dtype=float)
     if p.size < 4:
         return {"skew": 0.0, "excess_kurtosis": 0.0}
@@ -350,6 +353,9 @@ def ewma_sigma_path(pnl_series: Sequence[float], lam: float = 0.94) -> np.ndarra
 
 
 def ewma_var(pnl_series: Sequence[float], conf: float = 0.95, lam: float = 0.94) -> float:
+    """VaR from the RiskMetrics EWMA volatility forecast for tomorrow (λ = 0.94 by default), as a positive loss;
+    parametric VaR for fewer than 20 observations.
+    """
     p = np.asarray(pnl_series, dtype=float)
     if p.size < 20:
         return parametric_var(p, conf)

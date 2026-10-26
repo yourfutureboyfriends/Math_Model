@@ -6,6 +6,7 @@ Shared helpers for API routers — one way to do the common things:
   run(fn, *args)            run blocking work off the event loop, mapping errors to HTTP status codes:
                               LookupError → 404, PermissionError → 403, ValueError → 400, timeout → 504
   audit(user, action, ...)  append to the fund's audit log; never fails the request
+  username(request)         who made the request, for the audit trail ("system" when unauthenticated)
 
 Routers keep their own request/response models; these cover identity, errors and the audit trail.
 """
@@ -49,6 +50,14 @@ async def run(fn: Callable, *args: Any, timeout: Optional[float] = None) -> Any:
         raise HTTPException(403, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+def username(request: Request) -> str:
+    """The verified user behind the request's token, for the audit trail. Client-supplied headers such as X-User are
+    never trusted — identity comes only from the signed token (api/core/access.py)."""
+    from api.core.access import current_user
+    u = current_user(request)
+    return u["username"] if u else "system"
 
 
 def audit(username: str, action: str, text: str, target: Optional[str] = None,

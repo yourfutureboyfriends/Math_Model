@@ -90,29 +90,37 @@ def _solve(objective: Callable[[np.ndarray], float], n: int, max_w: float, x0: O
 
 # ── Methods ──────────────────────────────────────────────────────────────────
 def equal_weight(n: int) -> np.ndarray:
+    """1/n weights."""
     return np.ones(n) / n
 
 
 def min_variance(cov: np.ndarray, max_w: float) -> np.ndarray:
+    """Long-only minimum-variance weights with a per-asset cap."""
     return _solve(lambda w: float(w @ cov @ w), cov.shape[0], max_w)
 
 
 def erc(cov: np.ndarray, max_w: float) -> np.ndarray:
+    """Equal risk contribution weights (each asset contributes the same share of portfolio variance), capped."""
     from api.calculations.rebalance import risk_budget_weights
     return cap_weights(risk_budget_weights(cov, np.ones(cov.shape[0])), max_w)
 
 
 def hrp(returns: np.ndarray, max_w: float) -> np.ndarray:
+    """Hierarchical risk parity weights (López de Prado 2016) from the return history, capped."""
     from api.calculations.risk_parity import hrp_weights
     return cap_weights(hrp_weights(np.asarray(returns, dtype=float)), max_w)
 
 
 def diversification_ratio(w: np.ndarray, cov: np.ndarray) -> float:
+    """Weighted average of asset volatilities divided by portfolio volatility (Choueifaty & Coignard 2008); 1 means no
+    diversification.
+    """
     vol = float(np.sqrt(max(w @ cov @ w, 1e-18)))
     return float(w @ np.sqrt(np.diag(cov))) / vol
 
 
 def max_diversification(cov: np.ndarray, max_w: float) -> np.ndarray:
+    """Long-only weights maximising the diversification ratio, capped."""
     return _solve(lambda w: -diversification_ratio(w, cov), cov.shape[0], max_w)
 
 
@@ -130,6 +138,7 @@ def black_litterman_returns(cov: np.ndarray, prior_w: np.ndarray, views: np.ndar
 
 
 def max_sharpe(mu: np.ndarray, cov: np.ndarray, max_w: float) -> np.ndarray:
+    """Long-only weights maximising expected return per unit of volatility, capped."""
     def neg_sharpe(w):
         vol = math.sqrt(max(float(w @ cov @ w), 1e-18))
         return -float(w @ mu) / vol
@@ -146,6 +155,17 @@ def model_views(setup_scores: Sequence[Optional[float]], scale: float = 0.10) ->
 
 def weights_for(method: str, returns: np.ndarray, cov: np.ndarray, max_w: float,
                 prior_w: Optional[np.ndarray] = None, setup_scores: Optional[Sequence] = None) -> np.ndarray:
+    """Dispatch to a construction method by name: equal_weight, min_variance, erc, hrp, max_diversification, or
+    black_litterman (model views from setup scores blended with the prior).
+
+    Args:
+        method: the method name.
+        returns: return history (T × n), for HRP.
+        cov: covariance (n × n).
+        max_w: per-asset cap.
+        prior_w: market / prior weights for Black–Litterman.
+        setup_scores: per-asset scores turned into views for Black–Litterman.
+    """
     n = cov.shape[0]
     if method == "equal_weight":
         return equal_weight(n)
@@ -166,6 +186,9 @@ def weights_for(method: str, returns: np.ndarray, cov: np.ndarray, max_w: float,
 
 # ── Diagnostics ──────────────────────────────────────────────────────────────
 def describe(w: np.ndarray, cov: np.ndarray) -> Dict[str, object]:
+    """Summary of a weight vector: volatility, diversification ratio, effective number of positions (1/Σw²), largest
+    weight and each asset's share of risk.
+    """
     from api.calculations.rebalance import risk_contributions
     rc = risk_contributions(cov, w)
     return {"vol": round(float(np.sqrt(max(w @ cov @ w, 0))), 4),

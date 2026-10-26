@@ -65,11 +65,15 @@ def usd_per_unit(quote_ccy: Optional[str], on: Optional[str] = None) -> Optional
 
 
 def base_per_usd(base: str, on: Optional[str] = None) -> Optional[float]:
+    """Units of the base currency per US dollar on a date (latest when `on` is None), or None when the rate is
+    unavailable.
+    """
     r = usd_per_major(base or "USD", on)
     return (1.0 / r) if r else None
 
 
 def entry_date_of(pos: Dict) -> Optional[str]:
+    """A position's entry date (YYYY-MM-DD) — the entry date, else the row's creation date — or None."""
     d = pos.get("entry_date") or pos.get("created_at")
     return str(d)[:10] if d else None
 

@@ -23,6 +23,7 @@ INPUT_EVIDENCE = {"Growth signal": "input_growth", "1 − recession probability"
 
 
 def evidence_for(cards: Dict[str, Dict]) -> Dict[str, Optional[Dict]]:
+    """The validation card behind each model input (by INPUT_EVIDENCE), None where an input has no card."""
     return {name: cards.get(cid) for name, cid in INPUT_EVIDENCE.items()}
 
 

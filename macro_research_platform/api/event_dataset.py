@@ -121,7 +121,7 @@ def release_events(code: str) -> List[Dict[str, Any]]:
 
 
 def fomc_events() -> List[Dict[str, Any]]:
-    from api.main import _fetch_fomc_meetings
+    from api.macro_calendar import _fetch_fomc_meetings
     from api.providers import alfred
     tgt = {o["date"]: o["value"] for o in alfred.latest("DFEDTARU", "2013-01-01") if o["value"] is not None}
     y2 = {o["date"]: o["value"] for o in alfred.latest("DGS2", "2013-01-01") if o["value"] is not None}

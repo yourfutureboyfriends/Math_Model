@@ -52,6 +52,7 @@ def _conn() -> sqlite3.Connection:
 
 
 def invalidate_cache(username: Optional[str] = None) -> None:
+    """Drop cached user rows (one user, or all) and the revoked-token cache, so the next read hits the database."""
     with _cache_lock:
         if username:
             _user_cache.pop(username, None)
@@ -116,11 +117,21 @@ def default_credential_accounts() -> List[str]:
 
 
 def default_credentials_active() -> bool:
+    """Whether any enabled account still signs in with its seeded default password."""
     return bool(default_credential_accounts())
 
 
 # ── Password policy ──────────────────────────────────────────────────────────
 def password_problems(password: str, username: str = "") -> List[str]:
+    """Check a password against the policy.
+
+    Args:
+        password: the proposed password.
+        username: rejected if contained in the password.
+
+    Returns:
+        Human-readable problems; an empty list means the password is acceptable.
+    """
     p = password or ""
     problems = []
     if len(p) < MIN_PASSWORD_LENGTH:
@@ -136,6 +147,9 @@ def password_problems(password: str, username: str = "") -> List[str]:
 
 
 def generate_temp_password() -> str:
+    """A random 16-character temporary password that satisfies the policy (used for resets; must be changed at first
+    sign-in).
+    """
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*-_"
     while True:
         pw = "".join(secrets.choice(alphabet) for _ in range(16))
@@ -145,6 +159,7 @@ def generate_temp_password() -> str:
 
 # ── Lookups (cached briefly; every request verifies its token) ───────────────
 def get_user(username: str) -> Optional[Dict[str, Any]]:
+    """The user row for `username` (cached for a few seconds), or None."""
     now = time.time()
     with _cache_lock:
         hit = _user_cache.get(username)
@@ -159,6 +174,7 @@ def get_user(username: str) -> Optional[Dict[str, Any]]:
 
 
 def is_revoked(jti: Optional[str]) -> bool:
+    """Whether a token id has been revoked (sign-out) and has not yet expired. The revocation list is cached briefly."""
     if not jti:
         return False
     now = time.time()
@@ -173,6 +189,12 @@ def is_revoked(jti: Optional[str]) -> bool:
 
 
 def revoke(jti: Optional[str], exp: Optional[float]) -> None:
+    """Revoke a token id until its expiry (persisted, so sign-out survives restarts).
+
+    Args:
+        jti: the token's unique id; nothing happens when missing.
+        exp: the token's expiry (epoch seconds); defaults to a day from now.
+    """
     if not jti:
         return
     with _conn() as c:
@@ -184,6 +206,9 @@ def revoke(jti: Optional[str], exp: Optional[float]) -> None:
 
 # ── Login with lockout ───────────────────────────────────────────────────────
 class LoginError(Exception):
+    """A refused sign-in, carrying the HTTP status (401 / 403 / 429), a user-facing message and whether only the two-
+    factor code is missing or wrong (`mfa_required`).
+    """
     def __init__(self, status: int, message: str, mfa_required: bool = False):
         super().__init__(message)
         self.status, self.message, self.mfa_required = status, message, mfa_required
@@ -231,11 +256,20 @@ def check_login(username: str, password: str, otp: Optional[str] = None) -> Dict
 
 
 def issue_token(user: Dict[str, Any]) -> str:
+    """Sign a JWT for the user with a fresh unique id (jti) and issue time, so it can be revoked individually."""
     return _auth.create_access_token({"sub": user["username"], "role": user["role"],
                                       "jti": secrets.token_hex(16), "iat": time.time()})
 
 
 def set_password(username: str, new_password: str, must_change: bool = False) -> None:
+    """Store a new password hash, clear the failed-attempt counters and stamp the change time — tokens issued before it
+    stop working.
+
+    Args:
+        username: the account.
+        new_password: plaintext; hashed with bcrypt here.
+        must_change: force a change at next sign-in (resets by an administrator).
+    """
     with _conn() as c:
         c.execute("UPDATE users SET hashed_password = ?, must_change_password = ?, password_changed_at = ?, "
                   "failed_attempts = 0, locked_until = NULL WHERE username = ?",
@@ -246,6 +280,7 @@ def set_password(username: str, new_password: str, must_change: bool = False) ->
 
 # ── Administration ───────────────────────────────────────────────────────────
 def list_users() -> List[Dict[str, Any]]:
+    """All accounts with role, status flags and whether each is currently locked (no secrets)."""
     with _conn() as c:
         rows = c.execute("SELECT username, role, display_name, created_at, last_login, "
                          "COALESCE(disabled,0) AS disabled, COALESCE(must_change_password,0) AS must_change_password, "
@@ -279,6 +314,12 @@ def create_user(username: str, role: str, display_name: str) -> str:
 
 def update_user(username: str, *, role: Optional[str] = None, disabled: Optional[bool] = None,
                 acting_user: str = "") -> Dict[str, Any]:
+    """Change an account's role or disabled flag (administrators).
+
+    Raises:
+        KeyError: no such user.
+        ValueError: an unknown role, removing the last active administrator, or disabling your own account.
+    """
     with _conn() as c:
         r = c.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
         if not r:
@@ -304,6 +345,11 @@ def update_user(username: str, *, role: Optional[str] = None, disabled: Optional
 
 
 def reset_password(username: str) -> str:
+    """Give the account a temporary password that must be changed at next sign-in, and return it (shown once).
+
+    Raises:
+        KeyError: no such user.
+    """
     if not get_user(username):
         raise KeyError(username)
     temp = generate_temp_password()
@@ -312,6 +358,7 @@ def reset_password(username: str) -> str:
 
 
 def unlock(username: str) -> bool:
+    """Clear a lockout after too many failed sign-ins. Returns whether the account existed."""
     with _conn() as c:
         n = c.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE username = ?",
                       (username,)).rowcount

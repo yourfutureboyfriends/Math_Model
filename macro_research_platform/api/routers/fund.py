@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from api import execution, fund_store, governance
+from api import regime_data
+from api.routers import book
 from api.core import web
 
 logger = logging.getLogger(__name__)
@@ -74,8 +76,7 @@ async def _book_state(raw: List[Dict[str, Any]], settings: Dict[str, Any],
     from api.calculations.fund import compute_nav, exposures_pct_nav, drawdown_from_peak
     from api.calculations.blotter import blotter_totals, cash_balance
 
-    main = _m()
-    enriched = await main._enrich_positions(raw) if raw else {"positions": [], "summary": {}}
+    enriched = await book._enrich_positions(raw) if raw else {"positions": [], "summary": {}}
     summary = enriched.get("summary") or {}
     totals = blotter_totals(await _thread(blotter_store.list_trades))
     realized = totals["realized_pnl"] + float(settings.get("realized_pnl") or 0.0)  # + manual adj.
@@ -98,7 +99,7 @@ async def _book_state(raw: List[Dict[str, Any]], settings: Dict[str, Any],
             by_class[c] = by_class.get(c, 0.0) + abs(mv)
     mvs = sorted((abs(v) for v in by_symbol.values()), reverse=True)
 
-    risk = await main._risk_snapshot(raw) if raw else {"var_available": False}
+    risk = await book._risk_snapshot(raw) if raw else {"var_available": False}
     var95 = risk.get("var_95_1d") if risk.get("var_available") else None
 
     history = await _thread(fund_store.nav_history)
@@ -114,7 +115,7 @@ async def _book_state(raw: List[Dict[str, Any]], settings: Dict[str, Any],
     liq_days = None
     if include_liquidity and raw:
         try:
-            liq = await asyncio.wait_for(main.risk_liquidity_v1(None), timeout=20)
+            liq = await asyncio.wait_for(book.risk_liquidity_v1(None), timeout=20)
             vals = [r["days_to_liquidate"] for r in liq.get("positions", []) if r.get("days_to_liquidate") is not None]
             liq_days = max(vals) if vals else None
         except Exception as e:
@@ -252,7 +253,7 @@ async def update_fund_settings(body: FundSettingsIn, request: Request):
     after = await _thread(fund_store.update_settings, changes)
     await _thread(lambda: audit_store.add_decision(
         "fund_settings_update", f"Fund settings changed: {sorted(changes)}",
-        user=_m()._request_user(request), target="fund", before_state=before, after_state=after))
+        user=web.username(request), target="fund", before_state=before, after_state=after))
     if (before.get("base_currency") or "USD") != (after.get("base_currency") or "USD"):
         runs = await _thread(fund_store.nav_series)
         if runs:                                       # the old record stays, in its own currency; a new series starts
@@ -400,7 +401,7 @@ async def update_risk_limits(body: Dict[str, LimitIn], request: Request):
     after = merge_limits(await _thread(fund_store.get_limit_overrides))
     await _thread(lambda: audit_store.add_decision(
         "risk_limits_update", f"Risk limits changed: {sorted(body)}",
-        user=_m()._request_user(request), target="risk_limits", before_state=before, after_state=after))
+        user=web.username(request), target="risk_limits", before_state=before, after_state=after))
     return after
 
 
@@ -560,7 +561,7 @@ async def stage_rebalance(body: StageIn, request: Request):
     from api import portfolio_store, audit_store
     from api.core.access import require_roles
     require_roles(request, {"pm", "quant"})
-    user = _m()._request_user(request)
+    user = web.username(request)
     from api import blotter_store
     await _thread(blotter_store.init_db)
     created = []
@@ -804,7 +805,7 @@ async def model_scorecard():
     out: Dict[str, Any] = {"as_of": datetime.now().isoformat()}
 
     try:
-        regimes = list((await _thread(_m()._monthly_regime_frame))["regime"])
+        regimes = list((await _thread(regime_data._monthly_regime_frame))["regime"])
         out["regime_transition"] = transition_backtest(regimes, min_train=60) or {"available": False}
         out["regime_transition"]["method"] = ("walk-forward: each month's next-regime forecast uses "
                                               "only the history up to that month")

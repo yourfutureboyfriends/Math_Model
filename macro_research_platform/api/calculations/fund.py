@@ -17,6 +17,7 @@ import numpy as np
 
 
 def compute_nav(capital: float, total_unrealized_pnl: float, realized_pnl: float = 0.0) -> float:
+    """NAV = capital + realised P&L (after costs) + unrealised P&L, in the base currency, rounded to cents."""
     return round(float(capital) + float(realized_pnl) + float(total_unrealized_pnl), 2)
 
 

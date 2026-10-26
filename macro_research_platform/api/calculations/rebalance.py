@@ -71,6 +71,7 @@ def risk_budget_weights(cov: np.ndarray, budgets: Sequence[float],
 
 
 def risk_contributions(cov: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """Each asset's share of portfolio variance (Euler allocation): wᵢ(Σw)ᵢ / wᵀΣw; sums to 1."""
     port = float(w @ cov @ w)
     return (w * (cov @ w)) / port if port > 0 else np.zeros_like(w)
 

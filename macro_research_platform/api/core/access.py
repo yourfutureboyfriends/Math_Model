@@ -78,6 +78,18 @@ def _bearer(request: Request) -> Optional[str]:
 
 
 def needs_auth(method: str, path: str) -> bool:
+    """Whether a request must carry a valid token.
+
+    All writes need one (except the public login); reads need one for the firm's own data (SENSITIVE_READ_PREFIXES)
+    and for the identity endpoints. Market and research reads stay public.
+
+    Args:
+        method: HTTP method.
+        path: URL path.
+
+    Returns:
+        True when the request must be authenticated.
+    """
     if not path.startswith("/api/"):
         return False
     if path in ("/api/auth/me", "/api/auth/change-password"):
@@ -90,6 +102,14 @@ def needs_auth(method: str, path: str) -> bool:
 
 
 async def auth_middleware(request: Request, call_next):
+    """Authenticate, pick the fund, and apply the person's position — for every request.
+
+    Order: (1) decode the bearer token into request.state.user; (2) refuse unauthenticated, password-change-pending
+    or two-factor-enrolment-pending requests where needs_auth() applies; (3) select the fund from the X-Fund header
+    — signed-in members only, 404 for an unknown fund, 403 for a non-member; (4) replace the role with the one from
+    the person's position in that fund and refuse writes from read-only positions (outside VIEWER_WRITES). The fund
+    is held in a context variable for the duration of the request.
+    """
     token = _bearer(request)
     request.state.user = decode_token(token) if token else None
     path = request.url.path
@@ -132,6 +152,7 @@ async def auth_middleware(request: Request, call_next):
 
 
 def current_user(request: Request) -> Optional[dict]:
+    """The verified identity attached to the request by auth_middleware, or None when unauthenticated."""
     return getattr(request.state, "user", None)
 
 

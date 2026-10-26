@@ -109,12 +109,16 @@ def backed_out_weights(w_today: Dict[str, float], price_then: Dict[str, float], 
 
 # ── Tracking error ───────────────────────────────────────────────────────────
 def ex_ante_tracking_error(active_w: Sequence[float], cov_daily) -> float:
+    """Forecast tracking error: √(aᵀΣa) annualised, for active weights a and a daily covariance Σ."""
     import numpy as np
     a = np.asarray(active_w, dtype=float)
     return float(math.sqrt(max(a @ np.asarray(cov_daily) @ a, 0.0)) * math.sqrt(252))
 
 
 def ex_post_tracking_error(port_rets: Sequence[float], bench_rets: Sequence[float]) -> Optional[float]:
+    """Realised tracking error: annualised standard deviation of portfolio-minus-benchmark daily returns; None for two
+    or fewer days.
+    """
     import numpy as np
     d = np.asarray(port_rets, dtype=float) - np.asarray(bench_rets, dtype=float)
     return float(d.std(ddof=1) * math.sqrt(252)) if d.size > 2 else None

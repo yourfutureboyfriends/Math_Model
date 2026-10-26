@@ -36,6 +36,9 @@ def _conn():
 
 
 def migrate() -> None:
+    """Add the two-factor columns to the users table and create the security-settings table (idempotent, safe under
+    concurrent start-up).
+    """
     with _conn() as c:
         cols = {r["name"] for r in c.execute("PRAGMA table_info(users)")}
         for col, typ in _COLS.items():
@@ -64,10 +67,17 @@ def _dec(token: str) -> str:
 
 
 def new_secret() -> str:
+    """A new random 160-bit TOTP secret, base32-encoded (as authenticator apps expect)."""
     return base64.b32encode(secrets.token_bytes(20)).decode().rstrip("=")
 
 
 def code_at(secret: str, step: int) -> str:
+    """The 6-digit TOTP code for a secret at a 30-second time step (RFC 6238, HMAC-SHA1).
+
+    Args:
+        secret: base32 secret (padding optional).
+        step: Unix time // 30.
+    """
     key = base64.b32decode(secret + "=" * (-len(secret) % 8), casefold=True)
     mac = hmac.new(key, struct.pack(">Q", step), hashlib.sha1).digest()
     o = mac[-1] & 0x0F
@@ -97,6 +107,7 @@ def _user(username: str) -> Optional[Dict[str, Any]]:
 
 
 def enabled(username: str) -> bool:
+    """Whether the account has two-factor sign-in turned on."""
     u = _user(username)
     return bool(u and u.get("totp_enabled"))
 
@@ -119,6 +130,7 @@ def required() -> bool:
 
 
 def set_required(on: bool) -> None:
+    """Require (or stop requiring) two-factor sign-in for every account; takes effect within seconds."""
     migrate()
     with _conn() as c:
         c.execute("INSERT INTO app_security (key, value) VALUES ('require_mfa', ?) ON CONFLICT(key) DO UPDATE SET "
@@ -128,6 +140,7 @@ def set_required(on: bool) -> None:
 
 
 def status(username: str) -> Dict[str, Any]:
+    """The account's two-factor state: enabled, set-up pending, recovery codes left, and whether it is required."""
     u = _user(username) or {}
     codes = json.loads(u.get("recovery_codes") or "[]")
     return {"enabled": bool(u.get("totp_enabled")), "pending": bool(u.get("totp_pending")),
@@ -152,6 +165,14 @@ def _recovery_codes() -> Tuple[List[str], List[str]]:
 
 
 def confirm_setup(username: str, code: str) -> Dict[str, Any]:
+    """Finish set-up with a code from the authenticator app: turn two-factor on and issue 8 single-use recovery codes.
+
+    Returns:
+        {"enabled": True, "recovery_codes": [...]} — the codes are shown once and stored only as hashes.
+
+    Raises:
+        ValueError: set-up was not started, or the code does not match.
+    """
     u = _user(username)
     if not u or not u.get("totp_pending"):
         raise ValueError("start the set-up first")
@@ -194,6 +215,9 @@ def verify(username: str, code: str) -> bool:
 
 
 def disable(username: str) -> None:
+    """Turn two-factor off and erase the secret and recovery codes (own request with a valid code, or an
+    administrator's reset).
+    """
     with _conn() as c:
         c.execute("UPDATE users SET totp_secret = NULL, totp_pending = NULL, totp_enabled = 0, totp_last_step = NULL, "
                   "recovery_codes = NULL WHERE username = ?", (username,))

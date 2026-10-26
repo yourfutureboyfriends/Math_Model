@@ -23,6 +23,9 @@ import pandas as pd
 
 
 def rsi(close: pd.Series, n: int = 14) -> Optional[float]:
+    """Wilder's RSI over n sessions (exponential smoothing α = 1/n); 100 when there were no losses; None for short
+    history.
+    """
     d = close.diff().dropna()
     if len(d) < n + 1:
         return None
@@ -35,6 +38,9 @@ def rsi(close: pd.Series, n: int = 14) -> Optional[float]:
 
 
 def atr(high: pd.Series, low: pd.Series, close: pd.Series, n: int = 14) -> Optional[float]:
+    """Average true range over n sessions (Wilder smoothing) of max(high − low, |high − previous close|, |low −
+    previous close|).
+    """
     if len(close) < n + 1:
         return None
     prev = close.shift(1)
@@ -43,6 +49,7 @@ def atr(high: pd.Series, low: pd.Series, close: pd.Series, n: int = 14) -> Optio
 
 
 def max_drawdown(close: pd.Series) -> Optional[float]:
+    """Largest peak-to-trough fall of a price series (negative fraction)."""
     if len(close) < 2:
         return None
     return float((close / close.cummax() - 1).min())

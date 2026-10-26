@@ -174,13 +174,13 @@ async def get_full_risk_data() -> Dict[str, Any]:
     tests: the factor-based historical scenarios from /api/v1/risk/stress-test.
     """
     import numpy as _np
-    from api import main as _m
+    from api.routers import book
     from api.calculations.factor_model import returns_from_closes
     from api.calculations.risk_analytics import performance_stats, drawdown_stats, correlation_block
     from api.handlers.market_handler import _fetch_dated_closes_literal
 
     logger.info("Computing full risk analytics from realised returns")
-    matrix, reason, _ = await _m._position_return_matrix(None)
+    matrix, reason, _ = await book._position_return_matrix(None)
     if matrix is not None:
         mv = _np.array(matrix["market_values"], dtype=float)
         gross = float(_np.abs(mv).sum()) or 1.0
@@ -229,7 +229,7 @@ async def get_full_risk_data() -> Dict[str, Any]:
 
     stress = []
     try:
-        st = await _m.risk_stress_get_v1(None)
+        st = await book.risk_stress_get_v1(None)
         if st.get("available"):
             mv_gross = float(_np.abs(_np.array(matrix["market_values"])).sum()) if matrix is not None else None
             for sc in st["scenarios"]:

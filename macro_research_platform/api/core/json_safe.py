@@ -69,7 +69,13 @@ def to_json_safe(obj: Any, path: str = "", fixes: List[str] | None = None) -> An
 
 
 class SafeJSONResponse(JSONResponse):
+    """The app's default response class: standard JSON, with NaN / Infinity sent as null instead of producing invalid
+    JSON. Each newly seen offending path is logged once.
+    """
     def render(self, content: Any) -> bytes:
+        """Serialise fast when the content is already valid JSON; otherwise replace non-finite numbers with null and
+        log where they were.
+        """
         try:
             return json.dumps(content, ensure_ascii=False, allow_nan=False, indent=None,
                               separators=(",", ":")).encode("utf-8")

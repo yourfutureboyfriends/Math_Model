@@ -63,6 +63,7 @@ def currency_return(fx: Dict[str, float], start_after: str, usd_base: bool) -> O
 
 
 def in_usd(local_return: Optional[float], ccy_return: Optional[float]) -> Optional[float]:
+    """A local-currency return expressed in US dollars: (1 + local)(1 + currency) − 1; None when either is missing."""
     if local_return is None:
         return None
     if ccy_return is None:

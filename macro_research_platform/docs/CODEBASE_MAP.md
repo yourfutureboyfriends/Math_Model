@@ -59,8 +59,9 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `governance_reports.py` | The monthly internal reporting pack and the board-level scorecard (api/governance.py holds the controls). |
 | `health_sources.py` | Per-source data-feed health probing (data-trust layer). |
 | `logging_config.py` | Central logging configuration — one consistent format for the whole backend. |
+| `macro_calendar.py` | Macro calendar: FOMC meetings and FRED release dates — the dates every panel, the event dataset and the blackout calendar agree on. |
 | `macro_trader.py` | Macro Trader — a PAPER book that follows the systematic macro model (api/model): growth and inflation factors → regime probabilities → Black–Litterman expected returns → a volatility-targeted allocation across 10… |
-| `main.py` | FastAPI backend for Macro Research Platform React frontend. VERSION: 2026-05-05-reload-test # DEBUG marker |
+| `main.py` | Macro Terminal API — application entry point. |
 | `market_bars.py` | OHLCV bars at a chosen interval and period (Yahoo Finance), for the interactive charts. |
 | `market_dates.py` | Trading-date alignment for Yahoo daily bars. |
 | `markets.py` | Market reference data: every equity market the platform can screen or analyse. |
@@ -73,6 +74,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `positions.py` | Positions and tiers, per fund: who does what in each organisation, and what the platform lets them do there. |
 | `price_cache.py` | Canonical Price Cache — Single Source of Truth for Market Prices |
 | `regime_context.py` | Single authoritative regime classification. Computed ONCE per dashboard refresh. All sections use this object. It is frozen (immutable) so no section can accidentally mutate it. |
+| `regime_data.py` | Macro data and regime state: loading the processed macro dataset and turning it into the regime, its scores and the risk indicators that the dashboard, the Daily Brief, /api/regime and the fund panels read. |
 | `release_calendar.py` | Release-calendar-aware data freshness. |
 | `report_scheduler.py` | Report Scheduler for Macro Research Platform. |
 | `research_indicators.py` | Cycle & systemic-risk indicators from published research (see api/calculations/systemic_risk.py for the methods and references). |
@@ -376,6 +378,9 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 |---|---|
 | `admin.py` | User administration (admin role only). Every change is written to the audit trail. |
 | `ai.py` | AI research assistant (api/ai/assistant.py): answers from the terminal's own data via tools. |
+| `audit.py` | Audit-trail endpoints: the decision log and point-in-time snapshots of the platform's state. |
+| `auth.py` | Authentication endpoints: sign in, sign out, change password, policy status and "who am I". |
+| `book.py` | The fund's book: positions, trade ideas, and the risk of what is held. |
 | `broker_ibkr.py` | IBKR link per fund (api/brokerage/ibkr.py) — read-only: status, broker snapshot, broker reconciliation, and a one-time import of the broker's positions into the fund's book. No order routing. |
 | `business.py` | Business layer endpoints (trade-ideas, recommendations, expected-returns, etc.). |
 | `dashboard.py` | Dashboard endpoints. |
@@ -396,6 +401,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `portfolios.py` | Portfolios: model review of your holdings, portfolio optimisation, and the auto (paper) book. All under authenticated prefixes (/api/v1/portfolio, /api/v1/auto). |
 | `positions.py` | Positions and tiers per fund (api/positions.py): the fund's organisation, who holds what, and what each can do. |
 | `quant.py` | Quant Lab (build/backtest your own systematic strategies), the Quant Trader (paper-trades deployed strategies) and the Macro Trader (paper-trades the macro model) — api/quant, api/macro_trader. |
+| `research.py` | Research endpoints: macro, cross-asset and data-quality views that the Overview, Signals, Risk and Markets panels read. None of them touches a fund's book (that is api/routers/book.py). |
 | `risk.py` | Risk endpoints (recession, alerts, risk/full). |
 | `signals.py` | Signals endpoints (nowcast, liquidity, sentiment, momentum, factors, etc.). |
 | `stock.py` | Stock entry timing: per-stock buy/wait/avoid with entry, stop, target and size, plus a screener over a watchlist. Method and sources: api/calculations/stock_timing.py. |

@@ -31,6 +31,9 @@ def copper_gold_signal(copper: Dict[str, float], gold: Dict[str, float],
 
 
 def oil_trend_signal(change_1m: Optional[float], band: float = 3.0) -> Dict:
+    """Direction of WTI over a month: RISING / FALLING beyond ±`band` percent, else STABLE, with an interpretation;
+    UNAVAILABLE without history.
+    """
     if change_1m is None:
         return {"direction": "UNAVAILABLE", "interpretation": "No WTI history"}
     if change_1m > band:
@@ -43,6 +46,7 @@ def oil_trend_signal(change_1m: Optional[float], band: float = 3.0) -> Dict:
 
 
 def broad_commodity_momentum(rows: List[Dict], band: float = 2.0) -> Dict:
+    """Equal-weight average 3-month change across the commodities given; RISING / FALLING beyond ±`band` percent."""
     moves = [r["change3m"] for r in rows if isinstance(r.get("change3m"), (int, float))]
     if not moves:
         return {"score": None, "signal": "UNAVAILABLE", "components": 0}

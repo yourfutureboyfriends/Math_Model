@@ -9,6 +9,9 @@ import os
 
 
 def app_db_path() -> str:
+    """Absolute path of the main application database (accounts, the fund registry, shared research stores) from
+    DATABASE_URL; relative paths are resolved against api/ and then the project root.
+    """
     from api.config import DATABASE_URL
     path = (DATABASE_URL or "sqlite:///macro_terminal.db").split("sqlite:///", 1)[-1]
     if os.path.isabs(path):

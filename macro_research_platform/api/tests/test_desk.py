@@ -91,7 +91,7 @@ def client(tmp_path, monkeypatch):
         return {"available": True, "regime": "reflation"}
     monkeypatch.setattr(desk_mod, "_fund_block", _fund)
     monkeypatch.setattr(desk_mod, "_macro_block", _macro)
-    import api.main as main_mod
+    import api.routers.research as main_mod   # where the desk's macro calls live
     async def _gm():
         return {"recent_policy_moves": []}
     monkeypatch.setattr(main_mod, "get_global_macro_v1", _gm)

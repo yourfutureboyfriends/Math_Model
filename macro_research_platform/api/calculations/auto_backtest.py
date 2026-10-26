@@ -30,6 +30,10 @@ from api.calculations.stock_timing import BUY_SETUP, EXTENDED_TIMING
 
 @dataclass
 class Rules:
+    """Risk rules of the auto (paper) book: risk per trade, position / gross / count / sector caps, the drawdown and
+    volatility brakes, the reward-to-risk target and the maximum holding period (sessions). Defaults mirror the live
+    auto trader.
+    """
     risk_per_trade: float = 0.005
     max_position: float = 0.10
     max_gross: float = 1.0
@@ -51,6 +55,9 @@ class Rules:
 
 @dataclass
 class Panel:
+    """Aligned daily arrays (time × stock) for the backtest: OHLC prices, the setup and timing scores, ATR, the risk-
+    on/off regime, each stock's market class and sector.
+    """
     dates: List[str]
     symbols: List[str]
     open: np.ndarray
@@ -67,12 +74,23 @@ class Panel:
 
 
 def drawdown_multiplier(equity: float, peak: float, max_dd: float) -> float:
+    """Scale for new risk as the book falls from its peak: 1 at the peak, falling linearly to 0 at a drawdown of
+    `max_dd`.
+
+    Args:
+        equity: current equity.
+        peak: running peak of equity.
+        max_dd: drawdown (fraction) at which new risk stops.
+    """
     if peak <= 0 or max_dd <= 0:
         return 1.0
     return min(1.0, max(0.0, (equity / peak - (1 - max_dd)) / max_dd))
 
 
 def vol_multiplier(equity_hist: Sequence[float], target: float, window: int = 20) -> float:
+    """Scale for new risk so realised volatility over the last `window` sessions does not exceed `target` (annualised);
+    1 when volatility is at or below target or history is short.
+    """
     e = np.asarray(equity_hist[-(window + 1):], dtype=float)
     if e.size < 11:
         return 1.0
@@ -82,6 +100,18 @@ def vol_multiplier(equity_hist: Sequence[float], target: float, window: int = 20
 
 
 def run(p: Panel, rules: Rules, start: int = 260, capital: float = 1.0) -> Dict[str, Any]:
+    """Replay the auto book day by day over the panel: entries from setup and timing scores sized by risk per trade,
+    stops and targets from ATR, time exits, all caps and brakes from `rules`, and class-based trading costs.
+
+    Args:
+        p: the aligned data panel.
+        rules: the book's risk rules.
+        start: first session index traded (warm-up before it).
+        capital: starting equity.
+
+    Returns:
+        The equity curve, the trades and summary statistics.
+    """
     T, N = p.close.shape
     rng = np.random.default_rng(rules.seed)
     cost_side = np.array([COST_BY_CLASS.get(c, 0.0025) / 2 for c in p.market_class])
@@ -246,6 +276,9 @@ def run(p: Panel, rules: Rules, start: int = 260, capital: float = 1.0) -> Dict[
 
 # ── Statistics ───────────────────────────────────────────────────────────────
 def perf(equity: np.ndarray, dates: Sequence[str]) -> Dict[str, Any]:
+    """Performance of an equity curve: CAGR, annualised volatility, Sharpe, Sortino, maximum drawdown and calendar-year
+    returns (periods per year inferred from the dates).
+    """
     from datetime import date
     r = np.diff(equity) / equity[:-1]
     yrs = max((date.fromisoformat(dates[-1]) - date.fromisoformat(dates[0])).days / 365.25, 1 / 365.25)
@@ -266,6 +299,9 @@ def perf(equity: np.ndarray, dates: Sequence[str]) -> Dict[str, Any]:
 
 
 def trade_stats(trades: Sequence[Dict[str, Any]], periods_per_year: float, years: float) -> Dict[str, Any]:
+    """Trade-level statistics in R (multiples of initial risk): count, trades per year, hit rate, mean and dispersion
+    of R, profit factor, average holding days and the target / stop / time exit mix.
+    """
     if not trades:
         return {"trades": 0}
     r = np.array([t["r"] for t in trades])

@@ -76,6 +76,9 @@ def absorption_ratio(returns: np.ndarray, top_frac: float = 0.2, half_life: Opti
 
 
 def absorption_ratio_series(returns: np.ndarray, window: int = 500, step: int = 1, **kw) -> np.ndarray:
+    """Rolling absorption ratio (Kritzman et al. 2011): for each window of returns, the share of variance explained by
+    the leading principal components; NaN where it cannot be computed.
+    """
     T = returns.shape[0]
     out = np.full(T, np.nan)
     for t in range(window, T + 1, step):
@@ -141,6 +144,7 @@ def fit_recession_probit(x: Sequence[float], y: Sequence[int]) -> Optional[Dict[
 
 
 def probit_prob(model: Dict[str, float], x: float) -> float:
+    """Probability from a fitted one-variable probit: Φ(intercept + slope·x)."""
     from statistics import NormalDist
     return NormalDist().cdf(model["intercept"] + model["slope"] * x)
 

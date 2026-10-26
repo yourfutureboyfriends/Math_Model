@@ -44,6 +44,7 @@ def _clip(x: float, lo: float = -1.0, hi: float = 1.0) -> float:
 
 
 def sma(c: np.ndarray, n: int) -> Optional[float]:
+    """Simple moving average of the last n closes, or None when history is shorter."""
     return float(np.mean(c[-n:])) if c.size >= n else None
 
 
@@ -72,6 +73,9 @@ def atr(h: np.ndarray, l: np.ndarray, c: np.ndarray, n: int = 14) -> Optional[fl
 
 # ── Setup components ─────────────────────────────────────────────────────────
 def trend_component(c: np.ndarray) -> Optional[Dict[str, Any]]:
+    """Trend score from the 50- and 200-day averages: +1 above the 200-day with a golden cross, down to −1 below it
+    without — with the evidence sentence.
+    """
     s50, s200 = sma(c, 50), sma(c, 200)
     if s200 is None:
         return None
@@ -84,6 +88,9 @@ def trend_component(c: np.ndarray) -> Optional[Dict[str, Any]]:
 
 
 def momentum_component(c: np.ndarray) -> Optional[Dict[str, Any]]:
+    """12-1 month momentum (return from 12 months to 1 month ago) per unit of volatility, squashed to −1…+1 with tanh;
+    None without a year of clean history.
+    """
     if c.size < 253:
         return None
     r12_1 = float(c[-22] / c[-253] - 1)
@@ -97,6 +104,7 @@ def momentum_component(c: np.ndarray) -> Optional[Dict[str, Any]]:
 
 
 def high52_component(c: np.ndarray) -> Optional[Dict[str, Any]]:
+    """Proximity to the 52-week high: −1 at 70% of the high or less, rising to +1 at the high."""
     if c.size < 200:
         return None
     hi = float(np.max(c[-252:]))
@@ -160,6 +168,9 @@ def analyst_component(info: Dict[str, Any], revisions: List[Dict[str, Any]], pri
 
 
 def quality_component(info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Quality score from return on equity, net margin and debt / equity (each scaled to −1…+1 and averaged); None
+    without any of them.
+    """
     roe, pm, de = info.get("returnOnEquity"), info.get("profitMargins"), info.get("debtToEquity")
     parts, ev = [], []
     if isinstance(roe, (int, float)):
@@ -178,6 +189,9 @@ def quality_component(info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 # ── Entry timing ─────────────────────────────────────────────────────────────
 def timing_component(c: np.ndarray, h: np.ndarray, l: np.ndarray) -> Optional[Dict[str, Any]]:
+    """Entry-timing score from distance to the 20-day average in ATRs and RSI(14): pullbacks score high, stretched
+    moves low; the state is pullback, neutral or extended.
+    """
     s20, a, r = sma(c, 20), atr(h, l, c), rsi(c)
     if s20 is None or not a or r is None:
         return None

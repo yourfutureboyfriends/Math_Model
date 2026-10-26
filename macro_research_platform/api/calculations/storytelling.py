@@ -62,6 +62,9 @@ def explain_growth(spx_level: Optional[float], spx_history: Optional[List[float]
 
 
 def explain_inflation(cpi_yoy: Optional[float], breakeven_10y: Optional[float]) -> Dict:
+    """Plain-language explanation of the inflation signal from CPI YoY and the 10-year breakeven, with each input's
+    contribution.
+    """
     score, trend, _ = calculate_inflation_signal(cpi_yoy, breakeven_10y)
     if score is None:
         return _unavailable("Inflation", "CPI and 10Y breakeven both missing")
@@ -78,6 +81,9 @@ def explain_inflation(cpi_yoy: Optional[float], breakeven_10y: Optional[float]) 
 
 
 def explain_liquidity(dxy: Optional[float], ten_yr: Optional[float], fed_rate: Optional[float]) -> Dict:
+    """Plain-language explanation of the liquidity signal from the dollar index (weight 0.6) and the Fed funds −
+    10-year spread (weight 0.4).
+    """
     score, trend, _ = calculate_liquidity_signal(dxy, ten_yr, fed_rate)
     if score is None:
         return _unavailable("Liquidity", "DXY, 10Y yield or Fed funds missing")
@@ -95,6 +101,7 @@ def explain_liquidity(dxy: Optional[float], ten_yr: Optional[float], fed_rate: O
 
 
 def explain_risk(vix: Optional[float]) -> Dict:
+    """Plain-language explanation of the risk-appetite signal from the VIX."""
     score, trend, _ = calculate_risk_signal(vix)
     if score is None:
         return _unavailable("Risk", "VIX missing")
