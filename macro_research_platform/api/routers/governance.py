@@ -17,6 +17,12 @@ def _user(request: Request, roles=ALL) -> Dict[str, Any]:
     return require_roles(request, set(roles))
 
 
+def _cap(request: Request, cap: str) -> Dict[str, Any]:
+    """The user, if their position (or role) in this fund grants the capability."""
+    from api import positions
+    return positions.require(request, cap)
+
+
 async def _t(fn, *a):
     try:
         return await asyncio.to_thread(fn, *a)
@@ -80,7 +86,7 @@ async def gov_instrument_propose(body: InstrumentIn, request: Request):
 @router.post("/api/v1/governance/instruments/{symbol}/decision")
 async def gov_instrument_decide(symbol: str, body: DecideIn, request: Request):
     from api import governance as gov
-    u = _user(request, ("pm", "risk"))
+    u = _cap(request, "instruments_approve")
     return await _t(gov.decide_instrument, symbol, u["username"], body.approve, body.note)
 
 
@@ -126,7 +132,7 @@ async def gov_models(request: Request):
 @router.post("/api/v1/governance/models")
 async def gov_model_create(body: ModelIn, request: Request):
     from api import governance as gov
-    u = _user(request, ("pm", "analyst", "quant"))
+    u = _cap(request, "model_propose")
     return await _t(gov.create_model, u["username"], body.model_dump())
 
 
@@ -141,6 +147,15 @@ async def gov_model_get(mid: int, request: Request):
 async def gov_model_signoff(mid: int, body: SignoffIn, request: Request):
     from api import governance as gov
     u = _user(request, ALL)
+    m = await _t(gov.get_model, mid)
+    need = {"G1": "model_signoff_research", "G2": "model_signoff_ic", "G3": "model_signoff_risk", "G5": "model_signoff_ic"}
+    nxt = m.get("next_gate")
+    if nxt == "G4":                                  # IC and risk each sign: either capability
+        caps = __import__("api.positions", fromlist=["x"]).capabilities_for(u)
+        if not caps & {"model_signoff_ic", "model_signoff_risk"}:
+            raise HTTPException(403, "G4 needs an investment-committee or risk sign-off capability")
+    elif nxt in need:
+        _cap(request, need[nxt])
     return await _t(gov.signoff, mid, u["username"], u.get("role") or "", body.evidence, body.note)
 
 
@@ -187,21 +202,21 @@ async def gov_controls(request: Request):
 @router.post("/api/v1/governance/controls/halt")
 async def gov_halt(body: HaltIn, request: Request):
     from api import governance as gov
-    u = _user(request, ("pm", "risk"))
+    u = _cap(request, "halt_trading")
     return await _t(lambda: gov.start_halt("manual" if not body.test else "test", body.reason, u["username"], body.test))
 
 
 @router.post("/api/v1/governance/controls/resume")
 async def gov_resume(body: TextIn, request: Request):
     from api import governance as gov
-    u = _user(request, ("risk",))
+    u = _cap(request, "resume_trading")
     return await _t(gov.lift_halt, u["username"], body.text)
 
 
 @router.post("/api/v1/governance/controls/reconcile")
 async def gov_reconcile(request: Request):
     from api import governance as gov
-    u = _user(request)
+    u = _cap(request, "reconcile")
     return await _t(gov.reconcile, u["username"])
 
 
@@ -223,7 +238,7 @@ async def gov_incident_fix(iid: int, body: TextIn, request: Request):
 @router.post("/api/v1/governance/incidents/{iid}/signoff")
 async def gov_incident_signoff(iid: int, request: Request):
     from api import governance as gov
-    u = _user(request, ("risk", "pm"))
+    u = _cap(request, "incidents_signoff")
     return await _t(gov.signoff_incident, iid, u["username"])
 
 
@@ -261,7 +276,7 @@ async def gov_sources(request: Request):
 @router.post("/api/v1/governance/data-sources/review")
 async def gov_source_review(body: SourceReviewIn, request: Request):
     from api import governance as gov
-    u = _user(request, ("pm", "risk"))
+    u = _cap(request, "data_licences_review")
     return await _t(gov.review_source, body.name, u["username"], body.status, body.terms_reference, body.note)
 
 
@@ -289,14 +304,14 @@ async def gov_budget(request: Request):
 @router.post("/api/v1/governance/budget/expenses")
 async def gov_expense(body: ExpenseIn, request: Request):
     from api import governance as gov
-    u = _user(request)
+    u = _cap(request, "budget_record")
     return await _t(gov.add_expense, u["username"], body.date, body.category, body.amount, body.currency, body.description)
 
 
 @router.post("/api/v1/governance/budget/expenses/{eid}/approve")
 async def gov_expense_approve(eid: int, request: Request):
     from api import governance as gov
-    u = _user(request, ("pm",))
+    u = _cap(request, "budget_approve")
     return await _t(gov.approve_expense, eid, u["username"])
 
 
@@ -317,7 +332,7 @@ async def gov_milestone_update(mid: int, body: MilestoneIn, request: Request):
 @router.post("/api/v1/governance/milestones/{mid}/signoff")
 async def gov_milestone_signoff(mid: int, request: Request):
     from api import governance as gov
-    u = _user(request, ("pm", "risk"))
+    u = _cap(request, "milestones_signoff")
     return await _t(gov.signoff_milestone, mid, u["username"])
 
 

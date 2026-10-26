@@ -139,6 +139,10 @@ def setup(fund_id: str = "main", user: str = "admin", paper_notional: float = 25
                               (plan, period, out, owner, acc, i))
                 seeded["milestones"] = len(MILESTONES)
             c.commit()
+        from api import positions
+        n_pos = positions.seed("moriah")
+        if n_pos:
+            seeded["positions"] = n_pos
         gov._audit("fund_setup", f"Fund configured as {FUND_NAME} (Phase I research & paper portfolio) from: {SOURCE}",
                    user, "fund", before={k: before.get(k) for k in ("fund_name", "base_currency", "benchmark", "capital")},
                    after={"seeded": seeded})

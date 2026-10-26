@@ -562,6 +562,7 @@ async def quant_trader(request: Request, refresh: bool = False, book: str = Quer
 async def quant_deploy(body: DeployIn, request: Request):
     from api.quant import engine, trader
     u = _user(request, ("pm", "quant"))
+    __import__("api.positions", fromlist=["x"]).require(request, "quant_deploy")
     from api import funds, governance as gov
     _, refusal = await asyncio.to_thread(gov.model_for_deployment, body.model_id)
     if refusal:

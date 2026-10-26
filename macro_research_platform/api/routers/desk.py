@@ -212,7 +212,9 @@ async def desk(request: Request):
                                                    "state", "next_expected_release", "category")}
                            for s in freshness.get("series", [])]}
     return {"user": {"username": username, "role": role},
-            "focus": ROLE_FOCUS.get(role, ROLE_FOCUS["analyst"]),
+            "focus": ({"title": user["position"]["title"], "panels": user["position"]["panels"],
+                       "tier": user["position"]["tier"], "position": user["position"]["key"]}
+                      if user.get("position") else ROLE_FOCUS.get(role, ROLE_FOCUS["analyst"])),
             "queue": queue, "fund": fund, "macro": macro, "data": data,
             "orders": {"by_state": counts, "available": isinstance(orders, list)},
             "as_of": datetime.now().isoformat()}

@@ -27,12 +27,15 @@ from api.config import JWT_ALGORITHM, JWT_SECRET
 PUBLIC_WRITES = {"/api/auth/login"}
 # Usable while a password change is pending (everything else needing auth is blocked).
 PASSWORD_CHANGE_ALLOWED = {"/api/auth/me", "/api/auth/change-password", "/api/auth/logout"}
+# Writes a read-only (viewer) position may still make — each further checked against its capabilities.
+VIEWER_WRITES = ("/api/auth/", "/api/v1/governance/budget", "/api/v1/governance/controls/reconcile",
+                 "/api/v1/governance/incidents", "/api/v1/governance/data-sources/review", "/api/v1/governance/milestones")
 # Usable while two-factor enrolment is required and pending.
 MFA_ENROLL_ALLOWED = PASSWORD_CHANGE_ALLOWED | {"/api/auth/mfa", "/api/auth/mfa/setup", "/api/auth/mfa/enable"}
 SENSITIVE_READ_PREFIXES = (
     "/api/v1/portfolio", "/api/v1/fund", "/api/v1/orders", "/api/v1/blotter",
     "/api/v1/risk/", "/api/v1/audit", "/api/portfolio", "/api/admin", "/api/v1/desk",
-    "/api/v1/auto", "/api/v1/corporate-actions", "/api/v1/governance",
+    "/api/v1/auto", "/api/v1/corporate-actions", "/api/v1/governance", "/api/v1/positions",
     # the firm's own information: the brief lists the fund's holdings, the sleeve compares targets with the book,
     # the decision log and IC pack are internal records (found open in the Oct-2026 backend audit)
     "/api/morning-brief", "/api/v1/model/sleeve", "/api/business/decision-log", "/api/business/ic-pack",
@@ -115,6 +118,13 @@ async def auth_middleware(request: Request, call_next):
     else:
         fid = funds.MAIN
     token_ctx = funds.CURRENT.set(fid)
+    if request.state.user:                           # role and capabilities from the person's position in this fund
+        from api import positions
+        request.state.user = positions.apply_to_user(request.state.user)
+        if (request.state.user.get("role") == "viewer" and request.method not in ("GET", "HEAD", "OPTIONS")
+                and path.startswith("/api/") and not path.startswith(VIEWER_WRITES)):
+            funds.CURRENT.reset(token_ctx)
+            return JSONResponse({"detail": "Your position is read-only in this fund", "code": "read_only"}, status_code=403)
     try:
         return await call_next(request)
     finally:
@@ -131,6 +141,10 @@ def require_roles(request: Request, roles: Iterable[str]) -> dict:
     if not user:
         raise HTTPException(401, "Authentication required")
     allowed = set(roles) | {"admin"}
+    if user["role"] == "viewer":                     # a read-only position: reads open to members, never writes
+        if request.method == "GET" and "analyst" in allowed:
+            return user
+        raise HTTPException(403, "Your position is read-only here")
     if user["role"] not in allowed:
         raise HTTPException(403, f"Role '{user['role']}' cannot do this (needs one of: {sorted(allowed)})")
     return user

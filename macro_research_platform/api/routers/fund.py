@@ -174,6 +174,7 @@ async def update_fund_settings(body: FundSettingsIn, request: Request):
     from api.core.access import require_roles
     require_roles(request, {"risk"})
     changes = {k: v for k, v in body.model_dump().items() if v is not None}
+    __import__("api.positions", fromlist=["x"]).require(request, "fund_settings")
     if "capital" in changes and changes["capital"] <= 0:
         raise HTTPException(400, "capital must be positive")
     if "vol_target" in changes and not (0 < changes["vol_target"] <= 1):
@@ -611,6 +612,7 @@ async def create_order(body: OrderIn, request: Request):
     from api.core.access import require_roles
     user = require_roles(request, {"pm", "quant", "analyst"})["username"]
     signed = side_to_signed(body.side, body.quantity)
+    __import__("api.positions", fromlist=["x"]).require(request, "propose_orders")
     from api import governance as gov
     model, refusal = await _thread(gov.model_for_order, body.model_id)
     if refusal:
@@ -654,6 +656,7 @@ async def approve_order(order_id: int, body: DecisionNoteIn, request: Request):
     from api.calculations.blotter import side_to_signed
     from api.core.access import require_roles
     user = require_roles(request, {"risk"})["username"]       # approval is a risk function
+    __import__("api.positions", fromlist=["x"]).require(request, "approve_orders")
     o = await _thread(blotter_store.get_idea, order_id)
     if not o or not o.get("side"):
         raise HTTPException(404, "order not found")
@@ -709,6 +712,7 @@ async def execute_order(order_id: int, request: Request):
     from api.handlers.market_handler import _fetch_closes_literal
     from api.core.access import require_roles
     user = require_roles(request, {"pm"})["username"]        # execution desk
+    __import__("api.positions", fromlist=["x"]).require(request, "execute_orders")
     o = await _thread(blotter_store.get_idea, order_id)
     if not o or not o.get("side"):
         raise HTTPException(404, "order not found")

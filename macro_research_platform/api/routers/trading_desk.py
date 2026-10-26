@@ -10,9 +10,13 @@ from pydantic import BaseModel, Field
 router = APIRouter(tags=["trading-desk"])
 
 
-def _user(request: Request, roles=("pm", "analyst", "risk", "quant")) -> Dict[str, Any]:
+def _user(request: Request, roles=("pm", "analyst", "risk", "quant"), cap: str = None) -> Dict[str, Any]:
     from api.core.access import require_roles
-    return require_roles(request, set(roles))
+    u = require_roles(request, set(roles))
+    if cap:                                          # the person's position in this fund must grant it
+        from api import positions
+        positions.require(request, cap)
+    return u
 
 
 def _audit(user: str, action: str, text: str, target: str, after: Any = None) -> None:
@@ -114,7 +118,7 @@ async def pitch_get(pid: int, request: Request):
 @router.post("/api/v1/pitches")
 async def pitch_create(body: PitchIn, request: Request):
     from api import pitches
-    u = _user(request, ("analyst", "pm"))
+    u = _user(request, ("analyst", "pm"), cap="pitch_submit")
     try:
         p = await asyncio.to_thread(pitches.create, body.symbol, body.title or body.symbol, u["username"], body.body)
     except Exception as e:                                                     # noqa: BLE001
@@ -126,7 +130,7 @@ async def pitch_create(body: PitchIn, request: Request):
 @router.post("/api/v1/pitches/{pid}/versions")
 async def pitch_revise(pid: int, body: PitchVersionIn, request: Request):
     from api import pitches
-    u = _user(request, ("analyst", "pm"))
+    u = _user(request, ("analyst", "pm"), cap="pitch_submit")
     try:
         p = await asyncio.to_thread(pitches.add_version, pid, u["username"], body.body, body.note or "")
     except Exception as e:                                                     # noqa: BLE001
@@ -138,7 +142,7 @@ async def pitch_revise(pid: int, body: PitchVersionIn, request: Request):
 @router.post("/api/v1/pitches/{pid}/submit")
 async def pitch_submit(pid: int, request: Request):
     from api import pitches
-    u = _user(request, ("analyst", "pm"))
+    u = _user(request, ("analyst", "pm"), cap="pitch_submit")
     try:
         p = await asyncio.to_thread(pitches.transition, pid, u["username"], "submitted")
     except Exception as e:                                                     # noqa: BLE001
@@ -153,7 +157,7 @@ async def pitch_decision(pid: int, body: DecisionIn, request: Request):
     at approval are kept for the kill criteria."""
     from api import fund_store, pitches
     from api.marketdata import core
-    u = _user(request, ("pm",))
+    u = _user(request, ("pm",), cap="pitch_decide")
     price = None
     try:
         p0 = await asyncio.to_thread(pitches.get, pid)
@@ -199,7 +203,7 @@ async def pretrade_assessment(body: PretradeIn, request: Request):
     technicals, events in the execution window, mandate checks, portfolio impact and the pitch's valuation → flags
     and an execution suggestion. Decision support only: it approves nothing and places no order."""
     from api.handlers import pretrade_feasibility as pf
-    u = _user(request)
+    u = _user(request, cap="pretrade_desk")
     try:
         r = await asyncio.wait_for(asyncio.to_thread(pf.assess, body.symbol, body.side, body.quantity, body.amount_base,
                                                      body.participation, body.pitch_id), timeout=120)

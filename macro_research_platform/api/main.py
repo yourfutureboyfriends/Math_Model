@@ -1749,6 +1749,8 @@ from api.routers.events import router as events_router  # macro event dataset (p
 app.include_router(events_router)
 from api.routers.mfa import router as mfa_router  # two-factor sign-in (TOTP)
 app.include_router(mfa_router)
+from api.routers.positions import router as positions_router  # positions & tiers per fund
+app.include_router(positions_router)
 from api.routers.trading_desk import router as trading_desk_router   # pitch review (PMC) + pre-trade feasibility
 app.include_router(trading_desk_router)
 from api.routers.funds import router as funds_router   # several funds, each in its own database

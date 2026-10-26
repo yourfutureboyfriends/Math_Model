@@ -4,13 +4,19 @@
  * sign-offs, execution halt / incidents / reconciliation, the monthly internal reporting pack, the board scorecard,
  * the budget ledger, the milestone roadmap and break-even AUM. Backend: /api/v1/governance/* (api/governance.py).
  */
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { createContext, Fragment, useCallback, useContext, useEffect, useState } from 'react';
+import { TeamPositions } from './TeamPositions';
 import { Loader2, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { forgetFundLogo } from '@/lib/fundLogo';
 import { BrandShape, Letterhead } from '@/components/layout/FundIdentity';
 import { currentFund } from '@/lib/fund';
+
+// what the signed-in person's position allows in this fund (buttons greyed out; the server enforces it regardless)
+const CapsCtx = createContext<Record<string, boolean> | null>(null);
+const useCan = () => { const c = useContext(CapsCtx); return (k: string) => !c || c[k] !== false; };
+const NO = 'Your position in this fund does not include this';
 
 // window.prompt/confirm are suppressed in some embedded browsers: an in-app dialog instead
 function useSay() {
@@ -222,6 +228,7 @@ function ModelDetail({ id, g, onChange }: { id: number; g: any; onChange: () => 
 }
 
 function Models({ g }: { g: any }) {
+  const can = useCan();
   const { d, err, load } = useLoad<any>('/api/v1/governance/models');
   const [open, setOpen] = useState<number | null>(null);
   const [f, setF] = useState<any>(EMPTY);
@@ -237,7 +244,7 @@ function Models({ g }: { g: any }) {
           {(['mechanism', 'target_variable', 'horizon', 'dataset', 'null_hypothesis'] as const).map((k) => (
             <input key={k} className={inputCls} placeholder={k.replace('_', ' ')} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} />))}
         </div>
-        <div className="flex gap-2 items-center mt-1"><button className={btn} onClick={create}>Propose</button>{msg && <span className="text-amber text-2xs">{msg}</span>}</div>
+        <div className="flex gap-2 items-center mt-1"><button disabled={!can('model_propose')} title={can('model_propose') ? undefined : NO} className={btn} onClick={create}>Propose</button>{msg && <span className="text-amber text-2xs">{msg}</span>}</div>
       </Box>
       {err && <div className="text-amber text-2xs">{err}</div>}
       <table className="w-full text-xs">
@@ -260,6 +267,7 @@ function Models({ g }: { g: any }) {
 
 // ── instruments ──────────────────────────────────────────────────────────────
 function Instruments() {
+  const can = useCan();
   const { d, err, load, setErr } = useLoad<any>('/api/v1/governance/instruments');
   const [f, setF] = useState({ symbol: '', name: '', asset_class: '', theme: '', currency: '', tradable: true, note: '' });
   const act = async (fn: () => Promise<any>) => { try { await fn(); load(); } catch (e: any) { setErr(e.message); } };
@@ -275,8 +283,8 @@ function Instruments() {
             <td className="text-text-secondary">{i.asset_class} · {i.theme}</td>
             <td className={cn(i.status === 'approved' ? 'text-green' : i.status === 'removed' ? 'text-text-tertiary' : 'text-amber')}>{i.status}{i.approved_by ? ` (${i.approved_by})` : ''}</td>
             <td className="text-right whitespace-nowrap">
-              {i.status !== 'approved' && <button className={btn} onClick={() => act(() => call(`/api/v1/governance/instruments/${encodeURIComponent(i.symbol)}/decision`, 'POST', { approve: true }))}>Approve</button>}
-              {i.status !== 'removed' && <button className={cn(btn, 'ml-1')} onClick={() => act(() => call(`/api/v1/governance/instruments/${encodeURIComponent(i.symbol)}/decision`, 'POST', { approve: false }))}>Remove</button>}
+              {i.status !== 'approved' && <button className={btn} disabled={!can('instruments_approve')} title={can('instruments_approve') ? undefined : NO} onClick={() => act(() => call(`/api/v1/governance/instruments/${encodeURIComponent(i.symbol)}/decision`, 'POST', { approve: true }))}>Approve</button>}
+              {i.status !== 'removed' && <button disabled={!can('instruments_approve')} title={can('instruments_approve') ? undefined : NO} className={cn(btn, 'ml-1')} onClick={() => act(() => call(`/api/v1/governance/instruments/${encodeURIComponent(i.symbol)}/decision`, 'POST', { approve: false }))}>Remove</button>}
             </td>
           </tr>))}</tbody>
       </table>
@@ -294,6 +302,7 @@ function Instruments() {
 
 // ── controls ─────────────────────────────────────────────────────────────────
 function Controls({ reload }: { reload: () => void }) {
+  const can = useCan();
   const { dialog, say } = useSay();
   const { d, err, load, setErr } = useLoad<any>('/api/v1/governance/controls');
   const [busy, setBusy] = useState(false);
@@ -307,12 +316,12 @@ function Controls({ reload }: { reload: () => void }) {
         <div className="flex gap-1 flex-wrap items-center">
           {d.halt ? <>
             <span className="text-red text-2xs">Halted ({d.halt.kind}): {d.halt.reason}{d.halt.incident_id ? ` — incident #${d.halt.incident_id}` : ''}</span>
-            <button className={btn} disabled={busy} onClick={async () => { const r = await say('Resolution (risk role; an incident must be fixed and independently signed off first):'); if (r) act(() => call('/api/v1/governance/controls/resume', 'POST', { text: r })); }}>Resume trading</button>
+            <button disabled={busy || !can('resume_trading')} title={can('resume_trading') ? undefined : NO} className={btn} onClick={async () => { const r = await say('Resolution (risk role; an incident must be fixed and independently signed off first):'); if (r) act(() => call('/api/v1/governance/controls/resume', 'POST', { text: r })); }}>Resume trading</button>
           </> : <>
-            <button className={btn} disabled={busy} onClick={async () => { const r = await say('Reason to HALT all new orders and executions:'); if (r) act(() => call('/api/v1/governance/controls/halt', 'POST', { reason: r })); }}>Halt execution</button>
-            <button className={btn} disabled={busy} onClick={() => act(() => call('/api/v1/governance/controls/halt', 'POST', { reason: 'kill-switch test', test: true }))}>Start a kill-switch test</button>
+            <button disabled={busy || !can('halt_trading')} title={can('halt_trading') ? undefined : NO} className={btn} onClick={async () => { const r = await say('Reason to HALT all new orders and executions:'); if (r) act(() => call('/api/v1/governance/controls/halt', 'POST', { reason: r })); }}>Halt execution</button>
+            <button disabled={busy || !can('halt_trading')} title={can('halt_trading') ? undefined : NO} className={btn} onClick={() => act(() => call('/api/v1/governance/controls/halt', 'POST', { reason: 'kill-switch test', test: true }))}>Start a kill-switch test</button>
           </>}
-          <button className={cn(btn, 'ml-auto')} disabled={busy} onClick={() => act(() => call('/api/v1/governance/controls/reconcile', 'POST'))}>{busy ? <Loader2 className="w-3 h-3 animate-spin inline" /> : 'Reconcile positions now'}</button>
+          <button disabled={busy || !can('reconcile')} title={can('reconcile') ? undefined : NO} className={cn(btn, 'ml-auto')} onClick={() => act(() => call('/api/v1/governance/controls/reconcile', 'POST'))}>{busy ? <Loader2 className="w-3 h-3 animate-spin inline" /> : 'Reconcile positions now'}</button>
         </div>
       </Box>
       <Box title="Incidents">
@@ -323,7 +332,7 @@ function Controls({ reload }: { reload: () => void }) {
             <span className="flex-1">{i.kind}: {i.description}{i.fix ? <div className="text-text-tertiary">fix ({i.fixed_by}): {i.fix}</div> : null}</span>
             <span className={cn(i.status === 'signed_off' ? 'text-green' : 'text-amber')}>{i.status}{i.signed_off_by ? ` (${i.signed_off_by})` : ''}</span>
             {i.status === 'open' && <button className={btn} onClick={async () => { const t = await say('Fix and how it was tested:'); if (t) act(() => call(`/api/v1/governance/incidents/${i.id}/fix`, 'POST', { text: t })); }}>Record fix</button>}
-            {i.status === 'fixed' && <button className={btn} onClick={() => act(() => call(`/api/v1/governance/incidents/${i.id}/signoff`, 'POST'))}>Independent sign-off</button>}
+            {i.status === 'fixed' && <button disabled={!can('incidents_signoff')} title={can('incidents_signoff') ? undefined : NO} className={btn} onClick={() => act(() => call(`/api/v1/governance/incidents/${i.id}/signoff`, 'POST'))}>Independent sign-off</button>}
           </div>))}
       </Box>
       <Box title="Reconciliations (positions vs fills ledger; daily T+1 at 06:30 UTC)">
@@ -397,6 +406,7 @@ function Monthly() {
 
 // ── budget, roadmap, break-even ──────────────────────────────────────────────
 function Budget() {
+  const can = useCan();
   const { d, err, load, setErr } = useLoad<any>('/api/v1/governance/budget');
   const [f, setF] = useState({ date: new Date().toISOString().slice(0, 10), category: '', amount: '', currency: 'GBP', description: '' });
   const act = async (fn: () => Promise<any>) => { try { await fn(); load(); } catch (e: any) { setErr(e.message); } };
@@ -421,12 +431,13 @@ function Budget() {
       </Box>
       {d.expenses.map((e: any) => (
         <div key={e.id} className="text-2xs border-b border-border-subtle py-0.5 flex gap-2"><span className="font-mono">{e.date}</span><span>{e.category}</span><span className="font-mono">{num(e.amount)} {e.currency}</span><span className="flex-1 text-text-secondary">{e.description} · {e.recorded_by}</span>
-          {e.approved_by ? <span className="text-green">approved ({e.approved_by})</span> : <button className={btn} onClick={() => act(() => call(`/api/v1/governance/budget/expenses/${e.id}/approve`, 'POST'))}>Approve</button>}</div>))}
+          {e.approved_by ? <span className="text-green">approved ({e.approved_by})</span> : <button disabled={!can('budget_approve')} title={can('budget_approve') ? undefined : NO} className={btn} onClick={() => act(() => call(`/api/v1/governance/budget/expenses/${e.id}/approve`, 'POST'))}>Approve</button>}</div>))}
     </div>
   );
 }
 
 function Roadmap() {
+  const can = useCan();
   const { dialog, say } = useSay();
   const { d, err, load, setErr } = useLoad<any>('/api/v1/governance/milestones');
   const act = async (fn: () => Promise<any>) => { try { await fn(); load(); } catch (e: any) { setErr(e.message); } };
@@ -446,7 +457,7 @@ function Roadmap() {
               <span className="col-span-4 flex gap-1 flex-wrap justify-end">
                 {(['in_progress', 'blocked'] as const).map((s) => <button key={s} className={btn} onClick={() => act(() => call(`/api/v1/governance/milestones/${m.id}`, 'PUT', { status: s }))}>{s.replace('_', ' ')}</button>)}
                 <button className={btn} onClick={async () => { const ev = await say('Evidence that meets the acceptance criterion:'); if (ev) act(() => call(`/api/v1/governance/milestones/${m.id}`, 'PUT', { status: 'done', evidence: ev })); }}>done</button>
-                {m.status === 'done' && !m.signed_off_by && <button className={btn} onClick={() => act(() => call(`/api/v1/governance/milestones/${m.id}/signoff`, 'POST'))}>sign off</button>}
+                {m.status === 'done' && !m.signed_off_by && <button disabled={!can('milestones_signoff')} title={can('milestones_signoff') ? undefined : NO} className={btn} onClick={() => act(() => call(`/api/v1/governance/milestones/${m.id}/signoff`, 'POST'))}>sign off</button>}
               </span>
             </div>))}
         </Box>))}
@@ -455,6 +466,7 @@ function Roadmap() {
 }
 
 function Licences() {
+  const can = useCan();
   const { d, err, load, setErr } = useLoad<any>('/api/v1/governance/data-sources');
   const [edit, setEdit] = useState<any>(null);
   if (!d) return <div className="text-2xs text-text-tertiary">{err ?? 'Loading…'}</div>;
@@ -472,7 +484,7 @@ function Licences() {
             <td className={cn(r.status === 'allowed' ? 'text-green' : r.status === 'unreviewed' ? 'text-amber' : 'text-red')}>{r.status.replace('_', ' ')}
               {r.terms_reference && <div className="text-[10px] text-text-tertiary">{r.terms_reference} · {r.reviewed_by} {String(r.reviewed_at ?? '').slice(0, 10)}</div>}
               {r.note && <div className="text-[10px] text-text-tertiary">{r.note}</div>}</td>
-            <td className="text-right"><button className={btn} onClick={() => setEdit({ name: r.name, status: r.status === 'unreviewed' ? 'allowed' : r.status, terms_reference: r.terms_reference ?? '', note: r.note ?? '' })}>Review</button></td>
+            <td className="text-right"><button disabled={!can('data_licences_review')} title={can('data_licences_review') ? undefined : NO} className={btn} onClick={() => setEdit({ name: r.name, status: r.status === 'unreviewed' ? 'allowed' : r.status, terms_reference: r.terms_reference ?? '', note: r.note ?? '' })}>Review</button></td>
           </tr>))}</tbody></table>
       {edit && (
         <Box title={`Review: ${edit.name}`}>
@@ -509,19 +521,22 @@ function BreakEven() {
   );
 }
 
-type Tab = 'overview' | 'models' | 'instruments' | 'controls' | 'monthly' | 'budget' | 'roadmap' | 'licences' | 'breakeven';
-const TABS: [Tab, string][] = [['overview', 'Overview'], ['models', 'Models G0–G5'], ['instruments', 'Approved instruments'], ['controls', 'Controls'],
+type Tab = 'overview' | 'team' | 'models' | 'instruments' | 'controls' | 'monthly' | 'budget' | 'roadmap' | 'licences' | 'breakeven';
+const TABS: [Tab, string][] = [['overview', 'Overview'], ['team', 'Team & positions'], ['models', 'Models G0–G5'], ['instruments', 'Approved instruments'], ['controls', 'Controls'],
   ['monthly', 'Monthly pack'], ['budget', 'Budget'], ['roadmap', 'Roadmap'], ['licences', 'Data licences'], ['breakeven', 'Break-even AUM']];
 
 export function GovernanceSection() {
   const { d: g, err, load } = useLoad<any>('/api/v1/governance');
+  const me = useLoad<any>('/api/v1/positions/me');
   const [tab, setTab] = useState<Tab>('overview');
   return (
+    <CapsCtx.Provider value={me.d?.capabilities ?? null}>
     <div className="border border-border bg-surface-1">
       <div className="px-3 py-2 border-b border-border flex items-center gap-2 flex-wrap">
         <BrandShape variant="mark_mask" height={16} className="text-bloomberg" />
         <span className="text-xs font-medium text-text-primary uppercase tracking-wider">Fund Governance</span>
         {g && <span className="text-2xs text-text-tertiary">{g.settings.fund_name} · {g.settings.stage_label}</span>}
+        {me.d?.position && <span className="text-[10px] px-1.5 border border-bloomberg/40 text-bloomberg">{me.d.position.title} · Tier {me.d.position.tier}</span>}
         <div className="flex gap-1 flex-wrap ml-auto">
           {TABS.map(([k, l]) => <button key={k} onClick={() => setTab(k)} className={cn('text-2xs px-2 py-0.5 border', tab === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-tertiary hover:text-text-primary')}>{l}</button>)}
         </div>
@@ -529,6 +544,7 @@ export function GovernanceSection() {
       <div className="p-3">
         {!g ? <div className="text-2xs text-text-tertiary">{err ?? 'Loading…'}</div> : <>
           {tab === 'overview' && <Overview g={g} reload={load} />}
+          {tab === 'team' && <TeamPositions />}
           {tab === 'models' && <Models g={g} />}
           {tab === 'instruments' && <Instruments />}
           {tab === 'controls' && <Controls reload={load} />}
@@ -540,5 +556,6 @@ export function GovernanceSection() {
         </>}
       </div>
     </div>
+    </CapsCtx.Provider>
   );
 }
