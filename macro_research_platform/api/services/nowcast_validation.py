@@ -85,6 +85,7 @@ class NowcastMetrics:
     direction_accuracy: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 
@@ -99,6 +100,7 @@ class VintageComparison:
     avg_revision: float
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 
@@ -112,6 +114,7 @@ class RevisionImpact:
     revision_magnitude: float
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 

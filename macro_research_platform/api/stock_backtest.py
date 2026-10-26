@@ -107,6 +107,7 @@ def _regime(stock_index, idx_close, vix_close) -> np.ndarray:
 
 
 def run() -> Dict[str, Any]:
+    """Backtest the stock entry model over the long price panel and save the result."""
     bt.EXCLUDED["jump"] = 0
     from api import global_universe as gu
     t0 = time.time()
@@ -271,6 +272,7 @@ def findings(r: Dict[str, Any]) -> List[Dict[str, str]]:
 
 
 def latest() -> Optional[Dict[str, Any]]:
+    """The last saved result, or None."""
     try:
         return json.loads(RESULT_FILE.read_text())
     except Exception:
@@ -278,6 +280,7 @@ def latest() -> Optional[Dict[str, Any]]:
 
 
 async def run_in_background() -> None:
+    """Run the backtest in a worker thread unless one is already running."""
     if _state["running"]:
         return
     _state.update(running=True, started=time.time(), error=None, stage="starting")
@@ -291,5 +294,6 @@ async def run_in_background() -> None:
 
 
 def status() -> Dict[str, Any]:
+    """Whether the backtest is running, its stage and the last error."""
     return {"running": _state["running"], "stage": _state["stage"], "error": _state["error"],
             "running_for_s": round(time.time() - _state["started"]) if _state["running"] else None}

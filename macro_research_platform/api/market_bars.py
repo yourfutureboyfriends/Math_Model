@@ -23,10 +23,12 @@ _lock = threading.Lock()
 
 
 def allowed(interval: str, period: str) -> bool:
+    """Whether Yahoo serves this interval for this period."""
     return interval in INTERVALS and period in PERIODS and _PERIOD_DAYS[period] <= _MAX_DAYS.get(interval, 10 ** 9)
 
 
 def allowed_periods(interval: str) -> List[str]:
+    """The periods Yahoo serves for an interval."""
     return [p for p in PERIODS if allowed(interval, p)]
 
 

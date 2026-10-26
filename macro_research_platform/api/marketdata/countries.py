@@ -291,6 +291,7 @@ _APAC = set("CN HK MO TW JP KR KP MN IN PK BD LK NP BT MV AF MM TH LA KH VN MY S
 
 
 def region_of(iso2: str) -> str:
+    """The region of a country."""
     c = (iso2 or "").upper()
     return "europe" if c in _EUROPE else "mea" if c in _MEA else "apac" if c in _APAC else "americas"
 
@@ -307,6 +308,7 @@ SUFFIX_COUNTRY = {"": "US", "TO": "CA", "V": "CA", "SA": "BR", "MX": "MX", "L": 
 
 
 def country_of_symbol(symbol: str) -> str:
+    """The listing country implied by a ticker's exchange suffix."""
     s = (symbol or "").upper()
     if s.startswith("^") or s.endswith("=X") or s.endswith("=F"):
         return ""
@@ -340,6 +342,7 @@ COUNTRY_ALIASES = {
 
 
 def countries_in(text: str) -> List[str]:
+    """The countries in a region."""
     import re as _re
     hits = []
     for iso, words in COUNTRY_ALIASES.items():

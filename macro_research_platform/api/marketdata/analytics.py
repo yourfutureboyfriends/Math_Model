@@ -59,6 +59,11 @@ def seasonality(symbol: str, years: int = 15) -> Dict[str, Any]:
 
 # ── CORR: correlation matrix ─────────────────────────────────────────────────
 def correlation(symbols: List[str], period: str = "1y", freq: str = "daily") -> Dict[str, Any]:
+    """Return correlation matrix of 2–30 symbols over a period, daily or weekly returns.
+
+    Raises:
+        NotFound: fewer than two symbols or an unsupported period / frequency.
+    """
     syms = list(dict.fromkeys(x.strip().upper() for x in symbols if x.strip()))[:30]
     if len(syms) < 2:
         raise NotFound("Give at least two symbols.")

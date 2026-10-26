@@ -232,6 +232,7 @@ def _cpi_index(rows18, rows99):
 
 
 async def build_global_macro(today: Optional[date] = None) -> Dict[str, Any]:
+    """The global macro view: growth, inflation, policy rates and markets by economy, from FRED and market data."""
     from api.handlers.macro_inputs import load_fred_series
     from api.handlers.market_handler import _fetch_dated_closes_literal
 

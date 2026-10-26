@@ -23,6 +23,9 @@ async def _ds(refresh: bool = False):
 @router.get("/api/v1/research/events")
 async def events(event: Optional[str] = Query(None, pattern=r"^[a-z_]{2,30}$"), start: Optional[str] = None,
                  limit: int = Query(500, ge=1, le=5000)):
+    """The macro event dataset (point-in-time releases, surprise proxies, cross-asset reactions), filtered by event
+    type and start date, with its version hash.
+    """
     d = await _ds()
     rows = [e for e in d["events"] if (not event or e["event"] == event) and (not start or e["date"] >= start)]
     return {k: d[k] for k in ("version", "hash", "built_at", "start", "errors", "event_types", "assets", "method")} | {
@@ -31,6 +34,7 @@ async def events(event: Optional[str] = Query(None, pattern=r"^[a-z_]{2,30}$"), 
 
 @router.get("/api/v1/research/events/summary")
 async def events_summary(event: str = Query("us_cpi", pattern=r"^[a-z_]{2,30}$"), horizon: str = Query("h0", pattern="^h[05]$")):
+    """Reaction of each asset per 1 s.d. surprise for an event type and horizon — in-sample and descriptive."""
     from api import event_dataset as ed
     d = await _ds()
     if event not in d["event_types"]:
@@ -40,6 +44,7 @@ async def events_summary(event: str = Query("us_cpi", pattern=r"^[a-z_]{2,30}$")
 
 @router.post("/api/v1/research/events/rebuild")
 async def events_rebuild(request: Request):
+    """Rebuild the event dataset now (it otherwise refreshes every 12 hours)."""
     from api.core.access import require_roles
     require_roles(request, {"pm", "analyst", "quant", "risk"})
     d = await _ds(refresh=True)

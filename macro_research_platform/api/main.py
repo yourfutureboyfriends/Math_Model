@@ -360,6 +360,7 @@ from api.regime_data import PROJECT_ROOT, _fetch_fresh_fred_value, load_processe
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Standardize log format across all app modules before anything else logs.
+    """Start-up and shutdown: initialise databases, warm caches and start the scheduled jobs; stop them on exit."""
     from api.logging_config import setup_logging
     setup_logging()
     try:
@@ -972,17 +973,20 @@ async def get_port_info():
 
 @sio.event
 async def connect(sid, environ):
+    """Socket.IO connection opened."""
     logger.info(f"Client connected: {sid}")
     await sio.emit("connected", {"status": "ok", "message": "Connected to Macro Terminal"}, room=sid)
 
 
 @sio.event
 async def disconnect(sid):
+    """Socket.IO connection closed."""
     logger.info(f"Client disconnected: {sid}")
 
 
 @sio.on("subscribe_market_data")
 async def subscribe_market_data(sid, data):
+    """Acknowledge a client's market-data subscription."""
     logger.info(f"Client {sid} subscribed to market data")
     await sio.emit("market_data_update", {"status": "subscribed"}, room=sid)
 
@@ -990,6 +994,7 @@ async def subscribe_market_data(sid, data):
 @app.get("/api/health")
 @ttl_cache(120, offload=True)
 async def health_check():
+    """Liveness check for load balancers and the frontend."""
     df_live = load_processed_data()
     # No silent fallback to the synthetic sample dataset — report the live data's state.
     df = df_live

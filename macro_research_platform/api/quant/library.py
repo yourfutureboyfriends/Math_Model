@@ -713,10 +713,16 @@ def _multi_manager(members: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def all_entries() -> List[Dict[str, Any]]:
+    """Every library entry: the multi-manager, the portfolio, single strategies and smart-money strategies."""
     return [MULTI_MANAGER, PORTFOLIO] + LIBRARY + SMART_MONEY
 
 
 def get(sid: str) -> Dict[str, Any]:
+    """A library entry by id.
+
+    Raises:
+        KeyError: no such entry.
+    """
     for s in [MULTI_MANAGER, PORTFOLIO] + SMART_MONEY:
         if s["id"] == sid:
             return s

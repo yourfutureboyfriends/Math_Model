@@ -151,6 +151,9 @@ async def _book_state(raw: List[Dict[str, Any]], settings: Dict[str, Any],
 
 # ── Fund settings & NAV ──────────────────────────────────────────────────────
 class FundSettingsIn(BaseModel):
+    """Fund settings to change: name, capital, base currency, benchmark, costs, mandate, governance, stage, risk
+    policy, brand.
+    """
     fund_name: Optional[str] = None
     capital: Optional[float] = None
     base_currency: Optional[str] = None
@@ -174,12 +177,16 @@ class FundSettingsIn(BaseModel):
 
 @router.get("/api/v1/fund/settings")
 async def fund_settings():
+    """The current fund's settings."""
     from api import fund_store
     return await _thread(fund_store.get_settings)
 
 
 @router.put("/api/v1/fund/settings")
 async def update_fund_settings(body: FundSettingsIn, request: Request):
+    """Change the fund's settings (risk role and the fund_settings capability); validated, audit-logged. Changing the
+    base currency starts a new NAV series.
+    """
     from api import fund_store, audit_store
     from api.core.access import require_roles
     require_roles(request, {"risk"})
@@ -355,6 +362,7 @@ async def take_nav_snapshot() -> Dict[str, Any]:
 
 @router.post("/api/v1/fund/snapshot")
 async def fund_snapshot():
+    """Record today's NAV snapshot now (normally taken after the US close)."""
     return {"recorded": await take_nav_snapshot()}
 
 
@@ -368,12 +376,14 @@ async def fund_nav_series():
 
 # ── Risk limits & pre-trade compliance ───────────────────────────────────────
 class LimitIn(BaseModel):
+    """A limit's soft (warn) and hard (block) thresholds."""
     soft: float
     hard: float
 
 
 @router.get("/api/v1/risk/limits")
 async def risk_limits():
+    """The fund's risk limits with current values and status."""
     from api import fund_store, portfolio_store
     from api.calculations.limits import merge_limits, evaluate_limits
     settings = await _thread(fund_store.get_settings)
@@ -386,6 +396,7 @@ async def risk_limits():
 
 @router.put("/api/v1/risk/limits")
 async def update_risk_limits(body: Dict[str, LimitIn], request: Request):
+    """Change risk limits (soft ≤ hard; audit-logged)."""
     from api import fund_store, audit_store
     from api.core.access import require_roles
     require_roles(request, {"risk"})
@@ -406,6 +417,7 @@ async def update_risk_limits(body: Dict[str, LimitIn], request: Request):
 
 
 class PretradeIn(BaseModel):
+    """A proposed trade for compliance: symbol, signed quantity, book."""
     symbol: str
     quantity: float               # signed: + buy, - sell/short
     book: Optional[str] = "Macro"
@@ -549,6 +561,7 @@ async def rebalance(book: str = "Macro", regime: Optional[str] = None,
 
 
 class StageIn(BaseModel):
+    """Rebalance orders to stage for approval."""
     book: str = "Macro"
     orders: List[Dict[str, Any]]
     regime: Optional[str] = None
@@ -583,6 +596,7 @@ async def stage_rebalance(body: StageIn, request: Request):
 
 # ── Orders: four-eyes approval & execution ───────────────────────────────────
 class OrderIn(BaseModel):
+    """An order ticket: symbol, side, quantity, book, thesis and the assessment / pitch / model it is based on."""
     symbol: str
     side: str                      # BUY / SELL
     quantity: float
@@ -595,6 +609,7 @@ class OrderIn(BaseModel):
 
 
 class DecisionNoteIn(BaseModel):
+    """An approval or rejection note."""
     note: Optional[str] = None
 
 
@@ -608,6 +623,7 @@ def _order_view(idea: Dict[str, Any]) -> Dict[str, Any]:
 
 @router.get("/api/v1/orders")
 async def list_orders(state: Optional[str] = None):
+    """Orders (trade ideas with a side and quantity), optionally by state, with the execution mode."""
     from api import blotter_store, portfolio_store
     await _thread(blotter_store.init_db)
     ideas = await _thread(portfolio_store.list_trade_ideas, state)
@@ -698,6 +714,7 @@ async def approve_order(order_id: int, body: DecisionNoteIn, request: Request):
 
 @router.post("/api/v1/orders/{order_id}/reject")
 async def reject_order(order_id: int, body: DecisionNoteIn, request: Request):
+    """Reject an order with a reason (risk or PM)."""
     from api import blotter_store, portfolio_store, audit_store
     from api.core.access import require_roles
     user = require_roles(request, {"risk", "pm"})["username"]
@@ -784,6 +801,7 @@ async def execute_order(order_id: int, request: Request):
 
 @router.get("/api/v1/blotter")
 async def blotter(book: Optional[str] = None, limit: int = 200):
+    """The trade blotter: fills with costs, in each fill's currency and converted totals."""
     from api import blotter_store, fund_store, portfolio_store
     from api.calculations.blotter import blotter_totals
     trades = await _thread(lambda: blotter_store.list_trades(limit, book))

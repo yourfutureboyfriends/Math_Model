@@ -371,6 +371,11 @@ RESEARCH_NOTES: List[Dict[str, str]] = [
 
 
 def get(template_id: str) -> Dict[str, Any]:
+    """A template's specification with its name and description.
+
+    Raises:
+        KeyError: no such template.
+    """
     for t in TEMPLATES:
         if t["id"] == template_id:
             return {**t["spec"], "name": t["name"], "description": t["description"]}

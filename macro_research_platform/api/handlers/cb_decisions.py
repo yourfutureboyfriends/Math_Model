@@ -43,6 +43,16 @@ def curve_implied(policy: Optional[float], points: List[Dict[str, Any]]) -> Opti
 
 def next_decisions(policy_rates: Optional[Dict[str, float]] = None,
                    curves: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """The next policy decision of each major central bank: date (from the economic-calendar feed), current policy rate
+    and the market-implied move where a curve is available.
+
+    Args:
+        policy_rates: current policy rates by bank, when already loaded.
+        curves: market-implied paths by bank (e.g. from futures), when available.
+
+    Returns:
+        {as_of, banks: [...]} — a bank without a scheduled date is listed with a reason.
+    """
     today = date.today().isoformat()
     feed: List[Dict[str, Any]] = []
     try:

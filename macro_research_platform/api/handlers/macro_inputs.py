@@ -51,6 +51,7 @@ class DatedSeries:
 
     @classmethod
     def from_mapping(cls, name: str, mapping: Dict[str, float]) -> "DatedSeries":
+        """Build a series from {date: value}, dropping missing and NaN values and sorting by date."""
         items = sorted((d, v) for d, v in mapping.items() if v is not None and v == v)
         return cls(name, [d for d, _ in items], [float(v) for _, v in items])
 
@@ -59,10 +60,12 @@ class DatedSeries:
 
     @property
     def latest(self) -> Optional[float]:
+        """The most recent value, or None for an empty series."""
         return self.values[-1] if self.values else None
 
     @property
     def latest_date(self) -> Optional[str]:
+        """The date of the most recent value, or None."""
         return self.dates[-1] if self.dates else None
 
     def last_common(self, other: "DatedSeries") -> Optional[tuple]:
@@ -86,12 +89,15 @@ class DatedSeries:
 
 @dataclass
 class MacroInputs:
+    """The macro and market series the signals read, by key; a missing key returns an empty series rather than raising.
+    """
     series: Dict[str, DatedSeries]
 
     def __getitem__(self, key: str) -> DatedSeries:
         return self.series.get(key) or DatedSeries(key)
 
     def missing(self) -> List[str]:
+        """Keys with no data (used to label the dashboard as degraded)."""
         return [k for k in (*YAHOO_TICKERS, *FRED_SERIES) if not self[k]]
 
 

@@ -206,6 +206,7 @@ class Data:
         return pd.DataFrame.from_dict(self.instruments, orient="index").reindex(self.tickers)
 
     def returns(self) -> pd.DataFrame:
+        """Daily simple returns of the close panel."""
         return self.close.pct_change(fill_method=None)
 
 
@@ -217,6 +218,7 @@ def ewma_vol(close: pd.DataFrame, halflife: int = 42) -> pd.DataFrame:
 
 
 def momentum(close: pd.DataFrame, n: int, skip: int = 0) -> pd.DataFrame:
+    """Return from `n` days ago to `skip` days ago (e.g. 252, 21 = 12-1 month momentum)."""
     return close.shift(skip) / close.shift(n) - 1
 
 
@@ -292,6 +294,7 @@ def bollinger(x: pd.DataFrame, n: int = 20, k: float = 2.0) -> Dict[str, pd.Data
 
 
 def true_range(data: "Data") -> pd.DataFrame:
+    """True range per day: the largest of high − low, |high − previous close| and |low − previous close|."""
     pc = data.close.shift(1)
     return np.fmax(np.fmax(data.high - data.low, (data.high - pc).abs()), (data.low - pc).abs())
 
@@ -448,6 +451,7 @@ def decision_mask(weights: pd.DataFrame) -> np.ndarray:
 
 
 def normalize_gross(weights: pd.DataFrame, gross: float = 1.0) -> pd.DataFrame:
+    """Scale each row of weights to a gross exposure of `gross`, leaving all-blank rows blank (no decision)."""
     blank = weights.isna().all(axis=1)
     g = weights.abs().sum(axis=1).replace(0, np.nan)
     out = weights.div(g, axis=0).mul(gross).fillna(0.0)
@@ -490,6 +494,7 @@ def half_spread_bps(close: pd.DataFrame, volume: pd.DataFrame, window: int = 63,
 
 
 def dollar_volume(close: pd.DataFrame, volume: pd.DataFrame, window: int = 63) -> pd.DataFrame:
+    """Average daily dollar volume over `window`, lagged one day so it is known at decision time."""
     return (close * volume).rolling(window, min_periods=10).mean().shift(1)
 
 
@@ -526,6 +531,7 @@ class Ctx:
 
     @property
     def close(self) -> pd.Series:
+        """Today's closes (event engine)."""
         return self._data.close.iloc[self.i]
 
     def pre(self, name: str) -> Any:
@@ -534,13 +540,16 @@ class Ctx:
         return v.iloc[:self.i + 1] if isinstance(v, (pd.Series, pd.DataFrame)) else v
 
     def opt(self, field: str) -> pd.DataFrame:
+        """An options field's history up to today."""
         return self._data.opt[field].iloc[:self.i + 1]
 
     def fund(self, name: str) -> pd.DataFrame:
+        """A fundamental's point-in-time history up to today."""
         return self._data.fund[name].iloc[:self.i + 1]
 
     @property
     def info(self) -> pd.DataFrame:
+        """Static per-ticker information (sector, name, kind)."""
         return self._data.info
 
     # orders
@@ -578,7 +587,8 @@ class Ctx:
                            "peak": px, "trough": px, "price": float("nan"), "days": days, "placed": str(self.date.date())})
 
     def bracket(self, ticker: str, weight: float, take_profit: float, stop_loss: float, days: Optional[int] = None) -> None:
-        """Two linked exits — a limit at `take_profit` and a stop at `stop_loss`, both to `weight` (usually 0): whichever
+        """Two linked exits — a limit at `take_profit` and a stop at `stop_loss`, both to `weight` (usually 0):
+        whichever
         fills first cancels the other (one-cancels-other)."""
         g = f"oco{len(self._cond)}-{self.i}"
         self._cond.append({"ticker": ticker, "weight": float(weight), "price": float(take_profit), "kind": "limit",
@@ -591,6 +601,7 @@ class Ctx:
         plot(chart, name, value, self.date)
 
     def cancel(self, ticker: Optional[str] = None) -> None:
+        """Cancel pending conditional orders, for one ticker or all."""
         self._cond = [o for o in self._cond if ticker is not None and o["ticker"] != ticker]
 
     # share-quantity orders (used by the QuantConnect-style API; usable directly too)
@@ -619,6 +630,7 @@ class Ctx:
         return oid
 
     def cancel_order(self, oid: int) -> bool:
+        """Cancel one pending order by id; False when it isn't pending."""
         n = len(self._cond)
         self._cond = [o for o in self._cond if o.get("id") != oid]
         if len(self._cond) < n:
@@ -633,6 +645,7 @@ class Ctx:
 
     @property
     def orders(self) -> List[Dict[str, Any]]:
+        """Pending conditional orders."""
         return list(self._cond)
 
 
@@ -1287,6 +1300,7 @@ def cost_summary(res: Dict[str, Any]) -> Dict[str, float]:
 
 # ── Walk-forward optimisation ───────────────────────────────────────────────
 def grid(params: Dict[str, Sequence[Any]]) -> List[Dict[str, Any]]:
+    """Every combination of a parameter grid ({name: [values]})."""
     combos: List[Dict[str, Any]] = [{}]
     for k, vals in (params or {}).items():
         combos = [{**c, k: v} for c in combos for v in vals]
@@ -1671,6 +1685,11 @@ def load_strategy(code: str, namespace: Optional[Dict[str, Any]] = None) -> Dict
 
 
 def run_weights(fn: Callable, data: Data, params: Dict[str, Any]) -> pd.DataFrame:
+    """Call a strategy's weight function and check it returned a dates × tickers DataFrame.
+
+    Raises:
+        ValueError: the result is not a weight table.
+    """
     w = fn(data, **params)
     if isinstance(w, pd.Series):
         w = w.to_frame()
@@ -1840,9 +1859,11 @@ def risk_parity(cov: pd.DataFrame, iterations: int = 500) -> pd.Series:
 # ── Validation ───────────────────────────────────────────────────────────────
 class _Mute:
     def write(self, s):
+        """Discard output."""
         return len(s)
 
     def flush(self):
+        """No-op."""
         pass
 
 

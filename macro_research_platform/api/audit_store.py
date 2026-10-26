@@ -24,6 +24,7 @@ def _now() -> str:
 
 
 def init_audit_db() -> None:
+    """Create the decision log and point-in-time snapshot tables in the current fund's database if missing."""
     with _conn() as conn:
         conn.execute(
             """
@@ -64,6 +65,22 @@ def init_audit_db() -> None:
 def add_decision(action: str, rationale: str, user: str = "admin",
                  target: Optional[str] = None,
                  before_state: Any = None, after_state: Any = None) -> Dict[str, Any]:
+    """Append a decision to the audit log (append-only).
+
+    Args:
+        action: What was done (e.g. ``portfolio_update``).
+        rationale: Why — required for every entry.
+        user: Who did it.
+        target: What it was done to (e.g. ``position:12``).
+        before_state: State before the change (JSON-serialisable).
+        after_state: State after the change.
+
+    Returns:
+        The stored entry.
+
+    Raises:
+        ValueError: action or rationale is empty.
+    """
     if not action:
         raise ValueError("action is required")
     if not rationale:
@@ -88,6 +105,7 @@ def add_decision(action: str, rationale: str, user: str = "admin",
 
 
 def list_decisions(limit: int = 100) -> List[Dict[str, Any]]:
+    """The latest `limit` audit-log entries, newest first."""
     init_audit_db()
     with _conn() as conn:
         rows = conn.execute("SELECT * FROM decision_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
@@ -106,6 +124,11 @@ def _decode_decision(d: Dict[str, Any]) -> Dict[str, Any]:
 
 # ── Point-in-time snapshots ──────────────────────────────────────────────────
 def add_snapshot(state: Dict[str, Any], label: Optional[str] = None) -> int:
+    """Store a point-in-time snapshot of platform state (the table keeps about the last 2,000).
+
+    Returns:
+        The snapshot id.
+    """
     init_audit_db()
     with _conn() as conn:
         cur = conn.execute("INSERT INTO pit_snapshots (ts,label,state) VALUES (?,?,?)",
@@ -118,6 +141,7 @@ def add_snapshot(state: Dict[str, Any], label: Optional[str] = None) -> int:
 
 
 def list_snapshots(limit: int = 200) -> List[Dict[str, Any]]:
+    """Snapshot ids, times and labels, newest first (without the state)."""
     init_audit_db()
     with _conn() as conn:
         rows = conn.execute("SELECT id, ts, label FROM pit_snapshots ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
@@ -125,6 +149,7 @@ def list_snapshots(limit: int = 200) -> List[Dict[str, Any]]:
 
 
 def get_snapshot(snap_id: int) -> Optional[Dict[str, Any]]:
+    """One snapshot with its decoded state, or None."""
     init_audit_db()
     with _conn() as conn:
         r = conn.execute("SELECT * FROM pit_snapshots WHERE id = ?", (snap_id,)).fetchone()

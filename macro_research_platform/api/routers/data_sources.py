@@ -10,6 +10,7 @@ router = APIRouter(tags=["data-sources"])
 
 @router.get("/api/v1/fundamentals/{ticker}")
 async def fundamentals(ticker: str, years: int = Query(10, ge=1, le=20), quarters: int = Query(12, ge=4, le=40)):
+    """Point-in-time fundamentals of a US filer from SEC XBRL (annual and quarterly statement lines)."""
     from api.providers import sec_edgar
     try:
         return await asyncio.wait_for(asyncio.to_thread(sec_edgar.statements, ticker, years, quarters), timeout=60)
@@ -23,6 +24,7 @@ async def fundamentals(ticker: str, years: int = Query(10, ge=1, le=20), quarter
 
 @router.get("/api/v1/alfred/revisions/{series}")
 async def alfred_revisions(series: str, start: str = "2000-01-01", transform: str = Query("level", pattern="^(level|pct)$")):
+    """How a FRED series has been revised: first release vs latest, with summary statistics."""
     from api.providers import alfred
     try:
         return await asyncio.to_thread(alfred.revisions, series.upper(), start, transform)
@@ -32,6 +34,7 @@ async def alfred_revisions(series: str, start: str = "2000-01-01", transform: st
 
 @router.get("/api/v1/alfred/as-of/{series}")
 async def alfred_as_of(series: str, date: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"), start: str = "1990-01-01"):
+    """A FRED series as it was published on a past date (ALFRED vintage)."""
     from api.providers import alfred
     try:
         return {"series": series.upper(), "vintage": date,
@@ -42,6 +45,7 @@ async def alfred_as_of(series: str, date: str = Query(..., pattern=r"^\d{4}-\d{2
 
 @router.get("/api/v1/dbnomics/series")
 async def dbnomics_series(code: str):
+    """A DBnomics series (IMF, OECD, Eurostat, ECB …) by code."""
     from api.providers import dbnomics
     try:
         return await asyncio.to_thread(dbnomics.series, code)
@@ -51,6 +55,7 @@ async def dbnomics_series(code: str):
 
 @router.get("/api/v1/dbnomics/search")
 async def dbnomics_search(q: str = Query(..., min_length=2), limit: int = Query(20, ge=1, le=50)):
+    """Search DBnomics datasets by text."""
     from api.providers import dbnomics
     try:
         return {"results": await asyncio.to_thread(dbnomics.search, q, limit)}

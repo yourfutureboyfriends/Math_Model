@@ -63,6 +63,9 @@ class _AxisHMM:
         self.up_state = 0
 
     def fit(self, df: pd.DataFrame) -> float:
+        """Fit a two-state Gaussian HMM to the standardised features, keeping the best of several EM restarts (EM finds
+        local optima); returns the log-likelihood.
+        """
         X = self.scaler.fit_transform(df[self.cols].values.astype(float))
         best, best_ll = None, -np.inf
         for seed in range(_N_RESTARTS):  # EM finds local optima; keep the best fit
@@ -85,14 +88,21 @@ class _AxisHMM:
         return float(self.model.predict_proba(self._X(df))[-1, self.up_state])
 
     def p_up_next(self, p_up: float) -> float:
+        """Probability of being in the rising state next month given today's probability, through the fitted transition
+        matrix.
+        """
         p = np.zeros(2)
         p[self.up_state], p[1 - self.up_state] = p_up, 1 - p_up
         return float((p @ self.model.transmat_)[self.up_state])
 
     def viterbi_up(self, df: pd.DataFrame) -> np.ndarray:
+        """Most likely state path (Viterbi): True where the axis is rising."""
         return self.model.predict(self._X(df)) == self.up_state
 
     def summary(self) -> dict:
+        """The fitted model in plain numbers: features, mean of the key feature in each state and the probability of
+        staying in each state.
+        """
         means = self.scaler.inverse_transform(self.model.means_)
         k = self.cols.index(self.key)
         up, down = self.up_state, 1 - self.up_state

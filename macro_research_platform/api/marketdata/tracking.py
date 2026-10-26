@@ -82,6 +82,7 @@ def _km(a_lat, a_lon, b_lat, b_lon) -> float:
 
 # ── SHIP: chokepoints ────────────────────────────────────────────────────────
 def chokepoints(days: int = 1100) -> Dict[str, Any]:
+    """Daily transits through maritime chokepoints (IMF PortWatch) over `days`."""
     def fetch():
         import requests
         since = (date.today() - timedelta(days=days)).isoformat()
@@ -204,11 +205,13 @@ class _AisCollector:
         return None
 
     def all(self) -> List[Dict[str, Any]]:
+        """Every vessel seen recently with a position."""
         cutoff = time_now() - self.MAX_AGE
         with self.lock:
             return [v for v in self.ships.values() if v.get("lat") is not None and v.get("seen", 0) >= cutoff]
 
     def one(self, mmsi: int) -> Optional[Dict[str, Any]]:
+        """One vessel with its recent track, or None."""
         with self.lock:
             v = self.ships.get(mmsi)
             if v is None:
@@ -219,6 +222,7 @@ class _AisCollector:
             return {**v, "track": pts}
 
     def snapshot(self, box) -> List[Dict[str, Any]]:
+        """Vessels seen recently within a lat / lon box (south, west, north, east)."""
         cutoff = time_now() - self.MAX_AGE
         with self.lock:
             return [dict(v) for v in self.ships.values() if v.get("lat") is not None and v["seen"] >= cutoff
@@ -360,6 +364,7 @@ def _ais_clean(speed, course, heading):
 
 
 def time_now() -> float:
+    """The current time (patchable in tests)."""
     import time as _t
     return _t.time()
 
@@ -422,6 +427,7 @@ WORLD_SHIP_COLS = ["mmsi", "lat", "lon", "speed", "heading", "type", "status", "
 
 
 def flag_of(mmsi: Any) -> Optional[str]:
+    """A vessel's flag state from its MMSI's maritime identification digits, or None."""
     m = str(mmsi or "")
     return MID.get(int(m[:3])) if len(m) == 9 and m[:3].isdigit() and m[0] in "234567" else None
 
@@ -583,6 +589,7 @@ def world_vessels_json() -> bytes:
 
 
 def world_vessels() -> Dict[str, Any]:
+    """Vessels worldwide from live AIS and satellite data."""
     col = ais_collector()
     if not col:
         raise NotFound("Global ship tracking needs a free aisstream.io key (AISSTREAM_API_KEY).")
@@ -663,6 +670,7 @@ def notable_ships(limit: int = 600) -> Dict[str, Any]:
 
 
 def vessel_live(mmsi: int) -> Dict[str, Any]:
+    """One vessel's latest position and track."""
     col = ais_collector()
     v = col.one(int(mmsi)) if col else None
     if not v:
@@ -779,6 +787,7 @@ def _digitraffic(box) -> Dict[str, Any]:
 
 # ── QUAK: earthquakes ────────────────────────────────────────────────────────
 def earthquakes(min_mag: float = 4.5) -> Dict[str, Any]:
+    """Recent significant earthquakes (USGS)."""
     def fetch():
         import requests
         r = requests.get("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_week.geojson", headers=UA, timeout=30)
@@ -809,6 +818,7 @@ FLAGS = {"PAN": "Panama", "LBR": "Liberia", "MHL": "Marshall Islands", "HKG": "H
 
 
 def vessel_info(query: str) -> Dict[str, Any]:
+    """A vessel's registry details."""
     token = os.getenv("GFW_API_TOKEN") or ""
     if not token:
         raise NotFound("Vessel identity needs a free Global Fishing Watch token (GFW_API_TOKEN).")

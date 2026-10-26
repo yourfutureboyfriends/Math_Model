@@ -129,6 +129,7 @@ def _collect(names: List[str], templates: List[str], self_cik: str) -> List[Dict
 
 
 def supply_chain(symbol: str) -> Dict[str, Any]:
+    """A company's suppliers and competitors as named in its SEC filings."""
     s = symbol.strip().upper()
     from api.marketdata.extras import _company_only
     _company_only(s, "Supply chain")

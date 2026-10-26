@@ -29,6 +29,7 @@ from typing import Dict, List, Optional
 
 @dataclass(frozen=True)
 class SeriesSpec:
+    """How a series is published: frequency, publication lag and grace, category, unit and transform."""
     metric: str          # key the UI uses (StaleBadge / Key Metrics)
     name: str
     series_id: str
@@ -42,6 +43,7 @@ class SeriesSpec:
 
     @property
     def value_series(self) -> str:
+        """The FRED id of the displayed value (series id plus transform suffix)."""
         return self.series_id + self.transform
 
 
@@ -78,6 +80,7 @@ _FIRST_FRIDAY_SERIES = {"PAYEMS", "UNRATE", "SAHMREALTIME"}
 
 
 def first_friday_after(d: date) -> date:
+    """The first Friday strictly after `d`."""
     d += timedelta(days=1)
     while d.weekday() != 4:
         d += timedelta(days=1)
@@ -108,6 +111,7 @@ def _bdays_between(a: date, b: date) -> int:
 
 
 def period_start(d: date, freq: str) -> date:
+    """The start of the period containing `d` for a frequency (D, W, M, Q)."""
     if freq == "M":
         return d.replace(day=1)
     if freq == "Q":
@@ -116,6 +120,7 @@ def period_start(d: date, freq: str) -> date:
 
 
 def period_end(start: date, freq: str) -> date:
+    """The end of the period starting at `start`."""
     if freq == "M":
         return start.replace(day=calendar.monthrange(start.year, start.month)[1])
     if freq == "Q":
@@ -125,6 +130,7 @@ def period_end(start: date, freq: str) -> date:
 
 
 def shift_period(start: date, freq: str, n: int) -> date:
+    """The period `n` periods after (or before) `start`."""
     if freq in ("M", "Q"):
         months = n * (3 if freq == "Q" else 1)
         idx = start.year * 12 + start.month - 1 + months
@@ -135,6 +141,7 @@ def shift_period(start: date, freq: str, n: int) -> date:
 
 
 def release_due(start: date, spec: SeriesSpec) -> date:
+    """When the data for the period starting at `start` is expected to be published."""
     end = period_end(start, spec.frequency)
     return _add_bdays(end, spec.lag_days) if spec.frequency == "D" else end + timedelta(days=spec.lag_days)
 
@@ -160,6 +167,7 @@ def expected_latest(spec: SeriesSpec, today: date, anchor: Optional[date] = None
 
 
 def periods_behind(last: date, expected: date, freq: str) -> int:
+    """How many periods the last observation is behind the expected one (0 when up to date)."""
     if last >= expected:
         return 0
     if freq in ("M", "Q"):

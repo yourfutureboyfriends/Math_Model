@@ -235,6 +235,9 @@ def _umich(day: str) -> Optional[Tuple[float, str]]:
 
 
 def actual_for(rec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The published value of an economic-calendar release from its official source, or None when the release isn't
+    mapped.
+    """
     src = SOURCES.get((rec.get("country"), rec.get("title")))
     if not src:
         return None

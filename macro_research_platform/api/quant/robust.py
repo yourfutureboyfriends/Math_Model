@@ -85,6 +85,7 @@ def _kurt(r):
 
 
 def monthly_table(r: np.ndarray, dates: Sequence[str]) -> Dict[str, Any]:
+    """Monthly and yearly compounded returns from daily returns."""
     by: Dict[str, Dict[str, float]] = {}
     keys = [d[:7] for d in dates]
     out_m: Dict[str, float] = {}
@@ -108,6 +109,7 @@ def monthly_table(r: np.ndarray, dates: Sequence[str]) -> Dict[str, Any]:
 
 
 def vs_benchmark(r: np.ndarray, b: np.ndarray, monthly_r: Dict[str, float], monthly_b: Dict[str, float]) -> Dict[str, Any]:
+    """Beta, alpha, correlation, tracking error and information ratio vs a benchmark."""
     ok = np.isfinite(r) & np.isfinite(b)
     r, b = r[ok], b[ok]
     if r.size < 60 or b.std() == 0:
@@ -186,6 +188,7 @@ def block_bootstrap(r: np.ndarray, n: int = 600, block: int = 21, seed: int = 7)
 
 
 def is_oos(r: np.ndarray, dates: Sequence[str], split: float = 0.7) -> Dict[str, Any]:
+    """In-sample vs out-of-sample Sharpe at a split (default 70 / 30)."""
     k = int(len(r) * split)
     if k < 250 or len(r) - k < 120:
         return {}

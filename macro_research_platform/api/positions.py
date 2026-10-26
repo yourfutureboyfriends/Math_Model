@@ -155,6 +155,7 @@ def _now() -> str:
 
 
 def init_db() -> None:
+    """Create the positions-and-tiers tables in the current fund's database."""
     with _conn() as c:
         c.executescript("""
         CREATE TABLE IF NOT EXISTS fund_positions (
@@ -192,6 +193,7 @@ def _row(r) -> T:
 
 
 def list_positions() -> List[T]:
+    """The fund's positions with their holders."""
     init_db()
     with _conn() as c:
         rows = [_row(r) for r in c.execute("SELECT * FROM fund_positions ORDER BY tier, title")]
@@ -205,6 +207,12 @@ def list_positions() -> List[T]:
 
 
 def upsert_position(p: Dict[str, Any], user: str) -> T:
+    """Create or edit a position after validating key, tier, base role and capabilities (a viewer position keeps only
+    read / sign-off capabilities).
+
+    Raises:
+        ValueError: invalid fields.
+    """
     init_db()
     key = str(p.get("key") or "").strip().lower()
     if not key or not key.replace("_", "").isalnum() or len(key) > 40:
@@ -235,6 +243,7 @@ def upsert_position(p: Dict[str, Any], user: str) -> T:
 
 
 def delete_position(key: str, user: str) -> None:
+    """Delete a position nobody holds."""
     init_db()
     with _conn() as c:
         if c.execute("SELECT 1 FROM fund_assignments WHERE position_key = ?", (key,)).fetchone():
@@ -294,6 +303,9 @@ def position_of(username: str) -> Optional[T]:
 
 
 def capabilities_for(user: Optional[Dict[str, Any]]) -> Set[str]:
+    """A user's capabilities in the current fund: all for administrators, else their position's, else their role's
+    defaults.
+    """
     if not user:
         return set()
     if user.get("platform_role", user.get("role")) == "admin":
@@ -328,6 +340,7 @@ def apply_to_user(user: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def me(user: Dict[str, Any]) -> Dict[str, Any]:
+    """The signed-in user's fund, role, position and capabilities, for the UI."""
     from api import funds
     pos = user.get("position")
     caps = capabilities_for(user)

@@ -182,6 +182,9 @@ HAZ = {1: "A", 2: "B", 3: "C", 4: "D"}
 
 
 def profile(v: Dict[str, Any]) -> Dict[str, Any]:
+    """What a vessel likely carries and its size class, estimating length from gross tonnage when AIS gives no
+    dimensions.
+    """
     t, code, L, d, name = v.get("type"), v.get("type_code"), v.get("length_m"), v.get("draught"), (v.get("name") or "")
     gt = v.get("tonnage_gt")
     if not L and gt:
@@ -243,6 +246,7 @@ HOT_ZONES = {"Strait of Hormuz / Gulf": (24.0, 50.0, 27.5, 58.5), "Red Sea / Bab
 
 
 def zone_of(lat: float, lon: float) -> Optional[str]:
+    """The named hot zone (strait, chokepoint) a position is in, or None."""
     for n, (s, w, nn, e) in HOT_ZONES.items():
         if s <= lat <= nn and w <= lon <= e:
             return n

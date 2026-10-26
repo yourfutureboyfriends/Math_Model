@@ -18,20 +18,24 @@ def _user(request: Request, roles=("pm", "quant", "analyst", "risk")):
 
 
 class RunIn(BaseModel):
+    """An options-research run: stage (1–4) and its settings."""
     stage: int
     strategies: Optional[List[str]] = None
 
 
 class RevealIn(BaseModel):
+    """Reveal the holdout of an experiment."""
     confirm: str
 
 
 class ExportIn(BaseModel):
+    """Export an experiment's configuration."""
     experiment_id: str
     strategy: str
 
 
 class ApproveIn(BaseModel):
+    """Approve an exported configuration."""
     file: str
     confirm: str
     acknowledge: bool = False
@@ -39,13 +43,15 @@ class ApproveIn(BaseModel):
 
 
 class RollbackIn(BaseModel):
+    """Roll a strategy back to its previous configuration, with a reason."""
     strategy: str
     reason: str = ""
 
 
 @router.get(f"{BASE}/overview")
 async def overview(request: Request):
-    """Everything the dashboard lists: stages, criteria, hypotheses, experiments, configurations, performance profiles."""
+    """Everything the dashboard lists: stages, criteria, hypotheses, experiments, configurations, performance profiles.
+    """
     _user(request)
     from api.quant.optresearch import deploy, registry, runner, strategies, validate
 
@@ -80,6 +86,7 @@ async def overview(request: Request):
 
 @router.post(f"{BASE}/run")
 async def run(body: RunIn, request: Request):
+    """Start an options-research stage as a background job."""
     u = _user(request, ("pm", "quant"))
     if body.stage not in (1, 2, 3, 4):
         raise HTTPException(400, "stage must be 1, 2, 3 or 4")
@@ -98,6 +105,7 @@ async def run(body: RunIn, request: Request):
 
 @router.get(f"{BASE}/jobs/{{job_id}}")
 async def job(job_id: str, request: Request):
+    """A research job's status and result (your own jobs; administrators see all)."""
     from api.quant import jobs
     u = _user(request)
     j = jobs.get(job_id, u["username"], u["role"] == "admin")
@@ -108,6 +116,7 @@ async def job(job_id: str, request: Request):
 
 @router.delete(f"{BASE}/jobs/{{job_id}}")
 async def job_cancel(job_id: str, request: Request):
+    """Cancel a running research job."""
     from api.quant import jobs
     u = _user(request)
     return {"cancelled": jobs.cancel(job_id, u["username"], u["role"] == "admin")}
@@ -115,6 +124,7 @@ async def job_cancel(job_id: str, request: Request):
 
 @router.get(f"{BASE}/experiments/{{eid}}")
 async def experiment(eid: str, request: Request):
+    """An experiment's stored result."""
     _user(request)
     from api.quant.optresearch import registry, runner
     if not eid.replace("-", "").isalnum():
@@ -143,6 +153,7 @@ async def reveal(eid: str, body: RevealIn, request: Request):
 
 @router.post(f"{BASE}/configs/export")
 async def export(body: ExportIn, request: Request):
+    """Export an experiment's configuration as a candidate for production."""
     u = _user(request, ("pm", "quant"))
     from api.quant.optresearch import deploy, runner
     res = runner.load_result(body.experiment_id)
@@ -167,6 +178,7 @@ async def approve(body: ApproveIn, request: Request):
 
 @router.post(f"{BASE}/configs/rollback")
 async def rollback(body: RollbackIn, request: Request):
+    """Roll a strategy's production configuration back (administrators)."""
     u = _user(request, ())
     from api.quant.optresearch import deploy
     try:

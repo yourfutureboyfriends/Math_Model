@@ -44,6 +44,9 @@ def _move(name: str, tick: str, kind: str) -> Optional[Dict[str, Any]]:
 
 
 def overnight_moves() -> List[Dict[str, Any]]:
+    """Last-session moves of the key markets in the Daily Brief (indices, rates, FX, commodities), fetched in parallel;
+    markets without data are left out.
+    """
     with ThreadPoolExecutor(max_workers=6) as ex:
         rows = list(ex.map(lambda x: _move(*x), OVERNIGHT))
     return [r for r in rows if r]
@@ -92,6 +95,9 @@ def snapshot_and_diff(state: Dict[str, Any]) -> Dict[str, Any]:
 
 # ── calendar, earnings, positioning ──────────────────────────────────────────
 def todays_releases() -> List[Dict[str, Any]]:
+    """Economic releases scheduled today (New York time) with importance, consensus and prior where the calendar has
+    them.
+    """
     from api.econ_calendar import get_calendar
     from zoneinfo import ZoneInfo
     cal = get_calendar()
@@ -107,6 +113,11 @@ def todays_releases() -> List[Dict[str, Any]]:
 
 
 def earnings_this_week(holdings: List[str]) -> Dict[str, Any]:
+    """Earnings in the next seven days: the fund's holdings reporting, and the largest companies reporting.
+
+    Args:
+        holdings: tickers held by the fund.
+    """
     from api.marketdata.monitors import earnings_calendar
     try:
         cal = earnings_calendar(None, 7, 50.0, 0, 250)
@@ -121,6 +132,9 @@ def earnings_this_week(holdings: List[str]) -> Dict[str, Any]:
 
 
 def positioning() -> Dict[str, Any]:
+    """Positioning extremes for the Brief: CFTC COT contracts at extreme readings and other sentiment gauges, each
+    section empty with a log line when its source is unavailable.
+    """
     out: Dict[str, Any] = {}
     try:
         from api.cot import fetch_cot

@@ -70,6 +70,9 @@ _MONTHLY_PX_TTL = 12 * 3600
 
 
 def rates_fred_ids() -> List[str]:
+    """Every FRED series the rates sections need: the US curve, real yields and breakevens, foreign curves and
+    overnight rates.
+    """
     return [sid for _, sid in US_TENORS] + ["DFII10", "T10YIE", "T5YIFR"] + [
         sid for c in FOREIGN_CURVES.values() for sid in c.values()] + [
         sid for sid, _ in OVERNIGHT_RATES.values()]
@@ -77,6 +80,9 @@ def rates_fred_ids() -> List[str]:
 
 @dataclass
 class SectionInputs:
+    """Inputs shared by the dashboard sections, loaded once per refresh: dated prices, FRED series, valuation ratios,
+    the monthly macro frame and forecast statistics.
+    """
     prices: Dict[str, Dict[str, float]] = field(default_factory=dict)   # key -> {date: close}
     fred: Dict[str, DatedSeries] = field(default_factory=dict)
     spy_pe: Optional[float] = None
@@ -86,15 +92,18 @@ class SectionInputs:
     forecast_stats: Optional[List[Dict[str, Any]]] = None                # forecast_history summary
 
     def closes(self, key: str) -> List[float]:
+        """Closes in date order for a price key (empty when missing)."""
         return ms.closes_of(self.prices.get(key) or {})
 
     def aligned(self, *keys: str) -> Optional[Dict[str, List[float]]]:
+        """Closes of several price keys on their common dates, or None when any key is missing."""
         if any(not self.prices.get(k) for k in keys):
             return None
         _, out = ms.align_dated({k: self.prices[k] for k in keys})
         return out
 
     def series(self, sid: str) -> DatedSeries:
+        """A FRED series by id (an empty series when missing)."""
         return self.fred.get(sid) or DatedSeries(sid)
 
 
@@ -126,6 +135,9 @@ async def _trailing_pes(tickers: List[str]) -> Dict[str, float]:
 
 
 async def load_section_inputs(timeout: float = 30.0) -> SectionInputs:
+    """Fetch every input the dashboard sections need concurrently (prices, FRED series, valuations), within `timeout`
+    seconds; failed pieces are left empty and reported by the sections that need them.
+    """
     from api.handlers.market_handler import _fetch_dated_closes_literal
 
     keys = list(PRICE_TICKERS)

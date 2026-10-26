@@ -114,6 +114,7 @@ def _swing_levels(df: pd.DataFrame, price: float, atr: float) -> List[Dict[str, 
 
 
 def technicals(symbol: str) -> Dict[str, Any]:
+    """Technical indicators of a security with an overall buy / sell / neutral tally and score."""
     s = symbol.strip().upper()
 
     def build():
@@ -238,6 +239,7 @@ def _r(series: pd.Series, d, nd: int = 4):
 
 # ── SPRD ─────────────────────────────────────────────────────────────────────
 def spread(a: str, b: str, years: int = 5, entry: float = 2.0, exit_: float = 0.5) -> Dict[str, Any]:
+    """A pair-spread study: hedge ratio, z-score and a mean-reversion backtest with entry / exit thresholds."""
     A, B = a.strip().upper(), b.strip().upper()
     if A == B:
         raise NotFound("Pick two different instruments.")
@@ -347,6 +349,7 @@ CB_NAMES = {
 
 
 def central_banks() -> Dict[str, Any]:
+    """Policy rates of central banks worldwide (BIS) with recent changes."""
     def build():
         import requests
         r = requests.get("https://stats.bis.org/api/v1/data/WS_CBPOL/D./all",
@@ -398,6 +401,7 @@ def _fred_key() -> str:
 
 
 def fred_search(q: str, limit: int = 40) -> Dict[str, Any]:
+    """Search FRED series."""
     q = q.strip()
     if len(q) < 2:
         return {"results": []}
@@ -424,6 +428,7 @@ def fred_search(q: str, limit: int = 40) -> Dict[str, Any]:
 
 
 def fred_series(sid: str) -> Dict[str, Any]:
+    """One FRED series' observations and metadata."""
     sid = sid.strip().upper()
     if not sid.replace("_", "").isalnum():
         raise NotFound("Not a FRED series id.")

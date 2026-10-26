@@ -79,6 +79,7 @@ class ConvictionComponents:
     volatility_stability: float = 0.5
 
     def to_dict(self) -> Dict[str, float]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 
@@ -97,6 +98,7 @@ class ConvictionBucket:
     monotonic_rank: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 

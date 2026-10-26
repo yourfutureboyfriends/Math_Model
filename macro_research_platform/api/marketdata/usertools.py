@@ -38,6 +38,7 @@ def _now() -> str:
 
 
 def init() -> None:
+    """Create the watchlist, note, alert and journal tables once per process."""
     global _ready
     if _ready:
         return
@@ -73,6 +74,7 @@ def _clean_symbols(symbols: List[str]) -> List[str]:
 
 # ── Watchlists ───────────────────────────────────────────────────────────────
 def list_watchlists(owner: str) -> List[Dict[str, Any]]:
+    """A user's watchlists."""
     init()
     with _conn() as c:
         rows = c.execute("SELECT * FROM mkt_watchlists WHERE owner = ? ORDER BY id", (owner,)).fetchall()
@@ -87,6 +89,7 @@ def list_watchlists(owner: str) -> List[Dict[str, Any]]:
 
 
 def create_watchlist(owner: str, name: str, symbols: List[str]) -> Dict[str, Any]:
+    """Create a watchlist."""
     init()
     name = (name or "").strip()[:60] or "Watchlist"
     syms = _clean_symbols(symbols or [])
@@ -101,6 +104,7 @@ def create_watchlist(owner: str, name: str, symbols: List[str]) -> Dict[str, Any
 
 def update_watchlist(owner: str, wid: int, name: Optional[str], symbols: Optional[List[str]],
                      shared: Optional[bool] = None) -> Dict[str, Any]:
+    """Rename a watchlist or change its symbols."""
     init()
     with _conn() as c:
         r = c.execute("SELECT * FROM mkt_watchlists WHERE id = ? AND owner = ?", (wid, owner)).fetchone()
@@ -119,6 +123,7 @@ MAX_NOTE = 2000
 
 
 def list_notes(target: str, limit: int = 100) -> List[Dict[str, Any]]:
+    """Notes on a panel or symbol."""
     init()
     with _conn() as c:
         rows = c.execute("SELECT * FROM team_notes WHERE target = ? ORDER BY id DESC LIMIT ?", (target.strip()[:60], limit)).fetchall()
@@ -126,6 +131,7 @@ def list_notes(target: str, limit: int = 100) -> List[Dict[str, Any]]:
 
 
 def add_note(author: str, target: str, text: str) -> Dict[str, Any]:
+    """Add a note."""
     init()
     target, text = (target or "").strip()[:60], (text or "").strip()
     if not target or not text:
@@ -139,6 +145,7 @@ def add_note(author: str, target: str, text: str) -> Dict[str, Any]:
 
 
 def delete_note(author: str, nid: int) -> None:
+    """Delete one of your notes."""
     init()
     with _conn() as c:
         if not c.execute("DELETE FROM team_notes WHERE id = ? AND author = ?", (nid, author)).rowcount:
@@ -146,6 +153,7 @@ def delete_note(author: str, nid: int) -> None:
 
 
 def delete_watchlist(owner: str, wid: int) -> None:
+    """Delete one of your watchlists."""
     init()
     with _conn() as c:
         if not c.execute("DELETE FROM mkt_watchlists WHERE id = ? AND owner = ?", (wid, owner)).rowcount:
@@ -187,6 +195,7 @@ def quotes(symbols: List[str]) -> List[Dict[str, Any]]:
 
 # ── Alerts ───────────────────────────────────────────────────────────────────
 def list_alerts(owner: str) -> List[Dict[str, Any]]:
+    """A user's alerts."""
     init()
     with _conn() as c:
         rows = c.execute("SELECT * FROM mkt_alerts WHERE owner = ? ORDER BY active DESC, id DESC", (owner,)).fetchall()
@@ -197,6 +206,7 @@ def list_alerts(owner: str) -> List[Dict[str, Any]]:
 
 
 def create_alert(owner: str, symbol: str, kind: str, value: float, note: Optional[str] = None) -> Dict[str, Any]:
+    """Create an alert on a price, change, field or news keyword."""
     init()
     if kind not in ALERT_KINDS:
         raise ValueError(f"kind must be one of {', '.join(ALERT_KINDS)}")
@@ -279,6 +289,7 @@ def _check_field_alert(a: Dict[str, Any], cache: Dict[str, Any]):
 
 
 def delete_alert(owner: str, aid: int) -> None:
+    """Delete one of your alerts."""
     init()
     with _conn() as c:
         if not c.execute("DELETE FROM mkt_alerts WHERE id = ? AND owner = ?", (aid, owner)).rowcount:
@@ -286,16 +297,19 @@ def delete_alert(owner: str, aid: int) -> None:
 
 
 def mark_seen(owner: str) -> int:
+    """Mark a user's triggered alerts as seen; returns how many."""
     init()
     with _conn() as c:
         return c.execute("UPDATE mkt_alerts SET seen = 1 WHERE owner = ? AND triggered_at IS NOT NULL AND seen = 0", (owner,)).rowcount
 
 
 def triggered_unseen(owner: str) -> List[Dict[str, Any]]:
+    """A user's triggered alerts not yet seen."""
     return [a for a in list_alerts(owner) if a["triggered_at"] and not a["seen"]]
 
 
 def fires(kind: str, value: float, price: Optional[float], change: Optional[float]) -> bool:
+    """Whether an alert of `kind` fires at this price / change (above, below, change up / down)."""
     if kind == "above":
         return price is not None and price >= value
     if kind == "below":
@@ -366,6 +380,7 @@ def _journal_row(r: sqlite3.Row) -> Dict[str, Any]:
 
 
 def list_journal(owner: str) -> Dict[str, Any]:
+    """A user's journal entries."""
     init()
     with _conn() as c:
         rows = [_journal_row(r) for r in c.execute("SELECT * FROM mkt_journal WHERE owner = ? ORDER BY date DESC, id DESC", (owner,)).fetchall()]
@@ -409,6 +424,7 @@ def _validate_journal(d: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def create_journal(owner: str, d: Dict[str, Any]) -> Dict[str, Any]:
+    """Add a journal entry."""
     init()
     v = _validate_journal(d)
     v.setdefault("date", datetime.now().strftime("%Y-%m-%d"))
@@ -423,6 +439,7 @@ def create_journal(owner: str, d: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def update_journal(owner: str, jid: int, d: Dict[str, Any]) -> Dict[str, Any]:
+    """Edit a journal entry."""
     init()
     v = _validate_journal(d)
     if not v:
@@ -435,6 +452,7 @@ def update_journal(owner: str, jid: int, d: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def delete_journal(owner: str, jid: int) -> None:
+    """Delete a journal entry."""
     init()
     with _conn() as c:
         if not c.execute("DELETE FROM mkt_journal WHERE id = ? AND owner = ?", (jid, owner)).rowcount:

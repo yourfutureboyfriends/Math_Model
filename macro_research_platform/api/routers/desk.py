@@ -138,6 +138,9 @@ def recession_models(macro: Dict[str, Any], cycle: Dict[str, Any], rates: Dict[s
 
 @router.get("/api/v1/desk")
 async def desk(request: Request):
+    """My Desk: your position's workspace, a prioritised work queue (approvals, limits, stale data, central-bank
+    moves), the fund snapshot and the macro backdrop.
+    """
     from api.core.access import current_user
     from api import blotter_store, portfolio_store
     from api.data_freshness import get_live_freshness

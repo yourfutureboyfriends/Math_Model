@@ -73,6 +73,7 @@ def fetch_fred_value(series_id: str, api_key: str):
 
 
 def fetch_yf_close(ticker: str, period: str = "5d"):
+    """The latest Yahoo Finance close for a ticker, or None."""
     try:
         hist = yf.Ticker(ticker).history(period=period)
         if not hist.empty:
@@ -210,6 +211,7 @@ def update_csv(row: dict) -> bool:
 
 
 def invalidate_cache(cache_obj: dict, lock) -> None:
+    """Clear a dashboard cache so the next request recomputes."""
     with lock:
         cache_obj["data"]      = None
         cache_obj["timestamp"] = 0.0
@@ -217,6 +219,7 @@ def invalidate_cache(cache_obj: dict, lock) -> None:
 
 
 def run_daily_pipeline(dashboard_cache: dict, cache_lock) -> dict:
+    """Refresh the dashboard's inputs, clear the cache and report what was fetched and what failed."""
     t0 = time.time()
     logger.info(f"[PIPELINE] Starting at {datetime.now().isoformat()}")
 

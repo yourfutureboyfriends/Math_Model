@@ -84,6 +84,7 @@ class MomentumMetrics:
     beta_mom: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 
@@ -98,6 +99,7 @@ class SectorMomentum:
     consistency_score: Optional[float] = None  # % of periods with positive momentum alpha
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 
@@ -112,6 +114,7 @@ class MomentumCrash:
     recovery_days: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 

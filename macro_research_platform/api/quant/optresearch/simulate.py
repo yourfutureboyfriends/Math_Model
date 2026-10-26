@@ -39,6 +39,7 @@ MAX_H = 140                                                           # sessions
 
 
 def tier_of(sym: str, kind: str, adv: float) -> str:
+    """Liquidity tier of an underlying (index, etf, or by average dollar volume) for costs."""
     if sym in INDEX_ETFS:
         return "index"
     if kind == "etf":

@@ -23,22 +23,26 @@ def _audit(user: str, action: str, text: str, target: str, after: Any = None) ->
     web.audit(user, action, text, target, after=after)
 
 class PitchIn(BaseModel):
+    """An analyst pitch: symbol, title and body (thesis, scenarios, valuation, kill criteria)."""
     symbol: str = Field(..., max_length=20)
     title: Optional[str] = Field(None, max_length=200)
     body: Dict[str, Any]
 
 
 class PitchVersionIn(BaseModel):
+    """A revised pitch body and a note."""
     body: Dict[str, Any]
     note: Optional[str] = Field(None, max_length=500)
 
 
 class DecisionIn(BaseModel):
+    """The PMC decision (approve / reject) with notes."""
     decision: str = Field(..., pattern="^(approve|reject)$")
     notes: Optional[str] = Field(None, max_length=2000)
 
 
 class PretradeIn(BaseModel):
+    """A pre-trade assessment request: symbol, side, quantity or amount, participation, pitch."""
     symbol: str = Field(..., max_length=20)
     side: str = Field(..., pattern="^(BUY|SELL|buy|sell)$")
     quantity: Optional[float] = Field(None, gt=0)
@@ -58,6 +62,7 @@ def _err(e: Exception):
 @router.get("/api/v1/pitches")
 async def pitches_list(request: Request, status: Optional[str] = Query(None, pattern="^(draft|submitted|approved|rejected|closed)$"),
                        symbol: Optional[str] = Query(None, max_length=20)):
+    """Pitches, by status or symbol."""
     from api import pitches
     _user(request)
     rows = await asyncio.to_thread(pitches.list_pitches, status, symbol)
@@ -112,6 +117,7 @@ async def pitch_get(pid: int, request: Request):
 
 @router.post("/api/v1/pitches")
 async def pitch_create(body: PitchIn, request: Request):
+    """Create a pitch (draft)."""
     from api import pitches
     u = _user(request, ("analyst", "pm"), cap="pitch_submit")
     try:
@@ -124,6 +130,7 @@ async def pitch_create(body: PitchIn, request: Request):
 
 @router.post("/api/v1/pitches/{pid}/versions")
 async def pitch_revise(pid: int, body: PitchVersionIn, request: Request):
+    """Add a new version of a pitch (versions are kept)."""
     from api import pitches
     u = _user(request, ("analyst", "pm"), cap="pitch_submit")
     try:
@@ -136,6 +143,7 @@ async def pitch_revise(pid: int, body: PitchVersionIn, request: Request):
 
 @router.post("/api/v1/pitches/{pid}/submit")
 async def pitch_submit(pid: int, request: Request):
+    """Submit a pitch to the PMC."""
     from api import pitches
     u = _user(request, ("analyst", "pm"), cap="pitch_submit")
     try:
@@ -182,6 +190,7 @@ async def pitch_decision(pid: int, body: DecisionIn, request: Request):
 
 @router.post("/api/v1/pitches/{pid}/close")
 async def pitch_close(pid: int, request: Request):
+    """Close an approved pitch."""
     from api import pitches
     u = _user(request, ("pm",))
     try:
@@ -225,6 +234,7 @@ async def trade_lifecycle_view(request: Request, symbol: Optional[str] = Query(N
 
 @router.get("/api/v1/trading/assessments/{aid}")
 async def assessment_get(aid: int, request: Request):
+    """One stored pre-trade assessment."""
     from api import trade_lifecycle
     _user(request)
     a = await asyncio.to_thread(trade_lifecycle.get_assessment, aid)
@@ -235,6 +245,7 @@ async def assessment_get(aid: int, request: Request):
 
 # ── corporate actions (splits) ───────────────────────────────────────────────
 class SplitIn(BaseModel):
+    """A split to apply: book, symbol, ex-date and ratio."""
     book: str = Field(..., max_length=60)
     symbol: str = Field(..., max_length=20)
     ex_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")

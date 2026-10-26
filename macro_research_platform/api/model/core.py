@@ -38,6 +38,9 @@ QUADRANT_OF = {(True, False): "Goldilocks", (True, True): "Reflation",
 
 @dataclass
 class ModelParams:
+    """Tunable parameters of the macro model: volatility target, weight cap, Black–Litterman risk aversion and τ, view
+    confidence, shrinkage and covariance windows, minimum history and the regime-direction window.
+    """
     vol_target: float = 0.10            # annualised portfolio volatility target
     max_weight: float = 0.35            # per-asset cap
     risk_aversion: float = 2.5          # δ in Black–Litterman and the optimiser
@@ -52,6 +55,7 @@ class ModelParams:
 
     @classmethod
     def from_dict(cls, d: Optional[Dict]) -> "ModelParams":
+        """Parameters from a dict (unknown keys ignored, values cast to each field's type)."""
         p = cls()
         for k, v in (d or {}).items():
             if hasattr(p, k) and v is not None:
@@ -84,6 +88,7 @@ def diffusion_factor(block: pd.DataFrame, anchor: str) -> Tuple[pd.Series, Dict[
 
 # ── 2. Regimes ───────────────────────────────────────────────────────────────
 def direction_features(f: pd.Series, k: int) -> pd.DataFrame:
+    """A factor's level and its change over k months — the inputs of the direction classifier."""
     return pd.DataFrame({"level": f, "change": f - f.shift(k)})
 
 
@@ -110,11 +115,15 @@ def direction_probability(f: pd.Series, k: int = 3, horizon: int = 1) -> Optiona
 
 
 def quadrant_probabilities(p_growth_up: float, p_infl_up: float) -> Dict[str, float]:
+    """Probabilities of the four growth × inflation quadrants from the probabilities that each axis rises (treated as
+    independent).
+    """
     return {QUADRANT_OF[(g, i)]: (p_growth_up if g else 1 - p_growth_up) * (p_infl_up if i else 1 - p_infl_up)
             for g in (True, False) for i in (True, False)}
 
 
 def realized_regimes(g: pd.Series, i: pd.Series, k: int = 3) -> pd.Series:
+    """The quadrant actually realised each month: the signs of the k-month changes in growth and inflation."""
     dg, di = g - g.shift(k), i - i.shift(k)
     lab = pd.Series(index=g.index, dtype=object)
     ok = dg.notna() & di.notna()
@@ -139,10 +148,12 @@ def regime_conditional_means(rets: pd.DataFrame, labels: pd.Series, k: int) -> T
 
 
 def expected_returns(cond: pd.DataFrame, probs: Dict[str, float]) -> pd.Series:
+    """Expected excess returns: the regime-conditional means weighted by the regime probabilities."""
     return sum(cond[q] * probs.get(q, 0.0) for q in QUADRANTS)
 
 
 def shrunk_covariance(rets: pd.DataFrame) -> np.ndarray:
+    """Ledoit–Wolf shrinkage covariance of the returns (rows with missing values dropped)."""
     from sklearn.covariance import LedoitWolf
     x = rets.dropna().values
     return LedoitWolf().fit(x).covariance_
@@ -205,6 +216,7 @@ def scale_to_target(w: np.ndarray, cov: np.ndarray, vol_target_monthly: float, m
 
 
 def risk_contributions(w: np.ndarray, cov: np.ndarray) -> np.ndarray:
+    """Each asset's share of portfolio variance (sums to 1)."""
     total = w @ cov @ w
     return (w * (cov @ w)) / total if total > 0 else np.zeros_like(w)
 
@@ -212,6 +224,9 @@ def risk_contributions(w: np.ndarray, cov: np.ndarray) -> np.ndarray:
 # ── One decision ─────────────────────────────────────────────────────────────
 @dataclass
 class Decision:
+    """One month's model decision: weights and cash, regime probabilities, the direction probabilities behind them, and
+    the model and Black–Litterman expected returns.
+    """
     as_of: pd.Timestamp
     assets: List[str]
     weights: np.ndarray

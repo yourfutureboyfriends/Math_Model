@@ -75,6 +75,23 @@ def _mic(sym: str, country: str) -> Optional[str]:
 
 def assess(symbol: str, side: str, quantity: Optional[float] = None, amount_base: Optional[float] = None,
            participation: Optional[float] = None, pitch_id: Optional[int] = None) -> Dict[str, Any]:
+    """Feasibility of implementing an order — decision support only; it approves nothing and places no order.
+
+    Covers the price and its timestamp, size and weights after the trade, liquidity (ADV, participation, sessions
+    needed), estimated costs (spread, impact, commission, taxes, FX — each labelled observed / estimate / assumption
+    / statutory), technicals for timing, events in the execution window, the fund's mandate rules and the linked
+    pitch's valuation — summarised as flags and an execution suggestion.
+
+    Args:
+        symbol: the instrument.
+        side: BUY or SELL.
+        quantity: shares; or give `amount_base` in the fund's base currency.
+        participation: maximum share of daily volume (defaults to the mandate's).
+        pitch_id: the analyst pitch being implemented, if any.
+
+    Raises:
+        ValueError: bad side, no price, no FX rate, or neither quantity nor amount.
+    """
     from api import fund_store, pitches
     from api.calculations import benchmark as bm, fx_accounting as fa, technicals
     from api.handlers.portfolio_analytics import book_in_base

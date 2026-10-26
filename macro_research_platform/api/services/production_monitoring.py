@@ -78,6 +78,7 @@ class DriftReport:
     severity: str = "info"
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 
@@ -92,6 +93,7 @@ class Alert:
     threshold: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 
@@ -107,6 +109,7 @@ class ModelHealth:
     drift_status: str
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 

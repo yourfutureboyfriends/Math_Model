@@ -83,6 +83,9 @@ def _now() -> str:
 
 
 def init_db() -> None:
+    """Create the governance tables (instruments, models, halts, incidents, reconciliations, budget, milestones) in the
+    current fund's database.
+    """
     with _conn() as c:
         c.executescript("""
         CREATE TABLE IF NOT EXISTS gov_instruments (
@@ -135,6 +138,7 @@ def _audit(action: str, text: str, user: str, target: str, before: Any = None, a
 
 # ── settings ─────────────────────────────────────────────────────────────────
 def settings() -> Dict[str, Any]:
+    """The fund's governance settings: on / off, stage, risk policy, capital and mandate."""
     from api import fund_store
     st = fund_store.get_settings()
     on = bool(st.get("governance"))
@@ -157,6 +161,7 @@ def results_label(stage: Optional[str] = None, simulated: bool = True) -> str:
 
 # ── approved instruments ─────────────────────────────────────────────────────
 def instruments(status: Optional[str] = None) -> List[Dict[str, Any]]:
+    """The approved-instruments list, optionally by status."""
     init_db()
     with _conn() as c:
         q = "SELECT * FROM gov_instruments" + (" WHERE status = ?" if status else "") + " ORDER BY asset_class, symbol"
@@ -165,6 +170,7 @@ def instruments(status: Optional[str] = None) -> List[Dict[str, Any]]:
 
 def propose_instrument(symbol: str, user: str, name: str = "", asset_class: str = "", theme: str = "",
                        currency: str = "", tradable: bool = True, note: str = "") -> Dict[str, Any]:
+    """Propose an instrument for the approved list (or re-propose it)."""
     init_db()
     sym = symbol.strip().upper()
     with _conn() as c:
@@ -180,6 +186,12 @@ def propose_instrument(symbol: str, user: str, name: str = "", asset_class: str 
 
 
 def decide_instrument(symbol: str, user: str, approve: bool, note: str = "") -> Dict[str, Any]:
+    """Approve or remove an instrument.
+
+    Raises:
+        LookupError: not on the list.
+        PermissionError: the approver proposed it (four-eyes).
+    """
     init_db()
     sym = symbol.strip().upper()
     with _conn() as c:
@@ -197,6 +209,7 @@ def decide_instrument(symbol: str, user: str, approve: bool, note: str = "") -> 
 
 
 def instrument(symbol: str) -> Optional[Dict[str, Any]]:
+    """One instrument's entry, or None."""
     init_db()
     with _conn() as c:
         r = c.execute("SELECT * FROM gov_instruments WHERE symbol = ?", (symbol.strip().upper(),)).fetchone()
@@ -210,6 +223,11 @@ def _model_row(c, mid: int) -> Optional[Dict[str, Any]]:
 
 
 def get_model(mid: int) -> Dict[str, Any]:
+    """One model with its event history.
+
+    Raises:
+        LookupError: no such model.
+    """
     init_db()
     with _conn() as c:
         m = _model_row(c, mid)
@@ -223,6 +241,7 @@ def get_model(mid: int) -> Dict[str, Any]:
 
 
 def list_models(include_closed: bool = True) -> List[Dict[str, Any]]:
+    """Models in the registry, newest first; `include_closed=False` keeps only active and suspended ones."""
     init_db()
     with _conn() as c:
         rows = [dict(r) for r in c.execute("SELECT * FROM gov_models ORDER BY id DESC")]
@@ -482,6 +501,7 @@ def model_for_deployment(model_id: Optional[int]) -> Tuple[Optional[Dict[str, An
 
 
 def record_deployment(model_id: int, deployment_id: int, user: str) -> None:
+    """Log that a model has started shadow trading through a paper deployment."""
     init_db()
     with _conn() as c:
         c.execute("INSERT INTO gov_model_events (model_id, ts, user, action, gate_from, evidence) VALUES (?,?,?,?,?,?)",
@@ -539,6 +559,7 @@ def shadow_report(model_id: int, min_sessions: int = 20) -> Dict[str, Any]:
 
 # ── halts and incidents ──────────────────────────────────────────────────────
 def active_halt() -> Optional[Dict[str, Any]]:
+    """The active trading halt, or None."""
     init_db()
     with _conn() as c:
         r = c.execute("SELECT * FROM gov_halts WHERE active = 1 ORDER BY id DESC LIMIT 1").fetchone()
@@ -546,6 +567,7 @@ def active_halt() -> Optional[Dict[str, Any]]:
 
 
 def open_incident(kind: str, description: str, user: str = "system", severity: str = "high") -> int:
+    """Log an operational incident; returns its id."""
     init_db()
     with _conn() as c:
         cur = c.execute("INSERT INTO gov_incidents (ts, kind, severity, description, reported_by) VALUES (?,?,?,?,?)",
@@ -593,6 +615,7 @@ def lift_halt(user: str, resolution: str) -> Dict[str, Any]:
 
 
 def incidents(open_only: bool = False) -> List[Dict[str, Any]]:
+    """Incidents, newest first; `open_only` excludes signed-off ones."""
     init_db()
     with _conn() as c:
         q = "SELECT * FROM gov_incidents" + (" WHERE status != 'signed_off'" if open_only else "") + " ORDER BY id DESC"
@@ -600,6 +623,11 @@ def incidents(open_only: bool = False) -> List[Dict[str, Any]]:
 
 
 def fix_incident(iid: int, user: str, fix: str) -> Dict[str, Any]:
+    """Record how an incident was fixed and tested.
+
+    Raises:
+        ValueError: no description.
+    """
     if not fix.strip():
         raise ValueError("describe the fix and how it was tested")
     with _conn() as c:
@@ -610,6 +638,13 @@ def fix_incident(iid: int, user: str, fix: str) -> Dict[str, Any]:
 
 
 def signoff_incident(iid: int, user: str) -> Dict[str, Any]:
+    """Independently sign off a fixed incident.
+
+    Raises:
+        LookupError: no such incident.
+        ValueError: not fixed yet.
+        PermissionError: the signer fixed it.
+    """
     with _conn() as c:
         r = c.execute("SELECT * FROM gov_incidents WHERE id = ?", (iid,)).fetchone()
         if not r:
@@ -677,6 +712,7 @@ def reconcile(user: str = "system", halt_on_break: bool = True) -> Dict[str, Any
 
 
 def reconciliations(limit: int = 30) -> List[Dict[str, Any]]:
+    """The latest position-vs-ledger reconciliations."""
     init_db()
     with _conn() as c:
         return [{**dict(r), "breaks": json.loads(r["breaks"] or "[]")} for r in
@@ -782,6 +818,9 @@ def order_controls(symbol: str, signed_qty: float, price: Optional[float], nav: 
 
 
 def price_band_check(price: Optional[float], last_close: Optional[float]) -> Optional[Dict[str, Any]]:
+    """A BLOCK finding when a fill price is further from the last close than the policy's price band (governed funds
+    only), else None.
+    """
     st = settings()
     if not st["enabled"] or not price or not last_close:
         return None
@@ -846,6 +885,7 @@ def record_model_pnl() -> List[Dict[str, Any]]:
 
 # ── budget ───────────────────────────────────────────────────────────────────
 def budget(period: Optional[str] = None) -> Dict[str, Any]:
+    """Budget lines with spent and remaining per category, the expense ledger, totals and unbudgeted categories."""
     init_db()
     with _conn() as c:
         lines = [dict(r) for r in c.execute("SELECT * FROM gov_budget" + (" WHERE period = ?" if period else "") +
@@ -863,6 +903,7 @@ def budget(period: Optional[str] = None) -> Dict[str, Any]:
 
 
 def add_expense(user: str, d: str, category: str, amount: float, currency: str, description: str) -> Dict[str, Any]:
+    """Record an expense against a budget category."""
     init_db()
     if amount <= 0:
         raise ValueError("amount must be positive")
@@ -875,6 +916,7 @@ def add_expense(user: str, d: str, category: str, amount: float, currency: str, 
 
 
 def approve_expense(eid: int, user: str) -> Dict[str, Any]:
+    """Approve an expense (not by the person who recorded it)."""
     with _conn() as c:
         r = c.execute("SELECT * FROM gov_expenses WHERE id = ?", (eid,)).fetchone()
         if not r:
@@ -889,12 +931,18 @@ def approve_expense(eid: int, user: str) -> Dict[str, Any]:
 
 # ── milestones ───────────────────────────────────────────────────────────────
 def milestones() -> List[Dict[str, Any]]:
+    """The roadmap milestones."""
     init_db()
     with _conn() as c:
         return [dict(r) for r in c.execute("SELECT * FROM gov_milestones ORDER BY (plan != 'First 90 days'), sort, id")]
 
 
 def update_milestone(mid: int, user: str, status: str, evidence: str = "") -> Dict[str, Any]:
+    """Change a milestone's status; `done` needs evidence.
+
+    Raises:
+        ValueError: invalid status or missing evidence.
+    """
     if status not in ("open", "in_progress", "done", "blocked"):
         raise ValueError("status is open, in_progress, done or blocked")
     if status == "done" and not evidence.strip():
@@ -908,6 +956,7 @@ def update_milestone(mid: int, user: str, status: str, evidence: str = "") -> Di
 
 
 def signoff_milestone(mid: int, user: str) -> Dict[str, Any]:
+    """Sign off a completed milestone (not by the person who completed it)."""
     with _conn() as c:
         r = c.execute("SELECT * FROM gov_milestones WHERE id = ?", (mid,)).fetchone()
         if not r:
@@ -968,6 +1017,7 @@ DATA_SOURCES = [
 
 
 def data_sources() -> List[Dict[str, Any]]:
+    """The data-licence register, seeded with every source the platform uses."""
     init_db()
     with _conn() as c:
         c.execute("""CREATE TABLE IF NOT EXISTS gov_data_sources (

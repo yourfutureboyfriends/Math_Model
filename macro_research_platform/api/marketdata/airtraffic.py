@@ -75,7 +75,9 @@ FREIGHT_T = {"B77L": 102, "B744": 113, "B748": 137, "MD11": 91, "A332": 70, "B76
 
 
 def flight_tags(callsign: str, actype: Optional[str], mil: bool, squawk: Optional[str]) -> List[tuple]:
-    """[(priority, tag, reason)] — tag letters: e emergency, v VIP/government, m military, n notable aircraft, c cargo flight."""
+    """[(priority, tag, reason)] — tag letters: e emergency, v VIP/government, m military, n notable aircraft, c cargo
+    flight.
+    """
     cs = (callsign or "").upper().strip()
     out = []
     if str(squawk or "") in EMERGENCY:
@@ -109,6 +111,9 @@ def load_estimate(callsign: str, actype: Optional[str], airframe_type: Optional[
 
 
 def phase(alt: Optional[float], vrate: Optional[float], ground: bool) -> Optional[str]:
+    """Flight phase from altitude, vertical rate and the ground flag (on the ground, climbing, descending, cruising),
+    or None.
+    """
     if ground:
         return "On the ground"
     if alt is None:
@@ -333,6 +338,7 @@ def _ac(a: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def area(lat: float, lon: float, radius_nm: int = 120) -> Dict[str, Any]:
+    """Aircraft within `radius_nm` (5–250 nm) of a point from adsb.fi; nearby requests share one fetch."""
     radius_nm = max(5, min(int(radius_nm), 250))
     key_lat, key_lon = round(lat * 4) / 4, round(lon * 4) / 4          # nearby requests share one fetch
 
@@ -421,6 +427,7 @@ def _sweep_once() -> int:
 
 
 def sweep_start() -> None:
+    """Start the background thread that sweeps global aircraft positions for the tracker."""
     def loop():
         while True:
             try:
@@ -460,6 +467,11 @@ def _airport(a: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
 
 
 def detail(hex_id: str, callsign: Optional[str] = None) -> Dict[str, Any]:
+    """One aircraft by ICAO hex address: registration, type, operator and route where known.
+
+    Raises:
+        NotFound: not a valid address.
+    """
     h = hex_id.strip().lower()
     if not h or len(h) > 8 or not all(c in "0123456789abcdef~" for c in h):
         raise NotFound("Not an aircraft address.")

@@ -29,6 +29,7 @@ SSGA_FUNDS = {"SPY", "DIA", "MDY", "XLK", "XLF", "XLV", "XLE", "XLI", "XLY", "XL
 
 
 def ssga_holdings(fund: str) -> pd.DataFrame:
+    """Holdings of an SPDR ETF from State Street's daily file."""
     f = fund.upper()
 
     def fetch():
@@ -87,6 +88,7 @@ def _wiki_members(code: str) -> List[Dict[str, Any]]:
 
 
 def index_members(code: str) -> Dict[str, Any]:
+    """An index's constituents with sector mix, top-10 weight and effective number of names."""
     code = code.strip().upper()
     if code not in INDICES:
         raise NotFound(f"Unknown index — try one of {', '.join(INDICES)}.")
@@ -153,6 +155,8 @@ ETF_UNIVERSE = {
 
 
 def etf_screener() -> Dict[str, Any]:
+    """The ETF screener universe: category, family, expense ratio, AUM, yield, returns (YTD, 3y, 5y) and beta per ETF.
+    """
     from api.marketdata.core import yahoo_call
 
     def build():
@@ -203,6 +207,7 @@ def _holdings_map(fund: str) -> (Dict[str, float], str, Dict[str, float]):
 
 
 def etf_compare(a: str, b: str) -> Dict[str, Any]:
+    """Two ETFs side by side: expense ratio, AUM, yield, returns and category."""
     A, B = a.strip().upper(), b.strip().upper()
     if A == B:
         raise NotFound("Pick two different funds.")

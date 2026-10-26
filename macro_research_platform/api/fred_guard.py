@@ -63,16 +63,19 @@ def _wait_for_slot(now=time.time, sleep=time.sleep) -> float:
 
 
 def is_open(now: float | None = None) -> bool:
+    """Whether the FRED circuit breaker is open (requests paused)."""
     return (time.time() if now is None else now) < _state["open_until"]
 
 
 def status() -> Dict:
+    """Breaker state: open, seconds until retry, current cool-down and trip count."""
     now = time.time()
     return {"open": is_open(now), "retry_in_s": max(0, round(_state["open_until"] - now)),
             "cooldown_s": _state["cooldown"], "trips": int(_state["trips"])}
 
 
 def record(status_code: int, now: float | None = None) -> None:
+    """Record a FRED response status: a 403 / 429 opens the breaker and doubles the cool-down."""
     now = time.time() if now is None else now
     with _lock:
         if status_code in (403, 429):
@@ -90,6 +93,7 @@ def record(status_code: int, now: float | None = None) -> None:
 
 
 def reset() -> None:
+    """Close the breaker and clear the pacing history (tests and admin)."""
     with _lock:
         _state.update(open_until=0.0, cooldown=BASE_COOLDOWN, trips=0)
     with _pace_lock:

@@ -59,20 +59,24 @@ FRED_RE = re.compile(r"^fred:[A-Z0-9_]{2,30}$")
 
 
 def describe() -> Dict[str, Any]:
+    """The fields alerts can watch, FRED series and news keywords — for the UI."""
     return {"fields": {k: {"label": v[0], "type": v[1]} for k, v in FIELDS.items()},
             "fred": "fred:SERIES_ID — any FRED series (latest observation)",
             "news": "a keyword or phrase — fires on a new headline containing it"}
 
 
 def valid_field(field: str) -> bool:
+    """Whether an alert field is known or a fred:SERIES reference."""
     return field in FIELDS or bool(FRED_RE.match(field))
 
 
 def field_type(field: str) -> str:
+    """A field's value type (number by default)."""
     return FIELDS[field][1] if field in FIELDS else "number"
 
 
 def field_label(field: str) -> str:
+    """A field's display label."""
     return FIELDS[field][0] if field in FIELDS else (f"FRED {field[5:]}" if field.startswith("fred:") else field)
 
 

@@ -47,21 +47,27 @@ def _row(r: sqlite3.Row) -> Dict[str, Any]:
 
 
 def list_funds() -> List[Dict[str, Any]]:
+    """Every fund in the registry, the main fund first."""
     with _registry() as c:
         return [_row(r) for r in c.execute("SELECT * FROM funds ORDER BY (id != 'main'), name")]
 
 
 def get(fund_id: str) -> Optional[Dict[str, Any]]:
+    """One fund by id, or None."""
     with _registry() as c:
         r = c.execute("SELECT * FROM funds WHERE id = ?", (fund_id,)).fetchone()
     return _row(r) if r else None
 
 
 def visible_to(user: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The funds a user may open."""
     return [f for f in list_funds() if can_open(user, f)]
 
 
 def can_open(user: Optional[Dict[str, Any]], fund: Dict[str, Any]) -> bool:
+    """Whether a user may open a fund: administrators always; others when the fund has no member list or they are on
+    it.
+    """
     if not user:
         return False
     return user.get("role") == "admin" or not fund["members"] or user.get("username") in fund["members"]
@@ -69,6 +75,11 @@ def can_open(user: Optional[Dict[str, Any]], fund: Dict[str, Any]) -> bool:
 
 def create(fund_id: str, name: str, created_by: str, members: Optional[List[str]] = None,
            settings: Optional[Dict[str, Any]] = None, note: str = "") -> Dict[str, Any]:
+    """Create a fund with its own database and initial settings.
+
+    Raises:
+        ValueError: the id is invalid or already used.
+    """
     fund_id = (fund_id or "").strip().lower()
     if not ID_RE.match(fund_id):
         raise ValueError("fund id: 2–24 characters, lowercase letters, digits, - or _, starting with a letter")
@@ -90,6 +101,11 @@ def create(fund_id: str, name: str, created_by: str, members: Optional[List[str]
 
 
 def update(fund_id: str, name: Optional[str] = None, members: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Rename a fund or change its members.
+
+    Raises:
+        LookupError: no such fund.
+    """
     f = get(fund_id)
     if not f:
         raise LookupError("fund not found")
@@ -115,6 +131,7 @@ def db_path(fund_id: Optional[str] = None) -> str:
 
 
 def current() -> str:
+    """The id of the fund the current request works in."""
     return CURRENT.get()
 
 

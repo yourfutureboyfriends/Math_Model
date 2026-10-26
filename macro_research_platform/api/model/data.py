@@ -64,6 +64,9 @@ _TTL = 24 * 3600
 
 
 def transform(s: pd.Series, how: str) -> pd.Series:
+    """Turn a raw macro series into a model input: yoy / neg_yoy (12-month log change ×100, sign-flipped for 'neg'),
+    diff12 / neg_diff12 (12-month change), or the level.
+    """
     s = s.astype(float)
     if how == "yoy":
         return 100 * np.log(s).diff(12)
@@ -95,6 +98,7 @@ def build_macro_panel(raw: Dict[str, pd.Series]) -> pd.DataFrame:
 
 
 async def load_macro_raw(years: int = 60) -> Dict[str, pd.Series]:
+    """The FRED series the model uses (and the cash rate) over `years` years, as pandas Series."""
     from api.handlers.macro_inputs import load_fred_series
     ids = list(MACRO_SERIES) + [CASH_SERIES]
     fred = await load_fred_series(ids, days=int(years * 365.25))
@@ -119,6 +123,9 @@ def _fetch_asset_prices() -> Dict[str, Dict[str, float]]:
 
 
 def load_asset_prices() -> Dict[str, Dict[str, float]]:
+    """Month-end prices of the model's asset proxies, cached on disk; falls back to the last saved copy when a refresh
+    fails.
+    """
     from api.handlers.macro_inputs import _disk_load, _disk_save
     hit = _disk_load("model_asset_prices", max_age=_TTL)
     if hit:
@@ -149,6 +156,7 @@ def excess_returns(prices: Dict[str, Dict[str, float]], cash: pd.Series) -> pd.D
 
 
 async def load_model_data() -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """The monthly macro panel and the assets' monthly excess returns over cash — everything the model needs."""
     raw = await load_macro_raw()
     panel = build_macro_panel(raw)
     prices = await asyncio.to_thread(load_asset_prices)

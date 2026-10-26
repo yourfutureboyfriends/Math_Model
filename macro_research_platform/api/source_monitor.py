@@ -108,6 +108,7 @@ def _save(s: Dict[str, Any]) -> None:
 
 
 def check_one(src: Dict[str, Any]) -> Dict[str, Any]:
+    """Fetch one source and classify it ok / stale / partial / failing by its latest observation's age."""
     t0 = time.time()
     out: Dict[str, Any] = {"name": src["name"], "feeds": src["feeds"], "max_age_days": src["max_age"],
                            "checked_at": datetime.now().isoformat(timespec="seconds")}
@@ -164,6 +165,7 @@ def run_checks(notify_changes: bool = True) -> Dict[str, Any]:
 
 
 def status() -> Dict[str, Any]:
+    """The last check of every monitored source."""
     s = _state()
     rows = sorted((s.get("sources") or {}).values(), key=lambda r: ("failing", "degraded", "stale", "ok").index(r["status"]))
     return {"checked_at": s.get("checked_at"), "summary": s.get("summary"), "sources": rows,

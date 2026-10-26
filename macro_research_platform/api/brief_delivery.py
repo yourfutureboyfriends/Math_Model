@@ -34,6 +34,9 @@ def _save_state(s: Dict[str, Any]) -> None:
 
 
 def schedule() -> Dict[str, Any]:
+    """The morning-brief delivery time and timezone from BRIEF_DELIVERY_TIME / BRIEF_DELIVERY_TZ, and whether it is
+    valid.
+    """
     t = (os.getenv("BRIEF_DELIVERY_TIME") or "").strip()
     tz = (os.getenv("BRIEF_DELIVERY_TZ") or "America/New_York").strip()
     ok = False
@@ -47,6 +50,7 @@ def schedule() -> Dict[str, Any]:
 
 
 def status() -> Dict[str, Any]:
+    """Delivery schedule, configured channels and the last send."""
     from api import notify
     s = _state()
     return {"schedule": schedule(), "channels": notify.channels(), "last_sent": s.get("last_sent"),
@@ -125,6 +129,7 @@ def render(b: Dict[str, Any]) -> str:
 
 
 async def send(reason: str = "manual") -> Dict[str, Any]:
+    """Build the morning brief and deliver it through the configured channels (webhook / email)."""
     import asyncio
     from api import notify
     from api.handlers.business_handler import get_morning_brief_data

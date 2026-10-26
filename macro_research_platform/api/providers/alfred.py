@@ -27,6 +27,7 @@ TTL = 12 * 3600
 
 
 class AlfredError(RuntimeError):
+    """ALFRED could not be reached, refused the request, or is rate-limiting."""
     pass
 
 
@@ -76,6 +77,13 @@ def _num(v: str) -> Optional[float]:
 
 
 def as_of(series: str, vintage_date: str, start: str = "1990-01-01") -> List[Dict[str, Any]]:
+    """A series exactly as it was published on `vintage_date` (later revisions excluded).
+
+    Args:
+        series: FRED series id.
+        vintage_date: YYYY-MM-DD.
+        start: first observation date.
+    """
     obs = _fetch({"series_id": series, "realtime_start": vintage_date, "realtime_end": vintage_date,
                   "observation_start": start}, f"{series}_asof_{vintage_date}_{start}")
     return [{"date": o["date"], "value": _num(o["value"])} for o in obs]
@@ -89,6 +97,7 @@ def first_release(series: str, start: str = "1990-01-01") -> List[Dict[str, Any]
 
 
 def latest(series: str, start: str = "1990-01-01") -> List[Dict[str, Any]]:
+    """A series as currently published (all revisions applied)."""
     obs = _fetch({"series_id": series, "observation_start": start}, f"{series}_latest_{start}")
     return [{"date": o["date"], "value": _num(o["value"])} for o in obs]
 

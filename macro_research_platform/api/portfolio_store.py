@@ -31,6 +31,7 @@ def _conn() -> sqlite3.Connection:
 
 
 def init_db() -> None:
+    """Create the positions table in the current fund's database."""
     with _conn() as conn:
         conn.execute(
             """
@@ -77,6 +78,7 @@ def _clean(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def list_positions(book: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Positions, optionally for one book."""
     init_db()
     with _conn() as conn:
         if book and book.lower() not in ("firm", "all"):
@@ -87,6 +89,11 @@ def list_positions(book: Optional[str] = None) -> List[Dict[str, Any]]:
 
 
 def add_position(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and add a position.
+
+    Raises:
+        ValueError: invalid fields.
+    """
     init_db()
     d = _clean(data)
     if not d.get("symbol") or "quantity" not in d or "avg_cost" not in d:
@@ -106,6 +113,7 @@ def add_position(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def add_positions_bulk(items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Add several positions; returns how many were added and the errors by row."""
     added, errors = 0, []
     for i, item in enumerate(items):
         try:
@@ -117,6 +125,7 @@ def add_positions_bulk(items: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def update_position(pos_id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Change a position's fields; None when it doesn't exist."""
     init_db()
     d = _clean(data)
     if not d:
@@ -130,12 +139,14 @@ def update_position(pos_id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any
 
 
 def get_position(pos_id: int) -> Optional[Dict[str, Any]]:
+    """One position, or None."""
     with _conn() as conn:
         row = conn.execute("SELECT * FROM positions WHERE id = ?", (pos_id,)).fetchone()
     return dict(row) if row else None
 
 
 def delete_position(pos_id: int) -> bool:
+    """Delete a position; False when it doesn't exist."""
     init_db()
     with _conn() as conn:
         cur = conn.execute("DELETE FROM positions WHERE id = ?", (pos_id,))
@@ -144,6 +155,7 @@ def delete_position(pos_id: int) -> bool:
 
 
 def list_books() -> List[str]:
+    """The names of the books that hold positions."""
     init_db()
     with _conn() as conn:
         rows = conn.execute("SELECT DISTINCT book FROM positions ORDER BY book").fetchall()
@@ -159,6 +171,7 @@ IDEA_STATES = ["Proposed", "Under Review", "Approved", "Executed", "Closed"]
 
 
 def init_ideas_db() -> None:
+    """Create the trade-ideas table in the current fund's database."""
     with _conn() as conn:
         conn.execute(
             """
@@ -183,6 +196,7 @@ def init_ideas_db() -> None:
 
 
 def list_trade_ideas(state: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Trade ideas, optionally in one state."""
     init_ideas_db()
     with _conn() as conn:
         if state:
@@ -201,6 +215,7 @@ def list_trade_ideas(state: Optional[str] = None) -> List[Dict[str, Any]]:
 
 
 def add_trade_idea(data: Dict[str, Any], user: str = "system") -> Dict[str, Any]:
+    """Add a trade idea in its first state."""
     init_ideas_db()
     symbol = str(data.get("symbol", "")).strip().upper()
     if not symbol:
@@ -245,6 +260,11 @@ def add_trade_idea(data: Dict[str, Any], user: str = "system") -> Dict[str, Any]
 
 def transition_trade_idea(idea_id: int, new_state: str, user: str = "system",
                           note: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Move a trade idea to a new state, appending to its history; None when it doesn't exist.
+
+    Raises:
+        ValueError: unknown state.
+    """
     if new_state not in IDEA_STATES:
         raise ValueError(f"invalid state '{new_state}'")
     init_ideas_db()
@@ -266,6 +286,7 @@ def transition_trade_idea(idea_id: int, new_state: str, user: str = "system",
 
 
 def delete_trade_idea(idea_id: int) -> bool:
+    """Delete a trade idea; False when it doesn't exist."""
     init_ideas_db()
     with _conn() as conn:
         cur = conn.execute("DELETE FROM pm_trade_ideas WHERE id = ?", (idea_id,))

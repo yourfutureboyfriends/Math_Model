@@ -24,6 +24,7 @@ from api.portfolio_store import _conn
 
 
 def init_db() -> None:
+    """Create the pre-trade assessment table in the current fund's database."""
     with _conn() as c:
         c.execute("""CREATE TABLE IF NOT EXISTS pretrade_assessments (
             id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, user TEXT, symbol TEXT NOT NULL, side TEXT NOT NULL,
@@ -63,6 +64,7 @@ def save_assessment(r: Dict[str, Any], user: str, pitch_id: Optional[int] = None
 
 
 def get_assessment(aid: int) -> Optional[Dict[str, Any]]:
+    """One stored pre-trade assessment, or None."""
     init_db()
     with _conn() as c:
         r = c.execute("SELECT * FROM pretrade_assessments WHERE id = ?", (aid,)).fetchone()
@@ -74,6 +76,7 @@ def get_assessment(aid: int) -> Optional[Dict[str, Any]]:
 
 
 def latest_assessment(symbol: str, side: str, within_days: int = 3) -> Optional[Dict[str, Any]]:
+    """The latest assessment of the same symbol and side within `within_days`, or None."""
     init_db()
     since = (datetime.now(timezone.utc) - timedelta(days=within_days)).isoformat()
     with _conn() as c:

@@ -40,6 +40,7 @@ router = APIRouter(tags=["book"])
 
 
 class PositionIn(BaseModel):
+    """A position: symbol, quantity (negative for short), average cost, entry date, book and asset class."""
     symbol: str
     quantity: float
     avg_cost: float
@@ -50,6 +51,7 @@ class PositionIn(BaseModel):
 
 
 class PositionUpdate(BaseModel):
+    """Fields of a position to change."""
     quantity: Optional[float] = None
     avg_cost: Optional[float] = None
     asset_class: Optional[str] = None
@@ -59,6 +61,7 @@ class PositionUpdate(BaseModel):
 
 
 class BulkPositionsIn(BaseModel):
+    """Several positions to add at once."""
     positions: List[PositionIn]
 
 
@@ -143,6 +146,7 @@ async def portfolio_add_position_v1(pos: PositionIn, request: Request):
 
 @router.post("/api/v1/portfolio/positions/bulk")
 async def portfolio_bulk_v1(body: BulkPositionsIn, request: Request):
+    """Add several positions at once (audit-logged)."""
     from api import portfolio_store
     from api.core.access import require_roles
     require_roles(request, {"pm"})
@@ -153,6 +157,7 @@ async def portfolio_bulk_v1(body: BulkPositionsIn, request: Request):
 
 @router.put("/api/v1/portfolio/positions/{pos_id}")
 async def portfolio_update_position_v1(pos_id: int, upd: PositionUpdate, request: Request):
+    """Change a position (audit-logged with before and after)."""
     from api import portfolio_store
     from api.core.access import require_roles
     require_roles(request, {"pm"})
@@ -166,6 +171,7 @@ async def portfolio_update_position_v1(pos_id: int, upd: PositionUpdate, request
 
 @router.delete("/api/v1/portfolio/positions/{pos_id}")
 async def portfolio_delete_position_v1(pos_id: int, request: Request):
+    """Delete a position (audit-logged)."""
     from api import portfolio_store
     from api.core.access import require_roles
     require_roles(request, {"pm"})
@@ -212,6 +218,7 @@ async def _risk_snapshot(raw: list) -> dict:
 
 
 class WhatIfIn(BaseModel):
+    """A proposed trade for the what-if: symbol, quantity, optional cost and book, optional VaR budget."""
     symbol: str
     quantity: float
     avg_cost: Optional[float] = None      # defaults to current price (entry P&L = 0)
@@ -275,6 +282,7 @@ async def portfolio_what_if_v1(trade: WhatIfIn):
 
 
 class TradeIdeaIn(BaseModel):
+    """A trade idea: symbol, direction, thesis, conviction, sizing and book."""
     symbol: str
     direction: Optional[str] = "LONG"
     thesis: Optional[str] = None
@@ -285,12 +293,14 @@ class TradeIdeaIn(BaseModel):
 
 
 class TradeIdeaTransition(BaseModel):
+    """A trade idea's next state and an optional note."""
     state: str
     note: Optional[str] = None
 
 
 @router.get("/api/v1/portfolio/trade-ideas")
 async def trade_ideas_list_v1(state: Optional[str] = None):
+    """Trade ideas, optionally filtered by state."""
     from api import portfolio_store
     ideas = await asyncio.to_thread(portfolio_store.list_trade_ideas, state)
     return {"ideas": ideas, "states": portfolio_store.IDEA_STATES}
@@ -298,6 +308,7 @@ async def trade_ideas_list_v1(state: Optional[str] = None):
 
 @router.post("/api/v1/portfolio/trade-ideas")
 async def trade_ideas_add_v1(idea: TradeIdeaIn, request: Request):
+    """Add a trade idea."""
     from api import portfolio_store
     user = _request_user(request)
     try:
@@ -308,6 +319,7 @@ async def trade_ideas_add_v1(idea: TradeIdeaIn, request: Request):
 
 @router.post("/api/v1/portfolio/trade-ideas/{idea_id}/transition")
 async def trade_ideas_transition_v1(idea_id: int, body: TradeIdeaTransition, request: Request):
+    """Move a trade idea through its workflow (proposed → under review → approved → executed / closed)."""
     from api import portfolio_store, blotter_store
     from api.core.access import require_roles
     user = _request_user(request)
@@ -380,6 +392,7 @@ async def portfolio_generate_ideas_v1(book: Optional[str] = None):
 
 @router.delete("/api/v1/portfolio/trade-ideas/{idea_id}")
 async def trade_ideas_delete_v1(idea_id: int):
+    """Delete a trade idea."""
     from api import portfolio_store
     ok = await asyncio.to_thread(portfolio_store.delete_trade_idea, idea_id)
     if not ok:
@@ -690,6 +703,7 @@ async def risk_stress_get_v1(book: Optional[str] = None):
 
 
 class StressCustomIn(BaseModel):
+    """A custom stress scenario: factor shocks as returns (e.g. equity −0.20)."""
     shocks: Dict[str, float]
     book: Optional[str] = None
 

@@ -61,6 +61,7 @@ def _one(sym: str) -> Optional[Dict[str, Any]]:
 
 
 def snapshot() -> Dict[str, Any]:
+    """ETF premium / discount to NAV across groups, flagging suspect data."""
     def build():
         syms = [(g, s) for g, ss in GROUPS.items() for s in ss]
         with ThreadPoolExecutor(6) as ex:

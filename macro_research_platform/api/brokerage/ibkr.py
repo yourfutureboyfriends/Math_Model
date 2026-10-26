@@ -138,6 +138,9 @@ def _gw(fund: str, path: str) -> Any:
 
 
 def gateway_status(fund: str) -> Dict[str, Any]:
+    """Whether the local IBKR Client Portal Gateway is running and signed in (never raises; a stopped gateway reports
+    reachable = False).
+    """
     try:
         import urllib3
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)

@@ -18,27 +18,32 @@ _sem_fast = asyncio.Semaphore(4)          # interactive Code Lab requests: never
 
 
 class SpecIn(BaseModel):
+    """A strategy specification for the visual builder."""
     spec: Dict[str, Any]
     strategy_id: Optional[int] = None
 
 
 class SweepIn(BaseModel):
+    """A parameter sweep: the specification and the grid."""
     spec: Dict[str, Any]
     params: Dict[str, List[float]]
     strategy_id: Optional[int] = None
 
 
 class CombineIn(BaseModel):
+    """Strategies to combine into one portfolio, with weights or a method."""
     members: List[Dict[str, Any]]          # [{"strategy_id": 3} | {"template": "id"} | {"spec": {...}}]
     method: str = "erc"
 
 
 class SaveIn(BaseModel):
+    """A strategy to save."""
     spec: Dict[str, Any]
     template: Optional[str] = None
 
 
 class DeployIn(BaseModel):
+    """A paper deployment: specification or saved strategy, capital, book and (in a governed fund) the model."""
     spec: Optional[Dict[str, Any]] = None
     strategy_id: Optional[int] = None
     template: Optional[str] = None
@@ -48,6 +53,7 @@ class DeployIn(BaseModel):
 
 
 class ExprIn(BaseModel):
+    """An expression to check."""
     formula: str
 
 
@@ -68,6 +74,7 @@ async def _bt(fn, *a, _timeout: float = 240, _fast: bool = False, **k):
 # ── Quant Lab ────────────────────────────────────────────────────────────────
 @router.get("/api/v1/quant/meta")
 async def quant_meta():
+    """What the strategy builder offers: signals, universes, filters, weighting methods."""
     from api.quant import data, engine, expr, templates, trader
     return {"functions": expr.catalogue(),
             "universes": [{"id": k, "label": v["label"], "symbols": v["symbols"], "note": v["note"],
@@ -82,6 +89,7 @@ async def quant_meta():
 
 @router.post("/api/v1/quant/validate")
 async def quant_validate(body: ExprIn):
+    """Check a strategy specification without running it."""
     from api.quant import expr
     try:
         expr.parse(body.formula)
@@ -92,6 +100,7 @@ async def quant_validate(body: ExprIn):
 
 @router.post("/api/v1/quant/backtest")
 async def quant_backtest(body: SpecIn, request: Request):
+    """Backtest a strategy specification (net of costs)."""
     from api.quant import backtest, engine, store
     user = _user(request)["username"]
     try:
@@ -121,6 +130,7 @@ async def quant_backtest(body: SpecIn, request: Request):
 
 @router.post("/api/v1/quant/sweep")
 async def quant_sweep(body: SweepIn, request: Request):
+    """Backtest a strategy over a parameter grid, with the trial count recorded for the deflated Sharpe."""
     from api.quant import backtest, engine, store
     user = _user(request)["username"]
     try:
@@ -154,6 +164,7 @@ def _member_spec(m: Dict[str, Any]) -> Dict[str, Any]:
 
 @router.post("/api/v1/quant/combine")
 async def quant_combine(body: CombineIn, request: Request):
+    """Combine strategies into a portfolio and backtest it."""
     from api.quant import backtest, engine
     _user(request)
     if body.method not in ("erc", "equal", "inverse_vol"):
@@ -185,6 +196,7 @@ def _saved_spec(spec_in: Dict[str, Any]) -> Dict[str, Any]:
 
 @router.get("/api/v1/quant/strategies")
 async def quant_strategies(request: Request):
+    """Your saved strategies."""
     from api.quant import store
     _user(request)
     return {"strategies": await asyncio.to_thread(store.list_strategies)}
@@ -192,6 +204,7 @@ async def quant_strategies(request: Request):
 
 @router.post("/api/v1/quant/strategies")
 async def quant_save(body: SaveIn, request: Request):
+    """Save a strategy."""
     from api.quant import store
     user = _user(request, ("pm", "quant", "analyst"))["username"]
     spec = _saved_spec(body.spec)
@@ -200,6 +213,7 @@ async def quant_save(body: SaveIn, request: Request):
 
 @router.put("/api/v1/quant/strategies/{sid}")
 async def quant_update(sid: int, body: SaveIn, request: Request):
+    """Update a saved strategy."""
     from api.quant import store
     u = _user(request, ("pm", "quant", "analyst"))
     cur = await asyncio.to_thread(store.get_strategy, sid)
@@ -213,6 +227,7 @@ async def quant_update(sid: int, body: SaveIn, request: Request):
 
 @router.delete("/api/v1/quant/strategies/{sid}")
 async def quant_delete(sid: int, request: Request):
+    """Delete a saved strategy."""
     from api.quant import store
     u = _user(request, ("pm", "quant", "analyst"))
     cur = await asyncio.to_thread(store.get_strategy, sid)
@@ -226,6 +241,7 @@ async def quant_delete(sid: int, request: Request):
 
 # ── Code Lab ─────────────────────────────────────────────────────────────────
 class AnalyzeIn(BaseModel):
+    """A result to analyse in depth."""
     dates: List[str]
     returns: List[float]
     benchmark: Optional[List[float]] = None
@@ -239,6 +255,7 @@ class AnalyzeIn(BaseModel):
 
 
 class CodeCheckIn(BaseModel):
+    """Code to check against the sandbox rules."""
     code: str
 
 
@@ -274,6 +291,7 @@ async def code_data(request: Request, universe: str = Query(..., max_length=1200
 
 
 class CustomDataIn(BaseModel):
+    """A custom dataset: name and data."""
     name: str
     csv: str
 
@@ -299,6 +317,7 @@ async def custom_data_upload(body: CustomDataIn, request: Request):
 
 @router.delete("/api/v1/quant/custom-data/{name}")
 async def custom_data_delete(name: str, request: Request):
+    """Delete one of your custom datasets."""
     from api.quant import customdata
     u = _user(request)
     try:
@@ -310,6 +329,7 @@ async def custom_data_delete(name: str, request: Request):
 
 
 class JobIn(BaseModel):
+    """A Code Lab / LEAN job: code and settings."""
     code: str
     costs: Optional[Dict[str, float]] = None
 
@@ -361,10 +381,12 @@ async def lean_job_submit(body: JobIn, request: Request):
 
 
 class LeanParamsIn(BaseModel):
+    """Code whose parameters LEAN should read."""
     code: str
 
 
 class LeanOptimizeIn(BaseModel):
+    """A LEAN optimisation: code, parameter ranges and the hold-out split."""
     code: str
     grid: Dict[str, List[Union[float, int, str]]]
     split: Optional[str] = None                 # hold-out start (YYYY-MM-DD): in-sample before it, best re-run after
@@ -404,6 +426,7 @@ async def lean_optimize_submit(body: LeanOptimizeIn, request: Request):
 
 @router.get("/api/v1/quant/code/jobs/{job_id}")
 async def code_job_status(job_id: str, request: Request):
+    """A Code Lab job's status and result."""
     from api.quant import jobs
     u = _user(request)
     j = jobs.get(job_id, u["username"], u["role"] == "admin")
@@ -414,12 +437,14 @@ async def code_job_status(job_id: str, request: Request):
 
 @router.delete("/api/v1/quant/code/jobs/{job_id}")
 async def code_job_cancel(job_id: str, request: Request):
+    """Cancel a running Code Lab job."""
     from api.quant import jobs
     u = _user(request)
     return {"cancelled": jobs.cancel(job_id, u["username"], u["role"] == "admin")}
 
 
 class RunIn(BaseModel):
+    """A Code Lab result to save."""
     label: str
     result: Dict[str, Any]
     analysis: Optional[Dict[str, Any]] = None
@@ -439,6 +464,7 @@ async def code_run_save(body: RunIn, request: Request):
 
 @router.get("/api/v1/quant/code/runs")
 async def code_runs_list(request: Request):
+    """Your saved Code Lab results."""
     from api.quant import store
     u = _user(request)
     return {"runs": await asyncio.to_thread(store.list_results, u["username"])}
@@ -446,6 +472,7 @@ async def code_runs_list(request: Request):
 
 @router.get("/api/v1/quant/code/runs/{rid}")
 async def code_run_get(rid: int, request: Request):
+    """One saved Code Lab result."""
     from api.quant import store
     u = _user(request)
     r = await asyncio.to_thread(store.get_result, u["username"], rid)
@@ -456,6 +483,7 @@ async def code_run_get(rid: int, request: Request):
 
 @router.delete("/api/v1/quant/code/runs/{rid}")
 async def code_run_delete(rid: int, request: Request):
+    """Delete a saved Code Lab result."""
     from api.quant import store
     u = _user(request)
     return {"deleted": await asyncio.to_thread(store.delete_result, u["username"], rid)}
@@ -517,6 +545,7 @@ async def code_analyze(body: AnalyzeIn, request: Request):
 
 @router.get("/api/v1/quant/library")
 async def strategy_library(request: Request):
+    """The strategy library: published strategies as code, each walk-forward tested net of costs."""
     from api.quant import library
     _user(request)
     return {"strategies": await asyncio.to_thread(library.summaries), "notes": library.__doc__}
@@ -535,6 +564,7 @@ async def smartmoney_latest(request: Request):
 
 @router.get("/api/v1/quant/library/{sid}")
 async def strategy_library_result(sid: str, request: Request, refresh: bool = False):
+    """A library strategy's full result."""
     from api.quant import library
     _user(request)
     try:
@@ -550,7 +580,9 @@ async def strategy_library_result(sid: str, request: Request, refresh: bool = Fa
 # ── Quant Trader ─────────────────────────────────────────────────────────────
 @router.get("/api/v1/quant/trader")
 async def quant_trader(request: Request, refresh: bool = False, book: str = Query("macro", pattern="^(macro|fundamental|technical)$")):
-    """One trader's book — macro (asset classes), fundamental (stocks on company data) or technical (stocks on price/volume)."""
+    """One trader's book — macro (asset classes), fundamental (stocks on company data) or technical (stocks on
+    price/volume).
+    """
     from api.quant import trader
     _user(request)
     try:
@@ -561,6 +593,9 @@ async def quant_trader(request: Request, refresh: bool = False, book: str = Quer
 
 @router.post("/api/v1/quant/trader/deploy")
 async def quant_deploy(body: DeployIn, request: Request):
+    """Deploy a strategy to a paper trader (capability quant_deploy; in a governed fund the model must be at G2+ and
+    the deployment becomes its shadow-trading record).
+    """
     from api.quant import engine, trader
     u = _user(request, ("pm", "quant"))
     web.require(request, "quant_deploy")
@@ -587,7 +622,9 @@ async def quant_deploy(body: DeployIn, request: Request):
 
 @router.get("/api/v1/quant/trader/live")
 async def quant_trader_live(request: Request, book: str = Query("all")):
-    """Intraday (provisional) P&L of deployed algos from 5-minute prices — book = macro / fundamental / technical / all."""
+    """Intraday (provisional) P&L of deployed algos from 5-minute prices — book = macro / fundamental / technical /
+    all.
+    """
     from api.quant import trader
     _user(request)
     if book not in ("all",) + trader.BOOKS:
@@ -600,6 +637,7 @@ async def quant_trader_live(request: Request, book: str = Query("all")):
 
 @router.delete("/api/v1/quant/trader/deployments/{did}")
 async def quant_undeploy(did: int, request: Request):
+    """Stop a paper deployment (its locked daily record is kept)."""
     from api.quant import store, trader
     u = _user(request, ("pm", "quant"))
     d = await asyncio.to_thread(store.get_deployment, did)
@@ -614,6 +652,7 @@ async def quant_undeploy(did: int, request: Request):
 
 # ── Macro Trader ─────────────────────────────────────────────────────────────
 class MacroSettingsIn(BaseModel):
+    """Macro trader settings."""
     enabled: Optional[bool] = None
     portfolio: Optional[str] = None
     drift_threshold: Optional[float] = None
@@ -621,10 +660,12 @@ class MacroSettingsIn(BaseModel):
 
 
 class MacroResetIn(BaseModel):
+    """Reset the macro trader, with confirmation."""
     capital: Optional[float] = None
 
 
 class DeepIn(BaseModel):
+    """An in-depth analysis request."""
     spec: Optional[Dict[str, Any]] = None
     strategy_id: Optional[int] = None
     template: Optional[str] = None
@@ -753,6 +794,7 @@ async def macro_trader_deep(request: Request, series: str = Query("tactical", pa
 
 
 def pd_month_end(m: str) -> str:
+    """The last calendar day of month `m` ("YYYY-MM") as "YYYY-MM-DD"."""
     import calendar
     y, mo = int(m[:4]), int(m[5:7])
     return f"{y}-{mo:02d}-{calendar.monthrange(y, mo)[1]:02d}"
@@ -760,6 +802,7 @@ def pd_month_end(m: str) -> str:
 
 @router.get("/api/v1/macro-trader")
 async def macro_trader_status(request: Request):
+    """The macro trader (paper): positions, equity and trades."""
     from api import macro_trader
     _user(request)
     return await macro_trader.status()
@@ -767,6 +810,7 @@ async def macro_trader_status(request: Request):
 
 @router.post("/api/v1/macro-trader/run")
 async def macro_trader_run(request: Request):
+    """Run the macro trader's cycle now."""
     from api import macro_trader
     u = _user(request, ("pm",))
     res = await macro_trader.run(force=True)
@@ -778,6 +822,7 @@ async def macro_trader_run(request: Request):
 
 @router.put("/api/v1/macro-trader/settings")
 async def macro_trader_settings(body: MacroSettingsIn, request: Request):
+    """Change the macro trader's settings."""
     from api import macro_trader
     u = _user(request, ("pm",))
     changes = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -792,6 +837,7 @@ async def macro_trader_settings(body: MacroSettingsIn, request: Request):
 
 @router.post("/api/v1/macro-trader/reset")
 async def macro_trader_reset(body: MacroResetIn, request: Request):
+    """Reset the macro trader."""
     from api import macro_trader
     u = _user(request, ())                                   # admin only
     try:

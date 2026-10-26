@@ -19,15 +19,18 @@ def _audit(user: str, action: str, text: str, target: str) -> None:
     web.audit(user, action, text, target)
 
 class CodeIn(BaseModel):
+    """A 6-digit authenticator code or a recovery code."""
     code: str = Field(..., min_length=6, max_length=20)
 
 
 class RequiredIn(BaseModel):
+    """Whether two-factor sign-in is required for every account."""
     required: bool
 
 
 @router.get("/api/auth/mfa")
 async def mfa_status(request: Request):
+    """Your two-factor status."""
     from api.core import mfa
     return await asyncio.to_thread(mfa.status, _me(request)["username"])
 
@@ -44,6 +47,7 @@ async def mfa_setup(request: Request):
 
 @router.post("/api/auth/mfa/enable")
 async def mfa_enable(body: CodeIn, request: Request):
+    """Confirm set-up with a code; returns 8 recovery codes once."""
     from api.core import mfa
     u = _me(request)
     try:
@@ -56,6 +60,7 @@ async def mfa_enable(body: CodeIn, request: Request):
 
 @router.post("/api/auth/mfa/disable")
 async def mfa_disable(body: CodeIn, request: Request):
+    """Turn your two-factor off with a valid code (refused while it is required for everyone)."""
     from api.core import mfa
     u = _me(request)
     if await asyncio.to_thread(mfa.required):
@@ -81,6 +86,7 @@ async def mfa_reset(username: str, request: Request):
 
 @router.get("/api/admin/security/mfa")
 async def mfa_policy(request: Request):
+    """Whether two-factor is required, and which accounts have it (administrators)."""
     from api.core import accounts, mfa
     from api.core.access import require_roles
     require_roles(request, set())
@@ -91,6 +97,7 @@ async def mfa_policy(request: Request):
 
 @router.put("/api/admin/security/mfa")
 async def mfa_policy_set(body: RequiredIn, request: Request):
+    """Require or stop requiring two-factor for every account (administrators)."""
     from api.core import mfa
     from api.core.access import require_roles
     admin = require_roles(request, set())

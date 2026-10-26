@@ -108,12 +108,14 @@ def _db() -> sqlite3.Connection:
 
 
 def get_settings() -> Dict[str, Any]:
+    """The auto book's settings (stored values over the defaults)."""
     with _db() as c:
         rows = {r["key"]: json.loads(r["value"]) for r in c.execute("SELECT key, value FROM auto_settings")}
     return {**DEFAULTS, **{k: v for k, v in rows.items() if k in DEFAULTS}}
 
 
 def update_settings(changes: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and store settings changes; returns the full settings."""
     clean = validate_settings(changes)
     with _db() as c:
         for k, v in clean.items():
@@ -123,6 +125,11 @@ def update_settings(changes: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def validate_settings(changes: Dict[str, Any]) -> Dict[str, Any]:
+    """Check settings changes against their allowed ranges.
+
+    Raises:
+        ValueError: an unknown key or a value out of range.
+    """
     bounds = {"capital": (1_000, 1e9), "max_positions": (1, 50), "risk_per_trade": (0.0005, 0.03),
               "max_position": (0.01, 0.5), "max_gross": (0.1, 1.0), "max_drawdown": (0.02, 0.6),
               "max_hold": (5, 252), "target_r": (0.5, 10), "vol_target": (0.02, 0.5),
@@ -514,6 +521,7 @@ async def close_position(pos_id: int, user: str) -> Dict[str, Any]:
 
 # ── Status ───────────────────────────────────────────────────────────────────
 async def status() -> Dict[str, Any]:
+    """The auto book: cash, open and closed positions, pending orders, equity curve and settings."""
     s = await asyncio.to_thread(get_settings)
     with _db() as c:
         cash = _cash(c, s["capital"])

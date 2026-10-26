@@ -20,6 +20,11 @@ ACCOUNT_CURRENCIES = ("USD", "EUR", "JPY", "GBP", "CNY", "HKD", "CHF", "CAD", "A
 
 
 def account_currency(x: Optional[str]) -> str:
+    """Validate the account currency (default USD).
+
+    Raises:
+        ValueError: unsupported currency.
+    """
     c = (x or ACCOUNT_CCY).strip().upper()
     if c not in ACCOUNT_CURRENCIES:
         raise ValueError(f"ACCOUNT_CURRENCY '{c}' is not supported. Use one of: {', '.join(ACCOUNT_CURRENCIES)}.")

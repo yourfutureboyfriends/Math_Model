@@ -34,6 +34,7 @@ FIELDS = ("close", "px", "high", "low", "volume", "exdiv", "adv")
 
 @dataclass
 class Panel:
+    """The research panel: dates × tickers arrays per field, cash rate, ticker info and metadata."""
     dates: pd.DatetimeIndex
     tickers: List[str]
     a: Dict[str, np.ndarray]                     # field → [T, N] float32 (observed / members: bool)
@@ -42,12 +43,15 @@ class Panel:
     meta: Dict[str, Any] = field(default_factory=dict)
 
     def col(self, t: str) -> int:
+        """Column index of a ticker."""
         return self.tickers.index(t)
 
     def frame(self, f: str) -> pd.DataFrame:
+        """One field as a DataFrame."""
         return pd.DataFrame(self.a[f], index=self.dates, columns=self.tickers)
 
     def subset(self, tickers: List[str]) -> "Panel":
+        """The panel restricted to some tickers."""
         ix = [self.tickers.index(t) for t in tickers]
         return Panel(self.dates, list(tickers), {k: v[:, ix] for k, v in self.a.items()}, self.rf,
                      {t: self.info[t] for t in tickers}, dict(self.meta, subset=len(tickers)))
@@ -58,6 +62,7 @@ def _key(spec: str) -> str:
 
 
 def universe_names(spec: str = "US+PIT") -> Dict[str, Any]:
+    """Tickers in a universe spec (e.g. "US+PIT": current US names plus point-in-time S&P 500 members)."""
     from api.quant import codeserver, membership
     toks = spec.upper().split("+")
     names: List[str] = []
@@ -134,6 +139,7 @@ def build(spec: str = "US+PIT", say=lambda m: None) -> Panel:
 
 
 def load(key: str) -> Panel:
+    """Load a cached panel by key."""
     z = np.load(CACHE / f"{key}.npz")
     ti = json.loads((CACHE / f"{key}.info.json").read_text())
     meta = json.loads((CACHE / f"{key}.json").read_text())

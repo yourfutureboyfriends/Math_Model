@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 # Alert severity levels
 class AlertSeverity:
+    """Alert severity levels: info, warning, critical."""
     INFO = "info"
     WARNING = "warning"
     CRITICAL = "critical"

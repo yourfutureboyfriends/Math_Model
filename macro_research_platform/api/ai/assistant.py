@@ -208,12 +208,14 @@ REQUIRED = {"get_quote": ["symbol"], "get_profile": ["symbol"], "get_financials"
 
 
 def tool_specs() -> List[Dict[str, Any]]:
+    """The assistant's tools in OpenAI function-calling format (name, description, parameters)."""
     return [{"type": "function", "function": {"name": n, "description": d,
                                               "parameters": {"type": "object", "properties": p, "required": REQUIRED.get(n, [])}}}
             for n, (_, d, p) in TOOLS.items()]
 
 
 def run_tool(name: str, args: Dict[str, Any]) -> Tuple[bool, str]:
+    """Run one tool call with only its declared arguments; returns (ok, compact JSON result or error)."""
     if name not in TOOLS:
         return False, json.dumps({"error": f"Unknown tool {name}"})
     fn = TOOLS[name][0]
@@ -245,6 +247,9 @@ _CITE = {  # tool: (source, markets function code or None, research panel or Non
 
 
 def citation(n: int, name: str, args: Dict[str, Any], ok: bool) -> Dict[str, Any]:
+    """A citation for a tool call shown under the answer: label, data source, and where in the app to open it (Markets
+    function or Research panel).
+    """
     src, code, panel = _CITE.get(name, (name, None, None))
     sym = (args or {}).get("symbol")
     label = f"{name.replace('get_', '').replace('_', ' ')}{f' {sym}' if sym else ''}{(' “' + str(args['query']) + '”') if (args or {}).get('query') else ''}"
@@ -284,6 +289,9 @@ def _groq_models(key: str) -> List[str]:
 
 
 def config() -> Dict[str, Any]:
+    """Which model provider to use: AI_PROVIDER if set, else local Ollama when installed, else Groq when a key is
+    present; reports availability and a note for the UI.
+    """
     prov = (os.getenv("AI_PROVIDER") or "").lower()
     groq_key = os.getenv("GROQ_API_KEY") or ""
     local = _ollama_models()
@@ -321,6 +329,12 @@ def _complete(cfg: Dict[str, Any], messages: List[Dict[str, Any]], model: str) -
 
 
 def chat(history: List[Dict[str, str]], context: Optional[str] = None, model: Optional[str] = None) -> Dict[str, Any]:
+    """Answer a question with tool use: the last 12 turns of history, the current screen as context, and up to a few
+    tool rounds; returns the answer with citations and timing.
+
+    Raises:
+        RuntimeError: no model provider is available.
+    """
     cfg = config()
     if not cfg["available"]:
         raise RuntimeError(cfg["note"])

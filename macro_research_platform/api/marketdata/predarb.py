@@ -215,6 +215,7 @@ def match(min_score: float = 0.5) -> List[Dict[str, Any]]:
 
 
 def kalshi_fee(contracts: float, price: float, rate: float = KALSHI_FEE) -> float:
+    """Kalshi's trading fee for `contracts` at `price` (rate × C × P × (1 − P), rounded up to the cent)."""
     return math.ceil(round(rate * contracts * price * (1 - price) * 100, 6)) / 100
 
 
@@ -329,6 +330,12 @@ def _rf(curve: List[Tuple[float, float]], days: Optional[int]) -> Optional[float
 
 
 def scan(k_rate: float = KALSHI_FEE, poly_fee: float = 0.0, min_edge: float = -0.03, depth_checks: int = 20) -> Dict[str, Any]:
+    """Cross-venue prediction-market arbitrage: matched Polymarket / Kalshi markets with the edge after fees, depth-
+    checked.
+
+    Raises:
+        ValueError: fee rates out of range.
+    """
     if not 0 <= k_rate <= 0.2 or not 0 <= poly_fee <= 0.1:
         raise ValueError("Kalshi fee rate 0–0.2; Polymarket fee 0–10%.")
 
@@ -388,7 +395,8 @@ def _safe_depth(r, k_rate, p_fee):
 
 
 def check(poly: str, kalshi: str, k_rate: float = KALSHI_FEE, poly_fee: float = 0.0) -> Dict[str, Any]:
-    """Both directions for a pair the user chose: a Polymarket market (slug, URL or YES token id) and a Kalshi ticker."""
+    """Both directions for a pair the user chose: a Polymarket market (slug, URL or YES token id) and a Kalshi ticker.
+    """
     poly, kalshi = (poly or "").strip(), (kalshi or "").strip().upper()
     if not poly or not kalshi:
         raise ValueError("Give a Polymarket market and a Kalshi market ticker.")

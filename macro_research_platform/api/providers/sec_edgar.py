@@ -91,6 +91,7 @@ LABELS = {
 
 
 class EdgarError(RuntimeError):
+    """SEC EDGAR could not be reached or refused the request (it requires a descriptive User-Agent)."""
     pass
 
 
@@ -140,6 +141,7 @@ def _cached(path: Path, ttl: float, fetch, keep: bool = True) -> Any:
 
 
 def ticker_map() -> Dict[str, Dict[str, Any]]:
+    """Ticker → {CIK, company name} for every SEC filer (cached on disk)."""
     raw = _cached(CACHE / "company_tickers.json", TICKERS_TTL,
                   lambda: _get("https://www.sec.gov/files/company_tickers.json"))
     out = {}
@@ -149,6 +151,7 @@ def ticker_map() -> Dict[str, Dict[str, Any]]:
 
 
 def resolve(ticker: str) -> Optional[Dict[str, Any]]:
+    """The SEC filer for a ticker, trying share-class spellings (BRK.B / BRK-B), or None."""
     t = ticker.strip().upper()
     m = ticker_map()
     return m.get(t) or m.get(t.replace(".", "-")) or m.get(t.replace("-", "."))
@@ -266,6 +269,9 @@ def quarterly(points: List[Dict]) -> List[Dict]:
 
 
 def annual(points: List[Dict]) -> List[Dict]:
+    """Annual values from XBRL facts: one per fiscal year end from 10-K filings, the first filing kept (point-in-time;
+    later restatements ignored).
+    """
     years = _first_filed([p for p in points if p.get("start") and 350 <= _days(p["start"], p["end"]) <= 380
                           and str(p.get("form", "")).startswith("10-K")], key=lambda p: p["end"])
     return [{"end": e, "val": float(p["val"]), "filed": p["filed"], "accn": p.get("accn"), "fy": p.get("fy")}
@@ -273,6 +279,7 @@ def annual(points: List[Dict]) -> List[Dict]:
 
 
 def instants(points: List[Dict]) -> List[Dict]:
+    """Point-in-time balance values (no period start), the first filing for each date kept."""
     pts = _first_filed([p for p in points if not p.get("start")], key=lambda p: p["end"])
     return [{"end": e, "val": float(p["val"]), "filed": p["filed"], "accn": p.get("accn")} for e, p in sorted(pts.items())]
 
@@ -290,6 +297,9 @@ def ttm(qrows: List[Dict]) -> List[Dict]:
 
 
 def shares_series(facts: Dict[str, Any]) -> List[Dict]:
+    """Shares outstanding over time from the cover page (dei), falling back to the balance-sheet or diluted-weighted
+    tags.
+    """
     dei = (facts.get("facts") or {}).get("dei") or {}
     pts = ((dei.get("EntityCommonStockSharesOutstanding") or {}).get("units") or {}).get("shares") or []
     if not pts:
@@ -341,6 +351,11 @@ def _shown(table: Dict[str, Dict[str, float]], n: int) -> List[Dict[str, Any]]:
 
 
 def statements(ticker: str, years: int = 10, quarters: int = 12) -> Dict[str, Any]:
+    """Annual and quarterly income, balance-sheet and cash-flow lines from SEC XBRL, with the tag used for each line.
+
+    Raises:
+        LookupError: not an SEC filer, or no XBRL data on file.
+    """
     ent = resolve(ticker)
     if not ent:
         raise LookupError(f"{ticker} is not an SEC filer (ETFs, funds and most foreign listings are not covered).")

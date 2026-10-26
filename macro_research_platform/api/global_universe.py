@@ -47,6 +47,9 @@ def _fold(s: str) -> str:
 
 
 def name_key(name: str) -> str:
+    """A normalised company name (accents, legal suffixes and punctuation removed) for matching the same company across
+    listings.
+    """
     n = _fold(name or "")
     n = re.sub(r"\(.*?\)", " ", n)
     n = _SUFFIX_WORDS.sub(" ", n)
@@ -55,6 +58,7 @@ def name_key(name: str) -> str:
 
 
 def is_depositary(q: Dict[str, Any]) -> bool:
+    """Whether a quote is a depositary receipt or non-equity rather than a primary share listing."""
     sym = str(q.get("symbol") or "")
     name = f"{q.get('shortName') or ''} {q.get('longName') or ''}"
     if q.get("quoteType") not in (None, "EQUITY"):
@@ -226,6 +230,7 @@ def _screen_country(code: str, meta: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def build() -> Dict[str, Any]:
+    """Screen every country's exchanges, keep primary listings, convert to USD and save the universe."""
     t0 = time.time()
     fx = fx_rates()
     quotes: List[Dict[str, Any]] = []
@@ -260,6 +265,7 @@ def config_hash() -> str:
 
 
 def load(max_age_days: int = MAX_AGE_DAYS, rebuild_if_stale: bool = True) -> Dict[str, Any]:
+    """The saved universe; rebuilt when older than `max_age_days` or built with a different configuration."""
     try:
         cur = json.loads(FILE.read_text())
     except Exception:
@@ -276,6 +282,7 @@ def load(max_age_days: int = MAX_AGE_DAYS, rebuild_if_stale: bool = True) -> Dic
 
 
 def summary(u: Dict[str, Any]) -> Dict[str, Any]:
+    """Counts of the universe by market class and country."""
     by_class: Dict[str, int] = {}
     by_country: Dict[str, int] = {}
     for s in u.get("stocks", []):

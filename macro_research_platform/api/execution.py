@@ -20,6 +20,7 @@ PAPER_URL = "https://paper-api.alpaca.markets"
 
 @dataclass
 class Fill:
+    """The result of executing an order: whether it filled, price, quantity, source and broker id."""
     filled: bool
     price: Optional[float]
     quantity: float
@@ -33,6 +34,7 @@ class Fill:
 
 
 def execution_mode() -> str:
+    """"alpaca_paper" when BROKER_ROUTING=alpaca_paper and Alpaca keys are set, else "simulated"."""
     if (os.getenv("BROKER_ROUTING", "").lower() == "alpaca_paper"
             and os.getenv("ALPACA_API_KEY") and os.getenv("ALPACA_SECRET_KEY")):
         return "alpaca_paper"

@@ -33,6 +33,7 @@ ILBE_SERIES = [("T5YIE", "5-year breakeven", "market"), ("T10YIE", "10-year brea
 
 
 def breakevens() -> Dict[str, Any]:
+    """Inflation breakevens and real yields (nominal minus TIPS) by tenor with history."""
     from api.marketdata.insights import _fred
     import concurrent.futures as cf
 
@@ -152,6 +153,7 @@ def bond_measures(coupon: float, maturity: date, settle: date, freq: int = 2, pr
 
 def bond_calc(coupon: float, maturity: str, price: Optional[float] = None, ytm: Optional[float] = None,
               settle: Optional[str] = None, freq: int = 2, shock_bp: float = 100) -> Dict[str, Any]:
+    """Price, yield, duration and convexity of a fixed-coupon bond."""
     st = date.fromisoformat(settle) if settle else date.today()
     mat = date.fromisoformat(maturity)
     base = bond_measures(coupon, mat, st, freq, price=price, ytm=ytm)
@@ -194,6 +196,7 @@ def _fedinvest(day: date) -> List[List[str]]:
 
 
 def treasuries() -> Dict[str, Any]:
+    """Every marketable US Treasury security's price and yield, and the curve built from them."""
     def build():
         rows, day = [], date.today()
         for _ in range(8):                                      # latest business day with prices
@@ -260,6 +263,7 @@ CARRY_CCYS = {"EUR": "XM", "JPY": "JP", "GBP": "GB", "CHF": "CH", "CAD": "CA", "
 
 
 def fx_carry() -> Dict[str, Any]:
+    """FX carry: policy-rate differentials vs USD and carry-to-volatility."""
     from api.marketdata.core import yahoo_download
     from api.marketdata.toolkit import central_banks
 

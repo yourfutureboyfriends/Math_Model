@@ -88,6 +88,7 @@ class PortfolioMetrics:
     concentration_hhi: Optional[float] = None  # Herfindahl-Hirschman Index
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 
@@ -104,6 +105,7 @@ class DrawdownAttribution:
     idiosyncratic_contribution: float
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 
@@ -116,6 +118,7 @@ class FactorExposure:
     r_squared: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 

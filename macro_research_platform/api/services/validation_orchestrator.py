@@ -24,6 +24,7 @@ class ValidationResult:
         self.timestamp = datetime.now(timezone.utc).isoformat()
 
     def to_dict(self) -> dict:
+        """The result as a JSON-serialisable dict (validity, issues, metadata, timestamp)."""
         return {
             "valid": self.valid,
             "issues": self.issues,

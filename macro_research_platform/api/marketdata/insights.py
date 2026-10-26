@@ -51,6 +51,7 @@ TERM = [("9D", 9, "^VIX9D"), ("1M", 30, "^VIX"), ("3M", 93, "^VIX3M"), ("6M", 18
 
 
 def vol() -> Dict[str, Any]:
+    """Volatility dashboard: VIX family term structure, realised vs implied, and percentiles over 3 years."""
     def build():
         import yfinance as yf
         df = yf.download(list(VOL_IDX) + ["^GSPC"], period="3y", interval="1d", auto_adjust=False, progress=False, threads=True)["Close"]
@@ -94,6 +95,7 @@ def vol() -> Dict[str, Any]:
 
 # ── Breadth ─────────────────────────────────────────────────────────────────
 def breadth() -> Dict[str, Any]:
+    """Market breadth: share of stocks above moving averages, new highs / lows, advance-decline."""
     def build():
         import pandas as pd
         import yfinance as yf
@@ -229,6 +231,7 @@ def _implied_move(sym: str, when: str, timing: Optional[str]) -> Optional[Dict[s
 
 
 def implied_moves(days: int = 10, min_cap_bn: float = 10) -> Dict[str, Any]:
+    """Option-implied earnings moves for upcoming reporters above `min_cap_bn` vs their history."""
     def build():
         from api.marketdata.monitors import earnings_calendar
         cal = earnings_calendar(days=days, min_cap_bn=min_cap_bn, limit=200)["rows"]
@@ -298,6 +301,7 @@ def _uoa_one(sym: str) -> Dict[str, Any]:
 
 
 def uoa() -> Dict[str, Any]:
+    """Unusual options activity: large trades vs open interest across a liquid universe, by premium."""
     def build():
         with ThreadPoolExecutor(4) as ex:
             res = list(ex.map(_uoa_one, UOA_UNIVERSE))
@@ -330,6 +334,7 @@ def _norm_cdf(x: float) -> float:
 
 
 def risk() -> Dict[str, Any]:
+    """Cross-asset risk gauges: curve slopes, high-yield spread, financial conditions and their percentiles."""
     def build():
         import pandas as pd
         import yfinance as yf

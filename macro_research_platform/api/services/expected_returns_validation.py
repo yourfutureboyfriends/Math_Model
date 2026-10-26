@@ -87,6 +87,7 @@ class ExpectedReturnsMetrics:
     avg_realized: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 
@@ -100,6 +101,7 @@ class ErrorDecomposition:
     unexplained_error: float
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 

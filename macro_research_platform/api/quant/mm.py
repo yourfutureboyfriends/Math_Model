@@ -123,6 +123,12 @@ def _run(df: pd.DataFrame, gamma: float, base: float, max_inv: int, lot: int, re
 
 def simulate(symbol: str, interval: str = "1m", half_spread_bps: float = 1.0, aversion: float = 1.0,
              max_inventory: int = 10, lot: int = 100, rebate_per_share: float = 0.0) -> Dict[str, Any]:
+    """Market-making simulation on intraday bars: Avellaneda–Stoikov-style quotes with inventory skew, inventory limits
+    and rebates.
+
+    Raises:
+        ValueError: unsupported interval or parameters out of range.
+    """
     symbol = symbol.strip().upper()
     if interval not in INTERVALS:
         raise ValueError(f"Interval must be one of {', '.join(INTERVALS)}.")

@@ -70,6 +70,9 @@ def summarize(name: str, code: str, asset_class: str, rows: List[Dict]) -> Optio
 
 
 def fetch_cot() -> Dict:
+    """CFTC Commitments of Traders positioning for the tracked futures contracts (Socrata API), summarised per
+    contract.
+    """
     import requests
     from concurrent.futures import ThreadPoolExecutor
 

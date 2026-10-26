@@ -102,6 +102,7 @@ class LayerMetrics:
     contribution_score: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 
@@ -116,6 +117,7 @@ class OverrideAnalysis:
     calibration_recommendation: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 

@@ -61,6 +61,7 @@ class ThresholdOptimizationResult:
     metric: str
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 
@@ -77,6 +78,7 @@ class RegimePersistenceMetrics:
     pct_of_time: float
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 
@@ -89,6 +91,7 @@ class MethodComparisonResult:
     timestamp: str
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 

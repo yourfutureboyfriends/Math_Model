@@ -64,6 +64,7 @@ def _dedupe_listings(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def earnings_calendar(start: Optional[str] = None, days: int = 7, min_cap_bn: float = 0.0, offset: int = 0,
                       limit: int = 100) -> Dict[str, Any]:
+    """Upcoming earnings above a market-cap floor."""
     s = date.fromisoformat(start) if start else date.today()
     e = s + timedelta(days=max(1, min(days, 31)))
 
@@ -95,6 +96,7 @@ CCYS = ["USD", "EUR", "JPY", "GBP", "CHF", "CAD", "AUD", "NZD", "CNY", "HKD", "S
 
 
 def fx_matrix(ccys: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Cross rates and changes between major currencies."""
     cs = [c for c in (ccys or CCYS) if c in CCYS] or CCYS
 
     def fetch():
@@ -137,6 +139,7 @@ BTMM_SERIES = [
 
 
 def money_markets() -> Dict[str, Any]:
+    """Money-market rates (SOFR, fed funds, bills, commercial paper) and spreads; respects the FRED circuit breaker."""
     def fetch():
         from api.providers.fred_provider import FREDProvider
         try:
@@ -182,6 +185,7 @@ def money_markets() -> Dict[str, Any]:
 
 # ── IMAP ─────────────────────────────────────────────────────────────────────
 def heatmap(country: str = "US", max_names: int = 300) -> Dict[str, Any]:
+    """A market heatmap for a country: names sized by market cap, coloured by change."""
     country = country.upper()
 
     def fetch():
@@ -232,6 +236,7 @@ def heatmap(country: str = "US", max_names: int = 300) -> Dict[str, Any]:
 
 # ── CRYPTO ───────────────────────────────────────────────────────────────────
 def crypto(limit: int = 100) -> Dict[str, Any]:
+    """Major crypto assets: price, change and market cap."""
     def fetch():
         import requests
         try:
@@ -398,6 +403,7 @@ def _articles(provider_feeds: Optional[Dict[str, str]] = None) -> List[Dict[str,
 
 
 def news_hub(q: Optional[str] = None, limit: int = 60, region: Optional[str] = None, country: Optional[str] = None) -> Dict[str, Any]:
+    """Headlines across markets and topics."""
     from api.marketdata.countries import region_of
     glob = _cached("newshub", 600, lambda: _articles())
     regional = _cached("newshub:regional", 900, lambda: _articles({k: v[0] for k, v in REGIONAL_FEEDS.items()}))
@@ -445,6 +451,7 @@ COUNTRY_ETFS = {
 
 
 def world_map_markets() -> Dict[str, Any]:
+    """Country ETF performance over several horizons for the world map."""
     def fetch():
         import yfinance as yf
         syms = sorted({v[0] for v in COUNTRY_ETFS.values()})

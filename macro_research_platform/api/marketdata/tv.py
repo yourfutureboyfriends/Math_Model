@@ -73,6 +73,7 @@ def _resolve(cid: str) -> Dict[str, Any]:
 
 
 def live() -> Dict[str, Any]:
+    """Official live news streams on YouTube; channels off air are flagged."""
     def build():
         with ThreadPoolExecutor(8) as ex:
             chans = list(ex.map(_resolve, CHANNELS))

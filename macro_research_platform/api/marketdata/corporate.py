@@ -41,6 +41,7 @@ def _d(x) -> Optional[str]:
 
 # ── CACS ─────────────────────────────────────────────────────────────────────
 def actions(symbol: str) -> Dict[str, Any]:
+    """A company's dividends and splits history with the current yield."""
     from api.marketdata.core import div_yield, yahoo_call
     s = symbol.strip().upper()
 
@@ -107,6 +108,7 @@ def actions(symbol: str) -> Dict[str, Any]:
 
 
 def actions_calendar(days: int = 14) -> Dict[str, Any]:
+    """Upcoming ex-dividend dates and splits across the market over the next `days`."""
     def build():
         import requests
 
@@ -143,6 +145,7 @@ def actions_calendar(days: int = 14) -> Dict[str, Any]:
 
 # ── MGMT ─────────────────────────────────────────────────────────────────────
 def management(symbol: str) -> Dict[str, Any]:
+    """A company's officers and disclosed pay, governance risk scores and insider / institutional ownership."""
     s = symbol.strip().upper()
 
     def build():
@@ -193,6 +196,7 @@ def _member_label(m: str) -> str:
 
 
 def segments(symbol: str) -> Dict[str, Any]:
+    """A company's revenue by business and geographic segment from its SEC filings."""
     from api.marketdata.extras import _company_only, _sec_get
     s = symbol.strip().upper()
     _company_only(s, "Segment data")
@@ -295,6 +299,7 @@ DEBT_TAGS = [("LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths", "
 
 
 def debt_maturities(symbol: str) -> Dict[str, Any]:
+    """A company's debt maturity ladder from its SEC filings, with cash, interest cover and net debt / EBITDA."""
     s = symbol.strip().upper()
 
     def build():
@@ -380,6 +385,7 @@ def _expected_close(text: str) -> Optional[str]:
 
 
 def deals(days: int = 150) -> Dict[str, Any]:
+    """Recent M&A filings (tender offers, mergers) from SEC EDGAR over the last `days`."""
     from api.marketdata.extras import _sec_get
 
     def build():

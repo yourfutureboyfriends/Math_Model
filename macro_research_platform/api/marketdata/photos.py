@@ -54,6 +54,7 @@ def _commons(search: str, must: str, limit: int = 4) -> List[Dict[str, Any]]:
 
 
 def ship(imo: Optional[str] = None, name: Optional[str] = None) -> Dict[str, Any]:
+    """Photos of a ship from Wikimedia Commons, matched by IMO number."""
     imo = re.sub(r"\D", "", imo or "")
     if not imo or len(imo) != 7:
         return {"photos": [], "note": "Photos are matched by IMO number; this vessel has none on record."}
@@ -63,6 +64,7 @@ def ship(imo: Optional[str] = None, name: Optional[str] = None) -> Dict[str, Any
 
 
 def aircraft(hex_id: str, registration: Optional[str] = None) -> Dict[str, Any]:
+    """Photos of an aircraft by registration."""
     from api.marketdata.airtraffic import _adsbdb
     h = (hex_id or "").strip().lower()
     reg = (registration or "").strip().upper()

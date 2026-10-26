@@ -44,6 +44,9 @@ async def ibkr_status(request: Request):
 
 @router.get("/api/v1/broker/ibkr/snapshot")
 async def ibkr_snapshot(request: Request, source: str = Query("auto", pattern="^(auto|flex|gateway)$")):
+    """The broker's view of the fund's IBKR account — positions and cash — from the live gateway when signed in, else
+    the latest Flex statement.
+    """
     from api import funds
     _cap(request, "view_book")
     return await _snapshot(funds.current(), source)
@@ -82,6 +85,7 @@ async def ibkr_reconcile(request: Request, source: str = Query("auto", pattern="
 
 
 class ImportIn(BaseModel):
+    """Import options: the book to replace and an explicit confirmation."""
     book: str = Field("IBKR", max_length=60)
     confirm: bool = False
 

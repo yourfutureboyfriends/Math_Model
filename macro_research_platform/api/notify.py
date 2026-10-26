@@ -15,11 +15,14 @@ logger = logging.getLogger(__name__)
 
 
 def channels() -> dict:
+    """Which delivery channels are configured (webhook, email)."""
     return {"webhook": bool(os.getenv("ALERT_WEBHOOK_URL")),
             "email": bool(os.getenv("ALERT_SMTP_HOST") and os.getenv("ALERT_EMAIL_TO"))}
 
 
 def deliver(owner: str, text: str) -> dict:
+    """Send a message through every configured channel; returns per-channel success. Errors are logged without secrets.
+    """
     sent = {}
     url = os.getenv("ALERT_WEBHOOK_URL")
     if url:

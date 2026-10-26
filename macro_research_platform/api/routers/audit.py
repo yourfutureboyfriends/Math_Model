@@ -28,6 +28,7 @@ router = APIRouter(tags=["audit"])
 
 
 class DecisionIn(BaseModel):
+    """A decision for the audit log: action, rationale, optional target and before / after state."""
     action: str
     rationale: str
     target: Optional[str] = None
@@ -37,12 +38,14 @@ class DecisionIn(BaseModel):
 
 @router.get("/api/v1/audit/decisions")
 async def audit_decisions_list_v1(limit: int = 100):
+    """The most recent decisions in the current fund's audit log, newest first."""
     from api import audit_store
     return {"decisions": await asyncio.to_thread(audit_store.list_decisions, limit)}
 
 
 @router.post("/api/v1/audit/decisions")
 async def audit_decisions_add_v1(d: DecisionIn, request: Request):
+    """Record a decision with its rationale (identity from the token)."""
     from api import audit_store
     user = _request_user(request)
     try:
@@ -54,12 +57,14 @@ async def audit_decisions_add_v1(d: DecisionIn, request: Request):
 
 @router.get("/api/v1/audit/snapshots")
 async def audit_snapshots_list_v1(limit: int = 200):
+    """Saved point-in-time snapshots of the platform's state."""
     from api import audit_store
     return {"snapshots": await asyncio.to_thread(audit_store.list_snapshots, limit)}
 
 
 @router.get("/api/v1/audit/snapshots/{snap_id}")
 async def audit_snapshot_get_v1(snap_id: int):
+    """One snapshot by id (404 when missing)."""
     from api import audit_store
     snap = await asyncio.to_thread(audit_store.get_snapshot, snap_id)
     if snap is None:

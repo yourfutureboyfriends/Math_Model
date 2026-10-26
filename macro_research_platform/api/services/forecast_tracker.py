@@ -62,6 +62,7 @@ class ForecastMetrics:
     bias: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 

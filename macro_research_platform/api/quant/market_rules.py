@@ -83,6 +83,7 @@ def hk_lots() -> Dict[str, int]:
 
 
 def lot_size(symbol: str, country: str, hk: Optional[Dict[str, int]] = None) -> int:
+    """Board lot of a stock (Hong Kong per stock from HKEX; elsewhere per market)."""
     if country == "HK":
         return int((hk if hk is not None else hk_lots()).get(symbol.upper(), LOTS["HK"]))
     return LOTS.get(country, 1)
@@ -182,6 +183,7 @@ def wht_rate(country: str, listing_currency: str, account_currency: str, treaty_
 
 
 def describe() -> Dict[str, str]:
+    """Plain-language summary of the market rules modelled (lots, ticks, withholding …)."""
     return {"board_lots": "per market (JP 100, CN 100, TW 1,000, TH/MY/ID/SG/BR 100, PH by price band); Hong Kong per "
                           "stock from HKEX's list of securities; elsewhere single shares",
             "ticks": "exchange tick tables (JP, HK, CN, TW, KR, IN, ASEAN, AU, Americas, SA, TR); MiFID II liquid band "

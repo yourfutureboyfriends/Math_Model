@@ -21,6 +21,7 @@ def _pq(path: Path) -> Path:
 
 
 def mtime(path: Path) -> Optional[float]:
+    """Modification time of a cache file (Parquet, or the legacy path), or None."""
     for p in (_pq(path), Path(path)):
         try:
             return p.stat().st_mtime
@@ -30,6 +31,7 @@ def mtime(path: Path) -> Optional[float]:
 
 
 def write(obj: Union[pd.DataFrame, Dict[str, pd.DataFrame]], path: Path) -> None:
+    """Write a frame (or a dict of frames, as column groups) to Parquet atomically."""
     p = _pq(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     if isinstance(obj, dict):
@@ -44,6 +46,7 @@ def write(obj: Union[pd.DataFrame, Dict[str, pd.DataFrame]], path: Path) -> None
 
 
 def read(path: Path, as_dict: bool = False) -> Optional[Any]:
+    """Read a cached frame (split back into a dict with `as_dict`), or None when missing or unreadable."""
     p = _pq(path)
     if p.exists():
         try:

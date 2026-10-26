@@ -141,6 +141,7 @@ def rationale(full: Dict[str, Any]) -> Dict[str, List[str]]:
 
 
 def diff_runs(prev: Optional[Dict], cur: Dict) -> Dict[str, List[str]]:
+    """Symbols that are new to, or dropped from, the buy list since the previous run."""
     p = {r["symbol"] for r in (prev or {}).get("buy", [])}
     c = {r["symbol"] for r in cur.get("buy", [])}
     return {"new": sorted(c - p), "dropped": sorted(p - c)} if prev else {"new": sorted(c), "dropped": []}
@@ -225,6 +226,7 @@ LIST_MAX = 60
 
 
 def watchlist_symbols() -> List[str]:
+    """Every symbol on any watchlist."""
     wl = _read_json(WATCHLIST_FILE, {})
     return sorted({s for syms in wl.values() for s in syms})
 
@@ -273,6 +275,7 @@ def usd_return(p0: float, fx0: Optional[float], p1: float, fx1: Optional[float])
 
 
 async def build_ideas() -> Dict[str, Any]:
+    """Screen the universe and the watchlist for entry signals and save the idea list."""
     from api import global_universe as gu
     from api.markets import classify, minor_unit_factor
     from api.routers.stock import analyze
@@ -442,10 +445,12 @@ def _sector_counts(snaps: List[Dict]) -> List[Dict[str, Any]]:
 
 
 def latest() -> Optional[Dict[str, Any]]:
+    """The last idea list, or None."""
     return _read_json(STATE_FILE, None)
 
 
 async def build_in_background() -> None:
+    """Build ideas in the background unless a build is running."""
     if _building["running"]:
         return
     _building.update(running=True, started=time.time(), error=None)
@@ -459,6 +464,7 @@ async def build_in_background() -> None:
 
 
 def status() -> Dict[str, Any]:
+    """Whether a build is running and the last error."""
     return {"running": _building["running"],
             "running_for_s": round(time.time() - _building["started"]) if _building["running"] else None,
             "error": _building["error"]}

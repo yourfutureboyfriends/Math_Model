@@ -188,6 +188,9 @@ def get_calendar() -> Dict:
 
 
 def build_calendar(today: Optional[date] = None, horizon_days: int = 45) -> Dict:
+    """Upcoming US data releases (and FOMC decisions) for the next `horizon_days`, with importance, time, the series
+    and what each moves.
+    """
     from api.release_calendar import FOMC_DECISIONS
     today = today or datetime.now(_ET).date()
     end = today + timedelta(days=horizon_days)

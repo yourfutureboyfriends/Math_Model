@@ -32,6 +32,7 @@ def _now() -> str:
 
 
 def init_db() -> None:
+    """Create the pitch and pitch-version tables in the current fund's database."""
     with _conn() as c:
         c.execute("""CREATE TABLE IF NOT EXISTS pitches (
             id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, title TEXT, analyst TEXT NOT NULL,
@@ -121,6 +122,7 @@ def validate(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def expected_value(payload: Dict[str, Any]) -> float:
+    """Probability-weighted value of a pitch's scenarios."""
     return float(sum(s["value"] * s["probability"] for s in payload["scenarios"].values()))
 
 
@@ -151,6 +153,7 @@ def _row(c, pid: int) -> Optional[Dict[str, Any]]:
 
 
 def create(symbol: str, title: str, analyst: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Create a draft pitch with its first version."""
     init_db()
     body = validate(payload)
     sym = (symbol or "").strip().upper()
@@ -167,6 +170,7 @@ def create(symbol: str, title: str, analyst: str, payload: Dict[str, Any]) -> Di
 
 
 def add_version(pid: int, author: str, payload: Dict[str, Any], note: str = "") -> Dict[str, Any]:
+    """Add a new version of a pitch (versions are kept)."""
     init_db()
     body = validate(payload)
     with _conn() as c:
@@ -187,6 +191,13 @@ def add_version(pid: int, author: str, payload: Dict[str, Any], note: str = "") 
 
 def transition(pid: int, user: str, to: str, notes: str = "", price: Optional[float] = None,
                bench_level: Optional[float] = None) -> Dict[str, Any]:
+    """Move a pitch through draft → submitted → approved / rejected → closed.
+
+    Raises:
+        LookupError: no such pitch.
+        ValueError: the move is not allowed from its status.
+        PermissionError: the author recording the committee decision (four-eyes).
+    """
     init_db()
     allowed = {"draft": ("submitted",), "submitted": ("approved", "rejected", "draft"),
                "approved": ("closed",), "rejected": ("draft", "closed"), "closed": ()}
@@ -210,6 +221,11 @@ def transition(pid: int, user: str, to: str, notes: str = "", price: Optional[fl
 
 
 def get(pid: int) -> Dict[str, Any]:
+    """One pitch with its versions.
+
+    Raises:
+        LookupError: no such pitch.
+    """
     init_db()
     with _conn() as c:
         p = _row(c, pid)
@@ -224,6 +240,7 @@ def get(pid: int) -> Dict[str, Any]:
 
 
 def list_pitches(status: Optional[str] = None, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Pitches, optionally by status or symbol."""
     init_db()
     q, args = "SELECT * FROM pitches", []
     cond = []

@@ -67,6 +67,7 @@ def _daily_closes(symbols: List[str], start: str) -> pd.DataFrame:
 
 
 def filings(symbol: str, limit: int = 120) -> Dict[str, Any]:
+    """A company's recent SEC filings."""
     from api.marketdata.extras import _company_only, _sec_get
     s = symbol.strip().upper()
     _company_only(s, "SEC filings")
@@ -196,6 +197,7 @@ CREDIT_SERIES = [
 
 
 def credit() -> Dict[str, Any]:
+    """Credit spreads by rating and their history (ICE BofA via FRED)."""
     from api.marketdata.insights import _fred
 
     def fetch():
@@ -263,6 +265,7 @@ def credit() -> Dict[str, Any]:
 
 # ── FAC: factor exposures of one stock ───────────────────────────────────────
 def factor_exposure(symbol: str, years: int = 5) -> Dict[str, Any]:
+    """A stock's exposure to the Fama–French factors from daily returns over `years`."""
     s = symbol.strip().upper()
 
     def fetch():
@@ -334,6 +337,9 @@ def _usd_returns(closes: pd.DataFrame, ccy: Dict[str, str]) -> pd.DataFrame:
 
 
 def portfolio_risk(holdings: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Risk of a list of holdings: summary risk, exposures, correlation, stress scenarios, historical replays, factor
+    exposures and worst days.
+    """
     rows = []
     agg: Dict[str, float] = {}
     for h in holdings:

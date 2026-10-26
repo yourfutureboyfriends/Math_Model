@@ -83,11 +83,13 @@ def _log(c, msg: str, level: str = "info") -> None:
 
 
 def get_settings() -> Dict[str, Any]:
+    """The macro trader's settings (stored values over the defaults)."""
     with _db() as c:
         return {**DEFAULTS, **(_get(c, "settings", {}) or {})}
 
 
 def update_settings(changes: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and store settings changes; returns the full settings."""
     s = get_settings()
     for k, v in changes.items():
         if k not in DEFAULTS or k == "capital":
@@ -110,6 +112,7 @@ def update_settings(changes: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def reset(capital: Optional[float] = None) -> None:
+    """Clear the macro trader's positions and history, optionally with new capital."""
     with _lock, _db() as c:
         s = {**get_settings()}
         if capital is not None:
@@ -148,6 +151,7 @@ async def _targets(which: str) -> Dict[str, Any]:
 
 
 async def run(force: bool = False) -> Dict[str, Any]:
+    """Run one trading cycle toward the target portfolio (skipped when disabled unless `force`)."""
     s = get_settings()
     if not s["enabled"] and not force:
         return {"ran": False, "reason": "disabled"}
@@ -254,6 +258,7 @@ def _cycle(s: Dict[str, Any], tg: Dict[str, Any], bars: Dict[str, Any]) -> Dict[
 
 
 async def status() -> Dict[str, Any]:
+    """The macro trader: positions, equity, trades and settings."""
     import asyncio
     s = get_settings()
     try:

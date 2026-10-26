@@ -80,6 +80,7 @@ def _fomc_meetings() -> List[date]:
 
 
 def wirp() -> Dict[str, Any]:
+    """Market-implied policy-rate path (WIRP) from fed funds futures vs the current target."""
     def fetch():
         import calendar
         import yfinance as yf
@@ -144,6 +145,7 @@ def wirp() -> Dict[str, Any]:
 
 # ── AUCT ─────────────────────────────────────────────────────────────────────
 def auctions(kind: str = "Note", limit: int = 30) -> Dict[str, Any]:
+    """Recent Treasury auctions of a kind (Bill, Note, Bond …) with their results."""
     if kind not in ("Bill", "Note", "Bond", "TIPS", "FRN"):
         raise NotFound("kind: Bill, Note, Bond, TIPS or FRN")
 
@@ -184,6 +186,7 @@ def auctions(kind: str = "Note", limit: int = 30) -> Dict[str, Any]:
 
 # ── EIA ──────────────────────────────────────────────────────────────────────
 def energy() -> Dict[str, Any]:
+    """EIA weekly petroleum status: crude, gasoline and distillate stocks and their changes."""
     def fetch():
         import requests
 
@@ -230,6 +233,7 @@ DEMAND_CITIES = {"New York": (40.71, -74.01, 19.5), "Chicago": (41.88, -87.63, 9
 
 
 def weather() -> Dict[str, Any]:
+    """Heating and cooling degree days for big demand cities (Open-Meteo) vs normal — the gas-demand view."""
     def fetch():
         import requests
         today = date.today()
@@ -295,6 +299,7 @@ CODES = {"P": "Buy (open market)", "S": "Sale (open market)", "A": "Grant / awar
 
 
 def insiders(symbol: str, limit: int = 40) -> Dict[str, Any]:
+    """Recent insider transactions in a company (SEC Form 4)."""
     s = symbol.strip().upper()
     _company_only(s, "Insider trades (Form 4)")
 
@@ -475,6 +480,8 @@ def _info_table(cik: str, acc: str) -> List[Dict[str, Any]]:
 
 
 def thirteen_f(cik: str = "0001067983") -> Dict[str, Any]:
+    """A manager's latest 13F holdings and changes vs the previous quarter (SEC EDGAR; Berkshire Hathaway by default).
+    """
     cik10 = re.sub(r"\D", "", cik).zfill(10)
 
     def fetch():
@@ -540,6 +547,7 @@ EIA_SERIES = {"WCRFPUS2": ("Crude production", "kb/d"), "WCRRIUS2": ("Refinery c
 
 
 def eia_history(weeks: int = 520) -> Dict[str, Any]:
+    """History of the EIA weekly petroleum series over `weeks`."""
     import os
     key = os.getenv("EIA_API_KEY") or ""
     if not key:

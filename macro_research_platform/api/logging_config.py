@@ -45,6 +45,7 @@ class RedactSecretsFilter(logging.Filter):
     use structured args (uvicorn's access log) keep working; exception text is redacted too."""
 
     def filter(self, record: logging.LogRecord) -> bool:
+        """Redact secrets in the message, its arguments and exception text; always keeps the record."""
         if isinstance(record.msg, str):
             record.msg = redact(record.msg)
         if record.args:

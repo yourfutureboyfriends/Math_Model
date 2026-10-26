@@ -37,6 +37,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
 
 
 def init_db() -> None:
+    """Create the fund settings, risk-limit and NAV tables in the current fund's database if missing."""
     with _conn() as conn:
         conn.execute("CREATE TABLE IF NOT EXISTS fund_settings (key TEXT PRIMARY KEY, value TEXT)")
         conn.execute("CREATE TABLE IF NOT EXISTS risk_limits (metric TEXT PRIMARY KEY, soft REAL, hard REAL)")
@@ -75,6 +76,7 @@ def init_db() -> None:
 
 
 def get_settings() -> Dict[str, Any]:
+    """Fund settings: stored values over `DEFAULT_SETTINGS`."""
     init_db()
     out = dict(DEFAULT_SETTINGS)
     with _conn() as conn:
@@ -87,6 +89,7 @@ def get_settings() -> Dict[str, Any]:
 
 
 def update_settings(changes: Dict[str, Any]) -> Dict[str, Any]:
+    """Store settings changes (keys not in `DEFAULT_SETTINGS` are ignored); returns the full settings."""
     init_db()
     allowed = {k: v for k, v in changes.items() if k in DEFAULT_SETTINGS}
     with _conn() as conn:
@@ -98,6 +101,7 @@ def update_settings(changes: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def get_limit_overrides() -> Dict[str, Dict[str, float]]:
+    """Risk-limit thresholds changed from the defaults, by metric."""
     init_db()
     with _conn() as conn:
         return {r["metric"]: {"soft": r["soft"], "hard": r["hard"]}
@@ -105,6 +109,7 @@ def get_limit_overrides() -> Dict[str, Dict[str, float]]:
 
 
 def set_limit_overrides(limits: Dict[str, Dict[str, float]]) -> None:
+    """Store soft / hard thresholds for risk limits."""
     init_db()
     with _conn() as conn:
         for metric, v in limits.items():

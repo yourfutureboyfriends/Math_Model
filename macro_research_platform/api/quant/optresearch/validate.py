@@ -31,6 +31,7 @@ CRITERIA = {"sharpe_min": 0.0, "boot_p05_min": 0.0, "stress_spread": 1.5, "stres
 
 
 def pos(dates: pd.DatetimeIndex, d: str) -> int:
+    """Index of the first date on or after `d`."""
     return int(dates.searchsorted(pd.Timestamp(d)))
 
 
@@ -64,6 +65,7 @@ def walk_forward(series: Dict[str, np.ndarray], dates: pd.DatetimeIndex, rf: np.
 
 
 def bootstrap(r: np.ndarray, n: int = 1000, block: int = 21) -> Dict[str, Any]:
+    """Block bootstrap of a return series."""
     from api.quant import robust
     return robust.block_bootstrap(np.asarray(r, float), n=n, block=block)
 
@@ -81,6 +83,9 @@ def trade_bootstrap(rs: np.ndarray, n: int = 2000, seed: int = 7) -> Dict[str, A
 
 
 def overfitting(matrix: np.ndarray, chosen: np.ndarray, n_trials: int, trial_sharpes: Sequence[float]) -> Dict[str, Any]:
+    """Overfitting diagnostics: probability of backtest overfitting (CSCV) and the deflated Sharpe ratio for the trials
+    run.
+    """
     from api.quant import robust
     out: Dict[str, Any] = {"trials": int(n_trials)}
     if matrix.shape[1] >= 2:

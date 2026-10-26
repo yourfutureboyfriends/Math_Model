@@ -88,6 +88,7 @@ class ComponentMetrics:
     avg_lead_time_months: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 
@@ -100,6 +101,7 @@ class BlendOptimizationResult:
     all_results: List[Dict[str, Any]]
 
     def to_dict(self) -> Dict[str, Any]:
+        """The fields as a plain, JSON-serialisable dict."""
         return asdict(self)
 
 

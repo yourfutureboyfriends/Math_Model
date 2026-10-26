@@ -56,6 +56,7 @@ _STATUS: Dict[str, Any] = {"at": 0.0}
 
 
 class LeanError(RuntimeError):
+    """LEAN failed to run or returned no result."""
     pass
 
 
@@ -359,6 +360,7 @@ def write_crypto(root: Path, base: str, quote: str, frame: pd.DataFrame) -> List
 
 
 def write_forex(root: Path, pair: str, frame: pd.DataFrame) -> None:
+    """Write daily FX bars in LEAN's zip format for every FX venue LEAN may look up."""
     f = frame.dropna(subset=["close"]).fillna({"volume": 0})
     for c in ("open", "high", "low"):
         f[c] = f[c].fillna(f["close"])

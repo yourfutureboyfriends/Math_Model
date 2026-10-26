@@ -19,6 +19,7 @@ async def _t(fn, *a):
     return await web.run(fn, *a)
 
 class PositionIn(BaseModel):
+    """A position definition: key, title, tier, base role, capabilities, workspace panels, description, seats."""
     key: str = Field(..., max_length=40)
     title: str = Field(..., max_length=80)
     tier: int = Field(..., ge=1, le=4)
@@ -30,6 +31,7 @@ class PositionIn(BaseModel):
 
 
 class AssignIn(BaseModel):
+    """Assign a person to a position (or remove them with position_key = null)."""
     username: str = Field(..., max_length=32)
     position_key: Optional[str] = Field(None, max_length=40)
 
@@ -43,6 +45,7 @@ async def positions_me(request: Request):
 
 @router.get("/api/v1/positions")
 async def positions_list(request: Request):
+    """The fund's positions by tier with holders, the capability catalogue and whether you can manage them."""
     from api import positions
     u = _me(request)
     return {"positions": await _t(positions.list_positions), "tiers": positions.TIERS, "capabilities": positions.CAPABILITIES,
@@ -63,6 +66,7 @@ async def positions_people(request: Request):
 
 @router.post("/api/v1/positions")
 async def positions_save(body: PositionIn, request: Request):
+    """Create or edit a position (capability manage_positions)."""
     from api import positions
     u = positions.require(request, "manage_positions")
     return await _t(positions.upsert_position, body.model_dump(), u["username"])
@@ -70,6 +74,7 @@ async def positions_save(body: PositionIn, request: Request):
 
 @router.delete("/api/v1/positions/{key}")
 async def positions_delete(key: str, request: Request):
+    """Delete a position that nobody holds."""
     from api import positions
     u = positions.require(request, "manage_positions")
     await _t(positions.delete_position, key, u["username"])
@@ -78,6 +83,7 @@ async def positions_delete(key: str, request: Request):
 
 @router.post("/api/v1/positions/assign")
 async def positions_assign(body: AssignIn, request: Request):
+    """Give a person a position in this fund (managers; not yourself; seats are limited)."""
     from api import positions
     from api.core import accounts
     u = positions.require(request, "manage_positions")
@@ -90,6 +96,7 @@ async def positions_assign(body: AssignIn, request: Request):
 
 @router.post("/api/v1/positions/templates/{template}")
 async def positions_seed(template: str, request: Request):
+    """Add a template's positions that the fund doesn't have yet (moriah, bifs)."""
     from api import positions
     positions.require(request, "manage_positions")
     if template not in positions.TEMPLATES:

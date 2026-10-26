@@ -71,6 +71,7 @@ MAX_COMBOS = 500                                         # PARAMS grid size per 
 
 
 class SandboxError(ValueError):
+    """Strategy code broke a sandbox rule or failed to run."""
     pass
 
 
@@ -258,6 +259,7 @@ def _store_path(cls_name: str) -> Path:
 
 
 def load_object_store(cls_name: str) -> Dict[str, str]:
+    """An algorithm's saved object store (empty if none)."""
     try:
         return json.loads(_store_path(cls_name).read_text())
     except Exception:                                                        # noqa: BLE001 — none saved yet
@@ -265,6 +267,7 @@ def load_object_store(cls_name: str) -> Dict[str, str]:
 
 
 def save_object_store(cls_name: str, data: Dict[str, str]) -> None:
+    """Save an algorithm's object store (ignored above 10 MB)."""
     if not isinstance(data, dict) or sum(len(str(k)) + len(str(v)) for k, v in data.items()) > 10_000_000:
         return
     STORE_DIR.mkdir(parents=True, exist_ok=True)
@@ -298,7 +301,8 @@ def docker_status(refresh: bool = False) -> Dict[str, Any]:
 
 
 def ensure_image() -> None:
-    """Build the sandbox image (python:3.12-slim + the platform's numpy / pandas / scipy / scikit-learn / statsmodels)."""
+    """Build the sandbox image (python:3.12-slim + the platform's numpy / pandas / scipy / scikit-learn / statsmodels).
+    """
     import numpy as _np, pandas as _pd
     args = ["--build-arg", f"NUMPY={_np.__version__}", "--build-arg", f"PANDAS={_pd.__version__}"]
     for mod, arg in (("scipy", "SCIPY"), ("sklearn", "SKLEARN"), ("statsmodels", "STATSMODELS")):
@@ -391,6 +395,7 @@ def lean_modules() -> set:
 
 
 def local_module(root: str) -> bool:
+    """Whether an import resolves locally (standard library or installed) — for the import allow-list check."""
     import importlib.util
     if root in sys.stdlib_module_names or root in sys.builtin_module_names:
         return True

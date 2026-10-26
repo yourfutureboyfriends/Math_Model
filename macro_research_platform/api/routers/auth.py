@@ -102,6 +102,7 @@ async def logout(request: Request):
 
 
 class ChangePasswordIn(BaseModel):
+    """Your current password and the new one."""
     current_password: str
     new_password: str
 

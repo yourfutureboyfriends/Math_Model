@@ -99,6 +99,7 @@ def _recession_ahead(months: List[str], horizon: int = 12) -> Dict[str, Optional
 
 
 def ntfs_block() -> Dict[str, Any]:
+    """The near-term forward spread (Engstrom–Sharpe) with a recession probit fitted on history."""
     data, status = _cached("ntfs", _fetch_ntfs)
     if not data:
         return {"available": False, "reason": "Federal Reserve yield-curve file unavailable", "source_status": status}
@@ -142,6 +143,7 @@ def _fetch_ebp() -> List[List]:
 
 
 def ebp_block() -> Dict[str, Any]:
+    """The excess bond premium (Gilchrist–Zakrajšek) and the Fed's 12-month recession probability."""
     rows, status = _cached("ebp", _fetch_ebp)
     if not rows:
         return {"available": False, "reason": "Federal Reserve EBP file unavailable", "source_status": status}
@@ -175,6 +177,7 @@ async def _returns_matrix(tickers: List[str], period: str = "10y"):
 
 
 async def turbulence_block() -> Dict[str, Any]:
+    """Financial turbulence (Kritzman–Li Mahalanobis distance) across asset classes."""
     rets, names, dates = await _returns_matrix(list(TURBULENCE_UNIVERSE))
     if rets is None or len(rets) < 300:
         return {"available": False, "reason": "insufficient price history"}
@@ -196,6 +199,7 @@ async def turbulence_block() -> Dict[str, Any]:
 
 
 async def absorption_block() -> Dict[str, Any]:
+    """The absorption ratio (Kritzman et al.) of US sectors and its standardised shift."""
     rets, names, dates = await _returns_matrix(SECTOR_UNIVERSE)
     if rets is None or len(rets) < 760:
         return {"available": False, "reason": "insufficient price history"}
@@ -217,6 +221,7 @@ async def absorption_block() -> Dict[str, Any]:
 
 # ── Environmental balance ────────────────────────────────────────────────────
 async def environment_block() -> Dict[str, Any]:
+    """The book's balance across growth / inflation environments against risk-balanced weights."""
     from api import portfolio_store
     from api.handlers.market_handler import _fetch_dated_closes_literal
 
@@ -261,6 +266,7 @@ async def environment_block() -> Dict[str, Any]:
 
 
 async def build_cycle_risk() -> Dict[str, Any]:
+    """All cycle-risk indicators together."""
     t0 = time.time()
     ntfs, ebp = await asyncio.gather(asyncio.to_thread(ntfs_block), asyncio.to_thread(ebp_block))
     turb, ar, env = await asyncio.gather(turbulence_block(), absorption_block(), environment_block())

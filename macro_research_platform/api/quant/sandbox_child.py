@@ -6,6 +6,9 @@ import traceback
 
 
 def main() -> None:
+    """Entry point of the sandboxed child process: load the engine (and the QuantConnect layer), run the user's code,
+    write the result.
+    """
     tmp, engine_path = sys.argv[1], sys.argv[2]
     import numpy as np
     import pandas as pd

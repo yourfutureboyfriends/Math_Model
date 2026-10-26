@@ -35,6 +35,7 @@ ACTIONS = {
 
 
 def review_action(verdict: Optional[str], trend_score: Optional[float], short: bool = False) -> str:
+    """The suggested action for a held position from its entry verdict and trend score (exit, add, hold, cover …)."""
     if verdict in (None, "N/A"):
         return "none"
     if short:
@@ -47,6 +48,7 @@ def review_action(verdict: Optional[str], trend_score: Optional[float], short: b
 
 
 async def review(positions: List[Dict[str, Any]], concurrency: int = 4) -> Dict[str, Any]:
+    """Analyse every held symbol (a few at a time) and suggest an action per position."""
     from api.routers.stock import analyze
     by_sym: Dict[str, List[Dict[str, Any]]] = {}
     for p in positions:

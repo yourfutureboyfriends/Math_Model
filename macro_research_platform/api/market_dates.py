@@ -21,10 +21,12 @@ T = TypeVar("T")
 
 
 def is_spot_fx(ticker: str) -> bool:
+    """Whether a Yahoo ticker is a spot FX pair ("…=X")."""
     return str(ticker).upper().endswith("=X")
 
 
 def previous_business_day(d: date) -> date:
+    """The weekday before `d`."""
     d -= timedelta(days=1)
     while d.weekday() >= 5:
         d -= timedelta(days=1)
@@ -107,6 +109,7 @@ def weekly_last(obj, how: str = "last"):
 
 
 def clip_week_labels(obj, last_obs):
+    """Relabel the last bar of a weekly series to the last observation date when the label is in the future."""
     import pandas as pd
     if len(obj) and obj.index[-1] > last_obs:
         idx = list(obj.index)

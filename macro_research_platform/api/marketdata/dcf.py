@@ -470,6 +470,9 @@ def _history(symbol: str) -> Dict[str, Any]:
 
 
 def wacc(inp: Dict[str, Any], beta: Optional[float] = None, erp: Optional[float] = ERP_DEFAULT, include_leases: bool = False) -> Dict[str, Any]:
+    """Cost of capital: CAPM cost of equity (risk-free + β × ERP), after-tax cost of debt and their market-value
+    weights, optionally with leases as debt.
+    """
     rf = inp.get("risk_free") or 0.04
     b = beta if beta is not None else (inp.get("beta") if inp.get("beta") is not None else 1.0)
     if erp is None:
@@ -495,6 +498,12 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
           target_margin: Optional[float] = None, sales_to_capital: Optional[float] = None, ronic: Optional[float] = None,
           discount: Optional[float] = None, beta: Optional[float] = None, erp: Optional[float] = ERP_DEFAULT, tax: Optional[float] = None,
           include_leases: bool = False, mid_year: bool = True) -> Dict[str, Any]:
+    """A discounted cash-flow valuation: revenue growth fading to the terminal rate, margins converging to target,
+    reinvestment from sales-to-capital, a terminal value from RONIC, discounted at WACC (mid-year by default).
+
+    Returns:
+        The per-share value, the projection, the WACC breakdown and the assumptions used.
+    """
     rev0, ebit0 = inp.get("revenue"), inp.get("ebit")
     if not rev0 or ebit0 is None:
         raise NotFound("A DCF values an operating company from its revenue and profits — this instrument (an ETF, index, "
@@ -716,6 +725,7 @@ def reverse(inp: Dict[str, Any], **kw) -> Optional[float]:
 
 
 def sensitivity(inp: Dict[str, Any], base: Dict[str, Any], **kw) -> Dict[str, Any]:
+    """Value per share over a grid of WACC and terminal growth."""
     a = base["assumptions"]
     rs = [round(a["discount"] + d, 4) for d in (-0.02, -0.01, 0, 0.01, 0.02)]
     gs = [round(a["terminal_growth"] + d, 4) for d in (-0.01, -0.005, 0, 0.005, 0.01)]
@@ -850,6 +860,7 @@ def reverse_financial(inp: Dict[str, Any], **kw) -> Optional[float]:
 
 
 def sensitivity_financial(inp: Dict[str, Any], base: Dict[str, Any], **kw) -> Dict[str, Any]:
+    """Value per share of a bank or insurer (excess-return model) over cost of equity and growth."""
     a = base["assumptions"]
     kes = [round(a["cost_of_equity"] + d, 4) for d in (-0.02, -0.01, 0, 0.01, 0.02)]
     roes = [round(a["roe_terminal"] + d, 4) for d in (-0.04, -0.02, 0, 0.02, 0.04)]
@@ -1001,6 +1012,7 @@ def value_ddm(inp: Dict[str, Any], years: int = 10, high_years: int = 5, growth:
 
 
 def sensitivity_ddm(inp: Dict[str, Any], base: Dict[str, Any], **kw) -> Dict[str, Any]:
+    """Dividend-discount value over cost of equity and dividend growth."""
     a = base["assumptions"]
     kes = [a["cost_of_equity"] + d for d in (-0.01, -0.005, 0.0, 0.005, 0.01)]
     gs = [a["terminal_growth"] + d for d in (-0.01, -0.005, 0.0, 0.005, 0.01)]

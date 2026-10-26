@@ -24,6 +24,7 @@ _PRICE_CLASSES = ["equity", "index", "fx", "commodity", "crypto"]
 
 
 class YahooDownloadProvider:
+    """Quotes through the yfinance library (priority 1 for equities, ETFs, FX, crypto and futures)."""
     name = "yahoo_download"
     priority = 1
     asset_classes: List[AssetClass] = _PRICE_CLASSES
@@ -33,12 +34,15 @@ class YahooDownloadProvider:
         self._yf = YahooFinanceProvider()
 
     def supports(self, symbol: str, asset_class: AssetClass) -> bool:
+        """Whether this provider can quote the symbol's asset class."""
         return asset_class in self.asset_classes
 
     def healthy(self) -> bool:
+        """Whether the provider is usable now (configured, and not known to be failing)."""
         return True
 
     def get_quote(self, symbol: str, asset_class: AssetClass = "equity") -> Optional[Quote]:
+        """The latest quote for the symbol, or None when the provider has no data for it."""
         rec = self._yf.fetch_single(symbol)
         if rec is None or not getattr(rec, "price", None):
             return None
@@ -56,12 +60,15 @@ class YahooChartProvider:
     asset_classes: List[AssetClass] = _PRICE_CLASSES
 
     def supports(self, symbol: str, asset_class: AssetClass) -> bool:
+        """Whether this provider can quote the symbol's asset class."""
         return asset_class in self.asset_classes
 
     def healthy(self) -> bool:
+        """Whether the provider is usable now (configured, and not known to be failing)."""
         return True
 
     def get_quote(self, symbol: str, asset_class: AssetClass = "equity") -> Optional[Quote]:
+        """The latest quote for the symbol, or None when the provider has no data for it."""
         import requests
         # Reuse the canonical->yfinance symbol map so aliases (SPX->^GSPC) resolve here too.
         try:
@@ -95,12 +102,15 @@ class AlphaVantageProvider:
         self._key = os.getenv("ALPHA_VANTAGE_KEY")
 
     def supports(self, symbol: str, asset_class: AssetClass) -> bool:
+        """Whether this provider can quote the symbol's asset class."""
         return asset_class in self.asset_classes
 
     def healthy(self) -> bool:
+        """Whether the provider is usable now (configured, and not known to be failing)."""
         return bool(self._key)
 
     def get_quote(self, symbol: str, asset_class: AssetClass = "equity") -> Optional[Quote]:
+        """The latest quote for the symbol, or None when the provider has no data for it."""
         if not self._key:
             return None
         import requests
@@ -115,6 +125,7 @@ class AlphaVantageProvider:
 
 
 class FredMacroProvider:
+    """FRED as a provider for macro series: the 'quote' is the series' latest observation."""
     name = "fred"
     priority = 1
     asset_classes: List[AssetClass] = ["macro"]
@@ -129,13 +140,16 @@ class FredMacroProvider:
             self._ok = False
 
     def supports(self, symbol: str, asset_class: AssetClass) -> bool:
+        """Whether this provider can quote the symbol's asset class."""
         return asset_class == "macro"
 
     def healthy(self) -> bool:
+        """Whether the provider is usable now (configured, and not known to be failing)."""
         return self._ok and bool(os.getenv("FRED_API_KEY"))
 
     def get_quote(self, symbol: str, asset_class: AssetClass = "macro") -> Optional[Quote]:
         # For macro, "quote" = latest observation value of the series.
+        """The latest observation of a FRED series as a quote (value and observation date), or None."""
         try:
             res = self._fred.fetch_series(symbol, limit=1)
             obs = getattr(res, "observations", None) or []

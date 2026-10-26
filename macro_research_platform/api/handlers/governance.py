@@ -22,6 +22,9 @@ _WEIGHTS_CACHE: dict = {}
 
 @ttl_cache(6 * 3600, offload=True)
 async def signal_backtests(horizon: int = 21):
+    """Backtests of the simple benchmark signals (momentum, trend, volatility regime) on the major indices at a
+    `horizon`-day holding period — the baselines the models are judged against. Cached for six hours.
+    """
     import asyncio as _aio
     from api.calculations.backtest import (
         momentum_signal, trend_signal, vol_regime_signal, backtest_signal,
@@ -112,6 +115,9 @@ async def signal_backtests(horizon: int = 21):
 
 @ttl_cache(6 * 3600, offload=True)
 async def factor_validation():
+    """Validation of the factor proxies (value, momentum, quality, size, low volatility ETFs) against S&P 500 returns:
+    explanatory power and stability. Cached for six hours.
+    """
     import numpy as _np
     from api.handlers.market_handler import _fetch_dated_closes_literal
     from api.calculations.factor_model import returns_from_closes

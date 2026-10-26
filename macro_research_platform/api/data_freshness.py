@@ -36,6 +36,7 @@ FRED_RELEASE_SCHEDULE = {
 
 @dataclass
 class DataFreshnessStatus:
+    """How fresh one series is: last observation, days since, the acceptable lag and whether it is stale."""
     series_id: str
     metric_name: str
     last_observation_date: Optional[datetime]

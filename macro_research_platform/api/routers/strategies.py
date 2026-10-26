@@ -16,6 +16,7 @@ def _spawn(coro) -> None:
 
 @router.get("/api/v1/strategies")
 async def strategies():
+    """The Strategy Lab's latest results: the research models and their combination."""
     from api import strategy_lab as sl
     cur = await asyncio.to_thread(sl.latest)
     if not cur:
@@ -28,6 +29,7 @@ async def strategies():
 
 @router.post("/api/v1/strategies/run")
 async def strategies_run(request: Request):
+    """Re-run the Strategy Lab."""
     from api import strategy_lab as sl
     from api.core.access import require_roles
     require_roles(request, {"pm", "quant"})

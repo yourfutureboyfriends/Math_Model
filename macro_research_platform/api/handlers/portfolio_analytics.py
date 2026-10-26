@@ -95,6 +95,10 @@ def _daily_rets(px: Dict[str, Dict[str, float]], days: List[str]) -> Dict[str, f
 
 
 def brinson(book: Optional[str] = None, benchmark: str = "SPY", max_days: int = 252) -> Dict[str, Any]:
+    """Brinson–Fachler attribution against an S&P-style benchmark (sector ETFs as segments, local units) on the
+    holdings actually held, Carino-linked over up to `max_days` sessions. For a composite benchmark in the fund's
+    base currency use brinson_base.
+    """
     pos, trades, capital, realized = _book(book)
     if not pos and not trades:
         return {"available": False, "reason": "No positions or trades in this book."}
@@ -463,6 +467,10 @@ def _tracking_error_vs_ticker(book: Optional[str] = None, benchmark: str = "SPY"
 
 
 def liquidity(book: Optional[str] = None, participation: float = 0.20) -> Dict[str, Any]:
+    """Liquidity of each holding: days to exit at `participation` of 20-day average volume, the estimated spread
+    (Abdi–Ranaldo, Corwin–Schultz fallback) and the cost of exiting, with the totals that feed liquidity-adjusted
+    VaR.
+    """
     from api import portfolio_store
     pos = portfolio_store.list_positions(book)
     if not pos:
@@ -499,6 +507,9 @@ def liquidity(book: Optional[str] = None, participation: float = 0.20) -> Dict[s
 
 
 def lots(book: Optional[str] = None) -> Dict[str, Any]:
+    """Open FIFO tax lots per position, in today's share units after splits; positions loaded without fills appear as
+    one opening lot.
+    """
     pos, trades, _, _ = _book(book)
     out = {}
     for p in pos:

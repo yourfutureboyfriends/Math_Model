@@ -58,6 +58,7 @@ async def optimize(source: str = "my", symbols: Optional[str] = None, max_weight
 
 # ── Auto (paper) book ────────────────────────────────────────────────────────
 class AutoSettingsIn(BaseModel):
+    """Auto (paper) book settings."""
     enabled: Optional[bool] = None
     capital: Optional[float] = None
     max_positions: Optional[int] = None
@@ -71,6 +72,7 @@ class AutoSettingsIn(BaseModel):
 
 
 class ResetIn(BaseModel):
+    """Reset the auto book, with confirmation."""
     capital: Optional[float] = None
 
 
@@ -114,12 +116,14 @@ def _describe_settings(changes: dict) -> str:
 
 @router.get("/api/v1/auto/status")
 async def auto_status():
+    """The auto (paper) book: positions, equity, trades and settings."""
     from api import auto_trader
     return await auto_trader.status()
 
 
 @router.post("/api/v1/auto/run")
 async def auto_run(request: Request):
+    """Run the auto book's daily cycle now."""
     from api import auto_trader
     from api.core.access import require_roles
     user = require_roles(request, {"pm"})["username"]
@@ -130,6 +134,7 @@ async def auto_run(request: Request):
 
 @router.put("/api/v1/auto/settings")
 async def auto_settings(body: AutoSettingsIn, request: Request):
+    """Change the auto book's settings."""
     from api import auto_trader
     from api.core.access import require_roles
     user = require_roles(request, {"pm"})["username"]
@@ -145,6 +150,7 @@ async def auto_settings(body: AutoSettingsIn, request: Request):
 
 @router.post("/api/v1/auto/reset")
 async def auto_reset(body: ResetIn, request: Request):
+    """Reset the auto book to its starting capital."""
     from api import auto_trader
     from api.core.access import require_roles
     user = require_roles(request, set())["username"]           # admin only
@@ -158,6 +164,7 @@ async def auto_reset(body: ResetIn, request: Request):
 
 @router.post("/api/v1/auto/positions/{pos_id}/close")
 async def auto_close(pos_id: int, request: Request):
+    """Close one auto-book position at the latest price."""
     from api import auto_trader
     from api.core.access import require_roles
     user = require_roles(request, {"pm"})["username"]
@@ -223,6 +230,7 @@ async def auto_backtest():
 
 @router.post("/api/v1/auto/backtest/run")
 async def auto_backtest_run(request: Request):
+    """Start the auto book's long backtest in the background."""
     from api import auto_backtest as ab
     from api.core.access import require_roles
     require_roles(request, {"pm"})

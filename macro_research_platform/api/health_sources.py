@@ -113,6 +113,9 @@ def _round_the_clock_open(t_ny, daily_break: bool) -> bool:
 
 
 def market_open(kind: str, now_utc) -> bool:
+    """Whether a market is open at `now_utc`: "nyse" regular hours, "cme" near-24h futures, otherwise round-the-clock
+    FX.
+    """
     from zoneinfo import ZoneInfo
     t = now_utc.astimezone(ZoneInfo("America/New_York"))
     return _nyse_open(t) if kind == "nyse" else _round_the_clock_open(t, kind == "cme")

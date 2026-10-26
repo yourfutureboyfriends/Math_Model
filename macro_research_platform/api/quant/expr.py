@@ -64,12 +64,16 @@ def _df(x: Any, ctx: "Ctx") -> pd.DataFrame:
 # Price-based shortcuts
 @_fn("ret", "ret(n=1)", "Return over the last n days (close to close).", "Returns & momentum")
 def f_ret(ctx, n=1):
+    """Expression function `ret(n=1)`: Return over the last n days (close to close)."""
     n = _win(n, "ret")
     return ctx.close / ctx.close.shift(n) - 1
 
 
 @_fn("mom", "mom(n, skip=0)", "Momentum: return from n days ago to `skip` days ago. mom(252, 21) is the classic 12-1 month momentum.", "Returns & momentum")
 def f_mom(ctx, n, skip=0):
+    """Expression function `mom(n, skip=0)`: Momentum: return from n days ago to `skip` days ago. mom(252, 21) is the
+    classic 12-1 month momentum.
+    """
     n, s = _win(n, "mom"), int(skip)
     if s < 0 or s >= n:
         raise ExprError("mom(n, skip): skip must be between 0 and n-1")
@@ -78,6 +82,7 @@ def f_mom(ctx, n, skip=0):
 
 @_fn("vol", "vol(n=63)", "Annualised volatility of daily returns over n days.", "Risk")
 def f_vol(ctx, n=63):
+    """Expression function `vol(n=63)`: Annualised volatility of daily returns over n days."""
     n = _win(n, "vol", 2)
     lr = np.log(ctx.close / ctx.close.shift(1))
     return lr.rolling(n, min_periods=max(2, int(n * 0.8))).std() * math.sqrt(252)
@@ -85,12 +90,16 @@ def f_vol(ctx, n=63):
 
 @_fn("drawdown", "drawdown(n=252)", "Distance below the highest close of the last n days (0 = at the high, -0.2 = 20% below).", "Risk")
 def f_drawdown(ctx, n=252):
+    """Expression function `drawdown(n=252)`: Distance below the highest close of the last n days (0 = at the high,
+    -0.2 = 20% below).
+    """
     n = _win(n, "drawdown")
     return ctx.close / ctx.close.rolling(n, min_periods=1).max() - 1
 
 
 @_fn("beta", "beta(n=252)", "Rolling beta of each asset's daily returns to the benchmark (mkt).", "Risk")
 def f_beta(ctx, n=252):
+    """Expression function `beta(n=252)`: Rolling beta of each asset's daily returns to the benchmark (mkt)."""
     n = _win(n, "beta", 20)
     r = ctx.close.pct_change(fill_method=None)
     m = ctx.mkt_series.pct_change(fill_method=None)
@@ -111,6 +120,9 @@ def _resid(ctx, n):
 @_fn("resid", "resid(n=252)", "Idiosyncratic daily return: the asset's return minus beta × the benchmark's, beta from the "
      "prior n days. sum(resid(), 21) is a market-hedged 1-month return — the building block of stat arb.", "Stat arb")
 def f_resid(ctx, n=252):
+    """Expression function `resid(n=252)`: Idiosyncratic daily return: the asset's return minus beta × the benchmark's,
+    beta from the prior n days. sum(resid(), 21) is a market-hedged 1-month return — the building block of stat arb.
+    """
     return _resid(ctx, _win(n, "resid", 20))
 
 
@@ -119,6 +131,12 @@ def f_resid(ctx, n=252):
      "equilibrium in equilibrium standard deviations (centred across the universe). Blank where the residual does "
      "not mean-revert within ~n/2 days. Trade −sscore: buy below −1.25, sell above +1.25.", "Stat arb")
 def f_sscore(ctx, n=60, sector=0):
+    """Expression function `sscore(n=60, sector=0)`: Avellaneda–Lee s-score: in each n-day window, regress the asset's
+    returns on the benchmark's (sector=1: on its sector ETF — large caps only, others use the benchmark), fit an
+    Ornstein–Uhlenbeck process to the cumulative residual and measure how far it sits from equilibrium in
+    equilibrium standard deviations (centred across the universe). Blank where the residual does not mean-revert
+    within ~n/2 days. Trade −sscore: buy below −1.25, sell above +1.25.
+    """
     n = _win(n, "sscore", 20)
     r = ctx.close.pct_change(fill_method=None).to_numpy(float)
     M = ctx.factor_returns(bool(sector)).to_numpy(float)
@@ -157,6 +175,9 @@ def f_sscore(ctx, n=60, sector=0):
 
 @_fn("rsi", "rsi(n=14)", "Wilder's Relative Strength Index (0–100). Below 30 = oversold, above 70 = overbought.", "Oscillators")
 def f_rsi(ctx, n=14):
+    """Expression function `rsi(n=14)`: Wilder's Relative Strength Index (0–100). Below 30 = oversold, above 70 =
+    overbought.
+    """
     n = _win(n, "rsi", 2)
     d = ctx.close.diff()
     up = d.clip(lower=0).ewm(alpha=1 / n, adjust=False, min_periods=n).mean()
@@ -168,6 +189,9 @@ def f_rsi(ctx, n=14):
 
 @_fn("atr", "atr(n=14)", "Average True Range — the typical daily price range (uses high/low when available).", "Oscillators")
 def f_atr(ctx, n=14):
+    """Expression function `atr(n=14)`: Average True Range — the typical daily price range (uses high/low when
+    available).
+    """
     n = _win(n, "atr", 2)
     pc = ctx.close.shift(1)
     if ctx.high is not None and ctx.low is not None:
@@ -181,42 +205,49 @@ def f_atr(ctx, n=14):
 # Rolling transforms
 @_fn("sma", "sma(x, n)", "Simple moving average of x over n days.", "Smoothing")
 def f_sma(ctx, x, n):
+    """Expression function `sma(x, n)`: Simple moving average of x over n days."""
     n = _win(n, "sma")
     return _df(x, ctx).rolling(n, min_periods=n).mean()
 
 
 @_fn("ema", "ema(x, n)", "Exponential moving average of x (span n).", "Smoothing")
 def f_ema(ctx, x, n):
+    """Expression function `ema(x, n)`: Exponential moving average of x (span n)."""
     n = _win(n, "ema")
     return _df(x, ctx).ewm(span=n, adjust=False, min_periods=n).mean()
 
 
 @_fn("std", "std(x, n)", "Rolling standard deviation of x over n days.", "Smoothing")
 def f_std(ctx, x, n):
+    """Expression function `std(x, n)`: Rolling standard deviation of x over n days."""
     n = _win(n, "std", 2)
     return _df(x, ctx).rolling(n, min_periods=n).std()
 
 
 @_fn("sum", "sum(x, n)", "Rolling sum of x over n days.", "Smoothing")
 def f_sum(ctx, x, n):
+    """Expression function `sum(x, n)`: Rolling sum of x over n days."""
     n = _win(n, "sum")
     return _df(x, ctx).rolling(n, min_periods=n).sum()
 
 
 @_fn("highest", "highest(x, n)", "Highest value of x over the last n days (e.g. a breakout level).", "Smoothing")
 def f_highest(ctx, x, n):
+    """Expression function `highest(x, n)`: Highest value of x over the last n days (e.g. a breakout level)."""
     n = _win(n, "highest")
     return _df(x, ctx).rolling(n, min_periods=n).max()
 
 
 @_fn("lowest", "lowest(x, n)", "Lowest value of x over the last n days.", "Smoothing")
 def f_lowest(ctx, x, n):
+    """Expression function `lowest(x, n)`: Lowest value of x over the last n days."""
     n = _win(n, "lowest")
     return _df(x, ctx).rolling(n, min_periods=n).min()
 
 
 @_fn("zscore", "zscore(x, n)", "How unusual x is vs its own last n days, in standard deviations.", "Smoothing")
 def f_zscore(ctx, x, n):
+    """Expression function `zscore(x, n)`: How unusual x is vs its own last n days, in standard deviations."""
     n = _win(n, "zscore", 5)
     x = _df(x, ctx)
     m, s = x.rolling(n, min_periods=n).mean(), x.rolling(n, min_periods=n).std()
@@ -225,17 +256,20 @@ def f_zscore(ctx, x, n):
 
 @_fn("delay", "delay(x, n)", "The value of x n days ago.", "Smoothing")
 def f_delay(ctx, x, n):
+    """Expression function `delay(x, n)`: The value of x n days ago."""
     return _df(x, ctx).shift(_win(n, "delay"))
 
 
 @_fn("delta", "delta(x, n)", "Change in x over n days.", "Smoothing")
 def f_delta(ctx, x, n):
+    """Expression function `delta(x, n)`: Change in x over n days."""
     x = _df(x, ctx)
     return x - x.shift(_win(n, "delta"))
 
 
 @_fn("corr", "corr(x, y, n)", "Rolling correlation between x and y over n days.", "Smoothing")
 def f_corr(ctx, x, y, n):
+    """Expression function `corr(x, y, n)`: Rolling correlation between x and y over n days."""
     n = _win(n, "corr", 5)
     x, y = _df(x, ctx), _df(y, ctx)
     return x.rolling(n, min_periods=n).corr(y)
@@ -244,17 +278,20 @@ def f_corr(ctx, x, y, n):
 # Cross-sectional (across the universe on each date)
 @_fn("rank", "rank(x)", "Percentile rank of x across the universe each day (0 = lowest, 1 = highest).", "Cross-sectional")
 def f_rank(ctx, x):
+    """Expression function `rank(x)`: Percentile rank of x across the universe each day (0 = lowest, 1 = highest)."""
     return _df(x, ctx).rank(axis=1, pct=True)
 
 
 @_fn("cs_zscore", "cs_zscore(x)", "x standardised across the universe each day.", "Cross-sectional")
 def f_cs_zscore(ctx, x):
+    """Expression function `cs_zscore(x)`: x standardised across the universe each day."""
     x = _df(x, ctx)
     return x.sub(x.mean(axis=1), axis=0).div(x.std(axis=1).replace(0, np.nan), axis=0)
 
 
 @_fn("demean", "demean(x)", "x minus its cross-sectional average each day (relative strength).", "Cross-sectional")
 def f_demean(ctx, x):
+    """Expression function `demean(x)`: x minus its cross-sectional average each day (relative strength)."""
     x = _df(x, ctx)
     return x.sub(x.mean(axis=1), axis=0)
 
@@ -262,43 +299,51 @@ def f_demean(ctx, x):
 # Element-wise math
 @_fn("abs", "abs(x)", "Absolute value.", "Math")
 def f_abs(ctx, x):
+    """Expression function `abs(x)`: Absolute value."""
     return abs(x)
 
 
 @_fn("sign", "sign(x)", "+1 if positive, -1 if negative, 0 if zero.", "Math")
 def f_sign(ctx, x):
+    """Expression function `sign(x)`: +1 if positive, -1 if negative, 0 if zero."""
     return np.sign(_df(x, ctx))
 
 
 @_fn("log", "log(x)", "Natural log (blank where x ≤ 0).", "Math")
 def f_log(ctx, x):
+    """Expression function `log(x)`: Natural log (blank where x ≤ 0)."""
     x = _df(x, ctx)
     return np.log(x.where(x > 0))
 
 
 @_fn("sqrt", "sqrt(x)", "Square root (blank where x < 0).", "Math")
 def f_sqrt(ctx, x):
+    """Expression function `sqrt(x)`: Square root (blank where x < 0)."""
     x = _df(x, ctx)
     return np.sqrt(x.where(x >= 0))
 
 
 @_fn("clip", "clip(x, lo, hi)", "Limit x to the range [lo, hi].", "Math")
 def f_clip(ctx, x, lo, hi):
+    """Expression function `clip(x, lo, hi)`: Limit x to the range [lo, hi]."""
     return _df(x, ctx).clip(lower=lo, upper=hi, axis=None) if not isinstance(lo, pd.DataFrame) else _df(x, ctx).clip(lo, hi)
 
 
 @_fn("max", "max(a, b)", "Larger of a and b, element by element.", "Math")
 def f_max(ctx, a, b):
+    """Expression function `max(a, b)`: Larger of a and b, element by element."""
     return np.fmax(_df(a, ctx), _df(b, ctx))
 
 
 @_fn("min", "min(a, b)", "Smaller of a and b, element by element.", "Math")
 def f_min(ctx, a, b):
+    """Expression function `min(a, b)`: Smaller of a and b, element by element."""
     return np.fmin(_df(a, ctx), _df(b, ctx))
 
 
 @_fn("where", "where(cond, a, b)", "a where cond is true, else b. Use nan for 'no position'.", "Logic")
 def f_where(ctx, cond, a, b):
+    """Expression function `where(cond, a, b)`: a where cond is true, else b. Use nan for 'no position'."""
     c = _df(cond, ctx)
     return _df(a, ctx).where(c.fillna(0) > 0, _df(b, ctx))
 
@@ -352,6 +397,8 @@ _ALLOWED = (ast.Expression, ast.BinOp, ast.UnaryOp, ast.Compare, ast.BoolOp, ast
 
 
 class Ctx:
+    """Evaluation context of an expression: price / volume panels, the market series and fundamentals loaded on demand.
+    """
     def __init__(self, close: pd.DataFrame, open_: Optional[pd.DataFrame] = None, high: Optional[pd.DataFrame] = None,
                  low: Optional[pd.DataFrame] = None, volume: Optional[pd.DataFrame] = None,
                  mkt: Optional[pd.Series] = None, fundamentals_loader: Optional[Callable] = None):
@@ -396,6 +443,9 @@ class Ctx:
         return self._fund
 
     def fundamental(self, name: str) -> pd.DataFrame:
+        """A point-in-time fundamental panel by name: raw fields, or ratios derived from price (market cap, earnings
+        yield, book-to-price …).
+        """
         f = self._fundamentals()
         if name in _RAW_FUND:
             return f[_RAW_FUND[name]]
@@ -408,6 +458,7 @@ class Ctx:
         return num.replace([np.inf, -np.inf], np.nan)
 
     def var(self, name: str):
+        """The value of a variable in an expression: a price field, a fundamental, `mkt`, or nan."""
         if name == "nan":
             return float("nan")
         if name in FUNDAMENTALS:

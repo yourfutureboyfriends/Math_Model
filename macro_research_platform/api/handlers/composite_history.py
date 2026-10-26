@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 @ttl_cache(3600, offload=True)
 async def composite_history(weeks: int = 104) -> Dict[str, Any]:
+    """Weekly history of the composite signal and its four inputs (growth, inflation, liquidity, risk) over `weeks`,
+    rebuilt point-in-time: each week uses only data published by then (CPI by release date). Cached for an hour.
+    """
     from api.handlers.macro_inputs import load_monthly_macro, cpi_release_series
     from api.calculations.signals import (calculate_growth_signal, calculate_inflation_signal,
                                           calculate_liquidity_signal, calculate_risk_signal)

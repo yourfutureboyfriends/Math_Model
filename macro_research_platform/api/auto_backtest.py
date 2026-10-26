@@ -101,6 +101,9 @@ def _rules_from_settings(s: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def run() -> Dict[str, Any]:
+    """Backtest the auto book's rules over the long price panel, with controls (random stocks, no regime gate …), and
+    save the result.
+    """
     from api import auto_trader, stock_backtest as sb
     t0 = time.time()
     _state["stage"] = "loading prices"
@@ -181,6 +184,9 @@ def run() -> Dict[str, Any]:
 
 
 def findings(r: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Plain-language findings from a backtest result: does stock selection add value over random picks, and which risk
+    rules matter.
+    """
     v = {x["key"]: x for x in r["variants"]}
     out: List[Dict[str, str]] = []
     L, C = v["live"], v["control"]
@@ -221,6 +227,7 @@ def findings(r: Dict[str, Any]) -> List[Dict[str, str]]:
 
 
 def latest() -> Optional[Dict[str, Any]]:
+    """The last saved backtest result, or None."""
     try:
         return json.loads(RESULT_FILE.read_text())
     except Exception:
@@ -254,6 +261,7 @@ def live_vs_backtest(bt: Dict[str, Any], live: Dict[str, Any]) -> Dict[str, Any]
 
 
 async def run_in_background() -> None:
+    """Run the backtest in a worker thread unless one is already running; progress is in `status()`."""
     if _state["running"]:
         return
     _state.update(running=True, started=time.time(), error=None, stage="starting")
@@ -267,5 +275,6 @@ async def run_in_background() -> None:
 
 
 def status() -> Dict[str, Any]:
+    """Whether a backtest is running, its stage, run time and the last error."""
     return {"running": _state["running"], "stage": _state["stage"], "error": _state["error"],
             "running_for_s": round(time.time() - _state["started"]) if _state["running"] else None}

@@ -119,6 +119,9 @@ def _quadrants(lookback: int = 6) -> pd.DataFrame:
 
 
 def environments() -> Dict[str, Any]:
+    """Asset-class returns by growth / inflation quadrant (rising or falling vs expectations), in excess of cash — the
+    four-environment view.
+    """
     def build():
         R = _asset_returns()
         Q = _quadrants()
@@ -192,6 +195,9 @@ def _port_vol(w: pd.Series, cov: pd.DataFrame) -> float:
 
 
 def all_weather(target_vol: float = 0.10, max_leverage: float = 2.0) -> Dict[str, Any]:
+    """A risk-balanced (all-weather style) portfolio across the four environments at `target_vol`, with its history and
+    statistics.
+    """
     def build():
         syms = list(AW_ASSETS)
         df = yahoo_download(syms + ["^IRX"], start="2005-01-01", auto_adjust=True, group_by="ticker", threads=True)
@@ -313,6 +319,7 @@ def _q(s: str) -> pd.Timestamp:
 
 
 def debt_cycles() -> Dict[str, Any]:
+    """Debt-cycle position by economy from BIS data: credit to GDP by sector, the credit gap and debt-service ratios."""
     def build():
         tc, gap, dsr = _bis("WS_TC"), _bis("WS_CREDIT_GAP"), _bis("WS_DSR")
         # total credit, % of GDP, market value, adjusted for breaks: private (P), households (H), corporates (N), government (G)
@@ -442,6 +449,9 @@ def _us_policy_stage() -> Dict[str, Any]:
 
 # ── HGRL: the Holy Grail ─────────────────────────────────────────────────────
 def holy_grail(symbols: List[str], years: int = 3) -> Dict[str, Any]:
+    """Diversification from uncorrelated return streams: the √(1/N + (1 − 1/N)·ρ) risk curve and, for the given
+    symbols, their average correlation and the risk cut achieved.
+    """
     syms = [s.strip().upper() for s in symbols if s.strip()][:40]
     curve = [{"n": n, **{f"rho{int(r * 100)}": math.sqrt(1 / n + (1 - 1 / n) * r) for r in (0.0, 0.1, 0.2, 0.4, 0.6)}} for n in range(1, 21)]
     out: Dict[str, Any] = {"curve": curve,
@@ -537,6 +547,9 @@ def _cofer() -> Dict[str, float]:
 
 
 def world_order() -> Dict[str, Any]:
+    """The rise and decline of nations: World Bank indicators of relative power (economy, trade, education, military …)
+    by country.
+    """
     def build():
         with cf.ThreadPoolExecutor(4) as ex:
             futs = {name: ex.submit(_wb, ind) for name, (ind, _, _) in WO_INDICATORS.items()}

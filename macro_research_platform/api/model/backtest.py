@@ -41,6 +41,19 @@ def _stats(r: pd.Series) -> Dict[str, Optional[float]]:
 
 def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str], env_class: Dict[str, str],
                  p: ModelParams, start: Optional[str] = None) -> Dict:
+    """Monthly walk-forward backtest of the macro model: at each month-end the model decides weights from data
+    available then, and is credited with the next month's excess returns.
+
+    Args:
+        panel: monthly macro panel.
+        rets: monthly excess returns by asset.
+        blocks, env_class: model configuration (feature blocks, asset environment classes).
+        p: model parameters.
+        start: first decision month (earlier months are warm-up).
+
+    Returns:
+        Monthly rows, weights, forecasts and summary statistics for strategic and tactical portfolios.
+    """
     months = list(rets.index)
     first = pd.Timestamp(start) if start else None
     rows, weights_log, fc = [], [], []

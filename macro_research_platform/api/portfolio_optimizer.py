@@ -179,4 +179,5 @@ def optimise(symbols: Sequence[str], current_usd: Optional[Dict[str, float]] = N
 
 
 async def optimise_async(*args, **kwargs) -> Dict[str, Any]:
+    """`optimise` in a worker thread."""
     return await asyncio.to_thread(optimise, *args, **kwargs)

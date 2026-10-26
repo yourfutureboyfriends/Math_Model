@@ -137,6 +137,11 @@ def _eval(node, env: Dict[str, pd.Series]):
 
 
 def formula_chart(exprs: List[str], period: str = "5y") -> Dict[str, Any]:
+    """Chart up to 6 formulas over securities and FRED series (e.g. AAPL/SPY, {^TNX}-{FRED:DGS2}).
+
+    Raises:
+        NotFound: no formula.
+    """
     exprs = [e.strip() for e in exprs if e and e.strip()][:6]
     if not exprs:
         raise NotFound("Enter a formula, e.g. AAPL/SPY or {^TNX}-{FRED:DGS2}.")
@@ -228,6 +233,7 @@ FIELDS: Dict[str, tuple] = {
 
 
 def data_grid(symbols: List[str], fields: List[str]) -> Dict[str, Any]:
+    """A grid of fields (price, change, market cap, P/E …) for up to 100 symbols."""
     syms = [s.strip().upper() for s in symbols if s.strip()][:100]
     flds = [f for f in fields if f in FIELDS] or ["name", "price", "change_pct", "market_cap", "pe"]
     if not syms:
@@ -246,6 +252,7 @@ def data_grid(symbols: List[str], fields: List[str]) -> Dict[str, Any]:
 
 
 def history_grid(symbols: List[str], period: str = "1y", interval: str = "1d", field: str = "close") -> Dict[str, Any]:
+    """History of one field for up to 50 symbols at a daily, weekly or monthly interval."""
     syms = [s.strip().upper() for s in symbols if s.strip()][:50]
     if not syms:
         raise NotFound("Add some symbols.")
@@ -302,6 +309,9 @@ MONEYNESS = [0.80, 0.85, 0.90, 0.95, 0.975, 1.0, 1.025, 1.05, 1.10, 1.15, 1.20]
 
 
 def vol_surface(symbol: str, max_expiries: int = 10) -> Dict[str, Any]:
+    """An implied-volatility surface by moneyness and expiry, with IV30, skew, realised vol, the variance risk premium
+    and term structure.
+    """
     from api.marketdata.security import OPTION_ROOT, _tk
     s0 = symbol.strip().upper()
     s = OPTION_ROOT.get(s0, s0)
@@ -431,6 +441,7 @@ EXCHANGES = [
 
 
 def exchanges() -> Dict[str, Any]:
+    """World exchanges: local time, whether open now, the next session and holidays."""
     import holidays as hol
     now_utc = datetime.now(ZoneInfo("UTC"))
     out = []

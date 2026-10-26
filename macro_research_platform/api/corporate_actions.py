@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 def init_db() -> None:
+    """Create the corporate-actions table (one row per applied split, unique per book, symbol, ex-date and kind)."""
     with _conn() as c:
         c.execute("""CREATE TABLE IF NOT EXISTS corporate_actions (
             id INTEGER PRIMARY KEY AUTOINCREMENT, book TEXT NOT NULL, symbol TEXT NOT NULL, ex_date TEXT NOT NULL,
@@ -130,6 +131,7 @@ def apply(book: str, symbol: str, ex_date: str, ratio: float, user: str, how: st
 
 
 def applied() -> List[Dict[str, Any]]:
+    """Corporate actions already applied to the books, newest first."""
     init_db()
     with _conn() as c:
         return [dict(r) for r in c.execute("SELECT * FROM corporate_actions ORDER BY ex_date DESC, id DESC")]

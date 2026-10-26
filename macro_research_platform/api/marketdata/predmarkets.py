@@ -220,6 +220,7 @@ def _kalshi_events(pages: int = 10) -> List[Dict[str, Any]]:
 
 # ── Catalog ─────────────────────────────────────────────────────────────────
 def catalog() -> Dict[str, Any]:
+    """Open events on Polymarket and Kalshi, normalised."""
     return _cached("pred:catalog", 300, _build_catalog)
 
 
@@ -289,6 +290,7 @@ def _build_catalog() -> Dict[str, Any]:
 
 # ── One outcome: history and order book ─────────────────────────────────────
 def history(venue: str, market_id: str, series: Optional[str] = None, span: str = "1m") -> Dict[str, Any]:
+    """Price history of a prediction market."""
     def build():
         if venue.lower().startswith("poly"):
             interval = {"1d": "1d", "1w": "1w", "1m": "1m", "max": "max"}.get(span, "1m")
@@ -322,6 +324,7 @@ def history(venue: str, market_id: str, series: Optional[str] = None, span: str 
 
 
 def orderbook(venue: str, market_id: str) -> Dict[str, Any]:
+    """Order book of a prediction market."""
     def build():
         if venue.lower().startswith("poly"):
             j = _get(f"{CLOB}/book", params={"token_id": market_id})
@@ -343,6 +346,7 @@ def orderbook(venue: str, market_id: str) -> Dict[str, Any]:
 
 # ── Movers ──────────────────────────────────────────────────────────────────
 def movers(min_volume: float = 5000, sports: bool = False) -> Dict[str, Any]:
+    """Prediction markets with the largest recent moves."""
     def build():
         rows = []
         for e in catalog()["events"]:
@@ -375,6 +379,7 @@ def _names(t: str) -> set:
 
 
 def cross_venue() -> Dict[str, Any]:
+    """The same event on both venues, matched by title words, with the price gap."""
     def build():
         ev = catalog()["events"]
         poly = [e for e in ev if e["venue"] == "Polymarket"]
@@ -433,6 +438,7 @@ FED_MAP = [(r"no change|hold|unchanged|maintain", 0), (r"25 ?bps? (decrease|cut)
 
 
 def macro() -> Dict[str, Any]:
+    """Prediction markets on macro topics (Fed, inflation, recession, elections), grouped."""
     def build():
         ev = catalog()["events"]
         groups: Dict[str, List[Dict[str, Any]]] = {}
@@ -514,6 +520,7 @@ def _slim(e: Dict[str, Any], n: int = 4) -> Dict[str, Any]:
 
 def browse(q: str = "", venue: str = "", category: str = "", sort: str = "volume", offset: int = 0, limit: int = 50,
            active: bool = True, sports: bool = False) -> Dict[str, Any]:
+    """Browse prediction markets by category and search text."""
     c = catalog()
     ev = c["events"]
     if not category and not q and not sports:   # live games swamp the volume ranking; show them on request
@@ -534,6 +541,11 @@ def browse(q: str = "", venue: str = "", category: str = "", sort: str = "volume
 
 
 def event(venue: str, event_id: str) -> Dict[str, Any]:
+    """One open event.
+
+    Raises:
+        NotFound: closed or not among the most active.
+    """
     for e in catalog()["events"]:
         if e["venue"].lower() == venue.lower() and str(e["id"]) == str(event_id):
             return e

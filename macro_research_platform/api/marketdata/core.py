@@ -27,10 +27,12 @@ _lock = threading.Lock()
 
 
 class NotFound(LookupError):
+    """The thing asked for doesn't exist or the input is invalid (HTTP 404 / 400)."""
     pass
 
 
 class Upstream(RuntimeError):
+    """A data source failed or rate-limited (HTTP 502 / 503)."""
     pass
 
 
@@ -193,6 +195,7 @@ TYPE_LABEL = {"EQUITY": "Stock", "ETF": "ETF", "MUTUALFUND": "Fund", "INDEX": "I
 
 # ── Search ───────────────────────────────────────────────────────────────────
 def search(q: str, limit: int = 12) -> List[Dict[str, Any]]:
+    """Search securities by name or ticker."""
     q = q.strip()
     if not q:
         return []
@@ -313,6 +316,7 @@ def _finnhub_quote(sym: str) -> Optional[Dict[str, Any]]:
 
 
 def quote(symbol: str) -> Dict[str, Any]:
+    """A security's latest quote and key statistics."""
     s = symbol.strip().upper()
     i = _info(s)
     price = _f(i.get("regularMarketPrice")) or _f(i.get("currentPrice")) or _f(i.get("navPrice"))
@@ -500,6 +504,7 @@ def overview() -> Dict[str, Any]:
 
 # ── Profile ──────────────────────────────────────────────────────────────────
 def profile(symbol: str) -> Dict[str, Any]:
+    """A company's profile: sector, industry, description, officers, key figures."""
     s = symbol.strip().upper()
     i = _info(s)
     t = (i.get("quoteType") or "").upper()
@@ -620,6 +625,7 @@ def _fx_pair(s: str) -> Optional[Tuple[str, str]]:
 
 
 def news(symbol: str) -> Dict[str, Any]:
+    """Latest headlines for a symbol."""
     s = symbol.strip().upper()
     pair = _fx_pair(s)
 
@@ -899,6 +905,11 @@ def _enrich(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def movers(region: str = "us", kind: str = "gainers", count: int = 25) -> Dict[str, Any]:
+    """Top gainers, losers or most active in a region.
+
+    Raises:
+        NotFound: unknown region or kind.
+    """
     if region not in REGIONS:
         raise NotFound(f"Unknown region '{region}'.")
     if kind not in ("gainers", "losers", "active"):

@@ -15,6 +15,7 @@ def _check(name: str, ok: bool, detail: Any) -> Dict[str, Any]:
 
 
 def run_all() -> List[Dict[str, Any]]:
+    """Self-checks of the options research stack against textbook values (BSM, parity, Greeks, …)."""
     from api.quant.optresearch import market, portfolio as pf, pricing, simulate as sim, strategies as st, validate, vol
     out = []
     # 1 BSM: textbook value (S=100, K=100, T=1, r=5%, σ=20%: call 10.4506, put 5.5735) and put–call parity

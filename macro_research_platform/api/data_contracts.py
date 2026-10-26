@@ -7,6 +7,10 @@ from typing import Optional
 
 @dataclass
 class MetricContract:
+    """The data contract for one dashboard metric: where it comes from, its unit and conversion, hard bounds (reject)
+    and typical bounds (warn). There is no fallback value — a metric that fails validation is unavailable, not made
+    up.
+    """
     name: str
     fred_series: Optional[str]
     yf_ticker: Optional[str]

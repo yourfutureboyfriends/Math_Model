@@ -148,6 +148,7 @@ def skewed_vol(atm, S, K, T, index_like: bool, call: bool):
 
 
 def strike_increment(S: float) -> float:
+    """Listed strike spacing for an underlying price (0.5 / 1 / 5 / 10)."""
     return 0.5 if S < 25 else 1.0 if S < 250 else 5.0 if S < 1000 else 10.0
 
 

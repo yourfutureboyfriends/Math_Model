@@ -111,6 +111,9 @@ def _stats(name: str, res: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def run() -> Dict[str, Any]:
+    """Backtest the research models (trend, sector momentum, stock models …) over a common period, combine them by
+    equal risk and save the result.
+    """
     from api import auto_backtest as abs_, auto_trader, global_universe as gu, stock_backtest as sb
     t0 = time.time()
     results: Dict[str, Dict[str, Any]] = {}
@@ -231,6 +234,7 @@ def current_positions(results, cols_t, cols_s, panel, meta) -> Dict[str, List[Di
 
 
 def findings(r: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Plain-language findings: diversification benefit, least-correlated pair and each model's standing."""
     sp = r["same_period"]
     out = []
     best_single = max((k for k in PRIMARY), key=lambda k: sp[k].get("sharpe") or -9)
@@ -260,6 +264,7 @@ def findings(r: Dict[str, Any]) -> List[Dict[str, str]]:
 
 
 def latest() -> Optional[Dict[str, Any]]:
+    """The last saved result, or None."""
     try:
         return json.loads(RESULT_FILE.read_text())
     except Exception:
@@ -267,6 +272,7 @@ def latest() -> Optional[Dict[str, Any]]:
 
 
 async def run_in_background() -> None:
+    """Run the lab in a worker thread unless it is already running."""
     if _state["running"]:
         return
     _state.update(running=True, started=time.time(), error=None, stage="starting")
@@ -280,5 +286,6 @@ async def run_in_background() -> None:
 
 
 def status() -> Dict[str, Any]:
+    """Whether the lab is running, its stage and the last error."""
     return {"running": _state["running"], "stage": _state["stage"], "error": _state["error"],
             "running_for_s": round(time.time() - _state["started"]) if _state["running"] else None}

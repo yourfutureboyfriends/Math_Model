@@ -94,6 +94,7 @@ def export_candidate(result: Dict[str, Any], strategy: str, user: str) -> Dict[s
 
 
 def list_configs() -> Dict[str, Any]:
+    """Exported candidate and approved configurations."""
     _dirs()
     out: Dict[str, List[Dict[str, Any]]] = {"candidates": [], "approved": []}
     for d in out:
@@ -147,6 +148,11 @@ def approve(file: str, user: str, confirm: str, acknowledge: bool = False, reaso
 
 
 def rollback(strategy: str, user: str, reason: str = "") -> Dict[str, Any]:
+    """Restore a strategy's previous approved configuration.
+
+    Raises:
+        ValueError: no active or previous configuration.
+    """
     p = _prod()
     cur = p["active"].get(strategy)
     if not cur:

@@ -191,6 +191,7 @@ def _curve(code: str) -> Dict[str, Any]:
 
 
 def curves() -> Dict[str, Any]:
+    """Government yield curves by country (latest, 1 month and 1 year ago), with per-country errors."""
     def build():
         out, errors = {}, {}
         def one(code):

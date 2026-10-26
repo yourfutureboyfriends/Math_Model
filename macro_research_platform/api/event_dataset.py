@@ -121,6 +121,7 @@ def release_events(code: str) -> List[Dict[str, Any]]:
 
 
 def fomc_events() -> List[Dict[str, Any]]:
+    """FOMC decisions since 2013 with the target change and the 2-year yield reaction as the surprise proxy."""
     from api.macro_calendar import _fetch_fomc_meetings
     from api.providers import alfred
     tgt = {o["date"]: o["value"] for o in alfred.latest("DFEDTARU", "2013-01-01") if o["value"] is not None}

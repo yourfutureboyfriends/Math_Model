@@ -59,6 +59,9 @@ SMILE = {"index": (3.0, 1.0), "stock": (1.5, 0.3), "commodity": (1.2, 0.6), "bon
 
 
 def smile_vol(atm, S, K, T, kind: str = "index", put_slope: float | None = None, call_slope: float | None = None):
+    """Implied vol at strike K from the ATM vol and a skew model (put / call wing slopes by underlying kind, scaled by
+    √T).
+    """
     ps, cs = SMILE.get(kind, SMILE["stock"])
     ps = ps if put_slope is None else put_slope
     cs = cs if call_slope is None else call_slope
@@ -101,6 +104,7 @@ def strike_for_delta(S, T, r, q, atm, target_delta, call: bool, kind: str = "ind
 
 # ── Expiry calendars ─────────────────────────────────────────────────────────
 def third_fridays(start: pd.Timestamp, end: pd.Timestamp) -> List[pd.Timestamp]:
+    """Third Friday of every month between two dates (monthly option expiries)."""
     out = []
     for y in range(start.year, end.year + 2):
         for m in range(1, 13):
@@ -110,6 +114,7 @@ def third_fridays(start: pd.Timestamp, end: pd.Timestamp) -> List[pd.Timestamp]:
 
 
 def fridays(start: pd.Timestamp, end: pd.Timestamp) -> List[pd.Timestamp]:
+    """Every Friday between two dates (weekly expiries)."""
     first = start + pd.Timedelta(days=(4 - start.weekday()) % 7)
     return list(pd.date_range(first, end, freq="7D"))
 

@@ -90,6 +90,7 @@ OUTFLOW = {"total": "us_lt_total_net", "govt_bonds": "us_lt_govt_bond_net", "cor
 
 
 def tic() -> Dict[str, Any]:
+    """Cross-border portfolio flows into and out of US securities by country (Treasury TIC)."""
     def build():
         t1, t2 = _tic_table(1), _tic_table(2)
         months = sorted({r["date"] for r in t1}, reverse=True)
@@ -131,6 +132,7 @@ def tic() -> Dict[str, Any]:
 
 
 def tic_country(iso: str) -> Dict[str, Any]:
+    """TIC holdings for one country."""
     iso = iso.upper()
     t1, t2 = _tic_table(1), _tic_table(2)
     rows: Dict[str, Dict[str, Any]] = {}
@@ -156,6 +158,7 @@ def tic_country(iso: str) -> Dict[str, Any]:
 
 # ── BIS cross-border bank lending ───────────────────────────────────────────
 def bis() -> Dict[str, Any]:
+    """BIS locational banking statistics: cross-border claims by country and quarter."""
     def build():
         url = "https://stats.bis.org/api/v2/data/dataflow/BIS/WS_LBS_D_PUB/1.0/Q.{m}.C.A.TO1.A.5J.A.5A.A..N"
         flows = _get(url.format(m="F"), params={"lastNObservations": 4, "format": "csv"}, timeout=60).text
@@ -248,6 +251,9 @@ def snapshot_shares() -> int:
 
 
 def snapshots_start() -> None:
+    """Start the background thread that records daily ETF shares outstanding after the US close (for creation /
+    redemption flows).
+    """
     def loop():
         while True:
             try:
@@ -261,6 +267,7 @@ def snapshots_start() -> None:
 
 
 def etf() -> Dict[str, Any]:
+    """Estimated ETF flows from changes in shares outstanding × price, by group."""
     def build():
         import yfinance as yf
         uni = _universe()
@@ -316,6 +323,7 @@ def etf() -> Dict[str, Any]:
 
 # ── Stablecoins ─────────────────────────────────────────────────────────────
 def crypto() -> Dict[str, Any]:
+    """Stablecoin supply: total, 7 / 30 / 90-day change, history and split by chain."""
     def build():
         chains = _get("https://stablecoins.llama.fi/stablecoinchains").json()
         top = sorted(({"chain": c["name"], "usd": (c.get("totalCirculatingUSD") or {}).get("peggedUSD") or 0} for c in chains), key=lambda c: -c["usd"])[:15]
@@ -343,6 +351,7 @@ def crypto() -> Dict[str, Any]:
 
 # ── Fed net liquidity ───────────────────────────────────────────────────────
 def liquidity() -> Dict[str, Any]:
+    """US liquidity: Fed balance sheet, reserves, Treasury General Account and reverse repo, with net liquidity."""
     def series(sid: str):
         txt = _get("https://fred.stlouisfed.org/graph/fredgraph.csv", params={"id": sid, "cosd": (date.today() - timedelta(days=3 * 365)).isoformat()}).text
         out = {}

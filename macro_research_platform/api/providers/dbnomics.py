@@ -22,6 +22,7 @@ TTL = 12 * 3600
 
 
 class DBnomicsError(RuntimeError):
+    """DBnomics could not be reached or returned an error."""
     pass
 
 
@@ -68,6 +69,7 @@ def series(code: str) -> Dict[str, Any]:
 
 
 def search(query: str, limit: int = 20) -> List[Dict[str, Any]]:
+    """Datasets matching a free-text query (provider, dataset code, name, number of series, last indexed)."""
     j = _get("search", {"q": query, "limit": min(limit, 50)})
     docs = (j.get("results") or {}).get("docs") or []
     return [{"provider": d.get("provider_code"), "dataset": d.get("code"), "name": d.get("name"),
@@ -75,6 +77,7 @@ def search(query: str, limit: int = 20) -> List[Dict[str, Any]]:
 
 
 def latest_value(code: str) -> Optional[Dict[str, Any]]:
+    """The most recent non-missing observation of a DBnomics series code, with its name and source, or None."""
     s = series(code)
     for o in reversed(s["observations"]):
         if o["value"] is not None:

@@ -11,6 +11,7 @@ router = APIRouter(tags=["funds"])
 
 
 class FundIn(BaseModel):
+    """A new fund: id, name, members and initial settings."""
     id: str = Field(..., max_length=24)
     name: str = Field(..., max_length=80)
     members: Optional[List[str]] = None
@@ -21,6 +22,7 @@ class FundIn(BaseModel):
 
 
 class FundUpdate(BaseModel):
+    """A fund's new name and / or members."""
     name: Optional[str] = Field(None, max_length=80)
     members: Optional[List[str]] = None
 
@@ -107,6 +109,12 @@ def _logo_version(fund_id: str) -> int:
 
 
 def save_logo(fund_id: str, variant: str, data: bytes) -> dict:
+    """Validate an uploaded logo (PNG / JPEG / WebP, under 2 MB), normalise it to RGBA PNG and store it as the fund's
+    `variant`.
+
+    Raises:
+        ValueError: the file is too large, not an image, or an unsupported format.
+    """
     import io
     from PIL import Image
     if len(data) > MAX_LOGO_BYTES:
@@ -128,6 +136,7 @@ def save_logo(fund_id: str, variant: str, data: bytes) -> dict:
 
 
 class LogoIn(BaseModel):
+    """A logo upload: variant and the image as base64."""
     variant: str = Field("full", pattern="^(full|mark|mark_mask|word_mask)$")
     data_base64: str = Field(..., max_length=3_000_000)
 

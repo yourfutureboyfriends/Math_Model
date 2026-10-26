@@ -92,6 +92,7 @@ _ready = False
 
 
 def init() -> None:
+    """Create the research registry tables once per process."""
     global _ready
     if _ready:
         return
@@ -113,6 +114,7 @@ def init() -> None:
 
 
 def hypotheses() -> List[Dict[str, Any]]:
+    """Research hypotheses with status, method, results and linked experiments."""
     init()
     with _conn() as c:
         rows = [dict(r) for r in c.execute("SELECT * FROM research_hypotheses ORDER BY id")]
@@ -124,6 +126,7 @@ def hypotheses() -> List[Dict[str, Any]]:
 
 def update_hypothesis(hid: str, *, status: str, method: str, dataset: str, config: Any, results: Any, limitations: str,
                       experiment_id: str) -> None:
+    """Record an experiment's outcome against a hypothesis."""
     init()
     with _conn() as c:
         row = c.execute("SELECT experiments FROM research_hypotheses WHERE id = ?", (hid,)).fetchone()
@@ -137,6 +140,7 @@ def update_hypothesis(hid: str, *, status: str, method: str, dataset: str, confi
 
 
 def start_experiment(owner: str, kind: str, stage: int, label: str, config: Dict[str, Any], data_class: str) -> str:
+    """Register a new experiment; returns its id."""
     init()
     eid = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
     with _conn() as c:
@@ -148,6 +152,7 @@ def start_experiment(owner: str, kind: str, stage: int, label: str, config: Dict
 
 def finish_experiment(eid: str, *, state: str, runtime_s: float, peak_mb: float, trials: int, summary: Dict[str, Any],
                       result_path: Optional[str]) -> None:
+    """Record an experiment's end: state, runtime, peak memory, trials and summary."""
     init()
     with _conn() as c:
         c.execute("UPDATE research_experiments SET state=?, finished=?, runtime_s=?, peak_mb=?, trials=?, summary=?, "
@@ -156,6 +161,7 @@ def finish_experiment(eid: str, *, state: str, runtime_s: float, peak_mb: float,
 
 
 def experiments(limit: int = 100) -> List[Dict[str, Any]]:
+    """Recent experiments, newest first."""
     init()
     with _conn() as c:
         rows = [dict(r) for r in c.execute("SELECT * FROM research_experiments ORDER BY started DESC LIMIT ?", (limit,))]
@@ -166,6 +172,7 @@ def experiments(limit: int = 100) -> List[Dict[str, Any]]:
 
 
 def experiment(eid: str) -> Optional[Dict[str, Any]]:
+    """One experiment, or None."""
     init()
     with _conn() as c:
         r = c.execute("SELECT * FROM research_experiments WHERE id = ?", (eid,)).fetchone()
@@ -198,6 +205,7 @@ def total_trials(kind_prefix: str = "") -> int:
 
 
 def log_holdout(eid: str, user: str, note: str) -> int:
+    """Log a holdout reveal (each reveal is counted); returns the total reveals."""
     init()
     with _conn() as c:
         c.execute("INSERT INTO research_holdout_log VALUES (?,?,?,?)", (eid, time.time(), user, note))
@@ -207,6 +215,7 @@ def log_holdout(eid: str, user: str, note: str) -> int:
 
 
 def holdout_log() -> List[Dict[str, Any]]:
+    """Every holdout reveal, newest first."""
     init()
     with _conn() as c:
         return [dict(r) for r in c.execute("SELECT * FROM research_holdout_log ORDER BY revealed DESC")]

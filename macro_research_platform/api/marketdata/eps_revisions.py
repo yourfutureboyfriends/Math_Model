@@ -132,6 +132,7 @@ def _index_wide() -> Dict[str, Dict[str, Any]]:
 
 
 def sector_revisions() -> Dict[str, Any]:
+    """Analyst EPS revisions by S&P 500 sector (index-weighted, falling back to a sample)."""
     def fetch():
         out, basis = None, "all S&P 500 members, index-weighted"
         try:

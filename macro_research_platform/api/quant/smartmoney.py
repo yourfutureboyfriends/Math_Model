@@ -201,6 +201,7 @@ def build(max_workers: int = 4) -> Dict[str, Any]:
 
 
 def panel(max_age_h: float = 24.0) -> Dict[str, Any]:
+    """The point-in-time 13F holdings panel, from cache when younger than `max_age_h`, otherwise rebuilt."""
     p = CACHE / "panel.json"
     try:
         if time.time() - p.stat().st_mtime < max_age_h * 3600:

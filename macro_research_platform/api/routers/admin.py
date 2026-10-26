@@ -31,24 +31,28 @@ def _audit(action: str, rationale: str, user: str, target: str, after=None) -> N
 
 
 class NewUserIn(BaseModel):
+    """A new account: username, role and display name (a temporary password is generated)."""
     username: str
     role: str
     display_name: Optional[str] = None
 
 
 class UserUpdateIn(BaseModel):
+    """Changes to an account: role and / or disabled flag."""
     role: Optional[str] = None
     disabled: Optional[bool] = None
 
 
 @router.get("/users")
 async def list_users(request: Request):
+    """All accounts with role and status (administrators)."""
     require_roles(request, {"admin"})
     return {"users": await _thread(accounts.list_users), "roles": list(accounts.ROLES)}
 
 
 @router.post("/users")
 async def create_user(body: NewUserIn, request: Request):
+    """Create an account; returns the temporary password once (it must be changed at first sign-in)."""
     admin = require_roles(request, {"admin"})
     username = body.username.strip().lower()
     try:
@@ -63,6 +67,9 @@ async def create_user(body: NewUserIn, request: Request):
 
 @router.put("/users/{username}")
 async def update_user(username: str, body: UserUpdateIn, request: Request):
+    """Change an account's role or disable it (the last administrator cannot be removed or disabled; you cannot disable
+    yourself).
+    """
     admin = require_roles(request, {"admin"})
     try:
         user = await _thread(accounts.update_user, username, role=body.role, disabled=body.disabled,
@@ -79,6 +86,7 @@ async def update_user(username: str, body: UserUpdateIn, request: Request):
 
 @router.post("/users/{username}/reset-password")
 async def reset_password(username: str, request: Request):
+    """Reset an account's password to a temporary one, returned once."""
     admin = require_roles(request, {"admin"})
     try:
         temp = await _thread(accounts.reset_password, username)
@@ -92,6 +100,7 @@ async def reset_password(username: str, request: Request):
 
 @router.post("/users/{username}/unlock")
 async def unlock_user(username: str, request: Request):
+    """Clear a lockout after too many failed sign-ins."""
     admin = require_roles(request, {"admin"})
     if not await _thread(accounts.unlock, username):
         raise HTTPException(404, "user not found")

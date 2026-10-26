@@ -36,6 +36,7 @@ def _now() -> str:
 
 
 def init() -> None:
+    """Create the Quant Lab tables once per process."""
     global _ready
     if _ready:
         return
@@ -94,6 +95,7 @@ def _row(r: sqlite3.Row) -> Dict[str, Any]:
 
 # ── Strategies ───────────────────────────────────────────────────────────────
 def list_strategies(owner: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Saved strategies, a user's or all."""
     init()
     with _conn() as c:
         rows = (c.execute("SELECT * FROM quant_strategies WHERE owner = ? ORDER BY updated_at DESC", (owner,))
@@ -102,6 +104,7 @@ def list_strategies(owner: Optional[str] = None) -> List[Dict[str, Any]]:
 
 
 def get_strategy(sid: int) -> Optional[Dict[str, Any]]:
+    """One saved strategy, or None."""
     init()
     with _conn() as c:
         r = c.execute("SELECT * FROM quant_strategies WHERE id = ?", (sid,)).fetchone()
@@ -109,6 +112,7 @@ def get_strategy(sid: int) -> Optional[Dict[str, Any]]:
 
 
 def save_strategy(owner: str, spec: Dict[str, Any], sid: Optional[int] = None, template: Optional[str] = None) -> Dict[str, Any]:
+    """Create or update a saved strategy."""
     init()
     now = _now()
     with _conn() as c:
@@ -123,6 +127,7 @@ def save_strategy(owner: str, spec: Dict[str, Any], sid: Optional[int] = None, t
 
 
 def delete_strategy(sid: int) -> None:
+    """Delete a saved strategy."""
     init()
     with _conn() as c:
         c.execute("DELETE FROM quant_strategies WHERE id = ?", (sid,))
@@ -130,6 +135,7 @@ def delete_strategy(sid: int) -> None:
 
 # ── Trials ───────────────────────────────────────────────────────────────────
 def record_run(owner: str, strategy_id: Optional[int], spec_hash: str, sharpe: Optional[float]) -> None:
+    """Record a backtest of a specification (once per owner and spec hash) for trial counting."""
     init()
     with _conn() as c:
         q = "SELECT 1 FROM quant_runs WHERE owner = ? AND spec_hash = ? AND " + \
@@ -156,6 +162,7 @@ def trials(owner: str, strategy_id: Optional[int], spec_hash: str) -> Tuple[int,
 # ── Deployments (Quant Trader) ───────────────────────────────────────────────
 def deploy(owner: str, name: str, spec: Dict[str, Any], deployed_at: str, capital: float,
            strategy_id: Optional[int], backtest_summary: Dict[str, Any], book: Optional[str] = None) -> Dict[str, Any]:
+    """Record a paper deployment with its frozen specification and backtest summary."""
     init()
     with _conn() as c:
         cur = c.execute("INSERT INTO quant_deployments (strategy_id, name, owner, spec, deployed_at, capital, active, backtest, created_at, book)"
@@ -173,6 +180,7 @@ def link_deployment(did: int, fund: Optional[str], model_id: Optional[int]) -> N
 
 
 def get_deployment(did: int) -> Optional[Dict[str, Any]]:
+    """One deployment, or None."""
     init()
     with _conn() as c:
         r = c.execute("SELECT * FROM quant_deployments WHERE id = ?", (did,)).fetchone()
@@ -180,6 +188,7 @@ def get_deployment(did: int) -> Optional[Dict[str, Any]]:
 
 
 def list_deployments(active_only: bool = True) -> List[Dict[str, Any]]:
+    """Deployments, active only by default."""
     init()
     with _conn() as c:
         rows = c.execute("SELECT * FROM quant_deployments" + (" WHERE active = 1" if active_only else "") +
@@ -188,12 +197,14 @@ def list_deployments(active_only: bool = True) -> List[Dict[str, Any]]:
 
 
 def update_backtest(did: int, summary: Dict[str, Any]) -> None:
+    """Replace a deployment's backtest summary."""
     init()
     with _conn() as c:
         c.execute("UPDATE quant_deployments SET backtest = ? WHERE id = ?", (json.dumps(summary, default=str), did))
 
 
 def stop_deployment(did: int) -> None:
+    """Mark a deployment stopped (its record is kept)."""
     init()
     with _conn() as c:
         c.execute("UPDATE quant_deployments SET active = 0, stopped_at = ? WHERE id = ?", (_now(), did))
@@ -229,6 +240,7 @@ def save_result(owner: str, label: str, result: Dict[str, Any], analysis: Option
 
 
 def list_results(owner: str) -> List[Dict[str, Any]]:
+    """A user's saved Code Lab results (without bodies)."""
     init()
     with _conn() as c:
         rows = c.execute("SELECT id, label, code_hash, engine_version, record_type, summary, ts FROM code_results "
@@ -237,6 +249,7 @@ def list_results(owner: str) -> List[Dict[str, Any]]:
 
 
 def get_result(owner: str, rid: int) -> Optional[Dict[str, Any]]:
+    """One saved result with its body and code, or None."""
     import zlib
     init()
     with _conn() as c:
@@ -250,6 +263,7 @@ def get_result(owner: str, rid: int) -> Optional[Dict[str, Any]]:
 
 
 def delete_result(owner: str, rid: int) -> bool:
+    """Delete a saved result; False when not found."""
     init()
     with _conn() as c:
         return c.execute("DELETE FROM code_results WHERE owner = ? AND id = ?", (owner, rid)).rowcount > 0
@@ -286,6 +300,7 @@ def raise_alert(deployment_id: Optional[int], kind: str, severity: str, message:
 
 
 def recent_alerts(days: int = 7) -> List[Dict[str, Any]]:
+    """Quant alerts from the last `days`."""
     init()
     from datetime import timedelta
     since = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()

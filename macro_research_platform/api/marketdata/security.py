@@ -77,6 +77,7 @@ class _GuardedTicker:
         return v
 
     def check(self) -> None:
+        """Raise Upstream when Yahoo is rate-limiting."""
         if self.throttled:
             raise Upstream("Yahoo is rate-limiting this server — try again in a minute.")
 
@@ -107,6 +108,7 @@ def _df_records(df: Optional[pd.DataFrame], index_name: str = "index", limit: Op
 
 # ── ERN / EE ─────────────────────────────────────────────────────────────────
 def earnings(symbol: str) -> Dict[str, Any]:
+    """A company's earnings history and estimates."""
     s = symbol.strip().upper()
 
     def fetch():
@@ -154,6 +156,7 @@ def earnings(symbol: str) -> Dict[str, Any]:
 
 # ── ANR ──────────────────────────────────────────────────────────────────────
 def analysts(symbol: str) -> Dict[str, Any]:
+    """Analyst ratings and price targets."""
     s = symbol.strip().upper()
 
     def fetch():
@@ -191,6 +194,7 @@ def analysts(symbol: str) -> Dict[str, Any]:
 
 # ── HDS ──────────────────────────────────────────────────────────────────────
 def holders(symbol: str) -> Dict[str, Any]:
+    """Major institutional and fund holders."""
     s = symbol.strip().upper()
 
     def fetch():
@@ -226,6 +230,7 @@ def holders(symbol: str) -> Dict[str, Any]:
 
 # ── DVD ──────────────────────────────────────────────────────────────────────
 def dividends(symbol: str) -> Dict[str, Any]:
+    """Dividend history and yield."""
     s = symbol.strip().upper()
 
     def fetch():
@@ -335,6 +340,7 @@ def bs_greeks(S: float, K: np.ndarray, T: float, r: float, q: float, iv: np.ndar
 
 
 def bs_price(S, K, T, r, q, iv, call):
+    """Black–Scholes price and Greeks of a European option."""
     K = np.asarray(K, float)
     iv = np.asarray(iv, float)
     with np.errstate(all="ignore"):
@@ -375,6 +381,7 @@ OPTION_ROOT = {"^GSPC": "^SPX", "^NDX": "^NDX", "^RUT": "^RUT", "^DJI": "^DJX", 
 
 
 def options(symbol: str, expiry: Optional[str] = None) -> Dict[str, Any]:
+    """An option chain for one expiry."""
     s = OPTION_ROOT.get(symbol.strip().upper(), symbol.strip().upper())
     t = _tk(s)
     try:
@@ -461,6 +468,7 @@ def options(symbol: str, expiry: Optional[str] = None) -> Dict[str, Any]:
 
 
 def iv_term_structure(symbol: str, n: int = 8) -> List[Dict[str, Any]]:
+    """At-the-money implied volatility by expiry."""
     s = OPTION_ROOT.get(symbol.strip().upper(), symbol.strip().upper())
 
     def fetch():
@@ -532,12 +540,14 @@ _MEA = {"israel", "south africa", "saudi arabia", "united arab emirates", "qatar
 
 
 def area_of_country(c: Optional[str]) -> Optional[str]:
+    """The world area (Americas, Europe, Asia-Pacific, Middle East & Africa) of a country."""
     c = (c or "").lower()
     return ("Americas" if c in _AMERICAS else "Europe" if c in _EUROPE else "Asia-Pacific" if c in _APAC
             else "Middle East & Africa" if c in _MEA else None)
 
 
 def area_of_symbol(sym: str) -> str:
+    """The world area of a ticker's listing."""
     suf = sym.rpartition(".")[2] if "." in sym else ""
     return {"": "Americas", "TO": "Americas", "SA": "Americas", "MX": "Americas", "L": "Europe", "DE": "Europe", "PA": "Europe",
             "AS": "Europe", "SW": "Europe", "ST": "Europe", "MI": "Europe", "MC": "Europe", "T": "Asia-Pacific", "KS": "Asia-Pacific",
@@ -579,6 +589,11 @@ PEER_REGIONS = ["us", "jp", "gb", "de", "fr", "nl", "ch", "kr", "tw", "cn", "hk"
 
 
 def comps(symbol: str, max_peers: int = 8) -> Dict[str, Any]:
+    """Comparable companies from the same industry with valuation multiples.
+
+    Raises:
+        NotFound: no industry classification.
+    """
     s = symbol.strip().upper()
     i = _info(s)
     industry = _screen_industry(i.get("industry"))
@@ -709,6 +724,7 @@ def _closes(symbols: List[str], period: str = "5y", interval: str = "1d") -> pd.
 
 
 def history(symbol: str, period: str = "1y", interval: str = "1d") -> Dict[str, Any]:
+    """Price history of a security."""
     import yfinance as yf
     s = symbol.strip().upper()
     if interval not in ("1d", "1wk", "1mo") or period not in ("1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "max"):
@@ -749,6 +765,7 @@ def history(symbol: str, period: str = "1y", interval: str = "1d") -> Dict[str, 
 
 
 def compare(symbols: List[str], period: str = "5y") -> Dict[str, Any]:
+    """Rebased performance of up to 8 securities."""
     syms = [x.strip().upper() for x in symbols if x.strip()][:8]
     if len(syms) < 1:
         raise NotFound("Give at least one symbol.")
@@ -788,6 +805,7 @@ def home_benchmark(symbol: str) -> str:
 
 
 def beta(symbol: str, benchmark: Optional[str] = None, period: str = "2y", freq: str = "W") -> Dict[str, Any]:
+    """Beta and correlation against a benchmark (the listing's home index by default)."""
     s = symbol.strip().upper()
     b = (benchmark or home_benchmark(s)).strip().upper()
 

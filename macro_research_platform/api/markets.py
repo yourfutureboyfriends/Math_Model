@@ -157,6 +157,7 @@ GLOBAL_BENCHMARK = "ACWI"   # MSCI ACWI ETF — regime filter where no home inde
 
 
 def benchmark_of(country: str) -> str:
+    """The benchmark index of a country, or the global benchmark."""
     return (COUNTRIES.get(country) or {}).get("bench") or GLOBAL_BENCHMARK
 
 

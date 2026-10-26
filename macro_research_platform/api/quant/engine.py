@@ -38,6 +38,7 @@ EXECUTION = ("next_open", "next_close")
 
 
 class SpecError(ValueError):
+    """An invalid strategy specification (HTTP 400)."""
     pass
 
 
@@ -115,6 +116,7 @@ def normalize(spec: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def spec_hash(spec: Dict[str, Any]) -> str:
+    """A short hash of a specification's substance (ignores name and description), used to count trials."""
     core = {k: v for k, v in spec.items() if k not in ("name", "description")}
     return hashlib.sha1(json.dumps(core, sort_keys=True).encode()).hexdigest()[:16]
 
@@ -206,6 +208,9 @@ def target_weights(spec: Dict[str, Any], score: np.ndarray, eligible: np.ndarray
 
 
 def apply_risk(spec: Dict[str, Any], w: np.ndarray, hist_rets: np.ndarray) -> np.ndarray:
+    """Apply the specification's risk rules to target weights: per-name cap, then scale to the volatility target from
+    trailing covariance, then the gross cap.
+    """
     r = spec["risk"]
     w = np.clip(w, -r["max_weight"], r["max_weight"])
     if r["vol_target"] is not None:
@@ -452,6 +457,7 @@ def simulate_legacy(spec: Dict[str, Any], prep: Dict[str, Any], extra_lag: int =
 
 
 def benchmark_returns(prep: Dict[str, Any], symbol: str, dates: List[str]) -> np.ndarray:
+    """Daily returns of the benchmark on the backtest dates (0 where missing)."""
     c = prep["pan"]["close"][symbol]
     r = (c / c.shift(1) - 1).reindex(pd.DatetimeIndex(dates)).to_numpy(float)
     return np.nan_to_num(r)

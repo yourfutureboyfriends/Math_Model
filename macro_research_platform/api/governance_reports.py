@@ -125,6 +125,9 @@ def stress_tests(holdings: List[Dict[str, Any]], base: str) -> Dict[str, Any]:
 
 
 def monthly_report(month: Optional[str] = None) -> Dict[str, Any]:
+    """The monthly internal reporting pack for `month` ("YYYY-MM", default last month): returns, risk and stress,
+    attribution, implementation, research changes and validation.
+    """
     from api import fund_store, governance as gov, trade_lifecycle as tl, blotter_store
     blotter_store.init_db()
     gov.init_db()

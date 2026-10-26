@@ -26,6 +26,9 @@ def _r(x, d=4):
 
 
 def returns_metrics(ret: np.ndarray, dates: Sequence[pd.Timestamp], rf_annual: np.ndarray) -> Dict[str, Any]:
+    """Performance of a daily return series: CAGR, volatility, Sharpe (excess of cash), Sortino, Calmar, drawdown
+    depth and length, VaR / CVaR, skew, kurtosis, monthly and yearly returns.
+    """
     r = np.nan_to_num(np.asarray(ret, float))
     if len(r) < 20:
         return {"days": int(len(r))}
@@ -62,6 +65,7 @@ def returns_metrics(ret: np.ndarray, dates: Sequence[pd.Timestamp], rf_annual: n
 
 def trade_metrics(trades: List[Dict[str, Any]], capital: float, years: float, avg_nav: Optional[float] = None,
                   risk_used: Optional[np.ndarray] = None, costs: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
+    """Trade statistics: win rate, payoff, profit factor, expectancy, turnover and costs."""
     if not trades:
         return {"trades": 0}
     df = pd.DataFrame(trades)
@@ -108,6 +112,9 @@ def _bucket(df: pd.DataFrame, col: str, fn=None) -> List[Dict[str, Any]]:
 
 
 def option_breakdowns(trades: List[Dict[str, Any]], vix_at: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
+    """Option trades broken down by strategy, sector, year, DTE, IV class, volatility regime (VIX at entry), premium-
+    to-risk and exit reason.
+    """
     if not trades:
         return {}
     df = pd.DataFrame(trades)
@@ -129,11 +136,13 @@ def option_breakdowns(trades: List[Dict[str, Any]], vix_at: Optional[Dict[str, f
 
 
 def drawdown_series(ret: np.ndarray) -> np.ndarray:
+    """Drawdown from the running peak of the compounded returns."""
     eq = np.cumprod(1 + np.nan_to_num(np.asarray(ret, float)))
     return eq / np.maximum.accumulate(eq) - 1
 
 
 def segment(ret: np.ndarray, dates: pd.DatetimeIndex, rf: np.ndarray, a: str, b: Optional[str]) -> Dict[str, Any]:
+    """Metrics for the dates between `a` and `b` (None = to the end)."""
     m = (dates >= pd.Timestamp(a)) & ((dates <= pd.Timestamp(b)) if b else True)
     if m.sum() < 20:
         return {"days": int(m.sum())}
@@ -143,6 +152,7 @@ def segment(ret: np.ndarray, dates: pd.DatetimeIndex, rf: np.ndarray, a: str, b:
 
 
 def thin(dates: pd.DatetimeIndex, *series: np.ndarray, max_points: int = 600) -> Dict[str, Any]:
+    """Down-sample dates and series to at most `max_points` for charts (keeps the last point)."""
     step = max(1, len(dates) // max_points)
     keep = np.r_[np.arange(0, len(dates), step), len(dates) - 1] if len(dates) else np.array([], int)
     keep = np.unique(keep)

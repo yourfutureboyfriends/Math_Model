@@ -77,6 +77,7 @@ def _env() -> Dict[str, str]:
 
 
 def params_hash(p: ModelParams) -> str:
+    """Short stable hash of the parameters, identifying a model configuration."""
     return hashlib.sha256(json.dumps(p.__dict__, sort_keys=True).encode()).hexdigest()[:12]
 
 
@@ -95,6 +96,7 @@ def _conn():
 
 
 def save_run(result: Dict[str, Any], user: str) -> int:
+    """Record a model run (parameters, regime probabilities, portfolios, backtest summary) and return its id."""
     with _conn() as c:
         cur = c.execute(
             "INSERT INTO model_runs (ts, version, params_hash, params, as_of, regime_probs, strategic, tactical, "
@@ -108,6 +110,7 @@ def save_run(result: Dict[str, Any], user: str) -> int:
 
 
 def list_runs(limit: int = 50):
+    """The most recent model runs, newest first."""
     with _conn() as c:
         rows = c.execute("SELECT id, ts, version, params_hash, as_of, regime_probs, strategic, tactical, user "
                          "FROM model_runs ORDER BY id DESC LIMIT ?", (int(limit),)).fetchall()
@@ -136,6 +139,15 @@ def _portfolio_block(assets, w, cov, mu_annual) -> Dict[str, Any]:
 
 async def run_model(params: Optional[Dict] = None, user: str = "system", persist: bool = True,
                     force: bool = False) -> Dict[str, Any]:
+    """Run the macro model: regime probabilities, strategic and tactical portfolios and the walk-forward backtest.
+    Results are cached by parameters; a saved snapshot is served at once while a refresh runs in the background.
+
+    Args:
+        params: parameter overrides (see ModelParams).
+        user: recorded with the run.
+        persist: save the run.
+        force: recompute even when a cached result exists.
+    """
     p = ModelParams.from_dict(params)
     key = params_hash(p)
     hit = _CACHE.get(key)

@@ -55,6 +55,11 @@ def parse(text: str) -> pd.DataFrame:
 
 
 def save(name: str, text: str, owner: str) -> Dict[str, Any]:
+    """Validate, parse and store an uploaded CSV dataset under `name`.
+
+    Raises:
+        ValueError: invalid name or unparseable data.
+    """
     name = (name or "").strip().lower()
     if not NAME_RE.match(name):
         raise ValueError("Name: 1–40 characters, lowercase letters, digits and _, starting with a letter.")
@@ -68,6 +73,7 @@ def save(name: str, text: str, owner: str) -> Dict[str, Any]:
 
 
 def catalog() -> List[Dict[str, Any]]:
+    """Uploaded datasets with owner, columns, rows and date range."""
     if not DIR.exists():
         return []
     out = []
@@ -80,6 +86,12 @@ def catalog() -> List[Dict[str, Any]]:
 
 
 def delete(name: str, owner: str, is_admin: bool = False) -> bool:
+    """Delete a dataset (its uploader or an administrator).
+
+    Raises:
+        LookupError: no such dataset.
+        PermissionError: not the uploader.
+    """
     meta_p = DIR / f"{name}.json"
     if not NAME_RE.match(name or "") or not meta_p.exists():
         raise LookupError("No such dataset.")
@@ -91,6 +103,11 @@ def delete(name: str, owner: str, is_admin: bool = False) -> bool:
 
 
 def load(name: str) -> pd.DataFrame:
+    """A dataset as a float DataFrame indexed by date.
+
+    Raises:
+        ValueError: not uploaded.
+    """
     if not NAME_RE.match(name or "") or not _path(name).exists():
         raise ValueError(f"Custom data '{name}' has not been uploaded (Quant Lab → Custom data).")
     df = pd.read_csv(_path(name), index_col=0, parse_dates=True)
@@ -112,10 +129,16 @@ def align(df: pd.DataFrame, index: pd.DatetimeIndex) -> pd.DataFrame:
 
 
 def frames(names: Sequence[str], index: pd.DatetimeIndex) -> Dict[str, pd.DataFrame]:
+    """The named datasets aligned to `index` (as-of, no look-ahead)."""
     return {n: align(load(n), index) for n in dict.fromkeys(names or [])}
 
 
 def spec(value: Any) -> List[str]:
+    """Normalise a CUSTOM_DATA value (a name or list) to validated names.
+
+    Raises:
+        ValueError: an invalid name.
+    """
     if value in (None, False, "", []):
         return []
     vals = [value] if isinstance(value, str) else list(value)

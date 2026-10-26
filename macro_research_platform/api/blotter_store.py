@@ -141,6 +141,7 @@ def book_fill(book: str, symbol: str, signed_qty: float, price: float, commissio
 
 
 def list_trades(limit: Optional[int] = None, book: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Fills from the blotter, newest first, optionally for one book."""
     init_db()
     q, args = "SELECT * FROM trades", []
     if book:
@@ -154,6 +155,7 @@ def list_trades(limit: Optional[int] = None, book: Optional[str] = None) -> List
 
 
 def set_order_fields(idea_id: int, **fields) -> None:
+    """Update order columns on a trade idea (unknown fields are ignored)."""
     init_db()
     cols = {k: v for k, v in fields.items() if k in _ORDER_COLUMNS}
     if not cols:
@@ -165,6 +167,7 @@ def set_order_fields(idea_id: int, **fields) -> None:
 
 
 def get_idea(idea_id: int) -> Optional[Dict[str, Any]]:
+    """One trade idea / order by id with its decoded history, or None."""
     init_db()
     with _conn() as conn:
         r = conn.execute("SELECT * FROM pm_trade_ideas WHERE id = ?", (idea_id,)).fetchone()

@@ -61,22 +61,26 @@ class _Enum:
 
 
 class Resolution(_Enum):
+    """LEAN's data resolutions. Only DAILY is simulated; finer resolutions run on daily bars (reported)."""
     TICK, SECOND, MINUTE, HOUR, DAILY = "tick", "second", "minute", "hour", "daily"
     Tick, Second, Minute, Hour, Daily = TICK, SECOND, MINUTE, HOUR, DAILY
 
 
 class OrderStatus(_Enum):
+    """LEAN's order statuses (NEW, SUBMITTED, PARTIALLY_FILLED, FILLED, CANCELED, INVALID)."""
     NEW, SUBMITTED, PARTIALLY_FILLED, FILLED, CANCELED, NONE, INVALID, CANCEL_PENDING, UPDATE_SUBMITTED = (
         "new", "submitted", "partially_filled", "filled", "canceled", "none", "invalid", "cancel_pending", "update_submitted")
     New, Submitted, PartiallyFilled, Filled, Canceled, Invalid = NEW, SUBMITTED, PARTIALLY_FILLED, FILLED, CANCELED, INVALID
 
 
 class OrderDirection(_Enum):
+    """LEAN's order direction (BUY, SELL, HOLD)."""
     BUY, SELL, HOLD = "buy", "sell", "hold"
     Buy, Sell, Hold = BUY, SELL, HOLD
 
 
 class OrderType(_Enum):
+    """LEAN's order types (market, limit, stop, market-on-open / close, trailing stop)."""
     MARKET, LIMIT, STOP_MARKET, STOP_LIMIT, MARKET_ON_OPEN, MARKET_ON_CLOSE, TRAILING_STOP = (
         "market", "limit", "stop_market", "stop_limit", "market_on_open", "market_on_close", "trailing_stop")
     Market, Limit, StopMarket, StopLimit, MarketOnOpen, MarketOnClose, TrailingStop = (
@@ -84,43 +88,51 @@ class OrderType(_Enum):
 
 
 class MovingAverageType(_Enum):
+    """LEAN's moving-average kinds for indicators that take one (SIMPLE, EXPONENTIAL, WILDERS …)."""
     SIMPLE, EXPONENTIAL, WILDERS = "simple", "exponential", "wilders"
     Simple, Exponential, Wilders = SIMPLE, EXPONENTIAL, WILDERS
 
 
 class DataNormalizationMode(_Enum):
+    """LEAN's price normalisation modes. Accepted for compatibility; prices are always split- and dividend-adjusted."""
     ADJUSTED, RAW, SPLIT_ADJUSTED, TOTAL_RETURN = "adjusted", "raw", "split_adjusted", "total_return"
     Adjusted, Raw, SplitAdjusted, TotalReturn = ADJUSTED, RAW, SPLIT_ADJUSTED, TOTAL_RETURN
 
 
 class BrokerageName(_Enum):
+    """LEAN's brokerage names. Accepted for compatibility; the Code Lab's cost model applies."""
     DEFAULT, INTERACTIVE_BROKERS_BROKERAGE, ALPACA, TRADIER_BROKERAGE, QUANTCONNECT_BROKERAGE = (
         "default", "ibkr", "alpaca", "tradier", "default")
     Default, InteractiveBrokersBrokerage, Alpaca = DEFAULT, INTERACTIVE_BROKERS_BROKERAGE, ALPACA
 
 
 class AccountType(_Enum):
+    """LEAN's account types (CASH, MARGIN). Accepted for compatibility."""
     MARGIN, CASH = "margin", "cash"
     Margin, Cash = MARGIN, CASH
 
 
 class DayOfWeek(_Enum):
+    """Days of the week for date rules."""
     MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY = range(5)
     Monday, Tuesday, Wednesday, Thursday, Friday = range(5)
 
 
 class Market(_Enum):
+    """LEAN's market names (USA, Oanda …). Accepted for compatibility."""
     USA = "usa"
     Usa = USA
 
 
 class SecurityType(_Enum):
+    """LEAN's security types (EQUITY, FOREX, CRYPTO …)."""
     EQUITY, FOREX, CRYPTO, CFD, INDEX, OPTION, FUTURE = "equity", "forex", "crypto", "cfd", "index", "option", "future"
     Equity, Forex, Crypto, Cfd, Index, Option, Future = EQUITY, FOREX, CRYPTO, CFD, INDEX, OPTION, FUTURE
 
 
 # ── symbols and data ─────────────────────────────────────────────────────────
 class Symbol:
+    """A security identifier. Wraps the ticker; `value` and `id` are the upper-case ticker."""
     def __init__(self, ticker: str):
         self.value = str(ticker).upper()
         self.id = self.value
@@ -139,6 +151,7 @@ class Symbol:
 
     @staticmethod
     def create(ticker: str, *a, **k) -> "Symbol":
+        """LEAN's Symbol.create: a Symbol for `ticker` (market and type are ignored)."""
         return Symbol(ticker)
 
 
@@ -177,6 +190,7 @@ def _sym(x: Any) -> str:
 
 
 class TradeBar:
+    """A daily OHLCV bar for one symbol."""
     def __init__(self, symbol: Symbol, time: datetime, o: float, h: float, l: float, c: float, v: float):
         self.symbol, self.time, self.end_time = symbol, time, time
         self.open, self.high, self.low, self.close, self.volume = o, h, l, c, v
@@ -208,9 +222,11 @@ class PythonData:
         raise AttributeError(k)
 
     def get_source(self, *a, **k):
+        """LEAN custom-data hook. Not used: custom data comes from uploaded CSVs (add_data)."""
         return None
 
     def reader(self, *a, **k):
+        """LEAN custom-data hook. Not used: custom data comes from uploaded CSVs (add_data)."""
         return None
 
     GetSource, Reader = get_source, reader
@@ -232,20 +248,25 @@ class Slice:
         return _sym(s) in self._b
 
     def contains_key(self, s) -> bool:
+        """Whether this slice has a bar for `symbol`."""
         return _sym(s) in self._b
 
     ContainsKey = contains_key
 
     def get(self, s, default=None):
+        """The bar for `symbol`, or `default`."""
         return self._b.get(_sym(s), default)
 
     def keys(self):
+        """Symbols with a bar in this slice."""
         return [b.symbol for b in self._b.values()]
 
     def values(self):
+        """The bars in this slice."""
         return list(self._b.values())
 
     def items(self):
+        """(symbol, bar) pairs in this slice."""
         return [(b.symbol, b) for b in self._b.values()]
 
     def __len__(self):
@@ -260,16 +281,19 @@ class _SymbolDict(dict):
         return dict.__contains__(self, _sym(s))
 
     def contains_key(self, s) -> bool:
+        """Whether `symbol` (a Symbol or ticker) is a key."""
         return _sym(s) in self
 
     ContainsKey = contains_key
 
     def get(self, s, default=None):
+        """The value for `symbol` (a Symbol or ticker), or `default`."""
         return dict.get(self, _sym(s), default)
 
 
 # ── indicators (stateful, LEAN definitions) ─────────────────────────────────
 class IndicatorDataPoint:
+    """An indicator value at a time (LEAN's IndicatorDataPoint)."""
     def __init__(self, time=None, value: float = 0.0):
         self.time, self.value = time, float(value)
         self.Value = self.value
@@ -293,22 +317,30 @@ class Indicator:
 
     @property
     def is_ready(self) -> bool:
+        """Whether the indicator has seen enough samples to be valid."""
         return self.samples >= self.warm_up_period
 
     IsReady = is_ready
 
     @property
     def value(self) -> float:
+        """The current value (shorthand for `current.value`)."""
         return self.current.value
 
     @property
     def Current(self):
+        """PascalCase alias of `current`."""
         return self.current
 
     def __float__(self):
         return self.current.value
 
     def update(self, time, value=None) -> bool:
+        """Feed one input (a value, or a TradeBar / data point).
+
+        Returns:
+            Whether the indicator is ready after this input.
+        """
         if value is None and isinstance(time, (TradeBar, IndicatorDataPoint)):
             bar = time
             time, value = bar.time, bar
@@ -323,6 +355,7 @@ class Indicator:
     Update = update
 
     def reset(self) -> None:
+        """Clear the indicator's state and sample count."""
         self.__init__(*self._args) if hasattr(self, "_args") else None
 
     Reset = reset
@@ -335,6 +368,7 @@ class Indicator:
 
 
 class SimpleMovingAverage(Indicator):
+    """Simple moving average of the last `period` inputs. LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"SMA({period})")
         self._args = (period, name)
@@ -398,6 +432,7 @@ def _ma(kind: str, period: int):
 
 
 class RelativeStrengthIndex(Indicator):
+    """Relative Strength Index (Wilder's smoothing by default). LEAN-compatible."""
     def __init__(self, period: int, moving_average_type: str = MovingAverageType.WILDERS, name: str = ""):
         super().__init__(name or f"RSI({period})")
         self._args = (period, moving_average_type, name)
@@ -420,6 +455,7 @@ class RelativeStrengthIndex(Indicator):
 
 
 class AverageTrueRange(Indicator):
+    """Average True Range (Wilder's smoothing). LEAN-compatible."""
     def __init__(self, period: int, moving_average_type: str = MovingAverageType.WILDERS, name: str = ""):
         super().__init__(name or f"ATR({period})")
         self._args = (period, moving_average_type, name)
@@ -454,6 +490,7 @@ class StandardDeviation(Indicator):
 
 
 class BollingerBands(Indicator):
+    """Bollinger Bands: middle SMA ± k population standard deviations. LEAN-compatible."""
     def __init__(self, period: int, k: float, moving_average_type: str = MovingAverageType.SIMPLE, name: str = ""):
         super().__init__(name or f"BB({period},{k})")
         self._args = (period, k, moving_average_type, name)
@@ -476,6 +513,7 @@ class BollingerBands(Indicator):
 
 
 class MovingAverageConvergenceDivergence(Indicator):
+    """MACD: fast EMA − slow EMA, with its signal line and histogram. LEAN-compatible."""
     def __init__(self, fast: int, slow: int, signal: int, moving_average_type: str = MovingAverageType.EXPONENTIAL,
                  name: str = ""):
         super().__init__(name or f"MACD({fast},{slow},{signal})")
@@ -498,6 +536,7 @@ class MovingAverageConvergenceDivergence(Indicator):
 
 
 class RateOfChange(Indicator):
+    """Rate of change over `period` (a fraction). LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"ROC({period})")
         self._args = (period, name)
@@ -511,12 +550,14 @@ class RateOfChange(Indicator):
 
 
 class RateOfChangePercent(RateOfChange):
+    """Rate of change over `period` in percent. LEAN-compatible."""
     def _compute(self, value):
         r = super()._compute(value)
         return None if r is None else 100 * r
 
 
 class Momentum(Indicator):
+    """Difference between the input and its value `period` inputs ago. LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"MOM({period})")
         self._args = (period, name)
@@ -530,6 +571,7 @@ class Momentum(Indicator):
 
 
 class Maximum(Indicator):
+    """Maximum over the last `period` inputs. LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"MAX({period})")
         self._args = (period, name)
@@ -542,12 +584,14 @@ class Maximum(Indicator):
 
 
 class Minimum(Maximum):
+    """Minimum over the last `period` inputs. LEAN-compatible."""
     def _compute(self, value):
         self._w.append(self._x(value))
         return min(self._w)
 
 
 class AverageDirectionalIndex(Indicator):
+    """Average Directional Index (trend strength). LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"ADX({period})")
         self._args = (period, name)
@@ -593,6 +637,7 @@ class RollingWindow:
         self.most_recently_removed = None
 
     def add(self, x) -> None:
+        """Push a value. Index 0 is the newest; the oldest drops off when full."""
         if len(self._d) == self.size:
             self.most_recently_removed = self._d[-1]
         self._d.appendleft(x)
@@ -617,12 +662,14 @@ class RollingWindow:
 
     @property
     def count(self) -> int:
+        """Number of values held."""
         return len(self._d)
 
     Count = count
 
     @property
     def is_ready(self) -> bool:
+        """Whether the window is full."""
         return len(self._d) == self.size
 
     IsReady = is_full = IsFull = is_ready
@@ -631,6 +678,7 @@ class RollingWindow:
     MostRecentlyRemoved = property(lambda self: self.most_recently_removed)
 
     def reset(self) -> None:
+        """Empty the window."""
         self._d.clear()
 
     Reset = reset
@@ -638,6 +686,7 @@ class RollingWindow:
 
 # ── portfolio, securities, orders ────────────────────────────────────────────
 class Security:
+    """A subscribed security: symbol, resolution, latest OHLC prices and holdings."""
     def __init__(self, ticker: str, resolution: str):
         self.symbol = Symbol(ticker)
         self.Symbol = self.symbol
@@ -649,20 +698,24 @@ class Security:
 
     @property
     def Price(self):
+        """PascalCase alias of `price`."""
         return self.price
 
     def set_data_normalization_mode(self, mode) -> None:
+        """Accepted for compatibility; prices are always adjusted (reported)."""
         pass                                                     # prices are total-return adjusted (reported)
 
     SetDataNormalizationMode = set_data_normalization_mode
 
     def set_leverage(self, leverage) -> None:
+        """Accepted for compatibility; leverage follows the Code Lab's margin rules (reported)."""
         pass
 
     SetLeverage = set_leverage
 
 
 class SecurityHolding:
+    """Holdings of one security: quantity, average price and market value."""
     def __init__(self, symbol: Symbol):
         self.symbol = symbol
         self.quantity = 0.0
@@ -671,40 +724,48 @@ class SecurityHolding:
 
     @property
     def invested(self) -> bool:
+        """Whether any quantity is held."""
         return abs(self.quantity) > 1e-9
 
     Invested = invested
 
     @property
     def is_long(self) -> bool:
+        """Whether the position is long."""
         return self.quantity > 1e-9
 
     @property
     def is_short(self) -> bool:
+        """Whether the position is short."""
         return self.quantity < -1e-9
 
     @property
     def holdings_value(self) -> float:
+        """Signed market value (quantity × price)."""
         return self.quantity * (self.price if np.isfinite(self.price) else 0.0)
 
     HoldingsValue = holdings_value
 
     @property
     def absolute_holdings_value(self) -> float:
+        """Absolute market value."""
         return abs(self.holdings_value)
 
     @property
     def unrealized_profit(self) -> float:
+        """Unrealised P&L against the average price."""
         return self.quantity * ((self.price if np.isfinite(self.price) else 0.0) - self.average_price)
 
     UnrealizedProfit = unrealized_profit
 
     @property
     def Quantity(self):
+        """PascalCase alias of `quantity`."""
         return self.quantity
 
 
 class Portfolio(dict):
+    """The algorithm's portfolio: cash and holdings by symbol (LEAN's SecurityPortfolioManager)."""
     def __init__(self, algo: "QCAlgorithm"):
         super().__init__()
         self._algo = algo
@@ -720,34 +781,40 @@ class Portfolio(dict):
 
     @property
     def total_portfolio_value(self) -> float:
+        """Cash plus the market value of all holdings."""
         return self._algo._ql_ctx.nav * self._algo._ql_capital
 
     TotalPortfolioValue = total_portfolio_value
 
     @property
     def cash(self) -> float:
+        """Cash balance."""
         return self._algo._ql_ctx.cash * self._algo._ql_capital
 
     Cash = cash
 
     @property
     def total_holdings_value(self) -> float:
+        """Gross market value of all holdings."""
         return sum(abs(h.holdings_value) for h in self.values())
 
     TotalHoldingsValue = total_holdings_value
 
     @property
     def invested(self) -> bool:
+        """Whether any position is held."""
         return any(h.invested for h in self.values())
 
     Invested = invested
 
     @property
     def margin_remaining(self) -> float:
+        """Approximate margin remaining: equity less 50% of gross holdings (Reg-T style)."""
         return self.total_portfolio_value - 0.5 * self.total_holdings_value
 
 
 class OrderEvent:
+    """An order fill or status change passed to on_order_event."""
     def __init__(self, order_id: int, symbol: Symbol, time, status: str, fill_price: float = 0.0, fill_quantity: float = 0.0,
                  message: str = ""):
         self.order_id, self.symbol, self.utc_time, self.status = order_id, symbol, time, status
@@ -762,6 +829,7 @@ class OrderEvent:
 
 
 class OrderTicket:
+    """A handle on a submitted order: status, filled quantity and average fill price."""
     def __init__(self, algo, order_id: int, symbol: Symbol, quantity: float, order_type: str, tag: str = "", **prices):
         self._algo = algo
         self.order_id, self.symbol, self.quantity, self.order_type, self.tag = order_id, symbol, quantity, order_type, tag
@@ -774,17 +842,21 @@ class OrderTicket:
 
     @property
     def Status(self):
+        """PascalCase alias of `status`."""
         return self.status
 
     @property
     def QuantityFilled(self):
+        """PascalCase alias of `quantity_filled`."""
         return self.quantity_filled
 
     @property
     def AverageFillPrice(self):
+        """PascalCase alias of `average_fill_price`."""
         return self.average_fill_price
 
     def cancel(self, tag: str = "") -> bool:
+        """Cancel the order if still open."""
         if self.status in (OrderStatus.FILLED, OrderStatus.CANCELED, OrderStatus.INVALID):
             return False
         ok = self._algo._ql_ctx.cancel_order(self.order_id)
@@ -806,10 +878,12 @@ class OrderTicket:
 
 
 class Transactions:
+    """Order management (LEAN's SecurityTransactionManager)."""
     def __init__(self, algo):
         self._algo = algo
 
     def get_open_orders(self, symbol=None) -> List[OrderTicket]:
+        """Open orders, optionally for one symbol."""
         return [t for t in self._algo._ql_tickets.values() if t.status in (OrderStatus.SUBMITTED, OrderStatus.PARTIALLY_FILLED)
                 and (symbol is None or t.symbol == _sym(symbol))]
 
@@ -818,6 +892,7 @@ class Transactions:
     GetOpenOrderTickets = get_open_orders
 
     def cancel_open_orders(self, symbol=None, tag: str = "") -> List[OrderTicket]:
+        """Cancel open orders, optionally for one symbol."""
         out = []
         for t in self.get_open_orders(symbol):
             if t.cancel(tag):
@@ -827,33 +902,40 @@ class Transactions:
     CancelOpenOrders = cancel_open_orders
 
     def get_order_ticket(self, order_id: int) -> Optional[OrderTicket]:
+        """The ticket of an order id, or None."""
         return self._algo._ql_tickets.get(order_id)
 
     GetOrderTicket = get_order_ticket
 
     def get_order_tickets(self) -> List[OrderTicket]:
+        """All order tickets."""
         return list(self._algo._ql_tickets.values())
 
 
 # ── schedule ─────────────────────────────────────────────────────────────────
 class DateRule:
+    """Which sessions a scheduled event runs on."""
     def __init__(self, name: str, fn: Callable[[pd.Timestamp, pd.DatetimeIndex, int], bool]):
         self.name, self._fn = name, fn
 
 
 class TimeRule:
+    """When in the session a scheduled event runs (reported; daily runs fire at the close decision)."""
     def __init__(self, name: str):
         self.name = name
 
 
 class DateRules:
+    """Factory of date rules (LEAN's self.date_rules)."""
     def __init__(self, algo):
         self._a = algo
 
     def every_day(self, *a, **k) -> DateRule:
+        """Every trading session."""
         return DateRule("every_day", lambda d, idx, i: True)
 
     def every(self, *days) -> DateRule:
+        """Sessions on the given days of the week."""
         ds = set()
         for d in days:
             ds |= set(d) if isinstance(d, (list, tuple, set)) else {d}
@@ -868,24 +950,31 @@ class DateRules:
         return DateRule(f"{'end' if from_end else 'start'} of {period}+{offset}", f)
 
     def week_start(self, symbol=None, days_offset: int = 0) -> DateRule:
+        """The first session of each week (optionally offset)."""
         return self._nth("W", False, days_offset)
 
     def week_end(self, symbol=None, days_offset: int = 0) -> DateRule:
+        """The last session of each week."""
         return self._nth("W", True, days_offset)
 
     def month_start(self, symbol=None, days_offset: int = 0) -> DateRule:
+        """The first session of each month (optionally offset)."""
         return self._nth("M", False, days_offset)
 
     def month_end(self, symbol=None, days_offset: int = 0) -> DateRule:
+        """The last session of each month."""
         return self._nth("M", True, days_offset)
 
     def year_start(self, symbol=None, days_offset: int = 0) -> DateRule:
+        """The first session of each year."""
         return self._nth("Y", False, days_offset)
 
     def year_end(self, symbol=None, days_offset: int = 0) -> DateRule:
+        """The last session of each year."""
         return self._nth("Y", True, days_offset)
 
     def on(self, *dates) -> DateRule:
+        """Specific dates."""
         ds = {pd.Timestamp(d).normalize() for d in (dates[0] if len(dates) == 1 and isinstance(dates[0], (list, tuple)) else dates)}
         return DateRule("on", lambda d, idx, i: d.normalize() in ds)
 
@@ -894,38 +983,47 @@ class DateRules:
 
 
 class TimeRules:
+    """Factory of time rules (LEAN's self.time_rules)."""
     def __init__(self, algo):
         self._a = algo
 
     def at(self, hour: int = 0, minute: int = 0, *a, **k) -> TimeRule:
+        """A clock time (runs at the session's close decision on daily data)."""
         return TimeRule(f"at {hour:02d}:{minute:02d}")
 
     def after_market_open(self, symbol=None, minutes_after_open: float = 0, *a, **k) -> TimeRule:
+        """Minutes after the open (runs at the close decision on daily data)."""
         return TimeRule(f"{minutes_after_open} min after the open")
 
     def before_market_close(self, symbol=None, minutes_before_close: float = 0, *a, **k) -> TimeRule:
+        """Minutes before the close."""
         return TimeRule(f"{minutes_before_close} min before the close")
 
     def every(self, interval=None) -> TimeRule:
+        """Every interval (once per session on daily data)."""
         return TimeRule("every interval")
 
     @property
     def midnight(self) -> TimeRule:
+        """Midnight."""
         return TimeRule("midnight")
 
     @property
     def noon(self) -> TimeRule:
+        """Noon."""
         return TimeRule("noon")
 
     At, AfterMarketOpen, BeforeMarketClose, Every = at, after_market_open, before_market_close, every
 
 
 class Schedule:
+    """Scheduled events (LEAN's self.schedule)."""
     def __init__(self, algo):
         self._a = algo
         self.events: List[tuple] = []
 
     def on(self, date_rule: DateRule, time_rule: TimeRule, callback: Callable, *a) -> None:
+        """Run `callback` on sessions matching `date_rule` at `time_rule`."""
         if not callable(callback):
             raise ValueError("schedule.on(date_rule, time_rule, callback): the callback must be a method or function.")
         self.events.append((date_rule, time_rule, callback))
@@ -941,6 +1039,11 @@ class _UniverseHelper:
         self.dollar_volume = _DollarVolume(algo)
 
     def etf(self, ticker, *a, **k):
+        """A constituents universe. Only the S&P 500 (SPY, IVV, VOO, SPLG) has free point-in-time members.
+
+        Raises:
+            NotImplementedError: any other ETF.
+        """
         t = _sym(ticker)
         if t in ("SPY", "IVV", "VOO", "SPLG"):
             return "__SP500_PIT__"
@@ -955,6 +1058,7 @@ class _DollarVolume:
         self._a = algo
 
     def top(self, n: int):
+        """A selector keeping the `n` symbols with the highest dollar volume."""
         return lambda funds: [f.symbol for f in sorted(funds, key=lambda f: -f.dollar_volume)[:int(n)]]
 
     Top = top
@@ -965,6 +1069,7 @@ class _Field(float):
 
     @property
     def value(self):
+        """The fundamental field as a float (LEAN's `.value`)."""
         return float(self)
 
     one_year = twelve_months = three_months = value
@@ -977,6 +1082,7 @@ class _Group:
 
 
 class MorningstarSectorCode(_Enum):
+    """Morningstar sector codes (LEAN's MorningstarSectorCode)."""
     BASIC_MATERIALS, CONSUMER_CYCLICAL, FINANCIAL_SERVICES, REAL_ESTATE = 101, 102, 103, 104
     CONSUMER_DEFENSIVE, HEALTHCARE, UTILITIES = 205, 206, 207
     COMMUNICATION_SERVICES, ENERGY, INDUSTRIALS, TECHNOLOGY = 308, 309, 310, 311
@@ -994,6 +1100,7 @@ _MS_SECTOR = {"technology": 311, "information technology": 311, "financial servi
 
 
 def morningstar_sector(name: Optional[str]) -> float:
+    """The Morningstar sector code of a sector name, or NaN."""
     return float(_MS_SECTOR.get(str(name or "").strip().lower(), float("nan")))
 
 
@@ -1005,7 +1112,8 @@ FUND_FIELDS = {"market_cap": "market_cap", "pe_ratio": "earnings_yield", "earnin
 
 
 class Fundamental:
-    """What a universe selector receives per stock and session: price, volume, dollar volume, and — when the selector uses
+    """What a universe selector receives per stock and session: price, volume, dollar volume, and — when the selector
+    uses
     them — point-in-time fundamentals from SEC filings (US filers): market_cap; valuation_ratios.pe_ratio, pb_ratio,
     ps_ratio, earning_yield, fcf_yield; operation_ratios.roe, gross_margin, debt_to_assets;
     earning_reports.basic_eps.twelve_months. Missing values are NaN; has_fundamental_data says whether any exist."""
@@ -1040,6 +1148,7 @@ CoarseFundamental = Fundamental
 
 
 class SecurityChanges:
+    """Securities added to and removed from the universe, passed to on_securities_changed."""
     def __init__(self, added: List[Security], removed: List[Security]):
         self.added_securities, self.removed_securities = added, removed
         self.AddedSecurities, self.RemovedSecurities = added, removed
@@ -1057,6 +1166,9 @@ class PortfolioTarget:
 
     @staticmethod
     def percent(algorithm, symbol, percent: float, *a, **k) -> Optional["PortfolioTarget"]:
+        """A target of `percent` of portfolio value in `symbol`, converted to shares at the latest price (None without
+        a price).
+        """
         t = _sym(symbol)
         px = algorithm._ql_price(t)
         if not px or not np.isfinite(px):
@@ -1086,16 +1198,19 @@ class _UniverseSettings:
 
 # ── Algorithm Framework (alpha → portfolio construction → risk → execution) ──
 class InsightDirection(_Enum):
+    """Insight direction: UP, DOWN, FLAT."""
     UP, DOWN, FLAT = 1, -1, 0
     Up, Down, Flat = UP, DOWN, FLAT
 
 
 class InsightType(_Enum):
+    """Insight type: PRICE or VOLATILITY."""
     PRICE, VOLATILITY = "price", "volatility"
     Price, Volatility = PRICE, VOLATILITY
 
 
 class PortfolioBias(_Enum):
+    """Allowed direction for portfolio construction: LONG, SHORT, LONG_SHORT."""
     LONG, SHORT, LONG_SHORT = 1, -1, 0
     Long, Short, LongShort = LONG, SHORT, LONG_SHORT
 
@@ -1110,7 +1225,8 @@ def _period_days(period) -> int:
 
 
 class Insight:
-    """A prediction: symbol, direction (UP / DOWN / FLAT), how long it holds (period), optional magnitude, confidence and
+    """A prediction: symbol, direction (UP / DOWN / FLAT), how long it holds (period), optional magnitude, confidence
+    and
     weight. Active from the session it is emitted until its period (in sessions on daily data) has passed."""
 
     def __init__(self, symbol, period, type=InsightType.PRICE, direction=InsightDirection.FLAT, magnitude=None,
@@ -1128,17 +1244,20 @@ class Insight:
 
     @staticmethod
     def price(symbol, period, direction, magnitude=None, confidence=None, source_model=None, weight=None, tag="") -> "Insight":
+        """A price insight for `symbol` over `period` sessions."""
         return Insight(symbol, period, InsightType.PRICE, direction, magnitude, confidence, source_model, weight, tag)
 
     Price = price
 
     @staticmethod
     def group(*insights) -> List["Insight"]:
+        """Insights as one list (accepts a list or varargs)."""
         return list(insights[0]) if len(insights) == 1 and isinstance(insights[0], (list, tuple)) else list(insights)
 
     Group = group
 
     def is_active(self, i: int) -> bool:
+        """Whether the insight's period has not yet expired."""
         return self._born is not None and i < self._born + self._bars
 
     def __repr__(self):
@@ -1170,13 +1289,16 @@ class AlphaModel:
         self.name = type(self).__name__
 
     def update(self, algorithm, data) -> List[Insight]:
+        """Emit insights for this slice (override)."""
         return []
 
     def on_securities_changed(self, algorithm, changes) -> None:
+        """React to universe changes (override)."""
         pass
 
 
 class NullAlphaModel(AlphaModel):
+    """An alpha model that emits nothing."""
     pass
 
 
@@ -1190,6 +1312,7 @@ class ConstantAlphaModel(AlphaModel):
         self._last: Dict[str, int] = {}
 
     def update(self, algorithm, data):
+        """Emit the same insight for every security each period."""
         out, i, n = [], algorithm._ql_ctx.i, _period_days(self.period)
         for t in list(algorithm.securities.keys()):
             if t in data and (t not in self._last or i - self._last[t] >= n):
@@ -1208,6 +1331,7 @@ class EmaCrossAlphaModel(AlphaModel):
         self._s: Dict[str, Dict[str, Any]] = {}
 
     def on_securities_changed(self, algorithm, changes):
+        """Create or drop the fast / slow EMAs for changed securities."""
         for sec in changes.added_securities:
             t = _sym(sec)
             if t not in self._s:
@@ -1219,6 +1343,7 @@ class EmaCrossAlphaModel(AlphaModel):
             self._s.pop(_sym(sec), None)
 
     def update(self, algorithm, data):
+        """UP when the fast EMA crosses above the slow, DOWN when it crosses below."""
         out = []
         for t, st in self._s.items():
             f, s = st["fast"], st["slow"]
@@ -1243,6 +1368,7 @@ class MacdAlphaModel(AlphaModel):
         self.bounce = 0.01
 
     def on_securities_changed(self, algorithm, changes):
+        """Create or drop the MACD for changed securities."""
         for sec in changes.added_securities:
             t = _sym(sec)
             if t not in self._s:
@@ -1253,6 +1379,7 @@ class MacdAlphaModel(AlphaModel):
             self._s.pop(_sym(sec), None)
 
     def update(self, algorithm, data):
+        """Direction from the MACD signal crossing, with a bounce threshold."""
         out = []
         for t, st in self._s.items():
             m = st["macd"]
@@ -1276,6 +1403,7 @@ class RsiAlphaModel(AlphaModel):
         self._s: Dict[str, Dict[str, Any]] = {}
 
     def on_securities_changed(self, algorithm, changes):
+        """Create or drop the RSI for changed securities."""
         for sec in changes.added_securities:
             t = _sym(sec)
             if t not in self._s:
@@ -1286,6 +1414,7 @@ class RsiAlphaModel(AlphaModel):
             self._s.pop(_sym(sec), None)
 
     def update(self, algorithm, data):
+        """UP when RSI leaves oversold (below 30), DOWN when it leaves overbought (above 70)."""
         out = []
         for t, st in self._s.items():
             r = st["rsi"]
@@ -1309,6 +1438,7 @@ class HistoricalReturnsAlphaModel(AlphaModel):
         self.lookback = int(lookback)
 
     def update(self, algorithm, data):
+        """Direction and magnitude from each security's return over the lookback."""
         out = []
         for t in list(algorithm.securities.keys()):
             if t not in data:
@@ -1334,9 +1464,11 @@ class PortfolioConstructionModel:
         self._next = None
 
     def create_targets(self, algorithm, insights) -> List["PortfolioTarget"]:
+        """Turn active insights into portfolio targets (override)."""
         return []
 
     def on_securities_changed(self, algorithm, changes) -> None:
+        """React to universe changes (override)."""
         pass
 
     def _due(self, algorithm) -> bool:
@@ -1369,6 +1501,7 @@ class PortfolioConstructionModel:
 
 
 class NullPortfolioConstructionModel(PortfolioConstructionModel):
+    """Portfolio construction that creates no targets."""
     def __init__(self, *a, **k):
         super().__init__(None)
 
@@ -1377,6 +1510,7 @@ class EqualWeightingPortfolioConstructionModel(PortfolioConstructionModel):
     """Equal weight across the active insights' directions (FLAT → 0), as LEAN."""
 
     def create_targets(self, algorithm, insights):
+        """Equal weight across securities with an active UP / DOWN insight."""
         act = [i for i in insights if self._bias_ok(i.direction)]
         n = sum(1 for i in act if i.direction != 0)
         w = {i.symbol.value: (i.direction / n if n else 0.0) for i in act}
@@ -1389,6 +1523,7 @@ class InsightWeightingPortfolioConstructionModel(PortfolioConstructionModel):
     _attr = "weight"
 
     def create_targets(self, algorithm, insights):
+        """Weights in proportion to each insight's weight (scaled down if they exceed 100%)."""
         act = [i for i in insights if self._bias_ok(i.direction) and getattr(i, self._attr) is not None]
         tot = sum(abs(float(getattr(i, self._attr))) for i in act)
         scale = 1.0 / tot if tot > 1 else 1.0
@@ -1397,6 +1532,7 @@ class InsightWeightingPortfolioConstructionModel(PortfolioConstructionModel):
 
 
 class ConfidenceWeightingPortfolioConstructionModel(InsightWeightingPortfolioConstructionModel):
+    """Weights in proportion to each insight's confidence."""
     _attr = "confidence"
 
 
@@ -1408,6 +1544,7 @@ class RiskParityPortfolioConstructionModel(PortfolioConstructionModel):
         self.lookback = int(lookback)
 
     def create_targets(self, algorithm, insights):
+        """Inverse-volatility (risk-parity) weights across active insights."""
         act = [i for i in insights if self._bias_ok(i.direction) and i.direction != 0]
         inv = {}
         for i in act:
@@ -1425,13 +1562,16 @@ class RiskManagementModel:
     """Override manage_risk(algorithm, targets) → targets that override the portfolio model's for their symbols."""
 
     def manage_risk(self, algorithm, targets) -> List["PortfolioTarget"]:
+        """Adjust targets to manage risk (override)."""
         return []
 
     def on_securities_changed(self, algorithm, changes) -> None:
+        """React to universe changes (override)."""
         pass
 
 
 class NullRiskManagementModel(RiskManagementModel):
+    """Risk management that changes nothing."""
     pass
 
 
@@ -1442,6 +1582,7 @@ class MaximumDrawdownPercentPerSecurity(RiskManagementModel):
         self.limit = abs(float(maximum_drawdown_percent))
 
     def manage_risk(self, algorithm, targets):
+        """Liquidate a security whose unrealised loss exceeds the limit."""
         out = []
         for t, h in algorithm.portfolio.items():
             if h.invested and h.average_price and np.isfinite(h.price):
@@ -1458,6 +1599,7 @@ class MaximumUnrealizedProfitPercentPerSecurity(RiskManagementModel):
         self.limit = abs(float(maximum_unrealized_profit_percent))
 
     def manage_risk(self, algorithm, targets):
+        """Take profit on a security whose unrealised gain exceeds the limit."""
         out = []
         for t, h in algorithm.portfolio.items():
             if h.invested and h.average_price and np.isfinite(h.price):
@@ -1475,6 +1617,7 @@ class MaximumDrawdownPercentPortfolio(RiskManagementModel):
         self._ref = None
 
     def manage_risk(self, algorithm, targets):
+        """Liquidate everything when the portfolio's drawdown (from start or peak) exceeds the limit."""
         v = algorithm.portfolio.total_portfolio_value
         if self._ref is None or (self.trailing and v > self._ref):
             self._ref = v
@@ -1492,6 +1635,7 @@ class TrailingStopRiskManagementModel(RiskManagementModel):
         self._best: Dict[str, float] = {}
 
     def manage_risk(self, algorithm, targets):
+        """Liquidate a security that falls the given percentage from its high since entry."""
         out = []
         for t, h in algorithm.portfolio.items():
             if not h.invested or not np.isfinite(h.price):
@@ -1509,10 +1653,12 @@ class TrailingStopRiskManagementModel(RiskManagementModel):
 
 
 class CompositeRiskManagementModel(RiskManagementModel):
+    """Several risk models applied in turn."""
     def __init__(self, *models):
         self.models = list(models[0]) if len(models) == 1 and isinstance(models[0], (list, tuple)) else list(models)
 
     def manage_risk(self, algorithm, targets):
+        """Apply each risk model in order."""
         out = []
         for m in self.models:
             out += _as_list(_call(m, "manage_risk", algorithm, targets))
@@ -1523,13 +1669,16 @@ class ExecutionModel:
     """Override execute(algorithm, targets): place the orders that move holdings to the targets."""
 
     def execute(self, algorithm, targets) -> None:
+        """Place orders to reach the targets (override)."""
         pass
 
     def on_securities_changed(self, algorithm, changes) -> None:
+        """React to universe changes (override)."""
         pass
 
 
 class NullExecutionModel(ExecutionModel):
+    """Execution that places no orders."""
     pass
 
 
@@ -1537,6 +1686,7 @@ class ImmediateExecutionModel(ExecutionModel):
     """Market orders for the difference between each target and holdings plus open orders (LEAN)."""
 
     def execute(self, algorithm, targets):
+        """Market orders for the difference between targets and holdings."""
         for tg in targets:
             t = _sym(tg.symbol)
             q = tg.quantity - algorithm.portfolio[t].quantity - algorithm._ql_open_quantity_all(t)
@@ -1549,6 +1699,7 @@ VolumeWeightedAveragePriceExecutionModel = StandardDeviationExecutionModel = Spr
 
 
 class UniverseSelectionModel:
+    """Base of universe selection models."""
     pass
 
 
@@ -1566,6 +1717,7 @@ class FundamentalUniverseSelectionModel(UniverseSelectionModel):
         self.selector = selector
 
     def select(self, algorithm, fundamentals):
+        """Run the selector on this session's fundamentals."""
         return self.selector(fundamentals) if self.selector else []
 
 
@@ -1587,9 +1739,11 @@ class _Framework:
         self.used = False
 
     def models(self) -> list:
+        """Every framework model: alphas, portfolio construction, execution and risk."""
         return self.alphas + [m for m in (self.pcm, self.execution) if m is not None] + self.risk
 
     def securities_changed(self, algo, changes) -> None:
+        """Pass universe changes to every model that handles them."""
         for m in self.models():
             if hasattr(m, "on_securities_changed") or hasattr(m, "OnSecuritiesChanged"):
                 _call(m, "on_securities_changed", algo, changes)
@@ -1637,6 +1791,7 @@ class _Framework:
 
 # ── consolidators: daily bars → weekly, monthly, quarterly or n-session bars ──
 class Calendar(_Enum):
+    """Consolidation calendars: weekly, monthly, quarterly, yearly."""
     WEEKLY, MONTHLY, QUARTERLY, YEARLY = "W", "M", "Q", "Y"
     Weekly, Monthly, Quarterly, Yearly = WEEKLY, MONTHLY, QUARTERLY, YEARLY
 
@@ -1657,12 +1812,14 @@ class _Event:
         return self
 
     def fire(self, sender, bar) -> None:
+        """Call every handler with the consolidated bar."""
         for h in list(self.handlers):
             h(sender, bar)
 
 
 class TradeBarConsolidator:
-    """Builds bars from daily bars: a Calendar period (WEEKLY / MONTHLY / QUARTERLY / YEARLY), a whole number of sessions,
+    """Builds bars from daily bars: a Calendar period (WEEKLY / MONTHLY / QUARTERLY / YEARLY), a whole number of
+    sessions,
     or a timedelta of whole days (7 → weekly, 30/31 → monthly, else that many sessions). A bar is emitted on the last
     session of its period. Intraday periods need intraday data, which the platform does not have."""
 
@@ -1697,6 +1854,7 @@ class TradeBarConsolidator:
         self.data_consolidated.fire(self, bar)
 
     def update(self, bar: TradeBar, next_time=None) -> None:
+        """Add a daily bar; emit the consolidated bar when its period (sessions or calendar) completes."""
         self._bars.append(bar)
         if isinstance(self.period, int):
             if len(self._bars) >= self.period:
@@ -1717,9 +1875,11 @@ class _SubscriptionManager:
         self._a = algo
 
     def add_consolidator(self, symbol, consolidator) -> None:
+        """Feed a symbol's daily bars into a consolidator."""
         self._a._ql_consolidators.append((_sym(symbol), consolidator))
 
     def remove_consolidator(self, symbol, consolidator) -> None:
+        """Stop feeding a consolidator."""
         self._a._ql_consolidators = [(s, c) for s, c in self._a._ql_consolidators if c is not consolidator]
 
     AddConsolidator, RemoveConsolidator = add_consolidator, remove_consolidator
@@ -1739,6 +1899,7 @@ class ObjectStore:
         return sum(len(k) + len(v) for k, v in self._d.items())
 
     def save(self, key: str, value) -> bool:
+        """Store a string under `key` (kept between runs of the same algorithm)."""
         v = value if isinstance(value, str) else str(value)
         old = self._d.get(str(key))
         self._d[str(key)] = v
@@ -1751,38 +1912,51 @@ class ObjectStore:
         return True
 
     def read(self, key: str) -> str:
+        """The string under `key`."""
         if str(key) not in self._d:
             raise KeyError(f"object store has no key '{key}'")
         return self._d[str(key)]
 
     def save_bytes(self, key: str, data) -> bool:
+        """Store bytes under `key`."""
         import base64
         return self.save(key, "b64:" + base64.b64encode(bytes(data)).decode())
 
     def read_bytes(self, key: str) -> bytes:
+        """The bytes under `key`."""
         import base64
         v = self.read(key)
         return base64.b64decode(v[4:]) if v.startswith("b64:") else v.encode()
 
     def save_json(self, key: str, obj) -> bool:
+        """Store a JSON-serialisable object under `key`."""
         import json as _json
         return self.save(key, _json.dumps(obj, default=str))
 
     def read_json(self, key: str):
+        """The object under `key`."""
         import json as _json
         return _json.loads(self.read(key))
 
     def contains_key(self, key: str) -> bool:
+        """Whether `key` is stored."""
         return str(key) in self._d
 
     def delete(self, key: str) -> bool:
+        """Remove `key`."""
         return self._d.pop(str(key), None) is not None
 
     @property
     def keys(self) -> List[str]:
+        """All stored keys."""
         return list(self._d)
 
     def get_file_path(self, key: str):
+        """Not available: strategy code has no file access.
+
+        Raises:
+            NotImplementedError: always.
+        """
         raise NotImplementedError("object_store.get_file_path: strategy code has no file access — use save / read.")
 
     Save, Read, SaveBytes, ReadBytes, ContainsKey, Delete, GetFilePath = (
@@ -1839,81 +2013,113 @@ class QCAlgorithm:
 
     # lifecycle (overridden by the user)
     def initialize(self) -> None:
+        """Set up the algorithm: dates, cash, securities, indicators and schedules (override)."""
         pass
 
     def on_data(self, data: Slice) -> None:
+        """Called after each session's close with that day's slice (override)."""
         pass
 
     def on_securities_changed(self, changes: SecurityChanges) -> None:
+        """Called when the universe adds or removes securities (override)."""
         pass
 
     def on_order_event(self, order_event: OrderEvent) -> None:
+        """Called on each fill or order status change (override)."""
         pass
 
     def on_end_of_day(self, symbol=None) -> None:
+        """Called at the end of each session (override)."""
         pass
 
     def on_warmup_finished(self) -> None:
+        """Called once warm-up ends (override)."""
         pass
 
     def on_end_of_algorithm(self) -> None:
+        """Called after the last session (override)."""
         pass
 
     @property
     def Time(self):
+        """PascalCase alias of `time`."""
         return self.time
 
     @property
     def IsWarmingUp(self):
+        """PascalCase alias of `is_warming_up`."""
         return self.is_warming_up
 
     # set-up (the static importer reads the literal arguments of these; at run time they only record)
     def set_start_date(self, *a, **k) -> None:
+        """First backtest date (year, month, day or a date)."""
         pass
 
     def set_end_date(self, *a, **k) -> None:
+        """Last backtest date."""
         pass
 
     def set_cash(self, *a, **k) -> None:
+        """Starting cash."""
         pass
 
     def set_benchmark(self, symbol) -> None:
+        """Benchmark symbol for the statistics."""
         self.benchmark = _sym(symbol)
 
     def set_time_zone(self, *a, **k) -> None:
+        """Accepted for compatibility; daily bars are exchange-dated."""
         pass
 
     def set_brokerage_model(self, *a, **k) -> None:
+        """Accepted for compatibility; the Code Lab's cost model applies (reported)."""
         if AccountType.CASH in a or k.get("account_type") == AccountType.CASH or k.get("accountType") == AccountType.CASH:
             self._ql_account = AccountType.CASH
 
     def set_security_initializer(self, *a, **k) -> None:
+        """Ignored; the Code Lab's cost and fill models apply (reported)."""
         self._ql_approx.add("set_security_initializer: ignored (the Code Lab's cost and fill models apply)")
 
     def set_warm_up(self, period, resolution=None) -> None:
+        """Warm up for `n` sessions (or a timedelta) before the start: indicators are primed and on_data runs with
+        is_warming_up = True; orders are refused.
+        """
         n = period.days if isinstance(period, timedelta) else int(period)
         self._ql_warm = max(self._ql_warm, n)
 
     def add_equity(self, ticker: str, resolution: str = Resolution.DAILY, *a, **k) -> Security:
+        """Subscribe to a US equity or ETF; returns its Security."""
         t = _sym(ticker)
         if resolution not in (Resolution.DAILY, None):
             self._ql_approx.add(f"add_equity('{t}', {resolution}): runs on daily bars")
         return self._ql_add(t, resolution)
 
     def add_forex(self, ticker: str, resolution: str = Resolution.DAILY, *a, **k) -> Security:
+        """Subscribe to an FX pair (Yahoo daily rates)."""
         return self._ql_add(_sym(ticker), resolution)
 
     def add_crypto(self, ticker: str, resolution: str = Resolution.DAILY, *a, **k) -> Security:
+        """Subscribe to a crypto pair (daily bars)."""
         t, approx = crypto_yahoo(_sym(ticker))
         if approx:
             self._ql_approx.add(approx)
         return self._ql_add(t, resolution)
 
     def add_option(self, *a, **k):
+        """Not available: no free historical option chains.
+
+        Raises:
+            NotImplementedError: always.
+        """
         raise NotImplementedError("add_option: no free historical option chains. Use the Options research tab "
                                   "(model-based, labelled) or OPTIONS = [...] synthetic options in a strategy.")
 
     def add_future(self, *a, **k):
+        """Not available: no free roll-adjusted futures history.
+
+        Raises:
+            NotImplementedError: always.
+        """
         raise NotImplementedError("add_future: no free roll-adjusted futures history.")
 
     add_index_option = add_future_option = add_option
@@ -1932,6 +2138,7 @@ class QCAlgorithm:
         return sec
 
     def remove_security(self, symbol) -> None:
+        """Unsubscribe from a security (liquidating it)."""
         t = _sym(symbol)
         sec = self.securities.get(t)
         if sec is not None:
@@ -1939,6 +2146,8 @@ class QCAlgorithm:
             dict.pop(self.securities, t, None)
 
     def add_universe(self, selector=None, *a, **k) -> None:
+        """Add a universe: a selector run each session on point-in-time S&P 500 members (with fundamentals when used).
+        """
         if selector == "__SP500_PIT__":
             self._ql_selectors.append(lambda funds: [f.symbol for f in funds])
         elif callable(selector):
@@ -1953,10 +2162,12 @@ class QCAlgorithm:
         return self.securities[t]
 
     def symbol(self, ticker: str) -> Symbol:
+        """The Symbol for a ticker."""
         return Symbol(ticker)
 
     def get_parameter(self, name: str, default=None):
-        """PARAMS = {"name": [values]} at the top of the file drives walk-forward; get_parameter reads the current one."""
+        """PARAMS = {"name": [values]} at the top of the file drives walk-forward; get_parameter reads the current one.
+        """
         return getattr(self, "_ql_params", {}).get(name, default)
 
     # data
@@ -2035,47 +2246,61 @@ class QCAlgorithm:
         self._ql_reg(symbol, indicator, bars)
 
     def sma(self, symbol, period: int, *a, **k) -> SimpleMovingAverage:
+        """Create a SimpleMovingAverage for `symbol`, updated automatically with each daily bar."""
         return self._ql_reg(symbol, SimpleMovingAverage(period))
 
     def ema(self, symbol, period: int, *a, **k) -> ExponentialMovingAverage:
+        """Create a exponential moving average for `symbol`, updated automatically with each daily bar."""
         return self._ql_reg(symbol, ExponentialMovingAverage(period))
 
     def rsi(self, symbol, period: int, moving_average_type=MovingAverageType.WILDERS, *a, **k) -> RelativeStrengthIndex:
+        """Create a RelativeStrengthIndex for `symbol`, updated automatically with each daily bar."""
         return self._ql_reg(symbol, RelativeStrengthIndex(period, moving_average_type))
 
     def atr(self, symbol, period: int, moving_average_type=MovingAverageType.WILDERS, *a, **k) -> AverageTrueRange:
+        """Create a AverageTrueRange for `symbol`, updated automatically with each daily bar."""
         return self._ql_reg(symbol, AverageTrueRange(period, moving_average_type), True)
 
     def bb(self, symbol, period: int, k: float, moving_average_type=MovingAverageType.SIMPLE, *a, **kw) -> BollingerBands:
+        """Create a BollingerBands for `symbol`, updated automatically with each daily bar."""
         return self._ql_reg(symbol, BollingerBands(period, k, moving_average_type))
 
     def macd(self, symbol, fast: int, slow: int, signal: int, moving_average_type=MovingAverageType.EXPONENTIAL, *a, **k):
+        """Create a MACD for `symbol`, updated automatically with each daily bar."""
         return self._ql_reg(symbol, MovingAverageConvergenceDivergence(fast, slow, signal, moving_average_type))
 
     def roc(self, symbol, period: int, *a, **k) -> RateOfChange:
+        """Create a RateOfChange for `symbol`, updated automatically with each daily bar."""
         return self._ql_reg(symbol, RateOfChange(period))
 
     def rocp(self, symbol, period: int, *a, **k) -> RateOfChangePercent:
+        """Create a RateOfChangePercent for `symbol`, updated automatically with each daily bar."""
         return self._ql_reg(symbol, RateOfChangePercent(period))
 
     momp = rocp
 
     def mom(self, symbol, period: int, *a, **k) -> Momentum:
+        """Create a Momentum for `symbol`, updated automatically with each daily bar."""
         return self._ql_reg(symbol, Momentum(period))
 
     def max(self, symbol, period: int, *a, **k) -> Maximum:
+        """Create a Maximum for `symbol`, updated automatically with each daily bar."""
         return self._ql_reg(symbol, Maximum(period))
 
     def min(self, symbol, period: int, *a, **k) -> Minimum:
+        """Create a Minimum for `symbol`, updated automatically with each daily bar."""
         return self._ql_reg(symbol, Minimum(period))
 
     def std(self, symbol, period: int, *a, **k) -> StandardDeviation:
+        """Create a rolling standard deviation for `symbol`, updated automatically with each daily bar."""
         return self._ql_reg(symbol, StandardDeviation(period))
 
     def adx(self, symbol, period: int, *a, **k) -> AverageDirectionalIndex:
+        """Create a AverageDirectionalIndex for `symbol`, updated automatically with each daily bar."""
         return self._ql_reg(symbol, AverageDirectionalIndex(period), True)
 
     def warm_up_indicator(self, symbol, indicator: Indicator, *a, **k) -> None:
+        """Prime an indicator from the history before the current time."""
         h = self.history(symbol, indicator.warm_up_period + 1)
         if len(h):
             for t, r in h.loc[_sym(symbol)].iterrows():
@@ -2096,30 +2321,37 @@ class QCAlgorithm:
 
     # ── Algorithm Framework ──
     def set_alpha(self, model) -> None:
+        """Use this alpha model (framework)."""
         self._ql_framework.alphas = [model]
         self._ql_framework.used = True
 
     def add_alpha(self, model) -> None:
+        """Add an alpha model (framework)."""
         self._ql_framework.alphas.append(model)
         self._ql_framework.used = True
 
     def set_portfolio_construction(self, model) -> None:
+        """Use this portfolio construction model."""
         self._ql_framework.pcm = model
         self._ql_framework.used = True
 
     def set_execution(self, model) -> None:
+        """Use this execution model."""
         self._ql_framework.execution = model
         self._ql_framework.used = True
 
     def set_risk_management(self, model) -> None:
+        """Use this risk model."""
         self._ql_framework.risk = [model]
         self._ql_framework.used = True
 
     def add_risk_management(self, model) -> None:
+        """Add a risk model."""
         self._ql_framework.risk.append(model)
         self._ql_framework.used = True
 
     def set_universe_selection(self, model) -> None:
+        """Use this universe selection model."""
         if isinstance(model, ManualUniverseSelectionModel):
             for t in model.symbols:
                 self._ql_add(t, self.universe_settings.resolution)
@@ -2132,6 +2364,7 @@ class QCAlgorithm:
     add_universe_selection = set_universe_selection
 
     def emit_insights(self, *insights) -> List[Insight]:
+        """Emit insights manually into the framework."""
         ins = Insight.group(*insights)
         self._ql_framework.emitted += ins
         self._ql_framework.used = True
@@ -2139,6 +2372,7 @@ class QCAlgorithm:
 
     @property
     def insights(self) -> List[Insight]:
+        """The active insights."""
         return list(self._ql_framework.active.values())
 
     Insights = insights
@@ -2282,31 +2516,39 @@ class QCAlgorithm:
                    if self.object_store._d else {})}
 
     def market_order(self, symbol, quantity: float, asynchronous: bool = False, tag: str = "", *a, **k) -> OrderTicket:
+        """A market order for `quantity` shares; fills at the next session's open."""
         return self._ql_order(symbol, quantity, OrderType.MARKET, tag)
 
     def market_on_open_order(self, symbol, quantity: float, tag: str = "", *a, **k) -> OrderTicket:
+        """A market-on-open order; fills at the next session's open."""
         return self._ql_order(symbol, quantity, OrderType.MARKET_ON_OPEN, tag)
 
     def market_on_close_order(self, symbol, quantity: float, tag: str = "", *a, **k) -> OrderTicket:
+        """A market-on-close order; fills at the next session's close."""
         return self._ql_order(symbol, quantity, OrderType.MARKET_ON_CLOSE, tag)
 
     def limit_order(self, symbol, quantity: float, limit_price: float, tag: str = "", *a, **k) -> OrderTicket:
+        """A limit order, checked against each later session's range (gap-through fills at the open)."""
         return self._ql_order(symbol, quantity, OrderType.LIMIT, tag, price=limit_price)
 
     def stop_market_order(self, symbol, quantity: float, stop_price: float, tag: str = "", *a, **k) -> OrderTicket:
+        """A stop-market order, triggered by a later session's range."""
         return self._ql_order(symbol, quantity, OrderType.STOP_MARKET, tag, price=stop_price)
 
     def stop_limit_order(self, symbol, quantity: float, stop_price: float, limit_price: float, tag: str = "", *a, **k):
+        """A stop-limit order: becomes a limit once the stop triggers."""
         return self._ql_order(symbol, quantity, OrderType.STOP_LIMIT, tag, price=stop_price, limit=limit_price)
 
     def trailing_stop_order(self, symbol, quantity: float, trailing_amount: float, trailing_as_percentage: bool = True,
                             tag: str = "", *a, **k) -> OrderTicket:
+        """A trailing stop by amount or percentage, updated each session."""
         if not trailing_as_percentage:
             px = self.securities[_sym(symbol)].price
             trailing_amount = trailing_amount / px if px else trailing_amount
         return self._ql_order(symbol, quantity, OrderType.TRAILING_STOP, tag, trail=trailing_amount)
 
     def calculate_order_quantity(self, symbol, target: float) -> float:
+        """Shares to trade to bring `symbol` to `target` of portfolio value (0 without a price)."""
         t = _sym(symbol)
         sec = self.securities.get(t)
         px = sec.price if sec is not None else float(self._ql_ctx.close.get(t, np.nan))
@@ -2340,6 +2582,7 @@ class QCAlgorithm:
         return out
 
     def liquidate(self, symbol=None, tag: str = "Liquidated", *a, **k) -> List[OrderTicket]:
+        """Close all positions, or one symbol's, with market orders."""
         names = [_sym(symbol)] if symbol is not None else [t for t, h in self.portfolio.items() if h.invested]
         out = []
         for t in names:
@@ -2351,16 +2594,19 @@ class QCAlgorithm:
 
     # output
     def debug(self, msg) -> None:
+        """Write a line to the run's log."""
         self._ql_log.append(f"{self.time}: {msg}")
         print(f"{self.time.date() if self.time is not None else ''} {msg}")
 
     log = error = debug
 
     def plot(self, chart: str, series: str, value: float) -> None:
+        """Add a point to a custom chart series (skipped during warm-up)."""
         if self._ql_ctx is not None and not self.is_warming_up:
             self._ql_ctx.plot(chart, series, float(value))
 
     def quit(self, message: str = "") -> None:
+        """Stop the backtest now, with a message."""
         raise _Quit(message)
 
     def _ql_emit(self, ev: OrderEvent) -> None:
@@ -2917,6 +3163,7 @@ def _check_unknown(tree: ast.Module, cls: ast.ClassDef, note) -> None:
 
 
 def needs_discovery(header: Dict[str, Any]) -> bool:
+    """Whether an imported algorithm's compatibility report has calls that still need resolving."""
     return any(r.get("discover") or r["message"] == UNRESOLVED for r in header.get("report") or [])
 
 
@@ -3073,6 +3320,7 @@ class _BarIndicator(Indicator):
 
 
 class LinearWeightedMovingAverage(Indicator):
+    """Linearly weighted moving average. LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"LWMA({period})")
         self._args = (period, name)
@@ -3087,6 +3335,7 @@ class LinearWeightedMovingAverage(Indicator):
 
 
 class HullMovingAverage(Indicator):
+    """Hull moving average. LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"HMA({period})")
         self._args = (period, name)
@@ -3107,6 +3356,7 @@ class HullMovingAverage(Indicator):
 
 
 class DoubleExponentialMovingAverage(Indicator):
+    """Double exponential moving average (DEMA). LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"DEMA({period})")
         self._args = (period, name)
@@ -3123,6 +3373,7 @@ class DoubleExponentialMovingAverage(Indicator):
 
 
 class TripleExponentialMovingAverage(Indicator):
+    """Triple exponential moving average (TEMA). LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"TEMA({period})")
         self._args = (period, name)
@@ -3142,6 +3393,7 @@ class TripleExponentialMovingAverage(Indicator):
 
 
 class KaufmanAdaptiveMovingAverage(Indicator):
+    """Kaufman adaptive moving average (KAMA). LEAN-compatible."""
     def __init__(self, period: int, fast_ema_period: int = 2, slow_ema_period: int = 30, name: str = ""):
         super().__init__(name or f"KAMA({period})")
         self._args = (period, fast_ema_period, slow_ema_period, name)
@@ -3167,6 +3419,7 @@ class KaufmanAdaptiveMovingAverage(Indicator):
 
 
 class Trix(Indicator):
+    """TRIX: rate of change of a triple-smoothed EMA. LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"TRIX({period})")
         self._args = (period, name)
@@ -3188,6 +3441,7 @@ class Trix(Indicator):
 
 
 class AbsolutePriceOscillator(Indicator):
+    """Absolute price oscillator: fast MA − slow MA. LEAN-compatible."""
     def __init__(self, fast_period: int, slow_period: int, moving_average_type=MovingAverageType.SIMPLE, name: str = ""):
         super().__init__(name or f"APO({fast_period},{slow_period})")
         self._args = (fast_period, slow_period, moving_average_type, name)
@@ -3202,6 +3456,7 @@ class AbsolutePriceOscillator(Indicator):
 
 
 class PercentagePriceOscillator(AbsolutePriceOscillator):
+    """Percentage price oscillator: (fast − slow) / slow. LEAN-compatible."""
     def _compute(self, value):
         d = super()._compute(value)
         s = self.slow.current.value
@@ -3209,6 +3464,7 @@ class PercentagePriceOscillator(AbsolutePriceOscillator):
 
 
 class ChandeMomentumOscillator(Indicator):
+    """Chande momentum oscillator. LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"CMO({period})")
         self._args = (period, name)
@@ -3225,6 +3481,7 @@ class ChandeMomentumOscillator(Indicator):
 
 
 class LogReturn(Indicator):
+    """Log return over `period`. LEAN-compatible."""
     def __init__(self, period: int = 1, name: str = ""):
         super().__init__(name or f"LOGR({period})")
         self._args = (period, name)
@@ -3238,6 +3495,7 @@ class LogReturn(Indicator):
 
 
 class Delay(Indicator):
+    """The input `period` steps ago. LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"DELAY({period})")
         self._args = (period, name)
@@ -3251,6 +3509,7 @@ class Delay(Indicator):
 
 
 class Identity(Indicator):
+    """Passes the input through. LEAN-compatible."""
     def __init__(self, name: str = ""):
         super().__init__(name or "IDENTITY")
         self._args = (name,)
@@ -3260,6 +3519,7 @@ class Identity(Indicator):
 
 
 class TrueRange(_BarIndicator):
+    """True range of each bar. LEAN-compatible."""
     def __init__(self, name: str = ""):
         super().__init__(name or "TR")
         self._args = (name,)
@@ -3274,6 +3534,7 @@ class TrueRange(_BarIndicator):
 
 
 class NormalizedAverageTrueRange(_BarIndicator):
+    """ATR as a percentage of the close. LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"NATR({period})")
         self._args = (period, name)
@@ -3287,6 +3548,7 @@ class NormalizedAverageTrueRange(_BarIndicator):
 
 
 class CommodityChannelIndex(_BarIndicator):
+    """Commodity Channel Index. LEAN-compatible."""
     def __init__(self, period: int, moving_average_type=MovingAverageType.SIMPLE, name: str = ""):
         super().__init__(name or f"CCI({period})")
         self._args = (period, moving_average_type, name)
@@ -3331,6 +3593,7 @@ class Stochastic(_BarIndicator):
 
 
 class WilliamsPercentR(_BarIndicator):
+    """Williams %R. LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"WILR({period})")
         self._args = (period, name)
@@ -3347,6 +3610,7 @@ class WilliamsPercentR(_BarIndicator):
 
 
 class AroonOscillator(_BarIndicator):
+    """Aroon oscillator (Aroon up − Aroon down). LEAN-compatible."""
     def __init__(self, up_period: int, down_period: int, name: str = ""):
         super().__init__(name or f"AROON({up_period},{down_period})")
         self._args = (up_period, down_period, name)
@@ -3370,6 +3634,7 @@ class AroonOscillator(_BarIndicator):
 
 
 class DonchianChannel(_BarIndicator):
+    """Donchian channel: highest high and lowest low over `period`. LEAN-compatible."""
     def __init__(self, upper_period: int, lower_period: Optional[int] = None, name: str = ""):
         super().__init__(name or f"DCH({upper_period})")
         lower_period = int(lower_period or upper_period)
@@ -3389,6 +3654,7 @@ class DonchianChannel(_BarIndicator):
 
 
 class KeltnerChannels(_BarIndicator):
+    """Keltner channels: MA ± k × ATR. LEAN-compatible."""
     def __init__(self, period: int, k: float, moving_average_type=MovingAverageType.SIMPLE, name: str = ""):
         super().__init__(name or f"KCH({period},{k})")
         self._args = (period, k, moving_average_type, name)
@@ -3407,6 +3673,7 @@ class KeltnerChannels(_BarIndicator):
 
 
 class OnBalanceVolume(_BarIndicator):
+    """On-balance volume. LEAN-compatible."""
     def __init__(self, name: str = ""):
         super().__init__(name or "OBV")
         self._args = (name,)
@@ -3423,6 +3690,7 @@ class OnBalanceVolume(_BarIndicator):
 
 
 class VolumeWeightedAveragePriceIndicator(_BarIndicator):
+    """Volume-weighted average price over `period`. LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"VWAP({period})")
         self._args = (period, name)
@@ -3437,6 +3705,7 @@ class VolumeWeightedAveragePriceIndicator(_BarIndicator):
 
 
 class MoneyFlowIndex(_BarIndicator):
+    """Money Flow Index. LEAN-compatible."""
     def __init__(self, period: int, name: str = ""):
         super().__init__(name or f"MFI({period})")
         self._args = (period, name)
@@ -3459,6 +3728,7 @@ class MoneyFlowIndex(_BarIndicator):
 
 
 class ParabolicStopAndReverse(_BarIndicator):
+    """Parabolic SAR. LEAN-compatible."""
     def __init__(self, af_start: float = 0.02, af_increment: float = 0.02, af_max: float = 0.2, name: str = ""):
         super().__init__(name or "PSAR")
         self._args = (af_start, af_increment, af_max, name)
@@ -3508,6 +3778,7 @@ class Beta(Indicator):
         self._rr: deque = deque(maxlen=self.period)
 
     def update_pair(self, time, symbol: str, close: float) -> None:
+        """Record a close for the target or reference; when both have the same date, update beta from their returns."""
         self._last[symbol] = (time, close)
         if all(k in self._last for k in (self.target, self.reference)) and \
                 self._last[self.target][0] == self._last[self.reference][0]:
@@ -3553,6 +3824,7 @@ class _Composite(Indicator):
 
 
 class IndicatorExtensions:
+    """LEAN's indicator composition: an indicator of another (`of`), or arithmetic between two."""
     @staticmethod
     def _over(inner: Indicator, outer: Indicator, name: str) -> Indicator:
         def fn():
@@ -3563,14 +3835,17 @@ class IndicatorExtensions:
 
     @staticmethod
     def sma(indicator: Indicator, period: int, *a) -> Indicator:
+        """An SMA of another indicator's values."""
         return IndicatorExtensions._over(indicator, SimpleMovingAverage(period), f"SMA({period}) of {indicator.name}")
 
     @staticmethod
     def ema(indicator: Indicator, period: int, *a) -> Indicator:
+        """An EMA of another indicator's values."""
         return IndicatorExtensions._over(indicator, ExponentialMovingAverage(period), f"EMA({period}) of {indicator.name}")
 
     @staticmethod
     def of(second: Indicator, first: Indicator, *a) -> Indicator:
+        """`second` fed by `first`'s values."""
         return IndicatorExtensions._over(first, second, f"{second.name} of {first.name}")
 
     @staticmethod
@@ -3582,18 +3857,22 @@ class IndicatorExtensions:
 
     @staticmethod
     def plus(a, b) -> Indicator:
+        """The sum of two indicators."""
         return IndicatorExtensions._combine(a, b, lambda x, y: x + y, "+")
 
     @staticmethod
     def minus(a, b) -> Indicator:
+        """The difference of two indicators."""
         return IndicatorExtensions._combine(a, b, lambda x, y: x - y, "-")
 
     @staticmethod
     def times(a, b) -> Indicator:
+        """The product of two indicators."""
         return IndicatorExtensions._combine(a, b, lambda x, y: x * y, "×")
 
     @staticmethod
     def over(a, b) -> Indicator:
+        """The ratio of two indicators."""
         return IndicatorExtensions._combine(a, b, lambda x, y: x / y if y else float("nan"), "/")
 
     SMA, EMA, Of, Plus, Minus, Times, Over = sma, ema, of, plus, minus, times, over
@@ -3779,6 +4058,7 @@ class _Exchange:
     ExchangeOpen = True
 
     def date_is_open(self, *a, **k) -> bool:
+        """Always True: only trading sessions are delivered."""
         return True
 
     DateIsOpen = date_is_open
@@ -3896,16 +4176,19 @@ NAMES["OrderField"] = type("OrderField", (), {"STOP_PRICE": "stop_price", "LIMIT
 # custom-data plumbing names used inside PythonData subclasses (get_source / reader are never called — the uploaded CSV
 # is the data — but the class body must still import cleanly)
 class SubscriptionDataSource:
+    """LEAN custom-data source description. Accepted for compatibility."""
     def __init__(self, source=None, transport=None, format=None, *a, **k):
         self.source, self.transport, self.format = source, transport, format
 
 
 class SubscriptionTransportMedium(_Enum):
+    """LEAN custom-data transport. Accepted for compatibility."""
     LOCAL_FILE, REMOTE_FILE, REST, STREAMING, OBJECT_STORE = "local", "remote", "rest", "streaming", "object_store"
     LocalFile, RemoteFile, Rest, Streaming, ObjectStore = LOCAL_FILE, REMOTE_FILE, REST, STREAMING, OBJECT_STORE
 
 
 class FileFormat(_Enum):
+    """LEAN custom-data file format. Accepted for compatibility."""
     CSV, UNFOLDING_COLLECTION, ZIP_ENTRY_NAME, INDEX = "csv", "unfolding", "zip", "index"
     Csv, UnfoldingCollection, ZipEntryName, Index = CSV, UNFOLDING_COLLECTION, ZIP_ENTRY_NAME, INDEX
 
@@ -3970,7 +4253,8 @@ ObjectStore.Keys = property(lambda self: list(self._d))
 
 # ── label enums: every LEAN member works (unknown ones pass through as their name) ──────────────────────
 class _PassThroughMeta(type):
-    """Market.COINBASE, BrokerageName.KRAKEN, TimeZones.TOKYO …: these only label things on daily data, so any member LEAN
+    """Market.COINBASE, BrokerageName.KRAKEN, TimeZones.TOKYO …: these only label things on daily data, so any member
+    LEAN
     has resolves (to its lower-case name) instead of stopping the algorithm."""
 
     def __getattr__(cls, name):
@@ -3980,6 +4264,7 @@ class _PassThroughMeta(type):
 
 
 class Market(_Enum, metaclass=_PassThroughMeta):
+    """LEAN's market names (USA, Oanda …). Accepted for compatibility."""
     USA, OANDA, FXCM, DUKASCOPY, BITFINEX, GDAX, COINBASE, BINANCE, BINANCE_US, KRAKEN, BYBIT, BITSTAMP = (
         "usa", "oanda", "fxcm", "dukascopy", "bitfinex", "coinbase", "coinbase", "binance", "binanceus", "kraken", "bybit",
         "bitstamp")
@@ -3989,6 +4274,7 @@ class Market(_Enum, metaclass=_PassThroughMeta):
 
 
 class BrokerageName(_Enum, metaclass=_PassThroughMeta):
+    """LEAN's brokerage names. Accepted for compatibility; the Code Lab's cost model applies."""
     DEFAULT, INTERACTIVE_BROKERS_BROKERAGE, ALPACA, TRADIER_BROKERAGE, QUANTCONNECT_BROKERAGE = (
         "default", "ibkr", "alpaca", "tradier", "default")
     COINBASE, GDAX, BINANCE, BINANCE_US, KRAKEN, BITFINEX, BYBIT, OANDA_BROKERAGE, FXCM_BROKERAGE, TD_AMERITRADE, CHARLES_SCHWAB = (
@@ -3997,26 +4283,31 @@ class BrokerageName(_Enum, metaclass=_PassThroughMeta):
 
 
 class SecurityType(_Enum, metaclass=_PassThroughMeta):
+    """LEAN's security types (EQUITY, FOREX, CRYPTO …)."""
     EQUITY, FOREX, CRYPTO, CRYPTO_FUTURE, CFD, INDEX, OPTION, FUTURE, FUTURE_OPTION, INDEX_OPTION, BASE = (
         "equity", "forex", "crypto", "cryptofuture", "cfd", "index", "option", "future", "futureoption", "indexoption", "base")
 
 
 class DataNormalizationMode(_Enum, metaclass=_PassThroughMeta):
+    """LEAN's price normalisation modes. Accepted for compatibility; prices are always split- and dividend-adjusted."""
     ADJUSTED, RAW, SPLIT_ADJUSTED, TOTAL_RETURN, FORWARD_PANAMA_CANAL, BACKWARDS_RATIO = (
         "adjusted", "raw", "split_adjusted", "total_return", "forward_panama_canal", "backwards_ratio")
 
 
 class TimeZones(_Enum, metaclass=_PassThroughMeta):
+    """LEAN's time-zone names. Accepted for compatibility."""
     NEW_YORK, UTC, CHICAGO, LONDON, TOKYO, HONG_KONG, SINGAPORE, SYDNEY, FRANKFURT, PARIS, ZURICH, TORONTO, KOLKATA = (
         "America/New_York", "UTC", "America/Chicago", "Europe/London", "Asia/Tokyo", "Asia/Hong_Kong", "Asia/Singapore",
         "Australia/Sydney", "Europe/Berlin", "Europe/Paris", "Europe/Zurich", "America/Toronto", "Asia/Kolkata")
 
 
 class OptionRight(_Enum, metaclass=_PassThroughMeta):
+    """Option right: CALL or PUT."""
     CALL, PUT = "call", "put"
 
 
 class OptionStyle(_Enum, metaclass=_PassThroughMeta):
+    """Option style: AMERICAN or EUROPEAN."""
     AMERICAN, EUROPEAN = "american", "european"
 
 
@@ -4084,27 +4375,35 @@ class _NetList(list):
     Count = property(len)
 
     def Remove(self, x) -> bool:
+        """Remove the first occurrence; False when absent (.NET List.Remove)."""
         if x in self:
             self.remove(x)
             return True
         return False
 
     def RemoveAt(self, i) -> None:
+        """Remove the item at an index."""
         del self[i]
 
     def Sort(self, key=None) -> None:
+        """Sort in place."""
         self.sort(key=key)
 
     def ToArray(self):
+        """A copy as a list."""
         return list(self)
 
     def ToList(self):
+        """A copy as a list."""
         return _NetList(self)
 
 
 class Dictionary(dict):
-    """System.Collections.Generic.Dictionary[K, V]: a Python dict with Add / ContainsKey / TryGetValue / Keys / Values …"""
+    """System.Collections.Generic.Dictionary[K, V]: a Python dict with Add / ContainsKey / TryGetValue / Keys / Values
+    …
+    """
     def Add(self, k, v) -> None:
+        """Add a key (.NET Dictionary.Add)."""
         if k in self:
             raise KeyError(f"An item with the same key has already been added: {k}")
         self[k] = v
@@ -4116,9 +4415,11 @@ class Dictionary(dict):
     Values = property(lambda self: list(self.values()))
 
     def ContainsValue(self, v) -> bool:
+        """Whether a value is present."""
         return v in self.values()
 
     def Remove(self, k) -> bool:
+        """Remove a key; False when absent."""
         return self.pop(k, _MISSING) is not _MISSING
 
     def TryGetValue(self, k, default=None):
@@ -4130,6 +4431,7 @@ _MISSING = object()
 
 
 class HashSet(set):
+    """A .NET-style HashSet over Python's set."""
     Add = set.add
     Contains = set.__contains__
     Clear = set.clear
@@ -4139,6 +4441,7 @@ class HashSet(set):
     ExceptWith = set.difference_update
 
     def Remove(self, x) -> bool:
+        """Remove an item; False when absent."""
         if x in self:
             self.discard(x)
             return True

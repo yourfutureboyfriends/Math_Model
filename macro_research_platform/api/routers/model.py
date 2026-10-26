@@ -10,10 +10,12 @@ router = APIRouter(tags=["model"])
 
 
 class RunIn(BaseModel):
+    """Model parameter overrides for a run."""
     params: Optional[Dict[str, Any]] = None
 
 
 class OrdersIn(BaseModel):
+    """Parameters and book for turning model weights into orders."""
     portfolio: Literal["strategic", "tactical"] = "strategic"
     params: Optional[Dict[str, Any]] = None
     sleeve_capital: Optional[float] = None
@@ -28,6 +30,7 @@ async def model_latest():
 
 @router.get("/api/v1/model/params")
 async def model_params():
+    """The model's default parameters and their meaning."""
     from api.model.core import ModelParams
     return {"defaults": ModelParams().__dict__,
             "descriptions": {
@@ -58,6 +61,7 @@ async def model_run(body: RunIn, request: Request):
 
 @router.get("/api/v1/model/runs")
 async def model_runs(limit: int = 50):
+    """Recent model runs."""
     import asyncio
     from api.model.engine import list_runs
     return {"runs": await asyncio.to_thread(list_runs, min(max(limit, 1), 500))}
@@ -80,6 +84,7 @@ async def model_sleeve(portfolio: Literal["strategic", "tactical"] = "strategic"
 
 @router.post("/api/v1/model/orders/preview")
 async def model_orders_preview(body: OrdersIn, request: Request):
+    """Orders that would move the book to the model's portfolio — preview only, nothing is staged."""
     from api.core.access import require_roles
     from api.model.engine import model_orders, run_model
     require_roles(request, {"pm", "quant", "risk"})

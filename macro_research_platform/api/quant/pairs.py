@@ -26,6 +26,7 @@ from api.quant import data as qdata
 
 
 class PairsError(ValueError):
+    """Invalid pairs input (HTTP 400)."""
     pass
 
 
@@ -65,6 +66,12 @@ def _eg(la: np.ndarray, lb: np.ndarray) -> Dict[str, Any]:
 
 
 def scan(symbols: Sequence[str], years: float = 2.0, top: int = 25, min_corr: float = 0.4) -> Dict[str, Any]:
+    """Engle–Granger cointegration test on every pair among `symbols`: hedge ratio, ADF p-value on the spread and
+    mean-reversion half-life, best first.
+
+    Raises:
+        PairsError: invalid tickers or count.
+    """
     syms, bad = qdata.clean_symbols(symbols)
     if bad:
         raise PairsError(f"Invalid ticker(s): {', '.join(bad[:5])}")
@@ -121,6 +128,11 @@ def scan(symbols: Sequence[str], years: float = 2.0, top: int = 25, min_corr: fl
 
 def backtest(a: str, b: str, lookback: int = 252, entry: float = 2.0, exit: float = 0.5, stop: float = 4.0,
              max_hold: int = 60, bps: float = 3.0, start: Optional[str] = None) -> Dict[str, Any]:
+    """Backtest a pair's z-score strategy: rolling hedge ratio, entry / exit / stop thresholds, maximum hold and costs.
+
+    Raises:
+        PairsError: invalid tickers or parameters.
+    """
     syms, bad = qdata.clean_symbols([a, b])
     if bad or len(syms) != 2:
         raise PairsError("Give two different valid tickers.")

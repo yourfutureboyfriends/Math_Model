@@ -133,6 +133,7 @@ class Lab:
     # ── simulation and evaluation ──
     def sim(self, name: str, p: Dict[str, Any], costs: Optional[Dict[str, float]] = None, greeks: bool = False,
             cand: Optional[Dict[str, np.ndarray]] = None) -> Dict[str, Any]:
+        """Simulate a strategy's candidate trades for parameters (memoised, bounded memory)."""
         key = json.dumps([name, [p[k] for k in st.STRUCTURE[name]], costs or {}, greeks, cand is not None], default=str)
         if key not in self._sims:
             if len(self._sims) >= (3 if self.stage >= 4 else 6):          # bounded memory on the full universe
@@ -142,6 +143,7 @@ class Lab:
         return self._sims[key]
 
     def book(self, name: str, p: Dict[str, Any], costs=None, greeks=False, cand=None) -> Dict[str, Any]:
+        """A strategy book: simulated trades filtered by entry rules and exits applied."""
         ts = self.sim(name, p, costs, greeks, cand)
         mask = st.admits(name, ts["feat"], p)
         if name == "bull_call":
@@ -151,6 +153,7 @@ class Lab:
 
     def run(self, books: List[Dict[str, Any]], port: Optional[Dict[str, Any]] = None, end: Optional[int] = None,
             greeks: bool = False, gate=None, trades: bool = True) -> Dict[str, Any]:
+        """Run books through the portfolio engine up to the validation end (holdout sealed) unless `end` is given."""
         cfg = {**self.port, **(port or {})}
         # trades decided before the holdout only, unless the run deliberately extends past it
         stop = end if end is not None else self.val_end
@@ -163,11 +166,13 @@ class Lab:
         return res
 
     def seg(self, r: np.ndarray, a: str, b: Optional[str]) -> Dict[str, Any]:
+        """Metrics for a date segment."""
         return analytics.segment(r, self.dates, self.panel.rf, a, b)
 
 
 # ── per-strategy research ────────────────────────────────────────────────────
 def research_strategy(lab: Lab, name: str, say) -> Dict[str, Any]:
+    """Search a strategy's parameter grid on the training period, record every trial and choose robust parameters."""
     G = st.GRIDS[name]
     base = dict(st.DEFAULTS[name])
     trials: Dict[str, Dict[str, Any]] = {}
@@ -289,6 +294,9 @@ def sensitivity(trials: Dict[str, Dict[str, Any]], chosen: Dict[str, Any], name:
 # ── experiment ───────────────────────────────────────────────────────────────
 def run_experiment(stage: int, owner: str, job=None, strategies: Optional[List[str]] = None,
                    synthetic: bool = False) -> Dict[str, Any]:
+    """Run an options-research stage (1–4) end to end: data, per-strategy research, systems, portfolio, validation;
+    holdout sealed.
+    """
     t_start = time.time()
     strategies = strategies or list(st.STRATEGIES)
     say = (job.progress if hasattr(job, "progress") else job.say) if job is not None else (lambda m: None)
@@ -395,6 +403,7 @@ def _clean(x):
 
 
 def summary(result: Dict[str, Any]) -> Dict[str, Any]:
+    """A compact summary of an experiment result."""
     s = {k: {"survived": v["survival"]["survived"], "val_sharpe": v["segments"]["validation"].get("sharpe"),
              "wf_sharpe": v["walk_forward"]["metrics"].get("sharpe")} for k, v in result["strategies"].items()}
     sysm = {k: v["segments"].get("validation", {}).get("sharpe") for k, v in result["systems"]["systems"].items()}
@@ -412,6 +421,7 @@ def _baseline_series(lab: Lab, f: str) -> Optional[np.ndarray]:
 
 
 def compare_systems(lab: Lab, strat: Dict[str, Any], say):
+    """Compare ways of combining the strategies (equal, risk-based …) with and without costs."""
     names = list(strat)
     chosen = {n: strat[n]["chosen"]["params"] for n in names}
     books = lambda costs=None, greeks=False: [lab.book(n, chosen[n], costs=costs, greeks=greeks) for n in names]
@@ -514,6 +524,7 @@ def compare_systems(lab: Lab, strat: Dict[str, Any], say):
 
 
 def portfolio_research(lab: Lab, books, alloc) -> Dict[str, Any]:
+    """Portfolio-level studies: allocation, gates and Greeks limits."""
     rows = []
     bk = books(greeks=True)
 
@@ -581,6 +592,7 @@ def survivorship(lab: Lab, strat: Dict[str, Any]) -> Dict[str, Any]:
 
 # ── registry update ──────────────────────────────────────────────────────────
 def update_registry(eid, stage, lab, strat, systems, regime_res, port_res, dq, surv_check) -> List[Dict[str, Any]]:
+    """Update the hypothesis registry with an experiment's results."""
     ds = f"stage {stage}: {len(lab.panel.tickers)} underlyings, 2016-01 → 2023-12 (holdout sealed)"
     lim = "; ".join(LIMITATIONS[:2])
     upd = []
@@ -721,6 +733,11 @@ def run_in_subprocess(stage: int, owner: str, job, strategies: Optional[List[str
 
 
 def reveal_holdout(eid: str, user: str) -> Dict[str, Any]:
+    """Reveal an experiment's sealed holdout result (logged and counted).
+
+    Raises:
+        ValueError: no sealed holdout.
+    """
     d = ROOT / eid
     f = d / "holdout.sealed.json"
     if not f.exists():
@@ -732,6 +749,7 @@ def reveal_holdout(eid: str, user: str) -> Dict[str, Any]:
 
 
 def load_result(eid: str) -> Optional[Dict[str, Any]]:
+    """An experiment's saved result, or None."""
     f = ROOT / eid / "result.json"
     try:
         return json.loads(f.read_text())

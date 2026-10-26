@@ -40,6 +40,7 @@ def _get(url: str, **kw):
 
 
 def pct(v: Optional[float]) -> str:
+    """A fraction as a signed whole percentage ("+12%"), or an em dash."""
     return "—" if v is None else f"{v * 100:+.0f}%"
 
 
@@ -84,6 +85,7 @@ def _stats(series: List[float]) -> Dict[str, Any]:
 
 
 def cot() -> Dict[str, Any]:
+    """CFTC positioning (Commitments of Traders) summarised for the dashboard."""
     def build():
         tff = [c for c, v in COT_MARKETS.items() if v[2] == "tff"]
         dis = [c for c, v in COT_MARKETS.items() if v[2] == "dis"]
@@ -126,6 +128,7 @@ POLY_TAGS = ["economy", "fed", "finance", "inflation", "business", "geopolitics"
 
 
 def predictions() -> Dict[str, Any]:
+    """Active Polymarket markets on macro, policy and geopolitics."""
     def build():
         import json as _json
         seen, out = set(), []
@@ -212,6 +215,9 @@ def _cleveland(kind: str) -> Dict[str, Any]:
 
 
 def nowcasts() -> Dict[str, Any]:
+    """Nowcasts: Atlanta Fed GDPNow, NY Fed Weekly Economic Index, Chicago Fed NFCI and the Cleveland Fed inflation
+    nowcast.
+    """
     def build():
         res: Dict[str, Any] = {}
         with ThreadPoolExecutor(5) as ex:
@@ -243,6 +249,7 @@ def _pw(service: str, where: str, fields: str, order: str, n: int = 2000) -> Lis
 
 
 def trade() -> Dict[str, Any]:
+    """World trade volumes by region (IMF PortWatch), with the latest changes."""
     def build():
         since = (date.today() - timedelta(days=760)).isoformat()
         regions = ["World", "China", "Advanced Economies", "Emerging Market and Developing Economies", "European Union", "Emerging and Developing Asia",
@@ -319,6 +326,7 @@ BIG_PORTS = ["Shanghai", "Singapore", "Ningbo-Zhoushan", "Shenzhen", "Qingdao", 
 
 
 def ports_trade() -> Dict[str, Any]:
+    """Port calls and trade volumes at the largest port complexes (IMF PortWatch): last 4 weeks vs a year earlier."""
     def build():
         # port complexes: every terminal whose name starts with the port's ("Shanghai" + "Shanghai (Yangshan)")
         like = " OR ".join("portname LIKE '" + p.replace("'", "''") + "%'" for p in BIG_PORTS)

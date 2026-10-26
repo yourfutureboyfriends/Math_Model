@@ -18,11 +18,13 @@ logger = logging.getLogger(__name__)
 
 
 class OrderSide(Enum):
+    """Order side as Alpaca expects it."""
     BUY = "buy"
     SELL = "sell"
 
 
 class OrderType(Enum):
+    """Order types supported by Alpaca."""
     MARKET = "market"
     LIMIT = "limit"
     STOP = "stop"
@@ -30,6 +32,9 @@ class OrderType(Enum):
 
 
 class TimeInForce(Enum):
+    """Time-in-force values supported by Alpaca (day, good-till-cancelled, at the open / close, immediate-or-cancel,
+    fill-or-kill).
+    """
     DAY = "day"
     GTC = "gtc"
     OPG = "opg"

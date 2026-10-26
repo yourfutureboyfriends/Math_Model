@@ -168,6 +168,15 @@ async def _nav() -> Optional[float]:
 
 
 async def analyze(sym: str, with_history: bool = True) -> Dict[str, Any]:
+    """Technical and entry-signal analysis of one stock, cached for a short time.
+
+    Args:
+        sym: The ticker.
+        with_history: Include the price history for the chart.
+
+    Returns:
+        The analysis, or `{available: False, reason}` when no data could be fetched.
+    """
     key = f"{sym}:{int(with_history)}"
     hit = _CACHE.get(key)
     if hit and time.time() - hit[0] < _TTL:
@@ -322,6 +331,7 @@ async def stock_ideas():
 
 @router.post("/api/v1/stock/ideas/refresh")
 async def stock_ideas_refresh():
+    """Refresh the stock idea screen in the background."""
     from api import stock_ideas as si
     if not si.status()["running"]:
         _spawn(si.build_in_background())
@@ -373,6 +383,7 @@ async def stock_backtest():
 
 @router.post("/api/v1/stock/backtest/run")
 async def stock_backtest_run():
+    """Start the entry-model backtest in the background (once at a time)."""
     from api import stock_backtest as sb
     if not sb.status()["running"]:
         _spawn(sb.run_in_background())
@@ -457,6 +468,7 @@ async def stock_search(q: str):
 
 
 class WatchlistIn(BaseModel):
+    """Symbols for the stock watchlist."""
     symbols: List[str]
 
 
@@ -470,6 +482,7 @@ def _user(request: Request) -> str:
 
 @router.get("/api/v1/stock/watchlist")
 async def get_watchlist(request: Request):
+    """The stock watchlist with entry signals."""
     from api import stock_ideas as si
     from api.markets import classify
     wl = si._read_json(si.WATCHLIST_FILE, {})

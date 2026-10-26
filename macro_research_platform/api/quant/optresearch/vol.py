@@ -61,6 +61,7 @@ ETF_KIND = {"SPY": "index", "QQQ": "index", "DIA": "index", "IWM": "index", "EEM
 
 
 def kind_of(sym: str, asset_type: str = "") -> str:
+    """Underlying kind for the vol model: an ETF's kind, index for funds, else stock."""
     if sym in ETF_KIND:
         return ETF_KIND[sym]
     return "index" if asset_type.upper() in ("ETF", "FUND") else "stock"
@@ -207,6 +208,7 @@ def fit_iv_model(close: pd.DataFrame, observed: pd.DataFrame, kinds: Dict[str, s
 
 
 def model_atm(close: pd.DataFrame, kinds: Dict[str, str], vix: pd.Series, model: Dict[str, Any]) -> pd.DataFrame:
+    """Model ATM implied vol from realised vol, VIX and market vol (fitted log-linear model)."""
     rv = realised(close)
     spy_rv = rv["rv63"]["SPY"] if "SPY" in close.columns else rv["rv63"].median(axis=1)
     stock = np.array([kinds.get(c, "stock") == "stock" for c in close.columns])

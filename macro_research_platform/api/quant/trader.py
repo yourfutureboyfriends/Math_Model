@@ -216,11 +216,17 @@ def classify(spec: Dict[str, Any]) -> str:
 
 def book_of(dep: Dict[str, Any]) -> str:
     # always re-derived from the frozen spec, so deployments made before a book existed land in the right one
+    """The book a deployment belongs to, re-derived from its frozen specification."""
     return classify(dep.get("spec") or {})
 
 
 def deploy(owner: str, spec_in: Dict[str, Any], capital: float, strategy_id: Optional[int] = None,
            book: Optional[str] = None) -> Dict[str, Any]:
+    """Deploy a strategy to paper trading after a light backtest (code and library strategies via the Code Lab).
+
+    Raises:
+        engine.SpecError: capital out of range or an invalid specification.
+    """
     if spec_in.get("kind") in ("code", "library"):
         return _deploy_code(owner, spec_in, capital, strategy_id, book)       # capital is in the account currency
     if not 1_000 <= capital <= 1_000_000_000:
@@ -313,6 +319,7 @@ def forget(deployment_id: int) -> None:
 
 
 def invalidate() -> None:
+    """Clear the paper-trading cache."""
     with _lock:
         _cache.clear()
 

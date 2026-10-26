@@ -26,6 +26,7 @@ AssetClass = str  # "equity" | "index" | "fx" | "commodity" | "crypto" | "rate" 
 # ── Common internal data contract (provider-independent) ──────────────────────
 @dataclass
 class Quote:
+    """A price quote with its source, time, asset class and currency."""
     symbol: str
     price: float
     timestamp: datetime
@@ -37,6 +38,7 @@ class Quote:
 
 @dataclass
 class TimeSeriesPoint:
+    """One bar of a time series (close required; OHLC and volume optional)."""
     timestamp: str
     close: float
     open: Optional[float] = None
@@ -47,6 +49,7 @@ class TimeSeriesPoint:
 
 @dataclass
 class TimeSeries:
+    """A symbol's bars at an interval, with the provider that supplied them."""
     symbol: str
     interval: str
     points: List[TimeSeriesPoint]
@@ -55,6 +58,9 @@ class TimeSeries:
 
 @runtime_checkable
 class DataProvider(Protocol):
+    """Interface every data provider implements: name, priority (lower is tried first), supported asset classes,
+    supports(), healthy() and get_quote().
+    """
     name: str
     priority: int
     asset_classes: List[AssetClass]
@@ -76,10 +82,14 @@ class _ProviderState:
 
 
 class ProviderRegistry:
+    """Ordered set of providers with failover: a quote is taken from the first healthy provider that supports the
+    symbol; failing providers are put on a cool-down and reported in status().
+    """
     def __init__(self) -> None:
         self._states: List[_ProviderState] = []
 
     def register(self, provider) -> None:
+        """Add a provider, keeping the list ordered by priority."""
         self._states.append(_ProviderState(provider=provider))
         # keep sorted by priority (lower = tried first)
         self._states.sort(key=lambda s: getattr(s.provider, "priority", 99))
@@ -129,6 +139,7 @@ class ProviderRegistry:
         return None
 
     def status(self) -> List[Dict]:
+        """Each provider's priority, asset classes, health, recent failures and how long it has been down."""
         now = time.time()
         out = []
         for st in self._states:

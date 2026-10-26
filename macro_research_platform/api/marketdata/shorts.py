@@ -60,6 +60,11 @@ def _parse(text: str, sym: str) -> Optional[Dict[str, float]]:
 
 
 def short_selling(symbol: str, days: int = 60) -> Dict[str, Any]:
+    """Daily short-sale volume ratio (FINRA Reg SHO) for a US stock over 10–120 days.
+
+    Raises:
+        NotFound: not a US-listed stock or ETF.
+    """
     s = symbol.strip().upper()
     if "." in s or "=" in s or "^" in s:
         raise NotFound("Short-sale data is published for US-listed stocks and ETFs (FINRA Reg SHO).")

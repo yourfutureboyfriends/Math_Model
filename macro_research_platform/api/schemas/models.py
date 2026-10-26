@@ -41,12 +41,14 @@ class RegimeData(BaseModel):
     @field_validator('confidenceScore', mode='before')
     @classmethod
     def clean_confidence_score(cls, v):
+        """Coerce the confidence score to a finite float (NaN / Inf / missing → 0)."""
         if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
             return 0.0
         return round(float(v), 6) if v is not None else 0.0
 
     @classmethod
     def default(cls) -> "RegimeData":
+        """An 'Unknown' regime with zero confidence, used when the data cannot be loaded."""
         return cls(
             current="Unknown",
             confidence="low",
@@ -111,6 +113,7 @@ class MetricWithSparkline(BaseModel):
     @field_validator('value', mode='before')
     @classmethod
     def clean_value(cls, v):
+        """Coerce the value to a finite float (NaN / Inf / missing → 0)."""
         if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
             return 0.0
         return round(float(v), 6)
@@ -118,12 +121,14 @@ class MetricWithSparkline(BaseModel):
     @field_validator('sparklineData', mode='before')
     @classmethod
     def clean_sparkline(cls, v):
+        """Coerce the sparkline to a list of finite floats (non-finite points → 0)."""
         if not isinstance(v, list):
             return []
         return [0.0 if (isinstance(x, float) and (np.isnan(x) or np.isinf(x))) else round(float(x), 6) for x in v]
 
     @classmethod
     def default(cls) -> "MetricWithSparkline":
+        """An empty metric shown as '—'."""
         return cls(
             value=0.0,
             formatted="—",
@@ -163,6 +168,7 @@ class KeyMetrics(BaseModel):
 
     @classmethod
     def default(cls) -> "KeyMetrics":
+        """Empty key metrics, used when the data cannot be loaded."""
         return cls(
             growth=MetricWithSparkline.default(),
             inflation=MetricWithSparkline.default(),

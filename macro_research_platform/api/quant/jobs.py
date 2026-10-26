@@ -76,6 +76,7 @@ def _load(job_id: str) -> Optional["Job"]:
 
 
 class Job:
+    """A background Quant Lab job: owner, kind, state, progress message, result or error, timings."""
     def __init__(self, owner: str, kind: str):
         self.id = uuid.uuid4().hex[:12]
         self.owner, self.kind = owner, kind
@@ -89,9 +90,11 @@ class Job:
         self.cancelled = False
 
     def progress(self, message: str) -> None:
+        """Update the job's progress message."""
         self.message = message
 
     def view(self, with_result: bool = True) -> Dict[str, Any]:
+        """The job as JSON, with its result when done."""
         out = {"id": self.id, "kind": self.kind, "state": self.state, "message": self.message, "error": self.error,
                "elapsed_s": round((self.finished or time.time()) - (self.started or self.created), 1)}
         if with_result and self.state == "done":
@@ -100,6 +103,7 @@ class Job:
 
 
 def submit(owner: str, kind: str, fn: Callable[["Job"], Any]) -> Job:
+    """Queue `fn(job)` on the worker pool; finished jobs older than the keep time are dropped."""
     job = Job(owner, kind)
     with _lock:
         now = time.time()
@@ -132,11 +136,13 @@ def submit(owner: str, kind: str, fn: Callable[["Job"], Any]) -> Job:
 
 
 def get(job_id: str, owner: str, is_admin: bool = False) -> Optional[Job]:
+    """A job by id if the user owns it (or is an administrator), including finished jobs persisted to disk."""
     j = _jobs.get(job_id) or _load(job_id)
     return j if j and (j.owner == owner or is_admin) else None
 
 
 def cancel(job_id: str, owner: str, is_admin: bool = False) -> bool:
+    """Ask a running job to stop; False when it has already finished or isn't yours."""
     j = get(job_id, owner, is_admin)
     if not j or j.state in ("done", "failed", "cancelled", "interrupted") or job_id not in _jobs:
         return False
