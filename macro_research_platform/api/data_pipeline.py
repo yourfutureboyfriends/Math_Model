@@ -1,3 +1,4 @@
+"""Refreshes data/us_economic_data.csv from FRED and Yahoo, with range checks on each value."""
 # api/data_pipeline.py
 # R-01: automated daily data pipeline for the Macro Terminal
 # Fetches FRED + yfinance, validates, writes CSV, clears cache

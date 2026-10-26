@@ -1,3 +1,4 @@
+"""Celery app (Redis broker) for the optional background task workers in api/tasks/."""
 
 # Macro Terminal v8.0 — Celery Configuration (Phase 9C)
 # Replaces APScheduler with distributed task queue

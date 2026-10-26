@@ -4,8 +4,8 @@ import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
 import { ErrorBox, Loading, Panel, Spark, useJSON } from './shared';
+import { signedPct as pct } from '@/lib/format';
 
-const pct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(d)}%`);
 const num = (v: number | null | undefined) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${Math.round(v).toLocaleString()}`);
 const tone = (v: number | null | undefined) => (v == null ? 'text-text-tertiary' : v >= 0 ? 'text-green' : 'text-red');
 

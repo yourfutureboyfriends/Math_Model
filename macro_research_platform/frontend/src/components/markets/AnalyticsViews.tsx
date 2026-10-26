@@ -4,9 +4,9 @@ import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { toTerminal } from './bbg';
 import { ErrorBox, fmtPrice, Loading, Panel, useJSON } from './shared';
+import { signedPct as pct } from '@/lib/format';
 
 const enc = encodeURIComponent;
-const pct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(d)}%`);
 const heat = (v: number | null | undefined, scale: number) => {
   if (v == null) return undefined;
   const a = Math.min(1, Math.abs(v) / scale) * 0.75 + 0.08;

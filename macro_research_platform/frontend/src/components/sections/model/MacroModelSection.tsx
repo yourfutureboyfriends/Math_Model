@@ -10,11 +10,11 @@ import { Cpu, RefreshCw, Settings2, Send } from 'lucide-react';
 import { LineChart } from '@/components/ui/LineChart';
 import { useAuth } from '@/context/AuthContext';
 import { useMacroStore } from '@/store/macroStore';
+import { pct } from '@/lib/format';
 
 // Categorical slots validated on the dark surface (#0d1117): fixed order, never cycled.
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500'];
 
-const pct = (v: number | null | undefined, d = 1) => (v == null || !Number.isFinite(v) ? '—' : `${(v * 100).toFixed(d)}%`);
 const sgn = (v: number | null | undefined, d = 2) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(d)}`);
 
 

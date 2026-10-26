@@ -6,6 +6,7 @@ import { Donut } from '@/components/ui/Donut';
 import { BarList } from '@/components/ui/BarList';
 import { openChart } from '@/components/ui/ChartModal';
 import { PieChart, RefreshCw } from 'lucide-react';
+import { pct } from '@/lib/format';
 
 interface Holding {
   symbol: string;
@@ -32,7 +33,6 @@ interface Sleeve {
   expected_vol: number;
 }
 
-const pct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);
 const usd = (v: number | null | undefined) =>
   v == null ? '—' : Math.abs(v) >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : `$${Math.round(v).toLocaleString()}`;
 

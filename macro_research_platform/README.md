@@ -2,6 +2,15 @@
 
 A professional macro research platform for regime-based investing, portfolio construction, and quantitative research.
 
+## Finding your way
+
+- **[docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md)** — every backend module and UI file with what it does, and where
+  each area lives (regenerate with `python scripts/gen_codebase_map.py`).
+- **[docs/README.md](docs/README.md)** — the documentation index: running the funds, methodology, Quant Lab.
+- **Live API reference** — `http://localhost:8000/docs` once the backend is running.
+- **Conventions** — routers use `api/core/web.py` for identity, capabilities, errors and the audit log; UI panels use
+  `src/lib/http.ts` (`apiCall`) to call the API and `src/lib/format.ts` for numbers.
+
 ## Quick Start
 
 ### Prerequisites

@@ -1,3 +1,4 @@
+// Hook: GET an endpoint with loading / error state (the app's standard data fetch).
 import { useState, useEffect } from 'react';
 
 interface UseApiDataResult<T> {

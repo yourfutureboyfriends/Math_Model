@@ -1,3 +1,4 @@
+"""Celery tasks: market data, economic indicators, COT and volatility-surface refreshes."""
 # ═══════════════════════════════════════════════════════════════════════════════
 # Celery Pipeline Tasks — Data ingestion and updates
 # ═══════════════════════════════════════════════════════════════════════════════

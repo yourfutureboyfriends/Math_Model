@@ -1,3 +1,4 @@
+// Small UI utilities: class merging (cn), percent / score / date formats, signal colours.
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 

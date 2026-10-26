@@ -1,6 +1,9 @@
 // Shared helpers for the Quant Lab and the two paper traders: API calls, number formats,
 // small presentational pieces.
 import { cn } from '@/lib/utils';
+import { pct } from '@/lib/format';
+
+export { pct };
 
 export async function api(url: string, init?: RequestInit & { json?: unknown }) {
   const { json, ...rest } = init ?? {};
@@ -21,7 +24,6 @@ export const money = (v: number | null | undefined, ccy = 'USD', d = 0) => {
   try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: ccy, maximumFractionDigits: d, minimumFractionDigits: d }).format(v); }
   catch { return `${v.toLocaleString(undefined, { maximumFractionDigits: d })} ${ccy}`; }
 };
-export const pct = (v: number | null | undefined, d = 1) => (v == null || !Number.isFinite(v) ? '—' : `${(v * 100).toFixed(d)}%`);
 export const spct = (v: number | null | undefined, d = 1) => (v == null || !Number.isFinite(v) ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(d)}%`);
 export const num = (v: number | null | undefined, d = 2) => (v == null || !Number.isFinite(v) ? '—' : v.toFixed(d));
 export const tone = (v: number | null | undefined) => (v == null ? null : v > 0 ? 'up' : v < 0 ? 'down' : null) as 'up' | 'down' | null;

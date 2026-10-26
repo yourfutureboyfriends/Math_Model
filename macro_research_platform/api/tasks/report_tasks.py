@@ -1,3 +1,4 @@
+"""Celery tasks: daily and weekly report generation."""
 # ═══════════════════════════════════════════════════════════════════════════════
 # Celery Report Tasks — Daily/Weekly report generation
 # ═══════════════════════════════════════════════════════════════════════════════

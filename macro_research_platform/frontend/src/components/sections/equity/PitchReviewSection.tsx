@@ -8,9 +8,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiCall } from '@/lib/http';
+import { num } from '@/lib/format';
 
 const inputCls = 'w-full bg-surface-1 border border-border px-2 py-1 text-xs font-mono text-text-primary focus:border-bloomberg outline-none';
-const num = (v?: number | null, d = 2) => (v == null || !Number.isFinite(v) ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: d }));
 const spct = (v?: number | null) => (v == null || !Number.isFinite(v) ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`);
 const STATUS_TONE: Record<string, string> = { draft: 'text-text-tertiary', submitted: 'text-amber', approved: 'text-green', rejected: 'text-red', closed: 'text-text-tertiary' };
 

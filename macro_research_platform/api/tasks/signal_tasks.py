@@ -1,3 +1,4 @@
+"""Celery tasks: generate signals with confidence intervals and publish them."""
 # ═══════════════════════════════════════════════════════════════════════════════
 # Celery Signal Tasks — Signal generation and regime classification
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -1,3 +1,4 @@
+"""Celery tasks: alternative data (Google Trends, JOLTS, card spending)."""
 # ═══════════════════════════════════════════════════════════════════════════════
 # Celery Alternative Data Tasks — Phase 13C
 # Google Trends, JOLTS, Credit Card Spending

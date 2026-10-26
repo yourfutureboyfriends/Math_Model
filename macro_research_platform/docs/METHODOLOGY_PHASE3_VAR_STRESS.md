@@ -54,3 +54,20 @@ asset; component VaR sums to total; scenario/reverse-stress arithmetic; concentr
 weights and days-to-liquidate. Verified live on a real 4-position book: 95% 1-day VaR
 ≈ $0.9k–$1.2k across the three methods, AAPL drives 87% of VaR, the SPY short hedges
 (−10%), 2008 GFC scenario ≈ −$21k. 65 backend calc tests pass in total.
+
+
+## Additions (October 2026)
+
+Code: `api/calculations/var_model.py`; shown in the VaR & Stress panel; tests in `api/tests/test_calc_refinements.py`.
+
+- **Expected Shortfall 97.5%** — the average loss beyond VaR (Basel FRTB measure): historical, normal and filtered
+  historical simulation.
+- **Cornish–Fisher VaR** — the normal quantile adjusted for the P&L's skew and excess kurtosis (Favre & Galeano 2002).
+- **EWMA VaR** — RiskMetrics volatility with λ = 0.94; **filtered historical simulation** — past P&L standardised by
+  its EWMA volatility and rescaled to today's (Barone-Adesi et al. 1999). Both react to volatility clustering, which
+  an equal-weighted window does not.
+- **VaR backtest** (`GET /api/v1/risk/var/backtest`) — each recorded 95% 1-day VaR against the next NAV change with
+  capital flows removed: Kupiec proportion of failures, Christoffersen independence and conditional coverage, Basel
+  traffic light (green while P(X ≤ exceptions) < 95%, red from 99.99%).
+- **Track record** — statistics on a time-weighted index (capital flows are not returns), with the Sharpe ratio's
+  standard error (Mertens 2002) and the probabilistic Sharpe ratio (Bailey & López de Prado 2012).

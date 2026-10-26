@@ -9,9 +9,9 @@ import { CheckCircle2, FlaskConical, Loader2, MinusCircle, RefreshCw, XCircle } 
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
 import { DeepAnalysis } from '@/components/sections/model/quant/DeepReport';
+import { pct } from '@/lib/format';
 
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500'];
-const pct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);
 const spct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(d)}%`);
 const r2 = (v: number | null | undefined) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}R`);
 const num = (v: number | null | undefined, d = 2) => (v == null ? '—' : v.toFixed(d));

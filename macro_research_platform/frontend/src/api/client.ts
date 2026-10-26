@@ -1,3 +1,4 @@
+// Axios client for the dashboard endpoints (older; panels use lib/http.ts or useApiData).
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { DashboardData } from '@/types';
 

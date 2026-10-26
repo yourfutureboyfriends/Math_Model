@@ -17,11 +17,11 @@ import { openStockAnalysis } from './StockIdeasSection';
 import { MacroTrader } from './MacroTrader';
 import { FundamentalQuantTrader, MacroQuantTrader, TechnicalQuantTrader } from './QuantTrader';
 import { DeepAnalysis } from '@/components/sections/model/quant/DeepReport';
+import { pct } from '@/lib/format';
 
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#8a63d2', '#d0457a', '#6b7280'];
 const usd = (v: number | null | undefined, d = 0) =>
   v == null ? '—' : `${v < 0 ? '-' : ''}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: d })}`;
-const pct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);
 const spct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(d)}%`);
 const num = (v: number | null | undefined, d = 2) => (v == null ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: d }));
 const TONE: Record<string, string> = { good: 'text-green border-green/40', bad: 'text-red border-red/40', neutral: 'text-text-secondary border-border' };

@@ -14,6 +14,7 @@ import { forgetFundLogo } from '@/lib/fundLogo';
 import { BrandShape, Letterhead } from '@/components/layout/FundIdentity';
 import { currentFund } from '@/lib/fund';
 import { apiCall } from '@/lib/http';
+import { num } from '@/lib/format';
 
 // what the signed-in person's position allows in this fund (buttons greyed out; the server enforces it regardless)
 const CapsCtx = createContext<Record<string, boolean> | null>(null);
@@ -29,7 +30,6 @@ function useSay() {
 
 const call = apiCall;
 
-const num = (v?: number | null, d = 2) => (v == null || !Number.isFinite(v) ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: d }));
 const pct = (v?: number | null, d = 0) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);
 const inputCls = 'bg-surface-1 border border-border px-2 py-1 text-xs text-text-primary focus:border-bloomberg outline-none';
 const btn = 'px-2 py-0.5 border border-border hover:border-bloomberg text-2xs disabled:opacity-40';

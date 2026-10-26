@@ -10,13 +10,13 @@ import { Donut } from '@/components/ui/Donut';
 import { CorrelationHeatmap } from '@/components/ui/CorrelationHeatmap';
 import { CATEGORICAL } from '@/lib/chartPalette';
 import { openChart } from '@/components/ui/ChartModal';
+import { pct } from '@/lib/format';
 
 const PRIMARY = ['trend', 'sector_momentum', 'low_vol', 'residual_momentum', 'auto_book'];
 const SHORT: Record<string, string> = {
   trend: 'Trend', sector_momentum: 'Sectors', low_vol: 'Low vol', residual_momentum: 'Resid. mom.', auto_book: 'Auto book', combined: 'Combined',
 };
 const COLOR: Record<string, string> = Object.fromEntries([...PRIMARY, 'combined'].map((k, i) => [k, i === 5 ? '#e8edf3' : CATEGORICAL[i]]));
-const pct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);
 const spct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(d)}%`);
 const num = (v: number | null | undefined, d = 2) => (v == null ? '—' : v.toFixed(d));
 const TONE: Record<string, { cls: string; Icon: typeof CheckCircle2 }> = {

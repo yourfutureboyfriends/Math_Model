@@ -11,6 +11,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Activity, RefreshCw } from 'lucide-react';
+import { pct } from '@/lib/format';
 
 type Point = { date: string; value: number };
 
@@ -55,7 +56,6 @@ function Card({ title, source, children }: { title: string; source: string; chil
   );
 }
 
-const pct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);
 
 export function CycleRiskSection() {
   const [data, setData] = useState<any>(null);

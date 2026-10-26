@@ -8,9 +8,9 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiCall } from '@/lib/http';
+import { num } from '@/lib/format';
 
 const bp = (v?: number | null) => (v == null || !Number.isFinite(v) ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(1)}`);
-const num = (v?: number | null, d = 2) => (v == null || !Number.isFinite(v) ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: d }));
 const costTone = (v?: number | null) => (v == null ? 'text-text-tertiary' : v > 0 ? 'text-red' : v < 0 ? 'text-green' : 'text-text-secondary');
 
 const call = apiCall;

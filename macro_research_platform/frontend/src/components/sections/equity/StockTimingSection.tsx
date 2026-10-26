@@ -8,6 +8,7 @@ import { PriceChart } from '@/components/ui/PriceChart';
 import { cn } from '@/lib/utils';
 import { revealPanel } from '@/lib/focusMode';
 import { marketTag, marketTitle } from '@/lib/marketTag';
+import { pct } from '@/lib/format';
 
 
 const COMPONENTS: { key: string; label: string; source: string }[] = [
@@ -24,7 +25,6 @@ const VERDICT_TONE: Record<string, string> = {
   WATCH: 'border-border text-text-secondary', AVOID: 'border-red text-red', 'N/A': 'border-border text-text-tertiary',
 };
 
-const pct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);
 const spct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(d)}%`);
 const px = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: 2 }));
 

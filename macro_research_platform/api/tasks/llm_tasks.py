@@ -1,3 +1,4 @@
+"""Celery tasks: news analysis and sentiment with a local Ollama model."""
 # ═══════════════════════════════════════════════════════════════════════════════
 # Celery LLM Tasks — Phase 13A
 # Ollama integration for news sentiment analysis

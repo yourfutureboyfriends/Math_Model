@@ -8,10 +8,10 @@
 import { useState } from 'react';
 import { Loader2, ShieldAlert, ShieldCheck, AlertTriangle, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { num } from '@/lib/format';
 
 const pct = (v?: number | null, d = 1) => (v == null || !Number.isFinite(v) ? '—' : `${(v * 100).toFixed(d)}%`);
 const spct = (v?: number | null, d = 1) => (v == null || !Number.isFinite(v) ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(d)}%`);
-const num = (v?: number | null, d = 2) => (v == null || !Number.isFinite(v) ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: d }));
 const bp = (v?: number | null) => (v == null || !Number.isFinite(v) ? '—' : `${v.toFixed(1)} bp`);
 
 const inputCls = 'bg-surface-1 border border-border px-2 py-1 text-xs font-mono text-text-primary focus:border-bloomberg outline-none';
