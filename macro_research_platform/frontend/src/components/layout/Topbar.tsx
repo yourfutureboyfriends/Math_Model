@@ -1,6 +1,6 @@
 // Bloomberg Terminal Topbar — 64px total (40px main + 24px ticker)
 // Row 1: Branding | Function keys | Session badges | Data status | Time | Tools
-// Row 2: Market ticker strip
+// Row 2: World quote board — one benchmark per region plus the global gauges, flashing on each tick
 
 import { setHubMode, useHubMode } from '@/lib/hubMode';
 import { DAY_END, DAY_START, setThemeSetting, useTheme, type ThemeSetting } from '@/lib/theme';
@@ -12,6 +12,10 @@ import { SystemStatusBadge } from '@/components/SystemStatusBadge';
 import { DataHealthIndicator } from '@/components/DataHealthIndicator';
 import { DataIntegrityIndicator } from '@/components/DataIntegrityIndicator';
 import { FundSwitcher } from './FundSwitcher';
+import { useTickFlash } from './TickerTape';
+import { EXCHANGES, sessionState } from '@/components/markets/MarketClock';
+import { openChart } from '@/components/ui/ChartModal';
+import { fmtPulseChange, fmtPulsePrice, SHORT, STRIP_SYMBOLS, useMarketPulse, type PulseRow } from '@/lib/marketPulse';
 import {
   fmtPriceInt,
   fmtVol,
@@ -47,28 +51,39 @@ interface TopbarProps {
   currentRegime?: string;
 }
 
-// Derive market session status from current UTC time
-function getSessionStatus(): { us: 'open' | 'pre' | 'closed'; eu: 'open' | 'closed'; as: 'open' | 'closed' } {
-  const now = new Date();
-  const utcH = now.getUTCHours();
-  const utcM = now.getUTCMinutes();
-  const utcMin = utcH * 60 + utcM;
-  const day = now.getUTCDay();
+type SessionLight = 'open' | 'lunch' | 'closed';
+// Regional session lights from the real exchange hours (components/markets/MarketClock): a region is open while any
+// of its main exchanges is in session — in the order the trading day travels round the world.
+const REGIONS: { label: string; title: string; codes: string[] }[] = [
+  { label: 'APAC', title: 'Asia-Pacific — Sydney, Tokyo, Hong Kong, Shanghai, Mumbai', codes: ['ASX', 'TSE', 'HKEX', 'SSE', 'NSE'] },
+  { label: 'EMEA', title: 'Europe, Middle East & Africa — London, Frankfurt, Paris, Riyadh, Johannesburg', codes: ['LSE', 'XETRA', 'EPA', 'TADAWUL', 'JSE'] },
+  { label: 'AMER', title: 'Americas — New York, Toronto, São Paulo', codes: ['NYSE', 'TSX', 'B3'] },
+];
 
-  const isWeekday = day >= 1 && day <= 5;
+function getSessionStatus(now = new Date()): { label: string; title: string; state: SessionLight; detail: string }[] {
+  return REGIONS.map((r) => {
+    const states = r.codes.map((c) => EXCHANGES.find((e) => e.code === c)).filter(Boolean)
+      .map((e) => ({ e: e!, s: sessionState(e!, now) }));
+    const open = states.filter((x) => x.s.state === 'open');
+    const state: SessionLight = open.length ? 'open' : states.some((x) => x.s.state === 'lunch') ? 'lunch' : 'closed';
+    const detail = states.map((x) => `${x.e.name} ${x.s.state === 'open' ? 'open' : x.s.state === 'lunch' ? 'lunch' : 'closed'} (${x.s.next})`).join(' · ');
+    return { label: r.label, title: r.title, state, detail };
+  });
+}
 
-  return {
-    us: !isWeekday ? 'closed'
-      : utcMin >= 870 && utcMin < 1260 ? 'open'
-      : utcMin >= 540 && utcMin < 870  ? 'pre'
-      : 'closed',
-    eu: !isWeekday ? 'closed'
-      : utcMin >= 480 && utcMin < 990  ? 'open'
-      : 'closed',
-    as: !isWeekday ? 'closed'
-      : utcMin >= 0 && utcMin < 360    ? 'open'
-      : 'closed',
-  };
+/** One quote on the world board; flashes green / red when it ticks, click for the chart. */
+function StripQuote({ r }: { r: PulseRow }) {
+  const flash = useTickFlash(r.price);
+  const c = fmtPulseChange(r);
+  return (
+    <button type="button" className={cn('ticker-item', flash)} onClick={() => openChart(r.symbol, r.name)}
+      title={`${r.name} (${r.symbol})${r.date ? ` · session ${r.date}` : ''} — click for the chart`}>
+      <span className="ticker-sym">{SHORT[r.symbol] ?? r.symbol}</span>
+      <span className="ticker-val">{fmtPulsePrice(r)}</span>
+      {c.text && <span className={cn('ticker-chg', c.dir > 0 ? 'text-green' : c.dir < 0 ? 'text-red' : 'text-text-tertiary')}>
+        {c.dir > 0 ? '▲' : c.dir < 0 ? '▼' : ''}{c.text}</span>}
+    </button>
+  );
 }
 
 // Build ticker data from store
@@ -215,7 +230,9 @@ export function Topbar({
   const [downloading, setDownloading] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [sessions, setSessions] = useState(getSessionStatus());
+  const [sessions, setSessions] = useState(() => getSessionStatus());
+  const pulse = useMarketPulse();
+  const board = STRIP_SYMBOLS.map((sym) => pulse.rows[sym]).filter((r): r is PulseRow => !!r && r.price != null);
 
   // Use macro store
   const prices = useMacroStore((state) => state.prices);
@@ -334,27 +351,15 @@ export function Topbar({
 
         <div className="hidden xl:block topbar-divider" />
 
-        {/* Market sessions */}
+        {/* Regional sessions (follow the sun) */}
         <div className="hidden lg:flex items-center gap-1.5">
-          <span className={cn('session-badge', sessions.us)}>
-            <span className={cn('w-1.5 h-1.5 rounded-full shrink-0',
-              sessions.us === 'open' ? 'bg-green' :
-              sessions.us === 'pre'  ? 'bg-amber' : 'bg-text-tertiary'
-            )} />
-            US {sessions.us === 'pre' ? 'PRE' : sessions.us === 'open' ? 'OPEN' : 'CLOSED'}
-          </span>
-          <span className={cn('session-badge', sessions.eu)}>
-            <span className={cn('w-1.5 h-1.5 rounded-full shrink-0',
-              sessions.eu === 'open' ? 'bg-green' : 'bg-text-tertiary'
-            )} />
-            EU {sessions.eu === 'open' ? 'OPEN' : 'CLOSED'}
-          </span>
-          <span className={cn('session-badge', sessions.as)}>
-            <span className={cn('w-1.5 h-1.5 rounded-full shrink-0',
-              sessions.as === 'open' ? 'bg-green' : 'bg-text-tertiary'
-            )} />
-            AS {sessions.as === 'open' ? 'OPEN' : 'CLOSED'}
-          </span>
+          {sessions.map((r) => (
+            <span key={r.label} className={cn('session-badge', r.state)} title={`${r.title}\n${r.detail}`}>
+              <span className={cn('w-1.5 h-1.5 rounded-full shrink-0',
+                r.state === 'open' ? 'bg-green live-dot' : r.state === 'lunch' ? 'bg-amber' : 'bg-text-tertiary')} />
+              {r.label} {r.state === 'open' ? 'OPEN' : r.state === 'lunch' ? 'LUNCH' : 'CLOSED'}
+            </span>
+          ))}
         </div>
 
         <div className="hidden lg:block topbar-divider" />
@@ -480,7 +485,7 @@ export function Topbar({
 
       {/* ── ROW 2: Market ticker strip (24px) ─────────────────────────────────── */}
       <div className="ticker-strip">
-        {ticker.map((item) => (
+        {board.length > 0 ? board.map((r) => <StripQuote key={r.symbol} r={r} />) : ticker.map((item) => (
           <div key={item.sym} className="ticker-item"
             title={item.asOf ? `1-day change for the ${item.asOf} session` : undefined}>
             <span className="ticker-sym">{item.sym}</span>

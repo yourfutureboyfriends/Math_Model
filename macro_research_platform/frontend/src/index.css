@@ -1460,10 +1460,84 @@ aside.fixed {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
+   LIVE SCREEN CHROME — world quote board, ticker tape, status bar
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* The topbar board scrolls sideways on narrow screens instead of cutting quotes off. */
+.ticker-strip { overflow-x: auto; scrollbar-width: none; }
+.ticker-strip::-webkit-scrollbar { display: none; }
+button.ticker-item { background: transparent; border-top: 0; border-bottom: 0; border-left: 0; cursor: pointer; }
+.ticker-item .ticker-chg { font-family: var(--font-data); font-size: 10px; font-variant-numeric: tabular-nums; }
+
+/* Bottom dock: tape + status bar, fixed under the page. Floating buttons sit above it. */
+:root { --dock-h: 48px; }
+.bottom-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; display: flex; flex-direction: column;
+  background: var(--bg); border-top: 1px solid var(--border); box-shadow: 0 -6px 18px rgb(0 0 0 / 0.18); }
+.fixed.bottom-4 { bottom: calc(var(--dock-h) + 0.75rem) !important; }
+
+.tape { display: flex; height: 24px; align-items: stretch; border-bottom: 1px solid var(--border-subtle); overflow: hidden; }
+.tape-label { display: flex; align-items: center; gap: 6px; padding: 0 10px; flex-shrink: 0; font-family: var(--font-data);
+  font-size: 9px; font-weight: 700; letter-spacing: 0.12em; color: rgb(var(--c-bloomberg));
+  background: rgb(var(--c-bloomberg) / 0.08); border-right: 1px solid rgb(var(--c-bloomberg) / 0.35); }
+.tape-dot { width: 6px; height: 6px; border-radius: 9999px; animation: live-pulse 2s ease-in-out infinite; }
+.tape-viewport { position: relative; flex: 1; overflow: hidden;
+  mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%); }
+.tape-track { display: flex; width: max-content; height: 100%; animation: crawl 120s linear infinite; will-change: transform; }
+.tape:hover .tape-track { animation-play-state: paused; }
+.tape-section { display: flex; align-items: stretch; }
+.tape-tag { display: flex; align-items: center; padding: 0 8px 0 14px; font-family: var(--font-data); font-size: 9px;
+  font-weight: 700; letter-spacing: 0.14em; color: rgb(var(--c-nav)); }
+.tape-quote { display: flex; align-items: center; gap: 6px; padding: 0 10px; height: 100%; white-space: nowrap;
+  background: transparent; border: 0; border-right: 1px solid var(--border-subtle); cursor: pointer; transition: background 120ms; }
+.tape-quote:hover { background: var(--surface-3); }
+.tape-sym { font-family: var(--font-data); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; color: var(--text-secondary); }
+.tape-px { font-family: var(--font-data); font-size: 10.5px; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.tape-chg { font-family: var(--font-data); font-size: 10px; font-variant-numeric: tabular-nums; }
+.tape-empty { display: flex; align-items: center; height: 100%; padding: 0 12px; font-family: var(--font-data); font-size: 10px; color: var(--text-tertiary); }
+@media (prefers-reduced-motion: reduce) { .tape-track { animation: none; } .tape-viewport { overflow-x: auto; } }
+
+.status-bar { display: flex; align-items: center; height: 24px; padding: 0 6px; gap: 8px; background: var(--surface-2);
+  font-family: var(--font-data); font-size: 10px; color: var(--text-secondary); }
+.status-clocks { display: flex; align-items: center; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.status-clocks::-webkit-scrollbar { display: none; }
+.status-clock { display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; border-right: 1px solid var(--border-subtle);
+  white-space: nowrap; cursor: default; }
+.status-city { font-weight: 700; letter-spacing: 0.06em; color: var(--text-tertiary); }
+.status-time { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.status-clock.open .status-city { color: var(--text-primary); }
+.status-clock.open .status-time { color: rgb(var(--c-green)); }
+.status-light { width: 6px; height: 6px; border-radius: 9999px; background: var(--border-strong); flex-shrink: 0; }
+.status-clock.open .status-light, .status-light.open { background: rgb(var(--c-green)); box-shadow: 0 0 6px rgb(var(--c-green) / 0.7); }
+.status-clock.lunch .status-light { background: rgb(var(--c-amber)); }
+.status-light.closed-warn { background: rgb(var(--c-amber)); }
+.status-right { margin-left: auto; display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.status-item { display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; height: 24px; white-space: nowrap;
+  border-left: 1px solid var(--border-subtle); letter-spacing: 0.04em; }
+.status-item kbd { font-family: var(--font-data); font-size: 9px; padding: 0 4px; border: 1px solid var(--border);
+  border-radius: 2px; color: var(--text-secondary); background: var(--surface-3); }
+.status-btn { height: 24px; padding: 0 10px; border-left: 1px solid var(--border-subtle); font-weight: 700; letter-spacing: 0.08em;
+  color: rgb(var(--c-bloomberg)); background: transparent; }
+.status-btn:hover { background: rgb(var(--c-bloomberg) / 0.12); }
+
+/* Research panels read like a terminal monitor: aligned figures, a row highlight that follows the cursor, and the
+   panel under the pointer lifted slightly so the eye knows where it is. */
+.terminal-section .font-mono, .terminal-section td, .ticker-val, .stat-value { font-variant-numeric: tabular-nums; }
+.terminal-section table tbody tr { transition: background-color 90ms ease; }
+.terminal-section table tbody tr:hover { background-color: rgb(var(--c-bloomberg) / 0.06); }
+.terminal-section > .section-header, .terminal-section .section-header { transition: border-left-color 150ms ease, background-color 150ms ease; }
+.terminal-section:hover .section-header { border-left-color: rgb(var(--c-nav)); background: var(--surface-3); }
+.terminal-section .terminal-card, .terminal-section [class*="bg-surface-1"][class*="border"] { transition: border-color 150ms ease; }
+.terminal-section:hover .terminal-card { border-color: var(--border-strong); }
+@media (prefers-reduced-motion: reduce) {
+  .terminal-section table tbody tr, .terminal-section .section-header, .terminal-section .terminal-card { transition: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
    PRINT STYLES
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 @media print {
+  .bottom-dock { display: none !important; }
   body {
     background: white !important;
     color: black !important;

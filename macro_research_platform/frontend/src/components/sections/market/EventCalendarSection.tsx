@@ -1,10 +1,19 @@
-// Economic Calendar — official US release dates (FRED release calendar) and FOMC decisions,
-// with each release's latest print, the consensus forecast from the free weekly feed the Markets ECO screen
-// records, and the last ten days' results (actual as first published vs forecast).
+// Economic Calendar, two views:
+//   WORLD (default): the global calendar — US, euro area, UK, Japan, China, Australia, Canada, Switzerland — with
+//                    consensus, actual and surprise (the Markets ECO screen's feed).
+//   US: official US release dates (FRED release calendar) and FOMC decisions, with each release's latest print, the
+//       consensus forecast, and the last ten days' results (actual as first published vs forecast). The macro model
+//       is driven by these US series, so this view stays one click away.
 
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+
+// The world view is the Markets ECO component, loaded only when shown.
+const EcoGlobalView = lazy(() => import('@/components/markets/DataViews').then((m) => ({ default: m.EcoGlobalView })));
+const SCOPE_KEY = 'eco_scope';
+type Scope = 'world' | 'us';
+const readScope = (): Scope => { try { return localStorage.getItem(SCOPE_KEY) === 'us' ? 'us' : 'world'; } catch { return 'world'; } };
 
 interface CalendarEvent {
   id: number;
@@ -70,6 +79,8 @@ export function EventCalendarSection({ data: initial }: Props) {
   const [showAll, setShowAll] = useState(false);
   const [minImp, setMinImp] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('LOW');
   const [now, setNow] = useState(() => new Date());
+  const [scope, setScopeState] = useState<Scope>(readScope);
+  const setScope = (s: Scope) => { setScopeState(s); try { localStorage.setItem(SCOPE_KEY, s); } catch { /* storage unavailable */ } };
 
   const load = useCallback(async () => {
     try {
@@ -98,24 +109,39 @@ export function EventCalendarSection({ data: initial }: Props) {
 
   return (
     <section id="economic-calendar" className="terminal-section">
-      <div className="section-header">
+      <div className="section-header !justify-start gap-2">
         <span className="section-tag">ECO</span>
         <h2 className="section-title">Economic Calendar</h2>
-        {data && (
+        <div role="tablist" aria-label="Calendar scope" className="ml-2 flex border border-border">
+          {([['world', 'World'], ['us', 'US releases']] as const).map(([k, label]) => (
+            <button key={k} role="tab" aria-selected={scope === k} onClick={() => setScope(k)}
+              className={`px-2 py-0.5 text-2xs font-mono uppercase tracking-wider ${scope === k ? 'bg-bloomberg text-bg' : 'text-text-tertiary hover:text-text-primary'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {scope === 'us' && data && (
           <Badge variant={data.blackout_active ? 'danger' : 'info'} className="ml-2">
             {data.blackout_active ? 'BLACKOUT' : `${events.length} releases · 45 days`}
           </Badge>
         )}
-        <div className="ml-auto flex gap-1">
+        {scope === 'us' && <div className="ml-auto flex gap-1">
           {(['LOW', 'MEDIUM', 'HIGH'] as const).map((l) => (
             <button key={l} onClick={() => setMinImp(l)}
               className={`px-1.5 py-0.5 text-2xs border ${minImp === l ? 'border-bloomberg text-bloomberg' : 'border-border text-text-tertiary hover:text-text-secondary'}`}>
               {l === 'LOW' ? 'All' : l === 'MEDIUM' ? 'Med+' : 'High'}
             </button>
           ))}
-        </div>
+        </div>}
       </div>
 
+      {scope === 'world' ? (
+        <Card className="p-4">
+          <Suspense fallback={<div className="h-32 animate-pulse bg-surface-2 rounded" />}>
+            <EcoGlobalView />
+          </Suspense>
+        </Card>
+      ) : (
       <Card className="p-4">
         {!data && !error && <div className="h-32 animate-pulse bg-surface-2 rounded" />}
         {error && !events.length && (
@@ -209,6 +235,7 @@ export function EventCalendarSection({ data: initial }: Props) {
           </>
         )}
       </Card>
+      )}
     </section>
   );
 }

@@ -9,6 +9,7 @@ import { CommandPalette } from './CommandPalette';
 import { AlertsPanel } from './AlertsPanel';
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
 import { ModelInfoPanel } from './ModelInfoPanel';
+import { BottomDock, DOCK_HEIGHT, useTapeVisible } from './StatusBar';
 import { BlackoutBanner } from '../EconomicCalendar';
 import { cn } from '@/lib/utils';
 import { revealPanel } from '@/lib/focusMode';
@@ -53,6 +54,10 @@ export function TerminalShell({
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
   const [modelInfoOpen, setModelInfoOpen] = useState(false);
   const keyTimeoutRef = useRef<NodeJS.Timeout>();
+  // The bottom dock (ticker tape + status bar): page content and the sidebar stop above it.
+  const [tapeOn] = useTapeVisible();
+  const dockH = tapeOn ? DOCK_HEIGHT.withTape : DOCK_HEIGHT.withoutTape;
+  useEffect(() => { document.documentElement.style.setProperty('--dock-h', `${dockH}px`); }, [dockH]);
 
   // Use external state if provided, otherwise internal
   const activeSection = externalActiveSection ?? internalActiveSection;
@@ -318,9 +323,10 @@ export function TerminalShell({
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed left-0 top-16 bottom-0 z-40 flex flex-col transition-all duration-200 bg-surface-1 border-r border-border overflow-hidden',
+          'fixed left-0 top-16 z-40 flex flex-col transition-all duration-200 bg-surface-1 border-r border-border overflow-hidden',
           sidebarCollapsed ? 'w-[48px] min-w-[48px]' : 'w-[224px] min-w-[224px]'
         )}
+        style={{ bottom: dockH }}
       >
         <ErrorBoundary sectionName="Sidebar">
           {sidebar ? sidebar(sidebarCollapsed) : (
@@ -342,11 +348,15 @@ export function TerminalShell({
           sidebarCollapsed ? 'pl-[48px]' : 'pl-[224px]',
           detailPanelOpen ? 'lg:pr-72' : 'pr-0'
         )}
+        style={{ paddingBottom: dockH }}
       >
         <div className="min-h-[calc(100vh-64px)]">
           {children}
         </div>
       </main>
+
+      {/* World ticker tape + status bar */}
+      <BottomDock />
 
       {/* Detail Panel */}
       <DetailPanel
