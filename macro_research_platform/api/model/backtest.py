@@ -13,7 +13,7 @@ realised regime with the Brier score and the Brier skill score vs the training b
 from __future__ import annotations
 
 import math
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -40,7 +40,9 @@ def _stats(r: pd.Series) -> Dict[str, Optional[float]]:
 
 
 def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str], env_class: Dict[str, str],
-                 p: ModelParams, start: Optional[str] = None) -> Dict:
+                 p: ModelParams, start: Optional[str] = None, anchors: Tuple[str, str] = ("INDPRO", "CPIAUCSL"),
+                 benchmark: Tuple[str, str] = ("US equity", "Intermediate Treasuries"),
+                 returns_are: str = "monthly excess returns over 3-month T-bills") -> Dict:
     """Monthly walk-forward backtest of the macro model: at each month-end the model decides weights from data
     available then, and is credited with the next month's excess returns.
 
@@ -50,6 +52,9 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
         blocks, env_class: model configuration (feature blocks, asset environment classes).
         p: model parameters.
         start: first decision month (earlier months are warm-up).
+        anchors: sign anchors of the growth and inflation factors (see core.decide).
+        benchmark: (equity asset, bond asset) of the 60/40 benchmark.
+        returns_are: description of the return basis, reported with the result.
 
     Returns:
         Monthly rows, weights, forecasts and summary statistics for strategic and tactical portfolios.
@@ -62,7 +67,7 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
     for t, t_next in zip(months[:-1], months[1:]):
         if first is not None and t < first:
             continue
-        d = decide(panel, rets, blocks, env_class, t, p)
+        d = decide(panel, rets, blocks, env_class, t, p, anchors)
         if d is None:
             continue
         w = pd.Series(d.weights, index=d.assets)
@@ -86,8 +91,8 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
         hist = rets.loc[:t, avail].tail(36)
         iv = 1 / hist.std().replace(0, np.nan)
         iv = (iv / iv.sum()).fillna(0)
-        bench_6040 = (0.6 * rets.loc[t_next, "US equity"] + 0.4 * rets.loc[t_next, "Intermediate Treasuries"]
-                      if {"US equity", "Intermediate Treasuries"} <= set(avail) else np.nan)
+        bench_6040 = (0.6 * rets.loc[t_next, benchmark[0]] + 0.4 * rets.loc[t_next, benchmark[1]]
+                      if set(benchmark) <= set(avail) else np.nan)
         rows.append({"month": t_next, "model": net, "strategic": strat, "model_gross": gross, "turnover": turnover,
                      "cash": d.cash, "equal_weight": float(rets.loc[t_next, avail].mean()),
                      "risk_parity": float((iv * rets.loc[t_next, avail]).sum()), "sixty_forty": bench_6040,
@@ -103,7 +108,7 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
     df = pd.DataFrame(rows).set_index("month")
 
     # Forecast skill vs realised direction (labels from the final factor history)
-    last = decide(panel, rets, blocks, env_class, months[-1], p)
+    last = decide(panel, rets, blocks, env_class, months[-1], p, anchors)
     skill = {}
     if last is not None:
         labels = realized_regimes(last.growth, last.inflation, p.momentum_months)
@@ -151,5 +156,6 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
         "equity_curve": [{"month": m.strftime("%Y-%m"), **{k: (round(float(v), 4) if pd.notna(v) else None) for k, v in row.items()}}
                          for m, row in curve.iterrows()],
         "weights": weights_log[-60:],
-        "returns_are": "monthly excess returns over 3-month T-bills",
+        "returns_are": returns_are,
+        "sixty_forty": {"equity": benchmark[0], "bonds": benchmark[1]},
     }

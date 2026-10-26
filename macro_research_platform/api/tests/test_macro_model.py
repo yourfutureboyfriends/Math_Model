@@ -97,3 +97,67 @@ def test_backtest_runs_and_reports_tilt_test():
     assert bt["available"] and "Tactical (net of costs)" in bt["stats"]
     assert bt["tactical_vs_strategic"]["t_stat"] is not None
     assert bt["forecast_skill"]["growth_direction"]["brier"] <= 0.3
+
+
+# ── Economies: the euro-area and rest-of-world models share the method ──────────────────────────────────────────
+def test_par_bond_returns_match_bond_maths():
+    from api.model.sources import par_bond_returns
+    idx = pd.date_range("2020-01-01", periods=3, freq="MS")
+    flat = par_bond_returns(pd.Series([3.0, 3.0, 3.0], index=idx), years=10, freq=1)
+    # unchanged yield: a par bond earns its yield (one month of a 3% annual yield ≈ 0.247%)
+    assert flat.iloc[0] == pytest.approx((1.03) ** (1 / 12) - 1, abs=2e-5)
+    up = par_bond_returns(pd.Series([3.0, 4.0], index=idx[:2]), years=10, freq=1)
+    # +100 bp on a 10-year par bond loses about its modified duration (~8.5) in price
+    assert -0.09 < up.iloc[0] < -0.075
+
+
+def test_economy_specs_are_consistent():
+    from api.model.economies import ECONOMIES
+    assert set(ECONOMIES) == {"us", "ea", "row"}
+    for e in ECONOMIES.values():
+        blocks = set(e.blocks().values())
+        assert blocks == {"growth", "inflation"}, e.id
+        assert e.anchors[0] in e.series and e.series[e.anchors[0]][0] == "growth", e.id
+        assert e.anchors[1] in e.series and e.series[e.anchors[1]][0] == "inflation", e.id
+        assert set(e.benchmark) <= set(e.assets), e.id
+        assert all(t in {"yoy", "neg_yoy", "diff12", "neg_diff12", "level"} for _, t, _ in e.series.values()), e.id
+        assert all(lag >= 0 for _, _, lag in e.series.values()), e.id
+        assert e.sources and e.limitations and set(e.labels) >= set(e.series), e.id
+    assert ECONOMIES["us"].tradeable and not ECONOMIES["ea"].tradeable and not ECONOMIES["row"].tradeable
+
+
+def test_non_us_model_runs_end_to_end_and_reports_its_economy(monkeypatch):
+    """A synthetic economy through the real engine: factors use its anchors, a stale input is left out and
+    reported, the 60/40 uses its own legs, and orders are refused for a research-only economy."""
+    import asyncio
+    import dataclasses
+    from api.model import engine as me
+    from api.model.economies import ECONOMIES
+    panel, rets, _, env = _synthetic(n=300)
+    raw = {}
+    for c in panel.columns:                       # raw "levels" whose 'level' transform is the synthetic series
+        raw[c] = panel[c]
+    raw["STALE"] = panel["G1"].iloc[:200]         # stops ~8 years early → excluded
+    spec = {c: ("growth" if c in ("INDPRO", "G1", "G2", "G3") else "inflation", "level", 0) for c in panel.columns}
+    spec["STALE"] = ("growth", "level", 0)
+    rets = rets.rename(columns={"Eq": "Home equity", "Bond": "Home bonds"})
+
+    async def loader():
+        return raw, rets
+    econ = dataclasses.replace(ECONOMIES["ea"], id="xx", name="Test", series=spec, labels={k: k for k in spec},
+                               anchors=("INDPRO", "CPIAUCSL"), benchmark=("Home equity", "Home bonds"),
+                               assets={"Home equity": ("-", "-", "Equity"), "Home bonds": ("-", "-", "Nominal bonds"),
+                                       "Gold": ("-", "-", "Gold"), "Comm": ("-", "-", "Commodities")}, loader=loader)
+    monkeypatch.setattr(me, "get_economy", lambda eid="us": econ)
+    monkeypatch.setattr(me, "_save_snapshot", lambda *a: None)
+    monkeypatch.setattr(me, "_CACHE", {})
+    p = {"min_history_months": 60}
+    r = asyncio.run(me.run_model(p, persist=False, force=True, economy="xx"))
+    assert r["available"] and r["economy"]["id"] == "xx" and r["economy"]["tradeable"] is False
+    used = {c["key"]: c["used"] for c in r["data"]["series"]}
+    assert used["STALE"] is False and used["INDPRO"] is True
+    assert "STALE" not in r["state"]["loadings"]["growth"] and r["state"]["loadings"]["growth"]["INDPRO"] > 0
+    assert r["backtest"]["sixty_forty"] == {"equity": "Home equity", "bonds": "Home bonds"}
+    assert sum(r["regime"]["probabilities"].values()) == pytest.approx(1.0, abs=1e-3)
+    with pytest.raises(ValueError):
+        asyncio.run(me.model_orders(r, "tactical", 1e6))

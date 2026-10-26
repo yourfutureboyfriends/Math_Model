@@ -1,17 +1,30 @@
-"""Systematic macro model API (see api/model/)."""
+"""Systematic macro model API (see api/model/).
+
+One method, three economies (api/model/economies.py): `economy=us` (default — the United States, the only model with a
+tradeable sleeve), `ea` (euro area) and `row` (rest of the world). Orders and the sleeve are US only.
+
+    GET  /api/v1/model?economy=        current state, portfolios and backtest (cached)
+    GET  /api/v1/model/world           every economy's regime side by side
+    GET  /api/v1/model/economies       what each economy's model uses (series, assets, sources, limitations)
+    POST /api/v1/model/run             re-run with custom parameters (quant / pm)
+    GET  /api/v1/model/runs?economy=   run history
+    GET  /api/v1/model/sleeve          the US sleeve against its targets (read-only)
+    POST /api/v1/model/orders/preview | /stage   US orders (stage: pre-trade compliance + four-eyes approval)
+"""
 from __future__ import annotations
 
 from typing import Any, Dict, Literal, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 router = APIRouter(tags=["model"])
 
 
 class RunIn(BaseModel):
-    """Model parameter overrides for a run."""
+    """Model parameter overrides for a run, and the economy (us / ea / row)."""
     params: Optional[Dict[str, Any]] = None
+    economy: Literal["us", "ea", "row"] = "us"
 
 
 class OrdersIn(BaseModel):
@@ -22,10 +35,32 @@ class OrdersIn(BaseModel):
 
 
 @router.get("/api/v1/model")
-async def model_latest():
-    """Current model state, portfolios and backtest with default parameters (cached)."""
+async def model_latest(economy: Literal["us", "ea", "row"] = Query("us")):
+    """Current model state, portfolios and backtest with default parameters (cached) for an economy."""
     from api.model.engine import run_model
-    return await run_model(None, user="system")
+    return await run_model(None, user="system", economy=economy)
+
+
+@router.get("/api/v1/model/world")
+async def model_world():
+    """The US, euro-area and rest-of-world models side by side: regime, factor levels and changes, direction
+    probabilities, contraction probability and the top tactical weights."""
+    from api.model.engine import world_summary
+    return await world_summary()
+
+
+@router.get("/api/v1/model/economies")
+async def model_economies():
+    """Each economy's configuration: input series (block, transform, publication lag), assets with their estimation
+    proxy and tradeable instrument, the 60/40 benchmark, data sources and limitations."""
+    from api.model.economies import ECONOMIES
+    return {"economies": [{
+        "id": e.id, "name": e.name, "currency": e.currency, "cash": e.cash_label, "tradeable": e.tradeable,
+        "series": [{"key": k, "label": e.labels.get(k, k), "block": b, "transform": t, "lag_months": lag}
+                   for k, (b, t, lag) in e.series.items()],
+        "assets": [{"name": a, "proxy": p, "instrument": i, "environment": env} for a, (p, i, env) in e.assets.items()],
+        "benchmark_6040": {"equity": e.benchmark[0], "bonds": e.benchmark[1]},
+        "sources": e.sources, "limitations": e.limitations} for e in ECONOMIES.values()]}
 
 
 @router.get("/api/v1/model/params")
@@ -54,17 +89,17 @@ async def model_run(body: RunIn, request: Request):
     from api.model.engine import run_model
     user = require_roles(request, {"quant", "pm"})
     try:
-        return await run_model(body.params, user=user["username"], force=True)
+        return await run_model(body.params, user=user["username"], force=True, economy=body.economy)
     except (TypeError, ValueError) as e:
         raise HTTPException(400, f"invalid parameters: {e}")
 
 
 @router.get("/api/v1/model/runs")
-async def model_runs(limit: int = 50):
-    """Recent model runs."""
+async def model_runs(limit: int = 50, economy: Optional[Literal["us", "ea", "row"]] = None):
+    """Recent model runs, newest first (one economy's, or all)."""
     import asyncio
     from api.model.engine import list_runs
-    return {"runs": await asyncio.to_thread(list_runs, min(max(limit, 1), 500))}
+    return {"runs": await asyncio.to_thread(list_runs, min(max(limit, 1), 500), economy)}
 
 
 @router.get("/api/v1/model/sleeve")

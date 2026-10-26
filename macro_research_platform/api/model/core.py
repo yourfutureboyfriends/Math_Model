@@ -247,13 +247,17 @@ class Decision:
 
 
 def decide(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str], env_class: Dict[str, str],
-           as_of: pd.Timestamp, p: ModelParams) -> Optional[Decision]:
-    """The model's allocation for the month after `as_of`, using only data up to `as_of`."""
+           as_of: pd.Timestamp, p: ModelParams, anchors: Tuple[str, str] = ("INDPRO", "CPIAUCSL")) -> Optional[Decision]:
+    """The model's allocation for the month after `as_of`, using only data up to `as_of`.
+
+    `anchors` are the series the growth and inflation factors must load positively on (the sign convention); the
+    defaults are the US model's industrial production and CPI.
+    """
     pan = panel[panel.index <= as_of]
     g_cols = [c for c, b in blocks.items() if b == "growth" and c in pan]
     i_cols = [c for c, b in blocks.items() if b == "inflation" and c in pan]
-    g, gl = diffusion_factor(pan[g_cols], "INDPRO")
-    i, il = diffusion_factor(pan[i_cols], "CPIAUCSL")
+    g, gl = diffusion_factor(pan[g_cols], anchors[0])
+    i, il = diffusion_factor(pan[i_cols], anchors[1])
     if g.empty or i.empty:
         return None
     pg = direction_probability(g, p.momentum_months)

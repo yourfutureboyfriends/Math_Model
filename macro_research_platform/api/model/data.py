@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -79,10 +79,15 @@ def transform(s: pd.Series, how: str) -> pd.Series:
     return s
 
 
-def build_macro_panel(raw: Dict[str, pd.Series]) -> pd.DataFrame:
-    """Transformed, publication-lag-shifted monthly panel (index = month the value is known)."""
+def build_macro_panel(raw: Dict[str, pd.Series], spec: Optional[Dict[str, Tuple[str, str, int]]] = None) -> pd.DataFrame:
+    """Transformed, publication-lag-shifted monthly panel (index = month the value is known).
+
+    Args:
+        raw: Series by key.
+        spec: key -> (block, transform, lag); defaults to the US series (MACRO_SERIES).
+    """
     cols = {}
-    for sid, (_, how, lag) in MACRO_SERIES.items():
+    for sid, (_, how, lag) in (spec or MACRO_SERIES).items():
         s = raw.get(sid)
         if s is None or s.empty:
             continue

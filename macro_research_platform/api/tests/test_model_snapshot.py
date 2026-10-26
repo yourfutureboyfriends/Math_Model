@@ -16,7 +16,10 @@ def test_cold_call_serves_snapshot_without_computing(tmp_path, monkeypatch):
     async def slow_load():
         calls.append(1)
         await asyncio.sleep(10)
-    monkeypatch.setattr(me, "load_model_data", slow_load)
+    import dataclasses
+    from api.model.economies import ECONOMIES
+    slow_us = dataclasses.replace(ECONOMIES["us"], loader=slow_load)
+    monkeypatch.setattr(me, "get_economy", lambda eid="us": slow_us)
 
     async def go():
         t0 = time.perf_counter()

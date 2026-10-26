@@ -14,6 +14,7 @@
 ## Methodology (how the numbers are made)
 | Document | Topic |
 |---|---|
+| [macro_model_economies.md](macro_model_economies.md) | Macro model for the US, the euro area and the rest of the world: method, data sources, backtests |
 | [METHODOLOGY_PHASE1_POSITIONS.md](METHODOLOGY_PHASE1_POSITIONS.md) | Positions and P&L |
 | [METHODOLOGY_PHASE2_FACTOR_MODEL.md](METHODOLOGY_PHASE2_FACTOR_MODEL.md) | Factor model |
 | [METHODOLOGY_PHASE3_VAR_STRESS.md](METHODOLOGY_PHASE3_VAR_STRESS.md) | VaR, Expected Shortfall, stress tests, VaR backtesting |

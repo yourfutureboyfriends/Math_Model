@@ -1,9 +1,11 @@
 /**
- * Macro Model — the systematic model as one workflow:
- *   1 Economic state → 2 Regime probabilities → 3 Expected returns & portfolio →
- *   4 Walk-forward backtest → 5 Orders (staged into the four-eyes workflow).
- * Parameters can be changed and the model re-run (quant / PM); every run is recorded.
- * Reads /api/v1/model, /api/v1/model/params, /api/v1/model/run, /api/v1/model/orders/*.
+ * Macro Model — the systematic model as one workflow, for three economies:
+ *   United States (FRED; the only model with a tradeable sleeve), Euro area (Eurostat + ECB, in EUR) and
+ *   Rest of the world (OECD leading indicators and unemployment + BIS CPI for nine economies, in USD).
+ *   World strip (every economy's regime) → 1 Economic state → 2 Regime probabilities → 3 Expected returns &
+ *   portfolio → 4 Walk-forward backtest → 5 Orders (US only; staged into the four-eyes workflow).
+ * Parameters can be changed and the model re-run (quant / PM); every run is recorded with its economy.
+ * Reads /api/v1/model?economy=, /api/v1/model/world, /api/v1/model/params, /api/v1/model/run, /api/v1/model/orders/*.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Cpu, RefreshCw, Settings2, Send } from 'lucide-react';
@@ -16,6 +18,68 @@ import { pct } from '@/lib/format';
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500'];
 
 const sgn = (v: number | null | undefined, d = 2) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(d)}`);
+
+type Economy = 'us' | 'ea' | 'row';
+const ECONOMIES: { id: Economy; label: string; short: string }[] = [
+  { id: 'us', label: 'United States', short: 'US' },
+  { id: 'ea', label: 'Euro area', short: 'EA' },
+  { id: 'row', label: 'Rest of world', short: 'RoW' },
+];
+const ECON_KEY = 'model_economy';
+const readEconomy = (): Economy => {
+  try { const v = localStorage.getItem(ECON_KEY); return v === 'ea' || v === 'row' ? v : 'us'; } catch { return 'us'; }
+};
+const arrow = (v?: number | null) => (v == null ? '' : v > 0.02 ? '▲' : v < -0.02 ? '▼' : '■');
+
+/** The three economies side by side; a card opens that economy's model below. */
+function WorldStrip({ active, onPick }: { active: Economy; onPick: (e: Economy) => void }) {
+  const [rows, setRows] = useState<any[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/v1/model/world').then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((j) => { if (alive) setRows(j.economies ?? []); })
+      .catch((e) => { if (alive) setErr(e?.message || 'unavailable'); });
+    return () => { alive = false; };
+  }, []);
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2" role="tablist" aria-label="Economy">
+      {ECONOMIES.map((e) => {
+        const r = rows?.find((x) => x.economy?.id === e.id);
+        const on = active === e.id;
+        return (
+          <button key={e.id} role="tab" aria-selected={on} onClick={() => onPick(e.id)}
+            className={`text-left p-2.5 border transition-colors ${on ? 'border-bloomberg bg-bloomberg/10' : 'border-border bg-surface-1 hover:border-border-strong'}`}>
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] font-mono font-bold px-1 ${on ? 'bg-bloomberg text-bg' : 'border border-border text-text-secondary'}`}>{e.short}</span>
+              <span className="text-xs font-semibold text-text-primary">{e.label}</span>
+              {r?.economy?.currency && <span className="text-[10px] text-text-tertiary font-mono">{r.economy.currency}</span>}
+              <span className="ml-auto text-[10px] text-text-tertiary font-mono">{r?.available ? `to ${r.factor_as_of}` : ''}</span>
+            </div>
+            {!rows && !err && <div className="mt-2 h-8 animate-pulse bg-surface-2" />}
+            {(err || (r && !r.available)) && <div className="mt-1.5 text-[10px] text-amber">{r?.reason || err}</div>}
+            {r?.available && (
+              <>
+                <div className="mt-1.5 flex items-baseline gap-2">
+                  <span className="text-sm font-semibold text-text-primary">{r.regime}</span>
+                  <span className="font-mono text-xs text-bloomberg">{pct(r.probabilities[r.regime], 0)}</span>
+                </div>
+                <div className="mt-1 grid grid-cols-2 gap-x-3 text-[10px] font-mono text-text-tertiary">
+                  <span>Growth <span className="text-text-primary">{sgn(r.growth_factor)}σ</span>{' '}
+                    <span className={r.growth_change_3m > 0 ? 'text-green' : r.growth_change_3m < 0 ? 'text-red' : ''}>{arrow(r.growth_change_3m)}</span></span>
+                  <span>Inflation <span className="text-text-primary">{sgn(r.inflation_factor)}σ</span>{' '}
+                    <span className={r.inflation_change_3m > 0 ? 'text-red' : r.inflation_change_3m < 0 ? 'text-green' : ''}>{arrow(r.inflation_change_3m)}</span></span>
+                  <span>P(growth ↑) <span className="text-text-primary">{pct(r.p_growth_rising, 0)}</span></span>
+                  <span>P(inflation ↑) <span className="text-text-primary">{pct(r.p_inflation_rising, 0)}</span></span>
+                </div>
+              </>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 
 function Step({ n, title, children, right }: { n: number; title: string; children: React.ReactNode; right?: React.ReactNode }) {
@@ -45,6 +109,12 @@ export function MacroModelSection() {
   const [which, setWhich] = useState<'strategic' | 'tactical'>('strategic');
   const [orders, setOrders] = useState<any>(null);
   const [staged, setStaged] = useState<any>(null);
+  const [economy, setEconomyState] = useState<Economy>(readEconomy);
+  const [showInputs, setShowInputs] = useState(false);
+  const setEconomy = (e: Economy) => {
+    setEconomyState(e); setOrders(null); setStaged(null);
+    try { localStorage.setItem(ECON_KEY, e); } catch { /* storage unavailable */ }
+  };
 
   const load = useCallback(async () => {
     setBusy(true); setError(null);
@@ -55,19 +125,19 @@ export function MacroModelSection() {
         if (!r.ok || !j) throw new Error((typeof j?.detail === 'string' && j.detail) || `HTTP ${r.status}`);
         return j;
       };
-      const [m, p] = await Promise.all([get('/api/v1/model'), get('/api/v1/model/params')]);
+      const [m, p] = await Promise.all([get(`/api/v1/model?economy=${economy}`), get('/api/v1/model/params')]);
       if (m.available === false) throw new Error(m.reason);
       if (!m.state || !m.portfolios) throw new Error('Model response incomplete');
       setData(m); setMeta(p); setParams(m.params);
     } catch (e: any) { setError(e?.message || 'Model unavailable'); }
     finally { setBusy(false); }
-  }, []);
-  useEffect(() => { load(); }, [load]);
+  }, [economy]);
+  useEffect(() => { setData(null); load(); }, [load]);
 
   const rerun = async () => {
     setBusy(true); setError(null); setOrders(null); setStaged(null);
     try {
-      const r = await fetch('/api/v1/model/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ params }) });
+      const r = await fetch('/api/v1/model/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ params, economy }) });
       const j = await r.json();
       if (!r.ok) throw new Error(typeof j?.detail === 'string' ? j.detail : `HTTP ${r.status}`);
       if (j.available === false || !j.state) throw new Error(j.reason || 'Model response incomplete');
@@ -87,6 +157,9 @@ export function MacroModelSection() {
   };
 
   const port = data?.portfolios?.[which];
+  const econ = data?.economy;
+  const tradeable = econ ? econ.tradeable !== false : economy === 'us';
+  const series: any[] = data?.data?.series ?? [];
   const bt = data?.backtest;
   const assetRows = useMemo(() => port ? Object.keys(port.weights).map((a) => ({
     asset: a, etf: port.etfs[a], w: port.weights[a], rc: port.risk_contributions[a],
@@ -99,6 +172,7 @@ export function MacroModelSection() {
         <div className="section-header-left">
           <span className="section-tag"><Cpu className="w-3 h-3" /></span>
           <h2 className="section-title">Macro Model</h2>
+          {econ && <span className="text-2xs font-mono text-bloomberg">{econ.name} · {econ.currency}</span>}
           {data && <span className="text-2xs text-text-tertiary font-mono">v{data.version} · data to {data.as_of} · {data.run_id ? `run ${data.run_id}` : (data as any).snapshot ? `computed ${String((data as any).snapshot.saved_at).slice(0, 16).replace('T', ' ')} UTC` : (data as any).computed_at ? `computed ${String((data as any).computed_at).slice(0, 16).replace('T', ' ')} UTC` : 'not yet recorded'} · params {data.params_hash}</span>}
         </div>
         <div className="flex items-center gap-1">
@@ -113,8 +187,10 @@ export function MacroModelSection() {
         </div>
       </div>
 
+      <WorldStrip active={economy} onPick={setEconomy} />
+
       {error && <div className="mb-2 p-2 text-xs text-amber border border-amber/30 bg-amber-dim">{error}</div>}
-      {!data && busy && <div className="p-3 text-2xs text-text-tertiary">Running the model…</div>}
+      {!data && busy && <div className="p-3 text-2xs text-text-tertiary">Running the {ECONOMIES.find((e) => e.id === economy)?.label} model… a first run fetches the official statistics (up to a minute).</div>}
 
       {showParams && meta && (
         <div className="mb-3 p-3 bg-surface-1 border border-border">
@@ -150,7 +226,32 @@ export function MacroModelSection() {
               <LineChart rows={data.state.history.slice(-60)} x="month" height={170} baseline={0}
                 fmt={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}σ`} axisFmt={(v) => `${v.toFixed(1)}σ`}
                 lines={[{ key: 'growth', label: 'Growth', color: SERIES[0] }, { key: 'inflation', label: 'Inflation', color: SERIES[1] }]} />
-              <div className="text-[10px] text-text-tertiary">{data.methodology.factors}</div>
+              <div className="text-[10px] text-text-tertiary">{data.methodology.factors}{' '}
+                {series.length > 0 && <button onClick={() => setShowInputs((v) => !v)} className="text-bloomberg hover:underline">
+                  {showInputs ? 'Hide inputs' : `Show the ${series.length} inputs`}</button>}</div>
+              {showInputs && series.length > 0 && (
+                <div className="mt-2 max-h-56 overflow-y-auto border border-border-subtle">
+                  <table className="w-full text-[10px]">
+                    <thead className="sticky top-0 bg-surface-2"><tr className="text-text-tertiary text-left">
+                      <th className="font-normal px-1.5 py-0.5">Series</th><th className="font-normal">Block</th>
+                      <th className="font-normal text-right">Loading</th><th className="font-normal text-right">From</th>
+                      <th className="font-normal text-right">Latest</th><th className="font-normal text-right px-1.5" title="Publication lag applied, months">Lag</th></tr></thead>
+                    <tbody>{series.map((c) => {
+                      const load = data.state.loadings?.[c.block]?.[c.key];
+                      return (
+                        <tr key={c.key} className={`border-t border-border-subtle ${c.used ? '' : 'opacity-50'}`}
+                          title={c.used ? `${c.key} · ${c.transform}` : `${c.key}: left out — latest observation ${c.months_behind} months behind`}>
+                          <td className="px-1.5 py-0.5 text-text-secondary">{c.label}{!c.used && <span className="ml-1 text-amber">stale</span>}</td>
+                          <td className="text-text-tertiary">{c.block}</td>
+                          <td className="text-right font-mono text-text-primary">{load != null ? load.toFixed(2) : '—'}</td>
+                          <td className="text-right font-mono text-text-tertiary">{c.first ?? '—'}</td>
+                          <td className="text-right font-mono text-text-secondary">{c.last ?? '—'}</td>
+                          <td className="text-right font-mono text-text-tertiary px-1.5">{c.lag_months}</td>
+                        </tr>);
+                    })}</tbody>
+                  </table>
+                </div>
+              )}
             </Step>
 
             <Step n={2} title="Regime probabilities — next month">
@@ -165,7 +266,7 @@ export function MacroModelSection() {
                   </div>
                 ))}
               </div>
-              {signalRegime && data.regime.most_likely && signalRegime.toLowerCase() !== String(data.regime.most_likely).toLowerCase() && (
+              {economy === 'us' && signalRegime && data.regime.most_likely && signalRegime.toLowerCase() !== String(data.regime.most_likely).toLowerCase() && (
                 <div className="mt-2 p-2 border border-border-subtle bg-surface-2 text-2xs text-text-secondary">
                   <span className="text-text-primary">Why this differs from the Signal Regime ({signalRegime}):</span> this model
                   forecasts <em>next month's</em> quadrant from slow-moving economic data (growth &amp; inflation factors),
@@ -207,7 +308,7 @@ export function MacroModelSection() {
               <div className="overflow-x-auto">
                 <table className="w-full text-2xs font-mono">
                   <thead><tr className="text-text-tertiary text-left">
-                    <th className="font-normal pb-1 font-sans">Asset class</th><th className="font-normal pb-1">ETF</th>
+                    <th className="font-normal pb-1 font-sans">Asset class</th><th className="font-normal pb-1">{tradeable ? 'ETF' : 'Instrument'}</th>
                     <th className="font-normal pb-1 text-right">Weight</th><th className="font-normal pb-1 text-right">Risk share</th>
                     <th className="font-normal pb-1 text-right" title="Black–Litterman posterior, annualised excess return">E[r] posterior</th>
                     <th className="font-normal pb-1 text-right" title="Regime-conditional model view">Model view</th></tr></thead>
@@ -235,7 +336,7 @@ export function MacroModelSection() {
             <Step n={4} title={`Walk-forward backtest ${bt.start} → ${bt.end}`} right={<span className="text-2xs text-text-tertiary">{bt.returns_are}</span>}>
               <LineChart rows={bt.equity_curve} x="month" height={220} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`} axisFmt={(v) => `${v >= 1 ? v.toFixed(0) : v.toFixed(1)}×`}
                 lines={[{ key: 'model', label: 'Tactical', color: SERIES[0] }, { key: 'strategic', label: 'Strategic', color: SERIES[1] },
-                        { key: 'sixty_forty', label: '60/40', color: SERIES[2] }, { key: 'risk_parity', label: 'Risk parity', color: SERIES[3] }]} />
+                        { key: 'sixty_forty', label: bt.sixty_forty ? `60/40 (${bt.sixty_forty.equity} / ${bt.sixty_forty.bonds})` : '60/40', color: SERIES[2] }, { key: 'risk_parity', label: 'Risk parity', color: SERIES[3] }]} />
               <div className="overflow-x-auto mt-2">
                 <table className="w-full text-2xs font-mono">
                   <thead><tr className="text-text-tertiary text-left">
@@ -267,10 +368,20 @@ export function MacroModelSection() {
               <div className="text-[10px] text-text-tertiary mt-1">
                 Re-estimated every month on data available at the time; costs {data.params.cost_bps}bp per unit turnover;
                 average monthly turnover {pct(bt.avg_turnover_monthly, 0)}. Limitations: {data.methodology.limitations.join(' ')}
+                {data.data?.sources?.length > 0 && <> Sources: {data.data.sources.join('; ')}.</>}
               </div>
             </Step>
           )}
 
+          {!tradeable ? (
+            <Step n={5} title="Orders">
+              <div className="text-2xs text-text-tertiary">
+                Research view: the {econ?.name ?? 'selected'} model's portfolio is not traded. Orders are generated for the
+                US model's sleeve only (book “Macro Model”). The instruments listed are the liquid UCITS / US ETFs that
+                track each asset class.
+              </div>
+            </Step>
+          ) : (
           <Step n={5} title={`Orders — ${which} portfolio`} right={
             <div className="flex gap-1">
               {canStage && <button onClick={() => orderCall('preview')} disabled={busy} className="px-2 py-0.5 text-2xs border border-border text-text-secondary hover:text-bloomberg disabled:opacity-50">Preview orders</button>}
@@ -317,6 +428,7 @@ export function MacroModelSection() {
                 {(warn > 0 || block > 0) && <span className={block ? 'text-red' : 'text-amber'}> Pre-trade: {block} block, {warn} need risk sign-off.</span>}</div>;
             })()}
           </Step>
+          )}
         </div>
       )}
     </div>

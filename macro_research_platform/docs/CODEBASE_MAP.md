@@ -236,7 +236,9 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `backtest.py` | Walk-forward backtest of the systematic macro model. |
 | `core.py` | Systematic macro model — the numerical core (pure functions; no I/O). |
 | `data.py` | Data for the systematic macro model: a monthly macro panel and monthly asset excess returns. |
+| `economies.py` | The economies the macro model runs on. The method (api/model/core.py) is the same for every economy — growth and inflation diffusion factors → regime probabilities → regime-conditional expected returns →… |
 | `engine.py` | Systematic macro model — orchestration, persistence and order generation. |
+| `sources.py` | Official-statistics fetchers for the non-US macro models — each returns monthly pandas Series indexed by month start. |
 
 ### `api/models/`
 
@@ -518,11 +520,14 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `FundSwitcher.tsx` | Fund switcher (top bar): which fund's book, settings and records the app shows. Hidden with only one fund. |
 | `Header.tsx` | Legacy page header (the app uses Topbar). |
 | `KeyboardShortcutsHelp.tsx` | UPGRADE-6: Keyboard Shortcuts Help Overlay |
+| `LivePopups.tsx` | Live pop-ups: toasts in the bottom-right corner (above the ticker tape) that make the screen feel alive — |
 | `Logo.tsx` | Logo component — 2×2 growth/inflation regime matrix |
 | `MasterSignalHeader.tsx` | Phase 8 Task 44 — Master Signal Dashboard Header |
 | `ModelInfoPanel.tsx` | ModelInfoPanel — auditable model documentation ("Model Info"). |
 | `Sidebar.tsx` | UPGRADE-9: Terminal Sidebar — Hedge Fund Workflow Organization |
+| `StatusBar.tsx` | Bottom dock: the world ticker tape over a terminal status bar. |
 | `TerminalShell.tsx` | UPGRADE-6: Terminal Shell with Keyboard Shortcuts — Analyst Workflow |
+| `TickerTape.tsx` | Live ticker tape: a continuously scrolling strip of ~50 instruments, ordered the way the trading day travels round |
 | `Topbar.tsx` | Bloomberg Terminal Topbar — 64px total (40px main + 24px ticker) |
 | `WorkspaceBar.tsx` | Workspace tabs above the dashboard: one navigation group at a time (or the role's focus |
 | `index.ts` | Layout components re-exported for import from '@/components/layout'. |
@@ -655,7 +660,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 
 | File | What it does |
 |---|---|
-| `EventCalendarSection.tsx` | Economic Calendar — official US release dates (FRED release calendar) and FOMC decisions, |
+| `EventCalendarSection.tsx` | Economic Calendar, two views: |
 | `EventVolSection.tsx` | EventVolSection — Phase 6A event-driven volatility forecast. |
 | `GlobalCorrelationSection.tsx` | GlobalCorrelationSection — correlation matrix ACROSS world markets. |
 | `GlobalMarketsSection.tsx` | GlobalMarketsSection — major WORLD equity indices (not just US). |
@@ -666,7 +671,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 
 | File | What it does |
 |---|---|
-| `MacroModelSection.tsx` | Macro Model — the systematic model as one workflow: |
+| `MacroModelSection.tsx` | Macro Model — the systematic model as one workflow, for three economies: |
 | `ModelSleeveSection.tsx` | Model Portfolio — the Macro Model's sleeve (book "Macro Model"): holdings vs the model's |
 | `QuantLabSection.tsx` | Quant Lab — write strategy code and test it (in your browser), with every cost, walk-forward |
 | `StrategyLabSection.tsx` | Strategy Lab — research-backed systematic models (cross-asset trend, sector momentum, low |
@@ -825,12 +830,14 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `governedDeploy.ts` | A fund with governance on paper-trades only governed models (approved at G2): the deployment becomes the model's |
 | `http.ts` | One JSON fetch helper for panels: sends JSON, returns JSON, and throws an Error whose message is the server's |
 | `hubMode.ts` | Hub mode: the app has two modes — |
+| `marketPulse.ts` | One shared, polled feed of the world-markets overview (/api/v1/mkt/overview) for the screen chrome — the topbar |
 | `marketTag.ts` | Short market tag for a listing: "JP·DM", "KR·EM", … for equities; the instrument type for |
 | `marketsRoute.ts` | Markets-mode routing (#mkt/<function>/<symbol>): small on purpose — the sidebar and links use it without loading |
 | `navigation.ts` | Dashboard information architecture: panel groups in trading-day order. Shared by the |
 | `network.ts` | Network utilities — centralized API and WebSocket URL resolution |
 | `panelHelp.ts` | Plain-English help for every dashboard panel, keyed by panelId() (lib/focusMode). |
 | `panels.ts` | Panel names — the single source of truth for what each section is called in the |
+| `popups.ts` | Live pop-up notifications (breaking headlines, big market moves, economic releases, regime changes): a tiny store |
 | `region.ts` | The Markets region (Bloomberg-style GLOBAL / AMERICAS / EUROPE / MIDDLE EAST & AFRICA / |
 | `theme.ts` | Colour theme: 'auto' (light 07:00–19:00 local time, dark otherwise — re-checked every |
 | `topo.ts` | Minimal TopoJSON → SVG path rendering with the Equal Earth projection (Šavrič, Patterson |
