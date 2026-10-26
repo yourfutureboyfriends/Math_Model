@@ -41,7 +41,8 @@ async def funds_list(request: Request):
             funds.CURRENT.reset(tok)
         out.append({**f, "base_currency": st.get("base_currency"), "benchmark": st.get("benchmark"),
                     "fund_name": st.get("fund_name"), "capital": st.get("capital"),
-                    "members": f["members"] if u.get("role") == "admin" else None})
+                    "members": f["members"] if u.get("role") == "admin" else None,
+                    "logo": _logo_path(f["id"], "full").exists(), "logo_mark": _logo_path(f["id"], "mark").exists()})
     return {"funds": out, "current": funds.current()}
 
 
@@ -78,3 +79,79 @@ async def funds_update(fund_id: str, body: FundUpdate, request: Request):
         return await asyncio.to_thread(funds.update, fund_id, body.name, body.members)
     except LookupError as e:
         raise HTTPException(404, str(e))
+
+
+# ── logos ────────────────────────────────────────────────────────────────────
+# Each fund's logo (full lock-up) and mark (small emblem for the top bar), stored beside the fund databases
+# (api/funds/logos/, not in the repository). Uploads are re-encoded as PNG by Pillow (nothing else in the file is kept).
+LOGO_VARIANTS = ("full", "mark")
+MAX_LOGO_BYTES = 2_000_000
+
+
+def _logo_path(fund_id: str, variant: str):
+    from api import funds
+    if not funds.ID_RE.match(fund_id) and fund_id != funds.MAIN:
+        raise HTTPException(400, "invalid fund id")
+    return funds.FUNDS_DIR / "logos" / (f"{fund_id}.png" if variant == "full" else f"{fund_id}_mark.png")
+
+
+def save_logo(fund_id: str, variant: str, data: bytes) -> dict:
+    import io
+    from PIL import Image
+    if len(data) > MAX_LOGO_BYTES:
+        raise ValueError("the logo must be under 2 MB")
+    try:
+        img = Image.open(io.BytesIO(data))
+        img.load()
+    except Exception:                                                          # noqa: BLE001 — not an image
+        raise ValueError("not a PNG / JPEG image")
+    if img.format not in ("PNG", "JPEG", "WEBP"):
+        raise ValueError("use a PNG, JPEG or WebP image")
+    img = img.convert("RGBA")
+    if max(img.size) > 1200:
+        img.thumbnail((1200, 1200))
+    p = _logo_path(fund_id, variant)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    img.save(p, "PNG", optimize=True)
+    return {"fund": fund_id, "variant": variant, "size": list(img.size)}
+
+
+class LogoIn(BaseModel):
+    variant: str = Field("full", pattern="^(full|mark)$")
+    data_base64: str = Field(..., max_length=3_000_000)
+
+
+@router.get("/api/v1/funds/{fund_id}/logo")
+async def funds_logo(fund_id: str, request: Request, variant: str = "full"):
+    """The fund's logo as PNG (the mark falls back to the full logo); 404 when none is set."""
+    from fastapi.responses import FileResponse
+    from api import funds
+    from api.core.access import current_user
+    u = current_user(request)
+    f = await asyncio.to_thread(funds.get, fund_id)
+    if not u or not f or not funds.can_open(u, f):
+        raise HTTPException(404, "no logo")
+    for v in ((variant, "full") if variant == "mark" else ("full",)):
+        p = _logo_path(fund_id, v)
+        if p.exists():
+            return FileResponse(p, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
+    raise HTTPException(404, "no logo")
+
+
+@router.put("/api/v1/funds/{fund_id}/logo")
+async def funds_logo_set(fund_id: str, body: LogoIn, request: Request):
+    """Set a fund's logo or mark (admin): a base64 PNG / JPEG / WebP."""
+    import base64
+    from api import audit_store, funds
+    from api.core.access import require_roles
+    u = require_roles(request, set())
+    if not await asyncio.to_thread(funds.get, fund_id):
+        raise HTTPException(404, "fund not found")
+    try:
+        raw = base64.b64decode(body.data_base64.split(",", 1)[-1], validate=False)
+        r = await asyncio.to_thread(save_logo, fund_id, body.variant, raw)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    await asyncio.to_thread(lambda: audit_store.add_decision("fund_logo_set", f"Logo ({body.variant}) set for fund {fund_id}",
+                                                              user=u["username"], target=f"fund:{fund_id}"))
+    return r

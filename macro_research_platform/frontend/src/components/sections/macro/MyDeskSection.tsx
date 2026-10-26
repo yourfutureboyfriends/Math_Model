@@ -9,6 +9,7 @@
  *
  * Data: /api/v1/desk (see api/routers/desk.py).
  */
+import { useFundLogo } from '@/lib/fundLogo';
 import { TeamNotes } from '@/components/markets/MyTools';
 import { ArrowRight, CheckCircle2, LayoutDashboard } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -258,11 +259,12 @@ export const deskPanelLabel = (id: string) => panelLabel(id);
 export function MyDeskSection() {
   const { user } = useAuth();
   const d = useDesk(user?.username);
+  const logo = useFundLogo('full');
 
   return (
     <section className="border border-bloomberg/40 bg-surface-1/60 p-3">
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <LayoutDashboard className="w-4 h-4 text-bloomberg" />
+        {logo ? <img src={logo} alt="" className="h-8 w-auto max-w-[110px] object-contain rounded-sm" /> : <LayoutDashboard className="w-4 h-4 text-bloomberg" />}
         <h2 className="text-sm font-semibold text-text-primary tracking-wide">MY DESK</h2>
         <span className="text-2xs text-text-tertiary">
           {[d?.focus.title ?? user?.role?.toUpperCase(), user?.display_name]

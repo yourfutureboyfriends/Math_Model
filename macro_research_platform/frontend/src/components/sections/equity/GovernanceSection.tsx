@@ -8,6 +8,8 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Loader2, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
+import { useFundLogo, forgetFundLogo } from '@/lib/fundLogo';
+import { currentFund } from '@/lib/fund';
 
 // window.prompt/confirm are suppressed in some embedded browsers: an in-app dialog instead
 function useSay() {
@@ -103,7 +105,31 @@ function Overview({ g, reload }: { g: any; reload: () => void }) {
           </>) : <div className="text-text-tertiary text-2xs">{sc.err ?? 'Loading…'}</div>}
         </Box>
       </div>
+      <LogoUpload />
       {st.mandate_text && <Box title="Written mandate"><pre className="whitespace-pre-wrap text-[11px] text-text-secondary font-sans">{st.mandate_text}</pre></Box>}
+    </div>
+  );
+}
+
+function LogoUpload() {
+  const [msg, setMsg] = useState<string | null>(null);
+  const up = (variant: 'full' | 'mark') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        await call(`/api/v1/funds/${encodeURIComponent(currentFund())}/logo`, 'PUT', { variant, data_base64: String(reader.result) });
+        forgetFundLogo(currentFund()); setMsg(`${variant === 'full' ? 'Logo' : 'Mark'} updated — reload to see it everywhere.`);
+      } catch (x: any) { setMsg(x.message); }
+    };
+    reader.readAsDataURL(file);
+  };
+  return (
+    <div className="text-[10px] text-text-tertiary flex flex-wrap gap-3 items-center">Fund logo (administrator):
+      <label className="cursor-pointer underline">full logo<input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={up('full')} /></label>
+      <label className="cursor-pointer underline">top-bar mark<input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={up('mark')} /></label>
+      {msg && <span className="text-amber">{msg}</span>}
     </div>
   );
 }
@@ -308,6 +334,7 @@ function Controls({ reload }: { reload: () => void }) {
 
 // ── monthly pack ─────────────────────────────────────────────────────────────
 function Monthly() {
+  const logo = useFundLogo('full');
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const { d, err } = useLoad<any>(`/api/v1/governance/report/monthly?month=${month}`);
   return (
@@ -317,6 +344,12 @@ function Monthly() {
         <button className={btn} onClick={() => window.print()}>Print</button>
         {d && <span className="text-amber text-2xs">{d.label}</span>}
       </div>
+      {d && (
+        <div className="flex items-center gap-3 border-b border-border pb-2">
+          {logo && <img src={logo} alt="" className="h-12 w-auto max-w-[160px] object-contain rounded-sm" />}
+          <div><div className="text-sm text-text-primary font-medium">{d.fund} — monthly internal report, {d.month}</div>
+            <div className="text-2xs text-text-tertiary">{d.stage} · base currency {d.currency} · generated {String(d.generated_at).replace('T', ' ')}</div></div>
+        </div>)}
       {!d ? <div className="text-2xs text-text-tertiary">{err ?? 'Loading…'}</div> : (
         <div className="grid md:grid-cols-2 gap-2">
           <Box title={`Returns (${d.currency})`}>
@@ -484,10 +517,12 @@ const TABS: [Tab, string][] = [['overview', 'Overview'], ['models', 'Models G0�
 
 export function GovernanceSection() {
   const { d: g, err, load } = useLoad<any>('/api/v1/governance');
+  const logo = useFundLogo('full');
   const [tab, setTab] = useState<Tab>('overview');
   return (
     <div className="border border-border bg-surface-1">
       <div className="px-3 py-2 border-b border-border flex items-center gap-2 flex-wrap">
+        {logo && <img src={logo} alt={g?.settings.fund_name ?? ''} className="h-9 w-auto max-w-[120px] object-contain rounded-sm" />}
         <span className="text-xs font-medium text-text-primary uppercase tracking-wider">Fund Governance</span>
         {g && <span className="text-2xs text-text-tertiary">{g.settings.fund_name} · {g.settings.stage_label}</span>}
         <div className="flex gap-1 flex-wrap ml-auto">
