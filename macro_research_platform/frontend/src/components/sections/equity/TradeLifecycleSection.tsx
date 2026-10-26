@@ -154,9 +154,9 @@ function NavRecord() {
           <tbody>{d.series.map((r: any) => (
             <tr key={r.start} className="border-b border-border-subtle"><td className="py-1 font-mono">{r.currency}</td><td className="font-mono">{r.start}</td>
               <td className="font-mono">{r.end}</td><td className="text-right font-mono">{r.snapshots}</td>
-              <td className="text-right">{r.current ? 'current track record' : 'earlier series (kept, not converted)'}</td></tr>))}
+              <td className="text-right">{r.current ? 'current series' : 'earlier series (kept, not converted)'}</td></tr>))}
           </tbody></table>)}
-      <div className="text-[10px] text-text-tertiary">Each snapshot records its currency. Changing the fund's base currency starts a new series; the earlier one is kept as recorded and never relabelled.</div>
+      <div className="text-[10px] text-text-tertiary">Each snapshot records its currency. Paper / simulated NAV is not a fund track record. Changing the fund's base currency starts a new series; the earlier one is kept as recorded and never relabelled.</div>
     </div>
   );
 }

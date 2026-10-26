@@ -70,6 +70,7 @@ export const PANEL_LABELS: Record<string, string> = {
   // Trading
   'trade-ideas': 'Trade Ideas',
   'trade-recommendations': 'Allocation Recommendations',
+  'fund-governance': 'Fund Governance',
   'pitch-review': 'Pitch Review',
   'pretrade-desk': 'Pre-Trade Desk',
   'trade-lifecycle': 'Trade Lifecycle',

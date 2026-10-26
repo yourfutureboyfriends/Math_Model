@@ -29,6 +29,11 @@ BENCHMARKS: Dict[str, Dict[str, Any]] = {
     "MSCI_WORLD": {"label": "MSCI World (net TR)",
                    "legs": [{"index": "MSCI World", "proxy": "SWDA.L", "weight": 1.0, "ter": 0.0020,
                              "proxy_name": "iShares Core MSCI World UCITS ETF USD (Acc), London (GBp)"}]},
+    # the no-trade alternative for a macro fund: GBP cash, proxied by an ultrashort sterling bond ETF (price only —
+    # it distributes, so its small income is not included). No sector attribution applies.
+    "CASH_GBP": {"label": "Cash, GBP (no-trade alternative; ultrashort £ bond ETF proxy)", "attribution": False,
+                 "legs": [{"index": "GBP cash", "proxy": "ERNS.L", "weight": 1.0, "ter": 0.0009,
+                           "proxy_name": "iShares £ Ultrashort Bond UCITS ETF GBP (Dist), London"}]},
     "SPY": {"label": "S&P 500 (SPY, total return)",
             "legs": [{"index": "S&P 500", "proxy": "SPY", "weight": 1.0, "ter": 0.0009, "proxy_name": "SPDR S&P 500 ETF"}]},
 }

@@ -104,6 +104,7 @@ export const navigation: NavSection[] = [
       { id: 'stock-backtest', label: 'Entry Model Backtest', icon: '⚗', permission: 'trade_ideas' },
       { id: 'trade-ideas', label: 'Trade Ideas', icon: '◆', permission: 'trade_ideas', highlight: true },
       { id: 'trade-recommendations', label: 'Trade Recommendations', icon: '◆', permission: 'trade_recommendations', highlight: true },
+      { id: 'fund-governance', label: 'Fund Governance (mandate, gates, controls)', icon: '◆', permission: 'trade_ideas', highlight: true },
       { id: 'pitch-review', label: 'Pitch Review (PMC)', icon: '◆', permission: 'trade_ideas', highlight: true },
       { id: 'pretrade-desk', label: 'Pre-Trade Desk', icon: '◆', permission: 'trade_ideas', highlight: true },
       { id: 'trade-lifecycle', label: 'Trade Lifecycle & TCA', icon: '◆', permission: 'trade_ideas', highlight: true },

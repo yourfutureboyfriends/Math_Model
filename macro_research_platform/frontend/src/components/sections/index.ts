@@ -204,6 +204,9 @@ export const PreTradeDeskSection = lazy(() =>
 export const PitchReviewSection = lazy(() =>
   import('./equity/PitchReviewSection').then(m => ({ default: m.PitchReviewSection }))
 );
+export const GovernanceSection = lazy(() =>
+  import('./equity/GovernanceSection').then(m => ({ default: m.GovernanceSection }))
+);
 export const TradeLifecycleSection = lazy(() =>
   import('./equity/TradeLifecycleSection').then(m => ({ default: m.TradeLifecycleSection }))
 );

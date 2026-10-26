@@ -32,6 +32,10 @@ async def pa_brinson(book: Optional[str] = None,
     from api.calculations.benchmark import BENCHMARKS
     from api.handlers import portfolio_analytics as h
     code = (benchmark or (await asyncio.to_thread(fund_store.get_settings)).get("benchmark") or "SPY").upper()
+    if code in BENCHMARKS and BENCHMARKS[code].get("attribution") is False:
+        return {"available": False, "reason": f"Sector attribution does not apply to the fund's benchmark "
+                                              f"({BENCHMARKS[code]['label']}): see attribution by sleeve, instrument "
+                                              f"and regime in the monthly reporting pack (Fund Governance)."}
     if code in BENCHMARKS and code != "SPY":
         return await _run(h.brinson_base, book, code, days, timeout=180)
     return await _run(h.brinson, book, code, days)

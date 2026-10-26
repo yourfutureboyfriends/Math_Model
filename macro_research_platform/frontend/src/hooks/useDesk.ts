@@ -34,7 +34,7 @@ export interface Desk {
     var95_1d_usd?: number | null; positions?: number;
     limits?: { overall: string; breaches: DeskLimit[]; warnings: DeskLimit[]; top_utilization: DeskLimit[] };
     track_record?: { available: boolean; observations?: number; total_return?: number | null;
-      annualized_vol?: number | null; sharpe?: number | null; max_drawdown?: number | null };
+      annualized_vol?: number | null; sharpe?: number | null; max_drawdown?: number | null; label?: string };
   };
   macro: {
     available: boolean; regime?: string; regime_confidence?: number | null; regime_months?: number | null;

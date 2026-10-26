@@ -92,7 +92,7 @@ function NavTab({ ov }: { ov: any }) {
 
       <div className="p-3 bg-surface-1 border border-border">
         <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">
-          Track record — {tr?.basis}
+          {tr?.label ?? 'Track record'} — {tr?.basis}
         </div>
         {tr?.available ? (
           <div className="grid grid-cols-2 md:grid-cols-6 gap-2">

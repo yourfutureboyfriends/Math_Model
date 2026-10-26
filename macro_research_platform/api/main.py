@@ -1402,6 +1402,22 @@ async def lifespan(app: FastAPI):
                            replace_existing=True)
         _scheduler.add_job(func=_apply_splits, trigger="date", id="apply_splits_startup", replace_existing=True)
 
+        # T+1 reconciliation of positions against the fills ledger, for funds with governance on (a break halts).
+        async def _reconcile_funds():
+            from api import fund_store as _fs, funds as _funds, governance as _gov
+            for f in _funds.list_funds():
+                tok = _funds.CURRENT.set(f["id"])
+                try:
+                    if (await asyncio.to_thread(_fs.get_settings)).get("governance"):
+                        r = await asyncio.to_thread(_gov.reconcile, "system")
+                        logger.info("[governance] fund %s reconciliation: %s", f["id"], "clean" if r["ok"] else f"{len(r['breaks'])} breaks")
+                except Exception as e:                                    # noqa: BLE001
+                    logger.warning("[governance] reconciliation for fund %s failed: %s", f["id"], e)
+                finally:
+                    _funds.CURRENT.reset(tok)
+        _scheduler.add_job(func=_reconcile_funds, trigger=CronTrigger(day_of_week="mon-fri", hour=6, minute=30),
+                           id="governance_reconcile", replace_existing=True)
+
         # FIXED: Phase 7 - Add new consolidated data refresh jobs
         # Price refresh every 60 seconds via new provider architecture
         _scheduler.add_job(
@@ -1725,8 +1741,10 @@ from api.routers.stock import router as stock_router  # stock entry timing + scr
 app.include_router(stock_router)
 from api.routers.portfolios import router as portfolios_router  # model review, optimiser, auto book
 app.include_router(portfolios_router)
+from api.routers.governance import router as governance_router  # fund governance (model gates, controls, reporting)
 from api.routers.portfolio_analytics import router as portfolio_analytics_router  # Brinson, TE, LVaR, lots, TCA
 app.include_router(portfolio_analytics_router)
+app.include_router(governance_router)
 from api.routers.trading_desk import router as trading_desk_router   # pitch review (PMC) + pre-trade feasibility
 app.include_router(trading_desk_router)
 from api.routers.funds import router as funds_router   # several funds, each in its own database

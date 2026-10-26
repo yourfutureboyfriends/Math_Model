@@ -153,6 +153,12 @@ class FundSettingsIn(BaseModel):
     benchmark: Optional[str] = None          # BIFS | MSCI_WORLD | SPY (api/calculations/benchmark.py)
     mandate: Optional[Dict[str, Any]] = None  # long_only, developed_markets_only, max_position_pct, max_sector_pct,
                                               # min_cash_pct, max_participation, max_days_to_execute, fx_conversion_bps
+    governance: Optional[bool] = None
+    stage: Optional[str] = None               # research | prop_live | seed_readiness | fund
+    require_approved_model: Optional[bool] = None
+    risk_policy: Optional[Dict[str, Any]] = None
+    capital_basis: Optional[str] = None
+    mandate_text: Optional[str] = None
 
 
 @router.get("/api/v1/fund/settings")
@@ -188,6 +194,25 @@ async def update_fund_settings(body: FundSettingsIn, request: Request):
                 raise HTTPException(400, f"mandate.{k} must be a non-negative number")
         current = (await _thread(fund_store.get_settings)).get("mandate") or {}
         changes["mandate"] = {**DEFAULT_MANDATE, **current, **changes["mandate"]}
+    if "stage" in changes:
+        from api.governance import STAGES
+        if changes["stage"] not in STAGES:
+            raise HTTPException(400, f"stage must be one of {', '.join(STAGES)}")
+    if "risk_policy" in changes:
+        from api.governance import DEFAULT_RISK_POLICY
+        bad = [k for k in changes["risk_policy"] if k not in DEFAULT_RISK_POLICY]
+        if bad:
+            raise HTTPException(400, f"unknown risk_policy keys: {', '.join(bad)}")
+        for k, v in changes["risk_policy"].items():
+            if isinstance(DEFAULT_RISK_POLICY[k], bool):
+                changes["risk_policy"][k] = bool(v)
+            elif not isinstance(v, (int, float)) or v < 0:
+                raise HTTPException(400, f"risk_policy.{k} must be a non-negative number")
+        current = (await _thread(fund_store.get_settings)).get("risk_policy") or {}
+        changes["risk_policy"] = {**current, **changes["risk_policy"]}
+    for k in ("capital_basis", "mandate_text"):
+        if k in changes:
+            changes[k] = str(changes[k])[:20000]
     if "base_currency" in changes:
         changes["base_currency"] = changes["base_currency"].upper()
         if changes["base_currency"] not in ("USD", "GBP", "EUR", "JPY", "CHF", "CAD", "AUD", "HKD", "SGD", "SEK", "NOK", "DKK"):
@@ -236,8 +261,8 @@ async def fund_overview():
     pf_stats = track_record(pf.get("nav", []), risk_free_annual=0.0) if pf else {"available": False}
 
     return {
-        "fund": {k: settings[k] for k in ("fund_name", "capital", "base_currency", "inception_date",
-                                         "vol_target", "realized_pnl")},
+        "fund": {**{k: settings[k] for k in ("fund_name", "capital", "base_currency", "inception_date",
+                                            "vol_target", "realized_pnl")}, "capital_basis": settings.get("capital_basis")},
         "nav": state["nav"],
         "cash": state["cash"],
         "realized_pnl": state["realized_pnl"],
@@ -249,6 +274,8 @@ async def fund_overview():
         "risk_free_rate": rf,
         "limits": evaluate_limits(state["metrics"], limits),
         "track_record": {**record, "history": history[-260:],
+                         "label": (__import__("api.governance", fromlist=["x"]).results_label(settings.get("stage"))
+                                   if settings.get("governance") else "Track record"),
                          "basis": "recorded daily NAV snapshots; NAV excludes interest on idle "
                                   "cash, so Sharpe/Sortino are already excess-of-cash"},
         "proforma": {**pf, "stats": pf_stats,
@@ -272,6 +299,12 @@ async def take_nav_snapshot() -> Dict[str, Any]:
         pass
     if not settings.get("inception_date"):
         await _thread(fund_store.update_settings, {"inception_date": date.today().isoformat()})
+    if settings.get("governance"):                   # each model's P&L, high-water mark and drawdown control
+        try:
+            from api import governance as gov
+            await _thread(gov.record_model_pnl)
+        except Exception as e:                                                 # noqa: BLE001 — never lose the NAV
+            logger.warning(f"[fund] model P&L record failed: {e}")
     return await _thread(fund_store.record_nav, {
         "date": date.today().isoformat(), "nav": state["nav"],
         "gross": state["exposures"]["gross"], "net": state["exposures"]["net"],
@@ -354,8 +387,58 @@ async def _run_pretrade(symbol: str, quantity: float, book: str) -> Dict[str, An
                 "book": book or "Macro", "asset_class": "Equity"}
     before, after = await asyncio.gather(_book_state(raw, settings, include_liquidity=False),
                                          _book_state(raw + [proposed], settings, include_liquidity=False))
-    return _pretrade_result(sym, quantity, closes[-1], before, after,
-                            merge_limits(await _thread(fund_store.get_limit_overrides)))
+    result = _pretrade_result(sym, quantity, closes[-1], before, after,
+                              merge_limits(await _thread(fund_store.get_limit_overrides)))
+    if settings.get("governance"):                   # the fund's written policy (api/governance.py)
+        rules = await _governance_rules(sym, quantity, closes[-1], before, after)
+        result["governance"] = rules
+        blocks = [r for r in rules if r["level"] == "BLOCK"]
+        warns = [r for r in rules if r["level"] == "WARN"]
+        if blocks:
+            result["decision"] = "BLOCK"
+        elif warns and result["decision"] == "PASS":
+            result["decision"] = "WARN"
+        result["reasons"] = list(result.get("reasons") or []) + [f"{r['rule']}: {r['message']}" for r in blocks + warns]
+    return result
+
+
+async def _governance_rules(sym: str, quantity: float, price: float, before: Dict[str, Any],
+                            after: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The fund's governance rules for an order: halt, approved instruments, no short / no leverage, order size,
+    price-feed freshness, daily-loss pause, and model / theme risk shares after the order."""
+    from api import governance as gov
+    from api.market_bars import bars
+
+    def last_date():
+        try:
+            b = bars(sym, "1d", "1mo")["bars"]
+            return b[-1]["t"] if b else None
+        except Exception:                                                     # noqa: BLE001 — stale = unknown date
+            return None
+    px_date = await _thread(last_date)
+    pos_after = [{"symbol": str(p["symbol"]).upper(), "book": p.get("book"), "market_value": p.get("market_value")}
+                 for p in after.get("positions") or [] if p.get("market_value") is not None]
+    base = (await _thread(lambda: __import__("api.fund_store", fromlist=["x"]).get_settings())).get("base_currency") or "USD"
+    try:
+        shares = await asyncio.wait_for(asyncio.to_thread(gov.risk_shares, pos_after, base), timeout=30)
+    except Exception:                                                         # noqa: BLE001 — reported as unavailable
+        shares = {"available": False}
+    def to_base() -> Optional[float]:
+        from api.calculations import fx_accounting as fa
+        from api.handlers.portfolio_analytics import _usd_per_unit
+        from api.markets import minor_unit_factor
+        ccy, usd = _usd_per_unit(sym)
+        major, div = minor_unit_factor(ccy)
+        if major == base.upper():
+            return 1.0 / div
+        b = fa.base_per_usd(base)
+        return usd * b if usd and b else None
+    k = await _thread(to_base)
+    rules = await _thread(lambda: gov.order_controls(sym, quantity, price * k if k else None, before.get("nav"),
+                                                     (after.get("exposures") or {}).get("gross"), px_date, shares))
+    if px_date is None:
+        rules.append({"level": "BLOCK", "rule": "price_feed", "message": f"No recent daily bar for {sym}: price feed unavailable"})
+    return rules
 
 
 @router.post("/api/v1/risk/pretrade")
@@ -469,6 +552,7 @@ class OrderIn(BaseModel):
     conviction: str = "MEDIUM"
     assessment_id: Optional[int] = None    # the pre-trade assessment the order is based on (else the latest, ≤3 days)
     pitch_id: Optional[int] = None         # the PMC-approved pitch it implements
+    model_id: Optional[int] = None         # the approved model (governance G3+) the order comes from
 
 
 class DecisionNoteIn(BaseModel):
@@ -480,7 +564,7 @@ def _order_view(idea: Dict[str, Any]) -> Dict[str, Any]:
                                      "conviction", "state", "created_by", "approved_by",
                                      "approval_note", "executed_trade_id", "created_at",
                                      "updated_at", "state_history", "assessment_id", "pitch_id",
-                                     "assessment_link")}
+                                     "assessment_link", "model_id")}
 
 
 @router.get("/api/v1/orders")
@@ -501,6 +585,12 @@ async def create_order(body: OrderIn, request: Request):
     from api.core.access import require_roles
     user = require_roles(request, {"pm", "quant", "analyst"})["username"]
     signed = side_to_signed(body.side, body.quantity)
+    from api import governance as gov
+    model, refusal = await _thread(gov.model_for_order, body.model_id)
+    if refusal:
+        raise HTTPException(409, {"message": "governance", "reasons": [refusal]})
+    if model and model.get("book"):
+        body.book = model["book"]                      # a model trades in its own book (its sleeve)
     check = await _run_pretrade(body.symbol, signed, body.book)
     await _thread(blotter_store.init_db)
     idea = await _thread(lambda: portfolio_store.add_trade_idea({
@@ -522,7 +612,7 @@ async def create_order(body: OrderIn, request: Request):
     await _thread(lambda: blotter_store.set_order_fields(idea["id"], side=body.side.upper(),
                                                          quantity=abs(body.quantity),
                                                          assessment_id=(a or {}).get("id"), pitch_id=pitch_id,
-                                                         assessment_link=link))
+                                                         assessment_link=link, model_id=body.model_id))
     await _thread(lambda: audit_store.add_decision(
         "order_created", f"{body.side.upper()} {abs(body.quantity):g} {body.symbol.upper()} "
                          f"({body.book}) — pre-trade {check['decision']}",
@@ -546,6 +636,10 @@ async def approve_order(order_id: int, body: DecisionNoteIn, request: Request):
     if user == (o.get("created_by") or ""):
         raise HTTPException(403, "four-eyes: the approver must be a different, identified user "
                                  f"than the creator ({o.get('created_by')})")
+    from api import governance as gov
+    _, refusal = await _thread(gov.model_for_order, o.get("model_id"))
+    if refusal:
+        raise HTTPException(409, {"message": "governance", "reasons": [refusal]})
     check = await _run_pretrade(o["symbol"], side_to_signed(o["side"], o["quantity"]), o["book"])
     if check["decision"] == "BLOCK":
         raise HTTPException(409, {"message": "pre-trade compliance BLOCK", "reasons": check["reasons"]})
@@ -595,6 +689,15 @@ async def execute_order(order_id: int, request: Request):
     if o["state"] != "Approved":
         raise HTTPException(409, f"only Approved orders can be executed (order is {o['state']})")
     signed = side_to_signed(o["side"], o["quantity"])
+    from api import governance as gov
+    gst = await _thread(gov.settings)
+    if gst["enabled"]:                                 # the fund's controls at the point of execution
+        halt = await _thread(gov.active_halt)
+        if halt:
+            raise HTTPException(409, {"message": "execution halted", "reasons": [f"{halt['kind']}: {halt['reason']}"]})
+        _, refusal = await _thread(gov.model_for_order, o.get("model_id"))
+        if refusal:
+            raise HTTPException(409, {"message": "governance", "reasons": [refusal]})
     mode = execution.execution_mode()
     if mode == "alpaca_paper":
         fill = await _thread(lambda: execution.alpaca_paper_fill(o["symbol"], signed))
@@ -604,6 +707,13 @@ async def execute_order(order_id: int, request: Request):
         fill = execution.simulated_fill(signed, closes[-1] if closes else None,
                                         cost_bps=m["half_spread_bps"] + m["impact_bps"],
                                         tax_bps=m["tax_buy_bps"] if signed > 0 else m["tax_sell_bps"])
+    if gst["enabled"] and fill.filled:
+        last_close = closes[-1] if mode != "alpaca_paper" and closes else None
+        band = await _thread(gov.price_band_check, fill.price, last_close)
+        if band:
+            await _thread(lambda: gov.open_incident("price_band", f"Order {order_id}: {band['message']} — not booked",
+                                                    user, "medium"))
+            raise HTTPException(409, {"message": "price band", "reasons": [band["message"]]})
     if not fill.filled:
         await _thread(lambda: audit_store.add_decision(
             "order_not_filled", f"Order {order_id} not filled ({fill.source}): {fill.detail}",

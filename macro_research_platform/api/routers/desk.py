@@ -83,8 +83,10 @@ async def _fund_block() -> Dict[str, Any]:
             "positions": len(raw),
             "limits": {"overall": limits["overall"], "breaches": limits["breaches"],
                        "warnings": limits["warnings"], "top_utilization": top},
-            "track_record": {k: rec.get(k) for k in ("available", "observations", "total_return",
-                                                    "annualized_vol", "sharpe", "max_drawdown", "ratio_note")}}
+            "track_record": {**{k: rec.get(k) for k in ("available", "observations", "total_return",
+                                                       "annualized_vol", "sharpe", "max_drawdown", "ratio_note")},
+                             "label": (__import__("api.governance", fromlist=["x"]).results_label(settings.get("stage"))
+                                       if settings.get("governance") else "Track record")}}
 
 
 async def _macro_block() -> Dict[str, Any]:
