@@ -201,12 +201,9 @@ describe('API Integration Tests', () => {
       expect(typeof tradeIdeas.count).toBe('number');
     });
 
-    it('morning brief endpoint returns valid data', async () => {
-      const brief = await api.business.getMorningBrief();
-
-      expect(brief.date).toBeDefined();
-      expect(brief.summary).toBeDefined();
-      expect(Array.isArray(brief.keyEvents)).toBe(true);
+    it('morning brief is internal: refused without sign-in', async () => {
+      // The brief lists the fund's holdings, so it needs a signed-in user (backend audit, Oct 2026).
+      await expect(api.business.getMorningBrief()).rejects.toThrow(/401/);
     });
   });
 
