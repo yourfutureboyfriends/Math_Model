@@ -44,6 +44,28 @@ def _flows() -> Dict[str, float]:
     return out
 
 
+def aligned_flows(history: List[Dict[str, Any]], extra: Optional[List[str]] = None) -> List[float]:
+    """Capital flows lined up with a NAV record, for `twr_index` / `track_record`.
+
+    Each observation gets the flows dated after the previous observation and on or before its own date (the first gets
+    none), the same rule as `_daily_returns`.
+
+    Args:
+        history: NAV observations with a `date` (ISO), oldest first.
+        extra: Labels of observations appended after `history` (e.g. today's live NAV as ``"YYYY-MM-DDT"``, which
+            sorts after every flow dated that day).
+
+    Returns:
+        One flow per observation in `history` followed by one per `extra` label.
+    """
+    flows = _flows()
+    labels = [str(h["date"]) for h in history] + list(extra or [])
+    out: List[float] = []
+    for i, d in enumerate(labels):
+        out.append(0.0 if i == 0 else sum(v for fd, v in flows.items() if labels[i - 1] < fd <= d))
+    return out
+
+
 def _daily_returns(rows: List[Dict[str, Any]], flows: Dict[str, float]) -> List[Dict[str, Any]]:
     """Flow-adjusted daily returns of the NAV record: r = (NAV_t − flow_t) / NAV_{t−1} − 1."""
     out = []

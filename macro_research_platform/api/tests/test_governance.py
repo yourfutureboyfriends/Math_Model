@@ -298,3 +298,15 @@ def test_orders_need_an_approved_model_and_pass_the_policy_over_http(tmp_path, m
     assert c["pm"].get("/api/v1/governance/report/monthly").status_code == 200
     assert TestClient(app).get("/api/v1/governance").status_code == 401
     accounts.invalidate_cache()
+
+
+def test_aligned_flows_lines_capital_changes_up_with_the_nav_record(fund, monkeypatch):
+    """Regression: the fund overview, My Desk and the drawdown limit import `aligned_flows` (it was missing, so the
+    overview returned 500)."""
+    from api import governance_reports as gr
+    monkeypatch.setattr(gr, "_flows", lambda: {"2026-01-03": 5_000.0, "2026-01-05": -1_000.0, "2026-01-06": 250.0})
+    hist = [{"date": "2026-01-02"}, {"date": "2026-01-03"}, {"date": "2026-01-05"}]
+    assert gr.aligned_flows(hist) == [0.0, 5_000.0, -1_000.0]
+    # a live observation labelled "<today>T" picks up the flows dated today and after the last NAV
+    assert gr.aligned_flows(hist, ["2026-01-06T"]) == [0.0, 5_000.0, -1_000.0, 250.0]
+    assert gr.aligned_flows([]) == []
