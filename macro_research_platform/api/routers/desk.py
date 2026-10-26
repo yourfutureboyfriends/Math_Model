@@ -39,7 +39,9 @@ async def _fund_block() -> Dict[str, Any]:
     state = await _book_state(raw, settings, include_liquidity=False)
     limits = evaluate_limits(state["metrics"], merge_limits(await asyncio.to_thread(fund_store.get_limit_overrides)))
     history = await asyncio.to_thread(fund_store.nav_history)
-    rec = track_record([h["nav"] for h in history], risk_free_annual=0.0)
+    from api.governance_reports import aligned_flows
+    rec = track_record([h["nav"] for h in history], risk_free_annual=0.0,
+                       flows=await asyncio.to_thread(aligned_flows, history))
     day_pnl = (history[-1]["nav"] - history[-2]["nav"]) if len(history) >= 2 else None
     top = sorted((l for l in limits["limits"] if l.get("utilization") is not None),
                  key=lambda l: -l["utilization"])[:5]

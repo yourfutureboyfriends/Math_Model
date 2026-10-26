@@ -476,20 +476,26 @@ def liquidity(book: Optional[str] = None, participation: float = 0.20) -> Dict[s
             rows.append({"symbol": s, "available": False})
             continue
         adv = sum(b[d]["v"] for d in days[-20:]) / len(days[-20:]) if days else None
-        spread = pa.corwin_schultz_spread([b[d]["h"] for d in days], [b[d]["l"] for d in days])
+        hi, lo, cl = [b[d]["h"] for d in days], [b[d]["l"] for d in days], [b[d]["c"] for d in days]
+        ar = pa.abdi_ranaldo_spread(cl, hi, lo)
+        cs = pa.corwin_schultz_spread(hi, lo, cl)
+        spread = ar if ar is not None else cs          # Abdi–Ranaldo (lower bias); Corwin–Schultz as fallback
         price = b[days[-1]]["c"]
         prof = pa.liquidity_profile(float(p["quantity"]), price, adv or None, spread, participation)
         mv = abs(float(p["quantity"]) * price)
         total_mv += mv
         total_cost += prof["liquidity_cost"] or 0.0
         rows.append({"symbol": s, "book": p.get("book"), "quantity": p["quantity"], "market_value": round(mv, 2),
-                     "adv_shares_20d": round(adv) if adv else None, **prof})
+                     "adv_shares_20d": round(adv) if adv else None, **prof,
+                     "spread_estimates_bps": {"abdi_ranaldo": round(ar * 1e4, 1) if ar is not None else None,
+                                              "corwin_schultz": round(cs * 1e4, 1) if cs is not None else None}})
     worst = max((r.get("days_to_liquidate") or 0 for r in rows), default=0)
     return {"available": True, "participation_rate": participation, "positions": rows,
             "liquidity_cost_total": round(total_cost, 2), "gross_market_value": round(total_mv, 2),
             "max_days_to_liquidate": round(worst, 2),
             "method": (f"Days to liquidate = |quantity| ÷ ({participation:.0%} × 20-day average volume). Liquidity "
-                       "cost = half the Corwin–Schultz high/low spread estimate × market value; LVaR = VaR + this cost.")}
+                       "cost = half the estimated spread × market value — Abdi & Ranaldo (2017) close/high/low estimator, Corwin–"
+                       "Schultz (2012, overnight-adjusted) shown alongside; LVaR = VaR + this cost.")}
 
 
 def lots(book: Optional[str] = None) -> Dict[str, Any]:

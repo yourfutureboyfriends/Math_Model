@@ -6,6 +6,7 @@
  */
 import { createContext, Fragment, useCallback, useContext, useEffect, useState } from 'react';
 import { TeamPositions } from './TeamPositions';
+import { BrokerLink } from './BrokerLink';
 import { Loader2, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
@@ -521,8 +522,8 @@ function BreakEven() {
   );
 }
 
-type Tab = 'overview' | 'team' | 'models' | 'instruments' | 'controls' | 'monthly' | 'budget' | 'roadmap' | 'licences' | 'breakeven';
-const TABS: [Tab, string][] = [['overview', 'Overview'], ['team', 'Team & positions'], ['models', 'Models G0–G5'], ['instruments', 'Approved instruments'], ['controls', 'Controls'],
+type Tab = 'overview' | 'team' | 'broker' | 'models' | 'instruments' | 'controls' | 'monthly' | 'budget' | 'roadmap' | 'licences' | 'breakeven';
+const TABS: [Tab, string][] = [['overview', 'Overview'], ['team', 'Team & positions'], ['broker', 'Broker (IBKR)'], ['models', 'Models G0–G5'], ['instruments', 'Approved instruments'], ['controls', 'Controls'],
   ['monthly', 'Monthly pack'], ['budget', 'Budget'], ['roadmap', 'Roadmap'], ['licences', 'Data licences'], ['breakeven', 'Break-even AUM']];
 
 export function GovernanceSection() {
@@ -545,6 +546,7 @@ export function GovernanceSection() {
         {!g ? <div className="text-2xs text-text-tertiary">{err ?? 'Loading…'}</div> : <>
           {tab === 'overview' && <Overview g={g} reload={load} />}
           {tab === 'team' && <TeamPositions />}
+          {tab === 'broker' && <BrokerLink />}
           {tab === 'models' && <Models g={g} />}
           {tab === 'instruments' && <Instruments />}
           {tab === 'controls' && <Controls reload={load} />}

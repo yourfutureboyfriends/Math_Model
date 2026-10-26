@@ -1751,6 +1751,8 @@ from api.routers.mfa import router as mfa_router  # two-factor sign-in (TOTP)
 app.include_router(mfa_router)
 from api.routers.positions import router as positions_router  # positions & tiers per fund
 app.include_router(positions_router)
+from api.routers.broker_ibkr import router as broker_ibkr_router  # IBKR link per fund (read-only)
+app.include_router(broker_ibkr_router)
 from api.routers.trading_desk import router as trading_desk_router   # pitch review (PMC) + pre-trade feasibility
 app.include_router(trading_desk_router)
 from api.routers.funds import router as funds_router   # several funds, each in its own database
@@ -2558,16 +2560,49 @@ async def risk_var_v1(book: Optional[str] = None):
     # Allocate the PARAMETRIC 95% 1d VaR: the Euler/variance decomposition is only
     # self-consistent against a variance-based total (not the empirical historical one).
     total_1d_param = parametric_var(pnl, 0.95)
+    from api.calculations import var_model as vm
+    fhs95 = vm.filtered_hs(pnl, 0.95)
+    tail = {
+        "expected_shortfall_975": {"historical": vm.expected_shortfall_hist(pnl, 0.975),
+                                   "normal": vm.expected_shortfall_normal(pnl, 0.975),
+                                   "filtered_hs": fhs95["es"]},
+        "var_95_1d_models": {"cornish_fisher": vm.cornish_fisher_var(pnl, 0.95), "ewma_094": vm.ewma_var(pnl, 0.95),
+                             "filtered_hs": fhs95["var"]},
+        "pnl_moments": {k: round(v, 3) for k, v in vm.moments(pnl).items()},
+        "notes": ("ES 97.5% is the Basel FRTB measure (average loss beyond VaR). Cornish–Fisher adjusts the normal "
+                  "quantile for skew and fat tails; EWMA (RiskMetrics λ=0.94) and filtered historical simulation scale "
+                  "to today's volatility — when they exceed the equal-weighted VaR, volatility is rising."),
+    }
     return {
         "available": True,
         "book": book or "Firm",
         "observations": int(R.shape[0]),
         "gross_exposure": data["enriched"]["summary"]["gross_exposure"],
         "var": {"95": block(0.95), "99": block(0.99)},
+        "tail_risk": tail,
         "component_var_95_1d": component_var_by_position(symbols, mvs, R, total_1d_param),
         "component_var_basis": "parametric_95_1d",
         "computed_at": datetime.now().isoformat(),
     }
+
+
+@app.get("/api/v1/risk/var/backtest")
+async def risk_var_backtest_v1():
+    """Backtest of the recorded VaR: each day's 95% 1-day VaR (recorded with the NAV snapshot) against the next
+    day's flow-adjusted NAV change — Kupiec, Christoffersen and the Basel traffic light."""
+    from api import fund_store
+    from api.calculations import var_model as vm
+    from api.governance_reports import _flows
+    rows = [r for r in await _aio_to_thread(fund_store.nav_history) if r.get("nav")]
+    flows = await _aio_to_thread(_flows)
+    losses, fc = [], []
+    for a, b in zip(rows[:-1], rows[1:]):
+        if a.get("var95_1d") is None:
+            continue
+        f = sum(v for d, v in flows.items() if a["date"] < d <= b["date"])
+        losses.append(-(float(b["nav"]) - f - float(a["nav"])))
+        fc.append(float(a["var95_1d"]))
+    return {**vm.var_backtest(losses, fc, 0.95), "basis": "recorded 95% 1-day VaR vs next snapshot's NAV change (flows removed)"}
 
 
 async def _dollar_factor_exposures(book: Optional[str]):

@@ -6,7 +6,7 @@ Portfolio analytics on the actual book — pure, tested.
 * ``brinson_day`` / ``carino_link``: Brinson–Fachler allocation / selection / interaction per sector each day,
   linked over the period with Carino's logarithmic coefficients so the effects add up to the active return.
 * ``ex_ante_tracking_error``: sqrt(aᵀΣa) of the active weights versus a benchmark, annualised.
-* ``corwin_schultz_spread``: bid–ask spread estimated from daily highs and lows (Corwin & Schultz 2012).
+* ``corwin_schultz_spread`` / ``abdi_ranaldo_spread``: bid–ask spread from daily highs, lows (and closes).
 * ``liquidity_profile``: days to liquidate at a participation rate of average daily volume, and the exogenous
   liquidity cost (half the spread on each position) added to VaR (Bangia et al. 1999 style LVaR).
 * ``fifo_lots``: open tax lots from the fills (oldest sold first).
@@ -121,13 +121,23 @@ def ex_post_tracking_error(port_rets: Sequence[float], bench_rets: Sequence[floa
 
 
 # ── Liquidity ────────────────────────────────────────────────────────────────
-def corwin_schultz_spread(high: Sequence[float], low: Sequence[float]) -> Optional[float]:
-    """Average proportional spread from consecutive-day high/low ranges (negative estimates set to 0)."""
+def corwin_schultz_spread(high: Sequence[float], low: Sequence[float],
+                          close: Optional[Sequence[float]] = None) -> Optional[float]:
+    """Average proportional spread from consecutive-day high/low ranges (Corwin & Schultz 2012), negative two-day
+    estimates set to 0. With closes, the paper's overnight adjustment: when day t+1 trades entirely above (below)
+    day t's close, its high and low are shifted down (up) by the gap, so an overnight jump is not read as spread."""
     est = []
-    for i in range(1, min(len(high), len(low))):
+    n = min(len(high), len(low))
+    for i in range(1, n):
         h1, l1, h2, l2 = high[i - 1], low[i - 1], high[i], low[i]
         if min(h1, l1, h2, l2) <= 0:
             continue
+        if close is not None and i - 1 < len(close) and close[i - 1]:
+            c = close[i - 1]
+            if l2 > c:                                # gap up: shift day t+1 down by the gap
+                h2, l2 = h2 - (l2 - c), c
+            elif h2 < c:                              # gap down: shift up
+                h2, l2 = c, l2 + (c - h2)
         beta = math.log(h1 / l1) ** 2 + math.log(h2 / l2) ** 2
         gamma = math.log(max(h1, h2) / min(l1, l2)) ** 2
         k = 3 - 2 * math.sqrt(2)
@@ -135,6 +145,25 @@ def corwin_schultz_spread(high: Sequence[float], low: Sequence[float]) -> Option
         s = 2 * (math.exp(alpha) - 1) / (1 + math.exp(alpha))
         est.append(max(s, 0.0))
     return sum(est) / len(est) if est else None
+
+
+def abdi_ranaldo_spread(close: Sequence[float], high: Sequence[float], low: Sequence[float]) -> Optional[float]:
+    """Proportional spread from close, high and low (Abdi & Ranaldo 2017, RFS): s² = 4·E[(c_t − η_t)(c_t − η_{t+1})]
+    with c the log close and η the log mid-range; two-day estimates averaged, a negative mean set to 0. Lower bias
+    than Corwin–Schultz on daily data."""
+    n = min(len(close), len(high), len(low))
+    prods = []
+    for t in range(n - 1):
+        if min(close[t], high[t], low[t], high[t + 1], low[t + 1]) <= 0:
+            continue
+        c = math.log(close[t])
+        eta_t = (math.log(high[t]) + math.log(low[t])) / 2
+        eta_n = (math.log(high[t + 1]) + math.log(low[t + 1])) / 2
+        prods.append((c - eta_t) * (c - eta_n))
+    if len(prods) < 5:
+        return None
+    m = 4 * sum(prods) / len(prods)
+    return math.sqrt(m) if m > 0 else 0.0
 
 
 def liquidity_profile(qty: float, price: float, adv_shares: Optional[float], spread: Optional[float],

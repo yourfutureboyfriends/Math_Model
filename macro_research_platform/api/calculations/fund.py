@@ -32,8 +32,53 @@ def exposures_pct_nav(summary: Dict, nav: float) -> Dict[str, Optional[float]]:
     }
 
 
+def twr_index(navs: Sequence[float], flows: Optional[Sequence[float]] = None) -> List[float]:
+    """Time-weighted index (starts at the first NAV): each day's return is (NAV_t − flow_t) / NAV_{t−1} − 1, so
+    capital added or withdrawn is not counted as performance (GIPS time-weighted return, daily valuation)."""
+    v = [float(x) for x in navs]
+    f = list(flows) if flows is not None else [0.0] * len(v)
+    out = [v[0]]
+    for t in range(1, len(v)):
+        r = (v[t] - float(f[t] or 0.0)) / v[t - 1] - 1.0 if v[t - 1] else 0.0
+        out.append(out[-1] * (1.0 + r))
+    return out
+
+
+def sharpe_inference(r: np.ndarray, sr_period: float, benchmark_sr: float = 0.0) -> Dict[str, Optional[float]]:
+    """Standard error of a per-period Sharpe ratio allowing for skew and kurtosis (Mertens 2002; Lo 2002), and the
+    Probabilistic Sharpe Ratio — P(true Sharpe > benchmark) (Bailey & López de Prado 2012)."""
+    from statistics import NormalDist
+    n = r.size
+    if n < 10:
+        return {"sharpe_se": None, "psr": None}
+    m, s = r.mean(), r.std(ddof=0)
+    if s <= 0:
+        return {"sharpe_se": None, "psr": None}
+    skew = float(((r - m) ** 3).mean() / s ** 3)
+    kurt = float(((r - m) ** 4).mean() / s ** 4)
+    var = (1 - skew * sr_period + (kurt - 1) / 4 * sr_period ** 2) / (n - 1)
+    if var <= 0:
+        return {"sharpe_se": None, "psr": None}
+    se = var ** 0.5
+    return {"sharpe_se": se, "psr": NormalDist().cdf((sr_period - benchmark_sr) / se)}
+
+
+def drawdown_stats(index: Sequence[float]) -> Dict[str, Optional[int]]:
+    """Longest drawdown (observations from a peak to the recovery of that peak, or to now if unrecovered) and whether
+    the current drawdown has recovered."""
+    peak_i, longest, cur = 0, 0, 0
+    peak = index[0] if index else None
+    for i, x in enumerate(index):
+        if x >= peak:
+            peak, peak_i = x, i
+        cur = i - peak_i
+        longest = max(longest, cur)
+    return {"longest_drawdown_obs": longest, "current_drawdown_obs": cur}
+
+
 def track_record(navs: Sequence[float], periods_per_year: int = 252,
-                 risk_free_annual: float = 0.0, min_ratio_obs: int = 60) -> Dict:
+                 risk_free_annual: float = 0.0, min_ratio_obs: int = 60,
+                 flows: Optional[Sequence[float]] = None) -> Dict:
     """Performance statistics from a chronological NAV series (one value per day).
 
     Returns total/annualized return, annualized vol, Sharpe and Sortino (excess of
@@ -42,10 +87,14 @@ def track_record(navs: Sequence[float], periods_per_year: int = 252,
     annualized only once a full year of history exists, and Sharpe / Sortino / Calmar need `min_ratio_obs` returns —
     a week of NAVs otherwise produces meaningless ratios (a Sharpe of 15 on a 0.02% move).
     """
-    v = np.asarray([x for x in navs if x is not None], dtype=float)
+    keep = [i for i, x in enumerate(navs) if x is not None]
+    v = np.asarray([navs[i] for i in keep], dtype=float)
     if v.size < 2 or np.any(v <= 0):
         return {"available": False, "reason": f"{v.size} NAV observations — need at least 2",
                 "observations": int(v.size)}
+    has_flows = flows is not None and any(flows[i] for i in keep)
+    if flows is not None:                            # performance on the time-weighted index, not raw NAV
+        v = np.asarray(twr_index(list(v), [flows[i] for i in keep]), dtype=float)
     r = v[1:] / v[:-1] - 1.0
     n = r.size
     total = float(v[-1] / v[0] - 1.0)
@@ -64,6 +113,8 @@ def track_record(navs: Sequence[float], periods_per_year: int = 252,
     max_dd = float(dd.min())
     calmar = (ann_ret / abs(max_dd)) if max_dd < 0 and n >= periods_per_year else None
     ann_out = ann_ret if n >= periods_per_year else None
+    inf = sharpe_inference(ex, float(ex.mean() / r.std(ddof=1))) if enough and r.std(ddof=1) > 0 else {"sharpe_se": None, "psr": None}
+    dds = drawdown_stats(list(v))
 
     def _r(x, k=4):
         return None if x is None else round(x, k)
@@ -83,6 +134,13 @@ def track_record(navs: Sequence[float], periods_per_year: int = 252,
         "hit_rate": _r(float((r > 0).mean())),
         "best_day": _r(float(r.max())),
         "worst_day": _r(float(r.min())),
+        "sharpe_se_annual": _r(inf["sharpe_se"] * np.sqrt(periods_per_year), 2) if inf["sharpe_se"] is not None else None,
+        "probabilistic_sharpe": _r(inf["psr"], 3),
+        "longest_drawdown_days": dds["longest_drawdown_obs"],
+        "current_drawdown_days": dds["current_drawdown_obs"],
+        "flow_adjusted": bool(has_flows),
+        "method": ("Time-weighted: daily returns net of capital flows" if flows is not None else "Raw NAV changes")
+                  + "; PSR = P(true Sharpe > 0) given the sample's length, skew and kurtosis (Bailey & López de Prado 2012).",
     }
 
 

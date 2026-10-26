@@ -100,7 +100,14 @@ async def _book_state(raw: List[Dict[str, Any]], settings: Dict[str, Any],
     var95 = risk.get("var_95_1d") if risk.get("var_available") else None
 
     history = await _thread(fund_store.nav_history)
-    dd = drawdown_from_peak([h["nav"] for h in history] + [nav])
+    try:                                             # drawdown of the time-weighted index (capital flows removed)
+        from api.calculations.fund import twr_index
+        from api.governance_reports import aligned_flows
+        idx = twr_index([h["nav"] for h in history] + [nav],
+                        await _thread(aligned_flows, history, [date.today().isoformat() + "T"]))
+        dd = drawdown_from_peak(idx)
+    except Exception:                                                          # noqa: BLE001 — fall back to raw NAV
+        dd = drawdown_from_peak([h["nav"] for h in history] + [nav])
 
     liq_days = None
     if include_liquidity and raw:
@@ -271,7 +278,9 @@ async def fund_overview():
     history = await _thread(fund_store.nav_history)
     # NAV does not accrue interest on uninvested cash, so its P&L is already a return in
     # excess of cash; subtracting the T-bill rate again would penalize idle capital twice.
-    record = track_record([h["nav"] for h in history], risk_free_annual=0.0)
+    from api.governance_reports import aligned_flows
+    record = track_record([h["nav"] for h in history], risk_free_annual=0.0,
+                          flows=await _thread(aligned_flows, history))
 
     mv_by_sym: Dict[str, float] = {}
     for p in state["positions"]:

@@ -98,11 +98,14 @@ function NavTab({ ov }: { ov: any }) {
           <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
             <Stat label="Total return" value={pctSigned(tr.total_return)} />
             <Stat label="Ann. vol" value={pct(tr.annualized_vol)} />
-            <Stat label="Sharpe" value={tr.sharpe == null ? '—' : fmtSignal(tr.sharpe)} />
+            <Stat label="Sharpe" value={tr.sharpe == null ? '—' : `${fmtSignal(tr.sharpe)}${tr.sharpe_se_annual != null ? ` ±${tr.sharpe_se_annual}` : ''}`} />
             <Stat label="Max DD" value={pctSigned(tr.max_drawdown)} tone="text-red" />
             <Stat label="Hit rate" value={pct(tr.hit_rate, 0)} />
             <Stat label="Days" value={String(tr.observations)} />
+            <Stat label="P(Sharpe > 0)" value={tr.probabilistic_sharpe == null ? '—' : pct(tr.probabilistic_sharpe, 0)} />
+            <Stat label="Longest DD (days)" value={tr.longest_drawdown_days == null ? '—' : String(tr.longest_drawdown_days)} />
             {tr.ratio_note && <div className="col-span-2 md:col-span-6 text-[10px] text-text-tertiary">{tr.ratio_note} (returns are not annualised before a full year).</div>}
+            {tr.method && <div className="col-span-2 md:col-span-6 text-[10px] text-text-tertiary">{tr.method}</div>}
           </div>
         ) : (
           <div className="text-xs text-text-secondary">

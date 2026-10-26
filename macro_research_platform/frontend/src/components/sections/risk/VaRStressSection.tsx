@@ -26,6 +26,7 @@ export function VaRStressSection() {
   const [shocks, setShocks] = useState<Record<string, string>>({});
   const [custom, setCustom] = useState<any>(null);
 
+  const [bt, setBt] = useState<any>(null);
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -35,6 +36,7 @@ export function VaRStressSection() {
         fetch('/api/v1/risk/concentration').then((r) => r.json()).catch(() => null),
       ]);
       setVarData(v); setStress(s); setConc(c);
+      fetch('/api/v1/risk/var/backtest').then((r) => r.json()).then(setBt).catch(() => setBt(null));
     } finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -102,6 +104,21 @@ export function VaRStressSection() {
                 ))}
               </tbody>
             </table>
+            {varData.tail_risk && (
+              <div className="px-3 py-2 border-t border-border-subtle grid md:grid-cols-3 gap-3 text-xs">
+                <div><div className="text-2xs text-text-tertiary uppercase mb-0.5">Expected shortfall 97.5% · 1d</div>
+                  <div className="font-mono text-red">{usd(varData.tail_risk.expected_shortfall_975.historical)} <span className="text-text-tertiary font-sans">historical</span></div>
+                  <div className="font-mono text-text-secondary">{usd(varData.tail_risk.expected_shortfall_975.filtered_hs)} <span className="text-text-tertiary font-sans">filtered HS</span> · {usd(varData.tail_risk.expected_shortfall_975.normal)} <span className="text-text-tertiary font-sans">normal</span></div></div>
+                <div><div className="text-2xs text-text-tertiary uppercase mb-0.5">95% · 1d, volatility-aware</div>
+                  <div className="font-mono text-text-secondary">{usd(varData.tail_risk.var_95_1d_models.ewma_094)} <span className="text-text-tertiary font-sans">EWMA</span> · {usd(varData.tail_risk.var_95_1d_models.filtered_hs)} <span className="text-text-tertiary font-sans">FHS</span></div>
+                  <div className="font-mono text-text-secondary">{usd(varData.tail_risk.var_95_1d_models.cornish_fisher)} <span className="text-text-tertiary font-sans">Cornish–Fisher (skew {varData.tail_risk.pnl_moments.skew}, ex. kurt {varData.tail_risk.pnl_moments.excess_kurtosis})</span></div></div>
+                <div><div className="text-2xs text-text-tertiary uppercase mb-0.5">VaR backtest (recorded VaR vs realised)</div>
+                  {bt?.available ? <>
+                    <div className={bt.traffic_light === 'green' ? 'text-green' : bt.traffic_light === 'yellow' ? 'text-amber' : 'text-red'}>{bt.traffic_light} zone · {bt.exceptions} breaches / {bt.days} days (expected {bt.expected})</div>
+                    <div className="text-text-tertiary">Kupiec p {bt.kupiec_p} · independence p {bt.christoffersen_ind_p}</div></>
+                    : <div className="text-text-tertiary">{bt?.reason ?? '—'}</div>}</div>
+                <div className="md:col-span-3 text-[10px] text-text-tertiary">{varData.tail_risk.notes}</div>
+              </div>)}
             {varData.component_var_95_1d?.length > 0 && (
               <div className="px-3 py-2 border-t border-border-subtle">
                 <BarList title="VaR contribution (95% 1d) — positive adds risk, negative hedges" diverging labelWidth="5rem"
