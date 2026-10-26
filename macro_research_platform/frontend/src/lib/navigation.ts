@@ -28,6 +28,7 @@ export const navigation: NavSection[] = [
       { id: 'economic-calendar', label: 'Economic Calendar', icon: '◆', permission: 'economic_calendar', highlight: true },
       { id: 'master-signal', label: 'Master Ensemble', icon: '◆', permission: 'master_signal', highlight: true },
       { id: 'key-metrics', label: 'Key Metrics', icon: '◆', permission: 'key_metrics' },
+      { id: 'event-dataset', label: 'Macro Event Dataset', icon: '◆', permission: 'master_signal', highlight: true },
       { id: 'anomalies', label: 'Anomalies', icon: '◆', permission: 'master_signal' },
       { id: 'regime', label: 'Regime Engine', icon: '◇', permission: 'regime_engine', highlight: true },
       { id: 'regime-playbook', label: 'Regime Playbook', icon: '◇', permission: 'regime_engine', highlight: true },

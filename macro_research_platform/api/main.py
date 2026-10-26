@@ -1745,6 +1745,10 @@ from api.routers.governance import router as governance_router  # fund governanc
 from api.routers.portfolio_analytics import router as portfolio_analytics_router  # Brinson, TE, LVaR, lots, TCA
 app.include_router(portfolio_analytics_router)
 app.include_router(governance_router)
+from api.routers.events import router as events_router  # macro event dataset (point-in-time releases, reactions)
+app.include_router(events_router)
+from api.routers.mfa import router as mfa_router  # two-factor sign-in (TOTP)
+app.include_router(mfa_router)
 from api.routers.trading_desk import router as trading_desk_router   # pitch review (PMC) + pre-trade feasibility
 app.include_router(trading_desk_router)
 from api.routers.funds import router as funds_router   # several funds, each in its own database
@@ -3518,14 +3522,15 @@ async def login(request: Request):
 
     content_type = request.headers.get("content-type", "").lower()
     body = await request.body()
-    username = password = None
+    username = password = otp = None
     try:
         if "application/json" in content_type:
             data = json.loads(body or b"{}")
-            username, password = data.get("username"), data.get("password")
+            username, password, otp = data.get("username"), data.get("password"), data.get("otp")
         else:
             form = parse_qs(body.decode("utf-8"))
             username, password = form.get("username", [None])[0], form.get("password", [None])[0]
+            otp = form.get("otp", [None])[0]
     except (ValueError, UnicodeDecodeError):
         pass
     if not username or not password:
@@ -3533,10 +3538,11 @@ async def login(request: Request):
 
     from api.core import accounts
     try:
-        user = await _aio_to_thread(accounts.check_login, username.strip(), password)
+        user = await _aio_to_thread(accounts.check_login, username.strip(), password, otp)
     except accounts.LoginError as e:
         logger.warning(f"[AUTH] failed login for '{username[:64]}': {e.message}")
-        return JSONResponse({"success": False, "error": e.message}, status_code=e.status)
+        return JSONResponse({"success": False, "error": e.message, "mfa_required": e.mfa_required},
+                            status_code=e.status)
 
     role = user["role"]
     token = accounts.issue_token(user)
@@ -3552,6 +3558,7 @@ async def login(request: Request):
         "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "role": role, "display_name": user["display_name"], "permissions": perms,
         "must_change_password": bool(user.get("must_change_password")),
+        "mfa_enrollment_required": bool(__import__("api.core.mfa", fromlist=["x"]).required() and not user.get("totp_enabled")),
         "user": {"username": user["username"], "role": role,
                  "display_name": user["display_name"], "permissions": perms},
     }

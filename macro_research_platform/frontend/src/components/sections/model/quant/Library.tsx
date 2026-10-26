@@ -1,5 +1,6 @@
 /** Strategy library — institutional strategies as code, each walk-forward optimised net of costs,
  *  with Monte Carlo sizing. Reads /api/v1/quant/library. */
+import { modelForDeploy } from '@/lib/governedDeploy';
 import { useEffect, useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Code2, Loader2, Rocket, BarChart3 } from 'lucide-react';
@@ -70,9 +71,12 @@ export function Library({ onOpenCode, canDeploy }: { onOpenCode: (code: string, 
       input: { label: 'Paper capital (USD)', defaultValue: '1000000', type: 'number' } });
     const cap = Number(raw);
     if (!raw || !(cap > 0)) return;
+    let gov: { model_id?: number } | null;
+    try { gov = await modelForDeploy(ask); } catch (e: any) { setErr(e.message); return; }
+    if (gov === null) return;
     setErr(null);
     try {
-      const d = await api('/api/v1/quant/trader/deploy', { json: { spec: { kind: 'library', library: s.id, name: s.name }, capital: cap } });
+      const d = await api('/api/v1/quant/trader/deploy', { json: { spec: { kind: 'library', library: s.id, name: s.name }, capital: cap, ...gov } });
       setNote(`Deployed “${d.name}” to the ${d.book} Quant Trader — live from the session after ${d.deployed_at}.${d.preparing ? ' Its backtest is being prepared in the background (a large universe can take a few minutes) — it already shows in the trader as preparing.' : ''}`);
     } catch (e: any) { setErr(e.message); }
   };

@@ -137,8 +137,9 @@ def _audit(action: str, text: str, user: str, target: str, before: Any = None, a
 def settings() -> Dict[str, Any]:
     from api import fund_store
     st = fund_store.get_settings()
-    return {"enabled": bool(st.get("governance")), "stage": st.get("stage") or "research",
-            "stage_label": STAGES.get(st.get("stage") or "research"),
+    on = bool(st.get("governance"))
+    return {"enabled": on, "stage": st.get("stage") or "research",
+            "stage_label": STAGES.get(st.get("stage") or "research") if on or st.get("stage") else "no stage set (governance off)",
             "require_approved_model": bool(st.get("require_approved_model")),
             "risk_policy": {**DEFAULT_RISK_POLICY, **(st.get("risk_policy") or {})},
             "fund_name": st.get("fund_name"), "base_currency": st.get("base_currency") or "USD",
@@ -308,6 +309,14 @@ def _auto_evidence(gate: str, m: Dict[str, Any], evidence: Dict[str, Any]) -> Tu
             c.execute("UPDATE gov_models SET result_ref = ? WHERE id = ?", (m_ref, m["id"]))
             c.commit()
     elif gate == "G3":
+        sh = shadow_report(m["id"])
+        facts = {"shadow": {k: sh.get(k) for k in ("deployment_id", "sessions", "live", "backtest", "drift_flags", "reason")}}
+        if not sh.get("available"):
+            fails.append("no shadow trading yet: deploy the model to a Quant Lab paper trader (it must be at G2)")
+        elif sh["sessions"] < sh["min_sessions"]:
+            fails.append(f"shadow trading has {sh['sessions']} recorded sessions; {sh['min_sessions']} are needed")
+        elif sh.get("drift_flags"):
+            fails.append("signal drift: " + "; ".join(sh["drift_flags"]))
         if not m.get("max_loss_budget") or not m.get("retirement_criterion"):
             fails.append("set the model's maximum loss budget and retirement criterion first")
         if not m.get("allocation"):
@@ -359,6 +368,8 @@ def signoff(mid: int, user: str, role: str, evidence: Optional[Dict[str, Any]] =
                          "Multiple-testing control": facts.get("multiple_testing"),
                          "Walk-forward / out-of-sample": facts.get("out_of_sample"),
                          "Baseline comparison": facts.get("baseline")},
+                  "G3": {"Time-stamped paper orders": bool((facts.get("shadow") or {}).get("sessions")),
+                         "Signal-drift monitoring": (facts.get("shadow") or {}).get("live") is not None},
                   "G4": {"Kill switch tested": bool(facts.get("kill_switch_tests")),
                          "Reconciliations tested": bool(facts.get("clean_reconciliations_7d"))}}.get(gate, {})
     missing = [e for e in missing if not auto_cover.get(e)]
@@ -447,6 +458,83 @@ def model_for_order(model_id: Optional[int]) -> Tuple[Optional[Dict[str, Any]], 
     if GATES.index(m["gate"]) < 3:
         return m, f"model #{m['id']} is at {m['gate']} ({GATE_INFO[m['gate']]['name']}): orders need G3 or later"
     return m, None
+
+
+def model_for_deployment(model_id: Optional[int]) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """A Quant Lab paper deployment in a governed fund is the model's shadow trading: it needs a model whose
+    backtest was approved (G2) and that is active. Funds without governance deploy freely."""
+    st = settings()
+    if not st["enabled"]:
+        return None, None
+    if model_id is None:
+        return None, ("this fund runs paper deployments only for governed models: name the model (approved at G2, "
+                      "backtest) — the deployment becomes its shadow-trading record for G3")
+    init_db()
+    with _conn() as c:
+        m = _model_row(c, int(model_id))
+    if not m:
+        return None, "model not found"
+    if m["status"] != "active":
+        return m, f"model #{m['id']} is {m['status']}"
+    if GATES.index(m["gate"]) < 2:
+        return m, f"model #{m['id']} is at {m['gate']}: its backtest must be approved (G2) before shadow trading"
+    return m, None
+
+
+def record_deployment(model_id: int, deployment_id: int, user: str) -> None:
+    init_db()
+    with _conn() as c:
+        c.execute("INSERT INTO gov_model_events (model_id, ts, user, action, gate_from, evidence) VALUES (?,?,?,?,?,?)",
+                  (model_id, _now(), user, "shadow_deployed", (_model_row(c, model_id) or {}).get("gate"),
+                   json.dumps({"deployment_id": deployment_id})))
+        c.commit()
+    _audit("model_shadow_deployed", f"Model #{model_id}: paper deployment #{deployment_id} started (shadow trading)",
+           user, f"model:{model_id}")
+
+
+def shadow_report(model_id: int, min_sessions: int = 20) -> Dict[str, Any]:
+    """The model's shadow-trading record from its Quant Lab paper deployment(s) in this fund: sessions recorded
+    (each time-stamped when locked), live vs backtest return and volatility, and drift flags."""
+    from api import funds
+    from api.quant import store
+    deps = [d for d in store.list_deployments(active_only=False)
+            if d.get("model_id") == model_id and (d.get("fund") or "main") == funds.current()]
+    if not deps:
+        return {"available": False, "reason": "no paper deployment linked to this model in this fund"}
+    d = sorted(deps, key=lambda x: x["id"])[-1]
+    live = store.live_returns(d["id"])
+    rets = [v[0] for _, v in sorted(live.items())]
+    n = len(rets)
+    bt = d.get("backtest") or {}
+    if isinstance(bt, str):
+        try:
+            bt = json.loads(bt)
+        except ValueError:
+            bt = {}
+    out: Dict[str, Any] = {"available": True, "deployment_id": d["id"], "name": d["name"], "active": bool(d.get("active")),
+                           "deployed_at": d.get("deployed_at"), "sessions": n, "min_sessions": min_sessions,
+                           "backtest": {k: bt.get(k) for k in ("cagr", "vol", "sharpe", "max_drawdown")}}
+    if n >= 5:
+        mu = sum(rets) / n
+        sd = math.sqrt(sum((r - mu) ** 2 for r in rets) / (n - 1)) if n > 1 else 0.0
+        vol = sd * math.sqrt(252)
+        sharpe = (mu / sd * math.sqrt(252)) if sd else None
+        eq, peak, mdd = 1.0, 1.0, 0.0
+        for r in rets:
+            eq *= 1 + r
+            peak = max(peak, eq)
+            mdd = min(mdd, eq / peak - 1)
+        flags = []
+        bvol, bsh = bt.get("vol"), bt.get("sharpe")
+        if bvol and vol and not (0.5 <= vol / bvol <= 2.0):
+            flags.append(f"live volatility {vol:.1%} vs backtest {bvol:.1%} (ratio {vol / bvol:.2f}, outside 0.5–2)")
+        if bsh is not None and sharpe is not None and sharpe < bsh - 2 * math.sqrt(252 / n):
+            flags.append(f"live Sharpe {sharpe:.2f} below backtest {bsh:.2f} by more than two standard errors")
+        out["live"] = {"return": round(eq - 1, 4), "vol": round(vol, 4), "sharpe": round(sharpe, 2) if sharpe is not None else None,
+                       "max_drawdown": round(mdd, 4), "first": min(live), "last": max(live)}
+        out["drift_flags"] = flags
+    out["ready"] = n >= min_sessions and not out.get("drift_flags")
+    return out
 
 
 # ── halts and incidents ──────────────────────────────────────────────────────
@@ -843,3 +931,73 @@ def break_even(costs: List[float], fees: List[float], aums: List[float]) -> Dict
             "grid": [{"aum": a, **{f"{f:.3%}": {"income": round(a * f, 2), "surplus": round(a * f - costs[0], 2)}
                                    for f in fees}} for a in aums],
             "formula": "break-even AUM = recurring operating cash cost / annual management-fee rate"}
+
+
+# ── data-source licence register ─────────────────────────────────────────────
+# The plan: "Some public data is free to research but not to redistribute or use commercially without conditions.
+# Check each data supplier's licence before publishing outputs or using datasets in a fund." Each source the platform
+# uses is listed with its type and the usual position for that type of provider — a starting point, not legal advice;
+# every source starts 'unreviewed' until someone in the fund records a decision against the provider's actual terms.
+SOURCE_TYPES = {
+    "public": "Public-sector statistics: generally reusable with attribution, but individual series can carry "
+              "third-party copyright notices (check the series' notes).",
+    "commercial_site": "Commercial website / unofficial access: site terms usually allow personal use only; using it "
+                       "in a fund, redistributing or publishing outputs normally needs a licence.",
+    "academic": "Academic research dataset: usually free with citation; check the authors' stated terms for "
+                "commercial use.",
+    "association": "Member association / exchange statistics: copyright of the provider; redistribution and commercial "
+                   "use usually restricted.",
+}
+DATA_SOURCES = [
+    ("FRED (St. Louis Fed)", "Federal Reserve Bank of St. Louis", "public", "most macro series", "https://fred.stlouisfed.org"),
+    ("ALFRED vintages", "Federal Reserve Bank of St. Louis", "public", "point-in-time releases, event dataset", "https://alfred.stlouisfed.org"),
+    ("Yahoo Finance prices (via yfinance)", "Yahoo", "commercial_site", "prices, volumes, fund data, quotes", "https://finance.yahoo.com"),
+    ("SEC EDGAR (filings, XBRL, 13F)", "US Securities and Exchange Commission", "public", "fundamentals, institutions", "https://www.sec.gov/edgar"),
+    ("TreasuryDirect (FedInvest prices, auctions)", "US Treasury", "public", "Treasury board, auctions", "https://www.treasurydirect.gov"),
+    ("CFTC Commitments of Traders", "Commodity Futures Trading Commission", "public", "COT positioning", "https://www.cftc.gov"),
+    ("Federal Reserve Board data (EBP, GSW curve, FOMC calendar)", "Board of Governors of the Federal Reserve", "public",
+     "credit stress, curve, FOMC dates", "https://www.federalreserve.gov"),
+    ("NY Fed Staff Nowcast", "Federal Reserve Bank of New York", "public", "GDP nowcast", "https://www.newyorkfed.org"),
+    ("Caldara–Iacoviello geopolitical risk index", "Caldara & Iacoviello", "academic", "geopolitical risk", "https://www.matteoiacoviello.com/gpr.htm"),
+    ("Shiller CAPE data", "Robert Shiller", "academic", "valuation", "http://www.econ.yale.edu/~shiller/data.htm"),
+    ("Kenneth French data library", "Kenneth R. French", "academic", "factor returns", "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html"),
+    ("AAII sentiment survey", "American Association of Individual Investors", "association", "sentiment", "https://www.aaii.com"),
+    ("Cboe put/call ratios", "Cboe Global Markets", "association", "options context", "https://www.cboe.com"),
+    ("Nasdaq IPO calendar", "Nasdaq", "commercial_site", "IPO calendar", "https://www.nasdaq.com"),
+    ("Economic calendar consensus feed (Forex Factory)", "Forex Factory", "commercial_site", "recent consensus forecasts", "https://www.forexfactory.com"),
+]
+
+
+def data_sources() -> List[Dict[str, Any]]:
+    init_db()
+    with _conn() as c:
+        c.execute("""CREATE TABLE IF NOT EXISTS gov_data_sources (
+            name TEXT PRIMARY KEY, provider TEXT, type TEXT, feeds TEXT, url TEXT, status TEXT DEFAULT 'unreviewed',
+            terms_reference TEXT, note TEXT, reviewed_by TEXT, reviewed_at TEXT)""")
+        have = {r[0] for r in c.execute("SELECT name FROM gov_data_sources")}
+        for name, prov, typ, feeds, url in DATA_SOURCES:
+            if name not in have:
+                c.execute("INSERT INTO gov_data_sources (name, provider, type, feeds, url) VALUES (?,?,?,?,?)",
+                          (name, prov, typ, feeds, url))
+        c.commit()
+        rows = [dict(r) for r in c.execute("SELECT * FROM gov_data_sources ORDER BY type, name")]
+    for r in rows:
+        r["type_note"] = SOURCE_TYPES.get(r["type"])
+    return rows
+
+
+def review_source(name: str, user: str, status: str, terms_reference: str, note: str = "") -> Dict[str, Any]:
+    """Record the fund's decision on a source after reading its terms: allowed / restricted / not_allowed."""
+    if status not in ("allowed", "restricted", "not_allowed", "unreviewed"):
+        raise ValueError("status is allowed, restricted, not_allowed or unreviewed")
+    if status != "unreviewed" and not terms_reference.strip():
+        raise ValueError("cite the terms you reviewed (URL or document and date)")
+    data_sources()
+    with _conn() as c:
+        if not c.execute("SELECT 1 FROM gov_data_sources WHERE name = ?", (name,)).fetchone():
+            raise LookupError("source not found")
+        c.execute("UPDATE gov_data_sources SET status = ?, terms_reference = ?, note = ?, reviewed_by = ?, reviewed_at = ? "
+                  "WHERE name = ?", (status, terms_reference[:500], note[:1000], user, _now(), name))
+        c.commit()
+    _audit("data_source_reviewed", f"Data source '{name}': {status} ({terms_reference})", user, f"source:{name}")
+    return next(r for r in data_sources() if r["name"] == name)

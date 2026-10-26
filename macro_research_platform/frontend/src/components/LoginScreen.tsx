@@ -10,6 +10,8 @@ export function LoginScreen() {
   const { login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [needOtp, setNeedOtp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDemo, setShowDemo] = useState(false);
@@ -31,8 +33,9 @@ export function LoginScreen() {
     setError(null);
 
     try {
-      await login(username, password);
+      await login(username, password, needOtp ? otp : undefined);
     } catch (err) {
+      if ((err as { mfaRequired?: boolean })?.mfaRequired) setNeedOtp(true);
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setLoading(false);
@@ -101,6 +104,25 @@ export function LoginScreen() {
                 disabled={loading}
               />
             </div>
+
+            {needOtp && (
+              <div>
+                <label className="block text-xs text-text-tertiary uppercase tracking-wider mb-1.5">
+                  Two-factor code
+                </label>
+                <input
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  autoFocus
+                  className="w-full bg-bg border border-border rounded px-3 py-2 text-text-primary font-mono tracking-widest
+                           focus:border-bloomberg focus:outline-none transition-colors"
+                  placeholder="6-digit code or a recovery code"
+                  disabled={loading}
+                />
+              </div>
+            )}
 
             {error && (
               <div className="p-3 bg-red-dim border border-red rounded text-red text-sm">

@@ -53,6 +53,10 @@ def init_db() -> None:
             )
             """
         )
+        # positions at each snapshot (base currency): monthly attribution by sleeve / instrument needs month-end books
+        conn.execute("""CREATE TABLE IF NOT EXISTS fund_position_snapshots (
+            date TEXT NOT NULL, book TEXT, symbol TEXT NOT NULL, quantity REAL, price REAL, market_value REAL,
+            unrealized_pnl REAL, currency TEXT, PRIMARY KEY (date, book, symbol))""")
         # each snapshot's currency: a NAV recorded in USD must not be read as GBP after the base currency changes.
         # Rows from before this column existed were taken in the base currency of that time — the current one, since
         # the base could not be changed before multi-currency accounting (and its migration) arrived together.
@@ -123,6 +127,39 @@ def record_nav(row: Dict[str, Any]) -> Dict[str, Any]:
             [row.get(c) for c in cols])
         conn.commit()
     return row
+
+
+def record_positions(day: str, positions: List[Dict[str, Any]], currency: str) -> int:
+    """Replace the day's position snapshot (values in the base currency)."""
+    init_db()
+    agg: Dict[tuple, Dict[str, Any]] = {}
+    for p in positions:
+        k = (p.get("book") or "Macro", str(p["symbol"]).upper())
+        g = agg.setdefault(k, {"quantity": 0.0, "market_value": 0.0, "unrealized_pnl": 0.0, "price": p.get("current_price")})
+        g["quantity"] += float(p.get("quantity") or 0)
+        g["market_value"] += float(p.get("market_value") or 0)
+        g["unrealized_pnl"] += float(p.get("unrealized_pnl") or 0)
+    with _conn() as conn:
+        conn.execute("DELETE FROM fund_position_snapshots WHERE date = ?", (day,))
+        conn.executemany("INSERT INTO fund_position_snapshots (date, book, symbol, quantity, price, market_value, unrealized_pnl, "
+                         "currency) VALUES (?,?,?,?,?,?,?,?)",
+                         [(day, b, s, g["quantity"], g["price"], round(g["market_value"], 2), round(g["unrealized_pnl"], 2),
+                           currency) for (b, s), g in agg.items()])
+        conn.commit()
+    return len(agg)
+
+
+def position_snapshot(on_or_before: str, currency: Optional[str] = None) -> Dict[str, Any]:
+    """The last position snapshot on or before a date: {date, rows}."""
+    init_db()
+    with _conn() as conn:
+        r = conn.execute("SELECT MAX(date) AS d FROM fund_position_snapshots WHERE date <= ?"
+                         + (" AND currency = ?" if currency else ""),
+                         (on_or_before, currency) if currency else (on_or_before,)).fetchone()
+        if not r or not r["d"]:
+            return {"date": None, "rows": []}
+        rows = [dict(x) for x in conn.execute("SELECT * FROM fund_position_snapshots WHERE date = ?", (r["d"],))]
+    return {"date": r["d"], "rows": rows}
 
 
 def nav_history(limit: Optional[int] = None, currency: Optional[str] = "current") -> List[Dict[str, Any]]:

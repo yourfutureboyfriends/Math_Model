@@ -91,6 +91,31 @@ def series(code: str = "BIFS", base: str = "GBP") -> Dict[str, Any]:
             "proxies": spec["legs"]}
 
 
+def index_level(code: str, base: str, on: Optional[str] = None) -> Optional[float]:
+    """The benchmark's total-return index (100 at its start) at the last close on or before `on` (default: latest)."""
+    r = series(code, base)["returns"]
+    if r.empty:
+        return None
+    idx = (1 + r).cumprod() * 100
+    if on:
+        idx = idx[idx.index <= pd.Timestamp(on[:10])]
+    return float(idx.iloc[-1]) if len(idx) else None
+
+
+def relative_since(symbol: str, code: str, base: str, since: str, bench_level_then: Optional[float] = None) -> Optional[float]:
+    """A holding's return in the base currency since `since` relative to the benchmark's: (1 + r_stock) / (1 + r_bench) − 1."""
+    px = in_base(symbol, base)
+    then = px[px.index <= pd.Timestamp(since[:10])]
+    if then.empty or px.empty:
+        return None
+    r_stock = float(px.iloc[-1] / then.iloc[-1] - 1)
+    lvl_then = bench_level_then or index_level(code, base, since)
+    lvl_now = index_level(code, base)
+    if not lvl_then or not lvl_now:
+        return None
+    return (1 + r_stock) / (lvl_now / lvl_then) - 1
+
+
 def summary(code: str = "BIFS", base: str = "GBP") -> Dict[str, Any]:
     """Performance of the benchmark over standard windows, with what it is and what it is not."""
     s = series(code, base)

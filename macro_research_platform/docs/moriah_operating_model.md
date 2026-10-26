@@ -20,6 +20,17 @@ The fund `main` is configured as Moriah Capital Partners (`api/moriah.py`, re-ru
 | 17–18 48-month gates, board scorecard, first 90 days | Both plans are tracked as milestones with owner, acceptance criterion and evidence. "Done" needs evidence, and sign-off is by another person. The scorecard is computed from the ledger, models, reconciliations and budget. Commercial items are entered by the team. | Governance → Roadmap, Overview |
 | 12, 16 Fund formation, seed sequence | Not automated: these are legal and commercial projects. Record their milestones on the roadmap. | — |
 
+## Added 26 Oct 2026
+
+| Plan item | On the platform | Where |
+|---|---|---|
+| 04 Event dataset ("surprise, timing, regime"), months 3–6 milestone | Macro event dataset: US CPI, core CPI, payrolls and unemployment as published at the time (ALFRED vintages), and FOMC decisions. Each event has a labelled surprise proxy (consensus forecasts are licensed) and the cross-asset reaction from the first close after the release. Versioned by hash, with CSV export. | Overview → Macro Event Dataset; `/api/v1/research/events` |
+| 05 G3 shadow trading; 08 "execute only approved builds" | In a governed fund, a Quant Lab paper deployment must name a model at G2 or later. Its locked daily record is the G3 evidence: sessions recorded, plus live vs backtest volatility and Sharpe, with drift flags. | Governance → Models (shadow box); Quant Lab deploy |
+| 06 Stress conditions | Historical replays of the actual book in base currency: COVID crash, Brexit gap, gilt crisis, 2022 stocks-and-bonds sell-off, March 2020 dash for cash. Also a sterling +10% shock and a data-outage procedure check. Shown in the monthly pack with coverage. | Governance → Monthly pack |
+| 08 Security: MFA | Two-factor sign-in with an authenticator app (TOTP) and single-use recovery codes. An administrator can require it for every account and reset a lost device. | Account → Two-factor |
+| 08 Licence check of every data supplier | Data-source register. Every source starts unreviewed until the fund records allowed / restricted / not allowed, citing the terms it read. | Governance → Data licences |
+| 11 Attribution by sleeve / instrument | Daily position snapshots, so month-end P&L = realised + change in unrealised. | Monthly pack |
+
 **Benchmark:** cash in GBP (iShares £ Ultrashort Bond ETF proxy), the plan's "no-trade alternative". Sector Brinson
 attribution does not apply to it; attribution is by sleeve, instrument and regime in the monthly pack. The plan's
 other counterfactuals (simple trend, carry) are models in the registry: the benchmark / baseline sleeve.

@@ -1,6 +1,7 @@
 // App.tsx — Root component with auth and routing
 // Phase 4 Step 5: Dashboard content extracted to pages/DashboardPage.tsx
 
+import { MfaEnrollScreen } from '@/components/account/TwoFactor';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { TerminalShell } from './components/layout/TerminalShell';
 import { LoginScreen } from './components/LoginScreen';
@@ -17,7 +18,7 @@ import { applySkin, useMarketsSkin } from './lib/theme';
 import { useMacroStore, selectMeta, selectIsLoading, selectRegime, selectFullDashboard } from './store/macroStore';
 
 function App() {
-  const { isAuthenticated, mustChangePassword } = useAuth();
+  const { isAuthenticated, mustChangePassword, mfaEnrollmentRequired } = useAuth();
   const hubMode = useHubMode();
   const skin = useMarketsSkin();
   useEffect(() => { applySkin(hubMode === 'markets' && skin === 'classic'); }, [hubMode, skin]);
@@ -106,6 +107,7 @@ function App() {
 
   if (!isAuthenticated) return <LoginScreen />;
   if (mustChangePassword) return <ChangePasswordScreen />;
+  if (mfaEnrollmentRequired) return <MfaEnrollScreen />;
 
   if (isLoading && !hasData) {
     return (

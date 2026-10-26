@@ -89,6 +89,7 @@ export const PANEL_LABELS: Record<string, string> = {
   international: 'Regional Equity Regimes',
   reflexivity: 'Cross-Asset Feedback Loops',
   transmission: 'Policy Transmission',
+  'event-dataset': 'Macro Event Dataset',
   // System
   'economic-calendar': 'Economic Calendar',
   'data-to-watch': 'Upcoming Releases',

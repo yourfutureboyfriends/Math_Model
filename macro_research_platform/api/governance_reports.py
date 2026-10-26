@@ -61,6 +61,69 @@ def _to_base(t: Dict[str, Any], v: float) -> float:
     return v * (t.get("usd_per_unit") or 1.0) * (t.get("base_per_usd") or 1.0)
 
 
+SCENARIOS = [
+    {"id": "equity_crash", "label": "Equity crash — COVID sell-off", "start": "2020-02-19", "end": "2020-03-23", "kind": "historical"},
+    {"id": "fx_gap", "label": "FX gap — Brexit referendum (sterling −8%)", "start": "2016-06-23", "end": "2016-06-27", "kind": "historical"},
+    {"id": "fx_gbp_up", "label": "FX gap — sterling +10% against every currency", "kind": "hypothetical"},
+    {"id": "rate_shock", "label": "Rate shock — UK gilt / LDI crisis", "start": "2022-09-22", "end": "2022-09-27", "kind": "historical"},
+    {"id": "correlations_to_one", "label": "Simultaneous risk-asset sell-off — stocks and bonds fell together (2022)",
+     "start": "2022-01-03", "end": "2022-10-12", "kind": "historical"},
+    {"id": "liquidity", "label": "Sudden withdrawal of liquidity — March 2020 dash for cash", "start": "2020-03-09", "end": "2020-03-18", "kind": "historical"},
+]
+
+
+def stress_tests(holdings: List[Dict[str, Any]], base: str) -> Dict[str, Any]:
+    """The plan's stress conditions on a book: {symbol, market_value (base)} rows. Historical scenarios replay each
+    holding's own base-currency return over a real episode (no invented shocks); a holding without history then is
+    excluded and the coverage is reported. The sterling scenario is exact arithmetic on currency exposure. The data
+    outage is a procedure check (price-feed control), not a P&L."""
+    from api.calculations import benchmark as bm
+    from api.handlers.portfolio_analytics import _usd_per_unit
+    from api.markets import minor_unit_factor
+    hold = [h for h in holdings if h.get("market_value")]
+    gross = sum(abs(float(h["market_value"])) for h in hold)
+    px = {}
+    for h in hold:
+        try:
+            px[h["symbol"]] = bm.in_base(h["symbol"], base)
+        except Exception:                                                     # noqa: BLE001 — excluded, reported
+            px[h["symbol"]] = None
+    out = []
+    for sc in SCENARIOS:
+        pnl, covered, missing = 0.0, 0.0, []
+        for h in hold:
+            mv = float(h["market_value"])
+            if sc["kind"] == "hypothetical":
+                ccy, _ = _usd_per_unit(h["symbol"])
+                major, _ = minor_unit_factor(ccy)
+                if major != base.upper():
+                    pnl += mv * (1 / 1.10 - 1)                                 # foreign value falls in sterling terms
+                covered += abs(mv)
+                continue
+            s = px.get(h["symbol"])
+            if s is None or s.empty:
+                missing.append(h["symbol"])
+                continue
+            a, b = s[s.index <= sc["start"]], s[s.index <= sc["end"]]
+            if a.empty or b.empty or a.index[-1] == b.index[-1] or s.index[0] > __import__("pandas").Timestamp(sc["start"]):
+                missing.append(h["symbol"])
+                continue
+            pnl += mv * float(b.iloc[-1] / a.iloc[-1] - 1)
+            covered += abs(mv)
+        out.append({**sc, "pnl": round(pnl, 2), "pnl_pct_gross": round(pnl / gross * 100, 2) if gross else None,
+                    "coverage": round(covered / gross, 3) if gross else None, "excluded": missing})
+    from api import governance as gov
+    pol = gov.settings()["risk_policy"]
+    halts = [h for h in _halts() if h["test"]]
+    out.append({"id": "data_outage", "label": "Data outage — procedure check", "kind": "procedure",
+                "result": (f"Orders are blocked when a price is older than {pol['max_price_age_days']} days or missing; "
+                           f"price-band breaches open an incident. Kill-switch tests on record: {len(halts)}"
+                           + (f" (last {max(h['started_at'] for h in halts)[:10]})" if halts else "") + ".")})
+    return {"currency": base, "gross": round(gross, 2), "scenarios": out,
+            "note": "Historical replays of today's holdings (base-currency returns, so FX moves are included); a holding "
+                    "without history in an episode is excluded (see coverage). Not a forecast of future losses."}
+
+
 def monthly_report(month: Optional[str] = None) -> Dict[str, Any]:
     from api import fund_store, governance as gov, trade_lifecycle as tl, blotter_store
     blotter_store.init_db()
@@ -110,7 +173,22 @@ def monthly_report(month: Optional[str] = None) -> Dict[str, Any]:
             g["fills"] += 1
     current_month = month == date.today().strftime("%Y-%m")
     unreal_by_book, unreal_by_sym, unreal_total = {}, {}, None
-    if current_month:
+    snap0 = fund_store.position_snapshot((date.fromisoformat(m0) - __import__("datetime").timedelta(days=1)).isoformat(), base)
+    snap1 = fund_store.position_snapshot((date.fromisoformat(m1) - __import__("datetime").timedelta(days=1)).isoformat(), base)
+    if snap1["date"] and snap1["date"] >= m0:            # month-end books: P&L = realised + change in unrealised
+        for agg, key in ((by_book, "book"), (by_sym, "symbol")):
+            start = {}
+            for r in snap0["rows"]:
+                start[r[key]] = start.get(r[key], 0.0) + float(r["unrealized_pnl"] or 0)
+            end = {}
+            for r in snap1["rows"]:
+                end[r[key]] = end.get(r[key], 0.0) + float(r["unrealized_pnl"] or 0)
+            for k in set(start) | set(end):
+                g = agg.setdefault(k, {"realised": 0.0, "costs": 0.0, "fills": 0})
+                g["unrealised_change"] = end.get(k, 0.0) - start.get(k, 0.0)
+                g["pnl"] = g["realised"] + g["unrealised_change"]
+        unreal_total = sum(float(r["unrealized_pnl"] or 0) for r in snap1["rows"])
+    elif current_month:
         from api.handlers.portfolio_analytics import book_in_base
         bk = book_in_base(None)
         unreal_total = 0.0
@@ -143,6 +221,30 @@ def monthly_report(month: Optional[str] = None) -> Dict[str, Any]:
     exceptions = [l for l in logs if l["action"] in ("order_created", "order_approved") and
                   ("WARN" in (l["rationale"] or "") or "BLOCK" in (l["rationale"] or ""))]
     sim = any(str((o.get("fill") or {}).get("source") or "").startswith("simulated") for o in filled) or st["stage"] == "research"
+    holdings = ([{"symbol": r["symbol"], "market_value": r["market_value"]} for r in snap1["rows"]]
+                if snap1["date"] and snap1["date"] >= m0 and not current_month else None)
+    if holdings is None:
+        from api.handlers.portfolio_analytics import book_in_base
+        holdings = [{"symbol": p["symbol"], "market_value": p.get("market_value")} for p in book_in_base(None)["positions"]]
+    try:
+        stress = stress_tests(holdings, base) if holdings else {"scenarios": [], "note": "No holdings."}
+    except Exception as e:                                                     # noqa: BLE001 — the pack still renders
+        stress = {"scenarios": [], "note": f"Stress tests unavailable: {type(e).__name__}"}
+    bench = None
+    code = (fund_store.get_settings().get("benchmark") or "").upper()
+    try:
+        from api.calculations import benchmark as bm
+        if code in bm.BENCHMARKS and in_m:
+            br = bm.series(code, base)["returns"]
+            first = in_m[0]["date"]
+            prev = [r["date"] for r in nav if r["date"] < first]
+            seg = br[(br.index > (prev[-1] if prev else first)) & (br.index <= in_m[-1]["date"])]
+            b_ret = float((1 + seg).prod() - 1) if len(seg) else None
+            bench = {"code": code, "label": bm.BENCHMARKS[code]["label"],
+                     "month_return": round(b_ret * 100, 2) if b_ret is not None else None,
+                     "active_return": round((month_ret - b_ret) * 100, 2) if b_ret is not None and month_ret is not None else None}
+    except Exception:                                                          # noqa: BLE001 — shown as unavailable
+        bench = None
     r2 = lambda v: round(v, 2) if v is not None else None
     return {
         "fund": st["fund_name"], "month": month, "currency": base, "stage": st["stage_label"],
@@ -154,7 +256,7 @@ def monthly_report(month: Optional[str] = None) -> Dict[str, Any]:
                     "cash_flows": {d: v for d, v in flows.items() if m0 <= d < m1},
                     "trading_costs": {"commission": r2(costs_comm), "taxes": r2(costs_tax), "total": r2(costs_comm + costs_tax)},
                     "realised_pnl": r2(realised), "unrealised_pnl": r2(unreal_total) if unreal_total is not None else None,
-                    "unit": "% (returns), base currency (amounts)"},
+                    "benchmark": bench, "unit": "% (returns), base currency (amounts)"},
         "risk": {"max_drawdown_to_date": r2(mdd * 100), "volatility_ann": r2(vol * 100) if vol is not None else None,
                  "gross": nav_m[-1].get("gross") if nav_m else None, "net": nav_m[-1].get("net") if nav_m else None,
                  "var95_1d": nav_m[-1].get("var95_1d") if nav_m else None,
@@ -162,16 +264,16 @@ def monthly_report(month: Optional[str] = None) -> Dict[str, Any]:
                  "incidents": [{"id": i["id"], "kind": i["kind"], "status": i["status"], "description": i["description"]} for i in incs],
                  "halts": [{"kind": h["kind"], "reason": h["reason"], "started": h["started_at"], "ended": h["ended_at"],
                             "test": bool(h["test"])} for h in halts],
-                 "scenarios": "Stress scenarios (equity crash, FX gap, rate shock, correlations → 1, data outage, liquidity "
-                              "withdrawal): run in the Scenario Analysis panel and attach to the pack."},
+                 "stress": stress},
         "attribution": {"by_sleeve": {k: {**{a: r2(b) for a, b in v.items()}, "unrealised_now": r2(unreal_by_book.get(k))}
                                       for k, v in (by_book or {k: {"realised": 0.0, "costs": 0.0, "fills": 0} for k in unreal_by_book}).items()},
                         "by_instrument": {k: {**{a: r2(b) for a, b in v.items()}, "unrealised_now": r2(unreal_by_sym.get(k))}
                                           for k, v in (by_sym or {k: {"realised": 0.0, "costs": 0.0, "fills": 0} for k in unreal_by_sym}).items()},
                         "by_regime": {k: {"days": v["days"], "return_pct": r2((v["return"] - 1) * 100)} for k, v in by_regime.items()},
-                        "note": ("Realised P&L and costs from this month's fills; unrealised by sleeve / instrument is shown "
-                                 "for the current month only (positions are not stored at past month-ends). Regime = the "
-                                 "model regime recorded with each day's NAV snapshot.")},
+                        "month_end_books": {"start": snap0["date"], "end": snap1["date"]},
+                        "note": ("P&L = realised (this month's fills) + change in unrealised between the month-end position "
+                                 "snapshots, in the base currency; before snapshots exist, unrealised is shown for the "
+                                 "current month only. Regime = the model regime recorded with each day's NAV snapshot.")},
         "implementation": {"fills": len(filled),
                            "signal_to_fill_hours_median": r2(sorted(delays)[len(delays) // 2]) if delays else None,
                            "slippage_bps_avg": r2(sum(slip) / len(slip)) if slip else None,
@@ -229,6 +331,8 @@ def scorecard() -> Dict[str, Any]:
                          "incidents_open": sum(1 for i in incs if i["status"] != "signed_off"),
                          "kill_switch_tests": sum(1 for h in _halts() if h["test"]),
                          "budget": {"total": b["total_budget"], "spent": b["total_spent"], "variance": b["variance"]}},
+        "data": {"sources": len(srcs := gov.data_sources()), "unreviewed": sum(1 for x in srcs if x["status"] == "unreviewed"),
+                 "not_allowed_or_restricted": sum(1 for x in srcs if x["status"] in ("restricted", "not_allowed"))},
         "commercial": {"note": "Qualified diligence discussions, an independently verified record and committed eligible "
                                "seed capital are not tracked by the platform: record them in the milestones."},
         "label": gov.results_label(),

@@ -299,6 +299,11 @@ async def take_nav_snapshot() -> Dict[str, Any]:
         pass
     if not settings.get("inception_date"):
         await _thread(fund_store.update_settings, {"inception_date": date.today().isoformat()})
+    try:                                             # the day's book, for month-end attribution
+        await _thread(fund_store.record_positions, date.today().isoformat(), state.get("positions") or [],
+                      settings.get("base_currency") or "USD")
+    except Exception as e:                                                     # noqa: BLE001 — never lose the NAV
+        logger.warning(f"[fund] position snapshot failed: {e}")
     if settings.get("governance"):                   # each model's P&L, high-water mark and drawdown control
         try:
             from api import governance as gov

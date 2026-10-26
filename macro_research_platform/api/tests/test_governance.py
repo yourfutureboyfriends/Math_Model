@@ -114,7 +114,13 @@ def test_model_gates_need_evidence_and_independent_signoffs(fund, monkeypatch):
     with pytest.raises(ValueError):
         gov.signoff(m["id"], "riskop", "risk", _ok(gov.GATE_INFO["G3"]["evidence"]))
     gov.update_model(m["id"], "ic", {"allocation": 5000, "max_loss_budget": 0.08, "retirement_criterion": "Sharpe < 0 over 6m"})
-    assert gov.signoff(m["id"], "riskop", "risk", _ok(gov.GATE_INFO["G3"]["evidence"]))["gate"] == "G3"
+    with pytest.raises(ValueError) as e:                                       # no shadow trading yet
+        gov.signoff(m["id"], "riskop", "risk", _ok(gov.GATE_INFO["G3"]["evidence"]))
+    assert "shadow trading" in str(e.value)
+    monkeypatch.setattr(gov, "shadow_report", lambda mid, min_sessions=20: {"available": True, "sessions": 25,
+                        "min_sessions": 20, "live": {"vol": 0.1}, "backtest": {}, "drift_flags": [], "deployment_id": 7})
+    assert gov.signoff(m["id"], "riskop", "risk", _ok(["Realistic tradeability",
+                                                        "Maximum loss budget and retirement criterion set"]))["gate"] == "G3"
     assert gov.model_for_order(m["id"])[1] is None                             # paper orders allowed
     # G4 (live capital) is closed in Phase I
     with pytest.raises(ValueError) as e:
@@ -272,6 +278,8 @@ def test_orders_need_an_approved_model_and_pass_the_policy_over_http(tmp_path, m
                         json={"evidence": {"result": {"owner": "quant", "id": 1}, **_ok(["Regime stress tests"])}}).status_code == 200
     assert c["pm"].put(f"/api/v1/governance/models/{m['id']}", json={"allocation": 5000, "max_loss_budget": 0.08,
                                                                     "retirement_criterion": "6m Sharpe < 0"}).status_code == 200
+    monkeypatch.setattr(gov, "shadow_report", lambda mid, min_sessions=20: {"available": True, "sessions": 25,
+                        "min_sessions": 20, "live": {"vol": 0.1}, "backtest": {}, "drift_flags": []})
     assert c["risk"].post(f"/api/v1/governance/models/{m['id']}/signoff",
                           json={"evidence": _ok(gov.GATE_INFO["G3"]["evidence"])}).json()["gate"] == "G3"
     r = c["quant"].post("/api/v1/orders", json={"symbol": "ISF.L", "side": "BUY", "quantity": 100, "model_id": m["id"]})

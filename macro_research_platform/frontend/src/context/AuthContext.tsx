@@ -28,10 +28,12 @@ interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   mustChangePassword?: boolean;
+  mfaEnrollmentRequired?: boolean;   // the administrator requires two-factor and this account has none yet
 }
 
 interface AuthContextType extends AuthState {
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, otp?: string) => Promise<void>;
+  mfaEnrolled: () => void;
   logout: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   hasPermission: (permission: string) => boolean;
@@ -67,6 +69,7 @@ function loadSession(): AuthState {
 let currentToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;
 let onPasswordChangeRequired: (() => void) | null = null;
+let onMfaEnrollmentRequired: (() => void) | null = null;
 
 function isApiUrl(url: string): boolean {
   try {
@@ -92,9 +95,10 @@ function installFetchWrapper() {
     if (fund !== 'main' && !headers.has('X-Fund')) headers.set('X-Fund', fund);
     const res = await original(input, { ...init, headers });
     if (res.status === 401 && !url.includes('/api/auth/login') && onUnauthorized) onUnauthorized();
-    if (res.status === 403 && onPasswordChangeRequired) {
+    if (res.status === 403 && (onPasswordChangeRequired || onMfaEnrollmentRequired)) {
       res.clone().json().then((b) => {
         if (b?.code === 'password_change_required') onPasswordChangeRequired?.();
+        if (b?.code === 'mfa_enrollment_required') onMfaEnrollmentRequired?.();
       }).catch(() => { /* not JSON */ });
     }
     return res;
@@ -129,6 +133,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    onMfaEnrollmentRequired = () => setAuth((a) => {
+      if (!a.isAuthenticated || a.mfaEnrollmentRequired) return a;
+      const next = { ...a, mfaEnrollmentRequired: true };
+      try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
     onPasswordChangeRequired = () => setAuth((a) => {
       if (!a.isAuthenticated || a.mustChangePassword) return a;
       const next = { ...a, mustChangePassword: true };
@@ -146,11 +159,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(t);
   }, [auth.token, endSession]);
 
-  const login = useCallback(async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string, otp?: string) => {
     installFetchWrapper();
     const formData = new URLSearchParams();
     formData.append('username', username);
     formData.append('password', password);
+    if (otp) formData.append('otp', otp);
 
     const response = await fetch('/api/auth/login', {
       method: 'POST',
@@ -160,7 +174,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await response.json().catch(() => ({}));
     const token: string | undefined = data.access_token || data.token;
     if (!response.ok || data.success === false || !token) {
-      throw new Error(data.error || data.detail || 'Invalid username or password');
+      const err = new Error(data.error || data.detail || 'Invalid username or password') as Error & { mfaRequired?: boolean };
+      err.mfaRequired = Boolean(data.mfa_required);
+      throw err;
     }
 
     const resolvedUser: User = {
@@ -175,7 +191,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('macro_role', resolvedUser.role);
     } catch { /* storage unavailable */ }
     persist({ user: resolvedUser, token, isAuthenticated: true,
-              mustChangePassword: Boolean(data.must_change_password) });
+              mustChangePassword: Boolean(data.must_change_password),
+              mfaEnrollmentRequired: Boolean(data.mfa_enrollment_required) });
   }, [persist]);
 
   const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
@@ -210,8 +227,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return auth.user.permissions.includes(permission);
   }, [auth.user]);
 
+  const mfaEnrolled = useCallback(() => persist({ ...auth, mfaEnrollmentRequired: false }), [auth, persist]);
+
   return (
-    <AuthContext.Provider value={{ ...auth, login, logout, changePassword, hasPermission }}>
+    <AuthContext.Provider value={{ ...auth, login, logout, changePassword, hasPermission, mfaEnrolled }}>
       {children}
     </AuthContext.Provider>
   );

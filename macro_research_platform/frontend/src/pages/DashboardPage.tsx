@@ -54,6 +54,7 @@ import {
   PitchReviewSection,
   TradeLifecycleSection,
   GovernanceSection,
+  EventDatasetSection,
   CTATrendSection,
   COTPositioningSection,
   BusinessLayerSection,
@@ -295,6 +296,14 @@ export function DashboardPage() {
       <div id="key-metrics" className="terminal-section">
         <ErrorBoundary sectionName="Macro Indicators">
           <KeyMetricsSection />
+        </ErrorBoundary>
+      </div>
+
+      <div id="event-dataset" className="terminal-section">
+        <ErrorBoundary sectionName="Macro Event Dataset">
+          <Suspense fallback={<SectionSkeleton />}>
+            <EventDatasetSection />
+          </Suspense>
         </ErrorBoundary>
       </div>
 

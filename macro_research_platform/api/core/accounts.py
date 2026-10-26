@@ -73,6 +73,15 @@ def migrate() -> None:
                     if "duplicate column" not in str(e):
                         raise
         c.execute("CREATE TABLE IF NOT EXISTS revoked_tokens (jti TEXT PRIMARY KEY, exp REAL)")
+        from api.core import mfa as _mfa
+        for col, typ in _mfa._COLS.items():                       # two-factor columns (api/core/mfa.py)
+            if col not in cols:
+                try:
+                    c.execute(f"ALTER TABLE users ADD COLUMN {col} {typ}")
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e):
+                        raise
+        c.execute("CREATE TABLE IF NOT EXISTS app_security (key TEXT PRIMARY KEY, value TEXT)")
         c.execute("DELETE FROM revoked_tokens WHERE exp < ?", (time.time(),))
         for r in c.execute("SELECT username, hashed_password FROM users").fetchall():
             default = DEFAULT_PASSWORDS.get(r["username"])
@@ -175,13 +184,14 @@ def revoke(jti: Optional[str], exp: Optional[float]) -> None:
 
 # ── Login with lockout ───────────────────────────────────────────────────────
 class LoginError(Exception):
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, mfa_required: bool = False):
         super().__init__(message)
-        self.status, self.message = status, message
+        self.status, self.message, self.mfa_required = status, message, mfa_required
 
 
-def check_login(username: str, password: str) -> Dict[str, Any]:
-    """Verify credentials with lockout. Returns the user row or raises LoginError."""
+def check_login(username: str, password: str, otp: Optional[str] = None) -> Dict[str, Any]:
+    """Verify credentials with lockout — and, when the account has two-factor on, the one-time code (a wrong code is a
+    failed attempt; counters reset only after BOTH factors pass). Returns the user row or raises LoginError."""
     now = time.time()
     with _conn() as c:
         r = c.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
@@ -194,7 +204,14 @@ def check_login(username: str, password: str) -> Dict[str, Any]:
         if u.get("locked_until") and u["locked_until"] > now:
             mins = int((u["locked_until"] - now) // 60) + 1
             raise LoginError(429, f"Too many failed attempts — try again in {mins} min")
-        if not _auth.verify_password(password, u["hashed_password"]):
+        second_ok = True
+        if u.get("totp_enabled") and _auth.verify_password(password, u["hashed_password"]):
+            if not (otp or "").strip():
+                raise LoginError(401, "Enter the 6-digit code from your authenticator app (or a recovery code)",
+                                 mfa_required=True)
+            from api.core import mfa
+            second_ok = mfa.verify(username, otp)
+        if not second_ok or not _auth.verify_password(password, u["hashed_password"]):
             fails = int(u.get("failed_attempts") or 0) + 1
             locked = now + LOCKOUT_SECONDS if fails >= MAX_FAILED_ATTEMPTS else None
             c.execute("UPDATE users SET failed_attempts = ?, locked_until = ? WHERE username = ?",
@@ -203,6 +220,8 @@ def check_login(username: str, password: str) -> Dict[str, Any]:
             invalidate_cache(username)
             if locked:
                 raise LoginError(429, f"Too many failed attempts — account locked for {LOCKOUT_SECONDS // 60} min")
+            if not second_ok:
+                raise LoginError(401, "Invalid or already used two-factor code", mfa_required=True)
             raise LoginError(401, "Invalid username or password")
         c.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL, last_login = datetime('now') "
                   "WHERE username = ?", (username,))

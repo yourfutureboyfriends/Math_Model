@@ -74,6 +74,13 @@ def init() -> None:
         cols = {r[1] for r in c.execute("PRAGMA table_info(quant_deployments)").fetchall()}
         if "book" not in cols:                      # macro vs fundamental trader (added later; old rows classified on read)
             c.execute("ALTER TABLE quant_deployments ADD COLUMN book TEXT")
+        for col, typ in (("fund", "TEXT"), ("model_id", "INTEGER")):   # governed shadow trading (api/governance.py)
+            if col not in cols:
+                try:
+                    c.execute(f"ALTER TABLE quant_deployments ADD COLUMN {col} {typ}")
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e):
+                        raise
     _ready = True
 
 
@@ -156,6 +163,13 @@ def deploy(owner: str, name: str, spec: Dict[str, Any], deployed_at: str, capita
                         (strategy_id, name, owner, json.dumps(spec), deployed_at, capital, json.dumps(backtest_summary), _now(), book))
         did = cur.lastrowid
     return get_deployment(did)
+
+
+def link_deployment(did: int, fund: Optional[str], model_id: Optional[int]) -> None:
+    """Record which fund and governed model a paper deployment belongs to."""
+    init()
+    with _conn() as c:
+        c.execute("UPDATE quant_deployments SET fund = ?, model_id = ? WHERE id = ?", (fund, model_id, did))
 
 
 def get_deployment(did: int) -> Optional[Dict[str, Any]]:

@@ -43,6 +43,7 @@ class DeployIn(BaseModel):
     template: Optional[str] = None
     capital: float = 1_000_000.0
     book: Optional[str] = None          # macro | fundamental | technical — checked against what the strategy trades
+    model_id: Optional[int] = None      # governed fund: the model (G2+) this paper deployment shadow-trades
 
 
 class ExprIn(BaseModel):
@@ -561,6 +562,10 @@ async def quant_trader(request: Request, refresh: bool = False, book: str = Quer
 async def quant_deploy(body: DeployIn, request: Request):
     from api.quant import engine, trader
     u = _user(request, ("pm", "quant"))
+    from api import funds, governance as gov
+    _, refusal = await asyncio.to_thread(gov.model_for_deployment, body.model_id)
+    if refusal:
+        raise HTTPException(409, refusal)
     spec = body.spec or _member_spec({"strategy_id": body.strategy_id, "template": body.template})
     try:
         d = await _bt(trader.deploy, u["username"], spec, body.capital, body.strategy_id, body.book, _timeout=900)
@@ -571,7 +576,11 @@ async def quant_deploy(body: DeployIn, request: Request):
                                  "try again; the data is cached now.")
     await asyncio.to_thread(_audit, u["username"], "quant_deploy",
                             f"Deployed '{d['name']}' to the {trader.BOOK_LABEL.get(d.get('book'), 'Macro')} Quant Trader with ${body.capital:,.0f} (live from {d['deployed_at']})")
-    return d
+    from api.quant import store as _store
+    await asyncio.to_thread(_store.link_deployment, d["id"], funds.current(), body.model_id)
+    if body.model_id is not None:
+        await asyncio.to_thread(gov.record_deployment, body.model_id, d["id"], u["username"])
+    return {**d, "fund": funds.current(), "model_id": body.model_id}
 
 
 @router.get("/api/v1/quant/trader/live")

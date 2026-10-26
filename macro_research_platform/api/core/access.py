@@ -27,6 +27,8 @@ from api.config import JWT_ALGORITHM, JWT_SECRET
 PUBLIC_WRITES = {"/api/auth/login"}
 # Usable while a password change is pending (everything else needing auth is blocked).
 PASSWORD_CHANGE_ALLOWED = {"/api/auth/me", "/api/auth/change-password", "/api/auth/logout"}
+# Usable while two-factor enrolment is required and pending.
+MFA_ENROLL_ALLOWED = PASSWORD_CHANGE_ALLOWED | {"/api/auth/mfa", "/api/auth/mfa/setup", "/api/auth/mfa/enable"}
 SENSITIVE_READ_PREFIXES = (
     "/api/v1/portfolio", "/api/v1/fund", "/api/v1/orders", "/api/v1/blotter",
     "/api/v1/risk/", "/api/v1/audit", "/api/portfolio", "/api/admin", "/api/v1/desk",
@@ -60,8 +62,10 @@ def decode_token(token: str) -> Optional[dict]:
     changed = user.get("password_changed_at")
     if changed and float(payload.get("iat") or 0) < float(changed):
         return None
+    from api.core import mfa
     return {"username": user["username"], "role": user["role"],
             "must_change_password": bool(user.get("must_change_password")),
+            "mfa_enrollment_required": bool(mfa.required() and not user.get("totp_enabled")),
             "jti": payload.get("jti"), "exp": payload.get("exp")}
 
 
@@ -94,6 +98,9 @@ async def auth_middleware(request: Request, call_next):
         if user.get("must_change_password") and path not in PASSWORD_CHANGE_ALLOWED:
             return JSONResponse({"detail": "Password change required", "code": "password_change_required"},
                                 status_code=403)
+        if user.get("mfa_enrollment_required") and path not in MFA_ENROLL_ALLOWED:
+            return JSONResponse({"detail": "Two-factor sign-in is required: set it up first",
+                                 "code": "mfa_enrollment_required"}, status_code=403)
     # Which fund this request works on: the X-Fund header from the fund switcher, for a signed-in member of that fund;
     # 'main' otherwise (anonymous requests never pick a fund).
     from api import funds

@@ -3,6 +3,7 @@
 //
 // Backend: /api/auth/change-password, /api/auth/status, /api/admin/users*.
 
+import { TwoFactorPanel } from './TwoFactor';
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { KeyRound, Terminal, Users, X } from 'lucide-react';
@@ -248,7 +249,7 @@ export function UserAdminPanel() {
 export function AccountDialog({ onClose }: { onClose: () => void }) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const [tab, setTab] = useState<'password' | 'users'>('password');
+  const [tab, setTab] = useState<'password' | 'mfa' | 'users'>('password');
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -265,6 +266,10 @@ export function AccountDialog({ onClose }: { onClose: () => void }) {
               className={`flex items-center gap-1 ${tab === 'password' ? 'text-bloomberg' : 'text-text-secondary hover:text-text-primary'}`}>
               <KeyRound className="w-3.5 h-3.5" /> Password
             </button>
+            <button onClick={() => setTab('mfa')}
+              className={`flex items-center gap-1 ${tab === 'mfa' ? 'text-bloomberg' : 'text-text-secondary hover:text-text-primary'}`}>
+              <KeyRound className="w-3.5 h-3.5" /> Two-factor
+            </button>
             {isAdmin && (
               <button onClick={() => setTab('users')}
                 className={`flex items-center gap-1 ${tab === 'users' ? 'text-bloomberg' : 'text-text-secondary hover:text-text-primary'}`}>
@@ -277,7 +282,7 @@ export function AccountDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <div className="p-4">
-          {tab === 'users' && isAdmin ? <UserAdminPanel /> : (
+          {tab === 'mfa' ? <TwoFactorPanel /> : tab === 'users' && isAdmin ? <UserAdminPanel /> : (
             <div className="max-w-sm"><ChangePasswordForm /></div>
           )}
         </div>

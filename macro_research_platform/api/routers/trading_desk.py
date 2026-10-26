@@ -92,7 +92,22 @@ async def pitch_get(pid: int, request: Request):
     entry = float(held[0]["avg_cost"]) if held else None
     p["quote"] = {"price": price, "currency": q.get("currency"), "market_state": q.get("market_state")}
     p["valuation"] = pitches.valuation_vs_price(p["current"], price) if p.get("current") else None
-    p["kill_criteria_status"] = pitches.check_kill_criteria(p, price, entry, {k: ratios.get(k) for k in pitches.METRICS})
+    rel = None
+    if p.get("status") in ("approved", "closed") and p.get("decided_at"):
+        try:
+            from api import fund_store
+            from api.calculations import benchmark as bm
+            st = await asyncio.to_thread(fund_store.get_settings)
+            code = (st.get("benchmark") or "SPY").upper()
+            if code in bm.BENCHMARKS:
+                rel = await asyncio.to_thread(bm.relative_since, p["symbol"], code, st.get("base_currency") or "USD",
+                                              p["decided_at"], p.get("approved_benchmark_level"))
+                p["relative_since_approval"] = {"value": round(rel, 4) if rel is not None else None, "benchmark": code,
+                                                "since": p["decided_at"][:10], "currency": st.get("base_currency") or "USD"}
+        except Exception:                                                      # noqa: BLE001 — shown as not evaluable
+            rel = None
+    p["kill_criteria_status"] = pitches.check_kill_criteria(p, price, entry, {k: ratios.get(k) for k in pitches.METRICS},
+                                                            relative_since_approval=rel)
     return p
 
 
@@ -145,9 +160,19 @@ async def pitch_decision(pid: int, body: DecisionIn, request: Request):
         price = (await asyncio.to_thread(core.quote, p0["symbol"])).get("price")
     except Exception:                                                          # noqa: BLE001
         pass
+    bench_level = None
+    if body.decision == "approve":                   # the benchmark level at approval, for "underperform benchmark"
+        try:
+            from api.calculations import benchmark as bm
+            st = await asyncio.to_thread(fund_store.get_settings)
+            code = (st.get("benchmark") or "SPY").upper()
+            if code in bm.BENCHMARKS:
+                bench_level = await asyncio.to_thread(bm.index_level, code, st.get("base_currency") or "USD")
+        except Exception:                                                      # noqa: BLE001 — recorded as unknown
+            bench_level = None
     try:
         p = await asyncio.to_thread(pitches.transition, pid, u["username"], "approved" if body.decision == "approve" else "rejected",
-                                    body.notes or "", price)
+                                    body.notes or "", price, bench_level)
     except Exception as e:                                                     # noqa: BLE001
         _err(e)
     await asyncio.to_thread(_audit, u["username"], f"pitch_{body.decision}d",

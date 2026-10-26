@@ -3,6 +3,7 @@
  * cost, walk-forward optimised, Monte-Carlo'd and deep-analysed; save it or deploy it to a paper trader
  * (deployment runs the code in the server's sandbox). Engine: api/quant/codelab.py.
  */
+import { modelForDeploy } from '@/lib/governedDeploy';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Loader2, Play, Rocket, Save, ShieldCheck, ShieldAlert, Terminal } from 'lucide-react';
@@ -524,9 +525,12 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
       body: `Paper capital ${money(capital, ccy)}${ccy !== 'USD' ? ` (the account is kept in ${ccy})` : ''}. ${leanFirst
         ? "This QuantConnect algorithm runs on real LEAN: the server re-runs it on QuantConnect's own engine through each latest close; the paper book follows LEAN's returns and holds LEAN's final positions."
         : 'The server re-runs your code daily in a locked-down sandbox.'} No real orders are placed.` }))) return;
+    let gov: { model_id?: number } | null;
+    try { gov = await modelForDeploy(ask); } catch (e: any) { setErr(e.message); return; }
+    if (gov === null) return;
     setErr(null); setBusy(true); setStatus('Deploying…');
     try {
-      const d = await api('/api/v1/quant/trader/deploy', { json: { spec: { kind: 'code', name: name || 'Code strategy', code, costs: runCosts }, capital, strategy_id: strategyId } });
+      const d = await api('/api/v1/quant/trader/deploy', { json: { spec: { kind: 'code', name: name || 'Code strategy', code, costs: runCosts }, capital, strategy_id: strategyId, ...gov } });
       const label = ({ macro: 'Macro', fundamental: 'Fundamental', technical: 'Technical' } as Record<string, string>)[d.book] ?? 'Macro';
       setNote(`Deployed “${d.name}” to the ${label} Quant Trader — live from the session after ${d.deployed_at}.${d.preparing ? ' Its backtest is being prepared in the background (a large universe can take a few minutes) — it already shows in the trader as preparing.' : ''}`);
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); setStatus(null); }

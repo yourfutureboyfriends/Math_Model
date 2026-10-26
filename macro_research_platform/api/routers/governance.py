@@ -144,6 +144,14 @@ async def gov_model_signoff(mid: int, body: SignoffIn, request: Request):
     return await _t(gov.signoff, mid, u["username"], u.get("role") or "", body.evidence, body.note)
 
 
+@router.get("/api/v1/governance/models/{mid}/shadow")
+async def gov_model_shadow(mid: int, request: Request):
+    """The model's shadow-trading record (its Quant Lab paper deployment in this fund) and drift flags."""
+    from api import governance as gov
+    _user(request)
+    return await _t(gov.shadow_report, mid)
+
+
 @router.post("/api/v1/governance/models/{mid}/close")
 async def gov_model_close(mid: int, body: CloseIn, request: Request):
     from api import governance as gov
@@ -232,6 +240,29 @@ async def gov_scorecard(request: Request):
     from api import governance_reports as gr
     _user(request)
     return await _t(gr.scorecard)
+
+
+# ── data-source licences ─────────────────────────────────────────────────────
+class SourceReviewIn(BaseModel):
+    name: str = Field(..., max_length=200)
+    status: str = Field(..., pattern="^(allowed|restricted|not_allowed|unreviewed)$")
+    terms_reference: str = Field("", max_length=500)
+    note: str = Field("", max_length=1000)
+
+
+@router.get("/api/v1/governance/data-sources")
+async def gov_sources(request: Request):
+    from api import governance as gov
+    _user(request)
+    return {"sources": await _t(gov.data_sources), "types": gov.SOURCE_TYPES,
+            "note": "Starting point only — not legal advice. Record a decision after reading each provider's actual terms."}
+
+
+@router.post("/api/v1/governance/data-sources/review")
+async def gov_source_review(body: SourceReviewIn, request: Request):
+    from api import governance as gov
+    u = _user(request, ("pm", "risk"))
+    return await _t(gov.review_source, body.name, u["username"], body.status, body.terms_reference, body.note)
 
 
 # ── budget and milestones ────────────────────────────────────────────────────

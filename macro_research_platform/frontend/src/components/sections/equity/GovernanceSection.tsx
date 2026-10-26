@@ -7,6 +7,14 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Loader2, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
+
+// window.prompt/confirm are suppressed in some embedded browsers: an in-app dialog instead
+function useSay() {
+  const [dialog, ask] = useConfirm();
+  const say = (title: string) => ask({ title, input: { label: 'Text', defaultValue: '' }, confirmLabel: 'OK' }) as Promise<string | null>;
+  return { dialog, say, ask };
+}
 
 async function call(url: string, method = 'GET', body?: any) {
   const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
@@ -45,20 +53,22 @@ function KV({ k, v }: { k: string; v: React.ReactNode }) {
 
 // ── overview ─────────────────────────────────────────────────────────────────
 function Overview({ g, reload }: { g: any; reload: () => void }) {
+  const { dialog, ask } = useSay();
   const sc = useLoad<any>('/api/v1/governance/scorecard');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const st = g.settings;
   const setup = async () => {
-    if (!confirm('Configure THIS fund as Moriah Capital Partners (Phase I): GBP base, cash benchmark, £25,000 paper notional, governance on, proposed instruments, budget and milestones from the plan?')) return;
+    if (!(await ask({ title: 'Configure THIS fund', confirmLabel: 'Configure', body: 'Configure THIS fund as Moriah Capital Partners (Phase I): GBP base, cash benchmark, £25,000 paper notional, governance on, proposed instruments, budget and milestones from the plan?' }))) return;
     setBusy(true);
     try { await call('/api/v1/governance/setup/moriah', 'POST'); setMsg('Configured.'); reload(); sc.load(); } catch (e: any) { setMsg(e.message); } finally { setBusy(false); }
   };
   const p = st.risk_policy;
   return (
     <div className="space-y-2 text-xs">
+      {dialog}
       {!st.enabled && (
-        <div className="p-2 border border-amber/40 text-amber text-2xs flex items-center gap-2">Governance is off for this fund.
+        <div className="p-2 border border-amber/40 text-amber text-2xs flex items-center gap-2">Governance controls (model gates, approved instruments, halts on breaks) are off for this fund; the monthly pack, reconciliation, budget, roadmap and data licences work without them.
           <button className={btn} disabled={busy} onClick={setup}>Set up as Moriah Capital Partners (admin)</button>{msg}</div>)}
       <div className={cn('p-2 border text-2xs flex items-center gap-2', g.halt ? 'border-red/50 text-red' : 'border-green/40 text-green')}>
         {g.halt ? <ShieldAlert className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
@@ -88,6 +98,7 @@ function Overview({ g, reload }: { g: any; reload: () => void }) {
             <KV k="Milestones done / signed off" v={`${sc.d.organisation.done}/${sc.d.organisation.milestones} · ${sc.d.organisation.signed_off}`} />
             <KV k="Open incidents · kill-switch tests" v={`${sc.d.organisation.incidents_open} · ${sc.d.organisation.kill_switch_tests}`} />
             <KV k="Budget spent / total" v={`${num(sc.d.organisation.budget.spent)} / ${num(sc.d.organisation.budget.total)}`} />
+            {sc.d.data && <KV k="Data sources unreviewed / restricted" v={`${sc.d.data.unreviewed} / ${sc.d.data.not_allowed_or_restricted} of ${sc.d.data.sources}`} />}
             <div className="text-[10px] text-text-tertiary mt-1">{sc.d.commercial.note}</div>
           </>) : <div className="text-text-tertiary text-2xs">{sc.err ?? 'Loading…'}</div>}
         </Box>
@@ -101,7 +112,9 @@ function Overview({ g, reload }: { g: any; reload: () => void }) {
 const EMPTY = { name: '', sleeve: 'macro_transmission', mechanism: '', target_variable: '', horizon: '', dataset: '', null_hypothesis: '' };
 
 function ModelDetail({ id, g, onChange }: { id: number; g: any; onChange: () => void }) {
+  const { dialog, say } = useSay();
   const { d: m, err, load, setErr } = useLoad<any>(`/api/v1/governance/models/${id}`);
+  const sh = useLoad<any>(`/api/v1/governance/models/${id}/shadow`);
   const [checks, setChecks] = useState<Record<string, { ok: boolean; note: string }>>({});
   const [result, setResult] = useState({ owner: '', id: '' });
   const [note, setNote] = useState('');
@@ -112,6 +125,7 @@ function ModelDetail({ id, g, onChange }: { id: number; g: any; onChange: () => 
   const act = async (fn: () => Promise<any>) => { try { await fn(); setNote(''); setChecks({}); load(); onChange(); } catch (e: any) { setErr(e.message); } };
   return (
     <div className="p-2 space-y-2 text-2xs">
+      {dialog}
       {err && <div className="text-amber">{err}</div>}
       <div className="grid md:grid-cols-2 gap-2">
         <Box title={`#${m.id} ${m.name} — v${m.version}`}>
@@ -132,10 +146,22 @@ function ModelDetail({ id, g, onChange }: { id: number; g: any; onChange: () => 
           </div>
           <div className="flex gap-1 mt-2">
             {(['reject', 'retire', 'suspend', 'reactivate'] as const).map((a) => (
-              <button key={a} className={btn} onClick={() => { const n = prompt(`Reason to ${a} model #${m.id}:`); if (n) act(() => call(`/api/v1/governance/models/${id}/close`, 'POST', { action: a, note: n })); }}>{a}</button>))}
+              <button key={a} className={btn} onClick={async () => { const n = await say(`Reason to ${a} model #${m.id}:`); if (n) act(() => call(`/api/v1/governance/models/${id}/close`, 'POST', { action: a, note: n })); }}>{a}</button>))}
           </div>
         </Box>
       </div>
+      <Box title="Shadow trading (G3 evidence) — the model's Quant Lab paper deployment in this fund">
+        {!sh.d ? <div className="text-text-tertiary">{sh.err ?? 'Loading…'}</div> : !sh.d.available ? (
+          <div className="text-text-tertiary">{sh.d.reason}. Once the backtest is approved (G2), deploy it from Quant Lab and choose this model: its daily paper record, locked each session, becomes the evidence.</div>
+        ) : (<>
+          <KV k="Deployment" v={`#${sh.d.deployment_id} ${sh.d.name} · ${sh.d.active ? 'running' : 'stopped'} · from ${sh.d.deployed_at}`} />
+          <KV k="Sessions recorded" v={`${sh.d.sessions} / ${sh.d.min_sessions} needed`} />
+          {sh.d.live && <KV k="Live: return · vol · Sharpe · max DD" v={`${pct(sh.d.live.return, 1)} · ${pct(sh.d.live.vol, 1)} · ${sh.d.live.sharpe ?? '—'} · ${pct(sh.d.live.max_drawdown, 1)}`} />}
+          <KV k="Backtest: CAGR · vol · Sharpe" v={`${pct(sh.d.backtest.cagr, 1)} · ${pct(sh.d.backtest.vol, 1)} · ${sh.d.backtest.sharpe ?? '—'}`} />
+          {(sh.d.drift_flags ?? []).map((f: string) => <div key={f} className="text-amber">Drift: {f}</div>)}
+          <div className={sh.d.ready ? 'text-green' : 'text-text-tertiary'}>{sh.d.ready ? 'Ready for the G3 sign-off by risk.' : 'Not yet sufficient for G3.'}</div>
+        </>)}
+      </Box>
       {next && m.status === 'active' && info && (
         <Box title={`Sign off ${next} — ${info.name} (${info.authority}; never the owner)`}>
           {m.pending_signoffs?.length > 0 && <div className="text-text-secondary mb-1">Signed so far: {m.pending_signoffs.map((s: any) => `${s.user} (${s.role})`).join(', ')} — needs {g.gate_signoffs[next].length} distinct sign-off(s)</div>}
@@ -239,33 +265,35 @@ function Instruments() {
 
 // ── controls ─────────────────────────────────────────────────────────────────
 function Controls({ reload }: { reload: () => void }) {
+  const { dialog, say } = useSay();
   const { d, err, load, setErr } = useLoad<any>('/api/v1/governance/controls');
   const [busy, setBusy] = useState(false);
   const act = async (fn: () => Promise<any>) => { setBusy(true); try { await fn(); load(); reload(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   if (!d) return <div className="text-2xs text-text-tertiary">{err ?? 'Loading…'}</div>;
   return (
     <div className="space-y-2 text-xs">
+      {dialog}
       {err && <div className="text-amber text-2xs">{err}</div>}
       <Box title="Kill switch">
         <div className="flex gap-1 flex-wrap items-center">
           {d.halt ? <>
             <span className="text-red text-2xs">Halted ({d.halt.kind}): {d.halt.reason}{d.halt.incident_id ? ` — incident #${d.halt.incident_id}` : ''}</span>
-            <button className={btn} disabled={busy} onClick={() => { const r = prompt('Resolution (risk role; an incident must be fixed and independently signed off first):'); if (r) act(() => call('/api/v1/governance/controls/resume', 'POST', { text: r })); }}>Resume trading</button>
+            <button className={btn} disabled={busy} onClick={async () => { const r = await say('Resolution (risk role; an incident must be fixed and independently signed off first):'); if (r) act(() => call('/api/v1/governance/controls/resume', 'POST', { text: r })); }}>Resume trading</button>
           </> : <>
-            <button className={btn} disabled={busy} onClick={() => { const r = prompt('Reason to HALT all new orders and executions:'); if (r) act(() => call('/api/v1/governance/controls/halt', 'POST', { reason: r })); }}>Halt execution</button>
+            <button className={btn} disabled={busy} onClick={async () => { const r = await say('Reason to HALT all new orders and executions:'); if (r) act(() => call('/api/v1/governance/controls/halt', 'POST', { reason: r })); }}>Halt execution</button>
             <button className={btn} disabled={busy} onClick={() => act(() => call('/api/v1/governance/controls/halt', 'POST', { reason: 'kill-switch test', test: true }))}>Start a kill-switch test</button>
           </>}
           <button className={cn(btn, 'ml-auto')} disabled={busy} onClick={() => act(() => call('/api/v1/governance/controls/reconcile', 'POST'))}>{busy ? <Loader2 className="w-3 h-3 animate-spin inline" /> : 'Reconcile positions now'}</button>
         </div>
       </Box>
       <Box title="Incidents">
-        <div className="flex justify-end mb-1"><button className={btn} onClick={() => { const t = prompt('Describe the operational incident:'); if (t) act(() => call('/api/v1/governance/incidents', 'POST', { text: t })); }}>Log incident</button></div>
+        <div className="flex justify-end mb-1"><button className={btn} onClick={async () => { const t = await say('Describe the operational incident:'); if (t) act(() => call('/api/v1/governance/incidents', 'POST', { text: t })); }}>Log incident</button></div>
         {d.incidents.length === 0 ? <div className="text-text-tertiary text-2xs">None.</div> : d.incidents.map((i: any) => (
           <div key={i.id} className="border-b border-border-subtle py-1 text-2xs flex gap-2 items-start">
             <span className="font-mono">#{i.id}</span><span className="text-text-tertiary">{String(i.ts).slice(0, 16).replace('T', ' ')}</span>
             <span className="flex-1">{i.kind}: {i.description}{i.fix ? <div className="text-text-tertiary">fix ({i.fixed_by}): {i.fix}</div> : null}</span>
             <span className={cn(i.status === 'signed_off' ? 'text-green' : 'text-amber')}>{i.status}{i.signed_off_by ? ` (${i.signed_off_by})` : ''}</span>
-            {i.status === 'open' && <button className={btn} onClick={() => { const t = prompt('Fix and how it was tested:'); if (t) act(() => call(`/api/v1/governance/incidents/${i.id}/fix`, 'POST', { text: t })); }}>Record fix</button>}
+            {i.status === 'open' && <button className={btn} onClick={async () => { const t = await say('Fix and how it was tested:'); if (t) act(() => call(`/api/v1/governance/incidents/${i.id}/fix`, 'POST', { text: t })); }}>Record fix</button>}
             {i.status === 'fixed' && <button className={btn} onClick={() => act(() => call(`/api/v1/governance/incidents/${i.id}/signoff`, 'POST'))}>Independent sign-off</button>}
           </div>))}
       </Box>
@@ -298,18 +326,26 @@ function Monthly() {
             <KV k="Cash flows" v={Object.keys(d.returns.cash_flows).length ? JSON.stringify(d.returns.cash_flows) : 'none'} />
             <KV k="Trading costs (commission + taxes)" v={`${num(d.returns.trading_costs.commission)} + ${num(d.returns.trading_costs.taxes)}`} />
             <KV k="Realised · unrealised P&L" v={`${num(d.returns.realised_pnl)} · ${num(d.returns.unrealised_pnl)}`} />
+            {d.returns.benchmark && <KV k={`Benchmark (${d.returns.benchmark.code}) · active`} v={`${d.returns.benchmark.month_return ?? '—'}% · ${d.returns.benchmark.active_return ?? '—'}%`} />}
           </Box>
           <Box title="Risk">
             <KV k="Max drawdown to date" v={`${d.risk.max_drawdown_to_date}%`} /><KV k="Volatility (ann.)" v={d.risk.volatility_ann == null ? '—' : `${d.risk.volatility_ann}%`} />
             <KV k="Gross · net" v={`${pct(d.risk.gross, 1)} · ${pct(d.risk.net, 1)}`} />
             <KV k="Limit exceptions · incidents · halts" v={`${d.risk.limit_exceptions.length} · ${d.risk.incidents.length} · ${d.risk.halts.length}`} />
-            <div className="text-[10px] text-text-tertiary mt-1">{d.risk.scenarios}</div>
+            <div className="text-[10px] text-text-tertiary uppercase mt-2">Stress conditions (the plan's list) on the book</div>
+            {(d.risk.stress?.scenarios ?? []).map((x: any) => (
+              <div key={x.id} className="flex justify-between gap-2 text-2xs py-0.5 border-b border-border-subtle last:border-0">
+                <span className="text-text-tertiary">{x.label}{x.start ? ` (${x.start} → ${x.end})` : ''}</span>
+                <span className="font-mono text-right">{x.kind === 'procedure' ? <span className="font-sans text-text-secondary">{x.result}</span>
+                  : <>{num(x.pnl)} {d.currency} · {x.pnl_pct_gross ?? '—'}%{x.coverage != null && x.coverage < 1 ? ` · coverage ${Math.round(x.coverage * 100)}%` : ''}</>}</span>
+              </div>))}
+            <div className="text-[10px] text-text-tertiary mt-1">{d.risk.stress?.note}</div>
           </Box>
           <Box title="Attribution">
             {(['by_sleeve', 'by_instrument'] as const).map((k) => (
               <div key={k} className="mb-1"><div className="text-[10px] text-text-tertiary">{k.replace('by_', 'by ')}</div>
                 {Object.entries(d.attribution[k]).length === 0 ? <div className="text-text-tertiary text-2xs">no fills</div> :
-                  Object.entries(d.attribution[k]).map(([n, v]: any) => <KV key={n} k={n} v={`realised ${num(v.realised)} · costs ${num(v.costs)} · ${v.fills ?? 0} fills${v.unrealised_now != null ? ` · unrealised ${num(v.unrealised_now)}` : ''}`} />)}
+                  Object.entries(d.attribution[k]).map(([n, v]: any) => <KV key={n} k={n} v={`${v.pnl != null ? `P&L ${num(v.pnl)} · ` : ''}realised ${num(v.realised)} · costs ${num(v.costs)} · ${v.fills ?? 0} fills${v.unrealised_change != null ? ` · Δunrealised ${num(v.unrealised_change)}` : v.unrealised_now != null ? ` · unrealised ${num(v.unrealised_now)}` : ''}`} />)}
               </div>))}
             <div className="text-[10px] text-text-tertiary">by regime</div>
             {Object.entries(d.attribution.by_regime).map(([n, v]: any) => <KV key={n} k={n} v={`${v.days}d · ${v.return_pct}%`} />)}
@@ -360,12 +396,14 @@ function Budget() {
 }
 
 function Roadmap() {
+  const { dialog, say } = useSay();
   const { d, err, load, setErr } = useLoad<any>('/api/v1/governance/milestones');
   const act = async (fn: () => Promise<any>) => { try { await fn(); load(); } catch (e: any) { setErr(e.message); } };
   if (!d) return <div className="text-2xs text-text-tertiary">{err ?? 'Loading…'}</div>;
   const plans = Array.from(new Set(d.milestones.map((m: any) => m.plan))) as string[];
   return (
     <div className="space-y-2 text-xs">
+      {dialog}
       {err && <div className="text-amber text-2xs">{err}</div>}
       {plans.map((p) => (
         <Box key={p} title={p}>
@@ -376,11 +414,46 @@ function Roadmap() {
               <span className={cn('col-span-2', m.status === 'done' ? 'text-green' : m.status === 'blocked' ? 'text-red' : m.status === 'in_progress' ? 'text-bloomberg' : 'text-text-tertiary')}>{m.status}{m.signed_off_by ? ` ✓ ${m.signed_off_by}` : ''}</span>
               <span className="col-span-4 flex gap-1 flex-wrap justify-end">
                 {(['in_progress', 'blocked'] as const).map((s) => <button key={s} className={btn} onClick={() => act(() => call(`/api/v1/governance/milestones/${m.id}`, 'PUT', { status: s }))}>{s.replace('_', ' ')}</button>)}
-                <button className={btn} onClick={() => { const ev = prompt('Evidence that meets the acceptance criterion:'); if (ev) act(() => call(`/api/v1/governance/milestones/${m.id}`, 'PUT', { status: 'done', evidence: ev })); }}>done</button>
+                <button className={btn} onClick={async () => { const ev = await say('Evidence that meets the acceptance criterion:'); if (ev) act(() => call(`/api/v1/governance/milestones/${m.id}`, 'PUT', { status: 'done', evidence: ev })); }}>done</button>
                 {m.status === 'done' && !m.signed_off_by && <button className={btn} onClick={() => act(() => call(`/api/v1/governance/milestones/${m.id}/signoff`, 'POST'))}>sign off</button>}
               </span>
             </div>))}
         </Box>))}
+    </div>
+  );
+}
+
+function Licences() {
+  const { d, err, load, setErr } = useLoad<any>('/api/v1/governance/data-sources');
+  const [edit, setEdit] = useState<any>(null);
+  if (!d) return <div className="text-2xs text-text-tertiary">{err ?? 'Loading…'}</div>;
+  const save = async () => { try { await call('/api/v1/governance/data-sources/review', 'POST', edit); setEdit(null); load(); } catch (e: any) { setErr(e.message); } };
+  return (
+    <div className="space-y-2 text-xs">
+      <div className="text-[10px] text-amber">{d.note}</div>
+      {err && <div className="text-amber text-2xs">{err}</div>}
+      <table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle"><th className="text-left font-normal py-1">Source</th><th className="text-left font-normal">Type</th><th className="text-left font-normal">Feeds</th><th className="text-left font-normal">Fund use</th><th /></tr></thead>
+        <tbody>{d.sources.map((r: any) => (
+          <tr key={r.name} className="border-b border-border-subtle align-top">
+            <td className="py-1"><a className="hover:text-bloomberg" href={r.url} target="_blank" rel="noreferrer">{r.name}</a><div className="text-[10px] text-text-tertiary">{r.provider}</div></td>
+            <td className="text-text-secondary" title={r.type_note}>{r.type.replace('_', ' ')}</td>
+            <td className="text-text-secondary">{r.feeds}</td>
+            <td className={cn(r.status === 'allowed' ? 'text-green' : r.status === 'unreviewed' ? 'text-amber' : 'text-red')}>{r.status.replace('_', ' ')}
+              {r.terms_reference && <div className="text-[10px] text-text-tertiary">{r.terms_reference} · {r.reviewed_by} {String(r.reviewed_at ?? '').slice(0, 10)}</div>}
+              {r.note && <div className="text-[10px] text-text-tertiary">{r.note}</div>}</td>
+            <td className="text-right"><button className={btn} onClick={() => setEdit({ name: r.name, status: r.status === 'unreviewed' ? 'allowed' : r.status, terms_reference: r.terms_reference ?? '', note: r.note ?? '' })}>Review</button></td>
+          </tr>))}</tbody></table>
+      {edit && (
+        <Box title={`Review: ${edit.name}`}>
+          <div className="flex flex-wrap gap-1">
+            <select className={inputCls} value={edit.status} onChange={(e) => setEdit({ ...edit, status: e.target.value })}>
+              {['allowed', 'restricted', 'not_allowed', 'unreviewed'].map((x) => <option key={x} value={x}>{x.replace('_', ' ')}</option>)}</select>
+            <input className={cn(inputCls, 'flex-1')} placeholder="terms reviewed (URL / document and date)" value={edit.terms_reference} onChange={(e) => setEdit({ ...edit, terms_reference: e.target.value })} />
+            <input className={cn(inputCls, 'flex-1')} placeholder="conditions / note" value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} />
+            <button className={btn} onClick={save}>Save</button><button className={btn} onClick={() => setEdit(null)}>Cancel</button>
+          </div>
+        </Box>)}
+      <div className="text-[10px] text-text-tertiary">{Object.entries(d.types).map(([k, v]) => `${k.replace('_', ' ')}: ${v}`).join(' ')}</div>
     </div>
   );
 }
@@ -405,9 +478,9 @@ function BreakEven() {
   );
 }
 
-type Tab = 'overview' | 'models' | 'instruments' | 'controls' | 'monthly' | 'budget' | 'roadmap' | 'breakeven';
+type Tab = 'overview' | 'models' | 'instruments' | 'controls' | 'monthly' | 'budget' | 'roadmap' | 'licences' | 'breakeven';
 const TABS: [Tab, string][] = [['overview', 'Overview'], ['models', 'Models G0–G5'], ['instruments', 'Approved instruments'], ['controls', 'Controls'],
-  ['monthly', 'Monthly pack'], ['budget', 'Budget'], ['roadmap', 'Roadmap'], ['breakeven', 'Break-even AUM']];
+  ['monthly', 'Monthly pack'], ['budget', 'Budget'], ['roadmap', 'Roadmap'], ['licences', 'Data licences'], ['breakeven', 'Break-even AUM']];
 
 export function GovernanceSection() {
   const { d: g, err, load } = useLoad<any>('/api/v1/governance');
@@ -430,6 +503,7 @@ export function GovernanceSection() {
           {tab === 'monthly' && <Monthly />}
           {tab === 'budget' && <Budget />}
           {tab === 'roadmap' && <Roadmap />}
+          {tab === 'licences' && <Licences />}
           {tab === 'breakeven' && <BreakEven />}
         </>}
       </div>
