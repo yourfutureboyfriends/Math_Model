@@ -7,24 +7,16 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from api.core import web
+
 router = APIRouter(tags=["auth"])
 
 
 def _me(request: Request) -> Dict[str, Any]:
-    from api.core.access import current_user
-    u = current_user(request)
-    if not u:
-        raise HTTPException(401, "Authentication required")
-    return u
-
+    return web.user(request, None)
 
 def _audit(user: str, action: str, text: str, target: str) -> None:
-    try:
-        from api import audit_store
-        audit_store.add_decision(action, text, user=user, target=target)
-    except Exception:                                                          # noqa: BLE001
-        pass
-
+    web.audit(user, action, text, target)
 
 class CodeIn(BaseModel):
     code: str = Field(..., min_length=6, max_length=20)

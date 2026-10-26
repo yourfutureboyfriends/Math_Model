@@ -797,7 +797,6 @@ def price_band_check(price: Optional[float], last_close: Optional[float]) -> Opt
 def model_pnl_today() -> Dict[int, float]:
     """Each active model's P&L to date in base currency: realised in its book plus unrealised of its holdings."""
     from api.handlers.portfolio_analytics import book_in_base
-    from api.calculations import fx_accounting as fa
     out = {}
     for m in list_models(include_closed=False):
         if not m.get("book"):

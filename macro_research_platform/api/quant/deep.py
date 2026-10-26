@@ -20,7 +20,7 @@ import contextvars
 import itertools
 import logging
 import math
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -61,7 +61,6 @@ def _stats(r: pd.Series, ppy: float) -> Dict[str, Any]:
     yrs = len(r) / ppy
     cagr = eq.iloc[-1] ** (1 / yrs) - 1 if eq.iloc[-1] > 0 and yrs > 0 else None
     vol = r.std() * math.sqrt(ppy)
-    down = r[r < 0].std() * math.sqrt(ppy) if (r < 0).sum() > 2 else None
     dd = eq / eq.cummax() - 1
     mdd = float(dd.min())
     ulcer = float(np.sqrt((dd ** 2).mean()))

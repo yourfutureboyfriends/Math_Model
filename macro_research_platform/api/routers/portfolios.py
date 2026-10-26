@@ -2,7 +2,7 @@
 book. All under authenticated prefixes (/api/v1/portfolio, /api/v1/auto)."""
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel

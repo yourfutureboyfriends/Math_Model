@@ -12,7 +12,7 @@ history right. Rates are the last observed close on or before the date (never a 
 from __future__ import annotations
 
 import threading
-from datetime import date, datetime
+from datetime import date
 from typing import Dict, Optional, Tuple
 
 import pandas as pd

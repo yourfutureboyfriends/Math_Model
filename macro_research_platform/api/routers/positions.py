@@ -7,25 +7,16 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from api.core import web
+
 router = APIRouter(tags=["positions"])
 
 
 def _me(request: Request) -> Dict[str, Any]:
-    from api.core.access import current_user
-    u = current_user(request)
-    if not u:
-        raise HTTPException(401, "Authentication required")
-    return u
-
+    return web.user(request, None)
 
 async def _t(fn, *a):
-    try:
-        return await asyncio.to_thread(fn, *a)
-    except LookupError as e:
-        raise HTTPException(404, str(e))
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-
+    return await web.run(fn, *a)
 
 class PositionIn(BaseModel):
     key: str = Field(..., max_length=40)

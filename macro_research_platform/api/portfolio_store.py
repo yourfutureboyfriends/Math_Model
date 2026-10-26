@@ -7,7 +7,6 @@ live prices in the API layer, not stored, so they never go stale in the DB.
 """
 from __future__ import annotations
 
-import os
 import sqlite3
 import logging
 from datetime import datetime, timezone

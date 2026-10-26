@@ -107,7 +107,6 @@ def breadth() -> Dict[str, Any]:
         ma50, ma200 = px.rolling(50).mean(), px.rolling(200).mean()
         hi252, lo252 = px.rolling(252).max(), px.rolling(252).min()
         chg = px.diff()
-        valid = px.notna()
         above50 = ((px > ma50) & ma50.notna()).sum(axis=1) / ma50.notna().sum(axis=1)
         above200 = ((px > ma200) & ma200.notna()).sum(axis=1) / ma200.notna().sum(axis=1)
         adv, dec = (chg > 0).sum(axis=1), (chg < 0).sum(axis=1)

@@ -14,7 +14,7 @@ import asyncio
 import csv
 import io
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import PlainTextResponse

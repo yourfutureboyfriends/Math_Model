@@ -27,8 +27,8 @@ All functions are pure (arrays in, numbers out) and use only data up to the last
 from __future__ import annotations
 
 import math
-from datetime import date, datetime, timedelta
-from typing import Any, Dict, List, Optional, Sequence
+from datetime import date, timedelta
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 

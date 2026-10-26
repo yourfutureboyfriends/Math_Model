@@ -18,7 +18,7 @@ deflated Sharpe ≥ 0.90 (excess returns) for the number of configurations tried
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence
 
 import numpy as np
 import pandas as pd

@@ -14,7 +14,7 @@ import concurrent.futures as cf
 import io
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import pandas as pd
 

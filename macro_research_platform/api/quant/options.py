@@ -140,7 +140,6 @@ def bs(S, K, T, r, q, vol, call: bool):
 
 def skewed_vol(atm, S, K, T, index_like: bool, call: bool):
     """Implied volatility at strike K from the at-the-money level (see module docstring)."""
-    slope = (1.0 if call else 3.0) if index_like else (0.3 if call else 1.5)
     k = np.log(np.asarray(K, float) / np.asarray(S, float))
     scale = np.sqrt(np.maximum(np.asarray(T, float), 1 / 365) / (1 / 12))
     side = np.where(k < 0, 3.0 if index_like else 1.5, 1.0 if index_like else 0.3)

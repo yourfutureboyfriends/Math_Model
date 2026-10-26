@@ -12,7 +12,7 @@ Regime-aware target portfolio and rebalance orders — pure, tested.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Sequence
 
 import numpy as np
 

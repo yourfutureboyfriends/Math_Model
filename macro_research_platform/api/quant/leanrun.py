@@ -35,7 +35,6 @@ source, QuantConnect's alternative datasets.
 """
 from __future__ import annotations
 
-import io
 import json
 import os
 import re

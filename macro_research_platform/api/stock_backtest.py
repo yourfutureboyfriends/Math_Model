@@ -71,7 +71,6 @@ def _download(symbols: List[str]):
 
 def _prices(symbols: List[str]):
     """{symbol: DataFrame[Open, High, Low, Close]} from the cache, refreshed monthly."""
-    import pandas as pd
     from api.quant import cachefmt
     cached: Dict[str, Any] = {}
     m = cachefmt.mtime(PRICE_CACHE)

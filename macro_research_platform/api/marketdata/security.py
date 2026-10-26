@@ -22,7 +22,7 @@ from __future__ import annotations
 import concurrent.futures as cf
 import math
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -586,7 +586,6 @@ def comps(symbol: str, max_peers: int = 8) -> Dict[str, Any]:
         raise NotFound(f"{s} has no industry classification the screener knows — comps need a company.")
 
     def fetch():
-        import yfinance as yf
         from yfinance import EquityQuery as Q
 
         def region(rg):

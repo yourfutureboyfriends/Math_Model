@@ -20,7 +20,7 @@ bear → bear put; stress (rules model only: VIX ≥ 30 or inverted term structu
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd

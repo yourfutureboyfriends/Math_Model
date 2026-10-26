@@ -18,13 +18,13 @@ import math
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
 
-from api.marketdata.core import NotFound, Upstream, _cached, _f, _info, yahoo_call, yahoo_download
+from api.marketdata.core import NotFound, _cached, _f, _info, yahoo_call, yahoo_download
 
 logger = logging.getLogger(__name__)
 

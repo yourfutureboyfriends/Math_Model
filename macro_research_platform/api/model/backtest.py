@@ -13,12 +13,12 @@ realised regime with the Brier score and the Brier skill score vs the training b
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
 
-from api.model.core import QUADRANT_OF, ModelParams, decide, realized_regimes
+from api.model.core import ModelParams, decide, realized_regimes
 
 
 def _stats(r: pd.Series) -> Dict[str, Optional[float]]:

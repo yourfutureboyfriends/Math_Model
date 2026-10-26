@@ -21,7 +21,7 @@ Pure functions: arrays in, arrays out. Returns are daily simple returns, annuali
 from __future__ import annotations
 
 import math
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import Callable, Dict, Optional, Sequence
 
 import numpy as np
 

@@ -7,17 +7,13 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { apiCall } from '@/lib/http';
 
 const bp = (v?: number | null) => (v == null || !Number.isFinite(v) ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(1)}`);
 const num = (v?: number | null, d = 2) => (v == null || !Number.isFinite(v) ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: d }));
 const costTone = (v?: number | null) => (v == null ? 'text-text-tertiary' : v > 0 ? 'text-red' : v < 0 ? 'text-green' : 'text-text-secondary');
 
-async function call(url: string, method = 'GET', body?: any) {
-  const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : j.detail?.message ?? `HTTP ${r.status}`);
-  return j;
-}
+const call = apiCall;
 
 type Tab = 'lifecycle' | 'corp' | 'nav';
 

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import math
 from itertools import combinations
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence
 
 import numpy as np
 

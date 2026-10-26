@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 CACHE = Path(__file__).resolve().parent.parent.parent / "data" / "processed" / "quant" / "library"
 TTL = 20 * 3600
@@ -593,7 +593,6 @@ PORTFOLIO = {
 
 
 def _portfolio(members: List[Dict[str, Any]]) -> Dict[str, Any]:
-    import numpy as np
     import pandas as pd
     from api.quant import codelab, codeserver
     rets = {}

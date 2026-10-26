@@ -25,7 +25,6 @@ import concurrent.futures as cf
 import io
 import logging
 import math
-from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
 import numpy as np

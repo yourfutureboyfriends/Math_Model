@@ -18,12 +18,12 @@ import logging
 import math
 import os
 from datetime import date, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
 
-from api.marketdata.core import NotFound, Upstream, _cached, _f, _info, yahoo_call
+from api.marketdata.core import NotFound, Upstream, _cached, _info, yahoo_call
 
 logger = logging.getLogger(__name__)
 

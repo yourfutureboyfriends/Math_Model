@@ -5,18 +5,18 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+
+from api.core import web
 
 router = APIRouter(tags=["broker"])
 
 
 def _cap(request: Request, cap: str) -> Dict[str, Any]:
-    from api import positions
-    return positions.require(request, cap)
-
+    return web.require(request, cap)
 
 async def _snapshot(fund: str, source: str) -> Dict[str, Any]:
     from api.brokerage import ibkr

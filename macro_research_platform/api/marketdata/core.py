@@ -905,7 +905,6 @@ def movers(region: str = "us", kind: str = "gainers", count: int = 25) -> Dict[s
         raise NotFound("kind must be gainers, losers or active")
 
     def fetch():
-        import yfinance as yf
         from yfinance import EquityQuery as Q
         try:
             if region == "us":
@@ -1089,7 +1088,6 @@ def _us_domestic(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def screen(regions: List[str], sector: Optional[str] = None, sort: str = "market_cap", ascending: bool = False,
            size: int = 50, offset: int = 0, include_adrs: bool = False, **filters) -> Dict[str, Any]:
     """Yahoo's global equity screener. Filters use percent for dividend yield and change."""
-    import yfinance as yf
     from yfinance import EquityQuery as Q
     regs = [r for r in regions if r in REGIONS] or ["us"]
     size = max(1, min(size, 250))

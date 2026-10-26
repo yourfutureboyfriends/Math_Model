@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from api.marketdata.core import Upstream, _cached
+from api.marketdata.core import _cached
 
 logger = logging.getLogger(__name__)
 UA = {"User-Agent": "Mozilla/5.0 (macro research terminal)"}

@@ -7,13 +7,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { Check, Minus, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { panelLabel } from '@/lib/panels';
+import { apiCall } from '@/lib/http';
 
-async function call(url: string, method = 'GET', body?: any) {
-  const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : `HTTP ${r.status}`);
-  return j;
-}
+const call = apiCall;
 const inputCls = 'bg-surface-1 border border-border px-2 py-1 text-xs text-text-primary focus:border-bloomberg outline-none';
 const btn = 'px-2 py-0.5 border border-border hover:border-bloomberg text-2xs disabled:opacity-40';
 const ROLE_LABEL: Record<string, string> = { pm: 'portfolio manager', risk: 'risk', analyst: 'analyst', quant: 'quant', viewer: 'read-only' };

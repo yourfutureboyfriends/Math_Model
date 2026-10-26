@@ -47,7 +47,7 @@ import ast
 import math
 from collections import deque
 from datetime import date, datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import pandas as pd

@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from api.marketdata.core import NotFound, Upstream, _cached
+from api.marketdata.core import Upstream, _cached
 
 logger = logging.getLogger(__name__)
 STORE = Path(__file__).resolve().parents[2] / "data" / "processed" / "ecst" / "events.json"

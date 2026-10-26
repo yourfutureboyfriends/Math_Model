@@ -17,7 +17,7 @@ import threading
 import time
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 STATE = Path(__file__).resolve().parents[1] / "data" / "processed" / "source_monitor.json"     # gitignored

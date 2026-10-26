@@ -448,7 +448,6 @@ async def get_decision_log_data(limit: int = 50) -> Dict[str, Any]:
     """Get decision log from live regime and signal data."""
     logger.info(f"Fetching decision log (limit={limit})")
     from api.handlers.dashboard_handler import get_dashboard_data
-    from datetime import timedelta
     dashboard = await get_dashboard_data(mode="live")
     now = datetime.now()
 

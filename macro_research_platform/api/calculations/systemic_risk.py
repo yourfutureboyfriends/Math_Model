@@ -25,7 +25,7 @@ Systemic-risk and cycle indicators from the published literature. Pure numpy fun
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, Optional, Sequence, Tuple
 
 import numpy as np
 

@@ -13,6 +13,7 @@ import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { forgetFundLogo } from '@/lib/fundLogo';
 import { BrandShape, Letterhead } from '@/components/layout/FundIdentity';
 import { currentFund } from '@/lib/fund';
+import { apiCall } from '@/lib/http';
 
 // what the signed-in person's position allows in this fund (buttons greyed out; the server enforces it regardless)
 const CapsCtx = createContext<Record<string, boolean> | null>(null);
@@ -26,15 +27,7 @@ function useSay() {
   return { dialog, say, ask };
 }
 
-async function call(url: string, method = 'GET', body?: any) {
-  const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const d = j.detail;
-    throw new Error(typeof d === 'string' ? d : d?.reasons ? `${d.message}: ${d.reasons.join('; ')}` : `HTTP ${r.status}`);
-  }
-  return j;
-}
+const call = apiCall;
 
 const num = (v?: number | null, d = 2) => (v == null || !Number.isFinite(v) ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: d }));
 const pct = (v?: number | null, d = 0) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);

@@ -21,7 +21,7 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 ROOT = Path(__file__).resolve().parents[3] / "config" / "quant_algo"
 SCHEMA = "quant-algo-options-config/1"

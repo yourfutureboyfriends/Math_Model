@@ -90,9 +90,6 @@ def check(code: str, uploads_required: bool = True) -> Dict[str, Any]:
                 hint = f" — did you mean '{kw}'? ('{first[:len(first) - len(kw)]}' looks like a stray keystroke)"
                 break
         raise SandboxError(f"Syntax error on line {e.lineno}: {e.msg}" + (f": `{line[:120]}`" if line else "") + hint)
-    self_attrs = {t.attr for n in ast.walk(tree) if isinstance(n, (ast.Assign, ast.AugAssign, ast.AnnAssign))
-                  for t in (n.targets if isinstance(n, ast.Assign) else [n.target])
-                  if isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name) and t.value.id == "self"}
     from api.quant.codelab import split_project
     project = {name.split(".")[0] for name in split_project(code)[1]}       # the project's own files (# file: alpha.py)
     ext_roots = []

@@ -3,13 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { apiCall } from '@/lib/http';
 
-async function call(url: string, method = 'GET', body?: any) {
-  const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : `HTTP ${r.status}`);
-  return j;
-}
+const call = apiCall;
 const input = 'w-full bg-bg border border-border rounded px-3 py-2 text-text-primary font-mono focus:border-bloomberg focus:outline-none';
 const btn = 'px-3 py-1.5 text-xs border border-border rounded hover:border-bloomberg disabled:opacity-40';
 

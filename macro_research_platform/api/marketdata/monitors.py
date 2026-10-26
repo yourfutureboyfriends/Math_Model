@@ -13,11 +13,9 @@ from __future__ import annotations
 
 import logging
 import math
-import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 
 from api.marketdata.core import NotFound, Upstream, _cached, _f

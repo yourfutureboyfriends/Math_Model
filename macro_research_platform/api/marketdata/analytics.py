@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from api.marketdata.core import NotFound, Upstream, _cached, _f
+from api.marketdata.core import NotFound, Upstream, _cached
 from api.marketdata.security import _closes
 
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]

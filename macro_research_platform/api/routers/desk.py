@@ -15,6 +15,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, Request
 
 from api.calculations.desk import PRIORITY_ORDER, ROLE_FOCUS, build_queue
+from api import governance
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["desk"])
@@ -87,7 +88,7 @@ async def _fund_block() -> Dict[str, Any]:
                        "warnings": limits["warnings"], "top_utilization": top},
             "track_record": {**{k: rec.get(k) for k in ("available", "observations", "total_return",
                                                        "annualized_vol", "sharpe", "max_drawdown", "ratio_note")},
-                             "label": (__import__("api.governance", fromlist=["x"]).results_label(settings.get("stage"))
+                             "label": (governance.results_label(settings.get("stage"))
                                        if settings.get("governance") else "Track record")}}
 
 

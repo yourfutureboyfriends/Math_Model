@@ -13,11 +13,10 @@ from __future__ import annotations
 
 import io
 import logging
-import math
 import time
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Sequence
 
 import numpy as np
 import pandas as pd

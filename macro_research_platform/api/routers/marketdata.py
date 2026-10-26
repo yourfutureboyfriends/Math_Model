@@ -920,7 +920,7 @@ async def mkt_country(iso2: str):
         raise HTTPException(404, f"Unknown country code '{iso2}'.")
     w = await _run(C.world_data, timeout=120)
     rec = {"iso2": c, **w["countries"].get(c, {"name": C.BY_ISO2[c]["name"]})}
-    rec["market"] = c.lower() if c.lower() in __import__("api.marketdata.core", fromlist=["REGIONS"]).REGIONS else None
+    rec["market"] = c.lower() if c.lower() in _regions() else None
     rec["fx_symbol"] = None if rec.get("currency") == "USD" else f"{rec.get('currency')}=X"
     rec["region_name"] = C.REGION_NAMES.get(rec.get("region") or C.region_of(c))
     return rec
@@ -1150,3 +1150,8 @@ async def mkt_journal_delete(jid: int, request: Request):
 async def mkt_world_map_markets():
     from api.marketdata import monitors
     return await _run(monitors.world_map_markets, timeout=90)
+
+
+def _regions():
+    from api.marketdata.core import REGIONS
+    return REGIONS

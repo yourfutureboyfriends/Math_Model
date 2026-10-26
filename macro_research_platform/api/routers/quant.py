@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
+from api.core import web
 
 router = APIRouter(tags=["quant"])
 _results: "OrderedDict[tuple, tuple]" = OrderedDict()
@@ -191,7 +192,7 @@ async def quant_strategies(request: Request):
 
 @router.post("/api/v1/quant/strategies")
 async def quant_save(body: SaveIn, request: Request):
-    from api.quant import engine, store
+    from api.quant import store
     user = _user(request, ("pm", "quant", "analyst"))["username"]
     spec = _saved_spec(body.spec)
     return await asyncio.to_thread(store.save_strategy, user, spec, None, body.template)
@@ -199,7 +200,7 @@ async def quant_save(body: SaveIn, request: Request):
 
 @router.put("/api/v1/quant/strategies/{sid}")
 async def quant_update(sid: int, body: SaveIn, request: Request):
-    from api.quant import engine, store
+    from api.quant import store
     u = _user(request, ("pm", "quant", "analyst"))
     cur = await asyncio.to_thread(store.get_strategy, sid)
     if not cur:
@@ -562,7 +563,7 @@ async def quant_trader(request: Request, refresh: bool = False, book: str = Quer
 async def quant_deploy(body: DeployIn, request: Request):
     from api.quant import engine, trader
     u = _user(request, ("pm", "quant"))
-    __import__("api.positions", fromlist=["x"]).require(request, "quant_deploy")
+    web.require(request, "quant_deploy")
     from api import funds, governance as gov
     _, refusal = await asyncio.to_thread(gov.model_for_deployment, body.model_id)
     if refusal:

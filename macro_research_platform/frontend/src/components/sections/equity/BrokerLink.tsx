@@ -7,13 +7,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
+import { apiCall } from '@/lib/http';
 
-async function call(url: string, method = 'GET', body?: any) {
-  const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : `HTTP ${r.status}`);
-  return j;
-}
+const call = apiCall;
 const btn = 'px-2 py-1 border border-border hover:border-bloomberg text-2xs disabled:opacity-40';
 const num = (v: any, d = 2) => (v == null || v === '' ? '—' : Number(v).toLocaleString(undefined, { maximumFractionDigits: d }));
 

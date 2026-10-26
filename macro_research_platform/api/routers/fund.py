@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from api import execution, fund_store, governance
+from api.core import web
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["fund"])
@@ -181,7 +183,7 @@ async def update_fund_settings(body: FundSettingsIn, request: Request):
     from api.core.access import require_roles
     require_roles(request, {"risk"})
     changes = {k: v for k, v in body.model_dump().items() if v is not None}
-    __import__("api.positions", fromlist=["x"]).require(request, "fund_settings")
+    web.require(request, "fund_settings")
     if "capital" in changes and changes["capital"] <= 0:
         raise HTTPException(400, "capital must be positive")
     if "vol_target" in changes and not (0 < changes["vol_target"] <= 1):
@@ -305,7 +307,7 @@ async def fund_overview():
         "risk_free_rate": rf,
         "limits": evaluate_limits(state["metrics"], limits),
         "track_record": {**record, "history": history[-260:],
-                         "label": (__import__("api.governance", fromlist=["x"]).results_label(settings.get("stage"))
+                         "label": (governance.results_label(settings.get("stage"))
                                    if settings.get("governance") else "Track record"),
                          "basis": "recorded daily NAV snapshots; NAV excludes interest on idle "
                                   "cash, so Sharpe/Sortino are already excess-of-cash"},
@@ -454,7 +456,7 @@ async def _governance_rules(sym: str, quantity: float, price: float, before: Dic
     px_date = await _thread(last_date)
     pos_after = [{"symbol": str(p["symbol"]).upper(), "book": p.get("book"), "market_value": p.get("market_value")}
                  for p in after.get("positions") or [] if p.get("market_value") is not None]
-    base = (await _thread(lambda: __import__("api.fund_store", fromlist=["x"]).get_settings())).get("base_currency") or "USD"
+    base = (await _thread(fund_store.get_settings)).get("base_currency") or "USD"
     try:
         shares = await asyncio.wait_for(asyncio.to_thread(gov.risk_shares, pos_after, base), timeout=30)
     except Exception:                                                         # noqa: BLE001 — reported as unavailable
@@ -609,7 +611,7 @@ async def list_orders(state: Optional[str] = None):
     await _thread(blotter_store.init_db)
     ideas = await _thread(portfolio_store.list_trade_ideas, state)
     return {"orders": [_order_view(i) for i in ideas if i.get("side") and i.get("quantity")],
-            "execution_mode": __import__("api.execution", fromlist=["x"]).execution_mode()}
+            "execution_mode": execution.execution_mode()}
 
 
 @router.post("/api/v1/orders")
@@ -621,7 +623,7 @@ async def create_order(body: OrderIn, request: Request):
     from api.core.access import require_roles
     user = require_roles(request, {"pm", "quant", "analyst"})["username"]
     signed = side_to_signed(body.side, body.quantity)
-    __import__("api.positions", fromlist=["x"]).require(request, "propose_orders")
+    web.require(request, "propose_orders")
     from api import governance as gov
     model, refusal = await _thread(gov.model_for_order, body.model_id)
     if refusal:
@@ -665,7 +667,7 @@ async def approve_order(order_id: int, body: DecisionNoteIn, request: Request):
     from api.calculations.blotter import side_to_signed
     from api.core.access import require_roles
     user = require_roles(request, {"risk"})["username"]       # approval is a risk function
-    __import__("api.positions", fromlist=["x"]).require(request, "approve_orders")
+    web.require(request, "approve_orders")
     o = await _thread(blotter_store.get_idea, order_id)
     if not o or not o.get("side"):
         raise HTTPException(404, "order not found")
@@ -721,7 +723,7 @@ async def execute_order(order_id: int, request: Request):
     from api.handlers.market_handler import _fetch_closes_literal
     from api.core.access import require_roles
     user = require_roles(request, {"pm"})["username"]        # execution desk
-    __import__("api.positions", fromlist=["x"]).require(request, "execute_orders")
+    web.require(request, "execute_orders")
     o = await _thread(blotter_store.get_idea, order_id)
     if not o or not o.get("side"):
         raise HTTPException(404, "order not found")

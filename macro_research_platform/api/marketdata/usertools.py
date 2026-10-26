@@ -156,7 +156,7 @@ def quotes(symbols: List[str]) -> List[Dict[str, Any]]:
     """Last price, day change and a 1-month sparkline for many instruments in one download."""
     import pandas as pd
     import yfinance as yf
-    from api.marketdata.core import _cached, _f
+    from api.marketdata.core import _cached
     syms = _clean_symbols(symbols)[:100]
     if not syms:
         return []

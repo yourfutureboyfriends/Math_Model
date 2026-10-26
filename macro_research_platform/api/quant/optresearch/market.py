@@ -77,7 +77,7 @@ def universe_names(spec: str = "US+PIT") -> Dict[str, Any]:
 
 def build(spec: str = "US+PIT", say=lambda m: None) -> Panel:
     """Load (or reuse today's cached) research panel."""
-    from api.quant import codelab, codeserver, instruments, membership, rates
+    from api.quant import codelab, codeserver, membership, rates
     key = _key(spec)
     f = CACHE / f"{key}.npz"
     mf = CACHE / f"{key}.json"

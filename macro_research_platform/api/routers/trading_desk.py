@@ -2,30 +2,25 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from api.core import web
+
 router = APIRouter(tags=["trading-desk"])
 
 
-def _user(request: Request, roles=("pm", "analyst", "risk", "quant"), cap: str = None) -> Dict[str, Any]:
-    from api.core.access import require_roles
-    u = require_roles(request, set(roles))
-    if cap:                                          # the person's position in this fund must grant it
-        from api import positions
-        positions.require(request, cap)
+def _user(request: Request, roles=web.MEMBER_ROLES, cap: str = None) -> Dict[str, Any]:
+    """The signed-in user with an allowed role — and, when `cap` is given, a position granting it."""
+    u = web.user(request, roles)
+    if cap:
+        web.require(request, cap)
     return u
 
-
 def _audit(user: str, action: str, text: str, target: str, after: Any = None) -> None:
-    try:
-        from api import audit_store
-        audit_store.add_decision(action, text, user=user, target=target, after_state=after)
-    except Exception:                                                          # noqa: BLE001 — never block the desk
-        pass
-
+    web.audit(user, action, text, target, after=after)
 
 class PitchIn(BaseModel):
     symbol: str = Field(..., max_length=20)

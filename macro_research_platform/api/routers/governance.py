@@ -2,37 +2,25 @@
 incidents, reconciliation, the monthly reporting pack, scorecard, budget, milestones and break-even AUM."""
 from __future__ import annotations
 
-import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+from api import positions
+from api.core import web
 
 router = APIRouter(tags=["governance"])
 ALL = ("pm", "analyst", "risk", "quant")
 
 
 def _user(request: Request, roles=ALL) -> Dict[str, Any]:
-    from api.core.access import require_roles
-    return require_roles(request, set(roles))
-
+    return web.user(request, roles)
 
 def _cap(request: Request, cap: str) -> Dict[str, Any]:
-    """The user, if their position (or role) in this fund grants the capability."""
-    from api import positions
-    return positions.require(request, cap)
-
+    return web.require(request, cap)
 
 async def _t(fn, *a):
-    try:
-        return await asyncio.to_thread(fn, *a)
-    except LookupError as e:
-        raise HTTPException(404, str(e))
-    except PermissionError as e:
-        raise HTTPException(403, str(e))
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-
+    return await web.run(fn, *a)
 
 @router.get("/api/v1/governance")
 async def gov_overview(request: Request):
@@ -151,7 +139,7 @@ async def gov_model_signoff(mid: int, body: SignoffIn, request: Request):
     need = {"G1": "model_signoff_research", "G2": "model_signoff_ic", "G3": "model_signoff_risk", "G5": "model_signoff_ic"}
     nxt = m.get("next_gate")
     if nxt == "G4":                                  # IC and risk each sign: either capability
-        caps = __import__("api.positions", fromlist=["x"]).capabilities_for(u)
+        caps = positions.capabilities_for(u)
         if not caps & {"model_signoff_ic", "model_signoff_risk"}:
             raise HTTPException(403, "G4 needs an investment-committee or risk sign-off capability")
     elif nxt in need:

@@ -22,10 +22,9 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import time
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import Callable, Dict, Optional, Sequence
 
 import numpy as np
 

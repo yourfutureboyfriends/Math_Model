@@ -19,9 +19,7 @@ import json
 import logging
 import threading
 import time
-import math
 import asyncio
-import functools
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -175,7 +173,6 @@ def lru_cache_with_ttl(ttl_seconds: int = 300):
 
 
 # FIXED: Import data validation layer (new architecture)
-from api.regime_context import build_regime_context
 
 # FIXED: Phase 7 - New consolidated data architecture (safe migration)
 from api.services.refresh_coordinator import refresh_coordinator
@@ -185,29 +182,9 @@ from api.diagnostics import router as health_router, diagnostics_router
 # MODEL VALIDATION - Forecast Tracking Integration (Phase 1-10)
 # ═══════════════════════════════════════════════════════════════════════════════
 from api.services.forecast_tracker import forecast_tracker
-from api.services.recession_validation import recession_validator
-from api.services.expected_returns_validation import expected_returns_validator
-from api.services.portfolio_validation import portfolio_validator
-from api.services.nowcast_validation import nowcast_validator
-from api.services.momentum_validation import momentum_validator
 
 # FIXED: Phase 3 - Import Pydantic models from schemas module
-from api.schemas.models import (
-    RegimeData, KeyMetrics, RecessionData, SignalsData, SignalDetails,
-    SectorAllocationData, RiskParityAllocationData, ExpectedReturnsResult,
-    BusinessLayerData, AlertsData, PositionSizing, SignalScorecardItem, DecisionLogEntry,
-    AskResponse, AskRequest,
-    SignalStackLayer, SignalStackResult,
-    ExpectedReturnSector, SectorPerformance, CurrentRegimeValidation,
-    LoginResponse,
-    RegimeTransitionProbabilities, RegimeBacktestResult, DebtCycleResult,
-    InternationalMacroResult, RiskIndicatorsData, AdvancedIndicatorsData,
-    ModelAgreementData, TransmissionAnalysisData, DataToWatchItem,
-    InvestmentMemoData, AlertItem,
-    AdvancedIndicator, RiskIndicator, ModelAgreementItem, TransmissionChannel,
-    DebtCycleIndicator, DebtCycleIndicators,
-    DataMetadata, Sector, RiskParityItem, MetricWithSparkline,
-)
+from api.schemas.models import RegimeData, AskResponse, AskRequest, RegimeBacktestResult, DebtCycleResult, InternationalMacroResult, RiskIndicatorsData, RiskIndicator
 
 try:
     from src.models.recession_risk.recession_model import (
@@ -1673,7 +1650,7 @@ async def lifespan(app: FastAPI):
         port_path = _ROOT / ".api_port"
         if port_path.exists():
             port_path.unlink()
-    except Exception as e:
+    except Exception:
         pass
 
 from api.core.json_safe import SafeJSONResponse
@@ -3449,7 +3426,7 @@ async def altdata_positioning_v1():
     """Alternative-data positioning signals: VIX term structure (contango/backwardation),
     cross-market correlation-breakdown alerts, and credit-spread stress — all from real
     yfinance/FRED data."""
-    from api.handlers.market_handler import _fetch_dated_closes_literal, _fetch_closes_literal, _fred_recent_values
+    from api.handlers.market_handler import _fetch_dated_closes_literal, _fetch_closes_literal
     from api.calculations.factor_model import returns_from_closes
     from api.calculations.altdata import term_structure, correlation_breakdown, zscore, percentile_rank
 
@@ -3573,7 +3550,7 @@ async def login(request: Request):
     if not username or not password:
         return JSONResponse({"success": False, "error": "Username and password required"}, status_code=400)
 
-    from api.core import accounts
+    from api.core import accounts, mfa
     try:
         user = await _aio_to_thread(accounts.check_login, username.strip(), password, otp)
     except accounts.LoginError as e:
@@ -3595,7 +3572,7 @@ async def login(request: Request):
         "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "role": role, "display_name": user["display_name"], "permissions": perms,
         "must_change_password": bool(user.get("must_change_password")),
-        "mfa_enrollment_required": bool(__import__("api.core.mfa", fromlist=["x"]).required() and not user.get("totp_enabled")),
+        "mfa_enrollment_required": bool(mfa.required() and not user.get("totp_enabled")),
         "user": {"username": user["username"], "role": role,
                  "display_name": user["display_name"], "permissions": perms},
     }
@@ -3828,7 +3805,7 @@ async def data_freshness():
                         'id': job.id,
                         'next_run': next_run.isoformat() if next_run else 'paused'
                     })
-        except Exception as e:
+        except Exception:
             pass
 
         return {
@@ -4469,7 +4446,7 @@ async def get_horizon_risks():
                                         "category": "MONETARY_POLICY" if "FOMC" in event.get("event", "") else "GROWTH",
                                         "days_away": days_away,
                                     })
-                                except Exception as e:
+                                except Exception:
                                     pass
             except Exception as e:
                 logger.warning(f"Finnhub calendar fetch failed: {e}")

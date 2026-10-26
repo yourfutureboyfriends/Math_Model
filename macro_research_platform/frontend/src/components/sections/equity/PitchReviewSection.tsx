@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { apiCall } from '@/lib/http';
 
 const inputCls = 'w-full bg-surface-1 border border-border px-2 py-1 text-xs font-mono text-text-primary focus:border-bloomberg outline-none';
 const num = (v?: number | null, d = 2) => (v == null || !Number.isFinite(v) ? '—' : v.toLocaleString(undefined, { maximumFractionDigits: d }));
@@ -20,12 +21,7 @@ const EMPTY = {
   entry_low: '', entry_high: '', target_weight: '', catalyst: '', catalyst_date: '', catalyst_conf: 'scheduled',
 };
 
-async function call(url: string, method = 'GET', body?: any) {
-  const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : `HTTP ${r.status}`);
-  return j;
-}
+const call = apiCall;
 
 export function PitchReviewSection() {
   const [list, setList] = useState<any>(null);

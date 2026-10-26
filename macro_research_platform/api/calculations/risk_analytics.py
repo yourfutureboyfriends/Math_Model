@@ -9,7 +9,7 @@ maths is unit-testable.
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, Optional, Sequence
 
 TRADING_DAYS = 252
 

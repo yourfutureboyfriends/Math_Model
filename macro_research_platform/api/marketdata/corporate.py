@@ -16,7 +16,7 @@ import concurrent.futures as cf
 import logging
 import re
 from datetime import date, datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
