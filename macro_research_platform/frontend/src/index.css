@@ -228,8 +228,36 @@
   --c-amber: 245 158 11;
   --c-blue: 59 130 246;
   --c-purple: 168 85 247;
+  --c-nav: var(--c-amber);         /* highlighted navigation (a fund's brand can set it) */
   color-scheme: dark;
 }
+/* ═══ FUND BRAND (lib/fundBrand.ts) — the current fund's palette replaces the accent and tints the dark canvas.
+   Higher specificity than the theme blocks; the amber "terminal" skin keeps its own palette. */
+:root[data-brand]:not([data-skin="terminal"])[data-theme="dark"],
+:root[data-brand]:not([data-skin="terminal"]):not([data-theme]) {
+  --c-bloomberg: var(--brand-accent-dark);
+  --c-bg: var(--brand-bg-dark);
+  --c-surface-1: var(--brand-surface-dark);
+  --c-surface-2: var(--brand-surface2-dark);
+  --c-surface-3: var(--brand-surface3-dark);
+  --c-border: var(--brand-border-dark);
+  --c-border-subtle: var(--brand-border-subtle-dark);
+  --c-nav: var(--brand-secondary);
+}
+:root[data-brand]:not([data-skin="terminal"])[data-theme="light"] {
+  --c-bloomberg: var(--brand-accent-light);
+  --c-nav: var(--brand-accent-light);
+}
+.brand-mask {
+  display: inline-block; flex-shrink: 0;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-size: contain; mask-size: contain;
+  -webkit-mask-position: left center; mask-position: left center;
+}
+.brand-gold { background-image: linear-gradient(180deg, rgb(var(--brand-accent-dark)) 0%, rgb(var(--brand-secondary)) 100%); background-color: transparent; }
+:root[data-theme="light"] .brand-gold { background-image: none; background-color: rgb(var(--brand-accent-light)); }
+
 :root[data-theme="light"] {
   /* Modern light, cool: a soft sky-blue canvas, white cards with blue-tinted chrome, navy text,
      and a cyan-teal accent (indigo for the secondary chart line so the two never blur) */
@@ -249,6 +277,7 @@
   --c-green: 5 150 105;
   --c-red: 220 38 38;
   --c-amber: 217 119 6;
+  --c-nav: var(--c-amber);
   --c-blue: 79 70 229;
   --c-purple: 147 51 234;
   --key-yellow: 161 92 7;          /* terminal yellow keys, legible on white */
@@ -303,7 +332,7 @@
   --bloomberg-dim:    rgb(var(--c-bloomberg) / 0.15);
   --bloomberg-muted:  rgb(var(--c-bloomberg) / 0.08);
   --bloomberg-border: rgb(var(--c-bloomberg) / 0.30);
-  --bloomberg-hover:  rgba(240, 112, 48, 0.20);
+  --bloomberg-hover:  rgb(var(--c-bloomberg) / 0.20);
 
   /* ═══════════════════════════════════════════════════════════════════════════════
      SURFACES — preserve teal, add amber palette

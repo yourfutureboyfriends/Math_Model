@@ -159,6 +159,7 @@ class FundSettingsIn(BaseModel):
     risk_policy: Optional[Dict[str, Any]] = None
     capital_basis: Optional[str] = None
     mandate_text: Optional[str] = None
+    brand: Optional[Dict[str, Any]] = None
 
 
 @router.get("/api/v1/fund/settings")
@@ -210,6 +211,26 @@ async def update_fund_settings(body: FundSettingsIn, request: Request):
                 raise HTTPException(400, f"risk_policy.{k} must be a non-negative number")
         current = (await _thread(fund_store.get_settings)).get("risk_policy") or {}
         changes["risk_policy"] = {**current, **changes["risk_policy"]}
+    if "brand" in changes:                            # colours as "R G B" channels or #hex; short texts
+        import re as _re
+        clean = {}
+        for k, v in changes["brand"].items():
+            if k in ("accent_dark", "accent_light", "bg_dark", "surface_dark", "secondary", "band"):
+                v = str(v).strip()
+                if _re.fullmatch(r"#[0-9a-fA-F]{6}", v):
+                    v = " ".join(str(int(v[i:i + 2], 16)) for i in (1, 3, 5))
+                if not _re.fullmatch(r"\d{1,3} \d{1,3} \d{1,3}", v) or any(int(x) > 255 for x in v.split()):
+                    raise HTTPException(400, f"brand.{k} must be #RRGGBB or 'R G B'")
+                clean[k] = v
+            elif k in ("tagline", "short_name"):
+                clean[k] = str(v)[:60]
+            elif k == "mark_fill" and v in ("gradient", "text"):
+                clean[k] = v
+            elif k == "word_height" and isinstance(v, (int, float)) and 6 <= v <= 24:
+                clean[k] = int(v)
+            else:
+                raise HTTPException(400, f"unknown brand key: {k}")
+        changes["brand"] = clean
     for k in ("capital_basis", "mandate_text"):
         if k in changes:
             changes[k] = str(changes[k])[:20000]

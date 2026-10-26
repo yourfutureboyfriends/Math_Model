@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, KeyRound, LogOut, Star } from 'lucide-react';
 import { Logo } from './Logo';
+import { FundIdentity } from './FundIdentity';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { AccountDialog } from '@/components/account/AccountPanels';
@@ -70,12 +71,12 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
             isActive
               ? 'bg-bloomberg-muted text-bloomberg border-l-2 border-bloomberg'
               : item.highlight
-                ? 'text-amber hover:bg-amber-dim hover:text-amber border-l-2 border-transparent hover:border-amber'
+                ? 'text-nav hover:bg-nav/10 hover:text-nav border-l-2 border-transparent hover:border-nav'
                 : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
           )}
         >
           <span className={cn('font-mono text-xs',
-            isActive ? 'text-bloomberg' : item.highlight ? 'text-amber' : 'text-text-secondary')}>
+            isActive ? 'text-bloomberg' : item.highlight ? 'text-nav' : 'text-text-secondary')}>
             {item.highlight ? '◆' : '·'}
           </span>
           {!collapsed && (
@@ -115,14 +116,16 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
       style={{ display: 'flex', flexDirection: 'column' }}
     >
       {/* Platform ID */}
-      <div className="h-10 flex items-center px-3 border-b border-border-subtle">
-        <Logo currentRegime={currentRegime} />
-        {!collapsed && (
-          <>
-            <span className="ml-2 font-mono text-sm text-text-secondary">MACRO TERMINAL</span>
-            <span className="ml-1.5 text-2xs text-text-tertiary">v8.0</span>
-          </>
-        )}
+      <div className="h-14 flex items-center px-3 border-b border-border-subtle">
+        <FundIdentity collapsed={collapsed} fallback={<>
+          <Logo currentRegime={currentRegime} />
+          {!collapsed && (
+            <>
+              <span className="ml-2 font-mono text-sm text-text-secondary">MACRO TERMINAL</span>
+              <span className="ml-1.5 text-2xs text-text-tertiary">v8.0</span>
+            </>
+          )}
+        </>} />
       </div>
 
       {/* Navigation */}

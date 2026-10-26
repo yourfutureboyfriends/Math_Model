@@ -42,7 +42,9 @@ async def funds_list(request: Request):
         out.append({**f, "base_currency": st.get("base_currency"), "benchmark": st.get("benchmark"),
                     "fund_name": st.get("fund_name"), "capital": st.get("capital"),
                     "members": f["members"] if u.get("role") == "admin" else None,
-                    "logo": _logo_path(f["id"], "full").exists(), "logo_mark": _logo_path(f["id"], "mark").exists()})
+                    "logo": _logo_path(f["id"], "full").exists(), "logo_mark": _logo_path(f["id"], "mark").exists(),
+                    "logo_masks": _logo_path(f["id"], "mark_mask").exists() and _logo_path(f["id"], "word_mask").exists(),
+                    "brand": st.get("brand"), "logo_version": _logo_version(f["id"])})
     return {"funds": out, "current": funds.current()}
 
 
@@ -84,7 +86,8 @@ async def funds_update(fund_id: str, body: FundUpdate, request: Request):
 # ── logos ────────────────────────────────────────────────────────────────────
 # Each fund's logo (full lock-up) and mark (small emblem for the top bar), stored beside the fund databases
 # (api/funds/logos/, not in the repository). Uploads are re-encoded as PNG by Pillow (nothing else in the file is kept).
-LOGO_VARIANTS = ("full", "mark")
+LOGO_VARIANTS = ("full", "mark", "mark_mask", "word_mask")    # *_mask: white shapes on transparent, drawn
+                                                               # in the theme's colours (CSS mask) by the app
 MAX_LOGO_BYTES = 2_000_000
 
 
@@ -92,7 +95,15 @@ def _logo_path(fund_id: str, variant: str):
     from api import funds
     if not funds.ID_RE.match(fund_id) and fund_id != funds.MAIN:
         raise HTTPException(400, "invalid fund id")
-    return funds.FUNDS_DIR / "logos" / (f"{fund_id}.png" if variant == "full" else f"{fund_id}_mark.png")
+    if variant not in LOGO_VARIANTS:
+        raise HTTPException(400, f"variant is one of {', '.join(LOGO_VARIANTS)}")
+    return funds.FUNDS_DIR / "logos" / (f"{fund_id}.png" if variant == "full" else f"{fund_id}_{variant}.png")
+
+
+def _logo_version(fund_id: str) -> int:
+    """Changes whenever any of the fund's logo files changes (cache-busting for the app)."""
+    ts = [int(_logo_path(fund_id, v).stat().st_mtime) for v in LOGO_VARIANTS if _logo_path(fund_id, v).exists()]
+    return max(ts) if ts else 0
 
 
 def save_logo(fund_id: str, variant: str, data: bytes) -> dict:
@@ -117,7 +128,7 @@ def save_logo(fund_id: str, variant: str, data: bytes) -> dict:
 
 
 class LogoIn(BaseModel):
-    variant: str = Field("full", pattern="^(full|mark)$")
+    variant: str = Field("full", pattern="^(full|mark|mark_mask|word_mask)$")
     data_base64: str = Field(..., max_length=3_000_000)
 
 
@@ -131,10 +142,10 @@ async def funds_logo(fund_id: str, request: Request, variant: str = "full"):
     f = await asyncio.to_thread(funds.get, fund_id)
     if not u or not f or not funds.can_open(u, f):
         raise HTTPException(404, "no logo")
-    for v in ((variant, "full") if variant == "mark" else ("full",)):
+    for v in ((variant, "full") if variant == "mark" else (variant,)):
         p = _logo_path(fund_id, v)
         if p.exists():
-            return FileResponse(p, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
+            return FileResponse(p, media_type="image/png", headers={"Cache-Control": "private, no-cache"})  # ETag revalidation
     raise HTTPException(404, "no logo")
 
 

@@ -25,9 +25,10 @@ export default {
 
         /* Bloomberg orange — primary terminal accent */
         bloomberg: 'rgb(var(--c-bloomberg) / <alpha-value>)',
-        'bloomberg-dim': 'rgba(240, 112, 48, 0.15)',
-        'bloomberg-muted': 'rgba(240, 112, 48, 0.08)',
-        'bloomberg-border': 'rgba(240, 112, 48, 0.30)',
+        nav: 'rgb(var(--c-nav) / <alpha-value>)',
+        'bloomberg-dim': 'rgb(var(--c-bloomberg) / 0.15)',      /* follow the accent (a fund's brand can set it) */
+        'bloomberg-muted': 'rgb(var(--c-bloomberg) / 0.08)',
+        'bloomberg-border': 'rgb(var(--c-bloomberg) / 0.30)',
 
         /* Teal — secondary action color */
         accent: '#00d4aa',

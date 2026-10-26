@@ -5,8 +5,10 @@ import { AuthProvider } from './context/AuthContext'
 import { resolveApiBase } from './lib/apiPort'
 import './index.css'
 import { applyUpDown, initTheme } from './lib/theme'
+import { initBrand } from './lib/fundBrand'
 
 initTheme()   // before first paint: no dark→light flash
+initBrand()   // the selected fund's remembered brand, also before first paint
 applyUpDown()
 
 async function bootstrap() {

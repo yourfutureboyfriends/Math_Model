@@ -2,6 +2,8 @@
 // Phase 4 Step 5: Dashboard content extracted to pages/DashboardPage.tsx
 
 import { MfaEnrollScreen } from '@/components/account/TwoFactor';
+import { applyBrand, loadFunds } from '@/lib/fundBrand';
+import { currentFund } from '@/lib/fund';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { TerminalShell } from './components/layout/TerminalShell';
 import { LoginScreen } from './components/LoginScreen';
@@ -22,6 +24,9 @@ function App() {
   const hubMode = useHubMode();
   const skin = useMarketsSkin();
   useEffect(() => { applySkin(hubMode === 'markets' && skin === 'classic'); }, [hubMode, skin]);
+  useEffect(() => {                                  // the current fund's brand colours (after sign-in)
+    if (isAuthenticated) loadFunds(true).then((fs) => applyBrand(fs.find((f) => f.id === currentFund())?.brand));
+  }, [isAuthenticated]);
   const [activeSection, setActiveSection] = useState('master-signal');
 
   // Initialize macro store

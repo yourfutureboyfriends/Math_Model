@@ -8,7 +8,8 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Loader2, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
-import { useFundLogo, forgetFundLogo } from '@/lib/fundLogo';
+import { forgetFundLogo } from '@/lib/fundLogo';
+import { BrandShape, Letterhead } from '@/components/layout/FundIdentity';
 import { currentFund } from '@/lib/fund';
 
 // window.prompt/confirm are suppressed in some embedded browsers: an in-app dialog instead
@@ -113,14 +114,14 @@ function Overview({ g, reload }: { g: any; reload: () => void }) {
 
 function LogoUpload() {
   const [msg, setMsg] = useState<string | null>(null);
-  const up = (variant: 'full' | 'mark') => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const up = (variant: 'full' | 'mark' | 'mark_mask' | 'word_mask') => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         await call(`/api/v1/funds/${encodeURIComponent(currentFund())}/logo`, 'PUT', { variant, data_base64: String(reader.result) });
-        forgetFundLogo(currentFund()); setMsg(`${variant === 'full' ? 'Logo' : 'Mark'} updated — reload to see it everywhere.`);
+        forgetFundLogo(currentFund()); setMsg('Updated — reload to see it everywhere.');
       } catch (x: any) { setMsg(x.message); }
     };
     reader.readAsDataURL(file);
@@ -128,7 +129,9 @@ function LogoUpload() {
   return (
     <div className="text-[10px] text-text-tertiary flex flex-wrap gap-3 items-center">Fund logo (administrator):
       <label className="cursor-pointer underline">full logo<input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={up('full')} /></label>
-      <label className="cursor-pointer underline">top-bar mark<input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={up('mark')} /></label>
+      <label className="cursor-pointer underline">emblem shape<input type="file" accept="image/png,image/webp" className="hidden" onChange={up('mark_mask')} /></label>
+      <label className="cursor-pointer underline">wordmark shape<input type="file" accept="image/png,image/webp" className="hidden" onChange={up('word_mask')} /></label>
+      <span>(shapes: white on transparent — the app colours them)</span>
       {msg && <span className="text-amber">{msg}</span>}
     </div>
   );
@@ -334,7 +337,6 @@ function Controls({ reload }: { reload: () => void }) {
 
 // ── monthly pack ─────────────────────────────────────────────────────────────
 function Monthly() {
-  const logo = useFundLogo('full');
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const { d, err } = useLoad<any>(`/api/v1/governance/report/monthly?month=${month}`);
   return (
@@ -344,12 +346,8 @@ function Monthly() {
         <button className={btn} onClick={() => window.print()}>Print</button>
         {d && <span className="text-amber text-2xs">{d.label}</span>}
       </div>
-      {d && (
-        <div className="flex items-center gap-3 border-b border-border pb-2">
-          {logo && <img src={logo} alt="" className="h-12 w-auto max-w-[160px] object-contain rounded-sm" />}
-          <div><div className="text-sm text-text-primary font-medium">{d.fund} — monthly internal report, {d.month}</div>
-            <div className="text-2xs text-text-tertiary">{d.stage} · base currency {d.currency} · generated {String(d.generated_at).replace('T', ' ')}</div></div>
-        </div>)}
+      {d && <Letterhead title={`Monthly internal report — ${d.month}`}
+                        sub={[String(d.stage).includes('governance off') ? null : d.stage, d.currency, d.label].filter(Boolean).join(' · ')} />}
       {!d ? <div className="text-2xs text-text-tertiary">{err ?? 'Loading…'}</div> : (
         <div className="grid md:grid-cols-2 gap-2">
           <Box title={`Returns (${d.currency})`}>
@@ -517,12 +515,11 @@ const TABS: [Tab, string][] = [['overview', 'Overview'], ['models', 'Models G0�
 
 export function GovernanceSection() {
   const { d: g, err, load } = useLoad<any>('/api/v1/governance');
-  const logo = useFundLogo('full');
   const [tab, setTab] = useState<Tab>('overview');
   return (
     <div className="border border-border bg-surface-1">
       <div className="px-3 py-2 border-b border-border flex items-center gap-2 flex-wrap">
-        {logo && <img src={logo} alt={g?.settings.fund_name ?? ''} className="h-9 w-auto max-w-[120px] object-contain rounded-sm" />}
+        <BrandShape variant="mark_mask" height={16} className="text-bloomberg" />
         <span className="text-xs font-medium text-text-primary uppercase tracking-wider">Fund Governance</span>
         {g && <span className="text-2xs text-text-tertiary">{g.settings.fund_name} · {g.settings.stage_label}</span>}
         <div className="flex gap-1 flex-wrap ml-auto">

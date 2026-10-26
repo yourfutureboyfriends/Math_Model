@@ -24,6 +24,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "cost_bps": 5.0,                # transaction-cost estimate for orders
     "min_trade_pct": 0.0025,        # skip orders smaller than this fraction of NAV
     "benchmark": "SPY",             # BIFS = 50% MSCI World + 50% MSCI World Equal Weighted, in the base currency
+    "brand": None,                  # the fund's look: {accent_dark, accent_light, bg_dark, band, secondary, tagline}
     "mandate": None,                # pre-trade mandate (api/handlers/pretrade_feasibility.DEFAULT_MANDATE overrides)
     # governance (api/governance.py): stage, approved-model rule, risk policy, the written mandate
     "governance": False,
