@@ -10,6 +10,7 @@ import { AlertsPanel } from './AlertsPanel';
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
 import { ModelInfoPanel } from './ModelInfoPanel';
 import { BottomDock, DOCK_HEIGHT, useTapeVisible } from './StatusBar';
+import { LivePopups } from './LivePopups';
 import { BlackoutBanner } from '../EconomicCalendar';
 import { cn } from '@/lib/utils';
 import { revealPanel } from '@/lib/focusMode';
@@ -357,6 +358,9 @@ export function TerminalShell({
 
       {/* World ticker tape + status bar */}
       <BottomDock />
+
+      {/* Live pop-ups: headlines, big moves, economic releases, regime changes */}
+      <LivePopups />
 
       {/* Detail Panel */}
       <DetailPanel

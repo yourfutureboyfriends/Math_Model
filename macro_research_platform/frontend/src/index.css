@@ -1532,6 +1532,50 @@ button.ticker-item { background: transparent; border-top: 0; border-bottom: 0; b
   .terminal-section table tbody tr, .terminal-section .section-header, .terminal-section .terminal-card { transition: none; }
 }
 
+/* ─── Live pop-ups (components/layout/LivePopups) ─────────────────────────────── */
+.popup-stack { position: fixed; right: 12px; bottom: calc(var(--dock-h) + 12px); z-index: 60; display: flex;
+  flex-direction: column-reverse; gap: 8px; width: 340px; max-width: calc(100vw - 24px); pointer-events: none; }
+.popup-toast { position: relative; pointer-events: auto; overflow: hidden; background: var(--surface-2);
+  border: 1px solid var(--border-strong); border-left: 3px solid rgb(var(--c-nav)); box-shadow: 0 10px 30px rgb(0 0 0 / 0.35);
+  animation: popup-in 220ms cubic-bezier(.2,.8,.2,1); }
+@keyframes popup-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.popup-news { border-left-color: rgb(var(--c-bloomberg)); }
+.popup-eco { border-left-color: rgb(var(--c-amber)); }
+.popup-regime { border-left-color: rgb(var(--c-nav)); }
+.popup-move.popup-up, .popup-eco.popup-up { border-left-color: rgb(var(--c-green)); }
+.popup-move.popup-down, .popup-eco.popup-down { border-left-color: rgb(var(--c-red)); }
+.popup-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px 0 10px; }
+.popup-tag { font-family: var(--font-data); font-size: 9px; font-weight: 700; letter-spacing: 0.12em; color: var(--text-tertiary); }
+.popup-news .popup-tag { color: rgb(var(--c-bloomberg)); }
+.popup-eco .popup-tag { color: rgb(var(--c-amber)); }
+.popup-regime .popup-tag { color: rgb(var(--c-nav)); }
+.popup-up .popup-tag { color: rgb(var(--c-green)); }
+.popup-down .popup-tag { color: rgb(var(--c-red)); }
+.popup-time { font-family: var(--font-data); font-size: 9px; color: var(--text-tertiary); margin-left: auto; }
+.popup-close { color: var(--text-tertiary); background: transparent; border: 0; padding: 2px; cursor: pointer; }
+.popup-close:hover { color: var(--text-primary); }
+.popup-body { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; padding: 3px 10px 9px;
+  background: transparent; border: 0; cursor: pointer; }
+.popup-title { font-size: 12px; font-weight: 600; line-height: 1.35; color: var(--text-primary);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.popup-sub { font-size: 10.5px; color: var(--text-secondary); line-height: 1.35; }
+.popup-cta { font-family: var(--font-data); font-size: 9.5px; color: rgb(var(--c-bloomberg)); letter-spacing: 0.04em; }
+.popup-body:hover .popup-title { text-decoration: underline; text-decoration-color: var(--border-strong); }
+.popup-life { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: rgb(var(--c-bloomberg) / 0.6);
+  transform-origin: left; animation-name: popup-life; animation-timing-function: linear; animation-fill-mode: forwards; }
+@keyframes popup-life { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.popup-panel { position: fixed; right: 12px; bottom: calc(var(--dock-h) + 8px); z-index: 61; width: 380px; max-width: calc(100vw - 24px);
+  max-height: min(70vh, 560px); display: flex; flex-direction: column; background: var(--surface-1);
+  border: 1px solid var(--border-strong); box-shadow: 0 14px 40px rgb(0 0 0 / 0.4); }
+.popup-panel-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 6px 12px; }
+.popup-panel-list { overflow-y: auto; border-top: 1px solid var(--border-subtle); }
+.popup-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 6px 12px;
+  background: transparent; border: 0; border-bottom: 1px solid var(--border-subtle); cursor: pointer; }
+.popup-row:hover { background: var(--surface-3); }
+.popup-badge { margin-left: 5px; padding: 0 4px; border-radius: 2px; background: rgb(var(--c-red)); color: #fff; font-size: 9px; }
+@media (prefers-reduced-motion: reduce) { .popup-toast, .popup-life { animation: none; } }
+@media print { .popup-stack, .popup-panel { display: none !important; } }
+
 /* ═══════════════════════════════════════════════════════════════════════════════
    PRINT STYLES
    ═══════════════════════════════════════════════════════════════════════════════ */

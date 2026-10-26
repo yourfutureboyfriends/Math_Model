@@ -2,8 +2,8 @@
 //
 // Status bar, left to right: world exchange clocks in the order the trading day travels (Sydney → … → São Paulo),
 // each with its local time and an open / lunch / closed light; then the data link (live socket), the model's data
-// date, the fund and base currency, the signed-in user, and the keyboard hints. The tape can be hidden (remembered
-// in this browser).
+// date, the fund and base currency, the signed-in user, the keyboard hints and the live-alerts button (pop-up
+// history and settings). The tape can be hidden (remembered in this browser).
 import { useEffect, useState } from 'react';
 import { EXCHANGES, sessionState } from '@/components/markets/MarketClock';
 import { useAuth } from '@/context/AuthContext';
@@ -12,6 +12,7 @@ import { loadFunds } from '@/lib/fundBrand';
 import { cn } from '@/lib/utils';
 import { useMacroStore, selectMeta } from '@/store/macroStore';
 import { TickerTape } from './TickerTape';
+import { AlertsButton } from './LivePopups';
 
 // Exchanges on the clock row, east to west — the order the trading day opens.
 const CLOCKS: [string, string][] = [
@@ -84,6 +85,7 @@ export function BottomDock() {
           </span>
           {user && <span className="status-item hidden lg:inline-flex">{user.username.toUpperCase()}</span>}
           <span className="status-item hidden xl:inline-flex text-text-tertiary"><kbd>⌘K</kbd> COMMAND <kbd>?</kbd> KEYS</span>
+          <AlertsButton />
           <button type="button" className="status-btn" onClick={() => setTape(!tape)} aria-pressed={tape}
             title={tape ? 'Hide the ticker tape' : 'Show the ticker tape'}>TAPE {tape ? '▾' : '▴'}</button>
         </div>
