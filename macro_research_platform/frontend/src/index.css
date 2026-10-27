@@ -1605,6 +1605,13 @@ button.ticker-item { background: transparent; border-top: 0; border-bottom: 0; b
 .gcmd-item.is-active { background: rgb(var(--c-bloomberg) / 0.12); }
 .gcmd-tag { width: 44px; flex-shrink: 0; font-family: var(--font-data); font-size: 9px; font-weight: 700; letter-spacing: 0.1em; color: rgb(var(--c-bloomberg)); }
 
+/* ─── What-if sliders (components/sections/risk/WhatIfSection) ─────────────────── */
+.whatif-range { -webkit-appearance: none; appearance: none; height: 4px; background: var(--surface-3); border-radius: 2px; outline: none; cursor: pointer; }
+.whatif-range::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: rgb(var(--c-bloomberg));
+  border: 2px solid var(--surface-1); box-shadow: 0 0 0 1px rgb(var(--c-bloomberg) / 0.6); }
+.whatif-range::-moz-range-thumb { width: 13px; height: 13px; border-radius: 50%; background: rgb(var(--c-bloomberg)); border: 2px solid var(--surface-1); }
+.whatif-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.35); }
+
 /* ═══════════════════════════════════════════════════════════════════════════════
    PRINT STYLES
    ═══════════════════════════════════════════════════════════════════════════════ */

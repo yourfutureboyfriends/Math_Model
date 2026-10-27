@@ -27,7 +27,13 @@ export function openPanel(id: string): void {
   if (switchMode) setHubMode('research');
   setTimeout(() => {                                   // after the Research page has mounted
     const switchedGroup = revealPanel(id);
-    setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), switchedGroup ? 260 : 0);
+    const go = () => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(go, switchedGroup ? 260 : 0);
+    // panels above it may still be laying out (lazy sections, charts): land again once they have
+    setTimeout(() => {
+      const top = document.getElementById(id)?.getBoundingClientRect().top;
+      if (top != null && Math.abs(top) > 160) go();
+    }, 1200);
   }, switchMode ? 500 : 0);
 }
 
@@ -101,10 +107,12 @@ export function resolveCommands(input: string, funds: FundRef[] = []): Command[]
   const plainWord = !!p.symbol && /^[A-Z]+$/.test(p.symbol) && p.symbol.length > 5;   // MORIAH, CALENDAR: not tickers
   if (p.symbol && (p.terminal || p.fn || (TICKER.test(p.symbol) && !plainWord))) {
     const fn = p.fn && p.fn.security ? p.fn : findFunction('DES');
-    // a bare word that is also a panel or model ranks below it; an explicit "AAPL DES" or terminal form ranks first
-    const explicit = !!p.fn || !!p.terminal || /[.=^\d-]/.test(p.symbol);
+    // An explicit "AAPL DES" or terminal form ranks first; a ticker-shaped symbol (7203.T, ^N225, BTC-USD) just below
+    // an exact panel name (so "what-if" opens the panel); a bare word below any panel or model it matches.
+    const explicit = !!p.fn || !!p.terminal;
+    const tickerShaped = /[.=^\d-]/.test(p.symbol);
     out.push({ key: `sec:${p.symbol}:${fn?.code}`, group: 'Security', label: `${p.symbol} — ${fn?.name ?? 'Description'}`,
-      hint: 'Markets', score: explicit ? 98 : 50, run: () => goMarkets(fn?.code ?? 'DES', p.symbol) });
+      hint: 'Markets', score: explicit ? 98 : tickerShaped ? 78 : 50, run: () => goMarkets(fn?.code ?? 'DES', p.symbol) });
   }
 
   const seen = new Set<string>();

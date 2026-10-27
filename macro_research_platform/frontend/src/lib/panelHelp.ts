@@ -166,6 +166,11 @@ export const PANEL_HELP: Record<string, PanelHelp> = {
     read: 'VaR 95% 1-day = a loss you should exceed only 1 day in 20. Stress rows replay real crises on today’s positions.',
     use: 'Type shocks into the custom scenario to test a view.',
   },
+  'what-if': {
+    what: 'Drag market moves (equities, the 10-year yield, high-yield spreads, commodities, the dollar, the VIX) and see the estimated effect on the fund’s book and on the US, euro-area and rest-of-world macro models’ portfolios.',
+    read: 'Linear factor-model estimates from historical betas: a sense of size and direction, not a forecast. Presets replay rounded crisis moves.',
+    use: 'Stress a view before you trade it, or see which model portfolio is most exposed to a shock.',
+  },
   'factor-exposure': {
     what: 'How exposed the book is to broad market factors (equity beta, rates, USD, momentum…).',
     read: 'Bars show sensitivity; red = negative exposure.',

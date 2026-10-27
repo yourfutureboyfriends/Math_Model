@@ -721,6 +721,25 @@ async def risk_stress_custom_v1(body: StressCustomIn):
             "by_factor": res["by_factor"]}
 
 
+class WhatIfScenarioIn(BaseModel):
+    """Market moves for the what-if: equity_pct, commodities_pct, usd_pct as fractions (−0.2 = −20%); rates_bp
+    (10-year yield) and credit_bp (high-yield spread) in basis points; vix_pts in VIX points."""
+    equity_pct: float = 0.0
+    rates_bp: float = 0.0
+    credit_bp: float = 0.0
+    commodities_pct: float = 0.0
+    usd_pct: float = 0.0
+    vix_pts: float = 0.0
+
+
+@router.post("/api/v1/risk/what-if")
+async def risk_what_if_v1(body: WhatIfScenarioIn):
+    """What a set of market moves does to the fund's book (P&L by factor) and to the US, euro-area and rest-of-world
+    macro models' portfolios (return by asset) — linear factor-model estimates (api/what_if.py)."""
+    from api import what_if
+    return await what_if.run(body.model_dump())
+
+
 @router.get("/api/v1/risk/reverse-stress")
 async def risk_reverse_stress_v1(target_loss: float, book: Optional[str] = None):
     """Reverse stress: the single-factor move that alone would cause target_loss ($)."""

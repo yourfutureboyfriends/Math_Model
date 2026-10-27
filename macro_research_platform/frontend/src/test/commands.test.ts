@@ -14,6 +14,7 @@ describe('<GO> command resolver', () => {
   it('finds Research panels by name, initials or words', () => {
     expect(top('fund overview')?.key).toBe('panel:fund-cockpit');
     expect(top('economic calendar')?.key).toBe('panel:economic-calendar');
+    expect(top('what-if')?.key).toBe('panel:what-if');                   // not the "security" WHAT-IF
     expect(resolveCommands('var').some((c) => c.key === 'panel:var-stress')).toBe(true);
   });
 

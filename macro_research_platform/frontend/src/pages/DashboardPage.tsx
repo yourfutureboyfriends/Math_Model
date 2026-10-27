@@ -8,6 +8,7 @@ import { applyFocus, getCollapsed, panelId, saveCollapsed, setDeskPanels, useWor
 import { WorkspaceBar } from '@/components/layout/WorkspaceBar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SectionSkeleton } from '@/components/ui/SectionSkeleton';
+import { WhatIfSection } from '@/components/sections/risk/WhatIfSection';
 import { useMacroStore } from '@/store/macroStore';
 import { PANEL_HELP } from '@/lib/panelHelp';
 import { PanelHelpPopover, type HelpAnchor } from '@/components/ui/PanelHelpPopover';
@@ -506,6 +507,14 @@ export function DashboardPage() {
         <ErrorBoundary sectionName="VaR & Stress">
           <Suspense fallback={<SectionSkeleton />}>
             <VaRStressSection />
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="What-if Scenarios">
+          <Suspense fallback={<SectionSkeleton />}>
+            <WhatIfSection />
           </Suspense>
         </ErrorBoundary>
       </div>

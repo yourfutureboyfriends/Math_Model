@@ -46,6 +46,7 @@ export const PANEL_LABELS: Record<string, string> = {
   'risk-indicators': 'Risk Indicators',
   'risk-analytics': 'Risk Analytics',
   'var-stress': 'VaR & Stress Testing',
+  'what-if': 'What-if Scenarios',
   'factor-exposure': 'Factor Exposure',
   'horizon-tension': 'Horizon Divergence',
   correlation: 'Stock–Bond Correlation',
