@@ -2312,10 +2312,39 @@ def signal_report(sig: pd.DataFrame, data: Data, start: Optional[str] = None, ho
         top = (q == quantiles).iloc[first:]
         chg = (top & ~top.shift(1, fill_value=False)).sum(axis=1) / top.sum(axis=1).where(top.sum(axis=1) > 0)
         out["top_quantile_turnover"] = round(float(chg.mean()), 4) if chg.notna().any() else None
+    # Sector-neutral IC (Alphalens' group-neutral option): scores and returns demeaned within each sector every day,
+    # so a signal that only picks the right sector shows up as no stock-selection skill.
+    info = getattr(data, "info", None)
+    if info is not None and "sector" in getattr(info, "columns", []):
+        sec = info["sector"].reindex(cols).fillna("Other")
+        if sec.nunique() >= 3:
+            def demean(frame: pd.DataFrame) -> pd.DataFrame:
+                return frame - frame.T.groupby(sec.values).transform("mean").T
+            rows_n = []
+            for hz in horizons:
+                f = fwd_cache.get(hz)
+                if f is None:
+                    continue
+                m = S.notna() & f.notna()
+                ic = rank_ic(demean(S.where(m)), demean(f.where(m)))
+                if len(ic) < 20:
+                    if int((m.sum(axis=1) >= 10).iloc[first:].sum()) >= 20:
+                        # scores identical within every sector: no stock-selection information at all
+                        rows_n.append({"horizon": hz, "mean_ic": 0.0, "t_stat": None, "positive": None,
+                                       "note": "no variation within sectors — the signal only ranks sectors"})
+                    continue
+                smp = ic.iloc[::hz]
+                t_stat = float(smp.mean() / smp.std(ddof=1) * math.sqrt(len(smp))) if len(smp) > 2 and smp.std() > 0 else None
+                rows_n.append({"horizon": hz, "mean_ic": round(float(ic.mean()), 4), "t_stat": None if t_stat is None else round(t_stat, 2),
+                               "positive": round(float((ic > 0).mean()), 3)})
+            if rows_n:
+                out["ic_sector_neutral"] = rows_n
+                out["sectors"] = int(sec.nunique())
     ac = [S.iloc[first:].rank(axis=1).corrwith(S.iloc[first:].rank(axis=1).shift(l), axis=1).mean() for l in (1, 5, 21)]
     out["rank_autocorrelation"] = {str(l): (None if pd.isna(a) else round(float(a), 3)) for l, a in zip((1, 5, 21), ac)}
     out["note"] = ("Spearman IC of each day's scores with returns from the next open; t-statistics on non-overlapping "
-                   "samples. Quantile returns are annualised excess over the scored universe's average, before costs.")
+                   "samples. Quantile returns are annualised excess over the scored universe's average, before costs. "
+                   "Sector-neutral IC: scores and returns demeaned within each sector first — the stock-selection part.")
     return out
 
 

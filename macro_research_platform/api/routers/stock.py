@@ -317,6 +317,33 @@ async def stock_manage(body: ManageIn):
         raise HTTPException(400, str(e))
 
 
+class EntryCheckIn(BaseModel):
+    """An entry to check: symbol, your price (optional — leave it out for the recommendation only), side, and the
+    date you bought (optional — then the price is judged against what the model said that day)."""
+    symbol: str
+    price: Optional[float] = None
+    side: str = "long"
+    date: Optional[str] = None
+    held: bool = False          # already bought: no limit-order fill estimate, even without a date
+
+
+@router.post("/api/v1/stock/entry-check")
+async def stock_entry_check(body: EntryCheckIn):
+    """Where to get in (the model's zone, stop, target and reward:risk today) and a grade for your price — inside or
+    outside the zone, reward:risk at your price, the chance a limit there fills within 20 sessions, and, for a past
+    purchase, the zone the model gave on that day."""
+    from api import trade_manager
+    if body.price is not None and body.price <= 0:
+        raise HTTPException(400, "price must be positive")
+    if body.date and not re.match(r"^\d{4}-\d{2}-\d{2}$", body.date):
+        raise HTTPException(400, "date must be YYYY-MM-DD")
+    try:
+        return await trade_manager.entry_check(_norm(body.symbol), body.price,
+                                               -1 if body.side.lower().startswith("s") else 1, body.date, body.held)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @router.get("/api/v1/stock/positions/manage")
 async def stock_manage_book():
     """The same advice for every position in the current fund's book, most urgent first."""

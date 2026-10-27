@@ -84,6 +84,47 @@ function Detail({ r }: { r: any }) {
   );
 }
 
+const GRADE_TONE: Record<string, string> = { good: 'border-green/60 bg-green/5 text-green', fair: 'border-amber/60 bg-amber/5 text-amber', poor: 'border-red/60 bg-red/5 text-red' };
+
+/** The model's recommended entry, and the grade of the price you chose (planned, or paid on a date). */
+function EntryCheck({ e }: { e: any }) {
+  const r = e.recommended ?? {}, y = e.your_price, t = e.at_entry_date;
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      <div className="p-3 bg-surface-1 border border-border">
+        <div className="text-[10px] text-text-tertiary uppercase tracking-wider mb-1">Where the model would get in — {e.symbol} {e.side}</div>
+        <div className="text-xs font-semibold text-text-primary">{r.verdict?.label ?? '—'}</div>
+        <div className="text-[11px] text-text-secondary mb-2">{r.verdict?.detail}</div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+          <span className="text-text-tertiary">Buy zone</span><span className="font-mono text-right text-text-primary">{px(r.entry_low)} – {px(r.entry_high)}</span>
+          <span className="text-text-tertiary">Price now</span><span className="font-mono text-right">{px(r.price)} {r.currency}</span>
+          <span className="text-text-tertiary">Stop</span><span className="font-mono text-right text-red">{px(r.stop)}</span>
+          <span className="text-text-tertiary" title={r.target_basis}>Objective</span><span className="font-mono text-right text-green">{px(r.target)}</span>
+          <span className="text-text-tertiary">Reward : risk</span><span className="font-mono text-right">{r.reward_risk ?? '—'}</span>
+          {r.shares != null && <><span className="text-text-tertiary">Size (0.5% NAV at risk)</span><span className="font-mono text-right">{r.shares.toLocaleString()} sh</span></>}
+          {r.fill_probability_at_zone_top != null && <><span className="text-text-tertiary">Chance the zone is reached (20 sessions)</span><span className="font-mono text-right">{Math.round(r.fill_probability_at_zone_top * 100)}%</span></>}
+        </div>
+        {r.note && <div className="text-[10px] text-text-tertiary mt-1">{r.note}</div>}
+      </div>
+      {y ? (
+        <div className={cn('p-3 border', GRADE_TONE[y.grade] ?? 'border-border')}>
+          <div className="text-[10px] uppercase tracking-wider mb-1 opacity-80">Your price {px(y.price)}</div>
+          <div className="text-sm font-semibold">{y.label}</div>
+          <ul className="mt-1 space-y-0.5 text-[11px] text-text-secondary list-disc pl-4">{y.reasons.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul>
+          <div className="grid grid-cols-3 gap-2 mt-2 text-[11px] text-text-tertiary">
+            <span>Stop <span className="block font-mono text-red">{px(y.stop)}</span></span>
+            <span>Objective <span className="block font-mono text-green">{px(y.target)}</span></span>
+            <span>Reward:risk <span className="block font-mono text-text-primary">{y.reward_risk ?? '—'}</span></span>
+          </div>
+          {t?.verdict && <div className="text-[10px] text-text-tertiary mt-2">{t.verdict}</div>}
+        </div>
+      ) : (
+        <div className="p-3 bg-surface-1 border border-border text-[11px] text-text-tertiary">Enter a price to have it graded — inside or outside the zone, reward:risk at your price, and the chance a limit order there fills.</div>
+      )}
+    </div>
+  );
+}
+
 function Evidence() {
   const [d, setD] = useState<any>(null);
   useEffect(() => {
@@ -134,7 +175,9 @@ export function PositionManagerSection() {
   const [bookBusy, setBookBusy] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [form, setForm] = useState({ symbol: '', entry_price: '', entry_date: '', side: 'long', quantity: '' });
+  const [mode, setMode] = useState<'plan' | 'held'>('plan');
   const [check, setCheck] = useState<any>(null);
+  const [entry, setEntry] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -146,15 +189,26 @@ export function PositionManagerSection() {
   useEffect(() => { loadBook(); }, [loadBook]);
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setBusy(true); setErr(null); setCheck(null);
-    try {
-      const r = await fetch('/api/v1/stock/manage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-        symbol: form.symbol.trim(), entry_price: Number(form.entry_price), entry_date: form.entry_date || null, side: form.side,
-        quantity: form.quantity ? Number(form.quantity) : null }) });
+    e.preventDefault(); setBusy(true); setErr(null); setCheck(null); setEntry(null);
+    const post = async (url: string, body: any) => {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const j = await r.json();
       if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : `HTTP ${r.status}`);
-      if (j.available === false) throw new Error(j.reason);
-      setCheck(j);
+      return j;
+    };
+    try {
+      const price = form.entry_price ? Number(form.entry_price) : null;
+      if (mode === 'plan') {
+        setEntry(await post('/api/v1/stock/entry-check', { symbol: form.symbol.trim(), price, side: form.side }));
+      } else {
+        if (!price) throw new Error('Enter the price you paid.');
+        const [ec, mg] = await Promise.all([
+          post('/api/v1/stock/entry-check', { symbol: form.symbol.trim(), price, side: form.side, date: form.entry_date || null, held: true }),
+          post('/api/v1/stock/manage', { symbol: form.symbol.trim(), entry_price: price, entry_date: form.entry_date || null, side: form.side,
+            quantity: form.quantity ? Number(form.quantity) : null })]);
+        if (mg.available === false) throw new Error(mg.reason);
+        setEntry(ec); setCheck(mg);
+      }
     } catch (e2: any) { setErr(e2?.message || 'Could not analyse the position'); } finally { setBusy(false); }
   };
 
@@ -204,28 +258,37 @@ export function PositionManagerSection() {
 
         {/* Check a position */}
         <div className="p-3 bg-surface-1 border border-border">
-          <div className="text-xs font-semibold uppercase tracking-wider text-text-primary mb-2">Check a position</div>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-text-primary">Check an entry or a position</span>
+            <div className="flex border border-border" role="tablist" aria-label="Mode">
+              {([['plan', "I'm planning to buy"], ['held', 'I already hold it']] as const).map(([k, label]) => (
+                <button key={k} type="button" role="tab" aria-selected={mode === k} onClick={() => { setMode(k); setCheck(null); setEntry(null); }}
+                  className={cn('px-2 py-0.5 text-[10.5px]', mode === k ? 'bg-bloomberg text-bg' : 'text-text-secondary')}>{label}</button>
+              ))}
+            </div>
+          </div>
           <form onSubmit={submit} className="flex flex-wrap items-end gap-2 text-[11px]">
             <label className="flex flex-col gap-0.5"><span className="text-text-tertiary">Ticker</span>
               <input value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} required placeholder="NVDA"
                 className="w-24 bg-bg border border-border px-1.5 py-1 font-mono uppercase text-text-primary" /></label>
-            <label className="flex flex-col gap-0.5"><span className="text-text-tertiary">Entry price</span>
-              <input value={form.entry_price} onChange={(e) => setForm({ ...form, entry_price: e.target.value })} required inputMode="decimal"
+            <label className="flex flex-col gap-0.5"><span className="text-text-tertiary">{mode === 'plan' ? 'Your price (optional)' : 'Price you paid'}</span>
+              <input value={form.entry_price} onChange={(e) => setForm({ ...form, entry_price: e.target.value })} required={mode === 'held'} inputMode="decimal"
                 className="w-24 bg-bg border border-border px-1.5 py-1 font-mono text-text-primary" /></label>
-            <label className="flex flex-col gap-0.5"><span className="text-text-tertiary">Entry date</span>
+            {mode === 'held' && <label className="flex flex-col gap-0.5"><span className="text-text-tertiary">Date bought</span>
               <input type="date" value={form.entry_date} onChange={(e) => setForm({ ...form, entry_date: e.target.value })}
-                className="bg-bg border border-border px-1.5 py-0.5 font-mono text-text-primary" /></label>
+                className="bg-bg border border-border px-1.5 py-0.5 font-mono text-text-primary" /></label>}
             <label className="flex flex-col gap-0.5"><span className="text-text-tertiary">Side</span>
               <select value={form.side} onChange={(e) => setForm({ ...form, side: e.target.value })} className="bg-bg border border-border px-1 py-1 text-text-primary">
                 <option value="long">Long</option><option value="short">Short</option></select></label>
-            <label className="flex flex-col gap-0.5"><span className="text-text-tertiary">Shares (optional)</span>
+            {mode === 'held' && <label className="flex flex-col gap-0.5"><span className="text-text-tertiary">Shares (optional)</span>
               <input value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} inputMode="decimal"
-                className="w-24 bg-bg border border-border px-1.5 py-1 font-mono text-text-primary" /></label>
+                className="w-24 bg-bg border border-border px-1.5 py-1 font-mono text-text-primary" /></label>}
             <button type="submit" disabled={busy} className="px-3 py-1 bg-bloomberg text-bg disabled:opacity-50 inline-flex items-center gap-1">
               {busy && <Loader2 className="w-3 h-3 animate-spin" />}Analyse</button>
           </form>
           {err && <div className="mt-2 text-[11px] text-amber">{err}</div>}
-          {check && <div className="mt-2"><Detail r={check} /></div>}
+          {entry && <div className="mt-2"><EntryCheck e={entry} /></div>}
+          {check && <div className="mt-2"><div className="text-[10px] text-text-tertiary uppercase tracking-wider mb-1">What to do now</div><Detail r={check} /></div>}
         </div>
 
         {/* Evidence */}

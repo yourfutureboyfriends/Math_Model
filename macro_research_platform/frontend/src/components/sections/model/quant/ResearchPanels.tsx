@@ -165,6 +165,22 @@ export function Signal({ s }: { s: any }) {
             <td className="text-right px-1.5">{num(x.ic_ir)}</td><td className={cn('text-right px-1.5', Math.abs(x.t_stat ?? 0) >= 2 && 'font-semibold')}>{num(x.t_stat)}</td>
             <td className="text-right px-1.5">{pct(x.positive, 0)}</td><td className="text-right px-1.5">{x.days}</td></tr>))}</tbody>
       </table>
+      {(s.ic_sector_neutral ?? []).length > 0 && (
+        <div>
+          <div className="text-text-tertiary mb-0.5">Sector-neutral IC — stock selection within {s.sectors} sectors (a signal that only picks sectors scores ~0 here)</div>
+          <table className="w-full font-mono">
+            <tbody>{s.ic_sector_neutral.map((x: any) => {
+              const raw = (s.ic ?? []).find((r: any) => r.horizon === x.horizon);
+              return (
+                <tr key={x.horizon} className="border-t border-border-subtle">
+                  <td className="px-1.5">{x.horizon}d</td>
+                  <td className={cn('text-right px-1.5', x.mean_ic > 0 ? 'text-green' : 'text-red')}>{num(x.mean_ic, 4)}</td>
+                  <td className="text-right px-1.5 text-text-tertiary">{raw ? `${raw.mean_ic ? Math.round((x.mean_ic / raw.mean_ic) * 100) : 0}% of the raw IC` : ''}</td>
+                  <td className={cn('text-right px-1.5', Math.abs(x.t_stat ?? 0) >= 2 && 'font-semibold')}>t {num(x.t_stat)}</td>
+                  <td className="text-right px-1.5">{pct(x.positive, 0)} &gt; 0</td></tr>);
+            })}</tbody>
+          </table>
+        </div>)}
       {q && (
         <BarList title={`Quintile excess return, ${q.horizon}-day horizon (annualised, before costs) — Q1 lowest score`} diverging fmt={(v) => spct(v, 1)}
           data={q.annualised_excess.map((v: number, i: number) => ({ label: `Q${i + 1}`, value: v }))} />)}

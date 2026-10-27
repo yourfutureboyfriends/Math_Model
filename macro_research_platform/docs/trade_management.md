@@ -76,3 +76,20 @@ rules with each other, not the absolute numbers. The live table (Position Manage
   Tetlock (2007), Moreira & Muir (2017), Daniel & Moskowitz (2016), Lakonishok & Lee (2001).
 
 Not investment advice; every signal is probabilistic.
+
+## Entry check — "where should I get in, and is my price good?"
+
+`POST /api/v1/stock/entry-check {symbol, price?, side, date?, held?}`; UI: Position Manager → *Check an entry or a
+position*, with two modes.
+
+- **I'm planning to buy.** The model's buy zone, stop (2.5×ATR), objective, reward:risk, size at 0.5% of NAV at risk,
+  and the chance the price comes back to the zone within 20 sessions. Add a price and it is graded **good / fair /
+  poor**: inside, below or above the zone (up to 0.5% over the top still counts as inside), reward:risk at your
+  price (≥ 2 good, below 1.5 poor), today's call, and the chance a limit order there fills within 20 sessions —
+  `2·Φ(−|ln(L/P)| / (σ√T))`, the reflection principle for a driftless walk on 3-month daily volatility. Under a
+  25% chance counts against it.
+- **I already hold it.** The same grade for the price you paid, without the fill estimate. With the purchase date it
+  adds what the price-only model said that day (BUY +1, stretched / WATCH −1, AVOID −2) and that day's zone — no
+  hindsight. The usual hold / tighten / trim / exit advice is shown underneath.
+
+Shorts are graded on the trend; the entry model itself is long-only.

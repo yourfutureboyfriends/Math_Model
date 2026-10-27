@@ -89,3 +89,16 @@ Also fixed while building these: the look-ahead check could not read `setup()` o
 Code Lab requests queued behind paper-trader book refreshes after a restart (now a separate queue).
 
 Remaining, by value: real (non-modelled) option and borrow data; global survivorship-free universes; intraday bars.
+
+## Second pass (27 Oct 2026): statistics for "is the Sharpe real?"
+
+| Item | What it is | Where |
+|---|---|---|
+| Harvey–Liu haircut | The Sharpe after adjusting its t-statistic for the number of trials (Bonferroni and BHY); the verdict loses a point when BHY cuts it by half or more | `robust.haircut_sharpe` |
+| Minimum backtest length | Bailey et al.: the years of data needed before the best of N trials with this Sharpe is unlikely to be luck; a point off when the backtest is shorter | `robust.min_backtest_length` |
+| Break-even cost | How many basis points per unit of turnover wipe out the gross return, and its multiple of the cost assumed; a point off below 1.5× | `robust.break_even_cost` |
+| Sector-neutral IC | Signal report: the rank IC recomputed within sectors, so a sector bet does not pass for stock picking | `codelab.signal_report` |
+
+Sources: Harvey & Liu, "Backtesting", *Journal of Portfolio Management* (2015), <https://papers.ssrn.com/abstract=2345489>;
+Harvey, Liu & Zhu, "…and the cross-section of expected returns" (2016); Bailey, Borwein, López de Prado & Zhu,
+"Pseudo-mathematics and financial charlatanism", *Notices of the AMS* (2014), <https://papers.ssrn.com/abstract=2308659>.

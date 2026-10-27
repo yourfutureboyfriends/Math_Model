@@ -226,6 +226,68 @@ def pbo_cscv(matrix: np.ndarray, s: int = 10) -> Dict[str, Any]:
             "median_oos_sharpe_of_is_best": round(float(np.median(oos_of_best)), 3)}
 
 
+def haircut_sharpe(sr_annual: Optional[float], years: Optional[float], n_trials: int) -> Dict[str, Any]:
+    """The Sharpe ratio after a multiple-testing correction for the number of variants tried (Harvey & Liu,
+    "Backtesting", J. Portfolio Management, 2015).
+
+    The single-test p-value of t = SR·√years is inflated to N·p (Bonferroni — equal to Holm for the best of N
+    when the others' p-values are unknown) and to N·p·Σ1/i (Benjamini–Hochberg–Yekutieli, its conservative
+    worst-rank form); the haircut Sharpe is the Sharpe whose t-statistic matches the adjusted p-value.
+
+    Returns:
+        {p_single, bonferroni: {p, sharpe, haircut}, bhy: {...}, trials} — haircut is the share of the Sharpe lost.
+    """
+    from statistics import NormalDist
+    nd = NormalDist()
+    if sr_annual is None or not years or years <= 0 or sr_annual <= 0:
+        return {"available": False, "reason": "needs a positive Sharpe ratio and its history length"}
+    n = max(1, int(n_trials))
+    t = sr_annual * math.sqrt(years)
+    p = 2 * (1 - nd.cdf(t))
+
+    def adj(p_adj: float) -> Dict[str, float]:
+        p_adj = min(1.0, p_adj)
+        t_adj = nd.inv_cdf(1 - p_adj / 2) if p_adj < 1 else 0.0
+        sr_adj = max(0.0, t_adj / math.sqrt(years))
+        return {"p": round(p_adj, 4), "sharpe": round(sr_adj, 3), "haircut": round(1 - sr_adj / sr_annual, 3)}
+
+    c_n = sum(1 / i for i in range(1, n + 1))
+    return {"available": True, "trials": n, "t_stat": round(t, 2), "p_single": round(p, 5),
+            "bonferroni": adj(n * p), "bhy": adj(n * p * c_n),
+            "note": "Harvey & Liu (2015): the more variants tried, the more of the Sharpe is plausibly luck."}
+
+
+def min_backtest_length(sr_annual: Optional[float], n_trials: int) -> Dict[str, Any]:
+    """Minimum backtest length (Bailey, Borwein, López de Prado & Zhu, "Pseudo-mathematics and financial
+    charlatanism", Notices of the AMS, 2014): the years of data needed before an annual Sharpe of `sr_annual` is
+    unlikely to be the best of `n_trials` skill-less variants — E[max of N standard normals] / SR, squared:
+
+        MinBTL ≈ ((1 − γ)·Z⁻¹[1 − 1/N] + γ·Z⁻¹[1 − 1/(N·e)])² / SR²     (γ = Euler–Mascheroni)
+    """
+    from statistics import NormalDist
+    if sr_annual is None or sr_annual <= 0:
+        return {"available": False, "reason": "needs a positive Sharpe ratio"}
+    n = max(1, int(n_trials))
+    if n == 1:
+        return {"available": True, "trials": 1, "years": 0.0, "note": "One trial: no selection bias to correct for."}
+    nd, g = NormalDist(), 0.5772156649
+    e_max = (1 - g) * nd.inv_cdf(1 - 1 / n) + g * nd.inv_cdf(1 - 1 / (n * math.e))
+    return {"available": True, "trials": n, "years": round((e_max / sr_annual) ** 2, 1), "expected_max_sharpe_of_noise": round(e_max, 3),
+            "note": "Bailey, Borwein, López de Prado & Zhu (2014)."}
+
+
+def break_even_cost(gross: np.ndarray, cost: np.ndarray, bps: Optional[float]) -> Optional[Dict[str, Any]]:
+    """The cost level at which the strategy stops making money: net mean = gross mean − m × cost mean = 0 →
+    m* = gross / cost; in bps, m* × the modelled cost level. None when costs are zero or the gross return is
+    not positive."""
+    g, c = float(np.nanmean(gross)), float(np.nanmean(cost))
+    if c <= 0 or g <= 0:
+        return None
+    m = g / c
+    return {"multiple": round(m, 2), "bps": round(m * bps, 1) if bps is not None else None,
+            "note": f"Costs could rise {m:.1f}× before the average return reaches zero."}
+
+
 def verdict(stats: Dict[str, Any]) -> Dict[str, Any]:
     """Plain-English grade from the robustness evidence (not a promise of future returns)."""
     reasons, score = [], 0
@@ -276,6 +338,26 @@ def verdict(stats: Dict[str, Any]) -> Dict[str, Any]:
         elif fa.get("alpha_t") is not None and fa["alpha_t"] >= 3:
             score += 1
             reasons.append(f"Alpha survives the factor model: {fa['alpha_annual']:+.1%}/yr after Fama–French 5 + momentum (t = {fa['alpha_t']:.1f}).")
+    hc = (rb.get("haircut_sharpe") or {}).get("bhy") if (rb.get("haircut_sharpe") or {}).get("available") else None
+    if hc and (rb["haircut_sharpe"]["trials"] or 1) > 1:
+        if hc["haircut"] >= 0.5:
+            score -= 1
+        reasons.append(f"After a multiple-testing haircut for {rb['haircut_sharpe']['trials']} variant(s) (Harvey & Liu 2015, BHY) the Sharpe is "
+                       f"{hc['sharpe']:.2f} — {hc['haircut']:.0%} of it could be luck from the search.")
+    mb = rb.get("min_backtest_length") or {}
+    if mb.get("available") and mb.get("years") and m.get("years") is not None and mb["trials"] > 1:
+        if m["years"] < mb["years"]:
+            score -= 1
+            reasons.append(f"The record ({m['years']:.0f} years) is shorter than the minimum backtest length ({mb['years']:.0f} years) for "
+                           f"{mb['trials']} trials: the best of that many random strategies would look this good (Bailey et al. 2014).")
+        else:
+            reasons.append(f"Long enough for {mb['trials']} trials: {m['years']:.0f} years against a minimum of {mb['years']:.0f} (Bailey et al. 2014).")
+    be = rb.get("break_even_cost")
+    if be:
+        if be["multiple"] < 1.5:
+            score -= 1
+        reasons.append(f"Break-even cost: {be['multiple']:.1f}× the modelled costs" + (f" (≈{be['bps']:.0f} bp per trade)" if be.get("bps") else "")
+                       + (" — little room for worse execution." if be["multiple"] < 1.5 else "."))
     if m.get("years") is not None and m["years"] < 5:
         score -= 1; reasons.append(f"Only {m['years']:.0f} years of history — too short to judge.")
     grade = "promising" if score >= 4 else "mixed" if score >= 1 else "weak"

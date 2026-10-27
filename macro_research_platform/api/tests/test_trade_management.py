@@ -102,3 +102,70 @@ def test_entry_buy_waits_while_news_tone_is_strongly_negative(monkeypatch):
     assert asyncio.run(stock.stock_timing("AAPL"))["verdict"]["code"] == "BUY"
     monkeypatch.setattr(trade_manager, "overlays", overlay(8, -0.1))          # mildly negative
     assert asyncio.run(stock.stock_timing("AAPL"))["verdict"]["code"] == "BUY"
+
+
+# ── entry check: the recommended zone, and a grade for the user's own price ──
+
+def test_touch_probability_reflection_principle():
+    from api.trade_manager import _touch_probability
+    assert _touch_probability(100, 100, 0.02) == pytest.approx(1.0)
+    near, far = _touch_probability(100, 98, 0.02), _touch_probability(100, 85, 0.02)
+    assert 0 < far < near < 1
+    # mirrored above the price, and more volatility means a likelier touch
+    assert _touch_probability(100, 102, 0.02) == pytest.approx(_touch_probability(100, 100 / 1.02 * 1.0, 0.02), rel=1e-6)
+    assert _touch_probability(100, 90, 0.03) > _touch_probability(100, 90, 0.01)
+
+
+def test_zone_around_the_20_day_average_when_stretched():
+    from api.calculations.stock_timing import EXTENDED_TIMING
+    from api.trade_manager import _zone
+    assert _zone(120, 110, 4, EXTENDED_TIMING - 0.1) == (108, 112)
+    assert _zone(112, 110, 4, EXTENDED_TIMING + 0.5) == (110, 112)
+
+
+def _fake_stock(monkeypatch, code="BUY"):
+    import asyncio
+    import pandas as pd
+    from api.routers import stock
+    c, h, l = _path([0.002] * 300)
+    hist = pd.DataFrame({"Close": c, "High": h, "Low": l}, index=pd.bdate_range("2025-08-01", periods=300))
+    px = float(c[-1])
+    a = {"available": True, "name": "Test Co", "currency": "USD", "verdict": {"code": code, "label": "Buy"},
+         "timing": {"atr14": 2.0, "state": "pullback"}, "setup_score": 0.6, "components": {},
+         "levels": {"entry_low": px - 3, "entry_high": px - 1, "entry": px - 2, "stop": px - 7, "target": px + 20,
+                    "reward_risk": 4.4, "shares": 100, "pct_nav": 0.05}}
+
+    async def analyze(sym, with_history=False):
+        return a
+    monkeypatch.setattr(stock, "analyze", analyze)
+    monkeypatch.setattr(stock, "_fetch", lambda sym: {"hist": hist})
+    return px, hist, asyncio
+
+
+def test_entry_check_recommends_and_grades(monkeypatch):
+    from api.trade_manager import entry_check
+    px, _, asyncio = _fake_stock(monkeypatch)
+    r = asyncio.run(entry_check("test"))
+    assert r["recommended"]["entry_high"] == px - 1 and "your_price" not in r
+    good = asyncio.run(entry_check("test", price=px - 2))["your_price"]
+    assert good["zone_position"] == "inside" and good["grade"] == "good" and good["fill_probability"] is not None
+    bad = asyncio.run(entry_check("test", price=px * 1.08))["your_price"]
+    assert bad["zone_position"] == "above" and bad["score"] < good["score"]
+
+
+def test_entry_check_judges_a_past_buy_on_that_days_call(monkeypatch):
+    from api.trade_manager import entry_check
+    px, hist, asyncio = _fake_stock(monkeypatch)
+    d = str(hist.index[280])[:10]
+    r = asyncio.run(entry_check("test", price=float(hist["Close"].iloc[280]), date_=d))
+    t = r["at_entry_date"]
+    assert t["date"] == d and t.get("model_said") in ("BUY", "WAIT (stretched)", "WATCH", "AVOID")
+    assert r["your_price"]["reasons"][0].startswith(f"On the day you bought ({d})")
+    assert r["your_price"]["fill_probability"] is None          # a past purchase is not a pending order
+
+
+def test_entry_check_held_without_a_date_gets_no_fill_estimate(monkeypatch):
+    from api.trade_manager import entry_check
+    px, _, asyncio = _fake_stock(monkeypatch)
+    y = asyncio.run(entry_check("test", price=px - 2, held=True))["your_price"]
+    assert y["fill_probability"] is None and any("date you bought" in r for r in y["reasons"])

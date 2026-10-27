@@ -198,6 +198,24 @@ export function ValuationHub({ symbol, onGo }: { symbol: string; onGo: (fn: stri
           })}</tbody>
         </table>
         <div className="text-[10px] text-text-tertiary mt-1">{primaryModel === 'excess_return' ? 'Bear/bull: ROE ∓3 points, long-run ROE ∓2, equity risk premium ±0.75 point.' : 'Bear/bull: growth ∓3 points, margin ×0.85 / ×1.10, equity risk premium ±0.75 point.'} Move the drivers and every scenario moves with them.</div>
+        {/* Cost-of-capital lens: market-implied (calibrated default) vs the appraisal standard */}
+        {(() => {
+          const kroll = +(0.05 + (inp.country_risk_premium ?? 0)).toFixed(4);
+          const onKroll = ov.erp != null && Math.abs(ov.erp - kroll) < 1e-6;
+          const lens = (k: boolean) => setOv((o) => { const n = { ...o }; if (k) n.erp = kroll; else delete n.erp; return n; });
+          return (
+            <div className="flex flex-wrap items-center gap-2 mt-2 text-[10.5px]">
+              <span className="text-text-tertiary">Equity risk premium lens:</span>
+              <button type="button" onClick={() => lens(false)} aria-pressed={!onKroll}
+                className={`px-1.5 py-0.5 border ${!onKroll ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary'}`}>
+                Market-implied {pc(inp.erp_implied != null ? inp.erp_implied + (inp.country_risk_premium ?? 0) : inp.erp, 1)}</button>
+              <button type="button" onClick={() => lens(true)} aria-pressed={onKroll}
+                className={`px-1.5 py-0.5 border ${onKroll ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary'}`}>
+                Appraisal standard {pc(kroll, 1)}</button>
+              <span className="text-text-tertiary">Market-implied (Damodaran) is the default — calibrated, it values the median large cap at about its price; the appraisal standard (Kroll's 5% + country risk) is what valuation reports use and runs about 20% lower.</span>
+            </div>
+          );
+        })()}
       </Panel>
 
       {out && <PriceOutlook o={out} ccy={ccy} value={fair} halfLife={hl} title={`Price path to the blended fair value — next 24 months (${ccy})`} />}

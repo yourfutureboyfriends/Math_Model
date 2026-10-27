@@ -103,6 +103,11 @@ def run(spec_in: Dict[str, Any], n_trials: int = 1, trial_sharpes: Optional[Sequ
     dsr = robust.deflated_sharpe(ex, n_trials, [s / math.sqrt(252) for s in trials if s is not None])
     rb["deflated_sharpe"] = {"dsr": _r(dsr.get("dsr"), 3), "trials": dsr.get("trials", n_trials),
                              "sr0_annual": dsr.get("sr0_annual")}
+    yrs = robust._years(dates)
+    sr_ann = robust.sharpe(ex, dates)
+    rb["haircut_sharpe"] = robust.haircut_sharpe(sr_ann, yrs, n_trials)
+    rb["min_backtest_length"] = robust.min_backtest_length(sr_ann, n_trials)
+    rb["break_even_cost"] = robust.break_even_cost(gross, cost, spec["costs"]["bps"])
     rb["is_oos"] = robust.is_oos(net, dates)
     rb["bootstrap"] = robust.block_bootstrap(net)
     rb["cost_sensitivity"] = []

@@ -321,3 +321,40 @@ def test_crypto_pays_the_exchange_fee_and_calendar_annualisation():
     r = cl.backtest(w, d, {**Z, "crypto_fee_bps": 10.0})
     assert r["fees"].sum() == pytest.approx(0.001 / 1.001, rel=1e-6)
     assert cl.periods_per_year(idx) == pytest.approx(365, rel=0.01)
+
+
+# ── multiple testing, minimum backtest length, break-even cost, sector-neutral IC ──────────────────────────────
+def test_haircut_sharpe_grows_with_the_number_of_trials():
+    from api.quant import robust
+    one = robust.haircut_sharpe(1.0, 10, 1)
+    many = robust.haircut_sharpe(1.0, 10, 50)
+    assert one["bonferroni"]["haircut"] == pytest.approx(0, abs=1e-9)
+    assert 0 < many["bonferroni"]["haircut"] < many["bhy"]["haircut"] < 1      # BHY is the stricter correction
+    assert robust.haircut_sharpe(None, 10, 5)["available"] is False
+
+
+def test_min_backtest_length_matches_bailey_et_al():
+    from api.quant import robust
+    r = robust.min_backtest_length(1.0, 50)
+    assert 2.2 < r["expected_max_sharpe_of_noise"] < 2.35 and 4.8 < r["years"] < 5.6     # E[max of 50 N(0,1)] ≈ 2.25
+    assert robust.min_backtest_length(0.5, 50)["years"] == pytest.approx(r["years"] * 4, rel=0.02)   # ∝ 1 / SR²
+
+
+def test_break_even_cost():
+    from api.quant import robust
+    be = robust.break_even_cost(np.full(100, 0.0006), np.full(100, 0.0002), 10.0)
+    assert be["multiple"] == pytest.approx(3.0) and be["bps"] == pytest.approx(30.0)
+    assert robust.break_even_cost(np.full(10, -0.001), np.full(10, 0.0002), 10.0) is None
+
+
+def test_sector_neutral_ic_strips_out_pure_sector_bets():
+    d = market(n=40, T=600)
+    secs = pd.Series([f"S{i % 4}" for i in range(len(d.close.columns))], index=d.close.columns)
+    for c in d.close.columns:                                                       # Data.info is built from instruments
+        d.instruments[c] = {**d.instruments[c], "sector": secs[c]}
+    fwd = d.open.shift(-6) / d.open.shift(-1) - 1
+    sector_mean = fwd.T.groupby(secs.values).transform("mean").T                  # knows only which SECTOR does well
+    rep = cl.signal_report(sector_mean, d, horizons=(5,))
+    raw = next(x for x in rep["ic"] if x["horizon"] == 5)
+    neutral = next(x for x in rep["ic_sector_neutral"] if x["horizon"] == 5)
+    assert raw["mean_ic"] > 0.2 and abs(neutral["mean_ic"]) < 0.05
