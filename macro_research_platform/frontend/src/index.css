@@ -1542,6 +1542,8 @@ button.ticker-item { background: transparent; border-top: 0; border-bottom: 0; b
 .popup-news { border-left-color: rgb(var(--c-bloomberg)); }
 .popup-eco { border-left-color: rgb(var(--c-amber)); }
 .popup-regime { border-left-color: rgb(var(--c-nav)); }
+.popup-alert { border-left-color: rgb(var(--c-amber)); background: linear-gradient(90deg, rgb(var(--c-amber) / 0.10), transparent 60%), var(--surface-2); }
+.popup-alert .popup-tag { color: rgb(var(--c-amber)); }
 .popup-move.popup-up, .popup-eco.popup-up { border-left-color: rgb(var(--c-green)); }
 .popup-move.popup-down, .popup-eco.popup-down { border-left-color: rgb(var(--c-red)); }
 .popup-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px 0 10px; }

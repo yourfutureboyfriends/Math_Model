@@ -32,7 +32,7 @@ import { Chart, Financials, News, useQuote } from '@/components/markets/TickerVi
 import { MoversView, ScreenerView } from '@/components/markets/ScreenerView';
 import { AnrView, BetaView, DcfView, DvdView, ErnView, FundHoldingsView, HdsView, HpView, NotApplicable, OmonView, RvView } from '@/components/markets/SecurityFunctions';
 import { BtmmView, CmdtyView, CompView, CryptoView, EvtsView, GcView, ImapView, NewsView, WcrsView } from '@/components/markets/GlobalFunctions';
-import { AlertsView, AlertToasts, JournalView, TeamNotes, WatchlistsView, useAddToWatchlist } from '@/components/markets/MyTools';
+import { AlertsView, JournalView, TeamNotes, WatchlistsView, useAddToWatchlist } from '@/components/markets/MyTools';
 import { ErrorBox, fmtPrice, Loading, TYPE_COLOR } from '@/components/markets/shared';
 import { WorldMap } from '@/components/markets/WorldMap';
 import { AiChat, RightRail } from '@/components/markets/RightRail';
@@ -497,7 +497,7 @@ export function MarketsPage() {
           </div>
         </div>
       )}
-      <AlertToasts onOpen={open} />
+      {/* triggered alerts now pop up in both modes (components/layout/LivePopups) */}
       {classic && <NewsCrawl />}
     </div>
     {f.code !== 'AI' && f.code !== 'LP' && !(f.security && route.symbol) && <RightRail onOpen={open} />}

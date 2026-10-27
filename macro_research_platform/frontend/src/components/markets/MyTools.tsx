@@ -177,40 +177,6 @@ export function AlertsView({ seed }: { seed?: string }) {
   );
 }
 
-/** Polls for triggered alerts while signed in; shows a toast + a browser notification. */
-export function AlertToasts({ onOpen }: { onOpen: (s: string) => void }) {
-  const [items, setItems] = useState<any[]>([]);
-  useEffect(() => {
-    let seen = new Set<number>();
-    const poll = () => call('/api/v1/mkt/alerts/triggered').then((j) => {
-      const fresh = (j.alerts as any[]).filter((a) => !seen.has(a.id));
-      fresh.forEach((a) => {
-        seen.add(a.id);
-        if ('Notification' in window && Notification.permission === 'granted') {
-          try { new Notification(a.triggered_text ?? `${a.symbol}: ${a.label} ${a.kind.startsWith('change') ? `${a.value}%` : a.value}`, { body: a.triggered_text ? (a.note || 'Macro Terminal alert') : `Triggered at ${a.triggered_price ?? '—'}` }); } catch { /* blocked */ }
-        }
-      });
-      if (j.alerts.length) setItems(j.alerts);
-    }).catch(() => {});
-    poll();
-    const t = setInterval(poll, 60_000);
-    return () => { clearInterval(t); seen = new Set(); };
-  }, []);
-  if (!items.length) return null;
-  const dismiss = () => { call('/api/v1/mkt/alerts/seen', 'POST').catch(() => {}); setItems([]); };
-  return (
-    <div className="fixed bottom-4 right-4 z-50 w-80 bg-surface-1 border border-amber/60 shadow-xl" role="status">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-subtle"><span className="text-2xs font-semibold text-amber inline-flex items-center gap-1"><Bell className="w-3 h-3" />{items.length} alert{items.length > 1 ? 's' : ''} triggered</span>
-        <button onClick={dismiss} aria-label="Dismiss" className="text-text-tertiary hover:text-text-primary"><X className="w-3.5 h-3.5" /></button></div>
-      <ul className="max-h-48 overflow-y-auto">{items.map((a) => (
-        <li key={a.id}><button onClick={() => { if (!a.field_label) onOpen(a.symbol); }} className="w-full text-left px-3 py-1.5 text-2xs hover:bg-surface-3">
-          {a.field_label ? <span className="text-text-primary">{a.triggered_text ?? a.field_label}</span> : <>
-          <span className="font-mono text-text-primary">{a.symbol}</span> <span className="text-text-secondary">{a.label} {a.kind.startsWith('change') ? `${a.value}%` : fmtPrice(a.value, symType(a.symbol))}</span>
-          <span className="text-text-tertiary"> · at {fmtPrice(a.triggered_price, symType(a.symbol))}</span></>}</button></li>))}</ul>
-    </div>
-  );
-}
-
 // ── JRNL ─────────────────────────────────────────────────────────────────────
 const blank = () => ({ date: localToday(), symbol: '', side: 'long', quantity: '', entry: '', exit: '', thesis: '', outcome: '', tags: '' });
 // alert times are stored in UTC: show them in local time

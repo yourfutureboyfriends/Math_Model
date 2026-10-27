@@ -1,9 +1,11 @@
 // Live pop-ups: toasts in the bottom-right corner (above the ticker tape) that make the screen feel alive —
+//   Your alerts        price / move / data / news-keyword alerts you set (Markets → ALRT, or from any hover card),
+//                      checked by the server every five minutes; they stay up until dismissed
 //   Headlines          new stories on the news wire (RSS: Bloomberg, FT, Nikkei Asia, …), every 2 minutes
 //   Market moves       a world index, FX rate, commodity, yield or coin crossing a big-day threshold (shared feed)
 //   Economic releases  high-impact releases worldwide: 15 minutes before, then the actual against consensus
 //   Regime changes     the US / euro-area / rest-of-world macro model switching its most likely regime
-// Each toast auto-dismisses after 12 s (hover pauses it); a click opens the story, chart or panel. Everything shown
+// Other toasts auto-dismiss after 12 s (hover pauses them); a click opens the story, chart or panel. Everything shown
 // is also kept in the history (status bar → ALERTS), where pop-ups can be muted by kind. Nothing here is a trading
 // signal: the thresholds only decide what is worth a glance.
 import { useEffect, useRef, useState } from 'react';
@@ -33,6 +35,36 @@ function threshold(r: PulseRow): { v: number; unit: 'pct' | 'bp' } {
 function revealResearch(id: string) {
   if (getHubMode() !== 'research') setHubMode('research');
   setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+}
+
+/** Your triggered alerts (server-side checks every five minutes) — also as a browser notification if allowed. */
+function useMyAlerts() {
+  useEffect(() => {
+    let alive = true;
+    const ack = () => { fetch('/api/v1/mkt/alerts/seen', { method: 'POST' }).catch(() => { /* retried next time */ }); };
+    const poll = async () => {
+      try {
+        const r = await fetch('/api/v1/mkt/alerts/triggered');
+        if (!r.ok || !alive) return;
+        for (const a of (await r.json()).alerts ?? []) {
+          if (seenBefore(`alert:${a.id}:${a.triggered_at}`)) continue;
+          const level = a.kind?.startsWith('change') ? `${a.value}%` : a.value;
+          const title = a.triggered_text ?? `${a.symbol}: ${String(a.label ?? '').toLowerCase()} ${level}`;
+          const isPrice = !a.field_label;
+          pushPopup({ id: `alert:${a.id}:${a.triggered_at}`, kind: 'alert', sticky: true, onAck: ack, title,
+            tone: /above|up/.test(a.kind) ? 'up' : /below|down/.test(a.kind) ? 'down' : 'neutral',
+            body: [a.note, a.triggered_price != null && isPrice ? `triggered at ${a.triggered_price}` : null].filter(Boolean).join(' · ') || 'Your alert',
+            action: isPrice ? { label: 'Chart', run: () => openChart(a.symbol, a.symbol) } : { label: 'Alerts', run: () => goMarkets('ALRT') } });
+          if ('Notification' in window && Notification.permission === 'granted') {
+            try { new Notification(title, { body: a.note || 'Macro Terminal alert' }); } catch { /* blocked */ }
+          }
+        }
+      } catch { /* optional */ }
+    };
+    poll();
+    const t = setInterval(poll, 60_000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
 }
 
 function useNewsWire() {
@@ -162,7 +194,7 @@ function useRegimeChanges() {
 const pct0 = (v?: number) => (v == null ? '—' : `${Math.round(v * 100)}%`);
 
 // ── UI ─────────────────────────────────────────────────────────────────────────────────────────────────────────
-const KIND_TAG: Record<PopupKind, string> = { news: 'NEWS', move: 'MOVE', eco: 'ECO', regime: 'REGIME' };
+const KIND_TAG: Record<PopupKind, string> = { alert: 'YOUR ALERT', news: 'NEWS', move: 'MOVE', eco: 'ECO', regime: 'REGIME' };
 
 function ago(t: number): string {
   const s = Math.round((Date.now() - t) / 1000);
@@ -174,30 +206,35 @@ function open(p: Popup) {
   else p.action?.run();
 }
 
+function close(p: Popup) {
+  p.onAck?.();
+  dismissPopup(p.id);
+}
+
 function Toast({ p }: { p: Popup }) {
   const [paused, setPaused] = useState(false);
   const left = useRef(LIFE_MS);
   useEffect(() => {
-    if (paused) return;
+    if (paused || p.sticky) return;
     const started = Date.now();
     const t = setTimeout(() => dismissPopup(p.id), left.current);
     return () => { clearTimeout(t); left.current -= Date.now() - started; };
-  }, [paused, p.id]);
+  }, [paused, p.id, p.sticky]);
   return (
     <div role="status" className={cn('popup-toast', `popup-${p.kind}`, p.tone && `popup-${p.tone}`)}
       onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
       <div className="popup-head">
         <span className="popup-tag">{KIND_TAG[p.kind]}</span>
         <span className="popup-time">{ago(p.at)}</span>
-        <button type="button" className="popup-close" aria-label="Dismiss" onClick={() => dismissPopup(p.id)}><X className="w-3 h-3" /></button>
+        <button type="button" className="popup-close" aria-label="Dismiss" onClick={() => close(p)}><X className="w-3 h-3" /></button>
       </div>
-      <button type="button" className="popup-body" onClick={() => { open(p); dismissPopup(p.id); }}
+      <button type="button" className="popup-body" onClick={() => { open(p); close(p); }}
         title={p.href ? 'Open the story' : p.action?.label}>
         <span className="popup-title">{p.title}</span>
         {p.body && <span className="popup-sub">{p.body}</span>}
         {(p.href || p.action) && <span className="popup-cta">{p.href ? 'Read ↗' : `${p.action!.label} →`}</span>}
       </button>
-      <span className="popup-life" style={{ animationDuration: `${LIFE_MS}ms`, animationPlayState: paused ? 'paused' : 'running' }} />
+      {!p.sticky && <span className="popup-life" style={{ animationDuration: `${LIFE_MS}ms`, animationPlayState: paused ? 'paused' : 'running' }} />}
     </div>
   );
 }
@@ -226,7 +263,7 @@ function HistoryPanel() {
         ))}
       </div>
       <div className="popup-panel-list">
-        {history.length === 0 && <div className="p-3 text-2xs text-text-tertiary">Nothing yet — headlines, big moves, releases and regime changes will appear here.</div>}
+        {history.length === 0 && <div className="p-3 text-2xs text-text-tertiary">Nothing yet — your alerts, headlines, big moves, releases and regime changes will appear here.</div>}
         {history.map((p) => (
           <button key={p.id} type="button" className={cn('popup-row', `popup-${p.kind}`)} onClick={() => open(p)}>
             <span className="popup-tag">{KIND_TAG[p.kind]}</span>
@@ -243,6 +280,7 @@ function HistoryPanel() {
 }
 
 export function LivePopups() {
+  useMyAlerts();
   useNewsWire();
   useMarketMoves();
   useEcoReleases();
