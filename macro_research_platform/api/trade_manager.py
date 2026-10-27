@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -247,6 +247,7 @@ async def manage(symbol: str, entry_price: float, entry_date: Optional[str], sid
         entry_verdict=(a.get("verdict") or {}).get("code"), timing_state=(a.get("timing") or {}).get("state"),
         momentum_score=(comps.get("momentum") or {}).get("score"),
         market_ok=(a.get("market") or {}).get("ok"), vix=(a.get("market") or {}).get("vix"),
+        market_name=(a.get("market") or {}).get("index"),
         revisions=raw.get("revisions"), earnings=raw.get("earnings"),
         news=ov["news"].get("items") if ov["news"].get("available") else None,
         insiders=ov["insiders"] if ov["insiders"].get("available") else None)
@@ -260,10 +261,12 @@ async def manage(symbol: str, entry_price: float, entry_date: Optional[str], sid
                       "initial stop; warnings tighten the stop to the chandelier level)."}
 
 
-async def manage_book() -> Dict[str, Any]:
-    """Advice for every position in the current fund's book (three at a time)."""
+async def manage_book(rows: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """Advice for every position in the current fund's book (three at a time), or for `rows` given as
+    {symbol, quantity, avg_cost, entry_date?}."""
     from api import portfolio_store
-    rows = await asyncio.to_thread(portfolio_store.list_positions, None)
+    if rows is None:
+        rows = await asyncio.to_thread(portfolio_store.list_positions, None)
     sem = asyncio.Semaphore(3)
 
     async def one(p):
@@ -279,3 +282,19 @@ async def manage_book() -> Dict[str, Any]:
     out.sort(key=lambda r: order.get(r.get("action"), 5))
     return {"positions": out, "count": len(out), "as_of": datetime.now(timezone.utc).isoformat(timespec="minutes"),
             "summary": {k: sum(1 for r in out if r.get("action") == k) for k in order}}
+
+
+async def manage_futu() -> Dict[str, Any]:
+    """The same advice for the positions in the user's Futu account (read through FutuOpenD; query only). Futu does not
+    report purchase dates, so each is taken as 90 days ago (flagged in the advice)."""
+    from api.providers import futu_provider as fp
+    data = await asyncio.to_thread(fp.positions)
+    rows = [{"symbol": p["symbol"], "quantity": p["quantity"], "avg_cost": p["average_cost"], "entry_date": None}
+            for p in data["positions"] if p.get("average_cost") and p.get("quantity")]
+    out = await manage_book(rows)
+    held = {p["symbol"]: p for p in data["positions"]}
+    for r in out["positions"]:                     # carry the account's own numbers next to the advice
+        h = held.get(r.get("symbol")) or {}
+        r["futu"] = {k: h.get(k) for k in ("quantity", "market_value", "unrealized_pl", "currency", "account")}
+    out["source"] = "Futu account (read-only) · " + ", ".join(f"{a['firm']} …{a['acc_id']}" for a in data["accounts"])
+    return out

@@ -158,11 +158,34 @@ def status() -> Dict[str, Any]:
         return {"connected": False, "reason": str(e)}
 
 
+_RIGHT_OF = {"HK": "hk_qot_right", "US": "us_qot_right", "SH": "cn_qot_right", "SZ": "cn_qot_right", "SG": "sg_qot_right"}
+_rights: Dict[str, Any] = {"at": 0.0, "v": {}}
+
+
+def entitlements() -> Dict[str, Any]:
+    """The account's quote rights by market (cached 10 minutes): LV1 / LV2 / LV3 / N/A."""
+    if time.time() - _rights["at"] < 600 and _rights["v"]:
+        return _rights["v"]
+    try:
+        from futu import RET_OK
+        ret, u = _quote_ctx().get_user_info()
+        if ret == RET_OK and u:
+            _rights.update(at=time.time(), v={k: v for k, v in u.items() if k.endswith("qot_right") or k.endswith("quota")})
+    except Exception:
+        pass
+    return _rights["v"]
+
+
 def snapshot(symbols: List[str]) -> List[Dict[str, Any]]:
     """Real-time snapshot (no subscription needed): last, change, bid/ask, volume, turnover for up to 400 codes."""
     codes = [c for c in (to_futu(s) for s in symbols) if c]
     if not codes:
         raise FutuUnavailable("None of these symbols trade on a market Futu quotes here (HK, US, SH, SZ, SG).")
+    # Skip markets the account has no quote right for: one A-share without the right fails the whole request otherwise
+    rights = entitlements()
+    codes = [c for c in codes if rights.get(_RIGHT_OF.get(c.split(".")[0], ""), "LV1") not in ("N/A", "NONE", None)]
+    if not codes:
+        raise FutuUnavailable("Your Futu account has no quote right for these markets.")
     df = _ok(*_quote_ctx().get_market_snapshot(codes[:400]), "snapshot")
     out = []
     for r in _records(df):
@@ -230,6 +253,9 @@ def broker_queue(symbol: str) -> Dict[str, Any]:
     code = to_futu(symbol) or ""
     if not code.startswith("HK."):
         raise FutuUnavailable("The broker queue is published for Hong Kong stocks only.")
+    if entitlements().get("hk_qot_right") not in ("LV2", "LV3", "SF"):
+        raise FutuUnavailable("The HKEX broker queue needs Hong Kong LV2 quotes; this Futu account has "
+                              f"{entitlements().get('hk_qot_right', 'LV1')}. (LV2 is available as a Futu quote card.)")
     _subscribe(code, [SubType.BROKER])
     ret, bid, ask = _quote_ctx().get_broker_queue(code)
     _ok(ret, bid, "broker queue")

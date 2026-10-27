@@ -457,16 +457,55 @@ def quote(symbol: str) -> Dict[str, Any]:
 
 
 def _realtime(s: str, i: Dict[str, Any]) -> Dict[str, Any]:
-    """Overlay Finnhub's real-time last price on US-listed stocks and ETFs during and after the session."""
+    """Overlay a real-time last price: Finnhub for US-listed stocks and ETFs; for other listings the user's own
+    connections when they are running — Futu for Hong Kong (LV1 real-time), IBKR TWS where the account's
+    market-data subscription is real-time. Never a delayed price in place of Yahoo's."""
     t = (i.get("quoteType") or "").upper()
-    if t not in ("EQUITY", "ETF") or (i.get("currency") or "USD") != "USD":
+    if t not in ("EQUITY", "ETF"):
         return {}
+    if (i.get("currency") or "USD") != "USD" or "." in s:
+        return _local_realtime(s)
     fh = _finnhub_quote(s)
     if not fh:
         return {}
     return {"price": fh["c"], "change": fh.get("d"), "change_pct": (fh.get("dp") or 0) / 100 if fh.get("dp") is not None else None,
             "day_high": fh.get("h") or None, "day_low": fh.get("l") or None, "open": fh.get("o") or None, "previous_close": fh.get("pc") or None,
             "quote_time": fh.get("t"), "delay_minutes": 0, "source": "Finnhub (real-time) · fundamentals Yahoo Finance"}
+
+
+def _local_realtime(s: str) -> Dict[str, Any]:
+    """Real-time price for a non-US listing from FutuOpenD (Hong Kong) or TWS (real-time subscriptions only)."""
+    def fetch():
+        if s.endswith(".HK"):
+            try:
+                from api.providers import futu_provider as fp
+                if fp.opend_running():
+                    r = fp.snapshot([s])
+                    if r and r[0].get("price"):
+                        q = r[0]
+                        return {"price": q["price"], "previous_close": q.get("previous_close"),
+                                "change": q["price"] - q["previous_close"] if q.get("previous_close") else None,
+                                "change_pct": q.get("change_pct"), "day_high": q.get("high"), "day_low": q.get("low"),
+                                "delay_minutes": 0, "source": "Futu (real-time) · fundamentals Yahoo Finance"}
+            except Exception as e:
+                logger.debug("[quote] futu %s: %s", s, e)
+        try:
+            from api.providers import ibkr_tws as it
+            if it.tws_running():
+                r = it.quotes([s])
+                if r and r[0].get("price") and not r[0].get("delayed"):
+                    q = r[0]
+                    return {"price": q["price"], "previous_close": q.get("previous_close"),
+                            "change": q["price"] - q["previous_close"] if q.get("previous_close") else None,
+                            "change_pct": q.get("change_pct"), "delay_minutes": 0,
+                            "source": "Interactive Brokers (real-time) · fundamentals Yahoo Finance"}
+        except Exception as e:
+            logger.debug("[quote] ibkr %s: %s", s, e)
+        return {}
+    try:
+        return _cached(f"rt_local:{s}", 5, fetch)
+    except Exception:
+        return {}
 
 
 def _quote_extras(i: Dict[str, Any], price: Optional[float], prev: Optional[float]) -> Dict[str, Any]:

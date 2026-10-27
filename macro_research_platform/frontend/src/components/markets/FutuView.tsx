@@ -14,7 +14,8 @@ export function FutuView({ symbol }: { symbol: string }) {
   const ticks = useJSON<any>(on ? `/api/v1/mkt/futu/ticks/${enc(symbol)}` : null, 5_000);
   const flow = useJSON<any>(on ? `/api/v1/mkt/futu/flow/${enc(symbol)}` : null, 30_000);
   const hk = symbol.toUpperCase().endsWith('.HK');
-  const brokers = useJSON<any>(on && hk ? `/api/v1/mkt/futu/brokers/${enc(symbol)}` : null, 5_000);
+  const hkLv2 = ['LV2', 'LV3', 'SF'].includes(st.data?.entitlements?.hk_qot_right);   // the broker queue needs HK LV2
+  const brokers = useJSON<any>(on && hk && hkLv2 ? `/api/v1/mkt/futu/brokers/${enc(symbol)}` : null, 5_000);
 
   if (st.loading && !st.data) return <Loading label="Checking FutuOpenD…" />;
   if (!on) return (
@@ -68,7 +69,8 @@ export function FutuView({ symbol }: { symbol: string }) {
             </div>)}
         </Panel>
       </div>
-      {hk && (
+      {hk && !hkLv2 && <div className="text-[10px] text-text-tertiary">HKEX broker queue: needs Hong Kong LV2 quotes — this account has {st.data?.entitlements?.hk_qot_right ?? 'LV1'}.</div>}
+      {hk && hkLv2 && (
         <Panel title="Broker queue (HKEX)">
           {brokers.error ? <ErrorBox msg={brokers.error} /> : !brokers.data ? <Loading /> : (
             <div className="grid grid-cols-2 gap-3 text-[11px]">

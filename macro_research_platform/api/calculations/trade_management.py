@@ -94,6 +94,7 @@ def manage_position(c: np.ndarray, h: np.ndarray, l: np.ndarray, entry_idx: int,
                     *, today: Optional[date] = None, target: Optional[float] = None,
                     entry_verdict: Optional[str] = None, timing_state: Optional[str] = None,
                     momentum_score: Optional[float] = None, market_ok: Optional[bool] = None, vix: Optional[float] = None,
+                    market_name: Optional[str] = None,
                     revisions: Optional[List[Dict[str, Any]]] = None, earnings: Optional[List[Dict[str, Any]]] = None,
                     news: Optional[List[Dict[str, Any]]] = None, insiders: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """What to do with an open position.
@@ -156,7 +157,11 @@ def manage_position(c: np.ndarray, h: np.ndarray, l: np.ndarray, entry_idx: int,
         signals.append(_sig("vol_spike", "TRIM", f"20-day volatility {v20:.0%} is {v20 / v252:.1f}× its one-year median {v252:.0%}: cut size to keep risk constant.",
                             "Moreira & Muir (2017)"))
     if market_ok is False or (vix is not None and vix >= 30):
-        signals.append(_sig("market_risk_off", "TIGHTEN", f"Market regime risk-off ({'VIX ' + format(vix, '.0f') if vix is not None else 'index below its 200-day'}): momentum positions crash in panics.",
+        # name the actual trigger: the stock's home index below its 200-day average, and / or VIX at 30 or above
+        why = [f"{market_name or 'the home index'} below its 200-day average"] if market_ok is False else []
+        if vix is not None and vix >= 30:
+            why.append(f"VIX {vix:.0f}")
+        signals.append(_sig("market_risk_off", "TIGHTEN", f"Market regime risk-off ({' and '.join(why)}): momentum positions crash in panics.",
                             "Daniel & Moskowitz (2016)"))
     if target and ((side > 0 and px >= target) or (side < 0 and px <= target)):
         signals.append(_sig("target_reached", "TIGHTEN", f"At the target {target:,.2f}: tighten the stop and let it run — the fixed-target "

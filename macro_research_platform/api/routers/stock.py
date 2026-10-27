@@ -213,8 +213,11 @@ async def analyze(sym: str, with_history: bool = True) -> Dict[str, Any]:
             listing = cls["country"]
             cls = {**classify(sym, home), "asset_type": "Equity"}
             cls["listing_country"] = listing
-    bench = benchmark_of(cls["country"]) if cls.get("country") else "ACWI"
-    bench_name = "MSCI ACWI" if bench == "ACWI" else (COUNTRIES.get(cls["country"], {}).get("name", "") + " index")
+    # Regime benchmark: the home market — except Chinese companies listed in Hong Kong (H-shares, red chips), which
+    # are Hang Seng constituents and trade with Hong Kong, not with the onshore A-share market
+    bench_country = cls.get("listing_country") if cls.get("country") == "CN" and cls.get("listing_country") == "HK" else cls.get("country")
+    bench = benchmark_of(bench_country) if bench_country else "ACWI"
+    bench_name = "MSCI ACWI" if bench == "ACWI" else (COUNTRIES.get(bench_country, {}).get("name", "") + " index")
     if bench == "^GSPC":
         bench_name = "S&P 500"
     quote_ccy = info.get("currency") or cls["home_currency"]

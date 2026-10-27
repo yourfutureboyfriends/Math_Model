@@ -173,6 +173,8 @@ function Evidence() {
 export function PositionManagerSection() {
   const [book, setBook] = useState<any>(null);
   const [bookBusy, setBookBusy] = useState(false);
+  const [src, setSrc] = useState<'fund' | 'futu'>('fund');      // the fund's book, or the Futu account (read-only)
+  const [bookErr, setBookErr] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [form, setForm] = useState({ symbol: '', entry_price: '', entry_date: '', side: 'long', quantity: '' });
   const [mode, setMode] = useState<'plan' | 'held'>('plan');
@@ -182,10 +184,15 @@ export function PositionManagerSection() {
   const [err, setErr] = useState<string | null>(null);
 
   const loadBook = useCallback(async () => {
-    setBookBusy(true);
-    try { setBook(await (await fetch('/api/v1/stock/positions/manage')).json()); } catch { setBook({ positions: [] }); }
+    setBookBusy(true); setBookErr(null);
+    try {
+      const r = await fetch(src === 'futu' ? '/api/v1/futu/positions/manage' : '/api/v1/stock/positions/manage');
+      const j = await r.json();
+      if (!r.ok) { setBookErr(typeof j.detail === 'string' ? j.detail : `HTTP ${r.status}`); setBook({ positions: [] }); }
+      else setBook(j);
+    } catch { setBook({ positions: [] }); }
     finally { setBookBusy(false); }
-  }, []);
+  }, [src]);
   useEffect(() => { loadBook(); }, [loadBook]);
 
   const submit = async (e: React.FormEvent) => {
@@ -227,10 +234,17 @@ export function PositionManagerSection() {
         <div className="p-3 bg-surface-1 border border-border">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-text-primary">The book</span>
+            <div className="flex border border-border" role="tablist" aria-label="Positions source">
+              {([['fund', 'Fund book'], ['futu', 'Futu account']] as const).map(([k, label]) => (
+                <button key={k} type="button" role="tab" aria-selected={src === k} onClick={() => { setSrc(k); setOpen(null); }}
+                  className={cn('px-2 py-0.5 text-[10.5px]', src === k ? 'bg-bloomberg text-bg' : 'text-text-secondary')}>{label}</button>))}
+            </div>
             {bookBusy && <Loader2 className="w-3 h-3 animate-spin text-text-tertiary" />}
             <button type="button" onClick={loadBook} className="ml-auto text-[10px] text-text-tertiary hover:text-bloomberg">Refresh</button>
           </div>
-          {!bookBusy && rows.length === 0 && <div className="text-[11px] text-text-tertiary">No positions in this fund's book yet — check any position below.</div>}
+          {src === 'futu' && book?.source && <div className="text-[10px] text-text-tertiary mb-1">{book.source} · read-only — nothing here can trade. Futu does not report purchase dates, so each is taken as 90 days ago.</div>}
+          {bookErr && <div className="text-[11px] text-amber">{bookErr}</div>}
+          {!bookBusy && !bookErr && rows.length === 0 && <div className="text-[11px] text-text-tertiary">{src === 'futu' ? 'No positions in the Futu account.' : "No positions in this fund's book yet — check any position below."}</div>}
           {rows.length > 0 && (
             <table className="w-full text-[11px]">
               <thead><tr className="text-[10px] text-text-tertiary text-left"><th className="font-normal pb-1">Stock</th><th className="font-normal">Action</th>

@@ -169,3 +169,14 @@ def test_entry_check_held_without_a_date_gets_no_fill_estimate(monkeypatch):
     px, _, asyncio = _fake_stock(monkeypatch)
     y = asyncio.run(entry_check("test", price=px - 2, held=True))["your_price"]
     assert y["fill_probability"] is None and any("date you bought" in r for r in y["reasons"])
+
+
+def test_risk_off_message_names_the_actual_trigger():
+    c, h, l = _path([0.001 + 0.004 * np.sin(i / 7) for i in range(320)])
+    r = tm.manage_position(c, h, l, entry_idx=280, entry_price=float(c[280]), side=1, today=date(2026, 10, 1),
+                           market_ok=False, vix=18.0, market_name="Hang Seng index")
+    ev = next(s["evidence"] for s in r["signals"] if s["rule"] == "market_risk_off")
+    assert "Hang Seng index below its 200-day average" in ev and "VIX" not in ev
+    r = tm.manage_position(c, h, l, entry_idx=280, entry_price=float(c[280]), side=1, today=date(2026, 10, 1),
+                           market_ok=True, vix=34.0, market_name="S&P 500")
+    assert "VIX 34" in next(s["evidence"] for s in r["signals"] if s["rule"] == "market_risk_off")

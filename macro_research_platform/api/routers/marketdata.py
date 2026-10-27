@@ -1139,6 +1139,39 @@ async def _futu(fn, *a):
         raise HTTPException(504, "FutuOpenD did not answer within 20 s.")
 
 
+# ── Interactive Brokers TWS (market data only; needs TWS / IB Gateway running with the API enabled) ────────────────
+async def _ibkr(fn, *a, timeout: float = 45):
+    from api.providers import ibkr_tws as it
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(fn, *a), timeout)
+    except it.IbkrUnavailable as e:
+        raise HTTPException(503, str(e))
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "TWS did not answer in time.")
+
+
+@router.get("/api/v1/mkt/ibkr/status")
+async def mkt_ibkr_status():
+    """Whether TWS / IB Gateway is reachable through the socket API (read-only)."""
+    from api.providers import ibkr_tws as it
+    return await asyncio.to_thread(it.status)
+
+
+@router.get("/api/v1/mkt/ibkr/quotes")
+async def mkt_ibkr_quotes(symbols: str = Query(..., min_length=1)):
+    """IBKR quotes for comma-separated Yahoo-style symbols: real-time where subscribed, delayed otherwise (flagged)."""
+    from api.providers import ibkr_tws as it
+    return {"rows": await _ibkr(it.quotes, symbols.split(",")), "source": "Interactive Brokers (TWS API)"}
+
+
+@router.get("/api/v1/mkt/ibkr/history/{symbol}")
+async def mkt_ibkr_history(symbol: str, duration: str = Query("1 Y", pattern=r"^\d{1,3} [DWMY]$"),
+                           bar: str = Query("1 day", pattern=r"^(1 day|1 week|1 hour|30 mins|5 mins)$")):
+    """Historical bars from IBKR for a stock listing."""
+    from api.providers import ibkr_tws as it
+    return await _ibkr(it.history, symbol, duration, bar, timeout=90)
+
+
 @router.get("/api/v1/mkt/futu/status")
 async def mkt_futu_status():
     """Whether FutuOpenD is running and logged in, and the account's quote entitlements."""
@@ -1161,6 +1194,17 @@ async def mkt_futu_detail(kind: str, symbol: str):
     if not fn:
         raise HTTPException(404, "kind must be book, ticks, flow or brokers")
     return await _futu(fn, symbol)
+
+
+@router.get("/api/v1/futu/positions/manage")
+async def futu_positions_manage():
+    """Hold / tighten / trim / exit / add advice for each position in the Futu account (read-only)."""
+    from api import trade_manager
+    from api.providers import futu_provider as fp
+    try:
+        return await trade_manager.manage_futu()
+    except fp.FutuUnavailable as e:
+        raise HTTPException(503, str(e))
 
 
 @router.get("/api/v1/futu/positions")

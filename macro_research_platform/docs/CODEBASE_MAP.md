@@ -285,6 +285,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `factor_library.py` | Academic factor returns — Kenneth French Data Library (free, Dartmouth). |
 | `fred_provider.py` | FRED Data Provider — Raw economic data access from Federal Reserve Economic Data. |
 | `futu_provider.py` | Futu OpenAPI — read-only market data and holdings through the FutuOpenD gateway running on this computer. |
+| `ibkr_tws.py` | Interactive Brokers TWS / IB Gateway — a market-data source (read-only) through the socket API on this computer. |
 | `massive.py` | Massive (formerly Polygon.io) — a local store of daily bars for every US-listed stock. |
 | `news_provider.py` | News Provider — Raw news and sentiment data access. |
 | `registry.py` | Provider-agnostic data access layer (Universal Data Layer, Phase 1). |
