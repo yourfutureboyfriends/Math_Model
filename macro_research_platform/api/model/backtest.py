@@ -9,6 +9,10 @@ equal weight, and inverse-volatility risk parity across the same available asset
 
 Forecast skill: the growth/inflation direction probabilities are scored against the
 realised regime with the Brier score and the Brier skill score vs the training base rate.
+
+Timeline (the "time machine"): for every decision month, what the model knew and decided then — its growth and
+inflation factors as estimated with data up to that month (real-time, not today's revised history), the regime
+probabilities, the tactical weights — and, in hindsight, the regime that followed and the next 12 months' returns.
 """
 from __future__ import annotations
 
@@ -61,7 +65,7 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
     """
     months = list(rets.index)
     first = pd.Timestamp(start) if start else None
-    rows, weights_log, fc = [], [], []
+    rows, weights_log, fc, timeline = [], [], [], []
     w_prev = pd.Series(dtype=float)
     ws_prev = pd.Series(dtype=float)
     for t, t_next in zip(months[:-1], months[1:]):
@@ -99,6 +103,13 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
                      "top_regime": max(d.regime_probs, key=d.regime_probs.get)})
         weights_log.append({"month": t_next.strftime("%Y-%m"), **{a: round(float(x), 4) for a, x in w.items()},
                             "Cash": round(d.cash, 4)})
+        timeline.append({"decided": t.strftime("%Y-%m"), "month": t_next.strftime("%Y-%m"),
+                         "growth": round(float(d.growth.iloc[-1]), 3), "inflation": round(float(d.inflation.iloc[-1]), 3),
+                         "probs": {q: round(v, 3) for q, v in d.regime_probs.items()},
+                         "top": max(d.regime_probs, key=d.regime_probs.get),
+                         "p_g": round(d.p_growth_up["probability"], 3), "p_i": round(d.p_inflation_up["probability"], 3),
+                         "weights": {a: round(float(x), 3) for a, x in w.items() if abs(x) >= 0.0005},
+                         "cash": round(d.cash, 3)})
         fc.append({"month": t_next, "p_g": d.p_growth_up["probability"], "base_g": d.p_growth_up["base_rate"],
                    "p_i": d.p_inflation_up["probability"], "base_i": d.p_inflation_up["base_rate"],
                    "probs": d.regime_probs})
@@ -130,6 +141,18 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
                      "inflation_direction": _brier("p_i", "base_i", yi),
                      "top_regime_hit_rate": round(float(hit), 3), "months_scored": len(f)}
 
+    # Timeline, in hindsight: the regime that was realised in each allocated month, and the next 12 months' returns
+    realised = realized_regimes(last.growth, last.inflation, p.momentum_months) if last is not None else pd.Series(dtype=object)
+    fwd = {}
+    for c in ("model", "strategic", "sixty_forty"):
+        s_ = df[c]
+        fwd[c] = [float((1 + s_.iloc[i:i + 12]).prod() - 1) if i + 12 <= len(s_) and s_.iloc[i:i + 12].notna().all() else None
+                  for i in range(len(s_))]
+    for i, row in enumerate(timeline):
+        lab = realised.get(pd.Timestamp(row["month"] + "-01")) if len(realised) else None
+        row["realised"] = lab if isinstance(lab, str) else None
+        row["next_12m"] = {k: (round(v[i], 4) if v[i] is not None else None) for k, v in fwd.items()}
+
     # Growth of $1 per strategy from its own first month: a benchmark whose assets start later
     # (60/40 needs both legs) is blank before then, not a flat line of zero returns.
     cols = ["model", "strategic", "sixty_forty", "risk_parity", "equal_weight"]
@@ -156,6 +179,7 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
         "equity_curve": [{"month": m.strftime("%Y-%m"), **{k: (round(float(v), 4) if pd.notna(v) else None) for k, v in row.items()}}
                          for m, row in curve.iterrows()],
         "weights": weights_log[-60:],
+        "timeline": timeline,
         "returns_are": returns_are,
         "sixty_forty": {"equity": benchmark[0], "bonds": benchmark[1]},
     }

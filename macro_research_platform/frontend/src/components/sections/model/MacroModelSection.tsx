@@ -3,16 +3,18 @@
  *   United States (FRED; the only model with a tradeable sleeve), Euro area (Eurostat + ECB, in EUR) and
  *   Rest of the world (OECD leading indicators and unemployment + BIS CPI for nine economies, in USD).
  *   World strip (every economy's regime) → 1 Economic state → 2 Regime probabilities → 3 Expected returns &
- *   portfolio → 4 Walk-forward backtest → 5 Orders (US only; staged into the four-eyes workflow).
+ *   portfolio → 4 Walk-forward backtest → 5 Orders (US only; staged into the four-eyes workflow) → 6 Time machine
+ *   (scrub or play through what the model said at each month, with hindsight).
  * Parameters can be changed and the model re-run (quant / PM); every run is recorded with its economy.
  * Reads /api/v1/model?economy=, /api/v1/model/world, /api/v1/model/params, /api/v1/model/run, /api/v1/model/orders/*.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Cpu, RefreshCw, Settings2, Send } from 'lucide-react';
+import { Cpu, History, RefreshCw, Settings2, Send } from 'lucide-react';
 import { LineChart } from '@/components/ui/LineChart';
 import { useAuth } from '@/context/AuthContext';
 import { useMacroStore } from '@/store/macroStore';
 import { pct } from '@/lib/format';
+import { TimeMachine } from './TimeMachine';
 
 // Categorical slots validated on the dark surface (#0d1117): fixed order, never cycled.
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500'];
@@ -434,6 +436,12 @@ export function MacroModelSection() {
                 {(warn > 0 || block > 0) && <span className={block ? 'text-red' : 'text-amber'}> Pre-trade: {block} block, {warn} need risk sign-off.</span>}</div>;
             })()}
           </Step>
+          )}
+
+          {bt?.available && (
+            <Step n={6} title="Time machine — what the model said then" right={<History className="w-3.5 h-3.5 text-text-tertiary" />}>
+              <TimeMachine timeline={bt.timeline} sixtyForty={bt.sixty_forty} />
+            </Step>
           )}
         </div>
       )}
