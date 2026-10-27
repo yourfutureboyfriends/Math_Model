@@ -23,7 +23,7 @@ export function FundSwitcher() {
            title={f ? `${f.name} · base ${f.base_currency ?? '—'} · benchmark ${f.benchmark ?? '—'}` : 'Fund'}>
       {f?.logo_masks ? <BrandShape variant="mark_mask" height={12} className="text-bloomberg" /> : <Briefcase className="w-3 h-3 text-bloomberg" />}
       <select aria-label="Fund" value={cur} onChange={(e) => switchFund(e.target.value)}
-              className="bg-transparent font-mono text-bloomberg outline-none cursor-pointer" style={{ fontSize: 10 }}>
+              className="bg-transparent font-mono text-bloomberg outline-none cursor-pointer max-w-[8.5rem] xl:max-w-[11rem] min-[1800px]:max-w-none truncate" style={{ fontSize: 10 }}>
         {funds.map((x) => <option key={x.id} value={x.id}>{x.name}{x.base_currency ? ` · ${x.base_currency}` : ''}</option>)}
       </select>
     </label>

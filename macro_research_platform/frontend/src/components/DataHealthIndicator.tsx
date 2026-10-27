@@ -95,7 +95,7 @@ export function DataHealthIndicator(): React.ReactElement {
         title="Upstream data-feed health"
       >
         <span className={`inline-block w-2 h-2 rounded-full ${dotColor(overall)} ${overall === 'degraded' || overall === 'down' ? 'animate-pulse' : ''}`} />
-        <span className="text-2xs text-text-tertiary uppercase tracking-wider">Feeds</span>
+        <span className="hidden min-[1800px]:inline text-2xs text-text-tertiary uppercase tracking-wider">Feeds</span>
         <span className={`text-xs font-mono font-bold ${textColor(errored ? 'down' : data?.overall ?? 'loading')}`}>{label}</span>
       </button>
 

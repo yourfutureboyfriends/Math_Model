@@ -196,7 +196,7 @@ function ThemeToggle() {
       title={`Theme: ${label}. Auto = light ${String(DAY_START).padStart(2, '0')}:00–${DAY_END}:00 your time, dark otherwise. Click to cycle Auto → Light → Dark.`}
       className="h-6 px-1.5 inline-flex items-center gap-1 border border-border text-[10px] font-mono uppercase text-text-tertiary hover:text-text-primary shrink-0">
       <span aria-hidden="true">{theme === 'light' ? '☀' : '☾'}</span>
-      <span className="hidden md:inline">{setting === 'auto' ? 'Auto' : setting}</span>
+      <span className="hidden min-[1800px]:inline">{setting === 'auto' ? 'Auto' : setting}</span>
     </button>
   );
 }
@@ -332,7 +332,7 @@ export function Topbar({
         {/* Branding + hub mode switch */}
         <div className="flex items-center gap-2 mr-2 shrink-0">
           <span className="font-mono text-bloomberg font-bold tracking-tight" style={{ fontSize: 13 }}>▸</span>
-          <span className="hidden sm:inline font-mono text-text-primary font-bold tracking-tight" style={{ fontSize: 12, letterSpacing: '0.06em' }}>
+          <span className="hidden min-[1800px]:inline font-mono text-text-primary font-bold tracking-tight" style={{ fontSize: 12, letterSpacing: '0.06em' }}>
             TERMINAL
           </span>
           <ModeSwitch />
@@ -345,7 +345,7 @@ export function Topbar({
         <div className="topbar-divider" />
 
         {/* Bloomberg function keys */}
-        <div className="hidden xl:flex items-center gap-1">
+        <div className="hidden min-[2700px]:flex items-center gap-1">
           {FN_KEYS.map((k) => (
             <button key={k.n} className="fn-key" onClick={() => navigateTo(k.section)}>
               <span className="fn-key-num">{k.n}</span>
@@ -354,10 +354,10 @@ export function Topbar({
           ))}
         </div>
 
-        <div className="hidden xl:block topbar-divider" />
+        <div className="hidden min-[2700px]:block topbar-divider" />
 
         {/* Regional sessions (follow the sun) */}
-        <div className="hidden lg:flex items-center gap-1.5">
+        <div className="hidden min-[1800px]:flex items-center gap-1.5 shrink-0">
           {sessions.map((r) => (
             <span key={r.label} className={cn('session-badge', r.state)} title={`${r.title}\n${r.detail}`}>
               <span className={cn('w-1.5 h-1.5 rounded-full shrink-0',
@@ -367,7 +367,7 @@ export function Topbar({
           ))}
         </div>
 
-        <div className="hidden lg:block topbar-divider" />
+        <div className="hidden min-[1800px]:block topbar-divider" />
 
         {/* Data status */}
         <div className="flex items-center gap-1.5 shrink-0">
@@ -376,16 +376,16 @@ export function Topbar({
             {statusLabel}
           </span>
           {meta.latestDate && (
-            <span className="hidden md:inline font-mono text-text-tertiary" style={{ fontSize: 10 }}>
+            <span className="hidden xl:inline font-mono text-text-tertiary" style={{ fontSize: 10 }}>
               {meta.latestDate}
             </span>
           )}
         </div>
 
-        <div className="topbar-divider" />
+        <div className="hidden min-[2000px]:block topbar-divider" />
 
-        {/* Clock */}
-        <div className="hidden md:flex items-center gap-2 px-2 border border-border bg-surface-1 shrink-0"
+        {/* Clock (the status bar keeps world clocks on smaller screens) */}
+        <div className="hidden min-[2000px]:flex items-center gap-2 px-2 border border-border bg-surface-1 shrink-0"
              style={{ height: 22 }}>
           <span className="w-1 h-1 rounded-full bg-bloomberg animate-pulse shrink-0" />
           <span className="font-mono text-text-secondary" style={{ fontSize: 10 }}>
@@ -397,11 +397,11 @@ export function Topbar({
         </div>
 
         {/* Mode badge */}
-        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+        <div className="ml-auto flex items-center gap-1.5 shrink-0 pl-2">
           <FundSwitcher />
           <DataIntegrityIndicator />
           <DataHealthIndicator />
-          <span className="font-mono text-bloomberg bg-bloomberg-muted border border-bloomberg-border px-2 py-0.5"
+          <span className="hidden min-[1800px]:inline font-mono text-bloomberg bg-bloomberg-muted border border-bloomberg-border px-2 py-0.5"
                 style={{ fontSize: 10, letterSpacing: '0.08em' }}>
             {mode}
           </span>
@@ -434,7 +434,7 @@ export function Topbar({
           <button
             onClick={handleExportPDF}
             disabled={downloading}
-            className="icon-btn"
+            className="icon-btn hidden xl:inline-flex"
             style={{ width: 26, height: 26 }}
             title="Export PDF"
           >
@@ -443,7 +443,7 @@ export function Topbar({
 
           <button
             onClick={onModelInfo}
-            className="icon-btn"
+            className="icon-btn hidden xl:inline-flex"
             style={{ width: 26, height: 26 }}
             title="Model Info & Methodology"
           >
@@ -471,7 +471,7 @@ export function Topbar({
             title={isCompact ? 'Comfortable mode' : 'Compact mode'}
           >
             <LayoutGrid className="w-3 h-3" />
-            {isCompact ? 'COMPACT' : 'COZY'}
+            <span className="hidden min-[1800px]:inline">{isCompact ? 'COMPACT' : 'COZY'}</span>
           </button>
 
           <button

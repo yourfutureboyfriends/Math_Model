@@ -36,7 +36,7 @@ export function DataIntegrityIndicator() {
         style={{ fontSize: 10, letterSpacing: '0.06em' }}>
         <span className={`inline-block w-1.5 h-1.5 rounded-full ${dot}`} />
         <ShieldCheck className="w-3 h-3" />
-        INTEGRITY {pct == null ? '—' : `${pct}%`}
+        <span className="hidden min-[1800px]:inline">INTEGRITY</span> {pct == null ? '—' : `${pct}%`}
       </span>
 
       {open && known.length > 0 && (

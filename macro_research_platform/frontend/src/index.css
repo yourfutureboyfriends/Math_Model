@@ -1590,9 +1590,12 @@ button.ticker-item { background: transparent; border-top: 0; border-bottom: 0; b
 @media print { .hover-card { display: none !important; } }
 
 /* ─── <GO> command line in the Research topbar (components/layout/GlobalCommand) ─ */
-.gcmd { display: flex; align-items: center; gap: 6px; height: 24px; width: 240px; padding: 0 6px 0 0; margin-left: 6px;
+.gcmd { display: flex; align-items: center; gap: 6px; height: 24px; width: clamp(150px, 16vw, 240px); padding: 0 6px 0 0; margin-left: 6px;
   border: 1px solid var(--border); background: var(--bg); transition: border-color 120ms, width 160ms; }
-.gcmd:focus-within { border-color: rgb(var(--c-bloomberg)); width: 300px; }
+.gcmd:focus-within { border-color: rgb(var(--c-bloomberg)); width: clamp(220px, 22vw, 300px); }
+/* grid and flex children may shrink below their content: a wide chart or table scrolls inside its panel instead of
+   pushing the panel past the screen edge */
+.terminal-section .grid > * { min-width: 0; }
 .gcmd-go { align-self: stretch; display: flex; align-items: center; padding: 0 6px; font-family: var(--font-data); font-size: 10px;
   font-weight: 700; letter-spacing: 0.08em; color: var(--bg); background: rgb(var(--c-bloomberg)); }
 .gcmd input { flex: 1; min-width: 0; background: transparent; outline: none; font-family: var(--font-data); font-size: 11px;
