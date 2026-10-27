@@ -45,7 +45,7 @@ const Quote = memo(function Quote({ r }: { r: PulseRow }) {
   const c = fmtPulseChange(r);
   return (
     <button type="button" className={cn('tape-quote', flash)} onClick={() => openChart(r.symbol, r.name)}
-      title={`${r.name} (${r.symbol})${r.date ? ` · ${r.date}` : ''} — click for the chart`}>
+      data-symbol={r.symbol} aria-label={`${r.name} (${r.symbol}) — open the chart`}>
       <span className="tape-sym">{SHORT[r.symbol] ?? r.symbol}</span>
       <span className="tape-px">{fmtPulsePrice(r)}</span>
       {c.text && (

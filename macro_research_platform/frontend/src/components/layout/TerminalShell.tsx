@@ -11,6 +11,7 @@ import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
 import { ModelInfoPanel } from './ModelInfoPanel';
 import { BottomDock, DOCK_HEIGHT, useTapeVisible } from './StatusBar';
 import { LivePopups } from './LivePopups';
+import { HoverCards } from './HoverCard';
 import { BlackoutBanner } from '../EconomicCalendar';
 import { cn } from '@/lib/utils';
 import { revealPanel } from '@/lib/focusMode';
@@ -361,6 +362,9 @@ export function TerminalShell({
 
       {/* Live pop-ups: headlines, big moves, economic releases, regime changes */}
       <LivePopups />
+
+      {/* Security hover cards: quote, sparkline, position and actions for any ticker under the pointer */}
+      <HoverCards />
 
       {/* Detail Panel */}
       <DetailPanel

@@ -316,7 +316,7 @@ export function MacroModelSection() {
                     {assetRows.map((r) => (
                       <tr key={r.asset} className="border-t border-border-subtle">
                         <td className="py-0.5 font-sans text-text-secondary">{r.asset}</td>
-                        <td className="text-text-tertiary">{r.etf}</td>
+                        <td className="text-text-tertiary" data-symbol={r.etf}>{r.etf}</td>
                         <td className="text-right text-text-primary">{pct(r.w)}</td>
                         <td className="text-right text-text-secondary">{pct(r.rc)}</td>
                         <td className="text-right text-text-secondary">{pct(r.er)}</td>

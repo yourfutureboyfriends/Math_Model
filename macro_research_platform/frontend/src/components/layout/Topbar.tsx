@@ -77,7 +77,7 @@ function StripQuote({ r }: { r: PulseRow }) {
   const c = fmtPulseChange(r);
   return (
     <button type="button" className={cn('ticker-item', flash)} onClick={() => openChart(r.symbol, r.name)}
-      title={`${r.name} (${r.symbol})${r.date ? ` · session ${r.date}` : ''} — click for the chart`}>
+      data-symbol={r.symbol} aria-label={`${r.name} (${r.symbol}) — open the chart`}>
       <span className="ticker-sym">{SHORT[r.symbol] ?? r.symbol}</span>
       <span className="ticker-val">{fmtPulsePrice(r)}</span>
       {c.text && <span className={cn('ticker-chg', c.dir > 0 ? 'text-green' : c.dir < 0 ? 'text-red' : 'text-text-tertiary')}>

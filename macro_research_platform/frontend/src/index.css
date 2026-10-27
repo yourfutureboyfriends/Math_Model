@@ -1578,6 +1578,17 @@ button.ticker-item { background: transparent; border-top: 0; border-bottom: 0; b
 @media (prefers-reduced-motion: reduce) { .popup-toast, .popup-life { animation: none; } }
 @media print { .popup-stack, .popup-panel { display: none !important; } }
 
+/* ─── Security hover cards (components/layout/HoverCard) ─────────────────────── */
+.hover-card { position: fixed; z-index: 70; padding: 10px 12px; background: var(--surface-1); border: 1px solid var(--border-strong);
+  border-top: 2px solid rgb(var(--c-bloomberg)); box-shadow: 0 12px 34px rgb(0 0 0 / 0.35); animation: hover-card-in 120ms ease-out; }
+@keyframes hover-card-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.hover-card-btn { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; font-size: 10.5px; color: var(--text-secondary);
+  border: 1px solid var(--border); background: var(--surface-2); }
+.hover-card-btn:hover { color: rgb(var(--c-bloomberg)); border-color: rgb(var(--c-bloomberg) / 0.6); }
+[data-symbol] { cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .hover-card { animation: none; } }
+@media print { .hover-card { display: none !important; } }
+
 /* ═══════════════════════════════════════════════════════════════════════════════
    PRINT STYLES
    ═══════════════════════════════════════════════════════════════════════════════ */
