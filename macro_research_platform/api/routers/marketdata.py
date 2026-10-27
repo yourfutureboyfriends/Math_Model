@@ -1128,6 +1128,48 @@ class JournalIn(BaseModel):
     status: Optional[str] = None
 
 
+# ── Futu OpenAPI (read-only; needs FutuOpenD running and logged in on this computer) ──────────────────────────────
+async def _futu(fn, *a):
+    from api.providers import futu_provider as fp
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(fn, *a), 20)
+    except fp.FutuUnavailable as e:
+        raise HTTPException(503, str(e))
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "FutuOpenD did not answer within 20 s.")
+
+
+@router.get("/api/v1/mkt/futu/status")
+async def mkt_futu_status():
+    """Whether FutuOpenD is running and logged in, and the account's quote entitlements."""
+    from api.providers import futu_provider as fp
+    return await asyncio.to_thread(fp.status)
+
+
+@router.get("/api/v1/mkt/futu/snapshot")
+async def mkt_futu_snapshot(symbols: str = Query(..., min_length=1)):
+    """Real-time snapshots (HK, US, SH, SZ, SG) for comma-separated Yahoo-style symbols."""
+    from api.providers import futu_provider as fp
+    return {"rows": await _futu(fp.snapshot, symbols.split(",")), "source": "Futu OpenAPI"}
+
+
+@router.get("/api/v1/mkt/futu/{kind}/{symbol}")
+async def mkt_futu_detail(kind: str, symbol: str):
+    """Order book, ticks, capital flow or (Hong Kong) broker queue for one symbol."""
+    from api.providers import futu_provider as fp
+    fn = {"book": fp.order_book, "ticks": fp.ticks, "flow": fp.capital_flow, "brokers": fp.broker_queue}.get(kind)
+    if not fn:
+        raise HTTPException(404, "kind must be book, ticks, flow or brokers")
+    return await _futu(fn, symbol)
+
+
+@router.get("/api/v1/futu/positions")
+async def futu_positions():
+    """Futu account positions — query only; trading is never unlocked and no order is ever sent."""
+    from api.providers import futu_provider as fp
+    return await _futu(fp.positions)
+
+
 @router.get("/api/v1/mkt/quotes")
 async def mkt_quotes(symbols: str = Query(..., min_length=1)):
     """Quotes for several symbols in one call (watchlists and tiles)."""

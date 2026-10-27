@@ -11,6 +11,7 @@ import { FunctionMenu, HelpPanel, KeyBar, NewsCrawl, TitleBar, UpDownToggle, Wor
 import { QuoteWorkstation, WatchColumn } from '@/components/markets/QuoteWorkstation';
 import { CorrView, FrdView, OsaView, RrgView, SeasView } from '@/components/markets/AnalyticsViews';
 import { EcoGlobalView, EcstView, SiView, SplcView } from '@/components/markets/DataViews';
+import { FutuView } from '@/components/markets/FutuView';
 import { FlyView, QuakeView, ShipView } from '@/components/markets/TrackingViews';
 import { FlowView } from '@/components/markets/FlowView';
 import { CotView, EdgeBoard, NowView } from '@/components/markets/EdgeViews';
@@ -128,6 +129,7 @@ function SecurityBody({ code, symbol, d, isFund, onGo }: { code: string; symbol:
         {code === 'VAL' && <ValuationHub symbol={symbol} onGo={onGo} />}
         {code === 'CF' && <CfView symbol={symbol} />}
         {code === 'TECH' && <TechView symbol={symbol} />}
+        {code === 'FUTU' && <FutuView symbol={symbol} />}
         {code === 'OVDV' && <OvdvView symbol={symbol} />}
         {code === 'CACS' && <CacsView symbol={symbol} />}
         {code === 'MGMT' && <MgmtView symbol={symbol} />}

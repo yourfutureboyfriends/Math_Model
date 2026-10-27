@@ -225,6 +225,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `research.py` | Research functions built on free official data: |
 | `security.py` | Single-security functions for the Markets mode (Bloomberg mnemonics in brackets): |
 | `shorts.py` | SI — short selling, free sources: · Official short interest (exchange-reported twice a month): shares short, % of float, days to cover, change vs the prior report — Yahoo Finance. · Daily short-sale volume (FINRA Reg… |
+| `shorts_intl.py` | SI outside the US — short positions from each market's regulator, all free and official: · UK (FCA): aggregated net short positions (ANSP) per issuer, % of issued shares — the current file and its history. Since the… |
 | `supply.py` | SPLC — supply-chain and competitor links from SEC filings (free). |
 | `toolkit.py` | Analysis tools on free data: |
 | `tracking.py` | Physical-economy trackers, free sources: |
@@ -283,6 +284,8 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `dbnomics.py` | DBnomics — one free API (no key) over 90+ official statistical sources: IMF, OECD, ECB, Eurostat, BIS, World Bank, ILO, national statistics offices and central banks (Cepremap). |
 | `factor_library.py` | Academic factor returns — Kenneth French Data Library (free, Dartmouth). |
 | `fred_provider.py` | FRED Data Provider — Raw economic data access from Federal Reserve Economic Data. |
+| `futu_provider.py` | Futu OpenAPI — read-only market data and holdings through the FutuOpenD gateway running on this computer. |
+| `massive.py` | Massive (formerly Polygon.io) — a local store of daily bars for every US-listed stock. |
 | `news_provider.py` | News Provider — Raw news and sentiment data access. |
 | `registry.py` | Provider-agnostic data access layer (Universal Data Layer, Phase 1). |
 | `sec_edgar.py` | SEC EDGAR XBRL fundamentals — official, free, no API key (data.sec.gov). |
@@ -551,6 +554,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `ExtrasViews.tsx` | WIRP (Fed rate probabilities), AUCT (Treasury auctions), EIA (oil & gas inventories), |
 | `FlightTracker.tsx` | FLY — every aircraft in the world on one map. The world layer is OpenSky's snapshot (projected |
 | `FlowView.tsx` | FLOW — where money is moving. A world map of cross-border flows (US Treasury TIC portfolio |
+| `FutuView.tsx` | FUTU: real-time order book, tick-by-tick trades with the exchange's direction, capital flow by order size and the |
 | `GlobalFunctions.tsx` | Market-wide function screens: EVTS, WCRS, BTMM, IMAP, CRYPTO, CMDTY, GC, ECO, N, COMP. |
 | `Globe3D.tsx` | 3D globe for MAP: an orthographic projection drawn on canvas (smooth at 60 fps), coloured by the |
 | `InsightViews.tsx` | Market internals: VOL (volatility complex), BRDT (S&P 500 breadth), IMPM (earnings implied moves), |
