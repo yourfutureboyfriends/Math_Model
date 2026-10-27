@@ -211,7 +211,8 @@ def heatmap(country: str = "US", max_names: int = 300) -> Dict[str, Any]:
             raise NotFound(f"No stock universe for country '{country}'.")
         syms = [x["symbol"] for x in names]
         try:
-            df = yf.download(syms, period="1mo", interval="1d", auto_adjust=False, group_by="ticker", progress=False, threads=True)
+            # 10 days covers the 1- and 5-session changes; a month of history for 300 names only slowed the cold load
+            df = yf.download(syms, period="10d", interval="1d", auto_adjust=False, group_by="ticker", progress=False, threads=True)
         except Exception as ex:
             raise Upstream(f"Prices unavailable: {ex}")
         rows = []

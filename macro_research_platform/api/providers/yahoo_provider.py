@@ -121,15 +121,24 @@ class YahooFinanceProvider:
             symbol_map_reverse[yf_sym] = sym
 
         try:
-            # Batch download — timeout=5 prevents indefinite hang when proxy blocks
-            data = yf.download(
-                yf_symbols,
-                period=period,
-                interval='1d',
-                progress=False,
-                threads=False,
-                timeout=5,
-            )
+            # One history request per symbol, in parallel — not yf.download, which holds a process-wide lock: the
+            # dashboard's eight live prices would otherwise wait behind any 300-ticker download (heat map, breadth)
+            # and time out. The result keeps yf.download's ('Close', symbol) column layout.
+            import concurrent.futures as _cf
+            import pandas as _pd
+
+            def _one(sym):
+                try:
+                    h = yf.Ticker(sym).history(period=period, interval='1d', timeout=5)
+                    c = h["Close"] if h is not None and not h.empty else None
+                    if c is not None and getattr(c.index, "tz", None) is not None:
+                        c.index = c.index.tz_localize(None)
+                    return sym, c
+                except Exception:
+                    return sym, None
+            with _cf.ThreadPoolExecutor(max_workers=min(8, max(1, len(yf_symbols)))) as _ex:
+                closes = {k: v for k, v in _ex.map(_one, yf_symbols) if v is not None}
+            data = _pd.concat({"Close": _pd.DataFrame(closes)}, axis=1) if closes else _pd.DataFrame()
 
             if data.empty:
                 return PriceFetchResult(

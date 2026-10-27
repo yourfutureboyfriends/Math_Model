@@ -37,3 +37,19 @@ exchange calendar statuses; Apple's dividend record (1987–95, then 2012 on); n
   per country are not available without keys.
 - Yahoo's quarterly EPS estimates for some Japanese companies are on a different basis from reported EPS (Toyota's
   "beats" of 20–47% every quarter).
+
+## Follow-up fixes (27 Oct 2026, second pass)
+
+| # | Fix |
+|---|---|
+| 1 | EV/EBITDA is n/m for manufacturers with captive finance arms (auto / heavy machinery, debt > 3× EBITDA): Toyota's "implied" ¥594 is gone |
+| 2 | Peer values use size-matched peers (within 10× the market cap, else the six nearest); mega-caps without same-industry peers of their size get same-sector companies of similar size, summarised by the median (Apple ≈ $251, Microsoft ≈ $600) |
+| 3 | Fund assets shown in the fund's own currency |
+| 4 | Every yfinance request goes through one guard: a token bucket (bursts of 100, 8/s sustained) for large downloads, a separate lane for single quotes so they never wait behind a 300-ticker download, short cool-downs waited out; the dashboard's live prices no longer use `yf.download` (process-wide lock) — 0.2 s instead of 8 s time-outs during a bulk load |
+| 5 | The sandbox test no longer needs Docker for its language checks |
+| 6 | Short positions for UK (FCA aggregated net shorts), Hong Kong (SFC weekly) and Japan (JPX ≥ 0.5% holders); filings for non-SEC companies link to their regulator (FCA NSM, Companies House, EDINET, TDnet, HKEXnews, DART, MOPS, SEDAR+, …) |
+| 7 | Daily 10-year yields for 26 countries without an official daily series (CNBC / Refinitiv quotes, validated against the OECD monthly) — France was 43 bp stale |
+| 8 | Screen sweep (101 screens at 1,440 px): no NaN / undefined / broken values; valuation scenario table scrolls with short headers; the edge board builds its five sources in parallel (it timed out at 180 s cold) and the startup warmer refreshes the slowest sources first |
+
+Cold-start costs that remain (first load after a restart, then cached and refreshed in the background every 30 min):
+the US heat map ~25 s, breadth ~2 min, the edge board ~2 min (IMF PortWatch ports alone ~110 s).

@@ -66,6 +66,44 @@ def _daily_closes(symbols: List[str], start: str) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
+# Official filing services for companies that don't file with the SEC, by listing suffix.
+REGULATOR_FILINGS = {
+    "L": [("FCA National Storage Mechanism — regulated announcements and annual reports", "https://data.fca.org.uk/#/nsm/nationalstoragemechanism"),
+          ("Companies House — statutory filings", "https://find-and-update.company-information.service.gov.uk/search/companies?q={name}")],
+    "T": [("EDINET (FSA) — annual and quarterly securities reports", "https://disclosure2.edinet-fsa.go.jp/WEEE0010.aspx"),
+          ("TDnet (JPX) — timely disclosures", "https://www.release.tdnet.info/inbs/I_main_00.html")],
+    "HK": [("HKEXnews — listed company announcements (stock code {code})", "https://www1.hkexnews.hk/search/titlesearch.xhtml?lang=en")],
+    "DE": [("Unternehmensregister — German company filings", "https://www.unternehmensregister.de/ureg/?submitaction=language&language=en")],
+    "PA": [("AMF BDIF — French regulatory filings", "https://bdif.amf-france.org/en")],
+    "AS": [("AFM registers — Dutch regulatory filings", "https://www.afm.nl/en/sector/registers")],
+    "SW": [("SIX Exchange Regulation — ad hoc announcements", "https://www.ser-ag.com/en/resources/notifications-market-participants/ad-hoc-publications.html")],
+    "MI": [("eMarket SDIR / Borsa Italiana — Italian filings", "https://www.borsaitaliana.it/borsa/azioni/documenti-societari.html")],
+    "MC": [("CNMV — Spanish regulatory filings", "https://www.cnmv.es/portal/Consultas/BusquedaPorEntidad.aspx?lang=en")],
+    "KS": [("DART (FSS) — Korean electronic disclosures", "https://englishdart.fss.or.kr/")],
+    "TW": [("MOPS — Taiwan Market Observation Post System", "https://emops.twse.com.tw/server-java/t58query")],
+    "AX": [("ASX announcements", "https://www.asx.com.au/markets/trade-our-cash-market/announcements")],
+    "TO": [("SEDAR+ — Canadian filings", "https://www.sedarplus.ca/landingpage/")],
+}
+
+
+def _non_sec_filings(s: str) -> Dict[str, Any]:
+    """For a company that doesn't file with the SEC: the official filing services of its home market and its investor
+    relations site, instead of an error."""
+    from urllib.parse import quote
+    i = _info(s)
+    suffix = s.rpartition(".")[2] if "." in s else ""
+    name, code = i.get("longName") or i.get("shortName") or s, s.split(".")[0]
+    links = [{"label": lab.format(code=code), "url": url.format(name=quote(name), code=code)} for lab, url in REGULATOR_FILINGS.get(suffix, [])]
+    if i.get("website"):
+        links.append({"label": f"{name} — investor relations / company website", "url": i["website"]})
+    if not links:
+        raise NotFound(f"{s} doesn't file with the SEC, and no filing service for its market is mapped yet.")
+    return {"symbol": s, "name": name, "cik": None, "sic": None, "filings": [], "external_filings": links,
+            "earnings_events": [], "red_flags": [],
+            "note": f"{name} doesn't file with the SEC. Its filings are published by its home market's regulator — links below.",
+            "source": "Home-market regulator"}
+
+
 def filings(symbol: str, limit: int = 120) -> Dict[str, Any]:
     """A company's recent SEC filings."""
     from api.marketdata.extras import _company_only, _sec_get
@@ -77,7 +115,7 @@ def filings(symbol: str, limit: int = 120) -> Dict[str, Any]:
         res = sec_edgar.resolve(s)
         cik = res.get("cik") if isinstance(res, dict) else res
         if not cik:
-            raise NotFound(f"{s} doesn't file with the SEC (mostly US-listed companies and ADRs do).")
+            return _non_sec_filings(s)
         sub = _sec_get(f"https://data.sec.gov/submissions/CIK{int(cik):010d}.json").json()
         r = sub["filings"]["recent"]
         n = len(r["form"])

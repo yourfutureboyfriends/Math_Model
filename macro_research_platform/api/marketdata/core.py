@@ -150,11 +150,22 @@ def _yahoo_tripped() -> None:
     _YH["backoff"] = min(300.0, _YH["backoff"] * 2)
 
 
+# Short cool-downs are waited out rather than returned to the screen as an error.
+YAHOO_WAIT_MAX = 20.0
+
+
+def _wait_or_raise() -> None:
+    """During a cool-down: wait if it ends within YAHOO_WAIT_MAX seconds, else fail fast."""
+    left = _YH["until"] - time.time()
+    if left > YAHOO_WAIT_MAX:
+        raise Upstream(_yahoo_cooling() or "Yahoo is rate-limiting this server.")
+    if left > 0:
+        time.sleep(left)
+
+
 def yahoo_call(fn: Callable[[], Any]) -> Any:
-    """Run one Yahoo request under the guard (raises Upstream while cooling down or on a 429)."""
-    msg = _yahoo_cooling()
-    if msg:
-        raise Upstream(msg)
+    """Run one Yahoo request under the guard (waits out a short cool-down; raises Upstream on a long one or a 429)."""
+    _wait_or_raise()
     with _YH_SEM:
         try:
             out = fn()
@@ -165,6 +176,115 @@ def yahoo_call(fn: Callable[[], Any]) -> Any:
             raise
     _YH["backoff"] = 15.0
     return out
+
+
+# Every yfinance HTTP request — including the call sites that use yf.Ticker / yf.download directly — passes through
+# this layer: at most YAHOO_HTTP_CONCURRENCY at once and a token bucket (bursts of YAHOO_BURST run at once — a 300-stock
+# heat map loads at full speed — while sustained traffic is held to YAHOO_RATE a second, the pattern that draws 429s);
+# short cool-downs are waited out, a 429 trips the guard.
+YAHOO_HTTP_CONCURRENCY = 4          # per lane: bulk downloads and interactive requests each get their own
+YAHOO_RATE = 8.0
+YAHOO_BURST = 100.0
+_YH_HTTP_SEM = threading.BoundedSemaphore(YAHOO_HTTP_CONCURRENCY)          # bulk lane (yf.download of many symbols)
+_YH_LIVE_SEM = threading.BoundedSemaphore(YAHOO_HTTP_CONCURRENCY)          # interactive lane (one quote / one history)
+_YH_BUCKET = {"tokens": YAHOO_BURST, "at": time.time()}
+_YH_PACE_LOCK = threading.Lock()
+
+
+def _take_token() -> float:
+    """Seconds to wait before the next Yahoo request may start (0 when a token is available)."""
+    with _YH_PACE_LOCK:
+        now = time.time()
+        b = _YH_BUCKET
+        b["tokens"] = min(YAHOO_BURST, b["tokens"] + (now - b["at"]) * YAHOO_RATE)
+        b["at"] = now
+        b["tokens"] -= 1
+        return 0.0 if b["tokens"] >= 0 else -b["tokens"] / YAHOO_RATE
+
+
+# Tickers currently being fetched by a large yf.download (more than BULK_MIN_SYMBOLS symbols), with a reference count:
+# their requests go to the bulk lane; a small download (the dashboard's eight live prices) stays interactive.
+BULK_MIN_SYMBOLS = 10
+_BULK_TICKERS: Dict[str, int] = {}
+_BULK_LOCK = threading.Lock()
+
+
+def _in_bulk_download() -> bool:
+    """True for a request made on behalf of a ticker in a large multi-ticker download."""
+    import sys
+    f = sys._getframe(2)
+    while f is not None:
+        if f.f_code.co_name in ("_download_one", "_download_one_threaded") and f.f_code.co_filename.endswith("multi.py"):
+            t = str(f.f_locals.get("ticker") or "").upper()
+            with _BULK_LOCK:
+                return _BULK_TICKERS.get(t, 0) > 0
+        f = f.f_back
+    return False
+
+
+def _install_bulk_registry() -> None:
+    """Wrap yf.download so the tickers of a large download are registered for its duration."""
+    try:
+        import yfinance as _yf
+        from yfinance import multi as _multi
+    except Exception:
+        return
+    if getattr(_multi.download, "_registered", False):
+        return
+    orig = _multi.download
+
+    def download(tickers, *a, **kw):
+        lst = tickers if isinstance(tickers, (list, tuple, set)) else str(tickers).replace(",", " ").split()
+        lst = [str(t).upper() for t in lst]
+        bulk = len(lst) > BULK_MIN_SYMBOLS
+        if bulk:
+            with _BULK_LOCK:
+                for t in lst:
+                    _BULK_TICKERS[t] = _BULK_TICKERS.get(t, 0) + 1
+        try:
+            return orig(tickers, *a, **kw)
+        finally:
+            if bulk:
+                with _BULK_LOCK:
+                    for t in lst:
+                        n = _BULK_TICKERS.get(t, 0) - 1
+                        if n > 0:
+                            _BULK_TICKERS[t] = n
+                        else:
+                            _BULK_TICKERS.pop(t, None)
+    download._registered = True
+    _multi.download = download
+    _yf.download = download
+
+
+def _install_yahoo_throttle() -> None:
+    try:
+        from yfinance import data as _yd
+    except Exception:                                   # yfinance missing: nothing to throttle
+        return
+    if getattr(_yd.YfData._make_request, "_throttled", False):
+        return
+    orig = _yd.YfData._make_request
+
+    def throttled(self, *a, **kw):
+        _wait_or_raise()
+        bulk = _in_bulk_download()
+        with (_YH_HTTP_SEM if bulk else _YH_LIVE_SEM):
+            wait = _take_token()
+            if bulk and wait > 0:            # only bulk downloads queue on the bucket; a single quote never waits
+                time.sleep(wait)             # behind a 300-ticker heat map (it still spends a token)
+            try:
+                return orig(self, *a, **kw)
+            except Exception as e:
+                if _rate_limited(e):
+                    _yahoo_tripped()
+                raise
+    throttled._throttled = True
+    _yd.YfData._make_request = throttled
+
+
+_install_yahoo_throttle()
+_install_bulk_registry()
 
 
 def yahoo_download(symbols, **kw):

@@ -29,9 +29,10 @@ export function Bars({ values, height = 120, ref100 }: { values: number[]; heigh
 // ── SI ──────────────────────────────────────────────────────────────────────
 export function SiView({ symbol }: { symbol: string }) {
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/si/${enc(symbol)}?days=120`);
-  if (loading && !data) return <Loading label="Loading FINRA short-sale data (first time: ~10 s)…" />;
+  if (loading && !data) return <Loading label="Loading short-position data from the regulator (first time: ~10–30 s)…" />;
   if (error && !data) return <ErrorBox msg={error} />;
   if (!data) return null;
+  if (data.market) return <IntlShorts data={data} />;
   const o = data.official ?? {};
   const d = data.daily as any[];
   return (
@@ -56,6 +57,37 @@ export function SiView({ symbol }: { symbol: string }) {
               <td className="text-right">{fmtBig(x.total_volume)}</td><td className={cn('text-right px-2', x.ratio > data.ratio_20d * 1.15 ? 'text-red' : x.ratio < data.ratio_20d * 0.85 ? 'text-green' : '')}>{pc(x.ratio)}</td></tr>))}</tbody>
         </table>
       </div>
+      <div className="text-[10px] text-text-tertiary">{data.note} Source: {data.source}.</div>
+    </div>
+  );
+}
+
+/** Short positions published by a non-US regulator: the UK FCA's aggregate, Hong Kong SFC's weekly aggregate, or
+ *  Japan JPX's disclosed holders. */
+function IntlShorts({ data }: { data: any }) {
+  const reg = ({ UK: 'FCA', HK: 'SFC', JP: 'JPX' } as Record<string, string>)[data.market] ?? data.market;
+  const h = (data.history ?? []).filter((x: any) => x.pct != null);
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <Stat label={data.market === 'JP' ? 'Disclosed short positions' : 'Aggregate net short'} value={data.current ? pc(data.aggregate_pct) : 'below threshold'}
+          sub={data.as_of ? `${reg} · as of ${data.as_of}` : reg} />
+        {data.shares_short != null && <Stat label="Shares short" value={fmtBig(data.shares_short)} sub={data.value_hkd ? `HK$${fmtBig(data.value_hkd)}` : ''} />}
+        {data.change_pct_points != null && <Stat label="Change vs prior week" value={`${data.change_pct_points >= 0 ? '+' : ''}${(data.change_pct_points * 100).toFixed(2)} pt`} />}
+        {data.market === 'JP' && <Stat label="Holders ≥ 0.5%" value={String(data.holders.length)} />}
+      </div>
+      {h.length > 1 && (
+        <Panel title={`Short position, % of shares (${reg})`}>
+          <LineChart rows={h.map((x: any) => ({ date: x.date, pct: x.pct * 100 }))} x="date" height={220} fmt={(v) => `${v.toFixed(2)}%`}
+            lines={[{ key: 'pct', label: 'Short position', color: 'rgb(var(--c-red))' }]} />
+        </Panel>)}
+      {data.holders?.length > 0 && (
+        <table className="w-full text-[11px] font-mono tabular-nums border border-border">
+          <thead><tr className="text-text-tertiary"><th className="text-left px-2 font-normal">Holder</th><th className="text-right font-normal">% of shares</th><th className="text-right font-normal">Shares</th><th className="text-right px-2 font-normal">Reported</th></tr></thead>
+          <tbody>{data.holders.map((x: any) => (
+            <tr key={x.holder} className="border-t border-border-subtle"><td className="px-2 font-sans text-text-primary">{x.holder}</td><td className="text-right">{pc(x.pct)}</td>
+              <td className="text-right">{fmtBig(x.shares)}</td><td className="text-right px-2 text-text-secondary">{x.date}</td></tr>))}</tbody>
+        </table>)}
       <div className="text-[10px] text-text-tertiary">{data.note} Source: {data.source}.</div>
     </div>
   );

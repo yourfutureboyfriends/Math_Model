@@ -36,7 +36,7 @@ export const FUNCTIONS: MktFunction[] = [
   { code: 'DCF', name: 'DCF valuation', desc: 'Discounted free-cash-flow value per share with an editable model and sensitivity grid.', group: 'Security', security: true, equityOnly: true },
   { code: 'SEAS', name: 'Seasonality', desc: 'Average return by calendar month over up to 30 years, hit rate and significance.', group: 'Security', security: true, aliases: ['SEASON'] },
   { code: 'OSA', name: 'Option strategies', desc: 'Build spreads, straddles, condors: payoff, breakevens, max profit/loss, chance of profit, Greeks.', group: 'Security', security: true, aliases: ['OSB', 'STRAT'] },
-  { code: 'SI', name: 'Short selling', desc: 'Short interest, % of float, days to cover, and FINRA daily short-sale volume (US).', group: 'Security', security: true, aliases: ['SHORT'] },
+  { code: 'SI', name: 'Short selling', desc: 'Short interest and FINRA daily short-sale volume (US); regulator short positions for UK (FCA), Hong Kong (SFC) and Japan (JPX).', group: 'Security', security: true, aliases: ['SHORT'] },
   { code: 'SPLC', name: 'Supply chain', desc: 'Suppliers and competitors found in SEC annual reports (companies naming it as a customer or rival).', group: 'Security', security: true, equityOnly: true, aliases: ['SUPPLY'] },
   { code: 'INSD', name: 'Insider trades', desc: 'Every Form 4 filing parsed: who bought or sold, how much, at what price (SEC EDGAR).', group: 'Security', security: true, equityOnly: true, aliases: ['FORM4', 'INSIDER'] },
   { code: 'CN', name: 'Company news', desc: 'Latest headlines and official SEC filings for this instrument.', group: 'Security', security: true },

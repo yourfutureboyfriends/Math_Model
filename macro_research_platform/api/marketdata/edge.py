@@ -369,6 +369,17 @@ def board() -> Dict[str, Any]:
     """The most unusual readings across positioning, prediction markets, trade, ports and fund flows."""
     def build():
         sig: List[Dict[str, Any]] = []
+        # Warm every source in parallel first (each is cached): the board then costs the slowest source, not their sum
+        # (sequentially it ran past the 180 s request limit on a cold start).
+        import concurrent.futures as _cf
+        from api.marketdata import flows as _flows, insights as _ins
+        warm = [cot, predictions, ports_trade, trade, _flows.etf, _ins.vol, _ins.implied_moves, _ins.uoa]
+        with _cf.ThreadPoolExecutor(len(warm)) as ex:
+            for fut in [ex.submit(f) for f in warm]:
+                try:
+                    fut.result(timeout=150)
+                except Exception as e:                       # a failed source is skipped below, as before
+                    logger.info("[board] warm-up: %s", e)
 
         def add(kind, title, detail, score, fn=None, symbol=None):
             sig.append({"kind": kind, "title": title, "detail": detail, "score": round(score, 2), "fn": fn, "symbol": symbol})

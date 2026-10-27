@@ -177,6 +177,49 @@ def _yields() -> Dict[str, Dict[str, Any]]:
     return out
 
 
+# Daily 10-year benchmark yields for countries without an official daily series (most of the eurozone, emerging
+# markets): CNBC's quote service (Refinitiv benchmark feed) — free, no key, unofficial. A quote is used only in the
+# "x.xx%" yield format and within LIVE_YIELD_MAX_GAP of the country's recent OECD monthly average when there is one.
+CNBC_YIELD_COUNTRIES = ["FR", "IT", "ES", "NL", "BE", "AT", "PT", "IE", "GR", "FI", "SI", "CH", "SE", "HU", "KR", "IN",
+                        "CN", "BR", "MX", "ZA", "NZ", "CL", "TR", "ID", "TH", "HK"]
+CNBC_QUOTE = "https://quote.cnbc.com/quote-html-webservice/restQuote/symbolType/symbol"
+LIVE_YIELD_MAX_GAP = 1.5
+
+
+def _live_yields(monthly: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    import requests
+    syms = "|".join(f"{c}10Y-{c}" for c in CNBC_YIELD_COUNTRIES)
+    try:
+        r = requests.get(CNBC_QUOTE, params={"symbols": syms, "requestMethod": "itv", "noform": 1, "partnerId": 2, "fund": 1,
+                                             "exthrs": 1, "output": "json", "events": 1},
+                         headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        quotes = r.json()["FormattedQuoteResult"]["FormattedQuote"]
+    except Exception as e:
+        logger.warning("[yields] live 10-year quotes unavailable: %s", e)
+        return {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for q in quotes:
+        last, iso = str(q.get("last") or ""), str(q.get("symbol") or "")[:2]
+        if q.get("code") != 0 or not last.endswith("%"):
+            continue
+        try:
+            y = float(last.rstrip("%"))
+            prev = float(str(q.get("previous_day_closing") or "").rstrip("%"))
+        except ValueError:
+            continue
+        m = monthly.get(iso)
+        if m and m.get("yield_10y") is not None and abs(y - m["yield_10y"]) > LIVE_YIELD_MAX_GAP:
+            logger.warning("[yields] %s live %.2f%% vs OECD %.2f%% — not used", iso, y, m["yield_10y"])
+            continue
+        rec = {"yield_10y": y, "yield_date": str(q.get("last_time") or "")[:10] or str(date.today()),
+               "yield_source": "CNBC (Refinitiv benchmark), daily — unofficial", "yield_change_1d_bp": round((y - prev) * 100, 1)}
+        if m and m.get("yield_change_1y_bp") is not None and m.get("yield_10y") is not None:
+            # 1-year change: today's level against the OECD average a year before the latest monthly print
+            rec["yield_change_1y_bp"] = round((y - (m["yield_10y"] - m["yield_change_1y_bp"] / 100)) * 100, 1)
+        out[iso] = rec
+    return out
+
+
 def world_data() -> Dict[str, Any]:
     """Everything the world map shows, keyed by ISO alpha-2."""
     from api.marketdata.core import _cached
@@ -187,6 +230,8 @@ def world_data() -> Dict[str, Any]:
         from api.providers import damodaran
         imf = _imf(year)
         ylds = _yields()
+        for iso, rec in _live_yields(ylds).items():   # daily where the OECD has only monthly averages
+            ylds[iso] = rec
         try:                                     # the US 10-year live rather than the monthly average
             from api.marketdata.core import quote
             tnx = quote("^TNX")["price"]

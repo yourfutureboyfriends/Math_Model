@@ -18,7 +18,7 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
-from api.marketdata.core import NotFound, Upstream, _cached, _f, _info
+from api.marketdata.core import MINOR_UNITS, NotFound, Upstream, _cached, _f, _info
 
 logger = logging.getLogger(__name__)
 UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36",
@@ -170,7 +170,7 @@ def etf_screener() -> Dict[str, Any]:
                 return None
             er = _f(i.get("netExpenseRatio"))
             return {"symbol": s, "name": i.get("longName") or i.get("shortName"), "group": cat, "category": i.get("category"),
-                    "family": i.get("fundFamily"), "expense": er / 100 if er is not None else None, "aum": _f(i.get("totalAssets")),
+                    "family": i.get("fundFamily"), "expense": er / 100 if er is not None else None, "aum": _f(i.get("totalAssets")), "aum_currency": MINOR_UNITS.get(i.get("currency") or "", i.get("currency")) or "USD",
                     "yield": _f(i.get("yield")) if i.get("yield") is not None else (_f(i.get("trailingAnnualDividendYield"))),
                     "ytd": (_f(i.get("ytdReturn")) or 0) / 100 if i.get("ytdReturn") is not None else None,
                     "r3y": _f(i.get("threeYearAverageReturn")), "r5y": _f(i.get("fiveYearAverageReturn")),
@@ -223,7 +223,7 @@ def etf_compare(a: str, b: str) -> Dict[str, Any]:
 
         def facts(i):
             er = _f(i.get("netExpenseRatio"))
-            return {"name": i.get("longName") or i.get("shortName"), "expense": er / 100 if er is not None else None, "aum": _f(i.get("totalAssets")),
+            return {"name": i.get("longName") or i.get("shortName"), "expense": er / 100 if er is not None else None, "aum": _f(i.get("totalAssets")), "aum_currency": MINOR_UNITS.get(i.get("currency") or "", i.get("currency")) or "USD",
                     "yield": _f(i.get("yield")), "ytd": (_f(i.get("ytdReturn")) or 0) / 100 if i.get("ytdReturn") is not None else None,
                     "r3y": _f(i.get("threeYearAverageReturn")), "r5y": _f(i.get("fiveYearAverageReturn")), "category": i.get("category")}
         return {"a": A, "b": B, "fa": facts(ia), "fb": facts(ib), "coverage_a": ca, "coverage_b": cb, "overlap_weight": overlap,

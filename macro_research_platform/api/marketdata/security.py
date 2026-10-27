@@ -20,6 +20,7 @@ flow when available. Missing data stays missing.
 from __future__ import annotations
 
 import concurrent.futures as cf
+import logging
 import math
 import time
 from datetime import date, datetime
@@ -29,6 +30,8 @@ import numpy as np
 import pandas as pd
 
 from api.marketdata.core import (MAIN_EXCHANGES, NotFound, Upstream, _cached, _f, _info, _norm, _yscreen, div_yield, to_usd, usd_to_local, MINOR_UNITS)
+
+logger = logging.getLogger(__name__)
 
 
 def _expire_soon(key: str) -> None:
@@ -581,6 +584,12 @@ def area_of_symbol(sym: str) -> str:
             "AX": "Asia-Pacific"}.get(suf, "Other")
 
 
+# Industries where manufacturers run captive finance arms; above this debt / EBITDA the arm dominates the debt.
+CAPTIVE_FINANCE_INDUSTRIES = {"Auto Manufacturers", "Farm & Heavy Construction Machinery", "Recreational Vehicles",
+                              "Auto & Truck Dealerships", "Specialty Industrial Machinery"}
+CAPTIVE_DEBT_EBITDA = 3.0
+
+
 def peer_multiples(ii: Dict[str, Any]) -> Dict[str, Any]:
     """Valuation multiples rebuilt from company totals in one currency. Yahoo's ready-made ratios mix
     units when a stock trades in one currency and reports in another (TSMC's ADR P/B of 93, pence vs
@@ -607,8 +616,15 @@ def peer_multiples(ii: Dict[str, Any]) -> Dict[str, Any]:
         pb = ok(_f(ii.get("priceToBook")), 0.05, 60)
     te, fe = _f(ii.get("trailingEps")), _f(ii.get("forwardEps"))
     fpe = ok(pe * te / fe, 0, 300) if pe and te and fe and te > 0 and fe > 0 else (ok(_f(ii.get("forwardPE")), 0, 300) if same else None)
+    # A captive finance arm (Toyota Financial Services, Ford Credit, John Deere Financial) puts its loan book's debt into
+    # EV but its earnings mostly below EBITDA, so EV/EBITDA overstates the multiple (Toyota: ¥594 a share "implied"
+    # against ¥3,102). Without the industrial-only split the multiple is not meaningful.
+    captive = ((ii.get("industry") or "") in CAPTIVE_FINANCE_INDUSTRIES and ebitda and ebitda > 0
+               and debt / ebitda > CAPTIVE_DEBT_EBITDA)
+    if captive:
+        ev_ebitda = None
     return {"pe": pe, "forward_pe": fpe, "ev_ebitda": ev_ebitda, "price_to_book": pb, "price_to_sales": ps,
-            "multiples_currency": fin, "ev": ev, "mcap_fin": mcap}
+            "multiples_currency": fin, "ev": ev, "mcap_fin": mcap, "captive_finance": bool(captive)}
 
 
 PEER_REGIONS = ["us", "jp", "gb", "de", "fr", "nl", "ch", "kr", "tw", "cn", "hk", "in", "ca", "au", "se", "it", "es"]
@@ -620,6 +636,8 @@ PEER_REGIONS = ["us", "jp", "gb", "de", "fr", "nl", "ch", "kr", "tw", "cn", "hk"
 # 150× outlier cannot drag the value up). At least VALUATION_MIN_PEERS peers per scope.
 VALUATION_BOUNDS = {"pe": (0, 60), "forward_pe": (0, 60), "ev_ebitda": (0, 40), "price_to_book": (0.1, 20), "price_to_sales": (0, 20)}
 VALUATION_MIN_PEERS = 3
+PEER_SIZE_BAND = 10.0          # within 10× either way of the subject's market cap
+PEER_NEAREST = 6
 
 
 def comps(symbol: str, max_peers: int = 8) -> Dict[str, Any]:
@@ -694,6 +712,42 @@ def comps(symbol: str, max_peers: int = 8) -> Dict[str, Any]:
                     "subject": sym == s}
         with cf.ThreadPoolExecutor(max_workers=8) as ex:
             rows = [r for r in ex.map(row, syms) if r]
+        # Too few same-industry companies of comparable size (Apple has no $1tn+ consumer-electronics peer): add the
+        # sector's companies within PEER_SIZE_BAND× the subject's size, as sell-side comps for mega-caps do.
+        subj0 = next((r for r in rows if r["subject"]), None)
+        s_cap = (subj0 or {}).get("market_cap_usd")
+        if s_cap and i.get("sector"):
+            near = [r for r in rows if not r["subject"] and r.get("market_cap_usd")
+                    and 1 / PEER_SIZE_BAND <= r["market_cap_usd"] / s_cap <= PEER_SIZE_BAND]
+            if len(near) < VALUATION_MIN_PEERS:
+                try:
+                    def sector_region(rg):
+                        fx = usd_to_local(rg)                     # the screener filters caps in local currency
+                        q = Q("and", [Q("is-in", ["exchange", *MAIN_EXCHANGES[rg]]), Q("eq", ["sector", i["sector"]]),
+                                      Q("gt", ["intradaymarketcap", s_cap / PEER_SIZE_BAND * fx])])
+                        try:
+                            res = _yscreen(q, sortField="intradaymarketcap", sortAsc=False, size=10)
+                        except Exception:
+                            return []
+                        return [x for x in res.get("quotes") or [] if not _foreign_line(x.get("symbol", ""))]
+                    with cf.ThreadPoolExecutor(max_workers=4) as ex:
+                        found_s = [x for xs in ex.map(sector_region, ["us", "jp", "gb", "de", "fr", "nl", "kr", "tw", "hk", "cn"]) for x in xs]
+                    seen = {_norm(r.get("name")) for r in rows} | {subject}
+                    extra = []
+                    for x in found_s:                              # one line per company (no preferred / second listings)
+                        n = _norm(x.get("longName") or x.get("shortName"))
+                        if n and n not in seen:
+                            seen.add(n)
+                            extra.append(x["symbol"])
+                    with cf.ThreadPoolExecutor(max_workers=8) as ex:
+                        more = [r for r in ex.map(row, extra[:16]) if r and r.get("market_cap_usd")
+                                and 1 / PEER_SIZE_BAND <= r["market_cap_usd"] / s_cap <= PEER_SIZE_BAND]
+                    more.sort(key=lambda r: abs(np.log(r["market_cap_usd"] / s_cap)))
+                    for r in more[:8]:
+                        r["peer_basis"] = "same sector, similar size"
+                    rows += more[:8]
+                except Exception as e:                      # the industry peers still stand
+                    logger.warning("[comps] sector size peers for %s: %s", s, e)
         keys = ("pe", "forward_pe", "ev_ebitda", "price_to_book", "price_to_sales", "gross_margin", "operating_margin", "roe",
                 "revenue_growth", "dividend_yield")
 
@@ -710,15 +764,34 @@ def comps(symbol: str, max_peers: int = 8) -> Dict[str, Any]:
             out = {}
             for k, (lo, hi) in VALUATION_BOUNDS.items():
                 vals = [r[k] for r in rs if not r["subject"] and r[k] is not None and lo < r[k] <= hi]
-                out[k] = (len(vals) / sum(1 / v for v in vals)) if len(vals) >= VALUATION_MIN_PEERS else None
+                mixed = any(r.get("peer_basis") for r in rs if not r["subject"])
+                # a mixed sector-and-size set (memory makers at a cycle peak next to software) is summarised by the median,
+                # which a few very low multiples cannot drag; a homogeneous industry set by the harmonic mean
+                out[k] = (None if len(vals) < VALUATION_MIN_PEERS else float(np.median(vals)) if mixed
+                          else len(vals) / sum(1 / v for v in vals))
+                out[f"{k}_estimator"] = "median" if mixed else "harmonic mean"
                 out[f"{k}_n"] = len(vals)
             return out
         med = medians(rows)
         regions = sorted({r["region"] for r in rows}, key=lambda a: AREA_ORDER.index(a) if a in AREA_ORDER else 9)
         region_median = {a: medians([r for r in rows if r["region"] == a]) for a in regions}
-        hm = harmonic(rows)
-        region_hm = {a: harmonic([r for r in rows if r["region"] == a]) for a in regions}
         subj = next((r for r in rows if r["subject"]), None)
+
+        def size_matched(rs):
+            """Peers of comparable size for valuation: within PEER_SIZE_BAND× the subject's market cap when there are
+            enough of them, else the PEER_NEAREST closest in size — a $5tn company is not priced like a $5bn one."""
+            peers = [r for r in rs if not r["subject"] and r.get("market_cap_usd")]
+            s_cap = (subj or {}).get("market_cap_usd")
+            if not s_cap or len(peers) < VALUATION_MIN_PEERS:
+                return rs
+            band = [r for r in peers if 1 / PEER_SIZE_BAND <= r["market_cap_usd"] / s_cap <= PEER_SIZE_BAND]
+            chosen = band if len(band) >= VALUATION_MIN_PEERS else sorted(
+                peers, key=lambda r: abs(np.log(r["market_cap_usd"] / s_cap)))[:PEER_NEAREST]
+            return [subj] + chosen
+        valued = size_matched(rows)
+        hm = harmonic(valued)
+        region_hm = {a: harmonic([r for r in size_matched([x for x in rows if x["region"] == a or x["subject"]])
+                                  if r["region"] == a]) for a in regions}
         # what the subject would be worth at its peers' multiples (price × peer multiple ÷ own multiple)
         implied = {}
         if subj:
@@ -738,12 +811,15 @@ def comps(symbol: str, max_peers: int = 8) -> Dict[str, Any]:
                             row[scope] = px * mm[k] / subj[k]
                 implied[k] = row
         return {"symbol": s, "industry": industry, "sector": i.get("sector"), "rows": rows, "peer_median": med,
+                "valuation_peers": [r["symbol"] for r in valued if not r["subject"]],
                 "peer_harmonic": hm, "region_harmonic": region_hm,
                 "regions": regions, "region_median": region_median, "implied_price": implied, "price_currency": i.get("currency"),
                 "home_region": subj["region"] if subj else None,
                 "multiples_note": "Multiples are rebuilt from reported totals in each company's reporting currency (market cap converted at "
                                   "today's rate); negative or extreme values are shown as n/m and left out of medians. Implied values "
-                                  "use the harmonic mean of peers with P/E ≤ 60, EV/EBITDA ≤ 40, P/B ≤ 20, P/S ≤ 20 (at least 3).",
+                                  "use the harmonic mean of size-matched peers (within 10× the market cap, else the six nearest in "
+                                  "size) with P/E ≤ 60, EV/EBITDA ≤ 40, P/B ≤ 20, P/S ≤ 20 (at least 3). EV/EBITDA is n/m for "
+                                  "manufacturers with captive finance arms.",
                 "source": "Yahoo Finance — largest same-industry companies on each market's main exchange (≥ $1bn)"}
     return _cached(f"rv2:{s}", 6 * 3600, fetch)
 

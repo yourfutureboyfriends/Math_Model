@@ -66,8 +66,11 @@ def short_selling(symbol: str, days: int = 60) -> Dict[str, Any]:
         NotFound: not a US-listed stock or ETF.
     """
     s = symbol.strip().upper()
+    from api.marketdata import shorts_intl
+    if shorts_intl.market_of(s):                       # London, Hong Kong, Tokyo: the market regulator's disclosures
+        return shorts_intl.short_positions(s)
     if "." in s or "=" in s or "^" in s:
-        raise NotFound("Short-sale data is published for US-listed stocks and ETFs (FINRA Reg SHO).")
+        raise NotFound("Short-position data covers US (FINRA), UK (FCA), Hong Kong (SFC) and Japan (JPX) listings.")
     days = max(10, min(int(days), 120))
 
     def fetch():

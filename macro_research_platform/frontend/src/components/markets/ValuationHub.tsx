@@ -7,30 +7,30 @@ import { ErrorBox, fmtBig, fmtPct, fmtPrice, Loading, Panel, useJSON } from './s
 import { PriceOutlook } from './SecurityFunctions';
 
 const enc = encodeURIComponent;
-type Driver = { key: string; label: string; hint: string; min: number; max: number; step: number; pct: boolean };
+type Driver = { key: string; label: string; short?: string; hint: string; min: number; max: number; step: number; pct: boolean };
 type Vals = Record<string, number | undefined>;
 
 const FCFF_DRIVERS: Driver[] = [
-  { key: 'growth', label: 'Revenue growth, next 3 years', hint: 'The biggest lever for growth companies. Default: analyst consensus.', min: -0.2, max: 0.6, step: 0.005, pct: true },
-  { key: 'target_margin', label: 'Long-run operating margin', hint: 'Where profitability settles by the end of the explicit forecast.', min: -0.1, max: 0.7, step: 0.005, pct: true },
-  { key: 'discount', label: 'Discount rate (WACC)', hint: 'The return investors require. +1 point typically cuts value 10–20%.', min: 0.03, max: 0.18, step: 0.0025, pct: true },
-  { key: 'fade_years', label: 'Years of excess returns after the forecast (moat)', hint: 'Morningstar: about 1 (no moat), 10 (narrow), 20 (wide).', min: 0, max: 30, step: 1, pct: false },
+  { key: 'growth', label: 'Revenue growth, next 3 years', short: 'Growth y1–3', hint: 'The biggest lever for growth companies. Default: analyst consensus.', min: -0.2, max: 0.6, step: 0.005, pct: true },
+  { key: 'target_margin', label: 'Long-run operating margin', short: 'Margin', hint: 'Where profitability settles by the end of the explicit forecast.', min: -0.1, max: 0.7, step: 0.005, pct: true },
+  { key: 'discount', label: 'Discount rate (WACC)', short: 'Discount rate', hint: 'The return investors require. +1 point typically cuts value 10–20%.', min: 0.03, max: 0.18, step: 0.0025, pct: true },
+  { key: 'fade_years', label: 'Years of excess returns after the forecast (moat)', short: 'Moat years', hint: 'Morningstar: about 1 (no moat), 10 (narrow), 20 (wide).', min: 0, max: 30, step: 1, pct: false },
 ];
 const FCFF_DRIVERS_2STAGE: Driver[] = [
   ...FCFF_DRIVERS.slice(0, 3),
-  { key: 'terminal_growth', label: 'Growth forever after the forecast', hint: 'Keep at or below the risk-free rate.', min: 0, max: 0.06, step: 0.0025, pct: true },
+  { key: 'terminal_growth', label: 'Growth forever after the forecast', short: 'Growth ∞', hint: 'Keep at or below the risk-free rate.', min: 0, max: 0.06, step: 0.0025, pct: true },
 ];
 type Opts = { method?: 'three_stage' | 'two_stage'; ke_method?: 'capm' | 'building_block' };
 const ER_DRIVERS: Driver[] = [
-  { key: 'roe', label: 'Return on equity now', hint: 'Profit per unit of book equity — the engine of a bank’s value.', min: -0.1, max: 0.4, step: 0.005, pct: true },
-  { key: 'terminal_roe', label: 'Long-run ROE', hint: 'Where returns settle. Above the cost of equity = worth more than book.', min: 0.02, max: 0.35, step: 0.005, pct: true },
-  { key: 'discount', label: 'Cost of equity', hint: 'The return shareholders require.', min: 0.04, max: 0.2, step: 0.0025, pct: true },
-  { key: 'terminal_growth', label: 'Growth forever', hint: 'Keep at or below the risk-free rate.', min: 0, max: 0.06, step: 0.0025, pct: true },
+  { key: 'roe', label: 'Return on equity now', short: 'ROE', hint: 'Profit per unit of book equity — the engine of a bank’s value.', min: -0.1, max: 0.4, step: 0.005, pct: true },
+  { key: 'terminal_roe', label: 'Long-run ROE', short: 'Long-run ROE', hint: 'Where returns settle. Above the cost of equity = worth more than book.', min: 0.02, max: 0.35, step: 0.005, pct: true },
+  { key: 'discount', label: 'Cost of equity', short: 'Discount rate', hint: 'The return shareholders require.', min: 0.04, max: 0.2, step: 0.0025, pct: true },
+  { key: 'terminal_growth', label: 'Growth forever', short: 'Growth ∞', hint: 'Keep at or below the risk-free rate.', min: 0, max: 0.06, step: 0.0025, pct: true },
 ];
 const DDM_DRIVERS: Driver[] = [
-  { key: 'growth', label: 'Dividend growth, next 5 years', hint: 'Default: the lower of ROE × retention and 5-year dividend growth.', min: -0.1, max: 0.2, step: 0.0025, pct: true },
-  { key: 'terminal_growth', label: 'Dividend growth forever', hint: 'Capped by the risk-free rate and 2% real + inflation.', min: 0, max: 0.06, step: 0.0025, pct: true },
-  { key: 'discount', label: 'Cost of equity', hint: 'The return shareholders require.', min: 0.04, max: 0.18, step: 0.0025, pct: true },
+  { key: 'growth', label: 'Dividend growth, next 5 years', short: 'Growth y1–3', hint: 'Default: the lower of ROE × retention and 5-year dividend growth.', min: -0.1, max: 0.2, step: 0.0025, pct: true },
+  { key: 'terminal_growth', label: 'Dividend growth forever', short: 'Growth ∞', hint: 'Capped by the risk-free rate and 2% real + inflation.', min: 0, max: 0.06, step: 0.0025, pct: true },
+  { key: 'discount', label: 'Cost of equity', short: 'Discount rate', hint: 'The return shareholders require.', min: 0.04, max: 0.18, step: 0.0025, pct: true },
 ];
 
 function defaultsFor(d: any): Vals {
@@ -206,9 +206,9 @@ export function ValuationHub({ symbol, onGo }: { symbol: string; onGo: (fn: stri
 
       {/* scenarios */}
       <Panel title="Scenarios — the same model with the key drivers pushed each way">
-        <table className="w-full text-2xs font-mono tabular-nums">
+        <div className="overflow-x-auto"><table className="w-full text-2xs font-mono tabular-nums">
           <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Scenario</th>
-            {drivers.map((d) => <th key={d.key} className="text-right font-normal px-1.5">{d.label}</th>)}
+            {drivers.map((d) => <th key={d.key} className="text-right font-normal px-1.5 whitespace-nowrap" title={d.label}>{d.short ?? d.label}</th>)}
             <th className="text-right font-normal px-1.5">Value / share</th><th className="text-right font-normal px-1.5">vs price</th></tr></thead>
           <tbody>{([['Bear', bear], ['Base', { data: primary, loading: prim.loading }], ['Bull', bull]] as const).map(([n, r]: any) => {
             const x = r.data?.valuation?.per_share;
@@ -220,7 +220,7 @@ export function ValuationHub({ symbol, onGo }: { symbol: string; onGo: (fn: stri
                 <td className="text-right px-1.5 text-text-primary">{x != null ? fmtPrice(x) : r.loading ? '…' : '—'}</td>
                 <td className={cn('text-right px-1.5', x != null && (x >= price ? 'text-green' : 'text-red'))}>{x != null ? fmtPct(x / price - 1, 0) : ''}</td></tr>);
           })}</tbody>
-        </table>
+        </table></div>
         <div className="text-[10px] text-text-tertiary mt-1">{primaryModel === 'excess_return' ? 'Bear/bull: ROE ∓3 points, long-run ROE ∓2, equity risk premium ±0.75 point.' : 'Bear/bull: growth ∓3 points, margin ×0.85 / ×1.10, equity risk premium ±0.75 point.'} Move the drivers and every scenario moves with them.</div>
         {/* Cost-of-capital lens: market-implied (calibrated default) vs the appraisal standard */}
         {(() => {

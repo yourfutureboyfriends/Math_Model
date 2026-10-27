@@ -39,6 +39,12 @@ export function CfView({ symbol }: { symbol: string }) {
   if (loading && !d) return <Loading label="Reading the SEC filing index…" />;
   if (error && !d) return <ErrorBox msg={error} />;
   if (!d) return null;
+  if (d.external_filings) return (
+    <Panel title={`Filings — ${d.name}`}>
+      <div className="text-2xs text-text-secondary mb-2">{d.note}</div>
+      <ul className="space-y-1 text-xs">{d.external_filings.map((l: any) => (
+        <li key={l.url}><a href={l.url} target="_blank" rel="noopener noreferrer" className="text-bloomberg hover:underline">{l.label} ↗</a></li>))}</ul>
+    </Panel>);
   const rows = d.filings.filter((CF_FILTERS.find((f) => f[0] === flt) ?? CF_FILTERS[0])[2]);
   return (
     <div className="space-y-3">

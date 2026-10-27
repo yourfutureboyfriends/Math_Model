@@ -411,9 +411,12 @@ async def lifespan(app: FastAPI):
                         logger.info(f"[STARTUP] warm-up research screen: {e}")
                     _t.sleep(5)
                 from api.marketdata import tracking as _tracking, corporate as _corp2, monitors as _monitors
-                heavy = (research.credit, fixed_income.treasuries, funds.etf_screener, bridgewater.environments,
-                         bridgewater.debt_cycles, bridgewater.world_order, insights.vol, insights.risk, edge.cot,
-                         edge.trade, insights.breadth, edge.ports_trade, insights.implied_moves, insights.uoa, edge.board,
+                from api.marketdata import flows as _flows
+                # slowest cold sources first (IMF PortWatch ports ~110 s, trade nowcast ~70 s, ETF flows ~75 s): the
+                # edge board, which combines them, is then ready early in the first pass after a restart
+                heavy = (edge.ports_trade, edge.trade, _flows.etf, edge.cot, insights.implied_moves, insights.uoa, edge.board,
+                         research.credit, fixed_income.treasuries, funds.etf_screener, bridgewater.environments,
+                         bridgewater.debt_cycles, bridgewater.world_order, insights.vol, insights.risk, insights.breadth,
                          # 8–22 s cold on first open
                          _tracking.chokepoints, lambda: _corp2.actions_calendar(14), _monitors.money_markets,
                          lambda: _monitors.heatmap("US", 300), _countries.world_data, _corporate.deals)

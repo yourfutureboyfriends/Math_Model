@@ -217,7 +217,11 @@ class Helper(Base):""").replace("        _ = self._h.n", "        _ = (self._h.n
 def test_sandbox_admits_python_that_used_to_be_refused():
     """Metaclasses, any special method, async code, __class__ / __dict__ / vars(), open(), file-like objects in memory,
     pickle, threads and any installed library pass the check (isolation and the run-time guard are the boundary)."""
-    extra = """import io, pickle, threading, asyncio, torch
+    import importlib.util
+    # torch lives in QuantConnect's research image: import it only when Docker (with the LEAN image) or a local
+    # install provides it, so the language checks below run on any machine
+    has_torch = "torch" in sandbox.lean_modules() or importlib.util.find_spec("torch") is not None
+    extra = ("import io, pickle, threading, asyncio" + (", torch" if has_torch else "") + """
 class Meta(type):
     pass
 class Helper(object, metaclass=Meta):
@@ -227,7 +231,7 @@ class Helper(object, metaclass=Meta):
         return 1
 async def later():
     return 1
-"""
+""")
     code = OK_CLASS.replace("class Helper(object):", extra + "class Helper2(object):").replace(
         "        _ = self._h.n", "        _ = (self.__class__.__name__, self.__dict__, vars(self), io.StringIO('a'), pickle.dumps(1))")
     assert sandbox.check(code)["universe"] == ["SPY"]

@@ -69,9 +69,15 @@ def test_yahoo_guard_cools_down_and_fails_fast(monkeypatch):
     with pytest.raises(core.Upstream):
         core.yahoo_call(boom)
     assert core._YH["until"] > 0 and core._YH["backoff"] == 30.0
-    with pytest.raises(core.Upstream, match="pausing"):         # while cooling: no request is sent
+    import time as _t
+    core._YH["until"] = _t.time() + core.YAHOO_WAIT_MAX + 30      # a long cool-down: fail fast, no request is sent
+    with pytest.raises(core.Upstream, match="pausing"):
         core.yahoo_call(boom)
     assert len(calls) == 1
+    slept = []                                                   # a short one is waited out, then the call runs
+    monkeypatch.setattr(core.time, "sleep", lambda s: slept.append(s))
+    core._YH["until"] = _t.time() + 5
+    assert core.yahoo_call(lambda: 8) == 8 and slept and slept[0] <= 5.01
     core._YH.update({"until": 0.0, "backoff": 30.0})
     assert core.yahoo_call(lambda: 7) == 7 and core._YH["backoff"] == 15.0   # a success resets the back-off
 

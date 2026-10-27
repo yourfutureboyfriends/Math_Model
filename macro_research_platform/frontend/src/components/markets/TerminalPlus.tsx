@@ -579,6 +579,9 @@ export function MembView({ seed, onOpen }: { seed?: string; onOpen: (s: string) 
 }
 
 // ── FSRC ────────────────────────────────────────────────────────────────────
+/** Fund assets in the fund's own currency (a London-listed UCITS ETF reports in GBP or USD, a Xetra one in EUR). */
+const money = (v: number | null | undefined, ccy?: string) => (!v ? '—' : !ccy || ccy === 'USD' ? `$${fmtBig(v)}` : `${fmtBig(v)} ${ccy}`);
+
 export function FsrcView({ onOpen }: { onOpen: (s: string) => void }) {
   const [group, setGroup] = useState('All');
   const [sort, setSort] = useState<string>('aum');
@@ -589,7 +592,7 @@ export function FsrcView({ onOpen }: { onOpen: (s: string) => void }) {
   const comp = useJSON<any>(cmp ? `/api/v1/mkt/fsrc/compare?a=${enc(cmp[0])}&b=${enc(cmp[1])}` : null);
   const rows = useMemo(() => (screen.data?.funds ?? []).filter((f: any) => (group === 'All' || f.group === group) && (maxEr == null || (f.expense ?? 1) <= maxEr))
     .sort((x: any, y: any) => (sort === 'expense' ? (x.expense ?? 9) - (y.expense ?? 9) : (y[sort] ?? -1e18) - (x[sort] ?? -1e18))), [screen.data, group, sort, maxEr]);
-  const cols: [string, string, (v: any) => string][] = [['aum', 'Assets', (v) => (v ? `$${fmtBig(v)}` : '—')], ['expense', 'Expense', (v) => pc(v, 2)], ['yield', 'Yield', (v) => pc(v, 2)],
+  const cols: [string, string, (v: any, f?: any) => string][] = [['aum', 'Assets', (v, f) => money(v, f?.aum_currency)], ['expense', 'Expense', (v) => pc(v, 2)], ['yield', 'Yield', (v) => pc(v, 2)],
     ['ytd', 'YTD', (v) => sp(v)], ['r3y', '3y avg', (v) => sp(v)], ['r5y', '5y avg', (v) => sp(v)], ['beta3y', 'Beta', (v) => (v != null ? v.toFixed(2) : '—')], ['volume', 'Avg volume', (v) => (v ? fmtBig(v) : '—')]];
   return (
     <div className="space-y-3">
@@ -604,7 +607,7 @@ export function FsrcView({ onOpen }: { onOpen: (s: string) => void }) {
               <tr key={f.symbol} className="border-t border-border-subtle hover:bg-surface-2">
                 <td className="py-1 font-sans"><button onClick={() => onOpen(f.symbol)} className="text-left"><span className="font-mono text-text-primary">{f.symbol}</span> <span className="text-text-secondary">{f.name}</span></button>
                   <div className="text-[10px] text-text-tertiary">{f.category ?? f.group}{f.family ? ` · ${f.family}` : ''}</div></td>
-                {cols.map(([k, , fmt]) => <td key={k} className={cn('text-right px-1.5', ['ytd', 'r3y', 'r5y'].includes(k) && tone(f[k]))}>{fmt(f[k])}</td>)}
+                {cols.map(([k, , fmt]) => <td key={k} className={cn('text-right px-1.5', ['ytd', 'r3y', 'r5y'].includes(k) && tone(f[k]))}>{fmt(f[k], f)}</td>)}
                 <td className="pl-2 font-sans"><button onClick={() => setA(f.symbol)} className="text-[10px] text-bloomberg hover:underline">A</button> <button onClick={() => setB(f.symbol)} className="text-[10px] text-bloomberg hover:underline">B</button></td></tr>))}</tbody></table></div>
           <div className="text-[10px] text-text-tertiary mt-1">Click A / B to pick two funds to compare below. {screen.data.note}</div>
         </Panel>)}
@@ -620,8 +623,8 @@ export function FsrcView({ onOpen }: { onOpen: (s: string) => void }) {
               <Tile label={`${comp.data.a} coverage`} value={comp.data.count_a} sub={comp.data.coverage_a} /><Tile label={`${comp.data.b} coverage`} value={comp.data.count_b} sub={comp.data.coverage_b} />
             </div>
             <table className="w-full text-2xs font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal" /><th className="text-right font-normal">{comp.data.a}</th><th className="text-right font-normal">{comp.data.b}</th></tr></thead>
-              <tbody>{[['Expense', 'expense', (v: any) => pc(v, 2)], ['Assets', 'aum', (v: any) => (v ? `$${fmtBig(v)}` : '—')], ['Yield', 'yield', (v: any) => pc(v, 2)], ['YTD', 'ytd', (v: any) => sp(v)], ['5y avg', 'r5y', (v: any) => sp(v)]].map(([l, k, f]: any) => (
-                <tr key={k} className="border-t border-border-subtle"><td className="py-0.5 font-sans text-text-secondary">{l}</td><td className="text-right">{f(comp.data.fa[k])}</td><td className="text-right">{f(comp.data.fb[k])}</td></tr>))}</tbody></table>
+              <tbody>{[['Expense', 'expense', (v: any) => pc(v, 2)], ['Assets', 'aum', (v: any, f: any) => money(v, f?.aum_currency)], ['Yield', 'yield', (v: any) => pc(v, 2)], ['YTD', 'ytd', (v: any) => sp(v)], ['5y avg', 'r5y', (v: any) => sp(v)]].map(([l, k, f]: any) => (
+                <tr key={k} className="border-t border-border-subtle"><td className="py-0.5 font-sans text-text-secondary">{l}</td><td className="text-right">{f(comp.data.fa[k], comp.data.fa)}</td><td className="text-right">{f(comp.data.fb[k], comp.data.fb)}</td></tr>))}</tbody></table>
             {comp.data.common.length > 0 && <div className="text-2xs"><span className="text-text-tertiary">Largest shared: </span>{comp.data.common.slice(0, 12).map((c: any) => `${c.symbol} (${pc(c.weight_a)} / ${pc(c.weight_b)})`).join(' · ')}</div>}
             <div className="text-[10px] text-text-tertiary">{comp.data.note}</div>
           </div>)}
