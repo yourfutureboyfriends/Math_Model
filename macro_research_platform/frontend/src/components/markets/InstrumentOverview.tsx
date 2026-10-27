@@ -169,7 +169,7 @@ export function EarningsCard({ symbol }: { symbol: string }) {
       <div><div className="text-text-tertiary">Next report</div><div className="text-sm font-semibold text-text-primary">{upDate ? upDate.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</div>
         {days != null && <div className="text-text-tertiary">{days > 1 ? `in ${days} days` : days === 1 ? 'tomorrow' : days === 0 ? 'today' : 'recently'}{up?.eps_estimate != null ? ` · est. EPS ${up.eps_estimate.toFixed(2)}` : ''}</div>}</div>
       <div><div className="text-text-tertiary">Last quarter</div>{last ? <><div className="text-sm font-semibold font-mono">{last.eps_reported?.toFixed(2)} <span className="text-text-tertiary text-xs font-sans">vs {last.eps_estimate?.toFixed(2)}</span></div>
-        {last.surprise_pct != null && (Math.abs(last.surprise_pct) < 0.05
+        {last.surprise_pct != null && (Math.abs(last.surprise_pct) < 1   /* surprise_pct is in percent: within ±1% counts as in line */
           ? <div className="text-text-secondary">In line with estimates</div>
           : <div className={cn(last.surprise_pct > 0 ? 'text-green' : 'text-red')}>{last.surprise_pct > 0 ? 'Beat' : 'Missed'} by {Math.abs(last.surprise_pct).toFixed(1)}%</div>)}</> : '—'}</div>
       {data.beat_rate != null && <div className="col-span-2 text-text-tertiary">Beat estimates in <span className="text-text-primary">{Math.round(data.beat_rate * 100)}%</span> of the last {data.history.length} reports.</div>}

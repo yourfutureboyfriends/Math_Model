@@ -491,8 +491,11 @@ def overview() -> Dict[str, Any]:
                                  "change_ytd_bp": (last - float(prev_y)) * 100,
                                  "spark": [round(float(x), 6) for x in c.iloc[-60:]]})
                     continue
+                prev1 = float(c.iloc[-2])
+                if s.endswith("=X") and (fx := fx_last_prev(s, c)):         # FX: previous close from the ECB fixing
+                    last, prev1 = fx[0], fx[1]
                 rows.append({"symbol": s, "name": label, "price": last, "date": c.index[-1].strftime("%Y-%m-%d"),
-                             "change_1d": last / float(c.iloc[-2]) - 1,
+                             "change_1d": last / prev1 - 1,
                              "change_1m": (last / m1 - 1) if (m1 := _month_ago(c)) else None,     # by date: crypto trades 7 days
                              "change_ytd": last / float(base_ytd.iloc[-1]) - 1 if len(base_ytd) else (last / float(ytd.iloc[0]) - 1 if len(ytd) else None),
                              "spark": [round(float(x), 6) for x in c.iloc[-60:]]})
@@ -969,11 +972,86 @@ def usd_to_local(region: str) -> float:
         pair = f"{ccy}=X" if ccy not in ("EUR", "GBP", "AUD") else f"{ccy}USD=X"
         c = yf.download(pair, period="5d", interval="1d", progress=False, auto_adjust=False)["Close"].dropna()
         x = float(c.iloc[-1].iloc[0] if hasattr(c.iloc[-1], "iloc") else c.iloc[-1])
-        return 1 / x if ccy in ("EUR", "GBP", "AUD") else x
+        return fx_checked(ccy, 1 / x if ccy in ("EUR", "GBP", "AUD") else x)[0]
     try:
         return _cached(f"fx:{ccy}", 3600, fetch)
     except Exception as e:
         raise Upstream(f"FX rate for {ccy} unavailable: {e}")
+
+
+# ── FX reference: ECB fixings as the second source ──────────────────────────────────────────────────────────────
+# Yahoo's daily FX bars are unreliable around the day boundary (a stale bar on 26 Oct 2026 showed USD/BRL at 4.96
+# when the market traded 5.40–5.59, so its "1-day change" read +7.5%). Every FX day-change in the platform is measured
+# against the previous business day's ECB reference fixing (14:15 CET, ~30 currencies); live levels more than
+# FX_MAX_DEVIATION from the latest fixing are replaced by it and flagged.
+FX_MAX_DEVIATION = 0.10       # gross errors only (wrong units, dead feed): EM currencies can move 4–5% in a day
+
+
+def ecb_fixings(days: int = 14) -> Dict[str, Dict[str, float]]:
+    """ECB reference rates per USD for the last `days` calendar days: {YYYY-MM-DD: {ccy: units per USD}} (USD = 1)."""
+    def fetch():
+        import datetime as _dt
+        import requests
+        start = (_dt.date.today() - _dt.timedelta(days=days)).isoformat()
+        r = requests.get(f"https://api.frankfurter.dev/v1/{start}..", params={"base": "USD"}, timeout=10)
+        r.raise_for_status()
+        return {d: {**v, "USD": 1.0} for d, v in (r.json().get("rates") or {}).items()}
+    try:
+        return _cached(f"ecb_fix:{days}", 6 * 3600, fetch)
+    except Exception as e:                                         # a second source must never break the first
+        logger.warning("[fx] ECB fixings unavailable: %s", e)
+        return {}
+
+
+def fx_prev_fixing(ccy: str, before: str) -> Optional[Tuple[str, float]]:
+    """(date, units of `ccy` per USD) of the latest ECB fixing strictly before `before` (YYYY-MM-DD), if any."""
+    fx = ecb_fixings()
+    for d in sorted(fx, reverse=True):
+        if d < before and ccy in fx[d]:
+            return d, fx[d][ccy]
+    return None
+
+
+def fx_checked(ccy: str, per_usd: Optional[float]) -> Tuple[Optional[float], Optional[str]]:
+    """A live rate (units of `ccy` per USD) checked against the latest ECB fixing: returned as is, or replaced by the
+    fixing (with a note) when it is more than FX_MAX_DEVIATION away — a bad tick, not a market move."""
+    fx = ecb_fixings()
+    if not fx or ccy == "USD":
+        return per_usd, None
+    d = max(fx)
+    ref = fx[d].get(ccy)
+    if ref is None:
+        return per_usd, None
+    if per_usd is None or abs(per_usd / ref - 1) > FX_MAX_DEVIATION:
+        note = (f"{ccy}: the live rate {per_usd:.4f} is {per_usd / ref - 1:+.1%} from the ECB fixing of {d} ({ref:.4f}) — the fixing is used"
+                if per_usd else f"{ccy}: no live rate — the ECB fixing of {d} is used")
+        logger.warning("[fx] %s", note)
+        return ref, note
+    return per_usd, None
+
+
+def fx_last_prev(symbol: str, closes) -> Optional[Tuple[float, float, str]]:
+    """(last, previous close, basis) for a Yahoo FX symbol — 'JPY=X' (JPY per USD), 'EURUSD=X' (USD per EUR) or a cross
+    'EURJPY=X' — from its daily closes: the last close validated against the ECB fixing, the previous close taken from
+    the previous business day's ECB fixing. None when the symbol isn't FX or the ECB has neither currency."""
+    import re
+    m = re.fullmatch(r"([A-Z]{3})([A-Z]{3})?=X", symbol)
+    if not m or len(closes) < 1:
+        return None
+    base, quote_ = (("USD", m.group(1)) if not m.group(2) else (m.group(1), m.group(2)))
+    last_date = closes.index[-1].strftime("%Y-%m-%d")
+    fb, fq = fx_prev_fixing(base, last_date), fx_prev_fixing(quote_, last_date)
+    if not fb or not fq:
+        return None
+    prev = fq[1] / fb[1]                                            # units of quote per base at the fixing
+    last = float(closes.iloc[-1])
+    # validate the live level through the non-USD leg(s)
+    if base == "USD":
+        last = fx_checked(quote_, last)[0] or last
+    elif quote_ == "USD":
+        chk = fx_checked(base, 1 / last if last else None)[0]
+        last = 1 / chk if chk else last
+    return last, prev, f"previous close: ECB fixing {fq[0]}"
 
 
 # Exchanges that quote in minor units: London pence, Johannesburg cents, Tel Aviv agorot
@@ -992,7 +1070,9 @@ def to_usd(amount: Optional[float], ccy: Optional[str]) -> Optional[float]:
     def fetch():
         import yfinance as yf
         c = yf.download(f"{major}USD=X", period="5d", interval="1d", progress=False, auto_adjust=False)["Close"].dropna()
-        return float(c.iloc[-1].iloc[0] if hasattr(c.iloc[-1], "iloc") else c.iloc[-1])
+        usd_per = float(c.iloc[-1].iloc[0] if hasattr(c.iloc[-1], "iloc") else c.iloc[-1])
+        per_usd, _ = fx_checked(major, 1 / usd_per if usd_per else None)        # validated against the ECB fixing
+        return 1 / per_usd if per_usd else usd_per
     try:
         return amount * _cached(f"usdper:{major}", 3600, fetch)
     except Exception:

@@ -21,7 +21,7 @@ from typing import Any, Dict, Optional
 import numpy as np
 import pandas as pd
 
-from api.marketdata.core import NotFound, Upstream, _cached, _f, _info
+from api.marketdata.core import MINOR_UNITS, NotFound, Upstream, _cached, _f, _info
 
 logger = logging.getLogger(__name__)
 NASDAQ_UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36",
@@ -167,6 +167,8 @@ def management(symbol: str) -> Dict[str, Any]:
         paid = [p for p in people if p["pay"]]
         return {"symbol": s, "name": i.get("longName") or i.get("shortName"), "employees": i.get("fullTimeEmployees"),
                 "people": people, "total_disclosed_pay": sum(p["pay"] for p in paid) if paid else None,
+                # Yahoo reports officers' pay in the company's reporting currency (Toyota: yen), not dollars
+                "pay_currency": i.get("financialCurrency") or MINOR_UNITS.get(i.get("currency") or "", i.get("currency")) or "USD",
                 "risk": risk, "risk_as_of": _d(i.get("governanceEpochDate")), "insiders": insiders,
                 "held_by_insiders": _f(i.get("heldPercentInsiders")), "held_by_institutions": _f(i.get("heldPercentInstitutions")),
                 "note": "Officers and pay as disclosed in the latest proxy (via Yahoo). Governance scores are ISS QualityScores: 1 = lowest "

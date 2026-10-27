@@ -202,20 +202,23 @@ def surprise_index(start: str = "2010-01-01", half_life_days: int = 30) -> Dict[
             if w == 0:
                 continue
             try:
-                fr = [o for o in alfred.first_release(sid, start="2005-01-01") if o["value"] is not None and o.get("released")]
+                # the change each release reported: this period and the prior period from the same vintage, so a
+                # revision to the prior period published alongside it is not counted as news
+                fr = [o for o in alfred.first_release_changes(sid, start="2005-01-01")
+                      if o["value"] is not None and o["prev"] is not None and o.get("released")]
             except Exception as e:
                 logger.warning("[ecst] %s: %s", sid, e)
                 continue
-            vals = np.array([o["value"] for o in fr], float)
-            if len(vals) < 40:
+            if len(fr) < 40:
                 continue
+            cur, prv = np.array([o["value"] for o in fr], float), np.array([o["prev"] for o in fr], float)
             if tf == "diff":
-                ch = np.diff(vals)
+                ch = cur - prv
             elif tf == "pct_mm":
-                ch = np.diff(vals) / vals[:-1] * 100
+                ch = (cur / prv - 1) * 100
             else:                                  # level_inv: higher is worse (unemployment, claims)
-                ch = -np.diff(vals)
-            rel = [o["released"] for o in fr[1:]]
+                ch = -(cur - prv)
+            rel = [o["released"] for o in fr]
             for i in range(24, len(ch)):
                 prior = ch[i - 24:i]
                 sd = prior.std()

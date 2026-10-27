@@ -106,12 +106,22 @@ def fx_matrix(ccys: Optional[List[str]] = None) -> Dict[str, Any]:
             df = yf.download(list(pairs.values()), period="10d", interval="1d", auto_adjust=False, group_by="ticker", progress=False, threads=True)
         except Exception as ex:
             raise Upstream(f"FX rates unavailable: {ex}")
-        last, prev, asof = {"USD": 1.0}, {"USD": 1.0}, None
+        from api.marketdata.core import fx_checked, fx_prev_fixing
+        last, prev, asof, notes, prev_basis = {"USD": 1.0}, {"USD": 1.0}, None, [], {}
         for c, p in pairs.items():
             try:
                 cl = df[p]["Close"].dropna()
                 cl = cl[cl.index.dayofweek < 5]          # weekend prints are stale/junk: compare trading days
-                last[c], prev[c] = float(cl.iloc[-1]), float(cl.iloc[-2])
+                today = cl.index[-1].strftime("%Y-%m-%d")
+                # live level validated against the ECB fixing (units of c per USD → USD per c)
+                per_usd, note = fx_checked(c, 1 / float(cl.iloc[-1]))
+                last[c] = 1 / per_usd
+                if note:
+                    notes.append(note)
+                # the day's change is measured from the previous business day's ECB fixing (Yahoo's daily FX bars can be
+                # stale at the day boundary); Yahoo's previous bar only where the ECB publishes no rate
+                fix = fx_prev_fixing(c, today)
+                prev[c], prev_basis[c] = (1 / fix[1], f"ECB {fix[0]}") if fix else (float(cl.iloc[-2]), "Yahoo daily bar")
                 asof = max(asof or cl.index[-1], cl.index[-1])
             except Exception:
                 continue
@@ -122,8 +132,10 @@ def fx_matrix(ccys: Optional[List[str]] = None) -> Dict[str, Any]:
         vs_usd = sorted([{"ccy": c, "usd_change_1d": last[c] / prev[c] - 1} for c in have if c != "USD"], key=lambda x: -x["usd_change_1d"])
         return {"currencies": have, "matrix": mat, "change_1d": chg, "strength_vs_usd": vs_usd,
                 "as_of": asof.strftime("%Y-%m-%d") if asof is not None else None,
-                "note": "Row currency → column currency: units of the column currency per 1 unit of the row currency.",
-                "source": "Yahoo Finance FX (daily)"}
+                "note": "Row currency → column currency: units of the column currency per 1 unit of the row currency. Changes are "
+                        "measured from the previous business day's ECB reference fixing (14:15 CET); live rates more than 10% from the "
+                        "latest fixing are replaced by it.", "checks": notes, "previous_basis": prev_basis,
+                "source": "Yahoo Finance FX (live) · ECB reference rates (previous close, validation)"}
     return _cached(f"wcrs:{','.join(cs)}", 300, fetch)
 
 

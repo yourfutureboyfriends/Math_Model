@@ -215,7 +215,7 @@ export function HdsView({ symbol }: { symbol: string }) {
   const table = (rows: any[]) => (
     <table className="w-full text-2xs">
       <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Holder</th><th className="text-right font-normal">% held</th>
-        <th className="text-right font-normal">Shares</th><th className="text-right font-normal">Value</th><th className="text-right font-normal">Change</th></tr></thead>
+        <th className="text-right font-normal">Shares</th><th className="text-right font-normal">Value{data.value_currency ? ` (${data.value_currency})` : ''}</th><th className="text-right font-normal">Change</th></tr></thead>
       <tbody>{rows.map((r, i) => (
         <tr key={i} className="border-t border-border-subtle"><td className="py-1 text-text-primary truncate max-w-[14rem]">{r.Holder}</td>
           <td className="text-right font-mono">{fmtPct(r.pctHeld, 2).replace('+', '')}</td><td className="text-right font-mono">{fmtBig(r.Shares)}</td>
@@ -223,6 +223,7 @@ export function HdsView({ symbol }: { symbol: string }) {
     </table>);
   return (
     <div className="space-y-3">
+      {data.note && <div className="text-2xs text-amber border border-amber/40 bg-amber/5 px-2 py-1">{data.note}</div>}
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-3">
         <Panel title="Who owns it">
           {inst != null ? <Donut data={[{ label: 'Institutions', value: inst }, { label: 'Insiders', value: ins ?? 0 }, { label: 'Retail & other', value: other ?? 0 }]}
@@ -262,7 +263,8 @@ export function DvdView({ symbol }: { symbol: string }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-        <Stat label="Yield" value={data.dividend_yield != null ? fmtPct(data.dividend_yield, 2).replace('+', '') : '—'} sub={data.forward_rate ? `${n2(data.forward_rate)} ${data.currency} / yr` : ''} />
+        <Stat label="Yield" value={data.dividend_yield != null ? fmtPct(data.dividend_yield, 2).replace('+', '') : '—'}
+          sub={data.ttm_dividends ? `${n2(data.ttm_dividends)} ${data.currency} last 12 months${data.forward_rate ? ` · ${n2(data.forward_rate)} indicated` : ''}` : data.forward_rate ? `${n2(data.forward_rate)} ${data.currency} / yr` : ''} />
         <Stat label="Payout ratio" value={data.payout_ratio != null ? fmtPct(data.payout_ratio, 0).replace('+', '') : '—'} sub="of earnings" />
         <Stat label="Growth 5y / yr" value={g['5y'] != null ? fmtPct(g['5y'], 1) : '—'} tone={g['5y'] > 0 ? 'up' : g['5y'] < 0 ? 'down' : null} sub={g['10y'] != null ? `10y ${fmtPct(g['10y'], 1)}` : ''} />
         <Stat label="Consecutive increases" value={`${data.consecutive_increases} yrs`} sub={data.consecutive_increases >= 50 ? 'Dividend King' : data.consecutive_increases >= 25 ? 'Dividend Aristocrat territory' : ''} />

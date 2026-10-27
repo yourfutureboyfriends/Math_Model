@@ -219,8 +219,21 @@ def holders(symbol: str) -> Dict[str, Any]:
             insiders = []
         inst, funds = holders_table("institutional_holders"), holders_table("mutualfund_holders")
         t.check()
-        return {"symbol": s, "breakdown": major, "institutions": inst,
-                "funds": funds, "insiders": insiders, "source": "Yahoo Finance (13F / Form 4)"}
+        info = _info(s)
+        ccy = info.get("currency") or ""
+        major_ccy = MINOR_UNITS.get(ccy, ccy)
+        k = 100.0 if ccy in MINOR_UNITS else 1.0
+        for rows in (inst, funds):                      # values in the major unit (pounds, not pence), largest first
+            for r in rows:
+                if isinstance(r.get("Value"), (int, float)):
+                    r["Value"] = r["Value"] / k
+            rows.sort(key=lambda r: -(r.get("Value") or 0))
+        us_listed = (info.get("country") or "") == "United States" or "." not in s
+        note = None if us_listed else (
+            "Yahoo's holder lists come from US 13F filings: for a company listed outside the US they show US funds only — "
+            "often holding the ADR, whose share count differs from the local line — not the company's share register.")
+        return {"symbol": s, "breakdown": major, "institutions": inst, "value_currency": major_ccy,
+                "funds": funds, "insiders": insiders, "note": note, "source": "Yahoo Finance (13F / Form 4)"}
     out = _cached(f"hds:{s}", 6 * 3600, fetch)
     if not out["breakdown"] and not out["institutions"]:
         _expire_soon(f"hds:{s}")
@@ -268,11 +281,24 @@ def dividends(symbol: str) -> Dict[str, Any]:
                     break
         dy = div_yield(i)
         t.check()
+        # Trailing 12 months from the payment record, in the same units as the price (pence for London lines, cents
+        # for Johannesburg): Yahoo's dividendRate is in the major unit (or the declaring currency) for those lines,
+        # so it is only kept when it agrees with the record after unit normalisation.
+        px = _f(i.get("regularMarketPrice")) or _f(i.get("currentPrice"))
+        cutoff = pd.Timestamp.now(tz=dv.index.tz if dv is not None and len(dv) else None) - pd.Timedelta(days=365)
+        ttm = float(dv[dv.index > cutoff].sum()) if dv is not None and len(dv) else 0.0
+        fwd = _f(i.get("dividendRate"))
+        if fwd and (i.get("currency") or "") in MINOR_UNITS:
+            fwd *= 100
+        if fwd and ttm and not 0.5 <= fwd / ttm <= 2.0:
+            fwd = None                                      # different currency or basis from the payments: not shown
+        ttm_yield = ttm / px if ttm and px else None
         return {"symbol": s, "payments": pays[:40], "annual": [{"year": y, "total": annual[y]} for y in ys[-20:]],
                 "growth": growth, "consecutive_increases": streak, "currency": i.get("currency"),
-                "dividend_yield": dy,
+                "dividend_yield": ttm_yield if ttm_yield is not None else dy, "ttm_dividends": round(ttm, 6) if ttm else None,
+                "yield_basis": "trailing 12 months of payments ÷ price" if ttm_yield is not None else "Yahoo indicated yield",
                 "payout_ratio": _f(i.get("payoutRatio")), "ex_dividend_date": i.get("exDividendDate"),
-                "forward_rate": _f(i.get("dividendRate")),
+                "forward_rate": fwd,
                 "splits": [{"date": d.strftime("%Y-%m-%d"), "ratio": _f(v)} for d, v in sp.items()][::-1] if sp is not None else [],
                 "source": "Yahoo Finance"}
     return _cached(f"dvd:{s}", 6 * 3600, fetch)

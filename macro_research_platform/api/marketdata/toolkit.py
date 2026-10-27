@@ -36,8 +36,32 @@ def _history(symbol: str, period: str = "10y") -> pd.DataFrame:
         if df is None or df.empty:
             raise NotFound(f"No price history for {symbol}.")
         df.index = pd.to_datetime(df.index).tz_localize(None).normalize()
-        return df[["Open", "High", "Low", "Close", "Volume"]].dropna(subset=["Close"])
+        return _stitch_quote(symbol, df[["Open", "High", "Low", "Close", "Volume"]].dropna(subset=["Close"]))
     return _cached(f"tkhist:{symbol}:{period}", 1800, fetch)
+
+
+def _stitch_quote(symbol: str, df: pd.DataFrame) -> pd.DataFrame:
+    """Append the latest session from the quote when the daily history is a session behind (Yahoo's long daily
+    histories omit the latest completed Tokyo / Hong Kong session for hours after the close), so indicators use the
+    same last price as the quote screen."""
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from api.marketdata.core import _info
+        i = _info(symbol)
+        px, t = i.get("regularMarketPrice"), i.get("regularMarketTime")
+        if not px or not t or df.empty:
+            return df
+        tz = ZoneInfo(i.get("exchangeTimezoneName") or "UTC")
+        day = pd.Timestamp(datetime.fromtimestamp(int(t), tz).date())
+        if day <= df.index[-1] or day.dayofweek >= 5:
+            return df
+        row = pd.DataFrame({"Open": [i.get("regularMarketOpen") or px], "High": [i.get("regularMarketDayHigh") or px],
+                            "Low": [i.get("regularMarketDayLow") or px], "Close": [px],
+                            "Volume": [i.get("regularMarketVolume") or 0]}, index=[day])
+        return pd.concat([df, row])
+    except Exception:                                    # a stitch must never break the history
+        return df
 
 
 # ── TECH ─────────────────────────────────────────────────────────────────────
@@ -344,8 +368,13 @@ CB_NAMES = {
     "PE": ("Peru", "BCRP"), "AR": ("Argentina", "BCRA"), "SA": ("Saudi Arabia", "SAMA"), "TH": ("Thailand", "Bank of Thailand"),
     "MY": ("Malaysia", "Bank Negara"), "PH": ("Philippines", "BSP"), "HK": ("Hong Kong", "HKMA"), "IS": ("Iceland", "Central Bank of Iceland"),
     "RO": ("Romania", "NBR"), "RS": ("Serbia", "NBS"), "MK": ("North Macedonia", "NBRNM"), "HR": ("Croatia", "HNB"), "BG": ("Bulgaria", "BNB"),
-    "CY": ("Cyprus", "CBC"),
+    "CY": ("Cyprus", "CBC"), "KW": ("Kuwait", "Central Bank of Kuwait"), "MA": ("Morocco", "Bank Al-Maghrib"),
+    "AE": ("United Arab Emirates", "CBUAE"), "QA": ("Qatar", "QCB"), "EG": ("Egypt", "Central Bank of Egypt"),
+    "NG": ("Nigeria", "CBN"), "VN": ("Vietnam", "SBV"), "TW": ("Taiwan", "CBC Taiwan"), "UA": ("Ukraine", "NBU"),
 }
+# A series that has stopped updating is a bank that no longer sets policy (Croatia joined the euro in 2023) or a
+# broken feed — not a current rate. Older than this, it is left out of the table and the breadth counts.
+CB_STALE_DAYS = 120
 
 
 def central_banks() -> Dict[str, Any]:
@@ -363,6 +392,9 @@ def central_banks() -> Dict[str, Any]:
         for area, g in df.groupby("REF_AREA"):
             sr = g.set_index("TIME_PERIOD")["OBS_VALUE"].astype(float).sort_index().dropna()
             if sr.empty:
+                continue
+            if (pd.Timestamp(date.today()) - sr.index[-1]).days > CB_STALE_DAYS:
+                logger.info("[cbrt] %s left out: last observation %s", area, sr.index[-1].date())
                 continue
             last = float(sr.iloc[-1])
             chg = sr[sr.diff().abs() > 1e-9]

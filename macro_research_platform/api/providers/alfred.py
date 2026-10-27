@@ -96,6 +96,35 @@ def first_release(series: str, start: str = "1990-01-01") -> List[Dict[str, Any]
     return [{"date": o["date"], "value": _num(o["value"]), "released": o.get("realtime_start")} for o in obs]
 
 
+def first_release_changes(series: str, start: str = "1990-01-01") -> List[Dict[str, Any]]:
+    """Each observation as first published, with the previous observation's value *in the same release* — so a change
+    computed from the pair is the change the release reported, not one contaminated by a revision of the prior period
+    (or an annual benchmark revision) published at the same time. Uses all vintages (output_type=1): the previous
+    value is the one whose real-time period covers the release date.
+
+    Returns:
+        [{date, released, value, prev}] oldest first; `prev` is None when no vintage of the prior period was current.
+    """
+    allv = _fetch({"series_id": series, "realtime_start": "1776-07-04", "realtime_end": "9999-12-31",
+                   "output_type": 1, "observation_start": start}, f"{series}_allvintages_{start}")
+    by_date: Dict[str, List[Dict[str, Any]]] = {}
+    for o in allv:
+        by_date.setdefault(o["date"], []).append(o)
+    dates = sorted(by_date)
+    out: List[Dict[str, Any]] = []
+    for i, d in enumerate(dates):
+        first = min(by_date[d], key=lambda o: o["realtime_start"])
+        rel = first["realtime_start"]
+        prev = None
+        if i > 0:
+            for o in by_date[dates[i - 1]]:
+                if o["realtime_start"] <= rel <= o["realtime_end"]:
+                    prev = _num(o["value"])
+                    break
+        out.append({"date": d, "released": rel, "value": _num(first["value"]), "prev": prev})
+    return out
+
+
 def latest(series: str, start: str = "1990-01-01") -> List[Dict[str, Any]]:
     """A series as currently published (all revisions applied)."""
     obs = _fetch({"series_id": series, "observation_start": start}, f"{series}_latest_{start}")

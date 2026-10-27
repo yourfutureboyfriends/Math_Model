@@ -134,12 +134,20 @@ def _moves(df, sym: str) -> Optional[Dict[str, Any]]:
         c = c[c.index.dayofweek < 5]
     if len(c) < 30:
         return None
-    last = float(c.iloc[-1])
+    last, prev1 = float(c.iloc[-1]), float(c.iloc[-2])
+    if sym.endswith("=X"):                     # FX: live level checked and previous close taken from the ECB fixing
+        from api.marketdata.core import fx_last_prev
+        fx = fx_last_prev(sym, c)
+        if fx:
+            last, prev1 = fx[0], fx[1]
     prior_year = c[c.index.year < c.index[-1].year]
-    return {"price": last, "date": c.index[-1].strftime("%Y-%m-%d"), "change_1d": last / float(c.iloc[-2]) - 1,
+    return {"price": last, "date": c.index[-1].strftime("%Y-%m-%d"), "change_1d": last / prev1 - 1,
             "change_1m": last / float(c.iloc[-22]) - 1 if len(c) > 22 else None,
             "change_ytd": last / float(prior_year.iloc[-1]) - 1 if len(prior_year) else None,
             "change_1y": last / float(c.iloc[-253]) - 1 if len(c) > 253 else None}
+
+
+YIELD_STALE_DAYS = 150     # a monthly average is ~1–3 months old when published; older means the series has stopped
 
 
 def _yields() -> Dict[str, Dict[str, Any]]:
@@ -156,7 +164,9 @@ def _yields() -> Dict[str, Dict[str, Any]]:
             import pandas as pd
             when = lambda o: pd.Timestamp(str(o.date)[:10])
             prev = next((o for o in reversed(obs[:-1]) if (when(obs[-1]) - when(o)).days >= 360), None)
-            return iso, {"yield_10y": obs[-1].value, "yield_date": str(obs[-1].date)[:10], "yield_source": "OECD monthly",
+            if (pd.Timestamp(date.today()) - when(obs[-1])).days > YIELD_STALE_DAYS:
+                return iso, None                      # a discontinued series (Iceland's last OECD print: Aug 2022)
+            return iso, {"yield_10y": obs[-1].value, "yield_date": str(obs[-1].date)[:10], "yield_source": "OECD monthly average",
                          "yield_change_1y_bp": (obs[-1].value - prev.value) * 100 if prev else None}
         except Exception:
             return iso, None

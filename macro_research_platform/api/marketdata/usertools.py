@@ -185,8 +185,13 @@ def quotes(symbols: List[str]) -> List[Dict[str, Any]]:
             if len(c) == 0:
                 out.append({"symbol": s, "price": None})
                 continue
-            out.append({"symbol": s, "price": float(c.iloc[-1]), "date": c.index[-1].strftime("%Y-%m-%d"),
-                        "change_1d": float(c.iloc[-1] / c.iloc[-2] - 1) if len(c) > 1 else None,
+            last, prev1 = float(c.iloc[-1]), (float(c.iloc[-2]) if len(c) > 1 else None)
+            if s.endswith("=X"):                       # FX: previous close from the ECB fixing, level validated
+                from api.marketdata.core import fx_last_prev
+                if fx := fx_last_prev(s, c):
+                    last, prev1 = fx[0], fx[1]
+            out.append({"symbol": s, "price": last, "date": c.index[-1].strftime("%Y-%m-%d"),
+                        "change_1d": last / prev1 - 1 if prev1 else None,
                         "change_1m": float(c.iloc[-1] / c.iloc[0] - 1) if len(c) > 1 else None,
                         "spark": [round(float(x), 6) for x in c]})
         return out

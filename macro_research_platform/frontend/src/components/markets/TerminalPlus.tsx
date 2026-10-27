@@ -448,11 +448,11 @@ export function MgmtView({ symbol }: { symbol: string }) {
           {Object.entries<any>(d.risk).filter(([, v]) => v != null).map(([k, v]) => (
             <Tile key={k} label={`${RISK_LABEL[k] ?? k} risk`} value={`${v}/10`} cls={v >= 7 ? 'text-red' : v <= 3 ? 'text-green' : ''} sub={v >= 7 ? 'high' : v <= 3 ? 'low' : 'medium'} />))}
         </div>
-        <Panel title={`Officers — total disclosed pay ${d.total_disclosed_pay ? `$${fmtBig(d.total_disclosed_pay)}` : '—'}`}>
+        <Panel title={`Officers — total disclosed pay ${d.total_disclosed_pay ? `${fmtBig(d.total_disclosed_pay)} ${d.pay_currency ?? 'USD'}` : '—'}`}>
           <table className="w-full text-2xs"><thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Name</th><th className="text-left font-normal">Title</th><th className="text-right font-normal">Age</th><th className="text-right font-normal">Pay</th><th className="text-right font-normal">Options exercised</th></tr></thead>
             <tbody>{d.people.map((p: any) => (
               <tr key={p.name + p.title} className="border-t border-border-subtle"><td className="py-1 text-text-primary">{p.name}</td><td className="text-text-secondary">{p.title}</td>
-                <td className="text-right font-mono">{p.age ?? '—'}</td><td className="text-right font-mono">{p.pay ? `$${fmtBig(p.pay)}` : '—'}</td><td className="text-right font-mono text-text-tertiary">{p.exercised ? `$${fmtBig(p.exercised)}` : '—'}</td></tr>))}</tbody></table>
+                <td className="text-right font-mono">{p.age ?? '—'}</td><td className="text-right font-mono">{p.pay ? `${fmtBig(p.pay)} ${d.pay_currency ?? 'USD'}` : '—'}</td><td className="text-right font-mono text-text-tertiary">{p.exercised ? `${fmtBig(p.exercised)} ${d.pay_currency ?? 'USD'}` : '—'}</td></tr>))}</tbody></table>
           <div className="text-[10px] text-text-tertiary mt-1">{d.note}</div>
         </Panel>
         {d.insiders?.rows?.length > 0 && <Panel title="Insider trades (Form 4)">

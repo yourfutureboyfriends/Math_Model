@@ -1,0 +1,68 @@
+"""Markets audit (Oct 2026): FX day-changes and levels checked against ECB fixings, the surprise index on same-vintage
+changes, dividend units for minor-unit listings, stale central-bank series, and quote stitching for lagging histories."""
+import pandas as pd
+import pytest
+
+from api.marketdata import core
+
+FIX = {"2026-10-23": {"USD": 1.0, "EUR": 0.89342, "BRL": 5.0465, "JPY": 157.0},
+       "2026-10-26": {"USD": 1.0, "EUR": 0.89381, "BRL": 5.5884, "JPY": 157.45}}
+
+
+@pytest.fixture
+def ecb(monkeypatch):
+    monkeypatch.setattr(core, "ecb_fixings", lambda days=14: FIX)
+
+
+def _bars(vals, end="2026-10-27"):
+    return pd.Series(vals, index=pd.bdate_range(end=end, periods=len(vals)))
+
+
+def test_fx_previous_close_is_the_prior_ecb_fixing_not_a_stale_bar(ecb):
+    # Yahoo's Monday bar for USD/BRL was 4.96 (stale) while the market traded 5.40–5.59
+    last, prev, basis = core.fx_last_prev("BRL=X", _bars([5.0499, 4.9602, 5.3361]))
+    assert prev == pytest.approx(5.5884) and "2026-10-26" in basis
+    assert last / prev - 1 == pytest.approx(5.3361 / 5.5884 - 1)
+    # USD per EUR, and a cross
+    last, prev, _ = core.fx_last_prev("EURUSD=X", _bars([1.12, 1.1215, 1.1148]))
+    assert prev == pytest.approx(1 / 0.89381)
+    _, prev, _ = core.fx_last_prev("EURJPY=X", _bars([175.5, 176.0, 175.8]))
+    assert prev == pytest.approx(157.45 / 0.89381)
+    assert core.fx_last_prev("AAPL", _bars([1, 2])) is None
+
+
+def test_fx_levels_far_from_the_fixing_are_replaced(ecb):
+    assert core.fx_checked("BRL", 5.336)[0] == 5.336                   # a real 4.5% move is kept
+    v, note = core.fx_checked("BRL", 4.90)                             # 12% off: a bad tick
+    assert v == pytest.approx(5.5884) and "ECB fixing" in note
+    assert core.fx_checked("EUR", 0.8969) == (0.8969, None)
+
+
+def test_surprise_changes_use_the_prior_period_from_the_same_release(monkeypatch):
+    from api.providers import alfred
+    # Aug first printed 773,947; the Sep release revised Aug to 739,322 and printed Sep at 745,021 (+0.77%)
+    rows = [{"date": "2026-08-01", "realtime_start": "2026-09-16", "realtime_end": "2026-10-14", "value": "773947"},
+            {"date": "2026-08-01", "realtime_start": "2026-10-15", "realtime_end": "9999-12-31", "value": "739322"},
+            {"date": "2026-09-01", "realtime_start": "2026-10-15", "realtime_end": "9999-12-31", "value": "745021"}]
+    monkeypatch.setattr(alfred, "_fetch", lambda params, name: rows)
+    ch = alfred.first_release_changes("RSAFS", start="2026-01-01")
+    sep = ch[-1]
+    assert sep["prev"] == 739322 and (sep["value"] / sep["prev"] - 1) * 100 == pytest.approx(0.771, abs=1e-3)
+
+
+def test_stale_central_bank_series_are_left_out():
+    from api.marketdata import toolkit
+    assert toolkit.CB_STALE_DAYS <= 180 and toolkit.CB_NAMES["KW"][1] == "Central Bank of Kuwait"
+
+
+def test_lagging_history_is_stitched_to_the_quote(monkeypatch):
+    from api.marketdata import toolkit
+    import api.marketdata.core as c
+    df = pd.DataFrame({"Open": [1.0, 1.0], "High": [1.0, 1.0], "Low": [1.0, 1.0], "Close": [3117.0, 3117.0], "Volume": [1, 1]},
+                      index=pd.to_datetime(["2026-10-23", "2026-10-26"]))
+    t = int(pd.Timestamp("2026-10-27 06:00", tz="UTC").timestamp())         # 15:00 in Tokyo
+    monkeypatch.setattr(c, "_info", lambda s: {"regularMarketPrice": 3102.0, "regularMarketTime": t,
+                                               "exchangeTimezoneName": "Asia/Tokyo", "regularMarketVolume": 2e7})
+    out = toolkit._stitch_quote("7203.T", df)
+    assert out.index[-1] == pd.Timestamp("2026-10-27") and out["Close"].iloc[-1] == 3102.0
+    assert len(toolkit._stitch_quote("7203.T", out)) == len(out)            # already current: unchanged
