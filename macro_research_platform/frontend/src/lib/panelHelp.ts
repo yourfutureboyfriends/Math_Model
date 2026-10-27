@@ -166,6 +166,11 @@ export const PANEL_HELP: Record<string, PanelHelp> = {
     read: 'VaR 95% 1-day = a loss you should exceed only 1 day in 20. Stress rows replay real crises on today’s positions.',
     use: 'Type shocks into the custom scenario to test a view.',
   },
+  'position-manager': {
+    what: 'For each position: hold, tighten the stop, trim, add or exit — from the trend, momentum, analyst revisions, earnings, news tone, insider buying, volatility and the market regime.',
+    read: 'The stop in force, the R-multiple (profit in units of the initial risk) and every signal with its evidence and source. The evidence table shows why the default exit is a 200-day trend break.',
+    use: 'Check the book each day; or enter any position (ticker, entry price, date) to see what the rules say.',
+  },
   'what-if': {
     what: 'Drag market moves (equities, the 10-year yield, high-yield spreads, commodities, the dollar, the VIX) and see the estimated effect on the fund’s book and on the US, euro-area and rest-of-world macro models’ portfolios.',
     read: 'Linear factor-model estimates from historical betas: a sense of size and direction, not a forecast. Presets replay rounded crisis moves.',

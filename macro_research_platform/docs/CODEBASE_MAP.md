@@ -50,6 +50,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `equity_router.py` | *legacy* — old entry point run from inside api/ |
 | `event_dataset.py` | Macro event dataset — the first building block of a macro-transmission research engine: what was published, when, how unexpected it was (a labelled proxy), and how liquid markets moved afterwards. |
 | `execution.py` | Order execution adapters. |
+| `exit_evidence.py` | Exit-rule evidence: the entry model's price-only buy signals (api/calculations/stock_timing.price_signal_history, no look-ahead) managed by each exit rule (api/calculations/trade_management.EXIT_RULES), plus a 63-day… |
 | `fred_guard.py` | FRED circuit breaker. |
 | `fund_store.py` | Fund store — SQLite persistence for fund settings, risk limits and the daily NAV record. |
 | `funds.py` | Several funds on one platform, kept apart. Each fund has its own database file — positions, orders, blotter, NAV history, fund settings and mandate, risk limits, analyst pitches and the audit log never mix — while… |
@@ -83,7 +84,9 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `stock_ideas.py` | Stock ideas — the system proposes stocks instead of waiting to be asked. |
 | `strategy_lab.py` | Strategy Lab — research-backed systematic models backtested on the same footing, combined, and shown with today's positions (engine: api/calculations/strategies.py). |
 | `trade_lifecycle.py` | One view of a trade from idea to fill: analyst pitch → pre-trade assessment → order (four-eyes approval) → fill, with transaction-cost analysis of the fill against the assessment's own estimate. |
+| `trade_manager.py` | Trade manager — "I'm in this stock: hold, tighten, trim, add or exit?" for one position or the whole book, from technicals, fundamentals and news (rules and evidence: api/calculations/trade_management.py; the entry… |
 | `websocket_manager.py` | WebSocket Streaming Manager with Redis Pub/Sub (Phase 9D) ========================================================== Handles real-time market data streaming using yfinance and broadcasts updates to all connected… |
+| `what_if.py` | What-if scenarios: drag intuitive market moves and see what they do to the fund's book and to the macro models' portfolios, using the same factor model as VaR & Stress (api/calculations/factor_model.py). |
 
 ### `api/ai/`
 
@@ -145,6 +148,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `stream_agreement.py` | Bridgewater 3-stream signal agreement — pure, tested (Phase 3). |
 | `systemic_risk.py` | Systemic-risk and cycle indicators from the published literature. Pure numpy functions. |
 | `technicals.py` | Technical snapshot for entry and execution timing (not a trading signal on its own; the investment case is fundamental). Standard definitions, on daily bars: |
+| `trade_management.py` | Trade management — when to hold, tighten, trim, add to or exit a position, from technicals, fundamentals and news. The entry side lives in stock_timing.py; this module answers "I'm in — what now?". |
 | `var_model.py` | Value-at-Risk and stress-test math — pure, tested (Phase 3). |
 
 ### `api/core/`
@@ -518,7 +522,9 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `DetailPanel.tsx` | Phase 8 Detail Panel (Right side) |
 | `FundIdentity.tsx` | The fund's identity inside the terminal: its logo shapes drawn as masks in the theme's colours (gold gradient for a |
 | `FundSwitcher.tsx` | Fund switcher (top bar): which fund's book, settings and records the app shows. Hidden with only one fund. |
+| `GlobalCommand.tsx` | The Research-mode <GO> line in the topbar (Markets mode has its own, larger command line on the page; both use |
 | `Header.tsx` | Legacy page header (the app uses Topbar). |
+| `HoverCard.tsx` | Security hover cards: rest the pointer on a ticker anywhere — the tape, the quote board, a table cell — and a card |
 | `KeyboardShortcutsHelp.tsx` | UPGRADE-6: Keyboard Shortcuts Help Overlay |
 | `LivePopups.tsx` | Live pop-ups: toasts in the bottom-right corner (above the ticker tape) that make the screen feel alive — |
 | `Logo.tsx` | Logo component — 2×2 growth/inflation regime matrix |
@@ -609,6 +615,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `PortfolioAnalyticsSection.tsx` | Book analytics on the actual holdings: Brinson attribution and tracking error vs the fund's benchmark, liquidity |
 | `PortfolioFitSection.tsx` | Portfolio Fit / Portfolio Analytics Section |
 | `PortfoliosSection.tsx` | Portfolios — two books side by side plus an optimiser: |
+| `PositionManagerSection.tsx` | Position Manager — "I'm in: hold, tighten, trim, add or exit?" for every stock in the book, or any position you |
 | `PositionsSection.tsx` | PositionsSection — Phase 1 position & portfolio ingestion. |
 | `PreTradeDeskSection.tsx` | Pre-Trade Desk — the Head of Trading's feasibility assessment for implementing a PMC-approved order: |
 | `PureAlphaSection.tsx` | Phase 8 — Pure Alpha Signals Section (Redesigned) |
@@ -675,6 +682,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `ModelSleeveSection.tsx` | Model Portfolio — the Macro Model's sleeve (book "Macro Model"): holdings vs the model's |
 | `QuantLabSection.tsx` | Quant Lab — write strategy code and test it (in your browser), with every cost, walk-forward |
 | `StrategyLabSection.tsx` | Strategy Lab — research-backed systematic models (cross-asset trend, sector momentum, low |
+| `TimeMachine.tsx` | Time machine — scrub or play through the macro model's history and see what it said at the time: where growth and |
 
 ### `frontend/src/components/sections/model/quant/`
 
@@ -719,6 +727,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `RiskParitySection.tsx` | Phase 8 — Risk Parity Allocation Section (Redesigned) |
 | `ScenarioAnalysisSection.tsx` | Scenario Analysis Section |
 | `VaRStressSection.tsx` | VaRStressSection — Phase 3 Value-at-Risk & stress testing. |
+| `WhatIfSection.tsx` | What-if scenarios — drag market moves and watch the fund's book and the US / euro-area / rest-of-world macro |
 | `index.ts` | Risk domain sections |
 
 ### `frontend/src/components/sections/signals/`
@@ -821,6 +830,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `apiValidation.ts` | Runtime API response validation |
 | `businessAdapter.ts` | Business Layer Adapter |
 | `chartPalette.ts` | Categorical palette for the dark terminal surface — eight hues in a fixed order that pass |
+| `commands.ts` | The command language shared by both modes' <GO> lines — one resolver, so the same words work everywhere: |
 | `constants.ts` | Standard formatting constants (mirrors backend api/utils/formatting.py) |
 | `focusMode.ts` | Workspaces: which dashboard panels are shown. 'all', 'focus' (the signed-in role's panels: |
 | `format.ts` | Shared display formatters for panels. Missing or non-finite values show as "—". |
@@ -837,7 +847,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `network.ts` | Network utilities — centralized API and WebSocket URL resolution |
 | `panelHelp.ts` | Plain-English help for every dashboard panel, keyed by panelId() (lib/focusMode). |
 | `panels.ts` | Panel names — the single source of truth for what each section is called in the |
-| `popups.ts` | Live pop-up notifications (breaking headlines, big market moves, economic releases, regime changes): a tiny store |
+| `popups.ts` | Live pop-up notifications (your own alerts, breaking headlines, big market moves, economic releases, regime |
 | `region.ts` | The Markets region (Bloomberg-style GLOBAL / AMERICAS / EUROPE / MIDDLE EAST & AFRICA / |
 | `theme.ts` | Colour theme: 'auto' (light 07:00–19:00 local time, dark otherwise — re-checked every |
 | `topo.ts` | Minimal TopoJSON → SVG path rendering with the Equal Earth projection (Šavrič, Patterson |

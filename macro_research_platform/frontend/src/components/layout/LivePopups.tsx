@@ -5,6 +5,7 @@
 //   Market moves       a world index, FX rate, commodity, yield or coin crossing a big-day threshold (shared feed)
 //   Economic releases  high-impact releases worldwide: 15 minutes before, then the actual against consensus
 //   Regime changes     the US / euro-area / rest-of-world macro model switching its most likely regime
+//   Position calls     a position in the book turning EXIT or TRIM (Position Manager), every 30 minutes
 // Other toasts auto-dismiss after 12 s (hover pauses them); a click opens the story, chart or panel. Everything shown
 // is also kept in the history (status bar → ALERTS), where pop-ups can be muted by kind. Nothing here is a trading
 // signal: the thresholds only decide what is worth a glance.
@@ -64,6 +65,31 @@ function useMyAlerts() {
     poll();
     const t = setInterval(poll, 60_000);
     return () => { alive = false; clearInterval(t); };
+  }, []);
+}
+
+/** The book's positions turning EXIT or TRIM (Position Manager rules), checked every 30 minutes. */
+function usePositionCalls() {
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const j = await (await fetch('/api/v1/stock/positions/manage')).json();
+        if (!alive) return;
+        for (const r of j.positions ?? []) {
+          if (r.action !== 'EXIT' && r.action !== 'TRIM') continue;
+          const key = `pos:${r.symbol}:${r.action}:${String(j.as_of ?? '').slice(0, 10)}`;
+          if (seenBefore(key)) continue;
+          pushPopup({ id: key, kind: 'alert', sticky: r.action === 'EXIT', tone: 'down',
+            title: `${r.action === 'EXIT' ? 'Exit' : 'Trim'} ${r.symbol} — ${r.signals?.[0]?.rule?.replace(/_/g, ' ') ?? 'position manager'}`,
+            body: r.signals?.[0]?.evidence ?? `stop ${r.stop}`,
+            action: { label: 'Position Manager', run: () => revealResearch('position-manager') } });
+        }
+      } catch { /* optional */ }
+    };
+    const first = setTimeout(poll, 30_000);
+    const t = setInterval(poll, 30 * 60_000);
+    return () => { alive = false; clearTimeout(first); clearInterval(t); };
   }, []);
 }
 
@@ -281,6 +307,7 @@ function HistoryPanel() {
 
 export function LivePopups() {
   useMyAlerts();
+  usePositionCalls();
   useNewsWire();
   useMarketMoves();
   useEcoReleases();

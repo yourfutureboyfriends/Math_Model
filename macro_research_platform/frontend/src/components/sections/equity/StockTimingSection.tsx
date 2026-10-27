@@ -244,7 +244,7 @@ export function StockTimingSection() {
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
                   <span className="text-text-tertiary">Entry zone</span><span className="font-mono text-right text-text-primary">{px(lv.entry_low)} – {px(lv.entry_high)}</span>
                   <span className="text-text-tertiary">Stop</span><span className="font-mono text-right text-red">{px(lv.stop)}</span>
-                  <span className="text-text-tertiary">Target</span><span className="font-mono text-right text-green" title={lv.target_basis}>{px(lv.target)}</span>
+                  <span className="text-text-tertiary" title="An objective for reward:risk — reaching it tightens the stop rather than selling (see Position Manager: the fixed-target exit was the weakest rule tested)">Target</span><span className="font-mono text-right text-green" title={lv.target_basis}>{px(lv.target)}</span>
                   <span className="text-text-tertiary">Reward : risk</span><span className={cn('font-mono text-right', (lv.reward_risk ?? 0) >= 1.5 ? 'text-text-primary' : 'text-amber')}>{lv.reward_risk ?? '—'}</span>
                   {lv.shares != null && <>
                     <span className="text-text-tertiary">Size</span><span className="font-mono text-right text-text-primary">{lv.shares.toLocaleString()} sh</span>
@@ -288,6 +288,33 @@ export function StockTimingSection() {
               )}
             </div>
           </div>
+
+          {/* News & insiders overlay */}
+          {data.overlays && (
+            <div className="p-3 bg-surface-1 border border-border">
+              <div className="flex flex-wrap items-baseline gap-2 mb-1.5">
+                <span className="text-2xs text-text-tertiary uppercase tracking-wider">News &amp; insiders</span>
+                {data.overlays.news?.avg_tone != null && (
+                  <span className={cn('text-2xs font-mono', data.overlays.news.avg_tone > 0.1 ? 'text-green' : data.overlays.news.avg_tone < -0.1 ? 'text-red' : 'text-text-secondary')}>
+                    {data.overlays.news.count} headlines in {data.overlays.news.window_days} days · tone {data.overlays.news.avg_tone > 0 ? '+' : ''}{data.overlays.news.avg_tone}</span>
+                )}
+                {data.overlays.insiders?.available && (
+                  <span className={cn('text-2xs', (data.overlays.insiders.buyers_6m ?? 0) >= 2 ? 'text-green' : 'text-text-tertiary')}>
+                    · {data.overlays.insiders.buyers_6m ?? 0} insider buyer(s) in 6 months{(data.overlays.insiders.buyers_6m ?? 0) >= 2 ? ' — informed buying (Cohen, Malloy & Pomorski 2012)' : ''}</span>
+                )}
+              </div>
+              <ul className="space-y-0.5 max-h-32 overflow-y-auto">
+                {(data.overlays.news?.items ?? []).slice(0, 6).map((n: any, i: number) => (
+                  <li key={i} className="text-[11px] flex gap-1.5">
+                    <span className={cn('font-mono w-9 shrink-0 text-right', n.sentiment > 0 ? 'text-green' : n.sentiment < 0 ? 'text-red' : 'text-text-tertiary')}>{n.sentiment > 0 ? '+' : ''}{n.sentiment}</span>
+                    <a href={n.url} target="_blank" rel="noreferrer noopener" className="text-text-secondary hover:text-bloomberg truncate">{n.title}</a>
+                    <span className="text-[10px] text-text-tertiary whitespace-nowrap">{n.publisher}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="text-[10px] text-text-tertiary mt-1">Headline tone: finance word list, −1 to +1. A BUY waits while the fortnight's tone averages −0.3 or worse over five or more headlines (Tetlock, 2007).</div>
+            </div>
+          )}
 
           {/* Chart */}
           {data.chart && (

@@ -27,13 +27,16 @@ export function openPanel(id: string): void {
   if (switchMode) setHubMode('research');
   setTimeout(() => {                                   // after the Research page has mounted
     const switchedGroup = revealPanel(id);
-    const go = () => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    setTimeout(go, switchedGroup ? 260 : 0);
-    // panels above it may still be laying out (lazy sections, charts): land again once they have
-    setTimeout(() => {
-      const top = document.getElementById(id)?.getBoundingClientRect().top;
-      if (top != null && Math.abs(top) > 160) go();
-    }, 1200);
+    // Off-screen panels lay out at their real height only as they near the viewport (content-visibility), so the
+    // target moves while we travel to it: jump, then re-aim until it stays put (at most ~2.5 s).
+    const settle = (tries: number) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const off = el.getBoundingClientRect().top - 110;
+      if (Math.abs(off) > 24) window.scrollTo({ top: window.scrollY + off, behavior: tries === 8 ? 'smooth' : 'auto' });
+      if (tries > 0 && Math.abs(off) > 24) setTimeout(() => settle(tries - 1), 300);
+    };
+    setTimeout(() => settle(8), switchedGroup ? 260 : 0);
   }, switchMode ? 500 : 0);
 }
 

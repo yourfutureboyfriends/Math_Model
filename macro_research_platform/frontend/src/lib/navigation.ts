@@ -103,6 +103,7 @@ export const navigation: NavSection[] = [
       { id: 'quant-lab', label: 'Quant Lab (build algos)', icon: '⚗', permission: 'trade_ideas', highlight: true },
       { id: 'stock-ideas', label: 'Stock Ideas', icon: '◆', permission: 'trade_ideas', highlight: true },
       { id: 'stock-timing', label: 'Stock Entry Signals', icon: '◆', permission: 'trade_ideas', highlight: true },
+      { id: 'position-manager', label: 'Position Manager', icon: '◆', permission: 'trade_ideas', highlight: true },
       { id: 'stock-backtest', label: 'Entry Model Backtest', icon: '⚗', permission: 'trade_ideas' },
       { id: 'trade-ideas', label: 'Trade Ideas', icon: '◆', permission: 'trade_ideas', highlight: true },
       { id: 'trade-recommendations', label: 'Trade Recommendations', icon: '◆', permission: 'trade_recommendations', highlight: true },

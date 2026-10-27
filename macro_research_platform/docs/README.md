@@ -14,6 +14,7 @@
 ## Methodology (how the numbers are made)
 | Document | Topic |
 |---|---|
+| [trade_management.md](trade_management.md) | Entries and exits: the rules, the research behind them, and the exit-rule evidence |
 | [macro_model_economies.md](macro_model_economies.md) | Macro model for the US, the euro area and the rest of the world: method, data sources, backtests |
 | [METHODOLOGY_PHASE1_POSITIONS.md](METHODOLOGY_PHASE1_POSITIONS.md) | Positions and P&L |
 | [METHODOLOGY_PHASE2_FACTOR_MODEL.md](METHODOLOGY_PHASE2_FACTOR_MODEL.md) | Factor model |

@@ -265,10 +265,71 @@ async def analyze(sym: str, with_history: bool = True) -> Dict[str, Any]:
     return out
 
 
+NEWS_TONE_WAIT = -0.3          # a BUY waits while the last fortnight's headlines average this negative …
+NEWS_TONE_MIN_ITEMS = 5        # … over at least this many headlines (Tetlock, 2007: negative tone, lower returns)
+
+
 @router.get("/api/v1/stock/timing")
 async def stock_timing(symbol: str):
-    """Buy / wait / avoid for one stock, with the evidence, levels, size and a historical test."""
-    return await analyze(_norm(symbol), with_history=True)
+    """Buy / wait / avoid for one stock, with the evidence, levels, size and a historical test — plus the news and
+    insider overlay: the last fortnight's headlines with their tone, and open-market insider buying (6 months). A BUY
+    waits while the news tone is strongly negative; insider buying is shown as supporting evidence."""
+    from api import trade_manager
+    sym = _norm(symbol)
+    out, ov = await asyncio.gather(analyze(sym, with_history=True), trade_manager.overlays(sym))
+    if not out.get("available"):
+        return out
+    out = dict(out)
+    out["overlays"] = ov
+    n = ov["news"]
+    if (n.get("available") and (n.get("count") or 0) >= NEWS_TONE_MIN_ITEMS and (n.get("avg_tone") or 0) <= NEWS_TONE_WAIT
+            and (out.get("verdict") or {}).get("code") in ("BUY", "BUY_SMALL")):
+        out["verdict"] = {"code": "WAIT", "label": "Buy candidate — wait for the news flow to settle",
+                          "detail": f"{n['count']} headlines in {n['window_days']} days average a tone of {n['avg_tone']:+.2f}: "
+                                    "negative media tone predicts weaker returns that partly reverse (Tetlock, 2007) — "
+                                    f"wait for it to settle (was: {out['verdict'].get('label')})."}
+    return out
+
+
+class ManageIn(BaseModel):
+    """An open position to manage: symbol, average entry price, entry date (YYYY-MM-DD; unknown = 90 days ago),
+    side and optional quantity."""
+    symbol: str
+    entry_price: float
+    entry_date: Optional[str] = None
+    side: str = "long"
+    quantity: Optional[float] = None
+
+
+@router.post("/api/v1/stock/manage")
+async def stock_manage(body: ManageIn):
+    """Hold, tighten, trim, add or exit for one position — stops, R-multiple and the signals behind the call
+    (api/calculations/trade_management.py)."""
+    from api import trade_manager
+    if body.entry_price <= 0:
+        raise HTTPException(400, "entry price must be positive")
+    if body.entry_date and not re.match(r"^\d{4}-\d{2}-\d{2}$", body.entry_date):
+        raise HTTPException(400, "entry date must be YYYY-MM-DD")
+    try:
+        return await trade_manager.manage(_norm(body.symbol), body.entry_price, body.entry_date,
+                                          -1 if body.side.lower().startswith("s") else 1, body.quantity)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.get("/api/v1/stock/positions/manage")
+async def stock_manage_book():
+    """The same advice for every position in the current fund's book, most urgent first."""
+    from api import trade_manager
+    return await trade_manager.manage_book()
+
+
+@router.get("/api/v1/stock/exit-evidence")
+async def stock_exit_evidence():
+    """How the exit rules compare on the same entries (10 years, 30 large caps); computed in the background and
+    cached for a week (api/exit_evidence.py)."""
+    from api import exit_evidence
+    return await exit_evidence.ensure()
 
 
 @router.get("/api/v1/stock/screen")

@@ -9,6 +9,7 @@ import { WorkspaceBar } from '@/components/layout/WorkspaceBar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SectionSkeleton } from '@/components/ui/SectionSkeleton';
 import { WhatIfSection } from '@/components/sections/risk/WhatIfSection';
+import { PositionManagerSection } from '@/components/sections/equity/PositionManagerSection';
 import { useMacroStore } from '@/store/macroStore';
 import { PANEL_HELP } from '@/lib/panelHelp';
 import { PanelHelpPopover, type HelpAnchor } from '@/components/ui/PanelHelpPopover';
@@ -723,6 +724,12 @@ export function DashboardPage() {
       <div id="stock-timing" className="terminal-section">
         <ErrorBoundary sectionName="Stock Entry Signals">
           <StockTimingSection />
+        </ErrorBoundary>
+      </div>
+
+      <div className="terminal-section">
+        <ErrorBoundary sectionName="Position Manager">
+          <PositionManagerSection />
         </ErrorBoundary>
       </div>
 
