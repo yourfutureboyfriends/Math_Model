@@ -30,8 +30,8 @@ def test_an_explicit_sales_to_capital_overrides_the_anchor():
 
 
 def test_cyclical_firms_earn_their_cost_of_capital_on_new_investment():
-    franchise = dcf.value(base(cyclical=False))
-    cyclical = dcf.value(base(cyclical=True))
+    franchise = dcf.value(base(cyclical=False), method="two_stage")     # the two-stage terminal RONIC rule
+    cyclical = dcf.value(base(cyclical=True), method="two_stage")
     assert cyclical["assumptions"]["ronic"] == pytest.approx(cyclical["assumptions"]["discount_terminal"])
     assert franchise["assumptions"]["ronic"] > franchise["assumptions"]["discount_terminal"]
     assert cyclical["per_share"] < franchise["per_share"]

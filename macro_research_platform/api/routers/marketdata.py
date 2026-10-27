@@ -199,19 +199,22 @@ async def mkt_beta(symbol: str, benchmark: Optional[str] = None, period: str = Q
 
 
 @router.get("/api/v1/mkt/dcf/{symbol}")
-async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le=2.0), years: int = Query(10, ge=3, le=30),
+async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le=2.0), years: Optional[int] = Query(None, ge=3, le=30),
                   terminal_growth: Optional[float] = Query(None, ge=-0.05, le=0.15), target_margin: Optional[float] = Query(None, ge=-1.0, le=0.9),
                   sales_to_capital: Optional[float] = Query(None, gt=0, le=20), ronic: Optional[float] = Query(None, gt=0, le=2.0),
                   discount: Optional[float] = Query(None, gt=0, lt=0.4), beta: Optional[float] = Query(None, ge=-1, le=5),
                   erp: Optional[float] = Query(None, ge=0, le=0.15), include_leases: bool = False, mid_year: bool = True,
                   roe: Optional[float] = Query(None, ge=-0.5, le=1.0), terminal_roe: Optional[float] = Query(None, gt=0, le=1.0),
                   payout: Optional[float] = Query(None, ge=0, le=1.0), model: Optional[str] = Query(None, pattern="^(fcff|excess_return|ddm)$"),
-                  half_life: float = Query(3.0, ge=0.25, le=20)):
+                  half_life: float = Query(3.0, ge=0.25, le=20),
+                  method: Optional[str] = Query(None, pattern="^(three_stage|two_stage)$"),
+                  ke_method: Optional[str] = Query(None, pattern="^(capm|building_block)$"),
+                  fade_years: Optional[int] = Query(None, ge=0, le=40)):
     """Valuation (FCFF / excess return / DDM) plus a 24-month price outlook built on it."""
     from api.marketdata import dcf
     from api.marketdata.core import _info, div_yield
     res = await _dcf_core(symbol, growth, years, terminal_growth, target_margin, sales_to_capital, ronic, discount, beta, erp,
-                          include_leases, mid_year, roe, terminal_roe, payout, model)
+                          include_leases, mid_year, roe, terminal_roe, payout, model, method, ke_method, fade_years)
     v = res["valuation"]
     ke = (v.get("wacc") or {}).get("cost_of_equity") or (v.get("assumptions") or {}).get("cost_of_equity")
     try:
@@ -220,16 +223,27 @@ async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le
         dy = None
     value = None if v.get("equity_negative") else v.get("per_share")
     res["outlook"] = await _run(dcf.outlook, res["inputs"]["symbol"], v.get("price") or res["inputs"].get("price"), value, ke, dy, half_life, timeout=30)
+    # Morningstar-style margin of safety: an uncertainty rating (realised volatility, terminal-value weight) and the
+    # prices relative to fair value at which the stock is a buy or a sell
+    try:
+        sigma = await _run(dcf._realized_vol, res["inputs"]["symbol"], timeout=20)
+    except HTTPException:
+        sigma = None
+    u = dcf.uncertainty(sigma, v.get("terminal_share"))
+    if value:
+        u.update(buy_price=value * u["buy_below"], sell_price=value * u["sell_above"])
+    res["uncertainty"] = u
     return res
 
 
-async def _dcf_core(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le=2.0), years: int = Query(10, ge=3, le=30),
+async def _dcf_core(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le=2.0), years: Optional[int] = Query(None, ge=3, le=30),
                   terminal_growth: Optional[float] = Query(None, ge=-0.05, le=0.15), target_margin: Optional[float] = Query(None, ge=-1.0, le=0.9),
                   sales_to_capital: Optional[float] = Query(None, gt=0, le=20), ronic: Optional[float] = Query(None, gt=0, le=2.0),
                   discount: Optional[float] = Query(None, gt=0, lt=0.4), beta: Optional[float] = Query(None, ge=-1, le=5),
                   erp: Optional[float] = Query(None, ge=0, le=0.15), include_leases: bool = False, mid_year: bool = True,
                   roe: Optional[float] = Query(None, ge=-0.5, le=1.0), terminal_roe: Optional[float] = Query(None, gt=0, le=1.0),
-                  payout: Optional[float] = Query(None, ge=0, le=1.0), model: Optional[str] = Query(None, pattern="^(fcff|excess_return|ddm)$")):
+                  payout: Optional[float] = Query(None, ge=0, le=1.0), model: Optional[str] = Query(None, pattern="^(fcff|excess_return|ddm)$"),
+                  method: Optional[str] = None, ke_method: Optional[str] = None, fade_years: Optional[int] = None):
     """FCFF discounted at WACC (Damodaran / McKinsey) for operating companies; Damodaran's excess-return
     model for banks and insurers; a dividend discount model for dividend payers (and as the fallback where
     a DCF can't be built). Reverse DCF and sensitivity grids for all three."""
@@ -261,7 +275,7 @@ async def _dcf_core(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, 
         return ddm_response()
     try:
         if chosen == "excess_return":
-            kw = dict(years=years, roe=roe, terminal_roe=terminal_roe, payout=payout, terminal_growth=terminal_growth, beta=beta, erp=erp, discount=discount)
+            kw = dict(years=years or 10, roe=roe, terminal_roe=terminal_roe, payout=payout, terminal_growth=terminal_growth, beta=beta, erp=erp, discount=discount)
             val = await _run(dcf.value_financial, inp, **kw)
             sens = await _run(dcf.sensitivity_financial, inp, val, **kw)
             implied = await _run(dcf.reverse_financial, inp, **{k: v for k, v in kw.items() if k not in ("roe", "terminal_roe")})
@@ -270,13 +284,15 @@ async def _dcf_core(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, 
                     "method": "Excess-return model: equity = book value + PV of (ROE − cost of equity) × book value, with ROE and payout "
                               "converging to stable levels and stable growth ≤ the risk-free rate. Source: Damodaran (NYU Stern)."}
         kw = dict(growth=growth, years=years, terminal_growth=terminal_growth, target_margin=target_margin, sales_to_capital=sales_to_capital,
-                  ronic=ronic, discount=discount, beta=beta, erp=erp, include_leases=include_leases, mid_year=mid_year)
+                  ronic=ronic, discount=discount, beta=beta, erp=erp, include_leases=include_leases, mid_year=mid_year,
+                  method=method, ke_method=ke_method, fade_years=fade_years)
         val = await _run(dcf.value, inp, **kw)
     except HTTPException as e:
         if chosen == "excess_return" and model is None and not inp.get("is_bank_like", False):
             try:    # a 'financial' that isn't a lender (exchanges, data vendors, crypto brokers) can be valued on cash flow
                 kw = dict(growth=growth, years=years, terminal_growth=terminal_growth, target_margin=target_margin, sales_to_capital=sales_to_capital,
-                          ronic=ronic, discount=discount, beta=beta, erp=erp, include_leases=include_leases, mid_year=mid_year)
+                          ronic=ronic, discount=discount, beta=beta, erp=erp, include_leases=include_leases, mid_year=mid_year,
+                          method=method, ke_method=ke_method, fade_years=fade_years)
                 val = await _run(dcf.value, inp, **kw)
                 sens = await _run(dcf.sensitivity, inp, val, **kw)
                 return {"inputs": inp, "valuation": val, "sensitivity": sens, "model": "fcff", "ddm": ddm, "recommended": "fcff",
@@ -297,17 +313,24 @@ async def _dcf_core(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, 
     implied_r = await _run(dcf.implied_discount, inp, **kw)
     return {"inputs": inp, "valuation": val, "sensitivity": sens, "market_implied_growth": implied, "market_implied_growth_bound": bound,
             "market_implied_discount": implied_r, "model": "fcff", "ddm": ddm, "recommended": recommended,
-            "method": "FCFF at WACC with mid-year discounting; terminal value = NOPAT × (1 − g/RONIC) ÷ (WACC − g). "
-                      "SBC is expensed (inside GAAP operating income). Inputs from Damodaran's market data (implied ERP, "
-                      "industry betas, country risk). Sources: Damodaran (NYU Stern); Koller, Goedhart & Wessels, Valuation (McKinsey)."}
+            "method": ("Three-stage FCFF at WACC (Morningstar's structure): an explicit forecast, a fade stage whose length is set by "
+                       "how persistently the firm has out-earned its cost of capital (its moat), and a perpetuity in which new investment "
+                       "earns the cost of capital. " if val.get("method") == "three_stage" else
+                       "Two-stage FCFF at WACC (Damodaran): terminal value = NOPAT × (1 − g/RONIC) ÷ (WACC − g). ")
+                      + "Mid-year discounting; SBC is expensed (inside GAAP operating income). Market inputs from Damodaran (implied ERP, "
+                      "industry betas, country risk). Sources: Morningstar Equity Research Methodology; Damodaran (NYU Stern); "
+                      "Koller, Goedhart & Wessels, Valuation (McKinsey)."}
 
 
 @router.get("/api/v1/mkt/dcf/{symbol}/xlsx")
-async def mkt_dcf_excel(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le=2.0), years: int = Query(10, ge=3, le=30),
+async def mkt_dcf_excel(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le=2.0), years: Optional[int] = Query(None, ge=3, le=30),
                         terminal_growth: Optional[float] = Query(None, ge=-0.05, le=0.15), target_margin: Optional[float] = Query(None, ge=-1.0, le=0.9),
                         sales_to_capital: Optional[float] = Query(None, gt=0, le=20), ronic: Optional[float] = Query(None, gt=0, le=2.0),
                         discount: Optional[float] = Query(None, gt=0, lt=0.4), beta: Optional[float] = Query(None, ge=-1, le=5),
-                        erp: Optional[float] = Query(None, ge=0, le=0.15), include_leases: bool = False, mid_year: bool = True):
+                        erp: Optional[float] = Query(None, ge=0, le=0.15), include_leases: bool = False, mid_year: bool = True,
+                        method: Optional[str] = Query(None, pattern="^(three_stage|two_stage)$"),
+                        ke_method: Optional[str] = Query(None, pattern="^(capm|building_block)$"),
+                        fade_years: Optional[int] = Query(None, ge=0, le=40)):
     """The FCFF model as an Excel workbook with live formulas (edit the inputs in Excel)."""
     from fastapi.responses import Response
     from api.marketdata import dcf, dcf_excel
@@ -316,7 +339,7 @@ async def mkt_dcf_excel(symbol: str, growth: Optional[float] = Query(None, ge=-0
         raise HTTPException(404, "Excel export covers the FCFF model; banks and insurers use the excess-return model on screen.")
     val = await _run(dcf.value, inp, growth=growth, years=years, terminal_growth=terminal_growth, target_margin=target_margin,
                      sales_to_capital=sales_to_capital, ronic=ronic, discount=discount, beta=beta, erp=erp,
-                     include_leases=include_leases, mid_year=mid_year)
+                     include_leases=include_leases, mid_year=mid_year, method=method, ke_method=ke_method, fade_years=fade_years)
     data, _ = await asyncio.to_thread(dcf_excel.build, inp, val)
     name = f"DCF_{inp['symbol'].replace('^', '').replace('=', '')}.xlsx"
     return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

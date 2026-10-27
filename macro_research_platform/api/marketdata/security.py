@@ -588,6 +588,14 @@ def peer_multiples(ii: Dict[str, Any]) -> Dict[str, Any]:
 PEER_REGIONS = ["us", "jp", "gb", "de", "fr", "nl", "ch", "kr", "tw", "cn", "hk", "in", "ca", "au", "se", "it", "es"]
 
 
+# Peer multiples used to value the subject: outside these ranges a multiple is "not meaningful" (NM) — loss-makers on
+# depressed earnings, hyper-growth names — as in banks' comps tables. Within them, the harmonic mean is the estimator
+# (Baker & Ruback 1999; Liu, Nissim & Thomas 2002: less biased than the mean or median, it averages the yields, so a
+# 150× outlier cannot drag the value up). At least VALUATION_MIN_PEERS peers per scope.
+VALUATION_BOUNDS = {"pe": (0, 60), "forward_pe": (0, 60), "ev_ebitda": (0, 40), "price_to_book": (0.1, 20), "price_to_sales": (0, 20)}
+VALUATION_MIN_PEERS = 3
+
+
 def comps(symbol: str, max_peers: int = 8) -> Dict[str, Any]:
     """Comparable companies from the same industry with valuation multiples.
 
@@ -670,9 +678,20 @@ def comps(symbol: str, max_peers: int = 8) -> Dict[str, Any]:
                 out[k] = float(np.median(vals)) if vals else None
             out["n"] = sum(1 for r in rs if not r["subject"])
             return out
+
+        def harmonic(rs):
+            """Harmonic mean of each valuation multiple over the peers inside VALUATION_BOUNDS, with the count used."""
+            out = {}
+            for k, (lo, hi) in VALUATION_BOUNDS.items():
+                vals = [r[k] for r in rs if not r["subject"] and r[k] is not None and lo < r[k] <= hi]
+                out[k] = (len(vals) / sum(1 / v for v in vals)) if len(vals) >= VALUATION_MIN_PEERS else None
+                out[f"{k}_n"] = len(vals)
+            return out
         med = medians(rows)
         regions = sorted({r["region"] for r in rows}, key=lambda a: AREA_ORDER.index(a) if a in AREA_ORDER else 9)
         region_median = {a: medians([r for r in rows if r["region"] == a]) for a in regions}
+        hm = harmonic(rows)
+        region_hm = {a: harmonic([r for r in rows if r["region"] == a]) for a in regions}
         subj = next((r for r in rows if r["subject"]), None)
         # what the subject would be worth at its peers' multiples (price × peer multiple ÷ own multiple)
         implied = {}
@@ -682,8 +701,8 @@ def comps(symbol: str, max_peers: int = 8) -> Dict[str, Any]:
                 if not px or not subj.get(k):
                     continue
                 row = {}
-                for scope, mm in [("global", med), *[(a, region_median[a]) for a in regions]]:
-                    if mm.get(k) and mm.get("n", 0) >= 2:
+                for scope, mm in [("global", hm), *[(a, region_hm[a]) for a in regions]]:
+                    if mm.get(k):
                         if k == "ev_ebitda" and subj.get("ev") and subj["ev"] > 0:
                             # EV multiple: rebuild equity from the implied EV (net debt stays)
                             ev_imp = subj["ev"] * mm[k] / subj[k]
@@ -693,10 +712,12 @@ def comps(symbol: str, max_peers: int = 8) -> Dict[str, Any]:
                             row[scope] = px * mm[k] / subj[k]
                 implied[k] = row
         return {"symbol": s, "industry": industry, "sector": i.get("sector"), "rows": rows, "peer_median": med,
+                "peer_harmonic": hm, "region_harmonic": region_hm,
                 "regions": regions, "region_median": region_median, "implied_price": implied, "price_currency": i.get("currency"),
                 "home_region": subj["region"] if subj else None,
                 "multiples_note": "Multiples are rebuilt from reported totals in each company's reporting currency (market cap converted at "
-                                  "today's rate); negative or extreme values are shown as n/m and left out of medians.",
+                                  "today's rate); negative or extreme values are shown as n/m and left out of medians. Implied values "
+                                  "use the harmonic mean of peers with P/E ≤ 60, EV/EBITDA ≤ 40, P/B ≤ 20, P/S ≤ 20 (at least 3).",
                 "source": "Yahoo Finance — largest same-industry companies on each market's main exchange (≥ $1bn)"}
     return _cached(f"rv2:{s}", 6 * 3600, fetch)
 

@@ -59,7 +59,7 @@ def test_dcf_uses_wacc_for_fcff_and_market_weights():
 
 def test_dcf_hand_check_terminal_value_driver_formula():
     from api.marketdata import dcf
-    v = dcf.value(_inp(), growth=0.03, terminal_growth=0.03, years=3, discount=0.08, ronic=0.12, mid_year=False)
+    v = dcf.value(_inp(), growth=0.03, terminal_growth=0.03, years=3, discount=0.08, ronic=0.12, mid_year=False, method="two_stage")
     rev, pv = 1000.0, 0.0
     for y in range(1, 4):                        # constant growth = terminal → fade is flat
         new = rev * 1.03
@@ -74,8 +74,8 @@ def test_dcf_hand_check_terminal_value_driver_formula():
 
 def test_dcf_mid_year_raises_value_and_growth_fades():
     from api.marketdata import dcf
-    a = dcf.value(_inp(), growth=0.20, terminal_growth=0.02, years=10, discount=0.09, mid_year=False)
-    b = dcf.value(_inp(), growth=0.20, terminal_growth=0.02, years=10, discount=0.09, mid_year=True)
+    a = dcf.value(_inp(), growth=0.20, terminal_growth=0.02, years=10, discount=0.09, mid_year=False, method="two_stage")
+    b = dcf.value(_inp(), growth=0.20, terminal_growth=0.02, years=10, discount=0.09, mid_year=True, method="two_stage")
     assert b["per_share"] > a["per_share"]
     gs = [r["growth"] for r in b["projection"]]
     assert gs[0] == pytest.approx(0.20) and gs[-1] == pytest.approx(0.02) and all(x >= y for x, y in zip(gs, gs[1:]))
@@ -190,7 +190,7 @@ def test_dcf_stable_growth_wacc_converges_to_market_beta():
 
 def test_dcf_growth_path_holds_analyst_years_then_fades_to_terminal():
     from api.marketdata import dcf
-    v = dcf.value(_inp(growth=0.20, growth_y1=0.30), terminal_growth=0.04, years=10, discount=0.09)
+    v = dcf.value(_inp(growth=0.20, growth_y1=0.30), terminal_growth=0.04, years=10, discount=0.09, method="two_stage")
     g = [r["growth"] for r in v["projection"]]
     assert g[0] == pytest.approx(0.30) and g[1] == pytest.approx(0.20) and g[2] == pytest.approx(0.20)
     assert g[-1] == pytest.approx(0.04)
@@ -264,7 +264,7 @@ def test_dcf_rejects_inputs_that_make_the_terminal_value_explode():
 
 def test_dcf_years_up_to_30():
     from api.marketdata import dcf
-    v = dcf.value(_inp(), years=30, discount=0.09, terminal_growth=0.02)
+    v = dcf.value(_inp(), years=30, discount=0.09, terminal_growth=0.02, method="two_stage")
     assert len(v["projection"]) == 30
     with pytest.raises(dcf.NotFound):
         dcf.value(_inp(), years=31, discount=0.09)

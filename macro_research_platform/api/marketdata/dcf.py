@@ -74,6 +74,35 @@ REINVEST_ANCHOR_YEARS = 5
 # the valuation balloons. 5% nominal is a conservative practitioner floor; the screen says when it binds.
 KE_FLOOR = 0.05
 HIGH_GROWTH_YEARS = 3          # years of analyst-driven growth before the fade (calibrated: see tests)
+
+# ── Three-stage structure (Morningstar's published equity-research method) ────────────────────────────────────
+# Stage I: an explicit forecast (revenue, margins, tax, reinvestment). Stage II: the fade — the return on new
+# invested capital (RONIC) moves from today's ROIC to the cost of capital over a period set by the durability of
+# the firm's excess returns (its "moat"). Stage III: perpetuity with RONIC = WACC, so growth after the fade neither
+# creates nor destroys value. "two_stage" keeps the Damodaran model (explicit years, then g∞ with a RONIC).
+VALUATION_METHOD = "three_stage"
+EXPLICIT_YEARS = 10           # Morningstar: 5–10 years; 10 calibrated best (see docs/dcf_methodology.md)
+# Fade length by moat. Morningstar: "one year (no moat) to 10–15 years or more (wide moat)"; a wide moat means excess
+# returns are more likely than not to last 20 years, narrow 10.
+MOAT_FADE_YEARS = {"wide": 20, "narrow": 10, "none": 1}   # Morningstar's moat horizons: ≥ 20 / ≥ 10 years
+GROWTH_FADE = "explicit"
+# After the consensus years, revenue growth decays toward the long-run rate with this half-life (years). High growth
+# rarely persists: Chan, Karceski & Lakonishok (2003) find little persistence beyond chance; Mauboussin's base rates
+# (2016) show few firms sustain > 20% growth for 5 years. None = the linear fade to year N (Damodaran).
+GROWTH_HALF_LIFE: Optional[float] = 2.0
+RONIC_FADE_SHAPE = 1.0
+RONIC_FADE_CAP = 0.60          # an ROIC above 60% (tiny capital base) is not a return on the next dollar invested
+# Cost of equity. "capm": risk-free + β × ERP (implied or standard). "building_block" (Morningstar): a mean-reverting
+# real market return (6.5–7.0%) + long-run inflation (2.0–2.5%) — 9% for an average US company — plus a systematic
+# risk step by beta bucket and the country risk premium; deliberately insensitive to today's bond yield and β noise.
+KE_METHOD = "capm"
+BB_REAL_RETURN = 0.0675
+BB_INFLATION_USD = 0.0225
+# (beta up to, premium): Morningstar's implied betas 0.67 / 1.00 / 1.44 / 2.00 → −1.5 / 0 / +2.0 / +4.5 points.
+BB_SYSTEMATIC = ((0.85, -0.015), (1.20, 0.0), (1.70, 0.020), (float("inf"), 0.045))
+# Margin of safety by uncertainty (Morningstar: the 5-star price is fair value × (1 − d); the 1-star price is midway
+# between the symmetric (1 + d) and log-normal (1 / (1 − d)) premium, rounded to 5 points).
+UNCERTAINTY_DISCOUNT = {"low": 0.20, "medium": 0.30, "high": 0.40, "very high": 0.50, "extreme": 0.75}
 CYCLICAL = {"Semiconductor", "Semiconductor Equip", "Metals & Mining", "Steel", "Oil/Gas (Integrated)", "Oil/Gas (Production and Exploration)",
             "Oilfield Svcs/Equip.", "Coal & Related Energy", "Chemical (Basic)", "Chemical (Diversified)", "Auto & Truck", "Auto Parts",
             "Shipbuilding & Marine", "Paper/Forest Products", "Precious Metals", "Homebuilding", "Air Transport", "Trucking", "Machinery",
@@ -191,6 +220,8 @@ LT_INFLATION = {"USD": 0.023, "CNY": 0.015, "TWD": 0.015, "SGD": 0.02, "THB": 0.
                 "ARS": 0.30, "SEK": 0.02, "NOK": 0.02, "DKK": 0.02, "NZD": 0.02, "ISK": 0.025, "RON": 0.03}
 CAPTIVE_DEBT_SHARE = 0.9        # share of a captive finance loan book funded by debt (~10:1 leverage)
 MARGINAL_TAX_US = 0.21
+# Effective rates above this are one-offs (write-downs, disallowed losses) — except where they persist (below).
+TAX_EFFECTIVE_CAP = 0.50
 MARGINAL_TAX_OTHER = 0.25
 
 
@@ -264,7 +295,7 @@ def inputs(symbol: str) -> Dict[str, Any]:
     # Effective tax rate (bounded), marginal rate for the long run
     pt, tx = out.get("pretax_income"), out.get("income_tax")
     eff = tx / pt if pt and tx is not None and pt > 0 else None
-    out["tax_effective"] = round(min(0.35, max(0.0, eff)), 4) if eff is not None else None
+    out["tax_effective"] = round(min(TAX_EFFECTIVE_CAP, max(0.0, eff)), 4) if eff is not None else None
     us = (out.get("country") or "").lower() in ("united states", "usa", "us")
     out["tax_marginal"] = MARGINAL_TAX_US if us else MARGINAL_TAX_OTHER
     # Pre-tax cost of debt: interest ÷ debt, bounded to [rf, rf + 6%]; else rf + 1.5%
@@ -476,6 +507,20 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
     # year-ago base for many non-US listings (e.g. +195% for Toyota).
     g1 = g2 = None
     hist = _history(symbol)
+    # Effective tax when the TTM figures lack it (Yahoo-sourced and some SEC filings): the median of the last three
+    # fiscal years. A rate persistently ≥ 5 points above the statutory one (petroleum taxes, high-tax jurisdictions)
+    # is kept in the long run too, instead of converging to the statutory rate.
+    trs = sorted(hist.get("tax_rates") or [])
+    if trs:
+        t_med = trs[len(trs) // 2] if len(trs) % 2 else 0.5 * (trs[len(trs) // 2 - 1] + trs[len(trs) // 2])
+        if out.get("tax_effective") is None:
+            out["tax_effective"], out["tax_source"] = round(t_med, 4), f"median effective rate of the last {len(trs)} fiscal years"
+            if out.get("ebit") and (out.get("invested_capital") or 0) > 0:
+                out["roic"] = round(out["ebit"] * (1 - out["tax_effective"]) / out["invested_capital"], 4)
+        if len(trs) >= 2 and trs[0] >= out["tax_marginal"] + 0.05:
+            out["tax_marginal"] = round(t_med, 4)
+            out["tax_note"] = (f"Effective tax has been at least {trs[0]:.0%} in each of the last {len(trs)} years — kept in the long run "
+                               "rather than converging to the statutory rate")
     try:
         import yfinance as yf
         re_ = yf.Ticker(symbol).revenue_estimate
@@ -497,6 +542,7 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
     m_now = out.get("margin")
     med = hist["median_margin"]
     out["margin_history"] = hist["margins"]
+    out["roic_history"] = hist.get("roics") or []
     if m_now is not None and med is not None and med > 0 and m_now < 0.5 * med:
         out["margin_normalized"] = round(med, 4)
         out["margin_note"] = (f"TTM operating margin {m_now:.1%} is far below the {len(hist['margins'])}-year median {med:.1%} "
@@ -548,10 +594,11 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
 
 def _history(symbol: str) -> Dict[str, Any]:
     """Last fiscal years' revenue and operating margin (newest first) from Yahoo."""
-    out: Dict[str, Any] = {"revenues": [], "margins": [], "median_margin": None}
+    out: Dict[str, Any] = {"revenues": [], "margins": [], "median_margin": None, "roics": [], "tax_rates": []}
     try:
         import yfinance as yf
-        inc = yf.Ticker(symbol).income_stmt
+        tk = yf.Ticker(symbol)
+        inc = tk.income_stmt
         if inc is None or inc.empty or "Total Revenue" not in inc.index:
             return out
         for c in inc.columns:
@@ -563,20 +610,118 @@ def _history(symbol: str) -> Dict[str, Any]:
                     out["margins"].append(round(op / rev, 4))
         ms = sorted(out["margins"][:3])
         out["median_margin"] = ms[len(ms) // 2] if ms else None
+        out["roics"] = _roic_history(inc, tk.balance_sheet)
+        for c in list(inc.columns)[:3]:                       # effective tax: provision ÷ pre-tax income, by year
+            pt = _f(inc.loc["Pretax Income", c]) if "Pretax Income" in inc.index else None
+            tp = _f(inc.loc["Tax Provision", c]) if "Tax Provision" in inc.index else None
+            if pt and tp is not None and pt == pt and tp == tp and pt > 0:
+                out["tax_rates"].append(round(min(TAX_EFFECTIVE_CAP, max(0.0, tp / pt)), 4))
     except Exception:
         pass
     return out
 
 
-def wacc(inp: Dict[str, Any], beta: Optional[float] = None, erp: Optional[float] = ERP_DEFAULT, include_leases: bool = False) -> Dict[str, Any]:
-    """Cost of capital: CAPM cost of equity (risk-free + β × ERP), after-tax cost of debt and their market-value
-    weights, optionally with leases as debt.
+def _roic_history(inc, bs) -> List[float]:
+    """After-tax return on invested capital excluding goodwill and acquired intangibles, per fiscal year (newest first):
+    operating income × (1 − tax rate) ÷ (Yahoo's invested capital − cash and short-term investments − goodwill and other
+    intangibles). Excluding goodwill measures the underlying business, not the premium paid for acquisitions (McKinsey,
+    Valuation; Morningstar's moat work) — Linde, Salesforce or Disney look like no-moat firms with it included.
+    Years without a matching balance sheet are skipped."""
+    out: List[float] = []
+    if bs is None or getattr(bs, "empty", True):
+        return out
+    for c in inc.columns:
+        op = _f(inc.loc["Operating Income", c]) if "Operating Income" in inc.index else None
+        tr = _f(inc.loc["Tax Rate For Calcs", c]) if "Tax Rate For Calcs" in inc.index else None
+        cols = [x for x in bs.columns if abs((x - c).days) < 40]
+        if op is None or op != op or not cols or "Invested Capital" not in bs.index:
+            continue
+        ic = _f(bs.loc["Invested Capital", cols[0]])
+        cash_row = "Cash Cash Equivalents And Short Term Investments"
+        cash = _f(bs.loc[cash_row, cols[0]]) if cash_row in bs.index else 0.0
+        ic = (ic or 0) - (cash if cash == cash and cash else 0)
+        gw_row = next((r for r in ("Goodwill And Other Intangible Assets", "Goodwill") if r in bs.index), None)
+        gw = _f(bs.loc[gw_row, cols[0]]) if gw_row else None
+        if gw and gw == gw and ic - gw > 0.1 * ic:              # keep a meaningful operating capital base
+            ic -= gw
+        if ic > 0:
+            t = tr if tr is not None and tr == tr and 0 <= tr < 0.5 else 0.21
+            out.append(round(op * (1 - t) / ic, 4))
+    return out
+
+
+def moat(inp: Dict[str, Any], r: float) -> Dict[str, Any]:
+    """A data-driven stand-in for an economic-moat rating: how persistently the firm has earned more than its cost of
+    capital. Wide — median spread ≥ 10 points and ≥ 3 in every year but the worst, over ≥ 3 years; narrow — median
+    spread ≥ 2 points and above the cost of capital in ≥ 60% of years; none otherwise. ROIC excludes goodwill. Cyclicals are capped at narrow (their returns move with
+    the cycle). The rating sets the length of the fade stage (MOAT_FADE_YEARS)."""
+    hist = [v for v in (inp.get("roic_history") or []) if v is not None and v == v]
+    vals = hist if len(hist) >= 3 else [v for v in [inp.get("roic")] + hist if v is not None and v == v]
+    if not vals:
+        return {"rating": "none", "fade_years": MOAT_FADE_YEARS["none"], "basis": "no return-on-capital history"}
+    spreads = sorted(v - r for v in vals)
+    med = spreads[len(spreads) // 2] if len(spreads) % 2 else 0.5 * (spreads[len(spreads) // 2 - 1] + spreads[len(spreads) // 2])
+    above = sum(x > 0 for x in spreads) / len(spreads)
+    # wide: a large median spread, and still ≥ 3 points in every year but the worst (one write-off year is forgiven)
+    if med >= 0.10 and len(vals) >= 3 and spreads[1] >= 0.03:
+        rating = "wide"
+    elif med >= 0.02 and above >= 0.6:
+        rating = "narrow"
+    else:
+        rating = "none"
+    capped = rating == "wide" and inp.get("cyclical")
+    if capped:
+        rating = "narrow"
+    basis = (f"ROIC above the cost of capital ({r:.1%}) in {above:.0%} of {len(vals)} years, median spread {med:+.1%}"
+             + (" — capped at narrow: cyclical returns" if capped else ""))
+    return {"rating": rating, "fade_years": MOAT_FADE_YEARS[rating], "median_spread": round(med, 4), "share_above": round(above, 2),
+            "years": len(vals), "basis": basis}
+
+
+def building_block_ke(inp: Dict[str, Any], beta: float) -> Dict[str, Any]:
+    """Morningstar-style cost of equity: real market return + long-run inflation (the currency's, so a low-inflation
+    currency gets a lower nominal rate) + a systematic-risk step by beta bucket + the country risk premium."""
+    ccy = (inp.get("currency") or "USD").upper()
+    infl = LT_INFLATION.get(ccy, {"EUR": 0.02, "GBP": 0.02, "JPY": 0.015, "CHF": 0.01, "CAD": 0.02, "AUD": 0.025,
+                                  "HKD": 0.0225}.get(ccy, BB_INFLATION_USD))
+    if ccy == "USD":
+        infl = BB_INFLATION_USD
+    step = next(p for cap, p in BB_SYSTEMATIC if beta <= cap)
+    crp = inp.get("country_risk_premium") or 0.0
+    return {"cost_of_equity": BB_REAL_RETURN + infl + step + crp, "real_return": BB_REAL_RETURN, "inflation": infl,
+            "systematic_step": step, "country_risk_premium": crp}
+
+
+def uncertainty(sigma: Optional[float], terminal_share: Optional[float] = None) -> Dict[str, Any]:
+    """Uncertainty rating from the stock's realised volatility (the market's own measure of how wide the outcomes
+    are), raised one notch when over 85% of the value sits in the terminal value. Returns the rating and the
+    buy / sell prices relative to fair value (Morningstar's margin-of-safety rule)."""
+    if sigma is None:
+        rating = "medium"
+    else:
+        # bands set so most large caps (20–35% volatility) are "medium", as in Morningstar's own coverage
+        rating = "low" if sigma < 0.20 else "medium" if sigma < 0.35 else "high" if sigma < 0.50 else "very high" if sigma < 0.75 else "extreme"
+    order = list(UNCERTAINTY_DISCOUNT)
+    if terminal_share is not None and terminal_share > 0.85 and rating != "extreme":
+        rating = order[order.index(rating) + 1]
+    d = UNCERTAINTY_DISCOUNT[rating]
+    # nearest 5 points, halves up (low: 1.225 → 1.25, as Morningstar publishes)
+    sell = 1 / (1 - d) if rating == "extreme" else math.floor((0.5 * (1 + d) + 0.5 / (1 - d)) * 20 + 0.5 + 1e-9) / 20
+    return {"rating": rating, "buy_below": round(1 - d, 2), "sell_above": round(sell, 2), "volatility": sigma}
+
+
+def wacc(inp: Dict[str, Any], beta: Optional[float] = None, erp: Optional[float] = ERP_DEFAULT, include_leases: bool = False,
+         ke_method: Optional[str] = None) -> Dict[str, Any]:
+    """Cost of capital: cost of equity (CAPM: risk-free + β × ERP, or Morningstar's building blocks), after-tax cost
+    of debt and their market-value weights, optionally with leases as debt.
     """
     rf = inp.get("risk_free") or 0.04
     b = beta if beta is not None else (inp.get("beta") if inp.get("beta") is not None else 1.0)
     if erp is None:
         erp = inp.get("erp") or ERP_FALLBACK
-    ke_model = rf + b * erp
+    method = ke_method or KE_METHOD
+    bb = building_block_ke(inp, b) if method == "building_block" else None
+    ke_model = bb["cost_of_equity"] if bb else rf + b * erp
     ke = max(ke_model, KE_FLOOR)
     debt = (inp.get("debt") or 0) + ((inp.get("leases") or 0) if include_leases else 0)
     # Equity at market value; convert to the financial-statement currency if needed
@@ -589,20 +734,32 @@ def wacc(inp: Dict[str, Any], beta: Optional[float] = None, erp: Optional[float]
     kd_after = inp["cost_of_debt"] * (1 - inp["tax_marginal"])
     w = (E * ke + D * kd_after) / (E + D) if E + D > 0 else ke
     return {"wacc": w, "cost_of_equity": ke, "cost_of_equity_model": ke_model, "ke_floored": ke > ke_model + 1e-12,
+            "ke_method": method, "building_blocks": bb,
             "cost_of_debt_after_tax": kd_after, "beta": b, "erp": erp, "risk_free": rf,
             "weight_equity": E / (E + D) if E + D > 0 else 1.0, "weight_debt": D / (E + D) if E + D > 0 else 0.0}
 
 
-def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: Optional[float] = None, years: int = 10,
+def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: Optional[float] = None, years: Optional[int] = None,
           target_margin: Optional[float] = None, sales_to_capital: Optional[float] = None, ronic: Optional[float] = None,
           discount: Optional[float] = None, beta: Optional[float] = None, erp: Optional[float] = ERP_DEFAULT, tax: Optional[float] = None,
-          include_leases: bool = False, mid_year: bool = True) -> Dict[str, Any]:
-    """A discounted cash-flow valuation: revenue growth fading to the terminal rate, margins converging to target,
-    reinvestment from sales-to-capital, a terminal value from RONIC, discounted at WACC (mid-year by default).
+          include_leases: bool = False, mid_year: bool = True, method: Optional[str] = None, fade_years: Optional[int] = None,
+          ke_method: Optional[str] = None) -> Dict[str, Any]:
+    """A discounted cash-flow valuation of the firm (FCFF at WACC, mid-year by default).
+
+    three_stage (default, Morningstar's structure): `years` explicit years (default 5) of revenue growth, margins
+    converging to target, tax and reinvestment; then a fade stage of `fade_years` (default from the moat rating:
+    1 / 10 / 15) in which growth keeps fading and the return on new capital moves from today's ROIC to the cost of
+    capital, reinvestment = growth ÷ RONIC; then perpetuity with RONIC = WACC (growth adds no value) unless `ronic`
+    is set. two_stage (Damodaran): `years` explicit years (default 10), then g∞ with a RONIC (default: half of
+    today's excess return persists).
 
     Returns:
         The per-share value, the projection, the WACC breakdown and the assumptions used.
     """
+    method = method or VALUATION_METHOD
+    three = method == "three_stage"
+    if years is None:
+        years = EXPLICIT_YEARS if three else 10
     rev0, ebit0 = inp.get("revenue"), inp.get("ebit")
     if not rev0 or ebit0 is None:
         raise NotFound("A DCF values an operating company from its revenue and profits — this instrument (an ETF, index, "
@@ -612,7 +769,7 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
         raise NotFound("Share count unavailable.")
     if not 3 <= years <= 30:
         raise NotFound("Use 3–30 projection years.")
-    w = wacc(inp, beta, erp, include_leases)
+    w = wacc(inp, beta, erp, include_leases, ke_method)
     r = discount if discount is not None else w["wacc"]
     rf = inp.get("risk_free") or 0.04
     g0 = inp["growth"] if growth is None else growth                     # years 2–3 (or 1–3 when set by hand)
@@ -626,7 +783,8 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
         rT, beta_T = r, None
     else:
         beta_T = min(1.2, max(0.8, w["beta"]))
-        ke_T = rf + beta_T * w["erp"]
+        ke_T = building_block_ke(inp, beta_T)["cost_of_equity"] if w["ke_method"] == "building_block" else rf + beta_T * w["erp"]
+        ke_T = max(ke_T, KE_FLOOR)
         rT = w["weight_equity"] * ke_T + w["weight_debt"] * w["cost_of_debt_after_tax"]
     if rT - gT < 0.005:
         raise NotFound(f"Terminal growth ({gT:.2%}) must be at least 0.5 points below the long-run discount rate ({rT:.2%}) — "
@@ -642,8 +800,21 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
     cyclical = inp.get("cyclical", (inp.get("industry_benchmark") or {}).get("industry") in CYCLICAL)
     # Commodity and cyclical businesses earn their cost of capital on new investment over a cycle (McKinsey,
     # Damodaran): no excess return in perpetuity. Others keep half of today's excess return (capped at 30%).
-    default_ron = rT if cyclical else (min(0.30, rT + 0.5 * (roic - rT)) if roic is not None and roic > rT else rT)
+    default_ron = rT if (cyclical or three) else (min(0.30, rT + 0.5 * (roic - rT)) if roic is not None and roic > rT else rT)
     ron = default_ron if ronic is None else ronic
+    # the fade stage (three-stage only): its length from the moat, RONIC from today's ROIC to the cost of capital
+    mo = moat(inp, rT) if three else None
+    n_fade = (fade_years if fade_years is not None else mo["fade_years"]) if three else 0
+    # the fade starts from the firm's typical return on organic investment: the median ROIC ex goodwill of recent
+    # years (Morningstar's "average RONIC"), else today's ROIC
+    ron0 = rT
+    rh = sorted(v for v in (inp.get("roic_history") or []) if v is not None and v == v)
+    ron_base = (rh[len(rh) // 2] if len(rh) % 2 else 0.5 * (rh[len(rh) // 2 - 1] + rh[len(rh) // 2])) if len(rh) >= 3 else roic
+    if three and ron_base is not None:
+        ron0 = min(RONIC_FADE_CAP, ron_base) if ron_base > rT else max(ron_base, 0.5 * rT)
+    # growth and the discount rate reach their long-run levels by the end of the explicit stage (GROWTH_FADE "explicit",
+    # Morningstar: stage II uses a modest average growth) or of the fade stage ("fade")
+    horizon = years + (n_fade if GROWTH_FADE == "fade" else 0)
     if ron <= max(0.0, gT):
         raise NotFound(f"Return on new capital ({ron:.2%}) must exceed terminal growth ({gT:.2%}): growing faster than the "
                        "return on reinvestment would need more than 100% of profits reinvested, forever.")
@@ -659,8 +830,10 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
             g = g1
         elif y <= hg:
             g = g0
-        else:                                                               # linear fade to g∞ by year N
-            g = g0 + (gT - g0) * (y - hg) / (years - hg)
+        elif GROWTH_HALF_LIFE and three:                                    # exponential decay toward g∞
+            g = gT + (g0 - gT) * 0.5 ** ((y - hg) / GROWTH_HALF_LIFE)
+        else:                                                               # linear fade to g∞ by the end of the fade
+            g = g0 + (gT - g0) * (y - hg) / (horizon - hg)
         fade = inp.get("margin_fade_years") if target_margin is None else None
         m = m0 + (mT - m0) * min(1.0, y / fade) if fade else m0 + (mT - m0) * (y / years)
         tx = t_now + (t_term - t_now) * (y / years)
@@ -672,15 +845,41 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
             w_a = 1 - (y - 1) / REINVEST_ANCHOR_YEARS             # 1 in year 1 → 0.2 in year 5 → the ratio rule after
             reinvest = w_a * anchor * new_rev + (1 - w_a) * reinvest
         fcff = nopat - reinvest
-        r_y = r if y <= hg else r + (rT - r) * (y - hg) / (years - hg)
+        r_y = r if y <= hg else r + (rT - r) * (y - hg) / (horizon - hg)
         df = cum / (1 + r_y) ** (0.5 if mid_year else 1.0)
         cum /= (1 + r_y)
         pv_sum += fcff * df
-        rows.append({"year": y, "growth": g, "revenue": new_rev, "margin": m, "ebit": ebit, "tax_rate": tx, "nopat": nopat,
+        rows.append({"year": y, "stage": "explicit", "growth": g, "revenue": new_rev, "margin": m, "ebit": ebit, "tax_rate": tx, "nopat": nopat,
                      "reinvestment": reinvest, "fcff": fcff, "discount_rate": r_y, "discount_factor": df, "pv": fcff * df})
         rev = new_rev
+    # Stage II (fade): value-driver cash flows — NOPAT grows at the fading rate, reinvestment = growth ÷ RONIC.
+    nopat = rows[-1]["nopat"]
+    for k in range(1, n_fade + 1):
+        y = years + k
+        if GROWTH_HALF_LIFE and y > hg:
+            g = gT + (g0 - gT) * 0.5 ** ((y - hg) / GROWTH_HALF_LIFE)
+        else:
+            g = (g0 + (gT - g0) * min(1.0, (y - hg) / (horizon - hg))) if y > hg else g0
+        ron_k = rT + (ron0 - rT) * (1 - k / n_fade) ** RONIC_FADE_SHAPE   # 1 = linear; < 1 holds excess returns longer
+        new_rev = rev * (1 + g)
+        if nopat > 0:
+            nopat = nopat * (1 + g)
+            reinvest = nopat * min(0.95, g / ron_k)
+        else:                                                               # a loss-maker: the target margin, sales-to-capital reinvestment
+            nopat = new_rev * mT * (1 - t_term)
+            reinvest = (new_rev - rev) / stc
+        fcff = nopat - reinvest
+        r_y = r + (rT - r) * min(1.0, (y - hg) / (horizon - hg)) if y > hg else r
+        df = cum / (1 + r_y) ** (0.5 if mid_year else 1.0)
+        cum /= (1 + r_y)
+        pv_sum += fcff * df
+        rows.append({"year": y, "stage": "fade", "growth": g, "revenue": new_rev, "margin": nopat / (1 - t_term) / new_rev if new_rev else None,
+                     "ebit": nopat / (1 - t_term), "tax_rate": t_term, "nopat": nopat, "ronic": ron_k, "reinvestment": reinvest,
+                     "fcff": fcff, "discount_rate": r_y, "discount_factor": df, "pv": fcff * df})
+        rev = new_rev
     last = rows[-1]
-    nopat_next = last["revenue"] * (1 + gT) * mT * (1 - t_term)
+    nopat_next = (last["nopat"] * (1 + gT) if three and last["nopat"] > 0
+                  else last["revenue"] * (1 + gT) * mT * (1 - t_term))
     fcff_next = nopat_next * (1 - gT / ron)
     tv = fcff_next / (rT - gT)
     tv_df = cum * ((1 + rT) ** 0.5 if mid_year else 1.0)                    # mid-year consistent with the flows
@@ -754,7 +953,10 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
             "pv_explicit": pv_sum, "pv_terminal": pv_tv, "terminal_share": pv_tv / ev if ev > 0 else None, "terminal_value": tv,
             "terminal_fcff": fcff_next, "terminal_reinvestment_rate": gT / ron,
             "implied_ev_ebit_exit": tv / (nopat_next / (1 - t_term)) if nopat_next > 0 else None,
-            "assumptions": {"growth": g0, "growth_y1": g1, "high_growth_years": hg, "terminal_growth": gT, "years": years, "margin_now": m0, "target_margin": mT,
+            "method": method, "moat": mo,
+            "assumptions": {"method": method, "fade_years": n_fade, "ronic_fade_start": ron0 if three else None,
+                            "ronic_fade_shape": RONIC_FADE_SHAPE, "growth_half_life": GROWTH_HALF_LIFE if three else None,
+                            "moat": mo["rating"] if mo else None, "growth": g0, "growth_y1": g1, "high_growth_years": hg, "terminal_growth": gT, "years": years, "margin_now": m0, "target_margin": mT,
                             "sales_to_capital": stc, "net_capex_to_revenue": anchor, "reinvestment_anchor_years": REINVEST_ANCHOR_YEARS if anchor is not None and sales_to_capital is None else None,
                             "ronic": ron, "discount": r, "discount_terminal": rT, "beta_terminal": beta_T, "tax_now": t_now, "tax_terminal": t_term,
                             "mid_year": mid_year, "include_leases": include_leases, "roic_now": roic_now},

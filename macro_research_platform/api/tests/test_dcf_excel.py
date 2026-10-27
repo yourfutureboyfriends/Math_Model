@@ -9,6 +9,27 @@ from openpyxl import load_workbook
 from api.tests.test_markets_functions import _inp
 
 
+def _ifs(f):
+    """IF(c,a,b) → ((a) if (c) else (b)), splitting the arguments at top-level commas (brackets may nest)."""
+    while (i := f.find("IF(")) >= 0:
+        depth, args, start, j = 0, [], i + 3, i + 3
+        while True:
+            ch = f[j]
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                if depth == 0:
+                    args.append(f[start:j])
+                    break
+                depth -= 1
+            elif ch == "," and depth == 0:
+                args.append(f[start:j]); start = j + 1
+            j += 1
+        c, x, y = (_ifs(a) for a in args)
+        f = f[:i] + f"(({x}) if ({c}) else ({y}))" + f[j + 1:]
+    return f
+
+
 def _evaluate(wb, ref):
     cache = {}
 
@@ -29,7 +50,7 @@ def _evaluate(wb, ref):
             vals = [f"__c('{sheet}','{gl(k)}{r1}')" for k in range(ci(c1), ci(c2) + 1)]
             return "[" + ",".join(vals) + "]"
         f = re.sub(r"SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)", lambda m: "sum(" + rng(m) + ")", f)
-        f = re.sub(r"IF\(([^,]+),([^,]+),([^)]+)\)", r"((\2) if (\1) else (\3))", f)
+        f = _ifs(f)
         f = f.replace("MAX(", "max(").replace("^", "**")
         f = re.sub(r"(Inputs|Model)!\$?([A-Z]+)\$?(\d+)", r"__c('\1','\2\3')", f)
         f = re.sub(r"(?<![A-Za-z_'])([A-Z]{1,2})(\d+)(?![\d'])", lambda m: f"__c('{sheet}','{m.group(1)}{m.group(2)}')", f)
@@ -40,7 +61,9 @@ def _evaluate(wb, ref):
 
 
 @pytest.mark.parametrize("kw", [dict(years=10), dict(years=5, mid_year=False), dict(years=25, growth=0.15),
-                                dict(years=10, target_margin=0.30, include_leases=True)])
+                                dict(years=10, target_margin=0.30, include_leases=True),
+                                dict(method="two_stage", years=10), dict(method="two_stage", years=25, growth=0.15),
+                                dict(method="three_stage", fade_years=12, growth=0.25)])
 def test_excel_matches_model(kw):
     from api.marketdata import dcf, dcf_excel
     inp = _inp(leases=150.0, growth_y1=0.12, investments=80.0)

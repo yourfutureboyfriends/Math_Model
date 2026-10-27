@@ -23,6 +23,9 @@ def build(inp: Dict[str, Any], val: Dict[str, Any]) -> Tuple[bytes, Dict[str, st
     """Returns the .xlsx bytes and a map {name: formula} for the key outputs (used in tests)."""
     a, w = val["assumptions"], val["wacc"]
     N, hg = int(a["years"]), int(a["high_growth_years"])
+    three = a.get("method") == "three_stage"
+    F = int(a.get("fade_years") or 0) if three else 0           # fade-stage years after the explicit forecast
+    hl = a.get("growth_half_life") if three else None
     half = "0.5" if a.get("mid_year", True) else "1"          # mid-year or end-of-year discounting
     wb = Workbook()
     ws = wb.active
@@ -41,6 +44,9 @@ def build(inp: Dict[str, Any], val: Dict[str, Any]) -> Tuple[bytes, Dict[str, st
         ("tT", "Tax rate, terminal", a["tax_terminal"], PCT),
         ("stc", "Sales-to-capital", a["sales_to_capital"], X),
         ("ronic", "Return on new capital (terminal)", a["ronic"], PCT),
+        *([("ron0", "Return on new capital, start of the fade", a["ronic_fade_start"], PCT),
+           ("shape", "RONIC fade shape (1 = linear)", a.get("ronic_fade_shape", 1.0), X)] if F else []),
+        *([("hl", "Growth half-life after the consensus years", hl, X)] if hl else []),
         ("r", "WACC today", a["discount"], PCT),
         ("rT", "WACC in stable growth", a["discount_terminal"], PCT),
         ("debt", "Debt" + (" incl. leases" if a.get("include_leases") else ""), -val["bridge"]["debt"], NUM),
@@ -62,22 +68,27 @@ def build(inp: Dict[str, Any], val: Dict[str, Any]) -> Tuple[bytes, Dict[str, st
     for j, line in enumerate([
         f"Financials: {inp.get('source')}", f"Risk-free: {inp.get('risk_free_source')}", f"ERP: {inp.get('erp_source')}",
         f"Beta: {inp.get('beta_source')}", "FCFF = NOPAT − reinvestment (Δrevenue ÷ sales-to-capital), mid-year discounting.",
-        "Terminal value = NOPAT(N+1) × (1 − g ÷ RONIC) ÷ (WACC_stable − g) (value-driver formula).",
+        "Terminal value = NOPAT(N+1) × (1 − g ÷ RONIC) ÷ (WACC_stable − g) (value-driver formula)"
+        + ("; with RONIC = WACC this is NOPAT ÷ WACC — growth adds no value." if three else "."),
+        *([f"Fade stage: {F} years after year {N}; NOPAT grows at the fading rate, reinvestment = growth ÷ RONIC, "
+           "RONIC moving from today's return to the cost of capital (Morningstar's three-stage structure)."] if F else []),
+        ("Growth: year 1, then years 2–%d at the second rate, then decaying toward terminal growth with a %.1f-year half-life."
+         % (hg, hl)) if hl else
         "Growth: year 1, then years 2–%d at the second rate, then a linear fade to terminal growth by year %d." % (hg, N),
         "WACC moves linearly from today's to the stable-growth rate over the fade years."]):
         ws.cell(note + 1 + j, 1, line)
 
     m = wb.create_sheet("Model")
     m["A1"], m["A1"].font = "Projection (formulas — edit the Inputs sheet)", Font(bold=True, size=13)
-    labels = ["Year", "Revenue growth", "Revenue", "Operating margin", "EBIT", "Tax rate", "NOPAT", "Reinvestment",
-              "FCFF", "Discount rate", "Discount factor (end of year)", "Discount factor (mid-year)", "PV of FCFF"]
+    labels = ["Year", "Revenue growth", "Revenue", "Operating margin", "EBIT", "Tax rate", "NOPAT", "Return on new capital",
+              "Reinvestment rate", "Reinvestment", "FCFF", "Discount rate", "Discount factor (end of year)", "Discount factor (mid-year)", "PV of FCFF"]
     R = {lab: 3 + i for i, lab in enumerate(labels)}
     for lab, row in R.items():
         m.cell(row, 1, lab).font = BOLD if lab in ("Year", "FCFF", "PV of FCFF") else Font()
     m.cell(R["Year"], 2, 0)
     m.cell(R["Revenue"], 2, f"={ref['rev0']}")
     m.cell(R["Discount factor (end of year)"], 2, 1)
-    for y in range(1, N + 1):
+    for y in range(1, N + F + 1):
         col, prev = get_column_letter(2 + y), get_column_letter(1 + y)
         c = lambda lab: f"{col}{R[lab]}"
         p = lambda lab: f"{prev}{R[lab]}"
@@ -85,9 +96,33 @@ def build(inp: Dict[str, Any], val: Dict[str, Any]) -> Tuple[bytes, Dict[str, st
             g = f"={ref['g1']}"
         elif y <= hg:
             g = f"={ref['g0']}"
+        elif hl:
+            g = f"={ref['gT']}+({ref['g0']}-{ref['gT']})*0.5^({y - hg}/{ref['hl']})"
         else:
-            g = f"={ref['g0']}+({ref['gT']}-{ref['g0']})*{y - hg}/{N - hg}"
-        r_y = f"={ref['r']}" if y <= hg else f"={ref['r']}+({ref['rT']}-{ref['r']})*{y - hg}/{N - hg}"
+            g = f"={ref['g0']}+({ref['gT']}-{ref['g0']})*{min(1.0, (y - hg) / (N - hg))}"
+        r_y = f"={ref['r']}" if y <= hg else f"={ref['r']}+({ref['rT']}-{ref['r']})*{min(1.0, (y - hg) / (N - hg))}"
+        if y > N:                                    # fade stage: value-driver cash flows
+            k = y - N
+            cells = {
+                "Year": y, "Revenue growth": g, "Revenue": f"={p('Revenue')}*(1+{c('Revenue growth')})",
+                "Tax rate": f"={ref['tT']}",
+                "NOPAT": f"=IF({p('NOPAT')}>0,{p('NOPAT')}*(1+{c('Revenue growth')}),{c('Revenue')}*{ref['mT']}*(1-{ref['tT']}))",
+                "EBIT": f"={c('NOPAT')}/(1-{c('Tax rate')})",
+                "Operating margin": f"={c('EBIT')}/{c('Revenue')}",
+                "Return on new capital": f"={ref['rT']}+({ref['ron0']}-{ref['rT']})*{1 - k / F}^{ref['shape']}",
+                "Reinvestment rate": f"=IF({c('Revenue growth')}/{c('Return on new capital')}<0.95,{c('Revenue growth')}/{c('Return on new capital')},0.95)",
+                "Reinvestment": f"=IF({p('NOPAT')}>0,{c('NOPAT')}*{c('Reinvestment rate')},{c('Revenue')}/{ref['stc']}-{p('Revenue')}/{ref['stc']})",
+                "FCFF": f"={c('NOPAT')}-{c('Reinvestment')}",
+                "Discount rate": r_y,
+                "Discount factor (end of year)": f"={p('Discount factor (end of year)')}/(1+{c('Discount rate')})",
+                "Discount factor (mid-year)": f"={p('Discount factor (end of year)')}/(1+{c('Discount rate')})^{half}",
+                "PV of FCFF": f"={c('FCFF')}*{c('Discount factor (mid-year)')}",
+            }
+            for lab, v in cells.items():
+                cell = m.cell(R[lab], 2 + y, v)
+                cell.number_format = PCT if lab in ("Revenue growth", "Operating margin", "Tax rate", "Discount rate", "Return on new capital", "Reinvestment rate") else \
+                    ("0.0000" if lab.startswith("Discount factor") else ("0" if lab == "Year" else NUM))
+            continue
         cells = {
             "Year": y, "Revenue growth": g, "Revenue": f"={p('Revenue')}*(1+{c('Revenue growth')})",
             "Operating margin": f"={ref['m0']}+({ref['mT']}-{ref['m0']})*{y}/{N}",
@@ -106,12 +141,13 @@ def build(inp: Dict[str, Any], val: Dict[str, Any]) -> Tuple[bytes, Dict[str, st
             cell = m.cell(R[lab], 2 + y, v)
             cell.number_format = PCT if lab in ("Revenue growth", "Operating margin", "Tax rate", "Discount rate") else \
                 ("0.0000" if lab.startswith("Discount factor") else ("0" if lab == "Year" else NUM))
-    last = get_column_letter(2 + N)
+    last = get_column_letter(2 + N + F)
     first = get_column_letter(3)
     out_row = R["PV of FCFF"] + 2
     outs = [
         ("PV of explicit cash flows", f"=SUM({first}{R['PV of FCFF']}:{last}{R['PV of FCFF']})", NUM),
-        ("NOPAT in year N+1", f"={last}{R['Revenue']}*(1+{ref['gT']})*{ref['mT']}*(1-{ref['tT']})", NUM),
+        ("NOPAT in year N+1", (f"=IF({last}{R['NOPAT']}>0,{last}{R['NOPAT']}*(1+{ref['gT']}),{last}{R['Revenue']}*(1+{ref['gT']})*{ref['mT']}*(1-{ref['tT']}))"
+                               if three else f"={last}{R['Revenue']}*(1+{ref['gT']})*{ref['mT']}*(1-{ref['tT']})"), NUM),
         ("Terminal FCFF (after reinvestment g ÷ RONIC)", None, NUM),
         ("Terminal value at year N", None, NUM),
         ("PV of terminal value", None, NUM),
@@ -140,7 +176,7 @@ def build(inp: Dict[str, Any], val: Dict[str, Any]) -> Tuple[bytes, Dict[str, st
         m.cell(rr["Upside vs price (same currency only)"] + 1, 1,
                f"Note: financials are in {inp.get('currency')} but the shares trade in {inp.get('price_currency')} — convert before comparing.")
     m.column_dimensions["A"].width = 44
-    for y in range(0, N + 2):
+    for y in range(0, N + F + 2):
         m.column_dimensions[get_column_letter(2 + y)].width = 14
     for sheet in (ws, m):
         sheet.freeze_panes = "B4" if sheet is m else None
