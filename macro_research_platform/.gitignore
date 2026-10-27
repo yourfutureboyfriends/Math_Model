@@ -180,3 +180,6 @@ data/processed/lean_intraday/
 data/processed/brief_delivery.json
 data/processed/source_monitor.json
 api/funds/
+
+# Massive (Polygon) daily-bars store: rebuilt from the API, never committed
+data/processed/massive/

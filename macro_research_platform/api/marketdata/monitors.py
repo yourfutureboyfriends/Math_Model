@@ -196,6 +196,50 @@ def money_markets() -> Dict[str, Any]:
 
 
 # ── IMAP ─────────────────────────────────────────────────────────────────────
+def _us_moves_from_store(syms: List[str]) -> Optional[Dict[str, tuple]]:
+    """{symbol: (price, 1-day change, 5-session change)} for US stocks: today's price and change from two Yahoo screener
+    requests (the 500 largest US listings), the 5-session base from the Massive daily-bars store. None when the store is
+    not current (the caller then downloads histories from Yahoo)."""
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+    from yfinance import EquityQuery as Q
+    from api.marketdata.core import MAIN_EXCHANGES, _yscreen
+    from api.providers import massive
+    days = massive.stored_days()
+    if len(days) < 6 or (date.today() - days[-1]).days > 4:
+        return None
+    closes = massive.panel(syms, days=8)
+    if closes.empty:
+        return None
+    live: Dict[str, tuple] = {}
+    q = Q("and", [Q("is-in", ["exchange", *MAIN_EXCHANGES["us"]]), Q("gt", ["intradaymarketcap", 2e9])])
+    for off in (0, 250):
+        try:
+            res = _yscreen(q, sortField="intradaymarketcap", sortAsc=False, size=250, offset=off)
+        except Exception as e:
+            logger.warning("[imap] screener page %s: %s", off, e)
+            continue
+        for x in res.get("quotes") or []:
+            p, c, t = _f(x.get("regularMarketPrice")), _f(x.get("regularMarketChangePercent")), x.get("regularMarketTime")
+            if p:
+                d = _dt.fromtimestamp(int(t), ZoneInfo("America/New_York")).date() if t else None
+                live[x["symbol"]] = (p, c / 100 if c is not None else None, d)
+    out: Dict[str, tuple] = {}
+    last_day = closes.index[-1].date()
+    for s in syms:
+        col = closes[s].dropna() if s in closes.columns else None
+        if s in live:
+            p, chg, d = live[s]
+            # the session the live quote belongs to: when it is already in the store (weekend, after a top-up), the
+            # five-session base is one row further back
+            back = 6 if d == last_day else 5
+            base = float(col.iloc[-back]) if col is not None and len(col) >= back else None
+            out[s] = (p, chg, p / base - 1 if base else None)
+        elif col is not None and len(col) >= 6:
+            out[s] = (float(col.iloc[-1]), float(col.iloc[-1] / col.iloc[-2] - 1), float(col.iloc[-1] / col.iloc[-6] - 1))
+    return out
+
+
 def heatmap(country: str = "US", max_names: int = 300) -> Dict[str, Any]:
     """A market heatmap for a country: names sized by market cap, coloured by change."""
     country = country.upper()
@@ -210,22 +254,29 @@ def heatmap(country: str = "US", max_names: int = 300) -> Dict[str, Any]:
         if not names:
             raise NotFound(f"No stock universe for country '{country}'.")
         syms = [x["symbol"] for x in names]
-        try:
-            # 10 days covers the 1- and 5-session changes; a month of history for 300 names only slowed the cold load
-            df = yf.download(syms, period="10d", interval="1d", auto_adjust=False, group_by="ticker", progress=False, threads=True)
-        except Exception as ex:
-            raise Upstream(f"Prices unavailable: {ex}")
+        moves = _us_moves_from_store(syms) if country == "US" else None
         rows = []
-        for x in names:
+        if moves is not None:          # Massive store + two screener requests instead of 300 Yahoo downloads
+            for x in names:
+                px, chg, wk = moves.get(x["symbol"], (None, None, None))
+                rows.append({"symbol": x["symbol"], "name": x.get("name"), "sector": x.get("sector") or "Other",
+                             "market_cap_usd": x.get("mcap_usd"), "price": px, "change_1d": chg, "change_5d": wk})
+        else:
             try:
-                c = df[x["symbol"]]["Close"].dropna()
-                chg = float(c.iloc[-1] / c.iloc[-2] - 1) if len(c) >= 2 else None
-                wk = float(c.iloc[-1] / c.iloc[-6] - 1) if len(c) >= 6 else None       # five sessions back
-                px = float(c.iloc[-1])
-            except Exception:
-                chg = wk = px = None
-            rows.append({"symbol": x["symbol"], "name": x.get("name"), "sector": x.get("sector") or "Other",
-                         "market_cap_usd": x.get("mcap_usd"), "price": px, "change_1d": chg, "change_5d": wk})
+                # 10 days covers the 1- and 5-session changes; a month of history for 300 names only slowed the cold load
+                df = yf.download(syms, period="10d", interval="1d", auto_adjust=False, group_by="ticker", progress=False, threads=True)
+            except Exception as ex:
+                raise Upstream(f"Prices unavailable: {ex}")
+            for x in names:
+                try:
+                    c = df[x["symbol"]]["Close"].dropna()
+                    chg = float(c.iloc[-1] / c.iloc[-2] - 1) if len(c) >= 2 else None
+                    wk = float(c.iloc[-1] / c.iloc[-6] - 1) if len(c) >= 6 else None       # five sessions back
+                    px = float(c.iloc[-1])
+                except Exception:
+                    chg = wk = px = None
+                rows.append({"symbol": x["symbol"], "name": x.get("name"), "sector": x.get("sector") or "Other",
+                             "market_cap_usd": x.get("mcap_usd"), "price": px, "change_1d": chg, "change_5d": wk})
         sectors: Dict[str, Dict[str, Any]] = {}
         for r in rows:
             s = sectors.setdefault(r["sector"], {"sector": r["sector"], "cap": 0.0, "n": 0, "wsum": 0.0, "w": 0.0, "wsum5": 0.0, "w5": 0.0})

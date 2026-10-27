@@ -524,6 +524,16 @@ async def lifespan(app: FastAPI):
                            replace_existing=True)
         _scheduler.add_job(func=_apply_splits, trigger="date", id="apply_splits_startup", replace_existing=True)
 
+        # Massive (Polygon) store of daily bars for every US stock: backfill two years once (resumable, ~1¾ h at the
+        # free plan's 5 requests a minute), then top up after each US close. No-op without MASSIVE_API_KEY.
+        def _massive_topup():
+            from api.providers import massive as _massive
+            if _massive.start_backfill():
+                logger.info("[massive] backfill / top-up started: %s missing days", _massive.status()["missing"])
+        _scheduler.add_job(func=_massive_topup, trigger="date", id="massive_startup", replace_existing=True)
+        _scheduler.add_job(func=_massive_topup, trigger=CronTrigger(day_of_week="mon-fri", hour=22, minute=20),
+                           id="massive_topup", replace_existing=True)
+
         # T+1 reconciliation of positions against the fills ledger, for funds with governance on (a break halts).
         async def _reconcile_funds():
             from api import fund_store as _fs, funds as _funds, governance as _gov

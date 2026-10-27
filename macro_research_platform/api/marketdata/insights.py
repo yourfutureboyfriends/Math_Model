@@ -102,7 +102,20 @@ def breadth() -> Dict[str, Any]:
         from api.stock_ideas import load_universe
         uni = load_universe()
         syms = list(uni)
-        raw = yf.download(syms, period="2y", interval="1d", auto_adjust=True, progress=False, threads=6)["Close"]   # gentle on Yahoo
+        # The Massive store (every US stock's daily bar, split-adjusted) once it covers ~two years up to the latest session:
+        # one local read instead of 500 Yahoo downloads. Price return only, which is what breadth measures.
+        from api.providers import massive
+        days = massive.stored_days()
+        source = "S&P 500 members (Wikipedia list) with Yahoo Finance daily closes"
+        raw = None
+        if len(days) >= 300 and (date.today() - days[-1]).days <= 4:
+            raw = massive.panel(syms, days=520)
+            if raw.shape[1] >= 450:
+                source = "S&P 500 members (Wikipedia list) with Massive (Polygon) daily closes, split-adjusted"
+            else:
+                raw = None
+        if raw is None:
+            raw = yf.download(syms, period="2y", interval="1d", auto_adjust=True, progress=False, threads=6)["Close"]   # gentle on Yahoo
         px = raw.dropna(axis=1, thresh=300).ffill(limit=3)
         if px.shape[1] < 300:
             raise Upstream("Not enough S&P 500 price history for breadth.")
@@ -141,7 +154,7 @@ def breadth() -> Dict[str, Any]:
         cur = rows[-1]
         return {"rows": rows, "latest": cur, "members": int(px.shape[1]), "sectors": sec_rows,
                 "pct_3y": {"above50": _pctile([r["above50"] for r in rows], cur["above50"]), "above200": _pctile([r["above200"] for r in rows], cur["above200"])},
-                "source": "S&P 500 members (Wikipedia list) with Yahoo Finance daily closes",
+                "source": source,
                 "note": "Breadth shows how many stocks take part in a move. An index rising while fewer members sit above their 200-day "
                         "average is a narrow, fragile advance; McClellan below −50 is oversold, above +50 overbought."}
     return _cached("ins:breadth", 6 * 3600, build)
