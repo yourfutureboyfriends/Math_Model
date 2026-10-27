@@ -74,7 +74,7 @@ export function symbolOf(el: Element | null): string | null {
   const t = (leaf.textContent || '').trim();
   if (t.length < 2 || t.length > 12 || !TICKER.test(t) || STOP.has(t)) return null;
   if (/^\d+[DWMQY]$/.test(t)) return null;                 // chart periods: 1M, 3Y …
-  if (/^[\d.,]+[KMBT]$/.test(t)) return null;              // abbreviated numbers: 19.6K, 2.3B
+  if (/^\d[\d,]*(\.\d+)?[KMBT]$/.test(t)) return null;     // abbreviated numbers: 19.6K, 2.3B (not 7203.T)
   if (/^[A-Z]+$/.test(t) && t.length > 5) return null;     // plain words (REFLATION, BULLISH); real tickers are ≤ 5 letters
   return t;
 }
