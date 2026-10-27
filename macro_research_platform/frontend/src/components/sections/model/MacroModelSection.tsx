@@ -111,6 +111,12 @@ export function MacroModelSection() {
   const [staged, setStaged] = useState<any>(null);
   const [economy, setEconomyState] = useState<Economy>(readEconomy);
   const [showInputs, setShowInputs] = useState(false);
+  // the <GO> line ("EA MODEL") and links can switch the economy shown
+  useEffect(() => {
+    const h = (e: Event) => { const v = (e as CustomEvent).detail; if (v === 'us' || v === 'ea' || v === 'row') { setEconomyState(v); setOrders(null); setStaged(null); } };
+    window.addEventListener('model-economy', h);
+    return () => window.removeEventListener('model-economy', h);
+  }, []);
   const setEconomy = (e: Economy) => {
     setEconomyState(e); setOrders(null); setStaged(null);
     try { localStorage.setItem(ECON_KEY, e); } catch { /* storage unavailable */ }

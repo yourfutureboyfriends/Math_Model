@@ -1589,6 +1589,22 @@ button.ticker-item { background: transparent; border-top: 0; border-bottom: 0; b
 @media (prefers-reduced-motion: reduce) { .hover-card { animation: none; } }
 @media print { .hover-card { display: none !important; } }
 
+/* ─── <GO> command line in the Research topbar (components/layout/GlobalCommand) ─ */
+.gcmd { display: flex; align-items: center; gap: 6px; height: 24px; width: 240px; padding: 0 6px 0 0; margin-left: 6px;
+  border: 1px solid var(--border); background: var(--bg); transition: border-color 120ms, width 160ms; }
+.gcmd:focus-within { border-color: rgb(var(--c-bloomberg)); width: 300px; }
+.gcmd-go { align-self: stretch; display: flex; align-items: center; padding: 0 6px; font-family: var(--font-data); font-size: 10px;
+  font-weight: 700; letter-spacing: 0.08em; color: var(--bg); background: rgb(var(--c-bloomberg)); }
+.gcmd input { flex: 1; min-width: 0; background: transparent; outline: none; font-family: var(--font-data); font-size: 11px;
+  color: var(--text-primary); text-transform: uppercase; }
+.gcmd input::placeholder { text-transform: none; color: var(--text-tertiary); }
+.gcmd-list { position: absolute; z-index: 80; top: 28px; left: 6px; width: 380px; max-height: 360px; overflow-y: auto;
+  background: var(--surface-1); border: 1px solid var(--border-strong); box-shadow: 0 12px 30px rgb(0 0 0 / 0.35); }
+.gcmd-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; text-align: left; font-size: 11.5px;
+  background: transparent; border: 0; border-bottom: 1px solid var(--border-subtle); cursor: pointer; }
+.gcmd-item.is-active { background: rgb(var(--c-bloomberg) / 0.12); }
+.gcmd-tag { width: 44px; flex-shrink: 0; font-family: var(--font-data); font-size: 9px; font-weight: 700; letter-spacing: 0.1em; color: rgb(var(--c-bloomberg)); }
+
 /* ═══════════════════════════════════════════════════════════════════════════════
    PRINT STYLES
    ═══════════════════════════════════════════════════════════════════════════════ */

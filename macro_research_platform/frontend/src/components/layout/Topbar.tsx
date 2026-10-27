@@ -12,6 +12,7 @@ import { SystemStatusBadge } from '@/components/SystemStatusBadge';
 import { DataHealthIndicator } from '@/components/DataHealthIndicator';
 import { DataIntegrityIndicator } from '@/components/DataIntegrityIndicator';
 import { FundSwitcher } from './FundSwitcher';
+import { GlobalCommand } from './GlobalCommand';
 import { useTickFlash } from './TickerTape';
 import { EXCHANGES, sessionState } from '@/components/markets/MarketClock';
 import { openChart } from '@/components/ui/ChartModal';
@@ -231,6 +232,7 @@ export function Topbar({
   const [isCompact, setIsCompact] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [sessions, setSessions] = useState(() => getSessionStatus());
+  const hub = useHubMode();
   const pulse = useMarketPulse();
   const board = STRIP_SYMBOLS.map((sym) => pulse.rows[sym]).filter((r): r is PulseRow => !!r && r.price != null);
 
@@ -336,6 +338,9 @@ export function Topbar({
           <ModeSwitch />
           <ThemeToggle />
         </div>
+
+        {/* <GO> command line (Markets mode has its own on the page) */}
+        {hub === 'research' && <GlobalCommand />}
 
         <div className="topbar-divider" />
 

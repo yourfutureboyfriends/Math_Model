@@ -5,6 +5,7 @@ import { CornerDownLeft, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { FUNCTIONS, MARKET_FUNCTIONS, parseCommand, SECURITY_FUNCTIONS, type MktFunction } from './functions';
 import { TYPE_COLOR, useJSON } from './shared';
+import { resolveCommands } from '@/lib/commands';
 
 interface Hit { symbol: string; name: string; type: string; exchange?: string; sector?: string }
 type Option = { kind: 'fn'; fn: MktFunction; symbol?: string } | { kind: 'sym'; hit: Hit; fn?: MktFunction };
@@ -77,6 +78,10 @@ export function CommandLine({ current, onGo }: { current?: string; onGo: (fn: st
   };
   const go = () => {
     // a country name or "CTRY JP" opens the country page
+    // platform-wide commands: a macro model ("EA MODEL"), an action ("ALERTS"), or a Research panel by its exact
+    // name — a ticker or function still wins over anything less certain
+    const cmd = !parsed.fn && !parsed.terminal ? resolveCommands(q)[0] : undefined;
+    if (cmd && (cmd.group === 'Model' || cmd.group === 'Action' || (cmd.group === 'Panel' && cmd.score >= 80))) { cmd.run(); return done(); }
     const t = q.trim().toLowerCase();
     const iso = countryNames && Object.entries<string>(countryNames).find(([, n]) => n.toLowerCase() === t)?.[0];
     if (iso) { onGo('CTRY', iso); return done(); }
