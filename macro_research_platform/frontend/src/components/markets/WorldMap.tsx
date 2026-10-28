@@ -30,7 +30,7 @@ const L: Layer[] = [
   { key: 'debt', group: 'Economy', label: 'Govt debt / GDP', get: (c) => c.gov_debt, fmt: 'pctpt', diverging: false, goodHigh: false, help: 'General government gross debt, % of GDP — IMF.' },
   { key: 'ca', group: 'Economy', label: 'Current account', get: (c) => c.current_account, fmt: 'pctpt', diverging: true, goodHigh: true, help: 'Current-account balance, % of GDP — IMF.' },
   { key: 'gdppc', group: 'Economy', label: 'GDP per person', get: (c) => c.gdp_per_capita, fmt: 'usd', diverging: false, goodHigh: true, help: 'GDP per capita, current US dollars — IMF.' },
-  { key: 'policy', group: 'Policy', label: 'Policy rate', get: (c) => c.policy, fmt: 'pctpt', diverging: false, goodHigh: false, help: 'Central bank policy rate (25 economies, Research mode model).' },
+  { key: 'policy', group: 'Policy', label: 'Policy rate', get: (c) => c.policy, fmt: 'pctpt', diverging: false, goodHigh: false, help: 'Central bank policy rate (25 economies, Macro area model).' },
   { key: 'real', group: 'Policy', label: 'Real policy rate', get: (c) => c.real_policy_rate, fmt: 'pp', diverging: true, goodHigh: true, help: 'Policy rate minus inflation — positive = restrictive.' },
   { key: 'gap', group: 'Policy', label: 'Inflation vs target', get: (c) => c.inflation_gap, fmt: 'pp', diverging: true, goodHigh: false, help: 'CPI minus the central bank’s target.' },
   { key: 'crp', group: 'Risk', label: 'Country risk premium', get: (c) => c.crp, fmt: 'pct', diverging: false, goodHigh: false, help: 'Extra equity premium for the country (Damodaran), on top of a mature market’s.' },
@@ -307,7 +307,7 @@ export function WorldMap({ onOpen, onGo }: { onOpen: (s: string) => void; onGo?:
       </div>
       <LiveTV iso={sel} name={selName} region={selRec?.region ?? null} />
       <div className="text-[10px] text-text-tertiary">
-        {world.data ? Object.values<string>(world.data.sources).join(' · ') : ''}{macro.data ? ' · Policy: Research mode Global Macro (BIS, OECD, FRED, national sources)' : ''} · Map: Natural Earth via world-atlas, Equal Earth projection (2D) and orthographic globe (3D).
+        {world.data ? Object.values<string>(world.data.sources).join(' · ') : ''}{macro.data ? ' · Policy: Macro area Global Macro (BIS, OECD, FRED, national sources)' : ''} · Map: Natural Earth via world-atlas, Equal Earth projection (2D) and orthographic globe (3D).
       </div>
     </div>
   );

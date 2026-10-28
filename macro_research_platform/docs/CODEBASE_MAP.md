@@ -851,7 +851,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `fundLogo.ts` | Fund logos are private (fetched with the signed-in user's token, which an <img src> cannot send): loaded once as |
 | `governedDeploy.ts` | A fund with governance on paper-trades only governed models (approved at G2): the deployment becomes the model's |
 | `http.ts` | One JSON fetch helper for panels: sends JSON, returns JSON, and throws an Error whose message is the server's |
-| `hubMode.ts` | Hub mode: the app has two modes — |
+| `hubMode.ts` | Hub mode: the app is five separate areas, switched from the top bar — |
 | `marketPulse.ts` | One shared, polled feed of the world-markets overview (/api/v1/mkt/overview) for the screen chrome — the topbar |
 | `marketTag.ts` | Short market tag for a listing: "JP·DM", "KR·EM", … for equities; the instrument type for |
 | `marketsRoute.ts` | Markets-mode routing (#mkt/<function>/<symbol>): small on purpose — the sidebar and links use it without loading |
@@ -871,6 +871,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 |---|---|
 | `DashboardPage.tsx` | Dashboard Page — Main terminal dashboard with all sections |
 | `MarketsPage.tsx` | Markets mode — a universal, Bloomberg-style market workstation. |
+| `PrivateEquityPage.tsx` | PE — the private-equity area (top-bar mode 'pe'). Home of the LBO deal workbench: a buyout model for a listed |
 | `index.ts` | Pages barrel export |
 
 ### `frontend/src/store/`

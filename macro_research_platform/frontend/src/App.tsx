@@ -14,8 +14,9 @@ import { useAuth } from './context/AuthContext';
 // each mode loads on first use: the sign-in screen and the Research view no longer download Markets mode (and vice versa)
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
 const MarketsPage = lazy(() => import('./pages/MarketsPage').then((m) => ({ default: m.MarketsPage })));
+const PrivateEquityPage = lazy(() => import('./pages/PrivateEquityPage').then((m) => ({ default: m.PrivateEquityPage })));
 import { MarketsSidebar } from './components/markets/MarketsSidebar';
-import { useHubMode } from './lib/hubMode';
+import { HUB_MODES, useHubMode } from './lib/hubMode';
 import { applySkin, useMarketsSkin } from './lib/theme';
 import { useMacroStore, selectMeta, selectIsLoading, selectRegime, selectFullDashboard } from './store/macroStore';
 
@@ -106,8 +107,8 @@ function App() {
   // One stable page element: changing the highlighted section while scrolling must not re-render the whole dashboard
   // (only the sidebar and detail panel read it).
   const page = useMemo(() => (
-    <Suspense fallback={<div className="p-6 text-xs text-text-tertiary">Loading {hubMode === 'markets' ? 'Markets' : 'Research'}…</div>}>
-      {hubMode === 'markets' ? <MarketsPage /> : <DashboardPage />}
+    <Suspense fallback={<div className="p-6 text-xs text-text-tertiary">Loading {HUB_MODES.find((m) => m.id === hubMode)?.label}…</div>}>
+      {hubMode === 'markets' ? <MarketsPage /> : hubMode === 'pe' ? <PrivateEquityPage /> : <DashboardPage />}
     </Suspense>), [hubMode]);
 
   if (!isAuthenticated) return <LoginScreen />;
@@ -151,7 +152,8 @@ function App() {
         loading={isLoading}
         activeSection={activeSection}
         onNavigate={handleNavigate}
-        sidebar={hubMode === 'markets' ? (collapsed) => <MarketsSidebar collapsed={collapsed} /> : undefined}
+        sidebar={hubMode === 'markets' ? (collapsed) => <MarketsSidebar collapsed={collapsed} />
+          : hubMode === 'pe' ? (collapsed) => <PeSidebar collapsed={collapsed} /> : undefined}
       >
         {page}
       </TerminalShell>
@@ -166,3 +168,17 @@ function App() {
 }
 
 export default App;
+
+/** PE area sidebar: its tools (the LBO workbench, in progress). */
+function PeSidebar({ collapsed }: { collapsed: boolean }) {
+  if (collapsed) return null;
+  return (
+    <nav aria-label="Private equity" className="py-3">
+      <div className="px-5 pb-1.5 text-[10px] uppercase tracking-[0.08em] font-semibold text-text-tertiary">Private equity</div>
+      <div className="mx-2 px-3 h-7 flex items-center gap-2 rounded-md bg-bloomberg/10 text-xs font-medium text-text-primary">
+        <span className="nav-dot is-active" />LBO workbench
+      </div>
+      <div className="px-5 pt-2 text-[10.5px] text-text-tertiary leading-snug">Deal screening and fund benchmarking can follow once the workbench is in.</div>
+    </nav>
+  );
+}

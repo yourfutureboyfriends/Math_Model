@@ -4,7 +4,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { WORKSPACES, setWorkspace, useWorkspace, workspacePanels } from '@/lib/focusMode';
+import { setWorkspace, useWorkspace, workspacePanels, workspacesFor } from '@/lib/focusMode';
+import { isDashboardMode, useHubMode } from '@/lib/hubMode';
 
 interface Props {
   onCollapseAll: (collapse: boolean) => void;
@@ -13,6 +14,9 @@ interface Props {
 
 export function WorkspaceBar({ onCollapseAll, visibleCount }: Props) {
   const ws = useWorkspace();
+  const hub = useHubMode();
+  const area = isDashboardMode(hub) ? hub : 'macro';
+  const WORKSPACES = workspacesFor(area);
   // One indicator that slides to the active tab (measured, so it follows label widths and the tab strip's scroll)
   const list = useRef<HTMLDivElement>(null);
   const [bar, setBar] = useState<{ left: number; width: number } | null>(null);
@@ -25,7 +29,7 @@ export function WorkspaceBar({ onCollapseAll, visibleCount }: Props) {
     const el = list.current;
     window.addEventListener('resize', measure); el?.addEventListener('scroll', measure, { passive: true });
     return () => { window.removeEventListener('resize', measure); el?.removeEventListener('scroll', measure); };
-  }, [ws, visibleCount]);
+  }, [ws, visibleCount, area]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -40,7 +44,7 @@ export function WorkspaceBar({ onCollapseAll, visibleCount }: Props) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [ws]);
+  }, [ws, WORKSPACES]);
 
   return (
     <div className="sticky top-16 z-30 bg-bg/85 backdrop-blur-md border-b border-border-subtle/70 px-4">
@@ -50,7 +54,7 @@ export function WorkspaceBar({ onCollapseAll, visibleCount }: Props) {
         <div ref={list} role="tablist" aria-label="Workspaces" className="flex items-center gap-0.5 h-9 overflow-x-auto [scrollbar-width:none]">
           {WORKSPACES.map((w) => {
             const active = w.id === ws;
-            const count = workspacePanels(w.id)?.size;
+            const count = workspacePanels(w.id, undefined, area).size;
             return (
               <button key={w.id} role="tab" aria-selected={active}
                 onClick={() => { setWorkspace(w.id); window.scrollTo({ top: 0 }); }}

@@ -15,6 +15,7 @@ import { PANEL_HELP } from '@/lib/panelHelp';
 import { PanelHelpPopover, type HelpAnchor } from '@/components/ui/PanelHelpPopover';
 import { ResearchExpander } from '@/components/markets/ResearchExpander';
 import { WhenNear } from '@/components/ui/WhenNear';
+import { useHubMode } from '@/lib/hubMode';
 import { AllWeatherPanel, DebtCyclesPanel, EnvironmentsPanel, HolyGrailPanel, WorldOrderPanel } from '@/components/markets/BridgewaterViews';
 import {
   MyDeskSection,
@@ -148,6 +149,7 @@ export function DashboardPage() {
   // as lazy panels mount. Panels fold to their header on a header click (remembered).
   const rootRef = useRef<HTMLDivElement>(null);
   const ws = useWorkspace();
+  const hub = useHubMode();                          // Macro / Trading / Quant: which area's panels show
   const { user } = useAuth();
   const desk = useDesk(user?.username);
   const [collapsed, setCollapsed] = useState<Set<string>>(getCollapsed);
@@ -172,7 +174,7 @@ export function DashboardPage() {
     if (!root) return;
     const allowed = workspacePanels(ws, desk?.focus.panels ?? []);
     const run = () => {
-      applyFocus(root, allowed);
+      applyFocus(root, allowed, hub === 'macro' && ws === 'all');
       let n = 0;
       root.querySelectorAll<HTMLElement>(':scope > .terminal-section').forEach((sec) => {
         if (!sec.hidden) n++;
@@ -185,7 +187,7 @@ export function DashboardPage() {
     const obs = new MutationObserver(() => { clearTimeout(t); t = setTimeout(run, 150); });
     obs.observe(root, { childList: true, subtree: true });
     return () => { obs.disconnect(); clearTimeout(t); };
-  }, [ws, desk, collapsed, hasData]);
+  }, [ws, hub, desk, collapsed, hasData]);
 
   const [help, setHelp] = useState<HelpAnchor | null>(null);
   const closeHelp = useCallback(() => setHelp(null), []);
@@ -758,7 +760,7 @@ export function DashboardPage() {
         </WhenNear></ErrorBoundary>
       </div>
 
-      <div className="terminal-section">
+      <div id="fund-governance" className="terminal-section">
         <ErrorBoundary sectionName="Fund Governance"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <GovernanceSection />
@@ -782,7 +784,7 @@ export function DashboardPage() {
         </WhenNear></ErrorBoundary>
       </div>
 
-      <div className="terminal-section">
+      <div id="trade-lifecycle" className="terminal-section">
         <ErrorBoundary sectionName="Trade Lifecycle"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <TradeLifecycleSection />

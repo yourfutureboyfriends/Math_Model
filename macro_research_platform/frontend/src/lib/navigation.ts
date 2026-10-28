@@ -148,3 +148,54 @@ export const navigation: NavSection[] = [
 export function groupOf(id: string): string | null {
   return navigation.find((s) => s.items.some((i) => i.id === id))?.title ?? null;
 }
+
+// ── Areas: the dashboard split into separate workspaces (top-bar switch: Macro · Trading · Quant · Markets · PE) ──
+// Every panel above belongs to exactly one area; within an area the panels are grouped again for the sidebar
+// and the workspace tabs. Markets and PE are their own pages (not dashboard panels).
+export type AreaId = 'macro' | 'trading' | 'quant';
+
+export const AREAS: { id: AreaId; label: string; desc: string; groups: { title: string; ids: string[] }[] }[] = [
+  { id: 'macro', label: 'Macro', desc: 'The macro model, regimes, signals, forecasts and the cycle', groups: [
+    { title: 'OVERVIEW', ids: ['macro-model', 'morning-brief', 'economic-calendar', 'master-signal', 'key-metrics', 'event-dataset',
+      'anomalies', 'regime', 'regime-playbook', 'market-clock', 'global-markets', 'global-correlation', 'regional-macro'] },
+    { title: 'SIGNALS', ids: ['ensemble', 'signal-stack', 'signal-story', 'signals', 'alt-data', 'stream-agreement', 'sector-allocation',
+      'factor-rotation', 'cot-positioning', 'cta-trend', 'news-sentiment'] },
+    { title: 'FORECASTS', ids: ['valuation', 'nowcast', 'yield-curve', 'liquidity', 'sentiment', 'expected-returns', 'gmo-forecasts',
+      'regime-transition', 'regime-outlook', 'quadrants', 'event-vol'] },
+    { title: 'CYCLE & CROSS-ASSET', ids: ['cycle-risk', 'risk-indicators', 'debt-cycle', 'correlation', 'correlation-matrix', 'advanced',
+      'fx-monitor', 'commodities-dashboard', 'fixed-income-dashboard', 'international', 'reflexivity', 'transmission'] },
+  ] },
+  { id: 'trading', label: 'Trading', desc: 'Ideas, pre-trade checks, positions, risk and governance', groups: [
+    { title: 'DECIDE', ids: ['trade-ideas', 'trade-recommendations', 'stock-ideas', 'stock-timing', 'pretrade-desk', 'pitch-review',
+      'trade-workflow', 'trade-lifecycle', 'scenario-analysis', 'momentum-veto'] },
+    { title: 'PORTFOLIO', ids: ['portfolio-positions', 'portfolios', 'portfolio', 'position-manager', 'performance-attribution',
+      'equity-research', 'business-layer'] },
+    { title: 'RISK', ids: ['fund-cockpit', 'risk-analytics', 'var-stress', 'what-if', 'factor-exposure', 'horizon-tension', 'risk-parity',
+      'risk-parity-compare'] },
+    { title: 'GOVERNANCE', ids: ['fund-governance', 'system-audit', 'investment-memo'] },
+  ] },
+  { id: 'quant', label: 'Quant', desc: 'Build and backtest strategies, validate models, explore the data', groups: [
+    { title: 'LAB', ids: ['quant-lab', 'strategy-lab', 'stock-backtest'] },
+    { title: 'MODEL VALIDATION', ids: ['signal-scorecard', 'factor-validation', 'model-agreement', 'factor-decomposition'] },
+    { title: 'DATA', ids: ['data-explorer', 'data-providers', 'system-health'] },
+  ] },
+];
+
+const ITEM_BY_ID: Record<string, NavItem> = Object.fromEntries(navigation.flatMap((s) => s.items).map((i) => [i.id, i]));
+
+/** An area's sidebar sections (the same NavItems, regrouped). */
+export function navigationFor(area: AreaId): NavSection[] {
+  const a = AREAS.find((x) => x.id === area) ?? AREAS[0];
+  return a.groups.map((g) => ({ title: g.title, items: g.ids.map((id) => ITEM_BY_ID[id]).filter(Boolean) }));
+}
+
+/** The area a panel belongs to ('my-desk' and unknown ids → null: shown in every area / left alone). */
+export function areaOf(id: string): AreaId | null {
+  return AREAS.find((a) => a.groups.some((g) => g.ids.includes(id)))?.id ?? null;
+}
+
+/** Panel ids of an area (plus My Desk, shown at the top of every dashboard area). */
+export function areaPanels(area: AreaId): Set<string> {
+  const a = AREAS.find((x) => x.id === area) ?? AREAS[0];
+  return new Set(['my-desk', ...a.groups.flatMap((g) => g.ids)]);
+}

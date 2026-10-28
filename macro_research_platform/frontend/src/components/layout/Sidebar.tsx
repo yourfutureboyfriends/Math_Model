@@ -12,7 +12,8 @@ import { useDesk } from '@/hooks/useDesk';
 import { panelLabel } from '@/lib/panels';
 import { setFocusMode, setWorkspace, useFocusMode, useWorkspace } from '@/lib/focusMode';
 import { usePinnedSections } from '@/hooks/usePinnedSections';
-import { navigation, type NavItem } from '@/lib/navigation';
+import { navigation, navigationFor, type NavItem } from '@/lib/navigation';
+import { isDashboardMode, useHubMode } from '@/lib/hubMode';
 
 interface SidebarProps {
   activeSection?: string;
@@ -39,7 +40,8 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
 
   // FIXED: Navigation always renders — unconditional, no permission filtering
   // All users see all navigation items; permission-based feature hiding is deprecated
-  const filteredNavigation = navigation;
+  const hub = useHubMode();
+  const filteredNavigation = navigationFor(isDashboardMode(hub) ? hub : 'macro');   // this area's groups only
 
   // Per-user pinned panels for one-click access.
   const pinKey = user?.username || user?.display_name || 'default';

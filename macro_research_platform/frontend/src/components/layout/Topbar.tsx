@@ -2,7 +2,7 @@
 // Row 1: Branding | Function keys | Session badges | Data status | Time | Tools
 // Row 2: World quote board — one benchmark per region plus the global gauges, flashing on each tick
 
-import { setHubMode, useHubMode } from '@/lib/hubMode';
+import { HUB_MODES, isDashboardMode, setHubMode, useHubMode } from '@/lib/hubMode';
 import { DAY_END, DAY_START, setThemeSetting, useTheme, type ThemeSetting } from '@/lib/theme';
 import { useState, useEffect, useMemo } from 'react';
 import { Download, Maximize, AlertTriangle, LayoutGrid, RefreshCw, FunctionSquare } from 'lucide-react';
@@ -205,9 +205,9 @@ function ModeSwitch() {
   const mode = useHubMode();
   return (
     <div role="tablist" aria-label="Mode" className="seg ml-1">
-      {([['research', 'Research & Trading'], ['markets', 'Markets']] as const).map(([m, label]) => (
+      {HUB_MODES.map(({ id: m, label, title }) => (
         <button key={m} role="tab" aria-selected={mode === m} onClick={() => setHubMode(m)}
-          title={m === 'research' ? 'Macro research, signals, risk, Quant Lab and the paper traders' : 'Any stock, ETF, index, FX, future or crypto — workstation, movers, screener'}
+          title={title}
           className="seg-item">
           {label}
         </button>
@@ -339,7 +339,7 @@ export function Topbar({
         </div>
 
         {/* <GO> command line (Markets mode has its own on the page) */}
-        {hub === 'research' && <GlobalCommand />}
+        {isDashboardMode(hub) && <GlobalCommand />}
 
         <div className="topbar-divider" />
 

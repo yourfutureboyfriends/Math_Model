@@ -13,7 +13,8 @@ import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { openChart } from '@/components/ui/ChartModal';
 import { goMarkets } from '@/lib/marketsRoute';
-import { getHubMode, setHubMode } from '@/lib/hubMode';
+import { getHubMode, isDashboardMode } from '@/lib/hubMode';
+import { openPanel } from '@/lib/commands';
 import { fmtPulseChange, SHORT, useMarketPulse, type PulseRow } from '@/lib/marketPulse';
 import { dismissPopup, KIND_LABEL, pushPopup, seenBefore, setKindEnabled, setPopupsEnabled, togglePanel, usePopups,
   type Popup, type PopupKind } from '@/lib/popups';
@@ -34,8 +35,7 @@ function threshold(r: PulseRow): { v: number; unit: 'pct' | 'bp' } {
 }
 
 function revealResearch(id: string) {
-  if (getHubMode() !== 'research') setHubMode('research');
-  setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+  openPanel(id);                                       // switches to the panel's area (Macro / Trading / Quant) first
 }
 
 /** Your triggered alerts (server-side checks every five minutes) — also as a browser notification if allowed. */
@@ -165,7 +165,7 @@ function useEcoReleases() {
         const t = new Date(e.date).getTime();
         if (!Number.isFinite(t) || String(e.date).length <= 10) continue;
         const name = `${e.country} ${e.title}`;
-        const open = () => (getHubMode() === 'research' ? revealResearch('economic-calendar') : goMarkets('ECO'));
+        const open = () => (isDashboardMode(getHubMode()) ? revealResearch('economic-calendar') : goMarkets('ECO'));
         const mins = Math.round((t - now) / 60_000);
         if (mins > 0 && mins <= 15 && !seenBefore(`eco-up:${name}:${e.date}`)) {
           pushPopup({ id: `eco-up:${name}:${e.date}`, kind: 'eco', title: `${name} in ${mins} min`,

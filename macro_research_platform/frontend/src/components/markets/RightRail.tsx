@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bot, ChevronRight, List, Loader2, Send, Sparkles, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { setHubMode } from '@/lib/hubMode';
+import { openPanel } from '@/lib/commands';
 import { fmtPrice, Spark, apiError, symType } from './shared';
 
 const KEY = 'mkt_rail';
@@ -87,8 +88,7 @@ function openCitation(c: Citation) {
     window.location.hash = t.symbol ? `#mkt/${code}/${encodeURIComponent(t.symbol)}` : `#mkt/${code}`;
     setHubMode('markets');
   } else if (t.mode === 'research' && t.panel) {
-    setHubMode('research');
-    setTimeout(() => document.getElementById(t.panel!)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+    openPanel(t.panel);                                // the panel's own area (Macro / Trading / Quant)
   }
 }
 const TOOL_LABEL: Record<string, string> = { search_instrument: 'Searched instruments', get_quote: 'Quote', get_profile: 'Profile', get_financials: 'Financials',

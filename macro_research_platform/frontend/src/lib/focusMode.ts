@@ -6,39 +6,51 @@
  * Collapsed panels: a per-browser set of panel ids whose content is folded to the header.
  */
 import { useEffect, useState } from 'react';
-import { groupOf, navigation } from '@/lib/navigation';
+import { areaOf, areaPanels, navigationFor, type AreaId } from '@/lib/navigation';
+import { getHubMode, isDashboardMode, setHubMode } from '@/lib/hubMode';
 
-const KEY = 'macro_workspace';
+const KEY = 'macro_workspace';                 // per area: macro_workspace:<area> (the bare key is the old, shared one)
 const LEGACY_FOCUS_KEY = 'macro_focus_mode';
 const EVT = 'macro-workspace';
 
-export type Workspace = string;   // 'all' | 'focus' | navigation group title
+export type Workspace = string;   // 'all' | 'focus' | one of the current area's group titles
 
-export const WORKSPACES: { id: Workspace; label: string }[] = [
-  { id: 'focus', label: 'My focus' },
-  ...navigation.map((s) => ({ id: s.title, label: s.title.charAt(0) + s.title.slice(1).toLowerCase() })),
-  { id: 'all', label: 'All panels' },
-];
+/** The current dashboard area (Macro when the app is on Markets / PE). */
+export function currentArea(): AreaId {
+  const m = getHubMode();
+  return isDashboardMode(m) ? m : 'macro';
+}
 
-export function getWorkspace(): Workspace {
+const title = (t: string) => t.charAt(0) + t.slice(1).toLowerCase();
+
+/** The workspace tabs of an area: My focus, its groups, All panels. */
+export function workspacesFor(area: AreaId = currentArea()): { id: Workspace; label: string }[] {
+  return [{ id: 'focus', label: 'My focus' },
+    ...navigationFor(area).map((s) => ({ id: s.title, label: title(s.title) })),
+    { id: 'all', label: 'All panels' }];
+}
+
+export function getWorkspace(area: AreaId = currentArea()): Workspace {
   try {
-    const w = localStorage.getItem(KEY);
-    if (w && WORKSPACES.some((x) => x.id === w)) return w;
+    const w = localStorage.getItem(`${KEY}:${area}`) ?? (area === 'macro' ? localStorage.getItem(KEY) : null);
+    if (w && workspacesFor(area).some((x) => x.id === w)) return w;
     return localStorage.getItem(LEGACY_FOCUS_KEY) === '1' ? 'focus' : 'all';
   } catch { return 'all'; }
 }
 
-export function setWorkspace(w: Workspace) {
-  try { localStorage.setItem(KEY, w); } catch { /* storage unavailable */ }
+export function setWorkspace(w: Workspace, area: AreaId = currentArea()) {
+  try { localStorage.setItem(`${KEY}:${area}`, w); } catch { /* storage unavailable */ }
   window.dispatchEvent(new CustomEvent(EVT, { detail: w }));
 }
 
+/** The current area's workspace; follows area switches too. */
 export function useWorkspace(): Workspace {
-  const [w, setW] = useState(getWorkspace);
+  const [w, setW] = useState(() => getWorkspace());
   useEffect(() => {
-    const h = (e: Event) => setW(String((e as CustomEvent).detail));
+    const h = () => setW(getWorkspace());
     window.addEventListener(EVT, h);
-    return () => window.removeEventListener(EVT, h);
+    window.addEventListener('hub-mode', h);
+    return () => { window.removeEventListener(EVT, h); window.removeEventListener('hub-mode', h); };
   }, []);
   return w;
 }
@@ -47,21 +59,24 @@ let deskPanelsCache: string[] = [];
 /** The signed-in role's focus panels (set by the dashboard once the desk loads). */
 export function setDeskPanels(ids: string[]) { deskPanelsCache = ids; }
 
-/** Panel ids a workspace shows (null = everything). */
-export function workspacePanels(w: Workspace, deskPanels: string[] = deskPanelsCache): Set<string> | null {
-  if (w === 'all') return null;
-  if (w === 'focus') return new Set(['my-desk', 'macro-model', 'morning-brief', ...deskPanels]);
-  const group = navigation.find((s) => s.title === w);
-  if (!group) return null;
+/** Panel ids a workspace shows in an area. */
+export function workspacePanels(w: Workspace, deskPanels: string[] = deskPanelsCache, area: AreaId = currentArea()): Set<string> {
+  const mine = areaPanels(area);
+  if (w === 'focus') return new Set(['my-desk', ...['macro-model', 'morning-brief', ...deskPanels].filter((id) => mine.has(id))]);
+  const group = navigationFor(area).find((s) => s.title === w);
+  if (w === 'all' || !group) return mine;
   const ids = group.items.map((i) => i.id);
-  return new Set(w === navigation[0].title ? ['my-desk', ...ids] : ids);
+  return new Set(group === navigationFor(area)[0] ? ['my-desk', ...ids] : ids);
 }
 
-/** Make sure a panel is visible before scrolling to it: switch to its group if hidden. */
+/** Make sure a panel is visible before scrolling to it: switch to its area and group if hidden. True if anything
+ *  changed (the caller waits for the re-render before scrolling). */
 export function revealPanel(id: string): boolean {
+  const area = areaOf(id);
+  if (area && area !== currentArea()) { setHubMode(area); setWorkspace('all', area); return true; }
   const cur = workspacePanels(getWorkspace());
-  if (!cur || cur.has(id)) return false;
-  setWorkspace(groupOf(id) ?? 'all');
+  if (cur.has(id)) return false;
+  setWorkspace(navigationFor(currentArea()).find((s) => s.items.some((i) => i.id === id))?.title ?? 'all');
   return true;
 }
 
@@ -71,11 +86,15 @@ export const setFocusMode = (on: boolean) => setWorkspace(on ? 'focus' : 'all');
 export const useFocusMode = () => useWorkspace() === 'focus';
 
 /** Hide every top-level terminal section that doesn't contain one of the allowed anchors. */
-export function applyFocus(container: HTMLElement | null, allowed: Set<string> | null) {
+export function applyFocus(container: HTMLElement | null, allowed: Set<string> | null, showUnassigned = false) {
   if (!container) return;
   container.querySelectorAll<HTMLElement>(':scope > .terminal-section').forEach((sec) => {
     if (!allowed) { sec.hidden = false; return; }
-    const ids = [sec.id, ...Array.from(sec.querySelectorAll<HTMLElement>('[id]')).map((e) => e.id)].filter(Boolean);
+    // Ids of the section, of its content, and of content not mounted yet (a WhenNear placeholder lists them).
+    const ids = [sec.id, ...Array.from(sec.querySelectorAll<HTMLElement>('[id]')).map((e) => e.id),
+      ...Array.from(sec.querySelectorAll<HTMLElement>('[data-near-ids]')).flatMap((e) => (e.dataset.nearIds ?? '').split(' '))].filter(Boolean);
+    // A section that belongs to no area (no navigation anchor) stays visible under Macro → All panels.
+    if (showUnassigned && !ids.some((id) => id === 'my-desk' || areaOf(id))) { sec.hidden = false; return; }
     sec.hidden = !ids.some((id) => allowed.has(id));
   });
 }

@@ -22,5 +22,5 @@ export function WhenNear({ children, minHeight = 220, ids }: { children: ReactNo
     return () => { io.disconnect(); window.removeEventListener('beforeprint', onPrint); window.removeEventListener('whennear:reveal', onReveal); };
   }, [near, ids]);
   if (near) return <>{children}</>;
-  return <div ref={ref} style={{ minHeight }} className="mkt-skeleton opacity-40 m-3 rounded-lg" aria-hidden />;
+  return <div ref={ref} style={{ minHeight }} data-near-ids={ids?.join(' ')} className="mkt-skeleton opacity-40 m-3 rounded-lg" aria-hidden />;
 }

@@ -10,7 +10,8 @@
 import { findFunction, parseCommand } from '@/components/markets/functions';
 import { currentFund, switchFund } from './fund';
 import { revealPanel } from './focusMode';
-import { getHubMode, setHubMode } from './hubMode';
+import { getHubMode, isDashboardMode, setHubMode } from './hubMode';
+import { areaOf } from './navigation';
 import { goMarkets } from './marketsRoute';
 import { PANEL_LABELS } from './panels';
 import { togglePanel } from './popups';
@@ -21,10 +22,12 @@ export type FundRef = { id: string; name: string };
 
 const TICKER = /^(?=.*[A-Z])[A-Z0-9^][A-Z0-9.\-=^]{0,11}$/;
 
-/** Open a Research panel from either mode (switching workspace or mode first when it is hidden). */
+/** Open a dashboard panel from anywhere (switching to its area — Macro / Trading / Quant — and workspace first). */
 export function openPanel(id: string): void {
-  const switchMode = getHubMode() !== 'research';
-  if (switchMode) setHubMode('research');
+  const cur = getHubMode();
+  const area = areaOf(id) ?? (isDashboardMode(cur) ? cur : 'macro');
+  const switchMode = cur !== area;
+  if (switchMode) setHubMode(area);
   setTimeout(() => {                                   // after the Research page has mounted
     const switchedGroup = revealPanel(id);
     // Off-screen panels lay out at their real height only as they near the viewport (content-visibility), so the
