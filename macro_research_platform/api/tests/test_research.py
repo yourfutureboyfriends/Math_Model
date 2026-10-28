@@ -117,3 +117,20 @@ def test_throttled_ticker_is_not_cached_as_empty(monkeypatch):
 def test_index_options_use_option_root():
     from api.marketdata import security
     assert security.OPTION_ROOT["^GSPC"] == "^SPX"
+
+
+def test_sec_bulk_facts_used_only_when_current(tmp_path, monkeypatch):
+    """A bulk companyfacts file is used only if it includes the latest periodic filing in the bulk filing index."""
+    import json as _j
+    from api.providers import sec_edgar as se
+    (tmp_path / "companyfacts").mkdir(); (tmp_path / "submissions").mkdir()
+    facts = {"facts": {"us-gaap": {"Revenues": {"units": {"USD": [{"end": "2026-06-30", "val": 1, "form": "10-Q", "filed": "2026-07-31"}]}}}}}
+    (tmp_path / "companyfacts" / "CIK0000000042.json").write_text(_j.dumps(facts))
+    sub = lambda d: {"filings": {"recent": {"form": ["10-Q", "4"], "filingDate": [d, "2026-10-20"]}}}
+    monkeypatch.setenv("SEC_BULK_DIR", str(tmp_path))
+    monkeypatch.setattr(se, "bulk_dirs", lambda: [tmp_path])
+    (tmp_path / "submissions" / "CIK0000000042.json").write_text(_j.dumps(sub("2026-07-31")))
+    assert se._bulk_facts(42) is not None                                   # current: used
+    (tmp_path / "submissions" / "CIK0000000042.json").write_text(_j.dumps(sub("2026-10-28")))
+    assert se._bulk_facts(42) is None                                       # a newer 10-Q exists: not used
+    assert se._bulk_facts(42, require_current=False) is not None            # but kept as the offline fallback

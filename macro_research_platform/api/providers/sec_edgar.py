@@ -157,10 +157,82 @@ def resolve(ticker: str) -> Optional[Dict[str, Any]]:
     return m.get(t) or m.get(t.replace(".", "-")) or m.get(t.replace("-", "."))
 
 
+# ── SEC bulk data on disk (companyfacts.zip / submissions.zip, unpacked) ────────────────────────────────────────────
+# SEC publishes every filer's company facts and filing index nightly as two archives. When they are unpacked on this
+# machine (SEC_BULK_DIR, else data/sec_bulk or ~/Downloads, each holding companyfacts/ and submissions/), a company's
+# facts are read from disk instead of data.sec.gov — but only when the file already includes the company's latest
+# 10-Q / 10-K / 20-F / 40-F according to its filing index. A file that predates a newer filing is ignored (the live
+# API is used) and serves only as a fallback when SEC cannot be reached.
+PERIODIC_FORMS = ("10-Q", "10-K", "20-F", "40-F", "10-Q/A", "10-K/A", "20-F/A", "40-F/A")
+
+
+def bulk_dirs() -> List[Path]:
+    cands = [os.getenv("SEC_BULK_DIR"), str(CACHE.parents[1] / "sec_bulk"), str(Path.home() / "Downloads")]
+    return [Path(c) for c in cands if c and (Path(c) / "companyfacts").is_dir()]
+
+
+def _bulk_file(kind: str, cik: int) -> Optional[Path]:
+    for d in bulk_dirs():
+        f = d / kind / f"CIK{cik:010d}.json"
+        if f.exists():
+            return f
+    return None
+
+
+def _latest_periodic_filing(cik: int) -> Optional[str]:
+    """Filing date of the company's latest periodic report, from the bulk filing index (None if unknown)."""
+    f = _bulk_file("submissions", cik)
+    if not f:
+        return None
+    try:
+        r = (json.loads(f.read_text()).get("filings") or {}).get("recent") or {}
+        dates = [d for frm, d in zip(r.get("form") or [], r.get("filingDate") or []) if frm in PERIODIC_FORMS]
+        return max(dates) if dates else None
+    except Exception:
+        return None
+
+
+def _latest_filed(facts: Dict[str, Any]) -> str:
+    best = ""
+    for tags in (facts.get("facts") or {}).values():
+        for t in tags.values():
+            for pts in (t.get("units") or {}).values():
+                for p in pts:
+                    if p.get("form") in PERIODIC_FORMS and (p.get("filed") or "") > best:
+                        best = p["filed"]
+    return best
+
+
+def _bulk_facts(cik: int, require_current: bool = True) -> Optional[Dict[str, Any]]:
+    """Company facts from the bulk files — when `require_current`, only if they include the latest periodic filing."""
+    f = _bulk_file("companyfacts", cik)
+    if not f:
+        return None
+    try:
+        facts = json.loads(f.read_text())
+    except Exception:
+        return None
+    if require_current:
+        latest = _latest_periodic_filing(cik)
+        if not latest or _latest_filed(facts) < latest:
+            return None
+    return facts
+
+
 def _raw_facts(cik: int) -> Optional[Dict[str, Any]]:
     # Not kept in memory: one company's facts can be several MB of JSON (tens of MB parsed).
-    return _cached(CACHE / "facts" / f"CIK{cik:010d}.json", FACTS_TTL,
-                   lambda: _get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"), keep=False)
+    local = _bulk_facts(cik)
+    if local is not None:
+        return local
+    try:
+        return _cached(CACHE / "facts" / f"CIK{cik:010d}.json", FACTS_TTL,
+                       lambda: _get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"), keep=False)
+    except Exception as e:
+        old = _bulk_facts(cik, require_current=False)          # SEC unreachable: the bulk file, even if a filing behind
+        if old is not None:
+            logger.warning("[sec] CIK %s: SEC unavailable (%s) — using the bulk file", cik, e)
+            return old
+        raise
 
 
 def _predecessor_cik(facts: Dict[str, Any], cik: int) -> Optional[int]:

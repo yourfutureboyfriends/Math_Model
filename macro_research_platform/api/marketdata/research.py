@@ -15,6 +15,7 @@ from api.market_dates import weekly_last
 
 import concurrent.futures as cf
 import logging
+import json
 import math
 import re
 from datetime import date, datetime, timedelta
@@ -116,7 +117,17 @@ def filings(symbol: str, limit: int = 120) -> Dict[str, Any]:
         cik = res.get("cik") if isinstance(res, dict) else res
         if not cik:
             return _non_sec_filings(s)
-        sub = _sec_get(f"https://data.sec.gov/submissions/CIK{int(cik):010d}.json").json()
+        stale_note = None
+        try:
+            sub = _sec_get(f"https://data.sec.gov/submissions/CIK{int(cik):010d}.json").json()
+        except Exception as e:                             # SEC unreachable: the bulk filing index on disk, if present
+            from api.providers import sec_edgar
+            f = sec_edgar._bulk_file("submissions", int(cik))
+            if not f:
+                raise
+            sub = json.loads(f.read_text())
+            from datetime import datetime as _dtm
+            stale_note = f"SEC unreachable ({str(e)[:60]}) — filings from the bulk index of {_dtm.fromtimestamp(f.stat().st_mtime):%d %b %Y}."
         r = sub["filings"]["recent"]
         n = len(r["form"])
         rows = []
@@ -184,7 +195,8 @@ def filings(symbol: str, limit: int = 120) -> Dict[str, Any]:
         flags = [x for x in rows if any(it["severity"] == "red" for it in x["items"])]
         return {"symbol": s, "cik": int(cik), "name": sub.get("name"), "sic": sub.get("sicDescription"), "fiscal_year_end": sub.get("fiscalYearEnd"),
                 "filings": rows, "typical_earnings_move": float(np.median(earn)) if earn else None, "earnings_events": len(earn),
-                "red_flags": len(flags), "source": "SEC EDGAR submissions feed; reactions from Yahoo closes (abnormal = minus the S&P 500)."}
+                "red_flags": len(flags), "note": stale_note,
+                "source": "SEC EDGAR submissions feed; reactions from Yahoo closes (abnormal = minus the S&P 500)."}
     return _cached(f"cf3:{s}", 3600, fetch)
 
 
