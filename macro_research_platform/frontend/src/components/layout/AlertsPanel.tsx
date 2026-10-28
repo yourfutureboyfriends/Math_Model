@@ -1,6 +1,7 @@
 // Phase 8 Alerts Panel
 // Slide-out panel from right side
 
+import { useEffect, useState } from 'react';
 import { X, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -22,33 +23,40 @@ interface AlertsPanelProps {
   onViewSection?: (section: string) => void;
 }
 
-const mockAlerts: Alert[] = [
-  {
-    id: '1',
-    severity: 'warning',
-    timestamp: '2026-05-01T14:30:00Z',
-    title: 'Geopolitical Risk Elevated',
-    description: 'GPR at 1.24σ — widen position sizing',
-    action: 'risk-indicators',
-    acknowledged: false,
-  },
-  {
-    id: '2',
-    severity: 'info',
-    timestamp: '2026-05-01T12:15:00Z',
-    title: 'Model Weight Adapted',
-    description: 'Momentum model weight reduced due to anomaly detection',
-    acknowledged: false,
-  },
-];
+// Live alerts from /api/alerts (rule-based on real market conditions). This panel used to
+// show two hard-coded "mock" alerts (e.g. "GPR at 1.24σ", dated May 2026) on every open.
+const SEVERITY: Record<string, Alert['severity']> = { High: 'critical', Critical: 'critical', Medium: 'warning', Low: 'info' };
+const ACTION: Record<string, string> = { Rates: 'yield-curve', Recession: 'regime', Volatility: 'risk-indicators' };
+
+function useLiveAlerts(enabled: boolean): Alert[] | null {
+  const [alerts, setAlerts] = useState<Alert[] | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    fetch('/api/alerts')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (cancelled || !j) return;
+        setAlerts((j.alerts ?? []).filter((a: any) => a.active !== false && a.id !== 'alert-normal').map((a: any) => ({
+          id: a.id, severity: SEVERITY[a.severity] ?? 'info', timestamp: a.timestamp,
+          title: a.type ?? 'Alert', description: a.message, action: ACTION[a.type], acknowledged: false,
+        })));
+      })
+      .catch(() => { if (!cancelled) setAlerts([]); });
+    return () => { cancelled = true; };
+  }, [enabled]);
+  return alerts;
+}
 
 export function AlertsPanel({
   isOpen,
   onClose,
-  alerts = mockAlerts,
+  alerts: alertsProp,
   onAcknowledge,
   onViewSection,
 }: AlertsPanelProps) {
+  const live = useLiveAlerts(isOpen && !alertsProp);
+  const alerts: Alert[] = alertsProp ?? live ?? [];
   const getSeverityIcon = (severity: string) => {
     switch (severity) {
       case 'critical':

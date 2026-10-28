@@ -1,0 +1,182 @@
+// Movers and a global equity screener over 22 markets (Yahoo's screener): any region(s),
+// sector, size, valuation, yield and today's move. Market caps are entered in USD and
+// converted to each market's currency by the server.
+import { useEffect, useState } from 'react';
+import { cn } from '@/lib/utils';
+import { REGION_MARKETS, useRegion } from '@/lib/region';
+import { Chg, ErrorBox, fmtBig, fmtPrice, Loading, Panel, useJSON, useSort } from './shared';
+
+const MAJOR: Record<string, string> = { GBp: 'GBP', GBX: 'GBP', ZAc: 'ZAR', ILA: 'ILS' };
+
+function Table({ rows: input, onOpen, showSector = true }: { rows: any[]; onOpen: (s: string) => void; showSector?: boolean }) {
+  const { rows, th } = useSort(input);          // click a header to sort; the server order is the default
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-2xs">
+        <thead><tr className="text-text-tertiary">
+          {th('symbol', 'Symbol', 'text-left pb-1', false)}{th('name', 'Name', 'text-left', false)}
+          {th('price', 'Price', 'text-right')}{th('change_pct', 'Change', 'text-right')}
+          {th('market_cap_usd', 'Mkt cap $', 'text-right')}{th('value_traded_usd', 'Traded $', 'text-right hidden md:table-cell')}
+          {th('pe', 'P/E', 'text-right hidden md:table-cell')}{th('dividend_yield', 'Yield', 'text-right hidden lg:table-cell')}
+          {showSector && th('sector', 'Sector', 'text-left hidden xl:table-cell pl-3', false)}</tr></thead>
+        <tbody>{rows.map((r) => (
+          <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3">
+            <td className="py-1 font-mono text-text-primary">{r.symbol}</td>
+            <td className="text-text-secondary max-w-[16rem] truncate" title={r.name}>{r.name}</td>
+            <td className="text-right font-mono">{fmtPrice(r.price)} <span className="text-text-tertiary">{r.currency}</span></td>
+            <td className="text-right"><Chg v={r.change_pct} /></td>
+            <td className="text-right font-mono" title={r.market_cap != null ? `${fmtBig(r.market_cap)} ${MAJOR[r.currency] ?? r.currency ?? ''}` : undefined}>{fmtBig(r.market_cap_usd ?? null)}</td>
+            <td className="text-right font-mono hidden md:table-cell" title={r.volume != null ? `${fmtBig(r.volume)} shares · ${fmtBig(r.value_traded ?? null)} ${MAJOR[r.currency] ?? r.currency ?? ''}` : undefined}>{fmtBig(r.value_traded_usd ?? null)}</td>
+            <td className="text-right font-mono hidden md:table-cell">{r.pe != null ? r.pe.toFixed(1) : '—'}</td>
+            <td className="text-right font-mono hidden lg:table-cell">{r.dividend_yield != null ? `${(r.dividend_yield * 100).toFixed(1)}%` : '—'}</td>
+            {showSector && <td className="text-text-tertiary hidden xl:table-cell pl-3 truncate">{r.sector ?? ''}</td>}
+          </tr>))}</tbody>
+      </table>
+    </div>
+  );
+}
+
+export function MoversView({ onOpen }: { onOpen: (s: string) => void }) {
+  const meta = useJSON<any>('/api/v1/mkt/meta');
+  const area = useRegion();
+  const [region, setRegion] = useState(() => REGION_MARKETS[area][0]);
+  useEffect(() => { setRegion(REGION_MARKETS[area][0]); }, [area]);         // follow the Markets region
+  const [kind, setKind] = useState<'gainers' | 'losers' | 'active'>('gainers');
+  const { data, error, loading } = useJSON<any>(`/api/v1/mkt/movers?region=${region}&kind=${kind}&count=30`, 300_000);
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Market"
+          className="bg-surface-1 border border-border px-2 py-1 text-xs text-text-primary">
+          {(meta.data?.regions ?? [{ id: 'us', name: 'United States' }]).map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
+        </select>
+        <div className="flex border border-border">{(['gainers', 'losers', 'active'] as const).map((k) => (
+          <button key={k} onClick={() => setKind(k)} className={cn('px-3 py-1 text-2xs capitalize', kind === k ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary')}>
+            {k === 'active' ? 'Most active' : k}</button>))}</div>
+      </div>
+      {loading && !data ? <Loading /> : error ? <ErrorBox msg={error} /> : data && (
+        <Panel title={`${data.region_name} — ${kind === 'active' ? 'most active' : `top ${kind}`} today`}>
+          <Table rows={data.rows} onOpen={onOpen} />
+          {data.note && <div className="text-[10px] text-text-tertiary mt-2">{data.note}</div>}
+        </Panel>
+      )}
+    </div>
+  );
+}
+
+const inp = 'w-full bg-surface-1 border border-border px-2 py-1 text-xs font-mono text-text-primary';
+
+// One-click screens (from OpenTerminal). Market caps in $bn; P/E and yield as typed in the form.
+const PRESETS: [string, Record<string, string>, string][] = [
+  ['Mega caps', { market_cap_min: '200' }, 'Companies worth more than $200bn'],
+  ['Value', { market_cap_min: '5', pe_max: '12', pe_min: '0.1', sort: 'pe' }, 'P/E below 12, over $5bn, cheapest first'],
+  ['Quality value', { market_cap_min: '20', pe_max: '18', pe_min: '0.1', dividend_yield_min: '2' }, 'P/E under 18 with a dividend of 2%+, over $20bn'],
+  ['High dividend', { market_cap_min: '5', dividend_yield_min: '4', sort: 'dividend_yield' }, 'Dividend yield 4%+, over $5bn'],
+  ['Today\'s winners', { market_cap_min: '2', change_pct_min: '3', sort: 'change' }, 'Up 3%+ today, over $2bn'],
+  ['Most traded', { market_cap_min: '1', sort: 'volume' }, 'Highest volume today'],
+  ['Small caps', { market_cap_min: '0.3', market_cap_max: '2' }, '$300m – $2bn'],
+];
+
+// Your own screens, kept in this browser (name → the form's filters)
+const SAVED_KEY = 'mkt_eqs_saved_v1';
+function loadSaved(): Record<string, Record<string, string>> {
+  try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '{}') ?? {}; } catch { return {}; }
+}
+function storeSaved(v: Record<string, Record<string, string>>) { try { localStorage.setItem(SAVED_KEY, JSON.stringify(v)); } catch { /* storage unavailable */ } }
+
+export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
+  const [saved, setSaved] = useState(loadSaved);
+  const saveAs = () => {
+    const name = window.prompt('Name this screen', '')?.trim();
+    if (!name) return;
+    const next = { ...saved, [name.slice(0, 40)]: f };
+    setSaved(next); storeSaved(next);
+  };
+  const drop = (name: string) => { const { [name]: _gone, ...rest } = saved; setSaved(rest); storeSaved(rest); };
+  const meta = useJSON<any>('/api/v1/mkt/meta');
+  const area = useRegion();
+  const blank = { market_cap_min: '', market_cap_max: '', pe_min: '', pe_max: '', dividend_yield_min: '', change_pct_min: '' };
+  const [f, setF] = useState<Record<string, string>>({ regions: REGION_MARKETS[area][0], sector: '', sort: 'market_cap', ...blank, market_cap_min: '10' });
+  const [url, setUrl] = useState<string | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [pages, setPages] = useState<number[]>([]);        // offsets of earlier pages (for ← Prev)
+  useEffect(() => { const next = { ...f, regions: REGION_MARKETS[area][0] }; setF(next); setPages([]); run(0, next); }, [area]);   // runs on open too
+  const run = (off = 0, form: Record<string, string> = f) => {
+    const f = form;
+    const p = new URLSearchParams({ regions: f.regions, sort: f.sort, size: '50', offset: String(off) });
+    if (f.sort === 'pe') p.set('ascending', 'true');            // cheapest first
+    if (f.sector) p.set('sector', f.sector);
+    if (f.market_cap_min) p.set('market_cap_min', String(Number(f.market_cap_min) * 1e9));
+    if (f.market_cap_max) p.set('market_cap_max', String(Number(f.market_cap_max) * 1e9));
+    if (f.pe_max) p.set('pe_max', f.pe_max);
+    if (f.pe_min) p.set('pe_min', f.pe_min);
+    if (f.dividend_yield_min) p.set('dividend_yield_min', f.dividend_yield_min);
+    if (f.change_pct_min) p.set('change_pct_min', f.change_pct_min);
+    if (f.include_adrs) p.set('include_adrs', 'true');
+    setOffset(off);
+    setUrl(`/api/v1/mkt/screen?${p.toString()}`);
+  };
+  const { data, error, loading } = useJSON<any>(url);
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
+  const preset = (p: Record<string, string>) => {
+    const next = { regions: f.regions, sector: f.sector, sort: 'market_cap', ...blank, ...p };
+    setF(next); setPages([]); run(0, next);
+  };
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-1 text-xs">
+        <span className="text-text-tertiary mr-1">Presets</span>
+        {PRESETS.map(([name, p, tip]) => (
+          <button key={name} onClick={() => preset(p)} title={tip} className="px-2 py-0.5 border border-border text-text-secondary hover:text-bloomberg hover:border-bloomberg">{name}</button>))}
+        <span className="text-text-tertiary ml-1">(in the market selected below)</span>
+      </div>
+      {Object.keys(saved).length > 0 && <div className="flex flex-wrap items-center gap-1 text-xs">
+        <span className="text-text-tertiary mr-1">My screens</span>
+        {Object.entries(saved).map(([name, form]) => (
+          <span key={name} className="inline-flex items-center border border-border">
+            <button onClick={() => { setF(form); setPages([]); run(0, form); }} className="px-2 py-0.5 text-text-secondary hover:text-bloomberg">{name}</button>
+            <button onClick={() => drop(name)} title={`Delete “${name}”`} className="px-1 text-text-tertiary hover:text-red">×</button></span>))}
+      </div>}
+      <Panel title="Global equity screener — 22 markets">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-11 gap-2 items-end">
+          <label className="text-[10px] uppercase text-text-tertiary col-span-2">Market
+            <select value={f.regions} onChange={set('regions')} className={inp}>
+              {(meta.data?.regions ?? []).map((r: any) => <option key={r.id} value={r.id}>{r.name} ({r.currency})</option>)}
+              <option value="de,fr,nl,it,es">Eurozone (DE, FR, NL, IT, ES)</option>
+            </select></label>
+          <label className="text-[10px] uppercase text-text-tertiary col-span-2">Sector
+            <select value={f.sector} onChange={set('sector')} className={inp}><option value="">All sectors</option>
+              {(meta.data?.sectors ?? []).map((s: string) => <option key={s}>{s}</option>)}</select></label>
+          <label className="text-[10px] uppercase text-text-tertiary">Mkt cap ≥ $bn<input type="number" min={0} value={f.market_cap_min} onChange={set('market_cap_min')} className={inp} /></label>
+          <label className="text-[10px] uppercase text-text-tertiary">Mkt cap ≤ $bn<input type="number" min={0} value={f.market_cap_max} onChange={set('market_cap_max')} className={inp} /></label>
+          <label className="text-[10px] uppercase text-text-tertiary">P/E ≥<input type="number" min={0} value={f.pe_min} onChange={set('pe_min')} className={inp} /></label>
+          <label className="text-[10px] uppercase text-text-tertiary">P/E ≤<input type="number" min={0} value={f.pe_max} onChange={set('pe_max')} className={inp} /></label>
+          <label className="text-[10px] uppercase text-text-tertiary">Yield ≥ %<input type="number" min={0} step="0.5" value={f.dividend_yield_min} onChange={set('dividend_yield_min')} className={inp} /></label>
+          <label className="text-[10px] uppercase text-text-tertiary">Today ≥ %<input type="number" step="0.5" value={f.change_pct_min} onChange={set('change_pct_min')} className={inp} /></label>
+          <label className="text-[10px] uppercase text-text-tertiary">Sort
+            <select value={f.sort} onChange={set('sort')} className={inp}>
+              <option value="market_cap">Market cap</option><option value="change">Today's change</option><option value="volume">Volume</option>
+              <option value="pe">P/E</option><option value="dividend_yield">Dividend yield</option></select></label>
+        </div>
+        <button onClick={() => { setPages([]); run(0); }} className="mt-3 px-4 py-1.5 text-xs bg-bloomberg text-bg">Screen</button>
+        <button onClick={() => { const next = { ...f, sector: '', sort: 'market_cap', ...blank }; setF(next); setPages([]); run(0, next); }}
+          className="mt-3 ml-2 px-3 py-1.5 text-xs border border-border text-text-secondary hover:text-text-primary">Clear filters</button>
+        {f.regions.split(',').includes('us') && <label className="mt-3 ml-3 inline-flex items-center gap-1 text-[11px] text-text-secondary" title="US screens show US companies; tick to add foreign companies' US listings (ADRs such as TSM, ASML)">
+          <input type="checkbox" checked={!!f.include_adrs} onChange={(e) => { const next = { ...f, include_adrs: e.target.checked ? '1' : '' }; setF(next); setPages([]); run(0, next); }} />Include ADRs</label>}
+        <button onClick={saveAs} className="mt-3 ml-2 px-3 py-1.5 text-xs border border-border text-text-secondary hover:text-text-primary">Save screen…</button>
+        <span className="ml-3 text-[10px] text-text-tertiary">Primary listings only (cross-listings such as Nvidia in Frankfurt are removed). Size filters and the cap column in USD; hover a cap for the local figure.</span>
+      </Panel>
+      {loading && <Loading label="Screening…" />}
+      <ErrorBox msg={error} />
+      {data && (
+        <Panel title={`Page ${pages.length + 1} · ${data.rows.length} companies${data.listed_total ? ` · from ${data.listed_total.toLocaleString()} listings scanned` : ''}`} right={
+          <div className="flex gap-1 text-[10px]">
+            <button disabled={!pages.length} onClick={() => { const prev = pages[pages.length - 1]; setPages(pages.slice(0, -1)); run(prev); }} className="px-2 border border-border disabled:opacity-40">← Prev</button>
+            <button disabled={data.next_offset == null} onClick={() => { setPages([...pages, offset]); run(data.next_offset); }} className="px-2 border border-border disabled:opacity-40">Next →</button>
+          </div>}>
+          {data.rows.length ? <Table rows={data.rows} onOpen={onOpen} /> : <div className="text-2xs text-text-tertiary">No matches — loosen the filters.</div>}
+        </Panel>
+      )}
+    </div>
+  );
+}

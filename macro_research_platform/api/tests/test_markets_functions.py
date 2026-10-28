@@ -1,0 +1,554 @@
+"""Markets functions, offline: option maths, DCF, dividend streaks, industry mapping, foreign
+listing lines, and the per-user watchlists / alerts / journal."""
+import math
+import sqlite3
+import sys
+import types
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from api.marketdata import core, security, usertools
+
+
+@pytest.fixture(autouse=True)
+def clear():
+    core._cache.clear()
+    yield
+    core._cache.clear()
+
+
+# ── options ──────────────────────────────────────────────────────────────────
+def test_black_scholes_iv_round_trip_and_parity():
+    S, T, r, q = 100.0, 0.25, 0.04, 0.01
+    K = np.array([80.0, 100.0, 120.0])
+    sig = np.array([0.35, 0.25, 0.30])
+    for call in (True, False):
+        price = security.bs_price(S, K, T, r, q, sig, call)
+        iv = security.implied_vol(price, S, K, T, r, q, call)
+        assert np.allclose(iv, sig, atol=1e-4)
+    gc = security.bs_greeks(S, K, T, r, q, sig, True)
+    gp = security.bs_greeks(S, K, T, r, q, sig, False)
+    assert np.allclose(gc["delta"] - gp["delta"], math.exp(-q * T), atol=1e-9)      # put–call delta parity
+    assert (gc["gamma"] > 0).all() and (gc["vega"] > 0).all() and (gc["theta"] < 0).all()
+
+
+def test_implied_vol_nan_below_intrinsic():
+    iv = security.implied_vol(np.array([5.0]), 100.0, np.array([80.0]), 0.25, 0.04, 0.0, True)   # intrinsic ≈ 20.8
+    assert np.isnan(iv[0])
+
+
+# ── DCF ──────────────────────────────────────────────────────────────────────
+def _inp(**over):
+    base = {"symbol": "X", "currency": "USD", "price_currency": "USD", "price": 50.0, "revenue": 1000.0, "ebit": 200.0,
+            "shares": 100.0, "market_cap": 5000.0, "debt": 1000.0, "cash": 200.0, "leases": 0.0, "minority_interest": 0.0,
+            "beta": 1.0, "risk_free": 0.04, "cost_of_debt": 0.05, "tax_marginal": 0.25, "tax_effective": 0.25,
+            "sales_to_capital": 2.0, "growth": 0.05, "roic": 0.15, "is_financial": False, "risk_free_matched": True}
+    base.update(over)
+    return base
+
+
+def test_dcf_uses_wacc_for_fcff_and_market_weights():
+    from api.marketdata import dcf
+    w = dcf.wacc(_inp(), erp=0.05)
+    ke, kd = 0.04 + 0.05, 0.05 * 0.75
+    assert w["cost_of_equity"] == pytest.approx(ke)
+    assert w["wacc"] == pytest.approx((5000 * ke + 1000 * kd) / 6000)       # FCFF discounted at WACC, not ke
+
+
+def test_dcf_hand_check_terminal_value_driver_formula():
+    from api.marketdata import dcf
+    v = dcf.value(_inp(), growth=0.03, terminal_growth=0.03, years=3, discount=0.08, ronic=0.12, mid_year=False, method="two_stage")
+    rev, pv = 1000.0, 0.0
+    for y in range(1, 4):                        # constant growth = terminal → fade is flat
+        new = rev * 1.03
+        fcff = new * 0.2 * 0.75 - (new - rev) / 2.0
+        pv += fcff / 1.08 ** y
+        rev = new
+    tv = rev * 1.03 * 0.2 * 0.75 * (1 - 0.03 / 0.12) / (0.08 - 0.03)
+    ev = pv + tv / 1.08 ** 3
+    assert v["enterprise_value"] == pytest.approx(ev)
+    assert v["per_share"] == pytest.approx((ev - 1000 + 200) / 100)
+
+
+def test_dcf_mid_year_raises_value_and_growth_fades():
+    from api.marketdata import dcf
+    a = dcf.value(_inp(), growth=0.20, terminal_growth=0.02, years=10, discount=0.09, mid_year=False, method="two_stage")
+    b = dcf.value(_inp(), growth=0.20, terminal_growth=0.02, years=10, discount=0.09, mid_year=True, method="two_stage")
+    assert b["per_share"] > a["per_share"]
+    gs = [r["growth"] for r in b["projection"]]
+    assert gs[0] == pytest.approx(0.20) and gs[-1] == pytest.approx(0.02) and all(x >= y for x, y in zip(gs, gs[1:]))
+
+
+def test_dcf_checks_and_reverse():
+    from api.marketdata import dcf
+    v = dcf.value(_inp(is_financial=True), terminal_growth=0.05)
+    assert any("Financial firm" in c for c in v["checks"]) and any("risk-free" in c for c in v["checks"])
+    with pytest.raises(core.NotFound):
+        dcf.value(_inp(), terminal_growth=0.06, discount=0.05)
+    g = dcf.reverse(_inp(price=40.0), terminal_growth=0.02, discount=0.09)
+    assert g is not None and dcf.value(_inp(), growth=g, terminal_growth=0.02, discount=0.09)["per_share"] == pytest.approx(40.0, rel=1e-4)
+
+
+# ── dividends ────────────────────────────────────────────────────────────────
+def test_dividend_streak_ignores_one_bad_payment(monkeypatch):
+    idx = pd.to_datetime([f"{y}-{m:02d}-15" for y in range(2015, 2026) for m in (3, 6, 9, 12)])
+    vals = [0.10 + 0.01 * (d.year - 2015) for d in idx]
+    s = pd.Series(vals, index=idx)
+    s[pd.Timestamp("2018-06-15")] = 0.50                       # a bad / special record
+    class T:
+        dividends = s
+        splits = pd.Series(dtype=float)
+    monkeypatch.setitem(sys.modules, "yfinance", types.SimpleNamespace(Ticker=lambda sym: T()))
+    monkeypatch.setattr(security, "_info", lambda sym: {"currency": "USD", "dividendYield": 2.5})
+    d = security.dividends("X")
+    assert d["consecutive_increases"] == 10 and d["dividend_yield"] == pytest.approx(0.025)
+
+
+# ── classification helpers ───────────────────────────────────────────────────
+def test_industry_names_map_to_screener_labels():
+    assert security._screen_industry("Software - Application") == "Software—Application"
+    assert security._screen_industry("Auto Manufacturers") == "Auto Manufacturers"
+    assert security._screen_industry(None) is None
+
+
+def test_foreign_share_lines():
+    assert security._foreign_line("1BMW.MI") and security._foreign_line("0YG8.L")
+    assert not security._foreign_line("ENI.MI") and not security._foreign_line("HSBA.L")
+
+
+# ── user tools ───────────────────────────────────────────────────────────────
+@pytest.fixture()
+def db(tmp_path, monkeypatch):
+    def conn():
+        c = sqlite3.connect(tmp_path / "u.db")
+        c.row_factory = sqlite3.Row
+        return c
+    monkeypatch.setattr(usertools, "_conn", conn)
+    monkeypatch.setattr(usertools, "_ready", False)
+
+
+def test_watchlists_crud_and_validation(db):
+    lists = usertools.list_watchlists("ann")
+    assert len(lists) == 1 and "^VIX" in lists[0]["symbols"]          # starter list, index tickers allowed
+    w = usertools.create_watchlist("ann", "Tech", ["nvda", "msft", "NVDA"])
+    assert w["symbols"] == ["NVDA", "MSFT"]
+    usertools.update_watchlist("ann", w["id"], None, ["AAPL"])
+    assert [l["symbols"] for l in usertools.list_watchlists("ann") if l["id"] == w["id"]] == [["AAPL"]]
+    with pytest.raises(LookupError):
+        usertools.update_watchlist("bob", w["id"], "x", None)        # other users can't touch it
+    with pytest.raises(ValueError):
+        usertools.create_watchlist("ann", "Bad", ["not a ticker"])
+
+
+def test_alert_rules_and_trigger(db, monkeypatch):
+    assert usertools.fires("above", 100, 101, None) and not usertools.fires("above", 100, 99, None)
+    assert usertools.fires("change_down", 3, None, -0.035) and not usertools.fires("change_down", 3, None, -0.02)
+    monkeypatch.setattr(usertools, "quotes", lambda syms: [{"symbol": "SPY", "price": 490.0, "change_1d": 0.0},
+                                                            {"symbol": "QQQ", "price": 400.0, "change_1d": 0.0}])
+    a = usertools.create_alert("ann", "spy", "above", 500)
+    usertools.create_alert("ann", "QQQ", "below", 100)
+    with pytest.raises(ValueError, match="already"):                  # a level already met would fire at once
+        usertools.create_alert("ann", "QQQ", "above", 350)
+    monkeypatch.setattr(usertools, "quotes", lambda syms: [{"symbol": "SPY", "price": 510.0, "change_1d": 0.01},
+                                                            {"symbol": "QQQ", "price": 400.0, "change_1d": 0.0}])
+    assert usertools.check_alerts() == {"checked": 2, "triggered": 1}
+    trig = usertools.triggered_unseen("ann")
+    assert [t["id"] for t in trig] == [a["id"]] and trig[0]["triggered_price"] == 510.0
+    assert usertools.mark_seen("ann") == 1 and usertools.triggered_unseen("ann") == []
+    with pytest.raises(ValueError):
+        usertools.create_alert("ann", "SPY", "change_up", 150)
+
+
+def test_journal_pnl_and_stats(db):
+    usertools.create_journal("ann", {"symbol": "aapl", "side": "long", "quantity": 10, "entry": 100, "exit": 110, "tags": ["momentum"]})
+    usertools.create_journal("ann", {"symbol": "TSLA", "side": "short", "quantity": 5, "entry": 200, "exit": 220})
+    usertools.create_journal("ann", {"symbol": "MSFT", "side": "idea", "thesis": "watch Azure growth"})
+    j = usertools.list_journal("ann")
+    rows = {r["symbol"]: r for r in j["entries"]}
+    assert rows["AAPL"]["pnl"] == pytest.approx(100) and rows["AAPL"]["status"] == "closed"
+    assert rows["TSLA"]["return_pct"] == pytest.approx(-0.10) and rows["TSLA"]["pnl"] == pytest.approx(-100)
+    assert j["stats"]["closed"] == 2 and j["stats"]["win_rate"] == pytest.approx(0.5) and j["stats"]["open"] == 1
+    with pytest.raises(ValueError):
+        usertools.create_journal("ann", {"side": "sideways"})
+
+
+def test_dcf_stable_growth_wacc_converges_to_market_beta():
+    """Damodaran: in stable growth beta is bounded to 0.8–1.2, and the rate moves to it over the fade."""
+    from api.marketdata import dcf
+    lo = dcf.value(_inp(beta=0.3), growth=0.05, terminal_growth=0.03, years=10, erp=0.05)
+    a = lo["assumptions"]
+    assert a["beta_terminal"] == 0.8
+    assert a["discount_terminal"] > a["discount"]                  # low-beta firm: rate rises toward the market's
+    rates = [r["discount_rate"] for r in lo["projection"]]
+    assert rates[0] == pytest.approx(a["discount"]) and rates[-1] == pytest.approx(a["discount_terminal"])
+    assert all(b >= x - 1e-12 for x, b in zip(rates, rates[1:]))  # monotone fade
+    hi = dcf.value(_inp(beta=2.0), growth=0.05, terminal_growth=0.03, years=10, erp=0.05)["assumptions"]
+    assert hi["beta_terminal"] == 1.2 and hi["discount_terminal"] < hi["discount"]
+
+
+def test_dcf_growth_path_holds_analyst_years_then_fades_to_terminal():
+    from api.marketdata import dcf
+    v = dcf.value(_inp(growth=0.20, growth_y1=0.30), terminal_growth=0.04, years=10, discount=0.09, method="two_stage")
+    g = [r["growth"] for r in v["projection"]]
+    assert g[0] == pytest.approx(0.30) and g[1] == pytest.approx(0.20) and g[2] == pytest.approx(0.20)
+    assert g[-1] == pytest.approx(0.04)
+    assert all(b <= a + 1e-12 for a, b in zip(g[2:], g[3:]))
+
+
+def test_dcf_terminal_growth_defaults_to_risk_free():
+    from api.marketdata import dcf
+    v = dcf.value(_inp(risk_free=0.045), years=10, erp=0.05)
+    assert v["assumptions"]["terminal_growth"] == pytest.approx(0.045)
+
+
+def test_dcf_bridge_adds_stakes_and_uses_industrial_debt_only():
+    from api.marketdata import dcf
+    base = dcf.value(_inp(), years=5, discount=0.09, terminal_growth=0.02)
+    more = dcf.value(_inp(investments=300.0, debt=400.0, captive_finance_receivables=600.0), years=5, discount=0.09, terminal_growth=0.02)
+    # +300 of stakes and 600 less debt → equity value up by exactly 900
+    assert more["equity_value"] - base["equity_value"] == pytest.approx(900.0)
+    assert more["bridge"]["investments"] == 300.0
+
+
+def test_dcf_converts_value_to_trading_currency_by_market_cap(monkeypatch):
+    """USD-reporting firm traded in pence: value per traded share scales with market cap, so
+    GBp units and ADR ratios come out right."""
+    from api.marketdata import dcf
+    monkeypatch.setattr(dcf, "to_usd", lambda amt, ccy: None if amt is None else amt * (1.25 if ccy in ("GBP", "GBp") else 1.0))
+    inp = _inp(currency="USD", price_currency="GBp", price=2000.0, market_cap=4000.0)    # cap in GBP, price in pence
+    v = dcf.value(inp, years=5, discount=0.09, terminal_growth=0.02)
+    expected = 2000.0 * v["equity_value"] / (4000.0 * 1.25)
+    assert v["per_share"] == pytest.approx(expected)
+    assert v["upside"] == pytest.approx(expected / 2000.0 - 1)
+
+
+def test_dcf_loss_maker_target_margin_from_industry():
+    from api.marketdata import dcf
+    v = dcf.value(_inp(ebit=-50.0, target_margin_default=0.18), years=10, discount=0.09, terminal_growth=0.02)
+    assert v["assumptions"]["target_margin"] == pytest.approx(0.18)
+    assert v["projection"][-1]["margin"] == pytest.approx(0.18)
+
+
+def test_damodaran_industry_map_covers_every_yahoo_industry():
+    from yfinance.const import SECTOR_INDUSTY_MAPPING
+    from api.providers.damodaran import YAHOO_TO_DAMODARAN
+    yahoo = {i for v in SECTOR_INDUSTY_MAPPING.values() for i in v}
+    assert yahoo <= set(YAHOO_TO_DAMODARAN)
+
+
+def test_country_table_is_consistent():
+    from api.marketdata import countries as c
+    assert len(c.COUNTRIES) > 180
+    assert len({x["iso2"] for x in c.COUNTRIES}) == len(c.COUNTRIES)          # no duplicate codes
+    assert len({x["numeric"] for x in c.COUNTRIES}) == len(c.COUNTRIES)
+    assert c.NUMERIC_TO_ISO2["840"] == "US" and c.NUMERIC_TO_ISO2["392"] == "JP" and c.NUMERIC_TO_ISO2["076"] == "BR"
+    assert c.ISO3_TO_ISO2["DEU"] == "DE" and c.BY_ISO2["DE"]["currency"] == "EUR"
+
+
+def test_dcf_negative_equity_is_floored_at_zero():
+    from api.marketdata import dcf
+    v = dcf.value(_inp(ebit=-300.0, debt=50000.0), years=5, discount=0.09, terminal_growth=0.02)
+    assert v["per_share"] == 0.0 and v["equity_negative"] is True
+    assert "worth less than its debt" in v["checks"][0]
+
+
+def test_dcf_rejects_inputs_that_make_the_terminal_value_explode():
+    from api.marketdata import dcf
+    with pytest.raises(dcf.NotFound, match="must exceed terminal growth"):
+        dcf.value(_inp(), ronic=0.001, terminal_growth=0.03, discount=0.09)
+    with pytest.raises(dcf.NotFound, match="0.5 points below"):
+        dcf.value(_inp(), terminal_growth=0.088, discount=0.09)
+
+
+def test_dcf_years_up_to_30():
+    from api.marketdata import dcf
+    v = dcf.value(_inp(), years=30, discount=0.09, terminal_growth=0.02, method="two_stage")
+    assert len(v["projection"]) == 30
+    with pytest.raises(dcf.NotFound):
+        dcf.value(_inp(), years=31, discount=0.09)
+
+
+def _bank(**over):
+    return _inp(is_financial=True, equity_book=1000.0, net_income=150.0, payout_ratio=0.4, risk_free=0.04, beta=1.0, erp=0.05, **over)
+
+
+def test_bank_excess_return_hand_check():
+    """ROE = cost of equity throughout → no excess returns → value = book value exactly."""
+    from api.marketdata import dcf
+    v = dcf.value_financial(_bank(), roe=0.09, terminal_roe=0.09, years=5, terminal_growth=0.03)      # ke = 4% + 1 × 5% = 9%
+    assert v["equity_value"] == pytest.approx(1000.0)
+    assert v["per_share"] == pytest.approx(10.0)
+
+
+def test_bank_excess_return_values_profitable_bank_above_book():
+    from api.marketdata import dcf
+    v = dcf.value_financial(_bank(), years=10)                     # ROE 15% vs ke 9%
+    assert v["model"] == "excess_return" and v["equity_value"] > 1000.0
+    a = v["assumptions"]
+    assert a["roe_now"] == pytest.approx(0.15) and 0.09 < a["roe_terminal"] < 0.15
+    assert a["payout_terminal"] == pytest.approx(1 - a["terminal_growth"] / a["roe_terminal"])
+    r = dcf.reverse_financial(_bank(price=v["per_share"]), years=10)
+    assert r is not None and 0.09 < r < 0.20
+
+
+def test_dividend_yield_is_always_read_as_percent():
+    """Yahoo's dividendYield is in percent: 0.32 means 0.32%, not 32% (it used to be misread for
+    low-yield stocks, which also fed a 32% dividend yield into Black-Scholes)."""
+    from api.marketdata.core import div_yield
+    assert div_yield({"dividendYield": 0.32}) == pytest.approx(0.0032)
+    assert div_yield({"dividendYield": 2.42}) == pytest.approx(0.0242)
+    assert div_yield({"yield": 0.0099}) == pytest.approx(0.0099)          # funds
+    assert div_yield({}) is None
+
+
+def test_option_time_to_expiry_uses_trading_sessions():
+    """A Friday-close quote on a Monday expiry has one session left, not three calendar days
+    (calendar time over a weekend understated short-dated implied vol by ~40%)."""
+    import pandas as pd
+    from api.marketdata import security
+    fri_close = pd.Timestamp("2026-10-09 16:00", tz="America/New_York").tz_convert("UTC").timestamp()
+    info = {"exchangeTimezoneName": "America/New_York", "regularMarketTime": fri_close}
+    mon = security.time_to_expiry(info, "2026-10-12")
+    assert mon["sessions"] == 1.0 and mon["calendar_days"] == 3
+    assert mon["T"] == pytest.approx(1 / 252)
+    assert security.time_to_expiry(info, "2026-10-16")["sessions"] == 5.0
+    # mid-session Wednesday 12:45 → half of today's session + Thu + Fri
+    wed = pd.Timestamp("2026-10-07 12:45", tz="America/New_York").tz_convert("UTC").timestamp()
+    t = security.time_to_expiry({**info, "regularMarketTime": wed}, "2026-10-09")
+    assert t["sessions"] == pytest.approx(2.5)
+
+
+def test_forward_yield_falls_back_after_split():
+    """Yahoo keeps the pre-split dividend rate for a while (Tokio Marine: 25% after a 10:1 split)."""
+    from api.marketdata.core import _sane_yield, div_yield
+    assert _sane_yield(0.2509, 0.028) == 0.028
+    assert _sane_yield(0.032, 0.03) == 0.032                 # normal yields untouched
+    assert _sane_yield(0.18, 0.16) == 0.18                   # genuinely high yield, consistent with trailing
+    assert div_yield({"dividendYield": 25.09, "trailingAnnualDividendYield": 0.028}) == 0.028
+
+
+def test_implied_vol_pinned_at_cap_is_no_solution():
+    import numpy as np
+    from api.marketdata.security import implied_vol
+    # a deep-OTM call quoted far above any BSM value: the bisection would pin at 500%
+    iv = implied_vol(np.array([40.0, 2.0]), 100.0, np.array([300.0, 100.0]), 0.05, 0.04, 0.0, True)
+    assert np.isnan(iv[0]) and 0.05 < iv[1] < 1.0
+
+
+def test_cache_single_flight():
+    """Concurrent misses for one key make a single upstream call."""
+    import threading, time as _t
+    calls = []
+
+    def slow():
+        calls.append(1)
+        _t.sleep(0.2)
+        return 42
+    out = []
+    ts = [threading.Thread(target=lambda: out.append(core._cached("sf:test", 60, slow))) for _ in range(5)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert out == [42] * 5 and len(calls) == 1
+
+
+def test_minor_currency_units(monkeypatch):
+    monkeypatch.setattr(core, "_cached", lambda key, ttl, fn: 0.05 if key == "usdper:ZAR" else 1.0)
+    assert core.to_usd(100.0, "ZAc") == pytest.approx(5.0)          # JSE caps are stated in rand
+    assert core.to_usd(100.0, "ILA") == pytest.approx(100.0)
+
+
+def test_cross_listing_rule_uses_average_volume_before_the_open(monkeypatch):
+    monkeypatch.setattr(core, "to_usd", lambda a, c: a)
+    fidx = {"names": set()}
+    pre_open = {"symbol": "7203.T", "name": "Toyota", "market_cap": 3e13, "price": 2900.0, "volume": 0.0,
+                "avg_volume": 2.5e7, "currency": "JPY"}
+    assert not core._is_cross_listing(pre_open, "jp", fidx)        # volume 0 at 8am is not "barely trades"
+    stray = {**pre_open, "symbol": "GE.MX", "volume": 10.0, "avg_volume": 20.0}
+    assert core._is_cross_listing(stray, "mx", fidx)
+
+
+def test_search_puts_home_listing_first(monkeypatch):
+    monkeypatch.setattr(core, "_cached", lambda key, ttl, fn: fn())
+    import api.global_universe as gu
+    monkeypatch.setattr(gu, "load", lambda **k: {"stocks": [{"symbol": "7203.T", "name": "Toyota Motor Corporation", "exchange": "JPX"}]})
+    hits = [{"symbol": "TM", "name": "Toyota Motor Corporation", "type": "Stock"},
+            {"symbol": "7203.T", "name": "Toyota Motor Corporation", "type": "Stock"}]
+    assert [h["symbol"] for h in core._home_first(hits)] == ["7203.T", "TM"]
+
+
+def test_ism_actual_from_release_headline(monkeypatch):
+    from api.marketdata import econ_actuals as E
+    monkeypatch.setattr(E, "_cached", lambda key, ttl, fn: [
+        ("Services PMI® at 54.9%; September 2026 ISM® Services PMI® Report - PR Newswire", "Mon, 05 Oct 2026 14:00:00 GMT"),
+        ("Services PMI® at 54%; June 2026 ISM® Services PMI® Report - PR Newswire", "Mon, 06 Jul 2026 14:00:23 GMT")])
+    got = E.actual_for({"country": "USD", "title": "ISM Services PMI", "date": "2026-10-05T10:00:00-04:00"})
+    assert got["actual"] == 54.9 and got["period"] == "September 2026"
+    # a headline for another month never fills this event
+    assert E.actual_for({"country": "USD", "title": "ISM Services PMI", "date": "2026-09-03T10:00:00-04:00"}) is None
+
+
+def test_eurostat_actual_needs_a_same_day_update(monkeypatch):
+    from api.marketdata import econ_actuals as E
+    doc = {"updated": "2026-10-01T11:00:00+0200", "value": {"0": 3.2, "1": 3.8},
+           "dimension": {"time": {"category": {"index": {"2026-08": 0, "2026-09": 1}}}}}
+    monkeypatch.setattr(E, "_cached", lambda key, ttl, fn: doc)
+    ev = {"country": "EUR", "title": "CPI Flash Estimate y/y", "date": "2026-10-01T05:00:00-04:00"}
+    assert E.actual_for(ev)["actual"] == 3.8
+    assert E.actual_for({**ev, "date": "2026-09-01T05:00:00-04:00"}) is None      # dataset not updated that day
+
+
+# ── Trackers and money flows ────────────────────────────────────────────────
+def test_ship_phase_and_flag():
+    from api.marketdata.tracking import _phase, flag_of
+    assert _phase({"status": 5, "speed": 0}) == "moored"
+    assert _phase({"status": 1, "speed": 3}) == "anchored"
+    assert _phase({"status": None, "speed": 0.2}) == "anchored"          # status unset: speed decides
+    assert _phase({"status": 0, "speed": 12}) == "underway"
+    assert flag_of(477123456) == "Hong Kong" and flag_of(636012345) == "Liberia"
+    assert flag_of(123) is None and flag_of(970123456) is None            # SART / not a ship MMSI
+
+
+def test_ship_track_keeps_8h_and_skips_stationary():
+    from api.marketdata.tracking import _AisCollector
+    c = _AisCollector.__new__(_AisCollector)
+    c.tracks, c.t0 = {}, 0.0
+    c._track(1, 0, 1.0, 103.0, 10)
+    c._track(1, 100, 1.1, 103.1, 10)                 # within 5 minutes: not stored
+    c._track(1, 400, 1.2, 103.2, 10)
+    c._track(1, 800, 1.2, 103.2, 0)                  # not moving: time refreshed, no new point
+    assert len(c.tracks[1]) == 8 and c.tracks[1][-4] == 800
+    for i in range(200):
+        c._track(1, 1200 + i * 400, 1.3 + i * 0.01, 103.3, 10)
+    assert len(c.tracks[1]) == 4 * _AisCollector.TRACK_POINTS
+
+
+def test_flight_route_mismatch_drops_progress(monkeypatch):
+    from api.marketdata import airtraffic
+    monkeypatch.setattr(airtraffic, "_cached", lambda key, ttl, fn: fn())
+    monkeypatch.setattr(airtraffic, "_adsbdb", lambda path: {"flightroute": {"origin": {"latitude": 31.99, "longitude": 116.98, "iata_code": "HFE"},
+                                                                              "destination": {"latitude": 37.75, "longitude": 112.63, "iata_code": "TYN"}}}
+                        if path.startswith("callsign") else {"aircraft": {}})
+    monkeypatch.setattr(airtraffic, "_adsbfi", lambda path: {"ac": [{"hex": "78185d", "lat": 21.67, "lon": 112.07, "alt_baro": 25000, "gs": 450}]})
+    import requests
+    monkeypatch.setattr(requests, "get", lambda *a, **k: type("R", (), {"status_code": 500})())
+    d = airtraffic.detail("78185d", "CES6399")
+    assert d["route"]["matches_position"] is False and d["progress"] is None   # near Zhuhai, not between Hefei and Taiyuan
+
+
+def test_tic_country_names_map_to_iso():
+    from api.marketdata.flows import _iso_of
+    assert _iso_of("China, Mainland") == "CN" and _iso_of("Korea, South") == "KR" and _iso_of("Cayman Islands") == "KY"
+    assert _iso_of("Japan") == "JP" and _iso_of("Grand Total") is None and _iso_of("Total Europe") is None
+
+
+# ── Market internals ────────────────────────────────────────────────────────
+def test_recession_probit_matches_ny_fed():
+    from api.marketdata.insights import _norm_cdf
+    p = lambda spread: _norm_cdf(-0.5333 - 0.6330 * spread)
+    assert abs(p(0.0) - 0.297) < 0.002               # flat curve ≈ 30% (NY Fed's published mapping)
+    assert p(-1.0) > 0.5 > p(1.0)                    # inversion raises it, steepening lowers it
+
+
+def test_percentile_rank():
+    from api.marketdata.insights import _pctile
+    assert _pctile([1, 2, 3, 4], 4) == 1.0 and _pctile([1, 2, 3, 4], 1) == 0.25 and _pctile([], 1) is None
+
+
+def test_uoa_skips_deep_itm_and_flags_new_positions(monkeypatch):
+    import pandas as pd
+    from api.marketdata import insights
+
+    class Chain:
+        calls = pd.DataFrame([{"strike": 100.0, "volume": 5000, "openInterest": 500, "lastPrice": 2.0, "impliedVolatility": 0.4},
+                              {"strike": 50.0, "volume": 5000, "openInterest": 10, "lastPrice": 51.0, "impliedVolatility": 2.9}])
+        puts = pd.DataFrame([{"strike": 95.0, "volume": 100, "openInterest": 900, "lastPrice": 1.0, "impliedVolatility": 0.4}])
+
+    class T:
+        options = ["2026-10-16"]
+        fast_info = {"lastPrice": 100.0}
+        def option_chain(self, e): return Chain
+    import yfinance as yf
+    monkeypatch.setattr(yf, "Ticker", lambda s: T())
+    r = insights._uoa_one("XYZ")
+    assert [h["strike"] for h in r["hits"]] == [100.0]          # the deep-ITM, IV-290% line is dropped
+    assert r["hits"][0]["vol_oi"] == 10.0 and r["hits"][0]["premium"] == 1_000_000
+
+
+def test_cache_serves_stale_value_when_the_provider_fails(monkeypatch):
+    from api.marketdata import core
+    key = "test:stale"
+    core._cache[key] = (core.time.time() - 7200, {"x": 1})          # expired an hour ago
+    def boom():
+        raise core.Upstream("429 Too Many Requests")
+    v = core._cached(key, 60, boom)
+    assert v["x"] == 1 and v["stale"] is True and v["stale_age_s"] >= 7200
+    core._cache[key] = (core.time.time() - 3 * 86400, {"x": 1})     # too old: the error surfaces
+    import pytest
+    with pytest.raises(core.Upstream):
+        core._cached(key, 60, boom)
+    core._cache.pop(key, None)
+
+
+# ── Ship and flight intelligence ────────────────────────────────────────────
+def _fake_ports(monkeypatch):
+    from api.marketdata import vessel_intel as V
+    monkeypatch.setattr(V, "ports", lambda: {"codes": {"SGSIN": ["Singapore", "SG", 1.28, 103.85], "RUNVS": ["Novorossiysk", "RU", 44.7, 37.8],
+                                                       "INSIK": ["Sika", "IN", 22.4, 69.8], "CNSHA": ["Shanghai Hongqiao International Apt", "CN", None, None]},
+                                             "names": {"SINGAPORE": "SGSIN"}})
+    return V
+
+
+def test_destination_decoding(monkeypatch):
+    V = _fake_ports(monkeypatch)
+    assert V.decode_dest(">SGSIN")["port"]["name"] == "Singapore"
+    r = V.decode_dest("RUNVS>INSIK")
+    assert r["from"]["code"] == "RUNVS" and r["port"]["code"] == "INSIK"
+    assert V.decode_dest("SINGAPORE")["port"]["code"] == "SGSIN"
+    sh = V.decode_dest("CN SHA")["port"]                      # listed as an airport without coordinates: pinned to the harbour
+    assert sh["lat"] and sh["name"] == "Shanghai"
+    assert V.decode_dest("FOR ORDERS") == {"raw": "FOR ORDERS", "port": None}
+
+
+def test_vessel_profile_classes_and_load():
+    from api.marketdata.vessel_intel import profile
+    p = profile({"type": "Tanker", "type_code": 80, "length_m": 333, "draught": 21.5, "name": "X"})
+    assert p["class"] == "VLCC" and p["cargo"] == "Crude oil" and p["laden"] == "laden"
+    assert profile({"type": "Tanker", "length_m": 333, "draught": 11, "name": "X"})["laden"] == "in ballast"
+    assert profile({"type": "Tanker", "name": "GASLOG LNG"})["cargo"].startswith("Liquefied gas")
+    assert profile({"type": "Cargo", "length_m": 399, "name": "MSC IRINA"})["class"] == "Ultra-large container ship"
+    assert profile({"type": "Cargo", "type_code": 71, "name": "X"})["hazard"].endswith("category A")
+    est = profile({"type": "Tanker", "tonnage_gt": 81328, "name": "X"})        # satellite-only: size from tonnage, no load guess
+    assert est["class"] == "Suezmax" and est["size_from"] == "tonnage" and est["laden"] is None
+
+
+def test_sanctions_match_by_imo_before_mmsi(monkeypatch):
+    from api.marketdata import vessel_intel as V
+    rec = {"name": "OLD NAME", "program": "IRAN] [SDGT", "type": "Crude Oil Tanker", "flag": "Panama"}
+    monkeypatch.setattr(V, "sanctions", lambda: {"imo:9123456": rec, "mmsi:111222333": rec})
+    assert V.sanctioned("9123456", None)["match"] == "IMO" and V.sanctioned("9123456", None)["program"] == "IRAN, SDGT"
+    assert V.sanctioned("9999999", "111222333") is None          # a known, different IMO wins over a reused MMSI
+    assert V.sanctioned(None, "111222333")["match"].startswith("MMSI")
+
+
+def test_flight_tags_and_load():
+    from api.marketdata.airtraffic import flight_tags, load_estimate, phase
+    assert [t for _, t, _ in flight_tags("SAM44", None, True, None)] == ["v", "m"]
+    assert [t for _, t, _ in flight_tags("SAMPLE1", None, False, None)] == []          # 'SAM' must be followed by digits
+    assert flight_tags("FDX12", "B77L", False, "7700")[0][1] == "e"
+    assert load_estimate("FDX12", "B77L", "777 FS2")["kind"] == "cargo"
+    assert load_estimate("CPA101", "A333", "A330 343X")["seats"] == 300
+    assert phase(5000, -900, False).startswith("Descending")
+
+
+def test_cargo_inference_from_export_terminal():
+    from api.marketdata.vessel_intel import infer_cargo as f
+    r = f({"type": "Tanker", "profile": {"cargo": "Crude oil", "laden": "laden"}, "last_port": {"port": "PRIMORSK"}})
+    assert r["confidence"] == "likely" and "Urals" in r["text"]
+    assert f({"type": "Cargo", "profile": {"cargo": "Dry bulk or general cargo"}, "voyage": {"from": {"name": "Port Hedland"}}})["confidence"] == "possible"
+    assert f({"type": "Tanker", "profile": {"cargo": "Crude oil", "laden": "in ballast"}, "last_port": {"port": "Ras Tanura"}})["text"].startswith("Empty")
+    assert f({"type": "Tanker", "profile": {"cargo": "Crude oil", "laden": "laden"}, "last_port": {"port": "San Jose"}}) is None   # whole words only
+    assert f({"type": "Cargo", "profile": {"cargo": "Dry bulk or general cargo"}, "last_port": {"port": "Ras Tanura"}}) is None    # a bulker at an oil port

@@ -14,8 +14,6 @@ Provides:
 - Positioning recommendations pre-event
 """
 
-import numpy as np
-import pandas as pd
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta

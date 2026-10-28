@@ -1,11 +1,22 @@
 // Bloomberg Terminal Topbar — 64px total (40px main + 24px ticker)
 // Row 1: Branding | Function keys | Session badges | Data status | Time | Tools
-// Row 2: Market ticker strip
+// Row 2: World quote board — one benchmark per region plus the global gauges, flashing on each tick
 
+import { setHubMode, useHubMode } from '@/lib/hubMode';
+import { DAY_END, DAY_START, setThemeSetting, useTheme, type ThemeSetting } from '@/lib/theme';
 import { useState, useEffect, useMemo } from 'react';
-import { Download, Maximize, AlertTriangle, LayoutGrid, RefreshCw } from 'lucide-react';
+import { Download, Maximize, AlertTriangle, LayoutGrid, RefreshCw, FunctionSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMacroStore, selectMeta, selectIsLoading } from '@/store/macroStore';
+import { SystemStatusBadge } from '@/components/SystemStatusBadge';
+import { DataHealthIndicator } from '@/components/DataHealthIndicator';
+import { DataIntegrityIndicator } from '@/components/DataIntegrityIndicator';
+import { FundSwitcher } from './FundSwitcher';
+import { GlobalCommand } from './GlobalCommand';
+import { useTickFlash } from './TickerTape';
+import { EXCHANGES, sessionState } from '@/components/markets/MarketClock';
+import { openChart } from '@/components/ui/ChartModal';
+import { fmtPulseChange, fmtPulsePrice, SHORT, STRIP_SYMBOLS, useMarketPulse, type PulseRow } from '@/lib/marketPulse';
 import {
   fmtPriceInt,
   fmtVol,
@@ -20,7 +31,14 @@ interface TickerItem {
   val: string;
   chg?: string;
   colorClass?: string;
+  /** Session the 1-day change belongs to (instruments close on different days, e.g. FX). */
+  asOf?: string | null;
 }
+
+// Ticker label → keyMetrics.changeAsOf key.
+const ASOF_KEY: Record<string, string> = {
+  SPX: 'SPX', NDX: 'NDX', VIX: 'VIX', DXY: 'DXY', 'EUR/USD': 'EURUSD', GOLD: 'GLD', WTI: 'WTI',
+};
 
 interface TopbarProps {
   latestDate?: string;
@@ -30,31 +48,43 @@ interface TopbarProps {
   onRefresh?: () => void;
   onCommandPalette?: () => void;
   onAlertsPanel?: () => void;
+  onModelInfo?: () => void;
   currentRegime?: string;
 }
 
-// Derive market session status from current UTC time
-function getSessionStatus(): { us: 'open' | 'pre' | 'closed'; eu: 'open' | 'closed'; as: 'open' | 'closed' } {
-  const now = new Date();
-  const utcH = now.getUTCHours();
-  const utcM = now.getUTCMinutes();
-  const utcMin = utcH * 60 + utcM;
-  const day = now.getUTCDay();
+type SessionLight = 'open' | 'lunch' | 'closed';
+// Regional session lights from the real exchange hours (components/markets/MarketClock): a region is open while any
+// of its main exchanges is in session — in the order the trading day travels round the world.
+const REGIONS: { label: string; title: string; codes: string[] }[] = [
+  { label: 'APAC', title: 'Asia-Pacific — Sydney, Tokyo, Hong Kong, Shanghai, Mumbai', codes: ['ASX', 'TSE', 'HKEX', 'SSE', 'NSE'] },
+  { label: 'EMEA', title: 'Europe, Middle East & Africa — London, Frankfurt, Paris, Riyadh, Johannesburg', codes: ['LSE', 'XETRA', 'EPA', 'TADAWUL', 'JSE'] },
+  { label: 'AMER', title: 'Americas — New York, Toronto, São Paulo', codes: ['NYSE', 'TSX', 'B3'] },
+];
 
-  const isWeekday = day >= 1 && day <= 5;
+function getSessionStatus(now = new Date()): { label: string; title: string; state: SessionLight; detail: string }[] {
+  return REGIONS.map((r) => {
+    const states = r.codes.map((c) => EXCHANGES.find((e) => e.code === c)).filter(Boolean)
+      .map((e) => ({ e: e!, s: sessionState(e!, now) }));
+    const open = states.filter((x) => x.s.state === 'open');
+    const state: SessionLight = open.length ? 'open' : states.some((x) => x.s.state === 'lunch') ? 'lunch' : 'closed';
+    const detail = states.map((x) => `${x.e.name} ${x.s.state === 'open' ? 'open' : x.s.state === 'lunch' ? 'lunch' : 'closed'} (${x.s.next})`).join(' · ');
+    return { label: r.label, title: r.title, state, detail };
+  });
+}
 
-  return {
-    us: !isWeekday ? 'closed'
-      : utcMin >= 870 && utcMin < 1260 ? 'open'
-      : utcMin >= 540 && utcMin < 870  ? 'pre'
-      : 'closed',
-    eu: !isWeekday ? 'closed'
-      : utcMin >= 480 && utcMin < 990  ? 'open'
-      : 'closed',
-    as: !isWeekday ? 'closed'
-      : utcMin >= 0 && utcMin < 360    ? 'open'
-      : 'closed',
-  };
+/** One quote on the world board; flashes green / red when it ticks, click for the chart. */
+function StripQuote({ r }: { r: PulseRow }) {
+  const flash = useTickFlash(r.price);
+  const c = fmtPulseChange(r);
+  return (
+    <button type="button" className={cn('ticker-item', flash)} onClick={() => openChart(r.symbol, r.name)}
+      data-symbol={r.symbol} aria-label={`${r.name} (${r.symbol}) — open the chart`}>
+      <span className="ticker-sym">{SHORT[r.symbol] ?? r.symbol}</span>
+      <span className="ticker-val">{fmtPulsePrice(r)}</span>
+      {c.text && <span className={cn('ticker-chg', c.dir > 0 ? 'text-green' : c.dir < 0 ? 'text-red' : 'text-text-tertiary')}>
+        {c.dir > 0 ? '▲' : c.dir < 0 ? '▼' : ''}{c.text}</span>}
+    </button>
+  );
 }
 
 // Build ticker data from store
@@ -72,7 +102,7 @@ function buildTicker(
       { sym: '2Y', val: '—' },
       { sym: 'DXY', val: '—' },
       { sym: 'EUR/USD', val: '—' },
-      { sym: 'GLD', val: '—' },
+      { sym: 'GOLD', val: '—' },
       { sym: 'WTI', val: '—' },
       { sym: 'FED', val: '—' },
     ];
@@ -105,8 +135,9 @@ function buildTicker(
     {
       sym: '10Y',
       val: fmtRate(prices.TENYR),
-      chg: changes.TENYR != null ? fmtChange(changes.TENYR) : undefined,
-      colorClass: getChangeColor(changes.TENYR),
+      // Yield change in basis points (a % change of a yield is not a meaningful quote).
+      chg: changes.TENYR_BP != null ? `${changes.TENYR_BP > 0 ? '+' : ''}${changes.TENYR_BP.toFixed(1)}bp` : undefined,
+      colorClass: getChangeColor(changes.TENYR_BP),
     },
     {
       sym: '2Y',
@@ -127,7 +158,8 @@ function buildTicker(
       colorClass: getChangeColor(changes.EURUSD),
     },
     {
-      sym: 'GLD',
+      // COMEX gold futures (GC=F), not the GLD ETF (~1/11 the price).
+      sym: 'GOLD',
       val: fmtPriceInt(prices.GLD),
       chg: changes.GLD != null ? fmtChange(changes.GLD) : undefined,
       colorClass: getChangeColor(changes.GLD),
@@ -155,6 +187,36 @@ const FN_KEYS = [
   { n: 'F7', label: 'SYSTEM',    section: 'system-health' },
 ];
 
+function ThemeToggle() {
+  const { setting, theme } = useTheme();
+  const next: Record<ThemeSetting, ThemeSetting> = { auto: 'light', light: 'dark', dark: 'auto' };
+  const label = setting === 'auto' ? `Auto (${theme})` : setting === 'light' ? 'Light' : 'Dark';
+  return (
+    <button onClick={() => setThemeSetting(next[setting])} aria-label={`Theme: ${label}. Click to change.`}
+      title={`Theme: ${label}. Auto = light ${String(DAY_START).padStart(2, '0')}:00–${DAY_END}:00 your time, dark otherwise. Click to cycle Auto → Light → Dark.`}
+      className="h-6 px-1.5 inline-flex items-center gap-1 border border-border text-[10px] font-mono uppercase text-text-tertiary hover:text-text-primary shrink-0">
+      <span aria-hidden="true">{theme === 'light' ? '☀' : '☾'}</span>
+      <span className="hidden min-[1800px]:inline">{setting === 'auto' ? 'Auto' : setting}</span>
+    </button>
+  );
+}
+
+function ModeSwitch() {
+  const mode = useHubMode();
+  return (
+    <div role="tablist" aria-label="Mode" className="flex border border-border ml-1">
+      {([['research', 'Research & Trading'], ['markets', 'Markets']] as const).map(([m, label]) => (
+        <button key={m} role="tab" aria-selected={mode === m} onClick={() => setHubMode(m)}
+          title={m === 'research' ? 'Macro research, signals, risk, Quant Lab and the paper traders' : 'Any stock, ETF, index, FX, future or crypto — workstation, movers, screener'}
+          className={cn('px-2 h-6 text-[10px] font-mono uppercase tracking-wider whitespace-nowrap',
+            mode === m ? 'bg-bloomberg text-bg' : 'text-text-tertiary hover:text-text-primary')}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Topbar({
   latestDate: latestDateProp,
   dataStatus: dataStatusProp,
@@ -163,16 +225,22 @@ export function Topbar({
   onRefresh,
   onCommandPalette,
   onAlertsPanel,
+  onModelInfo,
   currentRegime: currentRegimeProp,
 }: TopbarProps) {
   const [downloading, setDownloading] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [sessions, setSessions] = useState(getSessionStatus());
+  const [sessions, setSessions] = useState(() => getSessionStatus());
+  const hub = useHubMode();
+  const pulse = useMarketPulse();
+  const board = STRIP_SYMBOLS.map((sym) => pulse.rows[sym]).filter((r): r is PulseRow => !!r && r.price != null);
 
   // Use macro store
   const prices = useMacroStore((state) => state.prices);
   const changes = useMacroStore((state) => state.changes);
+  const changeAsOfRaw = useMacroStore((state) => (state.fullDashboard as any)?.keyMetrics?.changeAsOf as Record<string, string | null> | undefined);
+  const changeAsOf = useMemo(() => changeAsOfRaw ?? {}, [changeAsOfRaw]);
   const regime = useMacroStore((state) => state.regime);
   const meta = useMacroStore(selectMeta);
 
@@ -249,8 +317,9 @@ export function Topbar({
   const dateStr = currentTime.toISOString().split('T')[0];
 
   const ticker = useMemo(
-    () => buildTicker(prices as unknown as Record<string, number | null>, changes, isLoading),
-    [prices, changes, isLoading]
+    () => buildTicker(prices as unknown as Record<string, number | null>, changes, isLoading)
+      .map((t) => ({ ...t, asOf: ASOF_KEY[t.sym] ? changeAsOf[ASOF_KEY[t.sym]] ?? null : null })),
+    [prices, changes, isLoading, changeAsOf]
   );
 
   return (
@@ -260,19 +329,23 @@ export function Topbar({
       {/* ── ROW 1: Main bar (40px) ─────────────────────────────────────────────── */}
       <div className="topbar-main-row">
 
-        {/* Branding */}
+        {/* Branding + hub mode switch */}
         <div className="flex items-center gap-2 mr-2 shrink-0">
           <span className="font-mono text-bloomberg font-bold tracking-tight" style={{ fontSize: 13 }}>▸</span>
-          <span className="font-mono text-text-primary font-bold tracking-tight" style={{ fontSize: 12, letterSpacing: '0.06em' }}>
-            MACRO OS
+          <span className="hidden min-[1800px]:inline font-mono text-text-primary font-bold tracking-tight" style={{ fontSize: 12, letterSpacing: '0.06em' }}>
+            TERMINAL
           </span>
-          <span className="font-mono text-text-tertiary" style={{ fontSize: 10 }}>v8.0</span>
+          <ModeSwitch />
+          <ThemeToggle />
         </div>
+
+        {/* <GO> command line (Markets mode has its own on the page) */}
+        {hub === 'research' && <GlobalCommand />}
 
         <div className="topbar-divider" />
 
         {/* Bloomberg function keys */}
-        <div className="hidden xl:flex items-center gap-1">
+        <div className="hidden min-[2700px]:flex items-center gap-1">
           {FN_KEYS.map((k) => (
             <button key={k.n} className="fn-key" onClick={() => navigateTo(k.section)}>
               <span className="fn-key-num">{k.n}</span>
@@ -281,32 +354,20 @@ export function Topbar({
           ))}
         </div>
 
-        <div className="hidden xl:block topbar-divider" />
+        <div className="hidden min-[2700px]:block topbar-divider" />
 
-        {/* Market sessions */}
-        <div className="hidden lg:flex items-center gap-1.5">
-          <span className={cn('session-badge', sessions.us)}>
-            <span className={cn('w-1.5 h-1.5 rounded-full shrink-0',
-              sessions.us === 'open' ? 'bg-green' :
-              sessions.us === 'pre'  ? 'bg-amber' : 'bg-text-tertiary'
-            )} />
-            US {sessions.us === 'pre' ? 'PRE' : sessions.us === 'open' ? 'OPEN' : 'CLOSED'}
-          </span>
-          <span className={cn('session-badge', sessions.eu)}>
-            <span className={cn('w-1.5 h-1.5 rounded-full shrink-0',
-              sessions.eu === 'open' ? 'bg-green' : 'bg-text-tertiary'
-            )} />
-            EU {sessions.eu === 'open' ? 'OPEN' : 'CLOSED'}
-          </span>
-          <span className={cn('session-badge', sessions.as)}>
-            <span className={cn('w-1.5 h-1.5 rounded-full shrink-0',
-              sessions.as === 'open' ? 'bg-green' : 'bg-text-tertiary'
-            )} />
-            AS {sessions.as === 'open' ? 'OPEN' : 'CLOSED'}
-          </span>
+        {/* Regional sessions (follow the sun) */}
+        <div className="hidden min-[1800px]:flex items-center gap-1.5 shrink-0">
+          {sessions.map((r) => (
+            <span key={r.label} className={cn('session-badge', r.state)} title={`${r.title}\n${r.detail}`}>
+              <span className={cn('w-1.5 h-1.5 rounded-full shrink-0',
+                r.state === 'open' ? 'bg-green live-dot' : r.state === 'lunch' ? 'bg-amber' : 'bg-text-tertiary')} />
+              {r.label} {r.state === 'open' ? 'OPEN' : r.state === 'lunch' ? 'LUNCH' : 'CLOSED'}
+            </span>
+          ))}
         </div>
 
-        <div className="hidden lg:block topbar-divider" />
+        <div className="hidden min-[1800px]:block topbar-divider" />
 
         {/* Data status */}
         <div className="flex items-center gap-1.5 shrink-0">
@@ -315,16 +376,16 @@ export function Topbar({
             {statusLabel}
           </span>
           {meta.latestDate && (
-            <span className="hidden md:inline font-mono text-text-tertiary" style={{ fontSize: 10 }}>
+            <span className="hidden xl:inline font-mono text-text-tertiary" style={{ fontSize: 10 }}>
               {meta.latestDate}
             </span>
           )}
         </div>
 
-        <div className="topbar-divider" />
+        <div className="hidden min-[2000px]:block topbar-divider" />
 
-        {/* Clock */}
-        <div className="hidden md:flex items-center gap-2 px-2 border border-border bg-surface-1 shrink-0"
+        {/* Clock (the status bar keeps world clocks on smaller screens) */}
+        <div className="hidden min-[2000px]:flex items-center gap-2 px-2 border border-border bg-surface-1 shrink-0"
              style={{ height: 22 }}>
           <span className="w-1 h-1 rounded-full bg-bloomberg animate-pulse shrink-0" />
           <span className="font-mono text-text-secondary" style={{ fontSize: 10 }}>
@@ -336,8 +397,11 @@ export function Topbar({
         </div>
 
         {/* Mode badge */}
-        <div className="ml-auto flex items-center gap-1 shrink-0">
-          <span className="font-mono text-bloomberg bg-bloomberg-muted border border-bloomberg-border px-2 py-0.5"
+        <div className="ml-auto flex items-center gap-1.5 shrink-0 pl-2">
+          <FundSwitcher />
+          <DataIntegrityIndicator />
+          <DataHealthIndicator />
+          <span className="hidden min-[1800px]:inline font-mono text-bloomberg bg-bloomberg-muted border border-bloomberg-border px-2 py-0.5"
                 style={{ fontSize: 10, letterSpacing: '0.08em' }}>
             {mode}
           </span>
@@ -370,11 +434,20 @@ export function Topbar({
           <button
             onClick={handleExportPDF}
             disabled={downloading}
-            className="icon-btn"
+            className="icon-btn hidden xl:inline-flex"
             style={{ width: 26, height: 26 }}
             title="Export PDF"
           >
             <Download className={cn('w-3.5 h-3.5', downloading && 'animate-pulse')} />
+          </button>
+
+          <button
+            onClick={onModelInfo}
+            className="icon-btn hidden xl:inline-flex"
+            style={{ width: 26, height: 26 }}
+            title="Model Info & Methodology"
+          >
+            <FunctionSquare className="w-3.5 h-3.5" />
           </button>
 
           <button
@@ -398,7 +471,7 @@ export function Topbar({
             title={isCompact ? 'Comfortable mode' : 'Compact mode'}
           >
             <LayoutGrid className="w-3 h-3" />
-            {isCompact ? 'COMPACT' : 'COZY'}
+            <span className="hidden min-[1800px]:inline">{isCompact ? 'COMPACT' : 'COZY'}</span>
           </button>
 
           <button
@@ -417,12 +490,17 @@ export function Topbar({
 
       {/* ── ROW 2: Market ticker strip (24px) ─────────────────────────────────── */}
       <div className="ticker-strip">
-        {ticker.map((item) => (
-          <div key={item.sym} className="ticker-item">
+        {board.length > 0 ? board.map((r) => <StripQuote key={r.symbol} r={r} />) : ticker.map((item) => (
+          <div key={item.sym} className="ticker-item"
+            title={item.asOf ? `1-day change for the ${item.asOf} session` : undefined}>
             <span className="ticker-sym">{item.sym}</span>
             <span className="ticker-val">{item.val}</span>
             {item.chg && (
               <span className={cn('ticker-chg', item.colorClass)}>{item.chg}</span>
+            )}
+            {/* Flag a change from an earlier session than the S&P's, so moves aren't compared across days. */}
+            {item.chg && item.asOf && changeAsOf.SPX && item.asOf < changeAsOf.SPX && (
+              <span className="text-text-tertiary" style={{ fontSize: 9 }}>({item.asOf.slice(5)})</span>
             )}
           </div>
         ))}
@@ -433,6 +511,11 @@ export function Topbar({
           <span className="font-mono text-bloomberg font-bold" style={{ fontSize: 10, letterSpacing: '0.06em' }}>
             {regime.current ? fmtRegime(regime.current).toUpperCase() : '—'}
           </span>
+        </div>
+
+        {/* Phase 5: System Status Badge */}
+        <div className="flex items-center px-2 shrink-0 border-l border-border-subtle h-full">
+          <SystemStatusBadge compact />
         </div>
       </div>
     </header>

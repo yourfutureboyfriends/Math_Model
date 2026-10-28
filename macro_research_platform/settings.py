@@ -10,9 +10,11 @@ to use different configurations without code changes.
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
-# Get project root (parent of this file)
+# Get project root (parent of this file) and load its .env
 PROJECT_ROOT = Path(__file__).parent
+load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=False)
 
 # =============================================================================
 # Data Source Configuration

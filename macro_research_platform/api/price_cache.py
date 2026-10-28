@@ -12,8 +12,8 @@ Rules:
 """
 
 import os
-from typing import Dict, Optional, Any
-from datetime import datetime, timedelta
+from typing import Dict, Optional
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -24,13 +24,12 @@ SYMBOLS = {
     'NDX': '^NDX',
     'VIX': '^VIX',
     'TENYR': '^TNX',
-    'TWYR': '^FVX',
     'DXY': 'DX-Y.NYB',
     'EURUSD': 'EURUSD=X',
     'GBPUSD': 'GBPUSD=X',
-    'USDJPY': 'JPY=X',      # Will be inverted (yfinance gives JPY/USD)
-    'USDCAD': 'CAD=X',      # Will be inverted
-    'USDCHF': 'CHF=X',      # Will be inverted
+    'USDJPY': 'USDJPY=X',   # Yahoo quotes USD/JPY directly (~150) — no inversion
+    'USDCAD': 'USDCAD=X',
+    'USDCHF': 'USDCHF=X',
     'AUDUSD': 'AUDUSD=X',
     'NZDUSD': 'NZDUSD=X',
     'GLD': 'GC=F',
@@ -38,7 +37,7 @@ SYMBOLS = {
 }
 
 # FX pairs that need inversion (yfinance returns quote/base instead of base/quote)
-INVERT_PAIRS = {'USDJPY', 'USDCAD', 'USDCHF'}
+INVERT_PAIRS: set = set()   # Yahoo quotes these USD-base already; inverting gave 0.0063
 
 # Cache storage
 _PRICE_CACHE: Dict[str, Optional[float]] = {}
@@ -48,7 +47,8 @@ _CACHE_TTL_SECONDS = 60
 
 def _get_fred_rate(series_id: str) -> Optional[float]:
     """Fetch latest rate from FRED API."""
-    api_key = os.getenv('FRED_API_KEY')
+    from api.config import FRED_API_KEY as _cfg_key
+    api_key = _cfg_key or os.getenv('FRED_API_KEY', '')
     if not api_key or api_key == 'your_fred_api_key_here':
         return None
 
@@ -84,14 +84,15 @@ def refresh_prices() -> Dict[str, Optional[float]]:
     try:
         import yfinance as yf
 
-        # Download all symbols in one batch
+        # Download all symbols in one batch — timeout=5 prevents hang when proxy blocks
         yf_symbols = list(SYMBOLS.values())
         data = yf.download(
             yf_symbols,
             period='2d',  # Get 2 days for change calculation
             interval='1d',
             progress=False,
-            threads=True,
+            threads=False,
+            timeout=5,
         )
 
         if data.empty:
@@ -130,7 +131,12 @@ def refresh_prices() -> Dict[str, Optional[float]]:
             _PRICE_CACHE['FED'] = fed_rate
         else:
             # Fallback: try to get from cache or use default
-            _PRICE_CACHE['FED'] = _PRICE_CACHE.get('FED', 3.64)
+            _PRICE_CACHE['FED'] = _PRICE_CACHE.get('FED')  # keep last real value; never a default
+
+        # 2Y Treasury from FRED (Yahoo has no 2-year index; ^FVX is the 5-year).
+        two_yr = _get_fred_rate('DGS2')
+        if two_yr is not None:
+            _PRICE_CACHE['TWYR'] = two_yr
 
         _LAST_UPDATE = datetime.utcnow()
         logger.info(f"Price cache refreshed: {len([v for v in _PRICE_CACHE.values() if v is not None])}/{len(SYMBOLS)} instruments")
@@ -165,38 +171,56 @@ def get_last_update() -> Optional[datetime]:
 def compute_daily_changes() -> Dict[str, Optional[float]]:
     """
     Compute daily percent changes for all cached prices.
+    Uses a single batch yf.download (timeout=5s) instead of per-symbol Ticker calls
+    to avoid blocking for minutes when the network proxy is unavailable.
     Returns dict of symbol -> change_pct (e.g., 0.0114 = +1.14%).
     """
-    changes = {}
+    changes: Dict[str, Optional[float]] = {sym: None for sym in SYMBOLS}
 
     try:
         import yfinance as yf
 
+        yf_symbols = list(SYMBOLS.values())
+        data = yf.download(
+            yf_symbols,
+            period='2d',
+            interval='1d',
+            progress=False,
+            threads=False,
+            timeout=5,
+        )
+
+        if data.empty:
+            logger.warning("compute_daily_changes: empty data from yfinance")
+            return changes
+
         for canonical, yf_symbol in SYMBOLS.items():
             try:
-                ticker = yf.Ticker(yf_symbol)
-                hist = ticker.history(period='2d', interval='1d')
+                if 'Close' in data.columns.get_level_values(0) if hasattr(data.columns, 'get_level_values') else []:
+                    close_series = data['Close'][yf_symbol]
+                elif yf_symbol in data.columns:
+                    close_series = data[yf_symbol]['Close']
+                else:
+                    continue
 
-                if len(hist) >= 2:
-                    latest = float(hist['Close'].iloc[-1])
-                    prev = float(hist['Close'].iloc[-2])
+                valid = close_series.dropna()
+                if len(valid) >= 2:
+                    latest = float(valid.iloc[-1])
+                    prev = float(valid.iloc[-2])
 
-                    # Apply inversion if needed
                     if canonical in INVERT_PAIRS:
                         latest = 1 / latest if latest != 0 else 0
                         prev = 1 / prev if prev != 0 else 0
 
-                    change_pct = (latest - prev) / prev if prev != 0 else 0
-                    changes[canonical] = change_pct
+                    changes[canonical] = (latest - prev) / prev if prev != 0 else 0.0
                 else:
                     changes[canonical] = 0.0
 
             except Exception as e:
                 logger.debug(f"Change calc failed for {canonical}: {e}")
-                changes[canonical] = None
 
     except Exception as e:
-        logger.error(f"Change computation failed: {e}")
+        logger.error(f"compute_daily_changes failed: {e}")
 
     return changes
 
@@ -224,9 +248,7 @@ def is_cache_fresh(max_age_seconds: int = 120) -> bool:
     return (datetime.utcnow() - _LAST_UPDATE).total_seconds() < max_age_seconds
 
 
-# Initialize cache on module load
-if __name__ != '__main__':
-    try:
-        refresh_prices()
-    except Exception as e:
-        logger.warning(f"Initial price cache load failed: {e}")
+# NOTE: Do NOT call refresh_prices() at import time.
+# It calls yf.download() which blocks the async event loop during startup.
+# The APScheduler fires the first refresh 60s after startup via lifespan.
+# All endpoints use fallback values until the first scheduled refresh completes.

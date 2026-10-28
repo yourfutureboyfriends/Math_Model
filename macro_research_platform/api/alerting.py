@@ -6,12 +6,12 @@ import logging
 import os
 from typing import List, Dict, Optional
 from datetime import datetime
-import asyncio
 
 logger = logging.getLogger(__name__)
 
 # Alert severity levels
 class AlertSeverity:
+    """Alert severity levels: info, warning, critical."""
     INFO = "info"
     WARNING = "warning"
     CRITICAL = "critical"

@@ -1,0 +1,383 @@
+"""Fund governance API (api/governance.py): stage and policy, approved instruments, model gates G0–G5, halts and
+incidents, reconciliation, the monthly reporting pack, scorecard, budget, milestones and break-even AUM."""
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel, Field
+from api import positions
+from api.core import web
+
+router = APIRouter(tags=["governance"])
+ALL = ("pm", "analyst", "risk", "quant")
+
+
+def _user(request: Request, roles=ALL) -> Dict[str, Any]:
+    return web.user(request, roles)
+
+def _cap(request: Request, cap: str) -> Dict[str, Any]:
+    return web.require(request, cap)
+
+async def _t(fn, *a):
+    return await web.run(fn, *a)
+
+@router.get("/api/v1/governance")
+async def gov_overview(request: Request):
+    """Governance at a glance: stage and policy, any active halt, open incidents, gate definitions and sleeves."""
+    from api import governance as gov
+    _user(request)
+    st = await _t(gov.settings)
+    return {"settings": st, "halt": await _t(gov.active_halt), "open_incidents": len(await _t(gov.incidents, True)),
+            "stages": gov.STAGES, "gates": gov.GATE_INFO, "gate_signoffs": {k: [sorted(r) for r in v] for k, v in gov.GATE_SIGNOFFS.items()},
+            "sleeves": gov.SLEEVES, "label": gov.results_label(st["stage"])}
+
+
+@router.post("/api/v1/governance/setup/moriah")
+async def gov_setup_moriah(request: Request, paper_notional: float = Query(25_000.0, gt=0)):
+    """Configure the current fund as Moriah Capital Partners from its Future Growth Strategy (admin)."""
+    from api import funds, moriah
+    u = _user(request, ())
+    return await _t(moriah.setup, funds.current(), u["username"], paper_notional)
+
+
+# ── instruments ──────────────────────────────────────────────────────────────
+class InstrumentIn(BaseModel):
+    """An instrument proposed for the approved list."""
+    symbol: str = Field(..., max_length=20)
+    name: str = Field("", max_length=120)
+    asset_class: str = Field("", max_length=40)
+    theme: str = Field("", max_length=60)
+    currency: str = Field("", max_length=4)
+    tradable: bool = True
+    note: str = Field("", max_length=500)
+
+
+class DecideIn(BaseModel):
+    """Approve or remove an instrument, with a note."""
+    approve: bool
+    note: str = Field("", max_length=500)
+
+
+@router.get("/api/v1/governance/instruments")
+async def gov_instruments(request: Request):
+    """The approved-instruments list with status."""
+    from api import governance as gov
+    _user(request)
+    return {"instruments": await _t(gov.instruments)}
+
+
+@router.post("/api/v1/governance/instruments")
+async def gov_instrument_propose(body: InstrumentIn, request: Request):
+    """Propose an instrument (another person approves it)."""
+    from api import governance as gov
+    u = _user(request)
+    return await _t(lambda: gov.propose_instrument(body.symbol, u["username"], body.name, body.asset_class, body.theme,
+                                                   body.currency, body.tradable, body.note))
+
+
+@router.post("/api/v1/governance/instruments/{symbol}/decision")
+async def gov_instrument_decide(symbol: str, body: DecideIn, request: Request):
+    """Approve or remove an instrument (capability instruments_approve; never the proposer)."""
+    from api import governance as gov
+    u = _cap(request, "instruments_approve")
+    return await _t(gov.decide_instrument, symbol, u["username"], body.approve, body.note)
+
+
+# ── models ───────────────────────────────────────────────────────────────────
+class ModelIn(BaseModel):
+    """A G0 research proposal: name, sleeve, mechanism, target, horizon, dataset, null hypothesis."""
+    name: str = Field(..., max_length=120)
+    sleeve: str = "other"
+    book: Optional[str] = Field(None, max_length=60)
+    mechanism: str = Field("", max_length=2000)
+    target_variable: str = Field("", max_length=500)
+    horizon: str = Field("", max_length=200)
+    dataset: str = Field("", max_length=2000)
+    null_hypothesis: str = Field("", max_length=1000)
+
+
+class SignoffIn(BaseModel):
+    """Evidence for a gate sign-off (checklist and, for G2, the backtest result) and a note."""
+    evidence: Dict[str, Any] = {}
+    note: str = Field("", max_length=2000)
+
+
+class CloseIn(BaseModel):
+    """Reject, retire, suspend or reactivate a model, with a reason."""
+    action: str = Field(..., pattern="^(reject|retire|suspend|reactivate)$")
+    note: str = Field(..., max_length=2000)
+
+
+class ModelUpdateIn(BaseModel):
+    """A model's risk allocation, loss budget, retirement criterion or research fields."""
+    allocation: Optional[float] = Field(None, ge=0)
+    max_loss_budget: Optional[float] = Field(None, gt=0, le=1)
+    retirement_criterion: Optional[str] = Field(None, max_length=1000)
+    book: Optional[str] = Field(None, max_length=60)
+    mechanism: Optional[str] = Field(None, max_length=2000)
+    dataset: Optional[str] = Field(None, max_length=2000)
+    horizon: Optional[str] = Field(None, max_length=200)
+
+
+@router.get("/api/v1/governance/models")
+async def gov_models(request: Request):
+    """All models in the registry (including rejected and retired — the research log)."""
+    from api import governance as gov
+    _user(request)
+    return {"models": await _t(gov.list_models)}
+
+
+@router.post("/api/v1/governance/models")
+async def gov_model_create(body: ModelIn, request: Request):
+    """Propose a model (G0)."""
+    from api import governance as gov
+    u = _cap(request, "model_propose")
+    return await _t(gov.create_model, u["username"], body.model_dump())
+
+
+@router.get("/api/v1/governance/models/{mid}")
+async def gov_model_get(mid: int, request: Request):
+    """One model with its full history and pending sign-offs."""
+    from api import governance as gov
+    _user(request)
+    return await _t(gov.get_model, mid)
+
+
+@router.post("/api/v1/governance/models/{mid}/signoff")
+async def gov_model_signoff(mid: int, body: SignoffIn, request: Request):
+    """Sign off the model's next gate; it advances once every required, independent sign-off is in."""
+    from api import governance as gov
+    u = _user(request, ALL)
+    m = await _t(gov.get_model, mid)
+    need = {"G1": "model_signoff_research", "G2": "model_signoff_ic", "G3": "model_signoff_risk", "G5": "model_signoff_ic"}
+    nxt = m.get("next_gate")
+    if nxt == "G4":                                  # IC and risk each sign: either capability
+        caps = positions.capabilities_for(u)
+        if not caps & {"model_signoff_ic", "model_signoff_risk"}:
+            raise HTTPException(403, "G4 needs an investment-committee or risk sign-off capability")
+    elif nxt in need:
+        _cap(request, need[nxt])
+    return await _t(gov.signoff, mid, u["username"], u.get("role") or "", body.evidence, body.note)
+
+
+@router.get("/api/v1/governance/models/{mid}/shadow")
+async def gov_model_shadow(mid: int, request: Request):
+    """The model's shadow-trading record (its Quant Lab paper deployment in this fund) and drift flags."""
+    from api import governance as gov
+    _user(request)
+    return await _t(gov.shadow_report, mid)
+
+
+@router.post("/api/v1/governance/models/{mid}/close")
+async def gov_model_close(mid: int, body: CloseIn, request: Request):
+    """Reject, retire, suspend or reactivate a model."""
+    from api import governance as gov
+    u = _user(request, ("pm", "risk"))
+    return await _t(gov.close_model, mid, u["username"], u.get("role") or "", body.action, body.note)
+
+
+@router.put("/api/v1/governance/models/{mid}")
+async def gov_model_update(mid: int, body: ModelUpdateIn, request: Request):
+    """Update a model; research changes after G2 start a new version back at G1."""
+    from api import governance as gov
+    u = _user(request, ("pm", "risk", "quant", "analyst"))
+    return await _t(gov.update_model, mid, u["username"], body.model_dump(exclude_none=True))
+
+
+# ── controls ─────────────────────────────────────────────────────────────────
+class HaltIn(BaseModel):
+    """A halt reason, and whether it is a kill-switch test."""
+    reason: str = Field(..., min_length=3, max_length=1000)
+    test: bool = False
+
+
+class TextIn(BaseModel):
+    """Free text (resolution, fix description, incident)."""
+    text: str = Field(..., min_length=3, max_length=2000)
+
+
+@router.get("/api/v1/governance/controls")
+async def gov_controls(request: Request):
+    """Controls: active halt, incidents and recent reconciliations."""
+    from api import governance as gov
+    _user(request)
+    return {"halt": await _t(gov.active_halt), "incidents": await _t(gov.incidents),
+            "reconciliations": await _t(gov.reconciliations, 30)}
+
+
+@router.post("/api/v1/governance/controls/halt")
+async def gov_halt(body: HaltIn, request: Request):
+    """Halt new orders and executions (kill switch); opens an incident unless it is a test."""
+    from api import governance as gov
+    u = _cap(request, "halt_trading")
+    return await _t(lambda: gov.start_halt("manual" if not body.test else "test", body.reason, u["username"], body.test))
+
+
+@router.post("/api/v1/governance/controls/resume")
+async def gov_resume(body: TextIn, request: Request):
+    """Resume trading after a halt — needs a resolution, and an incident halt needs its incident signed off."""
+    from api import governance as gov
+    u = _cap(request, "resume_trading")
+    return await _t(gov.lift_halt, u["username"], body.text)
+
+
+@router.post("/api/v1/governance/controls/reconcile")
+async def gov_reconcile(request: Request):
+    """Reconcile positions against the fills ledger now; a break halts execution in a governed fund."""
+    from api import governance as gov
+    u = _cap(request, "reconcile")
+    return await _t(gov.reconcile, u["username"])
+
+
+@router.post("/api/v1/governance/incidents")
+async def gov_incident_open(body: TextIn, request: Request):
+    """Log an operational incident."""
+    from api import governance as gov
+    u = _user(request)
+    iid = await _t(lambda: gov.open_incident("operational", body.text, u["username"], "medium"))
+    return {"id": iid}
+
+
+@router.post("/api/v1/governance/incidents/{iid}/fix")
+async def gov_incident_fix(iid: int, body: TextIn, request: Request):
+    """Record how an incident was fixed and tested."""
+    from api import governance as gov
+    u = _user(request)
+    return await _t(gov.fix_incident, iid, u["username"], body.text)
+
+
+@router.post("/api/v1/governance/incidents/{iid}/signoff")
+async def gov_incident_signoff(iid: int, request: Request):
+    """Independently sign off a fixed incident (not the person who fixed it)."""
+    from api import governance as gov
+    u = _cap(request, "incidents_signoff")
+    return await _t(gov.signoff_incident, iid, u["username"])
+
+
+# ── reporting ────────────────────────────────────────────────────────────────
+@router.get("/api/v1/governance/report/monthly")
+async def gov_monthly(request: Request, month: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}$")):
+    """The monthly internal reporting pack for a month (returns, risk and stress, attribution, implementation, research
+    changes, validation).
+    """
+    from api import governance_reports as gr
+    _user(request)
+    return await _t(gr.monthly_report, month)
+
+
+@router.get("/api/v1/governance/scorecard")
+async def gov_scorecard(request: Request):
+    """The board scorecard: research, trading and risk, organisation, data and commercial measures."""
+    from api import governance_reports as gr
+    _user(request)
+    return await _t(gr.scorecard)
+
+
+# ── data-source licences ─────────────────────────────────────────────────────
+class SourceReviewIn(BaseModel):
+    """A data-licence decision: source, status, the terms reviewed and conditions."""
+    name: str = Field(..., max_length=200)
+    status: str = Field(..., pattern="^(allowed|restricted|not_allowed|unreviewed)$")
+    terms_reference: str = Field("", max_length=500)
+    note: str = Field("", max_length=1000)
+
+
+@router.get("/api/v1/governance/data-sources")
+async def gov_sources(request: Request):
+    """The data-source licence register."""
+    from api import governance as gov
+    _user(request)
+    return {"sources": await _t(gov.data_sources), "types": gov.SOURCE_TYPES,
+            "note": "Starting point only — not legal advice. Record a decision after reading each provider's actual terms."}
+
+
+@router.post("/api/v1/governance/data-sources/review")
+async def gov_source_review(body: SourceReviewIn, request: Request):
+    """Record the fund's decision on a data source after reading its terms."""
+    from api import governance as gov
+    u = _cap(request, "data_licences_review")
+    return await _t(gov.review_source, body.name, u["username"], body.status, body.terms_reference, body.note)
+
+
+# ── budget and milestones ────────────────────────────────────────────────────
+class ExpenseIn(BaseModel):
+    """An expense: date, budget category, amount, currency, description."""
+    date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
+    category: str = Field(..., max_length=80)
+    amount: float = Field(..., gt=0)
+    currency: str = Field("GBP", max_length=3)
+    description: str = Field(..., min_length=2, max_length=500)
+
+
+class MilestoneIn(BaseModel):
+    """A milestone's new status and, when done, the evidence."""
+    status: str = Field(..., pattern="^(open|in_progress|done|blocked)$")
+    evidence: str = Field("", max_length=2000)
+
+
+@router.get("/api/v1/governance/budget")
+async def gov_budget(request: Request):
+    """Budget lines with spend and remaining, and the expense ledger."""
+    from api import governance as gov
+    _user(request)
+    return await _t(gov.budget)
+
+
+@router.post("/api/v1/governance/budget/expenses")
+async def gov_expense(body: ExpenseIn, request: Request):
+    """Record an expense."""
+    from api import governance as gov
+    u = _cap(request, "budget_record")
+    return await _t(gov.add_expense, u["username"], body.date, body.category, body.amount, body.currency, body.description)
+
+
+@router.post("/api/v1/governance/budget/expenses/{eid}/approve")
+async def gov_expense_approve(eid: int, request: Request):
+    """Approve an expense (spending authority; not the person who recorded it)."""
+    from api import governance as gov
+    u = _cap(request, "budget_approve")
+    return await _t(gov.approve_expense, eid, u["username"])
+
+
+@router.get("/api/v1/governance/milestones")
+async def gov_milestones(request: Request):
+    """The roadmap milestones with owner, acceptance criterion, status and evidence."""
+    from api import governance as gov
+    _user(request)
+    return {"milestones": await _t(gov.milestones)}
+
+
+@router.put("/api/v1/governance/milestones/{mid}")
+async def gov_milestone_update(mid: int, body: MilestoneIn, request: Request):
+    """Update a milestone's status (done needs evidence)."""
+    from api import governance as gov
+    u = _user(request)
+    return await _t(gov.update_milestone, mid, u["username"], body.status, body.evidence)
+
+
+@router.post("/api/v1/governance/milestones/{mid}/signoff")
+async def gov_milestone_signoff(mid: int, request: Request):
+    """Sign off a completed milestone (not the person who completed it)."""
+    from api import governance as gov
+    u = _cap(request, "milestones_signoff")
+    return await _t(gov.signoff_milestone, mid, u["username"])
+
+
+@router.get("/api/v1/governance/break-even")
+async def gov_break_even(request: Request, costs: str = Query("175000,250000,350000,500000"),
+                         fees: str = Query("0.01,0.015,0.02"), aums: str = Query("5e6,1e7,1.5e7,2e7,3e7")):
+    """Break-even AUM on management fees alone (the plan's formula); defaults are the plan's illustrative US$ figures.
+    """
+    from api import governance as gov
+    _user(request)
+    try:
+        c = [float(x) for x in costs.split(",") if x][:8]
+        f = [float(x) for x in fees.split(",") if x][:6]
+        a = [float(x) for x in aums.split(",") if x][:12]
+    except ValueError:
+        raise HTTPException(400, "costs, fees and aums are comma-separated numbers")
+    if not c or not f or any(x <= 0 for x in f):
+        raise HTTPException(400, "give at least one cost and positive fee rates")
+    return {**gov.break_even(c, f, a), "currency": "USD",
+            "note": "Excludes performance fees, taxes and fee discounts or waivers; illustrative, not a regulatory minimum."}

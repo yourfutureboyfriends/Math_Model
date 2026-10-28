@@ -5,13 +5,13 @@ The dashboard has been migrated to a React frontend.
 
 To use the new React dashboard:
 
-1. Start the FastAPI backend:
-   cd api && python main.py
+1. Start the FastAPI backend (from the project root):
+   uvicorn api.main:socket_app --port 8000
 
 2. Start the React frontend (in a new terminal):
    cd frontend && npm install && npm run dev
 
-3. Open http://localhost:3000 in your browser
+3. Open http://localhost:5173 in your browser
 
 The old Streamlit dashboard has been backed up to dashboard.py.backup
 """
@@ -34,9 +34,9 @@ while maintaining the Bloomberg Terminal aesthetic.
 
 ### Quick Start
 
-**Terminal 1 - Start Backend:**
+**Terminal 1 - Start Backend (from the project root):**
 ```bash
-cd api && python main.py
+uvicorn api.main:socket_app --port 8000
 ```
 
 **Terminal 2 - Start Frontend:**
@@ -44,7 +44,7 @@ cd api && python main.py
 cd frontend && npm install && npm run dev
 ```
 
-Then open **http://localhost:3000** in your browser.
+Then open **http://localhost:5173** in your browser.
 
 ### New Features
 
@@ -96,19 +96,19 @@ if st.button("🚀 Start React Dashboard", type="primary"):
 
     **1. Start Backend (Terminal 1):**
     ```bash
-    cd /Users/daltonyuen/Math_Model/macro_research_platform/api
+    cd macro_research_platform/api
     python main.py
     ```
 
     **2. Start Frontend (Terminal 2):**
     ```bash
-    cd /Users/daltonyuen/Math_Model/macro_research_platform/frontend
+    cd macro_research_platform/frontend
     npm install
     npm run dev
     ```
 
     **3. Open Browser:**
-    Navigate to http://localhost:3000
+    Navigate to http://localhost:5173
     """)
 
 st.divider()

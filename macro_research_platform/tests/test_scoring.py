@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.scoring import (
+from src.models.macro_regime.regime_model import (
     compute_group_scores,
     compute_group_scores_advanced,
     compute_score_directions,

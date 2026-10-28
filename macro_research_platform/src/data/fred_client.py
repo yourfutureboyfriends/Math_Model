@@ -257,7 +257,7 @@ class FredClient(BaseDataClient):
         dates = pd.date_range(
             end=datetime.now(),
             periods=60,
-            freq="M",
+            freq="ME",
         )
 
         # Generate sample values based on series ID

@@ -38,7 +38,9 @@ streamlit>=1.25.0
 fredapi>=0.5.0
 python-dotenv>=1.0.0
 openpyxl>=3.1.0
+xlrd>=2.0.1                 # Damodaran .xls datasets (DCF inputs)
 yfinance>=0.2.0
+holidays>=0.50        # per-region market holidays (market clock)
 requests>=2.31.0
 statsmodels>=0.14.0
 
@@ -73,3 +75,11 @@ mypy>=1.5.0
 python-socketio>=5.9.0
 websockets>=12.0
 uvicorn[standard]>=0.24.0
+# Futu OpenAPI (needs FutuOpenD running locally; read-only use: quotes, order book, capital flow, positions)
+futu-api==10.11.7108
+
+# Interactive Brokers TWS socket API (market data only; TWS "Read-Only API" on). Installed with --no-deps:
+# its tzdata<2026 pin is stricter than needed and would roll back current timezone data.
+ib_async==2.1.0
+aeventkit==2.1.0
+nest_asyncio==1.6.0

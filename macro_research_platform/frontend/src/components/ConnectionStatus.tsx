@@ -1,3 +1,4 @@
+// Live-price WebSocket connection indicator.
 import React from "react";
 import { useMarketStream } from "@/hooks/useMarketStream";
 import styles from "./ConnectionStatus.module.css";

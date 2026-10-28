@@ -1,3 +1,4 @@
+"""Celery tasks: news analysis and sentiment with a local Ollama model."""
 # ═══════════════════════════════════════════════════════════════════════════════
 # Celery LLM Tasks — Phase 13A
 # Ollama integration for news sentiment analysis
@@ -11,8 +12,7 @@ from typing import Dict, Any, List, Optional
 
 import feedparser
 import requests
-from bs4 import BeautifulSoup
-from celery_app import app
+from api.celery_app import app
 
 logger = logging.getLogger(__name__)
 

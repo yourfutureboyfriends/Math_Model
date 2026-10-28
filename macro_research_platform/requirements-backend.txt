@@ -2,6 +2,7 @@
 
 # Data processing
 pandas>=1.5.0
+xlrd>=2.0.1
 numpy>=1.21.0
 scipy>=1.9.0
 
@@ -13,3 +14,12 @@ scikit-learn>=1.2.0
 
 # HTTP requests (for ALFRED/FRED APIs)
 requests>=2.28.0
+
+# Futu OpenAPI (needs FutuOpenD running locally; read-only use: quotes, order book, capital flow, positions)
+futu-api==10.11.7108
+
+# Interactive Brokers TWS socket API (market data only; TWS "Read-Only API" on). Installed with --no-deps:
+# its tzdata<2026 pin is stricter than needed and would roll back current timezone data.
+ib_async==2.1.0
+aeventkit==2.1.0
+nest_asyncio==1.6.0

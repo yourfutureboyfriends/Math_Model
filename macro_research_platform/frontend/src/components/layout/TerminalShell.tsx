@@ -8,12 +8,19 @@ import { DetailPanel } from './DetailPanel';
 import { CommandPalette } from './CommandPalette';
 import { AlertsPanel } from './AlertsPanel';
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
+import { ModelInfoPanel } from './ModelInfoPanel';
+import { BottomDock, DOCK_HEIGHT, useTapeVisible } from './StatusBar';
+import { LivePopups } from './LivePopups';
+import { HoverCards } from './HoverCard';
 import { BlackoutBanner } from '../EconomicCalendar';
 import { cn } from '@/lib/utils';
+import { revealPanel } from '@/lib/focusMode';
 import { ErrorBoundary } from '../ErrorBoundary';
 
 interface TerminalShellProps {
   children: React.ReactNode;
+  /** Replaces the Research navigation (the Markets mode has its own sidebar). */
+  sidebar?: (collapsed: boolean) => React.ReactNode;
   latestDate?: string;
   dataStatus?: 'current' | 'acceptable' | 'stale' | 'unknown';
   mode?: string;
@@ -28,6 +35,7 @@ interface TerminalShellProps {
 
 export function TerminalShell({
   children,
+  sidebar,
   latestDate,
   dataStatus,
   mode,
@@ -46,11 +54,21 @@ export function TerminalShell({
   // FIXED (BUG 2): Ensure sidebar is never undefined/null - always boolean
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
+  const [modelInfoOpen, setModelInfoOpen] = useState(false);
   const keyTimeoutRef = useRef<NodeJS.Timeout>();
+  // The bottom dock (ticker tape + status bar): page content and the sidebar stop above it.
+  const [tapeOn] = useTapeVisible();
+  const dockH = tapeOn ? DOCK_HEIGHT.withTape : DOCK_HEIGHT.withoutTape;
+  useEffect(() => { document.documentElement.style.setProperty('--dock-h', `${dockH}px`); }, [dockH]);
 
   // Use external state if provided, otherwise internal
   const activeSection = externalActiveSection ?? internalActiveSection;
-  const setActiveSection = externalActiveSection ? () => {} : setInternalActiveSection;
+  // Stable setter (listeners registered once must not hold a stale one); a no-op while the
+  // parent controls the active section.
+  const controlled = externalActiveSection != null;
+  const setActiveSection = useCallback((id: string) => {
+    if (!controlled) setInternalActiveSection(id);
+  }, [controlled]);
 
   // UPGRADE-6: Enhanced Keyboard Shortcuts — Analyst Workflow
   const handleKeyDown = useCallback(
@@ -99,6 +117,7 @@ export function TerminalShell({
         setCommandPaletteOpen(false);
         setAlertsPanelOpen(false);
         setShortcutsHelpOpen(false);
+        setModelInfoOpen(false);
         return;
       }
 
@@ -111,7 +130,7 @@ export function TerminalShell({
 
       // Single key navigation
       const sectionMap: Record<string, string> = {
-        'm': 'morning-brief',      // M = Morning Brief
+        'm': 'morning-brief',      // M = Daily Brief
         'g': 'master-signal',      // G = Master Signal (existing)
         'k': 'key-metrics',        // K = Key Metrics
         'r': 'regime',             // R = Regime (existing)
@@ -127,10 +146,10 @@ export function TerminalShell({
         'n': 'nowcast',            // N = Nowcast
         'l': 'liquidity',          // L = Liquidity
         'i': 'sentiment',          // I = Sentiment
-        'y': 'gmo-forecasts',     // Y = GMO (Yield forecasts)
+        'y': 'gmo-forecasts',     // Y = long-run return assumptions
         'u': 'valuation',           // U = Valuation
         'x': 'expected-returns',  // X = Expected Returns
-        'o': 'portfolio-analyser', // O = Portfolio
+        'o': 'portfolio',          // O = Model Portfolio
         'z': 'system-health',      // Z = System Health (instead of H)
         'h': 'horizon-tension',    // H = Horizon Tension
         'w': 'news-sentiment',    // W = News
@@ -142,7 +161,8 @@ export function TerminalShell({
         e.preventDefault();
         const sectionId = sectionMap[key];
         setActiveSection(sectionId);
-        document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
+        if (revealPanel(sectionId)) setTimeout(() => document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' }), 250);
+        else document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
         return;
       }
 
@@ -164,7 +184,8 @@ export function TerminalShell({
         if (numSections[index]) {
           const sectionId = numSections[index];
           setActiveSection(sectionId);
-          document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
+          if (revealPanel(sectionId)) setTimeout(() => document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' }), 250);
+          else document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
         }
         return;
       }
@@ -194,7 +215,7 @@ export function TerminalShell({
         clearTimeout(keyTimeoutRef.current);
       }
     },
-    [activeSection, onRefresh]
+    [activeSection, onRefresh, setActiveSection]
   );
 
   useEffect(() => {
@@ -246,7 +267,6 @@ export function TerminalShell({
         'trade-ideas',
         'portfolio-fit',
         'economic-calendar',
-        'data-to-watch',
         'investment-memo',
         'business-layer',
         'system-health',
@@ -266,16 +286,20 @@ export function TerminalShell({
       }
     };
 
+    // When the parent controls the active section (App, with an IntersectionObserver) this handler would only
+    // measure ~40 sections on every scroll event for nothing — a forced layout per frame.
+    if (controlled) return;
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [setActiveSection, controlled]);
 
   const handleNavigate = (sectionId: string) => {
     setActiveSection(sectionId);
-    const element = document.getElementById(sectionId);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    // A panel outside the current workspace is hidden: switch to its group first, then
+    // scroll once the workspace has re-rendered.
+    const switched = revealPanel(sectionId);
+    const go = () => document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (switched) setTimeout(go, 250); else go();
     // Call external handler if provided
     externalOnNavigate?.(sectionId);
   };
@@ -294,24 +318,28 @@ export function TerminalShell({
         onRefresh={onRefresh}
         onCommandPalette={() => setCommandPaletteOpen(true)}
         onAlertsPanel={() => setAlertsPanelOpen(true)}
+        onModelInfo={() => setModelInfoOpen(true)}
         currentRegime={currentRegime}
       />
 
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed left-0 top-16 bottom-0 z-40 flex flex-col transition-all duration-200 bg-surface-1 border-r border-border overflow-hidden',
+          'fixed left-0 top-16 z-40 flex flex-col transition-all duration-200 bg-surface-1 border-r border-border overflow-hidden',
           sidebarCollapsed ? 'w-[48px] min-w-[48px]' : 'w-[224px] min-w-[224px]'
         )}
+        style={{ bottom: dockH }}
       >
         <ErrorBoundary sectionName="Sidebar">
-          <Sidebar
-            activeSection={activeSection}
-            onNavigate={handleNavigate}
-            currentRegime={currentRegime}
-            collapsed={sidebarCollapsed}
-            onCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-          />
+          {sidebar ? sidebar(sidebarCollapsed) : (
+            <Sidebar
+              activeSection={activeSection}
+              onNavigate={handleNavigate}
+              currentRegime={currentRegime}
+              collapsed={sidebarCollapsed}
+              onCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+            />
+          )}
         </ErrorBoundary>
       </aside>
 
@@ -322,11 +350,21 @@ export function TerminalShell({
           sidebarCollapsed ? 'pl-[48px]' : 'pl-[224px]',
           detailPanelOpen ? 'lg:pr-72' : 'pr-0'
         )}
+        style={{ paddingBottom: dockH }}
       >
         <div className="min-h-[calc(100vh-64px)]">
           {children}
         </div>
       </main>
+
+      {/* World ticker tape + status bar */}
+      <BottomDock />
+
+      {/* Live pop-ups: headlines, big moves, economic releases, regime changes */}
+      <LivePopups />
+
+      {/* Security hover cards: quote, sparkline, position and actions for any ticker under the pointer */}
+      <HoverCards />
 
       {/* Detail Panel */}
       <DetailPanel
@@ -359,6 +397,12 @@ export function TerminalShell({
         isOpen={alertsPanelOpen}
         onClose={() => setAlertsPanelOpen(false)}
         onViewSection={handleNavigate}
+      />
+
+      {/* Model Info & Methodology */}
+      <ModelInfoPanel
+        isOpen={modelInfoOpen}
+        onClose={() => setModelInfoOpen(false)}
       />
 
       {/* UPGRADE-6: Keyboard Shortcuts Help */}

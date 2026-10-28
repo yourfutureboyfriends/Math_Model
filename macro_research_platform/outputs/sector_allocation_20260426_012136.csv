@@ -1,8 +1,0 @@
-Sector,Signal,Score,Rationale,generated_date,data_source
-Energy,Overweight,0.597,Revenues driven by commodity prices. Inflation and global demand are positives; demand collapse is a key risk.,2026-04-26 01:21:36,macro_regime_model
-Healthcare,Neutral,0.263,Relatively defensive: demand is non-discretionary and less cyclical. Provides stable earnings across most macro environments.,2026-04-26 01:21:36,macro_regime_model
-Utilities,Neutral,-0.05,"Bond-like, defensive sector. Benefits from falling yields. Hurt when rates rise sharply (higher financing costs, unattractive vs bonds).",2026-04-26 01:21:36,macro_regime_model
-Banks,Neutral,-0.332,Benefits from steeper yield curves (higher NIM) and rising rates. Hurt by recession risk and credit deterioration.,2026-04-26 01:21:36,macro_regime_model
-Industrials,Neutral,-0.336,"Driven by manufacturing activity, capex cycles, and trade. PMI and global demand are the key leading indicators.",2026-04-26 01:21:36,macro_regime_model
-Consumer Discretionary,Underweight,-0.726,"Depends on disposable income: employment, real wages, and consumer confidence. Inflation squeezing real wages is the main headwind.",2026-04-26 01:21:36,macro_regime_model
-Technology,Underweight,-0.82,Long-duration growth asset: valued on distant future earnings. Very sensitive to changes in discount rates (yields).,2026-04-26 01:21:36,macro_regime_model

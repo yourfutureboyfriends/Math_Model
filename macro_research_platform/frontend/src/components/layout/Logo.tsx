@@ -1,4 +1,4 @@
-// Logo component — Bridgewater 2×2 regime matrix
+// Logo component — 2×2 growth/inflation regime matrix
 // Updates active regime indicator based on current regime
 
 import { cn } from '@/lib/utils';
@@ -35,7 +35,7 @@ export function Logo({ currentRegime: rawRegime, className }: LogoProps) {
       width="24"
       height="24"
       fill="none"
-      aria-label="Macro OS"
+      aria-label="Macro Terminal"
       className={cn("text-text-secondary", className)}
     >
       {/* Outer square frame */}

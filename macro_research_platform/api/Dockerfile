@@ -16,8 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set working directory
 WORKDIR /app
 
+# Build context is the PROJECT ROOT (see docker-compose.yml): the app imports the
+# `api` and `src` packages, so they must sit under /app as in local development.
 # Copy requirements first for layer caching
-COPY requirements.txt .
+COPY api/requirements.txt requirements.txt
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip \
@@ -54,7 +56,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/api/health || exit 1
 
 # Start command
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--log-level", "info"]
+CMD ["uvicorn", "api.main:socket_app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--log-level", "info"]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Development stage (for local development with hot reload)
@@ -71,4 +73,4 @@ RUN pip install --no-cache-dir ipython ipdb debugpy
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--log-level", "debug"]
+CMD ["uvicorn", "api.main:socket_app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--log-level", "debug"]

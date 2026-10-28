@@ -8,6 +8,7 @@ Section B: International Macro Coverage
 """
 
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
