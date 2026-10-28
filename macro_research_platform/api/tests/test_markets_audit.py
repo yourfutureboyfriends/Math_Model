@@ -66,3 +66,34 @@ def test_lagging_history_is_stitched_to_the_quote(monkeypatch):
     out = toolkit._stitch_quote("7203.T", df)
     assert out.index[-1] == pd.Timestamp("2026-10-27") and out["Close"].iloc[-1] == 3102.0
     assert len(toolkit._stitch_quote("7203.T", out)) == len(out)            # already current: unchanged
+
+
+def test_slow_screens_survive_a_restart_as_a_marked_saved_copy(tmp_path, monkeypatch):
+    import time as _t
+    monkeypatch.setattr(core, "PERSIST_DIR", tmp_path)
+    core._cache.pop("imap:TEST", None)
+    assert core._cached("imap:TEST", 300, lambda: {"rows": [1]}) == {"rows": [1]}     # built and saved
+    core._cache.pop("imap:TEST", None)                                                # "restart"
+    p = core._persist_path("imap:TEST")
+    old = _t.time() - 600
+    import os
+    os.utime(p, (old, old))                                                           # saved 10 min ago, TTL 5 min
+    refreshed = []
+    monkeypatch.setattr(core, "_refresh_later", lambda key, fn: refreshed.append(key))
+    v = core._cached("imap:TEST", 300, lambda: {"rows": [2]})
+    assert v["rows"] == [1] and v["stale"] is True and refreshed == ["imap:TEST"]       # served at once, refreshing
+    core._cache.pop("imap:TEST", None)
+    assert core._persist_path("quote:AAPL") is None                                   # only the slow screens persist
+
+
+def test_crypto_overlay_uses_live_price_and_keeps_the_previous_close(monkeypatch):
+    from api.marketdata import core
+    from api.providers import crypto_live as cl
+    monkeypatch.setattr(cl, "prices", lambda: {"coins": {"BTC": 110.0, "XYZ": 999.0}, "source": "Coinbase (real-time)"})
+    rows = [{"symbol": "BTC-USD", "price": 100.0, "change_1d": 0.0},      # prev close 100 → +10%
+            {"symbol": "XYZ-USD", "price": 1.0, "change_1d": 0.0},        # 999 is a different coin: ignored
+            {"symbol": "SPY", "price": 500.0, "change_1d": 0.01}]
+    assert core.crypto_overlay(rows) == "Coinbase (real-time)"
+    assert rows[0]["price"] == 110.0 and abs(rows[0]["change_1d"] - 0.10) < 1e-9 and rows[0]["live"]
+    assert rows[1]["price"] == 1.0 and rows[2]["price"] == 500.0
+    assert cl.coin_of("BTC-USD") == "BTC" and cl.coin_of("EURUSD=X") is None and cl.coin_of("SPY") is None

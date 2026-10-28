@@ -55,7 +55,7 @@ export function InvestmentMemoSection({ data }: InvestmentMemoSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">◆</span>
+          <span className="section-tag" aria-hidden />
           <h2 className="section-title">Investment Memo</h2>
         </div>
       </div>

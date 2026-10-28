@@ -52,8 +52,8 @@ export function TradeIdeasSection({ data }: Props) {
 
   const getDirectionBorder = (direction: string) => {
     switch (direction?.toUpperCase()) {
-      case 'LONG':  return 'border-l-4 border-l-green';
-      case 'SHORT': return 'border-l-4 border-l-red';
+      case 'LONG':  return 'border-l-2 rounded-md border-l-green';
+      case 'SHORT': return 'border-l-2 rounded-md border-l-red';
       default:      return '';
     }
   };

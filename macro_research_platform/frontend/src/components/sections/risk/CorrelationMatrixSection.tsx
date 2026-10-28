@@ -31,11 +31,13 @@ export function CorrelationMatrixSection() {
       if (!res) {
         // The endpoint is fast in isolation but can queue behind the initial dashboard
         // mount storm; self-heal with one retry before surfacing the timeout state.
-        if (attempt < 1) { setTimeout(() => load(w, attempt + 1), 1500); return; }
+        if (attempt < 6) { setTimeout(() => load(w, attempt + 1), Math.min(30_000, 2000 * 2 ** attempt)); return; }   // server busy or restarting: back off and retry (~2 min)
         setReason('Timed out — data feed slow.'); setData(null);
       } else if (!res.available) { setReason(res.reason || 'Unavailable.'); setData(null); }
       else setData(res);
     } catch (e: any) {
+      if (attempt < 6) { setTimeout(() => load(w, attempt + 1), Math.min(30_000, 2000 * 2 ** attempt)); return; }   // network error / 5xx while the server restarts
+     
       setReason(e?.message || 'Failed to load.'); setData(null);
     } finally { setLoading(false); }
   }, []);

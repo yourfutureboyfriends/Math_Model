@@ -201,7 +201,7 @@ export function StockTimingSection() {
       {data && (
         <div className="space-y-2">
           {/* Verdict */}
-          <div className={cn('p-3 border-l-4 bg-surface-1 border border-border', VERDICT_TONE[v?.code] ?? '')}>
+          <div className={cn('p-3 border-l-2 rounded-md bg-surface-1 border border-border', VERDICT_TONE[v?.code] ?? '')}>
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="text-lg font-mono font-bold">{v?.label}</span>
               <span className="text-xs text-text-secondary">{data.name} · {data.symbol}{data.sector ? ` · ${data.sector}` : ''}</span>

@@ -1619,6 +1619,156 @@ button.ticker-item { background: transparent; border-top: 0; border-bottom: 0; b
 .whatif-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.35); }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
+   REFINEMENT LAYER — one consistent finish over the older primitives: softer geometry (6–10 px radii), quieter
+   hairlines, translucent sticky headers, tinted (not solid) tags, one focus ring, thin scrollbars and calmer
+   uppercase. Colours come from the theme channels, so dark, light and fund brands all inherit it.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --radius-sm: 4px; --radius-md: 6px; --radius-lg: 10px; --radius-pill: 999px;
+  --hairline: rgb(var(--c-border) / 0.7);
+  --hairline-subtle: rgb(var(--c-border) / 0.45);
+  --ring: 0 0 0 2px rgb(var(--c-bloomberg) / 0.45);
+  --elev-1: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.25);
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+:root[data-theme="light"] { --elev-1: 0 1px 2px rgb(16 24 40 / 0.05), 0 1px 1px rgb(16 24 40 / 0.03); }
+
+/* Sections: cards with a hairline, not boxes inside boxes */
+.terminal-section {
+  background: rgb(var(--c-surface-1));
+  border: 1px solid var(--hairline-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-1);
+  overflow: clip;
+  margin-bottom: 12px;
+}
+.section-header {
+  border-left: 0;
+  border-bottom: 1px solid var(--hairline-subtle);
+  background: rgb(var(--c-surface-1) / 0.82);
+  -webkit-backdrop-filter: saturate(140%) blur(10px); backdrop-filter: saturate(140%) blur(10px);
+  padding: 8px 12px;
+  min-height: 38px;
+}
+.section-title { font-size: 11.5px; font-weight: 600; letter-spacing: 0.035em; color: rgb(var(--c-text-primary) / 0.92); }
+.section-meta { font-family: var(--font-ui); color: rgb(var(--c-text-tertiary)); }
+.section-tag {
+  border-radius: var(--radius-sm);
+  background: rgb(var(--c-bloomberg) / 0.13);
+  color: rgb(var(--c-bloomberg));
+  box-shadow: inset 0 0 0 1px rgb(var(--c-bloomberg) / 0.22);
+  padding: 1px 6px; font-weight: 600;
+  display: inline-flex; align-items: center; min-height: 18px;
+}
+.terminal-card { border-color: var(--hairline-subtle); border-radius: var(--radius-lg); box-shadow: var(--elev-1); }
+.terminal-card::before { opacity: 0.55; }
+.terminal-card-label, .terminal-label { letter-spacing: 0.05em; }
+
+/* Inner panels (bg-surface-1 + border inside a section) read as quiet wells */
+.terminal-section :is(.bg-surface-1, .bg-surface-2).border { border-color: var(--hairline-subtle); border-radius: var(--radius-md); }
+.terminal-section .border-border { border-color: var(--hairline-subtle); }
+.terminal-section .border-border-subtle { border-color: rgb(var(--c-border) / 0.35); }
+
+/* Calmer uppercase everywhere: shorter tracking reads as considered, not shouty */
+.uppercase.tracking-wider, .uppercase.tracking-widest { letter-spacing: 0.06em; }
+
+/* Tags and badges: tinted pills */
+.signal-tag, .terminal-badge { border-radius: var(--radius-sm); font-weight: 600; letter-spacing: 0.06em; }
+
+/* Controls */
+.terminal-btn, .icon-btn, .tm-btn { border-radius: var(--radius-md); transition: background-color .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease); }
+.terminal-input { border-radius: var(--radius-md); }
+button:not(.mkt-root button) { -webkit-tap-highlight-color: transparent; }
+:where(button, a, [role=tab], input, select, textarea):focus-visible { outline: none; box-shadow: var(--ring); border-radius: var(--radius-sm); }
+:where(input:not([type=checkbox]):not([type=radio]), select, textarea).border { border-radius: var(--radius-md); transition: border-color .15s, box-shadow .15s; }
+:where(input:not([type=checkbox]):not([type=radio]), select, textarea).border:focus { border-color: rgb(var(--c-bloomberg) / 0.6); box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.14); outline: none; }
+input[type=checkbox], input[type=radio], input[type=range] { accent-color: rgb(var(--c-bloomberg)); }
+/* Segmented controls (role=tablist with bordered buttons) */
+[role=tablist].border { border-radius: var(--radius-md); overflow: hidden; border-color: var(--hairline); }
+[role=tablist].border > [role=tab] { transition: background-color .15s var(--ease), color .15s var(--ease); }
+[role=tablist].border > [role=tab]:not([aria-selected=true]):hover { background: rgb(var(--c-text-primary) / 0.05); color: rgb(var(--c-text-primary)); }
+/* Bordered buttons (the Markets workstation's own, more specific rules still win there) */
+button.border:not([role=tab]) { border-radius: var(--radius-md); }
+
+/* Tables in the research panels */
+.terminal-table thead th { letter-spacing: 0.05em; border-bottom-color: var(--hairline); }
+.terminal-section table tbody tr { transition: background-color .12s var(--ease); }
+.terminal-section table tbody tr:hover { background-color: rgb(var(--c-text-primary) / 0.025); }
+.terminal-section table .border-t.border-border-subtle { border-top-color: rgb(var(--c-border) / 0.35); }
+
+/* Scrollbars: thin and out of the way */
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--c-border-strong) / 0.7) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgb(var(--c-border-strong) / 0.7); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: rgb(var(--c-text-tertiary) / 0.6); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Sidebar navigation (components/layout/Sidebar) */
+.nav-dot { width: 5px; height: 5px; border-radius: 999px; flex-shrink: 0; background: rgb(var(--c-text-tertiary) / 0.45); transition: background-color .15s, transform .15s; }
+.nav-dot.is-key { background: rgb(var(--c-nav) / 0.85); }
+.nav-dot.is-active { background: rgb(var(--c-bloomberg)); transform: scale(1.25); box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.18); }
+
+.section-tag:empty { width: 7px; height: 7px; min-height: 0; padding: 0; border-radius: 999px; background: rgb(var(--c-bloomberg));
+  box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.16); margin: 0 3px; }
+.section-tag svg { width: 12px; height: 12px; }
+/* Segmented control (.seg > .seg-item[aria-selected]) — a raised pill on a recessed track */
+.seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: rgb(var(--c-surface-3) / 0.7);
+  box-shadow: inset 0 0 0 1px rgb(var(--c-border) / 0.6); }
+.seg-item { height: 22px; padding: 0 10px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap;
+  color: rgb(var(--c-text-tertiary)); transition: background-color .15s var(--ease), color .15s var(--ease), box-shadow .15s var(--ease); }
+.seg-item:hover { color: rgb(var(--c-text-primary)); }
+.seg-item[aria-selected=true] { background: rgb(var(--c-surface-1)); color: rgb(var(--c-text-primary));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25), inset 0 0 0 1px rgb(var(--c-border) / 0.8); }
+.seg-item[aria-selected=true]::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 999px; margin-right: 6px;
+  vertical-align: 1px; background: rgb(var(--c-bloomberg)); }
+::selection { background: rgb(var(--c-bloomberg) / 0.28); }
+
+/* ─── Motion: live numbers, streaming markers, scroll reveal, hover lift ─────────── */
+.live-num { border-radius: 4px; transition: color .25s var(--ease); }
+.num-up   { animation: num-up .9s var(--ease); }
+.num-down { animation: num-down .9s var(--ease); }
+@keyframes num-up   { 0% { background: rgb(var(--c-green) / 0.28); color: rgb(var(--c-green)); } 100% { background: transparent; } }
+@keyframes num-down { 0% { background: rgb(var(--c-red) / 0.28);   color: rgb(var(--c-red)); }   100% { background: transparent; } }
+.live-pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px 6px; border-radius: 999px; font-size: 10.5px; font-weight: 600;
+  color: rgb(var(--c-green)); background: rgb(var(--c-green) / 0.12); box-shadow: inset 0 0 0 1px rgb(var(--c-green) / 0.3); align-self: center; }
+.live-pill::before, .tape-live { content: ""; width: 6px; height: 6px; border-radius: 999px; background: rgb(var(--c-green)); animation: live-ping 1.6s ease-out infinite; }
+.tape-live { display: inline-block; width: 5px; height: 5px; margin-right: 4px; vertical-align: 1px; }
+@keyframes live-ping { 0% { box-shadow: 0 0 0 0 rgb(var(--c-green) / 0.55); } 70%, 100% { box-shadow: 0 0 0 6px rgb(var(--c-green) / 0); } }
+.live-dot-tick { display: inline-block; width: 6px; height: 6px; border-radius: 999px; background: rgb(var(--c-green)); animation: live-ping 1.6s ease-out infinite; }
+
+/* Panels rise in as they scroll into view (scroll-driven, no JS; browsers without it just show them) */
+@supports (animation-timeline: view()) {
+  .terminal-section, .mkt-root .mkt-panel {
+    animation: rise-in linear both; animation-timeline: view(); animation-range: entry 0% entry 28%;
+  }
+}
+@keyframes rise-in { from { opacity: 0; transform: translateY(14px) scale(.995); } to { opacity: 1; transform: none; } }
+
+/* Hover lift on stat tiles and cards */
+.mkt-root .grid > div.border:has(> div.uppercase:first-child), .terminal-card {
+  transition: transform .18s var(--ease), box-shadow .18s var(--ease), border-color .18s var(--ease); }
+.mkt-root .grid > div.border:has(> div.uppercase:first-child):hover, .terminal-card:hover {
+  transform: translateY(-1px); box-shadow: 0 6px 18px -8px rgb(0 0 0 / 0.45); border-color: rgb(var(--c-bloomberg) / 0.35); }
+
+/* Folded panels animate open / closed */
+[data-panel-head]::after { transition: transform .2s var(--ease); }
+.terminal-section [data-fold] { animation: none; }
+.terminal-section:not([data-collapsed]) > :not([data-panel-head]) { animation: fold-open .22s var(--ease); }
+@keyframes fold-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* Sliding indicator under the workspace tabs (WorkspaceBar) */
+.ws-indicator { position: absolute; bottom: 0; height: 2px; border-radius: 999px; background: rgb(var(--c-bloomberg));
+  transition: left .28s var(--ease), width .28s var(--ease); box-shadow: 0 0 10px rgb(var(--c-bloomberg) / 0.6); }
+
+@media (prefers-reduced-motion: reduce) {
+  .num-up, .num-down, .live-pill::before, .tape-live, .live-dot-tick, .terminal-section, .mkt-root .mkt-panel,
+  .terminal-section:not([data-collapsed]) > :not([data-panel-head]) { animation: none !important; }
+  .ws-indicator { transition: none; }
+}
+
+@media (prefers-reduced-motion: reduce) { .terminal-section, .nav-dot { transition: none !important; } }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
    PRINT STYLES
    ═══════════════════════════════════════════════════════════════════════════════ */
 

@@ -1,11 +1,14 @@
 // One shared, polled feed of the world-markets overview (/api/v1/mkt/overview) for the screen chrome — the topbar
 // quote strip and the ticker tape both read it, so the server is asked once a minute however many widgets show it.
-// Polling pauses while the tab is hidden and stops when nothing is subscribed.
+// Polling pauses while the tab is hidden and stops when nothing is subscribed. Crypto rows tick live between polls
+// from Coinbase's public stream (lib/cryptoStream).
 import { useSyncExternalStore } from 'react';
+import { coinOf, lastTick, subscribeCoin } from '@/lib/cryptoStream';
 
 export type PulseRow = {
   symbol: string; name: string; price: number | null; date?: string;
   change_1d?: number | null; change_1d_bp?: number | null; is_yield?: boolean; spark?: number[];
+  live?: boolean;                                    // price is a streamed trade, newer than the poll
 };
 export type PulseState = { rows: Record<string, PulseRow>; asOf: string | null; status: 'loading' | 'ok' | 'error' };
 
@@ -22,11 +25,43 @@ async function load(): Promise<void> {
     const j = await r.json();
     const rows: Record<string, PulseRow> = {};
     for (const g of j.groups ?? []) for (const row of g.rows ?? []) rows[row.symbol] = row;
-    state = { rows, asOf: j.as_of ?? null, status: 'ok' };
+    base = rows;
+    state = { rows: withTicks(rows), asOf: j.as_of ?? null, status: 'ok' };
+    streamCrypto();
   } catch {
     state = { ...state, status: 'error' };            // keep the last good quotes on screen
   }
   listeners.forEach((l) => l());
+}
+
+// ── Live crypto between polls ─────────────────────────────────────────────────────────────────────
+let base: Record<string, PulseRow> = {};
+const coinSubs = new Map<string, () => void>();
+
+/** The polled rows with each crypto row's last streamed trade; the day change is re-derived from the poll's
+ *  implied previous close. A tick more than 25% from the polled price is ignored (a different coin's ticker). */
+function withTicks(rows: Record<string, PulseRow>): Record<string, PulseRow> {
+  let out = rows;
+  for (const [sym, r] of Object.entries(rows)) {
+    const coin = coinOf(sym), t = coin ? lastTick(coin) : null;
+    if (!t || !r.price || Math.abs(t.price / r.price - 1) > 0.25) continue;
+    const prev = r.change_1d != null ? r.price / (1 + r.change_1d) : null;
+    if (out === rows) out = { ...rows };
+    out[sym] = { ...r, price: t.price, change_1d: prev ? t.price / prev - 1 : r.change_1d, live: true };
+  }
+  return out;
+}
+
+function streamCrypto() {
+  if (!listeners.size) return;
+  for (const sym of Object.keys(base)) {
+    const coin = coinOf(sym);
+    if (!coin || coinSubs.has(coin)) continue;
+    coinSubs.set(coin, subscribeCoin(coin, () => {
+      state = { ...state, rows: withTicks(base) };
+      listeners.forEach((l) => l());
+    }));
+  }
 }
 
 function subscribe(l: () => void): () => void {
@@ -34,7 +69,10 @@ function subscribe(l: () => void): () => void {
   if (!timer) { load(); timer = setInterval(load, POLL_MS); }
   return () => {
     listeners.delete(l);
-    if (!listeners.size && timer) { clearInterval(timer); timer = null; }
+    if (!listeners.size) {
+      if (timer) { clearInterval(timer); timer = null; }
+      coinSubs.forEach((off) => off()); coinSubs.clear();
+    }
   };
 }
 

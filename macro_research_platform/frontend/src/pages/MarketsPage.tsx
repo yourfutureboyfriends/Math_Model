@@ -35,7 +35,9 @@ import { MoversView, ScreenerView } from '@/components/markets/ScreenerView';
 import { AnrView, BetaView, DcfView, DvdView, ErnView, FundHoldingsView, HdsView, HpView, NotApplicable, OmonView, RvView } from '@/components/markets/SecurityFunctions';
 import { BtmmView, CmdtyView, CompView, CryptoView, EvtsView, GcView, ImapView, NewsView, WcrsView } from '@/components/markets/GlobalFunctions';
 import { AlertsView, JournalView, TeamNotes, WatchlistsView, useAddToWatchlist } from '@/components/markets/MyTools';
-import { ErrorBox, fmtPrice, Loading, TYPE_COLOR } from '@/components/markets/shared';
+import { LiveNumber } from '@/components/ui/LiveNumber';
+import { useLiveQuote } from '@/lib/cryptoStream';
+import { ErrorBox, fmtPrice, Loading, SourceScope, SourcesBar, TYPE_COLOR } from '@/components/markets/shared';
 import { WorldMap } from '@/components/markets/WorldMap';
 import { AiChat, RightRail } from '@/components/markets/RightRail';
 
@@ -95,7 +97,7 @@ function TerminalQuoteHeader({ d, f, symbol, onGo, actions }: { d: any; f: MktFu
         right={<span className="flex items-center gap-4"><span className="hidden xl:inline">{d.exchange} · {d.currency} · {d.delay_minutes ? `delayed ${d.delay_minutes}m` : 'real-time where free'}</span><SoftKeys fn={f.code} symbol={symbol} /></span>} />
       <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 px-2 py-1 text-[13px]">
         <span className="text-text-primary font-semibold uppercase truncate max-w-[28rem]">{d.name}</span>
-        <span className="text-[22px] font-semibold tabular-nums text-text-primary">{fmtPrice(d.price, d.type)}</span>
+        <LiveNumber value={d.price} format={(v) => fmtPrice(v, d.type)} className="text-[22px] font-semibold tabular-nums text-text-primary" />
         {d.change != null && <span className={cn('tabular-nums font-semibold', flat ? 'text-text-secondary' : up ? 'text-green' : 'text-red')}>{flat ? '■' : up ? '▲' : '▼'} {up ? '+' : ''}{fmtPrice(d.change, d.type)}  {d.change_pct != null ? `${up ? '+' : ''}${(d.change_pct * 100).toFixed(2)}%` : ''}</span>}
         <span className="text-text-secondary">{TYPE_LABEL[d.type] ?? d.type}</span>
         <span className={cn('px-1.5 rounded-sm text-[11px] border', state === 'OPEN' ? 'border-green/40 bg-green/10 text-green' : 'border-border text-text-tertiary')}>{state}</span>
@@ -153,11 +155,16 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
   const addToWatch = useAddToWatchlist();
   const [note, setNote] = useState<string | null>(null);
   // while a new symbol loads, don't show the previous security under the new one
-  const d = q.current ? q.data : null;
+  const d = useLiveQuote(q.current ? q.data : null);    // crypto: streamed trades over the polled quote
   const isEquity = d?.type === 'Stock';
   const isFund = d?.type === 'ETF' || d?.type === 'Fund';
   const tabs = SECURITY_FUNCTIONS.filter((f) => !f.equityOnly || isEquity || (f.code === 'HDS' && isFund));
   const f = findFunction(fn)!;
+  // two-level function bar: the group being browsed (defaults to the open function's group)
+  const [browse, setBrowse] = useState<string | null>(null);
+  useEffect(() => setBrowse(null), [fn, symbol]);
+  const groupOf = (code: string) => SECURITY_GROUPS.find((g) => g.codes.includes(code))?.name ?? SECURITY_GROUPS[0].name;
+  const activeGroup = browse ?? groupOf(f.code);
   if (!d && !q.error) return <Loading label={`Loading ${symbol}…`} />;
   if (q.error && !d) return <ErrorBox msg={/HTTP 5\d\d|unavailable|fetch/i.test(q.error) ? `${q.error} The data service may be restarting — reopen the security in a moment.` : `${q.error} Try the command line to search by name.`} />;
   if (!d) return null;
@@ -201,7 +208,8 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
           <h1 className={cn('font-semibold text-text-primary mt-1 truncate', f.code === 'DES' ? 'text-lg' : 'text-2xl')}>{d.name}</h1>
           {f.code !== 'DES' && <>
           <div className="flex items-baseline gap-3 mt-1">
-            <span className="text-4xl font-semibold font-mono tabular-nums text-text-primary">{fmtPrice(d.price, d.type)}</span>
+            <LiveNumber value={d.price} format={(v) => fmtPrice(v, d.type)} className="text-4xl font-semibold font-mono tabular-nums text-text-primary" />
+            {d.streaming && <span className="live-pill" title="Every trade on Coinbase, streamed to this page">Live</span>}
             <span className="text-sm font-mono">{d.currency}</span>
             {d.change != null && <span className={cn('px-2 py-0.5 rounded-md text-sm font-mono font-semibold', d.change >= 0 ? 'bg-green/15 text-green' : 'bg-red/15 text-red')}>
               {d.change >= 0 ? '+' : ''}{fmtPrice(d.change, d.type)} ({d.change_pct != null ? `${d.change_pct >= 0 ? '+' : ''}${(d.change_pct * 100).toFixed(2)}%` : '—'})</span>}
@@ -218,28 +226,58 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
           {note && <span className="text-xs text-green self-center">{note}</span>}
         </div>
       </div>
-      <nav aria-label="Functions" className="flex gap-1 border-b border-border overflow-x-auto [scrollbar-width:thin]">
-        {tabs.map((t) => (
-          <button key={t.code} onClick={() => onGo(t.code, symbol)} title={t.desc}
-            className={cn('px-3 py-2 text-xs -mb-px border-b-2 whitespace-nowrap transition-colors', t.code === f.code ? 'border-bloomberg text-text-primary font-semibold' : 'border-transparent text-text-secondary hover:text-text-primary')}>
-            {t.code === 'DES' ? 'Overview' : t.name}<span className="ml-1.5 font-mono text-[9px] text-text-tertiary">{t.code}</span></button>))}
+      <nav aria-label="Functions" className="border-b border-border">
+        <div className="flex flex-wrap gap-x-1" role="tablist" aria-label="Function groups">
+          {SECURITY_GROUPS.map((g) => {
+            const n = tabs.filter((t) => g.codes.includes(t.code)).length;
+            if (!n) return null;
+            const on = g.name === activeGroup;
+            return (
+              <button key={g.name} role="tab" aria-selected={on} onClick={() => setBrowse(g.name)}
+                className={cn('px-3 py-1.5 text-[11px] uppercase tracking-wider border-b-2 -mb-px transition-colors',
+                  on ? 'border-bloomberg text-text-primary font-semibold' : 'border-transparent text-text-tertiary hover:text-text-primary',
+                  g.codes.includes(f.code) && !on && 'text-bloomberg')}>
+                {g.name}<span className="ml-1 text-[9px] text-text-tertiary normal-case">{n}</span></button>);
+          })}
+        </div>
+        <div className="flex flex-wrap gap-1 py-1.5">
+          {tabs.filter((t) => (SECURITY_GROUPS.find((g) => g.name === activeGroup)?.codes ?? []).includes(t.code)
+                              || (!SECURITY_GROUPS.some((g) => g.codes.includes(t.code)) && activeGroup === SECURITY_GROUPS[0].name)).map((t) => (
+            <button key={t.code} onClick={() => onGo(t.code, symbol)} title={t.desc}
+              className={cn('px-2.5 py-1 text-xs rounded-sm border whitespace-nowrap transition-colors',
+                t.code === f.code ? 'border-bloomberg bg-bloomberg/10 text-text-primary font-semibold' : 'border-border-subtle text-text-secondary hover:text-text-primary hover:border-border')}>
+              {t.code === 'DES' ? 'Overview' : t.name}<span className="ml-1.5 font-mono text-[9px] text-text-tertiary">{t.code}</span></button>))}
+        </div>
       </nav>
       </>}
       <ErrorBoundary sectionName={`${f.code} ${symbol}`} key={`${f.code}:${symbol}`}>
         {f.equityOnly && !isEquity && !(f.code === 'HDS' && isFund) ? <NotApplicable fn={f.code} name={f.name} q={d} onGo={onGo} /> : <>
-        <SecurityBody code={f.code} symbol={symbol} d={d} isFund={isFund} onGo={onGo} />
+        <SourceScope>
+          <SourcesBar className="mb-2" />
+          <SecurityBody code={f.code} symbol={symbol} d={d} isFund={isFund} onGo={onGo} />
+        </SourceScope>
         </>}
       </ErrorBoundary>
     </div>
   );
 }
 
+/** Security functions grouped for the two-level function bar (codes not listed fall into the first group). */
+const SECURITY_GROUPS: { name: string; codes: string[] }[] = [
+  { name: 'Price & trading', codes: ['DES', 'GP', 'HP', 'TECH', 'SEAS', 'BETA', 'FUTU', 'SI'] },
+  { name: 'Fundamentals', codes: ['FA', 'ERN', 'DVD', 'PGEO', 'DDIS', 'CF', 'CACS'] },
+  { name: 'Valuation', codes: ['VAL', 'DCF', 'RV', 'FAC'] },
+  { name: 'Analysts & ownership', codes: ['ANR', 'HDS', 'INSD', 'MGMT', 'SPLC', 'CN'] },
+  { name: 'Options', codes: ['OMON', 'OVDV', 'OSA'] },
+];
+
 /** The body of any market-wide function (used by the main view and by launchpad windows). */
 export function MarketBody({ code, seed, onGo, open, classic, compact = false }: { code: string; seed?: string; onGo: (fn: string, s?: string) => void;
   open: (s: string) => void; classic: boolean; compact?: boolean }) {
   const region = useRegion();
   return (
-    <>
+    <SourceScope>
+    <SourcesBar className="mb-2" />
     {code === 'RMON' && <RegionMonitor onOpen={open} onGo={onGo} />}
     {code === 'CTRY' && <><CountryView iso={seed} onOpen={open} onGo={onGo} /><RelatedOdds terms={countryTerms(seed)} title="Odds on this country" limit={6} className="mt-3" /></>}
     {code === 'WEI' && (classic || compact
@@ -308,7 +346,7 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'ALRT' && <AlertsView seed={seed} />}
     {code === 'JRNL' && <JournalView seed={seed} onOpen={open} />}
     {code === 'AI' && <div className="bg-surface-1 border border-border rounded-md h-[calc(100vh-220px)] min-h-[480px]"><AiChat context={seed} /></div>}
-    </>
+    </SourceScope>
   );
 }
 

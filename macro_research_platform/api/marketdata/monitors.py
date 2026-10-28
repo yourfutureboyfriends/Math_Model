@@ -349,7 +349,15 @@ def crypto(limit: int = 100) -> Dict[str, Any]:
         btc = next((r for r in rows if r["coin"] == "BTC"), None)
         return {"rows": rows, "total_market_cap": total, "btc_dominance": (btc["market_cap"] / total) if btc and total else None,
                 "source": "CoinGecko (free API)"}
-    return _cached(f"crypto:{limit}", 180, fetch)
+    base = _cached(f"crypto:{limit}", 180, fetch)
+    try:                                                     # live exchange prices over CoinGecko's 3-minute snapshot
+        from api.marketdata.core import crypto_overlay
+        rows = [dict(r) for r in base.get("rows", [])]
+        if src := crypto_overlay(rows, change_key="change_24h"):
+            return {**base, "rows": rows, "source": f"{base.get('source')} · prices {src}"}
+    except Exception as e:
+        logger.debug("[crypto] overlay: %s", e)
+    return base
 
 
 # ── CMDTY futures curves ─────────────────────────────────────────────────────

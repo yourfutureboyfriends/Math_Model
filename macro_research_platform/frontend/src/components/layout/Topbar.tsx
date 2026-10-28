@@ -194,7 +194,7 @@ function ThemeToggle() {
   return (
     <button onClick={() => setThemeSetting(next[setting])} aria-label={`Theme: ${label}. Click to change.`}
       title={`Theme: ${label}. Auto = light ${String(DAY_START).padStart(2, '0')}:00–${DAY_END}:00 your time, dark otherwise. Click to cycle Auto → Light → Dark.`}
-      className="h-6 px-1.5 inline-flex items-center gap-1 border border-border text-[10px] font-mono uppercase text-text-tertiary hover:text-text-primary shrink-0">
+      className="h-6 px-1.5 inline-flex items-center gap-1 rounded-md border border-border/70 text-[10.5px] text-text-tertiary hover:text-text-primary hover:bg-text-primary/5 shrink-0">
       <span aria-hidden="true">{theme === 'light' ? '☀' : '☾'}</span>
       <span className="hidden min-[1800px]:inline">{setting === 'auto' ? 'Auto' : setting}</span>
     </button>
@@ -204,12 +204,11 @@ function ThemeToggle() {
 function ModeSwitch() {
   const mode = useHubMode();
   return (
-    <div role="tablist" aria-label="Mode" className="flex border border-border ml-1">
+    <div role="tablist" aria-label="Mode" className="seg ml-1">
       {([['research', 'Research & Trading'], ['markets', 'Markets']] as const).map(([m, label]) => (
         <button key={m} role="tab" aria-selected={mode === m} onClick={() => setHubMode(m)}
           title={m === 'research' ? 'Macro research, signals, risk, Quant Lab and the paper traders' : 'Any stock, ETF, index, FX, future or crypto — workstation, movers, screener'}
-          className={cn('px-2 h-6 text-[10px] font-mono uppercase tracking-wider whitespace-nowrap',
-            mode === m ? 'bg-bloomberg text-bg' : 'text-text-tertiary hover:text-text-primary')}>
+          className="seg-item">
           {label}
         </button>
       ))}

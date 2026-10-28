@@ -68,8 +68,8 @@ export function TimeMachine({ timeline, sixtyForty }: { timeline?: Row[]; sixtyF
   if (!rows.length) {
     return <div className="text-2xs text-text-tertiary">The timeline appears after the model's next full run (a saved result from before this feature has none) — refresh in a minute.</div>;
   }
-  const r = rows[i];
-  const probs = Object.entries(r.probs).sort((a, b) => b[1] - a[1]);
+  const r = rows[Math.min(i, rows.length - 1)];          // a shorter timeline arrives a render before the index resets
+  const probs = Object.entries(r.probs ?? {}).sort((a, b) => b[1] - a[1]);
   const weights = Object.entries(r.weights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).slice(0, 7);
   const maxW = Math.max(0.01, ...weights.map(([, w]) => w));
   const jump = (m: string) => { const k = rows.findIndex((x) => x.month >= m); if (k >= 0) { setPlaying(false); setI(k); } };

@@ -1,6 +1,8 @@
 // Instrument workstation — works for ANY instrument: quote header, interactive chart,
 // profile (company / fund / instrument facts, valuation, analyst targets), financial
 // statements (SEC as-filed for US filers, company reports otherwise) and news + filings.
+import { LiveNumber } from '@/components/ui/LiveNumber';
+import { useLiveQuote } from '@/lib/cryptoStream';
 import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -12,7 +14,8 @@ export function useQuote(symbol: string) {
   return useJSON<any>(`/api/v1/mkt/quote/${encodeURIComponent(symbol)}`, 60_000);
 }
 
-export function QuoteHeader({ d }: { d: any }) {
+export function QuoteHeader({ d: polled }: { d: any }) {
+  const d = useLiveQuote(polled);
   return (
     <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
       <div className="min-w-0">
@@ -25,7 +28,7 @@ export function QuoteHeader({ d }: { d: any }) {
           {d.delay_minutes ? ` · ${d.delay_minutes}-min delayed` : ''}</div>
       </div>
       <div>
-        <div className="text-3xl font-mono text-text-primary tabular-nums leading-none">{fmtPrice(d.price, d.type)}</div>
+        <LiveNumber value={d.price} format={(v) => fmtPrice(v, d.type)} className="block text-3xl font-mono text-text-primary tabular-nums leading-none" />
         <div className="text-sm font-mono mt-1">{d.change == null ? '—' : <span className={d.change >= 0 ? 'text-green' : 'text-red'}>{d.change >= 0 ? '+' : ''}{fmtPrice(d.change, d.type)}</span>} <Chg v={d.change_pct} /></div>
       </div>
       <dl className="grid grid-cols-3 sm:grid-cols-6 gap-x-5 gap-y-1 text-2xs">

@@ -28,10 +28,12 @@ export function GlobalMarketsSection() {
     const timeout = new Promise<null>((r) => setTimeout(() => r(null), 8000));
     try {
       const res = await Promise.race([fetch('/api/global-markets').then((r) => r.json()), timeout]);
-      if (!res) { if (attempt < 1) { setTimeout(() => load(attempt + 1), 1500); return; } setReason('Timed out.'); setData(null); }
+      if (!res) { if (attempt < 6) { setTimeout(() => load(attempt + 1), Math.min(30_000, 2000 * 2 ** attempt)); return; } setReason('Timed out.'); setData(null); }
       else if (res.available === false) { setReason(res.reason || 'Unavailable.'); setData(res.markets ? res : null); }
       else setData(res);
-    } catch (e: any) { setReason(e?.message || 'Failed.'); setData(null); }
+    } catch (e: any) {
+      if (attempt < 6) { setTimeout(() => load(attempt + 1), Math.min(30_000, 2000 * 2 ** attempt)); return; }   // network error / 5xx while the server restarts
+      setReason(e?.message || 'Failed.'); setData(null); }
     finally { setLoading(false); }
   }, []);
 

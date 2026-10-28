@@ -212,7 +212,7 @@ export function PortfolioAnalyticsSection() {
     <div id="book-analytics" className="terminal-section">
       <div className="section-header mb-2">
         <div className="section-header-left">
-          <span className="section-tag">◆</span>
+          <span className="section-tag" aria-hidden />
           <h2 className="section-title">Book analytics</h2>
           <span className="section-meta">actual holdings · vs S&amp;P 500</span>
         </div>

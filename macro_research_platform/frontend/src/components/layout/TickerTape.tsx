@@ -47,7 +47,7 @@ const Quote = memo(function Quote({ r }: { r: PulseRow }) {
     <button type="button" className={cn('tape-quote', flash)} onClick={() => openChart(r.symbol, r.name)}
       data-symbol={r.symbol} aria-label={`${r.name} (${r.symbol}) — open the chart`}>
       <span className="tape-sym">{SHORT[r.symbol] ?? r.symbol}</span>
-      <span className="tape-px">{fmtPulsePrice(r)}</span>
+      <span className="tape-px">{r.live && <span className="tape-live" aria-label="streaming" />}{fmtPulsePrice(r)}</span>
       {c.text && (
         <span className={cn('tape-chg', c.dir > 0 ? 'text-green' : c.dir < 0 ? 'text-red' : 'text-text-tertiary')}>
           {c.dir > 0 ? '▲' : c.dir < 0 ? '▼' : '■'} {c.text}
@@ -77,7 +77,7 @@ export function TickerTape() {
 
   return (
     <div className="tape" aria-label="World markets ticker tape">
-      <div className="tape-label" title={`Yahoo Finance, delayed${asOf ? ` — refreshed ${new Date(asOf).toLocaleTimeString()}` : ''}. Hover to pause, click a quote for its chart.`}>
+      <div className="tape-label" title={`Yahoo Finance, delayed (crypto streams live from Coinbase)${asOf ? ` — refreshed ${new Date(asOf).toLocaleTimeString()}` : ''}. Hover to pause, click a quote for its chart.`}>
         <span className={cn('tape-dot', status === 'error' ? 'bg-red' : status === 'ok' ? 'bg-green' : 'bg-amber')} />
         {status === 'error' && !count ? 'OFFLINE' : 'WORLD'}
       </div>

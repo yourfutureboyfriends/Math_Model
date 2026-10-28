@@ -9,6 +9,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Loader2, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { setHubMode } from '@/lib/hubMode';
 
 const ACTION_TONE: Record<string, string> = {
   EXIT: 'bg-red text-white', TRIM: 'bg-amber text-bg', TIGHTEN: 'border border-amber text-amber',
@@ -19,6 +20,46 @@ const pc = (v?: number | null, d = 1) => (v == null ? '—' : `${v > 0 ? '+' : '
 
 function Badge({ a }: { a?: string }) {
   return <span className={cn('inline-block px-1.5 py-0.5 text-[10px] font-mono font-bold tracking-wider', ACTION_TONE[a ?? ''] ?? 'border border-border text-text-tertiary')}>{a ?? '—'}</span>;
+}
+
+/** Opens one of the stock's Markets screens (DES, GP, FUTU...) in the Markets workstation. */
+function openScreen(code: string, symbol: string) {
+  window.location.hash = `#mkt/${code.toLowerCase()}/${encodeURIComponent(symbol)}`;
+  setHubMode('markets');
+}
+
+/** Book summary: action counts, then market value and unrealised P&L per currency (Futu reports each in its own). */
+function SummaryCards({ rows, summary }: { rows: any[]; summary: any }) {
+  const byCcy: Record<string, { mv: number; pl: number; n: number }> = {};
+  for (const r of rows) {
+    const f = r.futu;
+    if (!f || f.market_value == null) continue;
+    const c = (byCcy[f.currency || '—'] ??= { mv: 0, pl: 0, n: 0 });
+    c.mv += f.market_value; c.pl += f.unrealized_pl ?? 0; c.n += 1;
+  }
+  const acts = (['EXIT', 'TRIM', 'TIGHTEN', 'ADD', 'HOLD'] as const).filter((a) => summary?.[a]);
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+      <div className="p-2 border border-border-subtle">
+        <div className="text-[10px] text-text-tertiary uppercase tracking-wider">Actions</div>
+        <div className="flex flex-wrap gap-1 mt-1">{acts.length ? acts.map((a) => <span key={a} className="flex items-center gap-1"><Badge a={a} /><span className="font-mono text-[11px]">{summary[a]}</span></span>) : <span className="text-[11px] text-text-tertiary">—</span>}</div>
+      </div>
+      {Object.entries(byCcy).map(([ccy, c]) => (
+        <Fragment key={ccy}>
+          <div className="p-2 border border-border-subtle">
+            <div className="text-[10px] text-text-tertiary uppercase tracking-wider">Market value · {ccy}</div>
+            <div className="font-mono text-sm text-text-primary mt-0.5">{px(c.mv)}</div>
+            <div className="text-[10px] text-text-tertiary">{c.n} position{c.n === 1 ? '' : 's'}</div>
+          </div>
+          <div className="p-2 border border-border-subtle">
+            <div className="text-[10px] text-text-tertiary uppercase tracking-wider">Unrealised P&amp;L · {ccy}</div>
+            <div className={cn('font-mono text-sm mt-0.5', c.pl >= 0 ? 'text-green' : 'text-red')}>{c.pl >= 0 ? '+' : ''}{px(c.pl)}</div>
+            <div className="text-[10px] text-text-tertiary">{c.mv - c.pl ? pc(c.pl / (c.mv - c.pl)) : '—'} on cost</div>
+          </div>
+        </Fragment>
+      ))}
+    </div>
+  );
 }
 
 function Signals({ r }: { r: any }) {
@@ -245,6 +286,7 @@ export function PositionManagerSection() {
           {src === 'futu' && book?.source && <div className="text-[10px] text-text-tertiary mb-1">{book.source} · read-only — nothing here can trade. Futu does not report purchase dates, so each is taken as 90 days ago.</div>}
           {bookErr && <div className="text-[11px] text-amber">{bookErr}</div>}
           {!bookBusy && !bookErr && rows.length === 0 && <div className="text-[11px] text-text-tertiary">{src === 'futu' ? 'No positions in the Futu account.' : "No positions in this fund's book yet — check any position below."}</div>}
+          {rows.length > 0 && <SummaryCards rows={rows} summary={book?.summary} />}
           {rows.length > 0 && (
             <table className="w-full text-[11px]">
               <thead><tr className="text-[10px] text-text-tertiary text-left"><th className="font-normal pb-1">Stock</th><th className="font-normal">Action</th>
@@ -254,7 +296,12 @@ export function PositionManagerSection() {
                 {rows.map((r) => (
                   <Fragment key={r.symbol}>
                     <tr onClick={() => setOpen(open === r.symbol ? null : r.symbol)} className="border-t border-border-subtle cursor-pointer">
-                      <td className="py-1 font-mono text-text-primary" data-symbol={r.symbol}>{r.symbol}</td>
+                      <td className="py-1 font-mono text-text-primary whitespace-nowrap" data-symbol={r.symbol}>{r.symbol}
+                        <span className="ml-1.5 inline-flex gap-1 align-middle">
+                          {(src === 'futu' ? ['DES', 'GP', 'FUTU'] : ['DES', 'GP']).map((c) => (
+                            <button key={c} type="button" title={`Open ${r.symbol} ${c} in Markets`} onClick={(e) => { e.stopPropagation(); openScreen(c, r.symbol); }}
+                              className="px-1 text-[9px] border border-border-subtle text-text-tertiary hover:text-bloomberg hover:border-bloomberg">{c}</button>))}
+                        </span></td>
                       <td>{r.available === false ? <span className="text-text-tertiary">{r.reason}</span> : <Badge a={r.action} />}</td>
                       <td className="text-right font-mono">{px(r.price)}</td>
                       <td className="text-right font-mono text-red">{px(r.stop)}</td>

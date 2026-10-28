@@ -23,7 +23,7 @@ const KIND_EDGE: Record<string, string> = { Positioning: 'rgb(var(--c-blue))', '
 export function EdgeBoard({ onGo, onOpen }: { onGo: (fn: string, s?: string) => void; onOpen: (s: string) => void }) {
   const [kind, setKind] = useState('All');
   return (
-    <Frame<any> url="/api/v1/mkt/edge/board" label="Scanning positioning, prediction markets, trade and fund flows…" refresh={1_800_000}>{(d) => {
+    <Frame<any> url="/api/v1/mkt/edge/board" label="Scanning positioning, prediction markets, trade and fund flows — the first build after a restart takes up to 2 min; later loads are instant…" refresh={1_800_000}>{(d) => {
       const kinds = ['All', ...new Set<string>(d.signals.map((s: any) => s.kind))];
       const list = d.signals.filter((s: any) => kind === 'All' || s.kind === kind);
       const max = Math.max(1, ...d.signals.map((s: any) => s.score));
@@ -151,7 +151,7 @@ export function NowView() {
       </Panel>}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         <Panel title="Biggest ports — cargo handled, last 4 weeks">
-          {ports.error && !ports.data ? <ErrorBox msg={ports.error} /> : !ports.data ? <Loading label="Loading port activity (first load ~30 s)…" /> : (
+          {ports.error && !ports.data ? <ErrorBox msg={ports.error} /> : !ports.data ? <Loading label="Loading port activity from IMF PortWatch (first build up to 2 min)…" /> : (
             <table className="w-full text-[11px] font-mono">
               <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Port</th><th className="text-right font-normal">k tonnes/day</th><th className="text-right font-normal">y/y</th><th className="text-right font-normal">m/m</th><th className="text-right font-normal">Calls y/y</th><th className="font-normal">90 days</th></tr></thead>
               <tbody>{ports.data.ports.map((p: any) => (

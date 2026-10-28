@@ -72,7 +72,7 @@ export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnal
         {/* Section Header */}
         <div className="section-header mb-3">
           <div className="section-header-left">
-            <span className="section-tag">◆</span>
+            <span className="section-tag" aria-hidden />
             <h2 className="section-title">Model Portfolio</h2>
           </div>
           <div className="flex items-center gap-2">
@@ -253,7 +253,7 @@ export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnal
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">◆</span>
+          <span className="section-tag" aria-hidden />
           <h2 className="section-title">Portfolio Analyzer</h2>
         </div>
       </div>

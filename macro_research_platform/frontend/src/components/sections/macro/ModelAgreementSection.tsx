@@ -23,7 +23,7 @@ export function ModelAgreementSection({ data }: ModelAgreementSectionProps) {
       <div id="model-agreement" className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
-            <span className="section-tag">◆</span>
+            <span className="section-tag" aria-hidden />
             <h2 className="section-title">Model Agreement</h2>
           </div>
         </div>
@@ -51,7 +51,7 @@ export function ModelAgreementSection({ data }: ModelAgreementSectionProps) {
     <div id="model-agreement" className="terminal-section">
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">◆</span>
+          <span className="section-tag" aria-hidden />
           <h2 className="section-title">Model Agreement</h2>
         </div>
         <ComputedTag section="modelAgreement" />

@@ -433,7 +433,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
       {/* v3.0: Risk Dashboard Banner */}
       {metaStats && (
         <Card className={cn(
-          "bg-surface-1 border-l-4 p-3 mb-4",
+          "bg-surface-1 border-l-2 rounded-md p-3 mb-4",
           metaStats.crowding_alert === 'EXTREME' || metaStats.crowding_alert === 'HIGH' ? 'border-l-red bg-red/10' :
           metaStats.crowding_alert === 'MEDIUM' ? 'border-l-amber bg-amber/10' :
           'border-l-green bg-green/10'

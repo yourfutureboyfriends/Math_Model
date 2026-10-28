@@ -42,7 +42,7 @@ export function FactorDecompositionSection({ data: dataProp }: FactorDecompositi
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">◆</span>
+          <span className="section-tag" aria-hidden />
           <h2 className="section-title">Factor Decomposition</h2>
         </div>
         <div className="flex items-center gap-2">

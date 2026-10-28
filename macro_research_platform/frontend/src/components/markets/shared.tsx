@@ -1,6 +1,6 @@
 // Shared bits for the Markets mode: data hook, number formats that respect the instrument
 // (FX/crypto precision, currency), change colouring, compact market caps.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 /** A readable message from a FastAPI error body (string detail, or a list of validation errors). */
@@ -20,7 +20,68 @@ export function apiError(j: any, status: number): string {
 // not a failure — so ErrorBox can show them as a neutral note instead of a red error.
 const NOT_APPLICABLE = new Set<string>();
 
+// ── Where each screen's numbers come from ──────────────────────────────────────────────────────────────────────────
+// Every useJSON inside a <SourceScope> reports its response's source, delay, date and stale flag; <SourcesBar> lists
+// them for that screen (each launchpad pane has its own scope).
+type SourceMeta = { source: string; delay?: number | null; stale?: boolean; asOf?: string | null; fetchedAt?: number };
+type Registry = { set: (id: number, m: SourceMeta | null) => void; subscribe: (fn: () => void) => () => void; all: () => SourceMeta[] };
+const SourceCtx = createContext<Registry | null>(null);
+let _metaId = 0;
+
+function metaOf(j: any): SourceMeta | null {
+  if (!j || typeof j !== 'object' || Array.isArray(j) || typeof j.source !== 'string' || !j.source) return null;
+  const asOf = j.as_of ?? j.price_date ?? j.computed_at ?? j.last_updated ?? (typeof j.date === 'string' ? j.date : null);
+  return { source: j.source, delay: typeof j.delay_minutes === 'number' ? j.delay_minutes : null, stale: !!j.stale,
+           asOf: typeof asOf === 'string' ? asOf.slice(0, 16).replace('T', ' ') : null };
+}
+
+export function SourceScope({ children }: { children: ReactNode }) {
+  const reg = useMemo<Registry>(() => {
+    const m = new Map<number, SourceMeta>(), subs = new Set<() => void>();
+    return { set: (id, meta) => { if (meta) m.set(id, meta); else m.delete(id); subs.forEach((f) => f()); },
+             subscribe: (fn) => { subs.add(fn); return () => { subs.delete(fn); }; }, all: () => [...m.values()] };
+  }, []);
+  return <SourceCtx.Provider value={reg}>{children}</SourceCtx.Provider>;
+}
+
+/** A thin strip naming the data behind the screen: source, live / delayed, as-of date, refreshing. */
+const ago = (t: number) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.floor(s / 60)}m ago` : `${Math.floor(s / 3600)}h ago`; };
+
+export function SourcesBar({ className }: { className?: string }) {
+  const reg = useContext(SourceCtx);
+  const [, bump] = useState(0);
+  useEffect(() => (reg ? reg.subscribe(() => bump((x) => x + 1)) : undefined), [reg]);
+  useEffect(() => { const t = setInterval(() => bump((x) => x + 1), 1000); return () => clearInterval(t); }, []);   // "updated Ns ago" ticks
+  if (!reg) return null;
+  const seen = new Map<string, SourceMeta>();
+  for (const m of reg.all()) {
+    const k = m.source.split(/[(;—]/)[0].trim();
+    const prev = seen.get(k);
+    seen.set(k, prev ? { ...prev, stale: prev.stale || m.stale, delay: prev.delay ?? m.delay, asOf: prev.asOf ?? m.asOf,
+                         fetchedAt: Math.max(prev.fetchedAt ?? 0, m.fetchedAt ?? 0) } : { ...m, source: k });
+  }
+  const items = [...seen.values()].slice(0, 6);
+  if (!items.length) return null;
+  return (
+    <div className={cn('flex flex-wrap items-center gap-1.5 text-[10px] text-text-tertiary', className)} aria-label="Data sources for this screen">
+      <span className="uppercase tracking-wider">Data:</span>
+      {items.map((m) => (
+        <span key={m.source} className="inline-flex items-center gap-1 px-2 py-0.5 border border-border-subtle rounded-full bg-surface-1/60" title={m.source}>
+          <span className={cn('w-1.5 h-1.5 rounded-full', m.stale ? 'bg-amber' : m.delay === 0 ? 'live-dot-tick' : 'bg-text-tertiary')} />
+          <span className="truncate max-w-[16rem] text-text-secondary">{m.source}</span>
+          {m.stale ? <span className="text-amber">· saved copy, refreshing</span>
+            : m.delay === 0 ? <span className="text-green">· live</span>
+            : m.delay ? <span>· {m.delay}-min delayed</span>
+            : m.asOf ? <span>· as of {m.asOf}</span> : null}
+          {m.fetchedAt ? <span className="tabular-nums text-text-tertiary/80">· updated {ago(m.fetchedAt)}</span> : null}
+        </span>))}
+    </div>
+  );
+}
+
 export function useJSON<T = any>(url: string | null, refreshMs = 0) {
+  const reg = useContext(SourceCtx);
+  const metaId = useRef(++_metaId);
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -48,6 +109,13 @@ export function useJSON<T = any>(url: string | null, refreshMs = 0) {
     const t = refreshMs > 0 ? setInterval(() => { if (document.visibilityState === 'visible') load(false); }, refreshMs) : null;
     return () => { live = false; if (t) clearInterval(t); if (retry) clearTimeout(retry); };
   }, [url, refreshMs]);
+  useEffect(() => {                                           // report this response's provenance to the screen's scope
+    if (!reg) return;
+    const id = metaId.current;
+    const m = metaOf(data);
+    reg.set(id, m ? { ...m, fetchedAt: Date.now() } : null);
+    return () => reg.set(id, null);
+  }, [reg, data]);
   // `current` is false while `data` still belongs to a previous url (e.g. the last symbol)
   return { data, error, loading, current: data != null && dataUrl === url };
 }

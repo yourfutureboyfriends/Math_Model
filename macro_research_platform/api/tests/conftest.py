@@ -63,6 +63,11 @@ def _isolated_dashboard_snapshot(tmp_path_factory):
     mp.setattr(dfr, "_FRESHNESS_SNAPSHOT", tmp_path_factory.mktemp("fresh_snapshot") / "freshness.json")
     from api.model import engine as me
     mp.setattr(me, "_SNAPSHOT_DIR", tmp_path_factory.mktemp("model_snapshot"))
+    from api.marketdata import core as mcore                    # screens' saved copies (survive restarts)
+    mp.setattr(mcore, "PERSIST_DIR", tmp_path_factory.mktemp("screen_cache"))
+    from api.providers import crypto_live as cl                 # no live exchange prices over mocked quotes
+    mp.setattr(cl, "price", lambda coin: {})
+    mp.setattr(cl, "prices", lambda: {"coins": {}, "source": None})
     yield
     mp.undo()
 

@@ -29,12 +29,29 @@ export function FutuView({ symbol }: { symbol: string }) {
 
   const b = book.data, t = ticks.data, f = flow.data;
   const maxVol = b ? Math.max(1, ...b.bids.map((x: any) => x.volume), ...b.asks.map((x: any) => x.volume)) : 1;
+  // Spread at the touch, and order-book imbalance (bid − ask volume) / (bid + ask volume) over the levels shown:
+  // +100% is all bids (buying pressure), −100% all asks.
+  const bb = b?.bids?.[0]?.price, ba = b?.asks?.[0]?.price;
+  const spread = bb && ba ? ba - bb : null, mid = bb && ba ? (ba + bb) / 2 : null;
+  const sum = (xs: any[], n: number) => xs.slice(0, n).reduce((a: number, x: any) => a + (x.volume || 0), 0);
+  const imb = (n: number) => { const bv = sum(b?.bids ?? [], n), av = sum(b?.asks ?? [], n); return bv + av ? (bv - av) / (bv + av) : null; };
+  const imb1 = b ? imb(1) : null, imbAll = b ? imb(99) : null;
   return (
     <div className="space-y-3">
       <div className="text-[10px] text-text-tertiary">Futu OpenAPI via your FutuOpenD · entitlements: {Object.entries(st.data?.entitlements ?? {}).filter(([k]) => k.endsWith('qot_right')).map(([k, v]) => `${k.replace('_qot_right', '').toUpperCase()} ${v}`).join(' · ') || '—'}</div>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
         <Panel title="Order book (live)">
-          {book.error ? <ErrorBox msg={book.error} /> : !b ? <Loading /> : (
+          {book.error ? <ErrorBox msg={book.error} /> : !b ? <Loading /> : (<>
+            <div className="grid grid-cols-3 gap-2 mb-2 text-[10px]">
+              <div><div className="text-text-tertiary">Spread</div><div className="font-mono text-[12px] text-text-primary">{spread != null ? px(spread) : '—'}</div>
+                <div className="text-text-tertiary font-mono">{spread != null && mid ? `${(spread / mid * 1e4).toFixed(1)} bp` : ''}</div></div>
+              <div><div className="text-text-tertiary">Imbalance (touch)</div><div className={cn('font-mono text-[12px]', (imb1 ?? 0) >= 0 ? 'text-green' : 'text-red')}>{imb1 != null ? pc(imb1, 0) : '—'}</div></div>
+              {Math.max(b.bids.length, b.asks.length) > 1
+                ? <div><div className="text-text-tertiary">Imbalance ({Math.max(b.bids.length, b.asks.length)} levels)</div><div className={cn('font-mono text-[12px]', (imbAll ?? 0) >= 0 ? 'text-green' : 'text-red')}>{imbAll != null ? pc(imbAll, 0) : '—'}</div></div>
+                : <div className="text-text-tertiary self-center">One level on this entitlement (HK LV1); LV2 shows ten.</div>}
+            </div>
+            {imbAll != null && <div className="flex h-1.5 mb-2 gap-[2px]" title="Bid volume vs ask volume across the levels shown">
+              <span className="bg-green/70 rounded-l" style={{ width: `${(1 + imbAll) * 50}%` }} /><span className="bg-red/70 rounded-r flex-1" /></div>}
             <table className="w-full text-[11px] font-mono tabular-nums">
               <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Bid vol</th><th className="text-right font-normal">Bid</th><th className="text-left font-normal pl-2">Ask</th><th className="text-right font-normal">Ask vol</th></tr></thead>
               <tbody>{Array.from({ length: Math.max(b.bids.length, b.asks.length) }).map((_, i) => {
@@ -47,7 +64,7 @@ export function FutuView({ symbol }: { symbol: string }) {
                     <td className="relative text-right">{ak && <span className="absolute inset-y-0 left-0 bg-red/15" style={{ width: `${(ak.volume / maxVol) * 100}%` }} />}<span className="relative">{ak ? fmtBig(ak.volume) : ''}</span></td>
                   </tr>);
               })}</tbody>
-            </table>)}
+            </table></>)}
         </Panel>
         <Panel title={`Trades — ${t?.buy_share != null ? `${pc(t.buy_share, 0)} buyer-initiated` : 'tick by tick'}`}>
           {ticks.error ? <ErrorBox msg={ticks.error} /> : !t ? <Loading /> : (

@@ -171,7 +171,7 @@ export function MorningBriefSection() {
   return (
     <section id="morning-brief" className="terminal-section">
       {/* Bloomberg orange left border - editorial lead */}
-      <div className="p-4 border-l-4 border-amber bg-surface-2">
+      <div className="p-4 border-l-2 rounded-md border-amber bg-surface-2">
         {/* Header */}
         <div data-panel-header="" className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">

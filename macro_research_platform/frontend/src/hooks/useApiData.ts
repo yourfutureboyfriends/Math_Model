@@ -66,15 +66,26 @@ export function useApiData<T>(
       }
     };
 
+    // Retries: a request that fails while the server is busy or restarting (timeout, network error, 5xx) backs off
+    // 2 → 4 → 8 → 16 → 30 s, then keeps trying every 30 s in the background until it lands — so a panel heals itself
+    // once the backend is back instead of staying "unavailable". A 4xx is final (it won't fix itself).
+    let healer: ReturnType<typeof setInterval> | null = null;
+    const final = () => /^HTTP 4\d\d/.test(lastError.message);
     const run = async () => {
       setLoading(true);
       setError(null);
-      if (await attempt()) return;                    // succeeded first try
+      for (let k = 0; k < 6; k++) {
+        if (await attempt()) return;
+        if (cancelled || final()) break;
+        await new Promise((r) => setTimeout(r, Math.min(30_000, 2000 * 2 ** k)));
+        if (cancelled) return;
+      }
       if (cancelled) return;
-      await new Promise((r) => setTimeout(r, 1500));  // one self-heal retry (matches panel pattern)
-      if (cancelled) return;
-      if (await attempt()) return;
-      if (!cancelled) { setError(lastError); setLoading(false); }
+      setError(lastError); setLoading(false);
+      if (!final()) healer = setInterval(async () => {
+        if (document.visibilityState !== 'visible') return;
+        if (await attempt()) { setError(null); if (healer) clearInterval(healer); healer = null; }
+      }, 30_000);
     };
 
     run();
@@ -84,7 +95,7 @@ export function useApiData<T>(
       ? setInterval(() => { if (document.visibilityState === 'visible') void attempt(); }, refreshMs)
       : null;
 
-    return () => { cancelled = true; inflight?.abort(); if (poll) clearInterval(poll); };   // stop the request, not just ignore it
+    return () => { cancelled = true; inflight?.abort(); if (poll) clearInterval(poll); if (healer) clearInterval(healer); };   // stop the request, not just ignore it
   }, [endpoint, refetchTrigger, depKey, refreshMs]);
 
   const refetch = () => {

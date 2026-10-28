@@ -290,7 +290,7 @@ export function RegimePlaybookSection({ data, currentRegime }: Props) {
       </div>
 
       {/* Regime Summary */}
-      <div className="mb-4 p-4 border-l-4 border-bloomberg bg-surface-1">
+      <div className="mb-4 p-4 border-l-2 rounded-md border-bloomberg bg-surface-1">
         <p className="text-sm text-text-secondary">{playbook.summary}</p>
       </div>
 

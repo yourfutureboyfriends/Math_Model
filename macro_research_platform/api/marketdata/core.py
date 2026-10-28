@@ -19,6 +19,7 @@ import logging
 import math
 import threading
 import time
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -77,9 +78,53 @@ def _fill(key: str, fn: Callable[[], Any]) -> Any:
         finally:
             with _lock:
                 _inflight.pop(key, None)
+        _disk_save(key, val)
         with _lock:
             _cache[key] = (time.time(), val)
         return val
+
+
+# Screens that take 25 s – 2 min to build cold (hundreds of downloads, slow public APIs) keep their last good result on
+# disk: after a restart the saved copy is served at once — marked stale, so the screen says "saved copy, refreshing" —
+# while a fresh one builds in the background. Kept up to PERSIST_MAX old.
+PERSIST_PREFIXES = ("imap:", "ins:breadth", "ins:impm:", "ins:uoa", "ins:risk", "edge:", "flow:etf", "bw:", "wcrs:", "overview")
+PERSIST_DIR = Path(__file__).resolve().parents[2] / "data" / "processed" / "screen_cache"
+PERSIST_MAX = 3 * 86400
+
+
+def _persist_path(key: str) -> Optional[Path]:
+    if not key.startswith(PERSIST_PREFIXES):
+        return None
+    import hashlib
+    return PERSIST_DIR / (hashlib.sha1(key.encode()).hexdigest() + ".json")
+
+
+def _disk_load(key: str):
+    p = _persist_path(key)
+    if not p:
+        return None
+    try:
+        age = time.time() - p.stat().st_mtime
+        if age > PERSIST_MAX:
+            return None
+        import json
+        return (p.stat().st_mtime, json.loads(p.read_text()))
+    except Exception:
+        return None
+
+
+def _disk_save(key: str, val: Any) -> None:
+    p = _persist_path(key)
+    if not p or not isinstance(val, (dict, list)):
+        return
+    try:
+        import json
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(val, default=str))
+        tmp.replace(p)                                    # atomic: a reader never sees half a file
+    except Exception as e:
+        logger.debug("[cache] could not save %s: %s", key, e)
 
 
 def _cached(key: str, ttl: float, fn: Callable[[], Any]) -> Any:
@@ -87,6 +132,15 @@ def _cached(key: str, ttl: float, fn: Callable[[], Any]) -> Any:
     the same data) wait for a single upstream fetch instead of each calling the provider."""
     with _lock:
         hit = _cache.get(key)
+    if hit is None and (disk := _disk_load(key)) is not None:
+        with _lock:                                       # first use since a restart: the saved copy
+            _cache.setdefault(key, disk)
+            hit = _cache[key]
+        if time.time() - hit[0] >= ttl:
+            _refresh_later(key, fn)
+            v = hit[1]
+            return {**v, "stale": True, "stale_age_s": int(time.time() - hit[0])} if isinstance(v, dict) else v
+    with _lock:
         if hit and time.time() - hit[0] < ttl:
             return hit[1]
         swr = bool(hit) and ttl >= SWR_MIN_TTL and time.time() - hit[0] < SWR_FACTOR * ttl
@@ -117,6 +171,7 @@ def _cached(key: str, ttl: float, fn: Callable[[], Any]) -> Any:
         finally:
             with _lock:
                 _inflight.pop(key, None)
+        _disk_save(key, val)
         with _lock:
             _cache[key] = (time.time(), val)
             if len(_cache) > 2000:                   # bound memory
@@ -461,6 +516,8 @@ def _realtime(s: str, i: Dict[str, Any]) -> Dict[str, Any]:
     connections when they are running — Futu for Hong Kong (LV1 real-time), IBKR TWS where the account's
     market-data subscription is real-time. Never a delayed price in place of Yahoo's."""
     t = (i.get("quoteType") or "").upper()
+    if t == "CRYPTOCURRENCY":
+        return _crypto_realtime(s, i)
     if t not in ("EQUITY", "ETF"):
         return {}
     if (i.get("currency") or "USD") != "USD" or "." in s:
@@ -471,6 +528,49 @@ def _realtime(s: str, i: Dict[str, Any]) -> Dict[str, Any]:
     return {"price": fh["c"], "change": fh.get("d"), "change_pct": (fh.get("dp") or 0) / 100 if fh.get("dp") is not None else None,
             "day_high": fh.get("h") or None, "day_low": fh.get("l") or None, "open": fh.get("o") or None, "previous_close": fh.get("pc") or None,
             "quote_time": fh.get("t"), "delay_minutes": 0, "source": "Finnhub (real-time) · fundamentals Yahoo Finance"}
+
+
+def _crypto_realtime(s: str, i: Dict[str, Any]) -> Dict[str, Any]:
+    """Live crypto price from Coinbase / Binance's free public APIs; the change stays against Yahoo's previous close."""
+    from api.providers import crypto_live as cl
+    coin = cl.coin_of(s)
+    ref = _f(i.get("regularMarketPrice"))
+    q = cl.price(coin) if coin else {}
+    if not q or not cl.plausible(q.get("price"), ref):
+        return {}
+    p, prev = q["price"], _f(i.get("regularMarketPreviousClose")) or _f(i.get("previousClose"))
+    out = {"price": p, "delay_minutes": 0, "quote_time": q.get("time"), "source": f"{q['source']} · statistics Yahoo Finance"}
+    if q.get("bid") and q.get("ask") and q["bid"] <= q["ask"]:
+        out |= {"bid": q["bid"], "ask": q["ask"]}
+    if prev:
+        out |= {"change": p - prev, "change_pct": p / prev - 1}
+    hi, lo = _f(i.get("regularMarketDayHigh")), _f(i.get("regularMarketDayLow"))
+    if hi and p > hi:
+        out["day_high"] = p
+    if lo and p < lo:
+        out["day_low"] = p
+    return out
+
+
+def crypto_overlay(rows: List[Dict[str, Any]], price_key: str = "price", change_key: Optional[str] = "change_1d") -> Optional[str]:
+    """Replace the price of every -USD row with the live exchange price (one request for all), re-deriving the 1-day
+    change from the implied previous close. Returns the live source's name when any row changed."""
+    from api.providers import crypto_live as cl
+    if not any(cl.coin_of(str(r.get("symbol") or "")) for r in rows):
+        return None
+    live = cl.prices()
+    used = False
+    for r in rows:
+        coin = cl.coin_of(str(r.get("symbol") or ""))
+        p, old = (live["coins"].get(coin) if coin else None), r.get(price_key)
+        if not cl.plausible(p, old):
+            continue
+        if change_key and r.get(change_key) is not None and old:
+            prev = old / (1 + r[change_key])
+            r[change_key] = p / prev - 1
+        r[price_key], r["live"] = p, True
+        used = True
+    return live["source"] if used else None
 
 
 def _local_realtime(s: str) -> Dict[str, Any]:
@@ -694,7 +794,15 @@ def overview() -> Dict[str, Any]:
             groups.append({"group": g, "rows": rows,
                            "is_yield": g == "Rates & volatility"})
         return {"groups": groups, "as_of": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "source": "Yahoo Finance"}
-    return _cached("overview", 120, fetch)
+    base = _cached("overview", 120, fetch)
+    try:                                                     # live crypto on top of the cached board, without mutating it
+        groups = [{**g, "rows": [dict(r) for r in g["rows"]]} for g in base.get("groups", [])]
+        src = crypto_overlay([r for g in groups for r in g["rows"]])
+        if src:
+            return {**base, "groups": groups, "source": f"{base.get('source', 'Yahoo Finance')} · crypto {src}"}
+    except Exception as e:
+        logger.debug("[overview] crypto overlay: %s", e)
+    return base
 
 
 # ── Profile ──────────────────────────────────────────────────────────────────

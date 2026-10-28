@@ -39,7 +39,7 @@ export function CorrelationHeatmap({ labels, matrix, onCellClick, selected }: Co
   if (!labels.length || !matrix.length) {
     return <div className="text-2xs text-text-tertiary p-3">No correlation data.</div>;
   }
-  const cols = `56px repeat(${labels.length}, minmax(30px, 1fr))`;
+  const cols = `76px repeat(${labels.length}, minmax(30px, 1fr))`;
 
   return (
     <div className="overflow-x-auto">
@@ -48,13 +48,13 @@ export function CorrelationHeatmap({ labels, matrix, onCellClick, selected }: Co
         <div className="grid gap-px" style={{ gridTemplateColumns: cols }}>
           <div />
           {labels.map((l) => (
-            <div key={l} className="text-2xs font-mono text-text-tertiary text-center py-1 uppercase tracking-wider">{l}</div>
+            <div key={l} title={l} className="min-w-0 truncate px-0.5 text-[9.5px] font-medium text-text-tertiary text-center py-1">{l}</div>
           ))}
         </div>
         {/* Matrix rows */}
         {matrix.map((row, i) => (
           <div key={labels[i]} className="grid gap-px" style={{ gridTemplateColumns: cols }}>
-            <div className="text-2xs font-mono text-text-tertiary flex items-center justify-end pr-2 uppercase tracking-wider">{labels[i]}</div>
+            <div title={labels[i]} className="min-w-0 truncate text-[10px] font-medium text-text-tertiary text-right self-center pr-2">{labels[i]}</div>
             {row.map((v, j) => {
               const isSel = selected && ((selected.a === labels[i] && selected.b === labels[j]) || (selected.a === labels[j] && selected.b === labels[i]));
               const diagonal = i === j;

@@ -33,7 +33,7 @@ export function DataToWatchSection({ data }: DataToWatchSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">◆</span>
+          <span className="section-tag" aria-hidden />
           <h2 className="section-title">Upcoming Releases</h2>
         </div>
       </div>

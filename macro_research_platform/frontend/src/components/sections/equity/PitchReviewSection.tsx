@@ -83,7 +83,7 @@ export function PitchReviewSection() {
     <section id="pitch-review" className="terminal-section">
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">◆</span>
+          <span className="section-tag" aria-hidden />
           <h2 className="section-title">Pitch Review</h2>
           <span className="text-2xs text-text-tertiary ml-2">analyst pitches for the PMC · versioned · four-eyes decisions · kill criteria</span>
         </div>

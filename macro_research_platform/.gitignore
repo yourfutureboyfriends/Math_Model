@@ -186,3 +186,6 @@ data/processed/massive/
 
 # FMP response cache and daily-usage counter
 data/processed/fmp/
+
+# Last good results of slow screens (served after a restart while refreshing)
+data/processed/screen_cache/

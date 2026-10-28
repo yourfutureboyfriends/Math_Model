@@ -196,7 +196,7 @@ export function ImapView({ onOpen }: { onOpen: (s: string) => void }) {
         <span className="text-2xs text-text-tertiary">Tile size = market value · colour = move (full colour at ±3%) · click to open</span>
       </div>
       <div ref={box} className="w-full" />
-      {loading && !data ? <Loading label="Loading heatmap…" /> : error ? <ErrorBox msg={error} /> : data && (
+      {loading && !data ? <Loading label="Loading heatmap (first build after a restart ~25 s)…" /> : error ? <ErrorBox msg={error} /> : data && (
         <div className="bg-surface-1 border border-border p-1">
           <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label={`${country} market heatmap`}>
             {tiles.map((t: any, i: number) => t.kind === 'sector' ? (

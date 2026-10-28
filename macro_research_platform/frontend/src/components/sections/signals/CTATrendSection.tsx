@@ -89,7 +89,7 @@ export function CTATrendSection({ data: dataProp }: CTATrendSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">◆</span>
+          <span className="section-tag" aria-hidden />
           <h2 className="section-title">Trend-Following Signals</h2>
           <span className={`section-meta ${ctaSignal === 'BULLISH' ? 'text-green' : ctaSignal === 'BEARISH' ? 'text-red' : 'text-text-secondary'}`}>
             {ctaSignal}

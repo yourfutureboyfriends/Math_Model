@@ -195,7 +195,13 @@ def quotes(symbols: List[str]) -> List[Dict[str, Any]]:
                         "change_1m": float(c.iloc[-1] / c.iloc[0] - 1) if len(c) > 1 else None,
                         "spark": [round(float(x), 6) for x in c]})
         return out
-    return _cached(f"quotes:{','.join(syms)}", 60, fetch)
+    out = [dict(r) for r in _cached(f"quotes:{','.join(syms)}", 60, fetch)]
+    try:
+        from api.marketdata.core import crypto_overlay
+        crypto_overlay(out)
+    except Exception:
+        pass
+    return out
 
 
 # ── Alerts ───────────────────────────────────────────────────────────────────

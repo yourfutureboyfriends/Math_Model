@@ -66,21 +66,18 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
         <button
           onClick={() => onNavigate?.(item.id)}
           className={cn(
-            'flex-1 h-7 flex items-center transition-all duration-120 min-w-0',
-            collapsed ? 'justify-center px-0' : 'px-4',
+            'flex-1 h-7 flex items-center transition-colors duration-150 min-w-0 rounded-md',
+            collapsed ? 'justify-center px-0 mx-1' : 'px-3 mx-2',
             isActive
-              ? 'bg-bloomberg-muted text-bloomberg border-l-2 border-bloomberg'
+              ? 'bg-bloomberg/10 text-text-primary'
               : item.highlight
-                ? 'text-nav hover:bg-nav/10 hover:text-nav border-l-2 border-transparent hover:border-nav'
-                : 'text-text-secondary hover:bg-surface-3 hover:text-text-primary'
+                ? 'text-text-primary/90 hover:bg-text-primary/5'
+                : 'text-text-secondary hover:bg-text-primary/5 hover:text-text-primary'
           )}
         >
-          <span className={cn('font-mono text-xs',
-            isActive ? 'text-bloomberg' : item.highlight ? 'text-nav' : 'text-text-secondary')}>
-            {item.highlight ? '◆' : '·'}
-          </span>
+          <span aria-hidden className={cn('nav-dot', item.highlight && 'is-key', isActive && 'is-active')} />
           {!collapsed && (
-            <span className={cn('ml-2 text-xs truncate', item.highlight && !isActive && 'font-medium')}>
+            <span className={cn('ml-2.5 text-xs truncate', (item.highlight || isActive) && 'font-medium')}>
               {panelLabel(item.id, item.label)}
             </span>
           )}
@@ -133,36 +130,36 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
         {/* Your desk — role-tailored entry points */}
         <div className="mb-1">
           {!collapsed && (
-            <div className="px-4 py-1.5 text-2xs text-bloomberg font-medium tracking-wider flex items-center gap-1">
-              MY DESK
+            <div className="px-5 pt-2 pb-1.5 text-2xs uppercase text-text-tertiary font-semibold tracking-[0.08em] flex items-center gap-1">
+              My desk
               <button onClick={() => setFocusMode(!focus)}
                 title={focus ? 'Showing only your panels — click to show all' : 'Show only the panels for your role'}
-                className={`ml-2 px-1 border text-2xs font-mono ${focus ? 'border-bloomberg text-bloomberg' : 'border-border-subtle text-text-tertiary hover:text-text-primary'}`}>
-                {focus ? 'FOCUS ON' : 'FOCUS'}
+                className={`ml-2 px-1.5 rounded-full border text-[9.5px] normal-case tracking-normal font-medium transition-colors ${focus ? 'border-bloomberg/50 bg-bloomberg/10 text-bloomberg' : 'border-border-subtle text-text-tertiary hover:text-text-primary'}`}>
+                {focus ? 'Focus on' : 'Focus'}
               </button>
               {deskQueue > 0 && (
-                <span className="ml-auto px-1 text-2xs font-mono bg-red text-bg rounded-sm" title="High-priority items in your queue">
+                <span className="ml-auto px-1.5 text-2xs font-mono bg-red/15 text-red rounded-full" title="High-priority items in your queue">
                   {deskQueue}
                 </span>
               )}
             </div>
           )}
           <div className="space-y-px">{deskItems.map((i) => renderNavItem({ ...i }))}</div>
-          <div className="mx-4 my-1.5 border-t border-border-subtle" />
+          <div className="mx-5 my-2 border-t border-border-subtle/70" />
         </div>
 
         {/* Pinned panels — user's most-watched, one-click access */}
         {pinnedItems.length > 0 && (
           <div className="mb-1">
             {!collapsed && (
-              <div className="px-4 py-1.5 text-2xs text-amber font-medium tracking-wider flex items-center gap-1">
-                <Star className="w-3 h-3" fill="currentColor" /> PINNED
+              <div className="px-5 pt-2 pb-1.5 text-2xs uppercase text-text-tertiary font-semibold tracking-[0.08em] flex items-center gap-1">
+                <Star className="w-3 h-3 text-amber" fill="currentColor" /> Pinned
               </div>
             )}
             <div className="space-y-px">
               {pinnedItems.map(renderNavItem)}
             </div>
-            <div className="mx-4 my-1.5 border-t border-border-subtle" />
+            <div className="mx-5 my-2 border-t border-border-subtle/70" />
           </div>
         )}
 
@@ -171,7 +168,7 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
             {!collapsed && (
               <button onClick={() => { setWorkspace(section.title); window.scrollTo({ top: 0 }); }}
                 title={`Show only ${section.title.toLowerCase()} panels`}
-                className={cn('w-full text-left px-4 py-1.5 text-2xs font-medium tracking-wider transition-colors',
+                className={cn('w-full text-left px-5 pt-3 pb-1.5 text-2xs uppercase font-semibold tracking-[0.08em] transition-colors',
                   workspace === section.title ? 'text-bloomberg' : 'text-text-tertiary hover:text-text-primary')}>
                 {section.title}
               </button>

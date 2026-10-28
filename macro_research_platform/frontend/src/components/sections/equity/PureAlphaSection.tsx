@@ -56,7 +56,7 @@ export function PureAlphaSection({ data: dataProp }: PureAlphaSectionProps) {
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">◆</span>
+          <span className="section-tag" aria-hidden />
           <h2 className="section-title">Relative Momentum</h2>
           <span className="section-meta">{data.regime.toUpperCase()}</span>
         </div>

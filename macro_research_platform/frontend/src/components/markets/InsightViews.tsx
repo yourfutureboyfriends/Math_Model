@@ -95,7 +95,7 @@ export function VolView({ onOpen }: { onOpen: (s: string) => void }) {
 // ── BRDT ────────────────────────────────────────────────────────────────────
 export function BreadthView() {
   return (
-    <Frame<any> url="/api/v1/mkt/ins/breadth" label="Computing S&P 500 breadth (first load ~20 s)…">{(d) => {
+    <Frame<any> url="/api/v1/mkt/ins/breadth" label="Computing S&P 500 breadth — the first build after a restart takes up to 2 min (instant once the Massive price store is complete)…">{(d) => {
       const l = d.latest;
       return (
         <div className="space-y-3">

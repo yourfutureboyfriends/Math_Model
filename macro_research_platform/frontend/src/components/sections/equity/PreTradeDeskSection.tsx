@@ -67,7 +67,7 @@ export function PreTradeDeskSection() {
     <section id="pretrade-desk" className="terminal-section">
       <div className="section-header mb-3">
         <div className="section-header-left">
-          <span className="section-tag">◆</span>
+          <span className="section-tag" aria-hidden />
           <h2 className="section-title">Pre-Trade Desk</h2>
           <span className="text-2xs text-text-tertiary ml-2">feasibility of implementing an approved order — decision support, no orders placed</span>
         </div>
