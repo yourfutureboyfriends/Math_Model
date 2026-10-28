@@ -93,7 +93,20 @@ function installFetchWrapper() {
     if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${currentToken}`);
     const fund = currentFund();                       // which fund's book (several funds, each kept apart)
     if (fund !== 'main' && !headers.has('X-Fund')) headers.set('X-Fund', fund);
-    const res = await original(input, { ...init, headers });
+    // Reads ride out a blip (backend restarting, a dropped connection, a gateway 502–504): a GET is retried after
+    // 1 s, 3 s and 7 s before the caller sees the failure. Writes are never retried; a cancelled request isn't either.
+    const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    let res: Response | null = null;
+    for (let k = 0; ; k++) {
+      try {
+        res = await original(input, { ...init, headers });
+        if (method !== 'GET' || k >= 3 || ![502, 503, 504].includes(res.status)) break;
+      } catch (e) {
+        if (method !== 'GET' || k >= 3 || init?.signal?.aborted || (e instanceof DOMException && e.name === 'AbortError')) throw e;
+      }
+      await new Promise((r) => setTimeout(r, [1000, 3000, 7000][k]));
+      if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    }
     if (res.status === 401 && !url.includes('/api/auth/login') && onUnauthorized) onUnauthorized();
     if (res.status === 403 && (onPasswordChangeRequired || onMfaEnrollmentRequired)) {
       res.clone().json().then((b) => {
@@ -105,6 +118,10 @@ function installFetchWrapper() {
   };
 }
 
+// Installed when the module loads, not in an effect: React runs children's effects before a parent's, so panels'
+// first requests would otherwise go out without the token (401) — the fund's logo and brand were lost that way.
+installFetchWrapper();
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [auth, setAuth] = useState<AuthState>(() => {
     const s = loadSession();
@@ -112,7 +129,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return s;
   });
 
-  useEffect(() => { installFetchWrapper(); }, []);
 
   const endSession = useCallback(() => {
     currentToken = null;

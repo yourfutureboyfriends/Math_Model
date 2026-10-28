@@ -72,7 +72,7 @@ export function DataHealthIndicator(): React.ReactElement {
         const j = await r.json();
         if (!cancelled) { setData(j); setErrored(false); }
       } catch {
-        if (!cancelled) setErrored(true);
+        if (!cancelled) { setErrored(true); setTimeout(() => { if (!cancelled) load(); }, 10_000); }   // a blip: retry soon
       }
     };
     load();

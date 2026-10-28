@@ -138,7 +138,7 @@ function EiaHistory() {
   const toggle = (sid: string) => setSel((cur) => cur.includes(sid) ? (cur.length > 1 ? cur.filter((x) => x !== sid) : cur)
     : data.units[sid] === data.units[cur[0]] ? [...cur, sid].slice(-4) : [sid]);          // only compare like units on one axis
   return (
-    <Panel title={`Supply & demand — weekly since ${data.series[0]?.date?.slice(0, 4)} (click rows to chart; up to 4 with the same unit)`}>
+    <Panel title={`Supply & demand — weekly${data.series[0]?.date ? ` since ${data.series[0].date.slice(0, 4)}` : ''} (click rows to chart; up to 4 with the same unit)`}>
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-3">
         <LineChart rows={data.series} x="date" height={300} fmt={(v) => unit === '%' ? `${v.toFixed(1)}%` : v.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           lines={sel.map((sid, i) => ({ key: sid, label: data.labels[sid], color: EIA_COLORS[i] }))} />

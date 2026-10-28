@@ -14,6 +14,7 @@ import { LivePopups } from './LivePopups';
 import { HoverCards } from './HoverCard';
 import { BlackoutBanner } from '../EconomicCalendar';
 import { cn } from '@/lib/utils';
+import { revealNear } from '@/components/ui/WhenNear';
 import { revealPanel } from '@/lib/focusMode';
 import { ErrorBoundary } from '../ErrorBoundary';
 
@@ -299,7 +300,11 @@ export function TerminalShell({
     // scroll once the workspace has re-rendered.
     const switched = revealPanel(sectionId);
     const go = () => document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    if (switched) setTimeout(go, 250); else go();
+    if (!document.getElementById(sectionId)) {         // its panel hasn't mounted yet (panels mount as they come near)
+      revealNear(sectionId);
+      setTimeout(() => { if (!document.getElementById(sectionId)) revealNear('*'); }, 120);
+      setTimeout(go, 350);
+    } else if (switched) setTimeout(go, 250); else go();
     // Call external handler if provided
     externalOnNavigate?.(sectionId);
   };
@@ -325,7 +330,7 @@ export function TerminalShell({
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed left-0 top-16 z-40 flex flex-col transition-all duration-200 bg-surface-1 border-r border-border overflow-hidden',
+          'app-sidebar fixed left-0 top-16 z-40 flex flex-col transition-all duration-200 bg-surface-1 border-r border-border overflow-hidden',
           sidebarCollapsed ? 'w-[48px] min-w-[48px]' : 'w-[224px] min-w-[224px]'
         )}
         style={{ bottom: dockH }}
@@ -346,7 +351,7 @@ export function TerminalShell({
       {/* Main Content */}
       <main
         className={cn(
-          'pt-16 transition-all duration-200 min-h-screen',
+          'app-main pt-16 transition-all duration-200 min-h-screen',
           sidebarCollapsed ? 'pl-[48px]' : 'pl-[224px]',
           detailPanelOpen ? 'lg:pr-72' : 'pr-0'
         )}

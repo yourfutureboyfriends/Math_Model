@@ -264,8 +264,13 @@ _BULK_TICKERS: Dict[str, int] = {}
 _BULK_LOCK = threading.Lock()
 
 
+_TL = threading.local()            # .bulk: this worker thread fetches for a large download (see _download_nolock)
+
+
 def _in_bulk_download() -> bool:
     """True for a request made on behalf of a ticker in a large multi-ticker download."""
+    if getattr(_TL, "bulk", False):
+        return True
     import sys
     f = sys._getframe(2)
     while f is not None:
@@ -275,6 +280,67 @@ def _in_bulk_download() -> bool:
                 return _BULK_TICKERS.get(t, 0) > 0
         f = f.f_back
     return False
+
+
+def _download_nolock(tickers, start=None, end=None, actions=False, threads=True, ignore_tz=None, group_by="column",
+                     auto_adjust=True, back_adjust=False, repair=False, keepna=False, progress=True, period=None,
+                     interval="1d", prepost=False, rounding=False, timeout=10, session=None, multi_level_index=True):
+    """yf.download without yfinance's global lock. yfinance gathers every download's results in module-global state
+    and so lets only one download run at a time process-wide: a 300-stock heat map or the 285 s universe build held up
+    every watchlist, overview and chart behind it. This does what yf.download does — Ticker.history per symbol, then
+    the same concat / time-zone / column layout — with each call's results kept to itself, so downloads run side by
+    side (each request still passes the Yahoo throttle; a large download's requests stay in the bulk lane)."""
+    import pandas as pd
+    from concurrent.futures import ThreadPoolExecutor
+    import yfinance as yf
+    from yfinance import utils as yu
+    from yfinance.const import period_default
+    if ignore_tz is None:
+        ignore_tz = interval[-1] not in ("m", "h")
+    lst = tickers if isinstance(tickers, (list, tuple, set)) else str(tickers).replace(",", " ").split()
+    tks = list(dict.fromkeys(str(t).upper() for t in lst))
+    bulk = len(tks) > BULK_MIN_SYMBOLS
+
+    def one(t):
+        _TL.bulk = bulk
+        try:
+            d = yf.Ticker(t, session=session).history(
+                period=period if period is not None else period_default, interval=interval, start=start, end=end,
+                prepost=prepost, actions=actions, auto_adjust=auto_adjust, back_adjust=back_adjust, repair=repair,
+                rounding=rounding, keepna=keepna, timeout=timeout, raise_errors=True)
+        except Exception as e:
+            logger.debug("[yf] %s: %s", t, e)
+            d = yu.empty_df()
+        finally:
+            _TL.bulk = False
+        return t, d if d is not None else yu.empty_df()
+
+    workers = 1 if threads is False else (threads if isinstance(threads, int) and threads is not True else min(len(tks), 8))
+    with ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix="yfdl") as ex:
+        dfs = dict(ex.map(one, tks))
+    if ignore_tz:
+        for t, d in dfs.items():
+            if d.shape[0] > 0 and getattr(d.index, "tz", None) is not None:
+                d.index = d.index.tz_localize(None)
+    try:
+        data = pd.concat(dfs.values(), axis=1, sort=True, keys=dfs.keys(), names=["Ticker", "Price"])
+    except Exception:                                    # unaligned indexes (as yfinance's _realign_dfs)
+        idx = max((d.index for d in dfs.values()), key=len)
+        fixed = {}
+        for t, d in dfs.items():
+            try:
+                d2 = pd.DataFrame(index=idx, data=d).drop_duplicates()
+            except Exception:
+                d2 = pd.concat([yu.empty_df(idx), d.dropna()], axis=0, sort=True)
+            fixed[t] = d2.loc[~d2.index.duplicated(keep="last")]
+        data = pd.concat(fixed.values(), axis=1, sort=True, keys=fixed.keys(), names=["Ticker", "Price"])
+    data.index = pd.to_datetime(data.index, utc=not ignore_tz)
+    if group_by == "column":
+        data.columns = data.columns.swaplevel(0, 1)
+        data.sort_index(level=0, axis=1, inplace=True)
+    if not multi_level_index and len(tks) == 1:
+        data = data.droplevel(0 if group_by == "ticker" else 1, axis=1).rename_axis(None, axis=1)
+    return data
 
 
 def _install_bulk_registry() -> None:
@@ -297,7 +363,9 @@ def _install_bulk_registry() -> None:
                 for t in lst:
                     _BULK_TICKERS[t] = _BULK_TICKERS.get(t, 0) + 1
         try:
-            return orig(tickers, *a, **kw)
+            if a:                                        # positional options: hand to yfinance as written
+                return orig(tickers, *a, **kw)
+            return _download_nolock(tickers, **kw)
         finally:
             if bulk:
                 with _BULK_LOCK:

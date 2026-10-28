@@ -81,7 +81,7 @@ export function SignalStackSection() {
         priority: index + 1,
         signal: output?.ctaSignal || output?.baseStance || output?.regime || name,
         conviction: output?.confidence ?? null,
-        override: output?.adjustment !== 0 ? `Adjustment: ${output?.adjustment}` : null
+        override: output?.adjustment != null && output.adjustment !== 0 ? `Adjustment: ${output.adjustment}` : null
       }));
 
   const sortedLayers = [...layerEntries].sort((a, b) => a.priority - b.priority);

@@ -79,7 +79,7 @@ export function DeepReport({ d }: { d: any }) {
           <Tile label="Up capture" value={pct(rel.up_capture, 0)} sub="of benchmark up periods" /><Tile label="Down capture" value={pct(rel.down_capture, 0)} cls={(rel.down_capture ?? 1) < 1 ? 'text-green' : 'text-red'} sub="lower is better" />
           <Tile label="Tracking error" value={pct(rel.tracking_error)} /><Tile label="Information ratio" value={num(rel.information_ratio)} />
           <Tile label="Months beating" value={pct(rel.pct_months_beating, 0)} />
-          <Tile label="Best / worst year vs bench" value={`${spct(rel.best_relative_year?.diff, 0)} / ${spct(rel.worst_relative_year?.diff, 0)}`} sub={`${rel.best_relative_year?.year} / ${rel.worst_relative_year?.year}`} />
+          <Tile label="Best / worst year vs bench" value={`${spct(rel.best_relative_year?.diff, 0)} / ${spct(rel.worst_relative_year?.diff, 0)}`} sub={`${rel.best_relative_year?.year ?? '—'} / ${rel.worst_relative_year?.year ?? '—'}`} />
         </div>}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
           <Box title="Growth of 1 (log) and underwater curve">

@@ -144,7 +144,7 @@ export function NowView() {
             : trade.error ? <ErrorBox msg={trade.error} /> : <Loading label="Loading PortWatch…" />}
         </Panel>
       </div>
-      {trade.data?.regions && <Panel title={`Seaborne trade by region — last 4 weeks vs a year ago (to ${trade.data.regions[0]?.as_of})`}>
+      {trade.data?.regions?.length > 0 && <Panel title={`Seaborne trade by region — last 4 weeks vs a year ago${(trade.data.regions[0]?.as_of ?? trade.data.as_of) ? ` (to ${trade.data.regions[0]?.as_of ?? trade.data.as_of})` : ''}`}>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">{trade.data.regions.map((r: any) => (
           <div key={r.region} className="border border-border-subtle px-2 py-1.5 text-[11px]"><div className="text-text-secondary truncate" title={r.region}>{r.region}</div>
             <div className="font-mono">exports <span className={tone(r.exports_yoy)}>{pct(r.exports_yoy)}</span> · imports <span className={tone(r.imports_yoy)}>{pct(r.imports_yoy)}</span></div></div>))}</div>

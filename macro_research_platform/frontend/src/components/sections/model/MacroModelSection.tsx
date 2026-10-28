@@ -51,9 +51,9 @@ function WorldStrip({ active, onPick }: { active: Economy; onPick: (e: Economy) 
         const on = active === e.id;
         return (
           <button key={e.id} role="tab" aria-selected={on} onClick={() => onPick(e.id)}
-            className={`text-left p-2.5 border transition-colors ${on ? 'border-bloomberg bg-bloomberg/10' : 'border-border bg-surface-1 hover:border-border-strong'}`}>
+            className={`text-left p-3 rounded-xl border transition-all ${on ? 'border-bloomberg/50 bg-bloomberg/[0.07] shadow-[0_0_0_3px_rgb(var(--c-bloomberg)/0.10)]' : 'border-border bg-surface-1 hover:border-border-strong hover:-translate-y-px'}`}>
             <div className="flex items-center gap-2">
-              <span className={`text-[10px] font-mono font-bold px-1 ${on ? 'bg-bloomberg text-bg' : 'border border-border text-text-secondary'}`}>{e.short}</span>
+              <span className={`text-[10px] font-semibold px-1.5 py-px rounded-md ${on ? 'bg-bloomberg text-white' : 'bg-text-primary/[0.06] text-text-secondary'}`}>{e.short}</span>
               <span className="text-xs font-semibold text-text-primary">{e.label}</span>
               {r?.economy?.currency && <span className="text-[10px] text-text-tertiary font-mono">{r.economy.currency}</span>}
               <span className="ml-auto text-[10px] text-text-tertiary font-mono">{r?.available ? `to ${r.factor_as_of}` : ''}</span>
@@ -86,10 +86,10 @@ function WorldStrip({ active, onPick }: { active: Economy; onPick: (e: Economy) 
 
 function Step({ n, title, children, right }: { n: number; title: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <div className="p-3 bg-surface-1 border border-border">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="w-5 h-5 inline-flex items-center justify-center text-2xs font-mono border border-bloomberg/50 text-bloomberg">{n}</span>
-        <span className="text-xs font-semibold text-text-primary uppercase tracking-wider">{title}</span>
+    <div className="p-3.5 bg-surface-1 border border-border rounded-xl">
+      <div className="flex items-center gap-2.5 mb-2.5">
+        <span className="step-num">{n}</span>
+        <span className="text-[12px] font-semibold text-text-primary tracking-[0.02em]">{title}</span>
         <span className="ml-auto">{right}</span>
       </div>
       {children}
@@ -300,10 +300,10 @@ export function MacroModelSection() {
           </div>
 
           <Step n={3} title="Expected returns & portfolio" right={
-            <div className="flex gap-1">
+            <div className="seg" role="tablist" aria-label="Portfolio">
               {(['strategic', 'tactical'] as const).map((k) => (
-                <button key={k} onClick={() => { setWhich(k); setOrders(null); setStaged(null); }}
-                  className={`px-2 py-0.5 text-2xs uppercase border ${which === k ? 'bg-bloomberg text-bg border-bloomberg' : 'border-border text-text-secondary'}`}>{k}</button>
+                <button key={k} role="tab" aria-selected={which === k} onClick={() => { setWhich(k); setOrders(null); setStaged(null); }}
+                  className="seg-item capitalize">{k}</button>
               ))}
             </div>}>
             {port && <>

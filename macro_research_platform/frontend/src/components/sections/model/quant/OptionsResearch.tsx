@@ -366,7 +366,7 @@ function DataValidity({ r }: { r: any }) {
         </Card>
       )}
       {acc?.summary && (
-        <Card title="Implied-volatility model vs CBOE volatility indices" note={`Fit: ${dq.iv_model.fit?.terms?.join(', ')} on ${dq.iv_model.fit?.n} observations to ${dq.iv_model.fit?.train_end}; residual sd ${num(dq.iv_model.fit?.resid_sd, 3)} (log IV).`}>
+        <Card title="Implied-volatility model vs CBOE volatility indices" note={dq.iv_model.fit ? `Fit: ${dq.iv_model.fit.terms?.join(', ') ?? '—'} on ${dq.iv_model.fit.n ?? '—'} observations to ${dq.iv_model.fit.train_end ?? '—'}; residual sd ${num(dq.iv_model.fit.resid_sd, 3)} (log IV).` : undefined}>
           <div className="text-2xs font-mono">{Object.entries(acc.summary).map(([k, v]: any) => <div key={k}><span className="text-text-tertiary">{k.replace('_', ' ')}: </span>MAE {v.mae_vol_pts} vol pts · bias {v.bias_vol_pts} · median corr {v.median_corr} ({v.underlyings} underlyings)</div>)}</div>
           <Table dense cols={[{ k: 'underlying', label: 'Underlying' }, { k: 'segment', label: 'Segment' }, { k: 'days', label: 'Days', right: true }, { k: 'mae_vol_pts', label: 'MAE pts', right: true },
             { k: 'bias_vol_pts', label: 'Bias pts', right: true }, { k: 'corr', label: 'Corr', right: true }, { k: 'mean_observed', label: 'Mean IV', right: true }]} rows={acc.by_underlying} />

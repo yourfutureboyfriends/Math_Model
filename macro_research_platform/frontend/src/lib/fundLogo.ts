@@ -13,7 +13,8 @@ function load(fund: string, variant: LogoVariant): Promise<string | null> {
   if (!cache.has(key)) {
     cache.set(key, loadFunds().then((fs) => fs.find((f) => f.id === fund)?.logo_version ?? 0)
       .then((ver) => fetch(`/api/v1/funds/${encodeURIComponent(fund)}/logo?variant=${variant}&v=${ver}`))
-      .then((r) => (r.ok ? r.blob() : null)).then((b) => (b ? URL.createObjectURL(b) : null)).catch(() => null));
+      .then((r) => (r.ok ? r.blob() : null)).then((b) => (b ? URL.createObjectURL(b) : null)).catch(() => null)
+      .then((u) => { if (!u) cache.delete(key); return u; }));   // a failure (401, network blip) is not remembered
   }
   return cache.get(key)!;
 }
@@ -25,9 +26,15 @@ export function forgetFundLogo(fund: string) {
 export function useFundLogo(variant: LogoVariant = 'full', fund: string = currentFund()): string | null {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
-    let live = true;
-    load(fund, variant).then((u) => { if (live) setUrl(u); });
-    return () => { live = false; };
+    let live = true, tries = 0;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const go = () => load(fund, variant).then((u) => {
+      if (!live) return;
+      setUrl(u);
+      if (!u && ++tries < 4) t = setTimeout(go, 4000 * tries);   // retry: 4 s, 8 s, 12 s
+    });
+    go();
+    return () => { live = false; clearTimeout(t); };
   }, [fund, variant]);
   return url;
 }

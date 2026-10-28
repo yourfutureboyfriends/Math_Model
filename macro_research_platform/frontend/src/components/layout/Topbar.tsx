@@ -322,7 +322,7 @@ export function Topbar({
   );
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-surface-2 border-b border-border"
+    <header className="app-header fixed top-0 left-0 right-0 z-50 bg-surface-2 border-b border-border"
             style={{ height: 'var(--topbar-height)' }}>
 
       {/* ── ROW 1: Main bar (40px) ─────────────────────────────────────────────── */}

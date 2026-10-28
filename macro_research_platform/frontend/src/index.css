@@ -1769,6 +1769,181 @@ button.border:not([role=tab]) { border-radius: var(--radius-md); }
 @media (prefers-reduced-motion: reduce) { .terminal-section, .nav-dot { transition: none !important; } }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
+   FINISH LAYER — depth, glass and type. Layered on the refinement layer above:
+   · type: variable Inter at optical size, tabular figures for data (code keeps its monospace)
+   · canvas: a quiet ambient glow in the accent, cards with layered soft shadows and a top highlight
+   · chrome: glass top bar and sidebar, gradient icon badges, accent-glow active states
+   · controls: gradient primary buttons, inset fields, glass chart tooltips, airy tables
+   The amber "terminal" skin keeps its own Bloomberg look and is excluded where it would clash.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --font-ui: 'Inter', 'Geist', system-ui, sans-serif;
+  --shadow-card: 0 0 0 1px rgb(var(--c-border) / 0.55), 0 1px 2px rgb(0 0 0 / 0.18), 0 8px 24px -12px rgb(0 0 0 / 0.35);
+  --shadow-card-hover: 0 0 0 1px rgb(var(--c-bloomberg) / 0.28), 0 2px 4px rgb(0 0 0 / 0.2), 0 16px 36px -14px rgb(0 0 0 / 0.45);
+  --highlight: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --glass: rgb(var(--c-surface-1) / 0.72);
+}
+:root[data-theme="light"] {
+  --c-bg: 238 243 249;                        /* calmer than the old sky blue: a cool paper tone */
+  --c-surface-2: 246 249 252;
+  --c-border: 220 229 239;
+  --shadow-card: 0 0 0 1px rgb(15 35 62 / 0.06), 0 1px 2px rgb(15 35 62 / 0.05), 0 10px 28px -16px rgb(15 35 62 / 0.18);
+  --shadow-card-hover: 0 0 0 1px rgb(var(--c-bloomberg) / 0.22), 0 2px 6px rgb(15 35 62 / 0.06), 0 18px 40px -18px rgb(15 35 62 / 0.28);
+  --highlight: inset 0 1px 0 rgb(255 255 255 / 0.9);
+  --glass: rgb(255 255 255 / 0.74);
+}
+
+/* Type: Inter with its finance-friendly alternates (open digits, single-storey a off, straight-sided 6/9) */
+body { font-family: var(--font-ui); font-optical-sizing: auto; font-feature-settings: "cv11" 1, "ss03" 1, "calt" 1; text-rendering: optimizeLegibility; }
+:root:not([data-skin="terminal"]) :is(.font-mono, .tabular-nums, td, .terminal-metric, .terminal-value) {
+  font-family: var(--font-ui); font-variant-numeric: tabular-nums slashed-zero; font-feature-settings: "tnum" 1, "cv11" 1, "ss03" 1;
+}
+:root:not([data-skin="terminal"]) .font-mono { letter-spacing: -0.005em; }
+/* Code stays monospace */
+:is(pre, code, kbd, samp, .cm-editor, .cm-content, .monaco-editor, textarea.font-mono, .font-code, .font-code *) {
+  font-family: 'JetBrains Mono', 'Geist Mono', ui-monospace, monospace !important; font-variant-numeric: normal; font-feature-settings: normal;
+}
+h1, h2, h3, .section-title { font-feature-settings: "cv11" 1, "ss03" 1; }
+.section-title { letter-spacing: 0.04em; }
+
+/* Canvas: ambient glow in the accent behind everything */
+:root:not([data-skin="terminal"]) body {
+  background:
+    radial-gradient(900px 420px at 18% -8%, rgb(var(--c-bloomberg) / 0.10), transparent 70%),
+    radial-gradient(800px 380px at 92% -12%, rgb(var(--c-blue) / 0.08), transparent 70%),
+    rgb(var(--c-bg)) fixed;
+  background-attachment: fixed;
+}
+:root[data-theme="light"]:not([data-skin="terminal"]) .min-h-screen.bg-bg { background: transparent; }
+
+/* Chrome: glass top bar and sidebar */
+:root:not([data-skin="terminal"]) .app-header {
+  background: var(--glass) !important; -webkit-backdrop-filter: saturate(160%) blur(16px); backdrop-filter: saturate(160%) blur(16px);
+  border-bottom-color: rgb(var(--c-border) / 0.6) !important; box-shadow: 0 1px 0 rgb(255 255 255 / 0.03), 0 6px 20px -14px rgb(0 0 0 / 0.4);
+}
+:root:not([data-skin="terminal"]) .app-sidebar {
+  background: linear-gradient(180deg, rgb(var(--c-surface-1) / 0.88), rgb(var(--c-surface-1) / 0.78)) !important;
+  -webkit-backdrop-filter: saturate(150%) blur(14px); backdrop-filter: saturate(150%) blur(14px);
+  border-right-color: rgb(var(--c-border) / 0.55) !important;
+}
+.app-sidebar .nav-dot.is-active { box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.18), 0 0 10px rgb(var(--c-bloomberg) / 0.6); }
+
+/* Cards: layered soft shadow + top highlight, a gentle lift on hover */
+:root:not([data-skin="terminal"]) .terminal-section {
+  border-color: transparent; box-shadow: var(--shadow-card), var(--highlight);
+  transition: box-shadow .25s var(--ease);
+}
+:root:not([data-skin="terminal"]) .terminal-section:hover { box-shadow: var(--shadow-card-hover), var(--highlight); }
+:root:not([data-skin="terminal"]) .mkt-root .mkt-panel { border-color: transparent !important; box-shadow: var(--shadow-card), var(--highlight); border-radius: 12px; }
+.terminal-section { border-radius: 14px; }
+.section-header { border-top-left-radius: 14px; border-top-right-radius: 14px; }
+/* A hairline that fades out under each header */
+.section-header { border-bottom-color: transparent; background-image: linear-gradient(90deg, rgb(var(--c-border) / 0.9), rgb(var(--c-border) / 0.25) 70%, transparent);
+  background-size: 100% 1px; background-repeat: no-repeat; background-position: bottom; }
+.terminal-section .section-header { background-color: rgb(var(--c-surface-1) / 0.84); }
+
+/* Icon badges in headers: a gradient chip */
+.section-tag:not(:empty) {
+  background: linear-gradient(135deg, rgb(var(--c-bloomberg) / 0.22), rgb(var(--c-bloomberg) / 0.06));
+  box-shadow: inset 0 0 0 1px rgb(var(--c-bloomberg) / 0.28), 0 2px 8px -3px rgb(var(--c-bloomberg) / 0.45);
+  border-radius: 7px; min-width: 22px; min-height: 22px; justify-content: center;
+}
+
+/* Inner wells inside cards: lighter than the card, no hard border */
+:root:not([data-skin="terminal"]) .terminal-section :is(.bg-surface-1, .bg-surface-2).border {
+  background-color: rgb(var(--c-surface-2) / 0.55); border-color: rgb(var(--c-border) / 0.5); border-radius: 10px;
+}
+:root[data-theme="light"]:not([data-skin="terminal"]) .terminal-section :is(.bg-surface-1, .bg-surface-2).border { background-color: rgb(246 249 252); }
+
+/* Primary actions: gradient with an inner highlight */
+:root:not([data-skin="terminal"]) :is(button, a).bg-bloomberg:not([role=tab]) {
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.14), rgb(255 255 255 / 0) 60%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18), 0 1px 2px rgb(0 0 0 / 0.2), 0 6px 16px -8px rgb(var(--c-bloomberg) / 0.7);
+  border-radius: 8px; transition: filter .15s, transform .08s, box-shadow .15s;
+}
+:root:not([data-skin="terminal"]) :is(button, a).bg-bloomberg:not([role=tab]):hover { filter: brightness(1.08); }
+:root:not([data-skin="terminal"]) :is(button, a).bg-bloomberg:not([role=tab]):active { transform: translateY(1px); }
+/* Secondary bordered buttons: soft fill */
+:root:not([data-skin="terminal"]) .app-main button.border:not([role=tab]):not(.bg-bloomberg) {
+  background-color: rgb(var(--c-surface-2) / 0.6); border-color: rgb(var(--c-border) / 0.8); box-shadow: var(--highlight);
+}
+:root:not([data-skin="terminal"]) .app-main button.border:not([role=tab]):not(.bg-bloomberg):hover {
+  background-color: rgb(var(--c-surface-3) / 0.7); border-color: rgb(var(--c-bloomberg) / 0.4);
+}
+
+/* Fields: inset look */
+:root:not([data-skin="terminal"]) .app-main :is(input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea) {
+  background-color: rgb(var(--c-bg) / 0.55); box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.12);
+}
+:root[data-theme="light"]:not([data-skin="terminal"]) .app-main :is(input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea) {
+  background-color: rgb(250 252 254); box-shadow: inset 0 1px 2px rgb(15 35 62 / 0.05);
+}
+
+/* Tables: airy rows, small-caps headers, row hover */
+:root:not([data-skin="terminal"]) .terminal-section thead th {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgb(var(--c-text-tertiary));
+  padding-top: 6px; padding-bottom: 6px;
+}
+:root:not([data-skin="terminal"]) .terminal-section tbody td { padding-top: 5px; padding-bottom: 5px; }
+:root:not([data-skin="terminal"]) .terminal-section tbody tr:hover { background-color: rgb(var(--c-bloomberg) / 0.045); }
+
+/* Charts (Recharts): glass tooltips, faint dashed grid, quiet axes */
+.recharts-default-tooltip {
+  background: var(--glass) !important; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border: 1px solid rgb(var(--c-border) / 0.7) !important; border-radius: 10px !important;
+  box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.45) !important; padding: 8px 10px !important; font-size: 11px;
+}
+.recharts-tooltip-label { color: rgb(var(--c-text-tertiary)) !important; font-size: 10px; margin-bottom: 4px !important; }
+.recharts-cartesian-grid line { stroke: rgb(var(--c-border) / 0.55); stroke-dasharray: 2 4; }
+.recharts-cartesian-axis-tick text { fill: rgb(var(--c-text-tertiary)); font-size: 10px; }
+.recharts-cartesian-axis-line, .recharts-cartesian-axis-tick-line { stroke: rgb(var(--c-border) / 0.6); }
+.recharts-active-dot circle, .recharts-dot { filter: drop-shadow(0 0 4px rgb(var(--c-bloomberg) / 0.45)); }
+
+/* Status chips and badges: soft fills with a ring */
+:root:not([data-skin="terminal"]) .signal-tag { border-width: 0; box-shadow: inset 0 0 0 1px currentColor; border-radius: 999px; padding: 2px 8px; }
+
+/* Empty / error states: centred and calm */
+:root:not([data-skin="terminal"]) .terminal-section [role=status] { color: rgb(var(--c-text-tertiary)); }
+
+/* Brand mark in the sidebar breathes a little */
+.app-sidebar .brand-mask { filter: drop-shadow(0 1px 6px rgb(var(--c-bloomberg) / 0.25)); }
+
+/* Square boxes, rounded by default: any fully bordered element in a panel without its own radius. Zero specificity
+   (:where), so a component's explicit rounded-* / rounded-none always wins; table cells keep square corners. */
+:where(.terminal-section, .mkt-root) :where(.border:not(td):not(th):not(tr):not(.rounded-none)) { border-radius: 6px; }
+
+/* Sign-in (components/LoginScreen) */
+.login-stage { background:
+  radial-gradient(700px 380px at 50% 18%, rgb(var(--c-bloomberg) / 0.18), transparent 70%),
+  radial-gradient(900px 500px at 85% 110%, rgb(var(--c-blue) / 0.12), transparent 70%), rgb(var(--c-bg)); }
+.login-mark { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 11px; color: #fff;
+  background: linear-gradient(135deg, rgb(var(--c-bloomberg)), rgb(var(--c-bloomberg) / 0.65));
+  box-shadow: 0 8px 24px -8px rgb(var(--c-bloomberg) / 0.7), inset 0 1px 0 rgb(255 255 255 / 0.3); }
+.login-card { border-radius: 18px; background: var(--glass); -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%);
+  box-shadow: 0 0 0 1px rgb(var(--c-border) / 0.7), 0 30px 80px -30px rgb(0 0 0 / 0.55), var(--highlight); }
+.login-cta { color: #fff; background: linear-gradient(180deg, rgb(var(--c-bloomberg)), rgb(var(--c-bloomberg) / 0.82));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), 0 10px 24px -10px rgb(var(--c-bloomberg) / 0.8); transition: filter .15s, transform .08s; }
+.login-cta:hover:not(:disabled) { filter: brightness(1.08); }
+.login-cta:active:not(:disabled) { transform: translateY(1px); }
+
+/* Panel header controls: help "?" and the fold chevron, spaced and softened */
+.panel-help-btn { right: 32px; width: 18px; height: 18px; font: 600 10px/16px var(--font-ui); border-color: rgb(var(--c-border) / 0.8);
+  background: rgb(var(--c-surface-2) / 0.7); transition: color .15s, border-color .15s, background-color .15s; }
+.panel-help-btn:hover { background: rgb(var(--c-bloomberg) / 0.1); }
+[data-panel-head] { padding-right: 58px; }
+[data-panel-head]::after { right: 13px; opacity: .55; }
+[data-panel-head]:hover::after { opacity: .9; }
+
+:root:not([data-skin="terminal"]) .bottom-dock { background: var(--glass); -webkit-backdrop-filter: saturate(160%) blur(16px);
+  backdrop-filter: saturate(160%) blur(16px); border-top: 1px solid rgb(var(--c-border) / 0.6); box-shadow: 0 -6px 20px -14px rgb(0 0 0 / 0.35); }
+
+.step-num { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums;
+  background: linear-gradient(135deg, rgb(var(--c-bloomberg)), rgb(var(--c-bloomberg) / 0.72));
+  box-shadow: 0 2px 6px -1px rgb(var(--c-bloomberg) / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.25); }
+@media (prefers-reduced-motion: reduce) { .terminal-section, .mkt-panel { transition: none !important; } }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
    PRINT STYLES
    ═══════════════════════════════════════════════════════════════════════════════ */
 

@@ -24,11 +24,11 @@ const MARKET_NAME: Record<string, string> = { us: 'US', ca: 'Canada', br: 'Brazi
 export function RegionBar({ onPick }: { onPick?: (r: Region) => void }) {
   const r = useRegion();
   return (
-    <div className="inline-flex flex-wrap items-center gap-0.5 p-0.5 rounded-md bg-surface-2 border border-border-subtle text-[11px]" role="tablist" aria-label="Region">
-      <span className="px-2 text-[10px] uppercase tracking-wider text-text-tertiary">Region</span>
+    <div className="seg flex-wrap items-center" role="tablist" aria-label="Region">
+      <span className="px-2 self-center text-[10px] uppercase tracking-[0.08em] font-semibold text-text-tertiary">Region</span>
       {REGIONS.map((x) => (
         <button key={x.id} role="tab" aria-selected={r === x.id} onClick={() => { setRegion(x.id); onPick?.(x.id); }}
-          className={cn('px-3 py-0.5 rounded-sm font-medium tracking-wide border', r === x.id ? 'border-[rgb(255_214_0/0.35)] bg-[rgb(255_214_0/0.08)] text-[#ffd84a]' : 'border-transparent text-text-secondary hover:text-text-primary hover:bg-surface-3')}>{x.short}</button>))}
+          className="seg-item normal-case">{x.short}</button>))}
     </div>
   );
 }
@@ -167,7 +167,7 @@ export function CountryView({ iso, onOpen, onGo }: { iso?: string; onOpen: (s: s
           <div className="flex gap-1 text-[11px]">
             {(['index', 'fx', 'etf'] as const).filter((k) => (k === 'index' ? c.index || c.etf : k === 'fx' ? c.fx_symbol : c.etf)).map((k) => (
               <button key={k} onClick={() => setChartSym(k)} className={cn('px-2 py-0.5 border', chartSym === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>
-                {k === 'index' ? (c.index?.label ?? 'Equities') : k === 'fx' ? `USD/${c.currency}` : `${c.etf?.etf} (USD ETF)`}</button>))}
+                {k === 'index' ? (c.index?.label ?? 'Equities') : k === 'fx' ? `USD/${c.currency}` : `${c.etf?.etf ?? 'ETF'} (USD ETF)`}</button>))}
             {sym && <button onClick={() => onOpen(sym)} className="ml-auto px-2 py-0.5 border border-border text-text-tertiary hover:text-bloomberg">Open {toTerminal(sym)}</button>}
           </div>
           {sym ? <div className="border border-border"><Chart key={sym} symbol={sym} height={340} /></div> : <p className="text-xs text-text-tertiary">No traded index or currency for this country.</p>}

@@ -319,10 +319,10 @@ export function EcosView({ seed }: { seed?: string }) {
             baseline={tf === 'level' ? undefined : tf === 'index' ? 100 : 0}
             lines={series.map((s, i) => s.data && { key: s.data.id, label: `${s.data.id}${tf === 'level' ? ` (${s.data.units})` : ''}`, color: SER_COLORS[i] }).filter(Boolean) as any} />)}
         {first && <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-2">
-          <Tile label="Latest" value={lastObs?.value.toLocaleString(undefined, { maximumFractionDigits: 3 })} sub={`${lastObs?.date} · ${first.units}`} />
+          <Tile label="Latest" value={lastObs?.value.toLocaleString(undefined, { maximumFractionDigits: 3 })} sub={`${lastObs?.date ?? '—'} · ${first.units}`} />
           <Tile label="Frequency" value={first.frequency} sub={first.sa} />
           <Tile label="Year on year" value={(() => { const y = transform(first.rows, 'yoy'); return y.length ? `${y[y.length - 1].value.toFixed(2)}%` : '—'; })()} />
-          <Tile label="History" value={`${first.rows[0]?.date.slice(0, 4)} →`} sub={`${first.rows.length.toLocaleString()} observations`} />
+          <Tile label="History" value={first.rows[0]?.date ? `${first.rows[0].date.slice(0, 4)} →` : '—'} sub={`${first.rows.length.toLocaleString()} observations`} />
           <Tile label="Updated" value={first.updated?.slice(0, 10)} />
         </div>}
         {first?.notes && <details className="mt-2"><summary className="text-2xs text-text-secondary cursor-pointer">About this series</summary><p className="text-2xs text-text-tertiary mt-1 whitespace-pre-wrap">{first.notes}</p></details>}

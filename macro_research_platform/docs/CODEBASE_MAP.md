@@ -800,6 +800,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `Sparkline.tsx` | Terminal sparkline: minimal SVG line with a hover readout (point, value, optional label). |
 | `StaleBadge.tsx` | StaleBadge — per-field staleness flag. |
 | `Table.tsx` | Phase 2 — Terminal Table Component |
+| `WhenNear.tsx` | Mounts its children only once they come within ~1.5 screens of the viewport, then keeps them mounted. |
 | `index.ts` | UI Components — Phase 8 UI Polish |
 
 ### `frontend/src/config/`

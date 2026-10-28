@@ -97,3 +97,16 @@ def test_crypto_overlay_uses_live_price_and_keeps_the_previous_close(monkeypatch
     assert rows[0]["price"] == 110.0 and abs(rows[0]["change_1d"] - 0.10) < 1e-9 and rows[0]["live"]
     assert rows[1]["price"] == 1.0 and rows[2]["price"] == 500.0
     assert cl.coin_of("BTC-USD") == "BTC" and cl.coin_of("EURUSD=X") is None and cl.coin_of("SPY") is None
+
+
+def test_stale_universe_is_served_at_once_and_rebuilt_in_the_background(tmp_path, monkeypatch):
+    import json as _json
+    import threading
+    from api import global_universe as gu
+    f = tmp_path / "u.json"
+    f.write_text(_json.dumps({"stocks": [{"symbol": "OLD"}], "saved_at": 0, "config": gu.config_hash()}))
+    monkeypatch.setattr(gu, "FILE", f)
+    started = threading.Event()
+    monkeypatch.setattr(gu, "build", lambda: (started.set(), {"stocks": [{"symbol": "NEW"}]})[1])
+    assert gu.load()["stocks"] == [{"symbol": "OLD"}]          # no 5-minute wait in the request
+    assert started.wait(5)                                      # the rebuild runs in the background

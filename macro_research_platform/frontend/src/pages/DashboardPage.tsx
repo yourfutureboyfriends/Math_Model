@@ -14,6 +14,7 @@ import { useMacroStore } from '@/store/macroStore';
 import { PANEL_HELP } from '@/lib/panelHelp';
 import { PanelHelpPopover, type HelpAnchor } from '@/components/ui/PanelHelpPopover';
 import { ResearchExpander } from '@/components/markets/ResearchExpander';
+import { WhenNear } from '@/components/ui/WhenNear';
 import { AllWeatherPanel, DebtCyclesPanel, EnvironmentsPanel, HolyGrailPanel, WorldOrderPanel } from '@/components/markets/BridgewaterViews';
 import {
   MyDeskSection,
@@ -269,693 +270,693 @@ export function DashboardPage() {
       )}
       {/* ── My Desk: role-tailored queue + key numbers ─────────────────────── */}
       <div id="my-desk" className="terminal-section">
-        <ErrorBoundary sectionName="My Desk">
+        <ErrorBoundary sectionName="My Desk"><WhenNear>
           <MyDeskSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Macro Model: the systematic model as one workflow ──────────────── */}
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Macro Model">
+        <ErrorBoundary sectionName="Macro Model"><WhenNear ids={["macro-model"]}>
           <MacroModelSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Morning Brief ─────────────────────────────────────────────────── */}
       <div id="morning-brief" className="terminal-section">
-        <ErrorBoundary sectionName="Morning Brief">
+        <ErrorBoundary sectionName="Morning Brief"><WhenNear>
           <MorningBriefSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Overview ──────────────────────────────────────────────────────── */}
       <div id="master-signal" className="terminal-section">
-        <ErrorBoundary sectionName="Master Signal">
+        <ErrorBoundary sectionName="Master Signal"><WhenNear>
           <MasterSignalSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="key-metrics" className="terminal-section">
-        <ErrorBoundary sectionName="Macro Indicators">
+        <ErrorBoundary sectionName="Macro Indicators"><WhenNear>
           <KeyMetricsSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="event-dataset" className="terminal-section">
-        <ErrorBoundary sectionName="Macro Event Dataset">
+        <ErrorBoundary sectionName="Macro Event Dataset"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <EventDatasetSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Anomalies strip (pinned top of Overview) ──────────────────────── */}
       <div id="anomalies-wrap" className="terminal-section">
-        <ErrorBoundary sectionName="Anomalies">
+        <ErrorBoundary sectionName="Anomalies"><WhenNear ids={["anomalies"]}>
           <AnomaliesStripSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="regime" className="terminal-section">
-        <ErrorBoundary sectionName="Regime">
+        <ErrorBoundary sectionName="Regime"><WhenNear>
           <RegimeSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="regime-playbook" className="terminal-section">
-        <ErrorBoundary sectionName="Regime Allocation">
+        <ErrorBoundary sectionName="Regime Allocation"><WhenNear>
           <RegimePlaybookSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="market-clock" className="terminal-section">
-        <ErrorBoundary sectionName="Market Hours">
+        <ErrorBoundary sectionName="Market Hours"><WhenNear>
           <MarketClockSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Global Equity Markets">
+        <ErrorBoundary sectionName="Global Equity Markets"><WhenNear ids={["global-markets"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <GlobalMarketsSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Global Correlations">
+        <ErrorBoundary sectionName="Global Correlations"><WhenNear ids={["global-correlation"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <GlobalCorrelationSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Regional Macro">
+        <ErrorBoundary sectionName="Regional Macro"><WhenNear ids={["regional-macro"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <RegionalMacroSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
         <ResearchExpander title="World power index: the changing world order" subtitle="Dalio, Principles for Dealing with the Changing World Order">
           <WorldOrderPanel />
         </ResearchExpander>
       </div>
 
       <div id="ensemble" className="terminal-section">
-        <ErrorBoundary sectionName="Ensemble">
+        <ErrorBoundary sectionName="Ensemble"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <EnsembleSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="signal-stack" className="terminal-section">
-        <ErrorBoundary sectionName="Signal Breakdown">
+        <ErrorBoundary sectionName="Signal Breakdown"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <SignalStackSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Signal Performance">
+        <ErrorBoundary sectionName="Signal Performance"><WhenNear ids={["signal-scorecard"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <SignalScorecardSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="signal-story-wrap" className="terminal-section">
-        <ErrorBoundary sectionName="Signal Attribution">
+        <ErrorBoundary sectionName="Signal Attribution"><WhenNear ids={["signal-story"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <SignalStorySection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Signals ───────────────────────────────────────────────────────── */}
       <div id="signals" className="terminal-section">
-        <ErrorBoundary sectionName="Signals">
+        <ErrorBoundary sectionName="Signals"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <SignalsSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Alternative Data">
+        <ErrorBoundary sectionName="Alternative Data"><WhenNear ids={["alt-data"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <AltDataSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Signal Agreement">
+        <ErrorBoundary sectionName="Signal Agreement"><WhenNear ids={["stream-agreement"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <StreamAgreementSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Factor OOS Validation">
+        <ErrorBoundary sectionName="Factor OOS Validation"><WhenNear ids={["factor-validation"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <FactorValidationSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="model-agreement" className="terminal-section">
-        <ErrorBoundary sectionName="Model Agreement">
+        <ErrorBoundary sectionName="Model Agreement"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <ModelAgreementSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="sector-allocation" className="terminal-section">
-        <ErrorBoundary sectionName="Sector Allocation">
+        <ErrorBoundary sectionName="Sector Allocation"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <SectorAllocationSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="factor-rotation" className="terminal-section">
-        <ErrorBoundary sectionName="Factor Performance">
+        <ErrorBoundary sectionName="Factor Performance"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <FactorRotationSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="COT Positioning">
+        <ErrorBoundary sectionName="COT Positioning"><WhenNear ids={["cot-positioning"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <COTPositioningSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="cta-trend" className="terminal-section">
-        <ErrorBoundary sectionName="CTA Trend">
+        <ErrorBoundary sectionName="CTA Trend"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <CTATrendSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="news-sentiment" className="terminal-section">
-        <ErrorBoundary sectionName="News Sentiment">
+        <ErrorBoundary sectionName="News Sentiment"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <NewsSentimentSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Risk ──────────────────────────────────────────────────────────── */}
       <div id="risk-indicators" className="terminal-section">
-        <ErrorBoundary sectionName="Risk Indicators">
+        <ErrorBoundary sectionName="Risk Indicators"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <RiskIndicatorsSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Fund Overview">
+        <ErrorBoundary sectionName="Fund Overview"><WhenNear ids={["fund-cockpit"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <FundCockpitSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Cycle & Systemic Risk">
+        <ErrorBoundary sectionName="Cycle & Systemic Risk"><WhenNear ids={["cycle-risk"]}>
           <CycleRiskSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="risk-analytics" className="terminal-section">
-        <ErrorBoundary sectionName="Risk Analytics">
+        <ErrorBoundary sectionName="Risk Analytics"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <RiskAnalyticsSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="VaR & Stress">
+        <ErrorBoundary sectionName="VaR & Stress"><WhenNear ids={["var-stress"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <VaRStressSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="What-if Scenarios">
+        <ErrorBoundary sectionName="What-if Scenarios"><WhenNear ids={["what-if"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <WhatIfSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Factor Exposure">
+        <ErrorBoundary sectionName="Factor Exposure"><WhenNear ids={["factor-exposure"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <FactorExposureSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="horizon-tension" className="terminal-section">
-        <ErrorBoundary sectionName="Horizon Tension">
+        <ErrorBoundary sectionName="Horizon Tension"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <HorizonTensionSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="correlation" className="terminal-section">
-        <ErrorBoundary sectionName="Stock–Bond Correlation">
+        <ErrorBoundary sectionName="Stock–Bond Correlation"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <CorrelationRegimeSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="correlation-matrix-wrap" className="terminal-section">
-        <ErrorBoundary sectionName="Correlation Matrix">
+        <ErrorBoundary sectionName="Correlation Matrix"><WhenNear ids={["correlation-matrix"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <CorrelationMatrixSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
         <ResearchExpander title="The Holy Grail: how many independent bets is this really?" subtitle="Dalio, Principles">
           <HolyGrailPanel />
         </ResearchExpander>
       </div>
 
       <div id="debt-cycle" className="terminal-section">
-        <ErrorBoundary sectionName="Debt Cycle">
+        <ErrorBoundary sectionName="Debt Cycle"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <DebtCycleSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
         <ResearchExpander title="Global debt cycles (~40 economies, BIS) and the US MP1/MP2/MP3 stage" subtitle="Dalio, Big Debt Crises">
           <DebtCyclesPanel compact />
         </ResearchExpander>
       </div>
 
       <div id="factor-decomposition" className="terminal-section">
-        <ErrorBoundary sectionName="Factor Decomposition">
+        <ErrorBoundary sectionName="Factor Decomposition"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <FactorDecompositionSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="risk-parity" className="terminal-section">
-        <ErrorBoundary sectionName="Risk Parity">
+        <ErrorBoundary sectionName="Risk Parity"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <RiskParitySection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
         <ResearchExpander title="All Weather construction: equal risk to each growth/inflation environment, backtested" subtitle="also tradable in Portfolios → Macro Quant Trader">
           <AllWeatherPanel />
         </ResearchExpander>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Risk Parity Comparison">
+        <ErrorBoundary sectionName="Risk Parity Comparison"><WhenNear ids={["risk-parity-compare"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <RiskParityCompareSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="advanced" className="terminal-section">
-        <ErrorBoundary sectionName="Leading Indicators">
+        <ErrorBoundary sectionName="Leading Indicators"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <AdvancedIndicatorsSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Forecasts ─────────────────────────────────────────────────────── */}
       <div id="valuation" className="terminal-section">
-        <ErrorBoundary sectionName="Valuation">
+        <ErrorBoundary sectionName="Valuation"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <ValuationSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="nowcast" className="terminal-section">
-        <ErrorBoundary sectionName="Nowcast">
+        <ErrorBoundary sectionName="Nowcast"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <NowcastSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="yield-curve" className="terminal-section">
-        <ErrorBoundary sectionName="Yield Curve">
+        <ErrorBoundary sectionName="Yield Curve"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <YieldCurveSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="liquidity" className="terminal-section">
-        <ErrorBoundary sectionName="Liquidity">
+        <ErrorBoundary sectionName="Liquidity"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <LiquiditySection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="sentiment" className="terminal-section">
-        <ErrorBoundary sectionName="Market Sentiment">
+        <ErrorBoundary sectionName="Market Sentiment"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <SentimentSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="expected-returns" className="terminal-section">
-        <ErrorBoundary sectionName="Expected Returns">
+        <ErrorBoundary sectionName="Expected Returns"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <ExpectedReturnsSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="gmo-forecasts" className="terminal-section">
-        <ErrorBoundary sectionName="Long-Run Return Assumptions">
+        <ErrorBoundary sectionName="Long-Run Return Assumptions"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <GMOForecastsSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="regime-transition" className="terminal-section">
-        <ErrorBoundary sectionName="Regime Transition">
+        <ErrorBoundary sectionName="Regime Transition"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <RegimeTransitionSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="regime-outlook-wrap" className="terminal-section">
-        <ErrorBoundary sectionName="Regime Outlook">
+        <ErrorBoundary sectionName="Regime Outlook"><WhenNear ids={["regime-outlook"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <RegimeOutlookSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Four Quadrants">
+        <ErrorBoundary sectionName="Four Quadrants"><WhenNear ids={["quadrants"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <QuadrantsSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
         <ResearchExpander title="75 years of evidence: what each asset earns in each environment" subtitle="Bridgewater, The All Weather Story">
           <EnvironmentsPanel compact />
         </ResearchExpander>
       </div>
 
       <div id="event-vol-wrap" className="terminal-section">
-        <ErrorBoundary sectionName="Event Volatility">
+        <ErrorBoundary sectionName="Event Volatility"><WhenNear ids={["event-vol"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <EventVolSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
       {/* ── Portfolios: my picks, auto (paper) book, optimiser ────────────── */}
       <div id="portfolios" className="terminal-section">
-        <ErrorBoundary sectionName="Portfolios">
+        <ErrorBoundary sectionName="Portfolios"><WhenNear>
           <PortfoliosSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Strategy Lab: research models, combination, positions ─────────── */}
       <div id="strategy-lab" className="terminal-section">
-        <ErrorBoundary sectionName="Strategy Lab">
+        <ErrorBoundary sectionName="Strategy Lab"><WhenNear>
           <StrategyLabSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Quant Lab: build / backtest / deploy your own quant algos ─────────── */}
       <div id="quant-lab" className="terminal-section">
-        <ErrorBoundary sectionName="Quant Lab">
+        <ErrorBoundary sectionName="Quant Lab"><WhenNear>
           <QuantLabSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Stock ideas (system suggestions) ──────────────────────────────── */}
       <div id="stock-ideas" className="terminal-section">
-        <ErrorBoundary sectionName="Stock Ideas">
+        <ErrorBoundary sectionName="Stock Ideas"><WhenNear>
           <StockIdeasSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Stock entry signals ───────────────────────────────────────────── */}
       <div id="stock-timing" className="terminal-section">
-        <ErrorBoundary sectionName="Stock Entry Signals">
+        <ErrorBoundary sectionName="Stock Entry Signals"><WhenNear>
           <StockTimingSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Position Manager">
+        <ErrorBoundary sectionName="Position Manager"><WhenNear ids={["position-manager"]}>
           <PositionManagerSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Entry model backtest ──────────────────────────────────────────── */}
       <div id="stock-backtest" className="terminal-section">
-        <ErrorBoundary sectionName="Entry Model Backtest">
+        <ErrorBoundary sectionName="Entry Model Backtest"><WhenNear>
           <StockBacktestSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
 
       <div id="trade-ideas" className="terminal-section">
-        <ErrorBoundary sectionName="Trade Ideas">
+        <ErrorBoundary sectionName="Trade Ideas"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <TradeIdeasSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="trade-recommendations" className="terminal-section">
-        <ErrorBoundary sectionName="Allocation Recommendations">
+        <ErrorBoundary sectionName="Allocation Recommendations"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <TradeRecommendationsSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Fund Governance">
+        <ErrorBoundary sectionName="Fund Governance"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <GovernanceSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Pitch Review">
+        <ErrorBoundary sectionName="Pitch Review"><WhenNear ids={["pitch-review"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <PitchReviewSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Pre-Trade Desk">
+        <ErrorBoundary sectionName="Pre-Trade Desk"><WhenNear ids={["pretrade-desk"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <PreTradeDeskSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Trade Lifecycle">
+        <ErrorBoundary sectionName="Trade Lifecycle"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <TradeLifecycleSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Trade Workflow">
+        <ErrorBoundary sectionName="Trade Workflow"><WhenNear ids={["trade-workflow"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <TradeWorkflowSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="scenario-analysis" className="terminal-section">
-        <ErrorBoundary sectionName="Scenario Analysis">
+        <ErrorBoundary sectionName="Scenario Analysis"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <ScenarioAnalysisSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="momentum-veto" className="terminal-section">
-        <ErrorBoundary sectionName="Momentum Filter">
+        <ErrorBoundary sectionName="Momentum Filter"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <MomentumVetoSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Positions">
+        <ErrorBoundary sectionName="Positions"><WhenNear ids={["portfolio-positions"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <PositionsSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Portfolio ─────────────────────────────────────────────────────── */}
       <div id="portfolio" className="terminal-section">
-        <ErrorBoundary sectionName="Model Portfolio">
+        <ErrorBoundary sectionName="Model Portfolio"><WhenNear>
           <ModelSleeveSection />
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="performance-attribution" className="terminal-section">
-        <ErrorBoundary sectionName="Performance Attribution">
+        <ErrorBoundary sectionName="Performance Attribution"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <PerformanceAttributionSection />
           </Suspense>
-        </ErrorBoundary>
-        <ErrorBoundary sectionName="Book analytics">
+        </WhenNear></ErrorBoundary>
+        <ErrorBoundary sectionName="Book analytics"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <PortfolioAnalyticsSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Equity Research ───────────────────────────────────────────────── */}
       <div id="equity-research" className="terminal-section">
-        <ErrorBoundary sectionName="Equity Research">
+        <ErrorBoundary sectionName="Equity Research"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <EquityResearchSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="business-layer" className="terminal-section">
-        <ErrorBoundary sectionName="Strategy Summary">
+        <ErrorBoundary sectionName="Strategy Summary"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <BusinessLayerSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Strategy ──────────────────────────────────────────────────────── */}
       <div id="fx-monitor" className="terminal-section">
-        <ErrorBoundary sectionName="FX Monitor">
+        <ErrorBoundary sectionName="FX Monitor"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <FXMonitorSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="commodities-dashboard" className="terminal-section">
-        <ErrorBoundary sectionName="Commodities Dashboard">
+        <ErrorBoundary sectionName="Commodities Dashboard"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <CommoditiesDashboardSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="fixed-income-dashboard" className="terminal-section">
-        <ErrorBoundary sectionName="Fixed Income Dashboard">
+        <ErrorBoundary sectionName="Fixed Income Dashboard"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <FixedIncomeDashboardSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="international" className="terminal-section">
-        <ErrorBoundary sectionName="Regional Equity Regimes">
+        <ErrorBoundary sectionName="Regional Equity Regimes"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <InternationalMacroSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="reflexivity" className="terminal-section">
-        <ErrorBoundary sectionName="Reflexivity">
+        <ErrorBoundary sectionName="Reflexivity"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <ReflexivitySection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="transmission" className="terminal-section">
-        <ErrorBoundary sectionName="Transmission">
+        <ErrorBoundary sectionName="Transmission"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <TransmissionSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="economic-calendar" className="terminal-section">
-        <ErrorBoundary sectionName="Event Calendar">
+        <ErrorBoundary sectionName="Event Calendar"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <EventCalendarSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
 
       <div id="investment-memo" className="terminal-section">
-        <ErrorBoundary sectionName="Investment Memo">
+        <ErrorBoundary sectionName="Investment Memo"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <InvestmentMemoSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── System ────────────────────────────────────────────────────────── */}
       <div id="system-health" className="terminal-section">
-        <ErrorBoundary sectionName="System Health">
+        <ErrorBoundary sectionName="System Health"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <SystemHealthSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div id="data-providers-wrap" className="terminal-section">
-        <ErrorBoundary sectionName="Data Providers">
+        <ErrorBoundary sectionName="Data Providers"><WhenNear ids={["data-providers"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <DataProvidersSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       <div className="terminal-section">
-        <ErrorBoundary sectionName="Audit & Compliance">
+        <ErrorBoundary sectionName="Audit & Compliance"><WhenNear ids={["system-audit"]}>
           <Suspense fallback={<SectionSkeleton />}>
             <SystemAuditSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
 
       {/* ── Developer Tools ───────────────────────────────────────────────── */}
       <div id="data-explorer" className="terminal-section">
-        <ErrorBoundary sectionName="Data Explorer">
+        <ErrorBoundary sectionName="Data Explorer"><WhenNear>
           <Suspense fallback={<SectionSkeleton />}>
             <DataExplorerSection />
           </Suspense>
-        </ErrorBoundary>
+        </WhenNear></ErrorBoundary>
       </div>
     </div>
     </>

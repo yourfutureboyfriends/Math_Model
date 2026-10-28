@@ -30,10 +30,10 @@ export function MarketsSidebar({ collapsed }: { collapsed?: boolean }) {
       return next;
     });
   }, [sym]);
-  const item = (active: boolean) => cn('w-full h-7 flex items-center gap-2 text-xs border-l-2 transition-colors',
-    collapsed ? 'justify-center px-0' : 'px-4',
-    active ? 'bg-bloomberg/10 text-bloomberg border-bloomberg' : 'text-text-secondary border-transparent hover:bg-surface-3 hover:text-text-primary');
-  const head = (label: string) => !collapsed && <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider text-text-tertiary">{label}</div>;
+  const item = (active: boolean) => cn('h-7 flex items-center gap-2 text-xs rounded-md transition-colors',
+    collapsed ? 'justify-center px-0 mx-1 w-[calc(100%-0.5rem)]' : 'px-3 mx-2 w-[calc(100%-1rem)]',
+    active ? 'bg-bloomberg/10 text-text-primary font-medium' : 'text-text-secondary hover:bg-text-primary/5 hover:text-text-primary');
+  const head = (label: string) => !collapsed && <div className="px-5 pt-4 pb-1.5 text-[10px] uppercase tracking-[0.08em] font-semibold text-text-tertiary">{label}</div>;
   const region = useRegion();
   const shown = region === 'global' ? ['americas', 'europe', 'mea', 'apac'] : [region];
   return (
@@ -41,14 +41,14 @@ export function MarketsSidebar({ collapsed }: { collapsed?: boolean }) {
       {head('Regions')}
       {REGIONS.filter((r) => r.id !== 'global').map((r) => (
         <button key={r.id} onClick={() => { setRegion(r.id); goMarkets('RMON'); }} className={item(cur?.code === 'RMON' && region === r.id)} title={`${r.label}: regional monitor`}>
-          <span className="w-10 shrink-0 font-mono text-[10px] font-semibold text-[rgb(255,214,0)] text-left">{r.id === 'mea' ? 'MEA' : r.id === 'apac' ? 'APAC' : r.id === 'americas' ? 'AMER' : 'EUR'}</span>
+          <span className="w-10 shrink-0 font-mono text-[10px] font-semibold text-amber text-left">{r.id === 'mea' ? 'MEA' : r.id === 'apac' ? 'APAC' : r.id === 'americas' ? 'AMER' : 'EUR'}</span>
           {!collapsed && <span className="truncate">{r.label}</span>}
         </button>))}
       {!collapsed && <>
         {head(region === 'global' ? 'Countries' : `Countries — ${REGIONS.find((r) => r.id === region)?.label}`)}
-        <div className="px-3 flex flex-wrap gap-1">{shown.flatMap((r) => REGION_COUNTRIES[r]).map(([iso, name]) => (
+        <div className="px-4 flex flex-wrap gap-1">{shown.flatMap((r) => REGION_COUNTRIES[r]).map(([iso, name]) => (
           <button key={iso} onClick={() => goMarkets('CTRY', iso)} title={name}
-            className={cn('px-1.5 py-0.5 text-[10px] font-mono border', cur?.code === 'CTRY' && route.symbol === iso ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary hover:text-text-primary')}>{iso}</button>))}</div>
+            className={cn('min-w-[30px] px-1.5 py-0.5 rounded-md text-[10px] font-medium tabular-nums transition-colors', cur?.code === 'CTRY' && route.symbol === iso ? 'bg-bloomberg/15 text-bloomberg ring-1 ring-bloomberg/40' : 'bg-text-primary/[0.04] text-text-secondary hover:bg-text-primary/[0.08] hover:text-text-primary')}>{iso}</button>))}</div>
       </>}
       {GROUPS.map((g) => (
         <div key={g}>
@@ -61,7 +61,7 @@ export function MarketsSidebar({ collapsed }: { collapsed?: boolean }) {
         </div>))}
       {!collapsed && recent.length > 0 && (
         <div>
-          <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider text-text-tertiary flex items-center gap-1"><History className="w-3 h-3" />Recent instruments</div>
+          <div className="px-5 pt-4 pb-1.5 text-[10px] uppercase tracking-[0.08em] font-semibold text-text-tertiary flex items-center gap-1"><History className="w-3 h-3" />Recent instruments</div>
           {recent.map((s) => (
             <button key={s} onClick={() => goMarkets('DES', s)} className={cn(item(sym === s), 'font-mono')}>{s}</button>))}
         </div>

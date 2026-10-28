@@ -56,16 +56,16 @@ export function LoginScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-bg flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="login-stage min-h-screen flex items-center justify-center p-4">
+      <div className="w-full max-w-md relative">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <Terminal className="w-8 h-8 text-bloomberg" />
-            <h1 className="text-2xl font-bold text-text-primary tracking-tight">
-              MACRO TERMINAL
+            <span className="login-mark"><Terminal className="w-5 h-5" /></span>
+            <h1 className="text-[26px] font-semibold text-text-primary tracking-[-0.02em]">
+              Macro Terminal
             </h1>
-            <span className="text-sm text-text-tertiary">v8.0</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium text-text-tertiary bg-text-primary/5 ring-1 ring-border">v8.0</span>
           </div>
           <p className="text-text-secondary text-sm">
             Macro research and portfolio management
@@ -73,17 +73,17 @@ export function LoginScreen() {
         </div>
 
         {/* Login Form */}
-        <div className="bg-surface-1 border border-border rounded-lg p-6">
+        <div className="login-card p-7">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs text-text-tertiary uppercase tracking-wider mb-1.5">
+              <label className="block text-[11px] font-medium text-text-secondary mb-1.5">
                 Username
               </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-bg border border-border rounded px-3 py-2 text-text-primary
+                className="w-full bg-bg/60 border border-border rounded-lg px-3 py-2.5 text-text-primary
                          focus:border-bloomberg focus:outline-none transition-colors"
                 placeholder="Enter username"
                 disabled={loading}
@@ -91,14 +91,14 @@ export function LoginScreen() {
             </div>
 
             <div>
-              <label className="block text-xs text-text-tertiary uppercase tracking-wider mb-1.5">
+              <label className="block text-[11px] font-medium text-text-secondary mb-1.5">
                 Password
               </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-bg border border-border rounded px-3 py-2 text-text-primary
+                className="w-full bg-bg/60 border border-border rounded-lg px-3 py-2.5 text-text-primary
                          focus:border-bloomberg focus:outline-none transition-colors"
                 placeholder="Enter password"
                 disabled={loading}
@@ -107,7 +107,7 @@ export function LoginScreen() {
 
             {needOtp && (
               <div>
-                <label className="block text-xs text-text-tertiary uppercase tracking-wider mb-1.5">
+                <label className="block text-[11px] font-medium text-text-secondary mb-1.5">
                   Two-factor code
                 </label>
                 <input
@@ -116,7 +116,7 @@ export function LoginScreen() {
                   autoComplete="one-time-code"
                   inputMode="numeric"
                   autoFocus
-                  className="w-full bg-bg border border-border rounded px-3 py-2 text-text-primary font-mono tracking-widest
+                  className="w-full bg-bg/60 border border-border rounded-lg px-3 py-2.5 text-text-primary font-mono tracking-widest
                            focus:border-bloomberg focus:outline-none transition-colors"
                   placeholder="6-digit code or a recovery code"
                   disabled={loading}
@@ -133,9 +133,7 @@ export function LoginScreen() {
             <button
               type="submit"
               disabled={loading || !username || !password}
-              className="w-full bg-bloomberg text-bg font-medium py-2.5 rounded
-                       hover:bg-bloomberg/90 disabled:opacity-50 disabled:cursor-not-allowed
-                       transition-colors"
+              className="login-cta w-full font-medium py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Authenticating...' : 'Sign In'}
             </button>

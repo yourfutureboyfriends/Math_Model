@@ -15,6 +15,7 @@ Then the largest N per country (COUNTRIES[c]["n"]) by USD market cap.
 from __future__ import annotations
 
 import json
+import threading
 import logging
 import math
 import re
@@ -273,12 +274,35 @@ def load(max_age_days: int = MAX_AGE_DAYS, rebuild_if_stale: bool = True) -> Dic
     if cur and time.time() - cur.get("saved_at", 0) < max_age_days * 86400 \
             and (cur.get("config") == config_hash() or not rebuild_if_stale):
         return cur
+    if rebuild_if_stale and cur and cur.get("stocks"):
+        # A stale copy is still a good universe: serve it now and rebuild in the background (the rebuild takes ~5 min
+        # of Yahoo requests — run inline it held up the screen that asked, and everything queued behind it).
+        _rebuild_in_background()
+        return cur
     if rebuild_if_stale:
         try:
             return build()
         except Exception as e:
             logger.warning("[universe] rebuild failed: %s", e)
     return cur or {"stocks": [], "fx": {}}
+
+
+_rebuilding = threading.Lock()
+
+
+def _rebuild_in_background() -> None:
+    """Start one background rebuild (a second request while it runs does nothing)."""
+    if not _rebuilding.acquire(blocking=False):
+        return
+
+    def run():
+        try:
+            build()
+        except Exception as e:
+            logger.warning("[universe] background rebuild failed: %s", e)
+        finally:
+            _rebuilding.release()
+    threading.Thread(target=run, name="universe-rebuild", daemon=True).start()
 
 
 def summary(u: Dict[str, Any]) -> Dict[str, Any]:

@@ -177,7 +177,7 @@ export function FacView({ symbol }: { symbol: string }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <Tile label="Alpha (annual)" value={sp(d.alpha_annual)} cls={tone(d.alpha_annual)} sub={`t = ${d.alpha_t} ${Math.abs(d.alpha_t) >= 2 ? '(significant)' : '(not significant)'}`} />
         <Tile label="Explained by factors (R²)" value={pc(d.r2, 0)} sub={`${pc(d.idiosyncratic_share, 0)} of the variance is company-specific`} />
-        <Tile label="Market beta" value={mkt?.beta.toFixed(2)} sub={`t = ${mkt?.t}`} />
+        <Tile label="Market beta" value={mkt?.beta != null ? mkt.beta.toFixed(2) : '—'} sub={mkt?.t != null ? `t = ${mkt.t}` : undefined} />
         <Tile label="Sample" value={`${d.days} days`} sub={`${d.start} → ${d.end}`} />
       </div>
       <div className="px-3 py-2 border border-border bg-surface-1 rounded-md text-xs text-text-secondary">In factor terms, {symbol} is {story.length ? story.join('; ') : 'free of strong style tilts'}.</div>

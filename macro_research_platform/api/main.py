@@ -365,6 +365,11 @@ async def lifespan(app: FastAPI):
     """Start-up and shutdown: initialise databases, warm caches and start the scheduled jobs; stop them on exit."""
     from api.logging_config import setup_logging
     setup_logging()
+    try:            # worker threads for sync endpoints / offloaded work: 40 by default, which a burst of slow outside
+        import anyio.to_thread   # calls (a network change leaves connections hanging) can use up — then even
+        anyio.to_thread.current_default_thread_limiter().total_tokens = 100   # /api/health stalls
+    except Exception as e:
+        logger.warning(f"[STARTUP] thread limiter: {e}")
     try:
         from api.core.accounts import migrate as _migrate_accounts
         _migrate_accounts()         # users table, security columns, default-password flags

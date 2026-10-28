@@ -30,6 +30,7 @@ async function load(): Promise<void> {
     streamCrypto();
   } catch {
     state = { ...state, status: 'error' };            // keep the last good quotes on screen
+    if (listeners.size) setTimeout(load, 10_000);     // don't wait a whole poll after a blip (server restarting)
   }
   listeners.forEach((l) => l());
 }
