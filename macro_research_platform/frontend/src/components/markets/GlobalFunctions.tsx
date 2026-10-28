@@ -31,7 +31,7 @@ export function EvtsView({ onOpen }: { onOpen: (s: string) => void }) {
         <select value={days} onChange={(e) => setDays(Number(e.target.value))} className={sel}><option value={7}>Next 7 days</option><option value={14}>Next 14 days</option><option value={30}>Next 30 days</option></select>
         <select value={cap} onChange={(e) => setCap(Number(e.target.value))} className={sel}>
           {[[0, 'All sizes'], [2, '≥ $2bn'], [10, '≥ $10bn'], [50, '≥ $50bn'], [200, '≥ $200bn']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-        {data && <span>{data.rows.length} companies</span>}
+        {data && <span>{data.rows.length} companies · {data.source}</span>}
       </div>
       {loading && !data ? <Loading label="Loading earnings calendar…" /> : error ? <ErrorBox msg={error} /> : byDay.length === 0 ? <Panel><div className="text-2xs text-text-tertiary">No reports in this window.</div></Panel> : (
         byDay.map(([day, rows]) => (
@@ -42,6 +42,7 @@ export function EvtsView({ onOpen }: { onOpen: (s: string) => void }) {
                 <td className="py-1 w-24 font-mono text-text-primary">{r.home_symbol ?? r.symbol}</td><td className="text-text-secondary truncate max-w-[18rem]">{r.company}</td>
                 <td className="w-28 text-text-tertiary">{r.timing}</td><td className="w-24 text-right font-mono">{fmtBig(r.market_cap)}</td>
                 <td className="w-24 text-right font-mono">{r.eps_estimate != null ? `est ${r.eps_estimate.toFixed(2)}` : ''}</td>
+                <td className="w-28 text-right font-mono text-text-tertiary" title="Revenue estimate → reported (FMP)">{r.revenue_estimate != null ? <>rev {fmtBig(r.revenue_estimate)}{r.revenue_reported != null ? <> → <span className={r.revenue_reported >= r.revenue_estimate ? 'text-green' : 'text-red'}>{fmtBig(r.revenue_reported)}</span></> : null}</> : ''}</td>
                 <td className="w-40 text-right font-mono">{r.eps_reported != null ? <>act {r.eps_reported.toFixed(2)} <Chg v={r.surprise_pct != null ? r.surprise_pct / 100 : null} d={1} /></> : ''}</td>
               </tr>))}</tbody></table>
           </Panel>)))}

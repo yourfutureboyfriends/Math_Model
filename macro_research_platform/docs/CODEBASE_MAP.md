@@ -280,9 +280,11 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 |---|---|
 | `adapters.py` | Concrete DataProvider adapters behind the common contract (Phase 1C). |
 | `alfred.py` | ALFRED — FRED's archive of past data vintages (St. Louis Fed, free, uses FRED_API_KEY). |
+| `benzinga.py` | Benzinga APIs — analyst rating actions (firm, named analyst, rating and price-target changes), company guidance changes, earnings / dividend / economic calendars and news headlines. Key: BENZINGA_API_KEY in .env… |
 | `damodaran.py` | Aswath Damodaran's public valuation datasets (NYU Stern, free; updated each January, the implied equity risk premium monthly). These are the inputs a careful DCF uses instead of single-company estimates, which are noisy: |
 | `dbnomics.py` | DBnomics — one free API (no key) over 90+ official statistical sources: IMF, OECD, ECB, Eurostat, BIS, World Bank, ILO, national statistics offices and central banks (Cepremap). |
 | `factor_library.py` | Academic factor returns — Kenneth French Data Library (free, Dartmouth). |
+| `fmp.py` | Financial Modeling Prep (free plan: US listings, 250 requests a day) — analyst grade history and consensus, price-target trends, multi-year analyst estimates, and the earnings calendar with revenue estimates. Key:… |
 | `fred_provider.py` | FRED Data Provider — Raw economic data access from Federal Reserve Economic Data. |
 | `futu_provider.py` | Futu OpenAPI — read-only market data and holdings through the FutuOpenD gateway running on this computer. |
 | `ibkr_tws.py` | Interactive Brokers TWS / IB Gateway — a market-data source (read-only) through the socket API on this computer. |
@@ -546,6 +548,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 
 | File | What it does |
 |---|---|
+| `ActionsView.tsx` | ACTN: market-wide analyst actions (upgrades, downgrades, initiations, price-target changes) and company guidance |
 | `AnalyticsViews.tsx` | Analytics functions: SEAS (seasonality), CORR (correlation matrix), RRG (relative rotation), |
 | `BridgewaterViews.tsx` | Bridgewater research frameworks — used in Markets mode (ENVR, AWP, DCYC, HGRL, WPWR) and embedded in the macro |
 | `Chrome.tsx` | Classic terminal chrome for the Markets mode: yellow market-sector keys, amber function |

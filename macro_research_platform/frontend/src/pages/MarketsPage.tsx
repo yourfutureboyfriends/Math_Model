@@ -12,6 +12,7 @@ import { QuoteWorkstation, WatchColumn } from '@/components/markets/QuoteWorksta
 import { CorrView, FrdView, OsaView, RrgView, SeasView } from '@/components/markets/AnalyticsViews';
 import { EcoGlobalView, EcstView, SiView, SplcView } from '@/components/markets/DataViews';
 import { FutuView } from '@/components/markets/FutuView';
+import { ActionsView } from '@/components/markets/ActionsView';
 import { FlyView, QuakeView, ShipView } from '@/components/markets/TrackingViews';
 import { FlowView } from '@/components/markets/FlowView';
 import { CotView, EdgeBoard, NowView } from '@/components/markets/EdgeViews';
@@ -299,6 +300,7 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'BTMM' && <BtmmView />}
     {code === 'WCRS' && <WcrsView onOpen={open} />}
     {code === 'EVTS' && <EvtsView onOpen={open} />}
+    {code === 'ACTN' && <ActionsView onOpen={open} />}
     {code === 'ECO' && <><EcoGlobalView /><RelatedOdds terms={['cpi', 'inflation', 'payrolls', 'jobs', 'unemployment', 'gdp', 'recession', 'pce']} title="Release odds — what the crowd expects" limit={8} className="mt-3" /></>}
     {code === 'ECST' && <EcstView />}
     {code === 'N' && <NewsView />}

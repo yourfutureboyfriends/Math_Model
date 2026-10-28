@@ -199,6 +199,36 @@ export function AnrView({ symbol }: { symbol: string }) {
           </table></div>
         </Panel>
       </div>
+      {(data.analyst_actions?.length > 0 || data.fmp) && (
+        <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-3">
+          {data.analyst_actions?.length > 0 && (
+            <Panel title="Analyst actions — firm and analyst (Benzinga)">
+              <div className="max-h-80 overflow-y-auto"><table className="w-full text-2xs">
+                <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left font-normal">Date</th><th className="text-left font-normal">Firm · analyst</th>
+                  <th className="text-left font-normal">Action</th><th className="text-right font-normal pr-3">Target</th></tr></thead>
+                <tbody>{data.analyst_actions.map((a: any, i: number) => (
+                  <tr key={i} className="border-t border-border-subtle">
+                    <td className="font-mono text-text-tertiary py-1 whitespace-nowrap pr-2">{a.date}</td>
+                    <td className="text-text-primary truncate max-w-[14rem]" title={`${a.firm}${a.analyst ? ` · ${a.analyst}` : ''}`}>{a.firm}{a.analyst ? <span className="text-text-tertiary"> · {a.analyst}</span> : null}</td>
+                    <td className={/upgrade/i.test(a.action) ? 'text-green' : /downgrade/i.test(a.action) ? 'text-red' : 'text-text-secondary'}>
+                      {a.action}{a.rating ? `: ${a.rating_prior && a.rating_prior !== a.rating ? `${a.rating_prior} → ` : ''}${a.rating}` : ''}</td>
+                    <td className="text-right font-mono whitespace-nowrap pr-3">{a.pt ? <>{a.pt_prior ? <span className="text-text-tertiary">{fmtPrice(a.pt_prior)} → </span> : null}
+                      <span className={a.pt_change > 0 ? 'text-green' : a.pt_change < 0 ? 'text-red' : ''}>{fmtPrice(a.pt)}</span></> : '—'}</td>
+                  </tr>))}</tbody>
+              </table></div>
+            </Panel>)}
+          {data.fmp && (
+            <Panel title="Target trend and grade consensus (FMP)">
+              <div className="grid grid-cols-3 gap-2 text-2xs">
+                {data.fmp.target_trend.map((t: any) => (
+                  <div key={t.window} className="border border-border-subtle p-2"><div className="text-text-tertiary">Avg new target, {t.window}</div>
+                    <div className="font-mono text-sm text-text-primary">{fmtPrice(t.average)}</div><div className="text-text-tertiary">{t.count ?? 0} targets</div></div>))}
+              </div>
+              <div className="text-2xs text-text-secondary mt-2">Target consensus {fmtPrice(data.fmp.target?.consensus)} (median {fmtPrice(data.fmp.target?.median)}, range {fmtPrice(data.fmp.target?.low)}–{fmtPrice(data.fmp.target?.high)})</div>
+              <div className="text-2xs text-text-secondary mt-1">Grades: {['strongBuy', 'buy', 'hold', 'sell', 'strongSell'].map((k) => `${({ strongBuy: 'strong buy', buy: 'buy', hold: 'hold', sell: 'sell', strongSell: 'strong sell' } as any)[k]} ${data.fmp.consensus?.[k] ?? 0}`).join(' · ')} → <span className="text-text-primary">{data.fmp.consensus?.label ?? '—'}</span></div>
+              <div className="text-[10px] text-text-tertiary mt-1">A falling average of new targets (month below quarter below year) means analysts are cutting.</div>
+            </Panel>)}
+        </div>)}
     </div>
   );
 }

@@ -1,11 +1,13 @@
 """Markets mode endpoints (api/marketdata): universal search, quotes, overview, profiles,
 statements, news + SEC filings, movers and the global screener. Read-only market data."""
 import asyncio
+import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, HTTPException, Query
 
 router = APIRouter(tags=["markets"])
+logger = logging.getLogger(__name__)
 
 
 async def _run(fn, *a, timeout: float = 45, **k):
@@ -135,9 +137,22 @@ async def mkt_earnings(symbol: str):
 
 @router.get("/api/v1/mkt/anr/{symbol}")
 async def mkt_analysts(symbol: str):
-    """Analyst recommendations and price targets (ANR)."""
+    """Analyst recommendations and price targets (ANR): Yahoo's consensus, plus — for US listings — Benzinga's rating
+    actions with the named analyst, and FMP's grade consensus and price-target trend. Extra sources are best-effort."""
     from api.marketdata import security
-    return await _run(security.analysts, symbol)
+    from api.providers import benzinga as bz, fmp
+
+    async def extra(fn, *a):
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(fn, *a), 25)
+        except Exception as e:                                   # a missing extra source never breaks the screen
+            logger.info("[anr] %s %s: %s", getattr(fn, "__name__", fn), symbol, e)
+            return None
+    us = "." not in symbol and not any(c in symbol for c in "=^")
+    base, actions, fm = await asyncio.gather(_run(security.analysts, symbol),
+                                             extra(bz.ratings, symbol, 365, 60) if us and bz.available() else asyncio.sleep(0),
+                                             extra(fmp.analyst_view, symbol) if us and fmp.available() else asyncio.sleep(0))
+    return {**base, "analyst_actions": actions, "fmp": fm}
 
 
 @router.get("/api/v1/mkt/hds/{symbol}")
@@ -1148,6 +1163,28 @@ async def _ibkr(fn, *a, timeout: float = 45):
         raise HTTPException(503, str(e))
     except asyncio.TimeoutError:
         raise HTTPException(504, "TWS did not answer in time.")
+
+
+@router.get("/api/v1/mkt/actions")
+async def mkt_actions(days: int = Query(3, ge=1, le=30)):
+    """Analyst & company actions (ACTN): market-wide rating changes — upgrades, downgrades, initiations, target changes —
+    and company guidance changes, from Benzinga."""
+    from api.providers import benzinga as bz
+    if not bz.available():
+        raise HTTPException(503, "BENZINGA_API_KEY is not set.")
+    try:
+        ratings, guidance = await asyncio.gather(asyncio.to_thread(bz.ratings, None, days, 500), asyncio.to_thread(bz.guidance, max(days, 14), 200))
+    except bz.BenzingaError as e:
+        raise HTTPException(503, str(e))
+    return {"ratings": ratings, "guidance": guidance, "days": days,
+            "counts": {"upgrades": sum(1 for r in ratings if (r["action"] or "").startswith("Upgrade")),
+                       "downgrades": sum(1 for r in ratings if (r["action"] or "").startswith("Downgrade")),
+                       "initiations": sum(1 for r in ratings if (r["action"] or "").startswith("Initiat")),
+                       "target_raised": sum(1 for r in ratings if (r["pt_change"] or 0) > 0),
+                       "target_cut": sum(1 for r in ratings if (r["pt_change"] or 0) < 0),
+                       "guidance_raised": sum(1 for g in guidance if g["direction"] == "raised"),
+                       "guidance_lowered": sum(1 for g in guidance if g["direction"] == "lowered")},
+            "source": "Benzinga (analyst ratings, guidance)"}
 
 
 @router.get("/api/v1/mkt/ibkr/status")

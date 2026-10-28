@@ -68,13 +68,33 @@ def earnings_calendar(start: Optional[str] = None, days: int = 7, min_cap_bn: fl
     s = date.fromisoformat(start) if start else date.today()
     e = s + timedelta(days=max(1, min(days, 31)))
 
+    def fmp_rows():
+        """FMP's US calendar for the window (revenue estimates and actuals); empty without a key or on failure."""
+        try:
+            from api.providers import fmp
+            return fmp.earnings_calendar(s, (e - s).days) if fmp.available() else []
+        except Exception as ex:
+            logger.info("[evts] fmp: %s", ex)
+            return []
+
     def fetch():
         import yfinance as yf
         try:
             df = yf.Calendars().get_earnings_calendar(market_cap=(min_cap_bn * 1e9) if min_cap_bn else None, filter_most_active=False,
                                                       start=s.isoformat(), end=e.isoformat(), limit=min(limit, 250), offset=offset)
         except Exception as ex:
-            raise Upstream(f"Earnings calendar unavailable: {ex}")
+            # Yahoo throttled or down: FMP's calendar (US listings) instead of an empty screen
+            alt = fmp_rows()
+            if not alt:
+                raise Upstream(f"Earnings calendar unavailable: {ex}")
+            rows = [{"symbol": r["symbol"], "company": None, "market_cap": None, "event": "Earnings", "datetime": r["date"],
+                     "timing": "Time not set", "eps_estimate": r["eps_estimate"], "eps_reported": r["eps_reported"],
+                     "surprise_pct": ((r["eps_reported"] / r["eps_estimate"] - 1) * 100 if r["eps_reported"] is not None and r["eps_estimate"] else None),
+                     "revenue_estimate": r["revenue_estimate"], "revenue_reported": r["revenue_reported"]} for r in alt]
+            rows.sort(key=lambda x: x["datetime"] or "")
+            return {"start": s.isoformat(), "end": e.isoformat(), "rows": rows[offset: offset + limit], "offset": offset,
+                    "source": "Financial Modeling Prep earnings calendar (US; Yahoo unavailable)"}
+        rev = {(r["symbol"], r["date"]): r for r in fmp_rows()}
         rows = []
         if df is not None and not df.empty:
             for sym, r in df.iterrows():
@@ -84,10 +104,14 @@ def earnings_calendar(start: Optional[str] = None, days: int = 7, min_cap_bn: fl
                              "timing": {"BMO": "Before open", "AMC": "After close", "TAS": "During session", "TNS": "Time not set"}.get(str(r.get("Timing")), r.get("Timing")),
                              "eps_estimate": _f(r.get("EPS Estimate")), "eps_reported": _f(r.get("Reported EPS")),
                              "surprise_pct": _f(r.get("Surprise(%)"))})
+        for row in rows:                                     # FMP adds revenue estimates / actuals for US listings
+            m = rev.get((row["symbol"], str(row["datetime"] or "")[:10]))
+            if m:
+                row["revenue_estimate"], row["revenue_reported"] = m["revenue_estimate"], m["revenue_reported"]
         rows = _dedupe_listings(rows)
         rows.sort(key=lambda x: (x["datetime"] or "", -(x["market_cap"] or 0)))
         return {"start": s.isoformat(), "end": e.isoformat(), "rows": rows, "offset": offset,
-                "source": "Yahoo Finance earnings calendar"}
+                "source": "Yahoo Finance earnings calendar" + (" · revenue estimates FMP" if rev else "")}
     return _cached(f"evts:{s}:{e}:{min_cap_bn}:{offset}:{limit}", 1800, fetch)
 
 
@@ -466,10 +490,36 @@ def _articles(provider_feeds: Optional[Dict[str, str]] = None) -> List[Dict[str,
     return out
 
 
+def _benzinga_articles() -> List[Dict[str, Any]]:
+    """Benzinga's latest headlines in the hub's format (empty without a key or on failure)."""
+    from datetime import datetime as _dt
+    from api.calculations.news_sentiment import score_headline
+    from api.marketdata.countries import countries_in
+    try:
+        from api.providers import benzinga as bz
+        if not bz.available():
+            return []
+        rows = bz.news(60)
+    except Exception as e:
+        logger.info("[newshub] benzinga: %s", e)
+        return []
+    out = []
+    for n in rows:
+        try:
+            t = _dt.fromisoformat(n["published"]).astimezone(timezone.utc).isoformat()
+        except Exception:
+            t = None
+        title = n.get("title") or ""
+        out.append({"title": title, "source": "Benzinga", "url": n.get("url"), "summary": ", ".join(n.get("channels") or [])[:280],
+                    "time": t, "sentiment": score_headline(title), "countries": countries_in(title) or ["US"],
+                    "tickers": n.get("tickers") or []})
+    return out
+
+
 def news_hub(q: Optional[str] = None, limit: int = 60, region: Optional[str] = None, country: Optional[str] = None) -> Dict[str, Any]:
     """Headlines across markets and topics."""
     from api.marketdata.countries import region_of
-    glob = _cached("newshub", 600, lambda: _articles())
+    glob = _cached("newshub", 600, lambda: _articles()) + _cached("newshub:benzinga", 180, _benzinga_articles)
     regional = _cached("newshub:regional", 900, lambda: _articles({k: v[0] for k, v in REGIONAL_FEEDS.items()}))
     feed_region = {k: v[1] for k, v in REGIONAL_FEEDS.items()}
     if not glob and not regional:
