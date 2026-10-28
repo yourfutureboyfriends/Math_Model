@@ -427,3 +427,18 @@ class H(QCAlgorithm):
     assert set(w) == {"SPY", "TLT"} and 0.4 < w["SPY"] < 0.8 and 0.15 < w["TLT"] < 0.45
     raw = trader._raw_from_code(r)
     assert {p["symbol"] for p in raw["positions"]} == {"SPY", "TLT"} and raw["currency"] == "USD"
+
+
+def test_a_container_docker_cannot_remove_is_reported_not_ignored(monkeypatch):
+    import subprocess as sp
+    calls = []
+
+    class R:
+        returncode, stderr = 1, "could not kill container: did not receive an exit event"
+    monkeypatch.setattr(sp, "run", lambda cmd, **kw: (calls.append(cmd[1]), R())[1])
+
+    class P:
+        def kill(self):
+            calls.append("client")
+    assert leanrun._remove_container("qlean-x", P()) is False
+    assert calls == ["kill", "rm", "client"]

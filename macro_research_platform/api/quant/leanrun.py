@@ -36,6 +36,7 @@ source, QuantConnect's alternative datasets.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -46,6 +47,8 @@ import uuid
 import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 import pandas as pd
@@ -817,6 +820,25 @@ class zzQuantLabDaily({cls}):
 ''' + "".join(f"    {n} = _ql_wrap({n!r})\n" for n in names)
 
 
+def _remove_container(name: str, proc: "subprocess.Popen") -> bool:
+    """Stop and remove a run's container; True when it is gone. A failure used to pass silently and leave the engine
+    running (Docker Desktop can lose a container's exit event: `docker kill` then fails and only a restart clears it)."""
+    gone = False
+    for cmd in (["docker", "kill", name], ["docker", "rm", "-f", name]):
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            gone = gone or r.returncode == 0 or "No such container" in (r.stderr or "")
+        except subprocess.TimeoutExpired:
+            pass
+    try:
+        proc.kill()                                      # the `docker run` client process
+    except Exception:
+        pass
+    if not gone:
+        logger.error("[lean] container %s could not be removed — Docker Desktop needs a restart", name)
+    return gone
+
+
 def _docker_cmd(name: str, algo_dir: Path, data_dir: Path, results: Path, cls: str, cpu: int,
                 plug: Optional[Dict[str, Path]] = None, custom_dir: Optional[Path] = None) -> List[str]:
     mounts = ["-v", f"{custom_dir}:/Lean/Data/qlcustom:ro"] if custom_dir else []
@@ -1022,11 +1044,12 @@ def _execute(ctx: Dict[str, Any], job: Optional[Any] = None, timeout: int = 1800
             t0 = time.time()
             while p.poll() is None:
                 if job is not None and getattr(job, "cancelled", False):
-                    subprocess.run(["docker", "kill", name], capture_output=True, timeout=30)
+                    _remove_container(name, p)
                     raise LeanError("Cancelled.")
                 if time.time() - t0 > timeout:
-                    subprocess.run(["docker", "kill", name], capture_output=True, timeout=30)
-                    raise LeanError(f"LEAN ran longer than {timeout} s and was stopped.")
+                    gone = _remove_container(name, p)
+                    raise LeanError(f"LEAN ran longer than {timeout} s and was stopped."
+                                    + ("" if gone else " Docker could not remove its container — restart Docker Desktop."))
                 time.sleep(0.5)
         console = log_path.read_text(errors="replace")
         try:
