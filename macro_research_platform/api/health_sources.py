@@ -217,6 +217,52 @@ def _probe_db() -> Dict[str, Any]:
                 "detail": str(e)[:120]}
 
 
+def _connections() -> Dict[str, Dict[str, Any]]:
+    """Optional data connections the user runs or subscribes to. Reported beside the core feeds, never counted in the
+    overall status: FutuOpenD or TWS being closed is a choice, not an outage. No network calls except local sockets."""
+    out: Dict[str, Dict[str, Any]] = {}
+    try:
+        from api.providers import futu_provider as fp
+        out["futu"] = {"status": "connected" if fp.opend_running() else "off", "label": "Futu OpenD",
+                       "detail": "real-time HK, US depth, capital flow, holdings" if fp.opend_running() else "FutuOpenD not running"}
+    except Exception as e:
+        out["futu"] = {"status": "error", "label": "Futu OpenD", "detail": str(e)[:80]}
+    try:
+        from api.providers import ibkr_tws as it
+        out["ibkr"] = {"status": "connected" if it.tws_running() else "off", "label": "IBKR TWS",
+                       "detail": "quotes and history (read-only API)" if it.tws_running() else "TWS / IB Gateway not running"}
+    except Exception as e:
+        out["ibkr"] = {"status": "error", "label": "IBKR TWS", "detail": str(e)[:80]}
+    try:
+        from api.providers import massive
+        st = massive.status()
+        days, missing = st["stored_days"], st["missing"]
+        state = ("off" if not st["available"] else "backfilling" if st["backfill"]["running"] else
+                 "connected" if missing is not None and missing <= 3 else "incomplete")
+        out["massive"] = {"status": state, "label": "Massive store",
+                          "detail": f"{days} days stored, last {st['last'] or '—'}" + (f", {missing} missing" if missing else "")
+                                    + (f" — {st['backfill']['error']}" if st["backfill"].get("error") else "")}
+    except Exception as e:
+        out["massive"] = {"status": "error", "label": "Massive store", "detail": str(e)[:80]}
+    try:
+        from api.providers import benzinga, fmp
+        out["benzinga"] = {"status": "connected" if benzinga.available() else "off", "label": "Benzinga",
+                           "detail": "ratings, guidance, news" if benzinga.available() else "BENZINGA_API_KEY not set"}
+        b = fmp.budget()
+        out["fmp"] = {"status": "connected" if fmp.available() else "off", "label": "FMP",
+                      "detail": f"{b['used_today']} of {b['daily_budget']} requests used today" if fmp.available() else "FMP_API_KEY not set"}
+    except Exception as e:
+        out["keys"] = {"status": "error", "label": "API keys", "detail": str(e)[:80]}
+    try:
+        from api.providers import sec_edgar
+        dirs = sec_edgar.bulk_dirs()
+        out["sec_bulk"] = {"status": "connected" if dirs else "off", "label": "SEC bulk files",
+                           "detail": str(dirs[0]) if dirs else "not found (SEC_BULK_DIR)"}
+    except Exception as e:
+        out["sec_bulk"] = {"status": "error", "label": "SEC bulk files", "detail": str(e)[:80]}
+    return out
+
+
 def get_sources_health(force: bool = False) -> Dict[str, Any]:
     """Probe every upstream (cached ~30s) and return an aggregate health report."""
     now = time.time()
@@ -246,6 +292,7 @@ def get_sources_health(force: bool = False) -> Dict[str, Any]:
         "down": total - live - degraded,
         "total": total,
         "sources": sources,
+        "connections": _connections(),
         "checked_at": checked,
         "cache_ttl_seconds": _CACHE_TTL,
     }

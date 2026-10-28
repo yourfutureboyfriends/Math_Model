@@ -24,8 +24,12 @@ interface SourcesHealth {
   down: number;
   total: number;
   sources: Record<string, SourceHealth>;
+  /** Optional connections the user runs or subscribes to (Futu, IBKR, Massive, …) — shown, not counted in `overall`. */
+  connections?: Record<string, { status: string; label: string; detail: string }>;
   checked_at: string;
 }
+
+const CONN_DOT: Record<string, string> = { connected: 'bg-green', backfilling: 'bg-amber', incomplete: 'bg-amber', off: 'bg-text-tertiary', error: 'bg-red' };
 
 const POLL_MS = 30_000;
 
@@ -131,6 +135,16 @@ export function DataHealthIndicator(): React.ReactElement {
                   </div>
                 ))}
               </div>
+              {data.connections && Object.keys(data.connections).length > 0 && (
+                <div className="pt-1.5 mt-1 border-t border-border-subtle space-y-0.5">
+                  <div className="text-[10px] uppercase tracking-wider text-text-tertiary mb-0.5">Connections (optional)</div>
+                  {Object.entries(data.connections).map(([k, c]) => (
+                    <div key={k} className="flex items-start gap-2" title={c.detail}>
+                      <span className={`inline-block w-2 h-2 mt-1 rounded-full shrink-0 ${CONN_DOT[c.status] ?? 'bg-text-tertiary'}`} />
+                      <span className="text-text-primary w-28 shrink-0">{c.label}</span>
+                      <span className="text-text-tertiary truncate">{c.status === 'connected' ? '' : `${c.status} · `}{c.detail}</span>
+                    </div>))}
+                </div>)}
               <div className="pt-1 text-2xs text-text-tertiary text-right">
                 Probed {relTime(data.checked_at)} · auto-refresh 30s
               </div>

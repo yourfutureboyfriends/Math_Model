@@ -58,6 +58,10 @@ class MassiveError(RuntimeError):
     """The request failed (bad key, rate limit not cleared, network)."""
 
 
+class DayNotReady(MassiveError):
+    """The day has not closed yet on the free plan — fetch it on the next run."""
+
+
 def _get(path: str, params: Optional[Dict[str, Any]] = None, retries: int = 3) -> Dict[str, Any]:
     """One rate-limited request (≥ MIN_INTERVAL apart across threads); 429s back off and retry."""
     key = api_key()
@@ -74,7 +78,11 @@ def _get(path: str, params: Optional[Dict[str, Any]] = None, retries: int = 3) -
             time.sleep(60 * (attempt + 1))
             continue
         if r.status_code in (401, 403):
-            raise MassiveError(f"Massive refused the key or the plan ({r.status_code}): {r.json().get('error', '')[:120]}")
+            j = r.json() if r.text else {}
+            msg = str(j.get("message") or j.get("error") or "")
+            if "before end of day" in msg:            # the free plan releases a day only after it closes
+                raise DayNotReady(msg[:120])
+            raise MassiveError(f"Massive refused the key or the plan ({r.status_code}): {msg[:120]}")
         if r.status_code != 200:
             raise MassiveError(f"Massive HTTP {r.status_code}")
         return r.json()
@@ -149,6 +157,9 @@ def backfill(history_days: int = HISTORY_DAYS) -> None:
         for d in todo:
             try:
                 fetch_day(d)
+            except DayNotReady:
+                _backfill["done"] += 1
+                continue                                   # not an error: the next run picks it up
             except MassiveError as e:
                 _backfill["error"] = str(e)[:200]
                 if "refused" in str(e):

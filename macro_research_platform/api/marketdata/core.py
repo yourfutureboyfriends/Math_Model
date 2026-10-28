@@ -583,7 +583,40 @@ def tape(symbol: str) -> Dict[str, Any]:
                 "up_volume": up_v, "down_volume": down_v, "flat_volume": flat_v, "profile": buckets,
                 "method": "1-minute bars (Yahoo). Buy/sell split by the tick rule: volume in a minute that closed up counts as "
                           "buying, down as selling — an estimate, not exchange-reported order flow."}
-    return _cached(f"tape:{s}", 60, fetch)
+
+    out = _cached(f"tape:{s}", 60, fetch)
+    return {**out, **_futu_tape(s, out)}
+
+
+def _futu_tape(s: str, base: Dict[str, Any]) -> Dict[str, Any]:
+    """With FutuOpenD running and a quote right for the market: the latest prints as real ticks carrying the exchange's
+    buy / sell flag, and the day's buy / sell split from Futu's full-day buyer- vs seller-initiated turnover. Empty
+    otherwise (the 1-minute-bar estimate stands)."""
+    try:
+        from api.providers import futu_provider as fp
+        if not fp.opend_running() or not fp.to_futu(s):
+            return {}
+        t = fp.ticks(s, 300)
+        flow = fp.capital_flow(s)
+    except Exception as e:
+        logger.debug("[tape] futu %s: %s", s, e)
+        return {}
+    sizes = flow.get("by_order_size") or {}
+    tin = sum((v.get("in") or 0) for v in sizes.values())
+    tout = sum((v.get("out") or 0) for v in sizes.values())
+    extra: Dict[str, Any] = {}
+    if t.get("ticks"):
+        extra["prints"] = [{"time": str(x["time"])[11:19], "price": x["price"], "volume": x["volume"], "side": x["side"]}
+                           for x in t["ticks"][:80]]
+    if tin + tout > 0:
+        share = tin / (tin + tout)
+        vol = base.get("volume") or 0.0
+        extra.update(up_volume=vol * share, down_volume=vol * (1 - share), flat_volume=0.0, buy_share=share)
+    if extra:
+        extra["method"] = ("Futu: prints are exchange ticks with their buy / sell direction; the day's buy / sell split is "
+                           "Futu's buyer- vs seller-initiated turnover. VWAP and the volume profile use 1-minute bars (Yahoo).")
+        extra["source"] = "Futu OpenAPI (ticks, capital flow) · Yahoo 1-minute bars"
+    return extra
 
 
 OVERVIEW: Dict[str, List[tuple]] = {

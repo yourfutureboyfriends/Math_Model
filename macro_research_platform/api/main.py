@@ -326,7 +326,9 @@ _DASHBOARD_CACHE_LOCK = threading.Lock()
 _DASHBOARD_CACHE_TTL_SECONDS = 300  # 5 minutes
 
 # FIXED: R-01 - APScheduler for automated data pipeline
-_scheduler = AsyncIOScheduler(timezone="UTC")
+# A job that misses its time by up to 10 minutes (slow start-up, a sleeping laptop) still runs, once (coalesce). The
+# 1-second default silently skipped the run-now start-up jobs whenever start-up took longer.
+_scheduler = AsyncIOScheduler(timezone="UTC", job_defaults={"misfire_grace_time": 600, "coalesce": True})
 # Strong references to long-running startup tasks (asyncio keeps only weak ones, so an
 # unreferenced warm loop can be garbage-collected and silently stop).
 _BACKGROUND_TASKS: set = set()
@@ -530,9 +532,12 @@ async def lifespan(app: FastAPI):
             from api.providers import massive as _massive
             if _massive.start_backfill():
                 logger.info("[massive] backfill / top-up started: %s missing days", _massive.status()["missing"])
-        _scheduler.add_job(func=_massive_topup, trigger="date", id="massive_startup", replace_existing=True)
-        _scheduler.add_job(func=_massive_topup, trigger=CronTrigger(day_of_week="mon-fri", hour=22, minute=20),
-                           id="massive_topup", replace_existing=True)
+        # Started directly, not as a run-now scheduler job: a "date" job added before the scheduler starts is skipped as
+        # a misfire when start-up takes longer than the 1 s default grace (the backfill silently never resumed).
+        threading.Thread(target=_massive_topup, name="massive-startup", daemon=True).start()
+        # 05:30 UTC (after midnight in New York): the free plan releases a day only once it has closed
+        _scheduler.add_job(func=_massive_topup, trigger=CronTrigger(day_of_week="tue-sat", hour=5, minute=30),
+                           id="massive_topup", replace_existing=True, misfire_grace_time=6 * 3600, coalesce=True)
 
         # T+1 reconciliation of positions against the fills ledger, for funds with governance on (a break halts).
         async def _reconcile_funds():

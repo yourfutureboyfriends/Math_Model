@@ -58,3 +58,14 @@ def test_earnings_calendar_falls_back_to_fmp_when_yahoo_fails(monkeypatch):
                                                                  "revenue_estimate": 1.3e10, "revenue_reported": None}])
     r = monitors.earnings_calendar("2026-10-28", 7)
     assert r["rows"][0]["symbol"] == "AMD" and r["rows"][0]["revenue_estimate"] == 1.3e10 and "Financial Modeling Prep" in r["source"]
+
+
+def test_fmp_usage_survives_a_restart(tmp_path, monkeypatch):
+    monkeypatch.setattr(fmp, "_DIR", tmp_path)
+    monkeypatch.setattr(fmp, "_USAGE", tmp_path / "usage.json")
+    monkeypatch.setattr(fmp, "_used", {"day": None, "n": 0})
+    for _ in range(3):
+        fmp._spend()
+    monkeypatch.setattr(fmp, "_used", {"day": None, "n": 0})          # a new process
+    fmp._spend()
+    assert fmp._used["n"] == 4

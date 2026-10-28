@@ -19,6 +19,8 @@ import requests
 logger = logging.getLogger(__name__)
 BASE = "https://financialmodelingprep.com/stable/"
 DAILY_BUDGET = 230                     # of FMP's 250 free requests a day
+_DIR = Path(__file__).resolve().parents[2] / "data" / "processed" / "fmp"
+_USAGE = _DIR / "usage.json"           # survives restarts: an in-memory counter reset on every restart
 _used = {"day": None, "n": 0}
 _lock = threading.Lock()
 
@@ -50,13 +52,23 @@ def _us(symbol: str) -> str:
 
 
 def _spend() -> None:
+    import json
     with _lock:
         today = date.today()
-        if _used["day"] != today:
-            _used.update(day=today, n=0)
+        if _used["day"] != today:                        # first use today in this process: pick up the saved count
+            try:
+                saved = json.loads(_USAGE.read_text())
+                _used.update(day=today, n=int(saved["n"]) if saved.get("day") == today.isoformat() else 0)
+            except Exception:
+                _used.update(day=today, n=0)
         if _used["n"] >= DAILY_BUDGET:
             raise FmpError("Today's FMP allowance is used up — cached data only until tomorrow.")
         _used["n"] += 1
+        try:
+            _DIR.mkdir(parents=True, exist_ok=True)
+            _USAGE.write_text(json.dumps({"day": today.isoformat(), "n": _used["n"]}))
+        except Exception:
+            pass
 
 
 def _get(endpoint: str, params: Dict[str, Any], ttl: float) -> Any:
@@ -65,7 +77,18 @@ def _get(endpoint: str, params: Dict[str, Any], ttl: float) -> Any:
     if not key:
         raise FmpError("FMP_API_KEY is not set.")
 
+    import hashlib
+    import json
+    import time as _t
+    ident = endpoint + ":" + "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+    disk = _DIR / "cache" / (hashlib.sha1(ident.encode()).hexdigest() + ".json")
+
     def fetch():
+        try:                                             # a disk copy within its TTL costs no request after a restart
+            if _t.time() - disk.stat().st_mtime < ttl:
+                return json.loads(disk.read_text())
+        except Exception:
+            pass
         _spend()
         r = requests.get(BASE + endpoint, params={**params, "apikey": key}, timeout=25)
         if r.status_code == 402:
@@ -74,8 +97,14 @@ def _get(endpoint: str, params: Dict[str, Any], ttl: float) -> Any:
             raise FmpError("FMP's daily limit was reached.")
         if r.status_code != 200:
             raise FmpError(f"FMP HTTP {r.status_code}")
-        return r.json()
-    return _cached("fmp:" + endpoint + ":" + "&".join(f"{k}={v}" for k, v in sorted(params.items())), ttl, fetch)
+        data = r.json()
+        try:
+            disk.parent.mkdir(parents=True, exist_ok=True)
+            disk.write_text(json.dumps(data))
+        except Exception:
+            pass
+        return data
+    return _cached("fmp:" + ident, ttl, fetch)
 
 
 def _num(x) -> Optional[float]:
@@ -125,4 +154,13 @@ def earnings_calendar(start: date, days: int) -> List[Dict[str, Any]]:
 
 
 def budget() -> Dict[str, Any]:
-    return {"used_today": _used["n"] if _used["day"] == date.today() else 0, "daily_budget": DAILY_BUDGET}
+    """Requests used today (in this process, or saved by an earlier one) against the daily budget."""
+    import json
+    n = _used["n"] if _used["day"] == date.today() else 0
+    if not n:
+        try:
+            saved = json.loads(_USAGE.read_text())
+            n = int(saved["n"]) if saved.get("day") == date.today().isoformat() else 0
+        except Exception:
+            pass
+    return {"used_today": n, "daily_budget": DAILY_BUDGET}

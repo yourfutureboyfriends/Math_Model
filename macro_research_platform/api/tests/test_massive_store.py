@@ -54,3 +54,18 @@ def test_no_key_means_not_available(monkeypatch):
     monkeypatch.delenv("MASSIVE_API_KEY", raising=False)
     monkeypatch.setattr(massive, "api_key", lambda: None)
     assert not massive.available() and massive.start_backfill() is False
+
+
+def test_backfill_skips_a_day_that_has_not_closed_and_continues(store, monkeypatch):
+    from datetime import date as _d
+    fetched = []
+
+    def fake_fetch(d):
+        if d == _d(2026, 10, 27):
+            raise massive.DayNotReady("Attempted to request today's data before end of day.")
+        fetched.append(d)
+    monkeypatch.setattr(massive, "missing_days", lambda history_days=730: [_d(2026, 10, 27), _d(2026, 10, 26), _d(2026, 10, 23)])
+    monkeypatch.setattr(massive, "fetch_day", fake_fetch)
+    monkeypatch.setattr(massive, "refresh_splits", lambda since=None: [])
+    massive.backfill()
+    assert fetched == [_d(2026, 10, 26), _d(2026, 10, 23)] and massive._backfill["error"] is None

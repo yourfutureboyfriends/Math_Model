@@ -32,3 +32,20 @@ def test_without_opend_everything_reports_not_running(monkeypatch):
         fp.order_book("0700.HK")
     with pytest.raises(fp.FutuUnavailable, match="not running"):
         fp.positions()
+
+
+def test_tape_uses_futu_ticks_and_flow_when_available(monkeypatch):
+    from api.marketdata import core
+    monkeypatch.setattr(fp, "opend_running", lambda: True)
+    monkeypatch.setattr(fp, "ticks", lambda s, n=200: {"ticks": [{"time": "2026-10-27 15:59:58.120", "price": 385.2, "volume": 1000, "side": 1}]})
+    monkeypatch.setattr(fp, "capital_flow", lambda s: {"by_order_size": {"big": {"in": 300.0, "out": 100.0}, "small": {"in": 100.0, "out": 100.0}}})
+    extra = core._futu_tape("0700.HK", {"volume": 1_000_000})
+    assert extra["prints"][0] == {"time": "15:59:58", "price": 385.2, "volume": 1000, "side": 1}
+    assert extra["buy_share"] == pytest.approx(400 / 600) and extra["up_volume"] == pytest.approx(1_000_000 * 400 / 600)
+    monkeypatch.setattr(fp, "opend_running", lambda: False)
+    assert core._futu_tape("0700.HK", {"volume": 1}) == {}                 # no OpenD: the bar estimate stands
+
+
+def test_scheduler_runs_late_jobs_instead_of_skipping_them():
+    from api.main import _scheduler
+    assert _scheduler._job_defaults["misfire_grace_time"] >= 300 and _scheduler._job_defaults["coalesce"] is True

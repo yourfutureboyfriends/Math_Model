@@ -183,3 +183,6 @@ api/funds/
 
 # Massive (Polygon) daily-bars store: rebuilt from the API, never committed
 data/processed/massive/
+
+# FMP response cache and daily-usage counter
+data/processed/fmp/
