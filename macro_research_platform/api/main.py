@@ -907,6 +907,8 @@ from api.routers.trading_desk import router as trading_desk_router   # pitch rev
 app.include_router(trading_desk_router)
 from api.routers.funds import router as funds_router   # several funds, each in its own database
 app.include_router(funds_router)
+from api.routers.pe import router as pe_router   # private equity: LBO workbench, deal pipeline, fund maths
+app.include_router(pe_router)
 from api.routers.data_export import router as data_export_router  # spreadsheet / API access (CSV, JSON)
 app.include_router(data_export_router)
 from api.routers.strategies import router as strategies_router  # Strategy Lab

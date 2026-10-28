@@ -266,6 +266,16 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `macro_series.py` | Macro Series Normalization — Convert FRED/other macro data to canonical format. |
 | `prices.py` | Price Normalization — Convert raw prices to canonical format. |
 
+### `api/pe/`
+
+| File | What it does |
+|---|---|
+| `deals.py` | The deal pipeline: saved LBO cases and their progress, kept in the current fund's own database (api/funds.py), so each fund's deals stay apart. A deal stores its full input set, the headline results of its last run,… |
+| `excel.py` | LBO → Excel: the deal as an investment-committee workbook — Summary (returns by case, sources & uses, the value bridge), Operating model, Debt schedule, Credit & covenants, Sensitivities, and Assumptions (every input… |
+| `fundmath.py` | Private-fund mathematics on dated cash flows (contributions negative, distributions positive, the latest NAV as the residual value): |
+| `lbo.py` | LBO model — an annual leveraged-buyout model in the form deal teams use: |
+| `market.py` | Market-based LBO defaults — a complete lbo.run() input set for a listed company, with a source for every number: |
+
 ### `api/performance/`
 
 | File | What it does |
@@ -410,6 +420,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `model.py` | Systematic macro model API (see api/model/). |
 | `options_engine.py` | options decision engine (separate project — see docs/options_decision_engine.md) |
 | `optresearch.py` | Options research (Quant Lab → Options research): staged experiments, results, the research registry, the sealed holdout, and the controlled export of approved configurations for the Quant Algorithm —… |
+| `pe.py` | Private equity: the LBO workbench (company defaults from filings and live credit markets, the full analysis, the Excel model), the deal pipeline (per fund), and fund mathematics (performance with PMEs, the carry… |
 | `portfolio_analytics.py` | Portfolio analytics on the actual book: Brinson attribution, tracking error, liquidity-adjusted VaR, lots, TCA, trade-idea P&L (api/handlers/portfolio_analytics.py). |
 | `portfolios.py` | Portfolios: model review of your holdings, portfolio optimisation, and the auto (paper) book. All under authenticated prefixes (/api/v1/portfolio, /api/v1/auto). |
 | `positions.py` | Positions and tiers per fund (api/positions.py): the fund's organisation, who holds what, and what each can do. |
@@ -592,6 +603,15 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `follow.ts` | Following: ships and aircraft you want to keep an eye on, with your own notes. Kept per browser |
 | `functions.ts` | Markets functions — Bloomberg-style mnemonics with plain-English names. Security functions |
 | `shared.tsx` | Shared bits for the Markets mode: data hook, number formats that respect the instrument |
+
+### `frontend/src/components/pe/`
+
+| File | What it does |
+|---|---|
+| `FundTools.tsx` | Fund tools: the carry waterfall (LP / GP split under a hurdle, catch-up and carry) and fund performance (IRR, TVPI, |
+| `Pipeline.tsx` | Deal pipeline: the fund's saved LBO cases by stage — headline returns from their last run, stage moves, notes and |
+| `Workbench.tsx` | LBO workbench: load a listed company (filings + live credit markets) or start from the illustrative case, edit |
+| `peShared.tsx` | Shared pieces of the PE area: number formats, small inputs, the API helpers, and the PE tab / "open this deal" |
 
 ### `frontend/src/components/sections/`
 
@@ -871,7 +891,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 |---|---|
 | `DashboardPage.tsx` | Dashboard Page — Main terminal dashboard with all sections |
 | `MarketsPage.tsx` | Markets mode — a universal, Bloomberg-style market workstation. |
-| `PrivateEquityPage.tsx` | PE — the private-equity area (top-bar mode 'pe'). Home of the LBO deal workbench: a buyout model for a listed |
+| `PrivateEquityPage.tsx` | PE — the private-equity area (top-bar mode 'pe'): the LBO workbench (a buyout modelled from a company's filings |
 | `index.ts` | Pages barrel export |
 
 ### `frontend/src/store/`
