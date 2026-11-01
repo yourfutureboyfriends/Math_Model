@@ -358,8 +358,16 @@ export function MrrView({ onOpen }: { onOpen: (s: string) => void }) {
 const BAND_LABEL: Record<string, string> = { '-2sd': '−2σ', '-1sd': '−1σ', mean: 'Average', '+1sd': '+1σ', '+2sd': '+2σ' };
 export function GeView({ symbol }: { symbol: string }) {
   const [years, setYears] = useState(10);
+  const [view, setView] = useState<'pe' | 'ey'>('pe');
   const { data: d, error, loading } = useJSON<any>(`/api/v1/mkt/ge/${encodeURIComponent(symbol)}?years=${years}`, 6 * 3_600_000);
-  const controls = <div className="flex gap-1">{[5, 10, 15].map((y) => <Chip key={y} on={years === y} onClick={() => setYears(y)}>{y} years</Chip>)}</div>;
+  const controls = (
+    <div className="flex flex-wrap gap-1">
+      {[5, 10, 15].map((y) => <Chip key={y} on={years === y} onClick={() => setYears(y)}>{y} years</Chip>)}
+      <span className="w-3" />
+      <Chip on={view === 'pe'} onClick={() => setView('pe')}>P/E</Chip>
+      <Chip on={view === 'ey'} onClick={() => setView('ey')}>Earnings yield</Chip>
+    </div>
+  );
   const priceRows = useMemo(() => (d?.points ?? []).map((p: any) => ({
     date: p.date, price: p.price,
     mean: p.eps > 0 ? p.eps * d.bands.mean : null, hi: p.eps > 0 ? p.eps * d.bands['+1sd'] : null,
@@ -379,15 +387,24 @@ export function GeView({ symbol }: { symbol: string }) {
         <Tile label={`${d.years}-year average`} value={x(d.mean)} sub={`median ${x(d.median)} · σ ${d.sd.toFixed(1)}`} />
         <Tile label="Percentile" value={d.percentile != null ? `${Math.round(d.percentile * 100)}th` : '—'} sub={`range ${x(d.min)} – ${x(d.max)}`} />
         <Tile label="Standard deviations" value={d.z != null ? `${d.z > 0 ? '+' : ''}${d.z.toFixed(2)}σ` : '—'} sub="from the average" />
-        <Tile label="EPS, last 4 quarters" value={d.eps_ttm != null ? `$${d.eps_ttm.toFixed(2)}` : '—'} sub={`price $${d.price.toFixed(2)}`} />
+        <Tile label={d.basis === 'sec' ? 'EPS, last 4 quarters' : 'Trailing EPS'} value={d.eps_ttm != null ? d.eps_ttm.toFixed(2) : '—'}
+          sub={`price ${d.price.toFixed(2)} · earnings yield ${d.earnings_yield != null ? `${(d.earnings_yield * 100).toFixed(2)}%` : '—'}`} />
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-        <Panel title="Trailing P/E with average and ±1σ, ±2σ bands">
-          <div className="mkt-chart-surface"><LineChart rows={d.points} x="date" height={260} controls={false} fmt={(v) => `${v.toFixed(1)}×`} refs={refs}
-            lines={[{ key: 'pe', label: 'P/E', color: 'rgb(var(--c-bloomberg))' }]} /></div>
-        </Panel>
+        {view === 'pe' ? (
+          <Panel title="Trailing P/E with average and ±1σ, ±2σ bands">
+            <div className="mkt-chart-surface"><LineChart rows={d.points} x="date" height={260} controls={false} fmt={(v) => `${v.toFixed(1)}×`} refs={refs}
+              lines={[{ key: 'pe', label: 'P/E', color: 'rgb(var(--c-bloomberg))' }]} /></div>
+          </Panel>
+        ) : (
+          <Panel title="Earnings yield (EPS ÷ price) — shows loss-making periods too">
+            <div className="mkt-chart-surface"><LineChart rows={d.points.map((p: any) => ({ date: p.date, ey: p.earnings_yield != null ? p.earnings_yield * 100 : null }))}
+              x="date" height={260} controls={false} fmt={(v) => `${v.toFixed(2)}%`} baseline={0}
+              lines={[{ key: 'ey', label: 'Earnings yield', color: 'rgb(var(--c-bloomberg))' }]} /></div>
+          </Panel>
+        )}
         <Panel title="Price against the prices the P/E bands imply">
-          <div className="mkt-chart-surface"><LineChart rows={priceRows} x="date" height={260} controls={false} fmt={(v) => `$${v.toFixed(2)}`}
+          <div className="mkt-chart-surface"><LineChart rows={priceRows} x="date" height={260} controls={false} fmt={(v) => v.toFixed(2)}
             lines={[{ key: 'price', label: 'Price', color: 'rgb(var(--c-bloomberg))' }, { key: 'hi', label: '+1σ', color: 'rgb(var(--c-red))' },
               { key: 'mean', label: 'Average P/E', color: 'rgb(var(--c-text-secondary))' }, { key: 'lo', label: '−1σ', color: 'rgb(var(--c-green))' }]} /></div>
         </Panel>
@@ -399,7 +416,7 @@ export function GeView({ symbol }: { symbol: string }) {
           <tbody>{Object.keys(BAND_LABEL).slice().reverse().map((k) => {
             const px = d.band_prices[k];
             return <tr key={k} className="border-t border-border-subtle"><td className="py-1 font-sans text-text-secondary">{BAND_LABEL[k]}</td>
-              <td className="text-right">{x(d.bands[k])}</td><td className="text-right">{px != null ? `$${px.toFixed(2)}` : '—'}</td>
+              <td className="text-right">{x(d.bands[k])}</td><td className="text-right">{px != null ? px.toFixed(2) : '—'}</td>
               <td className={cn('text-right', sign(px != null ? px / d.price - 1 : null))}>{px != null ? pct(px / d.price - 1) : '—'}</td></tr>;
           })}</tbody>
         </table>
@@ -424,11 +441,12 @@ export function WbView() {
   const top = live.filter((r: any) => r.real_yield != null).sort((a: any, b: any) => b.real_yield - a.real_yield)[0];
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <Tile label="US 10-year" value={y(d.us_10y)} sub="the benchmark the spreads are measured against" />
         <Tile label="Bund 10-year" value={y(d.de_10y)} sub="euro-area spreads are measured against it" />
         <Tile label="Median 10-year" value={y(d.median_10y)} sub={`across ${live.length} markets`} />
         <Tile label="Highest real yield" value={top ? top.name : '—'} sub={top ? `${y(top.real_yield)} after inflation` : ''} />
+        {d.us_tips_10y && <Tile label="US 10-year TIPS" value={y(d.us_tips_10y.yield)} sub={`the market's real yield, ${d.us_tips_10y.date}`} />}
       </div>
       <div className="flex flex-wrap gap-1">
         <Chip on={!region} onClick={() => setRegion(null)}>All</Chip>
@@ -451,7 +469,7 @@ export function WbView() {
               <td className="text-right px-1 text-text-secondary">{bp(r.spread_de_bp)}</td>
               <td className="text-right px-1">{y(r.policy_rate)}</td>
               <td className={cn('text-right px-1', sign(r.term_spread_bp))}>{bp(r.term_spread_bp)}</td>
-              <td className="text-right px-1 text-text-secondary">{r.inflation != null ? `${r.inflation.toFixed(1)}%` : '—'}</td>
+              <td className="text-right px-1 text-text-secondary" title={r.inflation_source ?? ''}>{r.inflation != null ? `${r.inflation.toFixed(1)}%` : '—'}{r.inflation_source === 'IMF estimate' ? '*' : ''}</td>
               <td className={cn('text-right px-1', sign(r.real_yield))}>{y(r.real_yield)}</td>
               <td className="text-right px-1 text-text-secondary">{y(r.yield_2y)}</td>
               <td className={cn('text-right px-1', sign(r.slope_2s10s_bp))}>{bp(r.slope_2s10s_bp)}</td>
@@ -459,7 +477,7 @@ export function WbView() {
               <td className="px-1 font-sans text-text-tertiary whitespace-nowrap">{r.date ?? '—'}{r.daily ? '' : ' (monthly)'}</td></tr>))}</tbody>
         </table></div>
       </Panel>
-      <Source>{d.note} Faded rows are more than 45 days old. {d.source}</Source>
+      <Source>{d.note} * = IMF estimate (no recent CPI print). Faded rows are more than 45 days old. {d.source}</Source>
     </div>
   );
 }
@@ -505,7 +523,7 @@ export function DsView({ symbol, onGo }: { symbol: string; onGo: (fn: string, s?
       {query && d && (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-text-tertiary">
-            <span>{d.matches} passages match · showing the best {d.hits.length}</span>
+            <span>{d.matches} passages match · showing the best {d.hits.length}{d.also?.length ? ` · also matching ${d.also.join(', ')}` : ''}</span>
             <button onClick={() => onGo('AI', symbol)} className="text-bloomberg hover:underline">Ask the AI assistant to summarise these filings →</button>
           </div>
           {!d.hits.length && <p className="text-xs text-text-secondary">Nothing in these filings matches — try other words.</p>}
@@ -516,7 +534,7 @@ export function DsView({ symbol, onGo }: { symbol: string; onGo: (fn: string, s?
                   {h.section && <span className="text-text-secondary"> · {h.section}</span>}</div>
                 <a href={h.url} target="_blank" rel="noreferrer" className="text-[11px] text-bloomberg hover:underline">Open filing ↗</a>
               </div>
-              <p className="text-xs text-text-secondary leading-relaxed"><Highlight text={h.text} terms={d.terms} /></p>
+              <p className="text-xs text-text-secondary leading-relaxed"><Highlight text={h.text} terms={[...d.terms, ...(d.also ?? [])]} /></p>
             </div>))}</div>
           <Panel title="Filings searched">
             <table className="w-full text-2xs font-mono tabular-nums">

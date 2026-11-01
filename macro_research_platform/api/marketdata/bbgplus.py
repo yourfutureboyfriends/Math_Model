@@ -393,6 +393,74 @@ def member_returns(code: str, period: str = "YTD") -> Dict[str, Any]:
 
 
 # ── GE ───────────────────────────────────────────────────────────────────────
+def _sec_eps_events(symbol: str) -> List[tuple]:
+    """[(date the EPS became public, trailing EPS on today's share basis)] from SEC filings; [] for non-filers."""
+    from api.providers import sec_edgar
+    try:
+        if not sec_edgar.resolve(symbol):
+            return []
+        eps = sec_edgar.pit_events(symbol).get("eps_ttm") or []
+    except Exception as e:                                          # noqa: BLE001 — Yahoo is the fallback
+        logger.info("ge sec %s: %s", symbol, e)
+        return []
+    if not eps:
+        return []
+    try:
+        from api.marketdata.corporate import actions
+        splits = [(pd.Timestamp(s["date"]), float(s["ratio"])) for s in actions(symbol).get("splits", []) if s.get("ratio")]
+    except Exception as e:                                          # noqa: BLE001 — no splits is the common case
+        logger.info("ge splits %s: %s", symbol, e)
+        splits = []
+    # EPS as filed is on the share count of the day; restate it on today's basis like the split-adjusted price
+    out = []
+    for filed, val in eps:
+        t = pd.Timestamp(filed)
+        factor = float(np.prod([r for d, r in splits if d > t])) if splits else 1.0
+        out.append((t + pd.Timedelta(days=1), val / factor))
+    return out
+
+
+def _yahoo_eps_events(symbol: str) -> List[tuple]:
+    """Annual diluted EPS (≈4 fiscal years) plus the trailing four quarters from Yahoo's statements, in the quote's
+    currency per traded share. When the company reports in another currency (an ADR), each point is converted at that
+    date's exchange rate and scaled by the ADR ratio implied by Yahoo's own trailing EPS."""
+    import yfinance as yf
+    from api.marketdata.core import yahoo_call
+    t = yf.Ticker(symbol)
+    info = _info(symbol)
+    a = yahoo_call(lambda: t.income_stmt)
+    q = yahoo_call(lambda: t.quarterly_income_stmt)
+
+    def row(df):
+        if df is None or df.empty or "Diluted EPS" not in df.index:
+            return pd.Series(dtype=float)
+        r = pd.to_numeric(df.loc["Diluted EPS"], errors="coerce").dropna()
+        r.index = pd.to_datetime(r.index)
+        return r.sort_index()
+    ann, qtr = row(a), row(q)
+    pts = [(d + pd.Timedelta(days=90), float(v)) for d, v in ann.items()]
+    ttm_now = None
+    if len(qtr) >= 4 and (qtr.index[-1] - qtr.index[-4]).days < 300:
+        ttm_now = float(qtr.iloc[-4:].sum())
+        pts.append((qtr.index[-1] + pd.Timedelta(days=45), ttm_now))
+    today = pd.Timestamp(date.today())
+    pts = sorted((min(d, today), v) for d, v in pts)               # Yahoo already has it, so it is public by today
+    cur, fin = info.get("currency"), info.get("financialCurrency")
+    if pts and cur and fin and cur != fin:
+        pair = f"{fin}{cur}=X"
+        fx = _closes([pair], "15y", adjusted=False)[pair].dropna()
+        trailing = _f(info.get("trailingEps"))
+        if ttm_now is None or not trailing or fx.empty:
+            raise NotFound(f"{symbol} reports in {fin} but trades in {cur}; without recent quarters the conversion isn't "
+                           "reliable — try its home listing.")
+        rate = lambda d: float(fx[fx.index <= d].iloc[-1]) if (fx.index <= d).any() else float(fx.iloc[0])
+        ratio = trailing / (ttm_now * rate(pts[-1][0]))             # shares per ADR, from Yahoo's own trailing EPS
+        if not 0.01 < ratio < 1000:
+            raise NotFound(f"Couldn't reconcile {symbol}'s {fin} earnings with its {cur} price.")
+        pts = [(d, v * rate(d) * ratio) for d, v in pts]
+    return pts
+
+
 def pe_history(symbol: str, years: int = 10) -> Dict[str, Any]:
     """Trailing P/E over time: weekly close ÷ diluted EPS for the last four quarters as first filed with the SEC, with
     the period's mean and ±1/±2 standard-deviation bands and the prices those bands imply on today's earnings."""
@@ -402,32 +470,21 @@ def pe_history(symbol: str, years: int = 10) -> Dict[str, Any]:
     _company_only(symbol, "P/E history")
 
     def build():
-        from api.providers import sec_edgar
-        if not sec_edgar.resolve(symbol):
-            raise NotFound(f"{symbol} doesn't file with the SEC, so there is no filed earnings history for it.")
-        eps = sec_edgar.pit_events(symbol).get("eps_ttm") or []
-        if len(eps) < 4:
-            raise NotFound(f"Not enough quarterly EPS in {symbol}'s filings to build a P/E history.")
         px = _closes([symbol], f"{years + 1}y", adjusted=False)[symbol].dropna()   # split-adjusted, dividends not added back
-        try:
-            from api.marketdata.corporate import actions
-            splits = [(pd.Timestamp(s["date"]), float(s["ratio"])) for s in actions(symbol).get("splits", []) if s.get("ratio")]
-        except Exception as e:                                      # noqa: BLE001 — no splits is the common case
-            logger.info("ge splits %s: %s", symbol, e)
-            splits = []
-        # EPS as filed is on the share count of the day; restate it on today's basis like the split-adjusted price
-        ev = []
-        for filed, val in eps:
-            t = pd.Timestamp(filed)
-            factor = float(np.prod([r for d, r in splits if d > t])) if splits else 1.0
-            ev.append((t + pd.Timedelta(days=1), val / factor))
+        ev, lapse, basis = _sec_eps_events(symbol), 200, "sec"
+        if len(ev) < 4:                                             # foreign filers (IFRS) and non-US listings
+            ev, lapse, basis = _yahoo_eps_events(symbol), 460, "yahoo"
+        if len(ev) < 2:
+            raise NotFound(f"Not enough earnings history for {symbol} to chart a P/E.")
+        if basis == "yahoo":                                        # already published: count it from the latest close
+            ev = [(min(d, px.index[-1]), v) for d, v in ev]
         es = pd.Series(dict(ev)).sort_index()
         es = es[~es.index.duplicated(keep="last")]
         wk = px.resample("W-FRI").last().dropna()
-        wk = wk[wk.index >= wk.index[-1] - pd.DateOffset(years=years)]
+        wk = wk[(wk.index >= wk.index[-1] - pd.DateOffset(years=years)) & (wk.index >= es.index[0])]
         e_on = es.reindex(wk.index.union(es.index)).ffill().reindex(wk.index)
         filed_on = pd.Series(es.index, index=es.index).reindex(wk.index.union(es.index)).ffill().reindex(wk.index)
-        e_on[(wk.index.to_series() - filed_on).dt.days > 200] = np.nan        # no filing for over six months: unknown
+        e_on[(wk.index.to_series() - filed_on).dt.days > lapse] = np.nan      # no new earnings for too long: unknown
         pe = (wk / e_on).where(e_on > 0)
         valid = pe.dropna()
         if len(valid) < 26:
@@ -445,12 +502,17 @@ def pe_history(symbol: str, years: int = 10) -> Dict[str, Any]:
             "percentile": float((valid < cur).mean()) if cur else None, "z": (cur - mean) / sd if cur and sd else None,
             "bands": bands,
             "band_prices": {k: (v * last_eps if last_eps and last_eps > 0 and v > 0 else None) for k, v in bands.items()},
-            "points": [{"date": str(d.date()), "price": float(wk[d]), "eps": _f(e_on[d]), "pe": _f(pe[d])} for d in wk.index],
+            "points": [{"date": str(d.date()), "price": float(wk[d]), "eps": _f(e_on[d]), "pe": _f(pe[d]),
+                        "earnings_yield": _f(e_on[d] / wk[d]) if pd.notna(e_on[d]) else None} for d in wk.index],
+            "earnings_yield": last_eps / last_px if last_eps is not None else None, "basis": basis,
             "eps_history": [{"date": str((d - pd.Timedelta(days=1)).date()), "eps": float(v)} for d, v in es.items()
                             if d >= wk.index[0] - pd.Timedelta(days=400)],
-            "note": "Trailing diluted EPS as first filed (no later restatements), restated for splits. Weeks with negative or "
-                    "no recent earnings have no P/E.",
-            "source": "SEC EDGAR XBRL (diluted EPS, four quarters summed); prices Yahoo Finance weekly closes.",
+            "note": ("Trailing diluted EPS as first filed (no later restatements), restated for splits. " if basis == "sec" else
+                     "Annual diluted EPS (about four fiscal years) and the latest four quarters from Yahoo, dated ~90 and ~45 "
+                     "days after each period end; ADRs converted at each date's exchange rate and the ADR ratio. ")
+                    + "Loss-making weeks have no P/E — the earnings-yield view shows them.",
+            "source": ("SEC EDGAR XBRL (diluted EPS, four quarters summed)" if basis == "sec" else "Yahoo Finance income statements")
+                      + "; prices Yahoo Finance weekly closes.",
         }
     return _cached(f"ge:{symbol}:{years}", 6 * 3600, build)
 
@@ -477,10 +539,31 @@ def world_bonds() -> Dict[str, Any]:
         except Exception as e:                                      # noqa: BLE001
             logger.info("wb policy rates: %s", e)
             cb = {}
+        today = date.today()
         euro = {"AT", "BE", "CY", "DE", "EE", "ES", "FI", "FR", "GR", "HR", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PT", "SI", "SK"}
+        # latest actual CPI print (BIS, year-on-year) beats the IMF's whole-year estimate; IMF only as a fallback
+        cpi: Dict[str, Any] = {}
+        try:
+            from api.model.sources import bis_cpi
+            start = (today - timedelta(days=500)).strftime("%Y-%m")
+            for iso, sr in bis_cpi(sorted(i for i, c in wd.items() if c.get("yield_10y") is not None), start=start).items():
+                sr = sr.dropna()
+                if len(sr) and (pd.Timestamp(today) - sr.index[-1]).days < 200:
+                    cpi[iso] = (float(sr.iloc[-1]), sr.index[-1].strftime("%Y-%m"))
+        except Exception as e:                                      # noqa: BLE001 — fall back to the IMF estimate
+            logger.info("wb cpi: %s", e)
+        # where a market prices inflation-linked bonds, the real yield is observed, not estimated
+        tips = None
+        try:
+            from api.marketdata.insights import _fred
+            h = _fred("DFII10", years=1)
+            if h:
+                d_ = max(h)
+                tips = (h[d_], d_)
+        except Exception as e:                                      # noqa: BLE001
+            logger.info("wb tips: %s", e)
         us10 = _f((wd.get("US") or {}).get("yield_10y"))
         de10 = _f((wd.get("DE") or {}).get("yield_10y"))
-        today = date.today()
         rows = []
         for iso, c in wd.items():
             y = _f(c.get("yield_10y"))
@@ -489,7 +572,9 @@ def world_bonds() -> Dict[str, Any]:
             ydate = c.get("yield_date")
             age = (today - date.fromisoformat(str(ydate)[:10])).days if ydate else None
             pol = cb.get("XM" if iso in euro else iso)
-            infl = _f(c.get("inflation"))
+            infl, infl_src = (cpi[iso][0], f"CPI {cpi[iso][1]} (BIS)") if iso in cpi else (_f(c.get("inflation")), "IMF estimate")
+            if infl is None:
+                infl_src = None
             curve = gc.get(iso) or {}
             pts = {p["tenor"]: p for p in curve.get("points", [])}
             two, thirty = pts.get(2.0), pts.get(30.0)
@@ -502,7 +587,8 @@ def world_bonds() -> Dict[str, Any]:
                 "spread_de_bp": (y - de10) * 100 if de10 is not None and iso in euro and iso != "DE" else None,
                 "policy_rate": _f(pol["rate"]) if pol else None,
                 "term_spread_bp": (y - pol["rate"]) * 100 if pol and pol.get("rate") is not None else None,
-                "inflation": infl, "real_yield": y - infl if infl is not None else None,
+                "inflation": infl, "inflation_source": infl_src, "real_yield": y - infl if infl is not None else None,
+                "market_real_yield": tips[0] if iso == "US" and tips else None,
                 "yield_2y": two["yield"] if two else None, "yield_30y": thirty["yield"] if thirty else None,
                 "slope_2s10s_bp": curve.get("slope_2s10s_bp"), "gov_debt": _f(c.get("gov_debt")),
             })
@@ -515,10 +601,12 @@ def world_bonds() -> Dict[str, Any]:
                 "inverted": [r["iso"] for r in rows if (r["slope_2s10s_bp"] or 0) < 0],
                 "negative_real": [r["iso"] for r in live if r["real_yield"] is not None and r["real_yield"] < 0],
                 "source": "Issuers' daily curves (US, DE, UK, JP, CA, AU), live quotes where available, OECD monthly averages "
-                          "elsewhere; policy rates BIS; inflation IMF WEO (this year's estimate); ratings Damodaran.",
-                "note": "Real yield = 10-year minus the IMF's inflation estimate for this year — a rough guide, not a TIPS-style "
-                        "market real yield. Euro-area members use the ECB rate."}
-    return _cached("wb:v1", 1800, build)
+                          "elsewhere; policy rates and CPI BIS (IMF WEO where no recent CPI); US TIPS FRED; ratings Damodaran.",
+                "us_tips_10y": {"yield": tips[0], "date": tips[1]} if tips else None,
+                "note": "Real yield = 10-year minus the latest year-on-year CPI print (BIS; the IMF's estimate where no recent "
+                        "print). For the US the 10-year TIPS yield — the market's own real yield — is shown too. Euro-area "
+                        "members use the ECB rate."}
+    return _cached("wb:v2", 1800, build)
 
 
 # ── DS: search inside a company's filings ────────────────────────────────────
@@ -539,6 +627,24 @@ def _stem(t: str) -> str:
             t = t[: -len(suf)]
             break
     return t[:-1] if len(t) > 4 and t.endswith("e") else t
+
+
+# the same idea in the words filings use (one direction per entry; stems are applied when matching)
+DS_SYNONYMS: Dict[str, List[str]] = {}
+for _group in (["buyback", "repurchase"], ["guidance", "outlook", "forecast", "expect"], ["lawsuit", "litigation", "proceeding"],
+               ["ai", "artificial", "intelligence", "generative"], ["tariff", "duty", "duties", "trade"], ["china", "prc", "chinese"],
+               ["debt", "borrowing", "notes", "indebtedness"], ["capex", "capital", "expenditure"], ["layoff", "restructuring", "severance"],
+               ["employee", "headcount", "workforce"], ["acquisition", "acquire", "merger"], ["dividend", "distribution"],
+               ["customer", "client"], ["competition", "competitor", "competitive"], ["inflation", "cost", "pricing"],
+               ["cyber", "cybersecurity", "breach"], ["regulation", "regulatory", "regulator"], ["supply", "supplier", "shortage"],
+               ["margin", "profitability"], ["cash", "liquidity"], ["climate", "emission", "sustainability"]):
+    for _w in _group:
+        DS_SYNONYMS[_stem(_w)] = [x for x in _group if x != _w]
+
+# words with a second, irrelevant sense in filings: "accounting guidance" is a standard, not an outlook. They don't
+# count after these words, and count for little in a passage about accounting standards.
+DS_NOT_AFTER = {_stem("guidance"): {"accounting", "authoritativ", "interpretiv", "regulatory", "sec"}}
+DS_OFF_TOPIC = {_stem("guidance"): ("fasb", "accounting standards", "asu ", "adopted accounting")}
 
 
 def _passages(text: str, size: int = 900) -> List[Dict[str, Any]]:
@@ -630,32 +736,43 @@ def filing_search(symbol: str, query: str, forms: Optional[str] = None, limit: i
     pool = [(d, p) for d in docs if d["form"] in want for p in d["passages"]]
     if not pool:
         raise NotFound("Those filings couldn't be read — try again shortly.")
-    qs = [_stem(t) for t in terms]
+    qs = list(dict.fromkeys(_stem(t) for t in terms))
+    # each query word also matches the words filings use for the same thing, at a lower weight
+    alts = {q: [_stem(a) for a in DS_SYNONYMS.get(q, []) if _stem(a) != q] for q in qs}
     toks = [[_stem(w) for w in re.findall(r"[a-z0-9][a-z0-9\-&$%.]*[a-z0-9%]|[a-z0-9]", p["text"].lower())] for _, p in pool]
     n = len(toks)
     avg = sum(len(t) for t in toks) / n
-    df = {q: sum(1 for t in toks if q in t) for q in set(qs)}
+    vocab = set(qs) | {a for v in alts.values() for a in v}
+    df = {w: sum(1 for t in toks if w in t) for w in vocab}
     phrase = re.sub(r"\s+", " ", query.strip().lower())
     scored = []
     for (d, p), t in zip(pool, toks):
         s = 0.0
         L = len(t)
-        for q in set(qs):
-            tf = t.count(q)
-            if tf:
-                idf = np.log(1 + (n - df[q] + 0.5) / (df[q] + 0.5))
-                s += idf * tf * 2.2 / (tf + 1.2 * (0.25 + 0.75 * L / avg))
+        covered = 0
+        low = p["text"].lower()
+        for q in qs:
+            hit = False
+            damp = 0.15 if any(m in low for m in DS_OFF_TOPIC.get(q, ())) else 1.0
+            for w, weight in [(q, 1.0)] + [(a, 0.6) for a in alts[q]]:
+                skip = DS_NOT_AFTER.get(w)
+                tf = sum(1 for i, x in enumerate(t) if x == w and not (skip and i and t[i - 1] in skip)) if skip else t.count(w)
+                if tf:
+                    idf = np.log(1 + (n - df[w] + 0.5) / (df[w] + 0.5))
+                    s += damp * weight * idf * tf * 2.2 / (tf + 1.2 * (0.25 + 0.75 * L / avg))
+                    hit = True
+            covered += hit
         if not s:
             continue
-        if len(qs) > 1 and phrase in p["text"].lower():
+        if len(qs) > 1 and phrase in low:
             s *= 1.6                                                # the exact phrase
-        coverage = sum(1 for q in set(qs) if q in t) / len(set(qs))
+        coverage = covered / len(qs)
         if sum(w[:1].isdigit() or w in ("$", "%", "na") for w in t) > 0.3 * L:
             s *= 0.4                                                # mostly figures: a table, rarely the answer
         scored.append((s * (0.5 + coverage), d, p, coverage))
     scored.sort(key=lambda x: -x[0])
     hits = []
-    pat = re.compile(r"\b(" + "|".join(re.escape(q) for q in sorted(set(qs), key=len, reverse=True)) + r")", re.I)
+    pat = re.compile(r"\b(" + "|".join(re.escape(q) for q in sorted(vocab, key=len, reverse=True)) + r")", re.I)
     for s, d, p, cov in scored[:limit]:
         text = p["text"]
         m = pat.search(text)
@@ -664,7 +781,7 @@ def filing_search(symbol: str, query: str, forms: Optional[str] = None, limit: i
             text = "… " + text[cut:]
         hits.append({"form": d["form"], "filed": d["filed"], "period": d["period"], "url": d["url"], "section": p["section"],
                      "part": p["part"], "text": text[:1500], "score": round(float(s), 2), "coverage": cov})
-    return {"symbol": symbol, "query": query, "terms": terms, "forms": want, "hits": hits, "matches": len(scored),
+    return {"symbol": symbol, "query": query, "terms": terms, "also": sorted({a for v in alts.values() for a in v}), "forms": want, "hits": hits, "matches": len(scored),
             "documents": [{k: d[k] for k in ("form", "filed", "period", "url")} | {"passages": len(d["passages"])} for d in docs],
             "source": "SEC EDGAR full text of the latest 10-K (or 20-F/40-F), the last two 10-Qs and the last three 8-Ks with "
                       "their press releases; ranked by BM25 relevance."}

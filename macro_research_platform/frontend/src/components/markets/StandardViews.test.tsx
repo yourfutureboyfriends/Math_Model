@@ -36,7 +36,9 @@ it('MRR ranks members, switches period and filters by sector', async () => {
 it('GE shows the P/E against its bands and the implied prices', async () => {
   await act(async () => root.render(<GeView symbol="AAPL" />));
   expect(host.textContent).toContain(`${fx.ge.pe!.toFixed(1)}×`);
-  expect(host.textContent).toContain(`$${fx.ge.band_prices.mean!.toFixed(2)}`);
+  expect(host.textContent).toContain(fx.ge.band_prices.mean!.toFixed(2));
+  act(() => { Array.from(host.querySelectorAll('button')).find((b) => b.textContent === 'Earnings yield')!.click(); });
+  expect(host.textContent).toContain('Earnings yield (EPS ÷ price)');
   expect(host.querySelectorAll('[data-chart]')).toHaveLength(2);
 });
 

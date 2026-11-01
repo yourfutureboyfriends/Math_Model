@@ -127,12 +127,19 @@ def test_world_bonds_spreads_policy_and_real_yield(monkeypatch):
         "XX": {"name": "No yield"}}})
     monkeypatch.setattr(curves, "curves", lambda: {"curves": {"US": {"points": [{"tenor": 2.0, "yield": 3.5}], "slope_2s10s_bp": 50.0}}})
     monkeypatch.setattr(toolkit, "central_banks", lambda: {"banks": [{"code": "US", "rate": 3.75}, {"code": "XM", "rate": 2.0}]})
+    from api.marketdata import insights
+    from api.model import sources
+    month = pd.Timestamp(date.today()).to_period("M").to_timestamp() - pd.offsets.MonthBegin(1)
+    monkeypatch.setattr(sources, "bis_cpi", lambda isos, start: {"DE": pd.Series([2.2], index=[month])})   # a recent print
+    monkeypatch.setattr(insights, "_fred", lambda sid, years: {"2026-10-29": 1.9})
     r = bbgplus.world_bonds()
     by = {x["iso"]: x for x in r["rows"]}
     assert set(by) == {"US", "DE", "IT", "NZ"}
     assert by["IT"]["spread_de_bp"] == pytest.approx(110) and by["IT"]["spread_us_bp"] == pytest.approx(-40)
     assert by["IT"]["policy_rate"] == 2.0 and by["IT"]["real_yield"] == pytest.approx(2.1)   # euro members use the ECB rate
     assert by["US"]["yield_2y"] == 3.5 and by["US"]["term_spread_bp"] == pytest.approx(25)
+    assert by["DE"]["inflation"] == 2.2 and by["DE"]["inflation_source"].startswith("CPI")      # the CPI print beats the IMF
+    assert by["US"]["inflation_source"] == "IMF estimate" and by["US"]["market_real_yield"] == 1.9
     assert by["NZ"]["stale"] and not by["NZ"]["daily"] and by["US"]["daily"]
     assert r["rows"][0]["iso"] == "NZ"                                # highest yield first
 
@@ -158,3 +165,21 @@ def test_passages_follow_filing_sections():
     text = "Item 1A. Risk Factors\n" + "\n".join(["Risk sentence number one is here and is long enough."] * 30) + "\nItem 7. Management's Discussion\nRevenue rose."
     ps = bbgplus._passages(text, size=300)
     assert ps[0]["section"] == "Item 1A. Risk Factors" and all(len(p["text"]) <= 600 for p in ps)
+
+
+def test_yahoo_eps_for_an_adr_is_converted_to_the_quote_currency_and_adr_ratio(monkeypatch):
+    import types
+    import yfinance as yf
+    from api.marketdata import core
+    ann = pd.DataFrame({pd.Timestamp("2024-12-31"): [100.0], pd.Timestamp("2025-12-31"): [150.0]}, index=["Diluted EPS"])
+    qtr = pd.DataFrame({pd.Timestamp(d): [v] for d, v in (("2025-12-31", 40.0), ("2026-03-31", 40.0), ("2026-06-30", 50.0),
+                                                            ("2026-09-30", 50.0))}, index=["Diluted EPS"])
+    monkeypatch.setattr(yf, "Ticker", lambda s: types.SimpleNamespace(income_stmt=ann, quarterly_income_stmt=qtr))
+    monkeypatch.setattr(core, "yahoo_call", lambda fn: fn())
+    monkeypatch.setattr(bbgplus, "_info", lambda s: {"currency": "USD", "financialCurrency": "TWD", "trailingEps": 30.0})
+    fx = pd.Series(0.03, index=pd.bdate_range("2020-01-01", "2026-10-30"))
+    monkeypatch.setattr(bbgplus, "_closes", lambda syms, period, adjusted: pd.DataFrame({syms[0]: fx}))
+    pts = bbgplus._yahoo_eps_events("TSM")
+    # TTM 180 TWD × 0.03 = 5.40 USD per share; Yahoo's 30 USD trailing EPS per ADR implies 5.56 shares per ADR
+    assert pts[-1][1] == pytest.approx(30.0) and pts[0][1] == pytest.approx(100 * 0.03 * 30 / 5.4)
+    assert all(d <= pd.Timestamp(date.today()) for d, _ in pts)

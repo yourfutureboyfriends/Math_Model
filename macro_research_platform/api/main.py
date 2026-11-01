@@ -419,6 +419,7 @@ async def lifespan(app: FastAPI):
                     _t.sleep(5)
                 from api.marketdata import tracking as _tracking, corporate as _corp2, monitors as _monitors
                 from api.marketdata import flows as _flows
+                from api.marketdata import bbgplus as _bbg
                 # slowest cold sources first (IMF PortWatch ports ~110 s, trade nowcast ~70 s, ETF flows ~75 s): the
                 # edge board, which combines them, is then ready early in the first pass after a restart
                 heavy = (edge.ports_trade, edge.trade, _flows.etf, edge.cot, insights.implied_moves, insights.uoa, edge.board,
@@ -426,7 +427,10 @@ async def lifespan(app: FastAPI):
                          bridgewater.debt_cycles, bridgewater.world_order, insights.vol, insights.risk, insights.breadth,
                          # 8–22 s cold on first open
                          _tracking.chokepoints, lambda: _corp2.actions_calendar(14), _monitors.money_markets,
-                         lambda: _monitors.heatmap("US", 300), _countries.world_data, _corporate.deals)
+                         lambda: _monitors.heatmap("US", 300), _countries.world_data, _corporate.deals,
+                         # 25–60 s cold: FX carry, world map, policy rates and the Bloomberg-standard screens
+                         fixed_income.fx_carry, _monitors.world_map_markets, _bbg.world_bonds, _bbg.world_valuations,
+                         _bbg.total_returns, lambda: _bbg.index_movers("SPX"), lambda: _bbg.member_returns("SPX", "YTD"))
                 # Every 30 minutes, paced: with stale-while-revalidate in the cache (api/marketdata/core.py) a lapsed
                 # screen is served at once and refreshed behind; this keeps every heavy screen inside that window.
                 while True:
