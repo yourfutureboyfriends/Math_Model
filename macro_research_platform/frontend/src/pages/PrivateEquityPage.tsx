@@ -11,12 +11,15 @@ import { Precedents } from '@/components/pe/Comparables';
 import { Performance, Waterfall } from '@/components/pe/FundTools';
 import { PE_TABS, setPeTab, usePeTab } from '@/components/pe/peShared';
 
+// Where each tool sits in the area's workflow (Underwrite → Compare → Review), shown above its name
+const STAGE: Record<string, string> = { workbench: 'Underwrite', pipeline: 'Compare', precedents: 'Compare', waterfall: 'Review', performance: 'Review' };
+
 export function PrivateEquityPage() {
   const tab = usePeTab();
   const t = PE_TABS.find((x) => x.id === tab) ?? PE_TABS[0];
   return (
     <div className="pe-workspace workspace-page p-4 space-y-3">
-      <WorkspaceHeader area="pe" context={t.label} items={PE_TABS.map(x=>({id:x.id,label:x.label}))} onPick={id=>{const target=PE_TABS.find(x=>x.id===id);if(target)setPeTab(target.id);}}/>
+      <WorkspaceHeader area="pe" context={STAGE[t.id]} title={t.label} description={`${t.desc}.`} items={PE_TABS.map(x=>({id:x.id,label:x.label}))} onPick={id=>{const target=PE_TABS.find(x=>x.id===id);if(target)setPeTab(target.id);}}/>
       <div className="pe-tool-navigation">
         <div className="seg" role="tablist" aria-label="Private equity tools">
           {PE_TABS.map((x) => <button key={x.id} role="tab" aria-selected={tab === x.id} onClick={() => setPeTab(x.id)} className="seg-item">{x.label}</button>)}

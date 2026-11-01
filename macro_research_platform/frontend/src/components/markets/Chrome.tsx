@@ -182,7 +182,7 @@ export function WorkspaceTabs() {
   // Alt+1…9 switch tabs, Alt+T new tab, Alt+W close tab (Option on a Mac)
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (!e.altKey || e.metaKey || e.ctrlKey) return;
+      if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;   // Alt+Shift+digit switches area (Topbar)
       const m = /^Digit([1-9])$/.exec(e.code);
       if (m) { const t = ref.current.tabs[Number(m[1]) - 1]; if (t) { e.preventDefault(); activate(t.id); } }
       else if (e.code === 'KeyT') { e.preventDefault(); add(); }

@@ -203,10 +203,11 @@ function ThemeToggle() {
 
 function ModeSwitch() {
   const mode = useHubMode();
-  // Option/Alt + 1–5 jumps between the five areas (e.code: Option+digit types a symbol on a Mac keyboard)
+  // Option/Alt + Shift + 1–5 jumps between the five areas (Option + digit alone switches the Markets tabs). e.code,
+  // because Option + digit types a symbol on a Mac keyboard.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!e.altKey || e.metaKey || e.ctrlKey) return;
+      if (!e.altKey || !e.shiftKey || e.metaKey || e.ctrlKey) return;
       const i = /^Digit([1-5])$/.exec(e.code);
       if (!i) return;
       e.preventDefault();
@@ -219,7 +220,7 @@ function ModeSwitch() {
     <div role="tablist" aria-label="Mode" className="seg ml-1">
       {HUB_MODES.map(({ id: m, label, title }, i) => (
         <button key={m} role="tab" aria-selected={mode === m} onClick={() => setHubMode(m)}
-          title={`${title}  (⌥${i + 1})`}
+          title={`${title}  (⌥⇧${i + 1})`}
           className="seg-item">
           {label}
         </button>

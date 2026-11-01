@@ -64,13 +64,26 @@ function countryTerms(iso?: string): string[] {
 
 const GROUP_ORDER: MktFunction['group'][] = ['Markets', 'Rates & FX', 'Research', 'My tools'];
 
-function FunctionHeader({ f, symbol }: { f: MktFunction; symbol?: string }) {
+/** The Markets page header: the same card, eyebrow, title and intro as the other areas' WorkspaceHeader. On an
+ * instrument page the quote header below names the security, so this shows the function only. */
+function MarketsHeader({ f, symbol, security, children }: { f: MktFunction; symbol?: string; security: boolean; children: React.ReactNode }) {
   return (
-    <div className="mkt-function-heading flex items-baseline gap-3 flex-wrap">
-      <span className="px-2 py-0.5 text-xs font-mono font-semibold text-bloomberg border border-bloomberg/50">{f.code}</span>
-      <h1 className="text-lg font-semibold text-text-primary">{f.name}{symbol ? <span className="text-text-tertiary font-normal"> · {symbol}</span> : null}</h1>
-      <p className="text-2xs text-text-tertiary">{f.desc}</p>
-    </div>
+    <header className="workspace-hero mkt-hero" data-area="markets">
+      <div className="workspace-hero-intro">
+        <span className="workspace-emblem mkt-hero-code" title="Function code">{f.code}</span>
+        <div className="min-w-0">
+          <div className="workspace-eyebrow">Markets / {security && symbol ? symbol : f.group === 'Markets' ? 'Market-wide' : f.group}</div>
+          <h1>{f.name}{security && symbol ? <span className="text-text-tertiary font-normal"> · {symbol}</span> : null}</h1>
+          <p>{f.desc}</p>
+        </div>
+        <div className="mkt-hero-actions">
+          <SoftKeys fn={f.code} symbol={symbol} />
+          <span className="flex items-center gap-3"><UpDownToggle />
+            <button onClick={() => setMarketsSkin('classic')} className="hover:text-bloomberg">Classic terminal look</button></span>
+        </div>
+      </div>
+      <div className="workspace-hero-tools mkt-hero-tools">{children}</div>
+    </header>
   );
 }
 
@@ -300,7 +313,7 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'WEI' && (classic || compact
       ? <div className="space-y-2">{!compact && <div className="px-2 py-1 border border-border"><FunctionMenu items={MARKET_FUNCTIONS} onPick={(x) => onGo(x.code)} /></div>}
           {region === 'global' ? <MonitorHome onOpen={open} onGo={onGo} /> : <RegionMonitor onOpen={open} onGo={onGo} />}</div>
-      : <div className="space-y-5"><Launchpad onGo={onGo} /><OverviewView onOpen={open} /></div>)}
+      : <div className="space-y-5"><OverviewView onOpen={open} /><Launchpad onGo={onGo} /></div>)}
     {code === 'MOST' && <MoversView onOpen={open} />}
     {code === 'EQS' && <ScreenerView onOpen={open} />}
     {code === 'IMAP' && <ImapView onOpen={open} />}
@@ -536,14 +549,25 @@ export function MarketsPage() {
   return (
     <div data-market-density={display.density} className={cn('mkt-root mkt-workspace flex items-start',display.focused&&'mkt-focused', classic ? 'p-2 pb-10 gap-2' : 'p-4 gap-4')}>
     <div className={cn('flex-1 min-w-0', classic ? 'space-y-2' : 'space-y-4', !classic && f.code !== 'LP' && 'max-w-[1500px]')}>
-      {classic ? <KeyBar onGo={(fn) => (fn === 'BACK' ? window.history.back() : onGo(fn))} onHelp={help.toggle} /> : (
-        <div className="flex justify-end items-center gap-3 -mb-2 text-[11px] text-text-tertiary"><UpDownToggle />
-          <button onClick={() => setMarketsSkin('classic')} className="hover:text-bloomberg">Switch to the classic terminal look</button></div>)}
-      {/* screens that follow the region stay put; anything else opens the regional monitor */}
-      <RegionBar onPick={() => { if (!REGION_AWARE.has(f.code)) onGo('RMON'); }} />
-      <WorkspaceTabs />
-      <CommandLine current={f.security ? route.symbol : undefined} onGo={onGo} />
-      <ViewTools code={f.code} density={display.density} onDensity={display.setDensity} focused={display.focused} onFocus={()=>display.setFocused(v=>!v)} onHelp={help.toggle}/>
+      {classic ? <>
+        <KeyBar onGo={(fn) => (fn === 'BACK' ? window.history.back() : onGo(fn))} onHelp={help.toggle} />
+        <RegionBar onPick={() => { if (!REGION_AWARE.has(f.code)) onGo('RMON'); }} />
+        <WorkspaceTabs />
+        <CommandLine current={f.security ? route.symbol : undefined} onGo={onGo} />
+        <ViewTools code={f.code} density={display.density} onDensity={display.setDensity} focused={display.focused} onFocus={()=>display.setFocused(v=>!v)} onHelp={help.toggle}/>
+      </> : <>
+        <WorkspaceTabs />
+        {/* the same page header as every other area: where you are, what this page is, its actions, then the command line */}
+        <MarketsHeader f={f} symbol={route.symbol} security={!!(f.security && route.symbol)}>
+          <CommandLine current={f.security ? route.symbol : undefined} onGo={onGo} />
+        </MarketsHeader>
+        {/* one toolbar row: the region filter on the left, the view controls on the right. Screens that follow
+            the region stay put; anything else opens the regional monitor */}
+        <div className="mkt-toolbar-row">
+          <RegionBar onPick={() => { if (!REGION_AWARE.has(f.code)) onGo('RMON'); }} />
+          <ViewTools code={f.code} density={display.density} onDensity={display.setDensity} focused={display.focused} onFocus={()=>display.setFocused(v=>!v)} onHelp={help.toggle}/>
+        </div>
+      </>}
       {help.open && <HelpPanel onClose={help.close} />}
       {f.security && route.symbol ? (
         <div className="mkt-security-layout grid grid-cols-1 xl:grid-cols-[230px_minmax(0,1fr)] gap-2 items-start">
@@ -553,7 +577,7 @@ export function MarketsPage() {
       ) : (
         <div className={classic ? 'space-y-2' : 'space-y-3'}>
           {classic ? <TitleBar code={f.code} title={f.name} right={<span className="flex items-center gap-4"><span className="hidden xl:inline truncate max-w-[36rem]">{f.desc}</span><SoftKeys fn={f.code} symbol={route.symbol} onHelp={help.toggle} /></span>} />
-            : <div className="flex items-start justify-between gap-3"><FunctionHeader f={f} /><SoftKeys fn={f.code} symbol={route.symbol} /></div>}
+            : null}
           <div className="mkt-function-content" id="mkt-fn-body">
           <ErrorBoundary sectionName={`Markets · ${f.code}`} key={f.code}>
             {f.code === 'LP' ? <LaunchpadGrid classic={classic} /> : <MarketBody code={f.code} seed={route.symbol} onGo={onGo} open={open} classic={classic} />}

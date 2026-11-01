@@ -278,9 +278,9 @@ export function DashboardPage() {
     <WorkspaceHeader area={isDashboardMode(hub)?hub:'macro'} context={ws==='all'?'All panels':ws==='focus'?'My focus':ws} visibleCount={visibleCount} items={navigationFor(isDashboardMode(hub)?hub:'macro').flatMap(g=>g.items.map(p=>({id:p.id,label:panelLabel(p.id,p.label),group:g.title})))} onPick={openPanel}/>
     <WorkspaceBar onCollapseAll={collapseAll} visibleCount={visibleCount} />
     {help && <PanelHelpPopover anchor={help} onClose={closeHelp} />}
-    <div ref={rootRef} onClick={toggleFold}>
+    <div ref={rootRef} onClick={toggleFold} className="dashboard-panels px-4 pb-4">
       {refreshFailed && (
-        <div className="mx-4 mt-2 px-3 py-1.5 text-2xs font-mono border border-amber/40 text-amber bg-amber/5 flex items-center gap-2">
+        <div className="mb-3 px-3 py-1.5 text-2xs font-mono border border-amber/40 text-amber bg-amber/5 flex items-center gap-2">
           Refresh failed — showing the last successful data. {wsError}
           <button onClick={() => fetchDashboard()} className="ml-auto underline hover:text-text-primary">Retry</button>
         </div>
