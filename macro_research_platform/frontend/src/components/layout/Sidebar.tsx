@@ -126,7 +126,7 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
               My desk
               <button onClick={() => setFocusMode(!focus)}
                 title={focus ? 'Showing only your panels — click to show all' : 'Show only the panels for your role'}
-                className={`ml-2 px-1.5 rounded-full border text-[9.5px] normal-case tracking-normal font-medium transition-colors ${focus ? 'border-bloomberg/50 bg-bloomberg/10 text-bloomberg' : 'border-border-subtle text-text-tertiary hover:text-text-primary'}`}>
+                className={`ml-2 px-1.5 rounded-full border text-[10px] normal-case tracking-normal font-medium transition-colors ${focus ? 'border-bloomberg/50 bg-bloomberg/10 text-bloomberg' : 'border-border-subtle text-text-tertiary hover:text-text-primary'}`}>
                 {focus ? 'Focus on' : 'Focus'}
               </button>
               {deskQueue > 0 && (

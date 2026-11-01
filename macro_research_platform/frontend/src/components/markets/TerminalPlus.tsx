@@ -395,7 +395,7 @@ export function CacsView({ symbol }: { symbol: string }) {
           <Panel title="Dividends per year">
             {d.annual.length ? <div className="flex items-end gap-1 h-36">{(() => { const mx = Math.max(...d.annual.map((a: any) => a.total)); return d.annual.map((a: any) => (
               <div key={a.year} className="flex-1 flex flex-col items-center justify-end h-full" title={`${a.year}: ${num(a.total, 4)}`}>
-                <div className="w-full bg-blue/70 rounded-t-sm" style={{ height: `${(a.total / mx) * 100}%` }} /><span className="text-[8px] text-text-tertiary mt-0.5">{String(a.year).slice(2)}</span></div>)); })()}</div>
+                <div className="w-full bg-blue/70 rounded-t-sm" style={{ height: `${(a.total / mx) * 100}%` }} /><span className="text-[10px] text-text-tertiary mt-0.5">{String(a.year).slice(2)}</span></div>)); })()}</div>
               : <div className="text-2xs text-text-tertiary">No dividends paid.</div>}
           </Panel>
           <Panel title="Payments (ex-date)"><div className="max-h-48 overflow-auto"><table className="w-full text-2xs font-mono"><tbody>{d.dividends.map((p: any) => (

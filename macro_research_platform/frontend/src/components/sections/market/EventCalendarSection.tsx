@@ -186,7 +186,7 @@ export function EventCalendarSection({ data: initial }: Props) {
                       </td>
                       <td className="py-1.5 text-right font-mono text-bloomberg" title={e.forecast_label ? `Consensus for "${e.forecast_label}" (feed units)` : 'No consensus in the free feed for this release'}>
                         {e.forecast ?? <span className="text-text-tertiary">—</span>}
-                        {e.forecast_label?.match(/[mqy]\/[mqy]$/) && <span className="ml-1 text-[9px] text-text-tertiary">{e.forecast_label.match(/[mqy]\/[mqy]$/)![0]}</span>}
+                        {e.forecast_label?.match(/[mqy]\/[mqy]$/) && <span className="ml-1 text-[10px] text-text-tertiary">{e.forecast_label.match(/[mqy]\/[mqy]$/)![0]}</span>}
                       </td>
                       <td className="py-1.5 text-right font-mono text-text-primary">{e.previous ?? <span className="text-text-tertiary">—</span>}</td>
                       <td className="py-1.5 text-right text-text-tertiary hidden sm:table-cell">{period(e.previous_period)}</td>

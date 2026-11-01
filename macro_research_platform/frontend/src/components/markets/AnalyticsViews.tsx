@@ -10,7 +10,10 @@ const enc = encodeURIComponent;
 const heat = (v: number | null | undefined, scale: number) => {
   if (v == null) return undefined;
   const a = Math.min(1, Math.abs(v) / scale) * 0.75 + 0.08;
-  return { background: v >= 0 ? `rgb(var(--c-green) / ${a})` : `rgb(var(--c-red) / ${a})` };
+  // strong cells take the text colour computed for a green / red fill (lib/accentContrast) — light text on a bright
+  // green cell was 2.7:1
+  return { background: v >= 0 ? `rgb(var(--c-green) / ${a})` : `rgb(var(--c-red) / ${a})`,
+           ...(a > 0.5 ? { color: v >= 0 ? 'rgb(var(--c-on-green, 10 14 20))' : 'rgb(var(--c-on-red, 10 14 20))' } : {}) };
 };
 
 // ── SEAS ────────────────────────────────────────────────────────────────────

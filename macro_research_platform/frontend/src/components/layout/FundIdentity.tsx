@@ -28,7 +28,7 @@ export function FundIdentity({ collapsed, fallback }: { collapsed: boolean; fall
       <div className="min-w-0 leading-none">
         <BrandShape variant="word_mask" height={(b.word_height ?? 11) + 2} className={gold ? 'brand-gold' : 'text-text-primary'} title={f.name} />
         <div className="mt-1 h-px w-full" style={{ background: `rgb(${b.secondary ?? b.accent_dark} / 0.7)` }} />
-        <div className={cn("mt-1 uppercase text-text-secondary", (b.tagline ?? "").length > 24 ? "text-[7.5px] leading-[9px] tracking-[0.12em] line-clamp-2" : "text-[8.5px] tracking-[0.2em] truncate")}>{b.tagline ?? 'Macro Terminal'}</div>
+        <div className={cn("mt-1 uppercase text-text-secondary", (b.tagline ?? "").length > 24 ? "text-[7.5px] leading-[9px] tracking-[0.12em] line-clamp-2" : "text-[10px] tracking-[0.2em] truncate")}>{b.tagline ?? 'Macro Terminal'}</div>
       </div>
     </div>
   );

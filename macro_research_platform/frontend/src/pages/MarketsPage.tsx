@@ -254,7 +254,7 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
                 className={cn('px-3 py-1.5 text-[11px] uppercase tracking-wider border-b-2 -mb-px transition-colors',
                   on ? 'border-bloomberg text-text-primary font-semibold' : 'border-transparent text-text-tertiary hover:text-text-primary',
                   g.codes.includes(f.code) && !on && 'text-bloomberg')}>
-                {g.name}<span className="ml-1 text-[9px] text-text-tertiary normal-case">{n}</span></button>);
+                {g.name}<span className="ml-1 text-[10px] text-text-tertiary normal-case">{n}</span></button>);
           })}
         </div>
         <div className="flex flex-wrap gap-1 py-1.5">
@@ -263,7 +263,7 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
             <button key={t.code} onClick={() => onGo(t.code, symbol)} title={t.desc}
               className={cn('px-2.5 py-1 text-xs rounded-sm border whitespace-nowrap transition-colors',
                 t.code === f.code ? 'border-bloomberg bg-bloomberg/10 text-text-primary font-semibold' : 'border-border-subtle text-text-secondary hover:text-text-primary hover:border-border')}>
-              {t.code === 'DES' ? 'Overview' : t.name}<span className="ml-1.5 font-mono text-[9px] text-text-tertiary">{t.code}</span></button>))}
+              {t.code === 'DES' ? 'Overview' : t.name}<span className="ml-1.5 font-mono text-[10px] text-text-tertiary">{t.code}</span></button>))}
         </div>
       </nav>
       </>}

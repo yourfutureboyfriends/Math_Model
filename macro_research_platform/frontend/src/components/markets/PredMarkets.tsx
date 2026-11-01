@@ -17,7 +17,7 @@ const vol = (venue: string, v: number) => (venue === 'Polymarket' ? `$${big(v)}`
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
   return <button onClick={onClick} className={cn('px-2 py-0.5 border rounded-sm', on ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary hover:text-text-primary')}>{children}</button>;
 }
-const Venue = ({ v }: { v: string }) => <span className={cn('text-[9px] uppercase tracking-wide border px-1 rounded-sm', VENUE[v])}>{v}</span>;
+const Venue = ({ v }: { v: string }) => <span className={cn('text-[10px] uppercase tracking-wide border px-1 rounded-sm', VENUE[v])}>{v}</span>;
 
 type Open = { venue: string; id: string } | null;
 
@@ -115,7 +115,7 @@ function OutcomeRow({ m }: { m: any }) {
   return (
     <div className={cn('flex items-center gap-2 text-[11px] py-0.5', m.thin && 'opacity-60')}
       title={m.thin ? 'Thin market: wide spread or little trading — the price may be stale' : m.spread != null ? `Spread ${(m.spread * 100).toFixed(1)}¢` : undefined}>
-      <span className="flex-1 min-w-0 truncate text-text-secondary">{m.label}{m.thin && <span className="ml-1 text-[9px] text-amber">thin</span>}</span>
+      <span className="flex-1 min-w-0 truncate text-text-secondary">{m.label}{m.thin && <span className="ml-1 text-[10px] text-amber">thin</span>}</span>
       {multi ? <span className="font-mono text-text-primary">{m.outcomes.map((o: any) => `${o.name} ${P(o.price)}`).join(' · ')}</span> : <>
         <span className="w-20 h-1.5 bg-surface-3 rounded-full overflow-hidden"><span className="block h-full bg-bloomberg" style={{ width: `${m.yes * 100}%` }} /></span>
         <span className="w-11 text-right font-mono text-text-primary">{P(m.yes)}</span>
@@ -459,7 +459,7 @@ export function RelatedOdds({ terms, title = 'Prediction markets', limit = 5, cl
     <div className={cn('border border-border bg-surface-1 rounded-md', className)}>
       <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border-subtle">
         <span className="text-[10px] uppercase tracking-wider text-text-tertiary font-semibold">{title}</span>
-        <span className="text-[9px] text-text-tertiary">Kalshi · Polymarket — real-money odds</span></div>
+        <span className="text-[10px] text-text-tertiary">Kalshi · Polymarket — real-money odds</span></div>
       <div className="divide-y divide-border-subtle">{data.events.map((e: any) => (
         <button key={`${e.venue}${e.id}`} onClick={() => open(e)} className="w-full text-left px-2.5 py-1.5 hover:bg-surface-2 transition-colors">
           <div className="flex items-start gap-1.5"><span className="text-[11px] text-text-primary font-medium flex-1 min-w-0">{e.title}</span><Venue v={e.venue} /></div>
@@ -468,7 +468,7 @@ export function RelatedOdds({ terms, title = 'Prediction markets', limit = 5, cl
               <span className="flex-1 min-w-0 truncate text-text-secondary">{m.binary ? m.label : m.outcomes.map((o: any) => o.name).join(' / ')}</span>
               <span className="font-mono text-text-primary">{m.binary ? P(m.yes) : m.outcomes.map((o: any) => P(o.price)).join(' / ')}</span>
               <span className={cn('w-8 text-right font-mono', tone(m.chg_1d))}>{PT(m.chg_1d)}</span></div>))}
-          <div className="text-[9px] text-text-tertiary">24h {vol(e.venue, e.volume_24h)}{e.end ? ` · closes ${e.end}` : ''}</div>
+          <div className="text-[10px] text-text-tertiary">24h {vol(e.venue, e.volume_24h)}{e.end ? ` · closes ${e.end}` : ''}</div>
         </button>))}</div>
     </div>
   );

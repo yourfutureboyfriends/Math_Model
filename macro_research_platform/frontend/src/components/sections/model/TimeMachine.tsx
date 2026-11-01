@@ -37,10 +37,10 @@ function QuadrantMap({ rows, i }: { rows: Row[]; i: number }) {
       <line x1={pad} x2={W - pad} y1={y(0)} y2={y(0)} stroke="var(--border-strong)" />
       {Object.entries(QUAD_POS).map(([q, [gs, is]]) => (
         <text key={q} x={gs > 0 ? W - pad - 3 : pad + 3} y={is > 0 ? pad + 10 : H - pad - 4} textAnchor={gs > 0 ? 'end' : 'start'}
-          className={cn('text-[8.5px]', cur.top === q ? 'fill-[rgb(var(--c-bloomberg))] font-semibold' : 'fill-[var(--text-tertiary)]')}>{q}</text>
+          className={cn('text-[10px]', cur.top === q ? 'fill-[rgb(var(--c-bloomberg))] font-semibold' : 'fill-[var(--text-tertiary)]')}>{q}</text>
       ))}
-      <text x={W / 2} y={H - 3} textAnchor="middle" className="fill-[var(--text-tertiary)] text-[8px]">growth →</text>
-      <text x={6} y={H / 2} transform={`rotate(-90 6 ${H / 2})`} textAnchor="middle" className="fill-[var(--text-tertiary)] text-[8px]">inflation →</text>
+      <text x={W / 2} y={H - 3} textAnchor="middle" className="fill-[var(--text-tertiary)] text-[10px]">growth →</text>
+      <text x={6} y={H / 2} transform={`rotate(-90 6 ${H / 2})`} textAnchor="middle" className="fill-[var(--text-tertiary)] text-[10px]">inflation →</text>
       <polyline points={trail.map((r) => `${x(r.growth)},${y(r.inflation)}`).join(' ')} fill="none" stroke="rgb(var(--c-bloomberg))" strokeOpacity={0.45} strokeWidth={1.2} />
       {trail.map((r, k) => (
         <circle key={r.month} cx={x(r.growth)} cy={y(r.inflation)} r={k === trail.length - 1 ? 4.5 : 2}

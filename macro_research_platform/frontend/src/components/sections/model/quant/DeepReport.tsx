@@ -105,7 +105,7 @@ export function DeepReport({ d }: { d: any }) {
           <div className="flex items-end gap-0.5 h-28">{(() => { const mx = Math.max(1, ...d.distribution.flatMap((x: any) => [x.strategy, x.benchmark ?? 0])); return d.distribution.map((x: any) => (
             <div key={x.bin} className="flex-1 flex items-end gap-px h-full" title={`${x.bin}: ${x.strategy} months${x.benchmark != null ? ` (benchmark ${x.benchmark})` : ''}`}>
               <div className="flex-1 bg-blue/70" style={{ height: `${(x.strategy / mx) * 100}%` }} />{x.benchmark != null && <div className="flex-1 bg-text-tertiary/40" style={{ height: `${(x.benchmark / mx) * 100}%` }} />}</div>)); })()}</div>
-          <div className="flex justify-between text-[9px] text-text-tertiary mt-0.5"><span>{d.distribution[0]?.bin} or worse</span><span>0</span><span>+{d.distribution[d.distribution.length - 1]?.bin.replace('-', '')} or better</span></div>
+          <div className="flex justify-between text-[10px] text-text-tertiary mt-0.5"><span>{d.distribution[0]?.bin} or worse</span><span>0</span><span>+{d.distribution[d.distribution.length - 1]?.bin.replace('-', '')} or better</span></div>
         </Box>
       </>}
 
@@ -171,7 +171,7 @@ export function DeepReport({ d }: { d: any }) {
               <div key={y.year} className="flex-1 flex flex-col justify-center h-full" title={`${y.year}: ${spct(y.return)} · Sharpe ${num(y.sharpe)}`}>
                 <div className="h-1/2 flex items-end"><div className="w-full bg-green/70" style={{ height: `${Math.max(0, y.return) / mx * 100}%` }} /></div>
                 <div className="h-1/2 flex items-start"><div className="w-full bg-red/70" style={{ height: `${Math.max(0, -y.return) / mx * 100}%` }} /></div></div>)); })()}</div>
-            <div className="flex justify-between text-[9px] text-text-tertiary"><span>{rb.by_year[0]?.year}</span><span>{rb.by_year[rb.by_year.length - 1]?.year}</span></div>
+            <div className="flex justify-between text-[10px] text-text-tertiary"><span>{rb.by_year[0]?.year}</span><span>{rb.by_year[rb.by_year.length - 1]?.year}</span></div>
           </Box>
         </div>
       </div>}
@@ -187,7 +187,7 @@ export function DeepReport({ d }: { d: any }) {
         <Box title={`Distribution of trade results (${d.trades.unit === 'R' ? 'R-multiples: profit ÷ initial risk' : 'returns'})`}>
           <div className="flex items-end gap-1 h-28">{(() => { const mx = Math.max(1, ...d.trades.histogram.map((h: any) => h.count)); return d.trades.histogram.map((h: any) => (
             <div key={h.bin} className="flex-1 flex flex-col items-center justify-end h-full" title={`${h.bin}: ${h.count}`}>
-              <div className={cn('w-full', h.bin.startsWith('-') ? 'bg-red/60' : 'bg-green/60')} style={{ height: `${(h.count / mx) * 100}%` }} /><span className="text-[8px] text-text-tertiary">{h.bin.split(' to ')[0]}</span></div>)); })()}</div>
+              <div className={cn('w-full', h.bin.startsWith('-') ? 'bg-red/60' : 'bg-green/60')} style={{ height: `${(h.count / mx) * 100}%` }} /><span className="text-[10px] text-text-tertiary">{h.bin.split(' to ')[0]}</span></div>)); })()}</div>
         </Box>
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
           {([['by_exit', 'By exit reason'], ['by_holding', 'By holding period'], ['by_group', `By ${d.trades.group_name ?? 'group'}`]] as const).map(([k, t]) => d.trades[k]?.length ? (

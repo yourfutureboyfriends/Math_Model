@@ -75,7 +75,7 @@ export function CotView() {
                   <tbody>{d.markets.filter((m: any) => m.group === g).map((m: any) => (
                     <tr key={m.code} onClick={() => setSel(m.code)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-3', cur?.code === m.code && 'bg-surface-3')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                       <td className="py-0.5 font-sans text-text-primary">{m.market}{m.crowded && <span title={m.crowded === 'long' ? 'Most long (or least short) in 3 years' : 'Most short (or least long) in 3 years'}
-                        className={cn('ml-1 text-[9px] px-1 border', m.crowded === 'long' ? 'border-green text-green' : 'border-red text-red')}>3y {m.crowded === 'long' ? 'high' : 'low'}</span>}</td>
+                        className={cn('ml-1 text-[10px] px-1 border', m.crowded === 'long' ? 'border-green text-green' : 'border-red text-red')}>3y {m.crowded === 'long' ? 'high' : 'low'}</span>}</td>
                       <td className="font-sans text-text-tertiary">{m.spec_name}</td>
                       <td className={cn('text-right', tone(m.net))}>{num(m.net)}</td><td className="text-right text-text-secondary">{m.pct_oi != null ? `${(m.pct_oi * 100).toFixed(1)}%` : '—'}</td>
                       <td className="px-2"><RangeDot p={m.pct_3y} /></td>

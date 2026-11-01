@@ -50,7 +50,7 @@ export function WirpView() {
                 <td className="text-right font-mono">{sgn(m.cumulative_bp, 0, 'bp')}</td>
                 <td className="pl-4"><div className="flex h-4 w-64 overflow-hidden border border-border">{Object.entries<number>(m.probabilities).map(([k, v]) => (
                   <div key={k} title={`${k}: ${(v * 100).toFixed(0)}%`} style={{ width: `${v * 100}%` }}
-                    className={cn('text-[9px] leading-4 text-center text-black overflow-hidden', k.startsWith('+0') ? 'bg-text-tertiary' : k.startsWith('-') ? 'bg-green' : 'bg-red')}>{v > 0.12 ? `${k} ${(v * 100).toFixed(0)}%` : ''}</div>))}</div></td>
+                    className={cn('text-[10px] leading-4 text-center text-black overflow-hidden', k.startsWith('+0') ? 'bg-text-tertiary' : k.startsWith('-') ? 'bg-green' : 'bg-red')}>{v > 0.12 ? `${k} ${(v * 100).toFixed(0)}%` : ''}</div>))}</div></td>
               </tr>))}</tbody>
           </table></div>
         </Panel>

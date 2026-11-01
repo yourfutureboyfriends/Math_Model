@@ -353,9 +353,9 @@ function Results({ res, unit, ccy, hurdle, busy, inputs }: { res: any; unit: num
           <div className="flex items-end gap-1.5 h-32">
             {[{ year: 0, debt: b.debt_raised, net_leverage: b.entry.net_leverage_close }, ...sch].map((x: any) => (
               <div key={x.year} className={cn('flex-1 flex flex-col items-center justify-end h-full', x.year > H && 'opacity-40')} title={`Year ${x.year}: ${amt(x.debt, ccy, unit)}${m}`}>
-                <span className="text-[9.5px] text-text-tertiary tabular-nums mb-0.5">{xx(x.net_leverage, 1)}</span>
+                <span className="text-[10px] text-text-tertiary tabular-nums mb-0.5">{xx(x.net_leverage, 1)}</span>
                 <span className="w-full rounded-t-md bg-bloomberg/70" style={{ height: `${(x.debt / maxDebt) * 85}%` }} />
-                <span className="text-[9.5px] text-text-tertiary mt-0.5">{x.year === 0 ? 'Close' : `Y${x.year}`}</span>
+                <span className="text-[10px] text-text-tertiary mt-0.5">{x.year === 0 ? 'Close' : `Y${x.year}`}</span>
               </div>))}
           </div>
         </Card>
@@ -373,7 +373,7 @@ function Results({ res, unit, ccy, hurdle, busy, inputs }: { res: any; unit: num
                   {sch.map((x) => <td key={x.year} className="text-right px-1">{f === 'repaid' ? amt(x.mandatory + x.sweep, ccy, unit) : f === 'pct' ? pct(x[k!]) : f === 'x' ? xx(x[k!], 1) : amt(x[k!], ccy, unit)}</td>)}</tr>))}
               <tr className="border-t border-border-subtle"><td className="py-1 pr-2 text-text-secondary">Covenants</td>
                 {b.covenants.map((c: any) => <td key={c.year} className="text-right px-1">{c.leverage_ok && c.cover_ok ? <span className="text-green">pass</span> : <span className="text-red font-semibold">breach</span>}
-                  <div className="text-[9.5px] text-text-tertiary">≤ {xx(c.max_net_leverage, 2)}</div></td>)}</tr>
+                  <div className="text-[10px] text-text-tertiary">≤ {xx(c.max_net_leverage, 2)}</div></td>)}</tr>
             </tbody>
           </table>
         </div>

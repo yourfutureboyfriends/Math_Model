@@ -79,7 +79,7 @@ export function TeamPositions() {
                   <div className="text-[11px] text-text-secondary leading-snug">{p.description}</div>
                   <div className="flex flex-wrap gap-1">
                     {p.capabilities.filter((c: string) => c !== 'view_book').map((c: string) => (
-                      <span key={c} title={d.capabilities[c]} className="text-[9.5px] px-1 border border-border-subtle text-text-secondary">{d.capabilities[c]}</span>))}
+                      <span key={c} title={d.capabilities[c]} className="text-[10px] px-1 border border-border-subtle text-text-secondary">{d.capabilities[c]}</span>))}
                   </div>
                   <div className="text-[10px] text-text-tertiary">Workspace: {p.panels.map((x: string) => panelLabel(x)).join(' · ')}</div>
                   <div className="workspace-controls flex flex-wrap gap-1 items-center pt-1 border-t border-border-subtle">

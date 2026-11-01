@@ -283,7 +283,7 @@ function ViewPanel({ stats, inView, onPick }: { stats: { bands: { l: string; c: 
             <th className="text-right font-normal">Alt ft</th><th className="text-right font-normal">Kt</th><th className="text-right px-1.5 font-normal">Hdg</th></tr></thead>
           <tbody>{list.map((a) => (
             <tr key={a.hex} onClick={() => onPick(a)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-3', a.emergency && 'text-red')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
-              <td className="px-1.5">{a.callsign || a.hex}{a.mil && <span className="ml-1 text-[9px] text-[rgb(236_72_153)]">MIL</span>}</td>
+              <td className="px-1.5">{a.callsign || a.hex}{a.mil && <span className="ml-1 text-[10px] text-[rgb(236_72_153)]">MIL</span>}</td>
               <td className="text-text-secondary">{a.type ?? ''}</td><td className="text-right">{a.alt?.toLocaleString() ?? '—'}</td>
               <td className="text-right">{a.speed ?? ''}</td><td className="text-right px-1.5">{a.track ?? ''}</td></tr>))}</tbody>
         </table>

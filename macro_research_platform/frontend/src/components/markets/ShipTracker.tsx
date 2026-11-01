@@ -334,7 +334,7 @@ function FollowPanel({ follow, byId, onPick }: { follow: ReturnType<typeof useFo
           {f.reason && <div className="text-[10px] text-amber">{f.reason}</div>}
           <textarea value={f.note} onChange={(e) => follow.setNote(f.id, e.target.value)} rows={1} placeholder="Notes…" aria-label={`Notes on ${f.label}`}
             className="mt-1 w-full bg-surface-2 border border-border-subtle px-1.5 py-0.5 text-[11px] text-text-primary" />
-          <div className="text-[9px] text-text-tertiary">following since {f.added.replace('T', ' ')}</div>
+          <div className="text-[10px] text-text-tertiary">following since {f.added.replace('T', ' ')}</div>
         </li>);
     })}</ul>
   );

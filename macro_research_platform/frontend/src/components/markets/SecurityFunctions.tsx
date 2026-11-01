@@ -759,7 +759,7 @@ export function DcfView({ symbol }: { symbol: string }) {
         <span className="text-text-tertiary mr-1">Model</span>
         {available.map((m) => (
           <button key={m} onClick={() => pick(m)} className={cn('px-2.5 py-1 border rounded-sm', data.model === m ? 'border-bloomberg text-bloomberg bg-bloomberg/10' : 'border-border text-text-secondary hover:text-text-primary')}>
-            {MODEL_LABEL[m]}{data.recommended === m && <span className="ml-1 text-[9px] uppercase text-green">recommended</span>}</button>))}
+            {MODEL_LABEL[m]}{data.recommended === m && <span className="ml-1 text-[10px] uppercase text-green">recommended</span>}</button>))}
         {!data.ddm && !isDdm && <span className="text-text-tertiary ml-2">No dividend, so no DDM.</span>}
       </div>
       {data.fallback_reason && <div className="px-3 py-2 border border-blue/50 bg-blue/5 text-2xs text-text-secondary">{data.fallback_reason}</div>}
@@ -1028,7 +1028,7 @@ function ValuationSummary({ symbol, data }: { symbol: string; data: any }) {
           {vals.length > 1 && <div className="absolute top-4 h-2 bg-bloomberg/15 rounded" style={{ left: pos(Math.min(...vals)), width: `calc(${pos(Math.max(...vals))} - ${pos(Math.min(...vals))})` }} />}
           {items.map(([k, x]) => x != null && x > 0 && <div key={k} title={`${k}: ${fmtPrice(x)}`} className="absolute top-3.5 w-2.5 h-2.5 -ml-[5px] rounded-full bg-blue ring-2 ring-surface-1" style={{ left: pos(x) }} />)}
           <div className="absolute top-1 w-0.5 h-8 bg-bloomberg" style={{ left: pos(price) }} title={`Price ${fmtPrice(price)}`} />
-          <div className="absolute top-0 text-[9px] text-bloomberg -translate-x-1/2" style={{ left: pos(price) }}>price</div>
+          <div className="absolute top-0 text-[10px] text-bloomberg -translate-x-1/2" style={{ left: pos(price) }}>price</div>
         </div>
       </div>
     </div>
@@ -1069,7 +1069,7 @@ function DdmValuation({ data, formPanel, pctS }: { data: any; formPanel: React.R
         <Panel title="Dividend history and value build-up">
           {v.dividend_history?.length > 1 && <div className="flex items-end gap-1 h-24 mb-2">{(() => { const mx = Math.max(...v.dividend_history.map((h: any) => h.dps)); return v.dividend_history.map((h: any) => (
             <div key={h.year} className="flex-1 flex flex-col items-center justify-end h-full" title={`${h.year}: ${d2(h.dps)}`}>
-              <div className="w-full bg-blue/70 rounded-t-sm" style={{ height: `${(h.dps / mx) * 100}%` }} /><span className="text-[8px] text-text-tertiary mt-0.5">{String(h.year).slice(2)}</span></div>)); })()}</div>}
+              <div className="w-full bg-blue/70 rounded-t-sm" style={{ height: `${(h.dps / mx) * 100}%` }} /><span className="text-[10px] text-text-tertiary mt-0.5">{String(h.year).slice(2)}</span></div>)); })()}</div>}
           <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs"><tbody>
             {[['PV of dividends, years 1–' + a.years, v.pv_dividends], ['PV of terminal value', v.pv_terminal], ['= Value per share', v.per_share]].map(([k, x]) => (
               <tr key={k as string} className={cn('border-t border-border-subtle', String(k).startsWith('=') && 'font-semibold text-text-primary')}>

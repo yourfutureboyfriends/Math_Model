@@ -190,7 +190,7 @@ export function UoaView({ onOpen }: { onOpen: (s: string) => void }) {
                 <tbody>{hits.map((h: any, i: number) => (
                   <tr key={i} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(h.symbol)} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                     <td className="py-1"><span className="text-bloomberg">{h.symbol}</span> <span className="text-text-secondary">{h.expiry.slice(5)}</span> <span className="text-text-primary">{h.strike}</span>{' '}
-                      <span className={cn('px-1 rounded text-[9px] uppercase', h.kind === 'call' ? 'bg-green/15 text-green' : 'bg-red/15 text-red')}>{h.kind}</span></td>
+                      <span className={cn('px-1 rounded text-[10px] uppercase', h.kind === 'call' ? 'bg-green/15 text-green' : 'bg-red/15 text-red')}>{h.kind}</span></td>
                     <td className="text-right text-text-primary">{h.volume.toLocaleString()}</td><td className="text-right text-text-tertiary">{h.open_interest.toLocaleString()}</td>
                     <td className="text-right text-amber">{h.vol_oi != null ? `${h.vol_oi}×` : 'new'}</td><td className="text-right">{(h.iv * 100).toFixed(0)}%</td>
                     <td className={cn('text-right', h.moneyness == null ? '' : (h.kind === 'call' ? h.moneyness > 0 : h.moneyness < 0) ? 'text-text-secondary' : 'text-text-tertiary')}>{pct(h.moneyness)}</td>
@@ -211,7 +211,7 @@ export function UoaView({ onOpen }: { onOpen: (s: string) => void }) {
                       <td className="py-1 text-bloomberg">{t.symbol}</td>
                       <td className="px-2"><div className="flex h-1.5 rounded-full overflow-hidden bg-surface-3" title={`calls $${fmtBig(t.call_premium)} · puts $${fmtBig(t.put_premium)}`}>
                         <div className="bg-green/75" style={{ width: `${(t.call_premium / tot) * 100}%` }} /><div className="bg-red/75" style={{ width: `${(t.put_premium / tot) * 100}%` }} /></div>
-                        <div className="text-[9px] text-text-tertiary">${fmtBig(t.call_premium + t.put_premium)}</div></td>
+                        <div className="text-[10px] text-text-tertiary">${fmtBig(t.call_premium + t.put_premium)}</div></td>
                       <td className={cn('text-right', (t.put_call ?? 0) > 1 ? 'text-red' : 'text-green')}>{t.put_call ?? '—'}</td>
                       <td className="text-right text-amber">{t.unusual || ''}</td></tr>);
                 })}</tbody>

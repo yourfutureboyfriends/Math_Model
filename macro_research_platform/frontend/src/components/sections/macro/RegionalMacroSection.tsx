@@ -52,7 +52,7 @@ function V({ c, d = 1, suffix = '%' }: { c: Cell; d?: number; suffix?: string })
     <span title={title} className="inline-flex items-center justify-end gap-1">
       {STALE_DOT[c.state] && <span className={`w-1.5 h-1.5 rounded-full ${STALE_DOT[c.state]}`} />}
       <span className={c.value == null ? 'text-text-tertiary' : ''}>{num(c.value, d, c.value == null ? '' : suffix)}</span>
-      {c.period && c.value != null && <span className="text-text-tertiary text-[9px]">{shortPeriod(c.period)}</span>}
+      {c.period && c.value != null && <span className="text-text-tertiary text-[10px]">{shortPeriod(c.period)}</span>}
     </span>
   );
 }

@@ -50,7 +50,7 @@ export function LiveTV({ iso, name, region }: { iso: string | null; name: string
                 className={cn('px-2 py-0.5 text-[11px] border inline-flex items-center gap-1',
                   playing?.id === c.video_id ? 'border-bloomberg text-bloomberg' : c.live ? 'border-border text-text-secondary hover:text-text-primary' : 'border-border-subtle text-text-tertiary opacity-50')}>
                 {c.live && <span className="w-1.5 h-1.5 rounded-full bg-red animate-pulse" />}{c.channel}
-                {iso && c.countries.includes(iso) && <span className="text-[9px] text-bloomberg">{iso}</span>}</button>))}
+                {iso && c.countries.includes(iso) && <span className="text-[10px] text-bloomberg">{iso}</span>}</button>))}
           </div>
         </div>
         <div className="min-w-0">

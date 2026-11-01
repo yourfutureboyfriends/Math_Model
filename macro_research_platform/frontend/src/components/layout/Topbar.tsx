@@ -506,7 +506,7 @@ export function Topbar({
 
         {/* Regime label at far right of ticker */}
         <div className="ml-auto flex items-center px-3 shrink-0 border-l border-border-subtle h-full gap-2">
-          <span className="font-mono text-text-tertiary" style={{ fontSize: 9, letterSpacing: '0.06em' }}>REGIME</span>
+          <span className="font-mono text-text-tertiary" style={{ fontSize: 10, letterSpacing: '0.06em' }}>REGIME</span>
           <span className="font-mono text-bloomberg font-bold" style={{ fontSize: 10, letterSpacing: '0.06em' }}>
             {regime.current ? fmtRegime(regime.current).toUpperCase() : '—'}
           </span>

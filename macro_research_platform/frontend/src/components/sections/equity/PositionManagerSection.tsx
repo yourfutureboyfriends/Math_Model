@@ -193,7 +193,7 @@ function Evidence() {
           <tbody>
             {res.rules.map((r: any) => (
               <tr key={r.rule} className={cn('border-t border-border-subtle', r.rule === 'trend' && 'bg-bloomberg/5')}>
-                <td className="py-1 text-text-secondary">{r.label}{r.rule === 'trend' && <span className="ml-1 text-[9px] text-bloomberg font-mono">DEFAULT</span>}</td>
+                <td className="py-1 text-text-secondary">{r.label}{r.rule === 'trend' && <span className="ml-1 text-[10px] text-bloomberg font-mono">DEFAULT</span>}</td>
                 <td className="text-right font-mono">{r.trades}</td>
                 <td className="text-right font-mono">{r.win_rate != null ? `${Math.round(r.win_rate * 100)}%` : '—'}</td>
                 <td className="text-right font-mono">{pc(r.avg_return)}</td>
@@ -300,7 +300,7 @@ export function PositionManagerSection() {
                         <span className="ml-1.5 inline-flex gap-1 align-middle">
                           {(src === 'futu' ? ['DES', 'GP', 'FUTU'] : ['DES', 'GP']).map((c) => (
                             <button key={c} type="button" title={`Open ${r.symbol} ${c} in Markets`} onClick={(e) => { e.stopPropagation(); openScreen(c, r.symbol); }}
-                              className="px-1 text-[9px] border border-border-subtle text-text-tertiary hover:text-bloomberg hover:border-bloomberg">{c}</button>))}
+                              className="px-1 text-[10px] border border-border-subtle text-text-tertiary hover:text-bloomberg hover:border-bloomberg">{c}</button>))}
                         </span></td>
                       <td>{r.available === false ? <span className="text-text-tertiary">{r.reason}</span> : <Badge a={r.action} />}</td>
                       <td className="text-right font-mono">{px(r.price)}</td>

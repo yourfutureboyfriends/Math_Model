@@ -208,7 +208,7 @@ export function HoverCards() {
       <div className="flex items-baseline gap-2">
         <span className="font-mono font-bold text-text-primary text-sm">{q.symbol ?? sym}</span>
         <span className="text-[10px] text-text-tertiary truncate">{[q.exchange, q.currency, q.type].filter(Boolean).join(' · ')}</span>
-        <span className={cn('ml-auto text-[9px] font-mono px-1 border', q.delay_minutes ? 'border-border text-text-tertiary' : 'border-green/50 text-green')}>
+        <span className={cn('ml-auto text-[10px] font-mono px-1 border', q.delay_minutes ? 'border-border text-text-tertiary' : 'border-green/50 text-green')}>
           {q.delay_minutes ? `${q.delay_minutes}m DELAY` : q.market_state === 'REGULAR' ? 'LIVE' : (q.market_state || 'LAST')}</span>
       </div>
       <div className="text-[11px] text-text-secondary truncate">{q.name}</div>
@@ -246,7 +246,7 @@ export function HoverCards() {
         <button type="button" className={cn('hover-card-btn ml-auto', alertOpen && 'border-bloomberg text-bloomberg')} onClick={() => setAlertOpen((v) => !v)}><Bell className="w-3 h-3" />Alert</button>
       </div>
       {alertOpen && <AlertForm sym={sym} price={q.price} onDone={() => setAlertOpen(false)} />}
-      <div className="mt-1.5 text-[9px] text-text-tertiary truncate">{q.source}</div>
+      <div className="mt-1.5 text-[10px] text-text-tertiary truncate">{q.source}</div>
     </div>
   );
 }

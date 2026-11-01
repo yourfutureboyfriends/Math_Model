@@ -32,7 +32,9 @@ function describe(v: number | null): string {
 // Keep the number legible on both dark surface and saturated cells.
 function cellFg(v: number | null): string {
   if (v === null) return 'var(--text-tertiary)';
-  return Math.abs(v) > 0.45 ? '#0a0e14' : 'var(--text-secondary)';
+  // strong cells: the primary text colour (light in the dark theme, ink in the light one) — a fixed near-black was
+  // unreadable on the dark theme's deep blue / orange cells (≈2:1)
+  return Math.abs(v) > 0.45 ? 'var(--text-primary)' : 'var(--text-secondary)';
 }
 
 export function CorrelationHeatmap({ labels, matrix, onCellClick, selected }: CorrelationHeatmapProps) {
@@ -48,7 +50,7 @@ export function CorrelationHeatmap({ labels, matrix, onCellClick, selected }: Co
         <div className="grid gap-px" style={{ gridTemplateColumns: cols }}>
           <div />
           {labels.map((l) => (
-            <div key={l} title={l} className="min-w-0 truncate px-0.5 text-[9.5px] font-medium text-text-tertiary text-center py-1">{l}</div>
+            <div key={l} title={l} className="min-w-0 truncate px-0.5 text-[10px] font-medium text-text-tertiary text-center py-1">{l}</div>
           ))}
         </div>
         {/* Matrix rows */}
@@ -63,8 +65,8 @@ export function CorrelationHeatmap({ labels, matrix, onCellClick, selected }: Co
                   key={j}
                   onClick={() => !diagonal && onCellClick?.(labels[i], labels[j], v)}
                   title={`${labels[i]} vs ${labels[j]}: ${v === null ? 'n/a' : (v > 0 ? '+' : '') + v.toFixed(2)} — ${describe(v)}`}
-                  className={`h-8 flex items-center justify-center text-2xs font-mono tabular-nums transition-none ${diagonal ? 'opacity-40' : 'cursor-pointer'} ${isSel ? 'ring-1 ring-bloomberg z-10' : ''}`}
-                  style={{ background: diagonal ? 'var(--surface-3)' : cellBg(v), color: cellFg(v) }}
+                  className={`h-8 flex items-center justify-center text-2xs font-mono tabular-nums transition-none ${diagonal ? '' : 'cursor-pointer'} ${isSel ? 'ring-1 ring-bloomberg z-10' : ''}`}
+                  style={{ background: diagonal ? 'var(--surface-3)' : cellBg(v), color: diagonal ? 'var(--text-tertiary)' : cellFg(v) }}
                 >
                   {v === null ? '·' : v.toFixed(2)}
                 </button>

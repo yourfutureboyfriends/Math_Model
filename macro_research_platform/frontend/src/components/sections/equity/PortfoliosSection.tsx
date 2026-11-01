@@ -496,7 +496,7 @@ function AutoBacktest() {
             <div key={y} className="flex-1 flex flex-col items-center justify-end h-full group" title={`${y}: ${spct(r)}`}>
               <div className="w-full flex flex-col justify-end h-1/2">{r >= 0 && <div className="w-full max-w-[18px] mx-auto rounded-t-sm bg-[#199e70]" style={{ height: `${(r / maxAbs) * 100}%` }} />}</div>
               <div className="w-full flex flex-col justify-start h-1/2 border-t border-border">{r < 0 && <div className="w-full max-w-[18px] mx-auto rounded-b-sm bg-[#e66767]" style={{ height: `${(-r / maxAbs) * 100}%` }} />}</div>
-              <div className="text-[9px] text-text-tertiary mt-0.5">{y.slice(2)}</div>
+              <div className="text-[10px] text-text-tertiary mt-0.5">{y.slice(2)}</div>
             </div>
           ))}
         </div>

@@ -17,7 +17,7 @@ function Chip({ icon: Icon, label, children, onClick, title }: { icon: any; labe
     <button type="button" onClick={onClick} title={title} disabled={!onClick}
       className="group inline-flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-lg border border-border-subtle bg-surface-1/70 text-left hover:border-bloomberg/40 hover:bg-bloomberg/[0.04] transition-colors disabled:cursor-default min-w-0">
       <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-bloomberg/10 text-bloomberg shrink-0"><Icon className="w-3.5 h-3.5" /></span>
-      <span className="min-w-0"><span className="block text-[9.5px] uppercase tracking-[0.07em] text-text-tertiary">{label}</span>
+      <span className="min-w-0"><span className="block text-[10px] uppercase tracking-[0.07em] text-text-tertiary">{label}</span>
         <span className="block text-[11.5px] text-text-primary truncate">{children}</span></span>
     </button>
   );

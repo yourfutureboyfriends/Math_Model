@@ -406,5 +406,5 @@ function ScenarioBar({ bear, base, bull, price, fair }: { bear: number; base: nu
   );
 }
 function Mark({ x, label, cls, below }: { x: string; label: string; cls: string; below?: boolean }) {
-  return <div className={cn('absolute text-[9px] font-mono -translate-x-1/2 whitespace-nowrap', below ? 'top-7' : 'top-0', cls)} style={{ left: x }}>{label}</div>;
+  return <div className={cn('absolute text-[10px] font-mono -translate-x-1/2 whitespace-nowrap', below ? 'top-7' : 'top-0', cls)} style={{ left: x }}>{label}</div>;
 }

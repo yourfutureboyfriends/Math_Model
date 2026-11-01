@@ -97,7 +97,7 @@ export function SourcesBar({ className }: { className?: string }) {
             : m.delay === 0 ? <span className="text-green">· live</span>
             : m.delay ? <span>· {m.delay}-min delayed</span>
             : m.asOf ? <span>· as of {m.asOf}</span> : null}
-          {m.fetchedAt ? <span className="tabular-nums text-text-tertiary/80">· updated {ago(m.fetchedAt)}</span> : null}
+          {m.fetchedAt ? <span className="tabular-nums text-text-tertiary">· updated {ago(m.fetchedAt)}</span> : null}
         </span>))}
     </div>
   );
