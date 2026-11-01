@@ -112,7 +112,7 @@ export function StockIdeasSection() {
         <div className="space-y-2">
           {/* Context + filters */}
           <div className="px-3 py-2 bg-surface-1 border border-border space-y-1.5">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs">
+            <div className="workspace-controls flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs">
               <span className={data.market?.ok ? 'text-green' : 'text-amber'}>Global market (MSCI ACWI) {data.market?.ok ? 'supportive' : 'unfavourable'}</span>
               <span className="text-text-secondary">Breadth above 200-day:{' '}
                 {(data.by_class ?? []).filter((g: any) => g.names >= 10).map((g: any) => (
@@ -130,8 +130,8 @@ export function StockIdeasSection() {
                 </span>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <div className="flex border border-border" role="tablist" aria-label="Market class">
+            <div className="workspace-controls flex flex-wrap items-center gap-1.5">
+              <div className="flex border border-border" role="tablist" aria-label="Market class" data-workspace-tabs>
                 {CLASSES.map((c) => (
                   <button key={c} role="tab" aria-selected={cls === c} onClick={() => { setCls(c); setCountry('All'); }}
                     className={cn('px-2 py-0.5 text-2xs', cls === c ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary')}>{c}</button>
@@ -145,12 +145,12 @@ export function StockIdeasSection() {
             </div>
             {showBreadth && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 text-[10px] font-mono">
-                <table className="w-full"><thead><tr className="text-text-tertiary text-left font-sans"><th className="font-normal">Region</th><th className="font-normal text-right">Stocks</th><th className="font-normal text-right">&gt; 200d</th><th className="font-normal text-right">Strong set-ups</th></tr></thead>
-                  <tbody>{(data.by_region ?? []).map((g: any) => <tr key={g.key} className="border-t border-border-subtle"><td className="font-sans text-text-secondary">{g.key}</td><td className="text-right">{g.names}</td><td className="text-right">{pct(g.above_200d)}</td><td className="text-right">{g.strong}</td></tr>)}</tbody></table>
-                <table className="w-full"><thead><tr className="text-text-tertiary text-left font-sans"><th className="font-normal">Strongest markets</th><th className="font-normal text-right">Stocks</th><th className="font-normal text-right">&gt; 200d</th><th className="font-normal text-right">Avg set-up</th></tr></thead>
+                <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><thead><tr className="text-text-tertiary text-left font-sans"><th className="font-normal">Region</th><th className="font-normal text-right">Stocks</th><th className="font-normal text-right">&gt; 200d</th><th className="font-normal text-right">Strong set-ups</th></tr></thead>
+                  <tbody>{(data.by_region ?? []).map((g: any) => <tr key={g.key} className="border-t border-border-subtle"><td className="font-sans text-text-secondary">{g.key}</td><td className="text-right">{g.names}</td><td className="text-right">{pct(g.above_200d)}</td><td className="text-right">{g.strong}</td></tr>)}</tbody></table></div>
+                <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><thead><tr className="text-text-tertiary text-left font-sans"><th className="font-normal">Strongest markets</th><th className="font-normal text-right">Stocks</th><th className="font-normal text-right">&gt; 200d</th><th className="font-normal text-right">Avg set-up</th></tr></thead>
                   <tbody>{(data.by_country ?? []).filter((g: any) => g.names >= 8).slice(0, 10).map((g: any) => (
-                    <tr key={g.key} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2" onClick={() => { setCls('All'); setRegion('All'); setCountry(g.key); }}>
-                      <td className="font-sans text-text-secondary">{g.name}</td><td className="text-right">{g.names}</td><td className="text-right">{pct(g.above_200d)}</td><td className="text-right">{g.avg_setup == null ? '—' : g.avg_setup.toFixed(2)}</td></tr>))}</tbody></table>
+                    <tr key={g.key} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2" onClick={() => { setCls('All'); setRegion('All'); setCountry(g.key); }} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
+                      <td className="font-sans text-text-secondary">{g.name}</td><td className="text-right">{g.names}</td><td className="text-right">{pct(g.above_200d)}</td><td className="text-right">{g.avg_setup == null ? '—' : g.avg_setup.toFixed(2)}</td></tr>))}</tbody></table></div>
               </div>
             )}
           </div>
@@ -205,7 +205,7 @@ export function StockIdeasSection() {
                     {pullback.slice(0, 30).map((r: any) => {
                       const away = r.entry_high && r.price ? r.entry_high / r.price - 1 : null;
                       return (
-                        <tr key={r.symbol} onClick={() => openStockAnalysis(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2">
+                        <tr key={r.symbol} onClick={() => openStockAnalysis(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                           <td className="py-1"><span className="text-text-primary">{r.symbol}</span> <span className="font-sans text-[10px] text-text-tertiary">{(r.name ?? '').slice(0, 26)}</span></td>
                           <td><MarketTag r={r} /></td>
                           <td className="font-sans text-2xs text-amber">{String(r.verdict_label).replace('Buy candidate — ', '')}</td>

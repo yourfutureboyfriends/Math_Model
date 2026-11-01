@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 
-export type PeTab = 'workbench' | 'pipeline' | 'waterfall' | 'performance';
+export type PeTab = 'workbench' | 'pipeline' | 'precedents' | 'waterfall' | 'performance';
 export const PE_TABS: { id: PeTab; label: string; desc: string }[] = [
   { id: 'workbench', label: 'LBO workbench', desc: 'Model a buyout: financing, cases, returns, credit' },
   { id: 'pipeline', label: 'Deal pipeline', desc: 'Saved deals by stage, with their activity' },
+  { id: 'precedents', label: 'Precedents', desc: 'The fund’s book of precedent transactions, each multiple sourced' },
   { id: 'waterfall', label: 'Carry waterfall', desc: 'LP / GP split: hurdle, catch-up, carry' },
   { id: 'performance', label: 'Fund performance', desc: 'IRR, TVPI, DPI and public-market equivalents' },
 ];
@@ -33,6 +34,16 @@ export function usePeTab(): PeTab {
 }
 /** Open a saved deal in the workbench (the pipeline's "Open"). */
 export function openDeal(id: number) { setPeTab('workbench'); setTimeout(() => window.dispatchEvent(new CustomEvent(OPEN_EVT, { detail: id })), 0); }
+const PENDING_KEY = 'pe_pending_symbol';
+/** Open a listed company in the LBO workbench from anywhere (Markets' "LBO" button): the workbench loads it on mount. */
+export function openLbo(symbol: string) {
+  try { sessionStorage.setItem(PENDING_KEY, symbol.toUpperCase()); } catch { /* storage unavailable */ }
+  setPeTab('workbench');
+}
+/** The symbol waiting to be loaded (taken once). */
+export function takePendingSymbol(): string | null {
+  try { const s = sessionStorage.getItem(PENDING_KEY); sessionStorage.removeItem(PENDING_KEY); return s; } catch { return null; }
+}
 export function onOpenDeal(fn: (id: number) => void) {
   const h = (e: Event) => fn(Number((e as CustomEvent).detail));
   window.addEventListener(OPEN_EVT, h);
@@ -87,7 +98,7 @@ export function NumField({ label, value, onChange, kind = 'num', step, hint, cla
   useEffect(() => setText(shown), [shown]);
   const suffix = kind === 'pct' ? '%' : kind === 'x' ? '×' : kind === 'm' ? 'm' : '';
   return (
-    <label className={cn('block', className)} title={hint}>
+    <label className={cn('workspace-field block', className)} title={hint}>
       <span className="block text-[10.5px] text-text-tertiary mb-0.5 truncate">{label}</span>
       <span className="flex items-center rounded-md border border-border bg-bg/40 focus-within:border-bloomberg/60">
         <input value={text} inputMode="decimal" step={step}
@@ -103,7 +114,7 @@ export function NumField({ label, value, onChange, kind = 'num', step, hint, cla
 
 export function Kpi({ label, value, sub, tone }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: string }) {
   return (
-    <div className="p-3 rounded-xl border border-border bg-surface-1">
+    <div className="workspace-stat p-3 rounded-xl border border-border bg-surface-1">
       <div className="text-[10px] uppercase tracking-[0.06em] text-text-tertiary">{label}</div>
       <div className={cn('text-lg font-semibold tabular-nums mt-0.5', tone ?? 'text-text-primary')}>{value}</div>
       {sub && <div className="text-[10.5px] text-text-tertiary mt-0.5">{sub}</div>}
@@ -113,13 +124,13 @@ export function Kpi({ label, value, sub, tone }: { label: string; value: React.R
 
 export function Card({ title, right, children, className }: { title: string; right?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn('p-3.5 rounded-xl border border-border bg-surface-1', className)}>
+    <section data-panel-title={title} className={cn('workspace-card p-3.5 rounded-xl border border-border bg-surface-1', className)}>
       <div className="flex items-center gap-2 mb-2.5">
-        <span className="text-[12px] font-semibold text-text-primary">{title}</span>
+        <h2 className="text-[12px] font-semibold text-text-primary">{title}</h2>
         <span className="ml-auto">{right}</span>
       </div>
       {children}
-    </div>
+    </section>
   );
 }
 

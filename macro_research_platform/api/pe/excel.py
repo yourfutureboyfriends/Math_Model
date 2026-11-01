@@ -48,10 +48,13 @@ def _widths(ws, first: int = 34, rest: int = 13, n: int = 12) -> None:
         ws.column_dimensions[get_column_letter(j)].width = rest
 
 
-def build(result: Dict[str, Any], sources: Optional[Dict[str, str]] = None, unit: float = 1e6) -> bytes:
+def build(result: Dict[str, Any], sources: Optional[Dict[str, str]] = None, unit: Optional[float] = None) -> bytes:
     """The workbook bytes for an lbo.analyse() result; amounts shown in millions (unit) of the deal currency."""
     inp, base = result["inputs"], result["cases"]["base"]
+    unit = unit if unit is not None else (1e6 if abs(base['entry']['ebitda']) >= 1e5 else 1)
     ccy, u = base.get("currency") or "", unit
+    scale_label = 'millions' if u == 1e6 else 'native units'
+    currency_label = f'{ccy}m' if u == 1e6 else ccy
     name = inp.get("name") or "Deal"
     wb = Workbook()
 
@@ -60,15 +63,15 @@ def build(result: Dict[str, Any], sources: Optional[Dict[str, str]] = None, unit
     ws.title = "Summary"
     _widths(ws, 38, 15, 6)
     ws["A1"], ws["A1"].font = f"{name} — LBO summary", TITLE
-    ws["A2"] = f"{ccy} millions · base case exit in year {base['exit_year']} · modelled returns are analysis, not a track record"
+    ws["A2"] = f"{ccy} {scale_label} · base case exit in year {base['exit_year']} · modelled returns are analysis, not a track record"
     _hdr(ws, 4, ["Returns", "Base", "Upside", "Downside"])
     for i, (lab, key, fmt) in enumerate([("Sponsor IRR", "sponsor_irr", PCT), ("Money multiple (MOIC)", "moic", X)]):
         _line(ws, 5 + i, lab, [result["cases"][c]["returns"][key] for c in ("base", "upside", "downside")], fmt)
-    _line(ws, 7, "Probability-weighted IRR", [result["weighted"]["irr"]], PCT, bold=True)
+    _line(ws, 7, "Scenario-average IRR", [result["weighted"]["irr"]], PCT, bold=True)
     me = result["max_entry"]
     _line(ws, 8, f"Max entry EV/EBITDA at a {me['hurdle']:.0%} IRR", [me.get("multiple")], X)
     _line(ws, 9, "EBITDA cushion to covenant breach", [result["cushion"]["to_covenant_breach"]], PCT)
-    _hdr(ws, 11, ["Sources", f"{ccy}m", "x EBITDA", "% total"])
+    _hdr(ws, 11, ["Sources", currency_label, "x EBITDA", "% total"])
     r = 12
     tu = base["total_uses"]
     for k, v in base["sources"].items():
@@ -77,7 +80,7 @@ def build(result: Dict[str, Any], sources: Optional[Dict[str, str]] = None, unit
         r += 1
     _line(ws, r, "Total sources", [tu / u], NUM, bold=True, total=True)
     r += 2
-    _hdr(ws, r, ["Uses", f"{ccy}m", "% total"])
+    _hdr(ws, r, ["Uses", currency_label, "% total"])
     r += 1
     labels = {"equity_purchase": "Purchase of equity", "refinance_net_debt": "Refinance net debt", "transaction_fees": "Transaction fees",
               "financing_fees": "Financing fees", "cash_to_balance_sheet": "Cash to balance sheet"}
@@ -87,7 +90,7 @@ def build(result: Dict[str, Any], sources: Optional[Dict[str, str]] = None, unit
         r += 1
     _line(ws, r, "Total uses", [tu / u], NUM, bold=True, total=True)
     r += 2
-    _hdr(ws, r, ["Value creation (equity gain)", f"{ccy}m"])
+    _hdr(ws, r, ["Value creation (equity gain)", currency_label])
     r += 1
     for k, lab in (("ebitda_growth", "EBITDA growth"), ("multiple", "Multiple expansion"), ("deleveraging", "Debt paydown / cash"),
                    ("fees_and_costs", "Fees and costs"), ("mip", "Management incentive plan"), ("total", "Total equity gain")):
@@ -99,7 +102,7 @@ def build(result: Dict[str, Any], sources: Optional[Dict[str, str]] = None, unit
     years = [f"Year {x['year']}" for x in sch]
     ws = wb.create_sheet("Operating model")
     _widths(ws, 34, 12, len(sch) + 1)
-    ws["A1"], ws["A1"].font = f"{name} — operating model ({ccy}m, base case)", TITLE
+    ws["A1"], ws["A1"].font = f"{name} — operating model ({currency_label}, base case)", TITLE
     _hdr(ws, 3, ["", "LTM"] + years)
     rows = [("Revenue", "revenue", NUM, True), ("Growth", "growth", PCT, False), ("EBITDA", "ebitda", NUM, True),
             ("EBITDA margin", "margin", PCT, False), ("D&A", "dna", NUM, False), ("EBIT", "ebit", NUM, True),
@@ -116,7 +119,7 @@ def build(result: Dict[str, Any], sources: Optional[Dict[str, str]] = None, unit
     # Debt schedule
     ws = wb.create_sheet("Debt schedule")
     _widths(ws, 34, 12, len(sch) + 1)
-    ws["A1"], ws["A1"].font = f"{name} — debt schedule ({ccy}m, closing balances)", TITLE
+    ws["A1"], ws["A1"].font = f"{name} — debt schedule ({currency_label}, closing balances)", TITLE
     _hdr(ws, 3, ["", "Close"] + years)
     r = 4
     for t in base["tranches"]:
@@ -183,6 +186,18 @@ def build(result: Dict[str, Any], sources: Optional[Dict[str, str]] = None, unit
         ws.cell(row=r, column=1, value=k)
         ws.cell(row=r, column=2, value=str(inp.get(k)))
         r += 1
+    # Independent editable model, explicitly using opening-balance interest to avoid circularity.
+    from api.pe import live_excel
+    live_excel.append(wb, inp)
+    ws = wb.create_sheet('Diligence and liquidity')
+    ws.append(['User-attested diligence; cash-timing diagnostic, not quarterly underwriting'])
+    for item in (result.get('diligence') or {}).get('checks', []):
+        ws.append([item['label'], 'Complete' if item['complete'] else 'Outstanding'])
+    ws.append([])
+    ws.append(['Year', 'Quarter', 'FCF', 'Debt due', 'Cash', 'Revolver', 'Reserve shortfall'])
+    for q in (result.get('liquidity') or {}).get('quarters', []):
+        ws.append([q[k] for k in ('year','quarter','fcf','mandatory','cash','revolver','gap')])
+    ws.column_dimensions['A'].width = 65
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

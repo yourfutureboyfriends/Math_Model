@@ -62,7 +62,7 @@ function Pairs({ meta }: { meta: Meta }) {
       <ErrorNote msg={err} />
       <div className="p-3 bg-surface-1 border border-border">
         <div className="text-xs font-semibold text-text-primary mb-2">1 · Find candidate pairs</div>
-        <div className="flex flex-wrap items-end gap-2">
+        <div className="workspace-controls flex flex-wrap items-end gap-2">
           <Field label="Universe" className="w-56">
             <select className={inputCls} value={preset} onChange={(e) => setPreset(e.target.value)}>
               {meta.universes.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
@@ -156,20 +156,20 @@ function PairResult({ r }: { r: any }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
         <div>
           <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Growth of $1 — {r.a} / {r.b}, {r.period.start} → {r.period.end}</div>
-          <LineChart rows={r.curve} x="date" height={200} baseline={1} fmt={(v) => v.toFixed(3)}
-            lines={[{ key: 'equity', label: 'Pair strategy (net)', color: CATEGORICAL[0] }]} />
+          <div className="workspace-chart"><LineChart rows={r.curve} x="date" height={200} baseline={1} fmt={(v) => v.toFixed(3)}
+            lines={[{ key: 'equity', label: 'Pair strategy (net)', color: CATEGORICAL[0] }]} /></div>
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Spread z-score (rolling)</div>
-          <LineChart rows={r.curve} x="date" height={200} baseline={0} fmt={(v) => v.toFixed(2)}
+          <div className="workspace-chart"><LineChart rows={r.curve} x="date" height={200} baseline={0} fmt={(v) => v.toFixed(2)}
             refs={[{ value: r.params.entry, label: `+${r.params.entry}` }, { value: -r.params.entry, label: `−${r.params.entry}` }]}
-            lines={[{ key: 'z', label: 'z-score', color: CATEGORICAL[1] }]} />
+            lines={[{ key: 'z', label: 'z-score', color: CATEGORICAL[1] }]} /></div>
         </div>
       </div>
       {r.trades.length > 0 && (
         <details className="text-2xs">
           <summary className="cursor-pointer text-text-secondary">Last {r.trades.length} trades</summary>
-          <table className="w-full font-mono mt-1">
+          <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full font-mono mt-1">
             <thead className="text-text-tertiary"><tr>{['Side', 'Entry', 'z', 'Exit', 'z', 'Days', 'Why', 'Return'].map((h, i) => <th key={i} className="text-left font-normal px-1.5">{h}</th>)}</tr></thead>
             <tbody>
               {r.trades.map((t: any, i: number) => (
@@ -181,7 +181,7 @@ function PairResult({ r }: { r: any }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </details>
       )}
       <ul className="text-[10px] text-text-tertiary list-disc pl-4">{r.notes.map((n: string) => <li key={n}>{n}</li>)}</ul>
@@ -256,7 +256,7 @@ function MMResult({ r }: { r: any }) {
         realised vol {pct(r.market.realized_vol_ann)} · quote lean {num(r.market.skew_per_lot_open_bps, 2)} bp per lot at the open
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
-        <table className="text-2xs font-mono bg-surface-1 border border-border w-full">
+        <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="text-2xs font-mono bg-surface-1 border border-border w-full">
           <thead className="text-text-tertiary"><tr className="border-b border-border"><th className="text-left font-normal px-2 py-1" /><th className="text-right font-normal px-2">Avellaneda–Stoikov</th><th className="text-right font-normal px-2">Symmetric</th></tr></thead>
           <tbody>
             {rows.map(([l, f]) => (
@@ -267,17 +267,17 @@ function MMResult({ r }: { r: any }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
         <div className="lg:col-span-2 space-y-2">
           <div>
             <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Cumulative P&amp;L ($)</div>
-            <LineChart rows={r.path} x="t" height={170} baseline={0} fmt={(v) => usd(v)}
-              lines={[{ key: 'eq_as', label: 'Avellaneda–Stoikov', color: CATEGORICAL[0] }, { key: 'eq_sym', label: 'Symmetric', color: CATEGORICAL[1] }]} />
+            <div className="workspace-chart"><LineChart rows={r.path} x="t" height={170} baseline={0} fmt={(v) => usd(v)}
+              lines={[{ key: 'eq_as', label: 'Avellaneda–Stoikov', color: CATEGORICAL[0] }, { key: 'eq_sym', label: 'Symmetric', color: CATEGORICAL[1] }]} /></div>
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Inventory (lots)</div>
-            <LineChart rows={r.path} x="t" height={130} baseline={0} fmt={(v) => v.toFixed(0)}
-              lines={[{ key: 'inv_as', label: 'Avellaneda–Stoikov', color: CATEGORICAL[0] }, { key: 'inv_sym', label: 'Symmetric', color: CATEGORICAL[1] }]} />
+            <div className="workspace-chart"><LineChart rows={r.path} x="t" height={130} baseline={0} fmt={(v) => v.toFixed(0)}
+              lines={[{ key: 'inv_as', label: 'Avellaneda–Stoikov', color: CATEGORICAL[0] }, { key: 'inv_sym', label: 'Symmetric', color: CATEGORICAL[1] }]} /></div>
           </div>
         </div>
       </div>

@@ -197,10 +197,10 @@ def test_dcf_growth_path_holds_analyst_years_then_fades_to_terminal():
     assert all(b <= a + 1e-12 for a, b in zip(g[2:], g[3:]))
 
 
-def test_dcf_terminal_growth_defaults_to_risk_free():
+def test_dcf_terminal_growth_defaults_to_currency_ceiling():
     from api.marketdata import dcf
     v = dcf.value(_inp(risk_free=0.045), years=10, erp=0.05)
-    assert v["assumptions"]["terminal_growth"] == pytest.approx(0.045)
+    assert v["assumptions"]["terminal_growth"] == pytest.approx(min(0.045, dcf.LR_NOMINAL_GROWTH["USD"]))
 
 
 def test_dcf_bridge_adds_stakes_and_uses_industrial_debt_only():

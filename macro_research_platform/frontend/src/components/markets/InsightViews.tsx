@@ -17,7 +17,7 @@ function Frame<T>({ url, label, refresh, children }: { url: string; label: strin
 
 function Kpi({ label, value, sub, tone: t }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: string }) {
   return (
-    <div className="border border-border bg-surface-1 px-3 py-2">
+    <div className="mkt-stat-card border border-border bg-surface-1 px-3 py-2">
       <div className="text-[10px] uppercase tracking-wide text-text-tertiary">{label}</div>
       <div className={cn('font-mono text-text-primary', t)}>{value}</div>
       {sub != null && <div className="text-[10px] text-text-tertiary">{sub}</div>}
@@ -70,21 +70,21 @@ export function VolView({ onOpen }: { onOpen: (s: string) => void }) {
               <div className="flex gap-3 text-[10px] text-text-secondary">{terms.map(([n, , c]) => <span key={n} className="inline-flex items-center gap-1"><span className="w-3 h-0.5" style={{ background: c }} />{n}</span>)}</div>
             </Panel>
             <Panel title="VIX vs 3-month VIX and realised volatility">
-              <LineChart rows={d.history} x="date" height={250} fmt={(v) => v.toFixed(1)} defaultRange="1y"
-                lines={[{ key: 'vix', label: 'VIX', color: 'rgb(var(--c-bloomberg))' }, { key: 'vix3m', label: 'VIX3M', color: 'rgb(var(--c-blue))' }, { key: 'rv21', label: 'S&P 500 realised (21d)', color: 'rgb(var(--c-text-tertiary))' }]} />
+              <div className="mkt-chart-surface"><LineChart rows={d.history} x="date" height={250} fmt={(v) => v.toFixed(1)} defaultRange="1y"
+                lines={[{ key: 'vix', label: 'VIX', color: 'rgb(var(--c-bloomberg))' }, { key: 'vix3m', label: 'VIX3M', color: 'rgb(var(--c-blue))' }, { key: 'rv21', label: 'S&P 500 realised (21d)', color: 'rgb(var(--c-text-tertiary))' }]} /></div>
             </Panel>
           </div>
           <Panel title="Volatility indices">
-            <table className="w-full text-[11px] font-mono [&_th]:px-1.5 [&_td]:px-1.5">
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] font-mono [&_th]:px-1.5 [&_td]:px-1.5">
               <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Index</th><th className="text-right font-normal">Last</th><th className="text-right font-normal">1D</th>
                 <th className="text-right font-normal">1W</th><th className="font-normal">3-year percentile</th><th className="font-normal">3 months</th></tr></thead>
               <tbody>{d.indices.map((i: any) => (
-                <tr key={i.symbol} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(i.symbol)}>
+                <tr key={i.symbol} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(i.symbol)} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                   <td className="py-1 font-sans text-text-primary">{i.name} <span className="font-mono text-text-tertiary">{i.symbol}</span></td>
                   <td className="text-right text-text-primary">{i.last}</td><td className={cn('text-right', tone(-(i.chg_1d ?? 0)))}>{i.chg_1d > 0 ? '+' : ''}{i.chg_1d}</td>
                   <td className={cn('text-right', tone(-(i.chg_1w ?? 0)))}>{i.chg_1w > 0 ? '+' : ''}{i.chg_1w}</td>
                   <td className="px-3"><PctBar p={i.pct_3y} /></td><td><Spark values={i.spark} w={90} h={18} /></td></tr>))}</tbody>
-            </table>
+            </table></div>
             <div className="text-[10px] text-text-tertiary mt-1">{d.note} {d.source}.</div>
           </Panel>
         </div>);
@@ -109,20 +109,20 @@ export function BreadthView() {
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
             <Panel title="Participation — share of S&P 500 members above their moving averages">
-              <LineChart rows={d.rows} x="date" height={240} fmt={(v) => `${v.toFixed(0)}%`} refs={[{ value: 50, label: '50%' }]}
-                lines={[{ key: 'above50', label: 'Above 50-day', color: 'rgb(var(--c-bloomberg))' }, { key: 'above200', label: 'Above 200-day', color: 'rgb(var(--c-blue))' }]} />
+              <div className="mkt-chart-surface"><LineChart rows={d.rows} x="date" height={240} fmt={(v) => `${v.toFixed(0)}%`} refs={[{ value: 50, label: '50%' }]}
+                lines={[{ key: 'above50', label: 'Above 50-day', color: 'rgb(var(--c-bloomberg))' }, { key: 'above200', label: 'Above 200-day', color: 'rgb(var(--c-blue))' }]} /></div>
             </Panel>
             <Panel title="Advance/decline line and McClellan oscillator">
-              <LineChart rows={d.rows} x="date" height={120} fmt={(v) => v.toFixed(0)} lines={[{ key: 'ad_line', label: 'Cumulative A/D line', color: 'rgb(var(--c-green))' }]} />
-              <LineChart rows={d.rows} x="date" height={110} fmt={(v) => v.toFixed(0)} baseline={0} controls={false} lines={[{ key: 'mcclellan', label: 'McClellan oscillator', color: 'rgb(var(--c-amber))' }]} />
+              <div className="mkt-chart-surface"><LineChart rows={d.rows} x="date" height={120} fmt={(v) => v.toFixed(0)} lines={[{ key: 'ad_line', label: 'Cumulative A/D line', color: 'rgb(var(--c-green))' }]} /></div>
+              <div className="mkt-chart-surface"><LineChart rows={d.rows} x="date" height={110} fmt={(v) => v.toFixed(0)} baseline={0} controls={false} lines={[{ key: 'mcclellan', label: 'McClellan oscillator', color: 'rgb(var(--c-amber))' }]} /></div>
             </Panel>
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
             <Panel title="New 52-week highs and lows">
-              <LineChart rows={d.rows} x="date" height={200} fmt={(v) => v.toFixed(0)} lines={[{ key: 'new_highs', label: 'New highs', color: 'rgb(var(--c-green))' }, { key: 'new_lows', label: 'New lows', color: 'rgb(var(--c-red))' }]} />
+              <div className="mkt-chart-surface"><LineChart rows={d.rows} x="date" height={200} fmt={(v) => v.toFixed(0)} lines={[{ key: 'new_highs', label: 'New highs', color: 'rgb(var(--c-green))' }, { key: 'new_lows', label: 'New lows', color: 'rgb(var(--c-red))' }]} /></div>
             </Panel>
             <Panel title="By sector">
-              <table className="w-full text-[11px] font-mono [&_th]:px-1.5 [&_td]:px-1.5">
+              <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] font-mono [&_th]:px-1.5 [&_td]:px-1.5">
                 <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Sector</th><th className="text-right font-normal">Members</th><th className="font-normal">Above 50-day</th>
                   <th className="text-right font-normal">Above 200d</th><th className="text-right font-normal">Highs / lows</th><th className="text-right font-normal">Median 1M</th></tr></thead>
                 <tbody>{d.sectors.map((s: any) => (
@@ -130,7 +130,7 @@ export function BreadthView() {
                     <td className="px-2"><div className="flex items-center gap-2"><div className="flex-1 h-1.5 rounded-full bg-surface-3 overflow-hidden"><div className={cn('h-full rounded-full', s.above50 >= 50 ? 'bg-green/80' : 'bg-red/70')} style={{ width: `${s.above50}%` }} /></div><span className="w-9 text-right">{s.above50.toFixed(0)}%</span></div></td>
                     <td className="text-right">{s.above200.toFixed(0)}%</td><td className="text-right"><span className="text-green">{s.new_highs}</span> / <span className="text-red">{s.new_lows}</span></td>
                     <td className={cn('text-right', tone(s.median_1m))}>{pct(s.median_1m)}</td></tr>))}</tbody>
-              </table>
+              </table></div>
             </Panel>
           </div>
           <div className="text-[10px] text-text-tertiary">{d.note} {d.source}.</div>
@@ -149,11 +149,11 @@ export function ImpmView({ onOpen }: { onOpen: (s: string) => void }) {
       const th = (k: typeof sort, l: string, cls = 'text-right') => <th onClick={() => setSort(k)} className={cn('font-normal cursor-pointer', cls, sort === k && 'text-bloomberg')}>{l}</th>;
       return (
         <Panel title="Earnings in the next 10 days — what options price vs what the stock usually does">
-          <table className="w-full text-[11px] font-mono [&_th]:px-1.5 [&_td]:px-1.5">
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] font-mono [&_th]:px-1.5 [&_td]:px-1.5">
             <thead><tr className="text-text-tertiary">{th('date', 'Date', 'text-left')}<th className="text-left font-normal">Company</th><th className="text-left font-normal">When</th>
               {th('market_cap', 'Mkt cap')}{th('implied_move', 'Implied ±')}<th className="text-right font-normal">Avg actual ±</th><th className="font-normal w-56">Implied (bar) vs typical (tick)</th>{th('ratio', 'Ratio')}<th className="font-normal">Last 8 reactions</th></tr></thead>
             <tbody>{rows.map((r: any) => (
-              <tr key={r.symbol} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(r.symbol)}>
+              <tr key={r.symbol} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(r.symbol)} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                 <td className="py-1 text-text-secondary">{r.date.slice(5)}</td>
                 <td className="font-sans"><span className="font-mono text-bloomberg mr-1">{r.symbol}</span><span className="text-text-secondary">{r.company}</span></td>
                 <td className="font-sans text-text-tertiary">{r.timing ?? ''}</td><td className="text-right text-text-tertiary">{fmtBig(r.market_cap)}</td>
@@ -165,7 +165,7 @@ export function ImpmView({ onOpen }: { onOpen: (s: string) => void }) {
                 <td className={cn('text-right', r.ratio >= 1.3 ? 'text-red' : r.ratio <= 0.8 ? 'text-green' : 'text-text-secondary')}>{r.ratio != null ? `${r.ratio.toFixed(2)}×` : '—'}</td>
                 <td className="pl-2"><span className="inline-flex gap-0.5 items-end h-4">{(r.moves ?? []).slice().reverse().map((m: number, i: number) => (
                   <span key={i} title={pct(m)} className={cn('w-1.5 rounded-sm', m >= 0 ? 'bg-green/80' : 'bg-red/80')} style={{ height: `${Math.min(100, 15 + (Math.abs(m) / maxMove) * 85)}%` }} />))}</span></td></tr>))}</tbody>
-          </table>
+          </table></div>
           <div className="text-[10px] text-text-tertiary mt-2">{d.note} {d.source}.</div>
         </Panel>);
     }}</Frame>
@@ -188,7 +188,7 @@ export function UoaView({ onOpen }: { onOpen: (s: string) => void }) {
                 <thead className="sticky top-0"><tr className="text-text-tertiary"><th className="text-left font-normal">Contract</th><th className="text-right font-normal">Volume</th>
                   <th className="text-right font-normal">Open int.</th><th className="text-right font-normal">Vol/OI</th><th className="text-right font-normal">IV</th><th className="text-right font-normal">Moneyness</th><th className="font-normal w-40">Premium</th></tr></thead>
                 <tbody>{hits.map((h: any, i: number) => (
-                  <tr key={i} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(h.symbol)}>
+                  <tr key={i} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(h.symbol)} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                     <td className="py-1"><span className="text-bloomberg">{h.symbol}</span> <span className="text-text-secondary">{h.expiry.slice(5)}</span> <span className="text-text-primary">{h.strike}</span>{' '}
                       <span className={cn('px-1 rounded text-[9px] uppercase', h.kind === 'call' ? 'bg-green/15 text-green' : 'bg-red/15 text-red')}>{h.kind}</span></td>
                     <td className="text-right text-text-primary">{h.volume.toLocaleString()}</td><td className="text-right text-text-tertiary">{h.open_interest.toLocaleString()}</td>
@@ -207,7 +207,7 @@ export function UoaView({ onOpen }: { onOpen: (s: string) => void }) {
                 <tbody>{d.tickers.map((t: any) => {
                   const tot = (t.call_premium + t.put_premium) || 1;
                   return (
-                    <tr key={t.symbol} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(t.symbol)}>
+                    <tr key={t.symbol} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(t.symbol)} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                       <td className="py-1 text-bloomberg">{t.symbol}</td>
                       <td className="px-2"><div className="flex h-1.5 rounded-full overflow-hidden bg-surface-3" title={`calls $${fmtBig(t.call_premium)} · puts $${fmtBig(t.put_premium)}`}>
                         <div className="bg-green/75" style={{ width: `${(t.call_premium / tot) * 100}%` }} /><div className="bg-red/75" style={{ width: `${(t.put_premium / tot) * 100}%` }} /></div>
@@ -250,7 +250,7 @@ export function RiskView() {
               </div>
             </Panel>
             <Panel title="Regime score — 5 years (above 0 = risk-on)">
-              <LineChart rows={d.history} x="date" height={280} fmt={(v) => v.toFixed(2)} baseline={0} lines={[{ key: 'score', label: 'Risk score', color: 'rgb(var(--c-bloomberg))' }]} />
+              <div className="mkt-chart-surface"><LineChart rows={d.history} x="date" height={280} fmt={(v) => v.toFixed(2)} baseline={0} lines={[{ key: 'score', label: 'Risk score', color: 'rgb(var(--c-bloomberg))' }]} /></div>
             </Panel>
           </div>
           <Panel title="Inputs — each as a z-score against 3 years, signed so positive = risk-on">

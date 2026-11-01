@@ -76,14 +76,14 @@ export function Waterfall() {
             </div>
           </Card>
           <Card title="Each distribution">
-            <table className="w-full text-[11.5px] tabular-nums">
+            <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-[11.5px] tabular-nums">
               <thead><tr className="text-text-tertiary text-left"><th className="font-normal">Date</th><th className="font-normal text-right">Distribution</th><th className="font-normal text-right">Capital</th>
                 <th className="font-normal text-right">Pref</th><th className="font-normal text-right">Catch-up</th><th className="font-normal text-right">Split LP</th><th className="font-normal text-right">Split GP</th>
                 <th className="font-normal text-right">To LPs</th><th className="font-normal text-right">To GP</th></tr></thead>
               <tbody>{res.rows.map((r: any) => (
                 <tr key={r.date} className="border-t border-border-subtle">{[r.date, r.amount, r.return_of_capital, r.preferred, r.catch_up_gp, r.split_lp, r.split_gp, r.lp, r.gp].map((v, i) => (
                   <td key={i} className={i ? 'text-right py-1' : 'py-1'}>{typeof v === 'number' ? v.toLocaleString(undefined, { maximumFractionDigits: 1 }) : v}</td>))}</tr>))}</tbody>
-            </table>
+            </table></div>
           </Card>
         </div>)}
     </div>

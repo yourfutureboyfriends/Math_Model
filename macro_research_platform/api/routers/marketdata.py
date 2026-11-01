@@ -12,8 +12,11 @@ logger = logging.getLogger(__name__)
 
 async def _run(fn, *a, timeout: float = 45, **k):
     from api.marketdata import core
+    from api.utils.singleflight import shared_read, WorkCapacityError
     try:
-        return await asyncio.wait_for(asyncio.to_thread(fn, *a, **k), timeout=timeout)
+        return await shared_read(fn, *a, timeout=timeout, **k)
+    except WorkCapacityError as e:
+        raise HTTPException(503, str(e), headers={"Retry-After": "2"})
     except core.NotFound as e:
         raise HTTPException(404, str(e))
     except core.Upstream as e:
@@ -224,20 +227,49 @@ async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le
                   half_life: float = Query(3.0, ge=0.25, le=20),
                   method: Optional[str] = Query(None, pattern="^(three_stage|two_stage)$"),
                   ke_method: Optional[str] = Query(None, pattern="^(capm|building_block)$"),
-                  fade_years: Optional[int] = Query(None, ge=0, le=40)):
+                  fade_years: Optional[int] = Query(None, ge=0, le=40),
+                  normalized_erp: float = Query(0.05, ge=0, le=0.15),
+                  country_weights: Optional[str] = Query(None, max_length=4000),
+                  erp_basis: str = Query("normalized", pattern="^(normalized|market_implied)$"),
+                  working_capital_ratio: Optional[float] = Query(None, ge=-1, le=1)):
     """Valuation (FCFF / excess return / DDM) plus a 24-month price outlook built on it."""
     from api.marketdata import dcf
     from api.marketdata.core import _info, div_yield
     res = await _dcf_core(symbol, growth, years, terminal_growth, target_margin, sales_to_capital, ronic, discount, beta, erp,
-                          include_leases, mid_year, roe, terminal_roe, payout, model, method, ke_method, fade_years)
+                          include_leases, mid_year, roe, terminal_roe, payout, model, method, ke_method, fade_years, working_capital_ratio,
+                          normalized_erp=normalized_erp, erp_basis=erp_basis)
+    weights = None
+    if country_weights is not None:
+        import json
+        try:
+            weights = json.loads(country_weights)
+            if not isinstance(weights, dict):
+                raise ValueError("Expected an object")
+        except (ValueError, TypeError):
+            raise HTTPException(422, "country_weights must be a JSON object mapping countries to weights.")
+    view_kw = dict(growth=growth, years=years, terminal_growth=terminal_growth, target_margin=target_margin,
+                   sales_to_capital=sales_to_capital, ronic=ronic, beta=beta, include_leases=include_leases,
+                   mid_year=mid_year, roe=roe, terminal_roe=terminal_roe, payout=payout,
+                   method=method, fade_years=fade_years, working_capital_ratio=working_capital_ratio)
+    res["market_views"] = await _run(dcf.market_views, res["inputs"], res["model"], view_kw,
+                                     normalized_erp, weights, timeout=30)
     v = res["valuation"]
+    if res["model"] == "fcff":
+        from api.marketdata.dcf_expectations import expectations
+        res["expectations"] = await _run(expectations, res["inputs"], v,
+            {**view_kw,"discount":discount,"erp":v.get("wacc",{}).get("erp"),"ke_method":ke_method},
+            normalized_erp, res.get("market_implied_growth"), timeout=30)
+    from api.marketdata import dcf_fundamentals
+    res["calculation_details"] = dcf_fundamentals.diagnostics(res["inputs"], v, res["model"])
+    res["research_status"] = dcf_fundamentals.research_status(res["inputs"], v, res["model"], res["calculation_details"])
     ke = (v.get("wacc") or {}).get("cost_of_equity") or (v.get("assumptions") or {}).get("cost_of_equity")
     try:
         dy = div_yield(_info(res["inputs"]["symbol"]))
     except Exception:
         dy = None
     value = None if v.get("equity_negative") else v.get("per_share")
-    res["outlook"] = await _run(dcf.outlook, res["inputs"]["symbol"], v.get("price") or res["inputs"].get("price"), value, ke, dy, half_life, timeout=30)
+    res["outlook"] = (await _run(dcf.outlook, res["inputs"]["symbol"], v.get("price") or res["inputs"].get("price"), value, ke, dy, half_life, timeout=30)
+                      if res["research_status"]["eligible"] else None)
     # Morningstar-style margin of safety: an uncertainty rating (realised volatility, terminal-value weight) and the
     # prices relative to fair value at which the stock is a buy or a sell
     try:
@@ -245,7 +277,7 @@ async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le
     except HTTPException:
         sigma = None
     u = dcf.uncertainty(sigma, v.get("terminal_share"))
-    if value:
+    if value and res["research_status"]["eligible"]:
         u.update(buy_price=value * u["buy_below"], sell_price=value * u["sell_above"])
     res["uncertainty"] = u
     return res
@@ -258,12 +290,15 @@ async def _dcf_core(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, 
                   erp: Optional[float] = Query(None, ge=0, le=0.15), include_leases: bool = False, mid_year: bool = True,
                   roe: Optional[float] = Query(None, ge=-0.5, le=1.0), terminal_roe: Optional[float] = Query(None, gt=0, le=1.0),
                   payout: Optional[float] = Query(None, ge=0, le=1.0), model: Optional[str] = Query(None, pattern="^(fcff|excess_return|ddm)$"),
-                  method: Optional[str] = None, ke_method: Optional[str] = None, fade_years: Optional[int] = None):
+                  method: Optional[str] = None, ke_method: Optional[str] = None, fade_years: Optional[int] = None,
+                  working_capital_ratio: Optional[float] = None, normalized_erp: float = 0.05, erp_basis: str = "normalized"):
     """FCFF discounted at WACC (Damodaran / McKinsey) for operating companies; Damodaran's excess-return
     model for banks and insurers; a dividend discount model for dividend payers (and as the fallback where
     a DCF can't be built). Reverse DCF and sensitivity grids for all three."""
     from api.marketdata import dcf
-    inp = await _run(dcf.inputs, symbol, timeout=60)
+    inp = dict(await _run(dcf.inputs, symbol, timeout=60))
+    from api.marketdata.dcf_expectations import apply_risk_basis
+    inp, erp = apply_risk_basis(inp, erp_basis, normalized_erp, erp, discount)
     ind = inp.get("industry") or ""
     # the dividend model runs alongside whenever the company pays one
     ddm_kw = dict(growth=growth if model == "ddm" else None, terminal_growth=terminal_growth if model == "ddm" else None,
@@ -300,14 +335,14 @@ async def _dcf_core(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, 
                               "converging to stable levels and stable growth ≤ the risk-free rate. Source: Damodaran (NYU Stern)."}
         kw = dict(growth=growth, years=years, terminal_growth=terminal_growth, target_margin=target_margin, sales_to_capital=sales_to_capital,
                   ronic=ronic, discount=discount, beta=beta, erp=erp, include_leases=include_leases, mid_year=mid_year,
-                  method=method, ke_method=ke_method, fade_years=fade_years)
+                  method=method, ke_method=ke_method, fade_years=fade_years, working_capital_ratio=working_capital_ratio)
         val = await _run(dcf.value, inp, **kw)
     except HTTPException as e:
         if chosen == "excess_return" and model is None and not inp.get("is_bank_like", False):
             try:    # a 'financial' that isn't a lender (exchanges, data vendors, crypto brokers) can be valued on cash flow
                 kw = dict(growth=growth, years=years, terminal_growth=terminal_growth, target_margin=target_margin, sales_to_capital=sales_to_capital,
                           ronic=ronic, discount=discount, beta=beta, erp=erp, include_leases=include_leases, mid_year=mid_year,
-                          method=method, ke_method=ke_method, fade_years=fade_years)
+                          method=method, ke_method=ke_method, fade_years=fade_years, working_capital_ratio=working_capital_ratio)
                 val = await _run(dcf.value, inp, **kw)
                 sens = await _run(dcf.sensitivity, inp, val, **kw)
                 return {"inputs": inp, "valuation": val, "sensitivity": sens, "model": "fcff", "ddm": ddm, "recommended": "fcff",
@@ -345,16 +380,21 @@ async def mkt_dcf_excel(symbol: str, growth: Optional[float] = Query(None, ge=-0
                         erp: Optional[float] = Query(None, ge=0, le=0.15), include_leases: bool = False, mid_year: bool = True,
                         method: Optional[str] = Query(None, pattern="^(three_stage|two_stage)$"),
                         ke_method: Optional[str] = Query(None, pattern="^(capm|building_block)$"),
-                        fade_years: Optional[int] = Query(None, ge=0, le=40)):
+                        fade_years: Optional[int] = Query(None, ge=0, le=40),
+                        working_capital_ratio: Optional[float] = Query(None, ge=-1, le=1),
+                        normalized_erp: float = Query(0.05, ge=0, le=0.15),
+                        erp_basis: str = Query("normalized", pattern="^(normalized|market_implied)$")):
     """The FCFF model as an Excel workbook with live formulas (edit the inputs in Excel)."""
     from fastapi.responses import Response
     from api.marketdata import dcf, dcf_excel
+    from api.marketdata.dcf_expectations import apply_risk_basis
     inp = await _run(dcf.inputs, symbol, timeout=60)
+    inp, erp = apply_risk_basis(inp, erp_basis, normalized_erp, erp, discount)
     if inp.get("is_financial"):
         raise HTTPException(404, "Excel export covers the FCFF model; banks and insurers use the excess-return model on screen.")
     val = await _run(dcf.value, inp, growth=growth, years=years, terminal_growth=terminal_growth, target_margin=target_margin,
                      sales_to_capital=sales_to_capital, ronic=ronic, discount=discount, beta=beta, erp=erp,
-                     include_leases=include_leases, mid_year=mid_year, method=method, ke_method=ke_method, fade_years=fade_years)
+                     include_leases=include_leases, mid_year=mid_year, method=method, ke_method=ke_method, fade_years=fade_years, working_capital_ratio=working_capital_ratio)
     data, _ = await asyncio.to_thread(dcf_excel.build, inp, val)
     name = f"DCF_{inp['symbol'].replace('^', '').replace('=', '')}.xlsx"
     return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -81,10 +81,10 @@ export function CorrView({ seed }: { seed?: string }) {
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/corr?symbols=${enc(syms)}&period=${period}&freq=${freq}`);
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-1 text-xs">
+      <div className="mkt-controls flex flex-wrap gap-1 text-xs">
         {CORR_PRESETS.map(([l, v]) => <button key={l} onClick={() => { setSyms(v); setInput(v); }} className={cn('px-2 py-0.5 border', syms === v ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary hover:text-text-primary')}>{l}</button>)}
       </div>
-      <div className="flex flex-wrap items-center gap-2 text-xs">
+      <div className="mkt-controls flex flex-wrap items-center gap-2 text-xs">
         <input value={input} onChange={(e) => setInput(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === 'Enter' && setSyms(input.replace(/\s/g, ''))}
           className="flex-1 min-w-[260px] bg-surface-1 border border-border px-2 py-1 font-mono text-text-primary" aria-label="Symbols, comma separated" />
         <button onClick={() => setSyms(input.replace(/\s/g, ''))} className="px-3 py-1 bg-bloomberg text-black font-semibold">GO</button>
@@ -130,7 +130,7 @@ export function RrgView({ onOpen }: { onOpen: (s: string) => void }) {
   const sy = (y: number) => H - pad - ((y - bounds.lo) / (bounds.hi - bounds.lo)) * (H - 2 * pad);
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-1 text-xs">
+      <div className="mkt-controls flex flex-wrap items-center gap-1 text-xs">
         {Object.entries(RRG_LABEL).map(([k, l]) => <button key={k} onClick={() => setU(k)} className={cn('px-2 py-0.5 border', u === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{l}</button>)}
         <span className="ml-3 text-text-tertiary">Tail</span>
         {[4, 8, 13, 26].map((t) => <button key={t} onClick={() => setTail(t)} className={cn('px-2 py-0.5 border', tail === t ? 'border-bloomberg text-bloomberg' : 'border-border')}>{t}w</button>)}
@@ -165,12 +165,12 @@ export function RrgView({ onOpen }: { onOpen: (s: string) => void }) {
             </svg>
           </div>
           <Panel title="Quadrants">
-            <table className="w-full text-xs"><tbody>
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs"><tbody>
               {['Leading', 'Improving', 'Weakening', 'Lagging'].flatMap((q) => data.points.filter((p: any) => p.quadrant === q).map((p: any) => (
-                <tr key={p.symbol} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3" onMouseEnter={() => setHover(p.symbol)} onMouseLeave={() => setHover(null)} onClick={() => onOpen(p.symbol)}>
+                <tr key={p.symbol} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3" onMouseEnter={() => setHover(p.symbol)} onMouseLeave={() => setHover(null)} onClick={() => onOpen(p.symbol)} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                   <td className="py-1"><span className="inline-block w-2 h-2 mr-1.5" style={{ background: QCOL[q] }} />{p.label} <span className="font-mono text-text-tertiary">{p.symbol}</span></td>
                   <td className="text-right font-mono" title="Relative to the benchmark, last 4 weeks">{pct(p.relative_4w)}</td></tr>)))}
-            </tbody></table>
+            </tbody></table></div>
             <p className="mt-2 text-[10px] text-text-tertiary">Rotation usually runs clockwise: improving → leading → weakening → lagging. Right column: performance vs the benchmark over 4 weeks.</p>
           </Panel>
         </div>)}
@@ -191,21 +191,21 @@ export function FrdView() {
       {FRD_CCYS.map((c) => <option key={c}>{c}</option>)}</select></label>);
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">{sel(b, setB, 'Base')}{sel(q, setQ, 'Quote')}
+      <div className="mkt-controls flex flex-wrap items-center gap-3">{sel(b, setB, 'Base')}{sel(q, setQ, 'Quote')}
         <button onClick={() => { setB(q); setQ(b); }} className="px-2 py-1 text-xs border border-border hover:border-bloomberg">⇄ swap</button></div>
       {loading && !data && <Loading />}
       {error && <ErrorBox msg={error} />}
       {data && (
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-3">
           <Panel title={`${data.pair} forwards — spot ${fmtPrice(data.spot, 'FX')}`}>
-            <table className="w-full text-xs font-mono tabular-nums">
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs font-mono tabular-nums">
               <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Tenor</th><th className="text-right font-normal">Outright</th><th className="text-right font-normal">Points</th><th className="text-right font-normal">Annualised</th></tr></thead>
               <tbody>{data.tenors.map((t: any) => (
                 <tr key={t.tenor} className="border-t border-border-subtle"><td className="py-1 text-text-primary font-sans">{t.tenor}</td>
                   <td className="text-right">{t.forward.toFixed(data.pip === 0.01 ? 3 : 5)}</td>
                   <td className={cn('text-right', t.points >= 0 ? 'text-green' : 'text-red')}>{t.points >= 0 ? '+' : ''}{t.points.toFixed(1)}</td>
                   <td className="text-right">{pct(t.annualised_premium, 2)}</td></tr>))}</tbody>
-            </table>
+            </table></div>
           </Panel>
           <Panel title="Interest rates used">
             <div className="space-y-2 text-xs">{Object.entries<any>(data.rates).map(([c, r]) => (
@@ -323,7 +323,7 @@ export function OsaView({ symbol }: { symbol: string }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-1 text-xs">
+      <div className="mkt-controls flex flex-wrap items-center gap-1 text-xs">
         {TEMPLATES.map(([n]) => <button key={n} onClick={() => applyTpl(n)} className={cn('px-2 py-0.5 border', tpl === n ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary hover:text-text-primary')}>{n}</button>)}
         <select value={data.expiry} onChange={(e) => { setExpiry(e.target.value); setLegs(null); }} className="ml-auto bg-surface-1 border border-border px-2 py-0.5 font-mono" aria-label="Expiry">
           {data.expirations.map((e: string) => <option key={e}>{e}</option>)}</select>
@@ -351,7 +351,7 @@ export function OsaView({ symbol }: { symbol: string }) {
         </div>
         <div className="space-y-2">
           <div className="border border-border bg-surface-1">
-            <table className="w-full text-[11px] font-mono">
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] font-mono">
               <thead><tr className="text-text-tertiary"><th className="text-left font-normal px-1.5">Leg</th><th className="font-normal">Strike</th><th className="font-normal">Qty</th><th className="text-right font-normal">Price</th><th className="text-right font-normal px-1.5">IV</th></tr></thead>
               <tbody>{legsNow.map((l, i) => (
                 <tr key={i} className="border-t border-border-subtle">
@@ -360,7 +360,7 @@ export function OsaView({ symbol }: { symbol: string }) {
                     <select value={l.strike} onChange={(e) => setLeg(i, { strike: Number(e.target.value) })} className="bg-transparent">{strikes.map((k) => <option key={k} value={k}>{k}</option>)}</select>)}</td>
                   <td className="text-center"><input type="number" min={1} value={l.qty} onChange={(e) => setLeg(i, { qty: Math.max(1, Number(e.target.value) || 1) })} className="w-10 bg-transparent text-center" /></td>
                   <td className="text-right">{fmtPrice(l.premium)}</td><td className="text-right px-1.5">{l.iv != null ? `${(l.iv * 100).toFixed(1)}%` : '—'}</td></tr>))}</tbody>
-            </table>
+            </table></div>
           </div>
           <div className="border border-border bg-surface-1 p-2 grid grid-cols-4 gap-2 text-[11px]">
             {greeks.map(([g, v]) => <div key={g}><div className="text-text-tertiary capitalize">{g}</div><div className="font-mono text-text-primary">{v.toFixed(g === 'gamma' ? 3 : 1)}</div></div>)}

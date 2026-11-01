@@ -109,6 +109,7 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
   const [meta, setMeta] = useState<{ currency?: string; timezone?: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [revision,retry]=useState(0);
   const [win, setWin] = useState<[number, number] | null>(null);       // visible [start, end) in raw bars
   const [base, setBase] = useState(0);                                  // first bar of the chosen window (earlier bars warm up the MAs)
   const [hover, setHover] = useState<number | null>(null);              // index into drawn bars
@@ -126,10 +127,10 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true); setErr(null);
+    let cancelled = false;const controller=new AbortController();
+    setData(null);setMeta(null);setHover(null);setLoading(true);setErr(null);
     fetch(`/api/v1/market/bars?${new URLSearchParams({ ...(range ? { symbol, interval, start: range.start, end: range.end } : { symbol, interval, period }),
-      ...(WARM.has(interval) && (range || period !== 'max') ? { warmup: '200' } : {}) })}`)
+      ...(WARM.has(interval) && (range || period !== 'max') ? { warmup: '200' } : {}) })}`,{signal:controller.signal})
       .then(async (r) => {
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(typeof j?.detail === 'string' ? j.detail : j?.detail?.message || `HTTP ${r.status}`);
@@ -138,8 +139,8 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
       .then((j) => { if (!cancelled) { setData(j.bars); setBase(j.first_visible ?? 0); setMeta({ currency: j.currency, timezone: j.timezone }); setWin(null); setHover(null); } })
       .catch((e) => { if (!cancelled) { setErr(e.message); setData(null); } })
       .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [symbol, interval, period, range]);
+    return () => { cancelled = true;controller.abort(); };
+  }, [symbol, interval, period, range,revision]);
 
   const pickInterval = (i: string) => {
     setInterval_(i);
@@ -298,7 +299,7 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
         )}
       </div>
 
-      {err && <div className="p-2 text-xs text-amber border border-amber/30">{err}</div>}
+      {err && <div role="alert" className="p-2 text-xs text-amber border border-amber/30 flex justify-between gap-3"><span>{err}</span><button onClick={()=>retry(n=>n+1)} className="underline">Retry chart</button></div>}
       {!err && (
         <svg ref={svgRef} width={width} height={height} tabIndex={0} onKeyDown={onKey} role="img"
           aria-label={`${symbol} ${interval} price chart`}

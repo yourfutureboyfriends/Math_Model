@@ -1,6 +1,6 @@
 // Live TV for MAP: official live streams of business and news channels (the selected country's own
 // channels first, then its region's, then global business TV), and recent clips from established
-// outlets about that country's economy. Embedded with YouTube's privacy-enhanced player, muted.
+// outlets about that country's economy. Embedded with YouTube's privacy-enhanced player, with sound requested by default.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useJSON } from './shared';
@@ -8,7 +8,7 @@ import { useJSON } from './shared';
 type Channel = { channel_id: string; channel: string; focus: string; countries: string[]; region: string; live: boolean; video_id: string | null; title: string | null };
 type Clip = { video_id: string; title: string; channel: string; age?: string | null; published?: string | null; live?: boolean };
 
-const embed = (id: string) => `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1`;
+const embed = (id: string) => `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=0&playsinline=1&rel=0`;
 
 export function LiveTV({ iso, name, region }: { iso: string | null; name: string | null; region?: string | null }) {
   const tv = useJSON<{ channels: Channel[] }>('/api/v1/mkt/tv', 900_000);
@@ -33,7 +33,7 @@ export function LiveTV({ iso, name, region }: { iso: string | null; name: string
     <div className="bg-surface-1 border border-border">
       <div className="panel-bar px-2 h-6 flex items-center text-[11px] uppercase tracking-wide">
         <span className="text-bloomberg font-semibold">Live TV{name ? ` · ${name}` : ' · world'}</span>
-        <span className="ml-auto normal-case tracking-normal text-[10px] text-text-tertiary">official channel streams · muted until you unmute</span>
+        <span className="ml-auto normal-case tracking-normal text-[10px] text-text-tertiary">official streams · sound on by default</span>
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-2 p-2">
         <div className="space-y-1.5 min-w-0">
@@ -42,8 +42,8 @@ export function LiveTV({ iso, name, region }: { iso: string | null; name: string
               allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" />
               : <div className="absolute inset-0 grid place-items-center text-xs text-text-tertiary">{tv.loading ? 'Finding live channels…' : 'No channel live right now.'}</div>}
           </div>
-          {playing && <div className="text-[11px] text-text-secondary truncate" title={playing.label}>{playing.label}</div>}
-          <div className="flex flex-wrap gap-1">
+          {playing && <><div className="text-[11px] text-text-secondary truncate" title={playing.label}>{playing.label}</div><p className="text-[10px] text-text-tertiary">If your browser pauses autoplay, press play in the player to start with sound.</p></>}
+          <div className="mkt-controls flex flex-wrap gap-1">
             {ordered.map((c) => (
               <button key={c.channel_id} disabled={!c.live || !c.video_id} onClick={() => c.video_id && setPlaying({ id: c.video_id, label: `${c.channel} — ${c.title ?? 'live'}` })}
                 title={c.live ? c.title ?? 'Live' : 'Off air right now'}

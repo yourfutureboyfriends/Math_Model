@@ -75,7 +75,13 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
         if d is None:
             continue
         w = pd.Series(d.weights, index=d.assets)
-        r_next = rets.loc[t_next, d.assets].fillna(0.0)
+        held = [a for a, wt, sw in zip(d.assets, d.weights, d.strategic) if abs(wt) > 1e-8 or abs(sw) > 1e-8]
+        missing = [a for a in held if not np.isfinite(rets.loc[t_next, a])]
+        missing += [a for a in w_prev.index.union(ws_prev.index) if (abs(w_prev.get(a, 0)) > 1e-8 or abs(ws_prev.get(a, 0)) > 1e-8) and (a not in rets or not np.isfinite(rets.loc[t, a]))]
+        if missing:
+            return {"available": False, "reason": "Backtest cannot be scored: missing realized returns for held assets; no zero-return substitution was made.",
+                    "missing_month": t_next.strftime("%Y-%m"), "missing_assets": sorted(set(missing))}
+        r_next = rets.loc[t_next, d.assets].fillna(0.0)  # only unheld assets can be missing
         # turnover vs the previous weights after they drifted through month t
         if not w_prev.empty:
             r_t = rets.loc[t].reindex(w_prev.index).fillna(0.0)
@@ -123,23 +129,29 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
     skill = {}
     if last is not None:
         labels = realized_regimes(last.growth, last.inflation, p.momentum_months)
-        dg = (last.growth - last.growth.shift(p.momentum_months)) > 0
-        di = (last.inflation - last.inflation.shift(p.momentum_months)) > 0
+        growth, inflation = last.growth.asfreq("MS"), last.inflation.asfreq("MS")
+        gc, ic = growth.diff(p.momentum_months), inflation.diff(p.momentum_months)
+        dg, di = (gc > 0).astype(float).where(gc.notna()), (ic > 0).astype(float).where(ic.notna())
         f = pd.DataFrame(fc).set_index("month")
         f = f[f.index.isin(dg.index)]
         if len(f) > 24:
             yg, yi = dg.reindex(f.index).astype(float), di.reindex(f.index).astype(float)
             def _brier(pcol, base, y):
-                bs = float(((f[pcol] - y) ** 2).mean())
-                ref = float(((f[base] - y) ** 2).mean())
+                valid = y.notna() & f[pcol].notna() & f[base].notna()
+                y = y[valid]; scored = f.loc[valid]
+                if scored.empty:
+                    return {"brier": None, "brier_base_rate": None, "skill": None, "accuracy": None, "months_scored": 0}
+                bs = float(((scored[pcol] - y) ** 2).mean())
+                ref = float(((scored[base] - y) ** 2).mean())
                 return {"brier": round(bs, 4), "brier_base_rate": round(ref, 4),
                         "skill": round(1 - bs / ref, 3) if ref > 0 else None,
-                        "accuracy": round(float(((f[pcol] > 0.5) == (y > 0.5)).mean()), 3)}
+                        "accuracy": round(float(((scored[pcol] > 0.5) == (y > 0.5)).mean()), 3), "months_scored": int(valid.sum())}
             lab = labels.reindex(f.index)
-            hit = np.mean([max(pr, key=pr.get) == l for pr, l in zip(f["probs"], lab) if isinstance(l, str)])
+            hits = [max(pr, key=pr.get) == l for pr, l in zip(f["probs"], lab) if isinstance(l, str)]
+            hit = float(np.mean(hits)) if hits else None
             skill = {"growth_direction": _brier("p_g", "base_g", yg),
                      "inflation_direction": _brier("p_i", "base_i", yi),
-                     "top_regime_hit_rate": round(float(hit), 3), "months_scored": len(f)}
+                     "top_regime_hit_rate": round(hit, 3) if hit is not None else None, "months_scored": len(hits), "target_basis": "Ex-post revised factor history; not real-time vintage verification"}
 
     # Timeline, in hindsight: the regime that was realised in each allocated month, and the next 12 months' returns
     realised = realized_regimes(last.growth, last.inflation, p.momentum_months) if last is not None else pd.Series(dtype=object)

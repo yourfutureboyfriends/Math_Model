@@ -89,8 +89,8 @@ export function LivePerformance({ book, deployments }: { book: Book; deployments
       {!live && !err ? <div className="flex items-center gap-2 text-2xs text-text-tertiary"><Loader2 className="w-3 h-3 animate-spin" />Pricing the holdings…</div>
         : algos.length === 0 ? <div className="text-2xs text-text-tertiary">No deployed algos to mark yet.</div> : (
         <>
-          <LineChart rows={view === 'today' ? todayRows : sinceRows} x="label" height={220} baseline={0} fmt={(v) => spct(v, 2)}
-            lines={[...(view === 'today' ? [{ key: 'book', label: scope === 'all' ? 'All algos' : 'Book', color: CATEGORICAL[0] }] : []), ...lines]} />
+          <div className="workspace-chart"><LineChart rows={view === 'today' ? todayRows : sinceRows} x="label" height={220} baseline={0} fmt={(v) => spct(v, 2)}
+            lines={[...(view === 'today' ? [{ key: 'book', label: scope === 'all' ? 'All algos' : 'Book', color: CATEGORICAL[0] }] : []), ...lines]} /></div>
           <div className="flex flex-wrap gap-1.5 text-[10px] font-mono">
             {algos.map((a, i) => (
               <span key={a.id} className="px-1.5 py-0.5 border border-border" title={`${a.names_priced} holdings priced, ${Math.round(a.coverage * 100)}% of the weight`}>

@@ -62,7 +62,7 @@ export function CfView({ symbol }: { symbol: string }) {
               <th className="text-left font-normal">What happened</th><th className="text-right font-normal" title="Close-to-close on the first session after the filing">Day move</th>
               <th className="text-right font-normal" title="Minus the S&P 500">vs market</th><th className="text-right font-normal">5 days</th></tr></thead>
             <tbody>{rows.map((f: any) => (
-              <tr key={f.url} onClick={() => setOpen(f)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-2', open?.url === f.url && 'bg-bloomberg/10')}>
+              <tr key={f.url} onClick={() => setOpen(f)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-2', open?.url === f.url && 'bg-bloomberg/10')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                 <td className="py-1 pr-2 font-mono text-text-secondary whitespace-nowrap">{f.accepted ?? f.filed}</td>
                 <td className="pr-2 whitespace-nowrap"><span className="font-mono text-text-primary">{f.form}</span> <span className="text-text-tertiary">{f.label}</span></td>
                 <td className="pr-2">{f.items.length ? <span className="flex flex-wrap gap-1">{f.items.filter((i: any) => i.code !== '9.01').map((i: any) => (
@@ -96,7 +96,7 @@ function FilingReader({ f, onClose }: { f: any; onClose: () => void }) {
     <Panel title={`${f.form} · ${f.accepted ?? f.filed}`} className="self-start 2xl:sticky 2xl:top-2" right={<button onClick={onClose} className="px-2 border border-border text-text-secondary text-[11px]">✕</button>}>
       {loading && !data ? <Loading label="Fetching the document from EDGAR…" /> : error && !data ? <ErrorBox msg={error} /> : cur && (
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-1">{docs.map((x, i) => <Chip key={i} on={tab === i} onClick={() => setTab(i)}>{x.name}</Chip>)}
+          <div className="mkt-controls flex flex-wrap items-center gap-1">{docs.map((x, i) => <Chip key={i} on={tab === i} onClick={() => setTab(i)}>{x.name}</Chip>)}
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find in document (guidance, impairment…)" className="ml-auto w-56 bg-surface-1 border border-border px-2 py-0.5 text-[11px]" />
             {q.length >= 3 && <span className="text-[10px] text-text-tertiary">{hits} found</span>}</div>
           <div className="max-h-[70vh] overflow-auto border border-border-subtle bg-surface-2/40 p-2 text-[11px] leading-relaxed whitespace-pre-wrap text-text-secondary">
@@ -127,23 +127,23 @@ export function CredView() {
     <div className="space-y-3">
       {d.signals.length > 0 && <div className="px-3 py-2 border border-amber/50 bg-amber/5 space-y-1">{d.signals.map((s: string) => <div key={s} className="text-2xs text-amber">• {s}</div>)}</div>}
       <Panel title="Spreads over Treasuries — click to chart">
-        <table className="w-full text-2xs font-mono tabular-nums">
+        <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono tabular-nums">
           <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Index</th><th className="text-right font-normal">Level</th><th className="text-right font-normal">1w</th>
             <th className="text-right font-normal">1m</th><th className="text-right font-normal">3m</th><th className="text-right font-normal">1y</th><th className="font-normal text-left pl-3">Where in its 3-year range (tight → wide)</th></tr></thead>
           <tbody>{groups.flatMap((g) => d.series.filter((x: any) => x.group === g).map((x: any) => (
-            <tr key={x.id} onClick={() => toggle(x.id)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-2', sel.includes(x.id) && 'bg-bloomberg/5')}>
+            <tr key={x.id} onClick={() => toggle(x.id)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-2', sel.includes(x.id) && 'bg-bloomberg/5')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
               <td className="py-1 font-sans"><span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: CRED_COLORS[x.id] }} /><span className="text-text-primary">{x.name}</span></td>
               <td className="text-right text-text-primary">{x.last.toFixed(2)}%</td>
               {[x.chg_1w_bp, x.chg_1m_bp, x.chg_3m_bp, x.chg_1y_bp].map((v: number, i: number) => <td key={i} className={cn('text-right', v == null ? '' : v > 0 ? 'text-red' : 'text-green')}>{bp(v)}</td>)}
               <td className="pl-3"><div className="flex items-center gap-2"><div className="relative w-40 h-1.5 bg-gradient-to-r from-green/40 via-surface-3 to-red/40 rounded-full">
                 <span className="absolute -top-0.5 w-1 h-2.5 bg-text-primary rounded-sm" style={{ left: `calc(${x.percentile * 100}% - 2px)` }} /></div>
                 <span className="text-text-tertiary">{Math.round(x.percentile * 100)}th · {x.min.toFixed(2)}–{x.max.toFixed(2)}</span></div></td></tr>)))}</tbody>
-        </table>
+        </table></div>
         <div className="text-[10px] text-text-tertiary mt-1">Widening (red) means investors demand more to lend to companies — usually alongside falling stocks. {d.note}</div>
       </Panel>
       <Panel title="History (weekly, %)">
-        <LineChart rows={d.history} x="date" height={300} fmt={(v) => `${v.toFixed(2)}%`}
-          lines={sel.map((id) => ({ key: id, label: d.series.find((x: any) => x.id === id)?.name ?? id, color: CRED_COLORS[id] ?? 'rgb(var(--c-blue))' }))} />
+        <div className="mkt-chart-surface"><LineChart rows={d.history} x="date" height={300} fmt={(v) => `${v.toFixed(2)}%`}
+          lines={sel.map((id) => ({ key: id, label: d.series.find((x: any) => x.id === id)?.name ?? id, color: CRED_COLORS[id] ?? 'rgb(var(--c-blue))' }))} /></div>
       </Panel>
       {Object.keys(d.derived).length > 0 && <div className="grid grid-cols-1 md:grid-cols-2 gap-2">{Object.entries<any>(d.derived).map(([k, x]) => (
         <Tile key={k} label={x.label} value={k === 'hy_ig_ratio' ? `${x.last.toFixed(2)}×` : `${x.last.toFixed(2)} pts`} sub={`${Math.round(x.percentile * 100)}th percentile of three years`} />))}</div>}
@@ -192,8 +192,8 @@ export function FacView({ symbol }: { symbol: string }) {
           <div className="text-[10px] text-text-tertiary mt-2">Return contribution = loading × the factor’s average return over the window. {d.note}</div>
         </Panel>
         <Panel title="Rolling one-year loadings">
-          <LineChart rows={d.rolling} x="date" height={260} controls={false} fmt={(v) => v.toFixed(2)} baseline={0}
-            lines={Object.keys(FAC_COLORS).map((k) => ({ key: k, label: d.factor_names?.[k] ?? k, color: FAC_COLORS[k] }))} />
+          <div className="mkt-chart-surface"><LineChart rows={d.rolling} x="date" height={260} controls={false} fmt={(v) => v.toFixed(2)} baseline={0}
+            lines={Object.keys(FAC_COLORS).map((k) => ({ key: k, label: d.factor_names?.[k] ?? k, color: FAC_COLORS[k] }))} /></div>
         </Panel>
       </div>
       {d.us_factors_note && <div className="text-[10px] text-amber">{d.us_factors_note}</div>}
@@ -205,7 +205,7 @@ export function FacView({ symbol }: { symbol: string }) {
 // ── PORT ────────────────────────────────────────────────────────────────────
 type Holding = { symbol: string; quantity: number };
 const PKEY = 'mkt_port_v1';
-const readCustom = (): Holding[] => { try { const v = JSON.parse(localStorage.getItem(PKEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
+const readCustom = (): Holding[] => { try { const v = JSON.parse(localStorage.getItem(PKEY) || '[]'); return Array.isArray(v) ? v.filter(h=>h&&typeof h.symbol==='string'&&Number.isFinite(h.quantity)&&h.quantity!==0) : []; } catch { return []; } };
 const saveCustom = (h: Holding[]) => { try { localStorage.setItem(PKEY, JSON.stringify(h)); } catch { /* storage unavailable */ } };
 
 export function PortView({ onOpen }: { onOpen: (s: string) => void }) {
@@ -217,20 +217,21 @@ export function PortView({ onOpen }: { onOpen: (s: string) => void }) {
   useEffect(() => { if (paperRows.length && !readCustom().length) setSrc('paper'); }, [paperRows.length]);
   const holdings = src === 'paper' ? paperRows : custom;
   const key = JSON.stringify(holdings);
-  const [res, setRes] = useState<{ data: any; error: string | null; loading: boolean }>({ data: null, error: null, loading: false });
+  const [storedRes,setRes]=useState<{key:string;data:any;error:string|null;loading:boolean}>({key,data:null,error:null,loading:false});
+  const res=storedRes.key===key?storedRes:{key,data:null,error:null,loading:holdings.length>0};
   useEffect(() => {
-    if (!holdings.length) { setRes({ data: null, error: null, loading: false }); return; }
-    let live = true;
+    if (!holdings.length) { setRes({key,data:null,error:null,loading:false}); return; }
+    let live = true;const controller=new AbortController();
+    setRes({key,data:null,error:null,loading:true});
     const t = setTimeout(async () => {
-      setRes((r) => ({ ...r, loading: true, error: null }));
       try {
-        const r = await fetch('/api/v1/mkt/port/risk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ holdings }) });
+        const r = await fetch('/api/v1/mkt/port/risk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ holdings }),signal:controller.signal });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(apiError(j, r.status));
-        if (live) setRes({ data: j, error: null, loading: false });
+        if (live) setRes({key,data:j,error:null,loading:false});
       } catch (e: any) { if (live) setRes((r) => ({ ...r, error: e.message, loading: false })); }
     }, 600);
-    return () => { live = false; clearTimeout(t); };
+    return () => { live = false;controller.abort();clearTimeout(t); };
   }, [key]);   // eslint-disable-line react-hooks/exhaustive-deps
   const setC = (h: Holding[]) => { setCustom(h); saveCustom(h); };
   const addPaste = () => {
@@ -246,7 +247,7 @@ export function PortView({ onOpen }: { onOpen: (s: string) => void }) {
         <Chip on={src === 'paper'} onClick={() => setSrc('paper')}>Paper portfolio ({paperRows.length})</Chip></div>}>
         {src === 'custom' ? (
           <div className="space-y-2">
-            <div className="flex flex-wrap gap-1">{custom.map((h, i) => (
+            <div className="mkt-controls flex flex-wrap gap-1">{custom.map((h, i) => (
               <span key={h.symbol} className="inline-flex items-center gap-1 border border-border rounded-sm px-1.5 py-0.5 text-[11px]">
                 <button onClick={() => onOpen(h.symbol)} className="font-mono text-text-primary hover:text-bloomberg">{h.symbol}</button>
                 <input type="number" value={h.quantity} onChange={(e) => { const c = [...custom]; c[i] = { ...h, quantity: Number(e.target.value) }; setC(c); }}
@@ -281,7 +282,7 @@ export function PortView({ onOpen }: { onOpen: (s: string) => void }) {
               <th className="text-right font-normal">Today</th><th className="text-right font-normal">1 year</th><th className="text-right font-normal">Vol</th><th className="text-right font-normal">Beta</th>
               <th className="text-left font-normal pl-3">Share of portfolio risk</th></tr></thead>
             <tbody>{d.positions.map((r: any) => (
-              <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2">
+              <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                 <td className="py-1 font-sans"><span className="font-mono text-text-primary">{r.symbol}</span> <span className="text-text-tertiary">{r.name} · {r.sector}</span></td>
                 <td className="text-right">{usd(r.value_usd)}</td><td className="text-right">{pc(r.weight)}</td>
                 <td className={cn('text-right', tone(r.day_change))}>{sp(r.day_change)}</td><td className={cn('text-right', tone(r.return_1y))}>{sp(r.return_1y, 0)}</td>
@@ -294,19 +295,19 @@ export function PortView({ onOpen }: { onOpen: (s: string) => void }) {
         </Panel>
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
           <Panel title="Stress tests — if this happens, the portfolio moves…">
-            <table className="w-full text-2xs font-mono tabular-nums"><tbody>{d.scenarios.map((x: any) => (
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono tabular-nums"><tbody>{d.scenarios.map((x: any) => (
               <tr key={x.scenario} className="border-t border-border-subtle first:border-0"><td className="py-1 font-sans text-text-primary">{x.scenario}</td>
                 <td className={cn('text-right', tone(x.pnl))}>{usd(x.pnl)}</td><td className={cn('text-right w-16', tone(x.return))}>{sp(x.return)}</td>
-                <td className="pl-3 font-sans text-[10px] text-text-tertiary">{x.pnl < 0 ? 'hit hardest: ' : 'helped most: '}{(x.pnl < 0 ? x.worst : x.best).map((w: any) => w.symbol).join(', ')}</td></tr>))}</tbody></table>
+                <td className="pl-3 font-sans text-[10px] text-text-tertiary">{x.pnl < 0 ? 'hit hardest: ' : 'helped most: '}{(x.pnl < 0 ? x.worst : x.best).map((w: any) => w.symbol).join(', ')}</td></tr>))}</tbody></table></div>
             <div className="text-[10px] text-text-tertiary mt-1">Each holding’s weekly beta to the driver over three years, times the shock.</div>
           </Panel>
           <Panel title="History replays — today’s portfolio through past crises">
-            <table className="w-full text-2xs font-mono tabular-nums">
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono tabular-nums">
               <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Episode</th><th className="text-right font-normal">S&P 500</th><th className="text-right font-normal">Portfolio</th><th className="text-right font-normal">P&L</th></tr></thead>
               <tbody>{d.replays.map((x: any) => (
                 <tr key={x.episode} className="border-t border-border-subtle" title={`${x.start} → ${x.end}. Worst: ${x.worst.map((w: any) => `${w.symbol} ${sp(w.return, 0)}`).join(', ')}${x.proxied.length ? `. Proxied by beta: ${x.proxied.join(', ')}` : ''}`}>
                   <td className="py-1 font-sans text-text-primary">{x.episode}<span className="text-text-tertiary"> · {x.start.slice(0, 7)}</span>{x.proxied.length ? <span className="text-amber"> *</span> : null}</td>
-                  <td className={cn('text-right', tone(x.spx))}>{sp(x.spx, 0)}</td><td className={cn('text-right font-semibold', tone(x.return))}>{sp(x.return, 0)}</td><td className={cn('text-right', tone(x.pnl))}>{usd(x.pnl)}</td></tr>))}</tbody></table>
+                  <td className={cn('text-right', tone(x.spx))}>{sp(x.spx, 0)}</td><td className={cn('text-right font-semibold', tone(x.return))}>{sp(x.return, 0)}</td><td className={cn('text-right', tone(x.pnl))}>{usd(x.pnl)}</td></tr>))}</tbody></table></div>
             <div className="text-[10px] text-text-tertiary mt-1">Actual returns of each holding over the episode, in local currency. * a holding that didn’t trade yet is proxied by its S&P 500 beta. Hover a row for details.</div>
           </Panel>
         </div>
@@ -321,7 +322,7 @@ export function PortView({ onOpen }: { onOpen: (s: string) => void }) {
         </div>
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-3">
           <Panel title="Today’s portfolio over the last three years (rebased to 100)">
-            <LineChart rows={d.curve} x="date" height={230} fmt={(v) => v.toFixed(1)} baseline={100} lines={[{ key: 'value', label: 'Portfolio', color: 'rgb(var(--c-blue))' }]} />
+            <div className="mkt-chart-surface"><LineChart rows={d.curve} x="date" height={230} fmt={(v) => v.toFixed(1)} baseline={100} lines={[{ key: 'value', label: 'Portfolio', color: 'rgb(var(--c-blue))' }]} /></div>
             <div className="text-[10px] text-text-tertiary mt-1">Worst days: {d.worst_days.map((w: any) => `${w.date} ${sp(w.return)}`).join(' · ')}</div>
           </Panel>
           <Panel title="Factor loadings (Fama–French 5 + momentum)">

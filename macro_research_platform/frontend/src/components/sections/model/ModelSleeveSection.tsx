@@ -111,7 +111,7 @@ export function ModelSleeveSection() {
               The model sleeve holds no positions yet. Targets below are what the {which} portfolio would hold; stage the orders from the Macro Model panel.
             </div>
           )}
-          <table className="w-full text-2xs font-mono">
+          <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-2xs font-mono">
             <thead>
               <tr className="text-text-tertiary text-left">
                 <th className="font-normal pb-1">ETF</th>
@@ -141,7 +141,7 @@ export function ModelSleeveSection() {
                 <td className="text-right">{pct(targetCash)}</td><td />
               </tr>
             </tbody>
-          </table>
+          </table></div>
           <div className="mt-2 text-[10px] text-text-tertiary">
             {data.portfolio} portfolio · model regime {data.regime} ({pct(data.regime_probability, 0)}) · expected volatility {pct(data.expected_vol)} ·
             sleeve capital = {data.sleeve_capital_basis}.

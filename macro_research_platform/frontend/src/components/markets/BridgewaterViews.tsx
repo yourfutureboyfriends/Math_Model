@@ -60,16 +60,16 @@ export function EnvironmentsPanel({ compact = false }: { compact?: boolean }) {
           </Panel>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
             <Panel title="Sensitivity — return when rising minus when falling (a year)">
-              <table className="w-full text-2xs font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Asset</th><th className="text-right font-normal">To growth</th><th className="text-right font-normal">To inflation</th><th className="text-left font-normal pl-3">Best in</th></tr></thead>
+              <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Asset</th><th className="text-right font-normal">To growth</th><th className="text-right font-normal">To inflation</th><th className="text-left font-normal pl-3">Best in</th></tr></thead>
                 <tbody>{d.assets.map((a: string) => { const s = d.sensitivity[a]; return (
                   <tr key={a} className="border-t border-border-subtle"><td className="py-0.5 font-sans text-text-primary">{a}</td>
                     <td className={cn('text-right', tone(s.growth))}>{sp(s.growth)}</td><td className={cn('text-right', tone(s.inflation))}>{sp(s.inflation)}</td>
-                    <td className="pl-3 font-sans text-text-tertiary">{[s.growth > 0.01 ? 'rising growth' : s.growth < -0.01 ? 'falling growth' : null, s.inflation > 0.01 ? 'rising inflation' : s.inflation < -0.01 ? 'falling inflation' : null].filter(Boolean).join(', ') || '—'}</td></tr>); })}</tbody></table>
+                    <td className="pl-3 font-sans text-text-tertiary">{[s.growth > 0.01 ? 'rising growth' : s.growth < -0.01 ? 'falling growth' : null, s.inflation > 0.01 ? 'rising inflation' : s.inflation < -0.01 ? 'falling inflation' : null].filter(Boolean).join(', ') || '—'}</td></tr>); })}</tbody></table></div>
               <div className="text-[10px] text-text-tertiary mt-1">This is the core of All Weather: each asset is a bet on growth and inflation. Combine assets with opposite biases and the portfolio stops depending on the economy.</div>
             </Panel>
             <Panel title="The last 20 years of environments">
-              <LineChart rows={d.history} x="date" height={200} fmt={(v) => `${v.toFixed(1)}%`} baseline={0}
-                lines={[{ key: 'growth_yoy', label: 'Growth (IP y/y)', color: COLORS[0] }, { key: 'inflation_yoy', label: 'Inflation (CPI y/y)', color: COLORS[1] }]} />
+              <div className="mkt-chart-surface"><LineChart rows={d.history} x="date" height={200} fmt={(v) => `${v.toFixed(1)}%`} baseline={0}
+                lines={[{ key: 'growth_yoy', label: 'Growth (IP y/y)', color: COLORS[0] }, { key: 'inflation_yoy', label: 'Inflation (CPI y/y)', color: COLORS[1] }]} /></div>
               <div className="flex flex-wrap gap-1 mt-1 text-[10px]">{d.spells.slice(-8).map((s: any) => <span key={s.start} className="border border-border-subtle rounded-sm px-1"><span className="text-text-tertiary">{s.start}</span> <span className={QCLS[s.q]}>{s.q}</span></span>)}</div>
             </Panel>
           </div>
@@ -91,24 +91,24 @@ export function AllWeatherPanel() {
           <span className="ml-2 text-text-tertiary">Unlevered mix runs at {pc(d.vol_unlevered)} vol → leverage now {d.leverage_now?.toFixed(2)}×</span></div>
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-3">
           <Panel title="Today’s All Weather weights">
-            <table className="w-full text-2xs font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Asset</th><th className="text-right font-normal">Weight</th><th className="text-right font-normal">Risk share</th><th className="text-left font-normal pl-2">Environments</th></tr></thead>
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Asset</th><th className="text-right font-normal">Weight</th><th className="text-right font-normal">Risk share</th><th className="text-left font-normal pl-2">Environments</th></tr></thead>
               <tbody>{[...d.weights].sort((a: any, b: any) => b.weight - a.weight).map((w: any) => (
                 <tr key={w.symbol} className="border-t border-border-subtle"><td className="py-0.5 font-sans"><span className="font-mono text-text-primary">{w.symbol}</span> <span className="text-text-tertiary">{w.name}</span></td>
-                  <td className="text-right">{pc(w.weight)}</td><td className="text-right text-text-secondary">{pc(w.risk_share)}</td><td className="pl-2 font-sans text-[10px] text-text-tertiary">{w.environments.join(' · ')}</td></tr>))}</tbody></table>
+                  <td className="text-right">{pc(w.weight)}</td><td className="text-right text-text-secondary">{pc(w.risk_share)}</td><td className="pl-2 font-sans text-[10px] text-text-tertiary">{w.environments.join(' · ')}</td></tr>))}</tbody></table></div>
             <div className="grid grid-cols-2 gap-1.5 mt-2">{Object.entries<number>(d.environment_risk).map(([k, v]) => <Tile key={k} label={k} value={pc(v, 0)} sub="share of risk" />)}</div>
           </Panel>
           <Panel title={`Backtest since ${d.start} (rebased to 100)`}>
-            <LineChart rows={d.curves} x="date" height={260} log fmt={(v) => v.toFixed(0)} lines={Object.keys(d.labels).map((k, i) => ({ key: k, label: d.labels[k], color: COLORS[i % COLORS.length] }))} />
+            <div className="mkt-chart-surface"><LineChart rows={d.curves} x="date" height={260} log fmt={(v) => v.toFixed(0)} lines={Object.keys(d.labels).map((k, i) => ({ key: k, label: d.labels[k], color: COLORS[i % COLORS.length] }))} /></div>
           </Panel>
         </div>
         <Panel title="Results — and the point of All Weather: similar returns whatever the environment">
-          <table className="w-full text-2xs font-mono tabular-nums"><thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Portfolio</th><th className="text-right font-normal">CAGR</th><th className="text-right font-normal">Vol</th><th className="text-right font-normal">Sharpe</th><th className="text-right font-normal">Max DD</th><th className="text-right font-normal">Worst year</th>
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono tabular-nums"><thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Portfolio</th><th className="text-right font-normal">CAGR</th><th className="text-right font-normal">Vol</th><th className="text-right font-normal">Sharpe</th><th className="text-right font-normal">Max DD</th><th className="text-right font-normal">Worst year</th>
             {d.by_quadrant.map((q: any) => <th key={q.quadrant} className={cn('text-right font-normal', QCLS[q.quadrant])}>{q.quadrant}</th>)}</tr></thead>
             <tbody>{d.performance.map((p: any) => (
               <tr key={p.key} className={cn('border-t border-border-subtle', p.key === 'aw_lev' && 'font-semibold')}><td className="py-1 font-sans text-text-primary">{p.label}</td>
                 <td className={cn('text-right', tone(p.cagr))}>{sp(p.cagr)}</td><td className="text-right">{pc(p.vol)}</td><td className="text-right">{p.sharpe?.toFixed(2)}</td>
                 <td className="text-right text-red">{pc(p.max_drawdown)}</td><td className="text-right">{sp(p.worst_year)} <span className="text-text-tertiary">{p.worst_year_label}</span></td>
-                {d.by_quadrant.map((q: any) => <td key={q.quadrant} className={cn('text-right', tone(q[p.key]))}>{sp(q[p.key])}</td>)}</tr>))}</tbody></table>
+                {d.by_quadrant.map((q: any) => <td key={q.quadrant} className={cn('text-right', tone(q[p.key]))}>{sp(q[p.key])}</td>)}</tr>))}</tbody></table></div>
           <div className="text-[10px] text-text-tertiary mt-1">Environment columns: annualised return in months of each environment. A balanced portfolio shows a narrower spread across them than stocks or 60/40. {d.method}</div>
         </Panel>
         <Ref text={d.reference} />
@@ -152,8 +152,8 @@ export function DebtCyclesPanel({ compact = false }: { compact?: boolean }) {
             <div className="text-[10px] text-text-tertiary mt-1">Debt as % of GDP. Hover a row for the reasoning. {d.method}</div>
           </Panel>
           {!compact && <Panel title="Total debt (private + government), % of GDP">
-            <LineChart rows={d.history} x="date" height={220} fmt={(v) => `${v.toFixed(0)}%`}
-              lines={[['US', 'United States'], ['CN', 'China'], ['JP', 'Japan'], ['XM', 'Euro area'], ['GB', 'United Kingdom']].map(([k, l], i) => ({ key: k, label: l, color: COLORS[i % COLORS.length] }))} />
+            <div className="mkt-chart-surface"><LineChart rows={d.history} x="date" height={220} fmt={(v) => `${v.toFixed(0)}%`}
+              lines={[['US', 'United States'], ['CN', 'China'], ['JP', 'Japan'], ['XM', 'Euro area'], ['GB', 'United Kingdom']].map(([k, l], i) => ({ key: k, label: l, color: COLORS[i % COLORS.length] }))} /></div>
           </Panel>}
           <Ref text={d.reference} />
         </div>);
@@ -181,16 +181,16 @@ export function HolyGrailPanel({ defaultSymbols = 'SPY,EFA,EEM,TLT,IEF,TIP,LQD,H
           </>}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
             <Panel title="The Holy Grail curve — risk vs number of streams, by correlation">
-              <LineChart rows={d.curve.map((r: any) => ({ date: String(r.n), ...Object.fromEntries(Object.entries(r).filter(([k]) => k !== 'n').map(([k, v]) => [k, (v as number) * 100])) }))} x="date" height={230} controls={false} fmt={(v) => `${v.toFixed(0)}%`}
-                lines={[['rho0', 'ρ = 0'], ['rho10', 'ρ = 0.1'], ['rho20', 'ρ = 0.2'], ['rho40', 'ρ = 0.4'], ['rho60', 'ρ = 0.6']].map(([k, l], i) => ({ key: k, label: l, color: COLORS[i % COLORS.length] }))} />
+              <div className="mkt-chart-surface"><LineChart rows={d.curve.map((r: any) => ({ date: String(r.n), ...Object.fromEntries(Object.entries(r).filter(([k]) => k !== 'n').map(([k, v]) => [k, (v as number) * 100])) }))} x="date" height={230} controls={false} fmt={(v) => `${v.toFixed(0)}%`}
+                lines={[['rho0', 'ρ = 0'], ['rho10', 'ρ = 0.1'], ['rho20', 'ρ = 0.2'], ['rho40', 'ρ = 0.4'], ['rho60', 'ρ = 0.6']].map(([k, l], i) => ({ key: k, label: l, color: COLORS[i % COLORS.length] }))} /></div>
               <div className="text-[10px] text-text-tertiary mt-1">x = number of return streams, y = portfolio risk as % of one stream’s. {d.note}</div>
             </Panel>
             {d.most_correlated && <Panel title="Pairs that are really the same bet / genuine diversifiers">
-              <table className="w-full text-2xs font-mono"><tbody>
+              <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono"><tbody>
                 {d.most_correlated.map((p: any) => <tr key={p.a + p.b} className="border-t border-border-subtle first:border-0"><td className="py-0.5">{p.a} – {p.b}</td><td className="text-right text-red">{p.rho.toFixed(2)}</td></tr>)}
                 <tr><td colSpan={2} className="pt-2 text-[10px] text-text-tertiary font-sans">Least correlated</td></tr>
                 {d.least_correlated.map((p: any) => <tr key={p.a + p.b + 'l'} className="border-t border-border-subtle"><td className="py-0.5">{p.a} – {p.b}</td><td className="text-right text-green">{p.rho.toFixed(2)}</td></tr>)}
-              </tbody></table>
+              </tbody></table></div>
             </Panel>}
           </div>
           <Ref text={d.reference} />

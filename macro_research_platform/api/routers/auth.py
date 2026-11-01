@@ -49,14 +49,17 @@ async def login(request: Request):
     content_type = request.headers.get("content-type", "").lower()
     body = await request.body()
     username = password = otp = None
+    fund_id = None
     try:
         if "application/json" in content_type:
             data = json.loads(body or b"{}")
             username, password, otp = data.get("username"), data.get("password"), data.get("otp")
+            fund_id = data.get('fund')
         else:
             form = parse_qs(body.decode("utf-8"))
             username, password = form.get("username", [None])[0], form.get("password", [None])[0]
             otp = form.get("otp", [None])[0]
+            fund_id = form.get('fund', [None])[0]
     except (ValueError, UnicodeDecodeError):
         pass
     if not username or not password:
@@ -70,6 +73,11 @@ async def login(request: Request):
         return JSONResponse({"success": False, "error": e.message, "mfa_required": e.mfa_required},
                             status_code=e.status)
 
+    from api import funds
+    selected_fund = str(fund_id or funds.MAIN).strip().lower()
+    fund = await asyncio.to_thread(funds.get, selected_fund)
+    if not fund or not funds.can_open(user, fund):
+        return JSONResponse({'success': False, 'error': 'This account cannot open the selected fund.'}, status_code=403)
     role = user["role"]
     token = accounts.issue_token(user)
     perms = ROLE_PERMISSIONS.get(role, [])
@@ -80,7 +88,7 @@ async def login(request: Request):
     except Exception:
         pass
     return {
-        "success": True, "access_token": token, "token": token, "token_type": "bearer",
+        "success": True, "fund": selected_fund, "access_token": token, "token": token, "token_type": "bearer",
         "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "role": role, "display_name": user["display_name"], "permissions": perms,
         "must_change_password": bool(user.get("must_change_password")),
@@ -164,3 +172,43 @@ async def auth_me(request: Request):
     if not u:
         raise HTTPException(401, "Not authenticated")
     return {**u, "permissions": ROLE_PERMISSIONS.get(u["role"], [])}
+
+
+@router.get('/api/auth/funds')
+async def login_funds():
+    """Public login identities only: selected fund names, palette and logo availability.
+
+    Fund members, capital, holdings and operating settings remain behind authenticated routes.
+    Selecting an identity does not authorize access: login still verifies membership.
+    """
+    from api import funds, fund_store
+    from api.routers.funds import _logo_path, _logo_version
+    def collect():
+        rows = []
+        for fund in funds.list_funds():
+            token = funds.CURRENT.set(fund['id'])
+            try:
+                settings = fund_store.get_settings()
+            finally:
+                funds.CURRENT.reset(token)
+            brand = settings.get('brand') or {}
+            public_brand = {k: brand[k] for k in ('short_name','tagline','accent_dark','accent_light','bg_dark','surface_dark','secondary','band','mark_fill','word_height') if k in brand}
+            rows.append({'id': fund['id'], 'name': settings.get('fund_name') or fund['name'],
+                         'logo': _logo_path(fund['id'], 'full').exists(), 'logo_version': _logo_version(fund['id']),
+                         'brand': public_brand})
+        return {'funds': rows}
+    return await asyncio.to_thread(collect)
+
+
+@router.get('/api/auth/funds/{fund_id}/logo')
+async def login_fund_logo(fund_id: str):
+    """The public sign-in wordmark. Private logo variants still require fund membership."""
+    from fastapi.responses import FileResponse
+    from api import funds
+    from api.routers.funds import _logo_path
+    if not await asyncio.to_thread(funds.get, fund_id):
+        raise HTTPException(404, 'No login logo')
+    path = _logo_path(fund_id, 'full')
+    if not path.exists():
+        raise HTTPException(404, 'No login logo')
+    return FileResponse(path, media_type='image/png', headers={'Cache-Control': 'no-cache'})

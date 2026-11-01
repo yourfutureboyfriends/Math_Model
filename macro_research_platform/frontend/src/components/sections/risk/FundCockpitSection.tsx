@@ -28,7 +28,7 @@ const STATUS_STYLE: Record<string, string> = {
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="p-2 bg-surface-1 border border-border">
+    <div className="workspace-stat p-2 bg-surface-1 border border-border">
       <div className="text-2xs text-text-tertiary uppercase tracking-wider">{label}</div>
       <div className={`text-sm font-mono font-bold ${tone ?? 'text-text-primary'}`}>{value}</div>
     </div>
@@ -65,14 +65,14 @@ function NavTab({ ov }: { ov: any }) {
           {(tr?.history?.length ?? 0) >= 20 ? (
             <>
               <div className="text-2xs text-text-tertiary mb-1">NAV — recorded daily after the US close</div>
-              <LineChart rows={tr.history.map((h: any) => ({ date: h.date, nav: h.nav }))} x="date" height={190}
-                fmt={(v) => usd(v)} axisFmt={(v) => usd(v)} lines={[{ key: 'nav', label: 'NAV', color: '#3987e5' }]} />
+              <div className="workspace-chart"><LineChart rows={tr.history.map((h: any) => ({ date: h.date, nav: h.nav }))} x="date" height={190}
+                fmt={(v) => usd(v)} axisFmt={(v) => usd(v)} lines={[{ key: 'nav', label: 'NAV', color: '#3987e5' }]} /></div>
             </>
           ) : pf?.dates?.length > 20 ? (
             <>
               <div className="text-2xs text-amber mb-1">Pro-forma NAV — today's book held through history (hypothetical, not a track record)</div>
-              <LineChart rows={pf.dates.map((d: string, i: number) => ({ date: d, nav: pf.nav[i] }))} x="date" height={190}
-                fmt={(v) => usd(v)} axisFmt={(v) => usd(v)} lines={[{ key: 'nav', label: 'Pro-forma NAV', color: '#c98500' }]} />
+              <div className="workspace-chart"><LineChart rows={pf.dates.map((d: string, i: number) => ({ date: d, nav: pf.nav[i] }))} x="date" height={190}
+                fmt={(v) => usd(v)} axisFmt={(v) => usd(v)} lines={[{ key: 'nav', label: 'Pro-forma NAV', color: '#c98500' }]} /></div>
             </>
           ) : (
             <div className="text-xs text-text-tertiary py-6 text-center">The NAV chart appears after 20 daily snapshots.</div>
@@ -184,7 +184,7 @@ function LimitsTab({ limits, onChanged }: { limits: any; onChanged: () => void }
 
       <div className="p-3 bg-surface-1 border border-border">
         <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Pre-trade compliance check</div>
-        <div className="flex flex-wrap items-end gap-2">
+        <div className="workspace-controls flex flex-wrap items-end gap-2">
           <input value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="Ticker"
                  className="w-28 bg-surface-2 border border-border px-2 py-1 text-xs font-mono" />
           <input value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Qty (− to sell)"
@@ -257,7 +257,7 @@ function RebalanceTab() {
       <div className="grid md:grid-cols-2 gap-3">
         <div className="bg-surface-1 border border-border">
           <div className="px-3 py-1.5 text-2xs text-text-tertiary uppercase tracking-wider border-b border-border">Target portfolio</div>
-          <table className="w-full text-xs">
+          <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs">
             <thead><tr className="text-text-tertiary text-2xs">
               <th className="text-left px-3 py-1">Asset</th><th className="text-right px-2">Budget</th>
               <th className="text-right px-2">Risk share</th><th className="text-right px-3">Weight</th></tr></thead>
@@ -272,7 +272,7 @@ function RebalanceTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
         <div className="bg-surface-1 border border-border">
           <div className="px-3 py-1.5 text-2xs text-text-tertiary uppercase tracking-wider border-b border-border flex items-center">
@@ -282,7 +282,7 @@ function RebalanceTab() {
               Stage for approval
             </button>
           </div>
-          <table className="w-full text-xs">
+          <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs">
             <thead><tr className="text-text-tertiary text-2xs">
               <th className="text-left px-3 py-1">Order</th><th className="text-right px-2">Qty</th>
               <th className="text-right px-2">Notional</th><th className="text-right px-3">Cost</th></tr></thead>
@@ -300,7 +300,7 @@ function RebalanceTab() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
           {staged && <div className="px-3 py-1.5 text-2xs text-green border-t border-border">{staged}</div>}
         </div>
       </div>
@@ -386,7 +386,7 @@ function OrdersTab({ onBooked }: { onBooked: () => void }) {
             {' · '}four-eyes: a different user must approve
           </span>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
+        <div className="workspace-controls flex flex-wrap items-end gap-2">
           <input aria-label="Order ticker" placeholder="Ticker" value={ticket.symbol}
                  onChange={(e) => setTicket({ ...ticket, symbol: e.target.value })} className={`w-24 ${input}`} />
           <select aria-label="Order side" value={ticket.side} onChange={(e) => setTicket({ ...ticket, side: e.target.value })}
@@ -407,7 +407,7 @@ function OrdersTab({ onBooked }: { onBooked: () => void }) {
       <div className="bg-surface-1 border border-border">
         <div className="px-3 py-1.5 text-2xs text-text-tertiary uppercase tracking-wider border-b border-border">Open orders ({open.length})</div>
         {open.length === 0 ? <div className="px-3 py-3 text-xs text-text-secondary">No open orders.</div> : (
-          <table className="w-full text-xs">
+          <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs">
             <tbody>
               {open.map((o) => (
                 <tr key={o.id} className="border-t border-border-subtle">
@@ -440,7 +440,7 @@ function OrdersTab({ onBooked }: { onBooked: () => void }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
 
@@ -453,7 +453,7 @@ function OrdersTab({ onBooked }: { onBooked: () => void }) {
             </span>
           </div>
           {!blotter?.trades?.length ? <div className="px-3 py-3 text-xs text-text-secondary">No trades booked yet.</div> : (
-            <table className="w-full text-xs">
+            <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs">
               <thead><tr className="text-text-tertiary text-2xs">
                 <th className="text-left px-3 py-1">Time</th><th className="text-left px-2">Trade</th>
                 <th className="text-right px-2">Price</th><th className="text-right px-2">Realized</th><th className="text-right px-3">Pos after</th></tr></thead>
@@ -470,13 +470,13 @@ function OrdersTab({ onBooked }: { onBooked: () => void }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
         <div className="bg-surface-1 border border-border">
           <div className="px-3 py-1.5 text-2xs text-text-tertiary uppercase tracking-wider border-b border-border">Recent decisions</div>
           {done.length === 0 ? <div className="px-3 py-3 text-xs text-text-secondary">None yet.</div> : (
-            <table className="w-full text-xs"><tbody>
+            <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs"><tbody>
               {done.map((o) => (
                 <tr key={o.id} className="border-t border-border-subtle">
                   <td className="px-3 py-1 font-mono text-text-tertiary">#{o.id}</td>
@@ -485,7 +485,7 @@ function OrdersTab({ onBooked }: { onBooked: () => void }) {
                   <td className="px-3 text-text-tertiary truncate max-w-48">{o.state_history?.[o.state_history.length - 1]?.note ?? ''}</td>
                 </tr>
               ))}
-            </tbody></table>
+            </tbody></table></div>
           )}
         </div>
       </div>
@@ -531,7 +531,7 @@ function ScorecardTab() {
       {Array.isArray(sc.signals) && (
         <div className="bg-surface-1 border border-border">
           <div className="px-3 py-1.5 text-2xs text-text-tertiary uppercase tracking-wider border-b border-border">Signals (independent 21-day windows)</div>
-          <table className="w-full text-xs"><tbody>
+          <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs"><tbody>
             {sc.signals.map((s: any) => (
               <tr key={s.label} className="border-t border-border-subtle">
                 <td className="px-3 py-1">{s.label}</td>
@@ -542,7 +542,7 @@ function ScorecardTab() {
                 <td className="px-3 text-right font-mono">Sharpe {s.sharpe ?? '—'}</td>
               </tr>
             ))}
-          </tbody></table>
+          </tbody></table></div>
           <div className="px-3 py-1.5 text-2xs text-text-tertiary border-t border-border">p &lt; 0.05 = statistically distinguishable from a coin flip.</div>
         </div>
       )}
@@ -595,7 +595,7 @@ export function FundCockpitSection() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1 mb-3">
+      <div className="workspace-controls flex flex-wrap gap-1 mb-3">
         {([['nav', 'NAV & Track Record'], ['limits', 'Risk Limits & Pre-trade'], ['rebalance', 'Rebalance'],
            ['orders', 'Orders & Blotter'], ['scorecard', 'Model Scorecard']] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}

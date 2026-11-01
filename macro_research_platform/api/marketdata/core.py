@@ -16,6 +16,7 @@ Every value comes from a provider or is absent; failures raise, never return zer
 from __future__ import annotations
 
 import logging
+from api.workflows.telemetry import count
 import math
 import threading
 import time
@@ -38,6 +39,31 @@ class Upstream(RuntimeError):
 
 
 _inflight: Dict[str, threading.Lock] = {}
+_flight_users: Dict[str, int] = {}
+
+from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
+
+_REFRESH_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="market-refresh")
+_REFRESH_SLOTS = threading.BoundedSemaphore(16)
+
+
+@contextmanager
+def _flight(key):
+    # Keep the same lock until its owner AND all queued waiters have left.
+    with _lock:
+        flight = _inflight.setdefault(key, threading.Lock())
+        _flight_users[key] = _flight_users.get(key, 0) + 1
+    try:
+        with flight:
+            yield
+    finally:
+        with _lock:
+            _flight_users[key] -= 1
+            if not _flight_users[key]:
+                _flight_users.pop(key, None)
+                _inflight.pop(key, None)
 
 
 STALE_MAX = 24 * 3600
@@ -55,6 +81,8 @@ def _refresh_later(key: str, fn: Callable[[], Any]) -> None:
     with _lock:
         if key in _refreshing:
             return
+        if not _REFRESH_SLOTS.acquire(blocking=False):
+            return
         _refreshing.add(key)
 
     def go():
@@ -65,19 +93,25 @@ def _refresh_later(key: str, fn: Callable[[], Any]) -> None:
         finally:
             with _lock:
                 _refreshing.discard(key)
-    threading.Thread(target=go, name=f"swr-{key[:40]}", daemon=True).start()
+            _REFRESH_SLOTS.release()
+    try:
+        _REFRESH_POOL.submit(copy_context().run, go)
+    except RuntimeError:
+        with _lock:
+            _refreshing.discard(key)
+        _REFRESH_SLOTS.release()
 
 
 def _fill(key: str, fn: Callable[[], Any]) -> Any:
-    """Fetch and store, single-flight per key."""
+    """Refresh one key without starting another fetch after a queued writer filled it."""
     with _lock:
-        flight = _inflight.setdefault(key, threading.Lock())
-    with flight:
-        try:
-            val = fn()
-        finally:
-            with _lock:
-                _inflight.pop(key, None)
+        before = _cache.get(key)
+    with _flight(key):
+        with _lock:
+            current = _cache.get(key)
+            if current is not before and current is not None:
+                return current[1]
+        val = fn()
         _disk_save(key, val)
         with _lock:
             _cache[key] = (time.time(), val)
@@ -142,23 +176,26 @@ def _cached(key: str, ttl: float, fn: Callable[[], Any]) -> Any:
             return {**v, "stale": True, "stale_age_s": int(time.time() - hit[0])} if isinstance(v, dict) else v
     with _lock:
         if hit and time.time() - hit[0] < ttl:
+            count('market_cache.hit')
             return hit[1]
         swr = bool(hit) and ttl >= SWR_MIN_TTL and time.time() - hit[0] < SWR_FACTOR * ttl
     if swr:
+        count('market_cache.stale_served')
         _refresh_later(key, fn)
-        return hit[1]
-    with _lock:
-        flight = _inflight.setdefault(key, threading.Lock())
-    with flight:
+        v = hit[1]
+        return {**v, "stale": True, "stale_age_s": int(time.time() - hit[0])} if isinstance(v, dict) else v
+    with _flight(key):
         with _lock:                                  # filled while we waited?
             hit = _cache.get(key)
             if hit and time.time() - hit[0] < ttl:
                 return hit[1]
         try:
+            count('market_cache.fetch')
             val = fn()
         except NotFound:
             raise
         except Exception as e:
+            count('market_cache.provider_error')
             # the provider failed (rate limit, outage, timeout): serve the last good value if it is
             # under a day old, marked stale, rather than turning a working screen into an error
             with _lock:
@@ -168,9 +205,6 @@ def _cached(key: str, ttl: float, fn: Callable[[], Any]) -> Any:
                 v = old[1]
                 return {**v, "stale": True, "stale_age_s": int(time.time() - old[0])} if isinstance(v, dict) else v
             raise
-        finally:
-            with _lock:
-                _inflight.pop(key, None)
         _disk_save(key, val)
         with _lock:
             _cache[key] = (time.time(), val)

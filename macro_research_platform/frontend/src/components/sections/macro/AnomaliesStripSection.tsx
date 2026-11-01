@@ -58,7 +58,7 @@ export function AnomaliesStripSection() {
       {!loading && reason && <div className="p-2 text-2xs text-amber">Unavailable — {reason}</div>}
 
       {data && (
-        <div className="flex flex-wrap gap-2">
+        <div className="workspace-controls flex flex-wrap gap-2">
           {(flagged.length ? flagged : metrics.slice(0, 4)).map((m: any) => (
             <div key={m.ticker}
               className={`flex items-center gap-2 px-2 py-1.5 border text-xs ${m.is_anomalous ? 'border-amber/40 bg-amber-dim' : 'border-border bg-surface-1'}`}>

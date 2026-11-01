@@ -1,13 +1,16 @@
 // MAP — every country coloured by markets, economy, policy or risk. Markets: USD country-ETF
 // returns, local indices, currencies, 10-year yields. Economy: IMF World Economic Outlook.
 // Policy: the Research mode's central-bank model. Risk: Damodaran sovereign ratings and
-// country risk premiums. Wheel/drag to zoom and pan, region presets, ranking, country panel.
+// country risk premiums. Cached cartography, region presets, ranking and country details.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { countryPaths, NUMERIC_TO_ISO2 as FALLBACK_NUMERIC, projectPoint, type Topology } from '@/lib/topo';
+import { NUMERIC_TO_ISO2 as FALLBACK_NUMERIC, type Topology } from '@/lib/topo';
 import { Chg, ErrorBox, fmtPct, fmtPrice, Loading, useJSON } from './shared';
 import { Globe3D } from './Globe3D';
 import { LiveTV } from './LiveTV';
+import { EXCHANGES, exchangeById } from './exchanges';
+import { atlasGeometry } from './atlasGeometry';
+import { AtlasMap2D, type AtlasMapHandle } from './AtlasMap2D';
 
 type Fmt = 'pct' | 'pctpt' | 'pp' | 'bp' | 'usd' | 'ratio';
 type Layer = { key: string; group: 'Markets' | 'Economy' | 'Policy' | 'Risk'; label: string; get: (c: any) => number | null | undefined;
@@ -46,6 +49,14 @@ const REGIONS: [string, [number, number, number, number]][] = [
 ];
 
 let topoCache: Topology | null = null;
+let topoRequest: Promise<Topology> | null = null;
+function loadTopology() {
+  if (topoCache) return Promise.resolve(topoCache);
+  if (!topoRequest) topoRequest=fetch('/world-atlas/countries-50m.json').then(r=>{
+    if(!r.ok)throw new Error('Map geometry unavailable');return r.json();
+  }).then((t:Topology)=>{topoCache=t;return t;}).catch(e=>{topoRequest=null;throw e;});
+  return topoRequest;
+}
 
 function fmtVal(v: number | null | undefined, f: Fmt, signed = false) {
   if (v == null || !Number.isFinite(v)) return 'no data';
@@ -65,32 +76,25 @@ export function WorldMap({ onOpen, onGo }: { onOpen: (s: string) => void; onGo?:
   const [hover, setHover] = useState<{ iso: string; name: string; x: number; y: number } | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [mode, setMode] = useState<'2d' | '3d'>(() => { try { return (localStorage.getItem('mkt_map_mode') as any) || '2d'; } catch { return '2d'; } });
+  const [mode, setMode] = useState<'2d' | '3d'>(() => { try { return localStorage.getItem('mkt_map_mode') === '3d' ? '3d' : '2d'; } catch { return '2d'; } });
   useEffect(() => { try { localStorage.setItem('mkt_map_mode', mode); } catch { /* storage unavailable */ } }, [mode]);
-  const [tour, setTour] = useState(false);
-  // auto-tour: step through every layer (a slow "screensaver" of the world's numbers)
-  useEffect(() => {
-    if (!tour) return;
-    const t = setInterval(() => setLayer((cur) => { const n = L[(L.indexOf(cur) + 1) % L.length]; setGroup(n.group); return n; }), 6000);
-    return () => clearInterval(t);
-  }, [tour]);
+  const [showLabels,setShowLabels]=useState(false);
+  const [showExchanges,setShowExchanges]=useState(true);
+  const [exchangeId,setExchangeId]=useState<string|null>(null);
+  const selectedExchange=exchangeById(exchangeId);
+  const [coverage,setCoverage]=useState(false);
+  const mapRef=useRef<AtlasMapHandle>(null);
+  const [topoError,setTopoError]=useState('');
+  const [retry,setRetry]=useState(0);
   const world = useJSON<any>('/api/v1/mkt/map/world', 600_000);
   const macro = useJSON<any>('/api/v1/global-macro', 3_600_000);
-  const box = useRef<HTMLDivElement>(null);
-  const [W, setW] = useState(1100);
-  const [view, setView] = useState<{ x: number; y: number; k: number }>({ x: 0, y: 0, k: 1 });
-  const drag = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
-
   useEffect(() => {
-    if (!topo) fetch('/world-atlas/countries-50m.json').then((r) => r.json()).then((t) => { topoCache = t; setTopo(t); }).catch(() => {});
-  }, [topo]);
-  useEffect(() => {
-    const el = box.current; if (!el) return;
-    const ro = new ResizeObserver(([e]) => setW(Math.max(360, Math.round(e.contentRect.width))));
-    ro.observe(el); return () => ro.disconnect();
-  }, []);
-  const geo = useMemo(() => (topo ? countryPaths(topo, W) : null), [topo, W]);
-  const H = geo?.height ?? W * 0.487;
+    if(topo)return;
+    let active=true;
+    loadTopology().then(t=>{if(active)setTopo(t);}).catch(()=>{if(active)setTopoError('Unable to load map geometry.');});
+    return()=>{active=false;};
+  },[topo,retry]);
+  const geo=useMemo(()=>topo?atlasGeometry(topo):null,[topo]);
   const numToIso: Record<string, string> = world.data?.numeric_to_iso2 ?? FALLBACK_NUMERIC;
 
   // merged record per ISO-2: world data + Research-mode policy model
@@ -115,202 +119,48 @@ export function WorldMap({ onOpen, onGo }: { onOpen: (s: string) => void; onGo?:
     if (layer.diverging) { const m = Math.max(Math.abs(q(0.05)), Math.abs(q(0.95))) || 1; return { lo: -m, hi: m }; }
     return { lo: q(0.05), hi: q(0.95) > q(0.05) ? q(0.95) : q(0.05) + 1 };
   }, [values, layer]);
-  const color = (v: number | null | undefined) => {
-    if (v == null || !Number.isFinite(v)) return 'rgb(var(--c-surface-3))';
-    if (layer.diverging) {
-      // square-root ramp with a visible floor: small moves still read as tinted, not as "no data"
-      const a = 0.25 + 0.72 * Math.sqrt(Math.min(1, Math.abs(v) / scale.hi));
-      const good = layer.goodHigh ? v >= 0 : v <= 0;
-      return good ? `rgb(var(--c-green) / ${a})` : `rgb(var(--c-red) / ${a})`;
-    }
-    const t = Math.min(1, Math.max(0, (v - scale.lo) / (scale.hi - scale.lo)));
-    return `rgb(var(--c-bloomberg) / ${0.2 + t * 0.78})`;
-  };
-  const ranked = useMemo(() => [...values].sort((a, b) => b[1] - a[1]), [values]);
-  const pulses = useMemo(() => (layer.diverging && ranked.length > 8
-    ? [...ranked.slice(0, 3).map(([iso, v]) => ({ iso, good: layer.goodHigh ? v >= 0 : v <= 0 })),
-       ...ranked.slice(-3).map(([iso, v]) => ({ iso, good: layer.goodHigh ? v >= 0 : v <= 0 }))]
-    : []), [ranked, layer]);
-  // meridians and parallels every 30°, as polylines in the map's projection
-  const graticule = useMemo(() => {
-    const seg = (pts: [number, number][]) => pts.map(([lo, la], i) => { const [x, y] = projectPoint(lo, la, W); return `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`; }).join('');
-    const out: string[] = [];
-    for (let lo = -180; lo <= 180; lo += 30) out.push(seg(Array.from({ length: 37 }, (_, i) => [lo, -90 + i * 5] as [number, number])));
-    for (let la = -60; la <= 60; la += 30) out.push(seg(Array.from({ length: 73 }, (_, i) => [-180 + i * 5, la] as [number, number])));
-    return out.join('');
-  }, [W]);
-
-  const zoomTo = (b: [number, number, number, number]) => {
-    const [x0, y0] = projectPoint(b[0], b[3], W), [x1, y1] = projectPoint(b[2], b[1], W);
-    const k = Math.min(8, Math.max(1, Math.min(W / Math.max(1, x1 - x0), H / Math.max(1, y1 - y0))));
-    setView({ k, x: -(x0 + x1) / 2 * k + W / 2, y: -(y0 + y1) / 2 * k + H / 2 });
-  };
-  const zoomBy = (f: number, cx = W / 2, cy = H / 2) => setView((v) => {
-    const k = Math.min(12, Math.max(1, v.k * f));
-    const r = k / v.k;
-    return k === 1 ? { x: 0, y: 0, k } : { k, x: cx - (cx - v.x) * r, y: cy - (cy - v.y) * r };
-  });
-  // wheel zoom (non-passive so the page doesn't scroll while zooming the map)
-  useEffect(() => {
-    const el = box.current?.querySelector('svg'); if (!el) return;
-    const h = (e: WheelEvent) => {
-      e.preventDefault();
-      const r = (el as SVGSVGElement).getBoundingClientRect();
-      zoomBy(e.deltaY < 0 ? 1.25 : 0.8, (e.clientX - r.left) * (W / r.width), (e.clientY - r.top) * (H / r.height));
-    };
-    el.addEventListener('wheel', h, { passive: false });
-    return () => el.removeEventListener('wheel', h);
-  });
-
+  const fills=useMemo(()=>Object.fromEntries(values.map(([iso,v])=>{
+    const mix=(a:number[],b:number[],t:number)=>`rgb(${a.map((n,i)=>Math.round(n+(b[i]-n)*t)).join(',')})`;
+    const t=layer.diverging?Math.min(1,Math.abs(v)/scale.hi):Math.max(0,Math.min(1,(v-scale.lo)/(scale.hi-scale.lo)));
+    return [iso,mix([49,66,85],layer.diverging?(v<0?[219,151,83]:[68,184,179]):[79,166,213],t)];
+  })),[values,layer,scale]);
+  const labels=useMemo(()=>Object.fromEntries(values.map(([iso,v])=>[iso,fmtVal(v,layer.fmt,layer.diverging)])),[values,layer]);
+  const ranked=useMemo(()=>[...values].sort((a,b)=>b[1]-a[1]),[values]);
   const selRec = sel ? data[sel] : null;
   const selName = sel ? (selRec?.name ?? geo?.shapes.find((s) => numToIso[s.id] === sel)?.name ?? sel) : null;
   const found = query.trim().length > 1 ? Object.entries(data).filter(([iso, c]) => (c.name ?? '').toLowerCase().includes(query.trim().toLowerCase()) || iso === query.trim().toUpperCase()).slice(0, 6) : [];
-  const select = (iso: string) => {
-    setSel(iso); setQuery('');
-    const shape = geo?.shapes.find((s) => numToIso[s.id] === iso);
-    if (shape && view.k < 2.5) {
-      const k = 3;
-      setView({ k, x: -shape.centroid[0] * k + W / 2, y: -shape.centroid[1] * k + H / 2 });
-    }
-  };
-  const loading = !geo || (world.loading && !world.data);
-
-  return (
-    <div className="space-y-2">
-      {/* layer picker: groups, then layers */}
-      <div className="flex flex-wrap items-center gap-1">
-        {GROUPS.map((g) => (
-          <button key={g} onClick={() => { setGroup(g); setLayer(L.find((l) => l.group === g)!); }}
-            className={cn('px-2.5 py-1 text-[11px] uppercase tracking-wide border', group === g ? 'bg-bloomberg text-black border-bloomberg font-semibold' : 'border-border text-text-secondary hover:text-text-primary')}>{g}</button>))}
-        <span className="mx-1 text-text-tertiary">|</span>
-        {L.filter((l) => l.group === group).map((l) => (
-          <button key={l.key} onClick={() => setLayer(l)} title={l.help}
-            className={cn('px-2.5 py-1 text-xs border', layer.key === l.key ? 'border-bloomberg text-text-primary font-semibold bg-bloomberg/10' : 'border-border text-text-secondary hover:text-text-primary')}>{l.label}</button>))}
-      </div>
-      <div className="grid grid-cols-1 2xl:grid-cols-[1fr_320px] gap-2">
-        <div className="space-y-2 min-w-0">
-          <div className="flex flex-wrap items-center gap-1 text-[11px]">
-            {mode === '2d' && REGIONS.map(([name, b]) => (
-              <button key={name} onClick={() => (name === 'World' ? setView({ x: 0, y: 0, k: 1 }) : zoomTo(b))} className="px-2 py-0.5 border border-border text-text-secondary hover:text-bloomberg hover:border-bloomberg">{name}</button>))}
-            {mode === '2d' && <><button onClick={() => zoomBy(1.4)} aria-label="Zoom in" className="px-2 py-0.5 border border-border hover:border-bloomberg">+</button>
-            <button onClick={() => zoomBy(1 / 1.4)} aria-label="Zoom out" className="px-2 py-0.5 border border-border hover:border-bloomberg">−</button></>}
-            <span className="mx-1 text-text-tertiary">|</span>
-            {(['2d', '3d'] as const).map((m) => <button key={m} onClick={() => setMode(m)} aria-pressed={mode === m}
-              className={cn('px-2 py-0.5 border font-mono', mode === m ? 'border-bloomberg text-bloomberg bg-bloomberg/10' : 'border-border text-text-secondary hover:text-text-primary')}>{m === '2d' ? '2D map' : '3D globe'}</button>)}
-            <button onClick={() => setTour((t) => !t)} title="Step through every layer automatically" aria-pressed={tour}
-              className={cn('px-2 py-0.5 border', tour ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary hover:text-text-primary')}>{tour ? '❚❚ Tour' : '▶ Tour'}</button>
-            <div className="relative ml-auto">
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a country…" aria-label="Find a country"
-                className="w-44 bg-surface-1 border border-border px-2 py-0.5 text-xs text-text-primary placeholder:text-text-tertiary" />
-              {found.length > 0 && (
-                <ul className="absolute right-0 z-20 mt-1 w-56 bg-surface-1 border border-border shadow-lg">
-                  {found.map(([iso, c]) => <li key={iso}><button onClick={() => select(iso)} className="w-full text-left px-2 py-1 text-xs hover:bg-surface-3">{c.name} <span className="text-text-tertiary">{iso}</span></button></li>)}
-                </ul>)}
-            </div>
-          </div>
-          <div ref={box} className="relative bg-surface-1 border border-border min-w-0 overflow-hidden select-none"
-            onMouseDown={(e) => { drag.current = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false }; }}
-            onMouseMove={(e) => {
-              const d = drag.current; if (!d || view.k === 1) return;
-              const r = box.current!.getBoundingClientRect(), s = W / r.width;
-              if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 3) d.moved = true;
-              setView((v) => ({ ...v, x: d.vx + (e.clientX - d.x) * s, y: d.vy + (e.clientY - d.y) * s }));
-            }}
-            onMouseUp={() => { setTimeout(() => { drag.current = null; }, 0); }} onMouseLeave={() => { drag.current = null; setHover(null); }}>
-            {loading && <Loading label="Drawing the map…" />}
-            {world.error && !world.data && <ErrorBox msg={world.error} />}
-            {geo && mode === '3d' && topo && (
-              <Globe3D topo={topo} numToIso={numToIso} height={Math.max(420, Math.min(680, Math.round(W * 0.6)))} selected={sel}
-                fill={(iso) => color(iso && data[iso] ? layer.get(data[iso]) : null)} onSelect={(iso) => setSel(iso)} onHover={setHover} />
-            )}
-            {geo && mode === '2d' && (
-              <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label={`World map: ${layer.label}`} className={view.k > 1 ? 'cursor-grab' : ''}>
-                <defs>
-                  <radialGradient id="mkt-ocean" cx="45%" cy="40%" r="75%"><stop offset="0%" stopColor="rgb(var(--c-surface-2))" /><stop offset="100%" stopColor="rgb(var(--c-surface-1))" /></radialGradient>
-                </defs>
-                <rect x={0} y={0} width={W} height={H} fill="url(#mkt-ocean)" />
-                <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
-                  <path d={graticule} fill="none" stroke="rgb(var(--c-border) / 0.35)" strokeWidth={0.5 / view.k} pointerEvents="none" />
-                  {geo.shapes.map((s) => {
-                    const iso = numToIso[s.id];
-                    const v = iso && data[iso] ? layer.get(data[iso]) : null;
-                    return <path key={s.id + s.name} d={s.path} data-iso={iso} aria-label={s.name} fill={color(v)} stroke="rgb(var(--c-bg))" strokeWidth={0.5 / view.k}
-                      className={cn(iso && 'cursor-pointer hover:opacity-80')}
-                      style={{ transition: 'fill 700ms ease', ...(sel && iso === sel ? { stroke: 'rgb(var(--c-text-primary))', strokeWidth: 1.6 / view.k } : {}) }}
-                      onMouseMove={(e) => { const r = box.current!.getBoundingClientRect(); setHover({ iso: iso ?? '', name: data[iso]?.name ?? s.name, x: e.clientX - r.left, y: e.clientY - r.top }); }}
-                      onClick={() => { if (!drag.current?.moved && iso) setSel(iso); }} />;
-                  })}
-                  {/* value labels for the larger countries (more appear as you zoom in) */}
-                  {geo.shapes.map((s) => {
-                    const iso = numToIso[s.id]; if (!iso || !data[iso]) return null;
-                    const v = layer.get(data[iso]); if (v == null || !Number.isFinite(v)) return null;
-                    const area = s.area ?? 0;
-                    if (area * view.k * view.k < 900) return null;
-                    return <text key={`t${s.id}`} x={s.centroid[0]} y={s.centroid[1]} textAnchor="middle" dominantBaseline="middle" pointerEvents="none"
-                      style={{ fontSize: 9 / view.k, fill: 'rgb(var(--c-text-primary))', paintOrder: 'stroke', stroke: 'rgb(var(--c-bg) / 0.7)', strokeWidth: 2 / view.k }}>
-                      {fmtVal(v, layer.fmt, layer.diverging)}</text>;
-                  })}
-                  {/* gentle pulses on the day's extremes (top and bottom three) */}
-                  {pulses.map(({ iso, good }) => {
-                    const sh = geo.shapes.find((s) => numToIso[s.id] === iso); if (!sh) return null;
-                    const c = good ? 'rgb(var(--c-green))' : 'rgb(var(--c-red))';
-                    return <g key={`p${iso}`} pointerEvents="none">
-                      <circle cx={sh.centroid[0]} cy={sh.centroid[1]} r={3 / view.k} fill={c} />
-                      <circle cx={sh.centroid[0]} cy={sh.centroid[1]} r={3 / view.k} fill="none" stroke={c} strokeWidth={1.2 / view.k}>
-                        <animate attributeName="r" from={3 / view.k} to={16 / view.k} dur="2.4s" repeatCount="indefinite" />
-                        <animate attributeName="opacity" from="0.8" to="0" dur="2.4s" repeatCount="indefinite" />
-                      </circle></g>;
-                  })}
-                </g>
-              </svg>
-            )}
-            {hover && (
-              <div className="pointer-events-none absolute z-10 px-2.5 py-1.5 bg-surface-2 border border-border shadow-lg text-xs" style={{ left: Math.min(hover.x + 12, (box.current?.clientWidth ?? W) - 200), top: hover.y + 12 }}>
-                <div className="font-semibold text-text-primary">{hover.name}</div>
-                <div className="text-text-secondary">{layer.label}: <span className="font-mono text-text-primary">{hover.iso && data[hover.iso] ? fmtVal(layer.get(data[hover.iso]), layer.fmt, layer.diverging) : 'no data'}</span></div>
-              </div>
-            )}
-          </div>
-          {/* legend */}
-          <div className="flex flex-wrap items-center gap-3 text-[10px] text-text-tertiary">
-            <span className="font-mono">{fmtVal(scale.lo, layer.fmt, layer.diverging)}</span>
-            <span className="h-2 w-48 border border-border" style={{ background: layer.diverging
-              ? `linear-gradient(90deg, rgb(var(--c-${layer.goodHigh ? 'red' : 'green'})), rgb(var(--c-surface-3)), rgb(var(--c-${layer.goodHigh ? 'green' : 'red'})))`
-              : 'linear-gradient(90deg, rgb(var(--c-bloomberg) / 0.12), rgb(var(--c-bloomberg)))' }} />
-            <span className="font-mono">{fmtVal(scale.hi, layer.fmt, layer.diverging)}</span>
-            <span>{layer.help}</span>
-            <span className="ml-auto">{values.length} countries with data · wheel to zoom, drag to pan</span>
-          </div>
-        </div>
-
-        {/* right column: country panel + ranking */}
-        <div className="space-y-2">
-          <div className="bg-surface-1 border border-border p-3 space-y-2 text-xs">
-            {!sel || !selRec ? <p className="text-text-tertiary">Click a country (or search) for its markets, economy and risk.</p> : (
-              <CountryPanel iso={sel} name={selName!} c={selRec} onOpen={onOpen} onGo={onGo} />
-            )}
-          </div>
-          <div className="bg-surface-1 border border-border">
-            <div className="panel-bar px-2 h-6 flex items-center text-[11px] uppercase tracking-wide"><span className="text-bloomberg font-semibold">{layer.label} — ranking</span></div>
-            <div className="grid grid-cols-2 gap-x-2 p-1 text-[11px]">
-              {[['Highest', ranked.slice(0, 10)], ['Lowest', ranked.slice(-10).reverse()]].map(([t, rows]) => (
-                <div key={t as string}>
-                  <div className="px-1 text-text-tertiary">{t as string}</div>
-                  {(rows as [string, number][]).map(([iso, v], i) => (
-                    <button key={iso} onClick={() => select(iso)} className={cn('w-full flex justify-between px-1 hover:bg-surface-3', iso === sel && 'bg-surface-3')}>
-                      <span className="truncate text-text-primary"><span className="text-bloomberg mr-1">{i + 1}</span>{data[iso]?.name ?? iso}</span>
-                      <span className="font-mono text-text-secondary">{fmtVal(v, layer.fmt, layer.diverging)}</span></button>))}
-                </div>))}
-            </div>
-          </div>
-        </div>
-      </div>
-      <LiveTV iso={sel} name={selName} region={selRec?.region ?? null} />
-      <div className="text-[10px] text-text-tertiary">
-        {world.data ? Object.values<string>(world.data.sources).join(' · ') : ''}{macro.data ? ' · Policy: Macro area Global Macro (BIS, OECD, FRED, national sources)' : ''} · Map: Natural Earth via world-atlas, Equal Earth projection (2D) and orthographic globe (3D).
-      </div>
+  const select=(iso:string)=>{setSel(iso);setExchangeId(null);setQuery('');};
+  const selectExchange=(id:string)=>{const e=exchangeById(id);if(e){setExchangeId(id);setSel(e.iso);setQuery('');setShowExchanges(true);}};
+  return <div className="world-atlas space-y-3">
+    <header className="atlas-heading"><div><div className="atlas-eyebrow">GLOBAL MARKETS / ATLAS</div><h2>World in perspective</h2><p>{layer.help}</p></div><span className="atlas-coverage">{values.length} economies · {layer.label}</span></header>
+    <div className="atlas-toolbar">
+      <div className="atlas-segments">{GROUPS.map(g=><button key={g} aria-pressed={group===g} onClick={()=>{setGroup(g);setLayer(L.find(l=>l.group===g)!);}}>{g}</button>)}</div>
+      <select aria-label="Map data layer" value={layer.key} onChange={e=>setLayer(L.find(l=>l.key===e.target.value)!)}>{L.filter(l=>l.group===group).map(l=><option key={l.key} value={l.key}>{l.label}</option>)}</select>
+      <div className="relative ml-auto"><input aria-label="Find a country" placeholder="Find country or ISO code…" value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&found[0])select(found[0][0]);if(e.key==='Escape')setQuery('');}}/>
+      {found.length>0&&<ul className="atlas-results">{found.map(([iso,c])=><li key={iso}><button onClick={()=>select(iso)}>{c.name} <span>{iso}</span></button></li>)}</ul>}</div>
     </div>
-  );
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-3">
+      <div className="min-w-0"><div className="atlas-stage">
+        <div className="atlas-map-controls"><div className="atlas-segments">{(['2d','3d'] as const).map(m=><button key={m} aria-pressed={mode===m} onClick={()=>{setMode(m);setHover(null);}}>{m==='2d'?'Map':'Globe'}</button>)}</div>
+        {mode==='2d'&&<><select aria-label="Map region" defaultValue="World" onChange={e=>{const r=REGIONS.find(r=>r[0]===e.target.value)!;if(r[0]==='World')mapRef.current?.reset();else mapRef.current?.region(r[1]);}}>{REGIONS.map(([n])=><option key={n}>{n}</option>)}</select><button aria-label="Zoom in" onClick={()=>mapRef.current?.zoom(1.4)}>+</button><button aria-label="Zoom out" onClick={()=>mapRef.current?.zoom(1/1.4)}>−</button><button onClick={()=>{mapRef.current?.reset();setExchangeId(null);setSel(null);}}>Reset</button><label><input type="checkbox" checked={showLabels} onChange={e=>setShowLabels(e.target.checked)}/> Values</label></>}
+        <label><input type="checkbox" checked={showExchanges} onChange={e=>setShowExchanges(e.target.checked)}/> Exchanges</label>
+        <select aria-label="Locate stock exchange" value={exchangeId??''} onChange={e=>{if(e.target.value)selectExchange(e.target.value);else setExchangeId(null);}}><option value="">Locate exchange…</option>{EXCHANGES.map(e=><option key={e.id} value={e.id}>{e.city} · {e.label}</option>)}</select>
+        </div>
+        {!geo&&!topoError&&<Loading label="Loading atlas…"/>}{topoError&&<div className="p-3"><ErrorBox msg={topoError}/><button className="mt-2 text-xs underline" onClick={()=>{setTopoError('');setRetry(n=>n+1);}}>Retry map</button></div>}{world.error&&!world.data&&<ErrorBox msg={world.error}/>}
+        {geo&&mode==='2d'&&<AtlasMap2D ref={mapRef} showExchanges={showExchanges} focusedExchange={exchangeId} onExchange={selectExchange} geo={geo} numToIso={numToIso} fills={fills} selected={sel} labels={labels} showLabels={showLabels} title={`World map: ${layer.label}`} onSelect={select} onHover={setHover}/>}
+        {geo&&topo&&mode==='3d'&&<Globe3D onReset={()=>{setExchangeId(null);setSel(null);}} showExchanges={showExchanges} focusedExchange={exchangeId} onExchange={selectExchange} topo={topo} numToIso={numToIso} height={460} selected={sel} fill={iso=>iso?fills[iso]??'#263444':'#263444'} onSelect={select} onHover={setHover}/>}
+        {hover&&<div className="atlas-tooltip"><strong>{hover.name}</strong><span>{layer.label} <b>{labels[hover.iso]??'No data'}</b></span></div>}
+        <div className="atlas-map-caption">{mode==='2d'?'EQUAL EARTH':'ORTHOGRAPHIC'} / {mode==='2d'?'Drag to pan · Ctrl/⌘ + scroll to zoom':'Drag to rotate · Ctrl/⌘ + scroll to zoom'}</div>
+      </div>
+      <div className="atlas-legend"><span>{fmtVal(scale.lo,layer.fmt,layer.diverging)}</span><i style={{background:layer.diverging?'linear-gradient(90deg,#db9753,#314255,#44b8b3)':'linear-gradient(90deg,#314255,#4fa6d5)'}}/><span>{fmtVal(scale.hi,layer.fmt,layer.diverging)}</span><span className="atlas-no-data-key"/> No data</div>
+      <p className="text-[10px] text-text-tertiary mt-2">Gold dots: major exchange hubs (approximate city locations). Colour shows numeric magnitude, not an investment rating. Scale: 5th–95th percentile{layer.diverging?', centred on zero':''}; extremes clipped to the colour endpoints. Select a country for exact values.</p></div>
+      <aside className="space-y-3">{selectedExchange&&<div className="atlas-panel atlas-exchange-detail"><div className="atlas-eyebrow">EXCHANGE LOCATION</div><h3>{selectedExchange.label}</h3><p>{selectedExchange.name}</p><p>{selectedExchange.city} · {selectedExchange.iso} · city-level marker</p><a href={selectedExchange.url} target="_blank" rel="noopener noreferrer">Official exchange website ↗</a></div>}<div className="atlas-panel p-3 space-y-2 text-xs">{sel&&selRec?<CountryPanel iso={sel} name={selName!} c={selRec} onOpen={onOpen} onGo={onGo}/>:<div className="atlas-empty"><span>◎</span><h3>Explore an economy</h3><p>Select a country to inspect its markets, fundamentals and sovereign risk.</p></div>}</div>
+      <div className="atlas-panel"><div className="px-3 py-2 text-xs font-semibold border-b border-border">{layer.label} · cross-country range</div><div className="grid grid-cols-2 gap-2 p-2 text-[11px]">{[['Highest',ranked.slice(0,6)],['Lowest',ranked.slice(-6).reverse()]].map(([t,rows])=><div key={t as string}><div className="text-text-tertiary px-1 mb-1">{t as string}</div>{(rows as [string,number][]).map(([iso,v])=><button key={iso} onClick={()=>select(iso)} className={cn('atlas-rank',sel===iso&&'bg-surface-3')}><span>{data[iso]?.name??iso}</span><b>{fmtVal(v,layer.fmt,layer.diverging)}</b></button>)}</div>)}</div></div></aside>
+    </div>
+    <button className="atlas-coverage-toggle" aria-expanded={coverage} onClick={()=>setCoverage(v=>!v)}>{coverage?'Close live coverage':'Open live coverage'}{selName?` · ${selName}`:''}</button>
+    {coverage&&<LiveTV iso={sel} name={selName} region={selRec?.region??null}/>}
+    <div className="text-[10px] text-text-tertiary">{Object.values<string>(world.data?.sources??{}).join(' · ')}{macro.data?' · Policy: Global Macro model':''} · Geometry: Natural Earth / world-atlas.</div>
+  </div>;
 }
 
 function Row({ k, v, children }: { k: string; v?: React.ReactNode; children?: React.ReactNode }) {
@@ -326,7 +176,7 @@ function CountryPanel({ iso, name, c, onOpen, onGo }: { iso: string; name: strin
         <div className="text-base font-semibold text-text-primary">{name}</div>
         <div className="text-[11px] text-text-tertiary">{iso} · {c.currency}{c.rating ? ` · ${c.rating}` : ''}</div>
       </div>
-      <div className="flex flex-wrap gap-1">
+      <div className="mkt-controls flex flex-wrap gap-1">
         {c.index?.symbol && <button onClick={() => onOpen(c.index.symbol)} className={btn}>{c.index.label}</button>}
         {c.etf?.etf && <button onClick={() => onOpen(c.etf.etf)} className={btn}>{c.etf.etf} ETF</button>}
         {c.fx?.symbol && <button onClick={() => onOpen(c.fx.symbol)} className={btn}>USD/{c.currency}</button>}

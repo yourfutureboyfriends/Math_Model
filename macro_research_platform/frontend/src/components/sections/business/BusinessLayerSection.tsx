@@ -308,7 +308,7 @@ export const BusinessLayerSection = memo(function BusinessLayerSection() {
             </button>
             {expandedSections.signalScorecard && (
               <div className="p-2">
-                <table className="w-full">
+                <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full">
                   <thead>
                     <tr className="border-b border-border-subtle">
                       <th className="text-left py-1.5 px-2 text-2xs text-text-tertiary uppercase">Signal</th>
@@ -331,7 +331,7 @@ export const BusinessLayerSection = memo(function BusinessLayerSection() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               </div>
             )}
           </div>

@@ -1,17 +1,19 @@
 // Movers and a global equity screener over 22 markets (Yahoo's screener): any region(s),
 // sector, size, valuation, yield and today's move. Market caps are entered in USD and
 // converted to each market's currency by the server.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { REGION_MARKETS, useRegion } from '@/lib/region';
-import { Chg, ErrorBox, fmtBig, fmtPrice, Loading, Panel, useJSON, useSort } from './shared';
+import { Chg, ErrorBox, fmtBig, fmtPrice, Loading, MarketStatCard, EmptyState, Panel, useJSON, useSort } from './shared';
 
 const MAJOR: Record<string, string> = { GBp: 'GBP', GBX: 'GBP', ZAc: 'ZAR', ILA: 'ILS' };
 
 function Table({ rows: input, onOpen, showSector = true }: { rows: any[]; onOpen: (s: string) => void; showSector?: boolean }) {
-  const { rows, th } = useSort(input);          // click a header to sort; the server order is the default
+  const [query,setQuery]=useState('');
+  const filtered=useMemo(()=>{const terms=query.trim().toLowerCase().split(/\s+/).filter(Boolean);return input.filter(r=>terms.every(term=>[r.symbol,r.name,r.sector].join(' ').toLowerCase().includes(term)));},[input,query]);
+  const { rows, th } = useSort(filtered);          // click a header to sort; the server order is the default
   return (
-    <div className="overflow-x-auto">
+    <div><div className="mkt-results-toolbar"><span>{rows.length} of {input.length} rows · select a company to open its workstation</span><input aria-label="Filter companies on this page" placeholder="Filter this page…" value={query} onChange={e=>setQuery(e.target.value)}/></div><div className="overflow-x-auto">
       <table className="w-full text-2xs">
         <thead><tr className="text-text-tertiary">
           {th('symbol', 'Symbol', 'text-left pb-1', false)}{th('name', 'Name', 'text-left', false)}
@@ -20,7 +22,7 @@ function Table({ rows: input, onOpen, showSector = true }: { rows: any[]; onOpen
           {th('pe', 'P/E', 'text-right hidden md:table-cell')}{th('dividend_yield', 'Yield', 'text-right hidden lg:table-cell')}
           {showSector && th('sector', 'Sector', 'text-left hidden xl:table-cell pl-3', false)}</tr></thead>
         <tbody>{rows.map((r) => (
-          <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3">
+          <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
             <td className="py-1 font-mono text-text-primary">{r.symbol}</td>
             <td className="text-text-secondary max-w-[16rem] truncate" title={r.name}>{r.name}</td>
             <td className="text-right font-mono">{fmtPrice(r.price)} <span className="text-text-tertiary">{r.currency}</span></td>
@@ -32,7 +34,7 @@ function Table({ rows: input, onOpen, showSector = true }: { rows: any[]; onOpen
             {showSector && <td className="text-text-tertiary hidden xl:table-cell pl-3 truncate">{r.sector ?? ''}</td>}
           </tr>))}</tbody>
       </table>
-    </div>
+    </div>{!rows.length&&<EmptyState title="No rows match this search" detail="Clear the page search or try another company, ticker or sector."/>}</div>
   );
 }
 
@@ -43,9 +45,11 @@ export function MoversView({ onOpen }: { onOpen: (s: string) => void }) {
   useEffect(() => { setRegion(REGION_MARKETS[area][0]); }, [area]);         // follow the Markets region
   const [kind, setKind] = useState<'gainers' | 'losers' | 'active'>('gainers');
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/movers?region=${region}&kind=${kind}&count=30`, 300_000);
+  const changes=(data?.rows??[]).map((r:any)=>r.change_pct).filter((v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)).sort((a:number,b:number)=>a-b);
+  const median=changes.length?(changes[Math.floor((changes.length-1)/2)]+changes[Math.ceil((changes.length-1)/2)])/2:null;
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="mkt-controls flex flex-wrap items-center gap-2">
         <select value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Market"
           className="bg-surface-1 border border-border px-2 py-1 text-xs text-text-primary">
           {(meta.data?.regions ?? [{ id: 'us', name: 'United States' }]).map((r: any) => <option key={r.id} value={r.id}>{r.name}</option>)}
@@ -54,6 +58,7 @@ export function MoversView({ onOpen }: { onOpen: (s: string) => void }) {
           <button key={k} onClick={() => setKind(k)} className={cn('px-3 py-1 text-2xs capitalize', kind === k ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary')}>
             {k === 'active' ? 'Most active' : k}</button>))}</div>
       </div>
+      {data&&<div className="mkt-summary-grid"><MarketStatCard label="Displayed companies" value={data.rows.length} note="Current market and selected mover list"/><MarketStatCard label="Median move" value={<Chg v={median}/>} note="Median of the displayed sample"/><MarketStatCard label="Rising / falling" value={`${changes.filter((v:number)=>v>0).length} / ${changes.filter((v:number)=>v<0).length}`} note="Counts within this list, not market breadth"/></div>}
       {loading && !data ? <Loading /> : error ? <ErrorBox msg={error} /> : data && (
         <Panel title={`${data.region_name} — ${kind === 'active' ? 'most active' : `top ${kind}`} today`}>
           <Table rows={data.rows} onOpen={onOpen} />
@@ -80,7 +85,7 @@ const PRESETS: [string, Record<string, string>, string][] = [
 // Your own screens, kept in this browser (name → the form's filters)
 const SAVED_KEY = 'mkt_eqs_saved_v1';
 function loadSaved(): Record<string, Record<string, string>> {
-  try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '{}') ?? {}; } catch { return {}; }
+  try {const raw=JSON.parse(localStorage.getItem(SAVED_KEY)||'{}');if(!raw||typeof raw!=='object'||Array.isArray(raw))return {};return Object.fromEntries(Object.entries(raw).filter((entry):entry is [string,Record<string,string>]=>{const v=entry[1];return !!v&&typeof v==='object'&&!Array.isArray(v)&&Object.values(v).every(x=>typeof x==='string')&&typeof (v as Record<string,string>).regions==='string';})); } catch { return {}; }
 }
 function storeSaved(v: Record<string, Record<string, string>>) { try { localStorage.setItem(SAVED_KEY, JSON.stringify(v)); } catch { /* storage unavailable */ } }
 
@@ -98,11 +103,18 @@ export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
   const blank = { market_cap_min: '', market_cap_max: '', pe_min: '', pe_max: '', dividend_yield_min: '', change_pct_min: '' };
   const [f, setF] = useState<Record<string, string>>({ regions: REGION_MARKETS[area][0], sector: '', sort: 'market_cap', ...blank, market_cap_min: '10' });
   const [url, setUrl] = useState<string | null>(null);
+  const [applied,setApplied]=useState<Record<string,string>|null>(null);
+  const [inputError,setInputError]=useState<string|null>(null);
+  const dirty=applied!=null&&JSON.stringify(f)!==JSON.stringify(applied);
   const [offset, setOffset] = useState(0);
   const [pages, setPages] = useState<number[]>([]);        // offsets of earlier pages (for ← Prev)
   useEffect(() => { const next = { ...f, regions: REGION_MARKETS[area][0] }; setF(next); setPages([]); run(0, next); }, [area]);   // runs on open too
   const run = (off = 0, form: Record<string, string> = f) => {
     const f = form;
+    const numeric=['market_cap_min','market_cap_max','pe_min','pe_max','dividend_yield_min','change_pct_min'];
+    if(numeric.some(k=>f[k]&&!Number.isFinite(Number(f[k])))){setInputError('Use a valid number for each filter.');return;}
+    if(f.market_cap_min&&f.market_cap_max&&Number(f.market_cap_min)>Number(f.market_cap_max)||f.pe_min&&f.pe_max&&Number(f.pe_min)>Number(f.pe_max)){setInputError('A minimum cannot exceed its maximum.');return;}
+    setInputError(null);setApplied({...form});
     const p = new URLSearchParams({ regions: f.regions, sort: f.sort, size: '50', offset: String(off) });
     if (f.sort === 'pe') p.set('ascending', 'true');            // cheapest first
     if (f.sector) p.set('sector', f.sector);
@@ -124,13 +136,13 @@ export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
   };
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-1 text-xs">
+      <div className="mkt-controls flex flex-wrap items-center gap-1 text-xs">
         <span className="text-text-tertiary mr-1">Presets</span>
         {PRESETS.map(([name, p, tip]) => (
           <button key={name} onClick={() => preset(p)} title={tip} className="px-2 py-0.5 border border-border text-text-secondary hover:text-bloomberg hover:border-bloomberg">{name}</button>))}
         <span className="text-text-tertiary ml-1">(in the market selected below)</span>
       </div>
-      {Object.keys(saved).length > 0 && <div className="flex flex-wrap items-center gap-1 text-xs">
+      {Object.keys(saved).length > 0 && <div className="mkt-controls flex flex-wrap items-center gap-1 text-xs">
         <span className="text-text-tertiary mr-1">My screens</span>
         {Object.entries(saved).map(([name, form]) => (
           <span key={name} className="inline-flex items-center border border-border">
@@ -138,13 +150,13 @@ export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
             <button onClick={() => drop(name)} title={`Delete “${name}”`} className="px-1 text-text-tertiary hover:text-red">×</button></span>))}
       </div>}
       <Panel title="Global equity screener — 22 markets">
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-11 gap-2 items-end">
-          <label className="text-[10px] uppercase text-text-tertiary col-span-2">Market
+        <div className="mkt-screen-filters grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 items-end">
+          <label className="text-[10px] uppercase text-text-tertiary col-span-2 md:col-span-1 xl:col-span-2">Market
             <select value={f.regions} onChange={set('regions')} className={inp}>
               {(meta.data?.regions ?? []).map((r: any) => <option key={r.id} value={r.id}>{r.name} ({r.currency})</option>)}
               <option value="de,fr,nl,it,es">Eurozone (DE, FR, NL, IT, ES)</option>
             </select></label>
-          <label className="text-[10px] uppercase text-text-tertiary col-span-2">Sector
+          <label className="text-[10px] uppercase text-text-tertiary col-span-2 md:col-span-1 xl:col-span-2">Sector
             <select value={f.sector} onChange={set('sector')} className={inp}><option value="">All sectors</option>
               {(meta.data?.sectors ?? []).map((s: string) => <option key={s}>{s}</option>)}</select></label>
           <label className="text-[10px] uppercase text-text-tertiary">Mkt cap ≥ $bn<input type="number" min={0} value={f.market_cap_min} onChange={set('market_cap_min')} className={inp} /></label>
@@ -166,6 +178,8 @@ export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
         <button onClick={saveAs} className="mt-3 ml-2 px-3 py-1.5 text-xs border border-border text-text-secondary hover:text-text-primary">Save screen…</button>
         <span className="ml-3 text-[10px] text-text-tertiary">Primary listings only (cross-listings such as Nvidia in Frankfurt are removed). Size filters and the cap column in USD; hover a cap for the local figure.</span>
       </Panel>
+      {inputError&&<ErrorBox msg={inputError}/>}
+      {dirty&&<div className="mkt-pending-filters" role="status"><span>Filters changed. The results below use the last applied screen.</span><button onClick={()=>{setPages([]);run(0);}}>Apply changes →</button></div>}
       {loading && <Loading label="Screening…" />}
       <ErrorBox msg={error} />
       {data && (
@@ -174,7 +188,7 @@ export function ScreenerView({ onOpen }: { onOpen: (s: string) => void }) {
             <button disabled={!pages.length} onClick={() => { const prev = pages[pages.length - 1]; setPages(pages.slice(0, -1)); run(prev); }} className="px-2 border border-border disabled:opacity-40">← Prev</button>
             <button disabled={data.next_offset == null} onClick={() => { setPages([...pages, offset]); run(data.next_offset); }} className="px-2 border border-border disabled:opacity-40">Next →</button>
           </div>}>
-          {data.rows.length ? <Table rows={data.rows} onOpen={onOpen} /> : <div className="text-2xs text-text-tertiary">No matches — loosen the filters.</div>}
+          {data.rows.length ? <Table rows={data.rows} onOpen={onOpen} /> : <EmptyState title="No companies match this screen" detail="Try widening the size or valuation range, selecting all sectors, or choosing a different market."/>}
         </Panel>
       )}
     </div>

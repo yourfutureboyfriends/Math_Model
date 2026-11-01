@@ -22,7 +22,11 @@ export type MorningBriefData = Record<string, unknown>; // schema not yet genera
 export type SignalStackData = components['schemas']['SignalStackData'];
 export type TradeIdeasResponse = components['schemas']['TradeIdeasResponse'];
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Same origin by default: in development the Vite proxy forwards /api to the backend, in production the app is
+// served with it. An absolute http://localhost:8000 made these calls cross-origin, so they failed CORS whenever the
+// frontend ran on any port but 5173 (the Macro dashboard stayed empty while proxied calls worked).
+const API_BASE_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '')
+  || (import.meta.env.MODE === 'test' ? 'http://localhost:8000' : '');   // Node tests have no page origin
 
 /**
  * Get full URL for an endpoint

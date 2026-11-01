@@ -45,7 +45,7 @@ export function QuoteHeader({ d: polled }: { d: any }) {
 export function Chart({ symbol, height = 380 }: { symbol: string; height?: number }) {
   return (
     <div className="bg-surface-1 border border-border p-2">
-      <PriceChart key={symbol} symbol={symbol} height={height} />
+      <div className="mkt-chart-surface"><PriceChart key={symbol} symbol={symbol} height={height} /></div>
     </div>
   );
 }

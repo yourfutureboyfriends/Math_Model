@@ -33,7 +33,7 @@ function Brinson() {
             <div className="text-2xs text-text-tertiary uppercase">{k}</div><div className="font-mono">{v}</div>
           </div>))}
       </div>
-      <table className="w-full text-xs">
+      <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs">
         <thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle">
           <th className="text-left font-normal py-1">Segment</th><th className="text-right font-normal">Allocation</th>
           <th className="text-right font-normal">Selection</th><th className="text-right font-normal">Interaction</th><th className="text-right font-normal">Total (bps)</th></tr></thead>
@@ -59,7 +59,7 @@ function Brinson() {
             <td className={cn('text-right font-mono', tone(d.active_return_bps))}>{bps(d.active_return_bps)}</td>
           </tr>
         </tbody>
-      </table>
+      </table></div>
       <div className="text-[10px] text-text-tertiary">{d.benchmark_label ? `${d.benchmark_label}, in ${d.currency}. ` : ''}{d.period.start} → {d.period.end} ({d.period.sessions} sessions). {d.method} {d.limitations}</div>
     </div>
   );
@@ -75,10 +75,10 @@ function TrackingError() {
         <div className="p-2 bg-surface-2 border border-border-subtle"><div className="text-2xs text-text-tertiary uppercase">Beta</div><div className="font-mono text-lg">{d.portfolio_beta}</div></div>
         <div className="p-2 bg-surface-2 border border-border-subtle"><div className="text-2xs text-text-tertiary uppercase">Net invested</div><div className="font-mono text-lg">{(d.invested_net * 100).toFixed(1)}%</div></div>
       </div>
-      <table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle"><th className="text-left font-normal py-1">Holding</th><th className="text-right font-normal">Active weight</th><th className="text-right font-normal">Share of TE</th></tr></thead>
+      <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle"><th className="text-left font-normal py-1">Holding</th><th className="text-right font-normal">Active weight</th><th className="text-right font-normal">Share of TE</th></tr></thead>
         <tbody>{Object.entries(d.active_weights).map(([s, w]: any) => (
           <tr key={s} className="border-b border-border-subtle last:border-0"><td className="py-1 font-mono">{s}</td>
-            <td className="text-right font-mono">{pct(w)}</td><td className="text-right font-mono">{d.te_contribution[s] != null ? `${(d.te_contribution[s] * 100).toFixed(1)}%` : '—'}</td></tr>))}</tbody></table>
+            <td className="text-right font-mono">{pct(w)}</td><td className="text-right font-mono">{d.te_contribution[s] != null ? `${(d.te_contribution[s] * 100).toFixed(1)}%` : '—'}</td></tr>))}</tbody></table></div>
       <div className="text-[10px] text-text-tertiary">As of {d.as_of}; 1-year daily covariance. {d.note}</div>
     </div>
   );
@@ -96,14 +96,14 @@ function Liquidity() {
         <div className="p-2 bg-surface-2 border border-border-subtle"><div className="text-2xs text-text-tertiary uppercase">LVaR 95% 1d (historical + cost)</div><div className="font-mono text-lg">{typeof var95 === 'number' ? usd(Math.abs(var95) + d.liquidity_cost_total) : '—'}</div></div>
         <div className="p-2 bg-surface-2 border border-border-subtle"><div className="text-2xs text-text-tertiary uppercase">Longest exit</div><div className="font-mono text-lg">{d.max_days_to_liquidate < 0.01 ? '< 0.01 days' : `${d.max_days_to_liquidate.toFixed(2)} days`}</div></div>
       </div>
-      <table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle">
+      <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle">
         <th className="text-left font-normal py-1">Position</th><th className="text-right font-normal">Value</th><th className="text-right font-normal">% of ADV</th>
         <th className="text-right font-normal">Days to exit</th><th className="text-right font-normal">Spread (bps)</th><th className="text-right font-normal">Cost</th></tr></thead>
         <tbody>{d.positions.map((p: any) => (
           <tr key={`${p.symbol}-${p.book}`} className="border-b border-border-subtle last:border-0"><td className="py-1 font-mono">{p.symbol}</td>
             <td className="text-right font-mono">{usd(p.market_value)}</td><td className="text-right font-mono">{p.pct_of_adv != null ? `${p.pct_of_adv}%` : '—'}</td>
             <td className="text-right font-mono">{p.days_to_liquidate == null ? '—' : p.days_to_liquidate < 0.01 ? '< 0.01' : p.days_to_liquidate.toFixed(2)}</td>
-            <td className="text-right font-mono">{p.spread_bps ?? '—'}</td><td className="text-right font-mono">{usd(p.liquidity_cost)}</td></tr>))}</tbody></table>
+            <td className="text-right font-mono">{p.spread_bps ?? '—'}</td><td className="text-right font-mono">{usd(p.liquidity_cost)}</td></tr>))}</tbody></table></div>
       <div className="text-[10px] text-text-tertiary">{d.method}</div>
     </div>
   );
@@ -114,13 +114,13 @@ function Lots() {
   if (!d?.available) return <Unavailable d={d} />;
   return (
     <div className="space-y-2 text-xs">
-      <table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle">
+      <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle">
         <th className="text-left font-normal py-1">Symbol</th><th className="text-left font-normal">Opened</th><th className="text-right font-normal">Quantity</th>
         <th className="text-right font-normal">Cost</th><th className="text-right font-normal">Days held</th><th className="text-left font-normal pl-3">Term</th><th className="text-left font-normal">Source</th></tr></thead>
         <tbody>{Object.entries(d.lots).flatMap(([s, ls]: any) => ls.map((l: any, i: number) => (
           <tr key={`${s}-${i}`} className="border-b border-border-subtle last:border-0"><td className="py-1 font-mono">{s}</td><td>{l.date}</td>
             <td className="text-right font-mono">{l.quantity}</td><td className="text-right font-mono">{l.price}</td>
-            <td className="text-right font-mono">{l.holding_days ?? '—'}</td><td className="pl-3">{l.term ?? '—'}</td><td className="text-text-tertiary">{l.source}</td></tr>)))}</tbody></table>
+            <td className="text-right font-mono">{l.holding_days ?? '—'}</td><td className="pl-3">{l.term ?? '—'}</td><td className="text-text-tertiary">{l.source}</td></tr>)))}</tbody></table></div>
       <div className="text-[10px] text-text-tertiary">{d.method}</div>
     </div>
   );
@@ -163,7 +163,7 @@ function Ideas() {
   return (
     <div className="space-y-2 text-xs">
       <div className="text-text-secondary">{d.summary.ideas} ideas · {d.summary.with_prices} priced · hit rate {d.summary.hit_rate != null ? `${Math.round(d.summary.hit_rate * 100)}%` : '—'} · average {pct(d.summary.average_return, 1)}</div>
-      <table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle">
+      <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle">
         <th className="text-left font-normal py-1">Idea</th><th className="text-left font-normal">Proposed</th><th className="text-right font-normal">Entry</th>
         <th className="text-right font-normal">Return</th><th className="text-left font-normal pl-3">Outcome</th><th className="text-right font-normal">Best / worst</th></tr></thead>
         <tbody>{d.ideas.map((i: any) => (
@@ -173,7 +173,7 @@ function Ideas() {
             <td className="text-right font-mono">{i.entry_used ?? '—'}{i.entry_adjusted && <span className="text-amber">*</span>}</td>
             <td className={cn('text-right font-mono', tone(i.return))}>{pct(i.return, 1)}</td>
             <td className="pl-3">{i.status}{i.closed_on ? ` ${i.closed_on}` : ''}</td>
-            <td className="text-right font-mono text-text-tertiary">{pct(i.max_favourable, 1)} / {pct(i.max_adverse, 1)}</td></tr>))}</tbody></table>
+            <td className="text-right font-mono text-text-tertiary">{pct(i.max_favourable, 1)} / {pct(i.max_adverse, 1)}</td></tr>))}</tbody></table></div>
       <div className="text-[10px] text-text-tertiary">{d.method}</div>
     </div>
   );
@@ -217,7 +217,7 @@ export function PortfolioAnalyticsSection() {
           <span className="section-meta">actual holdings · vs S&amp;P 500</span>
         </div>
       </div>
-      <div className="flex flex-wrap gap-1 mb-2">
+      <div className="workspace-controls flex flex-wrap gap-1 mb-2">
         {TABS.map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)}
             className={cn('px-2 py-0.5 text-2xs border', tab === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-tertiary hover:text-text-secondary')}>{l}</button>))}

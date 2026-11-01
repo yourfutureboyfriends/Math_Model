@@ -82,7 +82,7 @@ export function TeamPositions() {
                       <span key={c} title={d.capabilities[c]} className="text-[9.5px] px-1 border border-border-subtle text-text-secondary">{d.capabilities[c]}</span>))}
                   </div>
                   <div className="text-[10px] text-text-tertiary">Workspace: {p.panels.map((x: string) => panelLabel(x)).join(' · ')}</div>
-                  <div className="flex flex-wrap gap-1 items-center pt-1 border-t border-border-subtle">
+                  <div className="workspace-controls flex flex-wrap gap-1 items-center pt-1 border-t border-border-subtle">
                     <Users className="w-3 h-3 text-text-tertiary" />
                     {p.holders.length ? p.holders.map((h: string) => (
                       <span key={h} className="text-[10px] px-1.5 bg-surface-3 rounded-sm">{h}
@@ -101,7 +101,7 @@ export function TeamPositions() {
           </div>);
       })}
       {d.can_manage && (
-        <div className="flex gap-2 flex-wrap items-center">
+        <div className="workspace-controls flex gap-2 flex-wrap items-center">
           <button className={btn} onClick={() => setEdit({ ...EMPTY })}>New position</button>
           {d.templates.map((t: string) => <button key={t} className={btn} onClick={() => act(() => call(`/api/v1/positions/templates/${t}`, 'POST'))}>Add missing {t} positions</button>)}
         </div>)}

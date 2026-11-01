@@ -5,6 +5,11 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useDesk } from '@/hooks/useDesk';
 import { applyFocus, getCollapsed, panelId, saveCollapsed, setDeskPanels, useWorkspace, workspacePanels } from '@/lib/focusMode';
+import { WorkspaceHeader } from '@/components/layout/WorkspaceHeader';
+import { navigationFor } from '@/lib/navigation';
+import { panelLabel } from '@/lib/panels';
+import { openPanel } from '@/lib/commands';
+import { isDashboardMode } from '@/lib/hubMode';
 import { WorkspaceBar } from '@/components/layout/WorkspaceBar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SectionSkeleton } from '@/components/ui/SectionSkeleton';
@@ -107,7 +112,7 @@ import {
 
 /** Fold a top-level panel to its header (the first .section-header): every node off the
  *  path from the panel to its header is hidden while folded. */
-function foldPanel(sec: HTMLElement, fold: boolean) {
+export function foldPanel(sec: HTMLElement, fold: boolean) {
   // The panel's own header: the first .section-header, else a card/brief header that leads
   // the panel (a card header further down belongs to a sub-card, not the panel).
   let head = sec.querySelector<HTMLElement>('.section-header');
@@ -121,6 +126,7 @@ function foldPanel(sec: HTMLElement, fold: boolean) {
   if (!head) { sec.removeAttribute('data-collapsed'); return; }
   head.setAttribute('data-panel-head', '');
   ensureHelpButton(head, panelId(sec));
+  ensureFoldButton(head,panelId(sec),fold);
   if (!fold) { sec.removeAttribute('data-collapsed'); return; }
   sec.setAttribute('data-collapsed', '');
   for (let node: HTMLElement = head; node !== sec && node.parentElement; node = node.parentElement) {
@@ -128,6 +134,14 @@ function foldPanel(sec: HTMLElement, fold: boolean) {
       if (sib !== node) sib.setAttribute('data-fold', '');
     }
   }
+}
+
+/** Native buttons make folding usable with Enter/Space, not just a click on the heading. */
+function ensureFoldButton(head:HTMLElement,id:string|null,fold:boolean){
+ if(!id)return;
+ let button=head.querySelector<HTMLButtonElement>(':scope > [data-fold-toggle]');
+ if(!button){button=document.createElement('button');button.type='button';button.dataset.foldToggle=id;button.className='workspace-fold-toggle';head.appendChild(button);}
+ button.setAttribute('aria-expanded',String(!fold));button.setAttribute('aria-label',`${fold?'Expand':'Collapse'} ${panelLabel(id,id)}`);const text=fold?'+':'−';if(button.textContent!==text)button.textContent=text;
 }
 
 // Every panel with an entry in PANEL_HELP gets a "?" in its header (beside the fold chevron).
@@ -204,7 +218,7 @@ export function DashboardPage() {
       return;
     }
     const head = el.closest<HTMLElement>('[data-panel-head]');
-    if (!head || el.closest('button, a, input, select, textarea, label, [role="button"], [role="tab"]')) return;
+    if(!head||!el.closest('[data-fold-toggle]')&&el.closest('button, a, input, select, textarea, label, [role="button"], [role="tab"]'))return;
     let sec: HTMLElement | null = head;
     while (sec && sec.parentElement !== rootRef.current) sec = sec.parentElement;
     const id = sec ? panelId(sec) : null;
@@ -260,7 +274,8 @@ export function DashboardPage() {
   }
 
   return (
-    <>
+    <div className="dashboard-workspace workspace-page" data-dashboard-area={hub}>
+    <WorkspaceHeader area={isDashboardMode(hub)?hub:'macro'} context={ws==='all'?'All panels':ws==='focus'?'My focus':ws} visibleCount={visibleCount} items={navigationFor(isDashboardMode(hub)?hub:'macro').flatMap(g=>g.items.map(p=>({id:p.id,label:panelLabel(p.id,p.label),group:g.title})))} onPick={openPanel}/>
     <WorkspaceBar onCollapseAll={collapseAll} visibleCount={visibleCount} />
     {help && <PanelHelpPopover anchor={help} onClose={closeHelp} />}
     <div ref={rootRef} onClick={toggleFold}>
@@ -961,6 +976,6 @@ export function DashboardPage() {
         </WhenNear></ErrorBoundary>
       </div>
     </div>
-    </>
+    </div>
   );
 }

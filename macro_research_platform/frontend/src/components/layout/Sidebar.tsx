@@ -3,8 +3,7 @@
 
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, KeyRound, LogOut, Star } from 'lucide-react';
-import { Logo } from './Logo';
-import { FundIdentity } from './FundIdentity';
+import { SidebarIdentity } from './SidebarIdentity';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { AccountDialog } from '@/components/account/AccountPanels';
@@ -66,6 +65,7 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
     return (
       <div key={item.id} className="group relative flex items-center">
         <button
+          aria-current={isActive?'page':undefined}
           onClick={() => onNavigate?.(item.id)}
           className={cn(
             'flex-1 h-7 flex items-center transition-colors duration-150 min-w-0 rounded-md',
@@ -109,26 +109,16 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
   return (
     <div
       className={cn(
-        'h-full flex flex-col bg-surface-1',
+        'workspace-navigation h-full flex flex-col bg-surface-1',
         collapsed ? 'w-[48px] min-w-[48px]' : 'w-[224px] min-w-[224px]'
       )}
       style={{ display: 'flex', flexDirection: 'column' }}
     >
       {/* Platform ID */}
-      <div className="h-14 flex items-center px-3 border-b border-border-subtle">
-        <FundIdentity collapsed={collapsed} fallback={<>
-          <Logo currentRegime={currentRegime} />
-          {!collapsed && (
-            <>
-              <span className="ml-2 font-mono text-sm text-text-secondary">MACRO TERMINAL</span>
-              <span className="ml-1.5 text-2xs text-text-tertiary">v8.0</span>
-            </>
-          )}
-        </>} />
-      </div>
+      <SidebarIdentity collapsed={collapsed} currentRegime={currentRegime}/>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-2">
+      <nav aria-label={`${hub} pages`} className="flex-1 overflow-y-auto py-2">
         {/* Your desk — role-tailored entry points */}
         <div className="mb-1">
           {!collapsed && (

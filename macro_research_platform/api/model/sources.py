@@ -158,7 +158,9 @@ def _yahoo_fetch(tickers: List[str]) -> Dict[str, Dict[str, float]]:
 
 def yahoo_monthly(tickers: List[str], cache_name: str) -> Dict[str, pd.Series]:
     """Monthly adjusted closes (dividends reinvested) for each ticker, labelled by month start."""
-    data = _cached(f"yahoo_{cache_name}", lambda: _yahoo_fetch(tickers))
+    import hashlib
+    signature = hashlib.sha256("|".join(sorted(set(tickers))).encode()).hexdigest()[:12]
+    data = _cached(f"yahoo_{cache_name}_{signature}", lambda: _yahoo_fetch(tickers))
     return {t: to_series(v) for t, v in data.items()}
 
 

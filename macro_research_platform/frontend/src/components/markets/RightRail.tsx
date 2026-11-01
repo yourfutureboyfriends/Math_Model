@@ -1,17 +1,17 @@
 // Brokerage-style right rail: a live watchlist and the AI research assistant, always at hand.
 // Collapsible; the open tab and state are remembered per browser.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Bot, ChevronRight, List, Loader2, Send, Sparkles, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { setHubMode } from '@/lib/hubMode';
 import { openPanel } from '@/lib/commands';
-import { fmtPrice, Spark, apiError, symType } from './shared';
+import { fmtPrice, Spark, apiError, symType, useJSON, ErrorBox, Loading } from './shared';
 
 const KEY = 'mkt_rail';
 
 export function RightRail({ symbol, onOpen }: { symbol?: string; onOpen: (s: string) => void }) {
   const [state, setState] = useState<{ open: boolean; tab: 'watch' | 'ai' }>(() => {
-    try { return JSON.parse(localStorage.getItem(KEY) || '') ?? { open: true, tab: 'watch' }; } catch { return { open: true, tab: 'watch' }; }
+    try { const value=JSON.parse(localStorage.getItem(KEY)||'null');return {open:value?.open!==false,tab:value?.tab==='ai'?'ai':'watch'}; } catch { return { open: true, tab: 'watch' }; }
   });
   useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* storage unavailable */ } }, [state]);
   if (!state.open) {
@@ -37,29 +37,21 @@ export function RightRail({ symbol, onOpen }: { symbol?: string; onOpen: (s: str
 }
 
 function RailWatchlist({ current, onOpen }: { current?: string; onOpen: (s: string) => void }) {
-  const [lists, setLists] = useState<any[]>([]);
-  const [idx, setIdx] = useState(0);
-  const [quotes, setQuotes] = useState<Record<string, any>>({});
-  const load = useCallback(() => fetch('/api/v1/mkt/watchlists').then((r) => r.json()).then((j) => setLists(j.watchlists ?? [])).catch(() => {}), []);
-  useEffect(() => { load(); const t = setInterval(load, 120_000); return () => clearInterval(t); }, [load]);
-  const list = lists[Math.min(idx, lists.length - 1)];
-  useEffect(() => {
-    if (!list?.symbols?.length) return;
-    let live = true;
-    const get = () => fetch(`/api/v1/mkt/quotes?symbols=${encodeURIComponent(list.symbols.join(','))}`).then((r) => r.json())
-      .then((j) => live && setQuotes(Object.fromEntries((j.quotes ?? []).map((q: any) => [q.symbol, q])))).catch(() => {});
-    get();
-    const t = setInterval(() => document.visibilityState === 'visible' && get(), 60_000);
-    return () => { live = false; clearInterval(t); };
-  }, [list?.id, list?.symbols?.join(',')]);
-  if (!list) return <div className="p-4 text-xs text-text-tertiary">Loading…</div>;
+  const watchlists=useJSON<{watchlists:any[]}>('/api/v1/mkt/watchlists',120_000);
+  const lists=watchlists.data?.watchlists??[];
+  const [idx,setIdx]=useState(0);
+  const list=lists[Math.min(idx,lists.length-1)];
+  const liveQuotes=useJSON<{quotes:any[]}>(list?.symbols?.length?`/api/v1/mkt/quotes?symbols=${encodeURIComponent(list.symbols.join(','))}`:null,60_000);
+  const quotes:Record<string,any>=Object.fromEntries((liveQuotes.data?.quotes??[]).map(q=>[q.symbol,q]));
+  if(!list)return watchlists.error?<div className="p-3"><ErrorBox msg={watchlists.error} onRetry={watchlists.retry}/></div>:watchlists.loading?<Loading label="Loading watchlists…"/>:<div className="p-4 text-xs text-text-tertiary">No watchlists yet. <button className="underline text-bloomberg" onClick={()=>{window.location.hash='#mkt/w';}}>Create a watchlist</button></div>;
   return (
     <div className="flex flex-col h-full">
       <div className="px-3 py-2 flex items-center gap-2">
-        <select value={idx} onChange={(e) => setIdx(Number(e.target.value))} className="flex-1 bg-surface-2 border border-border rounded px-2 py-1 text-xs text-text-primary">
+        <select aria-label="Watchlist in side panel" value={idx} onChange={(e) => setIdx(Number(e.target.value))} className="flex-1 bg-surface-2 border border-border rounded px-2 py-1 text-xs text-text-primary">
           {lists.map((l, i) => <option key={l.id} value={i}>{l.name} ({l.symbols.length})</option>)}</select>
         <button onClick={() => { window.location.hash = '#mkt/w'; }} className="text-[10px] text-bloomberg hover:underline">Edit</button>
       </div>
+      {(liveQuotes.error||liveQuotes.refreshError)&&<div className="px-3 pb-2"><ErrorBox msg={liveQuotes.error??liveQuotes.refreshError} onRetry={liveQuotes.retry}/></div>}
       <ul className="flex-1 overflow-y-auto">
         {list.symbols.map((s: string) => { const q = quotes[s]; return (
           <li key={s}><button onClick={() => onOpen(s)} className={cn('w-full grid grid-cols-[1fr_auto] gap-x-2 px-3 py-2 text-left border-l-2 hover:bg-surface-2',
@@ -106,14 +98,16 @@ function Rich({ text }: { text: string }) {
 }
 
 export function AiChat({ context, compact }: { context?: string; compact?: boolean }) {
-  const [status, setStatus] = useState<any>(null);
+  const statusRequest=useJSON<any>('/api/v1/ai/status');
+  const status=statusRequest.data??(statusRequest.error?{available:false,note:statusRequest.error}:null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [deep, setDeep] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { fetch('/api/v1/ai/status').then((r) => r.json()).then(setStatus).catch(() => setStatus({ available: false, note: 'Assistant unavailable.' })); }, []);
+  const request=useRef<AbortController|null>(null),mounted=useRef(true);
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;request.current?.abort();};},[]);
   useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [turns, busy]);
   useEffect(() => { if (!busy) return; const t0 = Date.now(); const t = setInterval(() => setElapsed(Math.round((Date.now() - t0) / 1000)), 1000); return () => clearInterval(t); }, [busy]);
   // Deep mode = a larger *local* model. On Groq the default is already the strongest available model.
@@ -124,21 +118,23 @@ export function AiChat({ context, compact }: { context?: string; compact?: boole
     if (!q || busy) return;
     const next: Turn[] = [...turns, { role: 'user', content: q }];
     setTurns(next); setInput(''); setBusy(true); setElapsed(0);
+    request.current=new AbortController();
     try {
       const r = await fetch('/api/v1/ai/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: next.map(({ role, content }) => ({ role, content })), context, model: deep ? deepModel : undefined }) });
+        body: JSON.stringify({ messages: next.map(({ role, content }) => ({ role, content })), context, model: deep ? deepModel : undefined }),signal:request.current.signal });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(apiError(j, r.status));
+      if(!mounted.current)return;
       setTurns([...next, { role: 'assistant', content: j.reply, tools: j.tool_calls, citations: j.citations, meta: `${j.model} · ${j.seconds}s` }]);
     } catch (e: any) {
-      setTurns([...next, { role: 'assistant', content: `⚠ ${e.message}` }]);
-    } finally { setBusy(false); }
+      if(mounted.current)setTurns([...next,{role:'assistant',content:e.name==='AbortError'?'Request stopped.':`⚠ ${e.message}`}]);
+    } finally { if(mounted.current)setBusy(false); }
   };
   if (status && !status.available) {
     return (
       <div className="p-4 space-y-2 text-xs text-text-secondary">
         <div className="flex items-center gap-2 text-text-primary font-semibold"><Bot className="w-4 h-4" />AI assistant is not set up</div>
-        <p>{status.note}</p>
+        <p>{status.note}</p><button onClick={statusRequest.retry} className="underline text-bloomberg">Check connection again</button>
         <p className="text-text-tertiary">Free options: open the <b>Ollama</b> app (local models, nothing leaves your Mac), or add a free <b>GROQ_API_KEY</b> to the server's .env.</p>
       </div>
     );
@@ -171,13 +167,13 @@ export function AiChat({ context, compact }: { context?: string; compact?: boole
               </div>)}
             {t.meta && <div className="text-[10px] text-text-tertiary">{t.meta}</div>}
           </div>))}
-        {busy && <div className="flex items-center gap-2 text-xs text-text-tertiary"><Loader2 className="w-3.5 h-3.5 animate-spin" />Researching… {elapsed}s
+        {busy && <div className="flex items-center gap-2 text-xs text-text-tertiary"><Loader2 className="w-3.5 h-3.5 animate-spin" />Researching… {elapsed}s <button type="button" onClick={()=>request.current?.abort()} className="underline">Stop</button>
           {status?.provider === 'ollama' && <span>(local model — {deep ? 'deep mode can take a few minutes' : 'about 20–60 s'})</span>}</div>}
         <div ref={end} />
       </div>
       <form onSubmit={(e) => { e.preventDefault(); send(input); }} className="border-t border-border p-2 space-y-1.5">
         <div className="flex gap-2">
-          <textarea value={input} onChange={(e) => setInput(e.target.value)} rows={2} placeholder={context ? `Ask about ${context}…` : 'Ask about markets…'}
+          <textarea aria-label="Question for research assistant" value={input} onChange={(e) => setInput(e.target.value)} rows={2} placeholder={context ? `Ask about ${context}…` : 'Ask about markets…'}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
             className="flex-1 resize-none bg-surface-2 border border-border rounded-md px-2 py-1.5 text-xs text-text-primary outline-none focus:border-bloomberg" />
           <button disabled={busy || !input.trim()} aria-label="Send" className="self-end p-2 rounded-md bg-bloomberg text-white disabled:opacity-40"><Send className="w-3.5 h-3.5" /></button>
@@ -186,7 +182,7 @@ export function AiChat({ context, compact }: { context?: string; compact?: boole
           <span>{status ? `${status.provider === 'ollama' ? 'Local' : status.provider} · ${deep && deepModel ? deepModel : status.model}` : '…'}</span>
           {deepModel && <label className="inline-flex items-center gap-1 cursor-pointer" title="A larger local model: better reasoning, much slower">
             <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} />Deep mode</label>}
-          {turns.length > 0 && <button type="button" onClick={() => setTurns([])} className="hover:text-text-primary">Clear</button>}
+          {turns.length > 0 && <button type="button" disabled={busy} onClick={() => setTurns([])} className="hover:text-text-primary disabled:opacity-40">Clear</button>}
         </div>
       </form>
     </div>

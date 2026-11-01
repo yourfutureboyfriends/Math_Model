@@ -118,9 +118,9 @@ export function StrategyLabSection() {
           <div className="grid gap-2 xl:grid-cols-3">
             <div className="px-3 py-2 bg-surface-1 border border-border xl:col-span-2">
               <div className="text-2xs text-text-tertiary mb-1">Growth of 1 on a common window — after costs, log scale</div>
-              <LineChart rows={data.curve ?? []} x="date" height={250} log baseline={1} fmt={(x) => `${x.toFixed(2)}×`}
+              <div className="workspace-chart"><LineChart rows={data.curve ?? []} x="date" height={250} log baseline={1} fmt={(x) => `${x.toFixed(2)}×`}
                 axisFmt={(x) => `${x >= 1 ? x.toFixed(x >= 10 ? 0 : 1) : x.toFixed(2)}×`}
-                lines={[...PRIMARY, 'combined'].map((k) => ({ key: k, label: SHORT[k], color: COLOR[k] }))} />
+                lines={[...PRIMARY, 'combined'].map((k) => ({ key: k, label: SHORT[k], color: COLOR[k] }))} /></div>
             </div>
             <div className="space-y-2">
               <div className="px-3 py-2 bg-surface-1 border border-border">
@@ -132,7 +132,7 @@ export function StrategyLabSection() {
               {corr && (
                 <div className="px-3 py-2 bg-surface-1 border border-border">
                   <div className="text-2xs text-text-tertiary mb-1">Daily-return correlation (lower = more diversifying)</div>
-                  <CorrelationHeatmap labels={PRIMARY.map((k) => SHORT[k])} matrix={PRIMARY.map((a) => PRIMARY.map((b) => corr[a]?.[b] ?? null))} />
+                  <div className="workspace-chart"><CorrelationHeatmap labels={PRIMARY.map((k) => SHORT[k])} matrix={PRIMARY.map((a) => PRIMARY.map((b) => corr[a]?.[b] ?? null))} /></div>
                 </div>
               )}
             </div>
@@ -164,9 +164,9 @@ export function StrategyLabSection() {
 
           {/* Positions today */}
           <div className="border border-border">
-            <div className="flex flex-wrap items-center gap-2 px-2 py-1.5 bg-surface-1 border-b border-border">
+            <div className="workspace-controls flex flex-wrap items-center gap-2 px-2 py-1.5 bg-surface-1 border-b border-border">
               <span className="text-2xs text-text-tertiary">Positions at the latest rebalance</span>
-              <div className="flex border border-border" role="tablist" aria-label="Model">
+              <div className="flex border border-border" role="tablist" aria-label="Model" data-workspace-tabs>
                 {['trend', 'sector_momentum', 'low_vol', 'residual_momentum'].map((k) => (
                   <button key={k} role="tab" aria-selected={model === k} onClick={() => setModel(k)}
                     className={cn('px-2 py-0.5 text-2xs', model === k ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary')}>{SHORT[k]}</button>

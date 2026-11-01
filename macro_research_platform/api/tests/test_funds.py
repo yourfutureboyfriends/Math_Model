@@ -83,3 +83,29 @@ def test_cached_endpoints_answer_per_fund():
         finally:
             funds.CURRENT.reset(tok)
     assert calls == ["main", "bifs"]                    # each fund computed once, never served the other's
+
+
+def test_login_fund_branding_is_public_but_private_fields_are_not(env):
+    pm=env('pm')
+    created=pm.post('/api/v1/funds',json={'id':'brand-only','name':'Example Partners','members':['pm'],'capital':123456,'base_currency':'GBP'})
+    assert created.status_code==200
+    public=env('analyst');public.headers.pop('Authorization',None)
+    response=public.get('/api/auth/funds')
+    assert response.status_code==200
+    row=next(r for r in response.json()['funds'] if r['id']=='brand-only')
+    assert row['name']=='Example Partners'
+    assert set(row)=={'id','name','logo','logo_version','brand'}
+    assert not any(k in row for k in ('members','capital','benchmark','created_by'))
+    assert public.get('/api/v1/funds').status_code==401
+    assert public.get('/api/auth/funds/brand-only/logo').status_code==404
+
+
+def test_login_checks_membership_in_selected_fund(env):
+    pm=env('pm')
+    assert pm.post('/api/v1/funds',json={'id':'private-pe','name':'Private PE','members':['pm']}).status_code==200
+    client=env('analyst');client.headers.pop('Authorization',None)
+    rejected=client.post('/api/auth/login',data={'username':'analyst','password':'Fund-analyst-Pass-2026!x','fund':'private-pe'})
+    assert rejected.status_code==403
+    assert 'access_token' not in rejected.json()
+    accepted=client.post('/api/auth/login',data={'username':'pm','password':'Fund-pm-Pass-2026!x','fund':'private-pe'})
+    assert accepted.status_code==200 and accepted.json()['fund']=='private-pe'

@@ -118,7 +118,7 @@ export function RegionalMacroSection() {
 
           <NextDecisions />
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="workspace-controls flex flex-wrap items-center gap-2">
             <div className="flex gap-1">
               {(['macro', 'rates', 'markets'] as Tab[]).map((t) => (
                 <button key={t} onClick={() => setTab(t)}

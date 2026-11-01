@@ -79,7 +79,7 @@ export function ModelAgreementSection({ data }: ModelAgreementSectionProps) {
               <div>Agreement counts each data driver once ({d.effectiveVotes} drivers: {Object.entries(d.driverShares ?? {}).map(([k, v]) => `${k} ${Math.round((v as number) * 100)}% bullish`).join(' · ')}); raw vote share {d.rawAgreement != null ? Math.round(d.rawAgreement * 100) + '%' : '—'}.</div>
             )}
             {d.inputs?.length > 0 && (
-              <table className="w-full mt-1">
+              <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full mt-1">
                 <thead><tr className="text-text-tertiary uppercase"><th className="text-left font-medium">Score input</th><th className="text-right font-medium">Weight</th><th className="text-left font-medium pl-3">Out-of-sample evidence</th></tr></thead>
                 <tbody>
                   {d.inputs.map((c: any) => (
@@ -90,7 +90,7 @@ export function ModelAgreementSection({ data }: ModelAgreementSectionProps) {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </div>
         )}
@@ -144,9 +144,9 @@ function CompositeHistory() {
   return (
     <div className="border border-border bg-surface-1 p-2">
       <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Composite signal — 2 years, weekly</div>
-      <LineChart rows={data.points} x="date" height={200} fmt={(v) => v.toFixed(2)} refs={[{ value: 0.6, label: 'bullish' }, { value: 0.4, label: 'bearish' }]}
+      <div className="workspace-chart"><LineChart rows={data.points} x="date" height={200} fmt={(v) => v.toFixed(2)} refs={[{ value: 0.6, label: 'bullish' }, { value: 0.4, label: 'bearish' }]}
         lines={[{ key: 'composite', label: 'Composite', color: '#3987e5' }, { key: 'growth', label: 'Growth', color: '#199e70' },
-          { key: 'liquidity', label: 'Liquidity', color: '#c98500' }]} />
+          { key: 'liquidity', label: 'Liquidity', color: '#c98500' }]} /></div>
       <div className="text-[10px] text-text-tertiary mt-1">
         S&amp;P 500 next month: composite &gt; 0.6 {f(st['composite > 0.6']?.avg_spx_1m)} ({st['composite > 0.6']?.weeks ?? 0} wks) ·
         &lt; 0.4 {f(st['composite < 0.4']?.avg_spx_1m)} ({st['composite < 0.4']?.weeks ?? 0} wks) · all {f(st.all?.avg_spx_1m)}. {data.method}

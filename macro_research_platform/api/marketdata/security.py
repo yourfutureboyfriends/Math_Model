@@ -142,12 +142,14 @@ def earnings(symbol: str) -> Dict[str, Any]:
                 est[key] = _df_records(getattr(t, attr), "period")
             except Exception:
                 est[key] = []
-        hist = hist[:16]
+        hist = sorted(hist, key=lambda h: h["date"], reverse=True)[:16]
         beats = [h for h in hist if h["surprise_pct"] is not None]
         t.check()
         return {"symbol": s, "history": hist, "upcoming": sorted(upcoming, key=lambda x: x["date"])[:2],
                 "estimates": est, "beat_rate": round(sum(1 for h in beats if h["surprise_pct"] > 0) / len(beats), 3) if beats else None,
                 "avg_surprise_pct": round(float(np.mean([h["surprise_pct"] for h in beats])), 2) if beats else None,
+                "surprise_sample": len(beats), "retrieved_at": pd.Timestamp.now(tz="UTC").isoformat(),
+                "coverage_note": "Provider consensus snapshots; not a point-in-time historical estimate archive.",
                 "currency": _info(s).get("financialCurrency") or _info(s).get("currency"), "note": note,
                 "source": "Yahoo Finance (analyst consensus)"}
     out = _cached(f"ern:{s}", 3600, fetch)

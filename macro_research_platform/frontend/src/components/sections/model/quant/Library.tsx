@@ -32,9 +32,9 @@ function Holdings() {
                   <div className="flex items-baseline gap-2"><span className="font-semibold text-text-primary">{f.name}</span>
                     <span className="text-[10px] px-1 border border-border text-text-tertiary">{STYLE[f.style] ?? f.style}</span></div>
                   <div className="text-[10px] text-text-tertiary mb-1">Q-end {f.period} · filed {f.filed} · {f.positions.toLocaleString()} stock positions · ${(f.value / 1e9).toFixed(1)}bn</div>
-                  <table className="w-full font-mono"><tbody>{f.top.map((r: any, i: number) => (
+                  <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full font-mono"><tbody>{f.top.map((r: any, i: number) => (
                     <tr key={i}><td className="text-text-primary w-14">{r.ticker ?? '—'}</td><td className="font-sans text-text-secondary truncate max-w-[160px]">{r.issuer}</td>
-                      <td className="text-right">{pct(r.weight, 1)}</td></tr>))}</tbody></table>
+                      <td className="text-right">{pct(r.weight, 1)}</td></tr>))}</tbody></table></div>
                 </div>))}
             </div>)}
           <div className="text-[10px] text-text-tertiary mt-2">13F shows US-listed long stock positions at quarter end, published up to 45 days later — no shorts, futures, bonds or non-US shares. For quant firms that trade in days, it is a snapshot of trades long since closed.</div>
@@ -110,7 +110,7 @@ export function Library({ onOpenCode, canDeploy }: { onOpenCode: (code: string, 
               </div>
               <div className="space-y-2">
                 {m ? (
-                  <table className="w-full text-[11px] font-mono">
+                  <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-[11px] font-mono">
                     <tbody>
                       <tr><td className="text-text-tertiary">CAGR net</td><td className={cn('text-right', tone(m.cagr) === 'up' ? 'text-green' : 'text-red')}>{spct(m.cagr)}</td>
                         <td className="text-text-tertiary pl-3">Sharpe</td><td className="text-right">{num(m.sharpe)}</td></tr>
@@ -119,9 +119,9 @@ export function Library({ onOpenCode, canDeploy }: { onOpenCode: (code: string, 
                       <tr><td className="text-text-tertiary">Sized lev.</td><td className="text-right">{h.recommended_leverage != null ? `${h.recommended_leverage}×` : '—'}</td>
                         <td className="text-text-tertiary pl-3">From</td><td className="text-right">{h.oos_start ?? '—'}</td></tr>
                     </tbody>
-                  </table>
+                  </table></div>
                 ) : <div className="text-[11px] text-text-tertiary">Not evaluated yet — open results to run it (≈10 s).</div>}
-                <div className="flex flex-wrap gap-1">
+                <div className="workspace-controls flex flex-wrap gap-1">
                   <button onClick={() => show(s.id)} className="inline-flex items-center gap-1 px-2 py-0.5 text-2xs bg-bloomberg text-bg">
                     {busy === s.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <BarChart3 className="w-3 h-3" />}{open === s.id ? 'Hide results' : 'Results & Monte Carlo'}</button>
                   {s.code && <button onClick={() => onOpenCode(s.code, s.name)} className="inline-flex items-center gap-1 px-2 py-0.5 text-2xs border border-border hover:border-bloomberg"><Code2 className="w-3 h-3" />Open in editor</button>}

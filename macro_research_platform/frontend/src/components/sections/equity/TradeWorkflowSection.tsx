@@ -133,7 +133,7 @@ export function TradeWorkflowSection() {
         {/* What-if */}
         <div className="p-3 bg-surface-1 border border-border">
           <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Pre-Trade What-If</div>
-          <div className="flex flex-wrap items-end gap-2 mb-2">
+          <div className="workspace-controls flex flex-wrap items-end gap-2 mb-2">
             <div className="w-24"><label className="text-2xs text-text-tertiary">Symbol</label>
               <input value={wf.symbol} onChange={(e) => setWf({ ...wf, symbol: e.target.value.toUpperCase() })} placeholder="NVDA"
                 className="w-full bg-surface-2 border border-border-subtle px-2 py-1 text-sm font-mono text-text-primary" /></div>
@@ -154,7 +154,7 @@ export function TradeWorkflowSection() {
               <div className="text-xs text-text-secondary">
                 {wfResult.proposed.symbol} × {wfResult.proposed.quantity} @ {usd(wfResult.proposed.price)} = <span className="font-mono">{usd(wfResult.proposed.notional)}</span>
               </div>
-              <table className="w-full text-xs">
+              <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs">
                 <thead><tr className="text-2xs text-text-tertiary uppercase">
                   <th className="text-left py-1">Metric</th><th className="text-right py-1">Before</th><th className="text-right py-1">After</th><th className="text-right py-1">Δ</th>
                 </tr></thead>
@@ -172,7 +172,7 @@ export function TradeWorkflowSection() {
                     <td className="text-right">{usd(wfResult.after.summary?.net_exposure)}</td>
                     <td className="text-right text-text-primary">{delta(d.net_exposure)}</td></tr>
                 </tbody>
-              </table>
+              </table></div>
               {wfResult.sizing && (
                 <div className="text-2xs text-text-tertiary pt-1 border-t border-border-subtle">
                   VaR-budget sizing: max notional <span className="font-mono text-text-secondary">{usd(wfResult.sizing.max_notional)}</span>
@@ -188,7 +188,7 @@ export function TradeWorkflowSection() {
           <div className="flex items-center gap-1 text-2xs text-text-tertiary uppercase tracking-wider mb-2">
             <ClipboardList className="w-3 h-3" /> Trade Ideas
           </div>
-          <div className="flex flex-wrap items-end gap-1 mb-2">
+          <div className="workspace-controls flex flex-wrap items-end gap-1 mb-2">
             <input value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value.toUpperCase() })} placeholder="Symbol"
               className="w-20 bg-surface-2 border border-border-subtle px-2 py-1 text-xs font-mono text-text-primary" />
             <select value={form.direction} onChange={(e) => setForm({ ...form, direction: e.target.value })}

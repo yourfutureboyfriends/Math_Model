@@ -12,14 +12,15 @@ export type FundInfo = { id: string; name: string; base_currency?: string; bench
 const CACHE_KEY = 'macro.funds.cache';           // last fund list (brand, logo flags) so the look applies at first paint
 
 export function cachedFunds(): FundInfo[] {
-  try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '[]'); } catch { return []; }
+  try { const value: unknown = JSON.parse(localStorage.getItem(CACHE_KEY) || '[]'); return Array.isArray(value) ? value.filter((f): f is FundInfo => !!f && typeof f.id === 'string' && typeof f.name === 'string') : []; } catch { return []; }
 }
 
 let fundsP: Promise<FundInfo[]> | null = null;
+export function resetFundCache() { fundsP = null; }
 export function loadFunds(force = false): Promise<FundInfo[]> {
   if (!fundsP || force) {
     fundsP = fetch('/api/v1/funds').then((r) => (r.ok ? r.json() : null)).then((j) => {
-      const fs: FundInfo[] = j?.funds ?? cachedFunds();
+      const fs: FundInfo[] = Array.isArray(j?.funds) ? j.funds.filter((f: FundInfo) => f && typeof f.id === 'string' && typeof f.name === 'string') : cachedFunds();
       if (j?.funds) { try { localStorage.setItem(CACHE_KEY, JSON.stringify(fs)); } catch { /* storage unavailable */ } }
       return fs;
     }).catch(() => cachedFunds());

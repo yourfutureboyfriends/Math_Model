@@ -1,3 +1,5 @@
+import { ExpectationsPanel } from './ExpectationsPanel';
+import { ValuationCapture } from './ValuationCapture';
 // VAL: the valuation hub. Everything is filled in automatically (DCF or excess-return model, dividend
 // model, peer multiples, analysts, a 24-month outlook); the user moves only the handful of drivers that
 // actually change the answer, sees bear / base / bull at once, and a blended fair value with its range.
@@ -20,7 +22,7 @@ const FCFF_DRIVERS_2STAGE: Driver[] = [
   ...FCFF_DRIVERS.slice(0, 3),
   { key: 'terminal_growth', label: 'Growth forever after the forecast', short: 'Growth ∞', hint: 'Keep at or below the risk-free rate.', min: 0, max: 0.06, step: 0.0025, pct: true },
 ];
-type Opts = { method?: 'three_stage' | 'two_stage'; ke_method?: 'capm' | 'building_block' };
+type Opts = { erp_basis?: 'normalized' | 'market_implied'; normalized_erp?: number; method?: 'three_stage' | 'two_stage'; ke_method?: 'capm' | 'building_block' };
 const ER_DRIVERS: Driver[] = [
   { key: 'roe', label: 'Return on equity now', short: 'ROE', hint: 'Profit per unit of book equity — the engine of a bank’s value.', min: -0.1, max: 0.4, step: 0.005, pct: true },
   { key: 'terminal_roe', label: 'Long-run ROE', short: 'Long-run ROE', hint: 'Where returns settle. Above the cost of equity = worth more than book.', min: 0.02, max: 0.35, step: 0.005, pct: true },
@@ -36,15 +38,17 @@ const DDM_DRIVERS: Driver[] = [
 function defaultsFor(d: any): Vals {
   if (!d) return {};
   const a = d.valuation.assumptions, w = d.valuation.wacc ?? {};
-  if (d.model === 'excess_return') return { roe: a.roe_now, terminal_roe: a.roe_terminal, discount: a.cost_of_equity, terminal_growth: a.terminal_growth };
+  if (d.model === 'excess_return') return { roe: a.roe_now, terminal_roe: a.roe_terminal, discount: a.cost_of_equity, terminal_growth: a.terminal_growth, working_capital_ratio: a.working_capital_ratio };
   if (d.model === 'ddm') return { growth: a.growth, terminal_growth: a.terminal_growth, discount: a.cost_of_equity };
   return a.method === 'three_stage'
-    ? { growth: a.growth, target_margin: a.target_margin, discount: w.wacc, fade_years: a.fade_years }
-    : { growth: a.growth, target_margin: a.target_margin, discount: w.wacc, terminal_growth: a.terminal_growth };
+    ? { growth: a.growth, target_margin: a.target_margin, discount: w.wacc, fade_years: a.fade_years, working_capital_ratio: a.working_capital_ratio }
+    : { growth: a.growth, target_margin: a.target_margin, discount: w.wacc, terminal_growth: a.terminal_growth, working_capital_ratio: a.working_capital_ratio };
 }
 
 function urlFor(symbol: string, model: string, v: Vals, o: Opts = {}) {
   const p = new URLSearchParams({ model });
+  if (o.erp_basis) p.set('erp_basis', o.erp_basis);
+  if (o.normalized_erp != null) p.set('normalized_erp', String(o.normalized_erp));
   if (o.method) p.set('method', o.method);
   if (o.ke_method) p.set('ke_method', o.ke_method);
   for (const [k, x] of Object.entries(v)) if (x != null && Number.isFinite(x)) p.set(k, String(Math.round(x * 1e5) / 1e5));
@@ -76,27 +80,37 @@ function useDebounced<T>(v: T, ms = 450): T {
 
 const pc = (x: number | null | undefined, d = 1) => (x == null ? '—' : `${(x * 100).toFixed(d)}%`);
 
+// Responses from the previous symbol or assumption URL must not enter a new blend.
+function useValuationJSON<T>(url: string | null) {
+  const result = useJSON<T>(url);
+  return { ...result, data: result.current ? result.data : null,
+    loading: result.loading || (!!url && !result.current && !result.error) };
+}
+
 export function ValuationHub({ symbol, onGo }: { symbol: string; onGo: (fn: string, s?: string) => void }) {
   const [optsKey, setOptsKey] = useState('');
-  const base = useJSON<any>(`/api/v1/mkt/dcf/${enc(symbol)}${optsKey}`);
-  const rv = useJSON<any>(`/api/v1/mkt/rv/${enc(symbol)}`);
+  const base = useValuationJSON<any>(`/api/v1/mkt/dcf/${enc(symbol)}${optsKey}`);
+  const rv = useValuationJSON<any>(`/api/v1/mkt/rv/${enc(symbol)}`);
   const primaryModel: string | null = base.data ? (base.data.model === 'ddm' ? (base.data.inputs.is_financial ? 'excess_return' : 'fcff') : base.data.model) : null;
   const hasDdm = !!(base.data?.ddm || base.data?.model === 'ddm');
   const [ov, setOv] = useState<Vals>({});           // primary-model overrides
   const [dv, setDv] = useState<Vals>({});           // dividend-model overrides
   const [hl, setHl] = useState(3);
-  const [use, setUse] = useState({ primary: true, ddm: true, peers: true });
+  const [use, setUse] = useState({ primary: true, ddm: true, peers: false });
   const [opts, setOpts] = useState<Opts>({});      // valuation structure and cost-of-equity basis (server defaults when unset)
   useEffect(() => { setOv({}); setDv({}); }, [symbol]);
   useEffect(() => {
     const p = new URLSearchParams(); if (opts.method) p.set('method', opts.method); if (opts.ke_method) p.set('ke_method', opts.ke_method);
-    setOptsKey(p.toString() ? `?${p}` : ''); setOv({});
+    if (opts.erp_basis) p.set('erp_basis', opts.erp_basis);
+    if (opts.normalized_erp != null) p.set('normalized_erp', String(opts.normalized_erp));
+    setOptsKey(p.toString() ? `?${p}` : '');
   }, [opts]);
+  useEffect(() => { setOv({}); }, [opts.method, opts.ke_method]);
 
   // defaults: from the primary model's own response (fetch it explicitly when the server chose the DDM)
-  const primDefaultsReq = useJSON<any>(base.data && primaryModel && base.data.model !== primaryModel ? urlFor(symbol, primaryModel, {}, opts) : null);
+  const primDefaultsReq = useValuationJSON<any>(base.data && primaryModel && base.data.model !== primaryModel ? urlFor(symbol, primaryModel, {}, opts) : null);
   const primBase = base.data?.model === primaryModel ? base.data : primDefaultsReq.data;
-  const ddmBaseReq = useJSON<any>(base.data && hasDdm && base.data.model !== 'ddm' ? `/api/v1/mkt/dcf/${enc(symbol)}?model=ddm` : null);
+  const ddmBaseReq = useValuationJSON<any>(base.data && hasDdm && base.data.model !== 'ddm' ? urlFor(symbol, 'ddm', {}, opts) : null);
   const ddmBase = base.data?.model === 'ddm' ? base.data : ddmBaseReq.data;
   const pDef = useMemo(() => defaultsFor(primBase), [primBase]);
   const dDef = useMemo(() => defaultsFor(ddmBase), [ddmBase]);
@@ -105,12 +119,12 @@ export function ValuationHub({ symbol, onGo }: { symbol: string; onGo: (fn: stri
   const pEff = { ...pDef, ...ovD };
   const erp0: number = primBase?.valuation?.wacc?.erp ?? primBase?.valuation?.assumptions?.erp ?? 0.045;
   const primUrl = primaryModel && primBase ? (Object.keys(ovD).length ? urlFor(symbol, primaryModel, ovD, opts) : null) : null;
-  const prim = useJSON<any>(primUrl);
+  const prim = useValuationJSON<any>(primUrl);
   const primary = (Object.keys(ovD).length ? prim.data : primBase) ?? null;
   const bbKe = primBase?.valuation?.wacc?.ke_method === 'building_block';
-  const bear = useJSON<any>(primaryModel && primBase ? urlFor(symbol, primaryModel, shift(primaryModel, pEff, ovD, erp0, -1, bbKe), opts) : null);
-  const bull = useJSON<any>(primaryModel && primBase ? urlFor(symbol, primaryModel, shift(primaryModel, pEff, ovD, erp0, 1, bbKe), opts) : null);
-  const ddmReq = useJSON<any>(hasDdm && Object.keys(dvD).length ? urlFor(symbol, 'ddm', dvD) : null);
+  const bear = useValuationJSON<any>(primaryModel && primBase ? urlFor(symbol, primaryModel, shift(primaryModel, pEff, ovD, erp0, -1, bbKe), opts) : null);
+  const bull = useValuationJSON<any>(primaryModel && primBase ? urlFor(symbol, primaryModel, shift(primaryModel, pEff, ovD, erp0, 1, bbKe), opts) : null);
+  const ddmReq = useValuationJSON<any>(hasDdm && Object.keys(dvD).length ? urlFor(symbol, 'ddm', dvD, opts) : null);
   const ddm = (Object.keys(dvD).length ? ddmReq.data : ddmBase) ?? null;
 
   if (base.loading && !base.data) return <Loading label="Filling in the model — financials, cost of capital, peers, dividends…" />;
@@ -139,37 +153,44 @@ export function ValuationHub({ symbol, onGo }: { symbol: string; onGo: (fn: stri
   // Morningstar's margin of safety: the discount needed to buy (and premium to sell) widens with uncertainty
   const unc = base.data.uncertainty ?? null;
   const buyBelow: number = unc?.buy_below ?? 0.8, sellAbove: number = unc?.sell_above ?? 1.25;
-  const verdict = !fair ? '—' : price <= fair * buyBelow ? 'Undervalued' : price >= fair * sellAbove ? 'Overvalued' : 'Fairly valued';
+  const details = primary?.calculation_details ?? base.data.calculation_details;
+  const research = primary?.research_status ?? base.data.research_status;
+  const dividendNeedsReview = !!(use.ddm && dval && ddmUseful && ddm?.research_status?.eligible !== true);
+  const canClassify = research?.eligible === true && !dividendNeedsReview;
+  const verdict = !canClassify ? 'Research required' : !fair ? '—' : price <= fair * buyBelow ? 'Undervalued' : price >= fair * sellAbove ? 'Overvalued' : 'Fairly valued';
   const three = primBase?.valuation?.method === 'three_stage';
   const moat = primBase?.valuation?.moat;
-  const drivers = primaryModel === 'excess_return' ? ER_DRIVERS : three ? FCFF_DRIVERS : FCFF_DRIVERS_2STAGE;
+  const mainDrivers = primaryModel === 'excess_return' ? ER_DRIVERS : three ? FCFF_DRIVERS : FCFF_DRIVERS_2STAGE;
+  const drivers = primaryModel === 'fcff' && inp.net_capex_to_revenue != null ? [...mainDrivers, { key: 'working_capital_ratio', label: 'Working capital / sales (optional)', short: 'WC / sales', hint: 'Balance-sheet intensity × revenue change; optional research assumption. The automatic estimate has mixed historical evidence.', min: -0.5, max: 0.5, step: 0.01, pct: true }] : mainDrivers;
   const implied = primaryModel === 'excess_return' ? { k: 'roe', v: primBase?.market_implied_roe, label: 'ROE the price implies' }
     : { k: 'growth', v: primBase?.market_implied_growth, label: 'Growth the price implies' };
-  const out = primBase?.outlook ?? base.data.outlook;
+  const out = primary?.outlook;
 
   return (
     <div className="space-y-3">
+      <ValuationCapture symbol={symbol} disabled={!primary || !!base.loading || !!prim.loading || !!prim.error || !!base.refreshError || (use.ddm && (!!ddmReq.loading || !!ddmBaseReq.loading || !!ddmReq.error)) || (use.peers && (!!rv.loading || !!rv.error)) || JSON.stringify(ov)!==JSON.stringify(ovD) || JSON.stringify(dv)!==JSON.stringify(dvD)} payload={{symbol,model:primaryModel,base:base.data,primary,ddm,peers:rv.data,assumptions:{primary:pVals,dividend:dVals,options:opts,halfLife:hl,methods:use},fairValue:fair,currency:ccy,inputDates:{price:inp.price_date,financials:inp.as_of},method:base.data.method}}/>
       {/* verdict */}
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1.6fr)] gap-3">
         <div className="border border-border bg-surface-1 rounded-md p-3">
-          <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Blended fair value ({ccy})</div>
+          <div className="text-[10px] uppercase tracking-wider text-text-tertiary">Selected-model estimate ({ccy})</div>
           <div className="flex items-baseline gap-3 mt-0.5">
             <span className="text-3xl font-mono text-text-primary">{fair ? fmtPrice(fair) : '—'}</span>
             {up != null && <span className={cn('font-mono text-lg', up >= 0 ? 'text-green' : 'text-red')}>{fmtPct(up, 1)}</span>}
             <span className={cn('px-2 py-0.5 rounded-sm text-xs font-semibold', verdict === 'Undervalued' ? 'bg-green/15 text-green' : verdict === 'Overvalued' ? 'bg-red/15 text-red' : 'bg-surface-3 text-text-secondary')}>{verdict}</span>
           </div>
           <div className="text-2xs text-text-secondary mt-1">Price {fmtPrice(price)} · {conf}{spread ? ` (high ÷ low ${spread.toFixed(2)}×)` : ''}</div>
-          {fair != null && <div className="text-2xs text-text-secondary mt-0.5" title="Morningstar's rule: the discount required to buy widens with the uncertainty of the value (here from the stock's 1-year volatility, one notch higher when most of the value is in the terminal value).">
+          {fair != null && canClassify && <div className="text-2xs text-text-secondary mt-0.5" title="Morningstar's rule: the discount required to buy widens with the uncertainty of the value (here from the stock's 1-year volatility, one notch higher when most of the value is in the terminal value).">
             Uncertainty <span className="text-text-primary">{unc?.rating ?? 'medium'}</span> · buy below <span className="font-mono text-green">{fmtPrice(fair * buyBelow)}</span> · sell above <span className="font-mono text-red">{fmtPrice(fair * sellAbove)}</span></div>}
+          {!canClassify && <div className="text-[10px] text-bloomberg mt-1">{research?.reasons?.join(' ') || (dividendNeedsReview ? 'The selected dividend model requires research. ' + (ddm?.research_status?.reasons?.join(' ') ?? '') : 'Waiting for data and model checks.')}</div>}
           {moat && primaryModel === 'fcff' && <div className="text-[10px] text-text-tertiary mt-0.5">Moat (from the data): <span className="text-text-secondary">{moat.rating}</span> — {moat.basis}; excess returns assumed for {primBase.valuation.assumptions.fade_years} more years.</div>}
           {bv != null && uv != null && <ScenarioBar bear={bv} base={pv ?? null} bull={uv} price={price} fair={fair} />}
-          <div className="flex flex-wrap gap-1 mt-2 text-[11px]">
+          <div className="mkt-controls flex flex-wrap gap-1 mt-2 text-[11px]">
             <span className="text-text-tertiary mr-1">Blend</span>
             {([['primary', primaryModel === 'excess_return' ? 'Excess return' : 'DCF', !!pv], ['ddm', 'Dividend model', !!(dval && ddmUseful)], ['peers', 'Peers', !!peer]] as const).map(([k, l, ok]) => (
               <button key={k} disabled={!ok} onClick={() => setUse({ ...use, [k]: !use[k] })}
                 className={cn('px-2 py-0.5 border rounded-sm', !ok ? 'border-border-subtle text-text-tertiary opacity-50' : use[k] ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{l}</button>))}
           </div>
-          <div className="text-[10px] text-text-tertiary mt-1">Geometric mean of the methods ticked. The dividend model joins when the yield is at least 1.5%.</div>
+          <div className="text-[10px] text-text-tertiary mt-1">Geometric mean of the selected methods; agreement is not independent validation. The dividend model joins when the yield is at least 1.5%.</div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <Tile label={primaryModel === 'excess_return' ? 'Excess return model' : 'DCF (free cash flow)'} v={pv} price={price} sub={primary?.valuation?.equity_negative ? 'debt exceeds operating value' : prim.loading ? 'recalculating…' : `${implied.label}: ${pc(implied.v)}`} />
@@ -179,11 +200,61 @@ export function ValuationHub({ symbol, onGo }: { symbol: string; onGo: (fn: stri
         </div>
       </div>
 
+      <p className="text-[10px] text-text-tertiary">Peer multiples and analyst targets describe market pricing. Peers are excluded from the headline intrinsic estimate by default; enabling them can import an expensive market’s pricing into the blend.</p>
+
+      {primary?.expectations && <ExpectationsPanel data={primary.expectations}/>}
+      {primary?.market_views && <Panel title="Fundamentals and current market pricing">
+        <div className="text-[10px] text-text-tertiary mb-2">Normalized assumptions and market-implied pricing are separate lenses. The default primary ERP is a 5% mature-market research assumption plus country risk, not a fit to market prices. Manual discount-rate choices remain in the main model. Country risk: {primary.market_views.country_risk.basis}.</div>
+        {primary.market_views.suitability?.status === 'review_required' && <div className="text-2xs text-bloomberg mb-2">
+          Model review required: {primary.market_views.suitability.reasons.join(' ')}
+        </div>}
+        <label className="flex items-center gap-2 text-2xs text-text-secondary mb-2">Primary valuation premium basis
+          <select value={opts.erp_basis ?? 'normalized'} onChange={(e) => setOpts({ ...opts, erp_basis: e.target.value as Opts['erp_basis'] })} className="bg-background border border-border rounded-sm px-2 py-0.5"><option value="normalized">Normalized research assumption</option><option value="market_implied">Current market-implied premium</option></select>
+        </label>
+        <label className="flex items-center gap-2 text-2xs text-text-secondary mb-2">Normalized mature-market ERP
+          <select value={opts.normalized_erp ?? 0.05} onChange={(e) => setOpts({ ...opts, normalized_erp: Number(e.target.value) })} className="bg-background border border-border rounded-sm px-2 py-0.5">
+            {[0.04, 0.045, 0.05, 0.055, 0.06].map((v) => <option key={v} value={v}>{pc(v)}</option>)}
+          </select>
+        </label>
+        <div className="overflow-x-auto"><table className="w-full text-2xs text-right">
+          <thead><tr className="text-text-tertiary"><th className="text-left py-1">Scenario</th><th>Fundamental value</th><th>Current-market value</th></tr></thead>
+          <tbody>{(['base', 'expansion', 'recession', 'inflation_shock'] as const).map((regime) => {
+            const f = primary.market_views.fundamental.scenarios[regime];
+            const m = primary.market_views.current_market.scenarios[regime];
+            return <tr key={regime} className="border-t border-border-subtle"><td className="text-left py-1 capitalize">{regime.replace('_', ' ')}</td>
+              <td title={f.error}>{fmtPrice(f.per_share)}</td><td title={m.error}>{fmtPrice(m.per_share)}</td></tr>;
+          })}</tbody>
+        </table></div>
+        <div className="text-[10px] text-text-tertiary mt-2">Mature-market ERP: normalized {pc(primary.market_views.fundamental.mature_erp)}; current {pc(primary.market_views.current_market.mature_erp)}. {primary.market_views.note}</div>
+      </Panel>}
+
+      {details && <Panel title={`Calculation breakdown — amounts in ${inp.currency}`}>
+        {!!details.asset_references?.length && <div className="text-2xs text-text-secondary mb-3 space-y-1">
+          {details.asset_references.map((ref: any) => <div key={ref.metric}><a href={ref.source} target="_blank" rel="noreferrer" className="text-bloomberg hover:underline">{ref.metric}</a>: {fmtPrice(ref.per_share)} {ref.currency} · {ref.as_of} ({ref.age_days} days old{ref.stale ? ', stale' : ''}). Historical asset reference, excluded from the blend.</div>)}
+        </div>}
+        {details.issuer_adjustment && <div className="text-2xs text-text-secondary mb-2">Operating profit uses a <a href={details.issuer_adjustment.source} target="_blank" rel="noreferrer" className="text-bloomberg hover:underline">verified issuer source</a> for {details.issuer_adjustment.as_of}; the provider-defined figure is retained in the audit trail.</div>}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-5 gap-y-1 text-2xs">
+          {([['Operating profit after tax', details.cashflow?.nopat], ['Capital expenditure', details.cashflow?.capex],
+            ['Depreciation and amortization', details.cashflow?.dna], ['Working-capital investment', details.cashflow?.working_capital_investment],
+            ['Reconstructed period FCFF', details.cashflow?.observed_fcff], ['Operating cash flow (reported)', details.cashflow?.cfo],
+            ['Stock compensation', details.cashflow?.sbc], ['Funding gap after cash', details.funding_gap_after_cash]] as [string, any][]).map(([label, value]) => (
+              <div key={label} className="flex justify-between gap-2 border-b border-border-subtle py-1"><span className="text-text-tertiary">{label}</span><span className="font-mono">{fmtBig(value)}</span></div>))}
+        </div>
+        <div className="text-[10px] text-text-tertiary mt-2">FCFF = operating profit after tax − (capital expenditure − depreciation) − working-capital investment. Positive working-capital investment uses cash. SBC stays expensed in operating profit.</div>
+        <div className="text-[10px] text-text-tertiary mt-1">{details.cashflow?.status === 'matched' ? `${details.cashflow.as_of}: ${details.cashflow.source}. ${details.cashflow.working_capital_basis}.` : details.cashflow?.reason}</div>
+        {!!details.forecast_steps?.length && <div className="overflow-x-auto mt-3"><table className="w-full text-2xs text-right font-mono">
+          <thead className="text-text-tertiary"><tr><th className="text-left">Year</th><th>Revenue</th><th>EBIT</th><th>Modeled tax</th><th>Reinvestment</th><th>FCFF</th><th>PV</th></tr></thead>
+          <tbody>{details.forecast_steps.map((row: any) => <tr key={row.year} className="border-t border-border-subtle"><td className="text-left py-1">{row.year}</td>
+            {[row.revenue, row.ebit, row.modeled_tax, row.reinvestment, row.fcff, row.present_value].map((v, n) => <td key={n}>{fmtBig(v)}</td>)}</tr>)}</tbody>
+        </table></div>}
+        <div className="text-[10px] text-text-tertiary mt-2">{details.checks?.join(' ')} {details.note}</div>
+      </Panel>}
+
       {/* the levers */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         <Panel title={`Key drivers — ${primaryModel === 'excess_return' ? 'excess-return model' : 'cash-flow model'}`} right={<button onClick={() => setOv({})} className="text-[11px] text-text-tertiary hover:text-text-primary">Reset</button>}>
           {!primBase ? <Loading /> : <div className="space-y-3">{drivers.map((d) => (
-            <Slider key={d.key} d={d} value={pVals[d.key]} def={pDef[d.key]} implied={implied.k === d.key ? implied.v : undefined}
+            <Slider key={d.key} d={d} value={pVals[d.key] ?? (d.key === 'working_capital_ratio' ? 0 : undefined)} def={pDef[d.key] ?? (d.key === 'working_capital_ratio' ? 0 : undefined)} implied={implied.k === d.key ? implied.v : undefined}
               onChange={(x) => setOv({ ...ov, [d.key]: x })} />))}
             {prim.error && Object.keys(ovD).length > 0 && <div className="text-2xs text-red">{prim.error}</div>}
           </div>}
@@ -199,7 +270,7 @@ export function ValuationHub({ symbol, onGo }: { symbol: string; onGo: (fn: stri
           <div className="mt-4 pt-3 border-t border-border-subtle">
             <div className="flex items-center gap-2 text-2xs"><span className="text-text-secondary flex-1">How fast the price closes the gap to fair value (outlook)</span>
               {[1, 2, 3, 5, 8].map((h) => <button key={h} onClick={() => setHl(h)} className={cn('px-2 py-0.5 border rounded-sm', hl === h ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{h}y</button>)}</div>
-            <div className="text-[10px] text-text-tertiary mt-0.5">Half-life of the gap. Value gaps usually close over several years; catalysts (earnings, buybacks, activism) shorten it.</div>
+            <div className="text-[10px] text-text-tertiary mt-0.5">Illustrative gap half-life; convergence timing is an assumption, not an estimated forecast.</div>
           </div>
         </Panel>
       </div>
@@ -228,7 +299,7 @@ export function ValuationHub({ symbol, onGo }: { symbol: string; onGo: (fn: stri
           const onKroll = ov.erp != null && Math.abs(ov.erp - kroll) < 1e-6;
           const lens = (k: boolean) => setOv((o) => { const n = { ...o }; if (k) n.erp = kroll; else delete n.erp; return n; });
           return (
-            <div className="flex flex-wrap items-center gap-2 mt-2 text-[10.5px]">
+            <div className="mkt-controls flex flex-wrap items-center gap-2 mt-2 text-[10.5px]">
               <span className="text-text-tertiary">Equity risk premium lens:</span>
               <button type="button" onClick={() => lens(false)} aria-pressed={!onKroll}
                 className={`px-1.5 py-0.5 border ${!onKroll ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary'}`}>
@@ -245,7 +316,7 @@ export function ValuationHub({ symbol, onGo }: { symbol: string; onGo: (fn: stri
           );
         })()}
         {primaryModel === 'fcff' && (
-          <div className="flex flex-wrap items-center gap-2 mt-2 text-[10.5px]">
+          <div className="mkt-controls flex flex-wrap items-center gap-2 mt-2 text-[10.5px]">
             <span className="text-text-tertiary">Structure:</span>
             {([['three_stage', 'Three-stage (Morningstar)'], ['two_stage', 'Two-stage (Damodaran)']] as const).map(([k, l]) => {
               const on = (opts.method ?? (three ? 'three_stage' : 'two_stage')) === k;
@@ -257,13 +328,13 @@ export function ValuationHub({ symbol, onGo }: { symbol: string; onGo: (fn: stri
         )}
       </Panel>
 
-      {out && <PriceOutlook o={out} ccy={ccy} value={fair} halfLife={hl} title={`Price path to the blended fair value — next 24 months (${ccy})`} />}
+      {out && canClassify && <PriceOutlook o={out} ccy={ccy} value={fair} halfLife={hl} title={`Price path to the blended fair value — next 24 months (${ccy})`} />}
 
       {/* what was filled in */}
       <details className="border border-border bg-surface-1 rounded-md px-3 py-2">
         <summary className="cursor-pointer text-2xs text-text-secondary">Everything filled in automatically (click to see the inputs and sources)</summary>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-1 mt-2 text-2xs">
-          {([['Revenue (TTM)', fmtBig(inp.revenue)], ['Operating margin', pc(inp.margin)], ['Shares', fmtBig(inp.shares)], ['Debt', fmtBig(inp.debt)], ['Cash', fmtBig(inp.cash)],
+          {([['Revenue (valuation base)', fmtBig(inp.revenue)], ['Operating margin', pc(inp.margin)], ['Shares', fmtBig(inp.shares)], ['Debt', fmtBig(inp.debt)], ['Cash', fmtBig(inp.cash)],
             ['Beta', inp.beta?.toFixed(2)], ['Risk-free rate', pc(inp.risk_free, 2)], ['Equity risk premium', pc(inp.erp, 2)], ['Tax (marginal)', pc(inp.tax_marginal, 0)],
             ['Sales-to-capital', inp.sales_to_capital?.toFixed(2)], ['ROIC', pc(inp.roic)], ['Payout ratio', pc(inp.payout_ratio, 0)]] as [string, any][]).map(([k, x]) => (
             <div key={k} className="flex justify-between border-b border-border-subtle py-0.5"><span className="text-text-tertiary">{k}</span><span className="font-mono text-text-primary">{x ?? '—'}</span></div>))}

@@ -172,7 +172,7 @@ export function EarningsCard({ symbol }: { symbol: string }) {
         {last.surprise_pct != null && (Math.abs(last.surprise_pct) < 1   /* surprise_pct is in percent: within ±1% counts as in line */
           ? <div className="text-text-secondary">In line with estimates</div>
           : <div className={cn(last.surprise_pct > 0 ? 'text-green' : 'text-red')}>{last.surprise_pct > 0 ? 'Beat' : 'Missed'} by {Math.abs(last.surprise_pct).toFixed(1)}%</div>)}</> : '—'}</div>
-      {data.beat_rate != null && <div className="col-span-2 text-text-tertiary">Beat estimates in <span className="text-text-primary">{Math.round(data.beat_rate * 100)}%</span> of the last {data.history.length} reports.</div>}
+      {data.beat_rate != null && <div className="col-span-2 text-text-tertiary">Beat estimates in <span className="text-text-primary">{Math.round(data.beat_rate * 100)}%</span> of {data.surprise_sample ?? data.history.filter((h: any) => h.surprise_pct != null).length} reports with surprise data.</div>}
     </div>
   );
 }

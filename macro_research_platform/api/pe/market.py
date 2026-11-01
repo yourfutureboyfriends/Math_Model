@@ -47,10 +47,55 @@ def credit(currency: str = "USD") -> Dict[str, Any]:
             sid, name, base = "SOFR", "SOFR (no local series)", _last("SOFR")
         bb, b, ccc = _last("BAMLH0A1HYBB"), _last("BAMLH0A2HYB"), _last("BAMLH0A3HYC")
         t5, hy = _last("DGS5"), _last("BAMLH0A0HYM2EY")
+        loans = loan_market(_last("SOFR"))
         return {"currency": (currency or "USD").upper(), "base_rate": base, "base_rate_name": name, "base_rate_series": sid,
                 "bb_spread": bb, "b_spread": b, "ccc_spread": ccc, "treasury_5y": t5, "hy_yield": hy,
-                "source": "FRED: base rate, ICE BofA US High Yield option-adjusted spreads by rating, 5-year Treasury"}
+                "loan_spread": loans.get("spread"), "loan_funds": loans.get("funds"), "loan_source": loans.get("source"),
+                "source": ("FRED: base rate, ICE BofA US High Yield option-adjusted spreads by rating, 5-year Treasury; "
+                           "loan spread from the senior-loan ETFs")}
     return _cached(f"pe:credit:{currency}", 3600, fetch)
+
+
+# The two largest US senior-loan ETFs and their expense ratios (added back: the fund's payout is net of its fee)
+LOAN_FUNDS = (("BKLN", "Invesco Senior Loan ETF", 0.0065), ("SRLN", "SPDR Blackstone Senior Loan ETF", 0.0070))
+
+
+def loan_market(sofr: Optional[float]) -> Dict[str, Any]:
+    """What floating-rate leveraged loans pay today, from the senior-loan ETFs: the latest three monthly
+    distributions annualised over the price (the trailing 12-month yield lags rate changes), plus the expense ratio,
+    less SOFR = the average spread of the loans they hold. A market proxy for a new term loan B — not a loan quote."""
+    from api.marketdata.core import _cached
+
+    def fetch():
+        import yfinance as yf
+        funds = []
+        for sym, name, fee in LOAN_FUNDS:
+            try:
+                t = yf.Ticker(sym)
+                d = t.dividends
+                px = (t.info or {}).get("regularMarketPrice")
+                if d is None or len(d) < 3 or not px:
+                    continue
+                run_rate = float(d.iloc[-3:].mean()) * 12 / float(px)
+                funds.append({"symbol": sym, "name": name, "price": float(px), "run_rate_yield": run_rate,
+                              "gross_yield": run_rate + fee, "expense_ratio": fee,
+                              "last_distribution": d.index[-1].date().isoformat()})
+            except Exception as e:
+                logger.debug("[pe] loan fund %s: %s", sym, e)
+        return {"funds": funds}
+    try:
+        out = dict(_cached("pe:loan_market", 6 * 3600, fetch))
+    except Exception:
+        out = {"funds": []}
+    funds = out.get("funds") or []
+    if funds and sofr is not None:
+        spreads = [f["gross_yield"] - sofr for f in funds]
+        out.update(spread=sum(spreads) / len(spreads), spreads={f["symbol"]: s for f, s in zip(funds, spreads)},
+                   source=("Senior-loan ETFs (" + ", ".join(f["symbol"] for f in funds) + "): latest monthly distributions "
+                           "annualised + expense ratio − SOFR — the average spread of the US loans they hold; a proxy, not a quote"))
+    else:
+        out.update(spread=None, source="Senior-loan ETF data unavailable")
+    return out
 
 
 def industry_multiple(industry: Optional[str], country: Optional[str]) -> Dict[str, Any]:
@@ -77,7 +122,10 @@ def _round_to(x: float, step: float) -> float:
 def financing(ebitda: float, entry_multiple: float, cr: Dict[str, Any]) -> Dict[str, Any]:
     """Market-sized tranches: TLB + senior notes, leverage capped by interest cover and the equity share."""
     base = cr.get("base_rate") if cr.get("base_rate") is not None else 0.04
-    tlb_spread = max(0.0275, _round_to(cr.get("b_spread") or 0.035, 0.0025))
+    # TLB: the loan market's own spread (senior-loan ETFs) when available, else the single-B bond spread
+    loan = cr.get("loan_spread")
+    tlb_basis = "loan-market spread (senior-loan ETFs)" if loan is not None else "single-B bond spread"
+    tlb_spread = max(0.0275, _round_to(loan if loan is not None else (cr.get("b_spread") or 0.035), 0.00125))
     hy_spread = ((cr.get("bb_spread") or 0.025) + (cr.get("b_spread") or 0.035)) / 2
     notes_coupon = _round_to((cr.get("treasury_5y") or 0.045) + hy_spread, 0.00125)
     blended = 0.7 * (base + tlb_spread) + 0.3 * notes_coupon
@@ -95,7 +143,7 @@ def financing(ebitda: float, entry_multiple: float, cr: Dict[str, Any]) -> Dict[
                      "drawn_at_close": 0.0},
         "notes": (f"Leverage {turns:.2f}× EBITDA — the lower of 6.0×, interest cover ≥ {MIN_COVER}× at a blended "
                   f"{blended:.2%}, and {MAX_DEBT_SHARE:.0%} of the price. TLB at {cr.get('base_rate_name') or 'base'} + "
-                  f"{tlb_spread:.2%} (single-B spread); notes {notes_coupon:.2%} (5-year Treasury + BB/B spread)."),
+                  f"{tlb_spread:.3%} — the {tlb_basis}; notes {notes_coupon:.2%} (5-year Treasury + BB/B spread)."),
     }
 
 
@@ -140,7 +188,7 @@ def from_company(symbol: str, premium: float = PREMIUM) -> Dict[str, Any]:
            "dna_pct": round(dna / rev, 4), "capex_pct": round(abs(d.get("capex") or 0) / rev, 4) if d.get("capex") is not None else 0.03,
            "nwc_pct": 0.10, "tax_rate": round(tax, 4)}
     sources = {
-        "company": f"{d.get('source') or 'filings'} — LTM to {d.get('as_of') or 'latest'}; EBITDA = operating income + D&A",
+        "company": f"{d.get('source') or 'filings'} — {'fiscal-year base' if d.get('statement_basis_note') else 'TTM base'} to {d.get('as_of') or 'date unavailable'}; EBITDA = operating income + D&A",
         "entry": (f"{d.get('symbol')} at {price:,.2f} + {premium:.0%} take-private premium → EV {ev:,.0f} = {entry_mult:.1f}× EBITDA"
                   if ev else "No market price — entry multiple set to 10×"),
         "exit": (f"{exit_mult:.1f}× — the entry multiple (no expansion assumed). Reference: {ind['source']} {ind['ev_ebitda']:.1f}×"
@@ -149,7 +197,7 @@ def from_company(symbol: str, premium: float = PREMIUM) -> Dict[str, Any]:
         "financing": fin["notes"], "credit": cr.get("source"),
         "plan": (f"Revenue growth {g1:.1%} (analyst consensus) fading to {glr:.1%} by year 4; EBITDA margin held at {margin:.1%}; "
                  f"D&A {dna / rev:.1%} and capex {abs(d.get('capex') or 0) / rev:.1%} of revenue; working capital 10% of the change in revenue"),
-        "tax": f"{tax:.1%} ({'marginal' if d.get('tax_marginal') else 'effective'}); interest deductible to 30% of EBITDA",
+        "tax": f"{tax:.1%} ({'marginal' if d.get('tax_marginal') else 'effective'}); generic assumed interest deduction cap: 30% of EBITDA; verify local tax rules and adjustments",
     }
     return {"inputs": inp, "sources": sources, "credit": cr, "industry": ind,
             "market": {"price": price, "price_currency": d.get("price_currency"), "shares": shares, "market_cap": d.get("market_cap"),

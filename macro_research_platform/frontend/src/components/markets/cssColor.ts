@@ -7,7 +7,7 @@ export function useCssColor() {
   const cache = useRef(new Map<string, string>());
   useEffect(() => {
     const mo = new MutationObserver(() => cache.current.clear());
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-skin', 'data-updown', 'class'] });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-skin', 'data-updown', 'data-brand', 'style', 'class'] });
     return () => mo.disconnect();
   }, []);
   return {

@@ -77,7 +77,7 @@ export function TimeMachine({ timeline, sixtyForty }: { timeline?: Row[]; sixtyF
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-2 mb-2">
+      <div className="workspace-controls flex flex-wrap items-center gap-2 mb-2">
         <span className="font-mono text-sm font-semibold text-text-primary min-w-[9.5rem]">{monthName(r.month)}</span>
         <div className="flex items-center gap-0.5">
           <button type="button" className="tm-btn" aria-label="Previous month" onClick={() => { setPlaying(false); setI((k) => Math.max(0, k - 1)); }}><SkipBack className="w-3 h-3" /></button>
@@ -85,7 +85,7 @@ export function TimeMachine({ timeline, sixtyForty }: { timeline?: Row[]; sixtyF
             {playing ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}</button>
           <button type="button" className="tm-btn" aria-label="Next month" onClick={() => { setPlaying(false); setI((k) => Math.min(rows.length - 1, k + 1)); }}><SkipForward className="w-3 h-3" /></button>
         </div>
-        <div className="flex flex-wrap gap-1">
+        <div className="workspace-controls flex flex-wrap gap-1">
           {JUMPS.filter(([m]) => m >= rows[0].month && m <= rows[rows.length - 1].month).map(([m, label]) => (
             <button key={m} type="button" onClick={() => jump(m)} className={cn('px-1.5 py-0.5 text-[10px] border', r.month === m ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary hover:text-text-primary')}>{label}</button>
           ))}

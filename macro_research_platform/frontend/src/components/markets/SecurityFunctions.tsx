@@ -7,12 +7,15 @@ import { Donut } from '@/components/ui/Donut';
 import { CATEGORICAL } from '@/lib/chartPalette';
 import { Chg, ErrorBox, fmtBig, fmtPct, fmtPrice, Loading, Panel, useJSON } from './shared';
 
+import { ExpectationsPanel } from './ExpectationsPanel';
+import { earningsInsights } from '@/lib/earningsInsights';
+
 const enc = encodeURIComponent;
 const n2 = (v: number | null | undefined, d = 2) => (v == null || !Number.isFinite(v) ? '—' : v.toFixed(d));
 
 function Stat({ label, value, sub, tone }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: 'up' | 'down' | null }) {
   return (
-    <div className="px-3 py-2 bg-surface-1 border border-border min-w-0">
+    <div className="mkt-stat-card px-3 py-2 bg-surface-1 border border-border min-w-0">
       <div className="text-[10px] uppercase tracking-wider text-text-tertiary truncate">{label}</div>
       <div className={cn('font-mono text-base tabular-nums', tone === 'up' ? 'text-green' : tone === 'down' ? 'text-red' : 'text-text-primary')}>{value}</div>
       {sub && <div className="text-[10px] text-text-tertiary truncate">{sub}</div>}
@@ -94,12 +97,26 @@ export function ErnView({ symbol }: { symbol: string }) {
     <div className="space-y-3">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <Stat label="Next report" value={up ? up.date : '—'} sub={up?.eps_estimate != null ? `EPS estimate ${n2(up.eps_estimate)} ${data.currency ?? ''}` : 'No date announced'} />
-        <Stat label="Beat rate" value={data.beat_rate != null ? fmtPct(data.beat_rate, 0).replace('+', '') : '—'} sub={data.history.length ? `of the last ${data.history.length} reports` : 'No recent reports'} />
+        <Stat label="Beat rate" value={data.beat_rate != null ? fmtPct(data.beat_rate, 0).replace('+', '') : '—'} sub={data.history.length ? `of ${data.surprise_sample ?? data.history.filter((h: any) => h.surprise_pct != null).length} reports with surprise data` : 'No recent reports'} />
         <Stat label="Average surprise" value={data.avg_surprise_pct != null ? `${data.avg_surprise_pct > 0 ? '+' : ''}${data.avg_surprise_pct.toFixed(1)}%` : '—'}
           tone={data.avg_surprise_pct > 0 ? 'up' : data.avg_surprise_pct < 0 ? 'down' : null} />
         <Stat label="Last report" value={hist.length ? hist[hist.length - 1].date : '—'} sub={hist.length ? `EPS ${n2(hist[hist.length - 1].eps_reported)} vs ${n2(hist[hist.length - 1].eps_estimate)} est.` : ''} />
       </div>
       {data.note && <div className="text-2xs text-amber">{data.note}</div>}
+      <Panel title="Earnings expectations · 30-day changes">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+          {earningsInsights(data.estimates).map((r: any) => <div key={r.period} className="p-3 border border-border rounded-lg">
+            <div className="font-mono text-sm text-text-primary">{r.period} · {r.analysts ?? '—'} analysts</div>
+            <div className="text-xs mt-2">EPS revision: {r.change == null ? 'Unavailable' : `${r.change > 0 ? '+' : ''}${r.change.toFixed(1)}%`}</div>
+            <div className="text-xs">Revision balance: {r.breadth == null ? 'Unavailable' : `${r.breadth.toFixed(0)}%`}</div>
+            <div className="text-xs">Estimate range / |mean|: {r.dispersion == null ? 'Unavailable' : `${r.dispersion.toFixed(0)}%`}</div>
+            {r.analysts != null && r.analysts < 5 && <div className="text-amber text-xs mt-1">Limited analyst coverage</div>}
+          </div>)}
+        </div>
+        {!data.estimates?.eps?.length && <p className="text-xs text-text-tertiary">No consensus sample available.</p>}
+        <p className="text-[10px] text-text-tertiary mt-2">EPS revision = (current − 30-day estimate) / |30-day estimate|. Revision balance = (up − down) / (up + down); counts may overlap and are not unique analysts. Range measures disagreement, not a confidence interval. Provider snapshots are not a point-in-time archive.</p>
+      </Panel>
+
       {hist.length > 0 && <Panel title="Reported EPS vs estimate — green = beat, red = miss (grey = estimate)">
         <Bars data={hist.map((h: any) => ({ label: h.date.slice(2, 7), a: h.eps_reported, b: h.eps_estimate }))} />
       </Panel>}
@@ -123,12 +140,12 @@ function EstTable({ rows, cols }: { rows: any[]; cols: [string, string, string?]
   if (!rows?.length) return <div className="text-2xs text-text-tertiary">Not available.</div>;
   const f = (v: any, kind?: string) => v == null ? '—' : kind === 'pct' ? fmtPct(v, 1) : kind === 'big' ? fmtBig(v) : kind === 'int' ? String(Math.round(v)) : n2(v);
   return (
-    <table className="w-full text-2xs font-mono">
+    <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono">
       <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Period</th>{cols.map(([, l]) => <th key={l} className="text-right font-normal">{l}</th>)}</tr></thead>
       <tbody>{rows.map((r) => (
         <tr key={r.period} className="border-t border-border-subtle"><td className="text-text-secondary">{r.period}</td>
           {cols.map(([k, l, kind]) => <td key={l} className="text-right">{f(r[k], kind)}</td>)}</tr>))}</tbody>
-    </table>
+    </table></div>
   );
 }
 
@@ -243,14 +260,14 @@ export function HdsView({ symbol }: { symbol: string }) {
   const inst = b.institutionsPercentHeld, ins = b.insidersPercentHeld;
   const other = inst != null && ins != null ? Math.max(0, 1 - inst - ins) : null;
   const table = (rows: any[]) => (
-    <table className="w-full text-2xs">
+    <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs">
       <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Holder</th><th className="text-right font-normal">% held</th>
         <th className="text-right font-normal">Shares</th><th className="text-right font-normal">Value{data.value_currency ? ` (${data.value_currency})` : ''}</th><th className="text-right font-normal">Change</th></tr></thead>
       <tbody>{rows.map((r, i) => (
         <tr key={i} className="border-t border-border-subtle"><td className="py-1 text-text-primary truncate max-w-[14rem]">{r.Holder}</td>
           <td className="text-right font-mono">{fmtPct(r.pctHeld, 2).replace('+', '')}</td><td className="text-right font-mono">{fmtBig(r.Shares)}</td>
           <td className="text-right font-mono">{fmtBig(r.Value)}</td><td className="text-right"><Chg v={r.pctChange} d={1} /></td></tr>))}</tbody>
-    </table>);
+    </table></div>);
   return (
     <div className="space-y-3">
       {data.note && <div className="text-2xs text-amber border border-amber/40 bg-amber/5 px-2 py-1">{data.note}</div>}
@@ -309,8 +326,8 @@ export function DvdView({ symbol }: { symbol: string }) {
             <tr key={p.date} className="border-t border-border-subtle"><td className="text-text-tertiary py-0.5">{p.date}</td><td className="text-right">{n2(p.amount, 4)}</td></tr>))}</tbody></table></div>
         </Panel>
         <Panel title="Stock splits">
-          {data.splits.length ? <table className="w-full text-2xs font-mono"><tbody>{data.splits.map((s: any) => (
-            <tr key={s.date} className="border-t border-border-subtle"><td className="text-text-tertiary py-0.5">{s.date}</td><td className="text-right">{s.ratio >= 1 ? `${s.ratio}-for-1` : `1-for-${(1 / s.ratio).toFixed(0)}`}</td></tr>))}</tbody></table>
+          {data.splits.length ? <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono"><tbody>{data.splits.map((s: any) => (
+            <tr key={s.date} className="border-t border-border-subtle"><td className="text-text-tertiary py-0.5">{s.date}</td><td className="text-right">{s.ratio >= 1 ? `${s.ratio}-for-1` : `1-for-${(1 / s.ratio).toFixed(0)}`}</td></tr>))}</tbody></table></div>
             : <div className="text-2xs text-text-tertiary">No splits.</div>}
         </Panel>
       </div>
@@ -378,7 +395,7 @@ export function OmonView({ symbol }: { symbol: string }) {
   return (
     <div className="space-y-3">
       {data.warning && <div className="px-3 py-2 border border-amber/50 bg-amber/5 text-2xs text-amber">{data.warning}</div>}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="mkt-controls flex flex-wrap items-center gap-2">
         <label className="text-2xs text-text-tertiary">Expiry
           <select value={data.expiry} onChange={(e) => setExpiry(e.target.value)} className="ml-2 bg-surface-1 border border-border px-2 py-1 text-xs font-mono text-text-primary">
             {data.expirations.map((e: string) => <option key={e} value={e}>{e}</option>)}</select></label>
@@ -413,12 +430,12 @@ export function OmonView({ symbol }: { symbol: string }) {
       <OpenInterest data={data} rows={rows} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Panel title="Volatility smile (out-of-the-money IV by strike)">
-          {data.smile.length > 2 ? <LineChart rows={data.smile.map((s: any) => ({ ...s, x: s.strike.toFixed(0) }))} x="x" height={200}
-            lines={[{ key: 'iv', label: 'IV', color: CATEGORICAL[0] }]} fmt={(v) => `${(v * 100).toFixed(1)}%`} /> : <div className="text-2xs text-text-tertiary">Not enough quotes.</div>}
+          {data.smile.length > 2 ? <div className="mkt-chart-surface"><LineChart rows={data.smile.map((s: any) => ({ ...s, x: s.strike.toFixed(0) }))} x="x" height={200}
+            lines={[{ key: 'iv', label: 'IV', color: CATEGORICAL[0] }]} fmt={(v) => `${(v * 100).toFixed(1)}%`} /></div> : <div className="text-2xs text-text-tertiary">Not enough quotes.</div>}
         </Panel>
         <Panel title="Term structure (ATM IV by expiry)">
-          {term.data?.term?.length > 1 ? <LineChart rows={term.data.term.map((t: any) => ({ ...t, x: t.expiry }))} x="x" height={200}
-            lines={[{ key: 'atm_iv', label: 'ATM IV', color: CATEGORICAL[1] }]} fmt={(v) => `${(v * 100).toFixed(1)}%`} />
+          {term.data?.term?.length > 1 ? <div className="mkt-chart-surface"><LineChart rows={term.data.term.map((t: any) => ({ ...t, x: t.expiry }))} x="x" height={200}
+            lines={[{ key: 'atm_iv', label: 'ATM IV', color: CATEGORICAL[1] }]} fmt={(v) => `${(v * 100).toFixed(1)}%`} /></div>
             : term.loading ? <Loading /> : <div className="text-2xs text-text-tertiary">Not enough expiries priced.</div>}
         </Panel>
       </div>
@@ -444,7 +461,7 @@ export function RvView({ symbol, onOpen }: { symbol: string; onOpen: (s: string)
   const srt = (rs: any[]) => [...rs].sort((a: any, b: any) => (b[sort] ?? -1e18) - (a[sort] ?? -1e18));
   const shown = area === 'all' ? regions : [area];
   const Row = ({ r, med }: { r: any; med: any }) => (
-    <tr onClick={() => !r.subject && onOpen(r.symbol)} className={cn('border-t border-border-subtle', r.subject ? 'bg-bloomberg/10' : 'cursor-pointer hover:bg-surface-3')}>
+    <tr onClick={() => !r.subject && onOpen(r.symbol)} className={cn('border-t border-border-subtle', r.subject ? 'bg-bloomberg/10' : 'cursor-pointer hover:bg-surface-3')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
       <td className="py-1 pr-2"><span className="font-mono text-text-primary">{r.symbol}</span> <span className="text-text-secondary">{r.name}</span>
         {r.country && <span className="text-text-tertiary"> · {r.country}</span>}</td>
       {cols.map(([k, , kind]) => {
@@ -483,14 +500,14 @@ export function RvView({ symbol, onOpen }: { symbol: string; onOpen: (s: string)
       <div className="text-[10px] text-text-tertiary mt-2">Green = cheaper (multiples) or stronger (margins, growth) than that region’s median. n/m = not meaningful (losses, negative book, or an extreme value). {data.multiples_note} {data.source}</div>
     </Panel>
     {subj && Object.keys(imp).length > 0 && <Panel title={`${symbol} at its peers’ multiples — implied share price (${data.price_currency ?? ''})`}>
-      <table className="w-full text-2xs font-mono">
+      <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono">
         <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Multiple</th><th className="text-right font-normal">{symbol} today</th>
           {['global', ...regions].map((a) => <th key={a} className="text-right font-normal px-1.5">{a === 'global' ? 'Global median' : a}</th>)}</tr></thead>
         <tbody>{impKeys.filter(([k]) => imp[k]).map(([k, l]) => (
           <tr key={k} className="border-t border-border-subtle"><td className="py-1 font-sans text-text-secondary">{l}</td><td className="text-right">{subj[k]?.toFixed(1) ?? '—'}×</td>
             {['global', ...regions].map((a) => { const v = imp[k][a];
               return <td key={a} className="text-right px-1.5 text-text-primary">{v != null && v > 0 ? v.toLocaleString(undefined, { maximumFractionDigits: v < 100 ? 2 : 0 }) : '—'}</td>; })}</tr>))}</tbody>
-      </table>
+      </table></div>
       <div className="text-[10px] text-text-tertiary mt-1">Price × (peer median multiple ÷ {symbol}’s multiple). EV/EBITDA keeps {symbol}’s own net debt. A quick relative-value cross-check for the DCF — regions differ in growth, rates and accounting, so the home region is usually the fairest yardstick.</div>
     </Panel>}
     <ValuationMap rows={data.rows} onOpen={onOpen} />
@@ -603,7 +620,7 @@ export function BetaView({ symbol }: { symbol: string }) {
   const pickB = (b: string) => { setBench(b); setTyped(b); };
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2 items-center text-2xs text-text-tertiary">
+      <div className="mkt-controls flex flex-wrap gap-2 items-center text-2xs text-text-tertiary">
         <label>Benchmark <input value={typed} placeholder={data?.benchmark ?? 'home index'} onChange={(e) => setTyped(e.target.value.toUpperCase())}
           onKeyDown={(e) => { if (e.key === 'Enter') setBench(typed.trim()); }} onBlur={() => setBench(typed.trim())}
           className="ml-1 w-24 bg-surface-1 border border-border px-2 py-1 font-mono text-xs text-text-primary" /></label>
@@ -623,8 +640,8 @@ export function BetaView({ symbol }: { symbol: string }) {
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <Panel title={`Returns: ${symbol} (up) vs ${data.benchmark} (across)`}><Scatter pts={data.scatter} beta={data.beta} alpha={data.alpha_annual / ({ D: 252, W: 52, M: 12 } as any)[freq]} /></Panel>
-            <Panel title="Rolling beta">{data.rolling.length > 2 ? <LineChart rows={data.rolling} x="date" height={220} baseline={1}
-              lines={[{ key: 'beta', label: 'Beta', color: CATEGORICAL[0] }]} fmt={(v) => v.toFixed(2)} /> : <div className="text-2xs text-text-tertiary">Not enough history.</div>}</Panel>
+            <Panel title="Rolling beta">{data.rolling.length > 2 ? <div className="mkt-chart-surface"><LineChart rows={data.rolling} x="date" height={220} baseline={1}
+              lines={[{ key: 'beta', label: 'Beta', color: CATEGORICAL[0] }]} fmt={(v) => v.toFixed(2)} /></div> : <div className="text-2xs text-text-tertiary">Not enough history.</div>}</Panel>
           </div>
           <div className="text-[10px] text-text-tertiary">{data.note}</div>
         </>
@@ -738,7 +755,7 @@ export function DcfView({ symbol }: { symbol: string }) {
   const available: ValModel[] = [inp.is_financial ? 'excess_return' : 'fcff', ...(data.ddm || isDdm ? ['ddm' as ValModel] : [])];
   const modelBar = (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-1 text-[11px]">
+      <div className="mkt-controls flex flex-wrap items-center gap-1 text-[11px]">
         <span className="text-text-tertiary mr-1">Model</span>
         {available.map((m) => (
           <button key={m} onClick={() => pick(m)} className={cn('px-2.5 py-1 border rounded-sm', data.model === m ? 'border-bloomberg text-bloomberg bg-bloomberg/10' : 'border-border text-text-secondary hover:text-text-primary')}>
@@ -774,7 +791,7 @@ export function DcfView({ symbol }: { symbol: string }) {
               <span className="normal-case tracking-normal text-[10px] text-text-tertiary leading-tight block mt-0.5">{hint}</span>
             </label>))}
         </div>
-        <div className="flex flex-wrap items-center gap-4 mt-3 text-2xs text-text-secondary">
+        <div className="mkt-controls flex flex-wrap items-center gap-4 mt-3 text-2xs text-text-secondary">
           {!isFin && !isDdm && <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={leases} onChange={(e) => setLeases(e.target.checked)} />Treat operating leases as debt</label>}
           {!isFin && !isDdm && <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={midYear} onChange={(e) => setMidYear(e.target.checked)} />Mid-year discounting</label>}
           <button onClick={() => { const u = build(); if (u) setUrl(u); }} className="px-4 py-1.5 text-xs bg-bloomberg text-text-inverse">Recalculate</button>
@@ -791,6 +808,7 @@ export function DcfView({ symbol }: { symbol: string }) {
   return (
     <div className="space-y-3">
       {modelBar}
+      {data.expectations && <ExpectationsPanel data={data.expectations} />}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <Stat label="Intrinsic value / share" value={v.per_share != null ? fmtPrice(v.per_share) : '—'} sub={pccy} />
         <Stat label="vs price" value={v.upside != null ? fmtPct(v.upside, 1) : '—'} tone={v.upside != null ? (v.upside > 0 ? 'up' : 'down') : null} sub={v.price ? `price ${fmtPrice(v.price)}` : 'no exchange rate'} />
@@ -831,7 +849,7 @@ export function DcfView({ symbol }: { symbol: string }) {
           </table></div>
         </Panel>
         <Panel title="From enterprise value to value per share">
-          <table className="w-full text-xs"><tbody>
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs"><tbody>
             {[['PV of explicit cash flows', v.pv_explicit], ['PV of terminal value', v.pv_terminal], ['= Enterprise value', v.enterprise_value],
               ['− Debt' + (a.include_leases ? ' (incl. leases)' : '') + (inp.captive_finance_receivables ? ' (industrial only)' : ''), (inp.debt ?? 0) + (a.include_leases ? inp.leases ?? 0 : 0)], ['+ Cash & short-term investments', inp.cash ?? 0],
               ['+ Stakes in other companies', inp.investments ?? 0],
@@ -840,12 +858,12 @@ export function DcfView({ symbol }: { symbol: string }) {
                 <td className="py-1 text-text-secondary">{k}</td><td className="text-right font-mono">{fmtBig(x as number)}</td></tr>))}
             <tr className="border-t-2 border-border font-semibold"><td className="py-1">÷ {fmtBig(inp.shares)} shares</td><td className="text-right font-mono text-bloomberg">{fmtPrice(v.per_share_reporting_ccy)} {ccy}</td></tr>
             {pccy !== ccy && v.per_share != null && <tr><td className="py-1 text-text-secondary">= per traded share, in {pccy}</td><td className="text-right font-mono text-bloomberg">{fmtPrice(v.per_share)} {pccy}</td></tr>}
-          </tbody></table>
+          </tbody></table></div>
           {inp.captive_finance_receivables ? <div className="mt-2 text-[10px] text-text-tertiary">Captive finance arm carved out: {fmtBig(inp.captive_finance_receivables)} of loan book offsets its own debt (total debt {fmtBig(inp.debt_total)}).</div> : null}
           <div className="mt-3 text-[10px] text-text-tertiary space-y-0.5">
             <div>WACC = {pctS(w.weight_equity, 0)} × {pctS(w.cost_of_equity, 2)} (rf {pctS(w.risk_free, 2)} + β {n2(w.beta)} × ERP {pctS(w.erp, 1)}) + {pctS(w.weight_debt, 0)} × {pctS(w.cost_of_debt_after_tax, 2)}</div>
             <div>Risk-free: {inp.risk_free_source}.</div>
-            <div>ERP: {inp.erp_source}{inp.country_risk_premium ? ` + ${pctS(inp.country_risk_premium, 2)} country risk (${inp.country}${inp.country_rating ? `, ${inp.country_rating}` : ''})` : ''}.</div>
+            <div>ERP: {inp.erp_source}{!inp.erp_is_total_override && inp.country_risk_premium ? ` + ${pctS(inp.country_risk_premium, 2)} country risk (${inp.country}${inp.country_rating ? `, ${inp.country_rating}` : ''})` : ''}.</div>
             <div>Beta: {inp.beta_source}. Regression beta for comparison: {n2(inp.beta_regression)}.</div>
             <div>Stable growth: β moves to {a.beta_terminal != null ? n2(a.beta_terminal) : '—'} (bounded 0.8–1.2), so WACC goes {pctS(w.wacc, 2)} → {pctS(a.discount_terminal, 2)} over the fade years.</div>
             {inp.sales_to_capital_source && <div>Sales-to-capital: {inp.sales_to_capital_source}.</div>}
@@ -895,16 +913,16 @@ function FinancialValuation({ data, formPanel, pctS }: { data: any; formPanel: R
             </tbody></table></div>
         </Panel>
         <Panel title="From book value to value per share">
-          <table className="w-full text-xs"><tbody>
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs"><tbody>
             {[['Book equity today', v.book_value], ['+ PV of excess returns', v.pv_excess], ['+ PV of stable-growth excess returns', v.pv_terminal], ['= Equity value', v.equity_value]].map(([k, x]) => (
               <tr key={k as string} className={cn('border-t border-border-subtle', String(k).startsWith('=') && 'font-semibold text-text-primary')}>
                 <td className="py-1 text-text-secondary">{k}</td><td className="text-right font-mono">{fmtBig(x as number)}</td></tr>))}
             <tr className="border-t-2 border-border font-semibold"><td className="py-1">÷ {fmtBig(inp.shares)} shares</td><td className="text-right font-mono text-bloomberg">{fmtPrice(v.per_share_reporting_ccy)} {ccy}</td></tr>
             {pccy !== ccy && v.per_share != null && <tr><td className="py-1 text-text-secondary">= per traded share, in {pccy}</td><td className="text-right font-mono text-bloomberg">{fmtPrice(v.per_share)} {pccy}</td></tr>}
-          </tbody></table>
+          </tbody></table></div>
           <div className="mt-3 text-[10px] text-text-tertiary space-y-0.5">
             <div>Risk-free: {inp.risk_free_source}.</div>
-            <div>ERP: {inp.erp_source}{inp.country_risk_premium ? ` + ${pctS(inp.country_risk_premium, 2)} country risk` : ''}. Beta: {inp.beta_source}.</div>
+            <div>ERP: {inp.erp_source}{!inp.erp_is_total_override && inp.country_risk_premium ? ` + ${pctS(inp.country_risk_premium, 2)} country risk` : ''}. Beta: {inp.beta_source}.</div>
             <div>Financials: {inp.source}. Book equity and net income from the latest filings (Yahoo).</div>
           </div>
         </Panel>
@@ -943,18 +961,18 @@ export function PriceOutlook({ o, ccy, value, halfLife, title }: { o: any; ccy: 
         <button key={h} onClick={() => setHl(h as number)} className={cn('px-2 py-0.5 border rounded-sm', hl === h ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{l}</button>))}
       <label className="ml-2 inline-flex items-center gap-1 text-text-secondary"><input type="checkbox" checked={useModel} onChange={(e) => setUseModel(e.target.checked)} />use model value</label></div>}>
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-3">
-        <LineChart rows={rows} x="date" height={230} controls={false} fmt={(v) => fmtPrice(v)} refs={refs}
+        <div className="mkt-chart-surface"><LineChart rows={rows} x="date" height={230} controls={false} fmt={(v) => fmtPrice(v)} refs={refs}
           lines={[{ key: 'p90', label: '90th pct', color: 'rgb(var(--c-green) / 0.55)' }, { key: 'p75', label: '75th', color: 'rgb(var(--c-green) / 0.3)' },
-            { key: 'median', label: 'Median', color: 'rgb(var(--c-blue))' }, { key: 'p25', label: '25th', color: 'rgb(var(--c-red) / 0.3)' }, { key: 'p10', label: '10th pct', color: 'rgb(var(--c-red) / 0.55)' }]} />
+            { key: 'median', label: 'Median', color: 'rgb(var(--c-blue))' }, { key: 'p25', label: '25th', color: 'rgb(var(--c-red) / 0.3)' }, { key: 'p10', label: '10th pct', color: 'rgb(var(--c-red) / 0.55)' }]} /></div>
         <div>
-          <table className="w-full text-2xs font-mono tabular-nums">
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono tabular-nums">
             <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Horizon</th><th className="text-right font-normal">Median</th><th className="text-right font-normal">vs now</th>
               <th className="text-right font-normal">80% range</th><th className="text-right font-normal" title="Probability the price is above today's">P(up)</th></tr></thead>
             <tbody>{[1, 3, 6, 12, 18, 24].map((m) => { const x = at(m / 12); return (
               <tr key={m} className="border-t border-border-subtle"><td className="py-0.5 font-sans text-text-secondary">{m < 12 ? `${m} month${m > 1 ? 's' : ''}` : `${m / 12} year${m > 12 ? 's' : ''}`}</td>
                 <td className="text-right text-text-primary">{fmtPrice(x.median)}</td><td className={cn('text-right', x.median >= P0 ? 'text-green' : 'text-red')}>{fmtPct(x.median / P0 - 1, 1)}</td>
                 <td className="text-right text-text-secondary">{fmtPrice(x.p10)} – {fmtPrice(x.p90)}</td><td className="text-right">{pc(x.up)}</td></tr>); })}</tbody>
-          </table>
+          </table></div>
           <div className="mt-2 text-[10px] text-text-tertiary space-y-0.5">
             <div>Drift {(drift * 100).toFixed(1)}% a year (cost of equity {(o.cost_of_equity * 100).toFixed(1)}% less {(o.dividend_yield * 100).toFixed(1)}% dividend yield); volatility {(sig * 100).toFixed(0)}% (1-year realised).</div>
             <div>The gap to {V ? fmtPrice(V) : 'the model value'} closes with a {hl}-year half-life ({Math.round((1 - Math.exp(-Math.log(2) / hl)) * 100)}% of it in the first year).</div>
@@ -997,14 +1015,14 @@ function ValuationSummary({ symbol, data }: { symbol: string; data: any }) {
     <div className="border border-border bg-surface-1 rounded-md px-3 py-2">
       <div className="text-[10px] uppercase tracking-wider text-text-tertiary mb-1">Valuation summary — value per share ({data.inputs.price_currency ?? ''})</div>
       <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-3 items-center">
-        <table className="text-2xs w-full"><tbody>
+        <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="text-2xs w-full"><tbody>
           {items.map(([k, x, sub]) => (
             <tr key={k} className="border-t border-border-subtle first:border-0"><td className="py-0.5 text-text-secondary">{k}</td>
               <td className="text-right font-mono text-text-primary">{x != null && x > 0 ? fmtPrice(x) : '—'}</td>
               <td className={cn('text-right font-mono w-16', x && price ? (x > price ? 'text-green' : 'text-red') : 'text-text-tertiary')}>{x && price ? fmtPct(x / price - 1, 0) : ''}</td>
               <td className="pl-2 text-[10px] text-text-tertiary">{sub}</td></tr>))}
           <tr className="border-t border-border"><td className="py-0.5 text-text-secondary">Price</td><td className="text-right font-mono text-bloomberg">{fmtPrice(price)}</td><td /><td /></tr>
-        </tbody></table>
+        </tbody></table></div>
         <div className="relative h-10" aria-label="Valuation range">
           <div className="absolute left-0 right-0 top-5 h-px bg-border" />
           {vals.length > 1 && <div className="absolute top-4 h-2 bg-bloomberg/15 rounded" style={{ left: pos(Math.min(...vals)), width: `calc(${pos(Math.max(...vals))} - ${pos(Math.min(...vals))})` }} />}
@@ -1052,11 +1070,11 @@ function DdmValuation({ data, formPanel, pctS }: { data: any; formPanel: React.R
           {v.dividend_history?.length > 1 && <div className="flex items-end gap-1 h-24 mb-2">{(() => { const mx = Math.max(...v.dividend_history.map((h: any) => h.dps)); return v.dividend_history.map((h: any) => (
             <div key={h.year} className="flex-1 flex flex-col items-center justify-end h-full" title={`${h.year}: ${d2(h.dps)}`}>
               <div className="w-full bg-blue/70 rounded-t-sm" style={{ height: `${(h.dps / mx) * 100}%` }} /><span className="text-[8px] text-text-tertiary mt-0.5">{String(h.year).slice(2)}</span></div>)); })()}</div>}
-          <table className="w-full text-xs"><tbody>
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs"><tbody>
             {[['PV of dividends, years 1–' + a.years, v.pv_dividends], ['PV of terminal value', v.pv_terminal], ['= Value per share', v.per_share]].map(([k, x]) => (
               <tr key={k as string} className={cn('border-t border-border-subtle', String(k).startsWith('=') && 'font-semibold text-text-primary')}>
                 <td className="py-1 text-text-secondary">{k}</td><td className="text-right font-mono">{d2(x as number)} {pccy}</td></tr>))}
-          </tbody></table>
+          </tbody></table></div>
           <div className="mt-3 text-[10px] text-text-tertiary space-y-0.5">
             <div>Growth: {a.growth_source}.</div>
             {a.roe_now != null && <div>ROE {pctS(a.roe_now)} today → {pctS(a.roe_terminal)} stable.</div>}
@@ -1074,14 +1092,14 @@ function DdmValuation({ data, formPanel, pctS }: { data: any; formPanel: React.R
 function SensGrid({ title, rows, cols, grid, price }: { title: string; rows: number[]; cols: number[]; grid: (number | null)[][]; price: number | null }) {
   return (
     <Panel title={title}>
-      <table className="w-full text-2xs font-mono tabular-nums">
+      <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono tabular-nums">
         <thead><tr className="text-text-tertiary"><th />{cols.map((c) => <th key={c} className="text-right font-normal">{(c * 100).toFixed(1)}%</th>)}</tr></thead>
         <tbody>{rows.map((r, i) => (
           <tr key={r} className="border-t border-border-subtle"><td className="text-text-tertiary">{(r * 100).toFixed(1)}%</td>
             {grid[i].map((x, j) => (
               <td key={j} className={cn('text-right py-0.5', i === 2 && j === 2 && 'font-semibold underline', price && x != null && (x > price ? 'text-green' : 'text-red'))}>
                 {x == null ? '—' : fmtPrice(x)}</td>))}</tr>))}</tbody>
-      </table>
+      </table></div>
     </Panel>
   );
 }
@@ -1105,23 +1123,23 @@ export function FundHoldingsView({ symbol, onOpen }: { symbol: string; onOpen: (
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Panel title="Top holdings">
-          <table className="w-full text-xs"><tbody>
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs"><tbody>
             {data.holdings.map((h: any, i: number) => (
-              <tr key={h.symbol} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3" onClick={() => onOpen(h.symbol)} title={`Open ${h.symbol}`}>
+              <tr key={h.symbol} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3" onClick={() => onOpen(h.symbol)} title={`Open ${h.symbol}`} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                 <td className="py-1 w-6 text-text-tertiary">{i + 1}</td>
                 <td className="py-1"><span className="text-text-primary">{h.name}</span> <span className="font-mono text-text-tertiary">{h.symbol}</span></td>
                 <td className="w-32"><div className="h-1.5 bg-surface-3"><div className="h-full bg-bloomberg" style={{ width: `${((h.weight ?? 0) / maxW) * 100}%` }} /></div></td>
                 <td className="text-right font-mono w-16">{h.weight != null ? `${(h.weight * 100).toFixed(2)}%` : '—'}</td></tr>))}
-          </tbody></table>
+          </tbody></table></div>
         </Panel>
         <Panel title="Sector weights">
-          <table className="w-full text-xs"><tbody>
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs"><tbody>
             {data.sectors.map((x: any) => (
               <tr key={x.sector} className="border-t border-border-subtle">
                 <td className="py-1 text-text-primary">{x.sector}</td>
                 <td className="w-40"><div className="h-1.5 bg-surface-3"><div className="h-full bg-blue" style={{ width: `${(x.weight / maxS) * 100}%` }} /></div></td>
                 <td className="text-right font-mono w-16">{(x.weight * 100).toFixed(1)}%</td></tr>))}
-          </tbody></table>
+          </tbody></table></div>
           {Object.keys(data.assets).length > 0 && <div className="mt-3 text-[11px] text-text-secondary">Asset mix: {Object.entries<number>(data.assets).map(([k, v]) => `${k} ${(v * 100).toFixed(1)}%`).join(' · ')}</div>}
         </Panel>
       </div>
@@ -1138,7 +1156,7 @@ export function NotApplicable({ fn, name, q, onGo }: { fn: string; name: string;
   return (
     <div className="border border-border bg-surface-1 p-4 space-y-3">
       <div className="text-sm text-text-primary"><span className="font-mono text-bloomberg mr-2">{fn}</span>{name} applies to companies — {q.symbol} is {KIND[q.type] ?? q.type?.toLowerCase() ?? 'not a company'}.</div>
-      <div className="flex flex-wrap gap-2">{alts.map((a) => (
+      <div className="mkt-controls flex flex-wrap gap-2">{alts.map((a) => (
         <button key={a} onClick={() => onGo(a, q.symbol)} className="px-2.5 py-1 text-xs border border-border hover:border-bloomberg hover:text-bloomberg"><span className="font-mono font-semibold">{a}</span></button>))}</div>
     </div>
   );

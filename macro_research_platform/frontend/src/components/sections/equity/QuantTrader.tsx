@@ -129,7 +129,7 @@ function Algos({ book }: { book: 'macro' | 'fundamental' | 'technical' }) {
       <LivePerformance book={book} deployments={d.deployments} />
       {d.curve.length > 1 && (
         <div className="p-3 bg-surface-1 border border-border">
-          <LineChart rows={d.curve} x="date" height={200} baseline={d.capital} fmt={(v) => usd(v)} lines={[{ key: 'nav', label: `${({ macro: 'Macro', fundamental: 'Fundamental', technical: 'Technical' } as const)[book]} algos NAV`, color: CATEGORICAL[0] }]} />
+          <div className="workspace-chart"><LineChart rows={d.curve} x="date" height={200} baseline={d.capital} fmt={(v) => usd(v)} lines={[{ key: 'nav', label: `${({ macro: 'Macro', fundamental: 'Fundamental', technical: 'Technical' } as const)[book]} algos NAV`, color: CATEGORICAL[0] }]} /></div>
         </div>
       )}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
@@ -217,7 +217,7 @@ const AlgoCard = memo(function AlgoCard({ x, canManage, onStop }: { x: any; canM
         </div>
       )}
       {x.positions.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1 text-[10px] font-mono">
+        <div className="workspace-controls flex flex-wrap items-center gap-1 text-[10px] font-mono">
           {shown.map((p: any) => (
             <span key={p.symbol} className={cn('px-1.5 py-0.5 border border-border', p.weight < 0 && 'text-red')}>{p.symbol} {spct(p.weight, 1)}</span>))}
           {hiddenCount > 0 && (

@@ -73,7 +73,7 @@ export function PreTradeDeskSection() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-2 mb-3">
+      <div className="workspace-controls flex flex-wrap items-end gap-2 mb-3">
         <label className="text-2xs text-text-tertiary">Security<br />
           <input className={cn(inputCls, 'w-28')} value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="AZN.L" /></label>
         <label className="text-2xs text-text-tertiary">Side<br />

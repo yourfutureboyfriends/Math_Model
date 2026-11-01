@@ -56,7 +56,7 @@ ASSETS: Dict[str, Tuple[str, str, str]] = {
     "TIPS": ("VIPSX", "TIP", "Inflation-linked bonds"),
     "IG credit": ("VWESX", "LQD", "Corporate credit"),
     "HY credit": ("VWEHX", "HYG", "Corporate credit"),
-    "Gold": ("GC=F", "GLD", "Gold"),
+    "Gold": ("GLD", "GLD", "Gold"),
     "Commodities": ("PCRIX", "DBC", "Commodities"),
 }
 
@@ -67,11 +67,11 @@ def transform(s: pd.Series, how: str) -> pd.Series:
     """Turn a raw macro series into a model input: yoy / neg_yoy (12-month log change ×100, sign-flipped for 'neg'),
     diff12 / neg_diff12 (12-month change), or the level.
     """
-    s = s.astype(float)
+    s = s.astype(float).replace([np.inf, -np.inf], np.nan)
     if how == "yoy":
-        return 100 * np.log(s).diff(12)
+        return 100 * np.log(s.where(s > 0)).diff(12)
     if how == "neg_yoy":
-        return -100 * np.log(s).diff(12)
+        return -100 * np.log(s.where(s > 0)).diff(12)
     if how == "diff12":
         return s.diff(12)
     if how == "neg_diff12":
@@ -91,6 +91,8 @@ def build_macro_panel(raw: Dict[str, pd.Series], spec: Optional[Dict[str, Tuple[
         s = raw.get(sid)
         if s is None or s.empty:
             continue
+        s = s.replace([np.inf, -np.inf], np.nan).sort_index()
+        s = s[~s.index.duplicated(keep="last")]
         m = s.resample("MS").mean()
         t = transform(m, how)
         # Extend the index before shifting, so the newest release lands on the month it was
@@ -132,14 +134,14 @@ def load_asset_prices() -> Dict[str, Dict[str, float]]:
     fails.
     """
     from api.handlers.macro_inputs import _disk_load, _disk_save
-    hit = _disk_load("model_asset_prices", max_age=_TTL)
+    hit = _disk_load("model_asset_prices_v2", max_age=_TTL)
     if hit:
         return hit["data"]
     data = _fetch_asset_prices()
     if len(data) >= 5:
-        _disk_save("model_asset_prices", {"data": data, "fetched_at": time.time()})
+        _disk_save("model_asset_prices_v2", {"data": data, "fetched_at": time.time()})
         return data
-    stale = _disk_load("model_asset_prices")
+    stale = _disk_load("model_asset_prices_v2")
     return stale["data"] if stale else data
 
 
@@ -152,11 +154,11 @@ def excess_returns(prices: Dict[str, Dict[str, float]], cash: pd.Series) -> pd.D
         s.index = pd.to_datetime([k + "-01" for k in s.index])
         s = s.sort_index()
         s = s[~s.index.duplicated(keep="last")]
-        frames[name] = s.pct_change()
+        frames[name] = s.asfreq("MS").pct_change(fill_method=None)
     r = pd.DataFrame(frames).sort_index()
     this_month = pd.Timestamp.today().to_period("M").to_timestamp()
     r = r[r.index < this_month]
-    c = (cash.resample("MS").mean() / 1200).reindex(r.index).ffill()
+    c = (cash.resample("MS").mean() / 1200).reindex(r.index.union(cash.resample("MS").mean().index)).sort_index().ffill(limit=2).reindex(r.index)
     return r.sub(c, axis=0)
 
 

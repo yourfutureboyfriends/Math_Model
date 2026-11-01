@@ -16,21 +16,13 @@ const inp = 'bg-surface-1 border border-border px-2 py-1 text-xs text-text-prima
 export function WatchlistsView({ onOpen }: { onOpen: (s: string) => void }) {
   const [lists, setLists] = useState<any[] | null>(null);
   const [active, setActive] = useState<number | null>(null);
-  const [quotes, setQuotes] = useState<Record<string, any>>({});
   const [add, setAdd] = useState('');
   const [err, setErr] = useState<string | null>(null);
-  const load = useCallback(() => call('/api/v1/mkt/watchlists').then((j) => { setLists(j.watchlists); setActive((a) => a ?? j.watchlists[0]?.id ?? null); }).catch((e) => setErr(e.message)), []);
+  const load = useCallback(() => call('/api/v1/mkt/watchlists').then((j) => { setErr(null);setLists(j.watchlists); setActive((a) => a ?? j.watchlists[0]?.id ?? null); }).catch((e) => setErr(e.message)), []);
   useEffect(() => { load(); }, [load]);
   const list = lists?.find((l) => l.id === active);
-  useEffect(() => {
-    if (!list?.symbols.length) { setQuotes({}); return; }
-    let live = true;
-    const get = () => call(`/api/v1/mkt/quotes?symbols=${encodeURIComponent(list.symbols.join(','))}`)
-      .then((j) => live && setQuotes(Object.fromEntries(j.quotes.map((q: any) => [q.symbol, q])))).catch(() => {});
-    get();
-    const t = setInterval(() => document.visibilityState === 'visible' && get(), 60_000);
-    return () => { live = false; clearInterval(t); };
-  }, [list?.id, list?.symbols.join(',')]);
+  const liveQuotes=useJSON<{quotes:any[]}>(list?.symbols?.length?`/api/v1/mkt/quotes?symbols=${encodeURIComponent(list.symbols.join(','))}`:null,60_000);
+  const quotes:Record<string,any>=Object.fromEntries((liveQuotes.data?.quotes??[]).map(q=>[q.symbol,q]));
   const save = async (symbols: string[], name?: string) => {
     if (!list) return;
     try { const u = await call(`/api/v1/mkt/watchlists/${list.id}`, 'PUT', { symbols, name }); setLists((ls) => ls!.map((l) => (l.id === u.id ? u : l))); setErr(null); }
@@ -45,16 +37,17 @@ export function WatchlistsView({ onOpen }: { onOpen: (s: string) => void }) {
     if (!list || !window.confirm(`Delete the watchlist “${list.name}”?`)) return;
     try { await call(`/api/v1/mkt/watchlists/${list.id}`, 'DELETE'); setActive(null); load(); } catch (e: any) { setErr(e.message); }
   };
-  if (!lists) return err ? <ErrorBox msg={err} /> : <Loading label="Loading watchlists…" />;
+  if (!lists) return err ? <ErrorBox msg={err} onRetry={load} /> : <Loading label="Loading watchlists…" />;
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-1">
+      <div className="mkt-controls flex flex-wrap items-center gap-1">
         {lists.map((l) => (
           <button key={l.id} onClick={() => setActive(l.id)} className={cn('px-3 py-1 text-2xs border', l.id === active ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary hover:text-text-primary')}>
             {l.name}{l.shared_by ? <span className="text-text-tertiary"> · {l.shared_by}</span> : l.shared ? <span className="text-green"> · shared</span> : null} <span className="text-text-tertiary">{l.symbols.length}</span></button>))}
         <button onClick={create} className="px-2 py-1 text-2xs border border-dashed border-border text-text-tertiary hover:text-text-primary inline-flex items-center gap-1"><Plus className="w-3 h-3" />New list</button>
       </div>
       <ErrorBox msg={err} />
+      <ErrorBox msg={liveQuotes.error??liveQuotes.refreshError} onRetry={liveQuotes.retry}/>
       {list && (
         <Panel title={list.read_only ? `${list.name} — shared by ${list.shared_by}` : list.name} right={list.read_only ? <span className="text-2xs text-text-tertiary">read-only</span> : <div className="flex items-center gap-2">
           <label className="text-2xs text-text-tertiary inline-flex items-center gap-1 cursor-pointer" title="Colleagues see this list (read-only) in their watchlists">
@@ -64,11 +57,11 @@ export function WatchlistsView({ onOpen }: { onOpen: (s: string) => void }) {
           <button onClick={() => { const n = window.prompt('Rename watchlist', list.name); if (n) save(list.symbols, n); }} className="text-2xs text-text-tertiary hover:text-text-primary">Rename</button>
           <button onClick={remove} className="text-2xs text-text-tertiary hover:text-red">Delete</button></div>}>
           {!list.read_only && <form onSubmit={(e) => { e.preventDefault(); const s = add.trim().toUpperCase(); if (s && !list.symbols.includes(s)) save([...list.symbols, s]); setAdd(''); }} className="flex gap-2 mb-3">
-            <input value={add} onChange={(e) => setAdd(e.target.value)} placeholder="Add a ticker — e.g. NVDA, 7203.T, EURUSD=X, GC=F, BTC-USD" className={cn(inp, 'flex-1 font-mono')} />
+            <input value={add} onChange={(e) => setAdd(e.target.value)} placeholder="Add a ticker — e.g. NVDA, 7203.T, EURUSD=X, GC=F, BTC-USD" aria-label="Ticker to add to watchlist" className={cn(inp, 'flex-1 font-mono')} />
             <button className="px-3 py-1 text-xs bg-bloomberg text-text-inverse">Add</button>
           </form>}
           {list.symbols.length === 0 ? <div className="text-2xs text-text-tertiary">Empty — add tickers above, or use “+ Watch” on any instrument page.</div> : (
-            <table className="w-full text-xs"><thead><tr className="text-2xs text-text-tertiary"><th className="text-left font-normal">Symbol</th><th className="text-right font-normal">Last</th>
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs"><thead><tr className="text-2xs text-text-tertiary"><th className="text-left font-normal">Symbol</th><th className="text-right font-normal">Last</th>
               <th className="text-right font-normal">Day</th><th className="text-right font-normal">1 month</th><th className="text-right font-normal hidden sm:table-cell">Trend</th><th /></tr></thead>
               <tbody>{list.symbols.map((s: string) => { const q = quotes[s]; return (
                 <tr key={s} className="border-t border-border-subtle hover:bg-surface-3">
@@ -77,7 +70,7 @@ export function WatchlistsView({ onOpen }: { onOpen: (s: string) => void }) {
                   <td className="text-right"><Chg v={q?.change_1d} /></td><td className="text-right"><Chg v={q?.change_1m} d={1} /></td>
                   <td className="text-right hidden sm:table-cell"><Spark values={q?.spark} /></td>
                   <td className="text-right">{!list.read_only && <button onClick={() => save(list.symbols.filter((x: string) => x !== s))} aria-label={`Remove ${s}`} className="p-1 text-text-tertiary hover:text-red"><X className="w-3 h-3" /></button>}</td>
-                </tr>); })}</tbody></table>
+                </tr>); })}</tbody></table></div>
           )}
           <div className="text-[10px] text-text-tertiary mt-2">Prices refresh every minute while this tab is open (daily bars; exchange delays apply).</div>
         </Panel>
@@ -124,7 +117,7 @@ export function AlertsView({ seed }: { seed?: string }) {
       if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
     } catch (e2: any) { setErr(e2.message); } finally { setBusy(false); }
   };
-  const del = async (id: number) => { await call(`/api/v1/mkt/alerts/${id}`, 'DELETE').catch(() => {}); load(); };
+  const del = async (id: number) => { try{await call(`/api/v1/mkt/alerts/${id}`,'DELETE');load();}catch(e:any){setErr(e.message);} };
   const check = async () => { setBusy(true); try { await call('/api/v1/mkt/alerts/check', 'POST'); load(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } };
   return (
     <div className="space-y-3">
@@ -152,7 +145,7 @@ export function AlertsView({ seed }: { seed?: string }) {
           <label className="text-[10px] uppercase text-text-tertiary">Note<input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} className={cn(inp, 'w-full')} placeholder="optional" /></label>
           <button disabled={busy} className="px-3 py-1.5 text-xs bg-bloomberg text-text-inverse inline-flex items-center justify-center gap-1 disabled:opacity-50"><Bell className="w-3 h-3" />Create</button>
         </form>
-        {px != null && <div className="flex flex-wrap items-center gap-1 mt-2 text-[11px]">
+        {px != null && <div className="mkt-controls flex flex-wrap items-center gap-1 mt-2 text-[11px]">
           <span className="text-text-tertiary">Last <span className="font-mono text-text-primary">{fmtPrice(px, symType(lookup))}</span> · quick level:</span>
           {[-10, -5, 5, 10].map((p) => <button key={p} type="button" onClick={() => level(p)}
             className={cn('px-1.5 border border-border font-mono hover:border-bloomberg', p > 0 ? 'text-green' : 'text-red')}>{p > 0 ? '+' : ''}{p}%</button>)}</div>}
@@ -163,7 +156,7 @@ export function AlertsView({ seed }: { seed?: string }) {
       <ErrorBox msg={err} />
       <Panel title="Your alerts" right={<button onClick={check} disabled={busy} className="text-2xs text-text-tertiary hover:text-text-primary disabled:opacity-40">Check now</button>}>
         {!data ? (err ? null : <Loading />) : data.alerts.length === 0 ? <div className="text-2xs text-text-tertiary">No alerts yet.</div> : (
-          <table className="w-full text-xs"><tbody>{data.alerts.map((a: any) => (
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs"><tbody>{data.alerts.map((a: any) => (
             <tr key={a.id} className="border-t border-border-subtle">
               <td className="py-1.5 font-mono text-text-primary">{a.field_label ?? a.symbol}</td>
               <td className="text-text-secondary">{a.label} {a.kind === 'field_changes' ? <span className="text-text-tertiary">from {a.baseline}</span>
@@ -171,7 +164,7 @@ export function AlertsView({ seed }: { seed?: string }) {
                 : <span className="font-mono text-text-primary">{a.kind.startsWith('change') ? `${a.value}%` : a.kind.startsWith('field_') ? a.value : fmtPrice(a.value, symType(a.symbol))}</span>}{a.note && <span className="text-text-tertiary"> · {a.note}</span>}</td>
               <td className="text-2xs">{a.active ? <span className="text-green">● watching</span> : <span className="text-amber" title={a.triggered_text ?? undefined}>triggered {localStamp(a.triggered_at)}{a.triggered_text ? ` — ${a.triggered_text}` : ` at ${fmtPrice(a.triggered_price, symType(a.symbol))}`}</span>}</td>
               <td className="text-right"><button onClick={() => del(a.id)} aria-label="Delete alert" className="p-1 text-text-tertiary hover:text-red"><Trash2 className="w-3 h-3" /></button></td>
-            </tr>))}</tbody></table>)}
+            </tr>))}</tbody></table></div>)}
       </Panel>
     </div>
   );
@@ -202,10 +195,11 @@ export function JournalView({ seed, onOpen }: { seed?: string; onOpen: (s: strin
     } catch (e2: any) { setErr(e2.message); }
   };
   const edit = (r: any) => { setEditing(r.id); setForm({ ...r, quantity: r.quantity ?? '', entry: r.entry ?? '', exit: r.exit ?? '', tags: (r.tags ?? []).join(', '), thesis: r.thesis ?? '', outcome: r.outcome ?? '' }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-  const del = async (id: number) => { if (window.confirm('Delete this journal entry?')) { await call(`/api/v1/mkt/journal/${id}`, 'DELETE').catch(() => {}); load(); } };
+  const del = async (id: number) => { if (window.confirm('Delete this journal entry?')) { try{await call(`/api/v1/mkt/journal/${id}`,'DELETE');load();}catch(e:any){setErr(e.message);} } };
   const st = data?.stats;
   return (
     <div className="space-y-3">
+      <a href="#mkt/rdesk" className="text-xs text-bloomberg">Research desk: track thesis invalidation, catalysts and review dates →</a>
       {st && <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         {[['Entries', st.entries], ['Open', st.open], ['Win rate', st.win_rate != null ? fmtPct(st.win_rate, 0).replace('+', '') : '—'],
           ['Average result', st.avg_return != null ? fmtPct(st.avg_return, 1) : '—'], ['Avg win / loss', st.avg_win != null ? `${fmtPct(st.avg_win, 1)} / ${st.avg_loss != null ? fmtPct(st.avg_loss, 1) : '—'}` : '—']]
@@ -232,7 +226,7 @@ export function JournalView({ seed, onOpen }: { seed?: string; onOpen: (s: strin
       {!data ? (err ? null : <Loading />) : data.entries.length === 0 ? <Panel><div className="text-2xs text-text-tertiary">No entries yet. Writing down why you take a trade — and reviewing it later — is one of the most reliable ways to improve.</div></Panel> : (
         <div className="space-y-2">{data.entries.map((r: any) => (
           <div key={r.id} className="p-3 bg-surface-1 border border-border">
-            <div className="flex flex-wrap items-center gap-2 text-2xs">
+            <div className="mkt-controls flex flex-wrap items-center gap-2 text-2xs">
               <span className="font-mono text-text-tertiary">{r.date}</span>
               {r.symbol && <button onClick={() => onOpen(r.symbol)} className="font-mono text-text-primary hover:text-bloomberg">{r.symbol}</button>}
               <span className={cn('px-1.5 border uppercase text-[10px]', r.side === 'long' ? 'border-green/50 text-green' : r.side === 'short' ? 'border-red/50 text-red' : 'border-border text-text-tertiary')}>{r.side}</span>

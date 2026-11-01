@@ -1,0 +1,15 @@
+{
+  "method": "64 simultaneous identical reads; synthetic 80ms blocking provider; default asyncio executor",
+  "before_adapter": {
+    "requests": 64,
+    "provider_calls": 64,
+    "elapsed_ms": 336.78,
+    "unrelated_worker_probe_ms": 242.34
+  },
+  "shared_adapter": {
+    "requests": 64,
+    "provider_calls": 1,
+    "elapsed_ms": 90.21,
+    "unrelated_worker_probe_ms": 0.22
+  }
+}

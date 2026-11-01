@@ -3,7 +3,7 @@
 
 export function SectionSkeleton() {
   return (
-    <div className="bg-surface-1 border border-border p-4 animate-pulse">
+    <div role="status" aria-label="Loading analysis panel" className="workspace-skeleton bg-surface-1 border border-border p-4 animate-pulse">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="h-5 w-32 bg-surface-2 rounded" />

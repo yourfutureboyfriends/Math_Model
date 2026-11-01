@@ -127,7 +127,7 @@ function LogoUpload() {
     reader.readAsDataURL(file);
   };
   return (
-    <div className="text-[10px] text-text-tertiary flex flex-wrap gap-3 items-center">Fund logo (administrator):
+    <div className="workspace-controls text-[10px] text-text-tertiary flex flex-wrap gap-3 items-center">Fund logo (administrator):
       <label className="cursor-pointer underline">full logo<input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={up('full')} /></label>
       <label className="cursor-pointer underline">emblem shape<input type="file" accept="image/png,image/webp" className="hidden" onChange={up('mark_mask')} /></label>
       <label className="cursor-pointer underline">wordmark shape<input type="file" accept="image/png,image/webp" className="hidden" onChange={up('word_mask')} /></label>
@@ -165,7 +165,7 @@ function ModelDetail({ id, g, onChange }: { id: number; g: any; onChange: () => 
           <div className="mt-1 text-text-secondary"><b>Mechanism:</b> {m.mechanism}<br /><b>Target:</b> {m.target_variable} · <b>Horizon:</b> {m.horizon}<br /><b>Dataset:</b> {m.dataset}<br /><b>Null:</b> {m.null_hypothesis}</div>
         </Box>
         <Box title="Risk allocation (set before G3)">
-          <div className="flex flex-wrap gap-1">
+          <div className="workspace-controls flex flex-wrap gap-1">
             <input className={inputCls} placeholder="allocation (base ccy)" value={alloc.allocation} onChange={(e) => setAlloc({ ...alloc, allocation: e.target.value })} />
             <input className={inputCls} placeholder="max loss budget e.g. 0.08" value={alloc.max_loss_budget} onChange={(e) => setAlloc({ ...alloc, max_loss_budget: e.target.value })} />
             <input className={cn(inputCls, 'w-full')} placeholder="retirement criterion" value={alloc.retirement_criterion} onChange={(e) => setAlloc({ ...alloc, retirement_criterion: e.target.value })} />
@@ -241,11 +241,11 @@ function Models({ g }: { g: any }) {
         <div className="flex gap-2 items-center mt-1"><button disabled={!can('model_propose')} title={can('model_propose') ? undefined : NO} className={btn} onClick={create}>Propose</button>{msg && <span className="text-amber text-2xs">{msg}</span>}</div>
       </Box>
       {err && <div className="text-amber text-2xs">{err}</div>}
-      <table className="w-full text-xs">
+      <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs">
         <thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle"><th className="text-left font-normal py-1">Model</th><th className="text-left font-normal">Sleeve</th><th className="text-left font-normal">Owner</th><th className="text-left font-normal">Gate</th><th className="text-left font-normal">Status</th></tr></thead>
         <tbody>{(d?.models ?? []).map((m: any) => (
           <Fragment key={m.id}>
-            <tr className="border-b border-border-subtle cursor-pointer hover:bg-surface-2" onClick={() => setOpen(open === m.id ? null : m.id)}>
+            <tr className="border-b border-border-subtle cursor-pointer hover:bg-surface-2" onClick={() => setOpen(open === m.id ? null : m.id)} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
               <td className="py-1">#{m.id} {m.name} <span className="text-text-tertiary">v{m.version}</span></td><td>{g.sleeves[m.sleeve] ?? m.sleeve}</td><td>{m.owner}</td>
               <td className="font-mono">{m.gate} <span className="text-text-tertiary font-sans">{g.gates[m.gate]?.name}</span></td>
               <td className={cn(m.status === 'active' ? 'text-green' : m.status === 'suspended' ? 'text-amber' : 'text-text-tertiary')}>{m.status}</td>
@@ -254,7 +254,7 @@ function Models({ g }: { g: any }) {
           </Fragment>))}
           {d && d.models.length === 0 && <tr><td colSpan={5} className="text-text-tertiary text-2xs py-2">No models yet. Year one per the plan: one benchmark sleeve and one original macro-transmission sleeve.</td></tr>}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }
@@ -268,7 +268,7 @@ function Instruments() {
   return (
     <div className="space-y-2 text-xs">
       {err && <div className="text-amber text-2xs">{err}</div>}
-      <table className="w-full">
+      <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full">
         <thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle"><th className="text-left font-normal py-1">Symbol</th><th className="text-left font-normal">Name</th><th className="text-left font-normal">Class · theme</th><th className="text-left font-normal">Status</th><th /></tr></thead>
         <tbody>{(d?.instruments ?? []).map((i: any) => (
           <tr key={i.symbol} className="border-b border-border-subtle">
@@ -281,9 +281,9 @@ function Instruments() {
               {i.status !== 'removed' && <button disabled={!can('instruments_approve')} title={can('instruments_approve') ? undefined : NO} className={cn(btn, 'ml-1')} onClick={() => act(() => call(`/api/v1/governance/instruments/${encodeURIComponent(i.symbol)}/decision`, 'POST', { approve: false }))}>Remove</button>}
             </td>
           </tr>))}</tbody>
-      </table>
+      </table></div>
       <Box title="Propose an instrument (approved by another person — PM or risk)">
-        <div className="flex flex-wrap gap-1">
+        <div className="workspace-controls flex flex-wrap gap-1">
           {(['symbol', 'name', 'asset_class', 'theme', 'currency', 'note'] as const).map((k) => (
             <input key={k} className={inputCls} placeholder={k.replace('_', ' ')} value={(f as any)[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} />))}
           <label className="flex items-center gap-1 text-2xs"><input type="checkbox" checked={f.tradable} onChange={(e) => setF({ ...f, tradable: e.target.checked })} />tradable</label>
@@ -307,7 +307,7 @@ function Controls({ reload }: { reload: () => void }) {
       {dialog}
       {err && <div className="text-amber text-2xs">{err}</div>}
       <Box title="Kill switch">
-        <div className="flex gap-1 flex-wrap items-center">
+        <div className="workspace-controls flex gap-1 flex-wrap items-center">
           {d.halt ? <>
             <span className="text-red text-2xs">Halted ({d.halt.kind}): {d.halt.reason}{d.halt.incident_id ? ` — incident #${d.halt.incident_id}` : ''}</span>
             <button disabled={busy || !can('resume_trading')} title={can('resume_trading') ? undefined : NO} className={btn} onClick={async () => { const r = await say('Resolution (risk role; an incident must be fixed and independently signed off first):'); if (r) act(() => call('/api/v1/governance/controls/resume', 'POST', { text: r })); }}>Resume trading</button>
@@ -408,14 +408,14 @@ function Budget() {
   return (
     <div className="space-y-2 text-xs">
       {err && <div className="text-amber text-2xs">{err}</div>}
-      <table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle"><th className="text-left font-normal py-1">Category</th><th className="text-right font-normal">Budget</th><th className="text-right font-normal">Spent</th><th className="text-right font-normal">Remaining</th><th className="text-left font-normal pl-2">Outcome</th></tr></thead>
+      <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle"><th className="text-left font-normal py-1">Category</th><th className="text-right font-normal">Budget</th><th className="text-right font-normal">Spent</th><th className="text-right font-normal">Remaining</th><th className="text-left font-normal pl-2">Outcome</th></tr></thead>
         <tbody>{d.lines.map((l: any) => (
           <tr key={l.id} className="border-b border-border-subtle"><td className="py-1">{l.category}</td><td className="text-right font-mono">{num(l.amount)} {l.currency}</td><td className="text-right font-mono">{num(l.spent)}</td>
             <td className={cn('text-right font-mono', l.remaining < 0 ? 'text-red' : '')}>{num(l.remaining)}</td><td className="pl-2 text-text-tertiary">{l.outcome}</td></tr>))}
           <tr className="font-medium"><td className="py-1">Total</td><td className="text-right font-mono">{num(d.total_budget)}</td><td className="text-right font-mono">{num(d.total_spent)}</td><td className="text-right font-mono">{num(d.variance)}</td><td /></tr>
-        </tbody></table>
+        </tbody></table></div>
       <Box title="Record an expense (approved by another person — spending authority)">
-        <div className="flex flex-wrap gap-1">
+        <div className="workspace-controls flex flex-wrap gap-1">
           <input type="date" className={inputCls} value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} />
           <select className={inputCls} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}><option value="">category…</option>{d.lines.map((l: any) => <option key={l.id}>{l.category}</option>)}</select>
           <input className={cn(inputCls, 'w-24')} placeholder="amount" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} />
@@ -469,7 +469,7 @@ function Licences() {
     <div className="space-y-2 text-xs">
       <div className="text-[10px] text-amber">{d.note}</div>
       {err && <div className="text-amber text-2xs">{err}</div>}
-      <table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle"><th className="text-left font-normal py-1">Source</th><th className="text-left font-normal">Type</th><th className="text-left font-normal">Feeds</th><th className="text-left font-normal">Fund use</th><th /></tr></thead>
+      <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle"><th className="text-left font-normal py-1">Source</th><th className="text-left font-normal">Type</th><th className="text-left font-normal">Feeds</th><th className="text-left font-normal">Fund use</th><th /></tr></thead>
         <tbody>{d.sources.map((r: any) => (
           <tr key={r.name} className="border-b border-border-subtle align-top">
             <td className="py-1"><a className="hover:text-bloomberg" href={r.url} target="_blank" rel="noreferrer">{r.name}</a><div className="text-[10px] text-text-tertiary">{r.provider}</div></td>
@@ -479,10 +479,10 @@ function Licences() {
               {r.terms_reference && <div className="text-[10px] text-text-tertiary">{r.terms_reference} · {r.reviewed_by} {String(r.reviewed_at ?? '').slice(0, 10)}</div>}
               {r.note && <div className="text-[10px] text-text-tertiary">{r.note}</div>}</td>
             <td className="text-right"><button disabled={!can('data_licences_review')} title={can('data_licences_review') ? undefined : NO} className={btn} onClick={() => setEdit({ name: r.name, status: r.status === 'unreviewed' ? 'allowed' : r.status, terms_reference: r.terms_reference ?? '', note: r.note ?? '' })}>Review</button></td>
-          </tr>))}</tbody></table>
+          </tr>))}</tbody></table></div>
       {edit && (
         <Box title={`Review: ${edit.name}`}>
-          <div className="flex flex-wrap gap-1">
+          <div className="workspace-controls flex flex-wrap gap-1">
             <select className={inputCls} value={edit.status} onChange={(e) => setEdit({ ...edit, status: e.target.value })}>
               {['allowed', 'restricted', 'not_allowed', 'unreviewed'].map((x) => <option key={x} value={x}>{x.replace('_', ' ')}</option>)}</select>
             <input className={cn(inputCls, 'flex-1')} placeholder="terms reviewed (URL / document and date)" value={edit.terms_reference} onChange={(e) => setEdit({ ...edit, terms_reference: e.target.value })} />
@@ -501,14 +501,14 @@ function BreakEven() {
   const { d, err } = useLoad<any>(`/api/v1/governance/break-even?costs=${encodeURIComponent(cost)}&fees=${encodeURIComponent(fees)}`);
   return (
     <div className="space-y-2 text-xs">
-      <div className="flex gap-1 flex-wrap"><input className={cn(inputCls, 'w-72')} value={cost} onChange={(e) => setCost(e.target.value)} title="annual operating cash costs (US$)" />
+      <div className="workspace-controls flex gap-1 flex-wrap"><input className={cn(inputCls, 'w-72')} value={cost} onChange={(e) => setCost(e.target.value)} title="annual operating cash costs (US$)" />
         <input className={cn(inputCls, 'w-48')} value={fees} onChange={(e) => setFees(e.target.value)} title="management-fee rates" /></div>
       {!d ? <div className="text-2xs text-text-tertiary">{err ?? 'Loading…'}</div> : (<>
-        <table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle"><th className="text-left font-normal py-1">Annual cost</th>
+        <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle"><th className="text-left font-normal py-1">Annual cost</th>
           {Object.keys(d.thresholds[0]).filter((k) => k !== 'cost').map((k) => <th key={k} className="text-right font-normal">at {k} fee</th>)}</tr></thead>
           <tbody>{d.thresholds.map((r: any) => (
             <tr key={r.cost} className="border-b border-border-subtle"><td className="py-1 font-mono">${num(r.cost, 0)}</td>
-              {Object.entries(r).filter(([k]) => k !== 'cost').map(([k, v]: any) => <td key={k} className="text-right font-mono">${num(v / 1e6, 1)}m</td>)}</tr>))}</tbody></table>
+              {Object.entries(r).filter(([k]) => k !== 'cost').map(([k, v]: any) => <td key={k} className="text-right font-mono">${num(v / 1e6, 1)}m</td>)}</tr>))}</tbody></table></div>
         <div className="text-[10px] text-text-tertiary">{d.formula}. {d.note}</div>
       </>)}
     </div>
@@ -526,12 +526,12 @@ export function GovernanceSection() {
   return (
     <CapsCtx.Provider value={me.d?.capabilities ?? null}>
     <div className="border border-border bg-surface-1">
-      <div className="px-3 py-2 border-b border-border flex items-center gap-2 flex-wrap">
+      <div className="workspace-controls px-3 py-2 border-b border-border flex items-center gap-2 flex-wrap">
         <BrandShape variant="mark_mask" height={16} className="text-bloomberg" />
         <span className="text-xs font-medium text-text-primary uppercase tracking-wider">Fund Governance</span>
         {g && <span className="text-2xs text-text-tertiary">{g.settings.fund_name} · {g.settings.stage_label}</span>}
         {me.d?.position && <span className="text-[10px] px-1.5 border border-bloomberg/40 text-bloomberg">{me.d.position.title} · Tier {me.d.position.tier}</span>}
-        <div className="flex gap-1 flex-wrap ml-auto">
+        <div className="workspace-controls flex gap-1 flex-wrap ml-auto">
           {TABS.map(([k, l]) => <button key={k} onClick={() => setTab(k)} className={cn('text-2xs px-2 py-0.5 border', tab === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-tertiary hover:text-text-primary')}>{l}</button>)}
         </div>
       </div>

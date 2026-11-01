@@ -151,7 +151,7 @@ export function VaRStressSection() {
           {/* Custom scenario builder */}
           <div className="p-3 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Custom Scenario — shock factors (% return)</div>
-            <div className="flex flex-wrap items-end gap-2">
+            <div className="workspace-controls flex flex-wrap items-end gap-2">
               {CUSTOM_FACTORS.map(([key, label]) => (
                 <div key={key} className="w-24">
                   <label className="text-2xs text-text-tertiary">{label} %</label>

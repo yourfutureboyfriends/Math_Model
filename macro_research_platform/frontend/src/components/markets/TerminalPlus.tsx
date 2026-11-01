@@ -65,22 +65,22 @@ export function ChartView({ seed }: { seed?: string }) {
               className="flex-1 bg-surface-1 border border-border px-2 py-1 text-xs font-mono" placeholder="e.g. AAPL/SPY" />
             {draft.length > 1 && <button onClick={() => setDraft(draft.filter((_, j) => j !== i))} className="px-1.5 text-text-tertiary hover:text-red">✕</button>}
           </div>))}</div>
-        <div className="flex flex-wrap items-center gap-1 mt-2 text-[11px]">
+        <div className="mkt-controls flex flex-wrap items-center gap-1 mt-2 text-[11px]">
           {draft.length < 6 && <button onClick={() => setDraft([...draft, ''])} className="px-2 py-0.5 border border-border text-text-secondary">+ Add line</button>}
           <button onClick={apply} className="px-3 py-0.5 bg-bloomberg text-text-inverse">Chart</button>
           <span className="ml-2 text-text-tertiary">Period</span>{['1y', '2y', '5y', '10y', '20y', 'max'].map((p) => <Chip key={p} on={period === p} onClick={() => setPeriod(p)}>{p}</Chip>)}
         </div>
-        <div className="flex flex-wrap gap-1 mt-2 text-[10px]"><span className="text-text-tertiary">Try:</span>{G_EXAMPLES.map((x) => (
+        <div className="mkt-controls flex flex-wrap gap-1 mt-2 text-[10px]"><span className="text-text-tertiary">Try:</span>{G_EXAMPLES.map((x) => (
           <button key={x} onClick={() => { setDraft([x]); setRows([x]); }} className="font-mono px-1.5 border border-border-subtle rounded-sm text-text-secondary hover:text-bloomberg">{x}</button>))}</div>
         <div className="text-[10px] text-text-tertiary mt-1">Functions: log, exp, abs, sqrt, ma(x,n), ema(x,n), pct(x,n), diff(x,n), lag(x,n), yoy(x), rebase(x), z(x,n), vol(x,n). Put symbols with - or = in braces: {'{BTC-USD}'}, {'{EURUSD=X}'}.</div>
       </Panel>
       <Frame<any> url={url} label="Fetching series and evaluating…">{(d) => (
         <>
           <Panel title="Chart">
-            <LineChart rows={d.rows} x="date" height={360} fmt={(v) => num(v, 4)} lines={d.lines.map((l: any, i: number) => ({ key: l.key, label: l.expr, color: COLORS[i % COLORS.length] }))} />
+            <div className="mkt-chart-surface"><LineChart rows={d.rows} x="date" height={360} fmt={(v) => num(v, 4)} lines={d.lines.map((l: any, i: number) => ({ key: l.key, label: l.expr, color: COLORS[i % COLORS.length] }))} /></div>
           </Panel>
           <Panel title="Statistics">
-            <table className="w-full text-2xs font-mono tabular-nums">
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono tabular-nums">
               <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Formula</th><th className="text-right font-normal">Last</th><th className="text-right font-normal">1 month</th>
                 <th className="text-right font-normal">1 year</th><th className="text-right font-normal">Range</th><th className="text-right font-normal">Percentile</th><th className="text-right font-normal">As of</th></tr></thead>
               <tbody>{d.lines.map((l: any, i: number) => (
@@ -90,7 +90,7 @@ export function ChartView({ seed }: { seed?: string }) {
                   <td className={cn('text-right', tone(l.y1 != null ? l.last - l.y1 : null))}>{l.y1 != null ? num(l.last - l.y1, 4) : '—'}</td>
                   <td className="text-right text-text-secondary">{num(l.min, 3)} – {num(l.max, 3)}</td><td className="text-right">{Math.round(l.percentile * 100)}th</td>
                   <td className="text-right text-text-tertiary">{l.date}</td></tr>))}</tbody>
-            </table>
+            </table></div>
             <div className="text-[10px] text-text-tertiary mt-1">Changes are in the formula’s own units. {d.note}</div>
           </Panel>
         </>)}</Frame>
@@ -185,12 +185,12 @@ export function OvdvView({ symbol }: { symbol: string }) {
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
             <Panel title="Term structure — at-the-money vol and skew by expiry">
-              <LineChart rows={d.term.map((t: any) => ({ date: t.expiry, atm: t.atm != null ? t.atm * 100 : null, skew: t.skew != null ? t.skew * 100 : null }))} x="date" height={220} controls={false} fmt={(v) => v.toFixed(1)}
-                lines={[{ key: 'atm', label: 'ATM vol %', color: 'rgb(var(--c-blue))' }, { key: 'skew', label: 'Skew (pts)', color: 'rgb(var(--c-amber))' }]} />
+              <div className="mkt-chart-surface"><LineChart rows={d.term.map((t: any) => ({ date: t.expiry, atm: t.atm != null ? t.atm * 100 : null, skew: t.skew != null ? t.skew * 100 : null }))} x="date" height={220} controls={false} fmt={(v) => v.toFixed(1)}
+                lines={[{ key: 'atm', label: 'ATM vol %', color: 'rgb(var(--c-blue))' }, { key: 'skew', label: 'Skew (pts)', color: 'rgb(var(--c-amber))' }]} /></div>
             </Panel>
             <Panel title="Smile — vol by moneyness (strike ÷ spot)">
-              <LineChart rows={smileRows} x="m" height={220} controls={false} fmt={(v) => `${(v * 100).toFixed(1)}%`}
-                lines={d.smiles.map((s: any, i: number) => ({ key: `s${i}`, label: `${s.expiry} (${s.dte}d)`, color: COLORS[i % COLORS.length] }))} />
+              <div className="mkt-chart-surface"><LineChart rows={smileRows} x="m" height={220} controls={false} fmt={(v) => `${(v * 100).toFixed(1)}%`}
+                lines={d.smiles.map((s: any, i: number) => ({ key: `s${i}`, label: `${s.expiry} (${s.dte}d)`, color: COLORS[i % COLORS.length] }))} /></div>
             </Panel>
           </div>
           <Panel title="Volatility surface — implied vol by expiry (rows) and moneyness (columns)">
@@ -204,8 +204,8 @@ export function OvdvView({ symbol }: { symbol: string }) {
             <div className="text-[10px] text-text-tertiary mt-1">Darker = higher implied vol. {d.note}</div>
           </Panel>
           {d.history.length > 1 && <Panel title="Recorded 30-day implied vs realised vol">
-            <LineChart rows={d.history.map((h: any) => ({ date: h.date, iv: h.iv30 * 100, rv: h.rv20 * 100 }))} x="date" height={180} controls={false} fmt={(v) => v.toFixed(1)}
-              lines={[{ key: 'iv', label: 'Implied 30d', color: 'rgb(var(--c-blue))' }, { key: 'rv', label: 'Realised 20d', color: 'rgb(var(--c-amber))' }]} /></Panel>}
+            <div className="mkt-chart-surface"><LineChart rows={d.history.map((h: any) => ({ date: h.date, iv: h.iv30 * 100, rv: h.rv20 * 100 }))} x="date" height={180} controls={false} fmt={(v) => v.toFixed(1)}
+              lines={[{ key: 'iv', label: 'Implied 30d', color: 'rgb(var(--c-blue))' }, { key: 'rv', label: 'Realised 20d', color: 'rgb(var(--c-amber))' }]} /></div></Panel>}
           <div className="text-[10px] text-text-tertiary">Source: {d.source}.</div>
         </div>);
     }}</Frame>
@@ -227,7 +227,7 @@ export function CdrView() {
           <Tile label="UTC" value={d.now_utc.slice(11, 16)} sub={d.now_utc.slice(0, 10)} />
         </div>
         <Panel title="Exchanges — regular trading sessions in local time">
-          <table className="w-full text-2xs"><thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Exchange</th><th className="text-left font-normal">Local time</th>
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs"><thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Exchange</th><th className="text-left font-normal">Local time</th>
             <th className="text-left font-normal">Sessions</th><th className="text-left font-normal">Status</th><th className="text-right font-normal">Closes / opens in</th><th className="text-left font-normal pl-3">Next holidays</th></tr></thead>
             <tbody>{d.exchanges.map((x: any) => (
               <tr key={x.code} className="border-t border-border-subtle"><td className="py-1"><span className="text-text-primary">{x.name}</span> <span className="text-text-tertiary">{x.city}</span></td>
@@ -235,7 +235,7 @@ export function CdrView() {
                 <td className="font-mono text-text-secondary">{x.sessions.join(', ')}</td>
                 <td><span className={cn('px-1.5 rounded-sm text-[10px] font-semibold', x.status === 'open' ? 'bg-green/15 text-green' : x.status === 'lunch break' ? 'bg-amber/15 text-amber' : 'bg-surface-3 text-text-tertiary')}>{x.status}</span></td>
                 <td className="text-right font-mono">{x.status === 'open' ? `closes ${hm(x.closes_in_min)}` : `opens ${hm(x.opens_in_min)}`}</td>
-                <td className="pl-3 text-text-tertiary">{x.holidays.slice(0, 2).map((h: any) => `${h.date.slice(5)} ${h.name}`).join(' · ') || (x.holiday_calendar ? 'none in 60 days' : 'calendar not covered')}</td></tr>))}</tbody></table>
+                <td className="pl-3 text-text-tertiary">{x.holidays.slice(0, 2).map((h: any) => `${h.date.slice(5)} ${h.name}`).join(' · ') || (x.holiday_calendar ? 'none in 60 days' : 'calendar not covered')}</td></tr>))}</tbody></table></div>
           <div className="text-[10px] text-text-tertiary mt-1">{d.note}</div>
         </Panel>
       </div>)}</Frame>
@@ -256,11 +256,11 @@ export function IlbeView() {
               <Tile key={id} label={s.name} value={`${s.last.toFixed(2)}%`} sub={<span>{bp(s.chg_1m_bp)} 1m · {bp(s.chg_1y_bp)} 1y · {Math.round(s.percentile_10y * 100)}th pct (10y)</span>} />); })}
           </div>
           <Panel title="History (weekly, %)" right={<div className="flex gap-1"><Chip on={view === 'exp'} onClick={() => setView('exp')}>Inflation expectations</Chip><Chip on={view === 'real'} onClick={() => setView('real')}>Real vs nominal yields</Chip></div>}>
-            <LineChart rows={d.history} x="date" height={320} fmt={(v) => `${v.toFixed(2)}%`} defaultRange="5y"
+            <div className="mkt-chart-surface"><LineChart rows={d.history} x="date" height={320} fmt={(v) => `${v.toFixed(2)}%`} defaultRange="5y"
               lines={view === 'exp'
                 ? [{ key: 'T5YIE', label: '5y breakeven', color: COLORS[0] }, { key: 'T10YIE', label: '10y breakeven', color: COLORS[1] }, { key: 'T5YIFR', label: '5y5y forward', color: COLORS[4] },
                   { key: 'EXPINF1YR', label: '1y expected (Cleveland Fed)', color: COLORS[5] }, { key: 'CPI_YOY', label: 'CPI actual y/y', color: COLORS[2] }]
-                : [{ key: 'DGS10', label: '10y nominal', color: COLORS[0] }, { key: 'DFII10', label: '10y real (TIPS)', color: COLORS[3] }, { key: 'DFII5', label: '5y real', color: COLORS[5] }, { key: 'DFII30', label: '30y real', color: COLORS[4] }]} />
+                : [{ key: 'DGS10', label: '10y nominal', color: COLORS[0] }, { key: 'DFII10', label: '10y real (TIPS)', color: COLORS[3] }, { key: 'DFII5', label: '5y real', color: COLORS[5] }, { key: 'DFII30', label: '30y real', color: COLORS[4] }]} /></div>
           </Panel>
           <div className="text-[10px] text-text-tertiary">{d.note} Source: {d.source}.</div>
         </div>);
@@ -320,10 +320,10 @@ export function YasView() {
               <Tile label="Modified duration" value={calc.data.modified.toFixed(3)} sub={`Macaulay ${calc.data.macaulay.toFixed(3)}`} /><Tile label="Convexity" value={calc.data.convexity.toFixed(2)} />
               <Tile label="DV01 (per 100)" value={calc.data.dv01.toFixed(4)} sub="price change for 1bp" /><Tile label="Next coupon" value={calc.data.next_coupon} sub={`${calc.data.coupons_left} left`} />
             </div>
-            <table className="w-full text-2xs font-mono mt-2"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Yield shift</th><th className="text-right font-normal">Yield</th><th className="text-right font-normal">Price</th><th className="text-right font-normal">Change</th><th className="text-right font-normal">Duration+convexity estimate</th></tr></thead>
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono mt-2"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Yield shift</th><th className="text-right font-normal">Yield</th><th className="text-right font-normal">Price</th><th className="text-right font-normal">Change</th><th className="text-right font-normal">Duration+convexity estimate</th></tr></thead>
               <tbody>{calc.data.grid.map((g: any) => (
                 <tr key={g.shift_bp} className={cn('border-t border-border-subtle', g.shift_bp === 0 && 'font-semibold')}><td>{bp(g.shift_bp)}</td><td className="text-right">{(g.yield * 100).toFixed(3)}%</td>
-                  <td className="text-right">{g.price.toFixed(3)}</td><td className={cn('text-right', tone(g.change))}>{sp(g.change, 2)}</td><td className="text-right text-text-tertiary">{g.duration_convexity_estimate.toFixed(3)}</td></tr>))}</tbody></table>
+                  <td className="text-right">{g.price.toFixed(3)}</td><td className={cn('text-right', tone(g.change))}>{sp(g.change, 2)}</td><td className="text-right text-text-tertiary">{g.duration_convexity_estimate.toFixed(3)}</td></tr>))}</tbody></table></div>
           </>}
         </Panel>
         <Frame<any> url="/api/v1/mkt/tsy" label="Pricing every Treasury from TreasuryDirect…">{(d) => (
@@ -334,7 +334,7 @@ export function YasView() {
                 <th className="text-right font-normal">Price</th><th className="text-right font-normal">Yield</th><th className="text-right font-normal">Mod. dur.</th><th className="text-right font-normal">DV01</th></tr></thead>
               <tbody>{d.securities.filter((s: any) => s.type === kind).map((s: any) => (
                 <tr key={s.cusip} onClick={() => { if (s.type === 'Bill' || s.type === 'Frn') return; const f = { coupon: (s.coupon * 100).toFixed(3), maturity: s.maturity, price: String(s.price), ytm: '', settle: '' }; setForm(f); run(f); }}
-                  className={cn('border-t border-border-subtle', s.type !== 'Bill' && s.type !== 'Frn' && 'cursor-pointer hover:bg-surface-2')}>
+                  className={cn('border-t border-border-subtle', s.type !== 'Bill' && s.type !== 'Frn' && 'cursor-pointer hover:bg-surface-2')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                   <td className="py-0.5 text-text-secondary">{s.cusip}</td><td className="text-right">{(s.coupon * 100).toFixed(3)}%</td><td className="text-right">{s.maturity}</td>
                   <td className="text-right">{s.price.toFixed(4)}</td><td className="text-right text-text-primary">{s.ytm != null ? `${(s.ytm * 100).toFixed(3)}%` : '—'}</td>
                   <td className="text-right">{s.modified?.toFixed(2) ?? '—'}</td><td className="text-right">{s.dv01?.toFixed(4) ?? '—'}</td></tr>))}</tbody></table></div>
@@ -358,7 +358,7 @@ export function FxcaView() {
               <Tile label="Basket carry / last year's spot" value={`${pc(d.basket.carry)} / ${sp(d.basket.spot_1y)}`} sub="interest earned / currency move" /></>}
           </div>
           <Panel title="Carry vs the dollar — ranked by carry-to-volatility">
-            <table className="w-full text-2xs font-mono tabular-nums">
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono tabular-nums">
               <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Currency</th><th className="text-right font-normal">Policy rate</th><th className="text-left font-normal pl-3">Carry vs USD (a year)</th>
                 <th className="text-right font-normal">3m vol</th><th className="text-right font-normal">Carry ÷ vol</th><th className="text-right font-normal">Spot 3m</th><th className="text-right font-normal">Spot 1y</th><th className="text-right font-normal">Carry trade 1y</th><th className="text-right font-normal">3m fwd pts</th></tr></thead>
               <tbody>{d.rows.map((r: any) => (
@@ -369,7 +369,7 @@ export function FxcaView() {
                     <span className={tone(r.carry)}>{sp(r.carry, 2)}</span></div></td>
                   <td className="text-right">{pc(r.vol_3m)}</td><td className={cn('text-right font-semibold', tone(r.carry_to_vol))}>{r.carry_to_vol?.toFixed(2)}</td>
                   <td className={cn('text-right', tone(r.spot_3m))}>{sp(r.spot_3m)}</td><td className={cn('text-right', tone(r.spot_1y))}>{sp(r.spot_1y)}</td>
-                  <td className={cn('text-right', tone(r.carry_trade_1y))}>{sp(r.carry_trade_1y)}</td><td className="text-right text-text-tertiary">{r.forward_points_3m.toFixed(1)}</td></tr>))}</tbody></table>
+                  <td className={cn('text-right', tone(r.carry_trade_1y))}>{sp(r.carry_trade_1y)}</td><td className="text-right text-text-tertiary">{r.forward_points_3m.toFixed(1)}</td></tr>))}</tbody></table></div>
             <div className="text-[10px] text-text-tertiary mt-1">Carry trade 1y = last year’s spot move + carry (approximate total return of holding the currency against the dollar). Managed currencies (low vol, e.g. TRY) can look attractive until a devaluation. {d.note}</div>
           </Panel>
         </div>);
@@ -400,8 +400,8 @@ export function CacsView({ symbol }: { symbol: string }) {
           </Panel>
           <Panel title="Payments (ex-date)"><div className="max-h-48 overflow-auto"><table className="w-full text-2xs font-mono"><tbody>{d.dividends.map((p: any) => (
             <tr key={p.ex_date} className="border-t border-border-subtle first:border-0"><td className="py-0.5 text-text-secondary">{p.ex_date}</td><td className="text-right">{num(p.amount, 4)}</td></tr>))}</tbody></table></div></Panel>
-          <Panel title="Splits">{d.splits.length ? <table className="w-full text-2xs font-mono"><tbody>{d.splits.map((s: any) => (
-            <tr key={s.date} className="border-t border-border-subtle first:border-0"><td className="py-0.5 text-text-secondary">{s.date}</td><td className={cn('text-right', s.ratio < 1 && 'text-red')}>{s.label}</td></tr>))}</tbody></table>
+          <Panel title="Splits">{d.splits.length ? <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono"><tbody>{d.splits.map((s: any) => (
+            <tr key={s.date} className="border-t border-border-subtle first:border-0"><td className="py-0.5 text-text-secondary">{s.date}</td><td className={cn('text-right', s.ratio < 1 && 'text-red')}>{s.label}</td></tr>))}</tbody></table></div>
             : <div className="text-2xs text-text-tertiary">No splits on record.</div>}</Panel>
         </div>
         <div className="text-[10px] text-text-tertiary">Source: {d.source}.</div>
@@ -421,13 +421,13 @@ export function DvdcView({ onOpen }: { onOpen: (s: string) => void }) {
               <div className="max-h-[560px] overflow-auto"><table className="w-full text-2xs font-mono tabular-nums">
                 <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Ex-date</th><th className="text-left font-normal">Company</th><th className="text-right font-normal">Dividend</th><th className="text-right font-normal">Annual</th><th className="text-right font-normal">Pays</th></tr></thead>
                 <tbody>{divs.map((x: any, i: number) => (
-                  <tr key={i} onClick={() => onOpen(x.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2"><td className="py-0.5">{x.date}</td>
+                  <tr key={i} onClick={() => onOpen(x.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}><td className="py-0.5">{x.date}</td>
                     <td className="font-sans truncate max-w-[280px]"><span className="font-mono text-text-primary">{x.symbol}</span> <span className="text-text-tertiary">{x.name}</span></td>
                     <td className="text-right">{num(x.amount, 4)}</td><td className="text-right text-text-secondary">{num(x.annual, 2)}</td><td className="text-right text-text-tertiary">{x.pay_date}</td></tr>))}</tbody></table></div>
             </Panel>
-            <Panel title="Upcoming splits">{d.splits.length ? <table className="w-full text-2xs font-mono"><tbody>{d.splits.map((s: any, i: number) => (
-              <tr key={i} onClick={() => onOpen(s.symbol)} className="border-t border-border-subtle first:border-0 cursor-pointer hover:bg-surface-2"><td className="py-1">{s.date}</td>
-                <td className="font-sans"><span className="font-mono text-text-primary">{s.symbol}</span> <span className="text-text-tertiary">{s.name}</span></td><td className="text-right">{s.ratio}</td></tr>))}</tbody></table>
+            <Panel title="Upcoming splits">{d.splits.length ? <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono"><tbody>{d.splits.map((s: any, i: number) => (
+              <tr key={i} onClick={() => onOpen(s.symbol)} className="border-t border-border-subtle first:border-0 cursor-pointer hover:bg-surface-2" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}><td className="py-1">{s.date}</td>
+                <td className="font-sans"><span className="font-mono text-text-primary">{s.symbol}</span> <span className="text-text-tertiary">{s.name}</span></td><td className="text-right">{s.ratio}</td></tr>))}</tbody></table></div>
               : <div className="text-2xs text-text-tertiary">None scheduled.</div>}
               <div className="text-[10px] text-text-tertiary mt-2">A ratio like 1 : 10 is a reverse split (ten shares become one).</div></Panel>
           </div>
@@ -449,17 +449,17 @@ export function MgmtView({ symbol }: { symbol: string }) {
             <Tile key={k} label={`${RISK_LABEL[k] ?? k} risk`} value={`${v}/10`} cls={v >= 7 ? 'text-red' : v <= 3 ? 'text-green' : ''} sub={v >= 7 ? 'high' : v <= 3 ? 'low' : 'medium'} />))}
         </div>
         <Panel title={`Officers — total disclosed pay ${d.total_disclosed_pay ? `${fmtBig(d.total_disclosed_pay)} ${d.pay_currency ?? 'USD'}` : '—'}`}>
-          <table className="w-full text-2xs"><thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Name</th><th className="text-left font-normal">Title</th><th className="text-right font-normal">Age</th><th className="text-right font-normal">Pay</th><th className="text-right font-normal">Options exercised</th></tr></thead>
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs"><thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Name</th><th className="text-left font-normal">Title</th><th className="text-right font-normal">Age</th><th className="text-right font-normal">Pay</th><th className="text-right font-normal">Options exercised</th></tr></thead>
             <tbody>{d.people.map((p: any) => (
               <tr key={p.name + p.title} className="border-t border-border-subtle"><td className="py-1 text-text-primary">{p.name}</td><td className="text-text-secondary">{p.title}</td>
-                <td className="text-right font-mono">{p.age ?? '—'}</td><td className="text-right font-mono">{p.pay ? `${fmtBig(p.pay)} ${d.pay_currency ?? 'USD'}` : '—'}</td><td className="text-right font-mono text-text-tertiary">{p.exercised ? `${fmtBig(p.exercised)} ${d.pay_currency ?? 'USD'}` : '—'}</td></tr>))}</tbody></table>
+                <td className="text-right font-mono">{p.age ?? '—'}</td><td className="text-right font-mono">{p.pay ? `${fmtBig(p.pay)} ${d.pay_currency ?? 'USD'}` : '—'}</td><td className="text-right font-mono text-text-tertiary">{p.exercised ? `${fmtBig(p.exercised)} ${d.pay_currency ?? 'USD'}` : '—'}</td></tr>))}</tbody></table></div>
           <div className="text-[10px] text-text-tertiary mt-1">{d.note}</div>
         </Panel>
         {d.insiders?.rows?.length > 0 && <Panel title="Insider trades (Form 4)">
-          <table className="w-full text-2xs"><tbody>{d.insiders.rows.map((r: any, i: number) => (
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs"><tbody>{d.insiders.rows.map((r: any, i: number) => (
             <tr key={i} className="border-t border-border-subtle first:border-0"><td className="py-0.5 font-mono text-text-secondary">{r.date ?? r.filed}</td><td className="text-text-primary">{r.owner ?? r.insider}</td>
               <td className="text-text-tertiary">{r.role}</td><td className={cn('text-right', r.direction === 'buy' ? 'text-green' : r.direction === 'sell' ? 'text-red' : 'text-text-tertiary')}>{r.type ?? r.code}{r.plan_10b5_1 ? ' (10b5-1 plan)' : ''}</td>
-              <td className="text-right font-mono">{r.shares ? num(r.shares, 0) : ''}</td><td className="text-right font-mono">{r.value ? `$${fmtBig(r.value)}` : ''}</td></tr>))}</tbody></table>
+              <td className="text-right font-mono">{r.shares ? num(r.shares, 0) : ''}</td><td className="text-right font-mono">{r.value ? `$${fmtBig(r.value)}` : ''}</td></tr>))}</tbody></table></div>
         </Panel>}
         <div className="text-[10px] text-text-tertiary">Source: {d.source}.</div>
       </div>)}</Frame>
@@ -477,14 +477,14 @@ export function PgeoView({ symbol }: { symbol: string }) {
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
             {Object.entries<any[]>(d.breakdowns).map(([name, rows]) => (
               <Panel key={name} title={name}>
-                <table className="w-full text-2xs font-mono tabular-nums">
+                <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono tabular-nums">
                   <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Line</th><th className="text-left font-normal pl-2">Share of revenue</th>
                     {d.years.map((y: string) => <th key={y} className="text-right font-normal">FY{y.slice(0, 4)}</th>)}<th className="text-right font-normal">Growth</th><th className="text-right font-normal">Op. margin</th></tr></thead>
                   <tbody>{rows.map((r: any) => (
                     <tr key={r.member} className="border-t border-border-subtle"><td className="py-1 font-sans text-text-primary">{r.name}</td>
                       <td className="pl-2"><div className="flex items-center gap-1.5"><div className="w-20 h-1.5 bg-surface-3 rounded-full overflow-hidden"><div className="h-full bg-blue" style={{ width: `${Math.min(100, (r.share ?? 0) * 100)}%` }} /></div><span>{pc(r.share, 0)}</span></div></td>
                       {d.years.map((y: string) => <td key={y} className="text-right">{r.revenue[y] != null ? fmtBig(r.revenue[y]) : '—'}</td>)}
-                      <td className={cn('text-right', tone(r.growth))}>{sp(r.growth)}</td><td className="text-right">{pc(r.margin)}</td></tr>))}</tbody></table>
+                      <td className={cn('text-right', tone(r.growth))}>{sp(r.growth)}</td><td className="text-right">{pc(r.margin)}</td></tr>))}</tbody></table></div>
               </Panel>))}
           </div>
           <div className="text-[10px] text-text-tertiary">{d.note} Source: {d.source}.</div>
@@ -528,7 +528,7 @@ export function MrgrView({ onOpen }: { onOpen: (s: string) => void }) {
       return (
         <div className="space-y-3">
           <Panel title={`Announced US mergers since ${d.from} — ${rows.length} ${all ? '' : 'pending'}`} right={<label className="text-[11px] text-text-secondary"><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> include completed</label>}>
-            <table className="w-full text-2xs font-mono tabular-nums">
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono tabular-nums">
               <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Target</th><th className="text-left font-normal">Buyer</th><th className="text-right font-normal">Announced</th>
                 <th className="text-right font-normal">Offer</th><th className="text-right font-normal">Price</th><th className="text-right font-normal">Spread</th><th className="text-right font-normal">Expected close</th><th className="text-right font-normal">Annualised</th><th className="text-right font-normal">Status</th><th /></tr></thead>
               <tbody>{rows.map((x: any) => (
@@ -539,7 +539,7 @@ export function MrgrView({ onOpen }: { onOpen: (s: string) => void }) {
                   <td className="text-right">{x.price != null ? `$${x.price.toFixed(2)}` : '—'}</td>
                   <td className={cn('text-right font-semibold', x.spread == null ? '' : x.spread > 0.05 ? 'text-amber' : x.spread < 0 ? 'text-text-secondary' : 'text-green')}>{x.spread != null ? sp(x.spread, 2) : '—'}</td>
                   <td className="text-right text-text-tertiary">{x.expected_close ?? '—'}</td><td className="text-right">{x.annualized != null ? sp(x.annualized) : '—'}</td>
-                  <td className="text-right font-sans text-text-tertiary">{x.status}</td><td className="pl-2"><a href={x.url} target="_blank" rel="noreferrer" className="text-bloomberg font-sans hover:underline">filing</a></td></tr>))}</tbody></table>
+                  <td className="text-right font-sans text-text-tertiary">{x.status}</td><td className="pl-2"><a href={x.url} target="_blank" rel="noreferrer" className="text-bloomberg font-sans hover:underline">filing</a></td></tr>))}</tbody></table></div>
             <div className="text-[10px] text-text-tertiary mt-1">{d.note} Scanned {d.scanned} filings. Source: {d.source}.</div>
           </Panel>
         </div>);
@@ -557,7 +557,7 @@ export function MembView({ seed, onOpen }: { seed?: string; onOpen: (s: string) 
       const mx = Math.max(0.0001, ...d.members.map((m: any) => m.weight ?? 0));
       return (
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-1">{d.indices.map((i: any) => <Chip key={i.code} on={code === i.code} onClick={() => setCode(i.code)}>{i.name}</Chip>)}
+          <div className="mkt-controls flex flex-wrap items-center gap-1">{d.indices.map((i: any) => <Chip key={i.code} on={code === i.code} onClick={() => setCode(i.code)}>{i.name}</Chip>)}
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter…" className="ml-auto w-48 bg-surface-1 border border-border px-2 py-0.5 text-[11px]" /></div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <Tile label="Members" value={d.count} /><Tile label="Top 10 weight" value={pc(d.top10_weight)} /><Tile label="Effective number of stocks" value={d.effective_n?.toFixed(0) ?? '—'} sub="1 ÷ Σ weight²" />
@@ -567,7 +567,7 @@ export function MembView({ seed, onOpen }: { seed?: string; onOpen: (s: string) 
           <Panel title={`${d.name} constituents`}>
             <div className="max-h-[600px] overflow-auto"><table className="w-full text-2xs"><thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-right font-normal pr-2">#</th><th className="text-left font-normal py-1">Company</th><th className="text-left font-normal">Sector</th><th className="text-left font-normal pl-2">Weight</th></tr></thead>
               <tbody>{rows.map((m: any, i: number) => (
-                <tr key={m.symbol + i} onClick={() => onOpen(m.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2">
+                <tr key={m.symbol + i} onClick={() => onOpen(m.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                   <td className="text-right pr-2 text-text-tertiary font-mono">{i + 1}</td><td className="py-0.5"><span className="font-mono text-text-primary">{m.symbol}</span> <span className="text-text-secondary">{m.name}</span></td>
                   <td className="text-text-tertiary">{m.sector ?? ''}</td>
                   <td className="pl-2">{m.weight != null ? <div className="flex items-center gap-1.5"><div className="w-32 h-1.5 bg-surface-3 rounded-full overflow-hidden"><div className="h-full bg-blue" style={{ width: `${(m.weight / mx) * 100}%` }} /></div><span className="font-mono">{pc(m.weight, 2)}</span></div> : <span className="text-text-tertiary">—</span>}</td></tr>))}</tbody></table></div>
@@ -622,9 +622,9 @@ export function FsrcView({ onOpen }: { onOpen: (s: string) => void }) {
               <Tile label="Sector overlap" value={pc(comp.data.sector_overlap)} />
               <Tile label={`${comp.data.a} coverage`} value={comp.data.count_a} sub={comp.data.coverage_a} /><Tile label={`${comp.data.b} coverage`} value={comp.data.count_b} sub={comp.data.coverage_b} />
             </div>
-            <table className="w-full text-2xs font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal" /><th className="text-right font-normal">{comp.data.a}</th><th className="text-right font-normal">{comp.data.b}</th></tr></thead>
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal" /><th className="text-right font-normal">{comp.data.a}</th><th className="text-right font-normal">{comp.data.b}</th></tr></thead>
               <tbody>{[['Expense', 'expense', (v: any) => pc(v, 2)], ['Assets', 'aum', (v: any, f: any) => money(v, f?.aum_currency)], ['Yield', 'yield', (v: any) => pc(v, 2)], ['YTD', 'ytd', (v: any) => sp(v)], ['5y avg', 'r5y', (v: any) => sp(v)]].map(([l, k, f]: any) => (
-                <tr key={k} className="border-t border-border-subtle"><td className="py-0.5 font-sans text-text-secondary">{l}</td><td className="text-right">{f(comp.data.fa[k], comp.data.fa)}</td><td className="text-right">{f(comp.data.fb[k], comp.data.fb)}</td></tr>))}</tbody></table>
+                <tr key={k} className="border-t border-border-subtle"><td className="py-0.5 font-sans text-text-secondary">{l}</td><td className="text-right">{f(comp.data.fa[k], comp.data.fa)}</td><td className="text-right">{f(comp.data.fb[k], comp.data.fb)}</td></tr>))}</tbody></table></div>
             {comp.data.common.length > 0 && <div className="text-2xs"><span className="text-text-tertiary">Largest shared: </span>{comp.data.common.slice(0, 12).map((c: any) => `${c.symbol} (${pc(c.weight_a)} / ${pc(c.weight_b)})`).join(' · ')}</div>}
             <div className="text-[10px] text-text-tertiary">{comp.data.note}</div>
           </div>)}

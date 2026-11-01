@@ -86,12 +86,12 @@ export function GlobalCorrelationSection() {
       )}
       {data && (
         <>
-          <CorrelationHeatmap
+          <div className="workspace-chart"><CorrelationHeatmap
             labels={data.labels}
             matrix={data.matrix}
             selected={sel}
             onCellClick={(a, b, v) => setSel({ a, b, v })}
-          />
+          /></div>
           {sel && (
             <div className="mt-3 p-2 bg-surface-1 border border-border text-xs flex items-center gap-3">
               <span className="font-mono text-text-primary">{sel.a} · {sel.b}</span>

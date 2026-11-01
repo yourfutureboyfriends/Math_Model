@@ -75,7 +75,7 @@ function Browse({ onOpen }: { onOpen: (o: Open) => void }) {
           <div key={k} className="border border-border bg-surface-1 px-2.5 py-1.5"><div className="text-[10px] uppercase tracking-wide text-text-tertiary">{k}</div>
             <div className="font-mono text-text-primary">{val}</div><div className="text-[10px] text-text-tertiary">{sub}</div></div>))}
       </div>}
-      <div className="flex flex-wrap items-center gap-1 text-[11px]">
+      <div className="mkt-controls flex flex-wrap items-center gap-1 text-[11px]">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search every market — Fed, CPI, recession, oil, Taiwan, election…"
           className="w-80 bg-surface-1 border border-border px-2 py-0.5 text-text-primary" />
         {[['', 'Both venues'], ['Kalshi', 'Kalshi'], ['Polymarket', 'Polymarket']].map(([k, l]) => <Chip key={l} on={venue === k} onClick={() => setVenue(k)}>{l}</Chip>)}
@@ -147,7 +147,7 @@ function EventDetail({ venue, id, onClose }: { venue: string; id: string; onClos
             <table className="w-full font-mono"><thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary">
               <th className="text-left font-normal px-1">Outcome</th><th className="text-right font-normal">Yes</th><th className="text-right font-normal">Bid</th><th className="text-right font-normal">Ask</th><th className="text-right font-normal">Spread</th><th className="text-right font-normal">24h</th><th className="text-right font-normal px-1">Vol 24h</th></tr></thead>
               <tbody>{e.markets.map((x: any) => (
-                <tr key={x.id} onClick={() => setSel(x.id)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-2', x.id === m?.id && 'bg-bloomberg/10')}>
+                <tr key={x.id} onClick={() => setSel(x.id)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-2', x.id === m?.id && 'bg-bloomberg/10')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                   <td className="px-1 py-0.5 font-sans text-text-primary truncate max-w-[220px]" title={x.question}>{x.binary ? x.label : x.outcomes.map((o: any) => o.name).join(' / ')}</td>
                   <td className="text-right">{x.binary ? P(x.yes) : x.outcomes.map((o: any) => P(o.price)).join(' / ')}</td>
                   <td className="text-right text-text-secondary">{P(x.bid)}</td><td className="text-right text-text-secondary">{P(x.ask)}</td>
@@ -158,8 +158,8 @@ function EventDetail({ venue, id, onClose }: { venue: string; id: string; onClos
             <div className="flex items-center gap-1"><span className="font-semibold text-text-primary truncate flex-1">{m.question || m.label}</span>
               {['1d', '1w', '1m', 'max'].map((s) => <Chip key={s} on={span === s} onClick={() => setSpan(s)}>{s.toUpperCase()}</Chip>)}</div>
             {hist.error && !hist.data ? <ErrorBox msg={hist.error} /> : !hist.data ? <Loading label="Loading price history…" /> :
-              <LineChart rows={hist.data.rows} x="date" height={200} controls={false} fmt={(v) => `${v.toFixed(1)}%`} refs={[{ value: 50, label: '50%' }]}
-                lines={[{ key: 'p', label: `${m.binary ? m.label || 'Yes' : m.outcomes?.[0]?.name} — probability`, color: 'rgb(var(--c-bloomberg))' }]} />}
+              <div className="mkt-chart-surface"><LineChart rows={hist.data.rows} x="date" height={200} controls={false} fmt={(v) => `${v.toFixed(1)}%`} refs={[{ value: 50, label: '50%' }]}
+                lines={[{ key: 'p', label: `${m.binary ? m.label || 'Yes' : m.outcomes?.[0]?.name} — probability`, color: 'rgb(var(--c-bloomberg))' }]} /></div>}
             <Book b={book.data} err={book.error} />
           </>}
           {(m?.rules || e.description) && <details><summary className="cursor-pointer text-text-secondary">Resolution rules</summary>
@@ -199,14 +199,14 @@ function Movers({ onOpen }: { onOpen: (o: Open) => void }) {
   if (!d) return <Loading label="Finding today's biggest moves…" />;
   return (
     <Panel title="Biggest 24-hour moves" right={<label className="text-[11px] text-text-secondary"><input type="checkbox" checked={sports} onChange={(e) => setSports(e.target.checked)} /> include live sports</label>}>
-      <table className="w-full text-[11px] font-mono">
+      <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] font-mono">
         <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Event</th><th className="text-left font-normal">Outcome</th><th className="text-right font-normal">Now</th><th className="text-right font-normal">24h</th><th className="text-right font-normal">Vol 24h</th><th className="text-right font-normal">Closes</th></tr></thead>
         <tbody>{d.rows.map((r: any, i: number) => (
-          <tr key={i} onClick={() => onOpen({ venue: r.venue, id: r.event_id })} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2">
+          <tr key={i} onClick={() => onOpen({ venue: r.venue, id: r.event_id })} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
             <td className="py-0.5 font-sans text-text-primary max-w-[340px] truncate"><Venue v={r.venue} /> {r.event}</td>
             <td className="font-sans text-text-secondary max-w-[200px] truncate">{r.label}</td><td className="text-right">{P(r.yes)}</td>
             <td className={cn('text-right', tone(r.chg_1d))}>{PT(r.chg_1d)}</td><td className="text-right">{vol(r.venue, r.volume_24h)}</td><td className="text-right text-text-tertiary">{r.end}</td></tr>))}</tbody>
-      </table>
+      </table></div>
       <div className="text-[10px] text-text-tertiary mt-1">{d.note}</div>
     </Panel>
   );
@@ -227,11 +227,11 @@ function Cross({ onOpen }: { onOpen: (o: Open) => void }) {
             <button onClick={() => onOpen({ venue: 'Polymarket', id: p.poly.id })} className="text-left hover:underline"><Venue v="Polymarket" /> <span className="text-text-primary">{p.poly.title}</span></button>
             <button onClick={() => onOpen({ venue: 'Kalshi', id: p.kalshi.id })} className="text-left hover:underline"><Venue v="Kalshi" /> <span className="text-text-primary">{p.kalshi.title}</span></button>
           </div>
-          <table className="w-full font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Outcome</th><th className="text-right font-normal">Poly</th><th className="text-right font-normal">Kalshi</th><th className="text-right font-normal">Gap</th></tr></thead>
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Outcome</th><th className="text-right font-normal">Poly</th><th className="text-right font-normal">Kalshi</th><th className="text-right font-normal">Gap</th></tr></thead>
             <tbody>{p.outcomes.map((o: any, j: number) => (
               <tr key={j} className="border-t border-border-subtle"><td className="font-sans text-text-secondary truncate max-w-[220px]">{o.label}</td>
                 <td className="text-right">{P(o.poly)}</td><td className="text-right">{P(o.kalshi)}</td>
-                <td className={cn('text-right', Math.abs(o.gap) >= 0.05 ? 'text-amber font-semibold' : 'text-text-tertiary')}>{PT(o.gap) || '0'}</td></tr>))}</tbody></table>
+                <td className={cn('text-right', Math.abs(o.gap) >= 0.05 ? 'text-amber font-semibold' : 'text-text-tertiary')}>{PT(o.gap) || '0'}</td></tr>))}</tbody></table></div>
         </div>))}</div>
     </div>
   );
@@ -275,7 +275,7 @@ function Arb() {
                   const x = r.executable;
                   const beats = r.annualized != null && r.treasury_yield != null ? r.annualized > r.treasury_yield : null;
                   return (<Fragment key={i}>
-                    <tr onClick={() => setSel(sel === i ? null : i)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-2', sel === i && 'bg-surface-2')}>
+                    <tr onClick={() => setSel(sel === i ? null : i)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-2', sel === i && 'bg-surface-2')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                       <td className="py-0.5 pr-1.5 font-sans text-text-primary max-w-[320px] truncate" title={r.poly_question}>{r.poly_question}</td>
                       <td className="px-1.5 font-sans text-text-secondary whitespace-nowrap">{DIR[r.dir]}</td>
                       <td className="px-1.5 whitespace-nowrap text-right">{C(r.yes_price)}</td><td className="px-1.5 whitespace-nowrap text-right">{C(r.no_price)}</td>
@@ -343,7 +343,7 @@ function ArbCheck({ kFee, pFee }: { kFee: number; pFee: number }) {
   };
   return (
     <Panel title="Check a pair yourself">
-      <div className="flex flex-wrap items-end gap-2 text-[11px]">
+      <div className="mkt-controls flex flex-wrap items-end gap-2 text-[11px]">
         <label className="flex-1 min-w-[260px]"><span className="block text-text-tertiary">Polymarket question URL / slug</span>
           <input value={poly} onChange={(e) => setPoly(e.target.value)} placeholder="https://polymarket.com/event/…/will-…" className="w-full bg-surface-1 border border-border px-2 py-1 font-mono" /></label>
         <label className="w-64"><span className="block text-text-tertiary">Kalshi market ticker</span>
@@ -355,11 +355,11 @@ function ArbCheck({ kFee, pFee }: { kFee: number; pFee: number }) {
         <div className="mt-2 text-[11px] space-y-1">
           <div><Venue v="Polymarket" /> {res.poly.question} — bid {C(res.poly.bid)} / ask {C(res.poly.ask)} · closes {res.poly.end}</div>
           <div><Venue v="Kalshi" /> {res.kalshi.question} — bid {C(res.kalshi.bid)} / ask {C(res.kalshi.ask)} · closes {res.kalshi.end}</div>
-          <table className="w-full font-mono"><tbody>{res.directions.map((d: any) => (
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full font-mono"><tbody>{res.directions.map((d: any) => (
             <tr key={d.dir} className="border-t border-border-subtle">
               <td className="font-sans text-text-secondary">{DIR[d.dir]}</td><td className="text-right">{C(d.yes_price)} + {C(d.no_price)}</td>
               <td className={cn('text-right', d.edge > 0 ? 'text-green' : 'text-text-tertiary')}>edge {C(d.edge)}</td>
-              <td className="text-right">{d.executable?.contracts ? `${big(d.executable.contracts)} ct → ${usd0(d.executable.profit)}` : 'no size'}</td></tr>))}</tbody></table>
+              <td className="text-right">{d.executable?.contracts ? `${big(d.executable.contracts)} ct → ${usd0(d.executable.profit)}` : 'no size'}</td></tr>))}</tbody></table></div>
           <div className="text-[10px] text-text-tertiary">Read both rules texts before trading — same words can settle on different sources or times.</div>
         </div>
       )}
@@ -378,7 +378,7 @@ function Macro({ onOpen }: { onOpen: (o: Open) => void }) {
     <div className="space-y-3">
       <Panel title={`Next Fed decision — ${f.futures?.meeting ?? f.polymarket_event ?? ''}: crowds vs the rates market`}>
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_260px] gap-3 text-[11px]">
-          <table className="w-full font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Outcome</th>
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Outcome</th>
             <th className="text-right font-normal">Polymarket</th><th className="text-right font-normal">Kalshi</th><th className="text-right font-normal">Fed funds futures</th><th className="text-right font-normal">Max gap</th></tr></thead>
             <tbody>{f.rows.map((r: any) => {
               const v = [r.polymarket, r.kalshi, r.futures ?? (f.futures ? 0 : null)].filter((x) => x != null) as number[];
@@ -388,7 +388,7 @@ function Macro({ onOpen }: { onOpen: (o: Open) => void }) {
                   {[r.polymarket, r.kalshi, r.futures ?? (f.futures ? 0 : null)].map((x, i) => (
                     <td key={i} className="text-right"><span className="inline-block w-14 h-1.5 bg-surface-3 mr-1 align-middle"><span className="block h-full bg-bloomberg" style={{ width: `${(x ?? 0) * 100}%` }} /></span>{P(x)}</td>))}
                   <td className={cn('text-right', (gap ?? 0) >= 0.05 ? 'text-amber font-semibold' : 'text-text-tertiary')}>{gap != null ? `${(gap * 100).toFixed(0)}pt` : '—'}</td></tr>);
-            })}</tbody></table>
+            })}</tbody></table></div>
           <div className="space-y-1 text-text-secondary">
             {f.futures && <div>Target range <span className="font-mono text-text-primary">{f.futures.target_lower?.toFixed(2)}–{f.futures.target_upper?.toFixed(2)}%</span>; futures imply <span className="font-mono text-text-primary">{f.futures.change_bp >= 0 ? '+' : ''}{f.futures.change_bp?.toFixed(1)}bp</span>.</div>}
             {f.kalshi_thresholds?.length ? <div>{f.kalshi_note}: {f.kalshi_thresholds.map((t: any) => <span key={t.above} className="font-mono text-text-primary"> above {t.above.toFixed(2)}% {P(t.p)};</span>)}</div> : null}

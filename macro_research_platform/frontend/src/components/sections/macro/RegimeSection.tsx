@@ -162,7 +162,7 @@ export function RegimeSection({ data: dataProp }: RegimeSectionProps) {
             <div className="px-3 py-2 border-b border-border-subtle bg-surface-2">
               <span className="text-2xs text-text-tertiary uppercase tracking-wider">Factor Impacts</span>
             </div>
-            <table className="w-full">
+            <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full">
               <thead>
                 <tr className="border-b border-border-subtle">
                   <th className="text-left py-1.5 px-3 text-2xs text-text-tertiary uppercase font-medium">Factor</th>
@@ -183,7 +183,7 @@ export function RegimeSection({ data: dataProp }: RegimeSectionProps) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </div>
         )}
 

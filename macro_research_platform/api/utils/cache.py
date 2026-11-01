@@ -3,6 +3,7 @@ from datetime import datetime
 from threading import Lock
 from typing import Optional, Callable, Any
 import logging
+from api.workflows.telemetry import count
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ import time as _time
 import functools as _functools
 import asyncio as _asyncio
 
+_ASYNC_CACHE_LOCK = Lock()
 _ASYNC_TTL_CACHE = {}   # key -> (expires_at, value)
 
 
@@ -102,29 +104,38 @@ def ttl_cache(seconds: float, offload: bool = False):
             # the current fund is part of the key: one fund's book analytics never answer for another
             from api.funds import CURRENT as _FUND
             key = f"{fn.__module__}.{fn.__name__}|{_FUND.get()}|{args!r}|{tuple(sorted(kwargs.items()))!r}"
-            now = _time.time()
-            hit = _ASYNC_TTL_CACHE.get(key)
+            now = _time.monotonic()
+            with _ASYNC_CACHE_LOCK:
+                hit = _ASYNC_TTL_CACHE.get(key)
             if hit is not None and hit[0] > now:
+                count('async_cache.hit')
                 return hit[1]
-            if not offload:
-                value = await fn(*args, **kwargs)
-                _ASYNC_TTL_CACHE[key] = (now + seconds, value)
-                return value
             loop = _asyncio.get_running_loop()
             fkey = (id(loop), key)
             fut = inflight.get(fkey)
             if fut is None:
-                fut = loop.create_task(_asyncio.to_thread(_asyncio.run, fn(*args, **kwargs)))
+                count('async_cache.miss')
+                fut = loop.create_task(_asyncio.to_thread(_asyncio.run, fn(*args, **kwargs)) if offload else fn(*args, **kwargs))
                 inflight[fkey] = fut
 
                 def _done(f, fkey=fkey, key=key):
                     inflight.pop(fkey, None)
-                    # cache here too, so a caller that stopped waiting (wait_for timeout) doesn't waste the result
                     if not f.cancelled() and f.exception() is None:
-                        _ASYNC_TTL_CACHE[key] = (_time.time() + seconds, f.result())
+                        # TTL starts after completion, not before a slow upstream request.
+                        with _ASYNC_CACHE_LOCK:
+                            _ASYNC_TTL_CACHE[key] = (_time.monotonic() + seconds, f.result())
+                            if len(_ASYNC_TTL_CACHE) > 2048:
+                                # Remove expired entries first; then evict earliest expiry.
+                                for old_key, hit in list(_ASYNC_TTL_CACHE.items()):
+                                    if hit[0] <= _time.monotonic():
+                                        _ASYNC_TTL_CACHE.pop(old_key, None)
+                                if len(_ASYNC_TTL_CACHE) > 2048:
+                                    for old_key in sorted(_ASYNC_TTL_CACHE, key=lambda k: _ASYNC_TTL_CACHE[k][0])[:512]:
+                                        _ASYNC_TTL_CACHE.pop(old_key, None)
                 fut.add_done_callback(_done)
+            else:
+                count('async_cache.joined')
             value = await _asyncio.shield(fut)
-            _ASYNC_TTL_CACHE[key] = (_time.time() + seconds, value)
             return value
         return wrapper
     return deco

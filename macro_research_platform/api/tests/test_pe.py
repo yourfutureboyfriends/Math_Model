@@ -133,7 +133,7 @@ def test_excel_workbook_has_every_sheet():
     from api.pe import excel
     data = excel.build(lbo.analyse(lbo.default_inputs()), {"company": "test"}, unit=1.0)
     wb = load_workbook(io.BytesIO(data))
-    assert wb.sheetnames == ["Summary", "Operating model", "Debt schedule", "Credit & covenants", "Sensitivities", "Assumptions"]
+    assert wb.sheetnames == ["Summary", "Operating model", "Debt schedule", "Credit & covenants", "Sensitivities", "Assumptions", "Live inputs", "Live model", "Live returns", "Diligence and liquidity"]
 
 
 @pytest.fixture(scope="module")
@@ -174,3 +174,54 @@ def test_api_runs_saves_and_exports(client):
     w = client.post("/api/v1/pe/fund/waterfall", json={"contributions": [{"date": "2020-01-01", "amount": -100}],
                                                       "distributions": [{"date": "2025-01-01", "amount": 200}]}).json()
     assert w["gp_carry"] == pytest.approx(20.0)
+
+
+def test_mezzanine_maturity_repays_principal_and_final_pik_coupon():
+    mezz = {"name": "Mezz", "kind": "mezz", "multiple": 1.0, "floating": False,
+            "coupon": .10, "pik": True, "tenor": 2, "sweep": False}
+    r = lbo.run(simple(tranches=[mezz]))
+    assert r['schedule'][0]['balances']['Mezz'] == pytest.approx(22)
+    assert r['schedule'][1]['mandatory'] == pytest.approx(24.2)
+    assert r['schedule'][1]['balances']['Mezz'] == pytest.approx(0)
+    assert r['schedule'][2]['pik_interest'] == 0
+
+
+def test_zero_irr_is_preserved_and_weights_are_normalized(monkeypatch):
+    monkeypatch.setattr(lbo, "irr", lambda flows: 0.0)
+    p = simple(tranches=[], capex_pct=.2, cases={}, case_weights={'base': 2, 'upside': 1, 'downside': 1})
+    r = lbo.cases(p)
+    assert r['weighted']['irr'] == pytest.approx(0, abs=1e-9)
+    assert r['weighted']['expected_cashflow_irr'] == pytest.approx(0, abs=1e-9)
+    assert r['weighted']['weights']['base'] == .5
+    for weights in ({'base': -1}, {'base': float('nan')}, {'base': 0}):
+        with pytest.raises(lbo.LboError):
+            lbo.cases({**p, 'case_weights': weights})
+
+
+def test_unfunded_deal_cannot_clear_hurdle_or_produce_bid():
+    p = simple(capex_pct=[1, 0, 0, 0, 0], exit_multiple=100, hurdle_irr=.1)
+    r = lbo.run(p)
+    assert r['returns']['sponsor_irr'] > .1  # A large exit cannot repair an unfunded operating plan.
+    assert not r['calculation_checks']['funded_through_exit']
+    assert not r['returns']['clears_hurdle']
+    assert lbo.max_entry(p)['multiple'] is None
+
+
+def test_duplicate_debt_names_and_excess_revolver_draw_are_rejected():
+    with pytest.raises(lbo.LboError):
+        lbo.run(simple(tranches=simple()['tranches'] * 2))
+    with pytest.raises(lbo.LboError):
+        lbo.run(simple(revolver={'commitment': 10, 'drawn_at_close': 11}))
+
+
+def test_api_precedent_book_and_benchmark(client):
+    from api.pe import comps
+    comps._ready.clear()
+    bad = client.post("/api/v1/pe/precedents", json={"date": "2025-01-31", "target": "X", "ev": 1000, "ebitda": 100, "source": ""})
+    assert bad.status_code == 400
+    p = client.post("/api/v1/pe/precedents", json={"date": "2025-01-31", "target": "Snack Co", "sector": "Food Processing",
+                                                    "ev": 1200, "ebitda": 100, "source": "Press release 31 Jan 2025"}).json()
+    assert p["ev_ebitda"] == pytest.approx(12.0)
+    b = client.get("/api/v1/pe/benchmark", params={"entry": 14, "exit": 12, "sector": "Food Processing"}).json()
+    assert b["precedent_stats"]["n"] == 1 and b["entry"]["vs_precedents"] == "above the upper quartile"
+    assert client.delete(f"/api/v1/pe/precedents/{p['id']}").json() == {"deleted": p["id"]}

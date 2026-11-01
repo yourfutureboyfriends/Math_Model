@@ -5,7 +5,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Download, Loader2, Save, Search, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Card, IrrGrid, Kpi, NumField, amt, api, download, irrTone, onOpenDeal, pct, spct, unitFor, xx } from './peShared';
+import { Card, IrrGrid, Kpi, NumField, amt, api, download, irrTone, onOpenDeal, pct, spct, takePendingSymbol, unitFor, xx } from './peShared';
+
+import { DealDevelopment, UnderwritingResults } from './DealDevelopment';
+import { Comparables } from './Comparables';
+import { useInputHistory } from './useInputHistory';
+import { currentFund } from '@/lib/fund';
+import { useAuth } from '@/context/AuthContext';
 
 type Inputs = Record<string, any>;
 const KIND_LABEL: Record<string, string> = { tla: 'Term loan A', tlb: 'Term loan B', notes: 'Senior notes', mezz: 'Mezzanine (PIK)' };
@@ -21,7 +27,12 @@ const asPath = (v: any, n: number): number[] => {
 };
 
 export function Workbench() {
-  const [inputs, setInputs] = useState<Inputs | null>(null);
+  const [inputs, setInputs, undo, redo, canUndo, canRedo] = useInputHistory<Inputs | null>(null);
+  const { user } = useAuth();
+  const draftKey = `pe.draft:${user?.username}:${currentFund()}`;
+  const [section, setSection] = useState('deal');
+  const [baseline, setBaseline] = useState<any>(null);
+  const [completedInputs, setCompletedInputs] = useState('');
   const [sources, setSources] = useState<Record<string, string> | null>(null);
   const [market, setMarket] = useState<any>(null);
   const [res, setRes] = useState<any>(null);
@@ -34,7 +45,11 @@ export function Workbench() {
   const [note, setNote] = useState<string | null>(null);
   const runId = useRef(0);
 
-  useEffect(() => { api('/api/v1/pe/defaults').then((j) => setInputs(j.inputs)).catch((e) => setErr(e.message)); }, []);
+  useEffect(() => {
+    const pending = takePendingSymbol();                // opened from a Markets security page's "LBO" button
+    if (pending) { setSym(pending); loadCompany(pending); return; }
+    api('/api/v1/pe/defaults').then((j) => setInputs(j.inputs)).catch((e) => setErr(e.message));
+  }, []);                                                // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => onOpenDeal(async (id) => {
     try {
       const d = await api(`/api/v1/pe/deals/${id}`);
@@ -48,18 +63,18 @@ export function Workbench() {
     const id = ++runId.current;
     setBusy(true);
     const t = setTimeout(() => {
-      api('/api/v1/pe/lbo', { inputs }).then((j) => { if (id === runId.current) { setRes(j); setErr(null); } })
-        .catch((e) => { if (id === runId.current) setErr(e.message); })
+      api('/api/v1/pe/lbo', { inputs }).then((j) => { if (id === runId.current) { setRes(j); setCompletedInputs(JSON.stringify(inputs)); setErr(null); } })
+        .catch((e) => { if (id === runId.current) { setErr(e.message); setRes(null); } })
         .finally(() => { if (id === runId.current) setBusy(false); });
     }, 350);
-    return () => clearTimeout(t);
+    return () => { clearTimeout(t); if (runId.current === id) runId.current++; };
   }, [inputs]);
 
   const set = useCallback((patch: Inputs) => setInputs((p) => (p ? { ...p, ...patch } : p)), []);
   const setTr = (i: number, patch: Inputs) => setInputs((p) => p && ({ ...p, tranches: p.tranches.map((t: any, j: number) => (j === i ? { ...t, ...patch } : t)) }));
 
-  const loadCompany = async () => {
-    const s = sym.trim().toUpperCase();
+  const loadCompany = async (ticker?: string) => {
+    const s = (ticker ?? sym).trim().toUpperCase();
     if (!s) return;
     setLoadingCo(true); setErr(null);
     try {
@@ -86,7 +101,7 @@ export function Workbench() {
   const unit = unitFor(inputs?.ebitda);
   const amtKind: 'm' | 'num' = unit === 1e6 ? 'm' : 'num';
   const ccy = inputs?.currency ?? '';
-  const base = res?.cases?.base;
+  const base = completedInputs === JSON.stringify(inputs) ? res?.cases?.base : null;
   const hurdle = Number(inputs?.hurdle_irr ?? 0.2);
 
   if (!inputs) return err ? <div className="text-xs text-red p-3">{err}</div> : <div className="p-6 text-xs text-text-tertiary"><Loader2 className="w-4 h-4 animate-spin inline mr-2" />Loading the workbench…</div>;
@@ -94,7 +109,7 @@ export function Workbench() {
   return (
     <div className="space-y-3">
       {/* Load a company / name the deal */}
-      <div className="flex flex-wrap items-end gap-2 p-3 rounded-xl border border-border bg-surface-1">
+      <div className="workspace-controls flex flex-wrap items-end gap-2 p-3 rounded-xl border border-border bg-surface-1">
         <label className="block">
           <span className="block text-[10.5px] text-text-tertiary mb-0.5">Listed company (ticker)</span>
           <span className="flex items-center rounded-md border border-border bg-bg/40 focus-within:border-bloomberg/60">
@@ -104,7 +119,7 @@ export function Workbench() {
           </span>
         </label>
         <NumField label="Take-private premium" kind="pct" value={premium} onChange={(v) => setPremium(v ?? 0.3)} className="w-32" />
-        <button onClick={loadCompany} disabled={loadingCo || !sym.trim()} className="h-[30px] px-3 rounded-lg bg-bloomberg text-white text-xs font-medium disabled:opacity-50">
+        <button onClick={() => loadCompany()} disabled={loadingCo || !sym.trim()} className="h-[30px] px-3 rounded-lg bg-bloomberg text-white text-xs font-medium disabled:opacity-50">
           {loadingCo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Load from filings'}</button>
         <button onClick={() => api('/api/v1/pe/defaults').then((j) => { setInputs(j.inputs); setSources(null); setMarket(null); setDeal({ name: '' }); })}
           className="h-[30px] px-3 rounded-lg border border-border text-xs text-text-secondary">Illustrative case</button>
@@ -113,9 +128,24 @@ export function Workbench() {
           <input value={deal.name} onChange={(e) => setDeal({ ...deal, name: e.target.value })} placeholder={inputs.name ?? 'Project …'}
             className="w-52 rounded-md border border-border bg-bg/40 px-2 py-1.5 text-xs text-text-primary outline-none focus:border-bloomberg/60" />
         </label>
-        <button onClick={saveDeal} className="h-[30px] px-3 rounded-lg border border-border text-xs inline-flex items-center gap-1.5"><Save className="w-3.5 h-3.5" />{deal.id ? 'Update deal' : 'Save to pipeline'}</button>
-        <button onClick={exportXlsx} className="h-[30px] px-3 rounded-lg border border-border text-xs inline-flex items-center gap-1.5"><Download className="w-3.5 h-3.5" />Excel model</button>
+        <button onClick={saveDeal} disabled={busy || !!err || loadingCo} className="h-[30px] px-3 rounded-lg border border-border text-xs inline-flex items-center gap-1.5"><Save className="w-3.5 h-3.5" />{deal.id ? 'Update deal' : 'Save to pipeline'}</button>
+        <button onClick={exportXlsx} disabled={busy || !!err || loadingCo} className="h-[30px] px-3 rounded-lg border border-border text-xs inline-flex items-center gap-1.5"><Download className="w-3.5 h-3.5" />Excel model</button>
       </div>
+      <div className="workspace-controls flex flex-wrap items-center gap-2 text-[11px] p-2 border border-border rounded-lg bg-surface-1">
+        <button disabled={!canUndo} onClick={undo} className="px-2 py-1 border border-border rounded disabled:opacity-40">Undo</button>
+        <button disabled={!canRedo} onClick={redo} className="px-2 py-1 border border-border rounded disabled:opacity-40">Redo</button>
+        <button onClick={()=>{try{sessionStorage.setItem(draftKey,JSON.stringify({inputs,sources,deal}));setNote('Draft kept for this browser session.');}catch{setErr('Browser draft storage is unavailable.');}}} className="px-2 py-1 border border-border rounded">Keep draft</button>
+        <button onClick={()=>{try{const raw=sessionStorage.getItem(draftKey);if(!raw){setNote('No draft in this session.');return;}const d=JSON.parse(raw);setInputs(d.inputs);setSources(d.sources);setDeal(d.deal);setMarket(null);setNote('Draft restored.');}catch{setErr('Could not restore this draft.');}}} className="px-2 py-1 border border-border rounded">Restore draft</button>
+        <button disabled={!base||busy||!!err} onClick={()=>setBaseline(base)} className="px-2 py-1 border border-border rounded disabled:opacity-40">Set comparison baseline</button>
+        {baseline&&base&&<span className="text-text-secondary">IRR {pct(base.returns.sponsor_irr)} vs {pct(baseline.returns.sponsor_irr)} baseline · equity {amt(base.sponsor_equity-baseline.sponsor_equity,ccy,unit)} change <button onClick={()=>setBaseline(null)} className="underline ml-1">Clear</button></span>}
+        <span role="status" className="ml-auto text-text-tertiary">{busy?'Recalculating…':err?'Inputs need attention':completedInputs===JSON.stringify(inputs)?'Model up to date':'Waiting for calculation'}</span>
+      </div>
+      {base && <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <Kpi label="Sponsor IRR · current case" value={pct(base.returns.sponsor_irr)} sub={`Exit year ${base.exit_year} · hurdle ${pct(hurdle,0)}`}/>
+        <Kpi label="Money multiple" value={xx(base.returns.moic)} sub="Conditional modeled return"/>
+        <Kpi label="Funding through exit" value={base.calculation_checks?.funded_through_exit && base.calculation_checks?.seasonal_funded !== false ? 'Funded' : 'Review gap'} sub={res.liquidity?.first_shortfall ? `Seasonal gap ${res.liquidity.first_shortfall}` : 'Annual and cash-timing checks'}/>
+        <Kpi label="Diligence progress" value={`${res.diligence?.completed??0}/${res.diligence?.total??6}`} sub="User-attested review areas"/>
+      </div>}
       {note && <div className="text-xs text-green">{note}</div>}
       {err && <div className="text-xs text-red flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" />{err}</div>}
       {market?.market?.offer_price && (
@@ -126,7 +156,11 @@ export function Workbench() {
       <div className="grid grid-cols-1 xl:grid-cols-[400px_1fr] gap-3 items-start">
         {/* ── Assumptions ── */}
         <div className="space-y-3">
-          <Card title="Target (LTM)">
+          <div role="tablist" aria-label="Deal input sections" className="workspace-controls flex flex-wrap gap-1 sticky top-16 z-20 bg-bg py-2" data-workspace-tabs>
+            {[['deal','Deal'],['financing','Financing'],['plan','Plan & exit'],['diligence','Diligence']].map(([id,label])=><button key={id} role="tab" aria-selected={section===id} onClick={()=>setSection(id)} className={cn('px-3 py-1.5 rounded border text-xs',section===id?'border-bloomberg text-bloomberg':'border-border text-text-secondary')}>{label}</button>)}
+          </div>
+          <div hidden={section!=='deal'} className="space-y-3">
+          <Card title="Target · reported base">
             <div className="grid grid-cols-2 gap-2">
               <NumField label={`Revenue (${ccy}${unit === 1e6 ? 'm' : ''})`} kind={amtKind} value={inputs.revenue} onChange={(v) => set({ revenue: v })} />
               <NumField label={`EBITDA (${ccy}${unit === 1e6 ? 'm' : ''})`} kind={amtKind} value={inputs.ebitda} onChange={(v) => set({ ebitda: v })} />
@@ -143,8 +177,9 @@ export function Workbench() {
               <NumField label="Rollover equity" kind={amtKind} value={inputs.rollover_equity} onChange={(v) => set({ rollover_equity: v ?? 0 })} hint="Management / seller equity rolled into the deal" />
             </div>
           </Card>
+          </div><div hidden={section!=='financing'}>
           <Card title="Financing" right={
-            <select onChange={(e) => { if (e.target.value) setInputs((p) => p && ({ ...p, tranches: [...p.tranches, { ...NEW_TRANCHE[e.target.value] }] })); e.target.value = ''; }}
+            <select onChange={(e) => { if (e.target.value) setInputs((p) => p && ({ ...p, tranches: [...p.tranches, { ...NEW_TRANCHE[e.target.value], name: `${NEW_TRANCHE[e.target.value].name} ${p.tranches.length+1}` }] })); e.target.value = ''; }}
               className="text-[11px] rounded-md border border-border bg-bg/40 px-1.5 py-0.5" defaultValue="">
               <option value="">+ Add tranche</option>{Object.entries(KIND_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </select>}>
@@ -182,8 +217,9 @@ export function Workbench() {
               <NumField label="Sweep share" kind="pct" value={inputs.sweep_pct} onChange={(v) => set({ sweep_pct: v ?? 1 })} />
             </div>
           </Card>
+          </div><div hidden={section!=='plan'} className="space-y-3">
           <Card title="Operating plan" right={
-            <select value={n} onChange={(e) => set({ years: Number(e.target.value) })} className="text-[11px] rounded-md border border-border bg-bg/40 px-1.5 py-0.5">
+            <select value={n} onChange={(e) => set({ years: Number(e.target.value), exit_year: Math.min(Number(inputs.exit_year), Number(e.target.value)) })} className="text-[11px] rounded-md border border-border bg-bg/40 px-1.5 py-0.5">
               {[5, 6, 7, 8, 9, 10].map((y) => <option key={y} value={y}>{y} years</option>)}</select>}>
             {(['revenue_growth', 'ebitda_margin'] as const).map((k) => (
               <div key={k} className="mb-2">
@@ -223,11 +259,14 @@ export function Workbench() {
               <NumField label="Hurdle IRR" kind="pct" value={inputs.hurdle_irr} onChange={(v) => set({ hurdle_irr: v ?? 0.2 })} />
             </div>
           </Card>
+          </div>
+          <div hidden={section!=='diligence'}><DealDevelopment inputs={inputs} set={set} unit={unit} ccy={ccy}/></div>
         </div>
 
         {/* ── Results ── */}
         <div className="space-y-3 min-w-0">
           {!base ? <div className="p-6 text-xs text-text-tertiary">{busy ? 'Running the model…' : 'Adjust the inputs to run the model.'}</div> : <Results res={res} unit={unit} ccy={ccy} hurdle={hurdle} busy={busy} inputs={inputs} />}
+          <Comparables inputs={inputs} industry={market?.industry} onUse={set} />
           {sources && (
             <Card title="Where the assumptions come from">
               <dl className="grid grid-cols-1 gap-1.5 text-[11px]">{Object.entries(sources).map(([k, v]) => (
@@ -252,11 +291,17 @@ function Results({ res, unit, ccy, hurdle, busy, inputs }: { res: any; unit: num
   const bMax = Math.max(...bridgeRows.map(([, v]) => Math.abs(v)), 1);
   return (
     <div className={cn('space-y-3 transition-opacity', busy && 'opacity-70')}>
+      <UnderwritingResults res={res} unit={unit} ccy={ccy}/>
       {b.warnings?.length > 0 && <div className="p-2.5 rounded-lg border border-amber/40 bg-amber/5 text-[11.5px] text-amber space-y-0.5">{b.warnings.map((w: string) => <div key={w}>⚠ {w}</div>)}</div>}
+      {b.calculation_checks && <div className="text-[11px] text-text-secondary border border-border rounded-lg p-2.5">
+        Calculation checks: interest {b.calculation_checks.interest_converged ? 'converged' : 'requires review'} ·
+        {b.calculation_checks.funded_through_exit ? ' funded through exit' : ' funding shortfall before exit; hurdle not cleared'}.
+        Scenario weights are assumptions. IRR of weighted cash flows: {pct(res.weighted.expected_cashflow_irr)}.
+      </div>}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <Kpi label="Sponsor IRR · base" value={pct(b.returns.sponsor_irr)} tone={irrTone(b.returns.sponsor_irr, hurdle)} sub={`hurdle ${pct(hurdle, 0)} · exit year ${H}`} />
         <Kpi label="Money multiple" value={xx(b.returns.moic)} sub={`${ccy} ${amt(b.returns.sponsor_proceeds, ccy, unit)}${m} back on ${amt(b.sponsor_equity, ccy, unit)}${m}`} />
-        <Kpi label="Probability-weighted IRR" value={pct(res.weighted.irr)} tone={irrTone(res.weighted.irr, hurdle)} sub={`MOIC ${xx(res.weighted.moic)}`} />
+        <Kpi label="Scenario-average IRR" value={pct(res.weighted.irr)} tone={irrTone(res.weighted.irr, hurdle)} sub={`MOIC ${xx(res.weighted.moic)}`} />
         <Kpi label={`Max price at ${pct(hurdle, 0)} IRR`} value={me.multiple ? xx(me.multiple, 1) : '—'}
           sub={me.price_per_share ? `${me.price_per_share.toFixed(2)} / share (${spct(me.premium_to_price, 0)} vs today)` : me.note ?? `EV ${amt(me.ev, ccy, unit)}${m}`} />
         <Kpi label="Equity cheque" value={`${amt(b.sponsor_equity, ccy, unit)}${m}`} sub={`${pct(b.entry.equity_pct, 0)} of the total cost`} />
@@ -268,14 +313,14 @@ function Results({ res, unit, ccy, hurdle, busy, inputs }: { res: any; unit: num
 
       <div className="grid grid-cols-1 2xl:grid-cols-2 gap-3">
         <Card title="Cases">
-          <table className="w-full text-[11.5px] tabular-nums">
+          <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-[11.5px] tabular-nums">
             <thead><tr className="text-text-tertiary text-left"><th className="font-normal" /><th className="font-normal text-right">IRR</th><th className="font-normal text-right">MOIC</th>
               <th className="font-normal text-right">Exit EBITDA</th><th className="font-normal text-right">Exit EV</th><th className="font-normal text-right">Net lev. at exit</th></tr></thead>
             <tbody>{(['upside', 'base', 'downside'] as const).map((c) => { const r = res.cases[c]; const ex = r.schedule[r.exit_year - 1]; return (
               <tr key={c} className="border-t border-border-subtle"><td className="py-1 capitalize text-text-secondary">{c} <span className="text-text-tertiary">· {pct(res.weighted.weights?.[c], 0)}</span></td>
                 <td className={cn('text-right font-semibold', irrTone(r.returns.sponsor_irr, hurdle))}>{pct(r.returns.sponsor_irr)}</td><td className="text-right">{xx(r.returns.moic)}</td>
                 <td className="text-right">{amt(r.exit.ebitda, ccy, unit)}</td><td className="text-right">{amt(r.exit.ev, ccy, unit)}</td><td className="text-right">{xx(ex.net_leverage, 1)}</td></tr>); })}</tbody>
-          </table>
+          </table></div>
         </Card>
         <Card title="Value creation (equity gain)" right={<span className="text-[11px] text-text-tertiary">{ccy}{m}</span>}>
           <div className="space-y-1.5">

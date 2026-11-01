@@ -164,7 +164,7 @@ export function SystemHealthSection() {
                   <span key={k} className={`mr-3 font-mono ${k === 'ok' ? 'text-green' : k === 'failing' ? 'text-red' : 'text-amber'}`}>{monitor.summary?.[k] ?? 0} {k}</span>))}
                 <span className="text-2xs text-text-tertiary">checked {String(monitor.checked_at ?? '').replace('T', ' ').slice(0, 16)}</span>
               </div>
-              <table className="w-full text-2xs">
+              <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-2xs">
                 <tbody>
                   {monitor.sources.map((r: any) => (
                     <tr key={r.name} className="border-b border-border-subtle last:border-0" title={`Feeds: ${r.feeds}${r.error ? `\n${r.error}` : ''}`}>
@@ -174,7 +174,7 @@ export function SystemHealthSection() {
                       <td className="py-0.5 text-text-tertiary truncate max-w-[22rem]">{r.status === 'ok' ? '' : `${r.error ?? ''} · since ${String(r.since ?? '').slice(0, 16).replace('T', ' ')}`}</td>
                     </tr>))}
                 </tbody>
-              </table>
+              </table></div>
             </>)}
         </div>
       </div>

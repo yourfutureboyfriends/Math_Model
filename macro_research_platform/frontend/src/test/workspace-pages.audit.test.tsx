@@ -1,0 +1,9 @@
+import {act}from'react';import{createRoot}from'react-dom/client';import{beforeEach,afterEach,it,expect,vi}from'vitest';import inventory from '../../..//docs/workspace_page_inventory_2026-10-29.json';
+vi.mock('@/context/AuthContext',()=>({useAuth:()=>({user:{username:'ui-audit',role:'viewer',display_name:'UI audit'},isAuthenticated:true})}));vi.mock('@/hooks/useDesk',()=>({useDesk:()=>null}));
+const modules=import.meta.glob('../components/sections/**/*.tsx');const pe=import.meta.glob('../components/pe/*.tsx');const markets=import.meta.glob('../components/markets/*.tsx');const loaders={...modules,...pe,...markets};let host:HTMLDivElement,root:ReturnType<typeof createRoot>;
+beforeEach(()=>{vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);vi.stubGlobal('fetch',vi.fn(()=>new Promise(()=>{})));vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});vi.stubGlobal('IntersectionObserver',class{observe(){}disconnect(){}});vi.stubGlobal('matchMedia',()=>({matches:false,addEventListener(){},removeEventListener(){}}));Object.defineProperty(Element.prototype,'scrollIntoView',{value:vi.fn(),configurable:true,writable:true});localStorage.clear();sessionStorage.clear();host=document.createElement('div');document.body.append(host);root=createRoot(host);});
+afterEach(()=>{act(()=>root.unmount());host.remove();localStorage.clear();vi.unstubAllGlobals();});
+for(const page of inventory.pages)it(`${page.workspace} / ${page.id}: mounts registered page components`,async()=>{
+ expect(page.entries.length).toBeGreaterThan(0);
+ for(const name of page.entries){const source=page.components.find(c=>c.name===name)!;const loader=loaders['../'+source.file.replace(/^src\//,'')];expect(loader,source.file).toBeTypeOf('function');const module=await loader() as Record<string,any>;const Component=module[name];expect(Component,`${name} export`).toBeTruthy();await act(async()=>root.render(<Component/>));}
+});

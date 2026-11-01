@@ -37,7 +37,7 @@ function Lifecycle() {
       {d.orders.length === 0 ? (
         <div className="text-xs text-text-tertiary p-2">No orders in this fund yet. Run a pre-trade assessment, then raise the order: it is linked to the assessment automatically (same name and side, within three days).</div>
       ) : (
-        <table className="w-full text-xs">
+        <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs">
           <thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle">
             <th className="text-left font-normal py-1">Order</th><th className="text-left font-normal">Pitch</th>
             <th className="text-left font-normal">Assessment</th><th className="text-left font-normal">State</th>
@@ -46,7 +46,7 @@ function Lifecycle() {
           <tbody>
             {d.orders.map((o: any) => (
               <Fragment key={o.order_id}>
-                <tr className="border-b border-border-subtle cursor-pointer hover:bg-surface-2" onClick={() => setOpen(open === o.order_id ? null : o.order_id)}>
+                <tr className="border-b border-border-subtle cursor-pointer hover:bg-surface-2" onClick={() => setOpen(open === o.order_id ? null : o.order_id)} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                   <td className="py-1 font-mono">#{o.order_id} {o.side} {num(o.quantity, 0)} {o.symbol}</td>
                   <td className="text-text-secondary">{o.pitch ? (o.pitch.missing ? `#${o.pitch.id} (missing)` : `#${o.pitch.id} ${o.pitch.status}`) : '—'}</td>
                   <td className="text-text-secondary">{o.assessment ? `#${o.assessment.id} ${o.assessment.verdict ?? ''}` : '—'}</td>
@@ -59,7 +59,7 @@ function Lifecycle() {
                   <tr className="border-b border-border-subtle bg-surface-2">
                     <td colSpan={7} className="p-2 text-2xs space-y-1">
                       {o.tca ? (
-                        <table className="w-full max-w-xl">
+                        <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full max-w-xl">
                           <thead><tr className="text-text-tertiary"><th className="text-left font-normal">bp of notional (+ = cost)</th><th className="text-right font-normal">Estimate</th><th className="text-right font-normal">Actual</th><th className="text-right font-normal">Actual − est.</th></tr></thead>
                           <tbody className="font-mono">
                             <tr><td className="font-sans text-text-secondary">Decision → execution reference (market move)</td><td className="text-right">—</td><td className="text-right">{bp(o.tca.actual.delay_bps)}</td><td className="text-right">—</td></tr>
@@ -67,7 +67,7 @@ function Lifecycle() {
                             <tr><td className="font-sans text-text-secondary">Commission + taxes</td><td className="text-right">{bp(o.tca.estimate?.explicit_bps)}</td><td className="text-right">{bp(o.tca.actual.explicit_bps)}</td><td className="text-right">{bp(o.tca.actual_minus_estimate_bps?.explicit)}</td></tr>
                             <tr className="font-medium"><td className="font-sans">Implementation shortfall</td><td className="text-right">{bp(o.tca.estimate?.total_bps)}</td><td className="text-right">{bp(o.tca.actual.implementation_shortfall_bps)}</td><td className="text-right">—</td></tr>
                           </tbody>
-                        </table>
+                        </table></div>
                       ) : <div className="text-text-tertiary">Not executed yet.</div>}
                       <div className="text-text-tertiary">
                         Decision price {num(o.tca?.decision_price ?? o.assessment?.decision_price, 4)} {o.assessment?.price_currency ?? ''}
@@ -82,7 +82,7 @@ function Lifecycle() {
                   </tr>)}
               </Fragment>))}
           </tbody>
-        </table>)}
+        </table></div>)}
       <div className="text-[10px] text-text-tertiary">{d.method}</div>
     </div>
   );
@@ -106,7 +106,7 @@ function CorporateActions() {
       <div>
         <div className="text-2xs text-text-tertiary uppercase mb-1">Pending</div>
         {d.pending.length === 0 ? <div className="text-text-tertiary">None — every split on a held position is applied.</div> : (
-          <table className="w-full"><tbody>
+          <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><tbody>
             {d.pending.map((p: any) => (
               <tr key={`${p.book}${p.symbol}${p.ex_date}`} className="border-b border-border-subtle">
                 <td className="py-1 font-mono">{p.symbol}</td><td>{p.book}</td><td className="font-mono">{p.ex_date}</td>
@@ -117,12 +117,12 @@ function CorporateActions() {
                   <button disabled={!!busy} onClick={() => apply(p)} className="px-2 py-0.5 border border-border hover:border-bloomberg text-2xs">
                     {busy === `${p.book}${p.symbol}${p.ex_date}` ? 'Applying…' : 'Apply'}</button>)}</td>
               </tr>))}
-          </tbody></table>)}
+          </tbody></table></div>)}
       </div>
       <div>
         <div className="text-2xs text-text-tertiary uppercase mb-1">Applied</div>
         {d.applied.length === 0 ? <div className="text-text-tertiary">None yet.</div> : (
-          <table className="w-full"><tbody>
+          <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><tbody>
             {d.applied.map((a: any) => (
               <tr key={a.id} className="border-b border-border-subtle">
                 <td className="py-1 font-mono">{a.symbol}</td><td>{a.book}</td><td className="font-mono">{a.ex_date}</td>
@@ -130,7 +130,7 @@ function CorporateActions() {
                 <td className="text-text-secondary">{num(a.quantity_before, 4)} → {num(a.quantity_after, 4)} sh · cost {num(a.avg_cost_before, 4)} → {num(a.avg_cost_after, 4)}</td>
                 <td className="text-text-tertiary">{a.how} · {a.applied_by} · {String(a.applied_at).slice(0, 10)}</td>
               </tr>))}
-          </tbody></table>)}
+          </tbody></table></div>)}
       </div>
       <div className="text-[10px] text-text-tertiary">Split history from Yahoo. On the ex-date shares × ratio and average cost ÷ ratio (value unchanged). Applied automatically each morning when the position predates the ex-date and nothing was traded in the name since; otherwise listed here for review. Blotter rows are never rewritten.</div>
     </div>
@@ -144,14 +144,14 @@ function NavRecord() {
   return (
     <div className="text-xs space-y-2">
       {d.series.length === 0 ? <div className="text-text-tertiary">No NAV snapshots yet (the first is taken after today's close).</div> : (
-        <table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle">
+        <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle">
           <th className="text-left font-normal py-1">Currency</th><th className="text-left font-normal">From</th><th className="text-left font-normal">To</th>
           <th className="text-right font-normal">Snapshots</th><th className="text-right font-normal">Status</th></tr></thead>
           <tbody>{d.series.map((r: any) => (
             <tr key={r.start} className="border-b border-border-subtle"><td className="py-1 font-mono">{r.currency}</td><td className="font-mono">{r.start}</td>
               <td className="font-mono">{r.end}</td><td className="text-right font-mono">{r.snapshots}</td>
               <td className="text-right">{r.current ? 'current series' : 'earlier series (kept, not converted)'}</td></tr>))}
-          </tbody></table>)}
+          </tbody></table></div>)}
       <div className="text-[10px] text-text-tertiary">Each snapshot records its currency. Paper / simulated NAV is not a fund track record. Changing the fund's base currency starts a new series; the earlier one is kept as recorded and never relabelled.</div>
     </div>
   );
@@ -161,7 +161,7 @@ export function TradeLifecycleSection() {
   const [tab, setTab] = useState<Tab>('lifecycle');
   return (
     <div className="border border-border bg-surface-1">
-      <div className="px-3 py-2 border-b border-border flex items-center gap-3 flex-wrap">
+      <div className="workspace-controls px-3 py-2 border-b border-border flex items-center gap-3 flex-wrap">
         <span className="text-xs font-medium text-text-primary uppercase tracking-wider">Trade Lifecycle</span>
         {([['lifecycle', 'Lifecycle & TCA'], ['corp', 'Corporate actions'], ['nav', 'NAV record']] as [Tab, string][]).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className={cn('text-2xs px-2 py-0.5 border', tab === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-tertiary hover:text-text-primary')}>{l}</button>))}

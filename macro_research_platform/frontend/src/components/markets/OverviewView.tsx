@@ -13,7 +13,7 @@ export function OverviewView({ onOpen }: { onOpen: (s: string) => void }) {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         {data.groups.map((g: any) => (
           <Panel key={g.group} title={g.group}>
-            <table className="w-full text-2xs">
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs">
               <thead><tr className="text-text-tertiary">
                 <th className="text-left font-normal pb-1">Instrument</th><th className="text-right font-normal">{g.is_yield ? 'Level' : 'Last'}</th>
                 <th className="text-right font-normal">1D</th><th className="text-right font-normal hidden sm:table-cell">1M</th>
@@ -21,7 +21,7 @@ export function OverviewView({ onOpen }: { onOpen: (s: string) => void }) {
               <tbody>
                 {g.rows.map((r: any) => (
                   <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3"
-                    title={`${r.symbol}${r.date ? ` · ${r.date}` : ''} — open workstation`}>
+                    title={`${r.symbol}${r.date ? ` · ${r.date}` : ''} — open workstation`} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                     <td className="py-1"><span className="text-text-primary">{r.name}</span> <span className="font-mono text-text-tertiary">{r.symbol}</span></td>
                     <td className="text-right font-mono text-text-primary">{r.price == null ? '—' : g.is_yield ? r.price.toFixed(2) : fmtPrice(r.price, g.group === 'Currencies' ? 'FX' : undefined)}</td>
                     {r.is_yield ? <>
@@ -37,7 +37,7 @@ export function OverviewView({ onOpen }: { onOpen: (s: string) => void }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           </Panel>
         ))}
       </div>

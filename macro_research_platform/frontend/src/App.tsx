@@ -6,6 +6,7 @@ import { applyBrand, loadFunds } from '@/lib/fundBrand';
 import { currentFund } from '@/lib/fund';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { TerminalShell } from './components/layout/TerminalShell';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoginScreen } from './components/LoginScreen';
 import { ChangePasswordScreen } from './components/account/AccountPanels';
 import { DiagnosticsPanel } from './components/dev/DiagnosticsPanel';
@@ -16,8 +17,8 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ 
 const MarketsPage = lazy(() => import('./pages/MarketsPage').then((m) => ({ default: m.MarketsPage })));
 const PrivateEquityPage = lazy(() => import('./pages/PrivateEquityPage').then((m) => ({ default: m.PrivateEquityPage })));
 import { MarketsSidebar } from './components/markets/MarketsSidebar';
-import { HUB_MODES, useHubMode } from './lib/hubMode';
-import { PE_TABS, setPeTab, usePeTab } from './components/pe/peShared';
+import { HUB_MODES, isDashboardMode, useHubMode } from './lib/hubMode';
+import { PeSidebar } from './components/pe/PeSidebar';
 import { applySkin, useMarketsSkin } from './lib/theme';
 import { useMacroStore, selectMeta, selectIsLoading, selectRegime, selectFullDashboard } from './store/macroStore';
 
@@ -47,21 +48,23 @@ function App() {
 
   // Initialize store on mount
   useEffect(() => {
+    if (!isAuthenticated) return;
     fetchDashboard();
     startWebSocket();
 
     return () => {
       stopWebSocket();
     };
-  }, [fetchDashboard, startWebSocket, stopWebSocket]);
+  }, [isAuthenticated, fetchDashboard, startWebSocket, stopWebSocket]);
 
   // Poll for dashboard updates every 60 seconds
   useEffect(() => {
+    if (!isAuthenticated) return;
     const interval = setInterval(() => {
-      fetchDashboard();
+      if (document.visibilityState === 'visible') fetchDashboard();
     }, 60000);
     return () => clearInterval(interval);
-  }, [fetchDashboard]);
+  }, [isAuthenticated, fetchDashboard]);
 
   // Highlight the active section in the sidebar as the user scrolls. Re-attach once the
   // terminal is rendered (it used to run once on the login screen and observe nothing).
@@ -108,38 +111,13 @@ function App() {
   // One stable page element: changing the highlighted section while scrolling must not re-render the whole dashboard
   // (only the sidebar and detail panel read it).
   const page = useMemo(() => (
-    <Suspense fallback={<div className="p-6 text-xs text-text-tertiary">Loading {HUB_MODES.find((m) => m.id === hubMode)?.label}…</div>}>
+    <ErrorBoundary key={hubMode} sectionName={`${HUB_MODES.find(m=>m.id===hubMode)?.label??'Workspace'} view`}><Suspense fallback={<div className="p-6 text-xs text-text-tertiary">Loading {HUB_MODES.find((m) => m.id === hubMode)?.label}…</div>}>
       {hubMode === 'markets' ? <MarketsPage /> : hubMode === 'pe' ? <PrivateEquityPage /> : <DashboardPage />}
-    </Suspense>), [hubMode]);
+    </Suspense></ErrorBoundary>), [hubMode]);
 
   if (!isAuthenticated) return <LoginScreen />;
   if (mustChangePassword) return <ChangePasswordScreen />;
   if (mfaEnrollmentRequired) return <MfaEnrollScreen />;
-
-  if (isLoading && !hasData) {
-    return (
-      <div className="min-h-screen bg-bg flex items-center justify-center">
-        <div className="text-text-secondary font-mono">Initializing Terminal...</div>
-      </div>
-    );
-  }
-
-  if (meta.dataStatus === 'error' && !hasData) {
-    return (
-      <div className="min-h-screen bg-bg flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-red font-mono mb-4">Failed to load dashboard</div>
-          {wsError && <div className="text-text-secondary text-xs mb-4">{wsError}</div>}
-          <button
-            onClick={handleRefresh}
-            className="px-4 py-2 bg-bloomberg text-bg border border-bloomberg font-mono text-xs"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <>
@@ -156,7 +134,12 @@ function App() {
         sidebar={hubMode === 'markets' ? (collapsed) => <MarketsSidebar collapsed={collapsed} />
           : hubMode === 'pe' ? (collapsed) => <PeSidebar collapsed={collapsed} /> : undefined}
       >
-        {page}
+        {isDashboardMode(hubMode) && !hasData ? <div className="m-4 p-6 rounded-xl border border-border bg-surface-1" role="status">
+          <h2 className="text-sm font-semibold">{meta.dataStatus === 'error' ? 'Macro data is unavailable' : 'Loading macro data…'}</h2>
+          <p className="text-xs text-text-secondary mt-2">Markets and PE remain available from the top navigation.</p>
+          {wsError && <p className="text-xs text-text-tertiary mt-2">{wsError}</p>}
+          <button onClick={handleRefresh} className="mt-3 px-3 py-1.5 border border-border rounded text-xs">Retry macro data</button>
+        </div> : page}
       </TerminalShell>
 
       {/* Click-to-chart: any panel opens a full interactive chart (openChart) */}
@@ -169,19 +152,3 @@ function App() {
 }
 
 export default App;
-
-/** PE area sidebar: the four tools. */
-function PeSidebar({ collapsed }: { collapsed: boolean }) {
-  const tab = usePeTab();
-  if (collapsed) return null;
-  return (
-    <nav aria-label="Private equity" className="py-3 space-y-px">
-      <div className="px-5 pb-1.5 text-[10px] uppercase tracking-[0.08em] font-semibold text-text-tertiary">Private equity</div>
-      {PE_TABS.map((t) => (
-        <button key={t.id} onClick={() => setPeTab(t.id)} title={t.desc}
-          className={`w-[calc(100%-1rem)] mx-2 px-3 h-7 flex items-center gap-2.5 rounded-md text-xs transition-colors ${tab === t.id ? 'bg-bloomberg/10 text-text-primary font-medium' : 'text-text-secondary hover:bg-text-primary/5 hover:text-text-primary'}`}>
-          <span className={`nav-dot is-key ${tab === t.id ? 'is-active' : ''}`} />{t.label}
-        </button>))}
-    </nav>
-  );
-}

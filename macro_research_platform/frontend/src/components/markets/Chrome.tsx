@@ -125,7 +125,7 @@ const MAX_TABS = 9;
 function tabLabel(hash: string): { code: string; sec?: string } {
   const parts = hash.replace(/^#mkt\/?/, '').split('/').filter(Boolean);
   const f = findFunction(parts[0] ?? 'WEI');
-  const sym = parts[1] ? decodeURIComponent(parts[1]).toUpperCase() : undefined;
+  let sym:string|undefined;try{sym=parts[1]?decodeURIComponent(parts[1]).toUpperCase():undefined;}catch{/* invalid saved URL */}
   return { code: f?.code ?? 'WEI', sec: sym && f?.security ? toTerminal(sym).replace(/ (Equity|Index|Curncy|Comdty)$/, '') : sym };
 }
 
@@ -134,7 +134,10 @@ export function WorkspaceTabs() {
     const cur = window.location.hash.startsWith('#mkt') ? window.location.hash : '#mkt/wei';
     try {
       const j = JSON.parse(localStorage.getItem(TABS_KEY) || '');
-      if (Array.isArray(j.tabs) && j.tabs.length) {
+      if (Array.isArray(j?.tabs)) {
+        j.tabs=j.tabs.filter((t:unknown):t is WsTab=>!!t&&typeof (t as WsTab).id==='string'&&typeof (t as WsTab).hash==='string'&&(t as WsTab).hash.startsWith('#mkt/')&&(t as WsTab).hash.length<512).filter((t:WsTab,i:number,all:WsTab[])=>all.findIndex(x=>x.id===t.id)===i).slice(0,MAX_TABS);
+      }
+      if (Array.isArray(j?.tabs) && j.tabs.length) {
         const active = j.tabs.some((t: WsTab) => t.id === j.active) ? j.active : j.tabs[0].id;
         return { tabs: j.tabs.map((t: WsTab) => (t.id === active ? { ...t, hash: cur } : t)), active };
       }
@@ -194,18 +197,19 @@ export function WorkspaceTabs() {
         const { code, sec } = tabLabel(t.hash);
         const on = t.id === st.active;
         return (
-          <div key={t.id} role="tab" aria-selected={on} title={`Alt+${i + 1}`}
+          <div key={t.id} id={`mkt-tab-${t.id}`} role="tab" tabIndex={on?0:-1} aria-selected={on} title={`Alt+${i + 1}`}
             className={cn('group flex items-center gap-1.5 pl-2 pr-1 py-1 border border-b-0 cursor-pointer whitespace-nowrap',
               on ? 'bg-surface-1 border-border text-text-primary' : 'bg-surface-2/60 border-transparent text-text-tertiary hover:text-text-primary')}
+            onKeyDown={e=>{if(e.target!==e.currentTarget)return;let next=i;if(e.key==='ArrowRight')next=(i+1)%st.tabs.length;else if(e.key==='ArrowLeft')next=(i+st.tabs.length-1)%st.tabs.length;else if(e.key==='Home')next=0;else if(e.key==='End')next=st.tabs.length-1;else if(e.key!=='Enter'&&e.key!==' ')return;e.preventDefault();activate(st.tabs[next].id);document.getElementById(`mkt-tab-${st.tabs[next].id}`)?.focus();}}
             onClick={() => activate(t.id)} onAuxClick={(e) => { if (e.button === 1) close(t.id); }}>
             <span className="text-text-tertiary">{i + 1}</span>
             {sec && <span className={on ? 'text-[rgb(var(--key-yellow,255_214_0))]' : ''}>{sec}</span>}
             <span className={cn('font-mono font-semibold', on && 'text-bloomberg')}>{code}</span>
-            {st.tabs.length > 1 && <button onClick={(e) => { e.stopPropagation(); close(t.id); }} aria-label="Close tab"
+            {st.tabs.length > 1 && <button onClick={(e) => { e.stopPropagation(); close(t.id); }} aria-label={`Close ${sec??code} tab`}
               className="px-0.5 text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-red">×</button>}
           </div>);
       })}
-      {st.tabs.length < MAX_TABS && <button onClick={add} title="New tab (Alt+T)" className="px-2 py-1 text-text-tertiary hover:text-bloomberg">+</button>}
+      {st.tabs.length < MAX_TABS && <button onClick={add} aria-label="New workspace tab" title="New tab (Alt+T)" className="px-2 py-1 text-text-tertiary hover:text-bloomberg">+</button>}
       <span className="ml-auto pr-1 pb-1 text-[10px] text-text-tertiary hidden md:inline">Alt+1…9 switch · Alt+T new · Alt+W close · MENU = back</span>
     </div>
   );

@@ -12,7 +12,7 @@ const enc = encodeURIComponent;
 const pc = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);
 
 function Stat({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
-  return <div className="border border-border bg-surface-1 px-3 py-2"><div className="text-[10px] uppercase tracking-wide text-text-tertiary">{label}</div>
+  return <div className="mkt-stat-card border border-border bg-surface-1 px-3 py-2"><div className="text-[10px] uppercase tracking-wide text-text-tertiary">{label}</div>
     <div className="text-lg font-mono text-text-primary">{value}</div>{sub && <div className="text-[10px] text-text-tertiary">{sub}</div>}</div>;
 }
 
@@ -45,9 +45,9 @@ export function SiView({ symbol }: { symbol: string }) {
         <Stat label="Short volume 20d avg" value={pc(data.ratio_20d)} sub={data.ratio_prev_20d != null ? `prior 20d ${pc(data.ratio_prev_20d)}` : ''} />
       </div>
       <Panel title="Daily short-sale volume share (FINRA)">
-        <LineChart rows={d.map((x, i) => ({ date: x.date, ratio: x.ratio * 100,
+        <div className="mkt-chart-surface"><LineChart rows={d.map((x, i) => ({ date: x.date, ratio: x.ratio * 100,
             avg20: i >= 19 ? d.slice(i - 19, i + 1).reduce((a, y) => a + y.ratio, 0) / 20 * 100 : null }))} x="date" height={240} fmt={(v) => `${v.toFixed(1)}%`}
-          lines={[{ key: 'ratio', label: 'Short share', color: 'rgb(var(--c-blue))' }, { key: 'avg20', label: '20-day average', color: 'rgb(var(--c-bloomberg))' }]} />
+          lines={[{ key: 'ratio', label: 'Short share', color: 'rgb(var(--c-blue))' }, { key: 'avg20', label: '20-day average', color: 'rgb(var(--c-bloomberg))' }]} /></div>
       </Panel>
       <div className="overflow-x-auto border border-border max-h-72 overflow-y-auto">
         <table className="w-full text-[11px] font-mono tabular-nums">
@@ -78,16 +78,16 @@ function IntlShorts({ data }: { data: any }) {
       </div>
       {h.length > 1 && (
         <Panel title={`Short position, % of shares (${reg})`}>
-          <LineChart rows={h.map((x: any) => ({ date: x.date, pct: x.pct * 100 }))} x="date" height={220} fmt={(v) => `${v.toFixed(2)}%`}
-            lines={[{ key: 'pct', label: 'Short position', color: 'rgb(var(--c-red))' }]} />
+          <div className="mkt-chart-surface"><LineChart rows={h.map((x: any) => ({ date: x.date, pct: x.pct * 100 }))} x="date" height={220} fmt={(v) => `${v.toFixed(2)}%`}
+            lines={[{ key: 'pct', label: 'Short position', color: 'rgb(var(--c-red))' }]} /></div>
         </Panel>)}
       {data.holders?.length > 0 && (
-        <table className="w-full text-[11px] font-mono tabular-nums border border-border">
+        <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] font-mono tabular-nums border border-border">
           <thead><tr className="text-text-tertiary"><th className="text-left px-2 font-normal">Holder</th><th className="text-right font-normal">% of shares</th><th className="text-right font-normal">Shares</th><th className="text-right px-2 font-normal">Reported</th></tr></thead>
           <tbody>{data.holders.map((x: any) => (
             <tr key={x.holder} className="border-t border-border-subtle"><td className="px-2 font-sans text-text-primary">{x.holder}</td><td className="text-right">{pc(x.pct)}</td>
               <td className="text-right">{fmtBig(x.shares)}</td><td className="text-right px-2 text-text-secondary">{x.date}</td></tr>))}</tbody>
-        </table>)}
+        </table></div>)}
       <div className="text-[10px] text-text-tertiary">{data.note} Source: {data.source}.</div>
     </div>
   );
@@ -151,7 +151,7 @@ export function EcoGlobalView() {
   const today = localToday();
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-1 text-xs">
+      <div className="mkt-controls flex flex-wrap items-center gap-1 text-xs">
         {['Low', 'Medium', 'High'].map((i) => <button key={i} onClick={() => setImpact(i)} className={cn('px-2 py-0.5 border', impact === i ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{i === 'Low' ? 'All' : `${i}+ impact`}</button>)}
         <span className="mx-2 text-text-tertiary">|</span>
         {['', 'USD', 'EUR', 'GBP', 'JPY', 'CNY', 'AUD', 'CAD', 'CHF'].map((c) => <button key={c || 'all'} onClick={() => setCcy(c)} className={cn('px-2 py-0.5 border', ccy === c ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{c ? FLAG[c] : 'All'}</button>)}
@@ -205,15 +205,15 @@ export function EcstView() {
       <div className="flex items-center text-xs"><span className="text-text-tertiary">US economic surprise index · weekly since 2010</span>
         <span className="ml-auto text-text-tertiary">Latest <span className={cn('font-mono text-sm', (data.latest ?? 0) >= 0 ? 'text-green' : 'text-red')}>{data.latest?.toFixed(2)}</span></span></div>
       <Panel title="Data beating (above 0) or missing (below 0) its recent trend">
-        <LineChart rows={data.series} x="date" height={300} baseline={0} defaultRange="5y" fmt={(v) => v.toFixed(2)}
-          lines={[{ key: 'index', label: 'Surprise index', color: 'rgb(var(--c-bloomberg))' }]} />
+        <div className="mkt-chart-surface"><LineChart rows={data.series} x="date" height={300} baseline={0} defaultRange="5y" fmt={(v) => v.toFixed(2)}
+          lines={[{ key: 'index', label: 'Surprise index', color: 'rgb(var(--c-bloomberg))' }]} /></div>
       </Panel>
       <Panel title="Biggest surprises in the last 45 days">
-        <table className="w-full text-xs"><tbody>
+        <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs"><tbody>
           {data.recent.map((r: any, i: number) => (
             <tr key={i} className="border-t border-border-subtle"><td className="py-1 font-mono text-text-tertiary">{r.date}</td><td className="text-text-primary">{SERIES_NAME[r.series] ?? r.series}</td>
               <td className={cn('text-right font-mono', r.z >= 0 ? 'text-green' : 'text-red')}>{r.z >= 0 ? '+' : ''}{r.z.toFixed(2)} σ</td></tr>))}
-        </tbody></table>
+        </tbody></table></div>
       </Panel>
       <div className="text-[10px] text-text-tertiary">{data.method} Source: {data.source}.</div>
     </div>

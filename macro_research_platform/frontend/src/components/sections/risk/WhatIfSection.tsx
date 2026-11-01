@@ -92,7 +92,7 @@ export function WhatIfSection() {
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)] gap-2 p-2">
         {/* Controls */}
         <div className="p-3 bg-surface-1 border border-border">
-          <div className="flex flex-wrap gap-1 mb-3">
+          <div className="workspace-controls flex flex-wrap gap-1 mb-3">
             {PRESETS.map((p) => (
               <button key={p.label} type="button" title={p.note} onClick={() => { setS(p.s); setPreset(p.label); }}
                 className={cn('px-2 py-0.5 text-[10.5px] border', preset === p.label ? 'border-bloomberg text-bloomberg bg-bloomberg/10' : 'border-border text-text-secondary hover:text-text-primary')}>

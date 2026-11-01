@@ -14,6 +14,7 @@
 //   the token expires.
 
 import { currentFund } from '@/lib/fund';
+import { resetFundCache } from '@/lib/fundBrand';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
 interface User {
@@ -32,7 +33,7 @@ interface AuthState {
 }
 
 interface AuthContextType extends AuthState {
-  login: (username: string, password: string, otp?: string) => Promise<void>;
+  login: (username: string, password: string, otp?: string, fund?: string) => Promise<void>;
   mfaEnrolled: () => void;
   logout: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
@@ -126,12 +127,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [auth, setAuth] = useState<AuthState>(() => {
     const s = loadSession();
     currentToken = s.token;
+    if(s.token){try{sessionStorage.setItem('macro.fund.session',currentFund());}catch{/* optional storage */}}
     return s;
   });
 
 
   const endSession = useCallback(() => {
     currentToken = null;
+    resetFundCache();
     try {
       sessionStorage.removeItem(SESSION_KEY);
       localStorage.removeItem('macro_user');
@@ -175,12 +178,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(t);
   }, [auth.token, endSession]);
 
-  const login = useCallback(async (username: string, password: string, otp?: string) => {
+  const login = useCallback(async (username: string, password: string, otp?: string, fund?: string) => {
     installFetchWrapper();
     const formData = new URLSearchParams();
     formData.append('username', username);
     formData.append('password', password);
     if (otp) formData.append('otp', otp);
+    formData.append('fund', fund ?? currentFund());
 
     const response = await fetch('/api/auth/login', {
       method: 'POST',
@@ -203,9 +207,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     try {
       // Display-only hints for non-React code; the server never trusts these.
+      sessionStorage.setItem('macro.fund.session', data.fund || fund || currentFund());
+      localStorage.setItem('macro.fund', data.fund || fund || currentFund());
       localStorage.setItem('macro_user', resolvedUser.username);
       localStorage.setItem('macro_role', resolvedUser.role);
     } catch { /* storage unavailable */ }
+    resetFundCache();
     persist({ user: resolvedUser, token, isAuthenticated: true,
               mustChangePassword: Boolean(data.must_change_password),
               mfaEnrollmentRequired: Boolean(data.mfa_enrollment_required) });

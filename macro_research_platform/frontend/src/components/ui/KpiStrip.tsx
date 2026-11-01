@@ -10,7 +10,7 @@ export function KpiStrip({ items, cols = 6, compact = false }: { items: Kpi[]; c
   return (
     <div className={cn('grid gap-2 grid-cols-2', !compact && 'md:grid-cols-3', grid)}>
       {items.map((k) => (
-        <div key={k.label} className={cn('px-3 py-2 bg-surface-1 border', k.accent ? 'border-bloomberg/50' : 'border-border')}>
+        <div key={k.label} className={cn('workspace-stat px-3 py-2 bg-surface-1 border', k.accent ? 'border-bloomberg/50' : 'border-border')}>
           <div className="text-[10px] uppercase tracking-wide text-text-tertiary truncate">{k.label}</div>
           <div className={cn('font-mono text-sm mt-0.5', k.tone === 'up' ? 'text-green' : k.tone === 'down' ? 'text-red' : k.tone === 'warn' ? 'text-amber' : 'text-text-primary')}>{k.value}</div>
           {k.sub && <div className="text-[10px] text-text-tertiary truncate">{k.sub}</div>}

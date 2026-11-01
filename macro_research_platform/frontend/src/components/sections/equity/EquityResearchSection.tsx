@@ -73,10 +73,12 @@ const FACTOR_COLORS: Record<string, string> = {
   low_vol: '#6b7280',
 };
 
+const EMPTY_SECTORS:any[]=[];
+
 export function EquityResearchSection({ data }: EquityResearchSectionProps) {
   const { data: _apiEq } = useApiData<any>("/api/equity-research");
   // the regime view of the same sectors (Sector Allocation), shown beside the relative-strength rating
-  const regimeSectors = useMacroStore((st) => ((st.fullDashboard as any)?.sectorAllocation?.sectors ?? []) as any[]);
+  const regimeSectors = useMacroStore((st) => ((st.fullDashboard as any)?.sectorAllocation?.sectors ?? EMPTY_SECTORS) as any[]);
   const regimeOf = (sector: string) => {
     const key = sector === 'Consumer Discretionary' ? 'Consumer' : sector === 'Health Care' ? 'Healthcare' : sector;
     return regimeSectors.find((x) => x.name === key)?.signal as string | undefined;

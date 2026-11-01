@@ -30,7 +30,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import Query, APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -792,6 +792,8 @@ async def risk_concentration_v1(book: Optional[str] = None, limit_pct: float = 0
 async def risk_liquidity_v1(book: Optional[str] = None, participation: float = 0.20,
                             illiquid_days: float = 5.0):
     """Days-to-liquidate per position from average daily volume; flags illiquid names."""
+    if not 0 < participation <= .5 or not 0 < illiquid_days <= 365:
+        raise HTTPException(422, "Participation must be in (0, 0.5] and illiquid days in (0, 365].")
     from api import portfolio_store
     from api.calculations.var_model import days_to_liquidate
     raw = await asyncio.to_thread(portfolio_store.list_positions, book)
@@ -809,10 +811,17 @@ async def risk_liquidity_v1(book: Optional[str] = None, participation: float = 0
         except Exception:
             return None
 
+    from api.marketdata.core import _cached
+    limiter = asyncio.Semaphore(4)
+    async def cached_adv(sym):
+        async with limiter:
+            return await asyncio.to_thread(_cached, f"risk:adv:{sym}", 3600, lambda: _adv(sym))
+    symbols = list(dict.fromkeys(str(p["symbol"]).upper() for p in raw))
+    volumes = dict(zip(symbols, await asyncio.gather(*(cached_adv(s) for s in symbols))))
     rows = []
     for p in raw:
         sym = str(p["symbol"]).upper()
-        adv = await asyncio.to_thread(_adv, sym)
+        adv = volumes.get(sym)
         dtl = days_to_liquidate(float(p["quantity"]), adv, participation)
         rows.append({"symbol": sym, "book": p.get("book"), "quantity": p["quantity"],
                      "avg_daily_volume": round(adv) if adv else None,

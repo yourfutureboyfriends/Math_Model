@@ -47,7 +47,7 @@ export function WorkspaceBar({ onCollapseAll, visibleCount }: Props) {
   }, [ws, WORKSPACES]);
 
   return (
-    <div className="sticky top-16 z-30 bg-bg/85 backdrop-blur-md border-b border-border-subtle/70 px-4">
+    <div className="workspace-group-bar sticky top-16 z-30 bg-bg/85 backdrop-blur-md border-b border-border-subtle/70 px-4">
       <div className="flex items-center gap-1 h-9">
         <div className="relative min-w-0 flex-1 h-9">
         {bar && <span className="ws-indicator" style={{ left: bar.left, width: bar.width }} aria-hidden />}

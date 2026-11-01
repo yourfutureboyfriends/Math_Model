@@ -11,7 +11,7 @@ const pc = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${(v *
 const sgn = (v: number | null | undefined, d = 1, suf = '') => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(d)}${suf}`);
 
 function Stat({ label, value, sub, tone }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: 'up' | 'down' }) {
-  return <div className="border border-border bg-surface-1 px-3 py-2"><div className="text-[10px] uppercase tracking-wide text-text-tertiary">{label}</div>
+  return <div className="mkt-stat-card border border-border bg-surface-1 px-3 py-2"><div className="text-[10px] uppercase tracking-wide text-text-tertiary">{label}</div>
     <div className={cn('text-lg font-mono', tone === 'up' ? 'text-green' : tone === 'down' ? 'text-red' : 'text-text-primary')}>{value}</div>
     {sub && <div className="text-[10px] text-text-tertiary">{sub}</div>}</div>;
 }
@@ -41,7 +41,7 @@ export function WirpView() {
           <Stat label="Priced over the curve" value={sgn(d.meetings.slice(-1)[0]?.cumulative_bp, 0, 'bp')} sub={`to ${d.meetings.slice(-1)[0]?.meeting ?? '—'}`} />
         </div>
         <Panel title="Meeting-by-meeting probabilities">
-          <table className="w-full text-xs">
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs">
             <thead><tr className="text-[10px] uppercase text-text-tertiary"><th className="text-left font-normal">Meeting</th><th className="text-right font-normal">Implied rate</th><th className="text-right font-normal">Move</th><th className="text-right font-normal">Cumulative</th><th className="text-left font-normal pl-4">Probabilities</th></tr></thead>
             <tbody>{d.meetings.map((m: any) => (
               <tr key={m.meeting} className="border-t border-border-subtle">
@@ -52,7 +52,7 @@ export function WirpView() {
                   <div key={k} title={`${k}: ${(v * 100).toFixed(0)}%`} style={{ width: `${v * 100}%` }}
                     className={cn('text-[9px] leading-4 text-center text-black overflow-hidden', k.startsWith('+0') ? 'bg-text-tertiary' : k.startsWith('-') ? 'bg-green' : 'bg-red')}>{v > 0.12 ? `${k} ${(v * 100).toFixed(0)}%` : ''}</div>))}</div></td>
               </tr>))}</tbody>
-          </table>
+          </table></div>
         </Panel>
         <Panel title="Implied policy-rate path (monthly average)">
           <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Implied fed funds path">
@@ -104,21 +104,21 @@ export function EiaView() {
     <div className="space-y-3">
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         <Panel title={`US petroleum stocks — week to ${d.week} (${d.units})`}>
-          <table className="w-full text-xs"><thead><tr className="text-[10px] uppercase text-text-tertiary"><th className="text-left font-normal">Product</th><th className="text-right font-normal">Stocks</th><th className="text-right font-normal">Weekly change</th><th className="text-right font-normal">vs year ago</th></tr></thead>
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs"><thead><tr className="text-[10px] uppercase text-text-tertiary"><th className="text-left font-normal">Product</th><th className="text-right font-normal">Stocks</th><th className="text-right font-normal">Weekly change</th><th className="text-right font-normal">vs year ago</th></tr></thead>
             <tbody>{d.petroleum.map((p: any) => (
               <tr key={p.item} className="border-t border-border-subtle"><td className="py-1 text-text-primary">{p.item}</td><td className="text-right font-mono">{p.latest?.toFixed(1)}</td>
                 <td className={cn('text-right font-mono', (p.change ?? 0) < 0 ? 'text-green' : (p.change ?? 0) > 0 ? 'text-red' : '')} title="A draw (negative) is usually bullish for prices">{sgn(p.change, 2)}</td>
                 <td className="text-right font-mono">{sgn(p.vs_year_ago_pct, 1, '%')}</td></tr>))}
               {d.cushing && <tr className="border-t border-border-subtle"><td className="py-1 text-text-primary">Cushing, OK (WTI delivery point)</td><td className="text-right font-mono">{d.cushing.latest?.toFixed(1)}</td>
                 <td className={cn('text-right font-mono', d.cushing.change < 0 ? 'text-green' : 'text-red')}>{sgn(d.cushing.change, 2)}</td><td className="text-right font-mono">{d.cushing.year_ago ? sgn((d.cushing.latest / d.cushing.year_ago - 1) * 100, 1, '%') : '—'}</td></tr>}
-            </tbody></table>
+            </tbody></table></div>
           <p className="text-[10px] text-text-tertiary mt-2">Green = draw (inventories fell — usually supportive for prices); red = build.</p>
         </Panel>
         <Panel title={`Natural gas in storage — week to ${d.gas_week} (${d.gas_units})`}>
-          <table className="w-full text-xs"><thead><tr className="text-[10px] uppercase text-text-tertiary"><th className="text-left font-normal">Region</th><th className="text-right font-normal">Storage</th><th className="text-right font-normal">Injection</th><th className="text-right font-normal">vs 5-yr avg</th><th className="text-right font-normal">vs year ago</th></tr></thead>
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs"><thead><tr className="text-[10px] uppercase text-text-tertiary"><th className="text-left font-normal">Region</th><th className="text-right font-normal">Storage</th><th className="text-right font-normal">Injection</th><th className="text-right font-normal">vs 5-yr avg</th><th className="text-right font-normal">vs year ago</th></tr></thead>
             <tbody>{d.gas.map((g: any) => (
               <tr key={g.region} className="border-t border-border-subtle"><td className="py-1 text-text-primary capitalize">{g.region}</td><td className="text-right font-mono">{g.latest?.toLocaleString()}</td>
-                <td className="text-right font-mono">{sgn(g.change, 0)}</td><td className="text-right font-mono">{sgn(g.vs_5yr_pct, 1, '%')}</td><td className="text-right font-mono">{sgn(g.vs_year_ago_pct, 1, '%')}</td></tr>))}</tbody></table>
+                <td className="text-right font-mono">{sgn(g.change, 0)}</td><td className="text-right font-mono">{sgn(g.vs_5yr_pct, 1, '%')}</td><td className="text-right font-mono">{sgn(g.vs_year_ago_pct, 1, '%')}</td></tr>))}</tbody></table></div>
         </Panel>
       </div>
       <EiaHistory />
@@ -140,19 +140,19 @@ function EiaHistory() {
   return (
     <Panel title={`Supply & demand — weekly${data.series[0]?.date ? ` since ${data.series[0].date.slice(0, 4)}` : ''} (click rows to chart; up to 4 with the same unit)`}>
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-3">
-        <LineChart rows={data.series} x="date" height={300} fmt={(v) => unit === '%' ? `${v.toFixed(1)}%` : v.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-          lines={sel.map((sid, i) => ({ key: sid, label: data.labels[sid], color: EIA_COLORS[i] }))} />
-        <table className="w-full text-xs self-start">
+        <div className="mkt-chart-surface"><LineChart rows={data.series} x="date" height={300} fmt={(v) => unit === '%' ? `${v.toFixed(1)}%` : v.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          lines={sel.map((sid, i) => ({ key: sid, label: data.labels[sid], color: EIA_COLORS[i] }))} /></div>
+        <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs self-start">
           <thead><tr className="text-[10px] uppercase text-text-tertiary"><th className="text-left font-normal">Series</th><th className="text-right font-normal">Latest</th>
             <th className="text-right font-normal">Week</th><th className="text-right font-normal">vs year ago</th><th className="text-right font-normal">vs 5y avg</th></tr></thead>
           <tbody>{data.summary.map((r: any) => (
-            <tr key={r.series} onClick={() => toggle(r.series)} className={cn('border-t border-border-subtle cursor-pointer', sel.includes(r.series) && 'bg-surface-3')}>
+            <tr key={r.series} onClick={() => toggle(r.series)} className={cn('border-t border-border-subtle cursor-pointer', sel.includes(r.series) && 'bg-surface-3')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
               <td className="py-0.5 text-text-primary">{sel.includes(r.series) && <span className="inline-block w-2 h-2 mr-1.5 rounded-sm" style={{ background: EIA_COLORS[sel.indexOf(r.series)] }} />}{r.label} <span className="text-text-tertiary">{r.unit}</span></td>
               <td className="text-right font-mono">{r.latest?.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
               <td className={cn('text-right font-mono', (r.week_change ?? 0) > 0 ? 'text-green' : (r.week_change ?? 0) < 0 ? 'text-red' : '')}>{r.week_change != null ? sgn(r.week_change, r.unit === '%' ? 1 : 0) : ''}</td>
               <td className="text-right font-mono">{r.year_ago ? sgn((r.latest / r.year_ago - 1) * 100, 1, '%') : '—'}</td>
               <td className="text-right font-mono">{r.five_year_avg ? sgn((r.latest / r.five_year_avg - 1) * 100, 1, '%') : '—'}</td></tr>))}</tbody>
-        </table>
+        </table></div>
       </div>
     </Panel>
   );
@@ -307,7 +307,7 @@ export function ThirteenFView({ onOpen }: { onOpen: (s: string) => void }) {
   const [cik, setCik] = useState('0001067983');
   return <Frame<any> url={`/api/v1/mkt/13f?cik=${cik}`} label="Reading 13F filings from SEC EDGAR…">{(d) => (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 text-xs">
+      <div className="mkt-controls flex flex-wrap items-center gap-2 text-xs">
         <select value={cik} onChange={(e) => setCik(e.target.value)} className="bg-surface-1 border border-border px-2 py-1 text-text-primary">
           {d.managers.map((m: any) => <option key={m.cik} value={m.cik}>{m.name}</option>)}</select>
         <span className="text-text-tertiary">{d.filer} · quarter to {d.period} · filed {d.filed}{d.previous_period ? ` · vs ${d.previous_period}` : ''}</span>

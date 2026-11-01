@@ -206,6 +206,8 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `curves.py` | GC — government bond yield curves from each issuer's official daily data (free, no keys): |
 | `dcf.py` | Discounted cash flow valuation — free cash flow to the firm (FCFF) at the weighted average cost of capital, following Damodaran and Koller/Goedhart/Wessels (McKinsey, "Valuation"). |
 | `dcf_excel.py` | DCF → Excel: the same FCFF model as dcf.value(), written as live formulas so the user can change any input in Excel and watch the value update. Inputs (blue) on one sheet, the projection, terminal value and equity… |
+| `dcf_expectations.py` | Price-independent risk assumptions and expectations checks using the existing DCF engines. |
+| `dcf_fundamentals.py` | Dated cash-flow evidence and transparent valuation diagnostics. |
 | `econ.py` | ECO (global economic calendar) and ECST (economic surprises), free sources: |
 | `econ_actuals.py` | Actual figures for non-US (and non-ALFRED) calendar releases, from free official sources: |
 | `edge.py` | Edge data — sources that lead the official numbers or show who is positioned where (free): |
@@ -243,6 +245,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `data.py` | Data for the systematic macro model: a monthly macro panel and monthly asset excess returns. |
 | `economies.py` | The economies the macro model runs on. The method (api/model/core.py) is the same for every economy — growth and inflation diffusion factors → regime probabilities → regime-conditional expected returns →… |
 | `engine.py` | Systematic macro model — orchestration, persistence and order generation. |
+| `quality.py` | Explain the data actually used by a monthly macro decision, without forecasting accuracy claims. |
 | `sources.py` | Official-statistics fetchers for the non-US macro models — each returns monthly pandas Series indexed by month start. |
 
 ### `api/models/`
@@ -270,11 +273,14 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 
 | File | What it does |
 |---|---|
+| `comps.py` | Comparables for an LBO: where the entry and exit multiples sit against the market. |
 | `deals.py` | The deal pipeline: saved LBO cases and their progress, kept in the current fund's own database (api/funds.py), so each fund's deals stay apart. A deal stores its full input set, the headline results of its last run,… |
 | `excel.py` | LBO → Excel: the deal as an investment-committee workbook — Summary (returns by case, sources & uses, the value bridge), Operating model, Debt schedule, Credit & covenants, Sensitivities, and Assumptions (every input… |
 | `fundmath.py` | Private-fund mathematics on dated cash flows (contributions negative, distributions positive, the latest NAV as the residual value): |
 | `lbo.py` | LBO model — an annual leveraged-buyout model in the form deal teams use: |
+| `live_excel.py` | Editable, noncircular annual opening-balance LBO workbook, alongside frozen API results. |
 | `market.py` | Market-based LBO defaults — a complete lbo.run() input set for a listed company, with a source for every number: |
+| `underwriting.py` | Inspectable deal diligence and intra-year cash timing; no inferred approval probabilities. |
 
 ### `api/performance/`
 
@@ -431,6 +437,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `stock.py` | Stock entry timing: per-stock buy/wait/avoid with entry, stop, target and size, plus a screener over a watchlist. Method and sources: api/calculations/stock_timing.py. |
 | `strategies.py` | Strategy Lab endpoints: research-backed systematic models, their combination, and today's positions (api/strategy_lab.py). |
 | `trading_desk.py` | Trading desk: analyst pitch review (PMC workflow) and the pre-trade feasibility assessment. |
+| `workflows.py` | Authenticated connected workflows; tenant scope always comes from verified middleware. |
 
 ### `api/schemas/`
 
@@ -478,6 +485,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `formatting.py` | Standard formatting constants and utilities. |
 | `helpers.py` | Helper utility functions. |
 | `responses.py` | Standard API response utilities. |
+| `singleflight.py` | Share read-only blocking work without letting client timeouts cancel other callers. |
 | `validators.py` | Reusable Pydantic validators. |
 
 ### `api/validation/`
@@ -485,6 +493,16 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | File | What it does |
 |---|---|
 | `prices.py` | Price Validation — Ensure price data is valid before caching. |
+
+### `api/workflows/`
+
+| File | What it does |
+|---|---|
+| `analytics.py` | Pure, inspectable calculations. No implicit quote or FX downloads. |
+| `monitor.py` | Opt-in research scans. Persistent leases and deduplicated observations; no messages or trades. |
+| `securities.py` | Provider-backed listing registry. Never merge issuers on name similarity. |
+| `store.py` | Versioned research records; all access is scoped explicitly to fund AND owner. |
+| `telemetry.py` | Bounded in-process performance statistics. Never retain URLs, query strings or user data. |
 
 ## Frontend (`frontend/src/`)
 
@@ -513,7 +531,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `EconomicCalendar.tsx` | Blackout Banner — shown in TerminalShell when a high-impact economic event |
 | `ErrorBoundary.tsx` | ErrorBoundary — Prevents section crashes from unmounting the entire dashboard |
 | `LivePriceTile.tsx` | A ticker tile updating from the live-price WebSocket. |
-| `LoginScreen.tsx` | LoginScreen — Dark terminal-style authentication |
+| `LoginScreen.tsx` | Fund selection lives before authentication. Credentials and membership are verified by the server. |
 | `SectionErrorBoundary.tsx` | Section-level error boundary for graceful degradation |
 | `SystemStatusBadge.tsx` | SystemStatusBadge — Phase 5: Real-time validation/health visibility |
 
@@ -539,7 +557,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `CommandPalette.tsx` | Command Palette — keyboard-driven navigation with per-session favorites and recent history. |
 | `DetailPanel.tsx` | Phase 8 Detail Panel (Right side) |
 | `FundIdentity.tsx` | The fund's identity inside the terminal: its logo shapes drawn as masks in the theme's colours (gold gradient for a |
-| `FundSwitcher.tsx` | Fund switcher (top bar): which fund's book, settings and records the app shows. Hidden with only one fund. |
+| `FundSwitcher.tsx` | Read-only identity in the terminal. Fund selection is available only before sign-in. |
 | `GlobalCommand.tsx` | The Research-mode <GO> line in the topbar (Markets mode has its own, larger command line on the page; both use |
 | `Header.tsx` | Legacy page header (the app uses Topbar). |
 | `HoverCard.tsx` | Security hover cards: rest the pointer on a ticker anywhere — the tape, the quote board, a table cell — and a card |
@@ -549,11 +567,15 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `MasterSignalHeader.tsx` | Phase 8 Task 44 — Master Signal Dashboard Header |
 | `ModelInfoPanel.tsx` | ModelInfoPanel — auditable model documentation ("Model Info"). |
 | `Sidebar.tsx` | UPGRADE-9: Terminal Sidebar — Hedge Fund Workflow Organization |
+| `SidebarIdentity.tsx` | — |
 | `StatusBar.tsx` | Bottom dock: the world ticker tape over a terminal status bar. |
+| `TableExplorer.tsx` | — |
 | `TerminalShell.tsx` | UPGRADE-6: Terminal Shell with Keyboard Shortcuts — Analyst Workflow |
 | `TickerTape.tsx` | Live ticker tape: a continuously scrolling strip of ~50 instruments, ordered the way the trading day travels round |
 | `Topbar.tsx` | Bloomberg Terminal Topbar — 64px total (40px main + 24px ticker) |
 | `WorkspaceBar.tsx` | Workspace tabs above the dashboard: one navigation group at a time (or the role's focus |
+| `WorkspaceHeader.tsx` | — |
+| `WorkspaceTools.tsx` | Shared navigation and accessibility tools for every terminal area. Local view history contains no API data. |
 | `index.ts` | Layout components re-exported for import from '@/components/layout'. |
 
 ### `frontend/src/components/markets/`
@@ -562,17 +584,20 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 |---|---|
 | `ActionsView.tsx` | ACTN: market-wide analyst actions (upgrades, downgrades, initiations, price-target changes) and company guidance |
 | `AnalyticsViews.tsx` | Analytics functions: SEAS (seasonality), CORR (correlation matrix), RRG (relative rotation), |
+| `AtlasMap2D.tsx` | — |
 | `BridgewaterViews.tsx` | Bridgewater research frameworks — used in Markets mode (ENVR, AWP, DCYC, HGRL, WPWR) and embedded in the macro |
 | `Chrome.tsx` | Classic terminal chrome for the Markets mode: yellow market-sector keys, amber function |
 | `CommandLine.tsx` | Bloomberg-style command line with friendly autocomplete. Type a ticker, a company name, a |
+| `ConnectedTools.tsx` | — |
 | `DataViews.tsx` | Functions built on free alternatives to paid data: SI (short selling: FINRA + short |
 | `EdgeViews.tsx` | Edge data: EDGE (signal board), COT (positioning), PRED (prediction markets), NOW (nowcasts and |
+| `ExpectationsPanel.tsx` | — |
 | `ExtrasViews.tsx` | WIRP (Fed rate probabilities), AUCT (Treasury auctions), EIA (oil & gas inventories), |
 | `FlightTracker.tsx` | FLY — every aircraft in the world on one map. The world layer is OpenSky's snapshot (projected |
 | `FlowView.tsx` | FLOW — where money is moving. A world map of cross-border flows (US Treasury TIC portfolio |
 | `FutuView.tsx` | FUTU: real-time order book, tick-by-tick trades with the exchange's direction, capital flow by order size and the |
 | `GlobalFunctions.tsx` | Market-wide function screens: EVTS, WCRS, BTMM, IMAP, CRYPTO, CMDTY, GC, ECO, N, COMP. |
-| `Globe3D.tsx` | 3D globe for MAP: an orthographic projection drawn on canvas (smooth at 60 fps), coloured by the |
+| `Globe3D.tsx` | — |
 | `InsightViews.tsx` | Market internals: VOL (volatility complex), BRDT (S&P 500 breadth), IMPM (earnings implied moves), |
 | `InstrumentOverview.tsx` | Brokerage-style instrument overview (DES): chart + order ticket, key statistics with a |
 | `LiveMap.tsx` | LiveMap: a pannable, zoomable world map on canvas (web Mercator) for live traffic — tens of |
@@ -582,13 +607,16 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `Monitor.tsx` | Terminal launchpad: a dense multi-panel monitor — world indices, rates, FX, commodities, |
 | `MyTools.tsx` | Your tools: W (watchlists), ALRT (alerts), JRNL (trading journal) + the alert toast. |
 | `OverviewView.tsx` | World markets at a glance: equity indices, rates & volatility, currencies, commodities, |
+| `PageSections.tsx` | — |
 | `Photos.tsx` | Photos of a vessel or an aircraft, shown in the terminal with their credit line (Wikimedia |
 | `PredMarkets.tsx` | PRED: prediction markets — every open event on Kalshi and Polymarket, searchable, with price |
 | `QuoteWorkstation.tsx` | Futubull-style quote workstation (DES): watchlist on the left (↑/↓ steps through it), a dense |
 | `RegionViews.tsx` | Regions and countries: the region bar (GLOBAL / AMERICAS / EUROPE / MID EAST & AFRICA / |
+| `ResearchDesk.tsx` | — |
 | `ResearchExpander.tsx` | A collapsible "go deeper" block for the macro dashboard: mounts (and fetches) only when opened. |
 | `ResearchViews.tsx` | CF (company filings), CRED (credit spreads), FAC (factor exposures) and PORT (portfolio risk). |
 | `RightRail.tsx` | Brokerage-style right rail: a live watchlist and the AI research assistant, always at hand. |
+| `SavedLayouts.tsx` | — |
 | `ScreenerView.tsx` | Movers and a global equity screener over 22 markets (Yahoo's screener): any region(s), |
 | `SecurityFunctions.tsx` | Security function screens: ERN, ANR, HDS, DVD, OMON, RV, HP, BETA, DCF. |
 | `ShipTracker.tsx` | SHIP — every vessel the live AIS network hears, worldwide, on one map: colour by kind, filter |
@@ -596,22 +624,30 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `TickerView.tsx` | Instrument workstation — works for ANY instrument: quote header, interactive chart, |
 | `ToolkitViews.tsx` | TECH (technical analysis), SPRD (pairs / spreads), CBRT (central bank rates), ECOS (FRED explorer). |
 | `TrackingViews.tsx` | Physical-economy trackers: SHIP (worldwide live vessels, port congestion, chokepoints), FLY (every aircraft worldwide), QUAK |
-| `ValuationHub.tsx` | VAL: the valuation hub. Everything is filled in automatically (DCF or excess-return model, dividend |
+| `ValuationCapture.tsx` | — |
+| `ValuationHub.tsx` | — |
+| `ViewTools.tsx` | — |
 | `WorldMap.tsx` | MAP — every country coloured by markets, economy, policy or risk. Markets: USD country-ETF |
+| `atlasGeometry.ts` | Fixed projection and cached paths: pointer motion and resize never rebuild country geometry. |
 | `bbg.ts` | Terminal-style security identifiers ("AAPL US Equity", "VOD LN Equity", "SPX Index", |
 | `cssColor.ts` | Canvas can't read CSS variables: resolve `rgb(var(--c-…) / a)` through the browser (a hidden |
+| `exchanges.ts` | Major equity exchange hubs. Coordinates mark the city, not a trading floor or data centre. |
 | `follow.ts` | Following: ships and aircraft you want to keep an eye on, with your own notes. Kept per browser |
 | `functions.ts` | Markets functions — Bloomberg-style mnemonics with plain-English names. Security functions |
-| `shared.tsx` | Shared bits for the Markets mode: data hook, number formats that respect the instrument |
+| `shared.tsx` | — |
 
 ### `frontend/src/components/pe/`
 
 | File | What it does |
 |---|---|
+| `Comparables.tsx` | Comparables: where a deal's entry and exit multiples sit against listed peers (trading comps), the fund's own |
+| `DealDevelopment.tsx` | — |
 | `FundTools.tsx` | Fund tools: the carry waterfall (LP / GP split under a hurdle, catch-up and carry) and fund performance (IRR, TVPI, |
+| `PeSidebar.tsx` | — |
 | `Pipeline.tsx` | Deal pipeline: the fund's saved LBO cases by stage — headline returns from their last run, stage moves, notes and |
 | `Workbench.tsx` | LBO workbench: load a listed company (filings + live credit markets) or start from the illustrative case, edit |
 | `peShared.tsx` | Shared pieces of the PE area: number formats, small inputs, the API helpers, and the PE tab / "open this deal" |
+| `useInputHistory.ts` | — |
 
 ### `frontend/src/components/sections/`
 
@@ -707,6 +743,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 
 | File | What it does |
 |---|---|
+| `MacroDataQuality.tsx` | — |
 | `MacroModelSection.tsx` | Macro Model — the systematic model as one workflow, for three economies: |
 | `ModelSleeveSection.tsx` | Model Portfolio — the Macro Model's sleeve (book "Macro Model"): holdings vs the model's |
 | `QuantLabSection.tsx` | Quant Lab — write strategy code and test it (in your browser), with every cost, walk-forward |
@@ -850,6 +887,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `useKeyboardShortcuts.ts` | POLISH-1: Keyboard shortcuts hook |
 | `useMarketStream.ts` | Hook: the live-price Socket.IO stream with reconnects. |
 | `usePinnedSections.ts` | usePinnedSections — per-user pinned dashboard panels. |
+| `useTabNavigation.ts` | — |
 
 ### `frontend/src/lib/`
 
@@ -863,7 +901,10 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `chartPalette.ts` | Categorical palette for the dark terminal surface — eight hues in a fixed order that pass |
 | `commands.ts` | The command language shared by both modes' <GO> lines — one resolver, so the same words work everywhere: |
 | `constants.ts` | Standard formatting constants (mirrors backend api/utils/formatting.py) |
+| `contentDensity.ts` | — |
 | `cryptoStream.ts` | Live crypto ticks streamed straight from Coinbase's free public WebSocket (no key, no server hop): every trade moves |
+| `earningsInsights.ts` | Changes use absolute prior EPS so negative estimates retain a meaningful direction. |
+| `fetchDeadline.ts` | Bound both response headers and body reading, including unresponsive local proxies. |
 | `focusMode.ts` | Workspaces: which dashboard panels are shown. 'all', 'focus' (the signed-in role's panels: |
 | `format.ts` | Shared display formatters for panels. Missing or non-finite values show as "—". |
 | `fund.ts` | The fund the app works on (several funds, each with its own book, settings and audit log — api/funds.py). |
@@ -881,16 +922,20 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `panels.ts` | Panel names — the single source of truth for what each section is called in the |
 | `popups.ts` | Live pop-up notifications (your own alerts, breaking headlines, big market moves, economic releases, regime |
 | `region.ts` | The Markets region (Bloomberg-style GLOBAL / AMERICAS / EUROPE / MIDDLE EAST & AFRICA / |
+| `researchArchive.ts` | — |
+| `serverResearch.ts` | — |
+| `tableData.ts` | — |
 | `theme.ts` | Colour theme: 'auto' (light 07:00–19:00 local time, dark otherwise — re-checked every |
 | `topo.ts` | Minimal TopoJSON → SVG path rendering with the Equal Earth projection (Šavrič, Patterson |
 | `utils.ts` | Small UI utilities: class merging (cn), percent / score / date formats, signal colours. |
+| `workspaceState.ts` | — |
 
 ### `frontend/src/pages/`
 
 | File | What it does |
 |---|---|
 | `DashboardPage.tsx` | Dashboard Page — Main terminal dashboard with all sections |
-| `MarketsPage.tsx` | Markets mode — a universal, Bloomberg-style market workstation. |
+| `MarketsPage.tsx` | — |
 | `PrivateEquityPage.tsx` | PE — the private-equity area (top-bar mode 'pe'): the LBO workbench (a buyout modelled from a company's filings |
 | `index.ts` | Pages barrel export |
 
@@ -932,5 +977,30 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `format.ts` | Format Library — Single Source of Truth for Number Formatting |
 | `index.ts` | Utils barrel export — Phase 2 Schema-Driven Rendering |
 
-## Files without a description (0)
+## Files without a description (25)
 
+- `frontend/src/components/layout/SidebarIdentity.tsx`
+- `frontend/src/components/layout/TableExplorer.tsx`
+- `frontend/src/components/layout/WorkspaceHeader.tsx`
+- `frontend/src/components/markets/AtlasMap2D.tsx`
+- `frontend/src/components/markets/ConnectedTools.tsx`
+- `frontend/src/components/markets/ExpectationsPanel.tsx`
+- `frontend/src/components/markets/Globe3D.tsx`
+- `frontend/src/components/markets/PageSections.tsx`
+- `frontend/src/components/markets/ResearchDesk.tsx`
+- `frontend/src/components/markets/SavedLayouts.tsx`
+- `frontend/src/components/markets/ValuationCapture.tsx`
+- `frontend/src/components/markets/ValuationHub.tsx`
+- `frontend/src/components/markets/ViewTools.tsx`
+- `frontend/src/components/markets/shared.tsx`
+- `frontend/src/components/pe/DealDevelopment.tsx`
+- `frontend/src/components/pe/PeSidebar.tsx`
+- `frontend/src/components/pe/useInputHistory.ts`
+- `frontend/src/components/sections/model/MacroDataQuality.tsx`
+- `frontend/src/hooks/useTabNavigation.ts`
+- `frontend/src/lib/contentDensity.ts`
+- `frontend/src/lib/researchArchive.ts`
+- `frontend/src/lib/serverResearch.ts`
+- `frontend/src/lib/tableData.ts`
+- `frontend/src/lib/workspaceState.ts`
+- `frontend/src/pages/MarketsPage.tsx`

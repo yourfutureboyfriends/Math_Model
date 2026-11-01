@@ -159,7 +159,7 @@ export function FlightTracker() {
   const fixAge = w?.time ? Math.round((now - w.time) / 60) : null;
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+      <div className="mkt-controls flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
         <span className="text-text-primary"><Plane className="inline w-3.5 h-3.5 mr-1 text-bloomberg" /><b className="font-mono">{w?.airborne?.toLocaleString()}</b> airborne worldwide</span>
         <span className="text-text-secondary"><b className="font-mono">{w?.on_ground?.toLocaleString()}</b> on the ground</span>
         <button onClick={() => setOnly(only === 'mil' ? 'all' : 'mil')} className={cn('px-1.5 border', only === 'mil' ? 'border-[rgb(236_72_153)] text-[rgb(236_72_153)]' : 'border-border text-text-secondary')}>
@@ -174,7 +174,7 @@ export function FlightTracker() {
         <span className="ml-auto text-text-tertiary">{liveArea && area.data ? <span className="text-green">● live in this area ({area.data.aircraft.length} aircraft, 10 s refresh)</span>
           : `world snapshot ${fixAge != null ? `${fixAge} min old` : ''}${w?.stale ? ' (OpenSky limit reached — last snapshot)' : ''} · zoom in for live`}</span>
       </div>
-      <div className="flex flex-wrap items-center gap-1 text-[11px]">
+      <div className="mkt-controls flex flex-wrap items-center gap-1 text-[11px]">
         <form onSubmit={doFind} className="flex">
           <input value={find} onChange={(e) => setFind(e.target.value)} placeholder="Callsign, hex or registration" aria-label="Find an aircraft"
             className="w-48 bg-surface-1 border border-border px-2 py-0.5 font-mono text-text-primary placeholder:text-text-tertiary" />
@@ -187,7 +187,7 @@ export function FlightTracker() {
         <LiveMap ref={map} glyph="plane" points={points} lines={lines} markers={markers} selected={sel} onSelect={setSel} onView={setBounds}
           onMarker={(code) => { const ap = AIRPORTS.find((x) => x[0] === code); if (ap) map.current?.flyTo({ lon: ap[3], lat: ap[2], zoom: Math.max(bounds?.zoom ?? 0, 8) }); }}
           hoverText={hoverText} height={600} initial={{ lon: 60, lat: 30, zoom: 2.2 }}>
-          <div className="absolute bottom-2 left-2 flex flex-wrap gap-2 text-[10px] bg-surface-1/85 border border-border px-2 py-1">
+          <div className="mkt-controls absolute bottom-2 left-2 flex flex-wrap gap-2 text-[10px] bg-surface-1/85 border border-border px-2 py-1">
             {ALT_BANDS.map(([l, , c]) => <span key={l} className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: c }} />{l}</span>)}
             <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full border-2 border-[rgb(236_72_153)]" />military</span>
             <label className="inline-flex items-center gap-1 cursor-pointer"><input type="checkbox" checked={showGround} onChange={(e) => setShowGround(e.target.checked)} />ground</label>
@@ -221,7 +221,7 @@ function NotableFlights({ data, loading, follow, onPick }: { data: any; loading:
   const list = (data.flights as any[]).filter((x) => !only || x.tags.includes(only));
   return (
     <div className="border border-border bg-surface-1">
-      <div className="flex flex-wrap gap-1 p-2 text-[10px]">
+      <div className="mkt-controls flex flex-wrap gap-1 p-2 text-[10px]">
         <button onClick={() => setOnly('')} className={cn('px-1.5 border', !only ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>All {data.total}</button>
         {FTAGS.map(([k, l, col]) => (
           <button key={k} onClick={() => setOnly(k)} className={cn('px-1.5 border inline-flex items-center gap-1', only === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>
@@ -282,7 +282,7 @@ function ViewPanel({ stats, inView, onPick }: { stats: { bands: { l: string; c: 
           <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left px-1.5 font-normal">Flight</th><th className="text-left font-normal">Type</th>
             <th className="text-right font-normal">Alt ft</th><th className="text-right font-normal">Kt</th><th className="text-right px-1.5 font-normal">Hdg</th></tr></thead>
           <tbody>{list.map((a) => (
-            <tr key={a.hex} onClick={() => onPick(a)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-3', a.emergency && 'text-red')}>
+            <tr key={a.hex} onClick={() => onPick(a)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-3', a.emergency && 'text-red')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
               <td className="px-1.5">{a.callsign || a.hex}{a.mil && <span className="ml-1 text-[9px] text-[rgb(236_72_153)]">MIL</span>}</td>
               <td className="text-text-secondary">{a.type ?? ''}</td><td className="text-right">{a.alt?.toLocaleString() ?? '—'}</td>
               <td className="text-right">{a.speed ?? ''}</td><td className="text-right px-1.5">{a.track ?? ''}</td></tr>))}</tbody>

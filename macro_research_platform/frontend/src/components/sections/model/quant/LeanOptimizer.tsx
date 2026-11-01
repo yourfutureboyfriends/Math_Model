@@ -78,7 +78,7 @@ export function LeanOptimizer({ code, disabled }: { code: string; disabled?: boo
         <SlidersHorizontal className="w-3.5 h-3.5 text-bloomberg" />Optimise parameters on real LEAN
         <span className="font-normal text-text-tertiary">· every combination in-sample, the best on a hold-out it never saw</span>
       </div>
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="workspace-controls flex flex-wrap items-end gap-2">
         {params.map((p) => (
           <Field key={p.name} label={`${p.name}${p.default != null ? ` (default ${p.default})` : ''}`} className="w-48" hint="comma-separated values">
             <input className={inputCls} value={values[p.name] ?? ''} onChange={(e) => setValues({ ...values, [p.name]: e.target.value })} />

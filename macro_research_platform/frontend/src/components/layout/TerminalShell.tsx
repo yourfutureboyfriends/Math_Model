@@ -3,7 +3,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Topbar } from './Topbar';
+import { useTabNavigation } from '@/hooks/useTabNavigation';
+import { useContentDensity } from '@/lib/contentDensity';
+import { WorkspaceTools } from './WorkspaceTools';
+import { getHubMode, isDashboardMode, useHubMode } from '@/lib/hubMode';
 import { Sidebar } from './Sidebar';
+import { SidebarIdentity } from './SidebarIdentity';
 import { DetailPanel } from './DetailPanel';
 import { CommandPalette } from './CommandPalette';
 import { AlertsPanel } from './AlertsPanel';
@@ -48,12 +53,15 @@ export function TerminalShell({
   activeSection: externalActiveSection,
   onNavigate: externalOnNavigate,
 }: TerminalShellProps) {
+  useTabNavigation();
+  const workspace=useHubMode();
+  const {density}=useContentDensity();
   const [internalActiveSection, setInternalActiveSection] = useState('master-signal');
   const [detailPanelOpen, setDetailPanelOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [alertsPanelOpen, setAlertsPanelOpen] = useState(false);
   // FIXED (BUG 2): Ensure sidebar is never undefined/null - always boolean
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => { try { return localStorage.getItem('terminal.sidebarCollapsed') === '1'; } catch { return false; } });
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
   const [modelInfoOpen, setModelInfoOpen] = useState(false);
   const keyTimeoutRef = useRef<NodeJS.Timeout>();
@@ -61,6 +69,8 @@ export function TerminalShell({
   const [tapeOn] = useTapeVisible();
   const dockH = tapeOn ? DOCK_HEIGHT.withTape : DOCK_HEIGHT.withoutTape;
   useEffect(() => { document.documentElement.style.setProperty('--dock-h', `${dockH}px`); }, [dockH]);
+
+  useEffect(() => { try { localStorage.setItem('terminal.sidebarCollapsed', sidebarCollapsed ? '1' : '0'); } catch { /* optional storage */ } }, [sidebarCollapsed]);
 
   // Use external state if provided, otherwise internal
   const activeSection = externalActiveSection ?? internalActiveSection;
@@ -75,7 +85,7 @@ export function TerminalShell({
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       // Skip if user is typing in an input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      if (e.target instanceof HTMLElement && (e.target.matches('input, textarea, select') || e.target.isContentEditable)) {
         return;
       }
 
@@ -128,6 +138,8 @@ export function TerminalShell({
         setShortcutsHelpOpen(true);
         return;
       }
+
+      if (!isDashboardMode(getHubMode())) return;
 
       // Single key navigation
       const sectionMap: Record<string, string> = {
@@ -310,7 +322,7 @@ export function TerminalShell({
   };
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className="terminal-workspace min-h-screen bg-bg" data-workspace={workspace} data-content-density={density}>
       {/* Economic Calendar Blackout Banner */}
       <BlackoutBanner />
 
@@ -336,7 +348,7 @@ export function TerminalShell({
         style={{ bottom: dockH }}
       >
         <ErrorBoundary sectionName="Sidebar">
-          {sidebar ? sidebar(sidebarCollapsed) : (
+          {sidebar ? <div className="h-full flex flex-col"><SidebarIdentity collapsed={sidebarCollapsed} currentRegime={currentRegime}/><div className="flex-1 min-h-0 overflow-hidden">{sidebar(sidebarCollapsed)}</div></div> : (
             <Sidebar
               activeSection={activeSection}
               onNavigate={handleNavigate}
@@ -357,7 +369,10 @@ export function TerminalShell({
         )}
         style={{ paddingBottom: dockH }}
       >
-        <div className="min-h-[calc(100vh-64px)]">
+        <a href="#terminal-content" onClick={e=>{e.preventDefault();document.getElementById('terminal-content')?.focus();document.getElementById('terminal-content')?.scrollIntoView();}} className="sr-only focus:not-sr-only focus:block focus:p-3">Skip to workspace content</a>
+        <WorkspaceTools onCommand={() => setCommandPaletteOpen(true)} onHelp={() => setShortcutsHelpOpen(true)}
+          onSidebar={() => setSidebarCollapsed(v => !v)} refreshing={_loading} />
+        <div id="terminal-content" tabIndex={-1} className="min-h-[calc(100vh-64px)]">
           {children}
         </div>
       </main>

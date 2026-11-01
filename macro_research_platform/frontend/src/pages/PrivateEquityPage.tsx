@@ -3,9 +3,11 @@
  * and live credit markets), the deal pipeline (this fund's saved deals by stage), the carry waterfall and fund
  * performance with public-market equivalents. Modelled returns are analysis, never a track record.
  */
-import { Briefcase } from 'lucide-react';
+import { WorkspaceHeader } from '@/components/layout/WorkspaceHeader';
+import { PageSections } from '@/components/markets/PageSections';
 import { Workbench } from '@/components/pe/Workbench';
 import { Pipeline } from '@/components/pe/Pipeline';
+import { Precedents } from '@/components/pe/Comparables';
 import { Performance, Waterfall } from '@/components/pe/FundTools';
 import { PE_TABS, setPeTab, usePeTab } from '@/components/pe/peShared';
 
@@ -13,21 +15,20 @@ export function PrivateEquityPage() {
   const tab = usePeTab();
   const t = PE_TABS.find((x) => x.id === tab) ?? PE_TABS[0];
   return (
-    <div className="p-4 space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="section-tag"><Briefcase className="w-3 h-3" /></span>
-        <div>
-          <h1 className="text-[17px] font-semibold text-text-primary tracking-[-0.01em]">Private equity</h1>
-          <div className="text-[11px] text-text-tertiary">{t.desc}</div>
-        </div>
-        <div className="seg ml-auto" role="tablist" aria-label="Private equity tools">
+    <div className="pe-workspace workspace-page p-4 space-y-3">
+      <WorkspaceHeader area="pe" context={t.label} items={PE_TABS.map(x=>({id:x.id,label:x.label}))} onPick={id=>{const target=PE_TABS.find(x=>x.id===id);if(target)setPeTab(target.id);}}/>
+      <div className="pe-tool-navigation">
+        <div className="seg" role="tablist" aria-label="Private equity tools">
           {PE_TABS.map((x) => <button key={x.id} role="tab" aria-selected={tab === x.id} onClick={() => setPeTab(x.id)} className="seg-item">{x.label}</button>)}
         </div>
       </div>
+      <div className="pe-tool-body"><PageSections page={`pe-${tab}`}/>
       {tab === 'workbench' && <Workbench />}
       {tab === 'pipeline' && <Pipeline />}
+      {tab === 'precedents' && <Precedents />}
       {tab === 'waterfall' && <Waterfall />}
       {tab === 'performance' && <Performance />}
+      </div>
     </div>
   );
 }

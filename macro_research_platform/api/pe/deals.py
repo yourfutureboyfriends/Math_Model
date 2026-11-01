@@ -51,6 +51,7 @@ def summarise(result: Dict[str, Any]) -> Dict[str, Any]:
     return {"irr": b["returns"]["sponsor_irr"], "moic": b["returns"]["moic"], "weighted_irr": result["weighted"]["irr"],
             "entry_multiple": b["entry"]["multiple"], "ev": b["entry"]["ev"], "leverage": b["entry"]["leverage_close"],
             "equity": b["sponsor_equity"], "currency": b.get("currency"), "max_entry_multiple": result["max_entry"].get("multiple"),
+            "diligence": result.get('diligence'), "seasonal_shortfall": result.get('liquidity', {}).get('first_shortfall'),
             "hurdle": result["max_entry"].get("hurdle"), "warnings": b["warnings"], "at": _now()}
 
 

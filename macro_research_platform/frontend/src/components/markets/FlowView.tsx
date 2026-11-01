@@ -2,13 +2,12 @@
 // flows into and out of the US, BIS bank lending, country-ETF money flow), then asset-class and
 // sector fund flows, stablecoin supply and Fed net liquidity. Every number shown here; nothing
 // links out.
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { countryPaths, projectPoint, NUMERIC_TO_ISO2, type Topology } from '@/lib/topo';
+import { countryPaths, projectPoint, NUMERIC_TO_ISO2 } from '@/lib/topo';
 import { LineChart } from '@/components/ui/LineChart';
 import { ErrorBox, Loading, Panel, useJSON } from './shared';
 
-let topoCache: Topology | null = null;
 const W = 1000;
 
 type Layer = 'into_us' | 'out_of_us' | 'bis' | 'etf';
@@ -40,8 +39,8 @@ export function FlowView({ onOpen }: { onOpen: (s: string) => void }) {
   const [win, setWin] = useState<'m1' | 'm3' | 'm12'>('m3');
   const [sel, setSel] = useState<string | null>(null);
   const [hover, setHover] = useState<{ iso: string; x: number; y: number } | null>(null);
-  const [topo, setTopo] = useState<Topology | null>(topoCache);
-  useEffect(() => { if (!topo) fetch('/world-atlas/countries-50m.json').then((r) => r.json()).then((t) => { topoCache = t; setTopo(t); }).catch(() => {}); }, [topo]);
+  const map=useJSON<import('@/lib/topo').Topology>('/world-atlas/countries-50m.json');
+  const topo=map.data;
   const geo = useMemo(() => (topo ? countryPaths(topo, W) : null), [topo]);
   const H = W * 0.487;
 
@@ -83,7 +82,7 @@ export function FlowView({ onOpen }: { onOpen: (s: string) => void }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-1 text-[11px]">
+      <div className="mkt-controls flex flex-wrap items-center gap-1 text-[11px]">
         {LAYERS.map(([k, l]) => <button key={k} onClick={() => { setLayer(k); setKind('total'); }} className={cn('px-2 py-0.5 border', layer === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary hover:text-text-primary')}>{l}</button>)}
         {(layer === 'into_us' || layer === 'out_of_us') && <>
           <span className="mx-1 text-text-tertiary">|</span>
@@ -96,7 +95,8 @@ export function FlowView({ onOpen }: { onOpen: (s: string) => void }) {
       {loading.error && !loading.data && <ErrorBox msg={loading.error} />}
       <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_360px] gap-3">
         <div className="relative border border-border bg-surface-1">
-          {(!geo || (loading.loading && !loading.data)) && <Loading label="Loading flows…" />}
+          {map.error&&<ErrorBox msg={map.error} onRetry={map.retry}/>}
+          {(!geo&&!map.error || (loading.loading && !loading.data)) && <Loading label="Loading flows…" />}
           {geo && (
             <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Money flow map" onMouseLeave={() => setHover(null)}>
               <defs>
@@ -184,7 +184,7 @@ function CountryFlows({ iso, name, values, fmtV, etf, bis, onClose, onOpen }: { 
         <div className="col-span-2 flex justify-between border-t border-border-subtle pt-1"><span className="text-text-tertiary">Holds US long-term securities</span><span className="font-mono">{usd(last.holdings_us_securities).replace('+', '')}</span></div>
         <div className="col-span-2 flex justify-between"><span className="text-text-tertiary">of which Treasuries</span><span className="font-mono">{usd(last.holdings_treasuries).replace('+', '')}</span></div>
       </div>}
-      {rows.length > 3 && <LineChart rows={rows} x="date" height={170} fmt={(v) => `${v.toFixed(0)}bn`} lines={[{ key: 'in', label: 'Into US securities ($bn)', color: 'rgb(var(--c-bloomberg))' }, { key: 'out', label: 'US into this country ($bn)', color: 'rgb(var(--c-blue))' }]} />}
+      {rows.length > 3 && <div className="mkt-chart-surface"><LineChart rows={rows} x="date" height={170} fmt={(v) => `${v.toFixed(0)}bn`} lines={[{ key: 'in', label: 'Into US securities ($bn)', color: 'rgb(var(--c-bloomberg))' }, { key: 'out', label: 'US into this country ($bn)', color: 'rgb(var(--c-blue))' }]} /></div>}
       {h.error && !h.data && <p className="text-[11px] text-text-tertiary">Not reported separately in TIC.</p>}
       {br && <div className="text-[11px] border-t border-border-subtle pt-1">Bank lending {bis.quarter}: <b className="font-mono">{usd(br.last_q)}</b> (4 quarters {usd(br.four_q)}; claims {usd(br.claims).replace('+', '')})</div>}
       {er && <div className="text-[11px] border-t border-border-subtle pt-1"><button onClick={() => onOpen(er.symbol)} className="font-mono text-bloomberg hover:underline">{er.symbol}</button> {er.label}:
@@ -216,16 +216,16 @@ function EtfTable({ title, rows, note, snaps, first, onOpen, loading }: { title:
   return (
     <Panel title={title}>
       {loading ? <Loading /> : <>
-        <table className="w-full text-[11px] font-mono">
+        <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] font-mono">
           <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Fund</th>{th('flow', 'Creations')}{th('mf_1w', 'Flow 1W')}{th('mf_1m', 'Flow 1M')}{th('chg_1m', 'Price 1M')}{th('volume_surge', 'Volume ×')}</tr></thead>
           <tbody>{sorted.map((r) => (
-            <tr key={r.symbol} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3" onClick={() => onOpen(r.symbol)}>
+            <tr key={r.symbol} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3" onClick={() => onOpen(r.symbol)} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
               <td className="py-0.5 font-sans"><span className="font-mono text-bloomberg mr-1">{r.symbol}</span><span className="text-text-secondary">{r.label}</span></td>
               <td className={cn('text-right px-1', (r.flows?.week_usd ?? r.flows?.last_usd ?? 0) >= 0 ? 'text-green' : 'text-red')}>{r.flows ? usd(r.flows.week_usd ?? r.flows.last_usd, 'usd') : '—'}</td>
               <td className="px-1">{pressure(r.mf_1w)}</td><td className="px-1">{pressure(r.mf_1m)}</td>
               <td className={cn('text-right px-1', r.chg_1m >= 0 ? 'text-green' : 'text-red')}>{(r.chg_1m * 100).toFixed(1)}%</td>
               <td className={cn('text-right px-1', r.volume_surge > 1.5 ? 'text-amber' : 'text-text-secondary')}>{r.volume_surge?.toFixed(2)}</td></tr>))}</tbody>
-        </table>
+        </table></div>
         <div className="text-[10px] text-text-tertiary mt-1">{(snaps ?? 0) < 2 ? `Creations/redemptions appear after two daily share snapshots (recording since ${first ?? 'today'}). ` : ''}{note}</div>
       </>}
     </Panel>
@@ -242,9 +242,9 @@ function Liquidity({ d, error }: { d: any; error: string | null }) {
           {[['Net liquidity', `$${(d.latest.net_liquidity / 1000).toFixed(2)}T`], ['4 weeks', usd(d.chg_4w, 'bn')], ['13 weeks', usd(d.chg_13w, 'bn')], ['As of', d.latest.date]].map(([k, v]) => (
             <div key={k}><div className="text-text-tertiary">{k}</div><div className="font-mono text-text-primary">{v}</div></div>))}
         </div>
-        <LineChart rows={d.rows} x="date" height={220} fmt={(v) => `${(v / 1000).toFixed(2)}T`}
+        <div className="mkt-chart-surface"><LineChart rows={d.rows} x="date" height={220} fmt={(v) => `${(v / 1000).toFixed(2)}T`}
           lines={[{ key: 'net_liquidity', label: 'Net liquidity', color: 'rgb(var(--c-bloomberg))' }, { key: 'fed_balance_sheet', label: 'Fed balance sheet', color: 'rgb(var(--c-blue))' },
-            { key: 'tga', label: 'Treasury cash (TGA)', color: 'rgb(var(--c-red))' }, { key: 'reverse_repo', label: 'Reverse repo', color: 'rgb(var(--c-amber))' }]} />
+            { key: 'tga', label: 'Treasury cash (TGA)', color: 'rgb(var(--c-red))' }, { key: 'reverse_repo', label: 'Reverse repo', color: 'rgb(var(--c-amber))' }]} /></div>
         <div className="text-[10px] text-text-tertiary">{d.note} {d.source}.</div>
       </>}
     </Panel>
@@ -261,13 +261,13 @@ function Stablecoins({ d, error }: { d: any; error: string | null }) {
           {[['Supply', `$${(d.total / 1e9).toFixed(1)}B`], ['7 days', usd(d.chg_7d, 'usd')], ['30 days', usd(d.chg_30d, 'usd')], ['90 days', usd(d.chg_90d, 'usd')]].map(([k, v]) => (
             <div key={k}><div className="text-text-tertiary">{k}</div><div className="font-mono text-text-primary">{v}</div></div>))}
         </div>
-        <LineChart rows={d.history.map((h: any) => ({ date: h.date, usd: h.usd / 1e9 }))} x="date" height={150} fmt={(v) => `$${v.toFixed(0)}B`} lines={[{ key: 'usd', label: 'Stablecoin supply ($bn)', color: 'rgb(var(--c-green))' }]} />
-        <table className="w-full text-[11px] font-mono mt-2">
+        <div className="mkt-chart-surface"><LineChart rows={d.history.map((h: any) => ({ date: h.date, usd: h.usd / 1e9 }))} x="date" height={150} fmt={(v) => `$${v.toFixed(0)}B`} lines={[{ key: 'usd', label: 'Stablecoin supply ($bn)', color: 'rgb(var(--c-green))' }]} /></div>
+        <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] font-mono mt-2">
           <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Chain</th><th className="text-right font-normal">Supply</th><th className="text-right font-normal">7 days</th><th className="text-right font-normal">30 days</th></tr></thead>
           <tbody>{d.chains.slice(0, 10).map((c: any) => (
             <tr key={c.chain} className="border-t border-border-subtle"><td className="py-0.5 font-sans text-text-primary">{c.chain}</td><td className="text-right">${(c.usd / 1e9).toFixed(1)}B</td>
               <td className={cn('text-right', (c.chg_7d ?? 0) >= 0 ? 'text-green' : 'text-red')}>{usd(c.chg_7d, 'usd')}</td><td className={cn('text-right', (c.chg_30d ?? 0) >= 0 ? 'text-green' : 'text-red')}>{usd(c.chg_30d, 'usd')}</td></tr>))}</tbody>
-        </table>
+        </table></div>
         <div className="text-[10px] text-text-tertiary mt-1">{d.note} {d.source}.</div>
       </>}
     </Panel>

@@ -21,7 +21,9 @@ def test_lapsed_entry_served_at_once_and_refreshed_behind():
     assert core._cached(k, 600, fetch) == {"v": 1}
     core._cache[k] = (time.time() - 700, core._cache[k][1])            # past its TTL, within SWR_FACTOR × TTL
     t = time.time()
-    assert core._cached(k, 600, fetch) == {"v": 1} and time.time() - t < 0.1
+    stale = core._cached(k, 600, fetch)
+    assert stale["v"] == 1 and stale["stale"] is True and stale["stale_age_s"] >= 700
+    assert time.time() - t < 0.1
     deadline = time.time() + 3
     while core._cache[k][1] == {"v": 1} and time.time() < deadline:
         time.sleep(0.05)

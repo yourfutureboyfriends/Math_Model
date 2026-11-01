@@ -79,7 +79,7 @@ export function Pills<T extends string>({ value, options, onChange, label }: {
   value: T; options: readonly (readonly [T, string])[]; onChange: (v: T) => void; label: string;
 }) {
   return (
-    <div className="flex flex-wrap border border-border w-fit" role="tablist" aria-label={label}>
+    <div className="workspace-controls flex flex-wrap border border-border w-fit" role="tablist" aria-label={label} data-workspace-tabs>
       {options.map(([k, l]) => (
         <button key={k} type="button" role="tab" aria-selected={value === k} onClick={() => onChange(k)}
           className={cn('px-2.5 py-0.5 text-2xs', value === k ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary')}>

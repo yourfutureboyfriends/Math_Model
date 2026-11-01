@@ -114,10 +114,10 @@ function Compare({ runs }: { runs: any[] }) {
       <div className="text-xs font-semibold text-text-primary">Comparison</div>
       <div>
         <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Growth of 1 on the common window — net of costs</div>
-        <LineChart rows={rows} x="date" height={240} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`}
-          lines={runs.map((r, k) => ({ key: `r${k}`, label: `#${r.id} ${r.label}`, color: CATEGORICAL[k] }))} />
+        <div className="workspace-chart"><LineChart rows={rows} x="date" height={240} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`}
+          lines={runs.map((r, k) => ({ key: `r${k}`, label: `#${r.id} ${r.label}`, color: CATEGORICAL[k] }))} /></div>
       </div>
-      <table className="w-full font-mono">
+      <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full font-mono">
         <thead className="text-text-tertiary"><tr><th className="text-left font-normal px-1.5" />{runs.map((r, k) => <th key={r.id} className="text-right font-normal px-1.5" style={{ color: CATEGORICAL[k] }}>#{r.id} {r.label}</th>)}</tr></thead>
         <tbody>
           {metricRows.map(([l, f]) => {
@@ -130,7 +130,7 @@ function Compare({ runs }: { runs: any[] }) {
             <tr key={k} className="border-t border-border-subtle"><td className="font-sans px-1.5 text-amber">cost: {k}</td>
               {runs.map((r) => <td key={r.id} className="text-right px-1.5 text-amber">{String(r.result.provenance?.costs?.[k] ?? '—')}</td>)}</tr>))}
         </tbody>
-      </table>
+      </table></div>
       <div className="text-text-tertiary">Amber rows differ between runs. Compare like with like: runs on different engines, data windows or account currencies are not directly comparable.</div>
     </div>
   );

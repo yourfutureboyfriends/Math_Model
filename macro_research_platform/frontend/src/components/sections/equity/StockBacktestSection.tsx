@@ -116,10 +116,10 @@ export function StockBacktestSection() {
           {/* Equity curves */}
           <div className="px-3 py-2 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary mb-1">Growth of 1 — trading every signal at 0.5% NAV risk per trade (local currency, after costs, log scale)</div>
-            <LineChart rows={data.curve ?? []} x="date" height={240} log baseline={1}
+            <div className="workspace-chart"><LineChart rows={data.curve ?? []} x="date" height={240} log baseline={1}
               fmt={(v) => `${v.toFixed(2)}×`} axisFmt={(v) => `${v >= 1 ? v.toFixed(v >= 10 ? 0 : 1) : v.toFixed(2)}×`}
               lines={[{ key: 'model', label: 'Model', color: SERIES[0] }, { key: 'regime_gate', label: 'Risk-on only', color: SERIES[2] },
-                      { key: 'control', label: 'Control', color: SERIES[1] }, { key: 'equal_weight', label: 'Equal-weight hold', color: SERIES[3] }]} />
+                      { key: 'control', label: 'Control', color: SERIES[1] }, { key: 'equal_weight', label: 'Equal-weight hold', color: SERIES[3] }]} /></div>
           </div>
 
           {/* Variant comparison */}
@@ -175,9 +175,9 @@ export function StockBacktestSection() {
 
           {/* Breakdown */}
           <div className="border border-border">
-            <div className="flex flex-wrap items-center gap-1.5 px-2 py-1.5 bg-surface-1 border-b border-border">
+            <div className="workspace-controls flex flex-wrap items-center gap-1.5 px-2 py-1.5 bg-surface-1 border-b border-border">
               <span className="text-2xs text-text-tertiary mr-1">Model trades by</span>
-              <div className="flex border border-border" role="tablist" aria-label="Breakdown">
+              <div className="flex border border-border" role="tablist" aria-label="Breakdown" data-workspace-tabs>
                 {BREAKDOWNS.map((b) => (
                   <button key={b.key} role="tab" aria-selected={tab === b.key} onClick={() => setTab(b.key)}
                     className={cn('px-2 py-0.5 text-2xs', tab === b.key ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary')}>{b.label}</button>

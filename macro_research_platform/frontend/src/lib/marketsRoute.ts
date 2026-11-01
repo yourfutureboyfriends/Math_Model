@@ -12,7 +12,7 @@ export function parseMarketsHash(h = window.location.hash): MarketsRoute {
   const raw = (parts[0] ?? 'wei').toUpperCase();
   const f = findFunction(legacy[raw.toLowerCase()] ?? raw);
   const code = f?.code ?? 'WEI';
-  const symbol = parts[1] ? decodeURIComponent(parts[1]).toUpperCase() : undefined;
+  let symbol:string|undefined;try{symbol=parts[1]?decodeURIComponent(parts[1]).toUpperCase():undefined;}catch{/* malformed bookmark: fall back to a valid market view */}
   if (f?.security && !symbol) return { fn: 'WEI' };
   return { fn: code, symbol };
 }

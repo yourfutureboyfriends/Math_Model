@@ -202,7 +202,7 @@ export function StockTimingSection() {
         <div className="space-y-2">
           {/* Verdict */}
           <div className={cn('p-3 border-l-2 rounded-md bg-surface-1 border border-border', VERDICT_TONE[v?.code] ?? '')}>
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <div className="workspace-controls flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="text-lg font-mono font-bold">{v?.label}</span>
               <span className="text-xs text-text-secondary">{data.name} · {data.symbol}{data.sector ? ` · ${data.sector}` : ''}</span>
               <button type="button" onClick={() => toggleWatch(data.symbol)} title={watch.includes(data.symbol) ? 'Remove from watchlist' : 'Add to watchlist (always analysed in Stock Ideas)'}
@@ -271,7 +271,7 @@ export function StockTimingSection() {
                 </div>
               ) : <div className="text-2xs text-text-tertiary">No analyst coverage.</div>}
               {(data.revisions ?? []).length > 0 && (
-                <table className="w-full mt-2 text-[10px] font-mono">
+                <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full mt-2 text-[10px] font-mono">
                   <tbody>
                     {data.revisions.slice(0, 6).map((r: any, i: number) => (
                       <tr key={i} className="border-t border-border-subtle">
@@ -284,7 +284,7 @@ export function StockTimingSection() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               )}
             </div>
           </div>
@@ -320,15 +320,15 @@ export function StockTimingSection() {
           {data.chart && (
             <div className="p-3 bg-surface-1 border border-border">
               <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Price, moving averages, plan levels{data.chart.some((r: any) => r.buy) ? ' and past BUY signal starts (▲, daily bars)' : ''}</div>
-              <PriceChart symbol={data.symbol} refs={refs}
-                markers={Object.fromEntries(data.chart.filter((r: any, i: number) => r.buy && !data.chart[i - 1]?.buy).map((r: any) => [r.date, true]))} />
+              <div className="workspace-chart"><PriceChart symbol={data.symbol} refs={refs}
+                markers={Object.fromEntries(data.chart.filter((r: any, i: number) => r.buy && !data.chart[i - 1]?.buy).map((r: any) => [r.date, true]))} /></div>
             </div>
           )}
 
           {/* Evidence */}
           <div className="p-3 bg-surface-1 border border-border">
             <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Evidence</div>
-            <table className="w-full text-xs">
+            <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs">
               <thead><tr className="text-2xs text-text-tertiary text-left"><th className="font-normal pb-1">Signal</th><th className="font-normal pb-1 w-28">Score</th><th className="font-normal pb-1 text-right w-12">Weight</th><th className="font-normal pb-1 pl-3">Reading</th></tr></thead>
               <tbody>
                 {COMPONENTS.map((c) => {
@@ -352,14 +352,14 @@ export function StockTimingSection() {
                   );
                 })}
               </tbody>
-            </table>
+            </table></div>
           </div>
 
           {/* Historical test */}
           {bt && (
             <div className="p-3 bg-surface-1 border border-border">
               <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Historical test on {data.symbol} · {bt.period}</div>
-              <table className="w-full text-xs font-mono">
+              <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs font-mono">
                 <thead><tr className="text-2xs text-text-tertiary text-left font-sans"><th className="font-normal">Horizon</th><th className="font-normal text-right">Signals</th><th className="font-normal text-right">Avg return after signal</th><th className="font-normal text-right">Any day</th><th className="font-normal text-right">Hit rate</th><th className="font-normal text-right">Any day</th></tr></thead>
                 <tbody>
                   {['21d', '63d'].map((h) => bt[h] && (
@@ -373,7 +373,7 @@ export function StockTimingSection() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
               <div className="text-[10px] text-text-tertiary mt-1">
                 Rules tested: {bt.rules}. Signals thinned to one per horizon (independent windows); &ldquo;any day&rdquo; = buying on every day of the period.
                 A single stock&apos;s history is a small sample — treat this as a sanity check, not proof.
@@ -398,7 +398,7 @@ export function StockTimingSection() {
                   <th className="font-normal text-right">Entry</th><th className="font-normal text-right">12-1M</th><th className="font-normal text-right">Target upside</th><th className="font-normal text-right">R:R</th></tr></thead>
                 <tbody>
                   {(scan.rows ?? []).map((r: any) => (
-                    <tr key={r.symbol} onClick={() => analyze(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2">
+                    <tr key={r.symbol} onClick={() => analyze(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                       <td className="py-1"><span className="text-text-primary">{r.symbol}</span> <span className="font-sans text-2xs text-text-tertiary">{r.name}</span></td>
                       <td className={cn('font-sans text-2xs', (VERDICT_TONE[r.verdict] ?? '').split(' ').find((c: string) => c.startsWith('text-')))}>{r.verdict_label}</td>
                       <td className="text-right">{r.setup_score?.toFixed(2) ?? '—'}</td>

@@ -2,7 +2,8 @@
  * Network utilities — centralized API and WebSocket URL resolution
  *
  * Rules:
- * - Never derive backend URLs from window.location in dev mode
+ * - HTTP calls are same-origin (relative) unless VITE_API_URL says otherwise: the dev proxy forwards /api
+ * - WebSockets still connect to the backend directly (browsers don't apply CORS to WebSocket handshakes)
  * - Respect VITE_API_URL and VITE_WS_URL environment variables
  * - Fallback to discovered backend port or default localhost:8000
  * - Normalize paths to avoid double slashes
@@ -41,9 +42,13 @@ export function getApiBaseUrl(): string {
     return envUrl.replace(/\/$/, ''); // Remove trailing slash
   }
 
-  // Fallback to discovered port or default
-  const port = getDiscoveredPort() || DEFAULT_API_PORT;
-  return `http://localhost:${port}`;
+  // An explicitly discovered backend port (a global set by the host page) still wins
+  const port = getDiscoveredPort();
+  if (port) return `http://localhost:${port}`;
+  // Otherwise same origin: the Vite dev proxy (or the production host) forwards /api to the backend. An absolute
+  // http://localhost:8000 was cross-origin from any frontend port but 5173 and failed CORS.
+  if (typeof window !== 'undefined' && import.meta.env.MODE !== 'test') return '';   // Node tests: absolute
+  return `http://localhost:${DEFAULT_API_PORT}`;
 }
 
 /**
@@ -61,8 +66,9 @@ export function getWsBaseUrl(): string {
     return envWsUrl.replace(/\/$/, ''); // Remove trailing slash
   }
 
-  // Derive from API base URL
-  const apiBase = getApiBaseUrl();
+  // Derive from an absolute API base; a same-origin (relative) base still needs an absolute socket URL, and sockets
+  // go to the backend directly (no CORS for WebSockets)
+  const apiBase = getApiBaseUrl() || `http://localhost:${getDiscoveredPort() || DEFAULT_API_PORT}`;
   return apiBase
     .replace(/^http:/, 'ws:')
     .replace(/^https:/, 'wss:');

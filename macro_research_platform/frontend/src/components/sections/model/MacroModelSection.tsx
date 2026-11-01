@@ -8,12 +8,13 @@
  * Parameters can be changed and the model re-run (quant / PM); every run is recorded with its economy.
  * Reads /api/v1/model?economy=, /api/v1/model/world, /api/v1/model/params, /api/v1/model/run, /api/v1/model/orders/*.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Cpu, History, RefreshCw, Settings2, Send } from 'lucide-react';
 import { LineChart } from '@/components/ui/LineChart';
 import { useAuth } from '@/context/AuthContext';
 import { useMacroStore } from '@/store/macroStore';
 import { pct } from '@/lib/format';
+import { MacroDataQuality } from './MacroDataQuality';
 import { TimeMachine } from './TimeMachine';
 
 // Categorical slots validated on the dark surface (#0d1117): fixed order, never cycled.
@@ -45,7 +46,7 @@ function WorldStrip({ active, onPick }: { active: Economy; onPick: (e: Economy) 
     return () => { alive = false; };
   }, []);
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2" role="tablist" aria-label="Economy">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2" role="tablist" aria-label="Economy" data-workspace-tabs>
       {ECONOMIES.map((e) => {
         const r = rows?.find((x) => x.economy?.id === e.id);
         const on = active === e.id;
@@ -113,6 +114,7 @@ export function MacroModelSection() {
   const [staged, setStaged] = useState<any>(null);
   const [economy, setEconomyState] = useState<Economy>(readEconomy);
   const [showInputs, setShowInputs] = useState(false);
+  const loadSequence = useRef(0);
   // the <GO> line ("EA MODEL") and links can switch the economy shown
   useEffect(() => {
     const h = (e: Event) => { const v = (e as CustomEvent).detail; if (v === 'us' || v === 'ea' || v === 'row') { setEconomyState(v); setOrders(null); setStaged(null); } };
@@ -125,6 +127,7 @@ export function MacroModelSection() {
   };
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     setBusy(true); setError(null);
     try {
       const get = async (u: string) => {
@@ -136,21 +139,40 @@ export function MacroModelSection() {
       const [m, p] = await Promise.all([get(`/api/v1/model?economy=${economy}`), get('/api/v1/model/params')]);
       if (m.available === false) throw new Error(m.reason);
       if (!m.state || !m.portfolios) throw new Error('Model response incomplete');
+      if (sequence !== loadSequence.current) return;
       setData(m); setMeta(p); setParams(m.params);
-    } catch (e: any) { setError(e?.message || 'Model unavailable'); }
-    finally { setBusy(false); }
+    } catch (e: any) { if (sequence === loadSequence.current) setError(e?.message || 'Model unavailable'); }
+    finally { if (sequence === loadSequence.current) setBusy(false); }
   }, [economy]);
-  useEffect(() => { setData(null); load(); }, [load]);
+  useEffect(() => { setData(null); load(); return () => { loadSequence.current++; }; }, [load]);
+  useEffect(() => {
+    if (!data?.snapshot) return;
+    let alive = true, pending = false;
+    const sequence = loadSequence.current;
+    const controller = new AbortController();
+    const timer = window.setInterval(async () => {
+      if (pending || document.hidden) return;
+      pending = true;
+      try {
+        const response = await fetch(`/api/v1/model?economy=${economy}`, {signal: controller.signal});
+        const fresh = response.ok ? await response.json() : null;
+        if (alive && sequence === loadSequence.current && fresh?.available && fresh.state && !fresh.snapshot) setData(fresh);
+      } catch { /* Keep the labelled snapshot while its replacement is unavailable. */ }
+      finally { pending = false; }
+    }, 15000);
+    return () => { alive = false; controller.abort(); window.clearInterval(timer); };
+  }, [economy, data?.snapshot]);
 
   const rerun = async () => {
+    const sequence = ++loadSequence.current;
     setBusy(true); setError(null); setOrders(null); setStaged(null);
     try {
       const r = await fetch('/api/v1/model/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ params, economy }) });
       const j = await r.json();
       if (!r.ok) throw new Error(typeof j?.detail === 'string' ? j.detail : `HTTP ${r.status}`);
       if (j.available === false || !j.state) throw new Error(j.reason || 'Model response incomplete');
-      setData(j);
-    } catch (e: any) { setError(e?.message); } finally { setBusy(false); }
+      if (sequence === loadSequence.current) setData(j);
+    } catch (e: any) { if (sequence === loadSequence.current) setError(e?.message); } finally { if (sequence === loadSequence.current) setBusy(false); }
   };
 
   const orderCall = async (path: 'preview' | 'stage') => {
@@ -197,8 +219,11 @@ export function MacroModelSection() {
 
       <WorldStrip active={economy} onPick={setEconomy} />
 
+      {data?.snapshot && <div role="status" className="mb-2 p-2 text-xs text-text-secondary border border-border bg-surface-1 rounded-lg">
+        Showing the last computed model from {String(data.snapshot.saved_at).replace('T', ' ')}. A refresh is running in the background; use Refresh to check for the updated result.
+      </div>}
       {error && <div className="mb-2 p-2 text-xs text-amber border border-amber/30 bg-amber-dim">{error}</div>}
-      {!data && busy && <div className="p-3 text-2xs text-text-tertiary">Running the {ECONOMIES.find((e) => e.id === economy)?.label} model… a first run fetches the official statistics (up to a minute).</div>}
+      {!data && busy && <div className="p-3 text-2xs text-text-tertiary">Running the {ECONOMIES.find((e) => e.id === economy)?.label} model… a first run fetches official statistics and runs the backtest, which can take several minutes.</div>}
 
       {showParams && meta && (
         <div className="mb-3 p-3 bg-surface-1 border border-border">
@@ -221,6 +246,8 @@ export function MacroModelSection() {
 
       {data && (
         <div className="space-y-2">
+          <MacroDataQuality data={data.data_quality} />
+          {bt && bt.available === false && <div role="status" className="p-3 border border-border rounded-lg text-xs text-amber">Backtest unavailable: {bt.reason}{bt.missing_month ? ` Month: ${bt.missing_month}.` : ''}{bt.missing_assets?.length ? ` Affected assets: ${bt.missing_assets.join(', ')}.` : ''}</div>}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
             <Step n={1} title="Economic state" right={<span className="text-2xs text-text-tertiary">factors to {data.state.factor_as_of}</span>}>
               <div className="grid grid-cols-2 gap-2 mb-2 text-xs">
@@ -231,9 +258,9 @@ export function MacroModelSection() {
                   <span className="font-mono text-text-primary">{sgn(data.state.inflation_factor)}σ</span>
                   <span className="text-2xs text-text-tertiary"> · 3M {sgn(data.state.inflation_change_3m)}</span></div>
               </div>
-              <LineChart rows={data.state.history.slice(-60)} x="month" height={170} baseline={0}
+              <div className="workspace-chart"><LineChart rows={data.state.history.slice(-60)} x="month" height={170} baseline={0}
                 fmt={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}σ`} axisFmt={(v) => `${v.toFixed(1)}σ`}
-                lines={[{ key: 'growth', label: 'Growth', color: SERIES[0] }, { key: 'inflation', label: 'Inflation', color: SERIES[1] }]} />
+                lines={[{ key: 'growth', label: 'Growth', color: SERIES[0] }, { key: 'inflation', label: 'Inflation', color: SERIES[1] }]} /></div>
               <div className="text-[10px] text-text-tertiary">{data.methodology.factors}{' '}
                 {series.length > 0 && <button onClick={() => setShowInputs((v) => !v)} className="text-bloomberg hover:underline">
                   {showInputs ? 'Hide inputs' : `Show the ${series.length} inputs`}</button>}</div>
@@ -243,17 +270,18 @@ export function MacroModelSection() {
                     <thead className="sticky top-0 bg-surface-2"><tr className="text-text-tertiary text-left">
                       <th className="font-normal px-1.5 py-0.5">Series</th><th className="font-normal">Block</th>
                       <th className="font-normal text-right">Loading</th><th className="font-normal text-right">From</th>
-                      <th className="font-normal text-right">Latest</th><th className="font-normal text-right px-1.5" title="Publication lag applied, months">Lag</th></tr></thead>
+                      <th className="font-normal text-right">Latest raw</th><th className="font-normal text-right" title="Last transformed availability month at or before the model decision month">Used month</th><th className="font-normal text-right px-1.5" title="Publication lag applied, months">Lag</th></tr></thead>
                     <tbody>{series.map((c) => {
                       const load = data.state.loadings?.[c.block]?.[c.key];
                       return (
                         <tr key={c.key} className={`border-t border-border-subtle ${c.used ? '' : 'opacity-50'}`}
-                          title={c.used ? `${c.key} · ${c.transform}` : `${c.key}: left out — latest observation ${c.months_behind} months behind`}>
-                          <td className="px-1.5 py-0.5 text-text-secondary">{c.label}{!c.used && <span className="ml-1 text-amber">stale</span>}</td>
+                          title={c.used ? `${c.key} · ${c.transform}` : `${c.key}: ${c.exclusion_reason ?? 'not used'}`}>
+                          <td className="px-1.5 py-0.5 text-text-secondary">{c.label}{!c.used && <span className="ml-1 text-amber">excluded</span>}</td>
                           <td className="text-text-tertiary">{c.block}</td>
                           <td className="text-right font-mono text-text-primary">{load != null ? load.toFixed(2) : '—'}</td>
                           <td className="text-right font-mono text-text-tertiary">{c.first ?? '—'}</td>
                           <td className="text-right font-mono text-text-secondary">{c.last ?? '—'}</td>
+                          <td className="text-right font-mono text-text-secondary">{c.available_month ?? '—'}</td>
                           <td className="text-right font-mono text-text-tertiary px-1.5">{c.lag_months}</td>
                         </tr>);
                     })}</tbody>
@@ -300,12 +328,12 @@ export function MacroModelSection() {
           </div>
 
           <Step n={3} title="Expected returns & portfolio" right={
-            <div className="seg" role="tablist" aria-label="Portfolio">
+            <div className="seg" role="tablist" aria-label="Portfolio" data-workspace-tabs>
               {(['strategic', 'tactical'] as const).map((k) => (
                 <button key={k} role="tab" aria-selected={which === k} onClick={() => { setWhich(k); setOrders(null); setStaged(null); }}
                   className="seg-item capitalize">{k}</button>
               ))}
-            </div>}>
+            </div>} data-workspace-tabs>
             {port && <>
               <div className="flex flex-wrap gap-4 text-2xs text-text-tertiary mb-2">
                 <span>Expected vol <span className="font-mono text-text-primary">{pct(port.expected_vol)}</span></span>
@@ -342,9 +370,9 @@ export function MacroModelSection() {
 
           {bt?.available && (
             <Step n={4} title={`Walk-forward backtest ${bt.start} → ${bt.end}`} right={<span className="text-2xs text-text-tertiary">{bt.returns_are}</span>}>
-              <LineChart rows={bt.equity_curve} x="month" height={220} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`} axisFmt={(v) => `${v >= 1 ? v.toFixed(0) : v.toFixed(1)}×`}
+              <div className="workspace-chart"><LineChart rows={bt.equity_curve} x="month" height={220} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`} axisFmt={(v) => `${v >= 1 ? v.toFixed(0) : v.toFixed(1)}×`}
                 lines={[{ key: 'model', label: 'Tactical', color: SERIES[0] }, { key: 'strategic', label: 'Strategic', color: SERIES[1] },
-                        { key: 'sixty_forty', label: bt.sixty_forty ? `60/40 (${bt.sixty_forty.equity} / ${bt.sixty_forty.bonds})` : '60/40', color: SERIES[2] }, { key: 'risk_parity', label: 'Risk parity', color: SERIES[3] }]} />
+                        { key: 'sixty_forty', label: bt.sixty_forty ? `60/40 (${bt.sixty_forty.equity} / ${bt.sixty_forty.bonds})` : '60/40', color: SERIES[2] }, { key: 'risk_parity', label: 'Risk parity', color: SERIES[3] }]} /></div>
               <div className="overflow-x-auto mt-2">
                 <table className="w-full text-2xs font-mono">
                   <thead><tr className="text-text-tertiary text-left">
@@ -413,7 +441,7 @@ export function MacroModelSection() {
                   </div>
                 )}
                 {orders.order_count === 0 ? <div className="text-2xs text-green">Sleeve already at target.</div> : (
-                  <table className="w-full text-2xs font-mono">
+                  <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-2xs font-mono">
                     <thead><tr className="text-text-tertiary text-left"><th className="font-normal pb-1">ETF</th><th className="font-normal">Action</th>
                       <th className="font-normal">Side</th><th className="font-normal text-right">Qty</th><th className="font-normal text-right">Notional</th>
                       <th className="font-normal text-right">Target</th></tr></thead>
@@ -425,7 +453,7 @@ export function MacroModelSection() {
                         <td className="text-right">{pct(o.target_weight)}</td>
                       </tr>))}
                     </tbody>
-                  </table>
+                  </table></div>
                 )}
               </div>
             )}

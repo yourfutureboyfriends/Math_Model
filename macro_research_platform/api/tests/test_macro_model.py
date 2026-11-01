@@ -161,3 +161,27 @@ def test_non_us_model_runs_end_to_end_and_reports_its_economy(monkeypatch):
     assert sum(r["regime"]["probabilities"].values()) == pytest.approx(1.0, abs=1e-3)
     with pytest.raises(ValueError):
         asyncio.run(me.model_orders(r, "tactical", 1e6))
+
+
+def test_expired_memory_cache_serves_snapshot_and_deduplicates_refresh(monkeypatch):
+    import asyncio
+    import time
+    from api.model import engine
+
+    async def check():
+        key = engine.params_hash(ModelParams())
+        monkeypatch.setattr(engine, '_CACHE', {key: (time.time() - engine._TTL - 1, {'available': True})})
+        monkeypatch.setattr(engine, '_REFRESHING', {})
+        snapshot = {'available': True, 'snapshot': {'note': 'Last computed run'}}
+        monkeypatch.setattr(engine, '_load_snapshot', lambda k: snapshot)
+        pending = asyncio.create_task(asyncio.Event().wait())
+        engine._REFRESHING[key] = pending
+        try:
+            assert await asyncio.wait_for(engine.run_model(persist=False), 0.5) is snapshot
+            assert await asyncio.wait_for(engine.run_model(persist=False), 0.5) is snapshot
+            assert engine._REFRESHING[key] is pending
+        finally:
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+
+    asyncio.run(check())

@@ -235,7 +235,7 @@ function BookPnl({ fund }: { fund: any }) {
   if (!books.length && !strats.length) return null;
   const tone = (v: number | null | undefined) => (v == null ? 'text-text-tertiary' : v > 0 ? 'text-green' : v < 0 ? 'text-red' : 'text-text-secondary');
   return (
-    <table className="w-full text-xs">
+    <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs">
       <thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle">
         <th className="text-left font-normal py-1">Book / strategy</th><th className="text-right font-normal">Gross / NAV</th>
         <th className="text-right font-normal">Day P&amp;L</th><th className="text-right font-normal">Unrealized</th></tr></thead>
@@ -249,7 +249,7 @@ function BookPnl({ fund }: { fund: any }) {
             <td className="text-right font-mono">{money(st.nav)}</td><td className={`text-right font-mono ${tone(st.day_pnl)}`}>{money(st.day_pnl)}</td>
             <td className="text-right text-text-tertiary">—</td></tr>))}
       </tbody>
-    </table>
+    </table></div>
   );
 }
 
@@ -298,7 +298,7 @@ export function MyDeskSection() {
                 {d.queue.length > 8 && <li className="text-2xs text-text-tertiary">+{d.queue.length - 8} more</li>}
               </ul>
             )}
-            <div className="flex flex-wrap gap-1 mt-3">
+            <div className="workspace-controls flex flex-wrap gap-1 mt-3">
               {d.focus.panels.map((p) => (
                 <button key={p} onClick={() => go(p)}
                   className="text-2xs px-1.5 py-0.5 border border-border text-text-secondary hover:text-bloomberg hover:border-bloomberg/60">

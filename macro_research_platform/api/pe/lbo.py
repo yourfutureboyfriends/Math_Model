@@ -64,7 +64,7 @@ def default_inputs() -> Dict[str, Any]:
         "capex_pct": 0.035,           # capex % revenue
         "nwc_pct": 0.10,              # net working capital % of the change in revenue
         "tax_rate": 0.25,
-        "interest_cap_pct": 0.30,     # interest deductible up to this share of EBITDA (US §163(j) / UK CIR); None = no cap
+        "interest_cap_pct": 0.30,     # generic modeled interest cap as a share of EBITDA; not a jurisdiction-specific tax calculation
         # Cases: shifts applied to the base plan
         "cases": {"upside": {"growth": 0.02, "margin": 0.01, "exit_multiple": 0.5},
                   "downside": {"growth": -0.04, "margin": -0.025, "exit_multiple": -1.0}},
@@ -114,7 +114,8 @@ def irr(flows: List[float], lo: float = -0.9999, hi: float = 1e4) -> Optional[fl
 def run(inp: Dict[str, Any], case: str = "base") -> Dict[str, Any]:
     """Run one case. Returns sources & uses, the yearly schedules, credit statistics, covenant tests, the exit and
     the sponsor's returns with the value-creation bridge."""
-    p = copy.deepcopy(inp)
+    from api.pe import underwriting
+    p = underwriting.prepare(inp)
     ebitda0, rev0 = float(p.get("ebitda") or 0), float(p.get("revenue") or 0)
     if ebitda0 <= 0:
         raise LboError("An LBO needs positive EBITDA (LTM).")
@@ -140,9 +141,14 @@ def run(inp: Dict[str, Any], case: str = "base") -> Dict[str, Any]:
         amt = float(t["amount"]) if t.get("amount") is not None else float(t.get("multiple") or 0) * ebitda0
         if amt > 0:
             tranches.append({**t, "amount": amt})
+    names = [t["name"] for t in tranches]
+    if len(set(names)) != len(names) or any(name in ("Sponsor equity", "Rollover equity", "Revolver (drawn)") for name in names):
+        raise LboError("Debt tranches need unique names distinct from equity and revolver sources.")
     debt_raised = sum(t["amount"] for t in tranches)
     rv = p.get("revolver") or {}
     rv_close = float(rv.get("drawn_at_close") or 0)
+    if rv_close < 0 or rv_close > float(rv.get("commitment") or 0):
+        raise LboError("The closing revolver draw must be between zero and its commitment.")
     fin_fees = float(p.get("financing_fee_pct") or 0) * debt_raised
     txn_fees = float(p.get("transaction_fee_pct") or 0) * ev
     min_cash = float(p.get("min_cash") or 0)
@@ -163,7 +169,7 @@ def run(inp: Dict[str, Any], case: str = "base") -> Dict[str, Any]:
         bal = {t["name"]: t["amount"] for t in tranches}
         fee_left = {t["name"]: float(p.get("financing_fee_pct") or 0) * t["amount"] for t in tranches}
         rv_bal, cash, rev = rv_close, min_cash, rev0
-        nol, dis_cf = 0.0, 0.0                      # loss and disallowed-interest carry-forwards
+        nol, dis_cf = float(p.get('opening_nol') or 0), float(p.get('opening_disallowed_interest') or 0)                      # loss and disallowed-interest carry-forwards
         rows, interest_used = [], []
         for y in range(1, n + 1):
             r_prev, rev = rev, rev * (1 + g[y - 1])
@@ -198,21 +204,27 @@ def run(inp: Dict[str, Any], case: str = "base") -> Dict[str, Any]:
                 amort_fees += a
             # tax: interest deductible up to the cap, the rest carried forward
             interest_total = cash_int + pik_int
-            limit = cap * ebitda if cap is not None else float("inf")
+            interest_income = _path(p.get('interest_income', 0), n, 'Interest income')[y-1]
+            tax_adjustment = _path(p.get('tax_adjustment', 0), n, 'Tax adjustment')[y-1]
+            tax_base = ebit if p.get('interest_cap_basis') == 'ebit' else ebitda
+            limit = max(float(p.get('interest_deduction_floor') or 0), cap * max(0, tax_base + tax_adjustment) + interest_income) if cap is not None else float("inf")
             deductible = min(interest_total + dis_cf, max(0.0, limit))
             dis_cf = interest_total + dis_cf - deductible
-            pretax = ebit - deductible - amort_fees
-            use_nol = min(nol, max(0.0, pretax))
+            pretax = ebit + interest_income + tax_adjustment - deductible - amort_fees
+            use_nol = min(nol, max(0.0, pretax) * float(p.get('nol_utilization_pct', 1)),
+                          float(p['annual_nol_limit']) if p.get('annual_nol_limit') is not None else float('inf'))
             taxable = pretax - use_nol
             nol = nol - use_nol + (-pretax if pretax < 0 else 0.0)
             tax = max(0.0, taxable) * tax_rate
-            net_income = ebit - interest_total - amort_fees - tax
+            net_income = ebit + interest_income - interest_total - amort_fees - tax
             # cash flow and debt service
-            fcf = ebitda - cash_int - tax - capex - d_nwc                  # levered FCF before debt repayment
+            fcf = ebitda + interest_income - cash_int - tax - capex - d_nwc                  # levered FCF before debt repayment
             mand = {}
             for t in tranches:
                 if t.get("kind") == "mezz":
-                    mand[t["name"]] = 0.0
+                    # The final PIK coupon is part of principal due at maturity.
+                    matured = y >= int(t.get("tenor") or 99)
+                    mand[t["name"]] = (bal[t["name"]] + (tr_int[t["name"]]["interest"] if t.get("pik", True) else 0.0)) if matured else 0.0
                     continue
                 due = float(t.get("amort_pct") or 0) * t["amount"]
                 if y >= int(t.get("tenor") or 99):
@@ -221,12 +233,15 @@ def run(inp: Dict[str, Any], case: str = "base") -> Dict[str, Any]:
             for t in tranches:
                 if t.get("kind") == "mezz" and t.get("pik", True):
                     bal[t["name"]] += tr_int[t["name"]]["interest"]       # PIK accrues to principal
-            cash_avail = cash + fcf - sum(mand.values()) - min_cash
+            rv_maturity = rv_bal if y >= int(rv.get('tenor') or 99) else 0.0
+            rv_bal -= rv_maturity
+            mandatory_total = sum(mand.values()) + rv_maturity
+            cash_avail = cash + fcf - mandatory_total - min_cash
             for k, v in mand.items():
                 bal[k] -= v
             rv_draw = rv_repay = 0.0
             if cash_avail < 0:                                           # shortfall: the revolver funds it
-                rv_draw = min(-cash_avail, max(0.0, float(rv.get("commitment") or 0) - rv_bal))
+                rv_draw = min(-cash_avail, max(0.0, float(rv.get("commitment") or 0) - rv_bal)) if y < int(rv.get('tenor') or 99) else 0.0
                 rv_bal += rv_draw
                 cash_avail += rv_draw
             else:
@@ -251,25 +266,30 @@ def run(inp: Dict[str, Any], case: str = "base") -> Dict[str, Any]:
             rows.append({
                 "year": y, "revenue": rev, "growth": g[y - 1], "ebitda": ebitda, "margin": m[y - 1], "dna": dna, "ebit": ebit,
                 "capex": capex, "change_nwc": d_nwc, "cash_interest": cash_int, "pik_interest": pik_int, "fee_amortisation": amort_fees,
-                "interest_deductible": deductible, "interest_disallowed_cf": dis_cf, "tax": tax, "net_income": net_income,
-                "fcf": fcf, "mandatory": sum(mand.values()), "sweep": sum(sweep.values()), "revolver_draw": rv_draw,
+                "interest_deductible": deductible, "interest_income": interest_income, "tax_adjustment": tax_adjustment,
+                "nol_used": use_nol, "nol_balance": nol, "taxable_income": max(0, taxable), "interest_disallowed_cf": dis_cf, "tax": tax, "net_income": net_income,
+                "fcf": fcf, "mandatory": mandatory_total, "revolver_maturity": rv_maturity, "sweep": sum(sweep.values()), "revolver_draw": rv_draw,
                 "revolver_repay": rv_repay, "revolver": rv_bal, "liquidity_gap": shortfall, "cash": cash,
                 "balances": dict(bal), "rates": {k: v["rate"] for k, v in tr_int.items()}, "base_rate": base,
                 "debt": debt, "senior_debt": senior, "net_debt": debt - cash,
                 "leverage": debt / ebitda if ebitda > 0 else None, "senior_leverage": senior / ebitda if ebitda > 0 else None,
                 "net_leverage": (debt - cash) / ebitda if ebitda > 0 else None,
                 "interest_cover": ebitda / cash_int if cash_int > 0 else None,
-                "fccr": (ebitda - capex) / (cash_int + sum(mand.values())) if (cash_int + sum(mand.values())) > 0 else None,
+                "fccr": (ebitda - capex) / (cash_int + mandatory_total) if (cash_int + mandatory_total) > 0 else None,
                 "fcf_to_debt": fcf / debt if debt > 0 else None,
             })
         return rows, interest_used
 
     rows, used = simulate(None)
+    converged, iterations = True, 0
     if str(p.get("interest_on") or "average") == "average":
+        converged = False
         for _ in range(30):                                            # converges in a handful of passes
             prev = [r["cash_interest"] + r["pik_interest"] for r in rows]
             rows, used = simulate(used)
+            iterations += 1
             if max(abs(a - (r["cash_interest"] + r["pik_interest"])) for a, r in zip(prev, rows)) < 1e-9 * max(1.0, ebitda0):
+                converged = True
                 break
 
     # Exit and returns
@@ -297,10 +317,11 @@ def run(inp: Dict[str, Any], case: str = "base") -> Dict[str, Any]:
     # Covenants: net leverage step-downs from a headroom over closing leverage, and minimum interest cover
     cov = p.get("covenants") or {}
     close_lev = net_debt_close / ebitda0
-    start = cov.get("max_net_leverage") or round(close_lev + 1.0, 2)
+    start = cov.get("max_net_leverage") if cov.get("max_net_leverage") is not None else round(close_lev + 1.0, 2)
+    leverage_floor = float(cov.get('leverage_floor', close_lev * 0.5 if cov.get('max_net_leverage') is None else 0))
     tests = []
     for r in rows:
-        lim = max(close_lev * 0.5, start - float(cov.get("step_down") or 0) * (r["year"] - 1))
+        lim = max(leverage_floor, start - float(cov.get("step_down") or 0) * (r["year"] - 1))
         icr_min = float(cov.get("min_interest_cover") or 0)
         lev_ok = r["net_leverage"] is not None and r["net_leverage"] <= lim
         icr_ok = r["interest_cover"] is None or r["interest_cover"] >= icr_min
@@ -309,7 +330,14 @@ def run(inp: Dict[str, Any], case: str = "base") -> Dict[str, Any]:
                       "min_interest_cover": icr_min, "interest_cover": r["interest_cover"], "cover_ok": icr_ok,
                       "liquidity_ok": r["liquidity_gap"] >= -1e-9})
 
+    funded = all(r["liquidity_gap"] >= -1e-6 for r in rows[:H])
+    warnings = _warnings(rows, tests, close_lev, H)
+    if not converged:
+        warnings.append("Average-balance interest did not converge; review the financing before relying on returns.")
     return {
+        "ebitda_bridge": p['_ebitda_bridge'],
+        "calculation_checks": {"interest_converged": converged, "interest_iterations": iterations,
+                               "funded_through_exit": funded, "eligible_for_hurdle": funded and converged},
         "case": case, "currency": p.get("currency"), "years": n, "exit_year": H,
         "entry": {"ev": ev, "multiple": entry_mult, "ebitda": ebitda0, "revenue": rev0, "net_debt_close": net_debt_close,
                   "leverage_close": (debt_raised + rv_close) / ebitda0, "net_leverage_close": close_lev,
@@ -325,9 +353,9 @@ def run(inp: Dict[str, Any], case: str = "base") -> Dict[str, Any]:
                  "fees": exit_fees, "equity_gross": equity_gross, "mip": mip, "equity_net": equity_net},
         "returns": {"sponsor_irr": sponsor_irr, "moic": moic, "sponsor_proceeds": sponsor_proceeds, "flows": flows,
                     "hurdle_irr": p.get("hurdle_irr"), "clears_hurdle": sponsor_irr is not None and p.get("hurdle_irr") is not None
-                    and sponsor_irr >= float(p["hurdle_irr"])},
+                    and sponsor_irr >= float(p["hurdle_irr"]) and funded and converged},
         "bridge": bridge, "covenants": tests,
-        "warnings": _warnings(rows, tests, close_lev, H),
+        "warnings": warnings,
     }
 
 
@@ -349,10 +377,21 @@ def cases(inp: Dict[str, Any]) -> Dict[str, Any]:
     """Base, upside and downside, and the probability-weighted IRR / multiple."""
     out = {c: run(inp, c) for c in CASES}
     w = inp.get("case_weights") or {"base": 0.5, "upside": 0.25, "downside": 0.25}
-    tw = sum(w.get(c, 0) for c in CASES) or 1.0
-    irr_w = sum(w.get(c, 0) * (out[c]["returns"]["sponsor_irr"] or -1.0) for c in CASES) / tw
+    if any(not math.isfinite(float(w.get(c, 0))) or float(w.get(c, 0)) < 0 for c in CASES):
+        raise LboError("Case weights must be finite and nonnegative.")
+    tw = sum(float(w.get(c, 0)) for c in CASES)
+    if tw <= 0:
+        raise LboError("At least one case weight must be positive.")
+    w = {c: float(w.get(c, 0))/tw for c in CASES}
+    tw = 1.0
+    rates = {c: out[c]["returns"]["sponsor_irr"] for c in CASES}
+    irr_w = sum(w[c] * rates[c] for c in CASES if w[c]) if all(rates[c] is not None for c in CASES if w[c]) else None
     moic_w = sum(w.get(c, 0) * out[c]["returns"]["moic"] for c in CASES) / tw
-    return {"cases": out, "weighted": {"irr": irr_w, "moic": moic_w, "weights": w}}
+    expected_flows = [sum(w[c] * out[c]["returns"]["flows"][t] for c in CASES) for t in range(len(out["base"]["returns"]["flows"]))]
+    expected_irr = irr(expected_flows) if expected_flows[-1] > 0 else -1.0
+    return {"cases": out, "weighted": {"irr": irr_w, "moic": moic_w, "weights": w,
+            "expected_cashflow_irr": expected_irr,
+            "note": "Weighted IRR is an arithmetic average of scenario IRRs, not the IRR of weighted cash flows. Weights are user assumptions, not calibrated probabilities."}}
 
 
 def _with(inp: Dict[str, Any], **kw) -> Dict[str, Any]:
@@ -409,6 +448,13 @@ def max_entry(inp: Dict[str, Any], hurdle: Optional[float] = None) -> Dict[str, 
     """The highest entry multiple (and EV) at which the base case still earns the hurdle IRR, with the financing held
     at the same turns of EBITDA."""
     h = float(hurdle if hurdle is not None else inp.get("hurdle_irr") or 0.20)
+    try:
+        checks = run(inp)["calculation_checks"]
+        if not checks["eligible_for_hurdle"]:
+            return {"hurdle": h, "multiple": None, "ev": None,
+                    "note": "Resolve funding shortfalls or unconverged interest before interpreting a maximum bid."}
+    except LboError:
+        pass  # An oversized entry debt cheque can still fit at a different entry price.
     x_fixed = inp.get("exit_multiple") if inp.get("exit_multiple") is not None else float(inp["entry_multiple"])
 
     def f(mult):
@@ -443,9 +489,9 @@ def max_entry(inp: Dict[str, Any], hurdle: Optional[float] = None) -> Dict[str, 
             lo = mid
         else:
             hi = mid
-    out = {"hurdle": h, "multiple": lo, "ev": lo * float(inp["ebitda"]), "exit_multiple": x_fixed}
+    out = {"hurdle": h, "multiple": lo, "ev": lo * run(inp)['entry']['ebitda'], "exit_multiple": x_fixed}
     if inp.get("shares") and inp.get("price"):
-        eq = lo * float(inp["ebitda"]) - (float(inp.get("debt") or 0) - float(inp.get("cash") or 0))
+        eq = out['ev'] - (float(inp.get("debt") or 0) - float(inp.get("cash") or 0))
         out["price_per_share"] = eq / float(inp["shares"])
         out["premium_to_price"] = out["price_per_share"] / float(inp["price"]) - 1
     return out
@@ -482,6 +528,17 @@ def ebitda_cushion(inp: Dict[str, Any]) -> Dict[str, Any]:
 def analyse(inp: Dict[str, Any]) -> Dict[str, Any]:
     """Everything the workbench shows: the three cases, sensitivities, the maximum price at the hurdle, the EBITDA
     cushion."""
+    from api.pe import underwriting
     c = cases(inp)
-    return {**c, "sensitivity": sensitivity(inp), "max_entry": max_entry(inp), "cushion": ebitda_cushion(inp),
+    timing = underwriting.liquidity(inp, c['cases']['base'])
+    readiness = underwriting.diligence(inp, c['cases']['base'], timing)
+    for name, result in c['cases'].items():
+        seasonal = timing if name == 'base' else underwriting.liquidity(inp, result)
+        result['calculation_checks']['seasonal_funded'] = seasonal['first_shortfall'] is None
+        if seasonal['first_shortfall']:
+            result['returns']['clears_hurdle'] = False
+    bid = ({'hurdle': inp.get('hurdle_irr', .2), 'multiple': None, 'ev': None,
+            'note': 'Resolve the seasonal reserve shortfall before interpreting a maximum bid.'}
+           if timing['first_shortfall'] else max_entry(inp))
+    return {**c, 'liquidity': timing, 'diligence': readiness, "sensitivity": sensitivity(inp), "max_entry": bid, "cushion": ebitda_cushion(inp),
             "inputs": inp}

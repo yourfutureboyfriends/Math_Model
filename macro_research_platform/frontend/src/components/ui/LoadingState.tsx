@@ -10,7 +10,7 @@ interface LoadingStateProps {
 
 export function LoadingState({ message = 'Loading...', className = '' }: LoadingStateProps) {
   return (
-    <div className={`h-64 bg-surface-1 border border-border flex flex-col items-center justify-center gap-3 ${className}`}>
+    <div role="status" aria-live="polite" className={`workspace-loading h-64 bg-surface-1 border border-border flex flex-col items-center justify-center gap-3 ${className}`}>
       <Loader2 className="w-6 h-6 text-bloomberg animate-spin" />
       <span className="text-text-secondary font-mono text-sm">{message}</span>
     </div>

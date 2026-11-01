@@ -1,0 +1,5 @@
+import { act } from 'react';import { createRoot } from 'react-dom/client';import { it,expect,vi } from 'vitest';import { WorkspaceTabs } from './Chrome';
+it('ignores malformed saved tabs and supports keyboard navigation',async()=>{
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);localStorage.setItem('mkt_tabs',JSON.stringify({active:'a',tabs:[null,{id:'bad',hash:123},{id:'a',hash:'#mkt/wei'},{id:'b',hash:'#mkt/gc'}]}));window.location.hash='#mkt/wei';const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
+ try{await act(async()=>root.render(<WorkspaceTabs/>));expect(host.querySelectorAll('[role="tab"]')).toHaveLength(2);act(()=>{host.querySelector('[role="tab"]')!.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));});expect(host.querySelectorAll('[role="tab"]')[1].getAttribute('aria-selected')).toBe('true');expect(window.location.hash).toBe('#mkt/gc');}finally{act(()=>root.unmount());host.remove();localStorage.clear();vi.unstubAllGlobals();}
+});

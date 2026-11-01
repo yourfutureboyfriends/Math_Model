@@ -30,6 +30,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
+MAX_INPUT_STALE_MONTHS = 6
+
 QUADRANTS = ("Goldilocks", "Reflation", "Stagflation", "Deflationary slowdown")
 # (growth rising?, inflation rising?) -> regime
 QUADRANT_OF = {(True, False): "Goldilocks", (True, True): "Reflation",
@@ -69,8 +71,8 @@ def diffusion_factor(block: pd.DataFrame, anchor: str) -> Tuple[pd.Series, Dict[
     with the block's own history (call with data truncated at the decision date). Rows need at
     least half the series; missing values are set to the series mean (0 after standardising).
     Sign normalised so `anchor` loads positively."""
-    b = block.dropna(how="all")
-    b = b.loc[:, b.count() >= 36]
+    b = block.replace([np.inf, -np.inf], np.nan).dropna(how="all")
+    b = b.loc[:, (b.count() >= 36) & (b.std(ddof=0) > 1e-12)]
     if b.shape[1] < 2:
         return pd.Series(dtype=float), {}
     z = (b - b.mean()) / b.std(ddof=0)
@@ -81,6 +83,8 @@ def diffusion_factor(block: pd.DataFrame, anchor: str) -> Tuple[pd.Series, Dict[
     load = vt[0]
     if anchor in z.columns and load[list(z.columns).index(anchor)] < 0:
         load = -load
+    if anchor not in z.columns and load[np.argmax(np.abs(load))] < 0:
+        load = -load
     f = pd.Series(z.values @ load / np.sqrt((load ** 2).sum()), index=z.index)
     f = (f - f.mean()) / f.std(ddof=0)
     return f, {c: round(float(v), 3) for c, v in zip(z.columns, load)}
@@ -89,6 +93,7 @@ def diffusion_factor(block: pd.DataFrame, anchor: str) -> Tuple[pd.Series, Dict[
 # ── 2. Regimes ───────────────────────────────────────────────────────────────
 def direction_features(f: pd.Series, k: int) -> pd.DataFrame:
     """A factor's level and its change over k months — the inputs of the direction classifier."""
+    f = f.asfreq("MS")
     return pd.DataFrame({"level": f, "change": f - f.shift(k)})
 
 
@@ -98,9 +103,10 @@ def direction_probability(f: pd.Series, k: int = 3, horizon: int = 1) -> Optiona
     The factor is indexed by publication month (the panel is lag-shifted), so horizon=1 is
     exactly the regime label of the month being allocated for."""
     from sklearn.linear_model import LogisticRegression
+    f = f.asfreq("MS")
     X = direction_features(f, k)
     y = (f.shift(-horizon) - f.shift(-horizon + k) > 0).astype(float)
-    y[f.shift(-horizon).isna()] = np.nan
+    y[f.shift(-horizon).isna() | f.shift(k-horizon).isna()] = np.nan
     train = pd.concat([X, y.rename("y")], axis=1).dropna()
     if len(train) < 60 or train["y"].nunique() < 2:
         return None
@@ -124,6 +130,9 @@ def quadrant_probabilities(p_growth_up: float, p_infl_up: float) -> Dict[str, fl
 
 def realized_regimes(g: pd.Series, i: pd.Series, k: int = 3) -> pd.Series:
     """The quadrant actually realised each month: the signs of the k-month changes in growth and inflation."""
+    g, i = g.asfreq("MS"), i.asfreq("MS")
+    index = g.index.union(i.index)
+    g, i = g.reindex(index), i.reindex(index)
     dg, di = g - g.shift(k), i - i.shift(k)
     lab = pd.Series(index=g.index, dtype=object)
     ok = dg.notna() & di.notna()
@@ -253,12 +262,25 @@ def decide(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str], env_
     `anchors` are the series the growth and inflation factors must load positively on (the sign convention); the
     defaults are the US model's industrial production and CPI.
     """
-    pan = panel[panel.index <= as_of]
+    pan = panel[panel.index <= as_of].replace([np.inf, -np.inf], np.nan)
+    # Apply availability at each decision date, including every backtest iteration.
+    # Filtering once at today's endpoint would introduce hindsight feature selection.
+    active = []
+    for column in pan:
+        observed = pan[column].dropna()
+        if not observed.empty:
+            last = observed.index[-1]
+            behind = (as_of.year - last.year) * 12 + as_of.month - last.month
+            if behind <= MAX_INPUT_STALE_MONTHS:
+                active.append(column)
+    pan = pan[active]
     g_cols = [c for c, b in blocks.items() if b == "growth" and c in pan]
     i_cols = [c for c, b in blocks.items() if b == "inflation" and c in pan]
     g, gl = diffusion_factor(pan[g_cols], anchors[0])
     i, il = diffusion_factor(pan[i_cols], anchors[1])
     if g.empty or i.empty:
+        return None
+    if g.index[-1].to_period("M") != as_of.to_period("M") or i.index[-1].to_period("M") != as_of.to_period("M"):
         return None
     pg = direction_probability(g, p.momentum_months)
     pi_ = direction_probability(i, p.momentum_months)
@@ -267,7 +289,7 @@ def decide(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str], env_
     probs = quadrant_probabilities(pg["probability"], pi_["probability"])
 
     r = rets[rets.index <= as_of]
-    assets = [a for a in r.columns if r[a].count() >= p.min_history_months]
+    assets = [a for a in r.columns if r[a].count() >= p.min_history_months and not r.empty and np.isfinite(r[a].iloc[-1])]
     if len(assets) < 3:
         return None
     labels = realized_regimes(g, i, p.momentum_months)

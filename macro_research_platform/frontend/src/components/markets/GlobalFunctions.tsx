@@ -27,7 +27,7 @@ export function EvtsView({ onOpen }: { onOpen: (s: string) => void }) {
   }, [data, area]);
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2 items-center text-2xs text-text-tertiary">
+      <div className="mkt-controls flex flex-wrap gap-2 items-center text-2xs text-text-tertiary">
         <select value={days} onChange={(e) => setDays(Number(e.target.value))} className={sel}><option value={7}>Next 7 days</option><option value={14}>Next 14 days</option><option value={30}>Next 30 days</option></select>
         <select value={cap} onChange={(e) => setCap(Number(e.target.value))} className={sel}>
           {[[0, 'All sizes'], [2, '≥ $2bn'], [10, '≥ $10bn'], [50, '≥ $50bn'], [200, '≥ $200bn']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
@@ -36,15 +36,15 @@ export function EvtsView({ onOpen }: { onOpen: (s: string) => void }) {
       {loading && !data ? <Loading label="Loading earnings calendar…" /> : error ? <ErrorBox msg={error} /> : byDay.length === 0 ? <Panel><div className="text-2xs text-text-tertiary">No reports in this window.</div></Panel> : (
         byDay.map(([day, rows]) => (
           <Panel key={day} title={new Date(day + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}>
-            <table className="w-full text-2xs table-fixed"><tbody>{rows.map((r) => (
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs table-fixed"><tbody>{rows.map((r) => (
               <tr key={r.symbol + r.datetime} onClick={() => onOpen(r.home_symbol ?? r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3"
-                title={r.home_symbol ? `${r.symbol} trades over the counter in the US; opens the home listing ${r.home_symbol}` : undefined}>
+                title={r.home_symbol ? `${r.symbol} trades over the counter in the US; opens the home listing ${r.home_symbol}` : undefined} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                 <td className="py-1 w-24 font-mono text-text-primary">{r.home_symbol ?? r.symbol}</td><td className="text-text-secondary truncate max-w-[18rem]">{r.company}</td>
                 <td className="w-28 text-text-tertiary">{r.timing}</td><td className="w-24 text-right font-mono">{fmtBig(r.market_cap)}</td>
                 <td className="w-24 text-right font-mono">{r.eps_estimate != null ? `est ${r.eps_estimate.toFixed(2)}` : ''}</td>
                 <td className="w-28 text-right font-mono text-text-tertiary" title="Revenue estimate → reported (FMP)">{r.revenue_estimate != null ? <>rev {fmtBig(r.revenue_estimate)}{r.revenue_reported != null ? <> → <span className={r.revenue_reported >= r.revenue_estimate ? 'text-green' : 'text-red'}>{fmtBig(r.revenue_reported)}</span></> : null}</> : ''}</td>
                 <td className="w-40 text-right font-mono">{r.eps_reported != null ? <>act {r.eps_reported.toFixed(2)} <Chg v={r.surprise_pct != null ? r.surprise_pct / 100 : null} d={1} /></> : ''}</td>
-              </tr>))}</tbody></table>
+              </tr>))}</tbody></table></div>
           </Panel>)))}
     </div>
   );
@@ -103,13 +103,13 @@ export function BtmmView() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         {data.groups.map((g: any) => (
           <Panel key={g.group} title={g.group}>
-            <table className="w-full text-2xs"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Rate</th><th className="text-right font-normal">Level</th>
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Rate</th><th className="text-right font-normal">Level</th>
               <th className="text-right font-normal">1W</th><th className="text-right font-normal">1M</th><th className="text-right font-normal">3M</th><th className="text-right font-normal">1Y</th><th className="text-right font-normal hidden md:table-cell">90d</th></tr></thead>
               <tbody>{g.rows.map((r: any) => (
                 <tr key={r.series} className="border-t border-border-subtle" title={`FRED ${r.series}${r.date ? ` · ${r.date}` : ''}`}>
                   <td className="py-1 text-text-primary">{r.name}</td><td className="text-right font-mono text-text-primary">{r.value == null ? '—' : `${r.value.toFixed(2)}%`}</td>
                   <td className="text-right"><Bp v={r.change_1w_bp} /></td><td className="text-right"><Bp v={r.change_1m_bp} /></td><td className="text-right"><Bp v={r.change_3m_bp} /></td><td className="text-right"><Bp v={r.change_1y_bp} /></td>
-                  <td className="text-right hidden md:table-cell"><Spark values={r.spark} /></td></tr>))}</tbody></table>
+                  <td className="text-right hidden md:table-cell"><Spark values={r.spark} /></td></tr>))}</tbody></table></div>
           </Panel>))}
       </div>
       <div className="text-[10px] text-text-tertiary">{data.source} · {data.units}. Rising rates shown red (bond prices fall).</div>
@@ -189,7 +189,7 @@ export function ImapView({ onOpen }: { onOpen: (s: string) => void }) {
   const countries = data?.countries ?? ['US', 'JP', 'GB', 'DE', 'FR', 'CN', 'IN', 'CA', 'AU', 'KR', 'TW', 'HK', 'CH'];
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2 items-center">
+      <div className="mkt-controls flex flex-wrap gap-2 items-center">
         <select value={country} onChange={(e) => setCountry(e.target.value)} className={sel}>{countries.map((c: string) => <option key={c}>{c}</option>)}</select>
         <div className="flex border border-border">{([['change_1d', '1 day'], ['change_5d', '5 days']] as const).map(([k, l]) => (
           <button key={k} onClick={() => setPeriod(k)} className={cn('px-2 py-1 text-2xs', period === k ? 'bg-bloomberg text-text-inverse' : 'text-text-secondary')}>{l}</button>))}</div>
@@ -238,7 +238,7 @@ export function CryptoView({ onOpen }: { onOpen: (s: string) => void }) {
             {th('market_cap', 'Market cap', 'text-right')}{th('volume_24h', 'Volume 24h', 'text-right')}{th('ath_change', 'From ATH', 'text-right')}
             <th className="font-normal text-right">7 days</th></tr></thead>
           <tbody>{rows.map((r: any) => (
-            <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3">
+            <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
               <td className="text-text-tertiary py-1">{r.rank}</td><td><span className="font-mono text-text-primary">{r.coin}</span> <span className="text-text-secondary">{r.name}</span></td>
               <td className="text-right font-mono">{fmtPrice(r.price)}</td><td className="text-right"><Chg v={r.change_1h} d={1} /></td><td className="text-right"><Chg v={r.change_24h} d={1} /></td>
               <td className="text-right"><Chg v={r.change_7d} d={1} /></td><td className="text-right"><Chg v={r.change_30d} d={1} /></td>
@@ -300,7 +300,7 @@ export function CmdtyView({ onOpen }: { onOpen: (s: string) => void }) {
   const cur = data && data.root === root ? data : null;
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-1">{(roots.data?.roots ?? []).map((r: any) => (
+      <div className="mkt-controls flex flex-wrap gap-1">{(roots.data?.roots ?? []).map((r: any) => (
         <button key={r.root} onClick={() => setRoot(r.root)} className={cn('px-2 py-1 text-2xs border', root === r.root ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary hover:text-text-primary')}>{r.name}</button>))}</div>
       {loading && !cur ? <Loading label="Loading the futures curve…" /> : error ? <ErrorBox msg={error} /> : cur && (
         <>
@@ -319,14 +319,14 @@ export function CmdtyView({ onOpen }: { onOpen: (s: string) => void }) {
               <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left font-normal">Month</th><th className="text-left font-normal">Contract</th>
                 <th className="text-right font-normal">Price</th><th className="text-right font-normal">1D</th><th className="text-right font-normal">vs 1M ago</th><th className="text-right font-normal">vs 1Y ago</th></tr></thead>
               <tbody>{cur.points.map((p: any) => (
-                <tr key={p.contract} onClick={() => onOpen(p.contract)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3">
+                <tr key={p.contract} onClick={() => onOpen(p.contract)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                   <td className="py-0.5 text-text-secondary">{p.month}</td><td className="text-text-tertiary">{p.contract}</td><td className="text-right">{fmtPrice(p.price)}</td>
                   <td className="text-right"><Chg v={p.change_1d} /></td>
                   <td className="text-right"><Chg v={p.price_1m_ago ? p.price / p.price_1m_ago - 1 : null} d={1} /></td>
                   <td className="text-right"><Chg v={p.price_1y_ago ? p.price / p.price_1y_ago - 1 : null} d={1} /></td></tr>))}</tbody></table></div>
           </Panel>
           <Panel title={`${cur.name} — continuous front month (${cur.root}=F)`}>
-            <PriceChart key={cur.root} symbol={`${cur.root}=F`} height={340} />
+            <div className="mkt-chart-surface"><PriceChart key={cur.root} symbol={`${cur.root}=F`} height={340} /></div>
           </Panel>
           <div className="text-[10px] text-text-tertiary">{cur.note} {cur.source}. Every listed month for two years, then June and December contracts as far as they trade.</div>
         </>
@@ -432,14 +432,14 @@ export function EcoView() {
   const rows = data.upcoming ?? [];
   return (
     <Panel title="Upcoming US economic releases">
-      <table className="w-full text-2xs"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">When</th><th className="text-left font-normal">Release</th>
+      <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">When</th><th className="text-left font-normal">Release</th>
         <th className="text-left font-normal">Importance</th><th className="text-right font-normal">Previous</th><th className="text-right font-normal">Forecast</th><th className="text-right font-normal">Actual</th></tr></thead>
         <tbody>{rows.map((r: any) => (
           <tr key={r.id + r.event_name + r.release_datetime} className="border-t border-border-subtle">
             <td className="py-1 font-mono text-text-secondary whitespace-nowrap">{new Date(r.release_datetime).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
             <td className="text-text-primary">{r.event_name}</td>
             <td><span className={cn('px-1.5 border text-[10px]', r.importance === 'HIGH' ? 'border-red/50 text-red' : r.importance === 'MEDIUM' ? 'border-amber/50 text-amber' : 'border-border text-text-tertiary')}>{r.importance}</span></td>
-            <td className="text-right font-mono">{r.previous ?? '—'}</td><td className="text-right font-mono">{r.forecast ?? '—'}</td><td className="text-right font-mono text-text-primary">{r.actual ?? '—'}</td></tr>))}</tbody></table>
+            <td className="text-right font-mono">{r.previous ?? '—'}</td><td className="text-right font-mono">{r.forecast ?? '—'}</td><td className="text-right font-mono text-text-primary">{r.actual ?? '—'}</td></tr>))}</tbody></table></div>
       <div className="text-[10px] text-text-tertiary mt-2">Times in your local time zone. Sources: {(data.events?.[0]?.source) ?? 'FRED release calendar'}. Consensus forecasts are not available from free sources.</div>
     </Panel>
   );
@@ -508,20 +508,20 @@ export function CompView({ seed }: { seed?: string }) {
       {loading && !data ? <Loading /> : error ? <ErrorBox msg={error} /> : data && (
         <>
           <Panel title={`Growth of 1 since ${data.start} (total return)`}>
-            <LineChart rows={data.curve} x="date" height={300} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`}
-              lines={data.symbols.map((s: string, i: number) => ({ key: s, label: s, color: CATEGORICAL[i % CATEGORICAL.length] }))} />
+            <div className="mkt-chart-surface"><LineChart rows={data.curve} x="date" height={300} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`}
+              lines={data.symbols.map((s: string, i: number) => ({ key: s, label: s, color: CATEGORICAL[i % CATEGORICAL.length] }))} /></div>
           </Panel>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <Panel title="Return and risk">
-              <table className="w-full text-2xs font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Symbol</th><th className="text-right font-normal">Total</th>
+              <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Symbol</th><th className="text-right font-normal">Total</th>
                 <th className="text-right font-normal">Per year</th><th className="text-right font-normal">Volatility</th><th className="text-right font-normal">Return/vol</th><th className="text-right font-normal">Max drawdown</th></tr></thead>
                 <tbody>{data.stats.map((s: any) => (<tr key={s.symbol} className="border-t border-border-subtle"><td className="text-text-primary py-0.5">{s.symbol}</td>
                   <td className="text-right"><Chg v={s.total_return} d={0} /></td><td className="text-right"><Chg v={s.cagr} d={1} /></td><td className="text-right">{(s.vol * 100).toFixed(1)}%</td>
-                  <td className="text-right">{s.sharpe != null ? s.sharpe.toFixed(2) : '—'}</td><td className="text-right text-red">{(s.max_drawdown * 100).toFixed(0)}%</td></tr>))}</tbody></table>
+                  <td className="text-right">{s.sharpe != null ? s.sharpe.toFixed(2) : '—'}</td><td className="text-right text-red">{(s.max_drawdown * 100).toFixed(0)}%</td></tr>))}</tbody></table></div>
               {data.missing.length > 0 && <div className="text-[10px] text-amber mt-1">No data for: {data.missing.join(', ')}</div>}
             </Panel>
             <Panel title="Correlation of daily returns">
-              <CorrelationHeatmap labels={data.symbols} matrix={data.symbols.map((a: string) => data.symbols.map((b: string) => data.correlation[a][b]))} />
+              <div className="mkt-chart-surface"><CorrelationHeatmap labels={data.symbols} matrix={data.symbols.map((a: string) => data.symbols.map((b: string) => data.correlation[a][b]))} /></div>
             </Panel>
           </div>
           <div className="text-[10px] text-text-tertiary">{data.note}</div>

@@ -127,7 +127,7 @@ export function ShipTracker() {
         <span className="text-text-tertiary">in view <b className="font-mono text-text-secondary">{inView.length.toLocaleString()}</b></span>
         <span className={cn('ml-auto', w?.status === 'live' ? 'text-green' : 'text-amber')}>● {w?.status === 'live' ? 'live AIS stream' : w?.status}</span>
       </div>
-      <div className="flex flex-wrap items-center gap-1 text-[11px]">
+      <div className="mkt-controls flex flex-wrap items-center gap-1 text-[11px]">
         <form onSubmit={doFind} className="flex">
           <input value={find} onChange={(e) => setFind(e.target.value)} placeholder="Ship name, MMSI or IMO" aria-label="Find a vessel"
             className="w-48 bg-surface-1 border border-border px-2 py-0.5 text-text-primary placeholder:text-text-tertiary" />
@@ -143,8 +143,8 @@ export function ShipTracker() {
           {(bounds?.zoom ?? 0) < DENSITY_ZOOM && <div className="absolute top-2 left-2 text-[10px] bg-surface-1/85 border border-border px-2 py-1 flex items-center gap-2">
             <span>Traffic density</span><span className="w-20 h-2" style={{ background: 'linear-gradient(90deg, rgb(24 70 140), rgb(0 150 200), rgb(60 210 190), rgb(250 210 90), rgb(255 250 235))' }} />
             <span className="text-text-tertiary">zoom in for individual ships</span></div>}
-          <div className="absolute bottom-2 left-2 right-12 flex flex-wrap gap-1 text-[10px]">
-            <div className="flex flex-wrap gap-1 bg-surface-1/85 border border-border px-1.5 py-1">
+          <div className="mkt-controls absolute bottom-2 left-2 right-12 flex flex-wrap gap-1 text-[10px]">
+            <div className="mkt-controls flex flex-wrap gap-1 bg-surface-1/85 border border-border px-1.5 py-1">
               {Object.keys(TYPE_COL).filter((t) => t !== 'Towing').map((t) => (
                 <button key={t} onClick={() => toggleType(t)} title={hidden.has(t) ? `Show ${t}` : `Hide ${t}`}
                   className={cn('inline-flex items-center gap-1 px-1', hidden.has(t) && 'opacity-35 line-through')}>
@@ -201,7 +201,7 @@ function ViewPanel({ stats, inView, onPick }: { stats: { t: Record<string, numbe
           <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left px-1.5 font-normal">Vessel</th><th className="text-left font-normal">Type</th>
             <th className="text-right font-normal px-1.5">Knots</th></tr></thead>
           <tbody>{list.map((s) => (
-            <tr key={s.mmsi} onClick={() => onPick(s)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3">
+            <tr key={s.mmsi} onClick={() => onPick(s)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
               <td className="px-1.5 py-0.5 text-text-primary truncate max-w-[11rem]">{s.name}</td>
               <td style={{ color: TYPE_COL[s.type] }}>{s.type}</td><td className="text-right px-1.5 font-mono">{s.phase === 'underway' ? s.speed?.toFixed(1) ?? '' : s.phase === 'anchored' ? '⚓' : '·'}</td></tr>))}</tbody>
         </table>
@@ -299,7 +299,7 @@ function NotablePanel({ data, loading, follow, onPick }: { data: any; loading: b
   const list = (data.ships as any[]).filter((x) => !only || x.tags.includes(only));
   return (
     <div className="border border-border bg-surface-1">
-      <div className="flex flex-wrap gap-1 p-2 text-[10px]">
+      <div className="mkt-controls flex flex-wrap gap-1 p-2 text-[10px]">
         <button onClick={() => setOnly('')} className={cn('px-1.5 border', !only ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>All {data.total}</button>
         {TAGS.map(([k, l, col]) => (
           <button key={k} onClick={() => setOnly(k)} className={cn('px-1.5 border inline-flex items-center gap-1', only === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>
@@ -355,7 +355,7 @@ function PortCongestion({ data, loading, error, onPick }: { data: any; loading: 
             <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left font-normal">Port</th>
               {th('anchored', 'At anchor')}<th className="font-normal w-32" />{th('cargo_waiting', 'Cargo waiting')}{th('tankers_waiting', 'Tankers waiting')}{th('moored', 'Moored')}{th('total', 'All')}</tr></thead>
             <tbody>{rows.map((p) => (
-              <tr key={p.port} onClick={() => onPick(p)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3">
+              <tr key={p.port} onClick={() => onPick(p)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                 <td className="py-0.5 text-text-primary">{p.port}</td><td className="text-right font-mono px-1.5">{p.anchored}</td>
                 <td><div className="h-1.5 bg-surface-3"><div className="h-full bg-amber" style={{ width: `${(p.anchored / max) * 100}%` }} /></div></td>
                 <td className="text-right font-mono px-1.5 text-text-secondary">{p.cargo_waiting}</td><td className="text-right font-mono px-1.5 text-text-secondary">{p.tankers_waiting}</td>
@@ -390,9 +390,9 @@ export function VesselCard({ query, live, onClose }: { query: string; live?: any
         {data.history?.length > 1 && <div><div className="text-[10px] uppercase tracking-wide text-text-tertiary">Identity history</div>
           {data.history.map((h: any, i: number) => <div key={i} className="font-mono text-[11px]">{h.from} → {h.to} · {h.name} · {h.flag_name}</div>)}</div>}
         <div><div className="text-[10px] uppercase tracking-wide text-text-tertiary">Port calls, last 6 months</div>
-          {data.port_calls?.length ? <table className="w-full text-[11px]"><tbody>{data.port_calls.map((c: any, i: number) => (
+          {data.port_calls?.length ? <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px]"><tbody>{data.port_calls.map((c: any, i: number) => (
             <tr key={i} className="border-t border-border-subtle"><td className="py-0.5 text-text-primary">{c.port ?? 'Anchorage'}</td><td className="text-text-secondary">{c.country}</td>
-              <td className="font-mono text-text-tertiary">{c.arrived?.slice(0, 10)}</td><td className="text-right font-mono">{c.hours}h</td></tr>))}</tbody></table>
+              <td className="font-mono text-text-tertiary">{c.arrived?.slice(0, 10)}</td><td className="text-right font-mono">{c.hours}h</td></tr>))}</tbody></table></div>
             : <p className="text-[11px] text-text-tertiary">None recorded.</p>}</div>
         <div className="text-[10px] text-text-tertiary">{data.source}</div>
       </>}

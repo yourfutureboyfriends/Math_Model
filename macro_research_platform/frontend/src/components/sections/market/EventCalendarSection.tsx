@@ -112,7 +112,7 @@ export function EventCalendarSection({ data: initial }: Props) {
       <div className="section-header !justify-start gap-2">
         <span className="section-tag">ECO</span>
         <h2 className="section-title">Economic Calendar</h2>
-        <div role="tablist" aria-label="Calendar scope" className="ml-2 flex border border-border">
+        <div role="tablist" aria-label="Calendar scope" className="ml-2 flex border border-border" data-workspace-tabs>
           {([['world', 'World'], ['us', 'US releases']] as const).map(([k, label]) => (
             <button key={k} role="tab" aria-selected={scope === k} onClick={() => setScope(k)}
               className={`px-2 py-0.5 text-2xs font-mono uppercase tracking-wider ${scope === k ? 'bg-bloomberg text-bg' : 'text-text-tertiary hover:text-text-primary'}`}>
@@ -159,7 +159,7 @@ export function EventCalendarSection({ data: initial }: Props) {
                 Next: <span className="text-text-primary">{next.event_name}</span> {cd.urgent ? 'releasing now' : `in ${cd.label}`}
               </div>
             )}
-            <table className="w-full text-xs">
+            <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs">
               <thead>
                 <tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle text-left">
                   <th className="font-normal pb-1.5">Date</th>
@@ -194,7 +194,7 @@ export function EventCalendarSection({ data: initial }: Props) {
                   );
                 })}
               </tbody>
-            </table>
+            </table></div>
             {events.length > 10 && (
               <button onClick={() => setShowAll((s) => !s)} className="mt-2 text-2xs text-text-tertiary hover:text-bloomberg">
                 {showAll ? 'Show fewer' : `Show all ${events.length}`}
@@ -203,7 +203,7 @@ export function EventCalendarSection({ data: initial }: Props) {
             {(data?.recent?.length ?? 0) > 0 && (
               <div className="mt-3">
                 <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Last 10 days — actual vs consensus</div>
-                <table className="w-full text-xs">
+                <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs">
                   <thead>
                     <tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle text-left">
                       <th className="font-normal pb-1">Date</th><th className="font-normal pb-1">Release</th>
@@ -224,7 +224,7 @@ export function EventCalendarSection({ data: initial }: Props) {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               </div>
             )}
             <div className="mt-2 text-[10px] text-text-tertiary">

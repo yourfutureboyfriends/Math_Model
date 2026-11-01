@@ -52,7 +52,7 @@ export function FutuView({ symbol }: { symbol: string }) {
             </div>
             {imbAll != null && <div className="flex h-1.5 mb-2 gap-[2px]" title="Bid volume vs ask volume across the levels shown">
               <span className="bg-green/70 rounded-l" style={{ width: `${(1 + imbAll) * 50}%` }} /><span className="bg-red/70 rounded-r flex-1" /></div>}
-            <table className="w-full text-[11px] font-mono tabular-nums">
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] font-mono tabular-nums">
               <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Bid vol</th><th className="text-right font-normal">Bid</th><th className="text-left font-normal pl-2">Ask</th><th className="text-right font-normal">Ask vol</th></tr></thead>
               <tbody>{Array.from({ length: Math.max(b.bids.length, b.asks.length) }).map((_, i) => {
                 const bd = b.bids[i], ak = b.asks[i];
@@ -64,7 +64,7 @@ export function FutuView({ symbol }: { symbol: string }) {
                     <td className="relative text-right">{ak && <span className="absolute inset-y-0 left-0 bg-red/15" style={{ width: `${(ak.volume / maxVol) * 100}%` }} />}<span className="relative">{ak ? fmtBig(ak.volume) : ''}</span></td>
                   </tr>);
               })}</tbody>
-            </table></>)}
+            </table></div></>)}
         </Panel>
         <Panel title={`Trades — ${t?.buy_share != null ? `${pc(t.buy_share, 0)} buyer-initiated` : 'tick by tick'}`}>
           {ticks.error ? <ErrorBox msg={ticks.error} /> : !t ? <Loading /> : (

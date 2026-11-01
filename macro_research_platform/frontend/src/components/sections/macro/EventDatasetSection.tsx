@@ -33,7 +33,7 @@ export function EventDatasetSection() {
   const show = ['USDJPY=X', 'EURUSD=X', 'CSPX.L', 'IDTL.L', 'SGLN.L', 'DGS2'];
   return (
     <div className="border border-border bg-surface-1">
-      <div className="px-3 py-2 border-b border-border flex items-center gap-2 flex-wrap">
+      <div className="workspace-controls px-3 py-2 border-b border-border flex items-center gap-2 flex-wrap">
         <span className="text-xs font-medium text-text-primary uppercase tracking-wider">Macro Event Dataset</span>
         <span className="text-2xs text-text-tertiary">point-in-time releases · surprise proxies · cross-asset reactions</span>
         <div className="ml-auto flex gap-1 items-center">
@@ -49,7 +49,7 @@ export function EventDatasetSection() {
         {!d || !s ? <div className="text-2xs text-text-tertiary flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin" />Building the dataset (first time ≈ 20 s)…</div> : (<>
           <div>
             <div className="text-2xs text-text-tertiary uppercase mb-1">Reaction per 1 s.d. surprise — {s.events} events ({horizon === 'h0' ? 'first close after the release' : 'five sessions later'})</div>
-            <table className="w-full"><thead><tr className="text-2xs text-text-tertiary border-b border-border-subtle"><th className="text-left font-normal py-1">Asset</th><th className="text-right font-normal">n</th><th className="text-right font-normal">β per 1σ</th><th className="text-right font-normal">t</th><th className="text-right font-normal">corr</th></tr></thead>
+            <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><thead><tr className="text-2xs text-text-tertiary border-b border-border-subtle"><th className="text-left font-normal py-1">Asset</th><th className="text-right font-normal">n</th><th className="text-right font-normal">β per 1σ</th><th className="text-right font-normal">t</th><th className="text-right font-normal">corr</th></tr></thead>
               <tbody>{Object.entries(s.by_asset).map(([a, v]: any) => (
                 <tr key={a} className="border-b border-border-subtle">
                   <td className="py-0.5 font-mono">{a}</td><td className="text-right font-mono">{v.n}</td>
@@ -57,7 +57,7 @@ export function EventDatasetSection() {
                     <td className="text-right font-mono">{v.beta_per_1sd == null ? '—' : `${f(v.beta_per_1sd, v.unit === 'bp' ? 1 : 3)} ${v.unit}`}</td>
                     <td className={cn('text-right font-mono', v.t_stat != null && Math.abs(v.t_stat) >= 2 ? 'text-bloomberg' : '')}>{f(v.t_stat)}</td>
                     <td className="text-right font-mono">{f(v.corr, 2)}</td></>}
-                </tr>))}</tbody></table>
+                </tr>))}</tbody></table></div>
             <div className="text-[10px] text-amber mt-1">{s.caveat}</div>
           </div>
           <div>

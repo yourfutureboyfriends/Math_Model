@@ -55,7 +55,7 @@ export function BrokerLink() {
           <div className="text-text-tertiary">Education / paper accounts: check that Flex Queries and the Web API are enabled for the account type in Account Management. Then restart the backend.</div>
         </div>)}
       {err && <div className="text-amber text-2xs">{err}</div>}
-      <div className="flex flex-wrap gap-1">
+      <div className="workspace-controls flex flex-wrap gap-1">
         <button className={btn} disabled={!ready || !!busy} onClick={() => run('snap', async () => setSnap(await call('/api/v1/broker/ibkr/snapshot')))}>
           {busy === 'snap' ? <Loader2 className="w-3 h-3 animate-spin inline" /> : 'Fetch broker positions'}</button>
         <button className={btn} disabled={!ready || !!busy} onClick={() => run('rec', async () => setRec(await call('/api/v1/broker/ibkr/reconcile', 'POST')))}>
@@ -71,19 +71,19 @@ export function BrokerLink() {
       {rec && (
         <div className={cn('border p-2', rec.ok ? 'border-green/40' : 'border-red/40')}>
           <div className={rec.ok ? 'text-green' : 'text-red'}>{rec.ok ? `Reconciled: ${rec.matched} position(s) match IBKR` : `${rec.breaks.length} break(s) — an incident was opened`}</div>
-          {rec.breaks.length > 0 && <table className="w-full mt-1"><tbody>{rec.breaks.map((b: any) => (
+          {rec.breaks.length > 0 && <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full mt-1"><tbody>{rec.breaks.map((b: any) => (
             <tr key={b.ticker} className="border-b border-border-subtle"><td className="py-0.5 font-mono">{b.ticker}</td><td>{b.status.replace('_', ' ')}</td>
-              <td className="text-right font-mono">platform {num(b.platform, 4)}</td><td className="text-right font-mono">IBKR {num(b.broker, 4)}</td></tr>))}</tbody></table>}
+              <td className="text-right font-mono">platform {num(b.platform, 4)}</td><td className="text-right font-mono">IBKR {num(b.broker, 4)}</td></tr>))}</tbody></table></div>}
         </div>)}
       {snap && (
         <div className="border border-border p-2">
           <div className="text-2xs text-text-tertiary uppercase mb-1">IBKR {snap.source} · account {snap.account_id}</div>
-          <table className="w-full"><thead><tr className="text-2xs text-text-tertiary border-b border-border-subtle"><th className="text-left font-normal py-1">Symbol</th><th className="text-left font-normal">Exchange</th>
+          <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><thead><tr className="text-2xs text-text-tertiary border-b border-border-subtle"><th className="text-left font-normal py-1">Symbol</th><th className="text-left font-normal">Exchange</th>
             <th className="text-right font-normal">Quantity</th><th className="text-right font-normal">Mark</th><th className="text-right font-normal">Avg cost</th><th className="text-right font-normal">Value</th></tr></thead>
             <tbody>{snap.positions.map((p: any, i: number) => (
               <tr key={i} className="border-b border-border-subtle"><td className="py-0.5 font-mono">{p.symbol}</td><td>{p.exchange} · {p.currency}</td>
                 <td className="text-right font-mono">{num(p.quantity, 4)}</td><td className="text-right font-mono">{num(p.mark_price, 4)}</td>
-                <td className="text-right font-mono">{num(p.cost_price, 4)}</td><td className="text-right font-mono">{num(p.market_value)}</td></tr>))}</tbody></table>
+                <td className="text-right font-mono">{num(p.cost_price, 4)}</td><td className="text-right font-mono">{num(p.market_value)}</td></tr>))}</tbody></table></div>
           {snap.cash?.length > 0 && <div className="text-[11px] text-text-secondary mt-1">Cash: {snap.cash.map((c: any) => `${c.currency} ${num(c.ending_cash)}`).join(' · ')}</div>}
         </div>)}
     </div>

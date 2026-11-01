@@ -34,7 +34,7 @@ def build(inp: Dict[str, Any], val: Dict[str, Any]) -> Tuple[bytes, Dict[str, st
     ws["A2"] = f"Reporting currency {inp.get('currency')} · values in units of that currency · blue cells are inputs"
     rows: List[Tuple[str, str, Any, str]] = [
         # key, label, value, number format
-        ("rev0", "Revenue, last 12 months", inp["revenue"], NUM),
+        ("rev0", "Revenue, valuation base period", inp["revenue"], NUM),
         ("m0", "Operating margin today", a["margin_now"], PCT),
         ("mT", "Target operating margin (year N)", a["target_margin"], PCT),
         ("g1", "Revenue growth, year 1", a["growth_y1"], PCT),
@@ -43,6 +43,9 @@ def build(inp: Dict[str, Any], val: Dict[str, Any]) -> Tuple[bytes, Dict[str, st
         ("t0", "Tax rate today", a["tax_now"], PCT),
         ("tT", "Tax rate, terminal", a["tax_terminal"], PCT),
         ("stc", "Sales-to-capital", a["sales_to_capital"], X),
+        ("wc", "Operating working capital / revenue", a.get("working_capital_ratio") or 0.0, PCT),
+        *([("anchor", "Net capex / revenue (forecast anchor)", a["reinvestment_to_revenue"], PCT)]
+          if a.get("reinvestment_anchor_years") is not None else []),
         ("ronic", "Return on new capital (terminal)", a["ronic"], PCT),
         *([("ron0", "Return on new capital, start of the fade", a["ronic_fade_start"], PCT),
            ("shape", "RONIC fade shape (1 = linear)", a.get("ronic_fade_shape", 1.0), X)] if F else []),
@@ -123,14 +126,20 @@ def build(inp: Dict[str, Any], val: Dict[str, Any]) -> Tuple[bytes, Dict[str, st
                 cell.number_format = PCT if lab in ("Revenue growth", "Operating margin", "Tax rate", "Discount rate", "Return on new capital", "Reinvestment rate") else \
                     ("0.0000" if lab.startswith("Discount factor") else ("0" if lab == "Year" else NUM))
             continue
+        margin_fraction = min(1.0, y / a["margin_fade_years"]) if a.get("margin_fade_years") else y / N
+        reinvestment = f"=({c('Revenue')}-{p('Revenue')})/{ref['stc']}"
+        anchor_years = a.get("reinvestment_anchor_years")
+        if anchor_years is not None and y <= anchor_years:
+            weight = 1 - (y - 1) / anchor_years
+            reinvestment = f"={weight}*({ref['anchor']}*{c('Revenue')}+{ref['wc']}*({c('Revenue')}-{p('Revenue')}))+{1-weight}*({c('Revenue')}-{p('Revenue')})/{ref['stc']}"
         cells = {
             "Year": y, "Revenue growth": g, "Revenue": f"={p('Revenue')}*(1+{c('Revenue growth')})",
-            "Operating margin": f"={ref['m0']}+({ref['mT']}-{ref['m0']})*{y}/{N}",
+            "Operating margin": f"={ref['m0']}+({ref['mT']}-{ref['m0']})*{margin_fraction}",
             "EBIT": f"={c('Revenue')}*{c('Operating margin')}",
             "Tax rate": f"={ref['t0']}+({ref['tT']}-{ref['t0']})*{y}/{N}",
             # no tax shield on operating losses, as in the app's model
             "NOPAT": f"=IF({c('EBIT')}>0,{c('EBIT')}*(1-{c('Tax rate')}),{c('EBIT')})",
-            "Reinvestment": f"=({c('Revenue')}-{p('Revenue')})/{ref['stc']}",
+            "Reinvestment": reinvestment,
             "FCFF": f"={c('NOPAT')}-{c('Reinvestment')}",
             "Discount rate": r_y,
             "Discount factor (end of year)": f"={p('Discount factor (end of year)')}/(1+{c('Discount rate')})",
@@ -182,6 +191,13 @@ def build(inp: Dict[str, Any], val: Dict[str, Any]) -> Tuple[bytes, Dict[str, st
         sheet.freeze_panes = "B4" if sheet is m else None
     m["A2"] = "Same model as the terminal's DCF screen; the numbers recalculate when Inputs change."
     m["A2"].alignment = Alignment(wrap_text=False)
+    detail = wb.create_sheet("Cash flow evidence")
+    detail.append(["Historical cash-flow evidence (reporting currency)", "Amount"])
+    cf = inp.get("cashflow_evidence") or {}
+    for key in ("as_of", "status", "source", "nopat", "capex", "dna", "working_capital_investment", "reinvestment", "observed_fcff", "cfo", "sbc", "cash_after_capex_and_sbc", "working_capital_basis", "note"):
+        detail.append([key.replace("_", " "), cf.get(key)])
+    detail.column_dimensions["A"].width = 42
+    detail.column_dimensions["B"].width = 100
     buf = io.BytesIO()
     wb.save(buf)
     key_cells = {"per_share": f"Model!B{rr['Value per share (reporting currency)']}", "ev": f"Model!B{rr['Enterprise value']}"}

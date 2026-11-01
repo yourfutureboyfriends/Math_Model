@@ -304,7 +304,7 @@ export function RiskAnalyticsSection() {
       {(data?.correlation?.assets?.length ?? 0) > 1 && (
         <div>
           <div className="text-2xs text-text-tertiary mb-1">{(data?.correlation as any)?.window_days ?? 63}-day correlation of daily returns</div>
-          <CorrelationHeatmap labels={data!.correlation!.assets!} matrix={data!.correlation!.matrix3m ?? []} />
+          <div className="workspace-chart"><CorrelationHeatmap labels={data!.correlation!.assets!} matrix={data!.correlation!.matrix3m ?? []} /></div>
         </div>
       )}
     </div>

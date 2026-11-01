@@ -618,6 +618,9 @@ async def lifespan(app: FastAPI):
         from api.marketdata.usertools import check_alerts as _check_alerts
         _scheduler.add_job(func=_check_alerts, trigger="interval", minutes=5, id="mkt_price_alerts", replace_existing=True)
         logger.info("[STARTUP] Scheduled mkt_price_alerts every 5 minutes")
+        from api.workflows.monitor import run_due as _research_monitor_due
+        _scheduler.add_job(func=_research_monitor_due,trigger="interval",minutes=1,id="research_monitor",replace_existing=True,max_instances=1,coalesce=True)
+
 
         # Catch-up: cron jobs only fire while the process is up, so a backend that was down
         # at 06:00 UTC left the CSV stale until the next day. If it is over 24h old, run the
@@ -855,6 +858,8 @@ app.add_middleware(GZipMiddleware, minimum_size=2048, compresslevel=5)   # world
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:3002", "http://localhost:5173"],
+    # any local port in development: a dev server that falls back to 5174 when 5173 is taken must still reach the API
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -923,6 +928,22 @@ from api.routers.marketdata import router as marketdata_router  # Markets mode: 
 app.include_router(marketdata_router)
 from api.routers.ai import router as ai_router  # AI research assistant (local Ollama / Groq)
 app.include_router(ai_router)
+from fastapi import Request
+from api.routers.workflows import router as workflows_router
+app.include_router(workflows_router)
+
+@app.middleware("http")
+async def workflow_performance(request: Request, call_next):
+    import time
+    from api.workflows.telemetry import observe
+    started=time.monotonic(); status=500
+    try:
+        response=await call_next(request); status=response.status_code
+        return response
+    finally:
+        route=request.scope.get('route')
+        observe(getattr(route,'path','UNMATCHED'),request.method,status,time.monotonic()-started)
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NATIVE WEBSOCKET ENDPOINTS

@@ -16,6 +16,7 @@ import json
 import logging
 import math
 import re
+from functools import lru_cache
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -440,17 +441,22 @@ EXCHANGES = [
 ]
 
 
+@lru_cache(maxsize=128)
+def _exchange_holidays(calendar: str, year: int):
+    """Cache static holiday dates, never the clock-dependent open/closed status."""
+    import holidays
+    return dict(holidays.financial_holidays(calendar, years=[year, year + 1]))
+
+
 def exchanges() -> Dict[str, Any]:
     """World exchanges: local time, whether open now, the next session and holidays."""
-    import holidays as hol
     now_utc = datetime.now(ZoneInfo("UTC"))
     out = []
     for code, name, city, tzname, sessions, cal, weekend in EXCHANGES:
         tz = ZoneInfo(tzname)
         now = now_utc.astimezone(tz)
-        years = [now.year, now.year + 1]
         try:
-            hd = hol.financial_holidays(cal, years=years) if cal else {}
+            hd = _exchange_holidays(cal, now.year) if cal else {}
         except Exception:
             hd = {}
 

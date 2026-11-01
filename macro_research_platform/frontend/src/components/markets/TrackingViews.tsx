@@ -1,21 +1,20 @@
 // Physical-economy trackers: SHIP (worldwide live vessels, port congestion, chokepoints), FLY (every aircraft worldwide), QUAK
 // (earthquakes and the ports / chokepoints they threaten). One world basemap, zoomable.
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { countryPaths, projectPoint, type Topology } from '@/lib/topo';
+import { countryPaths, projectPoint } from '@/lib/topo';
 import { ErrorBox, Loading, Panel, Spark, useJSON } from './shared';
 import { LineChart } from '@/components/ui/LineChart';
 import { FlightTracker } from './FlightTracker';
 import { ShipTracker } from './ShipTracker';
 
-let topoCache: Topology | null = null;
 const W = 1000;
 
 /** World basemap in the Equal Earth projection, zoomed to a lon/lat box; children get the projector. */
 function Basemap({ box, height = 420, children }: { box?: [number, number, number, number]; height?: number;
   children: (p: (lon: number, lat: number) => [number, number], k: number) => React.ReactNode }) {
-  const [topo, setTopo] = useState<Topology | null>(topoCache);
-  useEffect(() => { if (!topo) fetch('/world-atlas/countries-50m.json').then((r) => r.json()).then((t) => { topoCache = t; setTopo(t); }).catch(() => {}); }, [topo]);
+  const map=useJSON<import('@/lib/topo').Topology>('/world-atlas/countries-50m.json');
+  const topo=map.data;
   const geo = useMemo(() => (topo ? countryPaths(topo, W) : null), [topo]);
   const H = W * 0.487;
   // view box: the requested lon/lat box (with margin), else the whole world
@@ -32,6 +31,7 @@ function Basemap({ box, height = 420, children }: { box?: [number, number, numbe
   }
   const k = W / vb.w;
   const proj = (lon: number, lat: number) => projectPoint(lon, lat, W);
+  if(map.error)return <ErrorBox msg={map.error} onRetry={map.retry}/>;
   return (
     <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} width="100%" height={height} className="bg-surface-1 border border-border" role="img">
       <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="rgb(var(--c-sea) / 0.08)" />
@@ -70,7 +70,7 @@ export function ShipView() {
                 <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left font-normal">Chokepoint</th><th className="text-right font-normal">Ships/day</th>
                   <th className="text-right font-normal">vs y/y</th><th className="text-right font-normal">Tankers</th><th className="text-right font-normal">Box ships</th><th className="font-normal">180d</th></tr></thead>
                 <tbody>{cp.data.chokepoints.map((c: any) => (
-                  <tr key={c.name} onClick={() => setSel(c.name)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-3', sel === c.name && 'bg-surface-3')}>
+                  <tr key={c.name} onClick={() => setSel(c.name)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-3', sel === c.name && 'bg-surface-3')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                     <td className="py-0.5 text-text-primary">{c.name}</td><td className="text-right font-mono">{c.transits_7d?.toFixed(0)}</td>
                     <td className="text-right font-mono" style={{ color: yoyColor(c.vs_last_year) }}>{pc(c.vs_last_year)}</td>
                     <td className="text-right font-mono text-text-secondary">{c.tankers_7d?.toFixed(0)}</td><td className="text-right font-mono text-text-secondary">{c.containers_7d?.toFixed(0)}</td>
@@ -91,9 +91,9 @@ export function ShipView() {
           return (
             <div className="mt-3">
               <div className="text-[11px] text-text-tertiary mb-1">{c.name} — daily transits, 7-day average{!chosen ? ' (click a chokepoint to switch)' : ''}</div>
-              <LineChart rows={rows} x="date" height={260} fmt={(v) => v.toFixed(0)}
+              <div className="mkt-chart-surface"><LineChart rows={rows} x="date" height={260} fmt={(v) => v.toFixed(0)}
                 lines={[{ key: 'total', label: 'All ships', color: 'rgb(var(--c-text-primary))' }, { key: 'tankers', label: 'Tankers', color: 'rgb(var(--c-red))' },
-                        { key: 'containers', label: 'Container ships', color: 'rgb(var(--c-blue))' }, { key: 'dry_bulk', label: 'Dry bulk', color: 'rgb(var(--c-amber))' }]} />
+                        { key: 'containers', label: 'Container ships', color: 'rgb(var(--c-blue))' }, { key: 'dry_bulk', label: 'Dry bulk', color: 'rgb(var(--c-amber))' }]} /></div>
             </div>);
         })()}
         {cp.data && <div className="text-[10px] text-text-tertiary mt-1">{cp.data.source}. Circle size = traffic; colour = change vs a year ago (red ≤ −15%, green ≥ +15%).</div>}

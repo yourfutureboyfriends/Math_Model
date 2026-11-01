@@ -102,7 +102,7 @@ export function OptionsResearch() {
           <span className="text-xs font-semibold">Options strategy research</span>
           <span className="text-[10px] text-text-tertiary">research only — nothing here trades. Option prices are model-based (no free historical option quotes); every result is labelled.</span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="workspace-controls flex flex-wrap items-center gap-2">
           <Pills label="Stage" value={stage} onChange={setStage} options={[['1', '1 · correctness'], ['2', '2 · index ETFs'], ['3', '3 · intermediate'], ['4', '4 · full universe']] as const} />
           {canRun && (running
             ? <button onClick={cancel} className="inline-flex items-center gap-1 px-2 py-1 text-2xs border border-border hover:border-red"><Square className="w-3 h-3" />Cancel</button>
@@ -233,8 +233,8 @@ function Summary({ r }: { r: any }) {
           { k: 'costs', label: 'Costs/yr', right: true, f: (v) => pct(v, 2) }]} rows={rows} />
       </Card>
       <div className="grid lg:grid-cols-2 gap-3">
-        <Card title="Growth of $1 (development + validation)"><LineChart rows={chart.eq} x="d" lines={chart.lines} height={240} baseline={1} fmt={(v) => num(v, 2)} /></Card>
-        <Card title="Drawdown"><LineChart rows={chart.dd} x="d" lines={chart.lines} height={240} baseline={0} fmt={(v) => pct(v, 1)} /></Card>
+        <Card title="Growth of $1 (development + validation)"><div className="workspace-chart"><LineChart rows={chart.eq} x="d" lines={chart.lines} height={240} baseline={1} fmt={(v) => num(v, 2)} /></div></Card>
+        <Card title="Drawdown"><div className="workspace-chart"><LineChart rows={chart.dd} x="d" lines={chart.lines} height={240} baseline={0} fmt={(v) => pct(v, 1)} /></div></Card>
       </div>
       <Card title="Limitations"><ul className="list-disc pl-4 text-2xs text-text-secondary space-y-0.5">{r.limitations.map((l: string) => <li key={l}>{l}</li>)}</ul></Card>
     </div>
@@ -409,7 +409,7 @@ function Holdout({ eid, reload, canRun }: { eid: string; reload: () => void; can
   return (
     <Card title="Protected holdout (2024 → latest data)" note="The holdout is computed once, with the development choices, and sealed. Looking is logged; any change made after looking is no longer an out-of-sample test.">
       {!h ? (
-        <div className="flex flex-wrap items-center gap-2 text-2xs">
+        <div className="workspace-controls flex flex-wrap items-center gap-2 text-2xs">
           <Lock className="w-3.5 h-3.5 text-amber" />
           <span>Sealed.</span>
           {canRun && <><input value={txt} onChange={(e) => setTxt(e.target.value)} placeholder='type "REVEAL HOLDOUT"' className="bg-surface-2 border border-border px-2 py-1 font-mono text-2xs w-48" />
@@ -477,7 +477,7 @@ function Configs({ ov, res, eid, isAdmin, canRun, reload }: any) {
       <ErrorNote msg={err} />
       <Card title="Export a candidate from the selected experiment" note="Exporting writes a versioned candidate file (config/quant_algo/candidates). It does not change production.">
         {!r || r.stage === 1 ? <div className="text-2xs text-text-tertiary">Select a stage 2–4 experiment under Experiments & results.</div> : (
-          <div className="flex flex-wrap gap-2">{Object.entries(r.strategies).map(([k, s]: any) => (
+          <div className="workspace-controls flex flex-wrap gap-2">{Object.entries(r.strategies).map(([k, s]: any) => (
             <button key={k} disabled={!canRun} onClick={() => exportIt(k)} className="px-2 py-1 text-2xs border border-border hover:border-bloomberg disabled:opacity-40">
               {s.label} <span className={s.survival.survived ? 'text-green' : 'text-red'}>({s.survival.survived ? 'survived' : 'failed validation'})</span> · stage {r.stage}
             </button>))}
@@ -494,7 +494,7 @@ function Configs({ ov, res, eid, isAdmin, canRun, reload }: any) {
                 {approved && <span className="text-green">approved</span>}</div>
               <div className="font-mono text-[10px] text-text-tertiary break-words">{JSON.stringify(x.params)}</div>
               {isAdmin && !approved && (
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="workspace-controls flex flex-wrap items-center gap-2">
                   <input value={f.confirm} onChange={(e) => set(x.file, { confirm: e.target.value })} placeholder={`APPROVE ${x.strategy_id}-v${x.version}`} className="bg-surface-2 border border-border px-2 py-0.5 font-mono text-2xs w-56" />
                   {(!x.survived || x.stage < 4) && <><label className="flex items-center gap-1"><input type="checkbox" checked={f.ack} onChange={(e) => set(x.file, { ack: e.target.checked })} />I accept the warnings</label>
                     <input value={f.reason} onChange={(e) => set(x.file, { reason: e.target.value })} placeholder="reason" className="bg-surface-2 border border-border px-2 py-0.5 text-2xs w-48" /></>}

@@ -19,7 +19,7 @@ export function ActionsView({ onOpen }: { onOpen: (s: string) => void }) {
   const chip = (on: boolean) => cn('px-2 py-0.5 border rounded-sm text-[11px]', on ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary');
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2 text-2xs">
+      <div className="mkt-controls flex flex-wrap items-center gap-2 text-2xs">
         {[1, 3, 7, 14].map((d) => <button key={d} className={chip(days === d)} onClick={() => setDays(d)}>{d === 1 ? 'Today' : `${d} days`}</button>)}
         <span className="text-text-tertiary ml-2">{c.upgrades} upgrades · {c.downgrades} downgrades · {c.initiations} initiations · targets {c.target_raised} up / {c.target_cut} down</span>
       </div>

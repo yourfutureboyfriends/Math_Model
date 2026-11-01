@@ -29,7 +29,7 @@ export function EdgeBoard({ onGo, onOpen }: { onGo: (fn: string, s?: string) => 
       const max = Math.max(1, ...d.signals.map((s: any) => s.score));
       return (
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-1 text-[11px]">
+          <div className="mkt-controls flex flex-wrap items-center gap-1 text-[11px]">
             {kinds.map((k) => <button key={k} onClick={() => setKind(k)} className={cn('px-2 py-0.5 border', kind === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{k}</button>)}
             <span className="ml-auto text-text-tertiary">{d.generated?.replace('T', ' ')} UTC</span>
           </div>
@@ -69,11 +69,11 @@ export function CotView() {
           <div className="space-y-2">
             {groups.map((g) => (
               <Panel key={g} title={g}>
-                <table className="w-full text-[11px] font-mono">
+                <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] font-mono">
                   <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Market</th><th className="text-left font-normal">Who</th><th className="text-right font-normal">Net</th>
                     <th className="text-right font-normal">% of OI</th><th className="font-normal w-40">3-year range</th><th className="text-right font-normal">1W</th><th className="text-right font-normal">4W</th><th className="font-normal">Trend</th></tr></thead>
                   <tbody>{d.markets.filter((m: any) => m.group === g).map((m: any) => (
-                    <tr key={m.code} onClick={() => setSel(m.code)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-3', cur?.code === m.code && 'bg-surface-3')}>
+                    <tr key={m.code} onClick={() => setSel(m.code)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-3', cur?.code === m.code && 'bg-surface-3')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                       <td className="py-0.5 font-sans text-text-primary">{m.market}{m.crowded && <span title={m.crowded === 'long' ? 'Most long (or least short) in 3 years' : 'Most short (or least long) in 3 years'}
                         className={cn('ml-1 text-[9px] px-1 border', m.crowded === 'long' ? 'border-green text-green' : 'border-red text-red')}>3y {m.crowded === 'long' ? 'high' : 'low'}</span>}</td>
                       <td className="font-sans text-text-tertiary">{m.spec_name}</td>
@@ -81,12 +81,12 @@ export function CotView() {
                       <td className="px-2"><RangeDot p={m.pct_3y} /></td>
                       <td className={cn('text-right', tone(m.chg_1w))}>{num(m.chg_1w)}</td><td className={cn('text-right', tone(m.chg_4w))}>{num(m.chg_4w)}</td>
                       <td className="pl-2"><Spark values={m.history.slice(-52).map((h: any) => h.spec)} w={60} h={14} /></td></tr>))}</tbody>
-                </table>
+                </table></div>
               </Panel>))}
             <div className="text-[10px] text-text-tertiary">{d.note} {d.source}. Data as of {d.markets[0]?.date} (released the following Friday).</div>
           </div>
           {cur && <Panel title={`${cur.market} — net positions, 3 years`}>
-            <LineChart rows={cur.history} x="date" height={280} fmt={(v) => Math.round(v).toLocaleString()} lines={[{ key: 'spec', label: cur.spec_name, color: 'rgb(var(--c-bloomberg))' }, { key: 'other', label: cur.other_name, color: 'rgb(var(--c-blue))' }]} />
+            <div className="mkt-chart-surface"><LineChart rows={cur.history} x="date" height={280} fmt={(v) => Math.round(v).toLocaleString()} lines={[{ key: 'spec', label: cur.spec_name, color: 'rgb(var(--c-bloomberg))' }, { key: 'other', label: cur.other_name, color: 'rgb(var(--c-blue))' }]} /></div>
             <div className="grid grid-cols-2 gap-2 text-[11px] mt-2">
               {[[cur.spec_name, cur], [cur.other_name, cur.other]].map(([n, s]: any) => (
                 <div key={n} className="border border-border-subtle p-2"><div className="text-text-tertiary">{n}</div>
@@ -134,13 +134,13 @@ export function NowView() {
       </div>}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         <Panel title="Real activity — Weekly Economic Index (≈ 4-quarter GDP growth) and financial conditions">
-          {n ? <LineChart rows={mergeDates([['wei', n.wei], ['nfci', n.nfci]])} x="date" height={240} fmt={(v) => v.toFixed(2)}
-            lines={[{ key: 'wei', label: 'Weekly Economic Index (%)', color: 'rgb(var(--c-blue))' }, { key: 'nfci', label: 'Financial conditions (NFCI, + = tight)', color: 'rgb(var(--c-amber))' }]} /> : <Loading />}
+          {n ? <div className="mkt-chart-surface"><LineChart rows={mergeDates([['wei', n.wei], ['nfci', n.nfci]])} x="date" height={240} fmt={(v) => v.toFixed(2)}
+            lines={[{ key: 'wei', label: 'Weekly Economic Index (%)', color: 'rgb(var(--c-blue))' }, { key: 'nfci', label: 'Financial conditions (NFCI, + = tight)', color: 'rgb(var(--c-amber))' }]} /></div> : <Loading />}
         </Panel>
         <Panel title="World seaborne trade — million tonnes a day (7-day average)">
-          {trade.data ? <LineChart rows={trade.data.world} x="date" height={240} fmt={(v) => v.toFixed(1)}
+          {trade.data ? <div className="mkt-chart-surface"><LineChart rows={trade.data.world} x="date" height={240} fmt={(v) => v.toFixed(1)}
             lines={[{ key: 'trade_7d', label: 'All cargo', color: 'rgb(var(--c-text-primary))' }, { key: 'container_7d', label: 'Container imports', color: 'rgb(var(--c-blue))' },
-              { key: 'tanker_7d', label: 'Tanker imports', color: 'rgb(var(--c-red))' }, { key: 'dry_bulk_7d', label: 'Dry bulk imports', color: 'rgb(var(--c-amber))' }]} />
+              { key: 'tanker_7d', label: 'Tanker imports', color: 'rgb(var(--c-red))' }, { key: 'dry_bulk_7d', label: 'Dry bulk imports', color: 'rgb(var(--c-amber))' }]} /></div>
             : trade.error ? <ErrorBox msg={trade.error} /> : <Loading label="Loading PortWatch…" />}
         </Panel>
       </div>
@@ -152,14 +152,14 @@ export function NowView() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         <Panel title="Biggest ports — cargo handled, last 4 weeks">
           {ports.error && !ports.data ? <ErrorBox msg={ports.error} /> : !ports.data ? <Loading label="Loading port activity from IMF PortWatch (first build up to 2 min)…" /> : (
-            <table className="w-full text-[11px] font-mono">
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] font-mono">
               <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Port</th><th className="text-right font-normal">k tonnes/day</th><th className="text-right font-normal">y/y</th><th className="text-right font-normal">m/m</th><th className="text-right font-normal">Calls y/y</th><th className="font-normal">90 days</th></tr></thead>
               <tbody>{ports.data.ports.map((p: any) => (
                 <tr key={p.port} className="border-t border-border-subtle"><td className="py-0.5 font-sans text-text-primary">{p.port} <span className="text-text-tertiary">{p.country}</span></td>
                   <td className="text-right">{Math.round(p.tonnes_day / 1000).toLocaleString()}</td><td className={cn('text-right', tone(p.yoy))}>{pct(p.yoy, 0)}</td>
                   <td className={cn('text-right', tone(p.mom))}>{pct(p.mom, 0)}</td><td className={cn('text-right', tone(p.calls_yoy))}>{pct(p.calls_yoy, 0)}</td>
                   <td className="pl-2"><Spark values={p.spark} w={70} h={14} /></td></tr>))}</tbody>
-            </table>)}
+            </table></div>)}
           {ports.data && <div className="text-[10px] text-text-tertiary mt-1">{ports.data.note} {ports.data.source}.</div>}
         </Panel>
         <Panel title={`Trade nowcast by country (IMF TradeNow, ${countries[0]?.month ?? '—'})`}>

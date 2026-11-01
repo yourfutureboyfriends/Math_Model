@@ -63,7 +63,7 @@ export function MarketClock({ region = 'global', compact = false }: { region?: s
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30_000); return () => clearInterval(t); }, []);
   const list = EXCHANGES.filter((e) => region === 'global' || e.region === region);
   return (
-    <table className="w-full text-[11px] leading-[18px]">
+    <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] leading-[18px]">
       {!compact && <thead><tr className="text-text-tertiary"><th className="px-1.5 font-normal text-left">Exchange</th><th className="px-1.5 font-normal text-right">Local</th>
         <th className="px-1.5 font-normal text-left">Status</th><th className="px-1.5 font-normal text-right hidden sm:table-cell">Next</th></tr></thead>}
       <tbody>{list.map((e) => { const s = sessionState(e, now); return (
@@ -74,6 +74,6 @@ export function MarketClock({ region = 'global', compact = false }: { region?: s
             {s.state === 'open' ? 'OPEN' : s.state === 'lunch' ? 'LUNCH' : 'CLOSED'}</span></td>
           <td className="px-1.5 text-right text-text-tertiary whitespace-nowrap hidden sm:table-cell">{s.next}</td>
         </tr>); })}</tbody>
-    </table>
+    </table></div>
   );
 }

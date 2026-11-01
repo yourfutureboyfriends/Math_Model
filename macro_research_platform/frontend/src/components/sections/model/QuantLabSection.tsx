@@ -58,7 +58,7 @@ export function QuantLabSection() {
           <span className="text-2xs text-text-tertiary">write it in Python · test net of every cost · Monte Carlo · deploy</span>
         </div>
       </div>
-      <div className="flex flex-wrap border border-border mb-3 w-fit" role="tablist" aria-label="Quant Lab">
+      <div className="workspace-controls flex flex-wrap border border-border mb-3 w-fit" role="tablist" aria-label="Quant Lab" data-workspace-tabs>
         {TABS.map(([k, l, Icon]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
             className={cn('inline-flex items-center gap-1 px-3 py-1 text-2xs', tab === k ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary')}>

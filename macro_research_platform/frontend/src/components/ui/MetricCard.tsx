@@ -52,7 +52,7 @@ export function MetricCard({
   return (
     <div
       className={cn(
-        'relative bg-surface-1 p-3 flex flex-col min-h-20',
+        'workspace-metric relative bg-surface-1 p-3 flex flex-col min-h-20',
         stale ? 'border border-dashed border-amber/50 bg-amber-dim' : 'border border-border',
         className,
       )}

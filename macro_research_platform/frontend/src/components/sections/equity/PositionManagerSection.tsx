@@ -275,7 +275,7 @@ export function PositionManagerSection() {
         <div className="p-3 bg-surface-1 border border-border">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-text-primary">The book</span>
-            <div className="flex border border-border" role="tablist" aria-label="Positions source">
+            <div className="flex border border-border" role="tablist" aria-label="Positions source" data-workspace-tabs>
               {([['fund', 'Fund book'], ['futu', 'Futu account']] as const).map(([k, label]) => (
                 <button key={k} type="button" role="tab" aria-selected={src === k} onClick={() => { setSrc(k); setOpen(null); }}
                   className={cn('px-2 py-0.5 text-[10.5px]', src === k ? 'bg-bloomberg text-bg' : 'text-text-secondary')}>{label}</button>))}
@@ -288,14 +288,14 @@ export function PositionManagerSection() {
           {!bookBusy && !bookErr && rows.length === 0 && <div className="text-[11px] text-text-tertiary">{src === 'futu' ? 'No positions in the Futu account.' : "No positions in this fund's book yet — check any position below."}</div>}
           {rows.length > 0 && <SummaryCards rows={rows} summary={book?.summary} />}
           {rows.length > 0 && (
-            <table className="w-full text-[11px]">
+            <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-[11px]">
               <thead><tr className="text-[10px] text-text-tertiary text-left"><th className="font-normal pb-1">Stock</th><th className="font-normal">Action</th>
                 <th className="font-normal text-right">Price</th><th className="font-normal text-right">Stop</th><th className="font-normal text-right">Distance</th>
                 <th className="font-normal text-right">R</th><th className="font-normal pl-3">Why</th></tr></thead>
               <tbody>
                 {rows.map((r) => (
                   <Fragment key={r.symbol}>
-                    <tr onClick={() => setOpen(open === r.symbol ? null : r.symbol)} className="border-t border-border-subtle cursor-pointer">
+                    <tr onClick={() => setOpen(open === r.symbol ? null : r.symbol)} className="border-t border-border-subtle cursor-pointer" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                       <td className="py-1 font-mono text-text-primary whitespace-nowrap" data-symbol={r.symbol}>{r.symbol}
                         <span className="ml-1.5 inline-flex gap-1 align-middle">
                           {(src === 'futu' ? ['DES', 'GP', 'FUTU'] : ['DES', 'GP']).map((c) => (
@@ -313,15 +313,15 @@ export function PositionManagerSection() {
                   </Fragment>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
 
         {/* Check a position */}
         <div className="p-3 bg-surface-1 border border-border">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
+          <div className="workspace-controls flex flex-wrap items-center gap-2 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-text-primary">Check an entry or a position</span>
-            <div className="flex border border-border" role="tablist" aria-label="Mode">
+            <div className="flex border border-border" role="tablist" aria-label="Mode" data-workspace-tabs>
               {([['plan', "I'm planning to buy"], ['held', 'I already hold it']] as const).map(([k, label]) => (
                 <button key={k} type="button" role="tab" aria-selected={mode === k} onClick={() => { setMode(k); setCheck(null); setEntry(null); }}
                   className={cn('px-2 py-0.5 text-[10.5px]', mode === k ? 'bg-bloomberg text-bg' : 'text-text-secondary')}>{label}</button>

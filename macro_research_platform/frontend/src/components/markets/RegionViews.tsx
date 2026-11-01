@@ -24,7 +24,7 @@ const MARKET_NAME: Record<string, string> = { us: 'US', ca: 'Canada', br: 'Brazi
 export function RegionBar({ onPick }: { onPick?: (r: Region) => void }) {
   const r = useRegion();
   return (
-    <div className="seg flex-wrap items-center" role="tablist" aria-label="Region">
+    <div className="mkt-controls seg flex-wrap items-center" role="tablist" aria-label="Region">
       <span className="px-2 self-center text-[10px] uppercase tracking-[0.08em] font-semibold text-text-tertiary">Region</span>
       {REGIONS.map((x) => (
         <button key={x.id} role="tab" aria-selected={r === x.id} onClick={() => { setRegion(x.id); onPick?.(x.id); }}
@@ -67,7 +67,7 @@ export function RegionMonitor({ onOpen, onGo }: { onOpen: (s: string) => void; o
               <th className="text-right font-normal">10Y</th><th className="text-right font-normal">Policy</th><th className="text-right font-normal">CPI</th>
               <th className="text-right font-normal">GDP</th><th className="text-right font-normal">Debt/GDP</th><th className="text-right font-normal">Rating</th><th className="text-right font-normal">GDP $bn</th></tr></thead>
             <tbody>{rows.map((c) => (
-              <tr key={c.iso2} className="border-t border-border-subtle cursor-pointer" onClick={() => onGo('CTRY', c.iso2)} title={`Open ${c.name}`}>
+              <tr key={c.iso2} className="border-t border-border-subtle cursor-pointer" onClick={() => onGo('CTRY', c.iso2)} title={`Open ${c.name}`} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                 <td className="py-0.5 font-sans text-text-primary whitespace-nowrap"><span className="text-text-tertiary mr-1">{c.iso2}</span>{c.name}</td>
                 <td className="text-text-secondary font-sans whitespace-nowrap">{c.index?.label ?? (c.etf ? `${c.etf.etf} (ETF, $)` : '')}</td>
                 <td className="text-right text-text-primary">{c.index ? fmtPrice(c.index.price) : c.etf ? fmtPrice(c.etf.price) : ''}</td>
@@ -88,10 +88,10 @@ export function RegionMonitor({ onOpen, onGo }: { onOpen: (s: string) => void; o
         <Panel title="Most active" right={<span className="flex gap-1">{REGION_MARKETS[region].map((m) => (
           <button key={m} onClick={() => setMkt(m)} className={cn('px-1 text-[10px]', market === m ? 'text-bloomberg' : 'text-text-tertiary hover:text-text-primary')}>{m.toUpperCase()}</button>))}</span>}>
           {movers.loading && !movers.data ? <Loading /> : (
-            <table className="w-full text-[11px] font-mono"><tbody>{(movers.data?.rows ?? []).map((r: any) => (
-              <tr key={r.symbol} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(r.symbol)} title={r.name}>
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] font-mono"><tbody>{(movers.data?.rows ?? []).map((r: any) => (
+              <tr key={r.symbol} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(r.symbol)} title={r.name} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                 <td className="py-0.5 text-text-primary">{toTerminal(r.symbol)}</td><td className="text-right">{fmtPrice(r.price)}</td>
-                <td className="text-right"><Chg v={r.change_pct} /></td><td className="text-right text-text-tertiary">{fmtBig(r.volume)}</td></tr>))}</tbody></table>)}
+                <td className="text-right"><Chg v={r.change_pct} /></td><td className="text-right text-text-tertiary">{fmtBig(r.volume)}</td></tr>))}</tbody></table></div>)}
           <div className="text-[10px] text-text-tertiary mt-1">{MARKET_NAME[market]} · companies over ~$2bn</div>
         </Panel>
         <Panel title="Headlines" right={<button onClick={() => onGo('N')} className="text-[10px] text-text-tertiary hover:text-bloomberg">N &lt;GO&gt;</button>}>
@@ -105,17 +105,17 @@ export function RegionMonitor({ onOpen, onGo }: { onOpen: (s: string) => void; o
           <Panel title="Market hours"><MarketClock region={region} /></Panel>
           <Panel title="Economic releases" right={<button onClick={() => onGo('ECO')} className="text-[10px] text-text-tertiary hover:text-bloomberg">ECO &lt;GO&gt;</button>}>
             {ccys.length === 0 && region !== 'global' ? <p className="text-[11px] text-text-tertiary">The free consensus calendar covers the US, euro area, UK, Japan, China, Canada, Australia, Switzerland and New Zealand.</p> : (
-              <table className="w-full text-[11px]"><tbody>{(eco.data?.events ?? []).slice(-10).map((e: any, i: number) => (
+              <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px]"><tbody>{(eco.data?.events ?? []).slice(-10).map((e: any, i: number) => (
                 <tr key={i} className="border-t border-border-subtle"><td className="py-0.5 font-mono text-text-tertiary">{evDate(e.date)}</td><td className="text-text-secondary">{e.country}</td>
                   <td className="text-text-primary truncate max-w-[12rem]">{e.title}</td><td className="text-right font-mono" title={e.actual != null ? 'Actual' : 'Consensus forecast'}>
-                    {e.actual != null ? <span className="text-text-primary">{e.actual}{e.unit ?? ''}</span> : e.forecast ? <span className="text-text-tertiary">f {e.forecast}</span> : ''}</td></tr>))}</tbody></table>)}
+                    {e.actual != null ? <span className="text-text-primary">{e.actual}{e.unit ?? ''}</span> : e.forecast ? <span className="text-text-tertiary">f {e.forecast}</span> : ''}</td></tr>))}</tbody></table></div>)}
           </Panel>
           <Panel title="Earnings this week" right={<button onClick={() => onGo('EVTS')} className="text-[10px] text-text-tertiary hover:text-bloomberg">EVTS &lt;GO&gt;</button>}>
             {earnings.length === 0 ? <p className="text-[11px] text-text-tertiary">{evts.loading ? 'Loading…' : 'No large-cap reports in this region this week (the free calendar is US-heavy).'}</p> : (
-              <table className="w-full text-[11px]"><tbody>{earnings.map((r: any) => (
-                <tr key={r.symbol + r.datetime} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(r.home_symbol ?? r.symbol)}>
+              <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px]"><tbody>{earnings.map((r: any) => (
+                <tr key={r.symbol + r.datetime} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(r.home_symbol ?? r.symbol)} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                   <td className="py-0.5 font-mono text-text-tertiary">{String(r.datetime).slice(5, 10)}</td><td className="font-mono text-bloomberg">{r.home_symbol ?? r.symbol}</td>
-                  <td className="text-text-secondary truncate max-w-[10rem]">{r.company}</td><td className="text-right font-mono">{r.eps_estimate ?? ''}</td></tr>))}</tbody></table>)}
+                  <td className="text-text-secondary truncate max-w-[10rem]">{r.company}</td><td className="text-right font-mono">{r.eps_estimate ?? ''}</td></tr>))}</tbody></table></div>)}
           </Panel>
         </div>
       </div>
@@ -146,7 +146,7 @@ export function CountryView({ iso, onOpen, onGo }: { iso?: string; onOpen: (s: s
     <div className="border border-border bg-surface-1 px-2.5 py-1.5"><div className="text-[10px] uppercase tracking-wide text-text-tertiary">{k}</div><div className="font-mono text-text-primary">{v}</div>{sub && <div className="text-[10px] text-text-tertiary">{sub}</div>}</div>);
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-baseline gap-3">
+      <div className="mkt-controls flex flex-wrap items-baseline gap-3">
         <span className="text-xl font-semibold text-text-primary">{c.name}</span>
         <span className="text-text-tertiary text-xs">{c.iso2} · {c.region_name} · {c.currency}{c.rating ? ` · ${c.rating}` : ''}</span>
         <span className="ml-auto flex flex-wrap gap-1 text-[11px]">{peers.map((p) => (
@@ -175,10 +175,10 @@ export function CountryView({ iso, onOpen, onGo }: { iso?: string; onOpen: (s: s
         <Panel title={c.market ? 'Largest listed companies' : 'Equity market'}>
           {!c.market ? <p className="text-[11px] text-text-tertiary">Stock-level screening covers 22 major markets; use the country ETF or index for {c.name}.</p>
             : top.loading && !top.data ? <Loading /> : (
-            <table className="w-full text-[11px] font-mono"><tbody>{(top.data?.rows ?? []).map((r: any) => (
-              <tr key={r.symbol} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(r.symbol)}>
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] font-mono"><tbody>{(top.data?.rows ?? []).map((r: any) => (
+              <tr key={r.symbol} className="border-t border-border-subtle cursor-pointer" onClick={() => onOpen(r.symbol)} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                 <td className="py-0.5 text-text-primary">{toTerminal(r.symbol)}</td><td className="font-sans text-text-secondary truncate max-w-[11rem]">{r.name}</td>
-                <td className="text-right">{fmtPrice(r.price)}</td><td className="text-right"><Chg v={r.change_pct} /></td><td className="text-right text-text-tertiary">{fmtBig(r.market_cap)}</td></tr>))}</tbody></table>)}
+                <td className="text-right">{fmtPrice(r.price)}</td><td className="text-right"><Chg v={r.change_pct} /></td><td className="text-right text-text-tertiary">{fmtBig(r.market_cap)}</td></tr>))}</tbody></table></div>)}
         </Panel>
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
@@ -191,11 +191,11 @@ export function CountryView({ iso, onOpen, onGo }: { iso?: string; onOpen: (s: s
         </Panel>
         <Panel title={`Economic releases — ${c.currency}`}>
           {(eco.data?.events ?? []).length === 0 ? <p className="text-[11px] text-text-tertiary">{eco.loading ? 'Loading…' : 'No releases for this currency in the free consensus calendar this week.'}</p> : (
-            <table className="w-full text-[11px]"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Date (local)</th><th className="text-left font-normal">Release</th><th className="text-right font-normal">Actual</th><th className="text-right font-normal">Cons.</th><th className="text-right font-normal">Prev.</th></tr></thead>
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px]"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Date (local)</th><th className="text-left font-normal">Release</th><th className="text-right font-normal">Actual</th><th className="text-right font-normal">Cons.</th><th className="text-right font-normal">Prev.</th></tr></thead>
               <tbody>{eco.data.events.map((e: any, i: number) => (
                 <tr key={i} className="border-t border-border-subtle"><td className="py-0.5 font-mono text-text-tertiary">{evDate(e.date, true)}</td>
                   <td className="text-text-primary">{e.title}</td><td className="text-right font-mono">{e.actual ?? ''}</td><td className="text-right font-mono text-text-secondary">{e.forecast ?? ''}</td>
-                  <td className="text-right font-mono text-text-tertiary">{e.previous ?? ''}</td></tr>))}</tbody></table>)}
+                  <td className="text-right font-mono text-text-tertiary">{e.previous ?? ''}</td></tr>))}</tbody></table></div>)}
         </Panel>
       </div>
     </div>

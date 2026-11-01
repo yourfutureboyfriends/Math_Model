@@ -58,14 +58,14 @@ export function Capacity({ c }: { c: any }) {
   if (!c?.levels?.length) return null;
   return (
     <Card title="Capacity" sub="the same decisions at larger account sizes — impact, volume limits and lots grow with size">
-      <table className="w-full font-mono">
+      <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full font-mono">
         <thead className="text-text-tertiary"><tr>{['Capital', 'CAGR', 'Sharpe', 'Trading costs /yr', 'of which impact', 'Volume-capped days', 'Lot shortfall'].map((h) => <th key={h} className="text-right first:text-left font-normal px-1.5">{h}</th>)}</tr></thead>
         <tbody>{c.levels.map((x: any) => (
           <tr key={x.capital} className="border-t border-border-subtle">
             <td className="px-1.5">{usd(x.capital)}</td><td className="text-right px-1.5">{spct(x.cagr)}</td><td className="text-right px-1.5">{num(x.sharpe)}</td>
             <td className="text-right px-1.5">{pct(x.trading_costs, 2)}</td><td className="text-right px-1.5">{pct(x.impact, 2)}</td>
             <td className="text-right px-1.5">{x.capped_days}</td><td className="text-right px-1.5">{pct(x.lot_residual, 3)}</td></tr>))}</tbody>
-      </table>
+      </table></div>
       <div className="text-text-tertiary">{c.capacity ? `Capacity ≈ ${usd(c.capacity)}${c.capacity === c.levels[c.levels.length - 1].capital ? ' or more' : ''}` : 'Below the smallest tested size'} (account currency). {c.note}</div>
     </Card>
   );
@@ -92,7 +92,7 @@ export function Attribution({ a }: { a: any }) {
       {a.brinson && (
         <div>
           <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Brinson–Fachler vs the equal-weight universe, by {a.brinson.by} (per year, before costs)</div>
-          <table className="w-full font-mono">
+          <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full font-mono">
             <thead className="text-text-tertiary"><tr>{['', 'Allocation', 'Selection', 'Interaction', 'Total'].map((h) => <th key={h} className="text-right first:text-left font-normal px-1.5">{h}</th>)}</tr></thead>
             <tbody>
               {a.brinson.rows.map((r: any) => (
@@ -104,7 +104,7 @@ export function Attribution({ a }: { a: any }) {
                 <td className="text-right px-1.5">{spct(a.brinson.total.interaction, 2)}</td>
                 <td className="text-right px-1.5">{spct(a.brinson.total.allocation + a.brinson.total.selection + a.brinson.total.interaction + a.brinson.total.cash, 2)}</td></tr>
             </tbody>
-          </table>
+          </table></div>
           <div className="text-text-tertiary mt-1">{a.brinson.note}</div>
         </div>)}
       <div className="text-text-tertiary">{a.note}</div>
@@ -128,12 +128,12 @@ export function Risk({ r }: { r: any }) {
         <BarList title="Risk by sector" diverging fmt={(v) => pct(v, 1)} data={bars(r.risk_by?.sector)} />
         <div>
           <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Today's book through past crises</div>
-          <table className="w-full font-mono"><tbody>{(r.stress ?? []).map((s: any) => (
+          <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full font-mono"><tbody>{(r.stress ?? []).map((s: any) => (
             <tr key={s.scenario} className="border-t border-border-subtle">
               <td className="font-sans pr-2">{s.scenario}</td>
               <td className={cn('text-right', s.book < 0 && 'text-red')}>{spct(s.book)}</td>
               <td className="text-right text-text-tertiary">{s.benchmark != null ? `bench ${spct(s.benchmark)}` : ''}</td>
-              <td className="text-right text-text-tertiary" title="share of the book with its own history in the episode">{pct(s.coverage, 0)}</td></tr>))}</tbody></table>
+              <td className="text-right text-text-tertiary" title="share of the book with its own history in the episode">{pct(s.coverage, 0)}</td></tr>))}</tbody></table></div>
         </div>
       </div>
       {r.factor_model && !r.factor_model.error && (
@@ -157,18 +157,18 @@ export function Signal({ s }: { s: any }) {
   const q = s.quantiles;
   return (
     <Card title="Signal research (information coefficient)" sub={`your signal() scores · ${num(s.coverage, 0)} names scored a day on average`}>
-      <table className="w-full font-mono">
+      <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full font-mono">
         <thead className="text-text-tertiary"><tr>{['Horizon', 'Mean IC', 'IC IR (annual)', 't-stat', 'IC > 0', 'Days'].map((h) => <th key={h} className="text-right first:text-left font-normal px-1.5">{h}</th>)}</tr></thead>
         <tbody>{(s.ic ?? []).map((x: any) => (
           <tr key={x.horizon} className="border-t border-border-subtle">
             <td className="px-1.5">{x.horizon}d</td><td className={cn('text-right px-1.5', x.mean_ic > 0 ? 'text-green' : 'text-red')}>{num(x.mean_ic, 4)}</td>
             <td className="text-right px-1.5">{num(x.ic_ir)}</td><td className={cn('text-right px-1.5', Math.abs(x.t_stat ?? 0) >= 2 && 'font-semibold')}>{num(x.t_stat)}</td>
             <td className="text-right px-1.5">{pct(x.positive, 0)}</td><td className="text-right px-1.5">{x.days}</td></tr>))}</tbody>
-      </table>
+      </table></div>
       {(s.ic_sector_neutral ?? []).length > 0 && (
         <div>
           <div className="text-text-tertiary mb-0.5">Sector-neutral IC — stock selection within {s.sectors} sectors (a signal that only picks sectors scores ~0 here)</div>
-          <table className="w-full font-mono">
+          <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full font-mono">
             <tbody>{s.ic_sector_neutral.map((x: any) => {
               const raw = (s.ic ?? []).find((r: any) => r.horizon === x.horizon);
               return (
@@ -179,7 +179,7 @@ export function Signal({ s }: { s: any }) {
                   <td className={cn('text-right px-1.5', Math.abs(x.t_stat ?? 0) >= 2 && 'font-semibold')}>t {num(x.t_stat)}</td>
                   <td className="text-right px-1.5">{pct(x.positive, 0)} &gt; 0</td></tr>);
             })}</tbody>
-          </table>
+          </table></div>
         </div>)}
       {q && (
         <BarList title={`Quintile excess return, ${q.horizon}-day horizon (annualised, before costs) — Q1 lowest score`} diverging fmt={(v) => spct(v, 1)}
@@ -254,7 +254,7 @@ export function Charts({ c }: { c: any }) {
         const rows = Array.from(map.values()).sort((a, b) => (a.date < b.date ? -1 : 1));
         return (
           <Card key={name} title={name}>
-            <LineChart rows={rows} x="date" height={200} fmt={(v) => num(v, 3)} lines={keys.map((k, i) => ({ key: `s${i}`, label: k, color: CATEGORICAL[i % CATEGORICAL.length] }))} />
+            <div className="workspace-chart"><LineChart rows={rows} x="date" height={200} fmt={(v) => num(v, 3)} lines={keys.map((k, i) => ({ key: `s${i}`, label: k, color: CATEGORICAL[i % CATEGORICAL.length] }))} /></div>
           </Card>);
       })}
     </div>
@@ -281,14 +281,14 @@ export function Heatmap({ opt }: { opt: any }) {
     const at = (a: any, b: any) => grid.find((g) => g.params[keys[0]] === a && g.params[keys[1]] === b);
     return (
       <Card title="Parameter sensitivity" sub={`Sharpe of each ${keys[0]} × ${keys[1]} combination over the out-of-sample years · outlined = best in hindsight`}>
-        <table className="font-mono">
+        <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="font-mono">
           <thead><tr><th className="px-2 text-left font-normal text-text-tertiary">{keys[1]} ↓ / {keys[0]} →</th>{xs.map((x) => <th key={String(x)} className="px-2 font-normal text-text-tertiary">{String(x)}</th>)}</tr></thead>
           <tbody>{ys.map((y) => (
             <tr key={String(y)}><td className="px-2 text-text-tertiary">{String(y)}</td>
               {xs.map((x) => { const g = at(x, y); const v = g ? metric(g) : null; return (
                 <td key={String(x)} className={cn('px-3 py-1 text-center', g && JSON.stringify(g.params) === chosen && 'outline outline-2 outline-bloomberg')} style={{ background: color(v) }}
                   title={g ? `CAGR ${spct(g.cagr)} · max DD ${pct(g.max_drawdown)}` : ''}>{num(v)}</td>); })}</tr>))}</tbody>
-        </table>
+        </table></div>
         <div className="text-text-tertiary">A good parameter sits in a broad region of similar results; an isolated bright cell is usually overfit.</div>
       </Card>);
   }

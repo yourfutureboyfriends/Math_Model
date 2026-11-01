@@ -62,44 +62,44 @@ export function TechView({ symbol }: { symbol: string }) {
         <Tile label="Volume" value={`${d.volume.rel_volume?.toFixed(2) ?? '—'}×`} sub={`vs 20-day average · OBV ${d.volume.obv_trend_20d}`} />
       </div>
       <Panel title={`${d.name ?? symbol} — price, 50 / 200-day averages and Bollinger bands (one year)`}>
-        <LineChart rows={d.chart} x="date" height={300} fmt={(v) => fmtPrice(v)}
+        <div className="mkt-chart-surface"><LineChart rows={d.chart} x="date" height={300} fmt={(v) => fmtPrice(v)}
           lines={[{ key: 'close', label: 'Close', color: 'rgb(var(--c-text-primary))' }, { key: 'sma50', label: '50-day', color: 'rgb(var(--c-blue))' },
             { key: 'sma200', label: '200-day', color: 'rgb(var(--c-amber))' }, { key: 'bb_up', label: 'Bollinger upper', color: 'rgb(var(--c-text-tertiary) / 0.6)' },
             { key: 'bb_lo', label: 'Bollinger lower', color: 'rgb(var(--c-text-tertiary) / 0.6)' }]}
-          refs={[L.swings.find((x: any) => x.kind === 'support'), L.swings.find((x: any) => x.kind === 'resistance')].filter(Boolean).map((s: any) => ({ value: s.level, label: `${s.kind} ${fmtPrice(s.level)}`, color: s.kind === 'support' ? 'rgb(var(--c-green) / 0.7)' : 'rgb(var(--c-red) / 0.7)' }))} />
+          refs={[L.swings.find((x: any) => x.kind === 'support'), L.swings.find((x: any) => x.kind === 'resistance')].filter(Boolean).map((s: any) => ({ value: s.level, label: `${s.kind} ${fmtPrice(s.level)}`, color: s.kind === 'support' ? 'rgb(var(--c-green) / 0.7)' : 'rgb(var(--c-red) / 0.7)' }))} /></div>
       </Panel>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-        <Panel title="RSI (14)"><LineChart rows={d.chart} x="date" height={170} controls={false} fmt={(v) => v.toFixed(1)}
+        <Panel title="RSI (14)"><div className="mkt-chart-surface"><LineChart rows={d.chart} x="date" height={170} controls={false} fmt={(v) => v.toFixed(1)}
           refs={[{ value: 70, label: 'overbought 70', color: 'rgb(var(--c-red) / 0.6)' }, { value: 30, label: 'oversold 30', color: 'rgb(var(--c-green) / 0.6)' }]}
-          lines={[{ key: 'rsi', label: 'RSI', color: 'rgb(168 85 247)' }]} /></Panel>
-        <Panel title="MACD (12, 26, 9)"><LineChart rows={d.chart} x="date" height={170} controls={false} fmt={(v) => v.toFixed(2)} baseline={0}
-          lines={[{ key: 'macd', label: 'MACD', color: 'rgb(var(--c-blue))' }, { key: 'signal', label: 'Signal', color: 'rgb(var(--c-amber))' }, { key: 'hist', label: 'Histogram', color: 'rgb(var(--c-text-tertiary))' }]} /></Panel>
+          lines={[{ key: 'rsi', label: 'RSI', color: 'rgb(168 85 247)' }]} /></div></Panel>
+        <Panel title="MACD (12, 26, 9)"><div className="mkt-chart-surface"><LineChart rows={d.chart} x="date" height={170} controls={false} fmt={(v) => v.toFixed(2)} baseline={0}
+          lines={[{ key: 'macd', label: 'MACD', color: 'rgb(var(--c-blue))' }, { key: 'signal', label: 'Signal', color: 'rgb(var(--c-amber))' }, { key: 'hist', label: 'Histogram', color: 'rgb(var(--c-text-tertiary))' }]} /></div></Panel>
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
         <Panel title="Oscillators">
-          <table className="w-full text-2xs"><tbody>{d.oscillators.map((o: any) => (
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs"><tbody>{d.oscillators.map((o: any) => (
             <tr key={o.name} className="border-t border-border-subtle first:border-0" title={o.detail}><td className="py-1 text-text-secondary">{o.name}</td>
-              <td className="text-right font-mono">{o.value?.toFixed(1) ?? '—'}</td><td className={cn('text-right w-16 capitalize font-semibold', SIG_CLS[o.signal])}>{o.signal}</td></tr>))}</tbody></table>
+              <td className="text-right font-mono">{o.value?.toFixed(1) ?? '—'}</td><td className={cn('text-right w-16 capitalize font-semibold', SIG_CLS[o.signal])}>{o.signal}</td></tr>))}</tbody></table></div>
         </Panel>
         <Panel title="Moving averages">
-          <table className="w-full text-2xs"><tbody>{d.moving_averages.map((o: any) => (
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs"><tbody>{d.moving_averages.map((o: any) => (
             <tr key={o.name} className="border-t border-border-subtle first:border-0"><td className="py-1 text-text-secondary">{o.name}</td>
               <td className="text-right font-mono">{f(o.value)}</td><td className={cn('text-right font-mono w-16', tone(o.distance))}>{sp(o.distance)}</td>
-              <td className={cn('text-right w-14 capitalize font-semibold', SIG_CLS[o.signal])}>{o.signal}</td></tr>))}</tbody></table>
+              <td className={cn('text-right w-14 capitalize font-semibold', SIG_CLS[o.signal])}>{o.signal}</td></tr>))}</tbody></table></div>
         </Panel>
         <Panel title="Support & resistance">
-          <table className="w-full text-2xs"><tbody>
+          <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs"><tbody>
             {[...L.swings].sort((a: any, b: any) => b.level - a.level).map((s: any) => (
               <tr key={`${s.kind}${s.level}`} className="border-t border-border-subtle first:border-0"><td className={cn('py-1 capitalize', s.kind === 'support' ? 'text-green' : 'text-red')}>{s.kind}</td>
                 <td className="text-right font-mono">{f(s.level)}</td><td className="text-right text-text-tertiary">{s.touches} touch{s.touches > 1 ? 'es' : ''}</td>
                 <td className="text-right font-mono">{sp(s.level / d.price - 1)}</td></tr>))}
             <tr className="border-t border-border"><td className="py-1 text-text-tertiary" colSpan={4}>Floor pivots: {['S2', 'S1', 'P', 'R1', 'R2'].map((k) => `${k} ${f(L.pivots[k])}`).join(' · ')}</td></tr>
-          </tbody></table>
+          </tbody></table></div>
           <div className="text-[10px] text-text-tertiary mt-1">Swing highs / lows of the last year, merged within half an ATR; more touches = stronger level.</div>
         </Panel>
       </div>
       <Panel title={`Do these signals work on ${symbol}? — what followed each one over ${d.study_years} years`}>
-        <table className="w-full text-2xs font-mono tabular-nums">
+        <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono tabular-nums">
           <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Signal</th><th className="text-right font-normal">Times</th><th className="text-right font-normal">Last</th>
             <th className="text-right font-normal">Avg 20 days</th><th className="text-right font-normal">Up after 20d</th><th className="text-right font-normal">Avg 60 days</th><th className="text-right font-normal">Up after 60d</th><th className="text-left font-normal pl-3">vs a typical day</th></tr></thead>
           <tbody>{d.study.map((s: any) => {
@@ -111,7 +111,7 @@ export function TechView({ symbol }: { symbol: string }) {
                 <td className={cn('pl-3 font-sans', s.count < 8 ? 'text-text-tertiary' : edge == null ? '' : edge > 0.01 ? 'text-green' : edge < -0.01 ? 'text-red' : 'text-text-secondary')}>
                   {s.count < 8 ? 'too few cases to judge' : edge == null ? '—' : `${edge >= 0 ? '+' : ''}${(edge * 100).toFixed(1)} pts over 20 days`}</td></tr>);
           })}</tbody>
-        </table>
+        </table></div>
         <div className="text-[10px] text-text-tertiary mt-1">A typical 20-day return here was {sp(d.study[0]?.base_20d)} (up {pc(d.study[0]?.base_hit_20d, 0)} of the time). Repeat signals within 10 days count once. {d.note}</div>
       </Panel>
       <div className="text-[10px] text-text-tertiary">Source: {d.source}; data to {d.date}.</div>
@@ -132,7 +132,7 @@ export function SprdView({ seed }: { seed?: string }) {
   const PAIRS = [['KO', 'PEP'], ['XOM', 'CVX'], ['GLD', 'SLV'], ['V', 'MA'], ['HD', 'LOW'], ['SPY', 'QQQ'], ['EWA', 'EWC'], ['BHP', 'RIO']];
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-1 text-[11px]">
+      <div className="mkt-controls flex flex-wrap items-center gap-1 text-[11px]">
         <input value={ia} onChange={(e) => setIa(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && go()} className="w-24 bg-surface-1 border border-border px-2 py-0.5 font-mono" />
         <span className="text-text-tertiary">vs</span>
         <input value={ib} onChange={(e) => setIb(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && go()} className="w-24 bg-surface-1 border border-border px-2 py-0.5 font-mono" />
@@ -155,13 +155,13 @@ export function SprdView({ seed }: { seed?: string }) {
           <Tile label={`${d.b} return`} value={sp(d.return_b, 0)} cls={tone(d.return_b)} sub="over the window" />
         </div>
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-          <Panel title="Both rebased to 100"><LineChart rows={d.rows} x="date" height={230} fmt={(v) => v.toFixed(1)}
-            lines={[{ key: 'a', label: d.a, color: 'rgb(var(--c-blue))' }, { key: 'b', label: d.b, color: 'rgb(var(--c-amber))' }]} /></Panel>
-          <Panel title="Spread z-score (60-day, out of sample)"><LineChart rows={d.rows} x="date" height={230} fmt={(v) => v.toFixed(2)} baseline={0}
+          <Panel title="Both rebased to 100"><div className="mkt-chart-surface"><LineChart rows={d.rows} x="date" height={230} fmt={(v) => v.toFixed(1)}
+            lines={[{ key: 'a', label: d.a, color: 'rgb(var(--c-blue))' }, { key: 'b', label: d.b, color: 'rgb(var(--c-amber))' }]} /></div></Panel>
+          <Panel title="Spread z-score (60-day, out of sample)"><div className="mkt-chart-surface"><LineChart rows={d.rows} x="date" height={230} fmt={(v) => v.toFixed(2)} baseline={0}
             refs={[{ value: entry, label: `+${entry}`, color: 'rgb(var(--c-red) / 0.6)' }, { value: -entry, label: `−${entry}`, color: 'rgb(var(--c-green) / 0.6)' }]}
-            lines={[{ key: 'z', label: 'z-score', color: 'rgb(168 85 247)' }]} /></Panel>
-          <Panel title={`Price ratio ${d.a} ÷ ${d.b}`}><LineChart rows={d.rows} x="date" height={200} fmt={(v) => v.toFixed(4)} lines={[{ key: 'ratio', label: 'Ratio', color: 'rgb(var(--c-text-primary))' }]} /></Panel>
-          <Panel title="Mean-reversion backtest — equity (per $1 gross)"><LineChart rows={d.rows} x="date" height={200} fmt={(v) => v.toFixed(1)} baseline={100} lines={[{ key: 'equity', label: 'Strategy', color: 'rgb(var(--c-green))' }]} /></Panel>
+            lines={[{ key: 'z', label: 'z-score', color: 'rgb(168 85 247)' }]} /></div></Panel>
+          <Panel title={`Price ratio ${d.a} ÷ ${d.b}`}><div className="mkt-chart-surface"><LineChart rows={d.rows} x="date" height={200} fmt={(v) => v.toFixed(4)} lines={[{ key: 'ratio', label: 'Ratio', color: 'rgb(var(--c-text-primary))' }]} /></div></Panel>
+          <Panel title="Mean-reversion backtest — equity (per $1 gross)"><div className="mkt-chart-surface"><LineChart rows={d.rows} x="date" height={200} fmt={(v) => v.toFixed(1)} baseline={100} lines={[{ key: 'equity', label: 'Strategy', color: 'rgb(var(--c-green))' }]} /></div></Panel>
         </div>
         <Panel title="Backtest">
           <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-2">
@@ -170,10 +170,10 @@ export function SprdView({ seed }: { seed?: string }) {
             <Tile label="Volatility" value={pc(d.backtest.vol)} /><Tile label="Max drawdown" value={pc(d.backtest.max_drawdown)} cls="text-red" />
           </div>
           {d.backtest.open && <div className="text-2xs text-amber mb-1">Open position: {d.backtest.open.side} since {d.backtest.open.open} (entered at z {d.backtest.open.z.toFixed(2)}), {sp(d.backtest.open.ret)} so far.</div>}
-          {d.backtest.recent.length > 0 && <table className="w-full text-2xs font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Opened</th><th className="text-left font-normal">Closed</th><th className="text-left font-normal">Side</th><th className="text-right font-normal">Entry z</th><th className="text-left font-normal pl-3">Exit</th><th className="text-right font-normal">Return</th></tr></thead>
+          {d.backtest.recent.length > 0 && <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Opened</th><th className="text-left font-normal">Closed</th><th className="text-left font-normal">Side</th><th className="text-right font-normal">Entry z</th><th className="text-left font-normal pl-3">Exit</th><th className="text-right font-normal">Return</th></tr></thead>
             <tbody>{d.backtest.recent.map((t: any) => (
               <tr key={t.open} className="border-t border-border-subtle"><td className="py-0.5">{t.open}</td><td>{t.close}</td><td className="font-sans text-text-secondary">{t.side}</td>
-                <td className="text-right">{t.z.toFixed(2)}</td><td className="pl-3 font-sans text-text-tertiary">{t.reason}</td><td className={cn('text-right', tone(t.ret))}>{sp(t.ret)}</td></tr>))}</tbody></table>}
+                <td className="text-right">{t.z.toFixed(2)}</td><td className="pl-3 font-sans text-text-tertiary">{t.reason}</td><td className={cn('text-right', tone(t.ret))}>{sp(t.ret)}</td></tr>))}</tbody></table></div>}
           <div className="text-[10px] text-text-tertiary mt-1">{d.backtest.rules}</div>
         </Panel>
         <div className="text-[10px] text-text-tertiary">{d.note} Source: {d.source}.</div>
@@ -209,7 +209,7 @@ export function CbrtView() {
             <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Central bank</th><th className="text-right font-normal">Rate</th>
               <th className="text-right font-normal">Last move</th><th className="text-right font-normal">Size</th><th className="text-right font-normal">1 year</th><th className="text-right font-normal">Moves (12m)</th></tr></thead>
             <tbody>{rows.map((b: any) => (
-              <tr key={b.code} onClick={() => toggle(b.code)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-2', sel.includes(b.code) && 'bg-bloomberg/5')}>
+              <tr key={b.code} onClick={() => toggle(b.code)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-2', sel.includes(b.code) && 'bg-bloomberg/5')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                 <td className="py-1 font-sans"><span className="text-text-primary">{b.country}</span> <span className="text-text-tertiary">{b.bank}</span></td>
                 <td className="text-right text-text-primary">{b.rate.toFixed(2)}%</td><td className="text-right text-text-secondary">{b.last_move ?? '—'}</td>
                 <td className={cn('text-right', b.last_change_bp > 0 ? 'text-red' : b.last_change_bp < 0 ? 'text-green' : '')}>{bp(b.last_change_bp)}</td>
@@ -219,13 +219,13 @@ export function CbrtView() {
         </Panel>
         <div className="space-y-3">
           <Panel title="Latest decisions">
-            <table className="w-full text-2xs"><tbody>{d.recent_moves.map((b: any) => (
+            <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs"><tbody>{d.recent_moves.map((b: any) => (
               <tr key={b.code} className="border-t border-border-subtle first:border-0"><td className="py-1 text-text-tertiary font-mono">{b.last_move}</td><td className="text-text-primary">{b.bank}</td>
-                <td className={cn('text-right font-mono', b.last_change_bp > 0 ? 'text-red' : 'text-green')}>{bp(b.last_change_bp)}</td><td className="text-right font-mono">{b.rate.toFixed(2)}%</td></tr>))}</tbody></table>
+                <td className={cn('text-right font-mono', b.last_change_bp > 0 ? 'text-red' : 'text-green')}>{bp(b.last_change_bp)}</td><td className="text-right font-mono">{b.rate.toFixed(2)}%</td></tr>))}</tbody></table></div>
           </Panel>
           <Panel title="Rates over time (weekly)">
-            <LineChart rows={d.history} x="date" height={260} fmt={(v) => `${v.toFixed(2)}%`}
-              lines={sel.map((c, i) => ({ key: c, label: name(c), color: CB_COLORS[i % CB_COLORS.length] }))} />
+            <div className="mkt-chart-surface"><LineChart rows={d.history} x="date" height={260} fmt={(v) => `${v.toFixed(2)}%`}
+              lines={sel.map((c, i) => ({ key: c, label: name(c), color: CB_COLORS[i % CB_COLORS.length] }))} /></div>
           </Panel>
         </div>
       </div>
@@ -293,7 +293,7 @@ export function EcosView({ seed }: { seed?: string }) {
   const lastObs = first?.rows[first.rows.length - 1];
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-1">
+      <div className="mkt-controls flex flex-wrap items-center gap-1">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search 800,000 FRED series — e.g. 'japan cpi', 'housing starts', 'euro area unemployment'"
           className="w-[28rem] max-w-full bg-surface-1 border border-border px-2 py-1 text-xs" />
         <span className="ml-2 flex flex-wrap gap-1">{QUICK.map(([id, l]) => <Chip key={id} on={ids.includes(id)} onClick={() => setIds([id])}>{l}</Chip>)}</span>
@@ -309,15 +309,15 @@ export function EcosView({ seed }: { seed?: string }) {
                 <td><button onClick={() => add(r.id)} className="px-1.5 border border-border text-text-secondary hover:text-bloomberg" title="Add to chart">+</button></td></tr>))}</tbody></table></div>)}
         </Panel>)}
       <Panel title={first ? `${first.title}${ids.length > 1 ? ` + ${ids.length - 1} more` : ''}` : 'Series'} right={<div className="flex gap-1">{(Object.keys(TF_LABEL) as Tf[]).map((k) => <Chip key={k} on={tf === k} onClick={() => setTf(k)}>{TF_LABEL[k]}</Chip>)}</div>}>
-        <div className="flex flex-wrap gap-1 mb-2">{ids.map((id, i) => (
+        <div className="mkt-controls flex flex-wrap gap-1 mb-2">{ids.map((id, i) => (
           <span key={id} className="inline-flex items-center gap-1 border border-border rounded-sm px-1.5 py-0.5 text-[11px]">
             <span className="w-2 h-2 rounded-full" style={{ background: SER_COLORS[i] }} /><span className="font-mono">{id}</span>
             <span className="text-text-tertiary truncate max-w-[220px]">{series[i]?.data?.title ?? (series[i]?.error ? 'not found' : '…')}</span>
             {ids.length > 1 && <button onClick={() => setIds(ids.filter((x) => x !== id))} className="text-text-tertiary hover:text-red">✕</button>}</span>))}</div>
         {s0.loading && !first ? <Loading label="Loading from FRED…" /> : s0.error && !first ? <ErrorBox msg={s0.error} /> : merged.length > 0 && (
-          <LineChart rows={merged} x="date" height={340} defaultRange="10y" fmt={(v) => (Math.abs(v) >= 1000 ? v.toLocaleString(undefined, { maximumFractionDigits: 0 }) : v.toFixed(2))}
+          <div className="mkt-chart-surface"><LineChart rows={merged} x="date" height={340} defaultRange="10y" fmt={(v) => (Math.abs(v) >= 1000 ? v.toLocaleString(undefined, { maximumFractionDigits: 0 }) : v.toFixed(2))}
             baseline={tf === 'level' ? undefined : tf === 'index' ? 100 : 0}
-            lines={series.map((s, i) => s.data && { key: s.data.id, label: `${s.data.id}${tf === 'level' ? ` (${s.data.units})` : ''}`, color: SER_COLORS[i] }).filter(Boolean) as any} />)}
+            lines={series.map((s, i) => s.data && { key: s.data.id, label: `${s.data.id}${tf === 'level' ? ` (${s.data.units})` : ''}`, color: SER_COLORS[i] }).filter(Boolean) as any} /></div>)}
         {first && <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-2">
           <Tile label="Latest" value={lastObs?.value.toLocaleString(undefined, { maximumFractionDigits: 3 })} sub={`${lastObs?.date ?? '—'} · ${first.units}`} />
           <Tile label="Frequency" value={first.frequency} sub={first.sa} />
@@ -345,7 +345,7 @@ export function EtfaView({ onOpen }: { onOpen?: (s: string) => void }) {
   return (
     <div className="space-y-2">
       <Panel title="ETF premium / discount to NAV">
-        <div className="flex flex-wrap gap-1 text-[11px] mb-2">
+        <div className="mkt-controls flex flex-wrap gap-1 text-[11px] mb-2">
           <button onClick={() => setGroup('')} className={cn('px-2 py-0.5 border rounded-sm', !group ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>All</button>
           {d.groups.map((g: any) => (
             <button key={g.group} onClick={() => setGroup(g.group)} className={cn('px-2 py-0.5 border rounded-sm', group === g.group ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>

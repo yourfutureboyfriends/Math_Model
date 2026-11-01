@@ -86,7 +86,7 @@ function MyPortfolio() {
   const counts = data?.counts ?? {};
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-end gap-2 px-3 py-2 bg-surface-1 border border-border">
+      <div className="workspace-controls flex flex-wrap items-end gap-2 px-3 py-2 bg-surface-1 border border-border">
         <span className="text-2xs text-text-tertiary mr-1">Add a stock you hold</span>
         {(['symbol', 'quantity', 'avg_cost'] as const).map((k) => (
           <input key={k} value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })}
@@ -193,7 +193,7 @@ function AutoLive() {
   return (
     <div className="space-y-2">
       {dialog}
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-surface-1 border border-border text-2xs">
+      <div className="workspace-controls flex flex-wrap items-center gap-2 px-3 py-2 bg-surface-1 border border-border text-2xs">
         <span className="px-1.5 py-0.5 border border-amber/50 text-amber uppercase tracking-wide">Paper — simulated, no real orders</span>
         <span className={cn('px-1.5 py-0.5 border', s?.enabled ? 'border-green/50 text-green' : 'border-border text-text-tertiary')}>
           {s?.enabled ? 'Auto-trading on' : 'Auto-trading off'}
@@ -273,8 +273,8 @@ function AutoLive() {
       {navRows.length > 1 && (
         <div className="px-3 py-2 bg-surface-1 border border-border">
           <div className="text-2xs text-text-tertiary mb-1">Equity / starting capital</div>
-          <LineChart rows={navRows} x="date" height={160} baseline={1} fmt={(v) => `${v.toFixed(3)}×`}
-            lines={[{ key: 'equity', label: 'Auto book', color: SERIES[0] }]} />
+          <div className="workspace-chart"><LineChart rows={navRows} x="date" height={160} baseline={1} fmt={(v) => `${v.toFixed(3)}×`}
+            lines={[{ key: 'equity', label: 'Auto book', color: SERIES[0] }]} /></div>
         </div>
       )}
 
@@ -368,7 +368,7 @@ function AutoDeep({ variants }: { variants: any[] }) {
   const opts = variants.filter((x) => ['live', 'no_overlays', 'no_regime_gate'].includes(x.key));
   return (
     <div className="space-y-1">
-      <div className="flex flex-wrap items-center gap-1 text-2xs"><span className="text-text-tertiary">Analyse</span>
+      <div className="workspace-controls flex flex-wrap items-center gap-1 text-2xs"><span className="text-text-tertiary">Analyse</span>
         {opts.map((x) => <button key={x.key} onClick={() => setV(x.key)} className={cn('px-2 py-0.5 border', v === x.key ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{x.label}</button>)}</div>
       <DeepAnalysis request={[`/api/v1/auto/backtest/deep?variant=${v}&benchmark=control`]} title="Deep analysis of the auto book vs its random-stock control" />
     </div>
@@ -405,7 +405,7 @@ function AutoBacktest() {
   const maxAbs = Math.max(0.01, ...years.map(([, x]) => Math.abs(x)));
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-surface-1 border border-border text-2xs">
+      <div className="workspace-controls flex flex-wrap items-center gap-2 px-3 py-2 bg-surface-1 border border-border text-2xs">
         <span className="text-text-secondary">{data.sample?.stocks} stocks · {data.sample?.start?.slice(0, 4)}–{data.sample?.end?.slice(0, 4)} ({data.sample?.years}y) · the auto book's current rules, daily, next-open fills, after costs</span>
         {data.rules_changed && <span className="text-amber">settings changed since this run — re-run to update</span>}
         <button onClick={rerun} disabled={data.status?.running} className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 border border-border text-text-secondary hover:text-bloomberg disabled:opacity-60">
@@ -428,9 +428,9 @@ function AutoBacktest() {
       <div className="grid gap-2 lg:grid-cols-3">
         <div className="px-3 py-2 bg-surface-1 border border-border lg:col-span-2">
           <div className="text-2xs text-text-tertiary mb-1">Growth of 1 — local-currency (FX-hedged) returns, log scale</div>
-          <LineChart rows={data.curve ?? []} x="date" height={230} log baseline={1} fmt={(x) => `${x.toFixed(2)}×`}
+          <div className="workspace-chart"><LineChart rows={data.curve ?? []} x="date" height={230} log baseline={1} fmt={(x) => `${x.toFixed(2)}×`}
             axisFmt={(x) => `${x >= 1 ? x.toFixed(x >= 10 ? 0 : 1) : x.toFixed(2)}×`}
-            lines={CURVE_KEYS.map(([k, l], i) => ({ key: k, label: l, color: SERIES[i] }))} />
+            lines={CURVE_KEYS.map(([k, l], i) => ({ key: k, label: l, color: SERIES[i] }))} /></div>
         </div>
         <div className="space-y-2">
           <div className="px-3 py-2 bg-surface-1 border border-border">
@@ -535,8 +535,8 @@ function Optimiser() {
   const best = data?.best_out_of_sample;
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-surface-1 border border-border text-2xs">
-        <div className="flex border border-border" role="tablist" aria-label="Optimise which holdings">
+      <div className="workspace-controls flex flex-wrap items-center gap-2 px-3 py-2 bg-surface-1 border border-border text-2xs">
+        <div className="flex border border-border" role="tablist" aria-label="Optimise which holdings" data-workspace-tabs>
           {([['my', 'My portfolio'], ['auto', 'Auto book'], ['custom', 'Tickers']] as const).map(([k, l]) => (
             <button key={k} role="tab" aria-selected={source === k} onClick={() => setSource(k)}
               className={cn('px-2 py-0.5', source === k ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary')}>{l}</button>
@@ -597,8 +597,8 @@ function Optimiser() {
           {data.curve?.length > 1 && (
             <div className="px-3 py-2 bg-surface-1 border border-border">
               <div className="text-2xs text-text-tertiary mb-1">Walk-forward growth of 1 (out of sample, after costs, USD)</div>
-              <LineChart rows={data.curve} x="date" height={200} baseline={1} fmt={(v) => `${v.toFixed(2)}×`}
-                lines={methods.slice(0, 7).map((m, i) => ({ key: m.method, label: m.label.split(' (')[0], color: SERIES[i % SERIES.length] }))} />
+              <div className="workspace-chart"><LineChart rows={data.curve} x="date" height={200} baseline={1} fmt={(v) => `${v.toFixed(2)}×`}
+                lines={methods.slice(0, 7).map((m, i) => ({ key: m.method, label: m.label.split(' (')[0], color: SERIES[i % SERIES.length] }))} /></div>
             </div>
           )}
           {best && (
@@ -681,7 +681,7 @@ export function PortfoliosSection() {
           <span className="text-2xs text-text-tertiary">your picks reviewed by the model · three separate paper traders (macro, fundamental and technical quant) · optimisation</span>
         </div>
       </div>
-      <div className="flex border border-border mb-2 w-fit" role="tablist" aria-label="Portfolio">
+      <div className="flex border border-border mb-2 w-fit" role="tablist" aria-label="Portfolio" data-workspace-tabs>
         {TABS.map(({ key, label, Icon }) => (
           <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
             className={cn('inline-flex items-center gap-1 px-3 py-1 text-2xs', tab === key ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary')}>

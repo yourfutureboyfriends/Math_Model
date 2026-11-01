@@ -1,9 +1,13 @@
+import { ResearchDesk } from '@/components/markets/ResearchDesk';
+import { SavedLayouts } from '@/components/markets/SavedLayouts';
 // Markets mode — a universal, Bloomberg-style market workstation.
 // Routes live in the URL hash so every screen can be linked or bookmarked:
 //   #mkt/wei · #mkt/des/7203.T · #mkt/omon/SPY · #mkt/eqs · #mkt/imap …
 import { useCallback, useEffect, useState } from 'react';
-import { Bell, BookOpen, Plus } from 'lucide-react';
+import { Bell, BookOpen, Briefcase, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { setHubMode } from '@/lib/hubMode';
+import { openLbo } from '@/components/pe/peShared';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CommandLine } from '@/components/markets/CommandLine';
 import { FUNCTIONS, MARKET_FUNCTIONS, SECURITY_FUNCTIONS, findFunction, parseCommand, type MktFunction } from '@/components/markets/functions';
@@ -39,6 +43,9 @@ import { LiveNumber } from '@/components/ui/LiveNumber';
 import { useLiveQuote } from '@/lib/cryptoStream';
 import { ErrorBox, fmtPrice, Loading, SourceScope, SourcesBar, TYPE_COLOR } from '@/components/markets/shared';
 import { WorldMap } from '@/components/markets/WorldMap';
+import { PageSections } from '@/components/markets/PageSections';
+import { ViewTools,useMarketDisplay } from '@/components/markets/ViewTools';
+import { tableCSV } from '@/lib/tableData';
 import { AiChat, RightRail } from '@/components/markets/RightRail';
 
 export { parseMarketsHash, goMarkets, useMarketsRoute } from '@/lib/marketsRoute';
@@ -58,7 +65,7 @@ const GROUP_ORDER: MktFunction['group'][] = ['Markets', 'Rates & FX', 'Research'
 
 function FunctionHeader({ f, symbol }: { f: MktFunction; symbol?: string }) {
   return (
-    <div className="flex items-baseline gap-3 flex-wrap">
+    <div className="mkt-function-heading flex items-baseline gap-3 flex-wrap">
       <span className="px-2 py-0.5 text-xs font-mono font-semibold text-bloomberg border border-bloomberg/50">{f.code}</span>
       <h1 className="text-lg font-semibold text-text-primary">{f.name}{symbol ? <span className="text-text-tertiary font-normal"> · {symbol}</span> : null}</h1>
       <p className="text-2xs text-text-tertiary">{f.desc}</p>
@@ -68,7 +75,9 @@ function FunctionHeader({ f, symbol }: { f: MktFunction; symbol?: string }) {
 
 function Launchpad({ onGo }: { onGo: (fn: string, s?: string) => void }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      <div className="mkt-quick-functions">{['MOST','EQS','MAP','ECO','N','W'].map(code=>{const f=findFunction(code)!;return <button key={code} onClick={()=>onGo(code)} title={f.desc}><span>{code}</span><strong>{f.name}</strong><b aria-hidden>↗</b></button>;})}</div>
+      <details className="mkt-function-directory"><summary>Browse all market functions <span>{MARKET_FUNCTIONS.length} tools · or search the navigation</span></summary>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {GROUP_ORDER.map((g) => (
           <div key={g} className="bg-surface-1 border border-border">
@@ -80,6 +89,7 @@ function Launchpad({ onGo }: { onGo: (fn: string, s?: string) => void }) {
                   <span className="block text-[10px] text-text-tertiary leading-snug">{f.desc}</span></span></button></li>))}</ul>
           </div>))}
       </div>
+      </details>
       <div className="text-2xs text-text-tertiary">
         Tip: type in the command line above — a company (“toyota”), a ticker (“7203.T”), a function (“EQS”), or both (“NVDA OMON”), then Enter.
         Instrument functions: {SECURITY_FUNCTIONS.map((f) => f.code).join(' · ')}.
@@ -113,9 +123,9 @@ function TerminalQuoteHeader({ d, f, symbol, onGo, actions }: { d: any; f: MktFu
 
 const TYPE_LABEL: Record<string, string> = { Stock: 'EQUITY', ETF: 'ETF', Index: 'INDEX', FX: 'CURNCY', Future: 'COMDTY', Crypto: 'CRYPTO', Fund: 'FUND' };
 
-function SecurityBody({ code, symbol, d, isFund, onGo }: { code: string; symbol: string; d: any; isFund: boolean; onGo: (fn: string, s?: string) => void }) {
+export function SecurityBody({ code, symbol, d, isFund, onGo,compact=false }: { code: string; symbol: string; d: any; isFund: boolean; onGo: (fn: string, s?: string) => void;compact?:boolean }) {
   return (
-    <>
+    <div className="mkt-page-canvas" data-market-page={code}><PageSections page={code} compact={compact}/>
         {code === 'DES' && <QuoteWorkstation q={d} onOpen={(s) => onGo('DES', s)} onGo={onGo} />}
         {code === 'DES' && <div className="mt-3"><TeamNotes target={symbol} /></div>}
         {code === 'GP' && <Chart symbol={symbol} height={560} />}
@@ -145,7 +155,7 @@ function SecurityBody({ code, symbol, d, isFund, onGo }: { code: string; symbol:
         {code === 'SI' && <SiView symbol={symbol} />}
         {code === 'INSD' && <InsdView symbol={symbol} />}
         {code === 'SPLC' && <SplcView symbol={symbol} onOpen={(s) => onGo('DES', s)} />}
-    </>
+    </div>
   );
 }
 
@@ -166,8 +176,9 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
   const groupOf = (code: string) => SECURITY_GROUPS.find((g) => g.codes.includes(code))?.name ?? SECURITY_GROUPS[0].name;
   const activeGroup = browse ?? groupOf(f.code);
   if (!d && !q.error) return <Loading label={`Loading ${symbol}…`} />;
-  if (q.error && !d) return <ErrorBox msg={/HTTP 5\d\d|unavailable|fetch/i.test(q.error) ? `${q.error} The data service may be restarting — reopen the security in a moment.` : `${q.error} Try the command line to search by name.`} />;
+  if (q.error && !d) return <ErrorBox onRetry={q.retry} msg={/HTTP 5\d\d|unavailable|fetch/i.test(q.error) ? `${q.error} The data service may be restarting — reopen the security in a moment.` : `${q.error} Try the command line to search by name.`} />;
   if (!d) return null;
+  const lbo = () => { openLbo(symbol); setHubMode('pe'); };     // the PE workbench, loaded with this company
   const watch = async () => { try { const n = await addToWatch(symbol); if (n) setNote(`Added to “${n}”.`); } catch (e: any) { setNote(e.message); } };
   const tk = 'px-2 py-0.5 text-[11px] border border-border hover:border-bloomberg hover:text-bloomberg';
   if (compact) {
@@ -182,7 +193,7 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
         </div>
         <ErrorBoundary sectionName={`${f.code} ${symbol}`} key={`${f.code}:${symbol}`}>
           {f.equityOnly && !isEquity && !(f.code === 'HDS' && isFund) ? <NotApplicable fn={f.code} name={f.name} q={d} onGo={onGo} />
-            : <SecurityBody code={f.code} symbol={symbol} d={d} isFund={isFund} onGo={onGo} />}
+            : <SourceScope><SourcesBar className="mb-2"/><SecurityBody compact={compact} code={f.code} symbol={symbol} d={d} isFund={isFund} onGo={onGo}/></SourceScope>}
         </ErrorBoundary>
       </div>);
   }
@@ -194,6 +205,7 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
           <button onClick={() => onGo('ALRT', symbol)} className={tk}>ALRT</button>
           <button onClick={() => onGo('JRNL', symbol)} className={tk}>JRNL</button>
           <button onClick={() => onGo('COMP', symbol)} className={tk}>COMP</button>
+          {isEquity && <button onClick={lbo} className={tk} title="Model a buyout of this company in the PE area">LBO</button>}
           {note && <span className="text-[11px] text-green self-center">{note}</span>}</>} />
       ) : <>
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -223,6 +235,8 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
           <button onClick={() => onGo('ALRT', symbol)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs border border-border hover:border-bloomberg bg-surface-1"><Bell className="w-3.5 h-3.5" />Alert</button>
           <button onClick={() => onGo('JRNL', symbol)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs border border-border hover:border-bloomberg bg-surface-1"><BookOpen className="w-3.5 h-3.5" />Journal</button>
           <button onClick={() => onGo('COMP', symbol)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs border border-border hover:border-bloomberg bg-surface-1">Compare</button>
+          {isEquity && <button onClick={lbo} title="Model a buyout of this company in the PE area"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs border border-border hover:border-bloomberg bg-surface-1"><Briefcase className="w-3.5 h-3.5" />LBO</button>}
           {note && <span className="text-xs text-green self-center">{note}</span>}
         </div>
       </div>
@@ -254,7 +268,7 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
         {f.equityOnly && !isEquity && !(f.code === 'HDS' && isFund) ? <NotApplicable fn={f.code} name={f.name} q={d} onGo={onGo} /> : <>
         <SourceScope>
           <SourcesBar className="mb-2" />
-          <SecurityBody code={f.code} symbol={symbol} d={d} isFund={isFund} onGo={onGo} />
+          <SecurityBody compact={compact} code={f.code} symbol={symbol} d={d} isFund={isFund} onGo={onGo} />
         </SourceScope>
         </>}
       </ErrorBoundary>
@@ -276,8 +290,8 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
   open: (s: string) => void; classic: boolean; compact?: boolean }) {
   const region = useRegion();
   return (
-    <SourceScope>
-    <SourcesBar className="mb-2" />
+    <SourceScope><div className="mkt-page-canvas" data-market-page={code}>
+    <SourcesBar className="mb-2" /><PageSections page={code} compact={compact}/>
     {code === 'RMON' && <RegionMonitor onOpen={open} onGo={onGo} />}
     {code === 'CTRY' && <><CountryView iso={seed} onOpen={open} onGo={onGo} /><RelatedOdds terms={countryTerms(seed)} title="Odds on this country" limit={6} className="mt-3" /></>}
     {code === 'WEI' && (classic || compact
@@ -344,9 +358,10 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'N' && <NewsView />}
     {code === 'W' && <WatchlistsView onOpen={open} />}
     {code === 'ALRT' && <AlertsView seed={seed} />}
+    {code === 'RDESK' && <ResearchDesk />}
     {code === 'JRNL' && <JournalView seed={seed} onOpen={open} />}
     {code === 'AI' && <div className="bg-surface-1 border border-border rounded-md h-[calc(100vh-220px)] min-h-[480px]"><AiChat context={seed} /></div>}
-    </SourceScope>
+    </div></SourceScope>
   );
 }
 
@@ -363,7 +378,7 @@ const LAYOUTS: Record<string, { n: number; cls: string; h: string }> = {
 const DEFAULT_LP = { layout: '2x2', panes: [{ fn: 'W', link: 'red' }, { fn: 'GP', symbol: 'AAPL', link: 'red' }, { fn: 'DES', symbol: 'AAPL', link: 'red' },
   { fn: 'WIRP' }, { fn: 'N' }, { fn: 'WEI' }] as Pane[] };
 function loadLP(): { layout: string; panes: Pane[] } {
-  try { const j = JSON.parse(localStorage.getItem(LP_KEY) || ''); if (j?.panes?.length && LAYOUTS[j.layout]) return j; } catch { /* first run */ }
+  try { const j = JSON.parse(localStorage.getItem(LP_KEY) || ''); if(Array.isArray(j?.panes)&&j.panes.length&&LAYOUTS[j.layout]){const panes=j.panes.filter((p:any)=>p&&typeof p.fn==='string'&&findFunction(p.fn)&&(!p.symbol||typeof p.symbol==='string')).slice(0,6).map((p:Pane)=>({...p,link:LINKS.includes(p.link??null)?p.link:null}));if(panes.length)return {layout:j.layout,panes};} } catch { /* first run */ }
   return DEFAULT_LP;
 }
 function saveLP(v: { layout: string; panes: Pane[] }) { try { localStorage.setItem(LP_KEY, JSON.stringify(v)); } catch { /* storage unavailable */ } }
@@ -409,7 +424,7 @@ function LpPane({ pane, index, classic, onChange, onClose, onMax, onPick }: { pa
     <section className="bg-surface-1 border border-border flex flex-col min-w-0 min-h-0" style={pane.link ? { borderTopColor: `rgb(${LINK_RGB[pane.link]})`, borderTopWidth: 2 } : undefined}>
       <header className="panel-hdr flex items-center gap-2 px-1.5 h-7 text-[11px]">
         <button onClick={cycle} title={pane.link ? `Linked: ${pane.link} group — windows of the same colour follow the same security (click to change)` : 'Not linked — click to link this window to a colour group'}
-          className="w-3.5 h-3.5 border border-border-strong shrink-0" style={pane.link ? { background: `rgb(${LINK_RGB[pane.link]})` } : undefined} />
+          aria-label={`Window ${index + 1} link group: ${pane.link ?? 'unlinked'}`} className="w-3.5 h-3.5 border border-border-strong shrink-0" style={pane.link ? { background: `rgb(${LINK_RGB[pane.link]})` } : undefined} />
         <span className="key-amber px-1">{index + 1}</span>
         <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           placeholder={f.security && pane.symbol ? `${toTerminal(pane.symbol)} ${f.code} — type a security or function` : `${f.code} — type e.g. AAPL US Equity GP, WIRP, toyota`}
@@ -433,6 +448,8 @@ function LpPane({ pane, index, classic, onChange, onClose, onMax, onPick }: { pa
 
 function LaunchpadGrid({ classic }: { classic: boolean }) {
   const [st, setSt] = useState(loadLP);
+  const [undoLayout,setUndoLayout]=useState<ReturnType<typeof loadLP>|null>(null);
+  const restoreLayout=(next:ReturnType<typeof loadLP>)=>{setUndoLayout(structuredClone(st));setSt(next);};
   useEffect(() => saveLP(st), [st]);
   const L = LAYOUTS[st.layout] ?? LAYOUTS['2x2'];
   const panes = [...st.panes, ...DEFAULT_LP.panes].slice(0, L.n);
@@ -461,9 +478,13 @@ function LaunchpadGrid({ classic }: { classic: boolean }) {
         <span className="text-text-tertiary mr-1">Layout</span>
         {Object.keys(LAYOUTS).map((k) => <button key={k} onClick={() => setSt((s) => ({ ...s, layout: k }))}
           className={cn('px-2 py-0.5 border font-mono', st.layout === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{k}</button>)}
-        <button onClick={() => setSt(DEFAULT_LP)} className="ml-2 px-2 py-0.5 border border-border text-text-tertiary hover:text-text-primary">Reset</button>
+        <button className="px-2 py-0.5 border border-border text-bloomberg" onClick={() => { const symbol = panes.find(p => p.symbol)?.symbol ?? 'AAPL'; restoreLayout({layout:'2x2',panes:['GP','ERN','CF','VAL'].map(fn => ({fn,symbol,link:'blue' as Link}))}); }}>Linked company research</button>
+        <button className="px-2 py-0.5 border border-border text-bloomberg" onClick={() => { const symbol = panes.find(p => p.symbol)?.symbol ?? 'AAPL'; restoreLayout({layout:'2x2',panes:['ERN','ANR','CN','FA'].map(fn => ({fn,symbol,link:'green' as Link}))}); }}>Earnings workspace</button>
+        <button onClick={() => restoreLayout(DEFAULT_LP)} className="ml-2 px-2 py-0.5 border border-border text-text-tertiary hover:text-text-primary">Reset</button>
         <span className="ml-auto text-text-tertiary">Each window takes its own command (“VOD LN Equity GP”, “WIRP”, “toyota”). The coloured square links windows: same colour = same security, as in IBKR’s Mosaic.</span>
       </div>
+      <SavedLayouts value={st} onRestore={restoreLayout}/>
+      {undoLayout&&<button className="text-xs text-bloomberg" onClick={()=>{setSt(undoLayout);setUndoLayout(null);}}>Undo layout replacement</button>}
       <div className={cn('grid gap-1.5', L.cls)}>
         {panes.map((p, i) => (
           <div key={i} className={cn('min-w-0', L.h, 'min-h-[320px] flex')}>
@@ -478,26 +499,22 @@ function LaunchpadGrid({ classic }: { classic: boolean }) {
 }
 
 // ── Soft keys on every function's title bar (Bloomberg: 96) … 99) …) ──────────
-function exportFirstTable(name: string) {
-  // the screen's main table = the one with the most rows (side panels often come first)
-  const t = [...document.querySelectorAll('#mkt-fn-body table')].sort((a, b) => b.querySelectorAll('tr').length - a.querySelectorAll('tr').length)[0] as HTMLTableElement | undefined;
-  if (!t) { alert('No table on this screen to export.'); return; }
-  const rows = [...t.querySelectorAll('tr')].map((tr) => [...tr.querySelectorAll('th,td')].map((c) => `"${(c as HTMLElement).innerText.replace(/\s+/g, ' ').trim().replace(/"/g, '""')}"`).join(','));
-  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `${name}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+function exportFirstTable(name: string):boolean {
+  const table=[...document.querySelectorAll('#mkt-fn-body table')].filter(t=>!t.closest('[hidden]')).sort((a,b)=>b.querySelectorAll('tr').length-a.querySelectorAll('tr').length)[0] as HTMLTableElement|undefined;
+  if(!table)return false;
+  const rows=[...table.rows].filter(r=>!r.hidden).map(r=>[...r.cells].map(c=>(c.innerText||c.textContent||'').replace(/\s+/g,' ').trim()));
+  const url=URL.createObjectURL(new Blob(['\uFEFF'+tableCSV(rows[0]??[],rows.slice(1))],{type:'text/csv;charset=utf-8'}));
+  const a=document.createElement('a');a.href=url;a.download=`${name}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);return true;
 }
 
 function SoftKeys({ fn, symbol, onHelp }: { fn: string; symbol?: string; onHelp?: () => void }) {
+  const [notice,setNotice]=useState('');
   const k = 'softkey px-1 hover:underline whitespace-nowrap';
   return (
     <span className="flex gap-2 normal-case tracking-normal text-[11px]">
       {fn !== 'LP' && <button className={k} onClick={() => popOutToLaunchpad(fn, symbol)} title="Open this function in a launchpad window">96) Pop out</button>}
-      <button className={k} onClick={() => exportFirstTable(`${fn}${symbol ? `_${symbol}` : ''}_${new Date().toISOString().slice(0, 10)}`)} title="Download the main table as CSV">97) Export</button>
-      {onHelp && <button className={k} onClick={onHelp}>98) Help</button>}
+      <button className={k} onClick={()=>setNotice(exportFirstTable(`${fn}${symbol?`_${symbol}`:''}_${new Date().toISOString().slice(0,10)}`)?'CSV downloaded.':'No loaded table here. Use Tables to inspect available data.')} title="Download the main table as CSV">97) Export</button>
+      {onHelp && <button className={k} onClick={onHelp}>98) Help</button>}<span role="status" className="text-text-tertiary">{notice}</span>
     </span>
   );
 }
@@ -512,8 +529,9 @@ export function MarketsPage() {
   const f = findFunction(route.fn) ?? findFunction('WEI')!;
   const classic = useMarketsSkin() === 'classic';
   const help = useHelp();
+  const display=useMarketDisplay();
   return (
-    <div className={cn('mkt-root flex items-start', classic ? 'p-2 pb-10 gap-2' : 'p-4 gap-4')}>
+    <div data-market-density={display.density} className={cn('mkt-root mkt-workspace flex items-start',display.focused&&'mkt-focused', classic ? 'p-2 pb-10 gap-2' : 'p-4 gap-4')}>
     <div className={cn('flex-1 min-w-0', classic ? 'space-y-2' : 'space-y-4', !classic && f.code !== 'LP' && 'max-w-[1500px]')}>
       {classic ? <KeyBar onGo={(fn) => (fn === 'BACK' ? window.history.back() : onGo(fn))} onHelp={help.toggle} /> : (
         <div className="flex justify-end items-center gap-3 -mb-2 text-[11px] text-text-tertiary"><UpDownToggle />
@@ -522,17 +540,18 @@ export function MarketsPage() {
       <RegionBar onPick={() => { if (!REGION_AWARE.has(f.code)) onGo('RMON'); }} />
       <WorkspaceTabs />
       <CommandLine current={f.security ? route.symbol : undefined} onGo={onGo} />
+      <ViewTools code={f.code} density={display.density} onDensity={display.setDensity} focused={display.focused} onFocus={()=>display.setFocused(v=>!v)} onHelp={help.toggle}/>
       {help.open && <HelpPanel onClose={help.close} />}
       {f.security && route.symbol ? (
-        <div className="grid grid-cols-1 xl:grid-cols-[230px_minmax(0,1fr)] gap-2 items-start">
-          <WatchColumn current={route.symbol} onOpen={(s) => onGo(f.code, s)} />
-          <div className="min-w-0" id="mkt-fn-body"><SecurityView fn={f.code} symbol={route.symbol} onGo={onGo} /></div>
+        <div className="mkt-security-layout grid grid-cols-1 xl:grid-cols-[230px_minmax(0,1fr)] gap-2 items-start">
+          <div className="mkt-watch-column"><WatchColumn current={route.symbol} onOpen={(s) => onGo(f.code, s)} /></div>
+          <div className="min-w-0 mkt-function-content" id="mkt-fn-body"><SecurityView fn={f.code} symbol={route.symbol} onGo={onGo} /></div>
         </div>
       ) : (
         <div className={classic ? 'space-y-2' : 'space-y-3'}>
           {classic ? <TitleBar code={f.code} title={f.name} right={<span className="flex items-center gap-4"><span className="hidden xl:inline truncate max-w-[36rem]">{f.desc}</span><SoftKeys fn={f.code} symbol={route.symbol} onHelp={help.toggle} /></span>} />
             : <div className="flex items-start justify-between gap-3"><FunctionHeader f={f} /><SoftKeys fn={f.code} symbol={route.symbol} /></div>}
-          <div id="mkt-fn-body">
+          <div className="mkt-function-content" id="mkt-fn-body">
           <ErrorBoundary sectionName={`Markets · ${f.code}`} key={f.code}>
             {f.code === 'LP' ? <LaunchpadGrid classic={classic} /> : <MarketBody code={f.code} seed={route.symbol} onGo={onGo} open={open} classic={classic} />}
           </ErrorBoundary>
@@ -542,7 +561,7 @@ export function MarketsPage() {
       {/* triggered alerts now pop up in both modes (components/layout/LivePopups) */}
       {classic && <NewsCrawl />}
     </div>
-    {f.code !== 'AI' && f.code !== 'LP' && !(f.security && route.symbol) && <RightRail onOpen={open} />}
+    {!display.focused && f.code !== 'AI' && f.code !== 'LP' && !(f.security && route.symbol) && <RightRail onOpen={open} />}
     </div>
   );
 }

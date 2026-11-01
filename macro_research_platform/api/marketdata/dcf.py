@@ -3,7 +3,7 @@ Discounted cash flow valuation — free cash flow to the firm (FCFF) at the weig
 cost of capital, following Damodaran and Koller/Goedhart/Wessels (McKinsey, "Valuation").
 
   Revenue      grows at g₁ in year 1 (analysts' current-year consensus) and g₂ in years 2–3
-               (next-year consensus), then fades linearly to the terminal rate g∞ by year N
+               (next-year consensus), then fades toward g∞ with the configured half-life (linear when disabled)
   Margin       operating (EBIT) margin moves linearly from today's to a target by year N
   NOPAT        EBIT × (1 − tax). GAAP EBIT already expenses stock-based compensation, so
                SBC is treated as the real cost it is (Damodaran) — never added back
@@ -13,29 +13,27 @@ cost of capital, following Damodaran and Koller/Goedhart/Wessels (McKinsey, "Val
                $76bn on $72bn of revenue, the ratio implied ~$24bn) and overstated light-asset growth
   FCFF         NOPAT − reinvestment, discounted at WACC with the mid-year convention
   Terminal     value-driver formula: NOPAT_{N+1} × (1 − g∞ / RONIC) ÷ (WACC − g∞)
-               (McKinsey) — growth must be paid for with reinvestment; by default half of today's
-               excess return on capital persists (top-ROIC firms fade but stay above WACC), and
-               cyclical / commodity businesses earn exactly their cost of capital on new investment
-  WACC         cost of equity = risk-free + β × ERP, all market-based (Damodaran):
-               · ERP = his latest monthly implied premium for the S&P 500 + the home
-                 country's risk premium (over the US's)
+               (McKinsey) — growth must be paid for with reinvestment. Default three-stage RONIC fades
+               to WACC; the optional two-stage framework retains half the excess return for non-cyclicals.
+               Cyclical / commodity businesses earn their cost of capital on terminal new investment
+  WACC         cost of equity = risk-free + β × ERP, with market-value financing weights:
+               · ERP = an editable normalized mature-market assumption + the home country's risk
+                 premium (over the US's); current market-implied ERP is a separate selectable lens
                · β bottom-up: the industry's unlevered beta (corrected for cash) relevered
                  at the firm's market D/E — far less noisy than a single regression beta
                · risk-free = 10-year government yield in the cash-flow currency, less the
                  sovereign default spread where the government itself is not default-free
                after-tax cost of debt; market-value equity, book debt
-  Growth ∞     = the risk-free rate (Damodaran's default — the same assumption his implied
-               ERP is solved with, so the two are consistent)
+  Growth ∞     = the lower of the cash-flow currency risk-free rate and the configured long-run
+               nominal-growth ceiling; unsupported currencies require explicit review
   Equity       enterprise value − debt (incl. leases if chosen) + cash & short-term
                investments + stakes in other companies − minority interest; per diluted
                share. A captive finance arm (car/equipment loans) is carved out: its debt is
                matched by its loan book, so only the industrial business's debt is subtracted
   Reverse DCF  the initial growth rate g₀ that makes the model value equal today's price
 
-Calibration (Oct 2026, 71 large caps across the US, Europe and Asia, financials excluded):
-the old setup (regression beta, fixed 4.2% ERP, g∞ = 2.5%) put the median company 28% below
-its price — a systematic bias, since the ERP is implied from the market assuming g∞ = rf.
-With these defaults the median gap is about −5%, and 69% of companies land within ±50%.
+Market-price proximity is not an accuracy target: independent operating assumptions and a normalized
+required-return lens are kept separate from current market-implied discount-rate comparisons.
 
 Checks that come back with the result: terminal growth above the risk-free rate (Damodaran:
 no firm can outgrow the economy forever), WACC ≤ terminal growth, terminal value share of
@@ -44,21 +42,21 @@ enterprise value, negative NOPAT, currency mismatch between financials and share
 from __future__ import annotations
 
 import math
+import threading
 from typing import Any, Dict, List, Optional
 
 from api.marketdata.core import NotFound, _f, _info, to_usd
 
 ERP_FALLBACK = 0.042           # used only if Damodaran's monthly implied ERP can't be fetched
 ERP_DEFAULT = None             # None → the mature-market ERP chosen by ERP_BASIS + the country risk premium
-# Mature-market equity risk premium. "standard": Kroll's recommended US ERP (5.0% since Sept 2025, reaffirmed
-# Jan and Sept 2026; eurozone 5.0–5.5%) — the valuation profession's reference. "implied": Damodaran's monthly
-# implied ERP for the S&P 500, which tracks the market (3.7% in Oct 2026, near a record low after a long rally).
+# Normalized mature-market ERP is an explicit research assumption, not a fitted market-price target
+# or an automatically refreshed professional recommendation. Current implied ERP remains a comparison.
 ERP_STANDARD = 0.050
-ERP_BASIS = "implied"   # calibrated Oct 2026: implied + g = rf left the median company at value/price 1.01 (58 firms)
+ERP_BASIS = "standard"
 # Terminal growth. "gdp": the lower of the risk-free rate and the currency's long-run nominal GDP growth (inflation
 # target + potential real growth) — inflation is the floor and nominal GDP the ceiling for a perpetual growth rate
 # (Delaware Chancery practice); "rf": Damodaran's stable growth = the risk-free rate.
-TERMINAL_RULE = "rf"     # consistent with the implied ERP, which is solved assuming g = rf
+TERMINAL_RULE = "gdp"    # currency-specific sustainable nominal-growth ceiling; do not extrapolate elevated yields forever
 # Long-run nominal growth by currency: the central bank's inflation target + a conservative potential real growth
 # (OECD / IMF long-run estimates, rounded). Used only as a ceiling under the risk-free rate.
 LR_NOMINAL_GROWTH = {"USD": 0.040, "EUR": 0.032, "GBP": 0.035, "JPY": 0.025, "CHF": 0.022, "CAD": 0.037, "AUD": 0.045,
@@ -68,6 +66,7 @@ LR_NOMINAL_GROWTH = {"USD": 0.040, "EUR": 0.032, "GBP": 0.035, "JPY": 0.025, "CH
 # cyclical earnings — McKinsey, Damodaran), not over the whole forecast.
 CYCLICAL_FADE_YEARS = 3
 # Years over which reinvestment moves from the firm's actual net capex (year 1) to the sales-to-capital rule.
+WORKING_CAPITAL_FORECAST = False  # mixed development/holdout evidence: keep the ratio an explicit research assumption
 REINVEST_ANCHOR_YEARS = 5
 # Floor on the cost of equity: where the local risk-free rate is held near zero (Swiss franc,
 # at times yen and euro) rf + β·ERP can fall to 2–3%, a return no equity investor accepts, and
@@ -81,7 +80,7 @@ HIGH_GROWTH_YEARS = 3          # years of analyst-driven growth before the fade 
 # the firm's excess returns (its "moat"). Stage III: perpetuity with RONIC = WACC, so growth after the fade neither
 # creates nor destroys value. "two_stage" keeps the Damodaran model (explicit years, then g∞ with a RONIC).
 VALUATION_METHOD = "three_stage"
-EXPLICIT_YEARS = 10           # Morningstar: 5–10 years; 10 calibrated best (see docs/dcf_methodology.md)
+EXPLICIT_YEARS = 10           # explicit research horizon; not fitted to current market prices
 # Fade length by moat. Morningstar: "one year (no moat) to 10–15 years or more (wide moat)"; a wide moat means excess
 # returns are more likely than not to last 20 years, narrow 10.
 MOAT_FADE_YEARS = {"wide": 20, "narrow": 10, "none": 1}   # Morningstar's moat horizons: ≥ 20 / ≥ 10 years
@@ -122,32 +121,47 @@ NON_LENDER_FINANCIALS = ("financial data", "stock exchange")
 FINANCIAL_INDUSTRIES = ("bank", "insurance", "capital markets", "credit services", "asset management", "mortgage")
 
 
-def _rf_persist(ccy: str, fetch) -> Optional[tuple]:
-    """Fetch a government yield, remembering the last good value on disk: a FRED timeout must not
-    silently swap in the US rate for another currency's cash flows."""
+_RF_CACHE_LOCK = threading.Lock()
+
+
+def _rf_persist(ccy: str, fetch, cache_path=None) -> Optional[tuple]:
+    """Persist the last good government yield without losing concurrent currency updates."""
     import json
+    import os
     from pathlib import Path
-    path = Path(__file__).resolve().parents[2] / "data" / "processed" / "risk_free_cache.json"
-    try:
-        saved = json.loads(path.read_text()) if path.exists() else {}
-    except Exception:
-        saved = {}
-    v = None
+    import tempfile
+    path = Path(cache_path) if cache_path is not None else Path(__file__).resolve().parents[2] / "data" / "processed" / "risk_free_cache.json"
+    def read():
+        try:
+            return json.loads(path.read_text()) if path.exists() else {}
+        except (OSError, ValueError):
+            return {}
     try:
         v = fetch()
     except Exception:
         v = None
     if v:
-        saved[ccy] = [v[0], str(v[1])]
+        temporary = None
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(saved))
-        except Exception:
+            # Fetch outside the lock; reread before merging so parallel currencies survive.
+            with _RF_CACHE_LOCK:
+                saved = read(); saved[ccy] = [v[0], str(v[1])]
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as f:
+                    temporary = f.name; json.dump(saved, f)
+                os.replace(temporary, path)
+        except OSError:
             pass
+        finally:
+            if temporary and os.path.exists(temporary):
+                os.unlink(temporary)
         return v
+    with _RF_CACHE_LOCK:
+        saved = read()
     if ccy in saved:
         return (saved[ccy][0], f"{saved[ccy][1]}, last saved — FRED unreachable")
     raise RuntimeError("no yield")
+
 
 
 def risk_free(currency: Optional[str]) -> Dict[str, Any]:
@@ -233,6 +247,7 @@ def inputs(symbol: str) -> Dict[str, Any]:
                            "currency": i.get("financialCurrency") or i.get("currency"), "price_currency": i.get("currency"),
                            "price": _f(i.get("regularMarketPrice")) or _f(i.get("currentPrice")), "country": i.get("country")}
     src = None
+    annual = None
     try:
         from api.providers import sec_edgar
         if sec_edgar.resolve(s):
@@ -256,6 +271,7 @@ def inputs(symbol: str) -> Dict[str, Any]:
         # 'operatingMargins' is the latest QUARTER's margin while 'totalRevenue' is TTM — multiplying them put
         # Samsung at a 52% margin (one memory-boom quarter; TTM 37%) and ExxonMobil at 15.9% (TTM 10.7%).
         ttm = _ttm_from_quarters(s)
+        annual = _annual_from_statements(s) if ttm is None else None
         rev = ttm["revenue"] if ttm else _f(i.get("totalRevenue"))
         om = _f(i.get("operatingMargins"))
         ebit_y = ttm["ebit"] if ttm else (rev * om if rev and om is not None else None)
@@ -264,7 +280,7 @@ def inputs(symbol: str) -> Dict[str, Any]:
         out.update({"revenue": rev, "ebit": ebit_y, "pretax_income": None, "income_tax": None,
                     "interest_expense": None, "sbc": None, "dna": (ttm or {}).get("dna"), "capex": (ttm or {}).get("capex"),
                     "operating_cash_flow": _f(i.get("operatingCashflow")), "cash": _f(i.get("totalCash")), "debt": _f(i.get("totalDebt")),
-                    "leases": None, "minority_interest": None, "equity_book": None, "as_of": None})
+                    "leases": None, "minority_interest": None, "equity_book": None, "as_of": (ttm or {}).get("as_of")})
         src = "Yahoo Finance (TTM from the last four quarterly statements)" if ttm else "Yahoo Finance (TTM)"
         out["currency"] = i.get("financialCurrency") or i.get("currency")     # Yahoo reports in the filing currency
     out["source"] = src
@@ -280,7 +296,7 @@ def inputs(symbol: str) -> Dict[str, Any]:
     out["beta_source"] = "regression beta, Blume-adjusted (Yahoo)"
     rfi = risk_free(out["currency"])
     out["risk_free"], out["risk_free_source"], out["risk_free_matched"] = rfi["rate"], rfi["source"], rfi["currency_matched"]
-    rf = out["risk_free"] or 0.04
+    rf = out["risk_free"] if out["risk_free"] is not None else 0.04
     # Debt cross-check: filers tag debt inconsistently — if the filing-based figure is missing
     # or far below Yahoo's total debt, use Yahoo's (and say so).
     y_debt = _f(i.get("totalDebt"))
@@ -328,8 +344,24 @@ def inputs(symbol: str) -> Dict[str, Any]:
     out["margin"] = round(out["ebit"] / rev, 4) if out.get("ebit") is not None and rev else None
     cx, da = out.get("capex"), out.get("dna")
     out["net_capex_to_revenue"] = round((abs(cx) - abs(da)) / rev, 4) if cx is not None and da is not None and rev else None
-    out["roic"] = round(out["ebit"] * (1 - (out["tax_effective"] or out["tax_marginal"])) / ic, 4) if out.get("ebit") and ic and ic > 0 else None
+    out["roic"] = round(out["ebit"] * (1 - (out["tax_effective"] if out["tax_effective"] is not None else out["tax_marginal"])) / ic, 4) if out.get("ebit") and ic and ic > 0 else None
     _market_inputs(s, i, out)
+    if annual:
+        out = restate_statement_inputs(out, annual)
+    elif src and src.startswith("Yahoo"):
+        _validate_statement_currency(out, ttm or {})
+    from api.marketdata.core import MINOR_UNITS
+    dividend_ccy = MINOR_UNITS.get(out.get("price_currency"), (out.get("price_currency") or out.get("currency") or "USD").upper())
+    if dividend_ccy != out.get("currency"):
+        dividend_rf = risk_free(dividend_ccy)
+        out.update(dividend_currency=dividend_ccy, dividend_risk_free=dividend_rf["rate"],
+                   dividend_risk_free_source=dividend_rf["source"], dividend_risk_free_matched=dividend_rf["currency_matched"])
+    from api.marketdata import dcf_fundamentals
+    out = dcf_fundamentals.apply_issuer_adjustments(out)
+    try:
+        out = dcf_fundamentals.apply(out, dcf_fundamentals.collect(s))
+    except Exception:
+        out["cashflow_evidence"] = {"status": "unavailable", "reason": "Dated cash-flow components could not be fetched."}
     return out
 
 
@@ -342,7 +374,7 @@ def _ttm_from_quarters(symbol: str) -> Optional[Dict[str, Any]]:
         if q is None or q.empty or "Total Revenue" not in q.index or "Operating Income" not in q.index:
             return None
         cols = list(q.columns[:4])
-        if len(cols) < 4:
+        if len(cols) < 4 or any(not 60 <= (cols[n] - cols[n + 1]).days <= 120 for n in range(3)):
             return None
         rev = [_f(q.loc["Total Revenue", c]) for c in cols]
         op = [_f(q.loc["Operating Income", c]) for c in cols]
@@ -352,7 +384,7 @@ def _ttm_from_quarters(symbol: str) -> Optional[Dict[str, Any]]:
         try:                                    # capex and D&A, TTM, from the quarterly cash-flow statements
             cf = yf.Ticker(symbol).quarterly_cashflow
             if cf is not None and not cf.empty:
-                cc = list(cf.columns[:4])
+                cc = [c for c in cols if c in cf.columns]
                 def tot(row):
                     if row not in cf.index or len(cc) < 4:
                         return None
@@ -360,13 +392,171 @@ def _ttm_from_quarters(symbol: str) -> Optional[Dict[str, Any]]:
                     return None if any(x is None or x != x for x in v) else float(sum(v))
                 cap = tot("Capital Expenditure")
                 out["capex"] = abs(cap) if cap is not None else None
-                out["dna"] = tot("Depreciation And Amortization") or tot("Depreciation Amortization Depletion")
+                out["dna"] = tot("Depreciation And Amortization")
+                if out["dna"] is None:
+                    out["dna"] = tot("Depreciation Amortization Depletion")
         except Exception:
             pass
+        out["currency"] = _statement_currency(symbol, out["as_of"], "quarterly")
         return out
     except Exception:
         return None
 
+
+
+def _statement_currency(symbol: str, as_of: str, period: str) -> Optional[str]:
+    """yfinance drops currencyCode while reshaping financial statements; retain that metadata.
+
+    A conflicting quote-summary currency cannot be repaired by converting only EBIT: the
+    balance sheet may use another basis too. Expose the conflict for reconciliation instead.
+    """
+    from api.marketdata.core import _cached, yahoo_call
+    def fetch():
+        import time
+        from urllib.parse import quote
+        import yfinance as yf
+        key = f"{period}TotalRevenue"
+        url = f"https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/{quote(symbol, safe='')}"
+        data = yahoo_call(lambda: yf.Ticker(symbol)._data.get_raw_json(url, params={
+            "symbol": symbol, "type": key, "period1": 1451606400, "period2": int(time.time())}))
+        rows = [v for r in data.get("timeseries", {}).get("result", []) for v in r.get(key, [])]
+        if period == "quarterly":
+            # A reporting-currency transition can occur within the four-quarter sum.
+            rows = sorted([r for r in rows if r.get("asOfDate", "") <= as_of],
+                          key=lambda r: r.get("asOfDate", ""), reverse=True)[:4]
+            if len(rows) != 4 or rows[0].get("asOfDate") != as_of or any(not r.get("currencyCode") for r in rows):
+                return None
+            currencies = {r["currencyCode"] for r in rows}
+            return next(iter(currencies)) if len(currencies) == 1 else "mixed:" + "/".join(sorted(currencies))
+        return next((r.get("currencyCode") for r in rows if r.get("asOfDate") == as_of), None)
+    try:
+        return _cached(f"dcf:statement_ccy:{symbol}:{period}:{as_of}", 86400, fetch)
+    except Exception:
+        return None
+
+
+def _validate_statement_currency(out: Dict[str, Any], statement: Dict[str, Any]) -> None:
+    currency = statement.get("currency")
+    out["statement_currency"] = currency
+    out["statement_currency_verified"] = bool(currency and currency == out.get("currency"))
+    if currency and currency != out.get("currency"):
+        raise NotFound(f"Statement currency {currency} disagrees with the provider's financial currency {out.get('currency')} "
+                       "— reconcile income and balance-sheet currencies before valuation.")
+
+
+def _annual_from_statements(symbol: str) -> Optional[Dict[str, Any]]:
+    """Use a coherent fiscal-year base when four consecutive quarters are unavailable.
+
+    Never multiply trailing revenue by a single-quarter operating margin. Annual capex
+    and depreciation must match the income statement date; absent lines stay missing.
+    """
+    try:
+        import yfinance as yf
+        tk = yf.Ticker(symbol)
+        inc = tk.income_stmt
+        if inc is None or inc.empty or not all(k in inc.index for k in ("Total Revenue", "Operating Income")):
+            return None
+        for c in inc.columns:
+            rev, op = _f(inc.loc["Total Revenue", c]), _f(inc.loc["Operating Income", c])
+            if rev is None or rev <= 0 or op is None:
+                continue
+            out = {"revenue": rev, "ebit": op, "as_of": str(c)[:10], "period": "annual", "capex": None, "dna": None}
+            for row in ("Net Income Common Stockholders", "Net Income"):
+                if row in inc.index and _f(inc.loc[row, c]) is not None:
+                    out["net_income"] = _f(inc.loc[row, c])
+                    break
+            try:
+                cf = tk.cashflow
+            except Exception:
+                cf = None
+            if cf is not None and not cf.empty and c in cf.columns:
+                for key, rows in (("capex", ("Capital Expenditure",)),
+                                  ("dna", ("Depreciation And Amortization", "Depreciation Amortization Depletion"))):
+                    for row in rows:
+                        if row in cf.index:
+                            v = _f(cf.loc[row, c])
+                            if v is not None:
+                                out[key] = abs(v) if key == "capex" else v
+                                break
+            out["currency"] = _statement_currency(symbol, out["as_of"], "annual")
+            return out
+    except Exception:
+        pass
+    return None
+
+
+def restate_statement_inputs(inp: Dict[str, Any], statement: Dict[str, Any]) -> Dict[str, Any]:
+    """Rebase the operating forecast to one reported period; retain price and market assumptions.
+
+    Used by inputs() and snapshot audits, so corrections can be compared at identical prices.
+    This is a fiscal-year fallback, not an invented trailing-twelve-month statement.
+    """
+    out = dict(inp)
+    _validate_statement_currency(out, statement)
+    rev, op = statement["revenue"], statement["ebit"]
+    out.update(revenue=rev, ebit=op, margin=round(op / rev, 4), as_of=statement["as_of"],
+               capex=statement.get("capex"), dna=statement.get("dna"))
+    out.pop("margin_basis_note", None)
+    if statement.get("period") == "annual":
+        out["source"] = "Yahoo Finance (latest fiscal year; four consecutive quarters unavailable)"
+        out["statement_basis_note"] = "Annual revenue, operating profit and matching cash-flow period; not a TTM estimate."
+        if statement.get("net_income") is not None:
+            out["net_income"] = statement["net_income"]
+    cx, da = out.get("capex"), out.get("dna")
+    out["net_capex_to_revenue"] = round((abs(cx) - abs(da)) / rev, 4) if cx is not None and da is not None else None
+    ic = out.get("invested_capital")
+    benchmark = out.get("industry_benchmark") or {}
+    firm = min(5.0, max(0.5, rev / ic)) if ic and ic > 0 else None
+    out["sales_to_capital_firm"] = round(firm, 2) if firm is not None else None
+    stc_ind = benchmark.get("sales_to_capital")
+    if stc_ind:
+        out["sales_to_capital"] = round(min(8.0, max(0.5, (firm + stc_ind) / 2 if firm is not None else stc_ind)), 2)
+        out["sales_to_capital_source"] = "period-aligned firm capital ratio blended with the existing industry benchmark"
+    elif firm is not None:
+        out["sales_to_capital"] = round(firm, 2)
+    tax = out.get("tax_effective")
+    if tax is None:
+        tax = out["tax_marginal"]
+    if ic and ic > 0:
+        out["roic"] = round(op * (1 - tax) / ic, 4)
+    for key in ("margin_normalized", "margin_note", "margin_fade_years"):
+        out.pop(key, None)
+    margins = out.get("margin_history") or []
+    ms = sorted(margins[:3])
+    hist = {"margins": margins, "median_margin": ms[len(ms)//2] if ms else None, "roics": out.get("roic_history") or []}
+    _margin_assumptions(out, hist)
+    return out
+
+
+def model_suitability(inp: Dict[str, Any], model: str) -> Dict[str, Any]:
+    """Data/accounting limitations are independent of whether value agrees with price."""
+    reasons = []
+    industry = (inp.get("industry") or "").lower()
+    if "asset management" in industry:
+        reasons.append("Asset manager / investment company: verify recurring fee earnings; investment holding companies need NAV or sum-of-parts, not extrapolated investment gains.")
+    currency = str(inp.get("currency") or "").upper()
+    if currency and currency not in LR_NOMINAL_GROWTH:
+        reasons.append(f"No configured long-run nominal-growth ceiling for {currency}; review stable inflation and perpetual growth rather than extrapolating the current local yield.")
+    resource = (inp.get("industry_benchmark") or {}).get("industry")
+    if model == "fcff" and resource in {"Oil/Gas (Integrated)", "Oil/Gas (Production and Exploration)", "Metals & Mining", "Coal & Related Energy", "Precious Metals"}:
+        reasons.append("Commodity producer: verify reserve life, maintenance capex, commodity-price assumptions and operating-country exposures.")
+    if industry.startswith("real estate") and model == "fcff":
+        reasons.append("Property company: reconcile fair-value gains and development cash flows; compare NAV/FFO before using an operating-profit DCF.")
+    if model == "fcff" and inp.get("margin_basis_note"):
+        reasons.append(inp["margin_basis_note"])
+    if inp.get("statement_currency_verified") is False:
+        reasons.append("The provider did not supply verifiable statement-currency metadata.")
+    if inp.get("cash") is None or inp.get("debt") is None:
+        reasons.append("Cash or debt is missing; the equity bridge is incomplete.")
+    if not inp.get("risk_free_matched", True):
+        reasons.append("The risk-free rate does not match the cash-flow currency.")
+    if model == "fcff" and inp.get("ebit") is not None and inp["ebit"] < 0:
+        reasons.append("Loss-making business: the recovery, financing needs and dilution require explicit review.")
+    if model == "fcff" and inp.get("net_capex_to_revenue") is None:
+        reasons.append("No matched capex/depreciation data: reinvestment relies on sales-to-capital estimates.")
+    return {"status": "review_required" if reasons else "standard_model", "reasons": reasons,
+            "note": "These are model/data checks, not a certification of fair value or expected returns.",
+            "statement_date": inp.get("as_of"), "statement_basis": inp.get("statement_basis_note") or inp.get("source")}
 
 def _balance_extras(symbol: str) -> Dict[str, Optional[float]]:
     """Non-operating stakes and captive-finance receivables from the latest balance sheet."""
@@ -402,14 +592,18 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
     analyst growth path, captive finance and non-operating stakes."""
     from api.providers import damodaran
     erp = damodaran.implied_erp()
-    out["erp_implied"] = erp.get("erp") or ERP_FALLBACK
+    out["erp_implied"] = erp.get("erp") if erp.get("erp") is not None else ERP_FALLBACK
+    out["erp_implied_source"] = erp.get("source")
+    out["erp_implied_as_of"] = erp.get("as_of")
+    out["erp_implied_fallback"] = erp.get("erp") is None
     if ERP_BASIS == "implied":
         out["erp_mature"] = out["erp_implied"]
         out["erp_source"] = erp.get("source") or f"fallback {ERP_FALLBACK:.1%} (Damodaran's monthly file unavailable)"
     else:
         out["erp_mature"] = ERP_STANDARD
-        out["erp_source"] = (f"Kroll recommended mature-market ERP {ERP_STANDARD:.1%} (the valuation standard; the market-implied ERP "
-                             f"is {out['erp_implied']:.1%} — {erp.get('source') or 'Damodaran'})")
+        out["erp_source"] = f"Normalized mature-market ERP assumption {ERP_STANDARD:.1%}; not calibrated to the current share price"
+    out["erp_basis"] = ERP_BASIS
+
     home, us = damodaran.country_risk(out.get("country")), damodaran.country_risk("United States")
     crp = max(0.0, (home.get("crp") or 0.0) - (us.get("crp") or 0.0))
     out["country_risk_premium"], out["country_rating"] = round(crp, 4), home.get("rating")
@@ -538,6 +732,19 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
                 out["growth_note"] = "Analyst revenue estimates look inconsistent with reported revenue (different currency or basis) — not used."
     except Exception:
         pass
+    _margin_assumptions(out, hist)
+    clip = lambda g: round(min(0.40, max(-0.15, g)), 4)
+    if g1 is not None or g2 is not None:
+        out["growth_y1"] = clip(g1 if g1 is not None else g2)
+        out["growth"] = clip(g2 if g2 is not None else g1)
+        out["growth_source"] = "analyst consensus revenue growth: this fiscal year (year 1), next fiscal year (years 2–3), then a fade to terminal growth"
+    else:
+        out["growth_y1"] = out.get("growth")
+
+
+
+def _margin_assumptions(out: Dict[str, Any], hist: Dict[str, Any]) -> None:
+    """Existing normalisation/cyclical rules, shared by live and period-aligned inputs."""
     # Normalised margin (Damodaran): a one-off loss year shouldn't be projected forever.
     m_now = out.get("margin")
     med = hist["median_margin"]
@@ -583,14 +790,6 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
         out["target_margin_source"] = (f"cyclical industry: margin fades from {out['target_margin_default']:.1%} halfway to the "
                                        f"{ind_name} through-cycle margin {ind_m:.1%} (→ {tgt:.1%})")
         out["target_margin_default"] = tgt
-    clip = lambda g: round(min(0.40, max(-0.15, g)), 4)
-    if g1 is not None or g2 is not None:
-        out["growth_y1"] = clip(g1 if g1 is not None else g2)
-        out["growth"] = clip(g2 if g2 is not None else g1)
-        out["growth_source"] = "analyst consensus revenue growth: this fiscal year (year 1), next fiscal year (years 2–3), then a fade to terminal growth"
-    else:
-        out["growth_y1"] = out.get("growth")
-
 
 def _history(symbol: str) -> Dict[str, Any]:
     """Last fiscal years' revenue and operating margin (newest first) from Yahoo."""
@@ -715,7 +914,7 @@ def wacc(inp: Dict[str, Any], beta: Optional[float] = None, erp: Optional[float]
     """Cost of capital: cost of equity (CAPM: risk-free + β × ERP, or Morningstar's building blocks), after-tax cost
     of debt and their market-value weights, optionally with leases as debt.
     """
-    rf = inp.get("risk_free") or 0.04
+    rf = inp.get("risk_free") if inp.get("risk_free") is not None else 0.04
     b = beta if beta is not None else (inp.get("beta") if inp.get("beta") is not None else 1.0)
     if erp is None:
         erp = inp.get("erp") or ERP_FALLBACK
@@ -743,7 +942,7 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
           target_margin: Optional[float] = None, sales_to_capital: Optional[float] = None, ronic: Optional[float] = None,
           discount: Optional[float] = None, beta: Optional[float] = None, erp: Optional[float] = ERP_DEFAULT, tax: Optional[float] = None,
           include_leases: bool = False, mid_year: bool = True, method: Optional[str] = None, fade_years: Optional[int] = None,
-          ke_method: Optional[str] = None) -> Dict[str, Any]:
+          ke_method: Optional[str] = None, working_capital_ratio: Optional[float] = None) -> Dict[str, Any]:
     """A discounted cash-flow valuation of the firm (FCFF at WACC, mid-year by default).
 
     three_stage (default, Morningstar's structure): `years` explicit years (default 5) of revenue growth, margins
@@ -762,8 +961,10 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
         years = EXPLICIT_YEARS if three else 10
     rev0, ebit0 = inp.get("revenue"), inp.get("ebit")
     if not rev0 or ebit0 is None:
-        raise NotFound("A DCF values an operating company from its revenue and profits — this instrument (an ETF, index, "
-                       "currency, commodity or crypto asset) has none. Use DES, GP or COMP for it instead.")
+        raise NotFound("Revenue or operating profit is unavailable for an operating-company DCF. Verify the statements and "
+                       "model suitability: a pre-revenue business needs explicit funding and milestone assumptions; banks and "
+                       "holding companies may need excess-return or asset-based valuation. ETFs, indices, currencies and "
+                       "commodities are not operating companies; use DES, GP or COMP for those instruments.")
     shares = inp.get("shares")
     if not shares or shares <= 0:
         raise NotFound("Share count unavailable.")
@@ -771,7 +972,7 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
         raise NotFound("Use 3–30 projection years.")
     w = wacc(inp, beta, erp, include_leases, ke_method)
     r = discount if discount is not None else w["wacc"]
-    rf = inp.get("risk_free") or 0.04
+    rf = inp.get("risk_free") if inp.get("risk_free") is not None else 0.04
     g0 = inp["growth"] if growth is None else growth                     # years 2–3 (or 1–3 when set by hand)
     g1 = (inp.get("growth_y1", g0) if growth is None else growth)
     gT = terminal_growth if terminal_growth is not None else default_terminal_growth(inp)
@@ -820,9 +1021,20 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
                        "return on reinvestment would need more than 100% of profits reinvested, forever.")
 
     # the firm's actual net capital spending per unit of revenue anchors the first years' reinvestment
-    anchor = inp.get("net_capex_to_revenue")
+    anchor = inp.get("reinvestment_to_revenue")
+    if anchor is None:
+        anchor = inp.get("net_capex_to_revenue")
     if anchor is not None and anchor < 0:
         anchor = 0.0                                                         # depreciation above capex: not a source of cash
+    wc_ratio = working_capital_ratio if working_capital_ratio is not None else (inp.get("working_capital_to_sales") if WORKING_CAPITAL_FORECAST else None)
+    if wc_ratio is not None and (not math.isfinite(wc_ratio) or not -1 <= wc_ratio <= 1):
+        raise NotFound("Working-capital/revenue ratio must be finite and between -1 and 1.")
+    if working_capital_ratio is not None and sales_to_capital is not None:
+        raise NotFound("Use a working-capital ratio with the net-capex anchor, or an aggregate sales-to-capital override, not both.")
+    if sales_to_capital is not None:
+        wc_ratio = None
+    if working_capital_ratio is not None and anchor is None:
+        raise NotFound("An explicit working-capital ratio needs matched net-capex data to avoid double-counting sales-to-capital reinvestment.")
     rows: List[Dict[str, Any]] = []
     rev, pv_sum, cum = rev0, 0.0, 1.0
     for y in range(1, years + 1):
@@ -841,9 +1053,12 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
         ebit = new_rev * m
         nopat = ebit * (1 - tx) if ebit > 0 else ebit                       # no tax shield modelled on losses
         reinvest = (new_rev - rev) / stc
+        ratio_reinvestment = reinvest
+        anchor_weight = 0.0
         if anchor is not None and y <= REINVEST_ANCHOR_YEARS and sales_to_capital is None:
             w_a = 1 - (y - 1) / REINVEST_ANCHOR_YEARS             # 1 in year 1 → 0.2 in year 5 → the ratio rule after
-            reinvest = w_a * anchor * new_rev + (1 - w_a) * reinvest
+            anchor_weight = w_a
+            reinvest = w_a * (anchor * new_rev + (wc_ratio or 0.0) * (new_rev - rev)) + (1 - w_a) * reinvest
         fcff = nopat - reinvest
         r_y = r if y <= hg else r + (rT - r) * (y - hg) / (horizon - hg)
         df = cum / (1 + r_y) ** (0.5 if mid_year else 1.0)
@@ -851,6 +1066,12 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
         pv_sum += fcff * df
         rows.append({"year": y, "stage": "explicit", "growth": g, "revenue": new_rev, "margin": m, "ebit": ebit, "tax_rate": tx, "nopat": nopat,
                      "reinvestment": reinvest, "fcff": fcff, "discount_rate": r_y, "discount_factor": df, "pv": fcff * df})
+        # Value-driver identity: new NOPAT divided by the investment that supports it.
+        previous_nopat = ebit0 * (1 - t_now) if y == 1 and ebit0 > 0 else (ebit0 if y == 1 else rows[-2]["nopat"])
+        rows[-1].update(modeled_tax=ebit-nopat, ratio_reinvestment=ratio_reinvestment,
+                        anchor_weight=anchor_weight, anchored_reinvestment=anchor_weight * (anchor or 0.0) * new_rev,
+                        working_capital_investment=anchor_weight * (wc_ratio or 0.0) * (new_rev - rev),
+                        incremental_return=(nopat-previous_nopat)/reinvest if reinvest > 0 else None)
         rev = new_rev
     # Stage II (fade): value-driver cash flows — NOPAT grows at the fading rate, reinvestment = growth ÷ RONIC.
     nopat = rows[-1]["nopat"]
@@ -957,7 +1178,8 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
             "assumptions": {"method": method, "fade_years": n_fade, "ronic_fade_start": ron0 if three else None,
                             "ronic_fade_shape": RONIC_FADE_SHAPE, "growth_half_life": GROWTH_HALF_LIFE if three else None,
                             "moat": mo["rating"] if mo else None, "growth": g0, "growth_y1": g1, "high_growth_years": hg, "terminal_growth": gT, "years": years, "margin_now": m0, "target_margin": mT,
-                            "sales_to_capital": stc, "net_capex_to_revenue": anchor, "reinvestment_anchor_years": REINVEST_ANCHOR_YEARS if anchor is not None and sales_to_capital is None else None,
+                            "sales_to_capital": stc, "net_capex_to_revenue": max(0.0, inp["net_capex_to_revenue"]) if inp.get("net_capex_to_revenue") is not None else None,
+                            "reinvestment_to_revenue": anchor, "working_capital_ratio": wc_ratio, "working_capital_source": inp.get("working_capital_source"), "margin_fade_years": (inp.get("margin_fade_years") if target_margin is None else None), "reinvestment_source": inp.get("reinvestment_source", "net-capex anchor; working capital unavailable"), "reinvestment_anchor_years": REINVEST_ANCHOR_YEARS if anchor is not None and sales_to_capital is None else None,
                             "ronic": ron, "discount": r, "discount_terminal": rT, "beta_terminal": beta_T, "tax_now": t_now, "tax_terminal": t_term,
                             "mid_year": mid_year, "include_leases": include_leases, "roic_now": roic_now},
             "wacc": w, "net_debt": debt - (inp.get("cash") or 0), "projection": rows, "checks": checks, "price": price}
@@ -966,7 +1188,7 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
 def default_terminal_growth(inp: Dict[str, Any]) -> float:
     """Perpetual growth: the risk-free rate (Damodaran), capped under TERMINAL_RULE "gdp" at the currency's long-run
     nominal GDP growth — never negative."""
-    rf = max(0.0, inp.get("risk_free") or 0.04)
+    rf = max(0.0, inp.get("risk_free") if inp.get("risk_free") is not None else 0.04)
     if TERMINAL_RULE == "gdp":
         cap = LR_NOMINAL_GROWTH.get((inp.get("currency") or "USD").upper())
         if cap is not None:
@@ -983,7 +1205,7 @@ def implied_discount(inp: Dict[str, Any], **kw) -> Optional[float]:
         v = value(inp, **{**kw, "discount": r})
         return None if v["per_share"] is None or not v.get("price") else v["per_share"] - v["price"]
     g = kw.get("terminal_growth")
-    g = max(0.0, inp.get("risk_free") or 0.04) if g is None else g
+    g = default_terminal_growth(inp) if g is None else g
     lo, hi = g + 0.0055, 0.30                              # the rate must stay >0.5pt above terminal growth
     try:
         flo, fhi = f(lo), f(hi)
@@ -1092,8 +1314,8 @@ def value_financial(inp: Dict[str, Any], years: int = 10, roe: Optional[float] =
         raise NotFound("Share count unavailable.")
     if not 3 <= years <= 30:
         raise NotFound("Use 3–30 projection years.")
-    rf = inp.get("risk_free") or 0.04
-    b = beta if beta is not None else (inp.get("beta") or 1.0)
+    rf = inp.get("risk_free") if inp.get("risk_free") is not None else 0.04
+    b = beta if beta is not None else (inp.get("beta") if inp.get("beta") is not None else 1.0)
     e = erp if erp is not None else (inp.get("erp") or ERP_FALLBACK)
     ke_floored = discount is None and rf + b * e < KE_FLOOR
     ke = discount if discount is not None else max(rf + b * e, KE_FLOOR)
@@ -1243,12 +1465,15 @@ def value_ddm(inp: Dict[str, Any], years: int = 10, high_years: int = 5, growth:
         raise NotFound(f"{s} pays no regular dividend, so a dividend discount model doesn't apply — use the DCF or peer multiples.")
     if not 5 <= years <= 30:
         raise NotFound("Use 5–30 projection years.")
-    rf = inp.get("risk_free") or 0.04
-    b = beta if beta is not None else (inp.get("beta") or 1.0)
+    from api.marketdata.core import MINOR_UNITS
+    ccy = MINOR_UNITS.get(inp.get("price_currency"), (inp.get("price_currency") or inp.get("currency") or "USD").upper())
+    if ccy != inp.get("currency") and inp.get("dividend_risk_free") is None:
+        raise NotFound("Dividend cash flows are in the trading currency; a matching dividend-currency risk-free rate is required.")
+    rf = inp.get("dividend_risk_free") if inp.get("dividend_risk_free") is not None else (inp.get("risk_free") if inp.get("risk_free") is not None else 0.04)
+    b = beta if beta is not None else (inp.get("beta") if inp.get("beta") is not None else 1.0)
     e = erp if erp is not None else (inp.get("erp") or ERP_FALLBACK)
     ke_model = rf + b * e
     ke = discount if discount is not None else max(ke_model, KE_FLOOR)
-    ccy = (inp.get("currency") or "USD").upper()
     infl = LT_INFLATION.get(ccy, 0.02 if ccy in ("EUR", "JPY", "GBP", "CHF", "CAD", "AUD") else LT_INFLATION["USD"])
     g_cap = 0.02 + infl                                   # ≈ 2% real growth plus the currency's inflation
     # stable phase: a mature firm's beta drifts toward the market's (bounded 0.8–1.2, as in the DCF)
@@ -1321,7 +1546,7 @@ def value_ddm(inp: Dict[str, Any], years: int = 10, high_years: int = 5, growth:
     if dy is not None and dy < 0.01:
         checks.append(f"The yield is only {dy:.1%}: most of this company's return comes from retained earnings and buybacks, "
                       "so a dividend model understates it — prefer the DCF.")
-    if not inp.get("risk_free_matched", True):
+    if not inp.get("dividend_risk_free_matched", inp.get("risk_free_matched", True)):
         checks.append(f"No government yield in {ccy}: the US rate is used for the risk-free rate.")
     # reverse DDM: the constant dividend growth today's price implies at the long-run cost of equity (Gordon)
     implied_g = (keT * price - dps0) / (price + dps0)
@@ -1331,7 +1556,7 @@ def value_ddm(inp: Dict[str, Any], years: int = 10, high_years: int = 5, growth:
             "dividend_history": hist[-12:], "dividend_cagr_5y": cagr,
             "assumptions": {"growth": g1, "growth_source": "; ".join(g_src), "high_years": high_years, "years": years, "terminal_growth": gT,
                             "terminal_growth_cap": g_cap, "cost_of_equity": ke, "cost_of_equity_terminal": keT, "cost_of_equity_model": ke_model, "beta": b, "erp": e,
-                            "risk_free": rf, "payout_now": payout, "payout_terminal": pT if use_payout else None, "roe_now": roe, "roe_terminal": roeT},
+                            "risk_free": rf, "cashflow_currency": ccy, "payout_now": payout, "payout_terminal": pT if use_payout else None, "roe_now": roe, "roe_terminal": roeT},
             "projection": rows, "checks": checks}
 
 
@@ -1411,3 +1636,111 @@ def outlook(symbol: str, price: Optional[float], value: Optional[float], cost_of
             "note": "Median = the price earning its cost of equity (net of dividends) while closing the gap to the model value "
                     f"with a {half_life_years:g}-year half-life; bands from 1-year realised volatility ({sigma:.0%}). "
                     "A model-based expectation, not a forecast of short-term moves — over 1–3 months volatility dominates."}
+
+
+# Illustrative stress assumptions, expressed as percentage-point changes, not fitted forecasts.
+# Growth/margin/ROE and credit conditions move together; no sentiment multiplier on value.
+MARKET_SCENARIOS = {
+    "base": {"growth": 0.0, "margin": 0.0, "erp": 0.0, "debt": 0.0, "roe": 0.0},
+    "expansion": {"growth": 0.02, "margin": 0.01, "erp": -0.005, "debt": -0.0025, "roe": 0.01},
+    "recession": {"growth": -0.04, "margin": -0.03, "erp": 0.015, "debt": 0.015, "roe": -0.03},
+    "inflation_shock": {"growth": -0.01, "margin": -0.02, "erp": 0.01, "debt": 0.01, "roe": -0.01},
+}
+
+
+def exposure_risk(inp: Dict[str, Any], weights: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
+    """Optional operating-country weights; missing exposure data retains the home-country estimate.
+
+    Weights must cover the whole business; partial weights are never silently rescaled.
+    """
+    if weights is None:
+        return {"premium": inp.get("country_risk_premium") or 0.0, "basis": "home country (exposure unavailable)", "weights": None}
+    if not weights or any(not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0 for v in weights.values()) or not math.isclose(sum(weights.values()), 1.0, abs_tol=0.001):
+        raise NotFound("Country exposure weights must be finite, non-negative and sum to 1.")
+    from api.providers import damodaran
+    us = damodaran.country_risk("United States").get("crp")
+    if us is None:
+        raise NotFound("US country risk unavailable; cannot calculate exposure-weighted risk.")
+    premium = 0.0
+    for country, weight in weights.items():
+        if weight == 0:
+            continue
+        record = damodaran.country_risk(country)
+        risk = record.get("crp")
+        if risk is None or not record.get("rating"):
+            raise NotFound(f"Country risk unavailable for {country}.")
+        premium += weight * max(0.0, risk - us)
+    return {"premium": premium, "basis": "operating-country weights", "weights": dict(weights)}
+
+
+def market_views(inp: Dict[str, Any], model: str = "fcff", overrides: Optional[Dict[str, Any]] = None,
+                 normalized_erp: float = ERP_STANDARD, country_weights: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
+    """Comparable normalized/current-market lenses using the existing valuation engines.
+
+    Keep currency, sector inputs and manual operating assumptions. Explicit discount/ERP and
+    building-block choices remain in the primary valuation; these comparison lenses use CAPM
+    with their stated premiums so that a manual rate cannot hide the difference between them.
+    """
+    if not math.isfinite(normalized_erp) or not 0 <= normalized_erp <= 0.15:
+        raise NotFound("Normalized mature-market ERP must be between 0 and 15%.")
+    engine = {"fcff": value, "excess_return": value_financial, "ddm": value_ddm}[model]
+    allowed = {
+        "fcff": {"growth", "years", "terminal_growth", "target_margin", "sales_to_capital", "ronic", "beta", "tax", "include_leases", "mid_year", "method", "fade_years", "working_capital_ratio"},
+        "excess_return": {"years", "roe", "terminal_roe", "payout", "terminal_growth", "beta"},
+        "ddm": {"years", "growth", "terminal_growth", "beta"},
+    }[model]
+    kw = {k: v for k, v in (overrides or {}).items() if k in allowed and v is not None}
+    exposure = exposure_risk(inp, country_weights)
+    market_erp = inp.get("erp_implied")
+    if market_erp is None:
+        market_erp = inp.get("erp_mature")
+    if market_erp is None:
+        market_erp = max(0.0, (inp.get("erp") or ERP_FALLBACK) - (inp.get("country_risk_premium") or 0.0))
+    lenses = {}
+    for name, mature in (("fundamental", normalized_erp), ("current_market", market_erp)):
+        cases = {}
+        for regime, shift in MARKET_SCENARIOS.items():
+            data, args = dict(inp), dict(kw)
+            data["country_risk_premium"] = exposure["premium"]
+            data["cost_of_debt"] = max(0.0, (inp.get("cost_of_debt") or 0.0) + shift["debt"])
+            args["erp"] = max(0.0, mature + exposure["premium"] + shift["erp"])
+            if model == "fcff":
+                # Preserve distinct year-one consensus; stresses flow through the existing reinvestment rule.
+                data["growth"] = max(-0.5, min(2.0, kw.get("growth", inp["growth"]) + shift["growth"]))
+                data["growth_y1"] = max(-0.5, min(2.0, kw.get("growth", inp.get("growth_y1", inp["growth"])) + shift["growth"]))
+                args.pop("growth", None)
+                margin = kw.get("target_margin", inp.get("target_margin_default"))
+                if margin is None:
+                    margin = inp["ebit"] / inp["revenue"]
+                if shift["margin"]:
+                    args["target_margin"] = max(-1.0, min(0.9, margin + shift["margin"]))
+                args["ke_method"] = "capm"
+            elif model == "excess_return":
+                if shift["roe"] and inp.get("equity_book"):
+                    roe0 = min(0.40, max(-0.10, (inp.get("net_income") or 0.0) / inp["equity_book"]))
+                    args["roe"] = kw.get("roe", roe0) + shift["roe"]
+                if "terminal_roe" in args:
+                    args["terminal_roe"] += shift["roe"]
+            elif shift["growth"]:
+                # DDM growth is constrained by the same engine's sustainable-growth defaults.
+                try:
+                    start = engine(data, **args)["assumptions"]["growth"]
+                    args["growth"] = start + shift["growth"]
+                except NotFound as exc:
+                    cases[regime] = {"per_share": None, "error": str(exc)}
+                    continue
+            try:
+                result = engine(data, **args)
+                cases[regime] = {"per_share": result["per_share"], "terminal_share": result.get("terminal_share"),
+                                 "assumptions": result["assumptions"], "checks": result.get("checks", []),
+                                 "cost_of_debt": data["cost_of_debt"], "erp": args["erp"]}
+            except NotFound as exc:
+                cases[regime] = {"per_share": None, "error": str(exc)}
+        values = [c["per_share"] for c in cases.values() if c["per_share"] is not None]
+        lenses[name] = {"mature_erp": mature, "scenarios": cases,
+                        "range": {"low": min(values), "high": max(values)} if values else None}
+    return {"model": model, "country_risk": exposure, "suitability": model_suitability(inp, model), **lenses,
+            "scenario_shifts": MARKET_SCENARIOS,
+            "note": "Illustrative scenario ranges, not confidence intervals. Both lenses use CAPM and retain the cash-flow currency. "
+                    "Normalized ERP is an assumption, not a calibrated estimate. Inflation shock stresses margins and credit; "
+                    "it does not forecast inflation or FX. Price-gap convergence is a separate, unvalidated outlook assumption."}

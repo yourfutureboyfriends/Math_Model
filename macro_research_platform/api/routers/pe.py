@@ -205,3 +205,58 @@ async def pe_fund_waterfall(body: WaterfallIn, request: Request):
     from api.pe import fundmath
     return await _run(fundmath.waterfall, [c.model_dump() for c in body.contributions],
                       [d.model_dump() for d in body.distributions], body.pref, body.carry, body.catch_up, body.compounding)
+
+
+# ── Comparables: trading comps, the fund's precedent transactions, and where a deal sits ─────────────────────────────
+class PrecedentIn(BaseModel):
+    date: str = Field(..., max_length=10)
+    target: str = Field(..., max_length=120)
+    acquirer: Optional[str] = Field(None, max_length=120)
+    sector: Optional[str] = Field(None, max_length=80)
+    region: Optional[str] = Field(None, max_length=40)
+    currency: Optional[str] = Field(None, max_length=3)
+    ev: float = Field(..., gt=0)
+    ebitda: float = Field(..., gt=0)
+    deal_type: Optional[str] = Field(None, max_length=40)
+    source: str = Field(..., max_length=300)
+    notes: Optional[str] = Field(None, max_length=2000)
+
+
+@router.get("/api/v1/pe/comps/{symbol}")
+async def pe_trading_comps(symbol: str, request: Request):
+    """Listed peers' EV/EBITDA and its distribution."""
+    _user(request)
+    from api.pe import comps
+    return await _run(comps.trading, symbol)
+
+
+@router.get("/api/v1/pe/benchmark")
+async def pe_benchmark(request: Request, entry: Optional[float] = Query(None, gt=0), exit: Optional[float] = Query(None, gt=0),
+                       symbol: Optional[str] = Query(None, max_length=20), sector: Optional[str] = Query(None, max_length=80),
+                       industry: Optional[float] = Query(None, gt=0)):
+    """A deal's entry and exit multiples against trading comps, the fund's precedents and the industry."""
+    _user(request)
+    from api.pe import comps
+    return await _run(comps.benchmark, entry, exit, symbol, sector, industry)
+
+
+@router.get("/api/v1/pe/precedents")
+async def pe_precedents(request: Request, sector: Optional[str] = Query(None, max_length=80)):
+    _user(request)
+    from api.pe import comps
+    return {"precedents": await _run(comps.list_precedents, sector)}
+
+
+@router.post("/api/v1/pe/precedents")
+async def pe_precedent_add(body: PrecedentIn, request: Request):
+    who = _user(request, WRITE)
+    from api.pe import comps
+    return await _run(comps.add_precedent, who, body.model_dump())
+
+
+@router.delete("/api/v1/pe/precedents/{pid}")
+async def pe_precedent_delete(pid: int, request: Request):
+    _user(request, WRITE)
+    from api.pe import comps
+    await _run(comps.delete_precedent, pid)
+    return {"deleted": pid}

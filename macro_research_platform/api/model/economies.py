@@ -56,7 +56,7 @@ def _excess(returns: Dict[str, pd.Series], cash_annual_pct: pd.Series) -> pd.Dat
     r = pd.DataFrame(returns).sort_index()
     this_month = pd.Timestamp.today().to_period("M").to_timestamp()
     r = r[r.index < this_month]
-    c = (cash_annual_pct.resample("MS").mean() / 1200).reindex(r.index).ffill()
+    c = (cash_annual_pct.resample("MS").mean() / 1200).reindex(r.index.union(cash_annual_pct.resample("MS").mean().index)).sort_index().ffill(limit=2).reindex(r.index)
     return r.sub(c, axis=0)
 
 
@@ -119,7 +119,7 @@ EA_ASSETS: Dict[str, Tuple[str, str, str]] = {
     "Euro IG credit": ("IEAC.L", "IEAC.L", "Corporate credit"),
     "US equity (EUR)": ("usd:VFINX", "SXR8.DE", "Equity"),
     "EM equity (EUR)": ("usd:VEIEX", "IS3N.DE", "Equity"),
-    "Gold (EUR)": ("usd:GC=F", "4GLD.DE", "Gold"),
+    "Gold (EUR)": ("usd:GLD", "4GLD.DE", "Gold"),
     "Commodities (EUR)": ("usd:PCRIX", "CMOD.L", "Commodities"),
 }
 
@@ -160,7 +160,7 @@ async def _load_ea() -> Tuple[Dict[str, pd.Series], pd.DataFrame]:
             continue
         if proxy.startswith("usd:"):                       # a USD price seen by a euro investor (unhedged)
             p = (p / usd_per_eur.reindex(p.index)).dropna()
-        rets[name] = p.sort_index().pct_change()
+        rets[name] = p.sort_index().asfreq("MS").pct_change(fill_method=None)
     cash = raw.get("EA_EURIBOR3M", pd.Series(dtype=float))
     return raw, _excess(rets, cash)
 
@@ -190,7 +190,7 @@ ROW_ASSETS: Dict[str, Tuple[str, str, str]] = {
     "EM equity": ("VEIEX", "EEM", "Equity"),
     "International government bonds": ("RPIBX", "BWX", "Nominal bonds"),
     "EM bonds (USD)": ("PREMX", "EMB", "Corporate credit"),
-    "Gold": ("GC=F", "GLD", "Gold"),
+    "Gold": ("GLD", "GLD", "Gold"),
     "Commodities": ("PCRIX", "DBC", "Commodities"),
 }
 
@@ -221,7 +221,7 @@ async def _load_row() -> Tuple[Dict[str, pd.Series], pd.DataFrame]:
         raw["TB3MS"] = fred["TB3MS"]
 
     px = await asyncio.to_thread(src.yahoo_monthly, sorted({p for p, _, _ in ROW_ASSETS.values()}), "row_assets")
-    rets = {name: px[p].sort_index().pct_change() for name, (p, _, _) in ROW_ASSETS.items() if p in px and not px[p].empty}
+    rets = {name: px[p].sort_index().asfreq("MS").pct_change(fill_method=None) for name, (p, _, _) in ROW_ASSETS.items() if p in px and not px[p].empty}
     return raw, _excess(rets, raw.get("TB3MS", pd.Series(dtype=float)))
 
 
@@ -244,7 +244,7 @@ def _us() -> Economy:
         limitations=["FRED serves revised data, not first-release vintages (mild look-ahead in the macro inputs).",
                      "Regime probabilities assume growth and inflation directions are independent.",
                      "Estimation uses mutual-fund proxies; trading uses ETFs with shorter histories.",
-                     "Gold history starts in 2000 and commodities in 2002."],
+                     "Gold uses GLD from its available history (2004 onward), not generic futures quotes; commodities start in 2002."],
         loader=_load_us, tradeable=True)
 
 

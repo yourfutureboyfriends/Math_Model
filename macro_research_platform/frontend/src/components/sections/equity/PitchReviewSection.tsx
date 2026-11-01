@@ -104,13 +104,13 @@ export function PitchReviewSection() {
             {F('bear', 'Bear value')}{F('bear_p', 'p', 'w-14')}{F('base', 'Base value')}{F('base_p', 'p', 'w-14')}{F('bull', 'Bull value')}{F('bull_p', 'p', 'w-14')}
             {F('entry_low', 'Entry low')}{F('entry_high', 'Entry high')}{F('target_weight', 'Target weight %', 'w-20')}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="workspace-controls flex flex-wrap gap-2">
             {F('catalyst', 'Catalyst', 'w-56', 'Q3 results')}{F('catalyst_date', 'Expected date', 'w-28', 'YYYY-MM-DD')}
             <label className="text-2xs text-text-tertiary">Date is<br /><select className={inputCls} value={form.catalyst_conf} onChange={(e) => setForm({ ...form, catalyst_conf: e.target.value })}><option value="scheduled">scheduled</option><option value="estimated">estimated</option></select></label>
           </div>
           <div className="text-2xs text-text-tertiary">Kill criteria (at least one)</div>
           {kills.map((k, i) => (
-            <div key={i} className="flex flex-wrap gap-2 items-end">
+            <div key={i} className="workspace-controls flex flex-wrap gap-2 items-end">
               <select className={cn(inputCls, 'w-44')} value={k.type} onChange={(e) => setKills(kills.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)))}>
                 {(list?.kill_types ?? ['price_below']).map((t: string) => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
               </select>
@@ -136,11 +136,11 @@ export function PitchReviewSection() {
         <div className="border border-border bg-surface-1">
           {!list ? <div className="p-3 text-2xs text-text-tertiary"><Loader2 className="w-3 h-3 animate-spin inline" /> Loading…</div>
             : !list.pitches.length ? <div className="p-3 text-2xs text-text-tertiary">No pitches yet — analysts add them with New pitch.</div> : (
-              <table className="w-full text-2xs">
+              <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-2xs">
                 <thead><tr className="text-text-tertiary border-b border-border"><th className="text-left p-1.5">Security</th><th className="text-left p-1.5">Status</th><th className="text-right p-1.5">Value (p-wtd)</th><th className="text-left p-1.5">Analyst</th><th className="text-left p-1.5">Updated</th></tr></thead>
                 <tbody>
                   {list.pitches.map((p: any) => (
-                    <tr key={p.id} onClick={() => open(p.id)} className={cn('cursor-pointer border-b border-border-subtle hover:bg-surface-3', sel?.id === p.id && 'bg-surface-3')}>
+                    <tr key={p.id} onClick={() => open(p.id)} className={cn('cursor-pointer border-b border-border-subtle hover:bg-surface-3', sel?.id === p.id && 'bg-surface-3')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                       <td className="p-1.5 font-mono text-text-primary">{p.symbol}<span className="text-text-tertiary font-sans"> {p.title !== p.symbol ? p.title : ''}</span></td>
                       <td className={cn('p-1.5 uppercase', STATUS_TONE[p.status])}>{p.status} v{p.current_version}</td>
                       <td className="p-1.5 text-right font-mono">{num(p.expected_value)}</td>
@@ -148,7 +148,7 @@ export function PitchReviewSection() {
                       <td className="p-1.5 text-text-tertiary">{String(p.updated_at).slice(0, 10)}</td>
                     </tr>))}
                 </tbody>
-              </table>)}
+              </table></div>)}
         </div>
 
         {sel && (
@@ -179,7 +179,7 @@ export function PitchReviewSection() {
                 {sel.current.catalysts.map((c: any, i: number) => <span key={i} className="mr-3">{c.event} {c.expected_date ? `${c.expected_date} (${c.date_confidence})` : '(undated)'}</span>)}</div>)}
             <div className="text-2xs text-text-tertiary">Versions: {sel.versions.map((v: any) => `v${v.version} ${String(v.created_at).slice(0, 10)} ${v.author}${v.note ? ` — ${v.note}` : ''}`).join(' · ')}</div>
             {sel.decision_notes && <div className="text-2xs">PMC notes: {sel.decision_notes}</div>}
-            <div className="flex flex-wrap gap-2 items-center pt-1 border-t border-border-subtle">
+            <div className="workspace-controls flex flex-wrap gap-2 items-center pt-1 border-t border-border-subtle">
               {['draft', 'rejected'].includes(sel.status) && <button disabled={busy} onClick={() => act('submit')} className="px-2 py-0.5 text-2xs border border-amber text-amber">Submit to PMC</button>}
               {sel.status !== 'closed' && <button disabled={busy} onClick={revise} className="px-2 py-0.5 text-2xs border border-border">Revise</button>}
               {sel.status === 'submitted' && <>

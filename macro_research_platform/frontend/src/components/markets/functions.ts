@@ -12,6 +12,7 @@ export interface MktFunction {
 }
 
 export const FUNCTIONS: MktFunction[] = [
+  { code: 'RDESK', name: 'Research desk', desc: 'Watchlist changes, timestamped captures, thesis reviews, portfolio look-through and exposure-aware earnings events.', group: 'My tools', aliases: ['RESEARCH', 'THESIS'] },
   // Security
   { code: 'DES', name: 'Description', desc: 'Price, key stats, business or fund profile, valuation and analyst target.', group: 'Security', security: true },
   { code: 'GP', name: 'Price chart', desc: 'Interactive chart: candles, intervals from 5 minutes to monthly, moving averages, volume.', group: 'Security', security: true, aliases: ['GIP', 'CHART'] },

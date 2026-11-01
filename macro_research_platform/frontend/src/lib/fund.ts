@@ -3,10 +3,10 @@
 const KEY = 'macro.fund';
 
 export function currentFund(): string {
-  try { return localStorage.getItem(KEY) || 'main'; } catch { return 'main'; }
+  try { return sessionStorage.getItem('macro.fund.session') || localStorage.getItem(KEY) || 'main'; } catch { return 'main'; }
 }
 
 export function switchFund(id: string): void {
-  try { localStorage.setItem(KEY, id); } catch { /* private window: stays on this page only */ }
+  try { sessionStorage.setItem('macro.fund.session', id); localStorage.setItem(KEY, id); } catch { /* private window: stays on this page only */ }
   window.location.reload();                 // every panel re-reads the chosen fund's book
 }

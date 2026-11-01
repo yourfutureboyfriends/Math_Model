@@ -551,7 +551,7 @@ export function CodeLab({ code, setCode, name, setName, strategyId, setStrategyI
       {dialog}
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-3">
         <div className="space-y-2">
-          <div className="flex flex-wrap items-end gap-2">
+          <div className="workspace-controls flex flex-wrap items-end gap-2">
             <Field label="Name" className="w-64"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="My strategy" /></Field>
             <Field label="Start from a template" className="w-56">
               <select className={inputCls} value="" onChange={(e) => loadTemplate(e.target.value)}>
@@ -708,11 +708,11 @@ function UniverseHelp() {
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-0.5">ACCOUNT_CURRENCY — prices, NAV, costs and cash interest in that currency</div>
-            <table className="w-full"><tbody>{cat.account_currencies.map((c: any) => (
+            <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><tbody>{cat.account_currencies.map((c: any) => (
               <tr key={c.code} className="border-t border-border-subtle align-top">
                 <td className="pr-2 font-mono">{c.code}</td>
                 <td className={cn(!c.known && 'text-amber')}>{c.known ? `${c.source}${c.kind === 'proxy' ? ' (pegged: proxy)' : ''}${c.stale_since ? ` · no data since ${c.stale_since}` : ''}` : 'no free cash-rate series: cash earns 0'}</td>
-              </tr>))}</tbody></table>
+              </tr>))}</tbody></table></div>
           </div>
         </div>)}
     </details>
@@ -757,7 +757,7 @@ export function CodeResults({ r, a }: { r: any; a: any | null }) {
         { label: 'Record', value: opt.walk_forward ? 'Walk-forward' : 'Exploratory', sub: `${r.dates[0]} → ${r.dates[r.dates.length - 1]}` },
       ]} />
       <Verdict r={r} reg={reg} />
-      <div className="flex flex-wrap border border-border w-fit" role="tablist" aria-label="Result sections">
+      <div className="workspace-controls flex flex-wrap border border-border w-fit" role="tablist" aria-label="Result sections" data-workspace-tabs>
         {RESULT_TABS.filter(([k]) => (k !== 'signal' || r.signal) && (k !== 'trades' || r.trades) && (k !== 'charts' || (r.charts && Object.keys(r.charts).length))).map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
             className={cn('px-3 py-1 text-2xs', tab === k ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary')}>{l}</button>))}
@@ -766,10 +766,10 @@ export function CodeResults({ r, a }: { r: any; a: any | null }) {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
         <div className="xl:col-span-2">
           <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Growth of {r.account_currency && r.account_currency !== 'USD' ? `1 ${r.account_currency}` : '$1'} — net of all costs{r.gross ? ', before costs' : ''}{r.baseline_returns ? ', equal-weight universe (same costs)' : ''}{r.benchmark ? `, and ${r.benchmark_label || 'benchmark'}` : ''}</div>
-          <LineChart rows={rows} x="date" height={260} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`}
+          <div className="workspace-chart"><LineChart rows={rows} x="date" height={260} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`}
             lines={[{ key: 'net', label: 'Net', color: CATEGORICAL[0] }, ...(r.gross ? [{ key: 'gross', label: 'Before costs', color: CATEGORICAL[3] }] : []),
               ...(r.baseline_returns ? [{ key: 'base', label: 'Equal-weight universe', color: CATEGORICAL[2] }] : []),
-              ...(r.benchmark ? [{ key: 'bench', label: `${r.benchmark_label || 'Benchmark'} (frictionless)`, color: CATEGORICAL[6] }] : [])]} />
+              ...(r.benchmark ? [{ key: 'bench', label: `${r.benchmark_label || 'Benchmark'} (frictionless)`, color: CATEGORICAL[6] }] : [])]} /></div>
         </div>
         {c ? (
           <div className="space-y-2">
@@ -899,11 +899,11 @@ function RecordPanel({ r, prov, ex, reg }: { r: any; prov: any; ex: any; reg: an
       {prov.engine_mismatch && <div className="text-amber">{prov.engine_mismatch}</div>}
       {prov.stale_symbols?.length > 0 && <div className="text-amber">Served from an out-of-date cache (download failed): {prov.stale_symbols.join(', ')}.</div>}
       {h && (
-        <table className="font-mono"><tbody>
+        <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="font-mono"><tbody>
           <tr><td className="pr-3 text-text-tertiary">Before holdout ({h.start})</td><td className="pr-3">CAGR {spct(h.in_sample?.cagr)}</td><td>Sharpe {num(h.in_sample?.sharpe)}</td></tr>
           <tr><td className="pr-3 text-text-tertiary">Holdout</td><td className="pr-3">CAGR {spct(h.holdout?.cagr)}</td><td>Sharpe {num(h.holdout?.sharpe)}</td></tr>
           <tr><td className="pr-3 text-text-tertiary">Equal-weight universe, holdout</td><td className="pr-3">CAGR {spct(h.baseline_holdout?.cagr)}</td><td>Sharpe {num(h.baseline_holdout?.sharpe)}</td></tr>
-        </tbody></table>)}
+        </tbody></table></div>)}
       {ex && <div className="text-text-secondary">Execution: {ex.unfilled_order_days} day(s) with orders that could not fill (no opening print or no volume) · {ex.stale_position_days} position-day(s) valued at a stale price · {ex.listings_ended} listing(s) ended while held (settled at last close).</div>}
       {ex?.option_notional_avg != null && <div className="text-text-secondary">Options: underlying notional averaged {pct(ex.option_notional_avg, 0)} of NAV (peak {pct(ex.option_notional_max, 0)}) · {ex.options_expired} contract expir{ex.options_expired === 1 ? 'y' : 'ies'} settled. Option prices are modelled, not historical quotes ({Object.values(prov.market_rules?.options ?? {}).map((o: any) => o.vol_source).filter((v, i, a) => a.indexOf(v) === i).join('; ')}).</div>}
       {ex && (ex.board_lots || ex.fx_hedged?.length > 0 || ex.fx_unhedged?.length > 0) && (
@@ -933,13 +933,13 @@ function Variants({ opt }: { opt: any }) {
   return (
     <div className="p-3 bg-surface-1 border border-border text-[11px] space-y-2">
       <div className="text-xs font-semibold text-text-primary">What each layer of the platform adds</div>
-      <table className="w-full font-mono">
+      <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full font-mono">
         <thead className="text-text-tertiary"><tr>{['Version', 'CAGR', 'Vol', 'Sharpe', 'Max DD', 'Calmar'].map((h) => <th key={h} className="text-right first:text-left font-normal px-1.5">{h}</th>)}</tr></thead>
         <tbody>{opt.variants.map((v: any) => (
           <tr key={v.label} className="border-t border-border-subtle">
             <td className="px-1.5 font-sans">{v.label}</td><td className="text-right px-1.5">{spct(v.cagr)}</td><td className="text-right px-1.5">{pct(v.vol)}</td>
             <td className="text-right px-1.5">{num(v.sharpe)}</td><td className="text-right px-1.5">{pct(v.max_drawdown)}</td><td className="text-right px-1.5">{num(v.calmar)}</td></tr>))}</tbody>
-      </table>
+      </table></div>
       {opt.events?.length > 0 && (
         <details><summary className="cursor-pointer text-text-tertiary">{opt.n_events ?? opt.events.length} risk events (pods cut, closed, re-hired) — latest {opt.events.length}</summary>
           <div className="mt-1 flex flex-wrap gap-1 font-mono">{opt.events.slice().reverse().map((e: any, i: number) => (
@@ -962,13 +962,13 @@ function FactorLens({ f }: { f: any }) {
           <div className={cn('text-lg font-mono', f.alpha > 0 ? 'text-green' : 'text-red')}>{spct(f.alpha)}<span className="text-xs text-text-tertiary"> /yr</span></div>
           <div className="text-[10px] text-text-tertiary">t = {num(f.alpha_t)} — {Math.abs(f.alpha_t) >= 2 ? 'statistically meaningful' : 'not distinguishable from zero'}</div>
         </div>
-        <table className="w-full font-mono">
+        <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full font-mono">
           <thead className="text-text-tertiary"><tr>{['Factor', 'Exposure (β)', 't', 'Return explained /yr'].map((h) => <th key={h} className="text-right first:text-left font-normal px-1.5">{h}</th>)}</tr></thead>
           <tbody>{f.factors.map((x: any) => (
             <tr key={x.factor} className={cn('border-t border-border-subtle', Math.abs(x.t) < 2 && 'text-text-tertiary')}>
               <td className="px-1.5 font-sans">{x.factor}</td><td className="text-right px-1.5">{num(x.beta)}</td>
               <td className="text-right px-1.5">{num(x.t)}</td><td className="text-right px-1.5">{spct(x.contribution, 2)}</td></tr>))}</tbody>
-        </table>
+        </table></div>
       </div>
       <div className="text-[10px] text-text-tertiary">{f.note}</div>
     </div>
@@ -994,9 +994,9 @@ function MonteCarlo({ mc }: { mc: any }) {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
         <div className="xl:col-span-2">
           <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Growth of $1 — percentiles across simulated futures</div>
-          <LineChart rows={mc.fan} x="year" height={220} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`}
+          <div className="workspace-chart"><LineChart rows={mc.fan} x="year" height={220} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`}
             lines={[{ key: 'p95', label: '95th', color: CATEGORICAL[2] }, { key: 'p75', label: '75th', color: CATEGORICAL[5] }, { key: 'p50', label: 'Median', color: CATEGORICAL[0] },
-              { key: 'p25', label: '25th', color: CATEGORICAL[3] }, { key: 'p5', label: '5th', color: CATEGORICAL[7] }]} />
+              { key: 'p25', label: '25th', color: CATEGORICAL[3] }, { key: 'p5', label: '5th', color: CATEGORICAL[7] }]} /></div>
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Distribution of {mc.years}-year CAGR</div>
@@ -1010,7 +1010,7 @@ function MonteCarlo({ mc }: { mc: any }) {
       </div>
       <div>
         <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Leverage — what more risk buys (financing at T-bill + spread above 1×)</div>
-        <table className="w-full text-[11px] font-mono">
+        <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-[11px] font-mono">
           <thead className="text-text-tertiary"><tr>{['Leverage', 'Median CAGR', '5th pct CAGR', 'Median worst DD', 'P(DD beyond limit)', 'P(loss)'].map((h) => <th key={h} className="text-right first:text-left font-normal px-1.5">{h}</th>)}</tr></thead>
           <tbody>{mc.leverage.map((x: any) => (
             <tr key={x.leverage} className={cn('border-t border-border-subtle', x.leverage === mc.recommended_leverage && 'bg-bloomberg/10 font-semibold')}>
@@ -1018,7 +1018,7 @@ function MonteCarlo({ mc }: { mc: any }) {
               <td className={cn('text-right px-1.5', x.median_cagr >= 0 ? 'text-green' : 'text-red')}>{spct(x.median_cagr)}</td>
               <td className="text-right px-1.5">{spct(x.p5_cagr)}</td><td className="text-right px-1.5">{pct(-x.median_max_dd, 0)}</td>
               <td className={cn('text-right px-1.5', x.p_dd > 0.05 && 'text-amber')}>{pct(x.p_dd, 1)}</td><td className="text-right px-1.5">{pct(x.p_loss, 1)}</td></tr>))}</tbody>
-        </table>
+        </table></div>
         <div className="text-[10px] text-text-tertiary mt-1">{mc.rule} Full Kelly maximises long-run growth only if the estimated edge is exactly right; half-Kelly keeps ~75% of the growth with far smaller drawdowns.</div>
       </div>
     </div>
@@ -1082,7 +1082,7 @@ function CustomData() {
       <div className="mt-1 p-2 border border-border bg-surface-1 space-y-1.5">
         <div className="text-text-tertiary">A CSV with a date column and numeric columns. Use it with <span className="font-mono">CUSTOM_DATA = ["name"]</span> →
           <span className="font-mono"> data.custom["name"]</span>, or <span className="font-mono">self.add_data(PythonData, "name")</span> in an algorithm. Each row is known from its date's close.</div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="workspace-controls flex flex-wrap items-center gap-2">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="name (optional)" className={cn(inputCls, 'w-40 font-mono')} />
           <label className={cn('px-2 py-1 border border-border cursor-pointer hover:border-bloomberg', busy && 'opacity-50')}>
             {busy ? 'Uploading…' : 'Upload CSV'}
@@ -1092,13 +1092,13 @@ function CustomData() {
         </div>
         {err && <div className="text-amber">{err}</div>}
         {list && list.length > 0 && (
-          <table className="w-full"><tbody>{list.map((d) => (
+          <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full"><tbody>{list.map((d) => (
             <tr key={d.name} className="border-t border-border-subtle">
               <td className="py-0.5 font-mono text-text-primary">{d.name}</td>
               <td className="text-text-tertiary">{d.columns.join(', ')}</td>
               <td className="text-text-tertiary">{d.first} → {d.last} · {d.rows} rows · {d.owner}</td>
               <td className="text-right"><button onClick={() => del(d.name)} className="text-text-tertiary hover:text-red">Delete</button></td>
-            </tr>))}</tbody></table>)}
+            </tr>))}</tbody></table></div>)}
       </div>
     </details>
   );
@@ -1112,8 +1112,8 @@ function LeanResult({ r }: { r: any }) {
   return (
     <div className="border border-bloomberg/40 bg-surface-1 p-2 space-y-2 text-[11px]">
       <div className="text-xs font-semibold text-text-primary">Real LEAN result <span className="font-normal text-text-tertiary">· {r.engine} · {r.image}{r.image_date ? ` (${r.image_date})` : ''} · {r.order_count} orders</span></div>
-      {curve.length > 1 && <LineChart rows={curve} x="date" height={220} fmt={(v) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-        lines={[{ key: 'equity', label: 'Equity (LEAN)', color: '#3987e5' }]} />}
+      {curve.length > 1 && <div className="workspace-chart"><LineChart rows={curve} x="date" height={220} fmt={(v) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+        lines={[{ key: 'equity', label: 'Equity (LEAN)', color: '#3987e5' }]} /></div>}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-0.5 font-mono">
         {stats.map(([k, v]) => <div key={k} className="flex justify-between gap-2"><span className="text-text-tertiary truncate">{k}</span><span className="text-text-primary">{String(v)}</span></div>)}
       </div>

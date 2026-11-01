@@ -24,13 +24,13 @@ from typing import Any, Dict, Optional
 import numpy as np
 import pandas as pd
 
-from api.model.core import ModelParams, decide, risk_contributions
+from api.model.core import ModelParams, decide, risk_contributions, MAX_INPUT_STALE_MONTHS
 from api.model.data import ASSETS, build_macro_panel
 from api.model.economies import Economy, get as get_economy
 
 logger = logging.getLogger(__name__)
 
-MODEL_VERSION = "1.0"
+MODEL_VERSION = "1.2"
 MODEL_BOOK = "Macro Model"
 _CACHE: Dict[str, tuple] = {}
 _TTL = 6 * 3600
@@ -40,6 +40,21 @@ _TTL = 6 * 3600
 _SNAPSHOT_DIR = __import__("pathlib").Path(__file__).resolve().parents[2] / "data" / "processed" / "live"
 _SNAPSHOT_MAX_AGE = 3 * 86400
 _REFRESHING: Dict[str, "asyncio.Task"] = {}
+_REFRESH_FAILURES: Dict[str, tuple] = {}
+
+
+def _refresh_finished(key, task):
+    try:
+        result = task.result()
+        reason = result.get("reason", "Model unavailable") if not result.get("available") else None
+    except asyncio.CancelledError:
+        return
+    except Exception as exc:
+        reason = str(exc)[:240]
+    if reason:
+        _REFRESH_FAILURES[key] = (time.time(), reason)
+    else:
+        _REFRESH_FAILURES.pop(key, None)
 
 
 def _snapshot_path(key: str):
@@ -64,30 +79,34 @@ def _load_snapshot(key: str) -> Optional[Dict[str, Any]]:
     if time.time() - float(raw.get("ts", 0)) > _SNAPSHOT_MAX_AGE:
         return None
     out = dict(raw["result"])
+    if out.get("version") != MODEL_VERSION:
+        out["data_quality"] = {"status": "refresh_required", "warnings": ["This saved run predates the current data-quality checks; refreshed results are computing."], "drivers": [], "point_in_time_verified": False}
     out["snapshot"] = {"saved_at": datetime.fromtimestamp(raw["ts"], timezone.utc).strftime("%Y-%m-%dT%H:%M+00:00"),
-                       "note": "Last computed run, served while the model recomputes after a restart."}
+                       "note": "Last computed run, served while the model refreshes in the background.", "age_seconds": max(0.0, time.time() - float(raw["ts"]))}
     return out
 
 
 # A non-US input whose latest observation is this many months behind the newest panel month is left out of the
 # factors (and reported), so a discontinued or lagging series does not freeze at its mean.
-STALE_MONTHS = 6
+STALE_MONTHS = MAX_INPUT_STALE_MONTHS
 
 
-def _series_status(e: Economy, raw: Dict[str, pd.Series], panel: pd.DataFrame) -> list:
+def _series_status(e: Economy, raw: Dict[str, pd.Series], panel: pd.DataFrame, as_of=None) -> list:
     """Coverage of each input series: first / last observation, publication lag, and whether it is used."""
-    end = panel.dropna(how="all").index.max()
+    end = pd.Timestamp(as_of) if as_of is not None else panel.dropna(how="all").index.max()
     out = []
     for k, (block, how, lag) in e.series.items():
         s = raw.get(k)
-        col = panel[k].dropna() if k in panel else pd.Series(dtype=float)
+        col = panel.loc[panel.index <= end, k].replace([np.inf, -np.inf], np.nan).dropna() if k in panel else pd.Series(dtype=float)
         last = col.index.max() if not col.empty else None
         behind = (end.year - last.year) * 12 + end.month - last.month if last is not None and end is not None else None
         out.append({"key": k, "label": e.labels.get(k, k), "block": block, "transform": how, "lag_months": lag,
                     "first": s.dropna().index.min().strftime("%Y-%m") if s is not None and not s.dropna().empty else None,
                     "last": s.dropna().index.max().strftime("%Y-%m") if s is not None and not s.dropna().empty else None,
-                    "months_behind": behind,
-                    "used": bool(last is not None and (e.id == "us" or behind is None or behind <= STALE_MONTHS))})
+                    "months_behind": behind, "available_month": last.strftime("%Y-%m") if last is not None else None,
+                    "latest_transformed": float(col.iloc[-1]) if not col.empty else None,
+                    "exclusion_reason": "No transformed observation available by decision month" if last is None else "Stale input" if behind is not None and behind > STALE_MONTHS else None,
+                    "used": bool(last is not None and (behind is None or behind <= STALE_MONTHS))})
     return out
 
 
@@ -181,13 +200,25 @@ async def run_model(params: Optional[Dict] = None, user: str = "system", persist
     p = ModelParams.from_dict(params)
     key = params_hash(p) if e.id == "us" else f"{e.id}-{params_hash(p)}"     # US keys unchanged (existing snapshots)
     hit = _CACHE.get(key)
-    if not hit and not force:
+    if not force and (not hit or time.time() - hit[0] >= _TTL):
         snap = _load_snapshot(key)
         if snap:
+            age = (snap.get("snapshot") or {}).get("age_seconds", _TTL)
+            if snap.get("version") == MODEL_VERSION and age < _TTL:
+                current = dict(snap); current.pop("snapshot", None); current["cache_source"] = "disk"
+                _CACHE[key] = (time.time() - age, current)
+                return await run_model(params, user=user, persist=persist, economy=e.id)
             t = _REFRESHING.get(key)
-            if t is None or t.done():
+            failure = _REFRESH_FAILURES.get(key)
+            if (t is None or t.done()) and (failure is None or time.time() - failure[0] >= 60):
                 _REFRESHING[key] = asyncio.get_running_loop().create_task(
                     run_model(params, user=user, persist=persist, force=True, economy=e.id))
+                _REFRESHING[key].add_done_callback(lambda task: _refresh_finished(key, task))
+            if failure:
+                snap.setdefault("snapshot", {})["refresh_error"] = failure[1]
+                quality = dict(snap.get("data_quality") or {})
+                quality.update(status="refresh_failed", warnings=[*quality.get("warnings", []), "Refresh failed: " + failure[1]])
+                snap["data_quality"] = quality
             return snap
     if hit and not force and time.time() - hit[0] < _TTL:
         cached = hit[1]
@@ -203,16 +234,18 @@ async def run_model(params: Optional[Dict] = None, user: str = "system", persist
     if panel.empty or rets.dropna(how="all").empty:
         return {"available": False, "reason": f"no data for the {e.name} model (sources unreachable)",
                 "economy": _economy_info(e)}
-    coverage = _series_status(e, raw, panel)
-    if e.id != "us":                    # leave stale inputs out of the factors rather than freezing them at the mean
-        panel = panel[[c["key"] for c in coverage if c["used"] and c["key"] in panel]]
-    blocks = {k: b for k, b in e.blocks().items() if k in panel}
-    if e.id != "us":
-        rets = rets.dropna(how="all")
+    rets = rets.replace([np.inf, -np.inf], np.nan).dropna(how="all")
+    completed = pd.Timestamp.now(tz="UTC").tz_localize(None).to_period("M").to_timestamp()
+    rets = rets.loc[rets.index < completed]
+    if rets.empty:
+        return {"available": False, "reason": "No completed-month asset returns", "economy": _economy_info(e)}
     as_of = rets.index[-1]
+    panel = panel.loc[panel.index <= as_of]
+    coverage = _series_status(e, raw, panel, as_of)
+    blocks = {k: b for k, b in e.blocks().items() if k in panel}
     d = await asyncio.to_thread(decide, panel, rets, blocks, e.env(), as_of, p, e.anchors)
     if d is None:
-        return {"available": False, "reason": "insufficient data to run the model", "economy": _economy_info(e)}
+        return {"available": False, "reason": "Insufficient usable history or growth/inflation factors are not synchronized to the decision month", "economy": _economy_info(e)}
     from api.model.backtest import run_backtest
     bt = await asyncio.to_thread(run_backtest, panel, rets, blocks, e.env(), p, None, e.anchors, e.benchmark,
                                  f"monthly excess returns in {e.currency} over the {e.cash_label}")
@@ -257,12 +290,12 @@ async def run_model(params: Optional[Dict] = None, user: str = "system", persist
             "tactical": _portfolio_block(d.assets, d.weights, d.cov, mu_ann, e.assets),
         },
         "backtest": bt,
-        "data": {"series": coverage, "sources": e.sources, "stale_after_months": STALE_MONTHS if e.id != "us" else None},
+        "data": {"series": coverage, "sources": e.sources, "stale_after_months": STALE_MONTHS},
         "methodology": {
             "factors": "Diffusion-index growth and inflation factors (Stock & Watson, 2002): first principal "
                        f"component of {sum(1 for b in blocks.values() if b == 'growth')} growth and "
                        f"{sum(1 for b in blocks.values() if b == 'inflation')} inflation series"
-                       f"{' across nine economies' if e.id == 'row' else ''}, each lagged to its publication date.",
+                       f"{' across nine economies' if e.id == 'row' else ''}, each shifted by an approximate monthly publication lag (not exact release timestamps).",
             "regimes": "Logistic models of next month's 3-month factor direction; four growth × inflation regime "
                        "probabilities as their product. Markov-switching model (Hamilton, 1989) shown as a diagnostic.",
             "expected_returns": f"Asset excess returns in {e.currency} over the {e.cash_label} by realised regime, "
@@ -273,6 +306,8 @@ async def run_model(params: Optional[Dict] = None, user: str = "system", persist
             "limitations": e.limitations,
         },
     }
+    from api.model.quality import decision_quality
+    result["data_quality"] = decision_quality(coverage, d, as_of, rets, anchors=e.anchors)
     result["computed_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M+00:00")
     _CACHE[key] = (time.time(), result)
     if result.get("available"):
@@ -309,7 +344,7 @@ async def world_summary(params: Optional[Dict] = None) -> Dict[str, Any]:
                 "p_growth_rising": r["regime"]["p_growth_rising"], "p_inflation_rising": r["regime"]["p_inflation_rising"],
                 "p_contraction": (r["regime"].get("markov_switching") or {}).get("p_contraction_regime"),
                 "top_weights": sorted(((a, w) for a, w in tac["weights"].items() if w > 0.005), key=lambda x: -x[1])[:4],
-                "cash": tac["cash"], "snapshot": bool(r.get("snapshot"))}
+                "cash": tac["cash"], "snapshot": bool(r.get("snapshot")), "data_quality": r.get("data_quality"), "version": r.get("version")}
 
     rows = await asyncio.gather(*[one(k) for k in ECONOMIES])
     return {"economies": rows, "computed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M+00:00")}

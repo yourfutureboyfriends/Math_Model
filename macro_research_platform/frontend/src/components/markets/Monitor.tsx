@@ -29,18 +29,18 @@ function GroupTable({ g, onOpen }: { g: any; onOpen: (s: string) => void }) {
   const fx = g.group === 'Currencies';
   const allYield = g.rows.length > 0 && g.rows.every((r: any) => r.is_yield);     // rates pane also holds VIX / MOVE
   return (
-    <table className="w-full text-[11px] leading-[18px]">
+    <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] leading-[18px]">
       <thead><tr><th className={cn(th, 'text-left')}>Security</th><th className={cn(th, 'text-right')}>{allYield ? 'Yield' : 'Last'}</th>
         <th className={cn(th, 'text-right')} title={g.is_yield ? 'Yields: change in bp · others: % change' : undefined}>{allYield ? 'Chg bp' : g.is_yield ? 'Chg' : '%Chg'}</th><th className={cn(th, 'text-right hidden sm:table-cell')}>YTD</th><th className={cn(th, 'hidden md:table-cell')} /></tr></thead>
       <tbody>{g.rows.map((r: any) => (
-        <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="cursor-pointer hover:bg-surface-3 odd:bg-surface-2/40" title={`${r.name} — ${r.symbol}`}>
+        <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="cursor-pointer hover:bg-surface-3 odd:bg-surface-2/40" title={`${r.name} — ${r.symbol}`} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
           <td className={cn(td, 'text-text-primary max-w-[11rem] truncate')}>{r.name}<span className="ml-1 text-text-tertiary">{toTerminal(r.symbol)}</span></td>
           <td className={cn(td, 'text-right font-mono text-text-primary')}><Flash value={r.price}>{r.price == null ? '—' : r.is_yield ? `${r.price.toFixed(3)}%` : fmtPrice(r.price, fx ? 'FX' : undefined)}</Flash></td>
           <td className={cn(td, 'text-right')}>{r.is_yield ? <Bp v={r.change_1d_bp} /> : <Chg v={r.change_1d} />}</td>
           <td className={cn(td, 'text-right hidden sm:table-cell')}>{r.is_yield ? <Bp v={r.change_ytd_bp} /> : <Chg v={r.change_ytd} d={1} />}</td>
           <td className={cn(td, 'hidden md:table-cell w-16')}><Spark values={r.spark} /></td>
         </tr>))}</tbody>
-    </table>
+    </table></div>
   );
 }
 
@@ -48,17 +48,17 @@ function Movers({ kind, onOpen }: { kind: 'active' | 'gainers' | 'losers'; onOpe
   const { data } = useJSON<any>(`/api/v1/mkt/movers?region=us&kind=${kind}&count=12`, 300_000);
   if (!data) return <div className="p-2 text-[11px] text-text-tertiary">Loading…</div>;
   return (
-    <table className="w-full text-[11px] leading-[18px]">
+    <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-[11px] leading-[18px]">
       <thead><tr><th className={cn(th, 'text-left')}>Ticker</th><th className={cn(th, 'text-right')}>Last</th><th className={cn(th, 'text-right')}>%Chg</th>
         <th className={cn(th, 'text-right')}>{kind === 'active' ? 'Volume' : 'Mkt cap'}</th></tr></thead>
       <tbody>{(data.rows ?? []).map((r: any) => (
-        <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="cursor-pointer hover:bg-surface-3 odd:bg-surface-2/40" title={r.name}>
+        <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="cursor-pointer hover:bg-surface-3 odd:bg-surface-2/40" title={r.name} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
           <td className={cn(td, 'text-text-primary')}>{toTerminal(r.symbol)}</td>
           <td className={cn(td, 'text-right font-mono text-text-primary')}><Flash value={r.price}>{fmtPrice(r.price)}</Flash></td>
           <td className={cn(td, 'text-right')}><Chg v={r.change_pct} /></td>
           <td className={cn(td, 'text-right font-mono text-text-secondary')}>{kind === 'active' ? compact(r.volume) : compact(r.market_cap)}</td>
         </tr>))}</tbody>
-    </table>
+    </table></div>
   );
 }
 

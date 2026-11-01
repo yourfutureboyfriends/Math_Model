@@ -49,7 +49,7 @@ function Live() {
   return (
     <div className="space-y-3">
       <ErrorNote msg={err} />
-      <div className="flex flex-wrap items-center gap-2 text-2xs">
+      <div className="workspace-controls flex flex-wrap items-center gap-2 text-2xs">
         <span className="px-2 py-0.5 border border-amber/50 text-amber">PAPER — SIMULATED</span>
         <span className={cn('px-2 py-0.5 border', s.enabled ? 'border-green/50 text-green' : 'border-border text-text-tertiary')}>{s.enabled ? 'Auto-trading on' : 'Paused'}</span>
         <span className="text-text-tertiary">Following the {({ tactical: 'tactical', strategic: 'strategic', all_weather: 'All Weather', all_weather_tilt: 'All Weather + quadrant tilt' } as Record<string, string>)[s.portfolio] ?? s.portfolio} portfolio · {s.portfolio?.startsWith('all_weather') ? 'environment' : 'model regime'} <b className="text-text-primary">{d.model?.regime ?? '—'}</b> · runs after each US close (22:35 UTC)</span>
@@ -75,8 +75,8 @@ function Live() {
       ]} />
       {d.nav_history.length > 1 && (
         <div className="p-3 bg-surface-1 border border-border">
-          <LineChart rows={d.nav_history} x="date" height={200} fmt={(v) => usd(v)} baseline={d.capital}
-            lines={[{ key: 'nav', label: 'Macro book NAV', color: CATEGORICAL[0] }]} />
+          <div className="workspace-chart"><LineChart rows={d.nav_history} x="date" height={200} fmt={(v) => usd(v)} baseline={d.capital}
+            lines={[{ key: 'nav', label: 'Macro book NAV', color: CATEGORICAL[0] }]} /></div>
         </div>
       )}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-2">
@@ -175,11 +175,11 @@ function Backtest() {
     <div className="space-y-3">
       <div className="text-2xs text-text-secondary"><Globe2 className="w-3 h-3 inline mr-1" />Walk-forward, monthly, {bt.start} → {bt.end}; every month uses only data available then. Returns are {bt.returns_are}, net of {m.params.cost_bps} bp costs.</div>
       <div className="p-3 bg-surface-1 border border-border">
-        <LineChart rows={bt.equity_curve} x="month" height={240} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`}
+        <div className="workspace-chart"><LineChart rows={bt.equity_curve} x="month" height={240} log baseline={1} fmt={(v) => `${v.toFixed(2)}×`}
           lines={[{ key: 'model', label: 'Tactical (traded)', color: CATEGORICAL[0] }, { key: 'strategic', label: 'Strategic', color: CATEGORICAL[1] },
-            { key: 'sixty_forty', label: '60/40', color: '#6b7280' }, { key: 'risk_parity', label: 'Risk parity', color: CATEGORICAL[2] }]} />
+            { key: 'sixty_forty', label: '60/40', color: '#6b7280' }, { key: 'risk_parity', label: 'Risk parity', color: CATEGORICAL[2] }]} /></div>
       </div>
-      <table className="w-full text-2xs font-mono">
+      <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-2xs font-mono">
         <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Portfolio</th><th className="text-right font-normal">Return</th><th className="text-right font-normal">Vol</th>
           <th className="text-right font-normal">Sharpe</th><th className="text-right font-normal">Max DD</th><th className="text-right font-normal">Hit rate</th></tr></thead>
         <tbody>{Object.entries(st).map(([k, v]: [string, any]) => (
@@ -187,7 +187,7 @@ function Backtest() {
             <td className="font-sans">{k}</td><td className="text-right">{spct(v.cagr)}</td><td className="text-right">{pct(v.vol)}</td>
             <td className="text-right">{num(v.sharpe)}</td><td className="text-right">{pct(v.max_drawdown, 0)}</td><td className="text-right">{pct(v.hit_rate, 0)}</td>
           </tr>))}</tbody>
-      </table>
+      </table></div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-2xs">
         <div className="p-3 bg-surface-1 border border-border">
           <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">Does the tactical tilt add value?</div>

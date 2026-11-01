@@ -43,6 +43,8 @@ export function getHubMode(): HubMode {
 
 export function setHubMode(m: HubMode) {
   try { localStorage.setItem(KEY, m); } catch { /* storage unavailable */ }
+  const query = new URLSearchParams(window.location.search);
+  if (query.has('mode')) { query.set('mode', m); history.replaceState(null, '', `${window.location.pathname}?${query}${window.location.hash}`); }
   if (m !== 'markets' && window.location.hash.startsWith('#mkt')) history.replaceState(null, '', window.location.pathname + window.location.search);
   window.dispatchEvent(new CustomEvent(EVT, { detail: m }));
   window.scrollTo({ top: 0 });

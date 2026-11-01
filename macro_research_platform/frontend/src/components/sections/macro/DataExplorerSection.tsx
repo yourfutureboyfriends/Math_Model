@@ -209,7 +209,7 @@ function ExportBuilder() {
   return (
     <div className="mb-3 p-2 border border-border bg-surface-1 space-y-1.5">
       <div className="text-2xs text-text-tertiary uppercase tracking-wider">Export / spreadsheet link</div>
-      <div className="flex flex-wrap gap-2 items-center">
+      <div className="workspace-controls flex flex-wrap gap-2 items-center">
         <input value={ids} onChange={(e) => setIds(e.target.value)} className={`${inp} flex-1 min-w-[16rem] font-mono`} aria-label="Series ids" />
         <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className={inp} aria-label="Start date" />
         <select value={freq} onChange={(e) => setFreq(e.target.value)} className={inp} aria-label="Frequency">

@@ -185,7 +185,7 @@ export function CycleRiskSection() {
                 </div>
                 <div>
                   <div className="text-2xs text-text-tertiary mb-1">Environment-balanced reference weights</div>
-                  <table className="w-full text-2xs font-mono">
+                  <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-2xs font-mono">
                     <thead><tr className="text-text-tertiary text-left">
                       <th className="font-normal pb-1">Asset class</th><th className="font-normal pb-1">Proxy</th>
                       <th className="font-normal pb-1 text-right">Vol</th><th className="font-normal pb-1 text-right">Weight</th>
@@ -201,7 +201,7 @@ export function CycleRiskSection() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></div>
                 </div>
               </div>
               <div className="text-[10px] text-text-tertiary mt-2">{env.method}</div>
