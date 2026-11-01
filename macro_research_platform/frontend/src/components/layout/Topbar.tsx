@@ -203,11 +203,23 @@ function ThemeToggle() {
 
 function ModeSwitch() {
   const mode = useHubMode();
+  // Option/Alt + 1–5 jumps between the five areas (e.code: Option+digit types a symbol on a Mac keyboard)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey || e.metaKey || e.ctrlKey) return;
+      const i = /^Digit([1-5])$/.exec(e.code);
+      if (!i) return;
+      e.preventDefault();
+      setHubMode(HUB_MODES[Number(i[1]) - 1].id);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   return (
     <div role="tablist" aria-label="Mode" className="seg ml-1">
-      {HUB_MODES.map(({ id: m, label, title }) => (
+      {HUB_MODES.map(({ id: m, label, title }, i) => (
         <button key={m} role="tab" aria-selected={mode === m} onClick={() => setHubMode(m)}
-          title={title}
+          title={`${title}  (⌥${i + 1})`}
           className="seg-item">
           {label}
         </button>

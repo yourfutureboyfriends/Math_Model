@@ -2114,3 +2114,11 @@ h1, h2, h3, .section-title { font-feature-settings: "cv11" 1, "ss03" 1; }
   color: rgb(var(--c-on-accent)) !important; }   /* the classic terminal skin tints these instead, with accent text */
 .bg-green.text-white, .bg-green.text-bg { color: rgb(var(--c-on-green, 10 14 20)) !important; }
 .bg-red.text-white, .bg-red.text-bg { color: rgb(var(--c-on-red, 255 255 255)) !important; }
+
+/* Click-to-sort headers (lib/sortableTables.ts marks a table data-autosort="on" when it qualifies) */
+table[data-autosort="on"] > thead th { cursor: pointer; user-select: none; }
+table[data-autosort="on"] > thead th:hover { color: rgb(var(--c-text-primary)); }
+table[data-autosort="on"] > thead th:focus-visible { outline: 1px solid rgb(var(--c-bloomberg)); outline-offset: -1px; }
+table[data-autosort="on"] > thead th[data-sort-dir] { color: rgb(var(--c-bloomberg)); }
+table[data-autosort="on"] > thead th[data-sort-dir="desc"]::after { content: " ▾"; }
+table[data-autosort="on"] > thead th[data-sort-dir="asc"]::after { content: " ▴"; }
