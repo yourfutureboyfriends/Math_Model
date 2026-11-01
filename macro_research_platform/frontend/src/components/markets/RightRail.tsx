@@ -85,9 +85,10 @@ function openCitation(c: Citation) {
 }
 const TOOL_LABEL: Record<string, string> = { search_instrument: 'Searched instruments', get_quote: 'Quote', get_profile: 'Profile', get_financials: 'Financials',
   get_earnings: 'Earnings', get_analyst_ratings: 'Analyst ratings', get_holders: 'Holders', get_news: 'News', run_dcf: 'DCF', get_peers: 'Peers',
-  get_movers: 'Movers', screen_stocks: 'Screener', get_market_overview: 'World markets', get_macro_view: 'Macro model' };
+  get_movers: 'Movers', screen_stocks: 'Screener', get_market_overview: 'World markets', get_macro_view: 'Macro model',
+  search_filings: 'Searched filings', get_pe_history: 'P/E history', get_world_bonds: 'World bonds' };
 const SUGGEST = (s?: string) => s ? [`Summarise ${s}: business, valuation vs peers and next earnings`, `What does the price of ${s} imply about growth? Run a DCF.`,
-  `Any notable analyst or insider activity on ${s}?`] : ['What moved world markets today?', 'Which sectors does the macro model favour right now?', 'Screen for large-cap Japanese stocks with P/E under 12'];
+  `What does ${s}'s latest 10-K say are its biggest risks?`, `Is ${s} cheap or expensive against its own P/E history?`] : ['What moved world markets today?', 'Which sectors does the macro model favour right now?', 'Screen for large-cap Japanese stocks with P/E under 12', 'Which government bonds pay the highest real yields?'];
 
 /** Renders **bold** and line breaks safely (no HTML from the model). */
 function Rich({ text }: { text: string }) {

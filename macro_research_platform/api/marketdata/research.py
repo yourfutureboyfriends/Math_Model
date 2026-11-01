@@ -200,7 +200,7 @@ def filings(symbol: str, limit: int = 120) -> Dict[str, Any]:
     return _cached(f"cf3:{s}", 3600, fetch)
 
 
-def filing_text(url: str) -> Dict[str, Any]:
+def filing_text(url: str, max_chars: int = 200_000) -> Dict[str, Any]:
     """A filing as readable text. For an 8-K the press release (exhibit 99) is attached when there is one."""
     from api.marketdata.extras import _sec_get
     if not re.match(r"^https://www\.sec\.gov/Archives/edgar/data/\d+/\d+/[\w.\-]+$", url):
@@ -233,8 +233,8 @@ def filing_text(url: str) -> Dict[str, Any]:
                         break
         except Exception:
             pass
-        return {"url": url, "text": main[:200_000], "truncated": len(main) > 200_000, "exhibits": exhibits}
-    return _cached(f"cftext:{url}", 86400, fetch)
+        return {"url": url, "text": main[:max_chars], "truncated": len(main) > max_chars, "exhibits": exhibits}
+    return _cached(f"cftext:{url}" if max_chars == 200_000 else f"cftext:{max_chars}:{url}", 86400, fetch)
 
 
 # ── CRED: credit spreads ─────────────────────────────────────────────────────

@@ -45,7 +45,7 @@ import { useLiveQuote } from '@/lib/cryptoStream';
 import { ErrorBox, fmtPrice, Loading, SourceScope, SourcesBar, TYPE_COLOR } from '@/components/markets/shared';
 import { WorldMap } from '@/components/markets/WorldMap';
 import { PageSections } from '@/components/markets/PageSections';
-import { ImovView, OvmeView, TraView, VapView, WpeView } from '@/components/markets/StandardViews';
+import { DsView, GeView, ImovView, MrrView, OvmeView, TraView, VapView, WbView, WpeView } from '@/components/markets/StandardViews';
 import { ViewTools,useMarketDisplay } from '@/components/markets/ViewTools';
 import { tableCSV } from '@/lib/tableData';
 import { AiChat, RightRail } from '@/components/markets/RightRail';
@@ -155,6 +155,8 @@ export function SecurityBody({ code, symbol, d, isFund, onGo,compact=false }: { 
         {code === 'BETA' && <BetaView symbol={symbol} />}
         {code === 'VAP' && <VapView symbol={symbol} />}
         {code === 'OVME' && <OvmeView symbol={symbol} q={d} />}
+        {code === 'GE' && <GeView symbol={symbol} />}
+        {code === 'DS' && <DsView symbol={symbol} onGo={onGo} />}
         {code === 'DCF' && <DcfView symbol={symbol} />}
         {code === 'VAL' && <ValuationHub symbol={symbol} onGo={onGo} />}
         {code === 'CF' && <CfView symbol={symbol} />}
@@ -298,8 +300,8 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
 /** Security functions grouped for the two-level function bar (codes not listed fall into the first group). */
 const SECURITY_GROUPS: { name: string; codes: string[] }[] = [
   { name: 'Price & trading', codes: ['DES', 'GP', 'HP', 'TECH', 'SEAS', 'BETA', 'VAP', 'FUTU', 'SI'] },
-  { name: 'Fundamentals', codes: ['FA', 'ERN', 'DVD', 'PGEO', 'DDIS', 'CF', 'CACS'] },
-  { name: 'Valuation', codes: ['VAL', 'DCF', 'RV', 'FAC'] },
+  { name: 'Fundamentals', codes: ['FA', 'ERN', 'DVD', 'PGEO', 'DDIS', 'CF', 'DS', 'CACS'] },
+  { name: 'Valuation', codes: ['VAL', 'DCF', 'GE', 'RV', 'FAC'] },
   { name: 'Analysts & ownership', codes: ['ANR', 'HDS', 'INSD', 'MGMT', 'SPLC', 'CN'] },
   { name: 'Options', codes: ['OMON', 'OVDV', 'OSA', 'OVME'] },
 ];
@@ -348,6 +350,8 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'IMOV' && <ImovView onOpen={open} />}
     {code === 'TRA' && <TraView onOpen={open} />}
     {code === 'WPE' && <WpeView onOpen={open} />}
+    {code === 'MRR' && <MrrView onOpen={open} />}
+    {code === 'WB' && <WbView />}
     {code === 'MRGR' && <MrgrView onOpen={open} />}
     {code === 'MEMB' && <MembView seed={seed} onOpen={open} />}
     {code === 'FSRC' && <FsrcView onOpen={open} />}

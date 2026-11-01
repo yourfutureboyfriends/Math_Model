@@ -1,6 +1,8 @@
 // Screens modelled on standard Bloomberg functions the platform lacked (backend: api/marketdata/bbgplus.py):
 //   IMOV index movers · TRA total returns · WPE world valuations · VAP volume at price · OVME option calculator
-import { useMemo, useState } from 'react';
+//   MRR member returns · GE P/E history · WB world bonds · DS filing search
+import { Fragment, useMemo, useState } from 'react';
+import { LineChart } from '@/components/ui/LineChart';
 import { cn } from '@/lib/utils';
 import { BarList } from '@/components/ui/BarList';
 import { blackScholes, impliedVol, type OptionKind } from '@/lib/blackScholes';
@@ -281,6 +283,252 @@ export function OvmeView({ symbol, q }: { symbol: string; q: any }) {
           <Source>Black–Scholes–Merton for a European option with a continuous dividend yield. US single-stock options are American; for calls without dividends the values agree, for puts this is a lower bound.</Source>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+// ── MRR ──────────────────────────────────────────────────────────────────────
+const MRR_INDICES = ['SPX', 'NDX', 'INDU', 'UKX', 'DAX', 'CAC', 'SX5E', 'HSI'] as const;
+const MRR_PERIODS = ['1D', '1W', '1M', '3M', 'YTD', '1Y'] as const;
+export function MrrView({ onOpen }: { onOpen: (s: string) => void }) {
+  const [code, setCode] = useState<string>('SPX');
+  const [period, setPeriod] = useState<string>('YTD');
+  const [sector, setSector] = useState<string | null>(null);
+  const { data: d, error, loading } = useJSON<any>(`/api/v1/mkt/mrr/${code}?period=${period}`, 900_000);
+  const controls = (
+    <div className="flex flex-wrap items-center gap-1">
+      {MRR_INDICES.map((c) => <Chip key={c} on={code === c} onClick={() => { setCode(c); setSector(null); }}>{c}</Chip>)}
+      <span className="w-3" />
+      {MRR_PERIODS.map((p) => <Chip key={p} on={period === p} onClick={() => setPeriod(p)}>{p}</Chip>)}
+    </div>
+  );
+  if (loading && !d) return <div className="space-y-2">{controls}<Loading label="Ranking every member of the index…" /></div>;
+  if (error && !d) return <div className="space-y-2">{controls}<ErrorBox msg={error} /></div>;
+  if (!d) return null;
+  const rows = sector ? d.rows.filter((r: any) => (r.sector || 'Other') === sector) : d.rows;
+  const b = d.index_return;
+  return (
+    <div className="space-y-3">
+      {controls}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <Tile label={`${d.name} ${d.period}`} value={pct(b)} cls={sign(b)} sub={`price return to ${d.as_of}`} />
+        <Tile label="Beat the index" value={d.beat_index != null ? `${d.beat_index} of ${d.count}` : '—'}
+          sub={d.beat_index != null ? `${Math.round((d.beat_index / d.count) * 100)}% of members` : ''} />
+        <Tile label="Median member" value={pct(d.median)} cls={sign(d.median)} sub={`equal-weight average ${pct(d.equal_weight)}`} />
+        <Tile label="Top vs bottom fifth" value={pct(d.top_quintile - d.bottom_quintile)} sub={`${pct(d.top_quintile)} vs ${pct(d.bottom_quintile)}`} />
+        <Tile label="Up over the period" value={`${d.positive} of ${d.count}`} sub={d.members_total > d.count ? `${d.members_total - d.count} without prices` : 'all members priced'} />
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_20rem] gap-3">
+        <Panel title={`Members ranked by ${d.period} return${sector ? ` — ${sector}` : ''}`}
+          right={sector ? <button onClick={() => setSector(null)} className="text-[11px] text-bloomberg hover:underline">All sectors</button> : <span className="text-[11px] text-text-tertiary">{d.count} members</span>}>
+          <div className="overflow-auto max-h-[34rem]"><table className="w-full text-2xs font-mono tabular-nums">
+            <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-right font-normal py-1 pr-2">#</th><th className="text-left font-normal">Member</th>
+              <th className="text-left font-normal">Sector</th>
+              {MRR_PERIODS.map((p) => <th key={p} className={cn('text-right font-normal px-1', p === d.period && 'text-text-primary')}>{p}</th>)}
+              <th className="text-right font-normal px-1">vs index</th></tr></thead>
+            <tbody>{rows.map((r: any) => {
+              const rel = b != null ? r[d.period] - b : null;
+              return (
+                <tr key={r.symbol} onClick={() => onOpen(r.symbol)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-2" title={r.name}>
+                  <td className="text-right pr-2 text-text-tertiary">{r.rank}</td>
+                  <td className="py-1 font-sans whitespace-nowrap"><span className="text-text-primary">{r.symbol}</span> <span className="text-text-tertiary">{(r.name ?? '').slice(0, 22)}</span></td>
+                  <td className="font-sans text-text-tertiary whitespace-nowrap max-w-[10rem] truncate">{r.sector ?? ''}</td>
+                  {MRR_PERIODS.map((p) => <td key={p} className={cn('text-right px-1', sign(r[p]), p === d.period && 'font-semibold')}>{pct(r[p])}</td>)}
+                  <td className={cn('text-right px-1', sign(rel))}>{pct(rel)}</td></tr>
+              );
+            })}</tbody>
+          </table></div>
+        </Panel>
+        <Panel title={`Median member by sector (${d.period})`}>
+          <div className="space-y-0.5">{d.sectors.map((x: any) => (
+            <button key={x.sector} onClick={() => setSector(sector === x.sector ? null : x.sector)}
+              className={cn('w-full flex items-center justify-between gap-2 px-1.5 py-1 rounded-sm text-[11px] text-left hover:bg-surface-2', sector === x.sector && 'bg-surface-2')}>
+              <span className="text-text-secondary truncate">{x.sector} <span className="text-text-tertiary">({x.count})</span></span>
+              <span className={cn('font-mono', sign(x.median))}>{pct(x.median)}</span></button>))}</div>
+          <p className="text-[10px] text-text-tertiary mt-2">Click a sector to rank only its members.</p>
+        </Panel>
+      </div>
+      <Source>{d.source}</Source>
+    </div>
+  );
+}
+
+// ── GE ───────────────────────────────────────────────────────────────────────
+const BAND_LABEL: Record<string, string> = { '-2sd': '−2σ', '-1sd': '−1σ', mean: 'Average', '+1sd': '+1σ', '+2sd': '+2σ' };
+export function GeView({ symbol }: { symbol: string }) {
+  const [years, setYears] = useState(10);
+  const { data: d, error, loading } = useJSON<any>(`/api/v1/mkt/ge/${encodeURIComponent(symbol)}?years=${years}`, 6 * 3_600_000);
+  const controls = <div className="flex gap-1">{[5, 10, 15].map((y) => <Chip key={y} on={years === y} onClick={() => setYears(y)}>{y} years</Chip>)}</div>;
+  const priceRows = useMemo(() => (d?.points ?? []).map((p: any) => ({
+    date: p.date, price: p.price,
+    mean: p.eps > 0 ? p.eps * d.bands.mean : null, hi: p.eps > 0 ? p.eps * d.bands['+1sd'] : null,
+    lo: p.eps > 0 && d.bands['-1sd'] > 0 ? p.eps * d.bands['-1sd'] : null })), [d]);
+  if (loading && !d) return <div className="space-y-2">{controls}<Loading label="Reading earnings from SEC filings…" /></div>;
+  if (error && !d) return <div className="space-y-2">{controls}<ErrorBox msg={error} /></div>;
+  if (!d) return null;
+  const x = (v: number | null | undefined) => (v == null ? '—' : `${v.toFixed(1)}×`);
+  const refs = Object.entries(d.bands).filter(([, v]) => (v as number) > 0)
+    .map(([k, v]) => ({ value: v as number, label: BAND_LABEL[k], color: k === 'mean' ? 'rgb(var(--c-text-secondary))' : 'rgb(var(--c-text-tertiary))' }));
+  const verdict = d.z == null ? null : d.z > 1 ? 'expensive against its own history' : d.z < -1 ? 'cheap against its own history' : 'within its normal range';
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">{controls}<span className="text-[11px] text-text-tertiary">weekly, to {d.as_of}</span></div>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <Tile label="Trailing P/E" value={x(d.pe)} sub={verdict ?? 'no positive earnings'} />
+        <Tile label={`${d.years}-year average`} value={x(d.mean)} sub={`median ${x(d.median)} · σ ${d.sd.toFixed(1)}`} />
+        <Tile label="Percentile" value={d.percentile != null ? `${Math.round(d.percentile * 100)}th` : '—'} sub={`range ${x(d.min)} – ${x(d.max)}`} />
+        <Tile label="Standard deviations" value={d.z != null ? `${d.z > 0 ? '+' : ''}${d.z.toFixed(2)}σ` : '—'} sub="from the average" />
+        <Tile label="EPS, last 4 quarters" value={d.eps_ttm != null ? `$${d.eps_ttm.toFixed(2)}` : '—'} sub={`price $${d.price.toFixed(2)}`} />
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+        <Panel title="Trailing P/E with average and ±1σ, ±2σ bands">
+          <div className="mkt-chart-surface"><LineChart rows={d.points} x="date" height={260} controls={false} fmt={(v) => `${v.toFixed(1)}×`} refs={refs}
+            lines={[{ key: 'pe', label: 'P/E', color: 'rgb(var(--c-bloomberg))' }]} /></div>
+        </Panel>
+        <Panel title="Price against the prices the P/E bands imply">
+          <div className="mkt-chart-surface"><LineChart rows={priceRows} x="date" height={260} controls={false} fmt={(v) => `$${v.toFixed(2)}`}
+            lines={[{ key: 'price', label: 'Price', color: 'rgb(var(--c-bloomberg))' }, { key: 'hi', label: '+1σ', color: 'rgb(var(--c-red))' },
+              { key: 'mean', label: 'Average P/E', color: 'rgb(var(--c-text-secondary))' }, { key: 'lo', label: '−1σ', color: 'rgb(var(--c-green))' }]} /></div>
+        </Panel>
+      </div>
+      <Panel title="What each band implies on today's earnings">
+        <table className="w-full text-2xs font-mono tabular-nums">
+          <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Band</th><th className="text-right font-normal">P/E</th>
+            <th className="text-right font-normal">Implied price</th><th className="text-right font-normal">vs today</th></tr></thead>
+          <tbody>{Object.keys(BAND_LABEL).slice().reverse().map((k) => {
+            const px = d.band_prices[k];
+            return <tr key={k} className="border-t border-border-subtle"><td className="py-1 font-sans text-text-secondary">{BAND_LABEL[k]}</td>
+              <td className="text-right">{x(d.bands[k])}</td><td className="text-right">{px != null ? `$${px.toFixed(2)}` : '—'}</td>
+              <td className={cn('text-right', sign(px != null ? px / d.price - 1 : null))}>{px != null ? pct(px / d.price - 1) : '—'}</td></tr>;
+          })}</tbody>
+        </table>
+      </Panel>
+      <Source>{d.note} {d.source}</Source>
+    </div>
+  );
+}
+
+// ── WB ───────────────────────────────────────────────────────────────────────
+const REGION_LABEL: Record<string, string> = { americas: 'Americas', europe: 'Europe', mea: 'Middle East & Africa', apac: 'Asia-Pacific' };
+export function WbView() {
+  const [region, setRegion] = useState<string | null>(null);
+  const { data: d, error, loading } = useJSON<any>('/api/v1/mkt/wb', 1_800_000);
+  if (loading && !d) return <Loading label="Loading government bond yields…" />;
+  if (error && !d) return <ErrorBox msg={error} />;
+  if (!d) return null;
+  const rows = d.rows.filter((r: any) => !region || r.region === region);
+  const bp = (v: number | null | undefined) => (v == null ? '—' : `${v > 0 ? '+' : ''}${Math.round(v)}`);
+  const y = (v: number | null | undefined) => (v == null ? '—' : `${v.toFixed(2)}%`);
+  const live = d.rows.filter((r: any) => !r.stale);
+  const top = live.filter((r: any) => r.real_yield != null).sort((a: any, b: any) => b.real_yield - a.real_yield)[0];
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <Tile label="US 10-year" value={y(d.us_10y)} sub="the benchmark the spreads are measured against" />
+        <Tile label="Bund 10-year" value={y(d.de_10y)} sub="euro-area spreads are measured against it" />
+        <Tile label="Median 10-year" value={y(d.median_10y)} sub={`across ${live.length} markets`} />
+        <Tile label="Highest real yield" value={top ? top.name : '—'} sub={top ? `${y(top.real_yield)} after inflation` : ''} />
+      </div>
+      <div className="flex flex-wrap gap-1">
+        <Chip on={!region} onClick={() => setRegion(null)}>All</Chip>
+        {Object.entries(REGION_LABEL).map(([k, l]) => <Chip key={k} on={region === k} onClick={() => setRegion(k)}>{l}</Chip>)}
+      </div>
+      <Panel title="10-year government yields (highest first)" right={<span className="text-[11px] text-text-tertiary">{rows.length} markets</span>}>
+        <div className="overflow-x-auto"><table className="w-full text-2xs font-mono tabular-nums">
+          <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Country</th><th className="text-right font-normal px-1">10Y</th>
+            <th className="text-right font-normal px-1">1M bp</th><th className="text-right font-normal px-1">1Y bp</th><th className="text-right font-normal px-1">vs US bp</th>
+            <th className="text-right font-normal px-1">vs Bund bp</th><th className="text-right font-normal px-1">Policy</th><th className="text-right font-normal px-1">10Y − policy</th>
+            <th className="text-right font-normal px-1">Inflation</th><th className="text-right font-normal px-1">Real 10Y</th><th className="text-right font-normal px-1">2Y</th>
+            <th className="text-right font-normal px-1">2s10s</th><th className="text-left font-normal px-1">Rating</th><th className="text-left font-normal px-1">As of</th></tr></thead>
+          <tbody>{rows.map((r: any) => (
+            <tr key={r.iso} className={cn('border-t border-border-subtle', r.stale && 'opacity-60')} title={r.source ?? ''}>
+              <td className="py-1 font-sans whitespace-nowrap text-text-primary">{r.name}</td>
+              <td className="text-right px-1 font-semibold">{y(r.yield_10y)}</td>
+              <td className={cn('text-right px-1', sign(r.change_1m_bp))}>{bp(r.change_1m_bp)}</td>
+              <td className={cn('text-right px-1', sign(r.change_1y_bp))}>{bp(r.change_1y_bp)}</td>
+              <td className="text-right px-1 text-text-secondary">{bp(r.spread_us_bp)}</td>
+              <td className="text-right px-1 text-text-secondary">{bp(r.spread_de_bp)}</td>
+              <td className="text-right px-1">{y(r.policy_rate)}</td>
+              <td className={cn('text-right px-1', sign(r.term_spread_bp))}>{bp(r.term_spread_bp)}</td>
+              <td className="text-right px-1 text-text-secondary">{r.inflation != null ? `${r.inflation.toFixed(1)}%` : '—'}</td>
+              <td className={cn('text-right px-1', sign(r.real_yield))}>{y(r.real_yield)}</td>
+              <td className="text-right px-1 text-text-secondary">{y(r.yield_2y)}</td>
+              <td className={cn('text-right px-1', sign(r.slope_2s10s_bp))}>{bp(r.slope_2s10s_bp)}</td>
+              <td className="px-1 font-sans text-text-secondary">{r.rating ?? '—'}</td>
+              <td className="px-1 font-sans text-text-tertiary whitespace-nowrap">{r.date ?? '—'}{r.daily ? '' : ' (monthly)'}</td></tr>))}</tbody>
+        </table></div>
+      </Panel>
+      <Source>{d.note} Faded rows are more than 45 days old. {d.source}</Source>
+    </div>
+  );
+}
+
+// ── DS: filing search ────────────────────────────────────────────────────────
+const DS_SUGGEST = ['share repurchase', 'guidance outlook', 'largest risks', 'China', 'tariffs', 'artificial intelligence', 'customer concentration', 'litigation', 'supply constraints'];
+function Highlight({ text, terms }: { text: string; terms: string[] }) {
+  const stems = terms.filter((t) => t.length > 1).map((t) => t.replace(/(ies|ing|es|ed|s)$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!stems.length) return <>{text}</>;
+  const re = new RegExp(`\\b(${stems.join('|')})[a-z]*`, 'gi');
+  const out: React.ReactNode[] = [];
+  let last = 0, m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    out.push(<Fragment key={`t${last}`}>{text.slice(last, m.index)}</Fragment>, <mark key={`m${m.index}`} className="bg-bloomberg/25 text-text-primary rounded-sm px-px">{m[0]}</mark>);
+    last = m.index + m[0].length;
+  }
+  out.push(<Fragment key="end">{text.slice(last)}</Fragment>);
+  return <>{out}</>;
+}
+export function DsView({ symbol, onGo }: { symbol: string; onGo: (fn: string, s?: string) => void }) {
+  const [input, setInput] = useState('');
+  const [query, setQuery] = useState('');
+  const [form, setForm] = useState<string | null>(null);
+  const url = query ? `/api/v1/mkt/ds/${encodeURIComponent(symbol)}?q=${encodeURIComponent(query)}${form ? `&forms=${form === '10-K' ? '10-K,20-F,40-F' : form}` : ''}&limit=15` : null;
+  const { data: d, error, loading } = useJSON<any>(url);
+  const run = (q: string) => { setInput(q); setQuery(q.trim()); };
+  return (
+    <div className="space-y-3">
+      <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); run(input); }}>
+        <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={`Search ${symbol}'s filings — e.g. buyback, China, guidance`} aria-label="Search filings"
+          className="bg-surface-1 border border-border rounded-sm px-2 py-1.5 text-xs text-text-primary flex-1 min-w-[16rem]" />
+        <button className="px-3 py-1.5 border border-bloomberg text-bloomberg text-[11px] rounded-sm hover:bg-bloomberg/10">Search</button>
+        <div className="flex gap-1">{[null, '10-K', '10-Q', '8-K'].map((f) => <Chip key={f ?? 'all'} on={form === f} onClick={() => setForm(f)}>{f ?? 'All filings'}</Chip>)}</div>
+      </form>
+      {!query && (
+        <div className="space-y-2">
+          <p className="text-xs text-text-secondary">Searches the full text of {symbol}'s latest annual report, its last two quarterly reports and its last three 8-Ks with their press releases, and shows the passages that answer best.</p>
+          <div className="flex flex-wrap gap-1">{DS_SUGGEST.map((q) => <Chip key={q} on={false} onClick={() => run(q)}>{q}</Chip>)}</div>
+        </div>
+      )}
+      {query && loading && !d && <Loading label="Reading the filings (the first search on a company takes a few seconds)…" />}
+      {query && error && <ErrorBox msg={error} />}
+      {query && d && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-text-tertiary">
+            <span>{d.matches} passages match · showing the best {d.hits.length}</span>
+            <button onClick={() => onGo('AI', symbol)} className="text-bloomberg hover:underline">Ask the AI assistant to summarise these filings →</button>
+          </div>
+          {!d.hits.length && <p className="text-xs text-text-secondary">Nothing in these filings matches — try other words.</p>}
+          <div className="space-y-2">{d.hits.map((h: any, i: number) => (
+            <div key={i} className="border border-border rounded-md bg-surface-1 px-3 py-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                <div className="text-[11px]"><span className="font-semibold text-text-primary">{h.form}</span> <span className="text-text-tertiary">filed {h.filed}{h.period ? ` · period ${h.period}` : ''}</span>
+                  {h.section && <span className="text-text-secondary"> · {h.section}</span>}</div>
+                <a href={h.url} target="_blank" rel="noreferrer" className="text-[11px] text-bloomberg hover:underline">Open filing ↗</a>
+              </div>
+              <p className="text-xs text-text-secondary leading-relaxed"><Highlight text={h.text} terms={d.terms} /></p>
+            </div>))}</div>
+          <Panel title="Filings searched">
+            <table className="w-full text-2xs font-mono tabular-nums">
+              <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Form</th><th className="text-left font-normal">Filed</th><th className="text-left font-normal">Period</th><th className="text-right font-normal">Passages</th><th /></tr></thead>
+              <tbody>{d.documents.map((x: any) => (
+                <tr key={x.url} className="border-t border-border-subtle"><td className="py-1">{x.form}</td><td>{x.filed}</td><td>{x.period ?? '—'}</td><td className="text-right">{x.passages}</td>
+                  <td className="text-right"><a href={x.url} target="_blank" rel="noreferrer" className="text-bloomberg hover:underline font-sans">SEC ↗</a></td></tr>))}</tbody>
+            </table>
+          </Panel>
+          <Source>{d.source}</Source>
+        </>
+      )}
     </div>
   );
 }

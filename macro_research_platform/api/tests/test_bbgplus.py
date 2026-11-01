@@ -1,5 +1,7 @@
 """IMOV / TRA / VAP: contributions add up to the index move, period returns use the right base, the volume profile
 puts the point of control where the volume traded."""
+from datetime import date
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -76,3 +78,83 @@ def test_index_movers_prefers_the_local_store_when_it_is_current(monkeypatch):
     monkeypatch.setattr(bbgplus, "_store_closes", lambda syms, i: pd.DataFrame({"AAA": [10, 11], "^NDX": [100, 110]}, index=idx))
     monkeypatch.setattr(bbgplus, "_closes", lambda *a, **k: (_ for _ in ()).throw(AssertionError("downloaded anyway")))
     assert bbgplus.index_movers("NDX")["implied_bps"] == pytest.approx(1000)
+
+
+def test_member_returns_ranks_members_and_counts_those_beating_the_index(monkeypatch):
+    from api.marketdata import funds
+    monkeypatch.setattr(funds, "index_members", lambda code: {"name": "FTSE 100", "source": "test", "note": None,
+        "members": [{"symbol": "AAA.L", "sector": "Tech"}, {"symbol": "BBB.L", "sector": "Banks"}, {"symbol": "CCC.L", "sector": "Tech"}]})
+    idx = pd.bdate_range("2025-01-01", "2026-10-30")
+    lin = lambda a, b: np.linspace(a, b, len(idx))
+    closes = pd.DataFrame({"AAA.L": lin(100, 150), "BBB.L": lin(100, 90), "CCC.L": lin(100, 120), "^FTSE": lin(100, 110)}, index=idx)
+    monkeypatch.setattr(bbgplus, "_closes", lambda syms, period, adjusted: closes)
+    r = bbgplus.member_returns("UKX", "1Y")
+    assert [x["symbol"] for x in r["rows"]] == ["AAA.L", "CCC.L", "BBB.L"] and r["rows"][0]["rank"] == 1
+    assert r["beat_index"] == 2 and r["positive"] == 2
+    one_year = closes.loc[closes.index <= pd.Timestamp("2025-10-30")].iloc[-1]
+    assert r["rows"][0]["1Y"] == pytest.approx(150 / one_year["AAA.L"] - 1)
+    assert r["sectors"][0]["sector"] == "Tech"
+    with pytest.raises(bbgplus.NotFound):
+        bbgplus.member_returns("UKX", "2Y")
+
+
+def test_pe_history_restates_filed_eps_for_later_splits(monkeypatch):
+    from api.marketdata import corporate, extras
+    from api.providers import sec_edgar
+    monkeypatch.setattr(extras, "_company_only", lambda s, w: None)
+    monkeypatch.setattr(sec_edgar, "resolve", lambda s: {"cik": 1})
+    # EPS 8 filed before a 4-for-1 split is 2 on today's share count; EPS 2.5 is filed after it
+    filed = [(str(d.date()), 8.0) for d in pd.date_range("2020-02-01", "2023-11-01", freq="QS")] + [("2024-02-01", 2.5)]
+    monkeypatch.setattr(sec_edgar, "pit_events", lambda s: {"eps_ttm": filed})
+    monkeypatch.setattr(corporate, "actions", lambda s: {"splits": [{"date": "2023-12-15", "ratio": 4.0}]})
+    idx = pd.bdate_range("2020-03-01", "2024-06-28")
+    monkeypatch.setattr(bbgplus, "_closes", lambda syms, period, adjusted: pd.DataFrame({"TST": np.full(len(idx), 40.0)}, index=idx))
+    r = bbgplus.pe_history("TST", years=4)
+    pes = {p["date"]: p["pe"] for p in r["points"]}
+    assert pes["2022-06-03"] == pytest.approx(20.0)                  # 40 / (8 / 4)
+    assert r["pe"] == pytest.approx(16.0) and r["eps_ttm"] == pytest.approx(2.5)
+    assert r["band_prices"]["mean"] == pytest.approx(r["bands"]["mean"] * 2.5)
+
+
+def test_world_bonds_spreads_policy_and_real_yield(monkeypatch):
+    from api.marketdata import countries, curves, toolkit
+    today = str(date.today())
+    monkeypatch.setattr(countries, "world_data", lambda: {"countries": {
+        "US": {"name": "United States", "region": "americas", "yield_10y": 4.0, "yield_date": today, "yield_source": "^TNX live", "inflation": 3.0},
+        "DE": {"name": "Germany", "region": "europe", "yield_10y": 2.5, "yield_date": today, "yield_source": "Bundesbank", "inflation": 2.0},
+        "IT": {"name": "Italy", "region": "europe", "yield_10y": 3.6, "yield_date": today, "yield_source": "live", "inflation": 1.5},
+        "NZ": {"name": "New Zealand", "region": "apac", "yield_10y": 4.4, "yield_date": "2025-01-31", "yield_source": "OECD monthly average"},
+        "XX": {"name": "No yield"}}})
+    monkeypatch.setattr(curves, "curves", lambda: {"curves": {"US": {"points": [{"tenor": 2.0, "yield": 3.5}], "slope_2s10s_bp": 50.0}}})
+    monkeypatch.setattr(toolkit, "central_banks", lambda: {"banks": [{"code": "US", "rate": 3.75}, {"code": "XM", "rate": 2.0}]})
+    r = bbgplus.world_bonds()
+    by = {x["iso"]: x for x in r["rows"]}
+    assert set(by) == {"US", "DE", "IT", "NZ"}
+    assert by["IT"]["spread_de_bp"] == pytest.approx(110) and by["IT"]["spread_us_bp"] == pytest.approx(-40)
+    assert by["IT"]["policy_rate"] == 2.0 and by["IT"]["real_yield"] == pytest.approx(2.1)   # euro members use the ECB rate
+    assert by["US"]["yield_2y"] == 3.5 and by["US"]["term_spread_bp"] == pytest.approx(25)
+    assert by["NZ"]["stale"] and not by["NZ"]["daily"] and by["US"]["daily"]
+    assert r["rows"][0]["iso"] == "NZ"                                # highest yield first
+
+
+def test_filing_search_ranks_the_passage_that_answers(monkeypatch):
+    docs = [{"form": "10-K", "filed": "2026-02-01", "period": "2025-12-31", "url": "u1", "passages": [
+                {"section": "Item 1A. Risk Factors", "part": "main", "text": "Tariffs on imports from China could raise our costs. " * 3},
+                {"section": "Item 5. Market for Registrant's Common Equity", "part": "main",
+                 "text": "In May the Board approved a new share repurchase program of up to $10 billion. " * 2},
+                {"section": "Item 8.", "part": "main", "text": "Total 1,234 5,678 9,012 share 3,456 7,890 1,111 2,222 3,333 4,444 5,555"}]},
+            {"form": "8-K", "filed": "2026-04-30", "period": None, "url": "u2", "passages": [
+                {"section": None, "part": "ex99.htm", "text": "Revenue grew 12% and the company repurchased shares worth $2 billion in the quarter."}]}]
+    monkeypatch.setattr(bbgplus, "_cached", lambda key, ttl, fn: docs if key.startswith("ds:") else fn())
+    r = bbgplus.filing_search("TST", "share repurchase program")
+    assert r["hits"][0]["section"].startswith("Item 5") and r["matches"] == 3       # the 8-K's "repurchased shares" counts
+    assert r["hits"][-1]["section"] == "Item 8."                      # a table of figures ranks last
+    assert [h["form"] for h in bbgplus.filing_search("TST", "repurchase", forms="8-K")["hits"]] == ["8-K"]
+    with pytest.raises(bbgplus.NotFound):
+        bbgplus.filing_search("TST", "the of and")
+
+
+def test_passages_follow_filing_sections():
+    text = "Item 1A. Risk Factors\n" + "\n".join(["Risk sentence number one is here and is long enough."] * 30) + "\nItem 7. Management's Discussion\nRevenue rose."
+    ps = bbgplus._passages(text, size=300)
+    assert ps[0]["section"] == "Item 1A. Risk Factors" and all(len(p["text"]) <= 600 for p in ps)

@@ -36,6 +36,7 @@ Rules:
 - If a tool returns an error or nothing, say the data is unavailable — never guess or invent numbers.
 - Be concise and structured: short paragraphs or bullets, key numbers in **bold**, units and currencies stated.
 - Say how current the data is (dates) and name the source (e.g. "SEC 10-Q", "Yahoo Finance", "FRED").
+- For what a company says about itself (risks, guidance, strategy, buybacks, segments) use search_filings and quote the filing briefly.
 - Every tool result starts with "[n]". Cite the number after each fact you take from it, like "revenue rose 12% [2]".
 - Distinguish facts from interpretation. Give balanced views (bull and bear points) when asked for opinions.
 - You give general research, not personalised investment advice; don't tell the user to buy or sell.
@@ -178,6 +179,28 @@ def _t_macro() -> Any:
             "sector_tilts": [{k: s.get(k) for k in ("name", "signal", "score")} for s in (d.get("sectorAllocation") or {}).get("sectors", [])][:11]}
 
 
+def _t_filings(symbol: str, query: str) -> Any:
+    """The best-matching passages from the company's latest 10-K, 10-Qs and 8-Ks: the model quotes and cites them."""
+    from api.marketdata import bbgplus
+    r = bbgplus.filing_search(symbol, query, limit=4)
+    return {"query": query, "passages": [{"filing": f"{h['form']} filed {h['filed']}", "period": h["period"], "section": h["section"],
+                                          "text": h["text"][:700]} for h in r["hits"]],
+            "searched": [f"{d['form']} {d['filed']}" for d in r["documents"]]}
+
+
+def _t_pe_history(symbol: str) -> Any:
+    from api.marketdata import bbgplus
+    r = bbgplus.pe_history(symbol)
+    return {k: r[k] for k in ("as_of", "price", "eps_ttm", "pe", "mean", "median", "sd", "min", "max", "percentile", "z", "band_prices", "years")}
+
+
+def _t_world_bonds() -> Any:
+    from api.marketdata import bbgplus
+    r = bbgplus.world_bonds()
+    keep = ("iso", "name", "yield_10y", "date", "change_1m_bp", "spread_us_bp", "policy_rate", "real_yield", "slope_2s10s_bp")
+    return {"rows": [{k: x.get(k) for k in keep} for x in r["rows"] if not x["stale"]][:30], "note": r["note"]}
+
+
 TOOLS: Dict[str, Tuple[Callable, str, Dict[str, Any]]] = {
     "search_instrument": (_t_search, "Find tickers by company or instrument name (any exchange, FX, futures, crypto).",
                           {"query": {"type": "string", "description": "Company or instrument name"}}),
@@ -201,10 +224,17 @@ TOOLS: Dict[str, Tuple[Callable, str, Dict[str, Any]]] = {
                        "max_pe": {"type": "number"}, "min_dividend_yield_pct": {"type": "number"}}),
     "get_market_overview": (_t_markets, "World indices, rates, currencies, commodities and crypto today.", {}),
     "get_macro_view": (_t_macro, "The terminal's macro model: regime, growth/inflation/liquidity/risk scores, recession odds, sector tilts.", {}),
+    "search_filings": (_t_filings, "Search the text of a US-listed company's latest 10-K, 10-Qs and 8-K press releases; returns the "
+                       "matching passages to quote (risks, guidance, buybacks, segments, customers, litigation …).",
+                       {"symbol": {"type": "string"}, "query": {"type": "string", "description": "A few key words, e.g. 'share repurchase'"}}),
+    "get_pe_history": (_t_pe_history, "Trailing P/E today vs its own 10-year history: mean, standard deviation, percentile and the "
+                       "prices the bands imply.", {"symbol": {"type": "string"}}),
+    "get_world_bonds": (_t_world_bonds, "10-year government yields by country with spreads to Treasuries, policy rates, real yields "
+                        "and 2s10s slopes.", {}),
 }
 REQUIRED = {"get_quote": ["symbol"], "get_profile": ["symbol"], "get_financials": ["symbol"], "get_earnings": ["symbol"],
             "get_analyst_ratings": ["symbol"], "get_holders": ["symbol"], "run_dcf": ["symbol"], "get_peers": ["symbol"],
-            "search_instrument": ["query"]}
+            "search_instrument": ["query"], "search_filings": ["symbol", "query"], "get_pe_history": ["symbol"]}
 
 
 def tool_specs() -> List[Dict[str, Any]]:
@@ -243,6 +273,9 @@ _CITE = {  # tool: (source, markets function code or None, research panel or Non
     "screen_stocks": ("Yahoo Finance screener", "EQS", None),
     "get_market_overview": ("Yahoo Finance / FRED", "WEI", None),
     "get_macro_view": ("Terminal macro model (FRED, Yahoo)", None, "master-signal"),
+    "search_filings": ("SEC EDGAR filing text", "DS", None),
+    "get_pe_history": ("SEC EDGAR EPS / Yahoo prices", "GE", None),
+    "get_world_bonds": ("Issuers' curves / OECD / BIS / IMF", "WB", None),
 }
 
 

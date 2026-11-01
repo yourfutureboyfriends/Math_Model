@@ -1481,3 +1481,32 @@ async def mkt_volume_at_price(symbol: str, days: int = Query(120, ge=20, le=750)
     """Volume at price (VAP): the volume profile, point of control and value area."""
     from api.marketdata import bbgplus
     return await _run(bbgplus.volume_at_price, symbol, days, timeout=60)
+
+
+@router.get("/api/v1/mkt/mrr/{code}")
+async def mkt_member_returns(code: str, period: str = Query("YTD", max_length=4)):
+    """Member ranked returns (MRR): every index member ranked by return over a period, against the index."""
+    from api.marketdata import bbgplus
+    return await _run(bbgplus.member_returns, code, period, timeout=150)
+
+
+@router.get("/api/v1/mkt/ge/{symbol}")
+async def mkt_pe_history(symbol: str, years: int = Query(10, ge=3, le=15)):
+    """P/E history (GE): trailing P/E from filed EPS with mean and standard-deviation bands."""
+    from api.marketdata import bbgplus
+    return await _run(bbgplus.pe_history, symbol, years, timeout=90)
+
+
+@router.get("/api/v1/mkt/wb")
+async def mkt_world_bonds():
+    """World bonds (WB): 10-year yields, spreads, policy rates, real yields and curve slopes by country."""
+    from api.marketdata import bbgplus
+    return await _run(bbgplus.world_bonds, timeout=150)
+
+
+@router.get("/api/v1/mkt/ds/{symbol}")
+async def mkt_filing_search(symbol: str, q: str = Query(..., min_length=2, max_length=200),
+                            forms: Optional[str] = Query(None, max_length=40), limit: int = Query(12, ge=1, le=30)):
+    """Filing search (DS): the best-matching passages in a company's recent SEC filings."""
+    from api.marketdata import bbgplus
+    return await _run(bbgplus.filing_search, symbol, q, forms, limit, timeout=150)
