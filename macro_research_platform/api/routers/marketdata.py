@@ -1452,3 +1452,32 @@ async def mkt_context(symbol: str, request: Request):
     its sector, the DCF value vs the price, your alerts / journal / team notes, and PE deals on it."""
     from api import context
     return await context.build(symbol, _owner(request))
+
+
+# ── Bloomberg-standard screens added from free data (marketdata/bbgplus.py) ─────
+@router.get("/api/v1/mkt/imov/{code}")
+async def mkt_index_movers(code: str):
+    """Index movers (IMOV): each member's contribution to the index's last move."""
+    from api.marketdata import bbgplus
+    return await _run(bbgplus.index_movers, code, timeout=120)
+
+
+@router.get("/api/v1/mkt/tra")
+async def mkt_total_returns(set: str = Query("assets", max_length=20), symbols: Optional[str] = Query(None, max_length=300)):
+    """Total returns (TRA): dividend-reinvested returns over standard periods."""
+    from api.marketdata import bbgplus
+    return await _run(bbgplus.total_returns, set, symbols, timeout=90)
+
+
+@router.get("/api/v1/mkt/wpe")
+async def mkt_world_valuations():
+    """World valuations (WPE): P/E, earnings and dividend yield by country."""
+    from api.marketdata import bbgplus
+    return await _run(bbgplus.world_valuations, timeout=120)
+
+
+@router.get("/api/v1/mkt/vap/{symbol}")
+async def mkt_volume_at_price(symbol: str, days: int = Query(120, ge=20, le=750)):
+    """Volume at price (VAP): the volume profile, point of control and value area."""
+    from api.marketdata import bbgplus
+    return await _run(bbgplus.volume_at_price, symbol, days, timeout=60)
