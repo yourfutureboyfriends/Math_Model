@@ -39,6 +39,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `celery_app.py` | Celery app (Redis broker) for the optional background task workers in api/tasks/. |
 | `confidence.py` | Confidence intervals for signals and forecasts (bootstrap and analytic). |
 | `config.py` | Centralized configuration for Macro Terminal API. |
+| `context.py` | Security context — everything the platform knows about one listed company, gathered from every area so a stock page can show it in one strip: |
 | `corporate_actions.py` | Corporate actions on held positions: stock splits (and reverse splits / share consolidations). |
 | `cot.py` | CFTC Commitments of Traders — non-commercial (speculative) positioning, legacy futures-only report (publicreporting.cftc.gov dataset 6dca-aqww). |
 | `data_contracts.py` | Data Contracts — single source of truth for all metric expectations. Every metric must be defined here BEFORE being implemented anywhere. |
@@ -589,6 +590,7 @@ Legacy (kept, not part of the running app): `src` — pre-API research library (
 | `Chrome.tsx` | Classic terminal chrome for the Markets mode: yellow market-sector keys, amber function |
 | `CommandLine.tsx` | Bloomberg-style command line with friendly autocomplete. Type a ticker, a company name, a |
 | `ConnectedTools.tsx` | — |
+| `ContextStrip.tsx` | Context strip on a stock's page: what the rest of the platform knows about it, each item a link to where it |
 | `DataViews.tsx` | Functions built on free alternatives to paid data: SI (short selling: FINRA + short |
 | `EdgeViews.tsx` | Edge data: EDGE (signal board), COT (positioning), PRED (prediction markets), NOW (nowcasts and |
 | `ExpectationsPanel.tsx` | — |

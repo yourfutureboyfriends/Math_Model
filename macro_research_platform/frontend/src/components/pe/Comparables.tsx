@@ -61,10 +61,12 @@ export function Comparables({ inputs, industry, onUse }: { inputs: Record<string
       <span><span className="inline-block w-2 h-2 rotate-45 bg-green mr-1" />exit</span><span>EV / EBITDA</span></span>}>
       {err && <div className="text-xs text-amber mb-2">{err}</div>}
       {b && <div className="space-y-2.5">
-        <RangeBar label="Trading comps" st={ts} marks={marks} lo={lo} hi={hi} />
-        <RangeBar label={`Precedents${b.sector ? ` · ${b.sector}` : ''}`} st={ps} marks={marks} lo={lo} hi={hi} />
+        {!ts && !ps && !industry?.ev_ebitda && (
+          <div className="text-[11.5px] text-text-secondary">No comparables yet — load a listed company (its peers’ multiples load automatically) or record deals under <b>Precedents</b>.</div>)}
+        {ts && <RangeBar label="Trading comps" st={ts} marks={marks} lo={lo} hi={hi} />}
+        {ps && <RangeBar label={`Precedents${b.sector ? ` · ${b.sector}` : ''}`} st={ps} marks={marks} lo={lo} hi={hi} />}
         {industry?.ev_ebitda && <RangeBar label="Industry (Damodaran)" st={{ low: industry.ev_ebitda, q1: industry.ev_ebitda, median: industry.ev_ebitda, q3: industry.ev_ebitda, high: industry.ev_ebitda, n: 1 }} marks={marks} lo={lo} hi={hi} />}
-        <div className="flex justify-between text-[10px] text-text-tertiary pl-[162px]"><span>{lo}×</span><span>{hi}×</span></div>
+        {(ts || ps || industry?.ev_ebitda) && <div className="flex justify-between text-[10px] text-text-tertiary pl-[162px]"><span>{lo}×</span><span>{hi}×</span></div>}
         <ul className="text-[11px] text-text-secondary space-y-0.5">{b.notes.map((n: string) => <li key={n}>· {n}</li>)}</ul>
         <div className="flex flex-wrap gap-1.5">
           {ts && <button onClick={() => onUse({ exit_multiple: Math.round(ts.median * 100) / 100 })} className="px-2 py-1 rounded-md border border-border text-[11px]">Exit at trading median {xx(ts.median, 1)}</button>}
@@ -140,5 +142,32 @@ export function Precedents() {
           </table>)}
       </div>
     </div>
+  );
+}
+
+/** The macro and credit backdrop for the deal (Macro area + credit markets), with a link back to the macro model. */
+export function MacroBackdrop({ currency }: { currency?: string }) {
+  const [m, setM] = useState<any>(null);
+  useEffect(() => { api(`/api/v1/pe/macro?currency=${encodeURIComponent(currency || 'USD')}`).then(setM).catch(() => setM(null)); }, [currency]);
+  if (!m) return null;
+  const cr = m.credit ?? {}, rg = m.b_spread_range;
+  const tone = m.credit_conditions === 'tight' ? 'text-green' : m.credit_conditions === 'wide' ? 'text-amber' : 'text-text-primary';
+  const pc = (v?: number | null, d = 1) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);
+  const cell = (label: string, value: React.ReactNode, sub?: React.ReactNode) => (
+    <div className="p-2.5 rounded-lg bg-text-primary/[0.03]"><div className="text-[10px] uppercase tracking-[0.06em] text-text-tertiary">{label}</div>
+      <div className="text-[13px] font-semibold mt-0.5">{value}</div>{sub && <div className="text-[10.5px] text-text-tertiary mt-0.5">{sub}</div>}</div>);
+  return (
+    <Card title="Macro & credit backdrop" right={<button onClick={() => import('@/lib/commands').then((c) => c.openPanel('macro-model'))} className="text-[11px] text-bloomberg hover:underline">Open the macro model →</button>}>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        {cell('Regime', <>{m.signal_regime ? m.signal_regime.charAt(0).toUpperCase() + m.signal_regime.slice(1) : '—'}</>,
+          m.model_regime ? `macro model (US): ${m.model_regime} ${pc(m.model_probability, 0)}` : undefined)}
+        {cell('Recession, next 12m', pc(m.recession_12m), m.recession_level ? `${m.recession_level} · model contraction odds ${pc(m.p_contraction)}` : undefined)}
+        {cell('Financing today', `${cr.base_rate_name ?? 'Base'} ${pc(cr.base_rate, 2)}`, cr.loan_spread != null ? `loans + ${pc(cr.loan_spread, 2)} · B bonds + ${pc(cr.b_spread, 2)}` : `B bonds + ${pc(cr.b_spread, 2)}`)}
+        {cell('Credit spreads', <span className={tone}>{m.credit_conditions ? m.credit_conditions.charAt(0).toUpperCase() + m.credit_conditions.slice(1) : '—'}</span>,
+          rg ? `single-B ${pc(rg.now, 2)} · ${pc(m.b_spread_percentile, 0)} pctile since ${String(rg.from).slice(0, 7)}` : undefined)}
+      </div>
+      <p className="text-[10.5px] text-text-tertiary mt-2">Spread history is what FRED serves for the ICE BofA indices (from {rg ? String(rg.from).slice(0, 7) : 'late 2023'}) — a recent window, not a full credit cycle.
+        A deal underwritten on today’s financing should hold up if spreads and the exit multiple revert: compare the downside case and the leverage × growth grid.</p>
+    </Card>
   );
 }

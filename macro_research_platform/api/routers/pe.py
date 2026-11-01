@@ -260,3 +260,11 @@ async def pe_precedent_delete(pid: int, request: Request):
     from api.pe import comps
     await _run(comps.delete_precedent, pid)
     return {"deleted": pid}
+
+
+@router.get("/api/v1/pe/macro")
+async def pe_macro(request: Request, currency: str = Query("USD", max_length=3)):
+    """The macro and credit backdrop for a buyout: regimes, recession probability, spreads vs their 10-year range."""
+    _user(request)
+    from api.pe import market
+    return await _run(market.macro_context, currency)

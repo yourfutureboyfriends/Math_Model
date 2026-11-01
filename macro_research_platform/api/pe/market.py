@@ -202,3 +202,49 @@ def from_company(symbol: str, premium: float = PREMIUM) -> Dict[str, Any]:
     return {"inputs": inp, "sources": sources, "credit": cr, "industry": ind,
             "market": {"price": price, "price_currency": d.get("price_currency"), "shares": shares, "market_cap": d.get("market_cap"),
                        "offer_price": offer, "premium": premium, "net_debt": debt - cash, "ev_at_offer": ev}}
+
+
+def macro_context(currency: str = "USD") -> Dict[str, Any]:
+    """The macro backdrop for underwriting a buyout, from the Macro area and credit markets: the signal regime and the
+    macro model's US regime, the 12-month recession probability, and where the single-B spread sits in the history FRED
+    serves (from late 2023 only — a recent window, not a full credit cycle)."""
+    import asyncio
+    from api.marketdata.core import _cached
+
+    def fetch():
+        out: Dict[str, Any] = {"credit": credit(currency)}
+        try:
+            from api.handlers.dashboard_handler import get_dashboard_data
+            d = asyncio.run(get_dashboard_data(mode="live"))
+            out["signal_regime"] = d.regime.current
+            out["recession_12m"] = d.recession.probability
+            out["recession_level"] = d.recession.level
+        except Exception as e:
+            logger.debug("[pe] dashboard: %s", e)
+        try:
+            from api.model.engine import world_summary
+            us = next((e for e in asyncio.run(world_summary()).get("economies") or [] if (e.get("economy") or {}).get("id") == "us"), None)
+            if us:
+                out["model_regime"] = us.get("regime")
+                out["model_probability"] = (us.get("probabilities") or {}).get(us.get("regime"))
+                out["p_contraction"] = us.get("p_contraction")
+        except Exception as e:
+            logger.debug("[pe] model: %s", e)
+        try:
+            from api.marketdata.insights import _fred
+            hist = _fred("BAMLH0A2HYB", years=10)
+            if hist:
+                vals = sorted(float(v) for v in hist.values())
+                now = float(hist[max(hist)])
+                out["b_spread_percentile"] = sum(1 for v in vals if v <= now) / len(vals)
+                # FRED serves the ICE BofA indices only from late 2023 (licensing), so the window is what it serves —
+                # labelled with its real start, never called a full-cycle comparison
+                out["b_spread_range"] = {"min": vals[0] / 100, "median": vals[len(vals) // 2] / 100, "max": vals[-1] / 100,
+                                         "now": now / 100, "from": min(hist), "to": max(hist),
+                                         "years": round((len(hist) / 261), 1)}
+        except Exception as e:
+            logger.debug("[pe] spread history: %s", e)
+        pctl = out.get("b_spread_percentile")
+        out["credit_conditions"] = (None if pctl is None else "tight" if pctl <= 0.25 else "wide" if pctl >= 0.75 else "normal")
+        return out
+    return _cached(f"pe:macro:{currency}", 3600, fetch)

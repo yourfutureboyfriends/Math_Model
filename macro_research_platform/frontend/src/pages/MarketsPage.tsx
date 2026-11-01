@@ -8,6 +8,7 @@ import { Bell, BookOpen, Briefcase, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { setHubMode } from '@/lib/hubMode';
 import { openLbo } from '@/components/pe/peShared';
+import { ContextStrip } from '@/components/markets/ContextStrip';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CommandLine } from '@/components/markets/CommandLine';
 import { FUNCTIONS, MARKET_FUNCTIONS, SECURITY_FUNCTIONS, findFunction, parseCommand, type MktFunction } from '@/components/markets/functions';
@@ -199,7 +200,7 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
   }
   return (
     <div className="space-y-3">
-      {classic ? (
+      {classic ? (<>
         <TerminalQuoteHeader d={d} f={f} symbol={symbol} onGo={onGo} actions={<>
           <button onClick={watch} className={tk}>+ WATCH</button>
           <button onClick={() => onGo('ALRT', symbol)} className={tk}>ALRT</button>
@@ -207,7 +208,8 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
           <button onClick={() => onGo('COMP', symbol)} className={tk}>COMP</button>
           {isEquity && <button onClick={lbo} className={tk} title="Model a buyout of this company in the PE area">LBO</button>}
           {note && <span className="text-[11px] text-green self-center">{note}</span>}</>} />
-      ) : <>
+        <ContextStrip symbol={symbol} onGo={onGo} isEquity={isEquity} />
+      </>) : <>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-xs text-text-tertiary">
@@ -240,6 +242,7 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
           {note && <span className="text-xs text-green self-center">{note}</span>}
         </div>
       </div>
+      <ContextStrip symbol={symbol} onGo={onGo} isEquity={isEquity} />
       <nav aria-label="Functions" className="border-b border-border">
         <div className="flex flex-wrap gap-x-1" role="tablist" aria-label="Function groups">
           {SECURITY_GROUPS.map((g) => {

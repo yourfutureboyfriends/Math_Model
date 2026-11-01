@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { Card, IrrGrid, Kpi, NumField, amt, api, download, irrTone, onOpenDeal, pct, spct, takePendingSymbol, unitFor, xx } from './peShared';
 
 import { DealDevelopment, UnderwritingResults } from './DealDevelopment';
-import { Comparables } from './Comparables';
+import { Comparables, MacroBackdrop } from './Comparables';
 import { useInputHistory } from './useInputHistory';
 import { currentFund } from '@/lib/fund';
 import { useAuth } from '@/context/AuthContext';
@@ -154,9 +154,9 @@ export function Workbench() {
           {market.credit?.base_rate != null && ` · ${market.credit.base_rate_name} ${pct(market.credit.base_rate, 2)} · B spread ${pct(market.credit.b_spread, 2)}`}</div>)}
 
       <div className="grid grid-cols-1 xl:grid-cols-[400px_1fr] gap-3 items-start">
-        {/* ── Assumptions ── */}
-        <div className="space-y-3">
-          <div role="tablist" aria-label="Deal input sections" className="workspace-controls flex flex-wrap gap-1 sticky top-16 z-20 bg-bg py-2" data-workspace-tabs>
+        {/* ── Assumptions: on wide screens the column stays in view (its own scroll) while the results scroll ── */}
+        <div className="space-y-3 xl:sticky xl:top-[calc(var(--topbar-height)+0.5rem)] xl:max-h-[calc(100vh-var(--topbar-height)-var(--dock-h,0px)-1rem)] xl:overflow-y-auto xl:pr-1 xl:pb-3">
+          <div role="tablist" aria-label="Deal input sections" className="workspace-controls flex flex-wrap gap-1 sticky top-16 xl:top-0 z-20 bg-bg py-2" data-workspace-tabs>
             {[['deal','Deal'],['financing','Financing'],['plan','Plan & exit'],['diligence','Diligence']].map(([id,label])=><button key={id} role="tab" aria-selected={section===id} onClick={()=>setSection(id)} className={cn('px-3 py-1.5 rounded border text-xs',section===id?'border-bloomberg text-bloomberg':'border-border text-text-secondary')}>{label}</button>)}
           </div>
           <div hidden={section!=='deal'} className="space-y-3">
@@ -265,6 +265,7 @@ export function Workbench() {
 
         {/* ── Results ── */}
         <div className="space-y-3 min-w-0">
+          <MacroBackdrop currency={inputs.currency} />
           {!base ? <div className="p-6 text-xs text-text-tertiary">{busy ? 'Running the model…' : 'Adjust the inputs to run the model.'}</div> : <Results res={res} unit={unit} ccy={ccy} hurdle={hurdle} busy={busy} inputs={inputs} />}
           <Comparables inputs={inputs} industry={market?.industry} onUse={set} />
           {sources && (

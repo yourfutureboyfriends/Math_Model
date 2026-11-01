@@ -1444,3 +1444,11 @@ async def mkt_world_map_markets():
 def _regions():
     from api.marketdata.core import REGIONS
     return REGIONS
+
+
+@router.get("/api/v1/mkt/context/{symbol}")
+async def mkt_context(symbol: str, request: Request):
+    """Everything the platform knows about a stock in one place: your book's positions, the macro regimes' view of
+    its sector, the DCF value vs the price, your alerts / journal / team notes, and PE deals on it."""
+    from api import context
+    return await context.build(symbol, _owner(request))
