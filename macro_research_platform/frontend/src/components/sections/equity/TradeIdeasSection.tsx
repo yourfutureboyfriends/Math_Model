@@ -28,7 +28,7 @@ export function TradeIdeasSection({ data }: Props) {
 
   if (!data.ideas || data.ideas.length === 0) {
     return (
-      <section id="trade-ideas" className="terminal-section">
+      <section className="terminal-section">
         <div className="section-header">
           <span className="section-tag">IDEA</span>
           <h2 className="section-title">Trade Ideas</h2>
@@ -79,7 +79,7 @@ export function TradeIdeasSection({ data }: Props) {
   };
 
   return (
-    <section id="trade-ideas" className="terminal-section">
+    <section className="terminal-section">
       <div className="section-header">
         <span className="section-tag">IDEA</span>
         <h2 className="section-title">Trade Ideas</h2>

@@ -35,7 +35,7 @@ export function HorizonTensionSection() {
 
   if (loading) {
     return (
-      <div id="horizon-tension" className="terminal-section">
+      <div className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag" aria-hidden />
@@ -51,7 +51,7 @@ export function HorizonTensionSection() {
 
   if (error || !data) {
     return (
-      <div id="horizon-tension" className="terminal-section">
+      <div className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag" aria-hidden />
@@ -76,7 +76,7 @@ export function HorizonTensionSection() {
   // Empty state guard
   if (horizon_events.length === 0) {
     return (
-      <div id="horizon-tension" className="terminal-section">
+      <div className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag" aria-hidden />
@@ -126,7 +126,7 @@ export function HorizonTensionSection() {
   };
 
   return (
-    <div id="horizon-tension" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

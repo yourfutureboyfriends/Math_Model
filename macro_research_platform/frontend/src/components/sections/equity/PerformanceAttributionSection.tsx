@@ -39,7 +39,7 @@ export function PerformanceAttributionSection() {
   const maxBook = c ? Math.max(1, ...c.by_book.map((b: any) => Math.abs(b.pnl))) : 1;
 
   return (
-    <section id="performance-attribution" className="terminal-section">
+    <section className="terminal-section">
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><BarChart3 className="w-3 h-3" /></span>

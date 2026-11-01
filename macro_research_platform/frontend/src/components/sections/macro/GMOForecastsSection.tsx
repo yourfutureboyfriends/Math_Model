@@ -73,7 +73,7 @@ export function GMOForecastsSection({ data: dataProp }: GMOForecastsSectionProps
   const componentKeys = Array.from(new Set(forecasts.flatMap((f: any) => Object.keys(f.components ?? {})))) as string[];
 
   return (
-    <div id="gmo-forecasts" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

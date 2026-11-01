@@ -58,7 +58,7 @@ export function LiquiditySection({ data }: LiquiditySectionProps) {
   };
 
   return (
-    <div id="liquidity" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

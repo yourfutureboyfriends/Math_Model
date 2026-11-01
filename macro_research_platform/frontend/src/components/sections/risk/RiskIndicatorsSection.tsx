@@ -23,7 +23,7 @@ export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicators
 
   if (!data) {
     return (
-      <div id="risk-indicators" className="terminal-section">
+      <div className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag" aria-hidden />
@@ -81,7 +81,7 @@ export function RiskIndicatorsSection({ data, geopoliticalData }: RiskIndicators
   ].filter(Boolean)) as Array<{ name: string; value: any; level: string }>;
 
   return (
-    <div id="risk-indicators" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

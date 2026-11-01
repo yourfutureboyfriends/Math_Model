@@ -60,7 +60,7 @@ export function SignalsSection({ data }: SignalsSectionProps) {
 
   if (isLoading && !data) {
     return (
-      <div id="signals" className="terminal-section">
+      <div className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag" aria-hidden />
@@ -75,7 +75,7 @@ export function SignalsSection({ data }: SignalsSectionProps) {
   }
 
   return (
-    <div id="signals" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

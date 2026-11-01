@@ -98,7 +98,7 @@ export function RiskAnalyticsSection() {
 
   if (loading) {
     return (
-      <div id="risk-analytics" className="terminal-section">
+      <div className="terminal-section">
         <Card title="RISK ANALYTICS">
           <div className="h-64 bg-surface-1 border border-border animate-pulse flex items-center justify-center">
             <span className="text-text-secondary font-mono text-sm">Loading risk analytics...</span>
@@ -110,7 +110,7 @@ export function RiskAnalyticsSection() {
 
   if (error || !data) {
     return (
-      <div id="risk-analytics" className="terminal-section">
+      <div className="terminal-section">
         <Card title="RISK ANALYTICS">
           <div className="h-32 bg-surface-1 border border-border flex flex-col items-center justify-center gap-2">
             <span className="text-text-secondary font-mono text-sm">Risk analytics temporarily unavailable</span>
@@ -567,7 +567,7 @@ export function RiskAnalyticsSection() {
   };
 
   return (
-    <div id="risk-analytics" className="terminal-section">
+    <div className="terminal-section">
     <Card title={`RISK ANALYTICS | Regime: ${regime.current ? regime.current.toUpperCase() : '—'}`}>
       <div className="space-y-4">
         {/* Tabs */}

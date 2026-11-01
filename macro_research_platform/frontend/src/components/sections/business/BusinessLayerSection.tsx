@@ -93,7 +93,7 @@ export const BusinessLayerSection = memo(function BusinessLayerSection() {
   };
 
   return (
-    <div id="business-layer" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

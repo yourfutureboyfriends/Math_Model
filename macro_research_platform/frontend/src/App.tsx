@@ -110,8 +110,11 @@ function App() {
 
   // One stable page element: changing the highlighted section while scrolling must not re-render the whole dashboard
   // (only the sidebar and detail panel read it).
+  // Macro, Trading and Quant are one dashboard that shows each area's panels, so they share one key: switching
+  // between them keeps the mounted panels and their data instead of rebuilding ~50 panels and refetching them.
+  const pageKind = isDashboardMode(hubMode) ? 'dashboard' : hubMode;
   const page = useMemo(() => (
-    <ErrorBoundary key={hubMode} sectionName={`${HUB_MODES.find(m=>m.id===hubMode)?.label??'Workspace'} view`}><Suspense fallback={<div className="p-6 text-xs text-text-tertiary">Loading {HUB_MODES.find((m) => m.id === hubMode)?.label}…</div>}>
+    <ErrorBoundary key={pageKind} sectionName={`${HUB_MODES.find(m=>m.id===hubMode)?.label??'Workspace'} view`}><Suspense fallback={<div className="p-6 text-xs text-text-tertiary">Loading {HUB_MODES.find((m) => m.id === hubMode)?.label}…</div>}>
       {hubMode === 'markets' ? <MarketsPage /> : hubMode === 'pe' ? <PrivateEquityPage /> : <DashboardPage />}
     </Suspense></ErrorBoundary>), [hubMode]);
 

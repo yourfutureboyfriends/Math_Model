@@ -51,7 +51,7 @@ export function InvestmentMemoSection({ data }: InvestmentMemoSectionProps) {
   };
 
   return (
-    <div id="investment-memo" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

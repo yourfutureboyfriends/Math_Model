@@ -14,7 +14,7 @@ export function MomentumVetoSection() {
 
   if (!data) {
     return (
-      <div id="momentum-veto" className="terminal-section">
+      <div className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag" aria-hidden />
@@ -54,7 +54,7 @@ export function MomentumVetoSection() {
   };
 
   return (
-    <div id="momentum-veto" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

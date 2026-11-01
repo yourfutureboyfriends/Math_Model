@@ -129,7 +129,7 @@ export function SectorAllocationSection({ data }: SectorAllocationSectionProps) 
   const hasDivergences = (earningsData?.divergences?.length ?? 0) > 0;
 
   return (
-    <div id="sector-allocation" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

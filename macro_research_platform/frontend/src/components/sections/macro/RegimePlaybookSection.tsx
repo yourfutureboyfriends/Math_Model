@@ -235,7 +235,7 @@ export function RegimePlaybookSection({ data, currentRegime }: Props) {
 
   if (!playbook) {
     return (
-      <section id="regime-playbook" className="terminal-section">
+      <section className="terminal-section">
         <div className="section-header">
           <span className="section-tag">PLAYBOOK</span>
           <h2 className="section-title">Regime Allocation</h2>
@@ -282,7 +282,7 @@ export function RegimePlaybookSection({ data, currentRegime }: Props) {
   };
 
   return (
-    <section id="regime-playbook" className="terminal-section">
+    <section className="terminal-section">
       <div className="section-header">
         <span className="section-tag">PLAYBOOK</span>
         <h2 className="section-title">Regime Allocation</h2>

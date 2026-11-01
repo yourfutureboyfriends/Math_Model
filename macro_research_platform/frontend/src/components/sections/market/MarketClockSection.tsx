@@ -131,7 +131,7 @@ export const MarketClockSection: React.FC = () => {
   ).length;
 
   return (
-    <section id="market-clock" className="terminal-section">
+    <section className="terminal-section">
       {/* Section Header */}
       <div className="section-header">
         <span className="section-tag">CLOCK</span>

@@ -91,7 +91,7 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
   };
 
   return (
-    <div id="key-metrics" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

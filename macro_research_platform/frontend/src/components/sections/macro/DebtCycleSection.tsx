@@ -89,7 +89,7 @@ export function DebtCycleSection({ data }: DebtCycleSectionProps) {
   ].filter((i) => i.formatted !== '—');
 
   return (
-    <div id="debt-cycle" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

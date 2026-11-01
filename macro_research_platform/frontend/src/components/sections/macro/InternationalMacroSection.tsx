@@ -52,7 +52,7 @@ export function InternationalMacroSection({ data }: InternationalMacroSectionPro
   };
 
   return (
-    <div id="international" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

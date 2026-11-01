@@ -88,7 +88,7 @@ export function ReflexivitySection({ data: dataProp }: ReflexivitySectionProps) 
   );
 
   return (
-    <div id="reflexivity" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

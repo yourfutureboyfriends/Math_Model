@@ -29,7 +29,7 @@ export function RiskParitySection({ data: dataProp }: RiskParitySectionProps) {
   const lastRebalanced = data.lastRebalanced || data.lastUpdated;
 
   return (
-    <div id="risk-parity" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

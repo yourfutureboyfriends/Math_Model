@@ -81,7 +81,7 @@ export function EnsembleSection({ data: dataProp }: EnsembleSectionProps) {
     .sort((a, b) => Math.abs(b.weightedContribution) - Math.abs(a.weightedContribution));
 
   return (
-    <div id="ensemble" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

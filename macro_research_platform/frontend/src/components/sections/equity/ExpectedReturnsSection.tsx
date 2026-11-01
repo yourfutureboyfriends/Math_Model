@@ -32,7 +32,7 @@ export function ExpectedReturnsSection({ data }: ExpectedReturnsSectionProps) {
   const cregAvailable = cregPct != null && isFinite(cregPct);
 
   return (
-    <div id="expected-returns" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

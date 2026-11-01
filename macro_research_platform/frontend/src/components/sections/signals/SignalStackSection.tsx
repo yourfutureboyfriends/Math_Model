@@ -13,7 +13,7 @@ export function SignalStackSection() {
 
   if (isLoading) {
     return (
-      <div id="signal-stack" className="terminal-section">
+      <div className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag" aria-hidden />
@@ -27,7 +27,7 @@ export function SignalStackSection() {
 
   if (!data) {
     return (
-      <div id="signal-stack" className="terminal-section">
+      <div className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag" aria-hidden />
@@ -87,7 +87,7 @@ export function SignalStackSection() {
   const sortedLayers = [...layerEntries].sort((a, b) => a.priority - b.priority);
 
   return (
-    <div id="signal-stack" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

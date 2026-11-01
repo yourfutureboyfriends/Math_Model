@@ -50,7 +50,7 @@ export function NewsSentimentSection({ data: dataProp }: NewsSentimentSectionPro
   const overallPosition = overallScore == null ? null : (overallScore + 100) / 2;
 
   return (
-    <div id="news-sentiment" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

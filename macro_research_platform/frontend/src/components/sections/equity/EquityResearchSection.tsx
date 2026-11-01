@@ -90,7 +90,7 @@ export function EquityResearchSection({ data }: EquityResearchSectionProps) {
 
   if (!equityData) {
     return (
-      <div id="equity-research" className="terminal-section">
+      <div className="terminal-section">
         <div className="flex items-center gap-2 mb-4">
           <Globe className="w-4 h-4 text-bloomberg" />
           <h2 className="terminal-section-title">EQUITY RESEARCH</h2>
@@ -112,7 +112,7 @@ export function EquityResearchSection({ data }: EquityResearchSectionProps) {
   if (!sectorRotation && !factorRotation && !valuation && !countryRanking) {
     if (!sectorRatings && !(stockPicks && stockPicks.length)) {
       return (
-        <div id="equity-research" className="terminal-section">
+        <div className="terminal-section">
           <div className="flex items-center gap-2 mb-4">
             <Globe className="w-4 h-4 text-bloomberg" />
             <h2 className="terminal-section-title">EQUITY RESEARCH</h2>
@@ -135,7 +135,7 @@ export function EquityResearchSection({ data }: EquityResearchSectionProps) {
         ? ((p.target / p.current - 1) * 100)
         : null;
     return (
-      <div id="equity-research" className="terminal-section">
+      <div className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag">RES</span>
@@ -217,7 +217,7 @@ export function EquityResearchSection({ data }: EquityResearchSectionProps) {
   };
 
   return (
-    <div id="equity-research" className="terminal-section">
+    <div className="terminal-section">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Globe className="w-4 h-4 text-bloomberg" />

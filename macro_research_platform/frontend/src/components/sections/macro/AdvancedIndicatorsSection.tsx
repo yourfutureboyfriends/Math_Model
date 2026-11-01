@@ -83,7 +83,7 @@ export function AdvancedIndicatorsSection({ data }: AdvancedIndicatorsSectionPro
     });
 
   return (
-    <div id="advanced" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

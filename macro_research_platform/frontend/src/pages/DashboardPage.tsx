@@ -1,7 +1,7 @@
 // Dashboard Page — Main terminal dashboard with all sections
 // Uses REAL data from macroStore (fetched from backend API)
 
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useDesk } from '@/hooks/useDesk';
 import { applyFocus, getCollapsed, panelId, saveCollapsed, setDeskPanels, useWorkspace, workspacePanels } from '@/lib/focusMode';
@@ -285,6 +285,18 @@ export function DashboardPage() {
           <button onClick={() => fetchDashboard()} className="ml-auto underline hover:text-text-primary">Retry</button>
         </div>
       )}
+      <DashboardPanels />
+    </div>
+    </div>
+  );
+}
+
+/** Every dashboard panel, in page order. It takes no props, so a change of area, workspace or fold state (which only
+ *  shows, hides or folds panels through the DOM) does not re-render ~90 panel components; each panel updates from
+ *  its own data. */
+const DashboardPanels = memo(function DashboardPanels() {
+  return (
+    <>
       {/* ── My Desk: role-tailored queue + key numbers ─────────────────────── */}
       <div id="my-desk" className="terminal-section">
         <ErrorBoundary sectionName="My Desk"><WhenNear>
@@ -975,7 +987,6 @@ export function DashboardPage() {
           </Suspense>
         </WhenNear></ErrorBoundary>
       </div>
-    </div>
-    </div>
+    </>
   );
-}
+});

@@ -16,7 +16,7 @@ export function TransmissionSection({ data }: TransmissionSectionProps) {
   // Explicit empty state instead of a blank panel when no channels are computed yet.
   if (!data?.channels?.length) {
     return (
-      <div id="transmission" className="terminal-section">
+      <div className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag"><Zap className="w-3 h-3" /></span>
@@ -45,7 +45,7 @@ export function TransmissionSection({ data }: TransmissionSectionProps) {
   };
 
   return (
-    <div id="transmission" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

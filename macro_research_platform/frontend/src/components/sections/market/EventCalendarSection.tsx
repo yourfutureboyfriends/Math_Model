@@ -108,7 +108,7 @@ export function EventCalendarSection({ data: initial }: Props) {
   const cd = next ? countdown(next.release_datetime, now) : null;
 
   return (
-    <section id="economic-calendar" className="terminal-section">
+    <section className="terminal-section">
       <div className="section-header !justify-start gap-2">
         <span className="section-tag">ECO</span>
         <h2 className="section-title">Economic Calendar</h2>

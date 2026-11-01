@@ -169,7 +169,7 @@ export function MorningBriefSection() {
   };
 
   return (
-    <section id="morning-brief" className="terminal-section">
+    <section className="terminal-section">
       {/* Bloomberg orange left border - editorial lead */}
       <div className="p-4 border-l-2 rounded-md border-amber bg-surface-2">
         {/* Header */}

@@ -47,7 +47,7 @@ export function FactorRotationSection({ data: dataProp }: { data?: FactorScore }
     .filter((s) => s.score !== null) as { key: string; label: string; ticker: string; score: number }[];
 
   return (
-    <div id="factor-rotation" className="terminal-section">
+    <div className="terminal-section">
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag"><TrendingUp className="w-3 h-3" /></span>

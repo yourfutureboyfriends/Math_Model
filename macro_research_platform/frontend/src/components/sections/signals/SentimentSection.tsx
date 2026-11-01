@@ -17,7 +17,7 @@ export function SentimentSection({ data: dataProp }: SentimentSectionProps) {
 
   if (!data) {
     return (
-      <div id="sentiment" className="terminal-section">
+      <div className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag" aria-hidden />
@@ -58,7 +58,7 @@ export function SentimentSection({ data: dataProp }: SentimentSectionProps) {
   };
 
   return (
-    <div id="sentiment" className="terminal-section">
+    <div className="terminal-section">
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag" aria-hidden />

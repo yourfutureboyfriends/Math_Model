@@ -218,7 +218,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
         : /defensive|risk-off|low/i.test(p) ? 'text-amber' : 'text-text-primary';
       const confTone = (c: string) => /high/i.test(c) ? 'text-green' : /low/i.test(c) ? 'text-red' : 'text-amber';
       return (
-        <div id="trade-recommendations" className="terminal-section">
+        <div className="terminal-section">
           <div className="section-header mb-3">
             <div className="section-header-left">
               <span className="section-tag">REC</span>
@@ -290,7 +290,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
       );
     }
     return (
-      <div id="trade-recommendations" className="terminal-section">
+      <div className="terminal-section">
         <div className="flex items-center gap-2 mb-4">
           <BarChart3 className="w-4 h-4 text-bloomberg" />
           <h2 className="terminal-section-title">ALLOCATION RECOMMENDATIONS</h2>
@@ -348,7 +348,7 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
   };
 
   return (
-    <div id="trade-recommendations" className="terminal-section">
+    <div className="terminal-section">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-bloomberg" />

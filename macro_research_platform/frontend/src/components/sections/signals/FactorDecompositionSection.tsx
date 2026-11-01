@@ -38,7 +38,7 @@ export function FactorDecompositionSection({ data: dataProp }: FactorDecompositi
   };
 
   return (
-    <div id="factor-decomposition" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

@@ -23,7 +23,7 @@ export function RegimeSection({ data: dataProp }: RegimeSectionProps) {
 
   if (isLoading && !data) {
     return (
-      <div id="regime" className="terminal-section">
+      <div className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag" aria-hidden />
@@ -54,7 +54,7 @@ export function RegimeSection({ data: dataProp }: RegimeSectionProps) {
 
   if (!currentRegime) {
     return (
-      <div id="regime" className="terminal-section">
+      <div className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag" aria-hidden />
@@ -87,7 +87,7 @@ export function RegimeSection({ data: dataProp }: RegimeSectionProps) {
   };
 
   return (
-    <div id="regime" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

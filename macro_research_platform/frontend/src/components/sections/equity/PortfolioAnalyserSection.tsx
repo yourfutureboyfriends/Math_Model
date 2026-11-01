@@ -12,7 +12,7 @@ interface PortfolioAnalyserSectionProps {
 export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnalyserSectionProps) {
   if (!data && !simulationData) {
     return (
-      <div id="portfolio" className="terminal-section">
+      <div className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag"><PieChart className="w-3 h-3" /></span>
@@ -68,7 +68,7 @@ export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnal
       v === null || v === undefined ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(decimals)}${pct ? '%' : ''}`;
 
     return (
-      <div id="portfolio" className="terminal-section">
+      <div className="terminal-section">
         {/* Section Header */}
         <div className="section-header mb-3">
           <div className="section-header-left">
@@ -249,7 +249,7 @@ export function PortfolioAnalyserSection({ data, simulationData }: PortfolioAnal
 
   // Legacy Portfolio Analytics View (for backward compatibility)
   return (
-    <div id="portfolio" className="terminal-section">
+    <div className="terminal-section">
       {/* Section Header */}
       <div className="section-header mb-3">
         <div className="section-header-left">

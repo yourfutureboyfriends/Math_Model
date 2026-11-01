@@ -20,7 +20,7 @@ export function ModelAgreementSection({ data }: ModelAgreementSectionProps) {
   // Explicit empty state instead of a blank panel when the dashboard hasn't provided this yet.
   if (!d || (d.agreementScore == null && !d.items?.length && !d.disagreements)) {
     return (
-      <div id="model-agreement" className="terminal-section">
+      <div className="terminal-section">
         <div className="section-header mb-3">
           <div className="section-header-left">
             <span className="section-tag" aria-hidden />
@@ -48,7 +48,7 @@ export function ModelAgreementSection({ data }: ModelAgreementSectionProps) {
       : color === 'danger' ? 'text-red' : color === 'info' ? 'text-blue' : 'text-text-tertiary';
 
   return (
-    <div id="model-agreement" className="terminal-section">
+    <div className="terminal-section">
       <div className="section-header mb-3">
         <div className="section-header-left">
           <span className="section-tag" aria-hidden />
