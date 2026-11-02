@@ -124,10 +124,17 @@ def _asof(ev: List[Tuple[pd.Timestamp, float]], dates: pd.DatetimeIndex, max_age
     return vals, when
 
 
-def build_signals(start: str = START) -> Dict[str, Any]:
-    """Month-end signal panels, next-month returns and membership for the point-in-time S&P 500 universe."""
-    from api.quant import data as qdata, membership
-    tickers, info = membership.universe_since(start)
+UNIVERSES = {"sp500": {"label": "S&P 500", "start": START,
+                        "source": "point-in-time S&P 500 membership since 1996 (github.com/hanshof/sp500_constituents)"},
+             "sp1000": {"label": "S&P MidCap 400 + SmallCap 600", "start": "2020-01-01",
+                        "source": "quarterly SEC N-PORT holdings of iShares IJH and IJR (true point-in-time membership)"}}
+
+
+def build_signals(start: str = START, universe: str = "sp500") -> Dict[str, Any]:
+    """Month-end signal panels, next-month returns and membership for a point-in-time universe."""
+    from api.quant import data as qdata, membership, nport_universe
+    mem = nport_universe if universe == "sp1000" else membership
+    tickers, info = mem.universe_since(start)
     px, missing = qdata.panel(tickers, start=(pd.Timestamp(start) - pd.DateOffset(months=14)).strftime("%Y-%m-%d"))
     close = px["close"]
     tickers = list(close.columns)
@@ -201,7 +208,7 @@ def build_signals(start: str = START) -> Dict[str, Any]:
         med = np.nanmedian(np.where(np.isfinite(sig["momentum"][:, cols]), sig["momentum"][:, cols], np.nan), axis=1)
         ind[:, cols] = med[:, None]
     sig["industry_mom"] = ind
-    members = membership.members_frame(me, tickers).to_numpy()
+    members = mem.members_frame(me, tickers).to_numpy()
     for k in sig:
         sig[k] = np.where(members & np.isfinite(sig[k]), sig[k], np.nan)
     return {"dates": me, "tickers": tickers, "signals": sig, "fwd": fwd, "members": members, "close": c0,
@@ -335,9 +342,14 @@ def _edge_verdict(e: Dict[str, Any]) -> Dict[str, Any]:
     return {"level": "none", "text": "No reliable edge in this universe over this period: treat the list as a screen for further research, not a trading signal."}
 
 
-def run(start: str = START) -> Dict[str, Any]:
+def _path(universe: str) -> Path:
+    return CACHE / ("result.json" if universe == "sp500" else f"result_{universe}.json")
+
+
+def run(start: Optional[str] = None, universe: str = "sp500") -> Dict[str, Any]:
     t0 = time.time()
-    d = build_signals(start)
+    start = start or UNIVERSES[universe]["start"]
+    d = build_signals(start, universe)
     evals = {n: _evaluate(n, d["signals"][n], d) for n in SIGNALS}
     comp_adaptive, wlog = _composite(d, evals)
     ae = _evaluate("adaptive", comp_adaptive, d)
@@ -387,6 +399,7 @@ def run(start: str = START) -> Dict[str, Any]:
                   for m, r in ((1 + curves.fillna(0)).cumprod()).iterrows()]
     strip = lambda e: {k: v for k, v in e.items() if not k.startswith("_")}
     result = {
+        "universe_id": universe, "universe_label": UNIVERSES[universe]["label"], "universe_source": UNIVERSES[universe]["source"],
         "as_of": d["dates"][i].strftime("%Y-%m-%d"), "start": d["dates"][0].strftime("%Y-%m"), "universe": len(tickers),
         "signals": [strip(evals[n]) for n in SIGNALS], "composite": strip(ce), "composites": [strip(fe), strip(ae)],
         "ideas_from": ce["id"], "edge": _edge_verdict(ce), "composite_weights": wlog[-24:],
@@ -401,51 +414,55 @@ def run(start: str = START) -> Dict[str, Any]:
                     "This is research, not a recommendation: size and approve positions through the fund's own process."],
     }
     CACHE.mkdir(parents=True, exist_ok=True)
-    (CACHE / "result.json").write_text(json.dumps(result, default=str))
+    _path(universe).write_text(json.dumps(result, default=str))
     return result
 
 
-def result(force: bool = False) -> Dict[str, Any]:
+def result(force: bool = False, universe: str = "sp500") -> Dict[str, Any]:
     """The last saved run if it is less than TTL old, else a fresh run (several minutes on a cold cache)."""
-    path = CACHE / "result.json"
+    path = _path(universe)
     if not force:
         try:
             if time.time() - path.stat().st_mtime < TTL:
                 return json.loads(path.read_text())
         except Exception:
             pass
-    return run()
+    return run(universe=universe)
 
 
 # ── background builds: a cold run takes minutes, so requests never wait on it ──
 import threading as _threading
 
-_state: Dict[str, Any] = {"running": False, "started": None, "error": None}
+_states: Dict[str, Dict[str, Any]] = {}
 _lock = _threading.Lock()
 
 
-def _bg() -> None:
+def _bg(universe: str) -> None:
+    st = _states[universe]
     try:
-        run()
-        _state["error"] = None
+        run(universe=universe)
+        st["error"] = None
     except Exception as e:                                      # noqa: BLE001 — reported to the caller
         logger.exception("[alphalab] run failed")
-        _state["error"] = f"{type(e).__name__}: {e}"[:300]
+        st["error"] = f"{type(e).__name__}: {e}"[:300]
     finally:
-        _state["running"] = False
+        st["running"] = False
 
 
-def start_background() -> None:
+def start_background(universe: str = "sp500") -> None:
     with _lock:
-        if _state["running"]:
+        st = _states.setdefault(universe, {"running": False, "started": None, "error": None})
+        if st["running"]:
             return
-        _state.update(running=True, started=time.time(), error=None)
-        _threading.Thread(target=_bg, name="alphalab", daemon=True).start()
+        st.update(running=True, started=time.time(), error=None)
+        _threading.Thread(target=_bg, args=(universe,), name=f"alphalab-{universe}", daemon=True).start()
 
 
-def status_or_result(refresh: bool = False) -> Dict[str, Any]:
+def status_or_result(refresh: bool = False, universe: str = "sp500") -> Dict[str, Any]:
     """The saved result (refreshing it in the background when older than TTL or on request), or the build status."""
-    path = CACHE / "result.json"
+    if universe not in UNIVERSES:
+        raise ValueError(f"universe must be one of {', '.join(UNIVERSES)}")
+    path = _path(universe)
     saved = None
     try:
         saved = json.loads(path.read_text())
@@ -453,9 +470,13 @@ def status_or_result(refresh: bool = False) -> Dict[str, Any]:
     except Exception:
         age = None
     if refresh or age is None or age > TTL:
-        start_background()
+        start_background(universe)
+    st = _states.get(universe, {"running": False, "started": None, "error": None})
     if saved is not None:
-        return {**saved, "refreshing": bool(_state["running"]), "age_hours": round(age / 3600, 1) if age is not None else None}
-    return {"status": "computing" if _state["running"] else "failed", "error": _state["error"],
-            "started_seconds_ago": round(time.time() - _state["started"]) if _state["started"] else None,
-            "note": "The first build scores seven signals over ~740 stocks and 12 years — a few minutes; this page refreshes itself."}
+        return {**saved, "refreshing": bool(st["running"]), "age_hours": round(age / 3600, 1) if age is not None else None,
+                "universes": {k: v["label"] for k, v in UNIVERSES.items()}}
+    return {"status": "computing" if st["running"] else "failed", "error": st["error"], "universe_id": universe,
+            "universes": {k: v["label"] for k, v in UNIVERSES.items()},
+            "started_seconds_ago": round(time.time() - st["started"]) if st["started"] else None,
+            "note": "The first build scores ten signals over the whole universe and its history — several minutes (longer the "
+                    "first time a universe's prices and SEC filings are fetched); this page refreshes itself."}

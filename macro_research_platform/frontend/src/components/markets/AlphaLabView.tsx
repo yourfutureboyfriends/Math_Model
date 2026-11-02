@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
 import { ErrorBox, Loading, Panel, useJSON } from './shared';
 import { Chip, pct, sign, Source, Tile } from './StandardViews';
+import { useStickyState } from '@/lib/stickyState';
 
 const SHORT: Record<string, string> = { momentum: 'Mom', reversal: 'Rev', low_vol: 'LowVol', value: 'Value', profitability: 'Prof', investment: 'Inv',
   earnings: 'EPS surp', high52: '52w hi', resid_mom: 'ResMom', industry_mom: 'IndMom' };
@@ -19,7 +20,14 @@ function IcCell({ v }: { v: number | null | undefined }) {
 
 export function AlphaLabView({ onOpen }: { onOpen: (s: string) => void }) {
   const [refresh, setRefresh] = useState(false);
-  const { data: d, error, loading } = useJSON<any>(`/api/v1/quant/alphalab${refresh ? '?refresh=true' : ''}`, 20_000);
+  const [universe, setUniverse] = useStickyState('alpha.universe', 'sp500');
+  const { data: d, error, loading } = useJSON<any>(`/api/v1/quant/alphalab?universe=${universe}${refresh ? '&refresh=true' : ''}`, 20_000);
+  const uniChips = (
+    <div className="flex flex-wrap gap-1">
+      {Object.entries<string>(d?.universes ?? { sp500: 'S&P 500', sp1000: 'S&P MidCap 400 + SmallCap 600' }).map(([k, l]) =>
+        <Chip key={k} on={universe === k} onClick={() => { setUniverse(k); setRefresh(false); }}>{l}</Chip>)}
+    </div>
+  );
   const [side, setSide] = useState<'long' | 'short'>('long');
   if (loading && !d) return <Loading label="Loading the Stock Signal Lab…" />;
   if (error && !d) return <ErrorBox msg={error} />;
@@ -27,6 +35,7 @@ export function AlphaLabView({ onOpen }: { onOpen: (s: string) => void }) {
   if (d.status) {
     return (
       <div className="space-y-2">
+        {uniChips}
         {d.status === 'computing' ? <Loading label={`Building — scoring seven signals over the S&P 500 since 2014 (${d.started_seconds_ago ?? 0}s so far)…`} /> : <ErrorBox msg={d.error ?? 'The build failed.'} />}
         <p className="text-[11px] text-text-tertiary">{d.note}</p>
       </div>
@@ -40,7 +49,8 @@ export function AlphaLabView({ onOpen }: { onOpen: (s: string) => void }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-text-tertiary">
-        <span>{d.universe} stocks (point-in-time S&P 500 members) · monthly since {d.start} · signals as of {d.as_of}{d.age_hours != null ? ` · built ${d.age_hours}h ago` : ''}</span>
+        {uniChips}
+        <span>{d.universe} stocks ({d.universe_source ?? 'point-in-time S&P 500 members'}) · monthly since {d.start} · signals as of {d.as_of}{d.age_hours != null ? ` · built ${d.age_hours}h ago` : ''}</span>
         <button onClick={() => setRefresh(true)} disabled={d.refreshing} className="text-bloomberg hover:underline disabled:opacity-50">{d.refreshing ? 'Rebuilding in the background…' : 'Rebuild now'}</button>
       </div>
       {d.edge && <div className={cn('alpha-verdict', d.edge.level)} role="status"><b>{d.edge.level === 'significant' ? 'Edge found' : d.edge.level === 'weak' ? 'Weak evidence' : 'No reliable edge'}</b> {d.edge.text}
@@ -135,6 +145,24 @@ export function ProofView({ onGo }: { onGo: (fn: string, s?: string) => void }) 
         <b>{d.headline}</b>
         <ul className="list-disc pl-4 mt-1.5 space-y-1">{d.takeaways.map((t: string) => <li key={t}>{t}</li>)}</ul>
       </div>
+      {d.forward?.length > 0 && (
+        <Panel title="Forward tracking — out-of-sample from the day each was frozen" right={<span className="text-[11px] text-text-tertiary">updates when the library re-runs</span>}>
+          <table className="w-full text-2xs font-mono tabular-nums">
+            <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Strategy</th><th className="text-left font-normal">Frozen</th>
+              <th className="text-right font-normal px-1">Days</th><th className="text-right font-normal px-1">Return</th><th className="text-right font-normal px-1">Benchmark</th>
+              <th className="text-right font-normal px-1">Excess</th><th className="text-left font-normal pl-3">Mandate / governance</th></tr></thead>
+            <tbody>{d.forward.map((f: any) => (
+              <tr key={f.id} title={f.reason}>
+                <td className="py-1 font-sans text-text-primary">{f.name ?? f.id}</td><td>{f.since}</td><td className="text-right px-1">{f.days}</td>
+                <td className={cn('text-right px-1', sign(f.return))}>{f.days ? pct(f.return, 2) : 'from next session'}</td>
+                <td className="text-right px-1 text-text-secondary">{f.days ? pct(f.benchmark, 2) : '—'}</td>
+                <td className={cn('text-right px-1 font-semibold', sign(f.excess))}>{f.days ? pct(f.excess, 2) : '—'}</td>
+                <td className="pl-3 font-sans text-text-secondary">{f.mandate}</td>
+              </tr>))}</tbody>
+          </table>
+          <p className="text-[10px] text-text-tertiary mt-2">A strategy earns a larger allocation only if this live record confirms the backtest. A record of a few weeks is noise; judge after at least a year.</p>
+        </Panel>
+      )}
       <div className="flex flex-wrap gap-1">
         <Chip on={filter === 'all'} onClick={() => setFilter('all')}>All ({d.rows.length})</Chip>
         {Object.keys(VERDICT_LABEL).map((k) => <Chip key={k} on={filter === k} onClick={() => setFilter(k)}>{VERDICT_LABEL[k]} ({d.counts[k]})</Chip>)}

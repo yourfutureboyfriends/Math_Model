@@ -94,12 +94,13 @@ def scorecard() -> Dict[str, Any]:
         loaded.append((f.stem, d, r))
     srs = [np.nanmean(r) / np.nanstd(r) for _, _, r in loaded if np.nanstd(r) > 0]
     # trials: every library strategy plus every stock signal and composite the Signal Lab scores
-    alpha_lab = None
-    try:
-        alpha_lab = json.loads((ROOT / "quant" / "alphalab" / "result.json").read_text())
-    except Exception:                                           # noqa: BLE001
-        pass
-    n_trials = len(loaded) + (len(alpha_lab["signals"]) + len(alpha_lab.get("composites", [])) if alpha_lab else 0)
+    labs = []
+    for fname in ("result.json", "result_sp1000.json"):
+        try:
+            labs.append(json.loads((ROOT / "quant" / "alphalab" / fname).read_text()))
+        except Exception:                                       # noqa: BLE001
+            pass
+    n_trials = len(loaded) + sum(len(a["signals"]) + len(a.get("composites", [])) for a in labs)
     sr_var = float(np.var(srs)) if len(srs) > 1 else 0.0
     from api.quant import library
     names = {e["id"]: e for e in library.all_entries()}
@@ -123,11 +124,13 @@ def scorecard() -> Dict[str, Any]:
                      "note": ("Alpha against equities alone (t = {:.1f}) disappears once credit, rates and other exposures are "
                               "included — it is carry from those risks, not skill.".format(capm["alpha_t"])
                               if (capm["alpha_t"] or 0) >= 2 and (t or 0) < 1.2 else None)})
-    if alpha_lab:
+    for alpha_lab in labs:
+        uni = alpha_lab.get("universe_label") or "S&P 500"
         for s in alpha_lab.get("composites", []) + alpha_lab["signals"]:
             ex, t = s.get("excess_vs_universe_ann"), s.get("ic_t")
             v = "alpha" if (t or 0) >= 2.5 and (ex or 0) > 0 else "promising" if (t or 0) >= 1.2 and (ex or 0) > 0 else "no edge"
-            rows.append({"id": f"signal:{s['id']}", "kind": "stock signal", "name": s["name"], "family": "Stock Signal Lab",
+            rows.append({"id": f"signal:{alpha_lab.get('universe_id', 'sp500')}:{s['id']}", "kind": "stock signal", "name": s["name"],
+                         "family": f"Stock Signal Lab · {uni}",
                          "cagr": (s.get("top_quintile_net") or {}).get("ann_return"), "sharpe": (s.get("long_short") or {}).get("sharpe"),
                          "alpha": ex, "alpha_t": t, "alpha_basis": "top fifth vs equal-weight index; t is the rank-IC t-statistic",
                          "verdict": v, "verdict_text": VERDICT_TEXT[v]})
@@ -150,7 +153,9 @@ def scorecard() -> Dict[str, Any]:
     best = [x for x in rows if x["verdict"] in ("alpha", "promising")]
     headline = (f"{counts['alpha']} with proven alpha, {counts['promising']} promising, {counts['beta']} mostly market beta and "
                 f"{counts['no edge']} without an edge, out of {len(rows)} tested.")
-    return {"rows": rows, "counts": counts, "n_trials": n_trials, "headline": headline,
+    names_by_id = {x["id"]: x["name"] for x in rows}
+    forward = [{**f, "name": names_by_id.get(f["id"], f.get("name"))} for f in forward_record()]
+    return {"rows": rows, "counts": counts, "n_trials": n_trials, "headline": headline, "forward": forward,
             "takeaways": _takeaways(rows, counts),
             "method": __doc__.strip().split("\n\n", 1)[1],
             "stale_note": "Strategy results are re-evaluated when opened in the Quant Lab library; dates are shown per row."}
@@ -173,4 +178,52 @@ def _takeaways(rows: List[Dict[str, Any]], counts: Dict[str, int]) -> List[str]:
     if sig and not any(x["verdict"] in ("alpha", "promising") for x in sig):
         out.append("Classic stock-picking signals (momentum, value, profitability, earnings drift, 52-week high …) show no reliable "
                    "edge in S&P 500 stocks since 2014 — don't pay transaction costs to trade them in large caps.")
+    return out
+
+
+# ── forward tracking: freeze a candidate today, then measure only what happens after ──
+WATCH = ROOT / "quant" / "proof" / "watch.json"
+
+
+def watchlist() -> List[Dict[str, Any]]:
+    try:
+        return json.loads(WATCH.read_text())
+    except Exception:                                           # noqa: BLE001
+        return []
+
+
+def watch_add(sid: str, since: str, reason: str, governed_model: Optional[int] = None, mandate: str = "") -> List[Dict[str, Any]]:
+    """Start tracking a strategy out-of-sample from `since` (kept if already tracked)."""
+    w = watchlist()
+    if not any(x["id"] == sid for x in w):
+        w.append({"id": sid, "since": since, "reason": reason, "governed_model": governed_model, "mandate": mandate})
+        WATCH.parent.mkdir(parents=True, exist_ok=True)
+        WATCH.write_text(json.dumps(w, indent=1))
+    return w
+
+
+def forward_record() -> List[Dict[str, Any]]:
+    """Each tracked strategy's return since it was frozen, against its benchmark, from the library's latest re-run
+    (its decisions are causal, so days after the freeze are genuinely out-of-sample)."""
+    out = []
+    for w in watchlist():
+        f = ROOT / "quant" / "library" / f"{w['id']}.json"
+        rec = {**w, "days": 0, "return": None, "benchmark": None, "excess": None, "evaluated_at": None}
+        try:
+            d = json.loads(f.read_text())
+            dates = d.get("dates") or []
+            r = np.array([x if x is not None else np.nan for x in d.get("returns") or []], dtype=float)
+            b = np.array([x if x is not None else np.nan for x in d.get("benchmark") or []], dtype=float)
+            keep = np.array([str(x)[:10] > w["since"] for x in dates])
+            rec["evaluated_at"] = d.get("evaluated_at")
+            rec["name"] = d.get("name") or w["id"]
+            if keep.any():
+                rec["days"] = int(keep.sum())
+                rec["return"] = float(np.nanprod(1 + r[keep]) - 1)
+                if len(b) == len(r):
+                    rec["benchmark"] = float(np.nanprod(1 + b[keep]) - 1)
+                    rec["excess"] = rec["return"] - rec["benchmark"]
+        except Exception:                                       # noqa: BLE001 — shown as not yet evaluated
+            pass
+        out.append(rec)
     return out

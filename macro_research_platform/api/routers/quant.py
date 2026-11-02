@@ -561,12 +561,15 @@ async def what_works(request: Request):
 
 
 @router.get("/api/v1/quant/alphalab")
-async def stock_signal_lab(request: Request, refresh: bool = False):
+async def stock_signal_lab(request: Request, refresh: bool = False, universe: str = "sp500"):
     """Stock Signal Lab: which stock-level signals predicted S&P 500 returns, an out-of-sample composite, and today's
     ranked long and short ideas with sizes and borrow costs."""
     from api.quant import alphalab
     _user(request)
-    return await asyncio.to_thread(alphalab.status_or_result, refresh)
+    try:
+        return await asyncio.to_thread(alphalab.status_or_result, refresh, universe)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @router.get("/api/v1/quant/smartmoney/latest")
