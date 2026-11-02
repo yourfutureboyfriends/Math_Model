@@ -1,6 +1,7 @@
 // Fund selection lives before authentication. Credentials and membership are verified by the server.
 import { useEffect, useState, type CSSProperties } from 'react';
-import { ArrowRight, BarChart3, Eye, EyeOff, Layers, Lock, ShieldCheck, Terminal } from 'lucide-react';
+import { Logo, Wordmark } from './layout/Logo';
+import { ArrowRight, BarChart3, Eye, EyeOff, Layers, Lock, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { currentFund } from '@/lib/fund';
 import { applyBrand, cachedFunds, type FundInfo } from '@/lib/fundBrand';
@@ -132,11 +133,11 @@ export function LoginScreen() {
   const band=selectedFund?.brand?.band??'15 35 62';
   const clock=useMarketClock();
   return <main className="login-stage login-redesign" style={{'--login-brand-band':band} as CSSProperties}>
-    <div className="login-topline"><span className="inline-flex items-center gap-2"><Terminal size={15}/>MACRO TERMINAL</span><span className="login-clock"><i className={clock.open?'on':''}/>{clock.state} · New York {clock.time}</span></div>
+    <div className="login-topline"><span className="inline-flex items-center gap-2"><Logo size={18}/><Wordmark/></span><span className="login-clock"><i className={clock.open?'on':''}/>{clock.state} · New York {clock.time}</span></div>
     <div className="login-layout">
       <section className="login-story" aria-label="Fund identity and platform overview">
         <div className="login-logo-plaque">
-          {selectedFund?.logo&&!logoError?<img src={`/api/auth/funds/${encodeURIComponent(fundId)}/logo?v=${selectedFund.logo_version??0}`} alt={`${selectedFund.name} logo`} onError={()=>setLogoError(true)}/>:<div className="login-logo-fallback"><Terminal size={32}/><span>{selectedFund?.brand?.short_name??'Macro Terminal'}</span></div>}
+          {selectedFund?.logo&&!logoError?<img src={`/api/auth/funds/${encodeURIComponent(fundId)}/logo?v=${selectedFund.logo_version??0}`} alt={`${selectedFund.name} logo`} onError={()=>setLogoError(true)}/>:<div className="login-logo-fallback"><Logo size={64}/><Wordmark size="lg"/></div>}
         </div>
         <div className="login-fund-caption">YOUR INVESTMENT WORKSPACE</div>
         <h1>{selectedFund?.name??'Macro Terminal'}</h1>

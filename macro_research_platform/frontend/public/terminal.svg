@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="t" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1c2533"/><stop offset="1" stop-color="#0b1018"/></linearGradient>
+    <linearGradient id="c" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#38bdf8"/><stop offset="0.55" stop-color="#a78bfa"/><stop offset="1" stop-color="#fb923c"/></linearGradient>
+    <radialGradient id="g"><stop offset="0" stop-color="#fbbf24" stop-opacity="0.55"/><stop offset="1" stop-color="#fbbf24" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect x="1" y="1" width="30" height="30" rx="8" fill="url(#t)"/>
+  <rect x="1.5" y="1.5" width="29" height="29" rx="7.5" stroke="#ffffff" stroke-opacity="0.16"/>
+  <path d="M16 6.5v19M6.5 16h19" stroke="#fff" stroke-opacity="0.14" stroke-linecap="round"/>
+  <path d="M6.5 24.5 C 11 24.5, 12.5 16.5, 16 13.25 S 18.5 10.5, 22 10.5" stroke="url(#c)" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="22" cy="10.5" r="5.5" fill="url(#g)"/>
+  <circle cx="22" cy="10.5" r="2.6" fill="#fbbf24" stroke="#0b1018" stroke-width="1.2"/>
+</svg>

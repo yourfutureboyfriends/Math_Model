@@ -2003,7 +2003,7 @@ h1, h2, h3, .section-title { font-feature-settings: "cv11" 1, "ss03" 1; }
 .login-story { min-width: 0; }
 .login-logo-plaque { width: 260px; min-height: 124px; padding: 20px 0; border: 0; border-radius: 0; box-shadow: none; display: flex; align-items: center; justify-content: center; margin-bottom: 28px; }
 .login-logo-plaque img { display: block; width: auto; max-width: 100%; max-height: 94px; object-fit: contain; }
-.login-logo-fallback { display:flex; align-items:center; gap:12px; color:rgb(var(--c-bloomberg)); font-size:22px; }
+.login-logo-fallback { display:flex; align-items:center; gap:16px; }
 .login-fund-caption, .login-eyebrow { font-size: 10px; font-weight: 600; letter-spacing: .19em; color: rgb(var(--c-bloomberg)); }
 .login-story h1 { font-size: 18px; font-weight: 500; letter-spacing: -.02em; color:#c6d2e2; margin-top: 8px; }
 .login-story h2 { font-size: clamp(30px,3.6vw,47px); line-height: 1.14; font-weight: 500; letter-spacing: -.045em; color: #eef3fa; margin-top: 22px; }
