@@ -3,7 +3,9 @@
 // seconds-old adsb.fi data with model, operator, Mach, wind and temperature. Click an aircraft for
 // its route, airframe, photo and the track it has flown.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plane, Search, Star, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Plane, Search, Star, X } from 'lucide-react';
+import { useStickyState } from '@/lib/stickyState';
+import { LineChart } from '@/components/ui/LineChart';
 import { useFollow } from './follow';
 import { cn } from '@/lib/utils';
 import { ErrorBox, Loading, useJSON } from './shared';
@@ -50,16 +52,22 @@ export function FlightTracker() {
   const world = useJSON<any>('/api/v1/mkt/fly/world', 60_000);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [sel, setSel] = useState<string | null>(null);
-  const [projectOn, setProjectOn] = useState(true);
-  const [showGround, setShowGround] = useState(false);
-  const [only, setOnly] = useState<'all' | 'mil' | 'emerg' | 'notable'>('all');
-  const [tab, setTab] = useState<'view' | 'notable' | 'follow'>('view');
+  const [projectOn, setProjectOn] = useStickyState('fly.project', true);
+  const [showGround, setShowGround] = useStickyState('fly.ground', false);
+  const [only, setOnly] = useStickyState<'all' | 'mil' | 'emerg' | 'notable'>('fly.only', 'all');
+  const [tab, setTab] = useStickyState<'view' | 'traffic' | 'notable' | 'follow'>('fly.tab', 'view');
+  const [airline, setAirline] = useState<string | null>(null);
+  const history = useJSON<any>(tab === 'traffic' ? '/api/v1/mkt/fly/history' : null, 600_000);
   const follow = useFollow('plane');
   const notable = useJSON<any>('/api/v1/mkt/fly/notable', 60_000);
   const [find, setFind] = useState('');
   const [now, setNow] = useState(() => Date.now() / 1000);
   const map = useRef<LiveMapHandle>(null);
   useEffect(() => { const t = setInterval(() => document.visibilityState === 'visible' && setNow(Date.now() / 1000), 5000); return () => clearInterval(t); }, []);
+  useEffect(() => {                                            // Esc closes the open aircraft, then the airline filter
+    const k = (e: KeyboardEvent) => { if (e.key !== 'Escape' || (e.target as HTMLElement)?.closest?.('input, textarea')) return; if (sel) setSel(null); else setAirline(null); };
+    window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
+  }, [sel]);
 
   // live detail for the visible area once zoomed in (radius covers the view, 250 nm at most)
   const liveArea = bounds && bounds.zoom >= 6 ? (() => {
@@ -92,8 +100,8 @@ export function FlightTracker() {
     return [...out.values()];
   }, [world.data, area.data, projectOn, now]);                 // eslint-disable-line react-hooks/exhaustive-deps
 
-  const shown = aircraft.filter((a) => follow.ids.has(a.hex) || ((showGround || !a.ground || a.hex === sel)
-    && (only === 'all' || (only === 'mil' ? a.mil : only === 'notable' ? !!a.tag : !!a.emergency) || a.hex === sel)));
+  const shown = aircraft.filter((a) => follow.ids.has(a.hex) || a.hex === sel || ((showGround || !a.ground)
+    && (only === 'all' || (only === 'mil' ? a.mil : only === 'notable' ? !!a.tag : !!a.emergency)) && (!airline || airlineOf(a.callsign) === airline)));
   const points: MapPoint[] = useMemo(() => shown.map((a) => ({
     id: a.hex, lon: a.lon, lat: a.lat, color: a.emergency ? 'rgb(var(--c-red))' : altColor(a.alt, a.ground), heading: a.track, moving: !a.ground,
     big: !!a.emergency, ring: a.tag ? ftagColor(a.tag) : a.mil ? 'rgb(236 72 153)' : undefined, label: a.callsign || undefined, pin: follow.ids.has(a.hex),
@@ -150,7 +158,7 @@ export function FlightTracker() {
     const al = airlineOf(a.callsign);
     return `${a.callsign || a.hex}${al && AIRLINES[al] ? ` · ${AIRLINES[al]}` : ''}${a.mil ? ' · MILITARY' : ''}\n`
       + `${a.ground ? 'on ground' : `${a.alt?.toLocaleString() ?? '?'} ft · ${a.speed ?? '?'} kt · ${a.track ?? '?'}°`}${a.type ? ` · ${a.type}` : ''}`
-      + `${a.emergency ? `\n⚠ squawk ${a.squawk} — ${a.emergency}` : ''}`;
+      + `${a.emergency ? `\n⚠ squawk ${a.squawk} — ${a.emergency}` : ''}\n${a.live ? 'live' : 'reported'} ${ageText(now - a.fix)} ago${!a.live && projectOn && !a.ground ? ' · projected to now' : ''}`;
   };
 
   if (world.loading && !world.data) return <Loading label="Loading every aircraft in the world…" />;
@@ -168,11 +176,13 @@ export function FlightTracker() {
           {w?.emergencies?.length ?? 0} emergency squawk{w?.emergencies?.length === 1 ? '' : 's'}</button>
         <button onClick={() => setOnly(only === 'notable' ? 'all' : 'notable')} title="VIP / government, military, notable aircraft, cargo flights, emergencies"
           className={cn('px-1.5 border', only === 'notable' ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{notable.data?.total ?? '…'} notable</button>
+        {airline && <button onClick={() => setAirline(null)} className="px-1.5 border border-bloomberg text-bloomberg inline-flex items-center gap-1" title="Show all airlines (Esc)">
+          {AIRLINES[airline] ?? airline} only <X className="w-3 h-3" /></button>}
         <span className="text-text-tertiary">in view <b className="font-mono text-text-secondary">{inView.length.toLocaleString()}</b></span>
         {w?.sweep && <span className="text-text-tertiary" title="adsb.fi + adsb.lol queried continuously around 60 hubs in China, Asia, the Middle East, Africa and Latin America, where OpenSky has few receivers">
           <span className="text-green">●</span> {w.sweep.live_aircraft.toLocaleString()} live at {w.sweep.hubs} emerging-market hubs (+{w.sweep.added} not in OpenSky)</span>}
         <span className="ml-auto text-text-tertiary">{liveArea && area.data ? <span className="text-green">● live in this area ({area.data.aircraft.length} aircraft, 10 s refresh)</span>
-          : `world snapshot ${fixAge != null ? `${fixAge} min old` : ''}${w?.stale ? ' (OpenSky limit reached — last snapshot)' : ''} · zoom in for live`}</span>
+          : `world snapshot ${fixAge != null ? `${fixAge} min old` : ''}${w?.stale ? ' (OpenSky limit reached — last snapshot)' : ''}${w?.stale_dropped ? ` · ${w.stale_dropped.toLocaleString()} stale positions hidden` : ''} · zoom in for live`}</span>
       </div>
       <div className="mkt-controls flex flex-wrap items-center gap-1 text-[11px]">
         <form onSubmit={doFind} className="flex">
@@ -198,9 +208,10 @@ export function FlightTracker() {
         <div className="space-y-2 min-w-0">
           {sel ? <FlightCard hex={sel} ac={selAc} det={det} loading={detail.loading && !det} onClose={() => setSel(null)} follow={follow} />
             : <>
-              <div className="flex gap-1 text-[11px]">{([['view', 'In view'], ['notable', `Notable ${notable.data?.total ?? ''}`], ['follow', `Following ${follow.list.length}`]] as const).map(([k, l]) => (
+              <div className="flex gap-1 text-[11px]">{([['view', 'In view'], ['traffic', 'Traffic'], ['notable', `Notable ${notable.data?.total ?? ''}`], ['follow', `Following ${follow.list.length}`]] as const).map(([k, l]) => (
                 <button key={k} onClick={() => setTab(k)} className={cn('flex-1 px-2 py-1 border', tab === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{l}</button>))}</div>
-              {tab === 'view' && <ViewPanel stats={stats} inView={inView} onPick={(a) => { setSel(a.hex); }} />}
+              {tab === 'view' && <ViewPanel stats={stats} inView={inView} now={now} airline={airline} onAirline={(c) => setAirline(airline === c ? null : c)} onPick={(a) => { setSel(a.hex); }} />}
+              {tab === 'traffic' && <TrafficPanel hist={history.data} loading={history.loading} error={history.error} world={w} />}
               {tab === 'notable' && <NotableFlights data={notable.data} loading={notable.loading} follow={follow}
                 onPick={(x) => { setSel(x.hex); map.current?.flyTo({ lon: x.lon, lat: x.lat, zoom: Math.max(bounds?.zoom ?? 0, 6.5) }); }} />}
               {tab === 'follow' && <FollowFlights follow={follow} byHex={byHex}
@@ -261,35 +272,101 @@ function FollowFlights({ follow, byHex, onPick }: { follow: ReturnType<typeof us
   );
 }
 
-function ViewPanel({ stats, inView, onPick }: { stats: { bands: { l: string; c: string; n: number }[]; airlines: [string, number][] }; inView: Ac[]; onPick: (a: Ac) => void }) {
+const ageText = (s: number) => (s < 90 ? `${Math.max(0, Math.round(s))} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${Math.round(s / 3600)} h`);
+type FSort = 'callsign' | 'type' | 'alt' | 'speed' | 'vrate' | 'age';
+
+function ViewPanel({ stats, inView, now, airline, onAirline, onPick }: { stats: { bands: { l: string; c: string; n: number }[]; airlines: [string, number][] }; inView: Ac[];
+  now: number; airline: string | null; onAirline: (code: string) => void; onPick: (a: Ac) => void }) {
   const max = Math.max(1, ...stats.bands.map((b) => b.n));
-  const list = [...inView].filter((a) => !a.ground).sort((a, b) => (b.alt ?? -1) - (a.alt ?? -1)).slice(0, 150);
+  const [sort, setSort] = useStickyState<FSort>('fly.sort', 'alt');
+  const [desc, setDesc] = useStickyState('fly.desc', true);
+  const [q, setQ] = useState('');
+  const key = (a: Ac): number | string => (sort === 'callsign' ? a.callsign || a.hex : sort === 'type' ? a.type ?? '' : sort === 'age' ? now - a.fix
+    : sort === 'vrate' ? Math.abs(a.vrate ?? 0) : (sort === 'alt' ? a.alt : a.speed) ?? -1);
+  const Q = q.trim().toUpperCase();
+  const list = inView.filter((a) => !a.ground && (!Q || a.callsign.toUpperCase().includes(Q) || (a.type ?? '').toUpperCase().includes(Q)
+      || (AIRLINES[airlineOf(a.callsign) ?? ''] ?? '').toUpperCase().includes(Q) || a.hex.toUpperCase() === Q))
+    .sort((a, b) => { const x = key(a), y = key(b); const c = typeof x === 'string' ? x.localeCompare(String(y)) : x - (y as number); return desc ? -c : c; }).slice(0, 300);
+  const th = (k: FSort, l: string, right = true) => (
+    <th onClick={() => (sort === k ? setDesc(!desc) : (setSort(k), setDesc(k !== 'callsign' && k !== 'type')))} aria-sort={sort === k ? (desc ? 'descending' : 'ascending') : 'none'}
+      className={cn('font-normal cursor-pointer select-none whitespace-nowrap px-1', right ? 'text-right' : 'text-left', sort === k && 'text-bloomberg')}>
+      {l}{sort === k && (desc ? <ArrowDown className="inline w-2.5 h-2.5" /> : <ArrowUp className="inline w-2.5 h-2.5" />)}</th>);
   return (
     <>
       <div className="border border-border bg-surface-1 p-2 text-[11px]">
         <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">In view by altitude</div>
         {stats.bands.map((b) => (
           <div key={b.l} className="flex items-center gap-2"><span className="w-24 text-text-secondary">{b.l}</span>
-            <div className="flex-1 h-2 bg-surface-3"><div className="h-full" style={{ width: `${(b.n / max) * 100}%`, background: b.c }} /></div>
+            <div className="flex-1 h-2 bg-surface-3 rounded-sm overflow-hidden"><div className="h-full rounded-sm" style={{ width: `${(b.n / max) * 100}%`, background: b.c }} /></div>
             <span className="w-12 text-right font-mono">{b.n.toLocaleString()}</span></div>))}
         {stats.airlines.length > 0 && <>
-          <div className="text-[10px] uppercase tracking-wide text-text-tertiary mt-2 mb-1">Busiest airlines in view</div>
+          <div className="text-[10px] uppercase tracking-wide text-text-tertiary mt-2 mb-1">Busiest airlines in view <span className="normal-case">— click to show only that airline</span></div>
           <div className="grid grid-cols-2 gap-x-3">{stats.airlines.map(([c, n]) => (
-            <div key={c} className="flex justify-between"><span className="text-text-secondary truncate"><span className="font-mono text-text-tertiary mr-1">{c}</span>{AIRLINES[c] ?? ''}</span><span className="font-mono">{n}</span></div>))}</div></>}
+            <button key={c} onClick={() => onAirline(c)} className={cn('flex justify-between text-left hover:text-bloomberg', airline === c && 'text-bloomberg')}>
+              <span className="text-text-secondary truncate"><span className="font-mono text-text-tertiary mr-1">{c}</span>{AIRLINES[c] ?? ''}</span><span className="font-mono">{n}</span></button>))}</div></>}
       </div>
-      <div className="border border-border max-h-[372px] overflow-y-auto">
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter: flight, airline or type (e.g. A388)" aria-label="Filter aircraft in view"
+        className="w-full bg-surface-1 border border-border px-2 py-0.5 text-[11px] text-text-primary placeholder:text-text-tertiary" />
+      <div className="border border-border max-h-[340px] overflow-y-auto">
         <table className="w-full text-[11px] font-mono">
-          <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left px-1.5 font-normal">Flight</th><th className="text-left font-normal">Type</th>
-            <th className="text-right font-normal">Alt ft</th><th className="text-right font-normal">Kt</th><th className="text-right px-1.5 font-normal">Hdg</th></tr></thead>
+          <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary">{th('callsign', 'Flight', false)}{th('type', 'Type', false)}{th('alt', 'Alt ft')}{th('speed', 'Kt')}
+            {th('vrate', 'V/S')}{th('age', 'Age')}</tr></thead>
           <tbody>{list.map((a) => (
             <tr key={a.hex} onClick={() => onPick(a)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-3', a.emergency && 'text-red')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
-              <td className="px-1.5">{a.callsign || a.hex}{a.mil && <span className="ml-1 text-[10px] text-[rgb(236_72_153)]">MIL</span>}</td>
-              <td className="text-text-secondary">{a.type ?? ''}</td><td className="text-right">{a.alt?.toLocaleString() ?? '—'}</td>
-              <td className="text-right">{a.speed ?? ''}</td><td className="text-right px-1.5">{a.track ?? ''}</td></tr>))}</tbody>
+              <td className="px-1">{a.callsign || a.hex}{a.mil && <span className="ml-1 text-[10px] text-[rgb(236_72_153)]">MIL</span>}</td>
+              <td className="px-1 text-text-secondary">{a.type ?? ''}</td><td className="text-right px-1">{a.alt?.toLocaleString() ?? '—'}</td>
+              <td className="text-right px-1">{a.speed ?? ''}</td>
+              <td className={cn('text-right px-1', (a.vrate ?? 0) > 300 ? 'text-green' : (a.vrate ?? 0) < -300 ? 'text-amber' : 'text-text-tertiary')}>{a.vrate == null || Math.abs(a.vrate) < 300 ? '—' : a.vrate > 0 ? '↑' : '↓'}</td>
+              <td className={cn('text-right px-1', a.live ? 'text-green' : now - a.fix > 600 ? 'text-amber' : 'text-text-tertiary')}>{a.live ? 'live' : ageText(now - a.fix)}</td></tr>))}</tbody>
         </table>
-        {list.length === 0 && <p className="p-2 text-[11px] text-text-tertiary">No airborne aircraft in this view.</p>}
+        {list.length === 0 && <p className="p-2 text-[11px] text-text-tertiary">{Q ? 'Nothing matches the filter in this view.' : 'No airborne aircraft in this view.'}</p>}
       </div>
     </>
+  );
+}
+
+/** Worldwide air traffic over time and by region: a free, live activity gauge (China reopening, holiday peaks, airspace closures). */
+function TrafficPanel({ hist, loading, error, world }: { hist: any; loading: boolean; error: string | null; world: any }) {
+  const pts: any[] = hist?.points ?? [];
+  const last = pts[pts.length - 1];
+  // the sample nearest to 24 h and 7 days before the latest one (same time of day: traffic has a strong daily cycle)
+  const near = (sec: number) => { if (!last) return null; let best: any = null; for (const p of pts) if (Math.abs(last.t - sec - p.t) < 1800 && (!best || Math.abs(last.t - sec - p.t) < Math.abs(last.t - sec - best.t))) best = p; return best; };
+  const d1 = near(86400), d7 = near(7 * 86400);
+  const chg = (a?: number, b?: number) => (a != null && b ? a / b - 1 : null);
+  const pct = (v: number | null) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`);
+  const tone = (v: number | null) => (v == null ? 'text-text-tertiary' : v <= -0.05 ? 'text-red' : v >= 0.05 ? 'text-green' : 'text-text-secondary');
+  // one point an hour keeps the chart readable over 30 days
+  const rows = useMemo(() => {
+    const byHour = new Map<number, any>();
+    for (const p of pts) byHour.set(Math.floor(p.t / 3600), p);
+    return [...byHour.values()].map((p) => { const d = new Date(p.t * 1000); return { x: `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:00`, n: p.airborne }; });
+  }, [pts]);
+  const regions: [string, number][] = world?.regions ?? Object.entries(last?.regions ?? {});
+  const total = Math.max(1, regions.reduce((s, [, n]) => s + n, 0));
+  return (
+    <div className="border border-border bg-surface-1 p-2 text-[11px] space-y-2 max-h-[560px] overflow-y-auto">
+      <div className="grid grid-cols-3 gap-2">
+        <div><div className="text-[10px] text-text-tertiary">Airborne now</div><div className="font-mono text-base text-text-primary">{(world?.airborne ?? last?.airborne)?.toLocaleString() ?? '—'}</div></div>
+        <div><div className="text-[10px] text-text-tertiary">vs 24 h ago</div><div className={cn('font-mono text-base', tone(chg(last?.airborne, d1?.airborne)))}>{pct(chg(last?.airborne, d1?.airborne))}</div></div>
+        <div><div className="text-[10px] text-text-tertiary">vs a week ago</div><div className={cn('font-mono text-base', tone(chg(last?.airborne, d7?.airborne)))}>{pct(chg(last?.airborne, d7?.airborne))}</div></div>
+      </div>
+      {loading && !hist && <Loading label="Loading traffic history…" />}
+      {error && !hist && <p className="text-text-tertiary">{error}</p>}
+      {rows.length > 2 ? <div className="mkt-chart-surface"><LineChart rows={rows} x="x" height={170} fmt={(v) => Math.round(v).toLocaleString()}
+          lines={[{ key: 'n', label: 'Airborne worldwide', color: 'rgb(var(--c-bloomberg))' }]} /></div>
+        : hist && <p className="text-text-tertiary">The history builds up while the platform runs (a sample every 10 minutes); the trend appears after the first hour.</p>}
+      <table className="w-full text-[11px]">
+        <thead><tr className="text-text-tertiary"><th className="text-left font-normal">Region (airborne)</th><th className="text-right font-normal">Now</th><th className="text-right font-normal">Share</th>
+          <th className="text-right font-normal">vs 24 h</th><th className="text-right font-normal">vs 7 d</th></tr></thead>
+        <tbody>{regions.map(([g, n]) => {
+          const a = chg(n, d1?.regions?.[g]), b = chg(n, d7?.regions?.[g]);
+          return <tr key={g} className="border-t border-border-subtle"><td className="py-0.5 text-text-primary">{g}</td><td className="text-right font-mono">{n.toLocaleString()}</td>
+            <td className="text-right font-mono text-text-tertiary">{((n / total) * 100).toFixed(0)}%</td>
+            <td className={cn('text-right font-mono', tone(a))}>{pct(a)}</td><td className={cn('text-right font-mono', tone(b))}>{pct(b)}</td></tr>;
+        })}</tbody>
+      </table>
+      <p className="text-[10px] text-text-tertiary">{hist?.note ?? ''} Changes are against the sample nearest the same time of day.</p>
+    </div>
   );
 }
 

@@ -2,8 +2,9 @@
 // by kind and by underway / at anchor / moored, click for identity, dimensions, destination, ETA,
 // flag and the last 8 hours of track; registry owners and port calls from Global Fishing Watch.
 // Below it: port congestion (ships waiting at anchor near 55 major ports).
-import { useMemo, useRef, useState } from 'react';
-import { Anchor, Search, Ship, Star, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Anchor, ArrowDown, ArrowUp, Search, Ship, Star, X } from 'lucide-react';
+import { useStickyState } from '@/lib/stickyState';
 import { cn } from '@/lib/utils';
 import { ErrorBox, Loading, Panel, useJSON } from './shared';
 import { Photos } from './Photos';
@@ -31,37 +32,57 @@ const phaseOf = (status: number | null, speed: number | null, sat: boolean): Shi
   sat ? 'unknown' : status === 5 ? 'moored' : status === 1 || ((status == null || status === 15) && speed != null && speed < 0.5) ? 'anchored' : 'underway';
 const faded = (c: string) => c.replace(/\)$/, ' / 0.45)');          // satellite positions: days old, drawn fainter
 
-type Sh = { mmsi: number; lat: number; lon: number; speed: number | null; heading: number | null; type: string; status: number | null; name: string; phase: ShipPhase; sat: boolean; tag: string };
+type Sh = { mmsi: number; lat: number; lon: number; speed: number | null; heading: number | null; type: string; status: number | null; name: string; phase: ShipPhase; sat: boolean; tag: string; t: number | null };
+const ageText = (s: number) => (s < 90 ? `${Math.max(0, Math.round(s))} s` : s < 5400 ? `${Math.round(s / 60)} min` : s < 172800 ? `${Math.round(s / 3600)} h` : `${Math.round(s / 86400)} d`);
 // notable reasons (backend tag letters), most important first, and their ring colours
 const TAGS: [string, string, string][] = [['s', 'Sanctioned', 'rgb(239 68 68)'], ['m', 'Military', 'rgb(236 72 153)'], ['l', 'Gas carrier', 'rgb(6 182 212)'],
   ['g', 'Giant', 'rgb(245 158 11)'], ['h', 'Dangerous goods', 'rgb(249 115 22)'], ['z', 'Tanker in a hot zone', 'rgb(234 179 8)']];
 const tagColor = (tag: string) => TAGS.find(([k]) => tag.includes(k))?.[2];
 
 export function ShipTracker() {
-  const world = useJSON<any>('/api/v1/mkt/ship/world', 30_000);
+  // live positions change by the second; satellite positions once a day — two requests, so the 30-second refresh stays small
+  const world = useJSON<any>('/api/v1/mkt/ship/world?layer=live', 30_000);
   const ports = useJSON<any>('/api/v1/mkt/ship/ports', 120_000);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [sel, setSel] = useState<number | null>(null);
-  const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const [phase, setPhase] = useState<Phase>('all');
-  const [showPorts, setShowPorts] = useState(true);
-  const [showSat, setShowSat] = useState(true);
+  const [hiddenList, setHiddenList] = useStickyState<string[]>('ship.hidden', []);
+  const hidden = useMemo(() => new Set(hiddenList), [hiddenList]);
+  const [phase, setPhase] = useStickyState<Phase>('ship.phase', 'all');
+  const [showPorts, setShowPorts] = useStickyState('ship.ports', true);
+  const [showSat, setShowSat] = useStickyState('ship.sat', true);
+  const satW = useJSON<any>(showSat ? '/api/v1/mkt/ship/world?layer=sat' : null, 1_800_000);
   const [find, setFind] = useState('');
   const [registry, setRegistry] = useState<string | null>(null);
-  const [notableOnly, setNotableOnly] = useState(false);
-  const [tab, setTab] = useState<'view' | 'notable' | 'follow'>('view');
+  const [notableOnly, setNotableOnly] = useStickyState('ship.notable', false);
+  const [tab, setTab] = useStickyState<'view' | 'notable' | 'follow'>('ship.tab', 'view');
+  const [now, setNow] = useState(() => Date.now() / 1000);
+  useEffect(() => { const t = setInterval(() => document.visibilityState === 'visible' && setNow(Date.now() / 1000), 15000); return () => clearInterval(t); }, []);
+  useEffect(() => {                                            // Esc closes the open ship / registry card
+    const k = (e: KeyboardEvent) => { if (e.key !== 'Escape' || (e.target as HTMLElement)?.closest?.('input, textarea')) return; setSel(null); setRegistry(null); };
+    window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
+  }, []);
   const follow = useFollow('ship');
   const notable = useJSON<any>('/api/v1/mkt/ship/notable', 120_000);
   const map = useRef<LiveMapHandle>(null);
 
   const ships: Sh[] = useMemo(() => {
-    const d = world.data;
-    if (!d) return [];
-    const ix = Object.fromEntries((d.cols as string[]).map((c, i) => [c, i]));
-    return (d.rows as any[]).map((r) => ({ mmsi: r[ix.mmsi], lat: r[ix.lat], lon: r[ix.lon], speed: r[ix.speed], heading: r[ix.heading],
-      type: d.types[r[ix.type]] ?? 'Unknown', status: r[ix.status], name: r[ix.name], sat: !!r[ix.sat], phase: phaseOf(r[ix.status], r[ix.speed], !!r[ix.sat]),
-      tag: r[ix.tag] ?? '' }));
-  }, [world.data]);
+    const out: Sh[] = [], seen = new Set<number>();
+    for (const d of [world.data, showSat ? satW.data : null]) {
+      if (!d) continue;
+      const ix = Object.fromEntries((d.cols as string[]).map((c, i) => [c, i]));
+      for (const r of d.rows as any[]) {
+        if (seen.has(r[ix.mmsi])) continue;                  // a ship heard live is drawn at its live position only
+        seen.add(r[ix.mmsi]);
+        out.push({ mmsi: r[ix.mmsi], lat: r[ix.lat], lon: r[ix.lon], speed: r[ix.speed], heading: r[ix.heading],
+          type: d.types[r[ix.type]] ?? 'Unknown', status: r[ix.status], name: r[ix.name], sat: !!r[ix.sat], phase: phaseOf(r[ix.status], r[ix.speed], !!r[ix.sat]),
+          tag: r[ix.tag] ?? '', t: ix.t != null ? r[ix.t] : null });
+      }
+    }
+    return out;
+  }, [world.data, satW.data, showSat]);
+  const satCount = useMemo(() => ships.filter((s) => s.sat).length, [ships]);
+  const satByType = useMemo(() => { const m: Record<string, number> = {}; for (const s of ships) if (s.sat) m[s.type] = (m[s.type] ?? 0) + 1; return m; }, [ships]);
+  const satInfo = satW.data?.satellite ?? world.data?.satellite;
   const byId = useMemo(() => new Map(ships.map((s) => [String(s.mmsi), s])), [ships]);
   const shown = useMemo(() => ships.filter((s) => (!hidden.has(s.type) && (phase === 'all' || s.phase === phase) && (showSat || !s.sat) && (!notableOnly || s.tag))
     || s.mmsi === sel || follow.ids.has(String(s.mmsi))), [ships, hidden, phase, sel, showSat, notableOnly, follow.ids]);
@@ -110,9 +131,14 @@ export function ShipTracker() {
   const hoverText = (id: string) => {
     const s = byId.get(id);
     if (!s) return '';
-    return `${s.name || `MMSI ${s.mmsi}`} · ${s.type}\n${s.sat ? `satellite position, ${world.data?.satellite?.day ?? 'days old'}` : s.phase === 'underway' ? `${s.speed ?? '?'} kn · ${s.heading ?? '?'}°` : s.phase === 'anchored' ? 'at anchor' : 'moored'}`;
+    return `${s.name || `MMSI ${s.mmsi}`} · ${s.type}\n${s.sat ? 'satellite position' : s.phase === 'underway' ? `${s.speed ?? '?'} kn · ${s.heading ?? '?'}°` : s.phase === 'anchored' ? 'at anchor' : 'moored'}`
+      + `${s.t ? ` · reported ${ageText(now - s.t)} ago` : s.sat ? `, ${satInfo?.day ?? 'days old'}` : ''}`;
   };
-  const toggleType = (t: string) => setHidden((h) => { const n = new Set(h); if (n.has(t)) n.delete(t); else n.add(t); return n; });
+  const toggleType = (t: string) => setHiddenList(hidden.has(t) ? hiddenList.filter((x) => x !== t) : [...hiddenList, t]);
+  const isolateType = (t: string) => {                          // click a type in the panel: only that type; again: all
+    const others = Object.keys(TYPE_COL).filter((x) => x !== t);
+    setHiddenList(others.every((x) => hidden.has(x)) && !hidden.has(t) ? [] : others);
+  };
 
   if (world.loading && !world.data) return <Loading label="Loading every ship the AIS network can hear…" />;
   if (world.error && !world.data) return <ErrorBox msg={world.error} />;
@@ -120,10 +146,10 @@ export function ShipTracker() {
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
-        <span className="text-text-primary"><Ship className="inline w-3.5 h-3.5 mr-1 text-bloomberg" /><b className="font-mono">{w?.rows?.length?.toLocaleString()}</b> vessels worldwide</span>
+        <span className="text-text-primary"><Ship className="inline w-3.5 h-3.5 mr-1 text-bloomberg" /><b className="font-mono">{ships.length.toLocaleString()}</b> vessels worldwide</span>
         <span className="text-text-secondary"><b className="font-mono text-green">{w?.live_count?.toLocaleString()}</b> live ({w?.phase?.underway?.toLocaleString()} under way · {w?.phase?.anchored?.toLocaleString()} at anchor · {w?.phase?.moored?.toLocaleString()} moored)</span>
-        <span className="text-text-secondary" title={w?.satellite?.source}><b className="font-mono">{w?.satellite_count?.toLocaleString()}</b> by satellite{w?.satellite?.day ? ` (as of ${w.satellite.day})` : ''}
-          {w?.satellite?.status === 'building' ? ` — loading ${w.satellite.boxes_done}/${w.satellite.boxes} areas` : ''}</span>
+        <span className="text-text-secondary" title={satInfo?.source}>{showSat ? <><b className="font-mono">{satCount.toLocaleString()}</b> by satellite{satInfo?.day ? ` (as of ${satInfo.day})` : ''}
+          {satInfo?.status === 'building' ? ` — loading ${satInfo.boxes_done}/${satInfo.boxes} areas` : ''}{satW.loading && !satW.data ? ' — loading…' : ''}</> : 'satellite layer off'}</span>
         <span className="text-text-tertiary">in view <b className="font-mono text-text-secondary">{inView.length.toLocaleString()}</b></span>
         <span className={cn('ml-auto', w?.status === 'live' ? 'text-green' : 'text-amber')}>● {w?.status === 'live' ? 'live AIS stream' : w?.status}</span>
       </div>
@@ -148,7 +174,7 @@ export function ShipTracker() {
               {Object.keys(TYPE_COL).filter((t) => t !== 'Towing').map((t) => (
                 <button key={t} onClick={() => toggleType(t)} title={hidden.has(t) ? `Show ${t}` : `Hide ${t}`}
                   className={cn('inline-flex items-center gap-1 px-1', hidden.has(t) && 'opacity-35 line-through')}>
-                  <span className="w-2 h-2 rounded-full" style={{ background: TYPE_COL[t] }} />{t} <span className="font-mono text-text-tertiary">{((w?.by_type?.[t] ?? 0) + (w?.satellite_by_type?.[t] ?? 0)).toLocaleString()}</span></button>))}
+                  <span className="w-2 h-2 rounded-full" style={{ background: TYPE_COL[t] }} />{t} <span className="font-mono text-text-tertiary">{((w?.by_type?.[t] ?? 0) + (satByType[t] ?? 0)).toLocaleString()}</span></button>))}
             </div>
             <div className="flex gap-1 bg-surface-1/85 border border-border px-1.5 py-1">
               {PHASES.map(([k, l]) => <button key={k} onClick={() => setPhase(k)} className={cn('px-1', phase === k ? 'text-bloomberg' : 'text-text-secondary')}>{l}</button>)}
@@ -166,7 +192,7 @@ export function ShipTracker() {
             : registry ? null : <>
               <div className="flex gap-1 text-[11px]">{([['view', 'In view'], ['notable', `Notable ${notable.data?.total ?? ''}`], ['follow', `Following ${follow.list.length}`]] as const).map(([k, l]) => (
                 <button key={k} onClick={() => setTab(k)} className={cn('flex-1 px-2 py-1 border', tab === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{l}</button>))}</div>
-              {tab === 'view' && <ViewPanel stats={viewStats} inView={inView} onPick={(s) => setSel(s.mmsi)} />}
+              {tab === 'view' && <ViewPanel stats={viewStats} inView={inView} now={now} hidden={hidden} onType={isolateType} onPick={(s) => setSel(s.mmsi)} />}
               {tab === 'notable' && <NotablePanel data={notable.data} loading={notable.loading} follow={follow}
                 onPick={(x) => { setSel(x.mmsi); map.current?.flyTo({ lon: x.lon, lat: x.lat, zoom: Math.max(bounds?.zoom ?? 0, 7) }); }} />}
               {tab === 'follow' && <FollowPanel follow={follow} byId={byId}
@@ -181,31 +207,48 @@ export function ShipTracker() {
   );
 }
 
-function ViewPanel({ stats, inView, onPick }: { stats: { t: Record<string, number>; ph: Record<string, number> }; inView: Sh[]; onPick: (s: Sh) => void }) {
+type SSort = 'name' | 'type' | 'speed' | 'age';
+
+function ViewPanel({ stats, inView, now, hidden, onType, onPick }: { stats: { t: Record<string, number>; ph: Record<string, number> }; inView: Sh[]; now: number;
+  hidden: Set<string>; onType: (t: string) => void; onPick: (s: Sh) => void }) {
   const total = Math.max(1, inView.length);
-  const list = [...inView].filter((s) => s.name).sort((a, b) => (b.speed ?? -1) - (a.speed ?? -1)).slice(0, 150);
+  const [sort, setSort] = useStickyState<SSort>('ship.sort', 'speed');
+  const [desc, setDesc] = useStickyState('ship.desc', true);
+  const [q, setQ] = useState('');
+  const Q = q.trim().toUpperCase();
+  const key = (s: Sh): number | string => (sort === 'name' ? s.name : sort === 'type' ? s.type : sort === 'age' ? (s.t ? now - s.t : 1e9) : s.speed ?? -1);
+  const list = inView.filter((s) => s.name && (!Q || s.name.toUpperCase().includes(Q) || String(s.mmsi).startsWith(Q) || s.type.toUpperCase().startsWith(Q)))
+    .sort((a, b) => { const x = key(a), y = key(b); const c = typeof x === 'string' ? x.localeCompare(String(y)) : x - (y as number); return desc ? -c : c; }).slice(0, 300);
+  const th = (k: SSort, l: string, right = false) => (
+    <th onClick={() => (sort === k ? setDesc(!desc) : (setSort(k), setDesc(k === 'speed')))} aria-sort={sort === k ? (desc ? 'descending' : 'ascending') : 'none'}
+      className={cn('font-normal cursor-pointer select-none whitespace-nowrap px-1.5', right ? 'text-right' : 'text-left', sort === k && 'text-bloomberg')}>
+      {l}{sort === k && (desc ? <ArrowDown className="inline w-2.5 h-2.5" /> : <ArrowUp className="inline w-2.5 h-2.5" />)}</th>);
   return (
     <>
       <div className="border border-border bg-surface-1 p-2 text-[11px] space-y-1">
-        <div className="text-[10px] uppercase tracking-wide text-text-tertiary">In view</div>
-        <div className="flex h-2 overflow-hidden">{Object.entries(stats.t).sort((a, b) => b[1] - a[1]).map(([t, n]) => (
+        <div className="text-[10px] uppercase tracking-wide text-text-tertiary">In view <span className="normal-case">— click a type to show only it</span></div>
+        <div className="flex h-2 overflow-hidden rounded-sm gap-px">{Object.entries(stats.t).sort((a, b) => b[1] - a[1]).map(([t, n]) => (
           <div key={t} title={`${t}: ${n}`} style={{ width: `${(n / total) * 100}%`, background: TYPE_COL[t] ?? TYPE_COL.Other }} />))}</div>
         <div className="grid grid-cols-2 gap-x-3">{Object.entries(stats.t).sort((a, b) => b[1] - a[1]).map(([t, n]) => (
-          <div key={t} className="flex justify-between"><span className="inline-flex items-center gap-1 text-text-secondary"><span className="w-2 h-2 rounded-full" style={{ background: TYPE_COL[t] }} />{t}</span><span className="font-mono">{n.toLocaleString()}</span></div>))}</div>
+          <button key={t} onClick={() => onType(t)} className={cn('flex justify-between text-left hover:text-bloomberg', hidden.size > 0 && !hidden.has(t) && 'text-bloomberg')}>
+            <span className="inline-flex items-center gap-1 text-text-secondary"><span className="w-2 h-2 rounded-full" style={{ background: TYPE_COL[t] }} />{t}</span><span className="font-mono">{n.toLocaleString()}</span></button>))}</div>
         <div className="flex justify-between border-t border-border-subtle pt-1 text-text-secondary">
-          <span>Under way <b className="font-mono text-text-primary">{stats.ph.underway}</b></span><span>At anchor <b className="font-mono text-text-primary">{stats.ph.anchored}</b></span>
-          <span>Moored <b className="font-mono text-text-primary">{stats.ph.moored}</b></span></div>
+          <span>Under way <b className="font-mono text-text-primary">{stats.ph.underway.toLocaleString()}</b></span><span>At anchor <b className="font-mono text-text-primary">{stats.ph.anchored.toLocaleString()}</b></span>
+          <span>Moored <b className="font-mono text-text-primary">{stats.ph.moored.toLocaleString()}</b></span>{stats.ph.unknown > 0 && <span>Satellite <b className="font-mono text-text-primary">{stats.ph.unknown.toLocaleString()}</b></span>}</div>
       </div>
-      <div className="border border-border max-h-[420px] overflow-y-auto">
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter: name, MMSI or type" aria-label="Filter vessels in view"
+        className="w-full bg-surface-1 border border-border px-2 py-0.5 text-[11px] text-text-primary placeholder:text-text-tertiary" />
+      <div className="border border-border max-h-[380px] overflow-y-auto">
         <table className="w-full text-[11px]">
-          <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left px-1.5 font-normal">Vessel</th><th className="text-left font-normal">Type</th>
-            <th className="text-right font-normal px-1.5">Knots</th></tr></thead>
+          <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary">{th('name', 'Vessel')}{th('type', 'Type')}{th('speed', 'Knots', true)}{th('age', 'Heard', true)}</tr></thead>
           <tbody>{list.map((s) => (
             <tr key={s.mmsi} onClick={() => onPick(s)} className="border-t border-border-subtle cursor-pointer hover:bg-surface-3" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
-              <td className="px-1.5 py-0.5 text-text-primary truncate max-w-[11rem]">{s.name}</td>
-              <td style={{ color: TYPE_COL[s.type] }}>{s.type}</td><td className="text-right px-1.5 font-mono">{s.phase === 'underway' ? s.speed?.toFixed(1) ?? '' : s.phase === 'anchored' ? '⚓' : '·'}</td></tr>))}</tbody>
+              <td className="px-1.5 py-0.5 text-text-primary truncate max-w-[10rem]">{s.tag && <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ background: tagColor(s.tag) }} />}{s.name}</td>
+              <td className="px-1.5" style={{ color: TYPE_COL[s.type] }}>{s.type}</td>
+              <td className="text-right px-1.5 font-mono">{s.phase === 'underway' ? s.speed?.toFixed(1) ?? '' : s.phase === 'anchored' ? '⚓' : s.phase === 'moored' ? '·' : ''}</td>
+              <td className={cn('text-right px-1.5 font-mono', s.sat ? 'text-text-tertiary' : s.t && now - s.t > 1200 ? 'text-amber' : 'text-text-secondary')}>{s.t ? ageText(now - s.t) : s.sat ? 'sat' : ''}</td></tr>))}</tbody>
         </table>
-        {list.length === 0 && <p className="p-2 text-[11px] text-text-tertiary">No named vessels in this view.</p>}
+        {list.length === 0 && <p className="p-2 text-[11px] text-text-tertiary">{Q ? 'Nothing matches the filter in this view.' : 'No named vessels in this view.'}</p>}
       </div>
     </>
   );

@@ -485,11 +485,12 @@ async def mkt_vessel(query: str):
 
 
 @router.get("/api/v1/mkt/ship/world")
-async def mkt_ships_world():
-    """Every vessel the live AIS collector has heard in the last hour, worldwide (compact rows)."""
+async def mkt_ships_world(layer: str = Query("all", pattern="^(all|live|sat)$")):
+    """Every vessel the live AIS collector has heard in the last hour, worldwide (compact rows), plus satellite positions
+    elsewhere. layer=live: live rows only (refresh often); layer=sat: satellite rows only (change once a day)."""
     from fastapi import Response
     from api.marketdata import tracking
-    body = await _run(tracking.world_vessels_json, timeout=60)
+    body = await _run(tracking.world_vessels_json, layer, timeout=60)
     return Response(content=body, media_type="application/json")
 
 
@@ -519,6 +520,13 @@ async def mkt_flights_world():
     """Every aircraft with a position worldwide (OpenSky) plus live military (adsb.lol), compact rows."""
     from api.marketdata import airtraffic
     return await _run(airtraffic.world, timeout=90)
+
+
+@router.get("/api/v1/mkt/fly/history")
+async def mkt_flights_history():
+    """Airborne aircraft worldwide and by region, sampled every 10 minutes (last 30 days)."""
+    from api.marketdata import airtraffic
+    return await _run(airtraffic.history)
 
 
 @router.get("/api/v1/mkt/fly/area")

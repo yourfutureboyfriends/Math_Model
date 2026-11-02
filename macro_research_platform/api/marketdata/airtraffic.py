@@ -232,8 +232,55 @@ def _military() -> List[Dict[str, Any]]:
         return []
 
 
+STALE_S = 20 * 60          # a position older than this is no longer where the aircraft is: dropped, not drawn
+
+# Coarse regions for traffic counts (first match wins: China and the Middle East before wider Asia)
+REGIONS: List[tuple] = [("China", 18, 54, 73, 135), ("Middle East", 12, 42, 34, 63), ("Europe", 35, 72, -25, 45),
+                        ("North America", 15, 75, -170, -50), ("Latin America", -60, 15, -120, -30), ("East & SE Asia", -11, 50, 90, 150),
+                        ("South Asia", 5, 37, 60, 92), ("Africa", -36, 37, -20, 55), ("Oceania", -50, -10, 110, 180)]
+
+
+def region_of(lat: float, lon: float) -> str:
+    for name, la0, la1, lo0, lo1 in REGIONS:
+        if la0 <= lat <= la1 and lo0 <= lon <= lo1:
+            return name
+    return "Oceans & other"
+
+
+HISTORY = Path(__file__).resolve().parents[2] / "data" / "processed" / "fly_history.json"
+_hist_lock = threading.Lock()
+
+
+def _record_history(t: float, airborne: int, regions: Dict[str, int]) -> None:
+    """Keep the worldwide airborne count every 10 minutes for 30 days (a free, live activity gauge)."""
+    with _hist_lock:
+        try:
+            h = json.loads(HISTORY.read_text())
+        except Exception:
+            h = []
+        if h and t - h[-1]["t"] < 600:
+            return
+        h.append({"t": int(t), "airborne": airborne, "regions": regions})
+        h = [x for x in h if t - x["t"] < 30 * 86400]
+        try:
+            HISTORY.parent.mkdir(parents=True, exist_ok=True)
+            HISTORY.write_text(json.dumps(h, separators=(",", ":")))
+        except Exception:
+            pass
+
+
+def history() -> Dict[str, Any]:
+    try:
+        h = json.loads(HISTORY.read_text())
+    except Exception:
+        h = []
+    return {"points": h, "every_s": 600, "note": "Airborne aircraft worldwide, sampled every 10 minutes while the platform runs; "
+            "counts depend on receiver coverage, so compare like with like (same hour, same weekday)."}
+
+
 def world() -> Dict[str, Any]:
-    """OpenSky snapshot (cached by its allowance) merged with the live regional sweep (refreshed often)."""
+    """OpenSky snapshot (cached by its allowance) merged with the live regional sweep (refreshed often).
+    Positions more than 20 minutes old are dropped: they are not where the aircraft is any more."""
     def merge():
         base = _world_base()
         by_hex = {r[0]: r for r in base["rows"]}
@@ -242,16 +289,31 @@ def world() -> Dict[str, Any]:
             old = by_hex.get(r[0])
             if old is None:
                 added += 1
-            elif (old[11] or 0) >= r[11]:
+            elif (old[11] or 0) >= (r[11] or 0):
                 continue
             else:
                 replaced += 1
                 r[2] = old[2]                              # keep OpenSky's registration country
                 r[12] = r[12] or old[12]
             by_hex[r[0]] = r
-        rows = [r[:14] + ["".join(t for _, t, _ in flight_tags(r[1], r[13], bool(r[12]), r[10]))] for r in by_hex.values()]
+        now = time.time()
+        ref = max(base.get("time") or 0, now - 3600) if base.get("stale") else now   # an old snapshot is judged against its own time
+        stale = [r for r in by_hex.values() if r[11] is None or ref - r[11] > STALE_S]
+        rows = [r[:14] + ["".join(t for _, t, _ in flight_tags(r[1], r[13], bool(r[12]), r[10]))]
+                for r in by_hex.values() if r[11] is not None and ref - r[11] <= STALE_S]
         air = [r for r in rows if not r[6]]
+        countries: Dict[str, int] = {}
+        regions: Dict[str, int] = {}
+        for r in air:
+            if r[2]:
+                countries[r[2]] = countries.get(r[2], 0) + 1
+            g = region_of(r[4], r[3])
+            regions[g] = regions.get(g, 0) + 1
+        if not base.get("stale"):
+            _record_history(now, len(air), regions)
         return {**base, "rows": rows, "airborne": len(air), "on_ground": len(rows) - len(air), "military": sum(1 for r in rows if r[12]),
+                "top_registrations": sorted(countries.items(), key=lambda kv: -kv[1])[:12],
+                "regions": sorted(regions.items(), key=lambda kv: -kv[1]), "stale_dropped": len(stale),
                 "sweep": {"added": added, "refreshed": replaced, "hubs": len(SWEEP), "live_aircraft": added + replaced},
                 "emergencies": [{"hex": r[0], "callsign": r[1], "squawk": r[10], "what": EMERGENCY[str(r[10])], "lat": r[4], "lon": r[3]}
                                 for r in rows if str(r[10] or "") in EMERGENCY]}
@@ -298,7 +360,7 @@ def _world_base() -> Dict[str, Any]:
                 "military": sum(1 for r in rows if r[12]), "emergencies": emerg,
                 "top_registrations": sorted(countries.items(), key=lambda kv: -kv[1])[:12],
                 "refresh_s": ttl, "stale": stale, "credits_left": _credits["remaining"],
-                "source": "OpenSky Network (state vectors" + (", authenticated" if _authenticated() else ", anonymous") + "); military: adsb.lol",
+                "source": "OpenSky Network (state vectors" + (", authenticated" if _authenticated() else ", anonymous") + "); military: adsb.fi + adsb.lol",
                 "note": ("World positions refresh every " + ("3" if _authenticated() else "15") + " minutes (OpenSky's free allowance); "
                          "around ~60 hubs in China, Asia, the Middle East, Africa and Latin America they are live (adsb.fi + adsb.lol sweep); "
                          "zoom in anywhere for live, seconds-old detail.")}
@@ -441,7 +503,7 @@ def sweep_start() -> None:
 def _sweep_rows() -> List[list]:
     with _sweep_lock:
         return [[v["hex"], v["flight"], None, round(v["lon"], 4), round(v["lat"], 4), v["alt"], 1 if v["on_ground"] else 0,
-                 round(v["speed"]) if v.get("speed") is not None else None, round(v["track"]) if v.get("track") is not None else None,
+                 _kt(v.get("speed")), round(v["track"]) if v.get("track") is not None else None,
                  v.get("vrate"), v.get("squawk"), int(v["fix"]), 1 if v.get("military") else 0, v.get("type")] for v in _sweep.values()]
 
 

@@ -17,13 +17,17 @@ import json
 import logging
 import math
 import os
+import time
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from api.marketdata.core import NotFound, Upstream, _cached
 
 logger = logging.getLogger(__name__)
 UA = {"User-Agent": "Mozilla/5.0 (macro research terminal)"}
+DATA = Path(__file__).resolve().parents[2] / "data" / "processed"
+PORTWATCH_CSV = "https://portwatch.imf.org/api/download/v1/items/3da2b9ca97684916b75c4013f95d18ab/csv?layers=0"   # full table
 PORTWATCH = "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query"
 
 # Chokepoint locations (for the map) and the trade they matter for
@@ -85,19 +89,63 @@ def chokepoints(days: int = 1100) -> Dict[str, Any]:
     """Daily transits through maritime chokepoints (IMF PortWatch) over `days`."""
     def fetch():
         import requests
+        # The query API caps a page at 1,000 rows, times out on deep or date-window paging and throttles bursts — all
+        # answered with HTTP 200 and an "error" body (this once froze the history at 2024 without an error). The
+        # official full-table CSV export (~9 MB, every chokepoint since 2020) is fast and reliable: use it, and fall back
+        # to a small query for the last few weeks on top of the copy kept on disk.
+        import csv
+        import io
         since = (date.today() - timedelta(days=days)).isoformat()
-        rows, offset = [], 0
-        while True:
-            r = requests.get(PORTWATCH, params={"where": f"date >= DATE '{since}'", "outFields": "date,portname,n_total,n_tanker,n_container,n_dry_bulk,capacity",
-                                                "orderByFields": "date ASC", "resultOffset": offset, "resultRecordCount": 2000, "f": "json"},
-                             headers=UA, timeout=60)
-            r.raise_for_status()
-            j = r.json()
-            feats = j.get("features") or []
-            rows += [f["attributes"] for f in feats]
-            if not j.get("exceededTransferLimit") or not feats:
-                break
-            offset += len(feats)
+        raw_path = DATA / "portwatch_rows.json"
+        num = ("n_total", "n_tanker", "n_container", "n_dry_bulk", "capacity")
+        try:
+            have = {(x["date"], x["portname"]): x for x in json.loads(raw_path.read_text())}
+        except Exception:
+            have = {}
+        fresh: List[Dict[str, Any]] = []
+        try:
+            for attempt in range(3):
+                try:
+                    r = requests.get(PORTWATCH_CSV, headers=UA, timeout=120)
+                    r.raise_for_status()
+                    if not r.headers.get("content-type", "").startswith("text/csv"):
+                        raise Upstream("IMF PortWatch download did not return CSV")
+                    break
+                except Exception:
+                    if attempt == 2:
+                        raise
+                    time.sleep(3 * (attempt + 1))
+            for x in csv.DictReader(io.StringIO(r.content.decode("utf-8-sig"))):
+                fresh.append({"date": x["date"].replace("/", "-")[:10], "portname": x["portname"],
+                              **{k: (float(x[k]) if "." in x[k] else int(x[k])) if x.get(k) not in (None, "") else None for k in num}})
+        except Exception as e:
+            logger.info("[portwatch] CSV download failed (%s); querying the last weeks", e)
+            if not have:
+                raise
+            last = date.fromisoformat(max(k[0] for k in have))
+            for attempt in range(4):
+                try:
+                    r = requests.get(PORTWATCH, params={"where": f"date >= DATE '{(last - timedelta(days=14)).isoformat()}'", "f": "json",
+                                                        "outFields": "date,portname," + ",".join(num), "resultRecordCount": 1000}, headers=UA, timeout=60)
+                    j = r.json()
+                    if "error" in j or j.get("exceededTransferLimit"):
+                        raise Upstream(f"IMF PortWatch: {(j.get('error') or {}).get('message', 'page limit')}")
+                    fresh = [{**f["attributes"], "date": str(f["attributes"]["date"])[:10]} for f in j.get("features") or []]
+                    break
+                except Exception as e2:
+                    if attempt == 3:
+                        logger.info("[portwatch] query failed too (%s): serving the copy on disk", e2)
+                    time.sleep(3 * (attempt + 1))
+        for x in fresh:
+            if x.get("date") and x.get("portname"):
+                have[(x["date"], x["portname"])] = x
+        if fresh:
+            try:
+                raw_path.parent.mkdir(parents=True, exist_ok=True)
+                raw_path.write_text(json.dumps(list(have.values()), separators=(",", ":")))
+            except Exception:
+                pass
+        rows = [x for x in have.values() if x["date"] >= since]
         if not rows:
             raise Upstream("IMF PortWatch returned no data.")
         by: Dict[str, List[Dict[str, Any]]] = {}
@@ -128,11 +176,12 @@ def chokepoints(days: int = 1100) -> Dict[str, Any]:
                 "source": "IMF PortWatch (satellite AIS; daily transits through maritime chokepoints, updated weekly)"}
     def persisted():   # PortWatch updates weekly and a cold pull pages ~30k rows (≈1 min): keep a disk copy
         import time as _t
-        from pathlib import Path
-        path = Path(__file__).resolve().parents[2] / "data" / "processed" / f"portwatch_chokepoints_{days}.json"
+        path = DATA / f"portwatch_chokepoints_{days}.json"
         try:
             if path.exists() and _t.time() - path.stat().st_mtime < 6 * 3600:
-                return json.loads(path.read_text())
+                d = json.loads(path.read_text())
+                if (date.today() - date.fromisoformat(d["as_of"])).days <= 21:   # a copy that is itself stale is refetched
+                    return d
         except Exception:
             pass
         try:
@@ -422,7 +471,7 @@ MID = {201: "Albania", 205: "Belgium", 209: "Cyprus", 210: "Cyprus", 211: "Germa
 NAV_STATUS = {0: "Under way (engine)", 1: "At anchor", 2: "Not under command", 3: "Restricted manoeuvrability", 4: "Constrained by draught",
               5: "Moored", 6: "Aground", 7: "Fishing", 8: "Under way (sailing)", 14: "AIS-SART (distress)"}
 TYPE_CODES = ["Cargo", "Tanker", "Passenger", "Fishing", "Tug", "Towing", "Military", "Sailing/pleasure", "Other", "Unknown"]
-WORLD_SHIP_COLS = ["mmsi", "lat", "lon", "speed", "heading", "type", "status", "name", "sat", "tag"]   # sat: 1 = GFW position (days old)
+WORLD_SHIP_COLS = ["mmsi", "lat", "lon", "speed", "heading", "type", "status", "name", "sat", "tag", "t"]   # sat: 1 = GFW position (days old); t: last report (epoch s)
 # tag letters (vessel_intel.notable_reasons): s sanctioned, m military, l gas carrier, g giant, h dangerous goods, z tanker in a hot zone
 
 
@@ -577,14 +626,33 @@ def _sat_rows() -> List[list]:
 
             def tag(m: int, p: list) -> str:
                 return "".join(t for _, t, _ in VI.notable_reasons({"mmsi": m, "imo": p[5], "name": p[4], "type": p[2], "lat": p[0], "lon": p[1]}))
+            def epoch(ts: str) -> Optional[int]:
+                try:
+                    return int(datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp())
+                except Exception:
+                    return None
             _sat_cache["rows"] = [[m, round(max(-89.99, min(89.99, p[0] + jit(m, 1))), 4), round(wrap(p[1] + jit(m, 2)), 4), None, None,
-                                   idx.get(p[2], idx["Other"]), None, p[4], 1, tag(m, p)] for m, p in _presence["rows"].items()]
+                                   idx.get(p[2], idx["Other"]), None, p[4], 1, tag(m, p), epoch(p[7])] for m, p in _presence["rows"].items()]
             _sat_cache["built"] = _presence.get("built")
         return _sat_cache["rows"]
 
 
-def world_vessels_json() -> bytes:
-    """world_vessels() pre-serialised (≈250,000 rows: generic response encoding takes seconds)."""
+def world_vessels_json(layer: str = "all") -> bytes:
+    """world_vessels() pre-serialised (≈250,000 rows: generic response encoding takes seconds).
+    layer="live" leaves out the satellite rows (they change once a day; fetch them from layer="sat" rarely)."""
+    if layer == "sat":
+        def sat():
+            rows = _sat_rows()
+            return json.dumps({"cols": WORLD_SHIP_COLS, "types": TYPE_CODES, "rows": rows, "built": _presence.get("built"),
+                               "satellite": {"day": _presence.get("day"), "status": _presence.get("status"), "boxes_done": _presence.get("boxes_done"),
+                                             "boxes": _presence.get("boxes"), "source": "Global Fishing Watch AIS presence (satellite + terrestrial), "
+                                                                                       "last available day, 0.1° grid"}}, separators=(",", ":")).encode()
+        return _cached(f"ship:world:sat:{_presence.get('built')}", 3600, sat)
+    if layer == "live":
+        def live():
+            w = world_vessels()
+            return json.dumps({**w, "rows": w["rows"][:w["live_count"]]}, separators=(",", ":")).encode()
+        return _cached("ship:world:live:bytes", 15, live)
     return _cached("ship:world:bytes", 15, lambda: json.dumps(world_vessels(), separators=(",", ":")).encode())
 
 
@@ -606,9 +674,12 @@ def world_vessels() -> Dict[str, Any]:
             by_type[TYPE_CODES[ti]] += 1
             phase[_phase(v)] += 1
             hd = v.get("heading") if v.get("heading") is not None else v.get("course")
-            rows.append([v["mmsi"], round(v["lat"], 4), round(v["lon"], 4), round(v["speed"], 1) if v.get("speed") is not None else None,
+            sp = v.get("speed")
+            if sp is not None and sp > 35 and t in ("Cargo", "Tanker", "Fishing", "Tug", "Towing"):
+                sp = None                                  # no laden merchant ship or tug does 35 kn: a bad fix
+            rows.append([v["mmsi"], round(v["lat"], 4), round(v["lon"], 4), round(sp, 1) if sp is not None else None,
                          round(hd) if hd is not None else None, ti, v.get("status"), v.get("name") or "", 0,
-                         "".join(t for _, t, _ in VI.notable_reasons(v))])
+                         "".join(t for _, t, _ in VI.notable_reasons(v)), int(v.get("seen") or 0)])
         n_live = len(rows)
         sat_by_type = {t: 0 for t in TYPE_CODES}
         for r in _sat_rows():                          # prebuilt once per daily snapshot

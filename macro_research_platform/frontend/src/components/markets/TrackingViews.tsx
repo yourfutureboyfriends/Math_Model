@@ -48,7 +48,16 @@ const pc = (v: number | null | undefined) => (v == null ? '—' : `${v >= 0 ? '+
 export function ShipView() {
   const cp = useJSON<any>('/api/v1/mkt/ship/chokepoints', 3_600_000);
   const [sel, setSel] = useState<string | null>(null);
+  const [sort, setSort] = useState<'transits_7d' | 'vs_last_year' | 'vs_1y_avg' | 'tankers_7d' | 'containers_7d'>('transits_7d');
   const chosen = cp.data?.chokepoints.find((c: any) => c.name === sel);
+  const list = useMemo(() => [...(cp.data?.chokepoints ?? [])].sort((a: any, b: any) => (sort === 'vs_last_year' || sort === 'vs_1y_avg'
+    ? (a[sort] ?? 9) - (b[sort] ?? 9) : (b[sort] ?? -1) - (a[sort] ?? -1))), [cp.data, sort]);
+  // weeks behind: PortWatch publishes weekly with about a week's lag; much older means the feed is stuck
+  const lagDays = cp.data?.as_of ? Math.round((Date.now() - new Date(cp.data.as_of).getTime()) / 86400000) : null;
+  const falls = (cp.data?.chokepoints ?? []).filter((c: any) => c.vs_last_year != null && c.vs_last_year <= -0.15 && (c.transits_7d ?? 0) / (1 + c.vs_last_year) >= 5)   // judged on last year's traffic: a closed strait must show
+    .sort((a: any, b: any) => a.vs_last_year - b.vs_last_year).slice(0, 6);
+  const sh = (k: typeof sort, l: string) => <th onClick={() => setSort(k)} className={cn('text-right font-normal cursor-pointer select-none', sort === k && 'text-bloomberg')}
+    aria-sort={sort === k ? 'descending' : 'none'}>{l}</th>;
   const maxN = Math.max(1, ...(cp.data?.chokepoints ?? []).map((c: any) => c.transits_7d ?? 0));
   return (
     <div className="space-y-3">
@@ -56,6 +65,13 @@ export function ShipView() {
       <Panel title={`Maritime chokepoints — daily transits, 7-day average vs a year ago${cp.data ? ` · data to ${cp.data.as_of}` : ''}`}>
         {cp.loading && !cp.data && <Loading label="Loading IMF PortWatch…" />}
         {cp.error && <ErrorBox msg={cp.error} />}
+        {cp.data && lagDays != null && lagDays > 21 && <div className="mb-2 px-2 py-1.5 border border-amber/60 bg-amber/[0.06] text-[11px] text-amber">
+          Latest PortWatch data is {lagDays} days old (normally about a week) — the feed may be stuck; figures below are as of {cp.data.as_of}.</div>}
+        {falls.length > 0 && <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+          <span className="text-[10px] uppercase tracking-wide text-text-tertiary">Disruption watch</span>
+          {falls.map((c: any) => <button key={c.name} onClick={() => setSel(c.name)} className="px-1.5 py-0.5 border border-red/50 text-red hover:bg-red/[0.06]"
+            title={`${c.transits_7d?.toFixed(0)} ships/day vs ${(c.transits_7d / (1 + c.vs_last_year)).toFixed(0)} a year ago`}>{c.name} {pc(c.vs_last_year)}</button>)}
+          <span className="text-text-tertiary">— 7-day transits ≥ 15% below the same week last year</span></div>}
         {cp.data && (
           <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_520px] gap-3">
             <Basemap height={360}>{(p, k) => cp.data.chokepoints.filter((c: any) => c.lat != null).map((c: any) => {
@@ -67,12 +83,13 @@ export function ShipView() {
             })}</Basemap>
             <div className="max-h-[360px] overflow-y-auto">
               <table className="w-full text-[11px]">
-                <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left font-normal">Chokepoint</th><th className="text-right font-normal">Ships/day</th>
-                  <th className="text-right font-normal">vs y/y</th><th className="text-right font-normal">Tankers</th><th className="text-right font-normal">Box ships</th><th className="font-normal">180d</th></tr></thead>
-                <tbody>{cp.data.chokepoints.map((c: any) => (
+                <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left font-normal">Chokepoint</th>{sh('transits_7d', 'Ships/day')}
+                  {sh('vs_last_year', 'vs y/y')}{sh('vs_1y_avg', 'vs 1y avg')}{sh('tankers_7d', 'Tankers')}{sh('containers_7d', 'Box ships')}<th className="font-normal">180d</th></tr></thead>
+                <tbody>{list.map((c: any) => (
                   <tr key={c.name} onClick={() => setSel(c.name)} className={cn('border-t border-border-subtle cursor-pointer hover:bg-surface-3', sel === c.name && 'bg-surface-3')} tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'&&e.target===e.currentTarget){e.preventDefault();e.currentTarget.click();}}}>
                     <td className="py-0.5 text-text-primary">{c.name}</td><td className="text-right font-mono">{c.transits_7d?.toFixed(0)}</td>
                     <td className="text-right font-mono" style={{ color: yoyColor(c.vs_last_year) }}>{pc(c.vs_last_year)}</td>
+                    <td className="text-right font-mono" style={{ color: yoyColor(c.vs_1y_avg) }}>{pc(c.vs_1y_avg)}</td>
                     <td className="text-right font-mono text-text-secondary">{c.tankers_7d?.toFixed(0)}</td><td className="text-right font-mono text-text-secondary">{c.containers_7d?.toFixed(0)}</td>
                     <td className="pl-2"><Spark values={c.series.slice(-180).map((x: any) => x.n)} w={70} h={16} /></td></tr>))}</tbody>
               </table>

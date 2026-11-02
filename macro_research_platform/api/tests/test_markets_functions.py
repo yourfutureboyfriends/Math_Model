@@ -552,3 +552,67 @@ def test_cargo_inference_from_export_terminal():
     assert f({"type": "Tanker", "profile": {"cargo": "Crude oil", "laden": "in ballast"}, "last_port": {"port": "Ras Tanura"}})["text"].startswith("Empty")
     assert f({"type": "Tanker", "profile": {"cargo": "Crude oil", "laden": "laden"}, "last_port": {"port": "San Jose"}}) is None   # whole words only
     assert f({"type": "Cargo", "profile": {"cargo": "Dry bulk or general cargo"}, "last_port": {"port": "Ras Tanura"}}) is None    # a bulker at an oil port
+
+
+def test_flight_world_drops_stale_positions_and_counts_regions(monkeypatch, tmp_path):
+    from api.marketdata import airtraffic as A
+    now = 1_800_000_000
+    monkeypatch.setattr(A.time, "time", lambda: now)
+    monkeypatch.setattr(A, "_cached", lambda key, ttl, fn: fn())
+    monkeypatch.setattr(A, "HISTORY", tmp_path / "h.json")
+    row = lambda hx, lat, lon, fix, ground=0: [hx, "CPA1", "Hong Kong", lon, lat, 35000, ground, 480, 90, 0, "1000", fix, 0, "B77W"]
+    monkeypatch.setattr(A, "_world_base", lambda: {"rows": [row("a", 22.3, 114.0, now - 60), row("b", 51.5, -0.4, now - 3 * 3600),     # b: 3 h old
+                                                           row("c", 40.6, -73.8, None)], "time": now - 60, "stale": None})
+    monkeypatch.setattr(A, "_sweep_rows", lambda: [row("d", 48.9, 2.5, now - 5)])
+    w = A.world()
+    assert sorted(r[0] for r in w["rows"]) == ["a", "d"] and w["stale_dropped"] == 2
+    assert dict(w["regions"]) == {"China": 1, "Europe": 1}
+    assert w["top_registrations"] == [("Hong Kong", 2)]
+    A.world()                                                    # within 10 minutes: one history sample, not two
+    assert len(A.history()["points"]) == 1
+
+
+def test_flight_regions():
+    from api.marketdata.airtraffic import region_of
+    assert region_of(31.1, 121.8) == "China" and region_of(25.3, 55.4) == "Middle East" and region_of(1.36, 104.0) == "East & SE Asia"
+    assert region_of(40.6, -73.8) == "North America" and region_of(-23.4, -46.5) == "Latin America" and region_of(0, -150) == "Oceans & other"
+
+
+def test_chokepoints_csv_then_query_fallback(monkeypatch, tmp_path):
+    """Full history from PortWatch's CSV export; if that fails, the last weeks by query on top of the disk copy.
+    PortWatch answers query errors with HTTP 200 and an error body: retried, never mistaken for the end of the data."""
+    from datetime import date, timedelta
+    from api.marketdata import tracking as T
+    monkeypatch.setattr(T, "_cached", lambda key, ttl, fn: fn())
+    monkeypatch.setattr(T.time, "sleep", lambda s: None)
+    monkeypatch.setattr(T, "DATA", tmp_path)
+    days = [(date.today() - timedelta(days=i)) for i in range(400, -1, -1)]
+    csv_rows = ["date,portname,n_total,n_tanker,n_container,n_dry_bulk,capacity"] + [
+        f"{d:%Y/%m/%d},{p},{10 if d > days[-11] else 20},1,2,3,1000.5" for d in days[:-3] for p in ("Suez Canal", "Panama Canal")]
+    mode, calls = {"csv": True}, []
+
+    class R:
+        def __init__(self, j=None, text=None):
+            self.j, self.content = j, (text or "").encode("utf-8-sig")
+            self.headers = {"content-type": "text/csv" if text is not None else "application/json"}
+        def raise_for_status(self): pass
+        def json(self): return self.j
+
+    def get(url, params=None, **k):
+        calls.append(url if params is None else params["where"])
+        if url == T.PORTWATCH_CSV:
+            return R(text="\n".join(csv_rows)) if mode["csv"] else R(j={"error": {"message": "down"}})
+        if sum(1 for c in calls if c != T.PORTWATCH_CSV) == 1:
+            return R(j={"error": {"message": "Invalid URL"}})       # throttled once
+        return R(j={"features": [{"attributes": {"date": f"{d:%Y-%m-%d}", "portname": "Suez Canal", "n_total": 10, "n_tanker": 1,
+                                                 "n_container": 2, "n_dry_bulk": 3, "capacity": 1}} for d in days[-3:]]})
+    import requests
+    monkeypatch.setattr(requests, "get", get)
+    d = T.chokepoints(days=380)
+    assert d["as_of"] == f"{days[-4]:%Y-%m-%d}" and calls == [T.PORTWATCH_CSV]
+    suez = next(c for c in d["chokepoints"] if c["name"] == "Suez Canal")
+    assert suez["transits_7d"] == 10 and abs(suez["vs_last_year"] + 0.5) < 1e-9
+    mode["csv"], calls[:] = False, []
+    (tmp_path / "portwatch_chokepoints_380.json").unlink()
+    d = T.chokepoints(days=380)                                  # CSV down: query the last weeks, after one throttled answer
+    assert d["as_of"] == f"{days[-1]:%Y-%m-%d}" and sum(1 for c in calls if c.startswith("date >=")) == 2
