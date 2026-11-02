@@ -6,6 +6,7 @@
  * This is the foundation the risk/attribution/trade features build on.
  */
 import { marketTag, marketTitle } from '@/lib/marketTag';
+import { baseMoney, useBaseCurrency } from '@/lib/baseCurrency';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Briefcase, ChevronDown, ChevronUp, Plus, RefreshCw, Trash2, Upload } from 'lucide-react';
@@ -41,14 +42,14 @@ interface Summary {
 interface BookRow extends Summary { book: string; }
 interface PortfolioResponse { positions: Position[]; summary: Summary; books: BookRow[]; priced_at: string; }
 
-const usd = (v: number | null | undefined, dp = 0) =>
-  v == null ? '—' : `${v < 0 ? '-' : ''}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: dp, minimumFractionDigits: dp })}`;
+const usd = (v: number | null | undefined, dp = 0) => baseMoney(v, dp);   // the fund's base currency, not always $
 const pct = (v: number | null | undefined) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`);
 const signed = (v: number | null | undefined) => (v == null ? '' : v >= 0 ? 'text-green' : 'text-red');
 
 const EMPTY_FORM = { symbol: '', quantity: '', avg_cost: '', book: 'Macro', asset_class: 'Equity' };
 
 export function PositionsSection() {
+  useBaseCurrency();
   const [data, setData] = useState<PortfolioResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

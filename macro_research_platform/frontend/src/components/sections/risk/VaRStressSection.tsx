@@ -7,11 +7,11 @@
  * concentration}. Shows explicit "no positions" state when the book is empty.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { baseMoney, useBaseCurrency } from '@/lib/baseCurrency';
 import { BarList } from '@/components/ui/BarList';
 import { ShieldAlert, RefreshCw } from 'lucide-react';
 
-const usd = (v: number | null | undefined) =>
-  v == null ? '—' : `${v < 0 ? '-' : ''}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+const usd = (v: number | null | undefined, dp = 0) => baseMoney(v, dp);   // the fund's base currency, not always $
 
 const CUSTOM_FACTORS = [
   ['equity', 'Equity'], ['rates', 'Rates'], ['credit', 'Credit (HY−Tsy)'],
@@ -19,6 +19,7 @@ const CUSTOM_FACTORS = [
 ] as const;
 
 export function VaRStressSection() {
+  useBaseCurrency();
   const [varData, setVarData] = useState<any>(null);
   const [stress, setStress] = useState<any>(null);
   const [conc, setConc] = useState<any>(null);

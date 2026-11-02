@@ -129,7 +129,7 @@ export function DebtCyclesPanel({ compact = false }: { compact?: boolean }) {
           {u?.available && <Panel title={`US monetary-policy stage: ${u.stage}`}>
             <div className="text-2xs text-text-secondary mb-2">{u.explanation} {u.debt_dynamics ? `${u.debt_dynamics}.` : ''}</div>
             <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
-              <Tile label="Fed funds" value={`${u.fed_funds.toFixed(2)}%`} sub="MP1 lever" /><Tile label="Fed balance sheet" value={sp(u.fed_balance_sheet_yoy)} sub="y/y — MP2 (QE) lever" />
+              <Tile label="Fed funds" value={`${u.fed_funds.toFixed(2)}%`} sub={`MP1 lever · ${u.series?.fed_funds?.at(-1)?.date ?? ''} monthly avg`} /><Tile label="Fed balance sheet" value={sp(u.fed_balance_sheet_yoy)} sub="y/y — MP2 (QE) lever" />
               <Tile label="Federal deficit" value={`${u.deficit_pct_gdp.toFixed(1)}%`} sub="of GDP — MP3 needs big deficits" /><Tile label="Federal debt" value={`${u.federal_debt_pct_gdp.toFixed(0)}%`} sub="of GDP" />
               <Tile label="Interest / receipts" value={pc(u.interest_share_of_receipts, 0)} sub="share of tax revenue spent on interest" cls={(u.interest_share_of_receipts ?? 0) > 0.25 ? 'text-amber' : ''} />
               <Tile label="10y yield − nominal growth" value={u.r_minus_g != null ? `${u.r_minus_g >= 0 ? '+' : ''}${u.r_minus_g.toFixed(1)} pts` : '—'} cls={tone(u.r_minus_g != null ? -u.r_minus_g : null)} sub={`nominal GDP ${u.nominal_gdp_growth?.toFixed(1)}%`} />

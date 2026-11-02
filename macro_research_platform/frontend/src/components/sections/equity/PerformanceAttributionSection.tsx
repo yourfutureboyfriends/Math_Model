@@ -7,13 +7,14 @@
  * waterfall and a by-book / by-position drill-down.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { baseMoney, useBaseCurrency } from '@/lib/baseCurrency';
 import { BarChart3, RefreshCw } from 'lucide-react';
 
-const usd = (v: number | null | undefined) =>
-  v == null ? '—' : `${v < 0 ? '-' : ''}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+const usd = (v: number | null | undefined, dp = 0) => baseMoney(v, dp);   // the fund's base currency, not always $
 const pct = (v: number | null | undefined, dp = 1) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(dp)}%`);
 
 export function PerformanceAttributionSection() {
+  useBaseCurrency();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 

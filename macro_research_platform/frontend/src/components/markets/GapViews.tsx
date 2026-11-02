@@ -177,7 +177,8 @@ export function CrprView({ symbol }: { symbol: string }) {
     <div className="space-y-3">
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <Tile label="Synthetic rating" value={d.synthetic_rating} cls={igLine ? 'text-green' : 'text-red'} sub={igLine ? 'investment grade equivalent' : 'high-yield equivalent'} />
-        <Tile label="Interest coverage" value={x(d.interest_coverage)} sub="operating income ÷ interest, last 4 quarters" />
+        <Tile label="Interest coverage" value={x(d.interest_coverage)}
+          sub={d.interest_basis && d.interest_basis !== 'reported' ? `operating income ÷ interest (${d.interest_basis})` : 'operating income ÷ interest, last 4 quarters'} />
         <Tile label="Default spread" value={`${(d.default_spread * 100).toFixed(2)}%`} sub={d.cost_of_debt != null ? `pre-tax cost of debt ≈ ${(d.cost_of_debt * 100).toFixed(2)}%` : ''} />
         <Tile label="Altman Z" value={d.altman_z != null ? d.altman_z.toFixed(2) : '—'} cls={zone[d.altman_zone] ?? ''} sub={d.altman_zone ? `${d.altman_zone} zone` : 'not enough data'} />
         <Tile label="Piotroski F" value={d.piotroski != null ? `${d.piotroski} / 9` : '—'} cls={d.piotroski >= 7 ? 'text-green' : d.piotroski != null && d.piotroski <= 3 ? 'text-red' : ''} sub="financial-strength tests passed" />

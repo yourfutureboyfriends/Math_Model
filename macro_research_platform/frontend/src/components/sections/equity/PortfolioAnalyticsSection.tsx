@@ -3,6 +3,7 @@
 // Data: /api/v1/portfolio/analytics/*, /api/v1/portfolio/lots, /tca, /ideas/performance.
 
 import { useState } from 'react';
+import { baseMoney, useBaseCurrency } from '@/lib/baseCurrency';
 import { useApiData } from '@/hooks/useApiData';
 import { cn } from '@/lib/utils';
 
@@ -14,7 +15,7 @@ const bps = (v: number | null | undefined) => (v == null ? '—' : `${v > 0 ? '+
 const pct = (v: number | null | undefined, d = 2) => (v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(d)}%`);
 const tone = (v: number | null | undefined, costPositive = false) =>
   v == null ? 'text-text-tertiary' : (costPositive ? -v : v) > 0 ? 'text-green' : (costPositive ? -v : v) < 0 ? 'text-red' : 'text-text-secondary';
-const usd = (v: number | null | undefined) => (v == null ? '—' : `$${Math.round(v).toLocaleString()}`);
+const usd = (v: number | null | undefined, dp = 0) => baseMoney(v, dp);   // the fund's base currency, not always $
 
 function Unavailable({ d }: { d: any }) {
   return <div className="p-3 text-xs text-amber">{d?.reason ?? 'Loading…'}</div>;
@@ -207,6 +208,7 @@ function HoldingNews() {
 }
 
 export function PortfolioAnalyticsSection() {
+  useBaseCurrency();
   const [tab, setTab] = useState<Tab>('brinson');
   return (
     <div id="book-analytics" className="terminal-section">

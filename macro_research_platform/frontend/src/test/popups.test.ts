@@ -20,11 +20,20 @@ describe('live pop-ups store', () => {
     expect(m.popupState().toasts.map((t) => t.id)).toEqual(['a']);
   });
 
-  it('keeps at most four toasts on screen', async () => {
+  it('keeps at most two passing toasts on screen, newest first, all in the history', async () => {
     const m = await fresh();
     for (let i = 0; i < 7; i++) m.pushPopup({ id: `n${i}`, kind: 'news', title: `Story ${i}` });
-    expect(m.popupState().toasts).toHaveLength(4);
+    expect(m.popupState().toasts.map((t) => t.id)).toEqual(['n6', 'n5']);
     expect(m.popupState().history).toHaveLength(7);
+  });
+
+  it("never pushes the user's own (sticky) alert out with passing news", async () => {
+    const m = await fresh();
+    m.pushPopup({ id: 'mine', kind: 'alert', title: 'AAPL above 340', sticky: true });
+    for (let i = 0; i < 5; i++) m.pushPopup({ id: `n${i}`, kind: 'news', title: `Story ${i}` });
+    const ids = m.popupState().toasts.map((t) => t.id);
+    expect(ids).toContain('mine');
+    expect(ids).toHaveLength(3);
   });
 
   it('muting, or switching a kind off, keeps the history but shows no toast — and is remembered', async () => {

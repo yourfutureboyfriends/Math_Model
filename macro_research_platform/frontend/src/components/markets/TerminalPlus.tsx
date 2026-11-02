@@ -605,8 +605,9 @@ export function FsrcView({ onOpen }: { onOpen: (s: string) => void }) {
               {cols.map(([k, l]) => <th key={k} onClick={() => setSort(k)} className={cn('text-right font-normal cursor-pointer px-1.5', sort === k && 'text-bloomberg')}>{l}</th>)}<th /></tr></thead>
             <tbody>{rows.map((f: any) => (
               <tr key={f.symbol} className="border-t border-border-subtle hover:bg-surface-2">
-                <td className="py-1 font-sans"><button onClick={() => onOpen(f.symbol)} className="text-left"><span className="font-mono text-text-primary">{f.symbol}</span> <span className="text-text-secondary">{f.name}</span></button>
-                  <div className="text-[10px] text-text-tertiary">{f.category ?? f.group}{f.family ? ` · ${f.family}` : ''}</div></td>
+                <td className="py-1 font-sans min-w-[14rem] max-w-[22rem]"><button onClick={() => onOpen(f.symbol)} className="text-left w-full block truncate" title={f.name}>
+                    <span className="font-mono text-text-primary">{f.symbol}</span> <span className="text-text-secondary">{f.name}</span></button>
+                  <div className="text-[10px] text-text-tertiary truncate" title={`${f.category ?? f.group}${f.family ? ` · ${f.family}` : ''}`}>{f.category ?? f.group}{f.family ? ` · ${f.family}` : ''}</div></td>
                 {cols.map(([k, , fmt]) => <td key={k} className={cn('text-right px-1.5', ['ytd', 'r3y', 'r5y'].includes(k) && tone(f[k]))}>{fmt(f[k], f)}</td>)}
                 <td className="pl-2 font-sans"><button onClick={() => setA(f.symbol)} className="text-[10px] text-bloomberg hover:underline">A</button> <button onClick={() => setB(f.symbol)} className="text-[10px] text-bloomberg hover:underline">B</button></td></tr>))}</tbody></table></div>
           <div className="text-[10px] text-text-tertiary mt-1">Click A / B to pick two funds to compare below. {screen.data.note}</div>

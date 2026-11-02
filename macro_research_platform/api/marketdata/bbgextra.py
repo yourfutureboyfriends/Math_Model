@@ -337,11 +337,14 @@ def credit_profile(symbol: str) -> Dict[str, Any]:
         if (info.get("sector") or "") in ("Financial Services",) and any(w in (info.get("industry") or "") for w in ("Bank", "Insurance", "Capital Markets")):
             raise NotFound("Coverage-based credit scores aren't meaningful for banks and insurers (interest is their business).")
 
+        ends: Dict[str, Optional[str]] = {}
+
         def dur(name, tags=None):
             _, pts = se._pick_tag(facts, tags or se.DURATION[name])
             if not pts:
                 return None, []
             t = se.ttm(se.quarterly(pts))
+            ends[name] = str(t[-1].get("end")) if t else None
             return (t[-1]["val"] if t else None), se.annual(pts)
 
         def inst(name, tags=None):
@@ -355,6 +358,9 @@ def credit_profile(symbol: str) -> Dict[str, Any]:
         dna, _ = dur("dna")
         gp, gp_a = dur("gross_profit")
         last = lambda rows: rows[-1]["val"] if rows else None
+        def at_year_inst(name, end):
+            v = [r["val"] for r in inst(name) if str(r["end"]) <= str(end)]
+            return v[-1] if v else None
         ta_s, tl_s = inst("total_assets"), inst("total_liabilities")
         ca_s, cl_s = inst("current_assets"), inst("current_liabilities")
         ta, tl, ca, cl = last(ta_s), last(tl_s), last(ca_s), last(cl_s)
@@ -365,6 +371,16 @@ def credit_profile(symbol: str) -> Dict[str, Any]:
             tl = ta - eq
         if not ta or ebit is None:
             raise NotFound(f"Not enough balance-sheet and income data in {symbol}'s filings.")
+        # Some companies stop reporting interest expense as its own line (Apple after FY2023, inside "other income"):
+        # the last trailing figure is then years old. Pairing it with today's operating income misstates coverage, so a
+        # stale figure is replaced by the last reported rate on debt applied to today's debt, and labelled as estimated.
+        interest_basis = "reported"
+        ie, oe = ends.get("interest_expense"), ends.get("operating_income")
+        if interest and ie and oe and (pd.Timestamp(oe) - pd.Timestamp(ie)).days > 450:
+            debt_then = ((at_year_inst("long_term_debt", ie) or 0) + (at_year_inst("short_term_debt", ie) or 0))
+            debt_now = (last(inst("long_term_debt")) or 0) + (last(inst("short_term_debt")) or 0)
+            interest = interest / debt_then * debt_now if debt_then > 0 and debt_now > 0 else None
+            interest_basis = f"estimated — interest expense not reported separately since {ie[:7]}" if interest else "not reported"
         cov = ebit / interest if interest and interest > 0 else None
         rating, spread = synthetic_rating(cov)
         mcap = _f(info.get("marketCap"))
@@ -420,6 +436,7 @@ def credit_profile(symbol: str) -> Dict[str, Any]:
         return {
             "symbol": symbol, "name": facts.get("entityName"), "synthetic_rating": rating, "default_spread": spread,
             "cost_of_debt": (y10 / 100 + spread) if y10 else None, "interest_coverage": cov, "ebit_ttm": ebit, "interest_ttm": interest,
+            "interest_basis": interest_basis,
             "total_debt": debt, "cash": cash, "net_debt": debt - (cash or 0), "ebitda_ttm": ebitda,
             "net_debt_to_ebitda": (debt - (cash or 0)) / ebitda if ebitda > 0 else None,
             "debt_to_equity": debt / eq if eq and eq > 0 else None, "current_ratio": ca / cl if ca and cl else None,
@@ -432,7 +449,7 @@ def credit_profile(symbol: str) -> Dict[str, Any]:
                     "original public-manufacturer model (safe above 2.99, distress below 1.81); Piotroski F scores nine yes/no tests (8–9 strong, 0–2 weak).",
             "source": "SEC EDGAR XBRL; coverage→rating→spread table from Aswath Damodaran (NYU Stern); market cap Yahoo; 10-year Treasury yield.",
         }
-    return _cached(f"crpr:{symbol}", 6 * 3600, build)
+    return _cached(f"crpr2:{symbol}", 6 * 3600, build)
 
 
 # ── LEAG ─────────────────────────────────────────────────────────────────────

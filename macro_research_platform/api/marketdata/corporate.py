@@ -67,9 +67,16 @@ def actions(symbol: str) -> Dict[str, Any]:
         growth = None
         if len(yrs) >= 6 and by_year[yrs[-6]] > 0:
             growth = (by_year[yrs[-1]] / by_year[yrs[-6]]) ** (1 / 5) - 1
+        # Consecutive yearly increases over the whole record (not just the last ten years, which capped it at 9), each
+        # year judged on its median payment like DVD — robust to an extra, missing or special payment
         streak = 0
-        for a, b in zip(yrs[::-1][:-1], yrs[::-1][1:]):
-            if by_year[a] > by_year[b] * 1.001:
+        med: Dict[str, float] = {}
+        for p in pays:
+            med.setdefault(p["ex_date"][:4], []).append(p["amount"])          # type: ignore[arg-type]
+        full = sorted(y for y in med if y < str(date.today().year))
+        med = {y: float(np.median(med[y])) for y in full}
+        for a, b in zip(full[::-1][:-1], full[::-1][1:]):
+            if med[a] > med[b] * 1.0001:
                 streak += 1
             else:
                 break
@@ -104,7 +111,7 @@ def actions(symbol: str) -> Dict[str, Any]:
                 "frequency": freq, "growth_5y": growth, "raise_streak_years": streak, "annual": [{"year": y, "total": by_year[y]} for y in sorted(by_year)[-20:]],
                 "dividends": pays[:40], "splits": splits, "upcoming": sorted(upcoming, key=lambda u: u.get("date") or ""),
                 "source": "Yahoo Finance (dividend and split history, calendar)"}
-    return _cached(f"cacs:{s}", 6 * 3600, build)
+    return _cached(f"cacs2:{s}", 6 * 3600, build)
 
 
 def actions_calendar(days: int = 14) -> Dict[str, Any]:
@@ -336,9 +343,11 @@ def debt_maturities(symbol: str) -> Dict[str, Any]:
         total = sum(x["amount"] for x in ladder)
         cash = _f(i.get("totalCash"))
         ebitda = _f(i.get("ebitda"))
-        interest, _ = latest("InterestExpense")
+        interest, i_end = latest("InterestExpense")
         if interest is None:
-            interest, _ = latest("InterestExpenseNonoperating")
+            interest, i_end = latest("InterestExpenseNonoperating")
+        if interest is not None and i_end and as_of and (pd.Timestamp(as_of) - pd.Timestamp(i_end)).days > 450:
+            interest = None                     # not reported separately any more (Apple after FY2023): an old figure misleads
         near = sum(x["amount"] for x in ladder if x["bucket"] in ("Year 1", "Year 2"))
         return {"symbol": s, "as_of": as_of, "ladder": ladder, "total_scheduled": total, "cash": cash, "ebitda": ebitda,
                 "interest_expense": interest, "interest_cover": ebitda / interest if ebitda and interest else None,

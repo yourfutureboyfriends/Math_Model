@@ -119,7 +119,7 @@ export function FomcView() {
     <div className="space-y-3">
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <Tile label="Target range" value={`${rate(d.target_lower)} – ${rate(d.target_upper)}`} sub={`effective ${rate(d.effective)}`} />
-        <Tile label="Last decision" value={d.last_move ? `${d.last_move.change_bp > 0 ? '+' : ''}${d.last_move.change_bp}bp` : '—'} cls={sign(d.last_move?.change_bp)} sub={d.last_move?.date} />
+        <Tile label="Last rate change" value={d.last_move ? `${d.last_move.change_bp > 0 ? '+' : ''}${d.last_move.change_bp}bp` : '—'} cls={sign(d.last_move?.change_bp)} sub={d.last_move?.date} />
         <Tile label="Last two years" value={<><span className="text-red">{d.hikes_2y} hikes</span> · <span className="text-green">{d.cuts_2y} cuts</span></>} />
         <Tile label="Next meeting" value={next ? next.meeting : '—'}
           sub={next ? Object.entries(next.probabilities).map(([k, v]) => `${k} ${Math.round((v as number) * 100)}%`).join(' · ') : 'futures unavailable'} />

@@ -16,8 +16,11 @@ import { fmtPct, fmtPrice, fmtSignal } from '@/utils/format';
 
 type Tab = 'nav' | 'limits' | 'rebalance' | 'orders' | 'scorecard';
 
+// Fund amounts are in the fund's base currency (GBP for Moriah): the cockpit sets it from the overview before its
+// panels render. (Named usd for history; it printed "$" whatever the currency.)
+let BASE_CCY = 'USD';
 const usd = (v: number | null | undefined) =>
-  v == null ? '—' : `${v < 0 ? '-' : ''}$${fmtPrice(Math.abs(v), 0)}`;
+  v == null ? '—' : `${v < 0 ? '-' : ''}${BASE_CCY === 'USD' ? '$' : `${BASE_CCY} `}${fmtPrice(Math.abs(v), 0)}`;
 const pct = (v: number | null | undefined, d = 1) => fmtPct(v ?? null, d);
 const pctSigned = (v: number | null | undefined, d = 2) => fmtPct(v ?? null, d, true);
 
@@ -55,9 +58,9 @@ function NavTab({ ov }: { ov: any }) {
         <Stat label="Realized P&L" value={usd(ov?.realized_pnl)}
               tone={(ov?.realized_pnl ?? 0) >= 0 ? 'text-green' : 'text-red'} />
         <Stat label="Commissions" value={usd(ov?.commissions)} />
-        <Stat label="Equity beta $" value={usd(ov?.factor_exposure_usd?.equity)} />
-        <Stat label="Rates beta $" value={usd(ov?.factor_exposure_usd?.rates)} />
-        <Stat label="USD beta $" value={usd(ov?.factor_exposure_usd?.usd)} />
+        <Stat label="Equity beta" value={usd(ov?.factor_exposure_usd?.equity)} />
+        <Stat label="Rates beta" value={usd(ov?.factor_exposure_usd?.rates)} />
+        <Stat label="USD beta" value={usd(ov?.factor_exposure_usd?.usd)} />
       </div>
 
       <div className="grid gap-2 lg:grid-cols-3">
@@ -79,7 +82,7 @@ function NavTab({ ov }: { ov: any }) {
           )}
         </div>
         <div className="px-3 py-2 bg-surface-1 border border-border">
-          <BarList title="Factor exposure ($ per 1σ factor move)" diverging fmt={(v) => usd(v)} labelWidth="4.5rem"
+          <BarList title="Factor exposure (per 1σ factor move)" diverging fmt={(v) => usd(v)} labelWidth="4.5rem"
             data={[{ label: 'Equity', value: ov?.factor_exposure_usd?.equity ?? null },
                    { label: 'Rates', value: ov?.factor_exposure_usd?.rates ?? null },
                    { label: 'USD', value: ov?.factor_exposure_usd?.usd ?? null }]} />
@@ -553,6 +556,7 @@ function ScorecardTab() {
 export function FundCockpitSection() {
   const [tab, setTab] = useState<Tab>('nav');
   const [ov, setOv] = useState<any>(null);
+  if (ov?.fund?.base_currency) BASE_CCY = ov.fund.base_currency;
   const [limits, setLimits] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 

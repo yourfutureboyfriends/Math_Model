@@ -12,13 +12,15 @@ const TONE: Record<string, string> = { overweight: 'text-green', underweight: 't
 const pct = (v?: number | null) => (v == null || !isFinite(v) ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(0)}%`);
 const cap = (s?: string | null) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '—');
 
+// One slim pill per item ("label · value") in a single scrolling row: the strip sits above every company screen,
+// so it must not push the screen's own content halfway down the page.
 function Chip({ icon: Icon, label, children, onClick, title }: { icon: any; label: string; children: React.ReactNode; onClick?: () => void; title?: string }) {
   return (
-    <button type="button" onClick={onClick} title={title} disabled={!onClick}
-      className="group inline-flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-lg border border-border-subtle bg-surface-1/70 text-left hover:border-bloomberg/40 hover:bg-bloomberg/[0.04] transition-colors disabled:cursor-default min-w-0">
-      <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-bloomberg/10 text-bloomberg shrink-0"><Icon className="w-3.5 h-3.5" /></span>
-      <span className="min-w-0"><span className="block text-[10px] uppercase tracking-[0.07em] text-text-tertiary">{label}</span>
-        <span className="block text-[11.5px] text-text-primary truncate">{children}</span></span>
+    <button type="button" onClick={onClick} title={title ?? label} disabled={!onClick}
+      className="group inline-flex items-center gap-1.5 shrink-0 max-w-[22rem] pl-1.5 pr-2.5 py-1 rounded-full border border-border-subtle bg-surface-1/70 text-left hover:border-bloomberg/40 hover:bg-bloomberg/[0.04] transition-colors disabled:cursor-default">
+      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-bloomberg/10 text-bloomberg shrink-0"><Icon className="w-3 h-3" /></span>
+      <span className="text-[10px] uppercase tracking-[0.06em] text-text-tertiary whitespace-nowrap">{label}</span>
+      <span className="text-[11.5px] text-text-primary truncate min-w-0">{children}</span>
     </button>
   );
 }
@@ -36,7 +38,7 @@ export function ContextStrip({ symbol, onGo, isEquity }: { symbol: string; onGo:
   const earn = c.earnings_date ? new Date(c.earnings_date * 1000) : null;
   const earnSoon = earn && earn.getTime() > Date.now() && earn.getTime() - Date.now() < 30 * 864e5;
   return (
-    <div className="flex flex-wrap gap-2" aria-label="What the platform knows about this company">
+    <div className="flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:thin]" aria-label="What the platform knows about this company">
       <Chip icon={Wallet} label="Your book" onClick={() => goPanel('position-manager')} title="Open the Position Manager (Trading)">
         {held ? <><span className="font-semibold">{qty.toLocaleString()}</span> held{futu.length ? ' · incl. Futu' : ''}</> : <span className="text-text-secondary">Not held</span>}
       </Chip>

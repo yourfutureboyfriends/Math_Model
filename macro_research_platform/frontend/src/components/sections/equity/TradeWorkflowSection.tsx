@@ -7,17 +7,18 @@
  * each transition timestamped. Reads /api/v1/portfolio/what-if and /trade-ideas.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { baseMoney, useBaseCurrency } from '@/lib/baseCurrency';
 import { FlaskConical, ClipboardList, ChevronRight, Trash2, Plus, Sparkles } from 'lucide-react';
 import { actorHeaders } from '../../../lib/actor';
 
-const usd = (v: number | null | undefined) =>
-  v == null ? '—' : `${v < 0 ? '-' : ''}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+const usd = (v: number | null | undefined, dp = 0) => baseMoney(v, dp);   // the fund's base currency, not always $
 const delta = (v: number | null | undefined) =>
   v == null ? '—' : `${v >= 0 ? '+' : ''}${usd(v).replace('$', '$')}`;
 
 const CONV_TONE: Record<string, string> = { HIGH: 'text-green', MEDIUM: 'text-amber', LOW: 'text-text-tertiary' };
 
 export function TradeWorkflowSection() {
+  useBaseCurrency();
   // What-if
   const [wf, setWf] = useState({ symbol: '', quantity: '', var_limit: '2000' });
   const [wfResult, setWfResult] = useState<any>(null);

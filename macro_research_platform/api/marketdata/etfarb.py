@@ -90,12 +90,15 @@ def snapshot() -> Dict[str, Any]:
             if rs:
                 prem = sorted(r["premium_bp"] for r in rs)
                 groups.append({"group": g, "median_bp": prem[len(prem) // 2], "n": len(rs), "why": WHY.get(g)})
-        flagged = [r for r in rows if abs(r["premium_bp"]) >= (50 if r["group"] in WHY else 15)]
+        # NAVs struck hours before the US close (LBMA metal fixes, oil settlement) differ from the close by the market's
+        # move in between — routinely 50–150bp on a busy day — so commodity trusts are flagged only for gaps beyond that
+        limit = lambda g: 200 if g == "Commodities" else 50 if g in WHY else 15
+        flagged = [r for r in rows if abs(r["premium_bp"]) >= limit(r["group"])]
         return {"rows": sorted(rows, key=lambda r: -abs(r["premium_bp"])), "groups": groups, "flagged": [r["symbol"] for r in flagged],
                 "missing": [s for (_, s), r in zip(syms, got) if not r],
                 "unreliable": [{"symbol": r["symbol"], "nav": r["nav"], "close": r["close"]} for r in suspect],
                 "note": "Premium = last close ÷ NAV − 1, both as of the same close. Authorized participants (e.g. Jane Street, "
                         "Citadel Securities, Virtu) close gaps by creating or redeeming shares; what is left is mostly costs and "
-                        "timing. Flagged: beyond ±15bp for US-traded baskets, ±50bp where the basket trades elsewhere or as bonds. "
+                        "timing. Flagged: beyond ±15bp for US-traded baskets, ±50bp where the basket trades elsewhere or as bonds, ±200bp for commodity trusts (their NAV is struck at the London fix or the futures settlement, hours before the close). "
                         "NAVs more than 10% from the price are set aside as stale data."}
     return _cached("etfarb:snapshot", 900, build)

@@ -17,7 +17,16 @@ export const KIND_LABEL: Record<PopupKind, string> = { alert: 'Your alerts', new
 
 type State = { toasts: Popup[]; history: Popup[]; unread: number; enabled: boolean; kinds: Record<PopupKind, boolean>; panel: boolean };
 const SETTINGS = 'ui_popups_v1';
-const MAX_TOASTS = 4;
+const MAX_TOASTS = 3;          // on screen at once: more than this covered the page being read
+const MAX_PASSING = 2;         // of which headlines, moves and releases (they stay in the Alerts history)
+
+/** Newest first: the user's own (sticky) alerts are never pushed out by passing news; at most two of the rest. */
+function capToasts(list: Popup[]): Popup[] {
+  const sticky = list.filter((t) => t.sticky);
+  const passing = list.filter((t) => !t.sticky).slice(0, Math.max(0, Math.min(MAX_PASSING, MAX_TOASTS - sticky.length)));
+  const keep = new Set([...sticky.slice(0, MAX_TOASTS), ...passing]);
+  return list.filter((t) => keep.has(t));
+}
 const MAX_HISTORY = 40;
 
 function loadSettings(): Pick<State, 'enabled' | 'kinds'> {
@@ -49,7 +58,7 @@ export function pushPopup(p: Omit<Popup, 'at'>): void {
   set({
     history: [item, ...state.history].slice(0, MAX_HISTORY),
     unread: state.panel ? state.unread : state.unread + 1,
-    toasts: show ? [item, ...state.toasts].slice(0, MAX_TOASTS) : state.toasts,
+    toasts: show ? capToasts([item, ...state.toasts]) : state.toasts,
   });
 }
 
