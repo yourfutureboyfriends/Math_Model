@@ -2215,3 +2215,11 @@ table[data-autosort="on"] > thead th[data-sort-dir="asc"]::after { content: " â–
 .mkt-toolbar-row > .mkt-view-tools { flex: 0 1 auto; margin-left: auto; }
 :root:not([data-skin="terminal"]) .mkt-toolbar-row > .mkt-view-tools { border: 0 !important; box-shadow: none !important; background: transparent; padding: 0; }
 :root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root .mkt-panel > .panel-hdr { background: rgb(var(--c-surface-1)); }
+
+/* Hover tools for data tables (lib/tableActions.ts) */
+.tbl-actions { position: absolute; z-index: 60; display: flex; gap: 2px; padding: 2px; border-radius: 6px;
+  background: rgb(var(--c-surface-2)); border: 1px solid rgb(var(--c-border)); box-shadow: 0 2px 8px rgb(0 0 0 / 0.18); }
+.tbl-actions[hidden] { display: none; }
+.tbl-actions button { font-size: 10.5px; line-height: 1; padding: 4px 7px; border-radius: 4px; color: rgb(var(--c-text-secondary)); }
+.tbl-actions button:hover, .tbl-actions button:focus-visible { color: rgb(var(--c-text-primary)); background: rgb(var(--c-surface-1)); }
+@media print { .tbl-actions { display: none !important; } }

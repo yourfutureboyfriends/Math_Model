@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
 import { BarList } from '@/components/ui/BarList';
+import { useStickyState } from '@/lib/stickyState';
+import { SpfPanel } from './GapViews';
 import { ErrorBox, Loading, Panel, useJSON } from './shared';
 import { Chip, pct, sign, Source, Tile } from './StandardViews';
 
@@ -15,7 +17,7 @@ const REGION: Record<string, string> = { americas: 'Americas', europe: 'Europe',
 // ── FWCV ─────────────────────────────────────────────────────────────────────
 export function FwcvView() {
   const { data: d, error, loading } = useJSON<any>('/api/v1/mkt/fwcv', 3 * 3_600_000);
-  const [code, setCode] = useState('US');
+  const [code, setCode] = useStickyState('fwcv.code', 'US');
   if (loading && !d) return <Loading label="Building forward curves…" />;
   if (error && !d) return <ErrorBox msg={error} />;
   if (!d) return null;
@@ -51,7 +53,7 @@ export function FwcvView() {
 // ── ECFC ─────────────────────────────────────────────────────────────────────
 export function EcfcView({ onGo }: { onGo: (fn: string, s?: string) => void }) {
   const { data: d, error, loading } = useJSON<any>('/api/v1/mkt/ecfc', 6 * 3_600_000);
-  const [region, setRegion] = useState<string | null>(null);
+  const [region, setRegion] = useStickyState<string | null>('ecfc.region', null);
   const [all, setAll] = useState(false);
   if (loading && !d) return <Loading label="Loading IMF forecasts…" />;
   if (error && !d) return <ErrorBox msg={error} />;
@@ -66,6 +68,7 @@ export function EcfcView({ onGo }: { onGo: (fn: string, s?: string) => void }) {
         {d.regions.map((r: any) => <Tile key={r.region} label={REGION[r.region]} value={`${num(r.gdp_growth)}% → ${num(r.gdp_growth_next)}%`}
           sub={`median growth ${y} → ${y + 1}; inflation ${num(r.inflation)}% → ${num(r.inflation_next)}%`} />)}
       </div>
+      <SpfPanel />
       <div className="flex flex-wrap gap-1">
         <Chip on={!region} onClick={() => setRegion(null)}>All</Chip>
         {Object.entries(REGION).map(([k, l]) => <Chip key={k} on={region === k} onClick={() => setRegion(k)}>{l}</Chip>)}
@@ -172,7 +175,7 @@ export function FomcView() {
 
 // ── EM ───────────────────────────────────────────────────────────────────────
 export function EmView({ symbol }: { symbol: string }) {
-  const [field, setField] = useState<'eps' | 'revenue'>('eps');
+  const [field, setField] = useStickyState<'eps' | 'revenue'>('em.field', 'eps');
   const { data: d, error, loading } = useJSON<any>(`/api/v1/mkt/em/${encodeURIComponent(symbol)}?years=8`, 6 * 3_600_000);
   if (loading && !d) return <Loading label="Reading quarterly results from SEC filings…" />;
   if (error && !d) return <ErrorBox msg={error} />;
@@ -210,8 +213,8 @@ export function EmView({ symbol }: { symbol: string }) {
 
 // ── EA ───────────────────────────────────────────────────────────────────────
 export function EaView({ onOpen }: { onOpen: (s: string) => void }) {
-  const [code, setCode] = useState('SPX');
-  const [days, setDays] = useState(45);
+  const [code, setCode] = useStickyState('earn.code', 'SPX');
+  const [days, setDays] = useStickyState('earn.days', 45);
   const { data: d, error, loading } = useJSON<any>(`/api/v1/mkt/ea/${code}?days=${days}`, 1_800_000);
   const controls = (
     <div className="flex flex-wrap gap-1">

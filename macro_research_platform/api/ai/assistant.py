@@ -224,6 +224,38 @@ def _t_forecasts(country: Optional[str] = None) -> Any:
     return {"year": r["year"], "rows": rows[:20], "regions": r["regions"]}
 
 
+def _t_credit(symbol: str) -> Any:
+    from api.marketdata import bbgextra
+    r = bbgextra.credit_profile(symbol)
+    return {k: r[k] for k in ("synthetic_rating", "default_spread", "cost_of_debt", "interest_coverage", "net_debt_to_ebitda",
+                              "debt_to_equity", "current_ratio", "altman_z", "altman_zone", "piotroski", "note")}
+
+
+def _t_short(symbol: str) -> Any:
+    from api.marketdata import bbgextra
+    out: Dict[str, Any] = {}
+    for k, fn in (("borrow", bbgextra.borrow), ("off_exchange", bbgextra.dark_pool)):
+        try:
+            r = fn(symbol)
+            out[k] = {x: r.get(x) for x in ("fee", "rebate", "available_label", "tier", "as_of", "latest_week", "off_exchange_share",
+                                            "ats_share", "avg_off_exchange_share") if x in r}
+        except Exception as e:                                  # noqa: BLE001
+            out[k] = {"error": str(e)[:150]}
+    return out
+
+
+def _t_prob(symbol: str, expiry: Optional[str] = None) -> Any:
+    from api.marketdata import bbgextra
+    r = bbgextra.probability(symbol, expiry)
+    return {k: r[k] for k in ("expiry", "days", "spot", "atm_iv", "expected_move", "percentiles", "p_up", "levels", "left_tail_vs_lognormal")}
+
+
+def _t_consensus() -> Any:
+    from api.marketdata import bbgextra
+    r = bbgextra.spf_consensus()
+    return {"survey": r["survey"], "series": r["series"]}
+
+
 TOOLS: Dict[str, Tuple[Callable, str, Dict[str, Any]]] = {
     "search_instrument": (_t_search, "Find tickers by company or instrument name (any exchange, FX, futures, crypto).",
                           {"query": {"type": "string", "description": "Company or instrument name"}}),
@@ -258,12 +290,21 @@ TOOLS: Dict[str, Tuple[Callable, str, Dict[str, Any]]] = {
                             "reactions, by sector.", {"index": {"type": "string", "enum": ["SPX", "NDX", "INDU"]}}),
     "get_economic_forecasts": (_t_forecasts, "IMF growth, inflation, unemployment and debt forecasts by country with the latest CPI.",
                                {"country": {"type": "string", "description": "ISO code or name; omit for the largest economies"}}),
+    "get_credit_profile": (_t_credit, "Synthetic credit rating from interest coverage, default spread, Altman Z, Piotroski F, "
+                           "leverage — for US-listed non-financial companies.", {"symbol": {"type": "string"}}),
+    "get_short_activity": (_t_short, "Cost to borrow the stock for shorting (IBKR fee, availability) and its off-exchange / dark-pool "
+                           "share of volume (FINRA).", {"symbol": {"type": "string"}}),
+    "get_option_probabilities": (_t_prob, "The price distribution option prices imply for an expiry: percentiles, chance of rising, "
+                                 "probability of reaching levels.", {"symbol": {"type": "string"}, "expiry": {"type": "string", "description": "YYYY-MM-DD; optional"}}),
+    "get_economist_consensus": (_t_consensus, "US professional forecasters' median forecasts (Philadelphia Fed SPF): GDP, CPI, core "
+                                "CPI, unemployment, 10-year and T-bill yields.", {}),
     "get_world_bonds": (_t_world_bonds, "10-year government yields by country with spreads to Treasuries, policy rates, real yields "
                         "and 2s10s slopes.", {}),
 }
 REQUIRED = {"get_quote": ["symbol"], "get_profile": ["symbol"], "get_financials": ["symbol"], "get_earnings": ["symbol"],
             "get_analyst_ratings": ["symbol"], "get_holders": ["symbol"], "run_dcf": ["symbol"], "get_peers": ["symbol"],
-            "search_instrument": ["query"], "search_filings": ["symbol", "query"], "get_pe_history": ["symbol"]}
+            "search_instrument": ["query"], "search_filings": ["symbol", "query"], "get_pe_history": ["symbol"],
+            "get_credit_profile": ["symbol"], "get_short_activity": ["symbol"], "get_option_probabilities": ["symbol"]}
 
 
 def tool_specs() -> List[Dict[str, Any]]:
@@ -306,6 +347,10 @@ _CITE = {  # tool: (source, markets function code or None, research panel or Non
     "get_pe_history": ("SEC EDGAR EPS / Yahoo prices", "GE", None),
     "get_world_bonds": ("Issuers' curves / OECD / BIS / IMF", "WB", None),
     "get_fed": ("FRED / CME fed funds futures", "FOMC", None),
+    "get_credit_profile": ("SEC EDGAR / Damodaran", "CRPR", None),
+    "get_short_activity": ("IBKR stock-loan file / FINRA", "DARK", None),
+    "get_option_probabilities": ("Option chain (Yahoo)", "PROB", None),
+    "get_economist_consensus": ("Philadelphia Fed SPF", "ECFC", None),
     "get_earnings_season": ("Yahoo earnings calendar", "EA", None),
     "get_economic_forecasts": ("IMF World Economic Outlook / BIS", "ECFC", None),
 }

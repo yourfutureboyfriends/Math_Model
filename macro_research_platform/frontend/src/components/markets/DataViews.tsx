@@ -2,6 +2,7 @@
 // interest), SPLC (suppliers / competitors from SEC 10-K text), ECO (global calendar with
 // consensus and actuals) and ECST (economic surprise index).
 import { Fragment, useMemo, useState } from 'react';
+import { BorrowCard } from './GapViews';
 import { ExternalLink } from 'lucide-react';
 import { cn, localToday } from '@/lib/utils';
 import { REGION_CCYS, useRegion } from '@/lib/region';
@@ -32,7 +33,7 @@ export function SiView({ symbol }: { symbol: string }) {
   if (loading && !data) return <Loading label="Loading short-position data from the regulator (first time: ~10–30 s)…" />;
   if (error && !data) return <ErrorBox msg={error} />;
   if (!data) return null;
-  if (data.market) return <IntlShorts data={data} />;
+  if (data.market) return <div className="space-y-3"><IntlShorts data={data} /><BorrowCard symbol={symbol} /></div>;
   const o = data.official ?? {};
   const d = data.daily as any[];
   return (
@@ -44,6 +45,7 @@ export function SiView({ symbol }: { symbol: string }) {
         <Stat label="Short volume today" value={pc(data.ratio_latest)} sub={data.ratio_zscore != null ? `z ${data.ratio_zscore.toFixed(1)} vs prior 20 days` : ''} />
         <Stat label="Short volume 20d avg" value={pc(data.ratio_20d)} sub={data.ratio_prev_20d != null ? `prior 20d ${pc(data.ratio_prev_20d)}` : ''} />
       </div>
+      <BorrowCard symbol={symbol} />
       <Panel title="Daily short-sale volume share (FINRA)">
         <div className="mkt-chart-surface"><LineChart rows={d.map((x, i) => ({ date: x.date, ratio: x.ratio * 100,
             avg20: i >= 19 ? d.slice(i - 19, i + 1).reduce((a, y) => a + y.ratio, 0) / 20 * 100 : null }))} x="date" height={240} fmt={(v) => `${v.toFixed(1)}%`}

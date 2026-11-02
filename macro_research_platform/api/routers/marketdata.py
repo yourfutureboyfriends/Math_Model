@@ -1546,3 +1546,53 @@ async def mkt_earnings_analysis(code: str, days: int = Query(45, ge=14, le=92)):
     """Earnings analysis (EA): the reporting season so far for an index's members."""
     from api.marketdata import bbgstd
     return await _run(bbgstd.earnings_analysis, code, days, timeout=150)
+
+
+# ── Gaps vs Bloomberg, IBKR and Futu filled with free data (marketdata/bbgextra.py) ─
+@router.get("/api/v1/mkt/borrow")
+async def mkt_borrow_screen():
+    """Short borrow screen (BORROW): the costliest liquid US stocks to short (IBKR stock-loan file)."""
+    from api.marketdata import bbgextra
+    return await _run(bbgextra.borrow_screen, timeout=120)
+
+
+@router.get("/api/v1/mkt/borrow/{symbol}")
+async def mkt_borrow(symbol: str):
+    """Borrow fee, rebate and availability for one stock (IBKR stock-loan file)."""
+    from api.marketdata import bbgextra
+    return await _run(bbgextra.borrow, symbol, timeout=90)
+
+
+@router.get("/api/v1/mkt/dark/{symbol}")
+async def mkt_dark_pool(symbol: str, weeks: int = Query(10, ge=4, le=26)):
+    """Off-exchange volume (DARK): FINRA weekly dark-pool and wholesaler volume by venue."""
+    from api.marketdata import bbgextra
+    return await _run(bbgextra.dark_pool, symbol, weeks, timeout=120)
+
+
+@router.get("/api/v1/mkt/prob/{symbol}")
+async def mkt_probability(symbol: str, expiry: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$")):
+    """Probability lab (PROB): the price distribution an option expiry implies."""
+    from api.marketdata import bbgextra
+    return await _run(bbgextra.probability, symbol, expiry, timeout=90)
+
+
+@router.get("/api/v1/mkt/crpr/{symbol}")
+async def mkt_credit_profile(symbol: str):
+    """Credit profile (CRPR): synthetic rating, Altman Z, Piotroski F, leverage and liquidity."""
+    from api.marketdata import bbgextra
+    return await _run(bbgextra.credit_profile, symbol, timeout=60)
+
+
+@router.get("/api/v1/mkt/leag")
+async def mkt_league_table(days: int = Query(365, ge=90, le=730)):
+    """M&A adviser league table (LEAG): banks by fairness opinions in US merger filings."""
+    from api.marketdata import bbgextra
+    return await _run(bbgextra.league_table, days, timeout=150)
+
+
+@router.get("/api/v1/mkt/spf")
+async def mkt_spf():
+    """Economist consensus (SPF): Philadelphia Fed Survey of Professional Forecasters medians."""
+    from api.marketdata import bbgextra
+    return await _run(bbgextra.spf_consensus, timeout=90)

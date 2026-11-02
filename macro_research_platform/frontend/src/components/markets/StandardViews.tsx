@@ -3,6 +3,7 @@
 //   MRR member returns · GE P/E history · WB world bonds · DS filing search
 import { Fragment, useMemo, useState } from 'react';
 import { LineChart } from '@/components/ui/LineChart';
+import { useStickyState } from '@/lib/stickyState';
 import { cn } from '@/lib/utils';
 import { BarList } from '@/components/ui/BarList';
 import { blackScholes, impliedVol, type OptionKind } from '@/lib/blackScholes';
@@ -26,7 +27,7 @@ export const Source = ({ children }: { children: React.ReactNode }) => <p classN
 
 // ── IMOV ─────────────────────────────────────────────────────────────────────
 export function ImovView({ onOpen }: { onOpen: (s: string) => void }) {
-  const [code, setCode] = useState<'SPX' | 'NDX' | 'INDU'>('SPX');
+  const [code, setCode] = useStickyState<'SPX' | 'NDX' | 'INDU'>('imov.code', 'SPX');
   const { data: d, error, loading } = useJSON<any>(`/api/v1/mkt/imov/${code}`, 300_000);
   const pick = <div className="flex gap-1">{(['SPX', 'NDX', 'INDU'] as const).map((c) => <Chip key={c} on={code === c} onClick={() => setCode(c)}>{c}</Chip>)}</div>;
   if (loading && !d) return <div className="space-y-2">{pick}<Loading label="Pricing every member of the index…" /></div>;
@@ -74,7 +75,7 @@ export function ImovView({ onOpen }: { onOpen: (s: string) => void }) {
 // ── TRA ──────────────────────────────────────────────────────────────────────
 const SET_LABEL: Record<string, string> = { assets: 'Asset classes', sectors: 'US sectors', factors: 'Factors', countries: 'Countries' };
 export function TraView({ onOpen }: { onOpen: (s: string) => void }) {
-  const [set, setSet] = useState('assets');
+  const [set, setSet] = useStickyState('tra.set', 'assets');
   const [custom, setCustom] = useState('');
   const [applied, setApplied] = useState('');
   const url = applied ? `/api/v1/mkt/tra?symbols=${encodeURIComponent(applied)}` : `/api/v1/mkt/tra?set=${set}`;
@@ -292,8 +293,8 @@ export function OvmeView({ symbol, q }: { symbol: string; q: any }) {
 const MRR_INDICES = ['SPX', 'NDX', 'INDU', 'UKX', 'DAX', 'CAC', 'SX5E', 'HSI'] as const;
 const MRR_PERIODS = ['1D', '1W', '1M', '3M', 'YTD', '1Y'] as const;
 export function MrrView({ onOpen }: { onOpen: (s: string) => void }) {
-  const [code, setCode] = useState<string>('SPX');
-  const [period, setPeriod] = useState<string>('YTD');
+  const [code, setCode] = useStickyState<string>('mrr.code', 'SPX');
+  const [period, setPeriod] = useStickyState<string>('mrr.period', 'YTD');
   const [sector, setSector] = useState<string | null>(null);
   const { data: d, error, loading } = useJSON<any>(`/api/v1/mkt/mrr/${code}?period=${period}`, 900_000);
   const controls = (
@@ -357,8 +358,8 @@ export function MrrView({ onOpen }: { onOpen: (s: string) => void }) {
 // ── GE ───────────────────────────────────────────────────────────────────────
 const BAND_LABEL: Record<string, string> = { '-2sd': '−2σ', '-1sd': '−1σ', mean: 'Average', '+1sd': '+1σ', '+2sd': '+2σ' };
 export function GeView({ symbol }: { symbol: string }) {
-  const [years, setYears] = useState(10);
-  const [view, setView] = useState<'pe' | 'ey'>('pe');
+  const [years, setYears] = useStickyState('ge.years', 10);
+  const [view, setView] = useStickyState<'pe' | 'ey'>('ge.view', 'pe');
   const { data: d, error, loading } = useJSON<any>(`/api/v1/mkt/ge/${encodeURIComponent(symbol)}?years=${years}`, 6 * 3_600_000);
   const controls = (
     <div className="flex flex-wrap gap-1">
@@ -429,7 +430,7 @@ export function GeView({ symbol }: { symbol: string }) {
 // ── WB ───────────────────────────────────────────────────────────────────────
 const REGION_LABEL: Record<string, string> = { americas: 'Americas', europe: 'Europe', mea: 'Middle East & Africa', apac: 'Asia-Pacific' };
 export function WbView() {
-  const [region, setRegion] = useState<string | null>(null);
+  const [region, setRegion] = useStickyState<string | null>('wb.region', null);
   const { data: d, error, loading } = useJSON<any>('/api/v1/mkt/wb', 1_800_000);
   if (loading && !d) return <Loading label="Loading government bond yields…" />;
   if (error && !d) return <ErrorBox msg={error} />;

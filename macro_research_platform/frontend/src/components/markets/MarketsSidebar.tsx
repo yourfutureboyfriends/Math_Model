@@ -8,7 +8,7 @@ import { goMarkets, useMarketsRoute } from '@/lib/marketsRoute';
 import { REGIONS, setRegion, useRegion } from '@/lib/region';
 
 const RECENT_KEY = 'mkt_recent';
-const GROUPS: MktFunction['group'][] = ['Markets', 'Rates & FX', 'Research', 'My tools'];
+const GROUPS: MktFunction['group'][] = ['Markets', 'Rates & FX', 'Economy & policy', 'Alternative data', 'Research', 'My tools'];
 // Major economies per region for the sidebar's country shortcuts
 const REGION_COUNTRIES: Record<string, [string, string][]> = {
   americas: [['US', 'United States'], ['CA', 'Canada'], ['BR', 'Brazil'], ['MX', 'Mexico'], ['AR', 'Argentina'], ['CL', 'Chile']],
