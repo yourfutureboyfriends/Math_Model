@@ -73,13 +73,13 @@ const GROUP_ORDER: MktFunction['group'][] = ['Markets', 'Rates & FX', 'Economy &
  * instrument page the quote header below names the security, so this shows the function only. */
 function MarketsHeader({ f, symbol, security, children }: { f: MktFunction; symbol?: string; security: boolean; children: React.ReactNode }) {
   return (
-    <header className="workspace-hero mkt-hero" data-area="markets">
+    <header className="workspace-hero mkt-hero" data-area="markets" data-security={security ? '' : undefined}>
       <div className="workspace-hero-intro">
         <span className="workspace-emblem mkt-hero-code" title="Function code">{f.code}</span>
         <div className="min-w-0">
           <div className="workspace-eyebrow">Markets / {security && symbol ? symbol : f.group === 'Markets' ? 'Market-wide' : f.group}</div>
           <h1>{f.name}{security && symbol ? <span className="text-text-tertiary font-normal"> · {symbol}</span> : null}</h1>
-          <p>{f.desc}</p>
+          <p title={f.desc}>{f.desc}</p>
         </div>
         <div className="mkt-hero-actions">
           <SoftKeys fn={f.code} symbol={symbol} />
@@ -593,10 +593,10 @@ export function MarketsPage() {
         <MarketsHeader f={f} symbol={route.symbol} security={!!(f.security && route.symbol)}>
           <CommandLine current={f.security ? route.symbol : undefined} onGo={onGo} />
         </MarketsHeader>
-        {/* one toolbar row: the region filter on the left, the view controls on the right. Screens that follow
-            the region stay put; anything else opens the regional monitor */}
+        {/* one toolbar row: the region filter on the left (only on screens that follow it — elsewhere it read as a
+            filter but silently jumped to the regional monitor; regions stay in the sidebar), view controls on the right */}
         <div className="mkt-toolbar-row">
-          <RegionBar onPick={() => { if (!REGION_AWARE.has(f.code)) onGo('RMON'); }} />
+          {REGION_AWARE.has(f.code) ? <RegionBar onPick={() => {}} /> : <span />}
           <ViewTools code={f.code} density={display.density} onDensity={display.setDensity} focused={display.focused} onFocus={()=>display.setFocused(v=>!v)} onHelp={help.toggle}/>
         </div>
       </>}
