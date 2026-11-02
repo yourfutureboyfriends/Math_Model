@@ -733,7 +733,9 @@ def comps(symbol: str, max_peers: int = 8) -> Dict[str, Any]:
                             return []
                         return [x for x in res.get("quotes") or [] if not _foreign_line(x.get("symbol", ""))]
                     with cf.ThreadPoolExecutor(max_workers=4) as ex:
-                        found_s = [x for xs in ex.map(sector_region, ["us", "jp", "gb", "de", "fr", "nl", "kr", "tw", "hk", "cn"]) for x in xs]
+                        by_region = list(ex.map(sector_region, ["us", "jp", "gb", "de", "fr", "nl", "kr", "tw", "hk", "cn"]))
+                    # round-robin across regions: the 16 candidates checked below must not all come from the first few
+                    found_s = [xs[i] for i in range(max(map(len, by_region), default=0)) for xs in by_region if i < len(xs)]
                     seen = {_norm(r.get("name")) for r in rows} | {subject}
                     extra = []
                     for x in found_s:                              # one line per company (no preferred / second listings)

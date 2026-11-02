@@ -107,7 +107,7 @@ export function NowcastSection({ data }: NowcastSectionProps) {
                 <div className="text-xs text-text-secondary">{comp.name}</div>
                 <div className="flex items-center justify-between">
                   <span className={cn('font-mono text-sm', getStatusColor(comp.status))}>
-                    {comp.contribution >= 0 ? '+' : ''}{comp.contribution.toFixed(2)}%
+                    {fmtSigned(comp.contribution)}
                   </span>
                   {/* FIX: weight is a decimal (0.35); display as percentage for readability */}
                   <span className="text-2xs text-text-tertiary">w{(comp.weight * 100).toFixed(0)}%</span>

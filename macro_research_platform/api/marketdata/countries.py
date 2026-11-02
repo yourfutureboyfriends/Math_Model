@@ -167,7 +167,8 @@ def _yields() -> Dict[str, Dict[str, Any]]:
             if (pd.Timestamp(date.today()) - when(obs[-1])).days > YIELD_STALE_DAYS:
                 return iso, None                      # a discontinued series (Iceland's last OECD print: Aug 2022)
             return iso, {"yield_10y": obs[-1].value, "yield_date": str(obs[-1].date)[:10], "yield_source": "OECD monthly average",
-                         "yield_change_1y_bp": (obs[-1].value - prev.value) * 100 if prev else None}
+                         "yield_change_1y_bp": (obs[-1].value - prev.value) * 100 if prev else None,
+                         "yield_1y_ago": prev.value if prev else None}
         except Exception:
             return iso, None
     with ThreadPoolExecutor(4) as ex:
@@ -215,7 +216,8 @@ def _live_yields(monthly: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]
                "yield_source": "CNBC (Refinitiv benchmark), daily — unofficial", "yield_change_1d_bp": round((y - prev) * 100, 1)}
         if m and m.get("yield_change_1y_bp") is not None and m.get("yield_10y") is not None:
             # 1-year change: today's level against the OECD average a year before the latest monthly print
-            rec["yield_change_1y_bp"] = round((y - (m["yield_10y"] - m["yield_change_1y_bp"] / 100)) * 100, 1)
+            rec["yield_1y_ago"] = m.get("yield_1y_ago", m["yield_10y"] - m["yield_change_1y_bp"] / 100)
+            rec["yield_change_1y_bp"] = round((y - rec["yield_1y_ago"]) * 100, 1)
         out[iso] = rec
     return out
 
@@ -275,13 +277,24 @@ def world_data() -> Dict[str, Any]:
     def slow_persisted():   # survives restarts: the cold fetch (IMF + 34 FRED series) takes about a minute
         import json, time
         from pathlib import Path
-        path = Path(__file__).resolve().parents[2] / "data" / "processed" / "worldmap_slow_v2.json"
+        path = Path(__file__).resolve().parents[2] / "data" / "processed" / "worldmap_slow_v3.json"
         try:
             if path.exists() and time.time() - path.stat().st_mtime < 86400:
                 return json.loads(path.read_text())
         except Exception:
             pass
         data = slow()
+        # FRED rate limits make every OECD series fail quietly: a build with most yields missing must not replace a
+        # good saved copy for a day (this once left the map without any 1-year yield change)
+        try:
+            old = json.loads(path.read_text()) if path.exists() else None
+        except Exception:
+            old = None
+        oecd = lambda d: sum(1 for v in (d or {}).get("yields", {}).values() if v.get("yield_1y_ago") is not None)
+        if old and oecd(data) < len(YIELD_SERIES) // 2 and oecd(old) > oecd(data):
+            logger.warning("[worldmap] OECD yields mostly unavailable (%d): keeping the previous yields", oecd(data))
+            data["yields"] = {**old["yields"], **{k: v for k, v in data["yields"].items() if v.get("yield_1y_ago") is not None}}
+            return data                                   # not saved: retried on the next build
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(data, default=str))
@@ -289,7 +302,7 @@ def world_data() -> Dict[str, Any]:
             pass
         return data
 
-    s = _cached("worldmap:slow2", 86400, slow_persisted)
+    s = _cached("worldmap:slow3", 86400, slow_persisted)
     daily10: Dict[str, Dict[str, Any]] = {}
     try:
         from api.marketdata.curves import curves
@@ -324,6 +337,8 @@ def world_data() -> Dict[str, Any]:
         rec.update(s["yields"].get(iso, {}))
         if iso in daily10:                               # the issuer's own daily 10-year beats OECD's monthly average
             rec.update(daily10[iso])
+        if rec.get("yield_10y") is not None and rec.get("yield_1y_ago") is not None:
+            rec["yield_change_1y_bp"] = round((rec["yield_10y"] - rec["yield_1y_ago"]) * 100, 1)   # whatever the latest source
         if iso in s["risk"]:
             rk = s["risk"][iso]
             rec.update({"rating": rk["rating"], "crp": rk["crp"], "default_spread": rk["default_spread"],

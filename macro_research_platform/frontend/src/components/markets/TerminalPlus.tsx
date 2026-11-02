@@ -363,7 +363,7 @@ export function FxcaView() {
                 <th className="text-right font-normal">3m vol</th><th className="text-right font-normal">Carry ÷ vol</th><th className="text-right font-normal">Spot 3m</th><th className="text-right font-normal">Spot 1y</th><th className="text-right font-normal">Carry trade 1y</th><th className="text-right font-normal">3m fwd pts</th></tr></thead>
               <tbody>{d.rows.map((r: any) => (
                 <tr key={r.ccy} className="border-t border-border-subtle"><td className="py-1 font-sans"><span className="font-mono text-text-primary">{r.ccy}</span> <span className="text-text-tertiary">{r.country}</span></td>
-                  <td className="text-right">{r.policy_rate.toFixed(2)}%</td>
+                  <td className="text-right">{r.policy_rate != null ? `${r.policy_rate.toFixed(2)}%` : '—'}</td>
                   <td className="pl-3"><div className="flex items-center gap-2"><div className="relative w-28 h-1.5 bg-surface-3 rounded-full"><div className="absolute top-0 bottom-0 left-1/2 w-px bg-text-tertiary" />
                     <div className={cn('absolute top-0 bottom-0', r.carry >= 0 ? 'bg-green left-1/2' : 'bg-red')} style={{ width: `${(Math.abs(r.carry) / max) * 50}%`, ...(r.carry < 0 ? { right: '50%' } : {}) }} /></div>
                     <span className={tone(r.carry)}>{sp(r.carry, 2)}</span></div></td>

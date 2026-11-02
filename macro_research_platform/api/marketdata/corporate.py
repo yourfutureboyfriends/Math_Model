@@ -478,7 +478,9 @@ def deals(days: int = 150) -> Dict[str, Any]:
                     "stock_of": st.group(2).strip() if st else None, "counterparty": cp, "expected_close": _expected_close(text),
                     "cvr": bool(re.search(r"contingent value right", text, re.I))}
         with cf.ThreadPoolExecutor(3) as ex:
-            parsed = [p for p in ex.map(parse, list(by_cik.values())[:60]) if p]
+            # newest first: search hits come in relevance order, and a cut by relevance dropped recent deals at random
+            recent = sorted(by_cik.values(), key=lambda r: r["filed"] or "", reverse=True)[:160]
+            parsed = [p for p in ex.map(parse, recent) if p]
         out = []
         seen_targets = set()
         for p in parsed:
@@ -510,4 +512,4 @@ def deals(days: int = 150) -> Dict[str, Any]:
                         "to cash or stock. Terms are read from the filing text — check the filing before acting. Spread = offer ÷ price − 1; "
                         "a wide spread means the market doubts the deal closes (regulators, financing, a vote).",
                 "source": "SEC EDGAR full-text search; Yahoo Finance prices"}
-    return _cached(f"ma4:{days}", 6 * 3600, build)
+    return _cached(f"ma5:{days}", 6 * 3600, build)

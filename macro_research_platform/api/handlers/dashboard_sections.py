@@ -262,6 +262,7 @@ def build_momentum_veto(inp: SectionInputs):
         portfolioAdjustment={
             "action": "REDUCE" if veto else "MAINTAIN",
             "magnitude": round(1 - damp, 2),
+            "affectedAssets": [a["asset"] for a in assets] if veto else [],      # the veto halves every equity signal
             "rationale": (f"S&P 500 12-1 momentum {m_spx:+.1%} — "
                           f"{'negative, equity signals halved' if veto else 'positive, no veto'}"),
         },

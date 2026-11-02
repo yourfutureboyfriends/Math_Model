@@ -3,7 +3,7 @@ Academic factor returns — Kenneth French Data Library (free, Dartmouth).
 
 Daily US Fama–French five factors (Mkt-RF, SMB, HML, RMW, CMA), the risk-free rate and the
 momentum factor (UMD), from CRSP. Updated monthly by the library (about a month's lag);
-cached on disk for a week.
+cached on disk for up to a week, refetched as soon as the library publishes a newer file.
 
 `attribution()` regresses a strategy's daily excess returns on these factors (OLS with
 Newey–West standard errors): the intercept is the alpha left after known factor premia —
@@ -49,6 +49,26 @@ def _parse(raw: bytes) -> pd.DataFrame:
     return df.where(df > -99) / 100.0                 # percent → decimal; -99.99 = missing
 
 
+def _published_since(mtime: float) -> bool:
+    """Whether the library has published a newer file than our copy (one HEAD request a day; the library updates
+    monthly on no fixed day, so a fixed one-week cache could miss a month's data for up to a week)."""
+    if time.time() - _head["ts"] < 86400:
+        return _head["newer"]
+    newer = False
+    try:
+        from email.utils import parsedate_to_datetime
+        r = requests.head(BASE + FILES["ff5"], timeout=20)
+        lm = r.headers.get("Last-Modified")
+        newer = bool(lm) and parsedate_to_datetime(lm).timestamp() > mtime
+    except Exception as e:
+        logger.info("[factors] freshness check failed: %s", e)
+    _head.update(ts=time.time(), newer=newer)
+    return newer
+
+
+_head: Dict[str, Any] = {"ts": 0.0, "newer": False}
+
+
 def factors() -> pd.DataFrame:
     """Daily factor returns (decimal), columns Mkt-RF, SMB, HML, RMW, CMA, RF, Mom."""
     if _mem["df"] is not None and time.time() - _mem["ts"] < 3600:
@@ -57,7 +77,7 @@ def factors() -> pd.DataFrame:
     path = CACHE / "ff_daily.pkl"
     df = None
     m = cachefmt.mtime(path)
-    if m and time.time() - m < TTL:
+    if m and time.time() - m < TTL and not _published_since(m):
         df = cachefmt.read(path)
     if df is None:
         try:
@@ -69,6 +89,7 @@ def factors() -> pd.DataFrame:
             df = parts[0].join(parts[1], how="left")
             CACHE.mkdir(parents=True, exist_ok=True)
             cachefmt.write(df, path)
+            _head.update(ts=time.time(), newer=False)
         except Exception as e:
             logger.warning("[factors] download failed: %s", e)
             df = cachefmt.read(path)                      # stale beats nothing

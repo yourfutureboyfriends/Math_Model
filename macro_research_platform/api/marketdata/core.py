@@ -121,7 +121,9 @@ def _fill(key: str, fn: Callable[[], Any]) -> Any:
 # Screens that take 25 s – 2 min to build cold (hundreds of downloads, slow public APIs) keep their last good result on
 # disk: after a restart the saved copy is served at once — marked stale, so the screen says "saved copy, refreshing" —
 # while a fresh one builds in the background. Kept up to PERSIST_MAX old.
-PERSIST_PREFIXES = ("imap:", "ins:breadth", "ins:impm:", "ins:uoa", "ins:risk", "edge:", "flow:etf", "bw:", "wcrs:", "overview")
+# screens that take 25–110 s cold: kept on disk so a restart serves the last copy at once and refreshes behind
+PERSIST_PREFIXES = ("imap:", "ins:breadth", "ins:impm:", "ins:uoa", "ins:risk", "edge:", "flow:etf", "bw:", "wcrs:", "overview",
+                    "worldmap", "ecfc:", "fxca", "swap:")
 PERSIST_DIR = Path(__file__).resolve().parents[2] / "data" / "processed" / "screen_cache"
 PERSIST_MAX = 3 * 86400
 

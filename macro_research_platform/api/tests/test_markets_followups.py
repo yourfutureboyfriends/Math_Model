@@ -75,3 +75,4 @@ def test_live_yields_require_a_percent_quote_and_agree_with_the_monthly(monkeypa
     out = countries._live_yields({"FR": {"yield_10y": 4.48, "yield_change_1y_bp": 50.0}, "IT": {"yield_10y": 3.99}})
     assert out["FR"]["yield_10y"] == pytest.approx(4.9113) and out["FR"]["yield_change_1d_bp"] == pytest.approx(0.3, abs=0.05)
     assert "SG" not in out and "IT" not in out          # not a yield quote / 5.9 points from the monthly average
+    assert out["FR"]["yield_1y_ago"] == pytest.approx(3.98) and out["FR"]["yield_change_1y_bp"] == pytest.approx(93.1, abs=0.1)

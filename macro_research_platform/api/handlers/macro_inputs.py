@@ -275,6 +275,11 @@ def load_monthly_macro(start: str = "1985-01-01"):
     both = df.dropna(subset=["growth_yoy", "cpi_yoy"]).index
     df = df.loc[both[0]:both[-1]]
     df = df.reindex(pd.date_range(both[0], both[-1], freq="MS"))
+    if any(v is None for v in raw.values()):
+        # an optional series failed (FRED rate limit): use this panel but retry in 10 minutes, and keep it off disk so
+        # a restart doesn't reuse a panel missing model inputs for the whole cache life
+        _MONTHLY_CACHE.update(ts=now - _MONTHLY_TTL_SECONDS + 600, df=df)
+        return df
     _MONTHLY_CACHE.update(ts=now, df=df)
     _disk_save("monthly_panel", {"index": [d.strftime("%Y-%m-%d") for d in df.index],
                                  "data": {c: [None if v != v else float(v) for v in df[c]] for c in df.columns}})

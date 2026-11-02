@@ -408,7 +408,9 @@ async def lifespan(app: FastAPI):
                 # view), ECST, RMON (world country matrix) and MRGR (SEC merger deals)
                 from api.marketdata import econ as _econ, countries as _countries, corporate as _corporate
                 from api.marketdata import freedata as _freedata, eps_revisions as _eps
-                for f in (lambda: _econ.calendar(14, None, "Low"), lambda: _econ.surprise_index("2010-01-01"),
+                from api.marketdata import monitors as _mon0
+                for f in (_mon0.world_map_markets,              # the default landing screen first
+                          lambda: _econ.calendar(14, None, "Low"), lambda: _econ.surprise_index("2010-01-01"),
                           _countries.world_data, _corporate.deals,
                           _freedata.shiller_cape, _freedata.aaii_sentiment, _freedata.nyfed_nowcast,
                           _freedata.cboe_put_call, _eps.sector_revisions):

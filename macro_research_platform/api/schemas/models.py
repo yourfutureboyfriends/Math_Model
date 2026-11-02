@@ -772,12 +772,20 @@ class AssetMomentum(BaseModel):
     interpretation: str
 
 
+class PortfolioAdjustment(BaseModel):
+    """What the momentum veto does to the portfolio."""
+    action: str
+    magnitude: float
+    affectedAssets: List[str] = []
+    rationale: str
+
+
 class MomentumVetoData(BaseModel):
     """Momentum veto data."""
     vetoActive: bool
     dampenerApplied: float
     assets: List[AssetMomentum]
-    portfolioAdjustment: Dict[str, Any]
+    portfolioAdjustment: PortfolioAdjustment
     reasoning: Optional[str] = None
 
 
@@ -793,6 +801,13 @@ class CorrelationPair(BaseModel):
     interpretation: str
 
 
+class RiskParityAdjustment(BaseModel):
+    """Stock / bond weights before and after the correlation switch."""
+    normalWeights: Dict[str, float]
+    adjustedWeights: Dict[str, float]
+    rationale: str
+
+
 class CorrelationRegimeData(BaseModel):
     """Correlation regime data."""
     currentRegime: str
@@ -800,7 +815,7 @@ class CorrelationRegimeData(BaseModel):
     switchTriggered: bool
     fallbackStrategy: str
     correlations: List[CorrelationPair]
-    riskParityAdjustment: Dict[str, Any]
+    riskParityAdjustment: RiskParityAdjustment
 
 
 # ══════════════════════════════════════════════════════════════

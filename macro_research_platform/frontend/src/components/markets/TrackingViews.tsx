@@ -113,7 +113,9 @@ export function ShipView() {
                         { key: 'containers', label: 'Container ships', color: 'rgb(var(--c-blue))' }, { key: 'dry_bulk', label: 'Dry bulk', color: 'rgb(var(--c-amber))' }]} /></div>
             </div>);
         })()}
-        {cp.data && <div className="text-[10px] text-text-tertiary mt-1">{cp.data.source}. Circle size = traffic; colour = change vs a year ago (red ≤ −15%, green ≥ +15%).</div>}
+        {cp.data && <div className="text-[10px] text-text-tertiary mt-1">{cp.data.source}. Circle size = traffic; colour = change vs a year ago (red ≤ −15%, green ≥ +15%).
+          Counts come from ships' AIS transponders: vessels sailing with AIS switched off — common in conflict zones, e.g. escorted convoys
+          through Hormuz in 2026 — are not counted, so a war-zone figure can understate traffic.</div>}
       </Panel>
     </div>
   );
