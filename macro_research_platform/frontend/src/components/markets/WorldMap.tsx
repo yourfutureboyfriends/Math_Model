@@ -48,6 +48,24 @@ const REGIONS: [string, [number, number, number, number]][] = [
   ['Africa', [-20, -36, 55, 38]], ['Middle East', [25, 10, 65, 43]], ['Asia', [60, -12, 150, 55]], ['Oceania', [105, -48, 180, 0]],
 ];
 
+// Seven colour classes per layer. Diverging layers run from weak (red) through a neutral slate to strong (green),
+// flipped where lower is better; one-directional layers use a single-hue ramp — amber where high is bad (inflation,
+// debt, yields), teal where high is good — so colour always reads the same way: warmer = worse.
+const DIV = ['#d9534a', '#b8665e', '#7a5b5f', '#3a4757', '#3f6c64', '#37a283', '#3fd3a2'];
+const SEQ_BAD = ['#2f3d50', '#4b4a52', '#6e5546', '#986441', '#c47b3a', '#e39b3f', '#f6c35b'];
+const SEQ_GOOD = ['#2b3b50', '#2c4d63', '#2f6077', '#34768c', '#3d8ea2', '#4ca7b7', '#6cc6ce'];
+type Classes = { colors: string[]; breaks: number[] };             // breaks: 6 thresholds between 7 classes
+function classesFor(layer: Layer, lo: number, hi: number): Classes {
+  if (layer.diverging) {
+    const m = Math.max(Math.abs(lo), Math.abs(hi)) || 1;
+    return { colors: layer.goodHigh ? DIV : [...DIV].reverse(), breaks: [-5, -3, -1, 1, 3, 5].map((k) => (k / 7) * m) };
+  }
+  const span = hi - lo || 1;
+  return { colors: layer.goodHigh ? SEQ_GOOD : SEQ_BAD, breaks: [1, 2, 3, 4, 5, 6].map((k) => lo + (k / 7) * span) };
+}
+const classOf = (v: number, c: Classes) => c.breaks.filter((b) => v >= b).length;
+const FLAG = (iso: string) => (/^[A-Z]{2}$/.test(iso) ? String.fromCodePoint(...[...iso].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 65)) : '');
+
 let topoCache: Topology | null = null;
 let topoRequest: Promise<Topology> | null = null;
 function loadTopology() {
@@ -119,13 +137,13 @@ export function WorldMap({ onOpen, onGo }: { onOpen: (s: string) => void; onGo?:
     if (layer.diverging) { const m = Math.max(Math.abs(q(0.05)), Math.abs(q(0.95))) || 1; return { lo: -m, hi: m }; }
     return { lo: q(0.05), hi: q(0.95) > q(0.05) ? q(0.95) : q(0.05) + 1 };
   }, [values, layer]);
-  const fills=useMemo(()=>Object.fromEntries(values.map(([iso,v])=>{
-    const mix=(a:number[],b:number[],t:number)=>`rgb(${a.map((n,i)=>Math.round(n+(b[i]-n)*t)).join(',')})`;
-    const t=layer.diverging?Math.min(1,Math.abs(v)/scale.hi):Math.max(0,Math.min(1,(v-scale.lo)/(scale.hi-scale.lo)));
-    return [iso,mix([49,66,85],layer.diverging?(v<0?[219,151,83]:[68,184,179]):[79,166,213],t)];
-  })),[values,layer,scale]);
+  const classes=useMemo(()=>classesFor(layer,scale.lo,scale.hi),[layer,scale]);
+  const fills=useMemo(()=>Object.fromEntries(values.map(([iso,v])=>[iso,classes.colors[classOf(v,classes)]])),[values,classes]);
+  const counts=useMemo(()=>{const n=Array(7).fill(0);for(const [,v] of values)n[classOf(v,classes)]++;return n;},[values,classes]);
   const labels=useMemo(()=>Object.fromEntries(values.map(([iso,v])=>[iso,fmtVal(v,layer.fmt,layer.diverging)])),[values,layer]);
   const ranked=useMemo(()=>[...values].sort((a,b)=>b[1]-a[1]),[values]);
+  const median=useMemo(()=>{const v=values.map(([,x])=>x).sort((a,b)=>a-b);return v.length?(v.length%2?v[(v.length-1)/2]:(v[v.length/2-1]+v[v.length/2])/2):null;},[values]);
+  const rankOf=(iso:string)=>{const k=ranked.findIndex(([i])=>i===iso);return k<0?null:k+1;};
   const selRec = sel ? data[sel] : null;
   const selName = sel ? (selRec?.name ?? geo?.shapes.find((s) => numToIso[s.id] === sel)?.name ?? sel) : null;
   const found = query.trim().length > 1 ? Object.entries(data).filter(([iso, c]) => (c.name ?? '').toLowerCase().includes(query.trim().toLowerCase()) || iso === query.trim().toUpperCase()).slice(0, 6) : [];
@@ -139,7 +157,13 @@ export function WorldMap({ onOpen, onGo }: { onOpen: (s: string) => void; onGo?:
       <div className="relative ml-auto"><input aria-label="Find a country" placeholder="Find country or ISO code…" value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&found[0])select(found[0][0]);if(e.key==='Escape')setQuery('');}}/>
       {found.length>0&&<ul className="atlas-results">{found.map(([iso,c])=><li key={iso}><button onClick={()=>select(iso)}>{c.name} <span>{iso}</span></button></li>)}</ul>}</div>
     </div>
-    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-3">
+    {ranked.length>0&&<div className="atlas-summary">
+      <div><span>Median</span><b>{fmtVal(median,layer.fmt,layer.diverging)}</b><small>{values.length} economies</small></div>
+      <button onClick={()=>select(ranked[0][0])}><span>Highest</span><b>{FLAG(ranked[0][0])} {data[ranked[0][0]]?.name??ranked[0][0]}</b><small>{fmtVal(ranked[0][1],layer.fmt,layer.diverging)}</small></button>
+      <button onClick={()=>select(ranked[ranked.length-1][0])}><span>Lowest</span><b>{FLAG(ranked[ranked.length-1][0])} {data[ranked[ranked.length-1][0]]?.name??ranked[ranked.length-1][0]}</b><small>{fmtVal(ranked[ranked.length-1][1],layer.fmt,layer.diverging)}</small></button>
+      {layer.diverging&&<div><span>Above zero</span><b>{values.filter(([,v])=>v>0).length} / {values.length}</b><small>{Math.round(values.filter(([,v])=>v>0).length/values.length*100)}% of economies</small></div>}
+    </div>}
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-3">
       <div className="min-w-0"><div className="atlas-stage">
         <div className="atlas-map-controls"><div className="atlas-segments">{(['2d','3d'] as const).map(m=><button key={m} aria-pressed={mode===m} onClick={()=>{setMode(m);setHover(null);}}>{m==='2d'?'Map':'Globe'}</button>)}</div>
         {mode==='2d'&&<><select aria-label="Map region" defaultValue="World" onChange={e=>{const r=REGIONS.find(r=>r[0]===e.target.value)!;if(r[0]==='World')mapRef.current?.reset();else mapRef.current?.region(r[1]);}}>{REGIONS.map(([n])=><option key={n}>{n}</option>)}</select><button aria-label="Zoom in" onClick={()=>mapRef.current?.zoom(1.4)}>+</button><button aria-label="Zoom out" onClick={()=>mapRef.current?.zoom(1/1.4)}>−</button><button onClick={()=>{mapRef.current?.reset();setExchangeId(null);setSel(null);}}>Reset</button><label><input type="checkbox" checked={showLabels} onChange={e=>setShowLabels(e.target.checked)}/> Values</label></>}
@@ -152,10 +176,22 @@ export function WorldMap({ onOpen, onGo }: { onOpen: (s: string) => void; onGo?:
         {hover&&<div className="atlas-tooltip"><strong>{hover.name}</strong><span>{layer.label} <b>{labels[hover.iso]??'No data'}</b></span></div>}
         <div className="atlas-map-caption">{mode==='2d'?'EQUAL EARTH':'ORTHOGRAPHIC'} / {mode==='2d'?'Drag to pan · Ctrl/⌘ + scroll to zoom':'Drag to rotate · Ctrl/⌘ + scroll to zoom'}</div>
       </div>
-      <div className="atlas-legend"><span>{fmtVal(scale.lo,layer.fmt,layer.diverging)}</span><i style={{background:layer.diverging?'linear-gradient(90deg,#db9753,#314255,#44b8b3)':'linear-gradient(90deg,#314255,#4fa6d5)'}}/><span>{fmtVal(scale.hi,layer.fmt,layer.diverging)}</span><span className="atlas-no-data-key"/> No data</div>
-      <p className="text-[10px] text-text-tertiary mt-2">Gold dots: major exchange hubs (approximate city locations). Colour shows numeric magnitude, not an investment rating. Scale: 5th–95th percentile{layer.diverging?', centred on zero':''}; extremes clipped to the colour endpoints. Select a country for exact values.</p></div>
-      <aside className="space-y-3">{selectedExchange&&<div className="atlas-panel atlas-exchange-detail"><div className="atlas-eyebrow">EXCHANGE LOCATION</div><h3>{selectedExchange.label}</h3><p>{selectedExchange.name}</p><p>{selectedExchange.city} · {selectedExchange.iso} · city-level marker</p><a href={selectedExchange.url} target="_blank" rel="noopener noreferrer">Official exchange website ↗</a></div>}<div className="atlas-panel p-3 space-y-2 text-xs">{sel&&selRec?<CountryPanel iso={sel} name={selName!} c={selRec} onOpen={onOpen} onGo={onGo}/>:<div className="atlas-empty"><span>◎</span><h3>Explore an economy</h3><p>Select a country to inspect its markets, fundamentals and sovereign risk.</p></div>}</div>
-      <div className="atlas-panel"><div className="px-3 py-2 text-xs font-semibold border-b border-border">{layer.label} · cross-country range</div><div className="grid grid-cols-2 gap-2 p-2 text-[11px]">{[['Highest',ranked.slice(0,6)],['Lowest',ranked.slice(-6).reverse()]].map(([t,rows])=><div key={t as string}><div className="text-text-tertiary px-1 mb-1">{t as string}</div>{(rows as [string,number][]).map(([iso,v])=><button key={iso} onClick={()=>select(iso)} className={cn('atlas-rank',sel===iso&&'bg-surface-3')}><span>{data[iso]?.name??iso}</span><b>{fmtVal(v,layer.fmt,layer.diverging)}</b></button>)}</div>)}</div></div></aside>
+      <div className="atlas-classes" role="list" aria-label={`Colour key for ${layer.label}`}>
+        {classes.colors.map((col,k)=>{const lo=k?classes.breaks[k-1]:null,hi=k<6?classes.breaks[k]:null;
+          return <div key={k} role="listitem" className="atlas-class" title={`${counts[k]} economies`}><i style={{background:col}}/><span>{lo==null?`< ${fmtVal(hi,layer.fmt,layer.diverging)}`:hi==null?`≥ ${fmtVal(lo,layer.fmt,layer.diverging)}`:`${fmtVal(lo,layer.fmt,layer.diverging)} – ${fmtVal(hi,layer.fmt,layer.diverging)}`}</span><small>{counts[k]}</small></div>;})}
+        <div className="atlas-class" role="listitem"><i className="atlas-no-data-key"/><span>No data</span></div>
+      </div>
+      <p className="text-[10px] text-text-tertiary mt-2">{layer.diverging?(layer.goodHigh?'Green = higher, red = lower, slate ≈ zero.':'Green = lower (better), red = higher, slate ≈ zero.'):(layer.goodHigh?'Brighter teal = higher.':'Brighter amber = higher (worse).')} Seven classes spanning the 5th–95th percentile{layer.diverging?', centred on zero':''}; numbers on each key are the class range and how many economies fall in it. Gold dots: major exchanges. Colour shows magnitude, not an investment rating.</p></div>
+      <aside className="space-y-3">{selectedExchange&&<div className="atlas-panel atlas-exchange-detail"><div className="atlas-eyebrow">EXCHANGE LOCATION</div><h3>{selectedExchange.label}</h3><p>{selectedExchange.name}</p><p>{selectedExchange.city} · {selectedExchange.iso} · city-level marker</p><a href={selectedExchange.url} target="_blank" rel="noopener noreferrer">Official exchange website ↗</a></div>}<div className="atlas-panel p-3 space-y-2 text-xs">{sel&&selRec?<CountryPanel iso={sel} name={selName!} c={selRec} onOpen={onOpen} onGo={onGo}
+        focus={{label:layer.label,value:fmtVal(layer.get(selRec),layer.fmt,layer.diverging),rank:rankOf(sel),of:ranked.length,color:fills[sel]}}/>:<div className="atlas-empty"><span>◎</span><h3>Explore an economy</h3><p>Select a country to inspect its markets, fundamentals and sovereign risk.</p></div>}</div>
+      <div className="atlas-panel"><div className="atlas-panel-title">{layer.label} · highest and lowest</div>
+        {(()=>{const maxAbs=Math.max(1e-9,...ranked.map(([,v])=>Math.abs(v)));
+          const bar=([iso,v]:[string,number])=><button key={iso} onClick={()=>select(iso)} className={cn('atlas-bar-row',sel===iso&&'on')}>
+            <span className="atlas-bar-name">{FLAG(iso)} {data[iso]?.name??iso}</span>
+            <span className="atlas-bar-track"><i style={{width:`${Math.max(2,Math.abs(v)/maxAbs*100)}%`,background:fills[iso]}}/></span>
+            <b>{fmtVal(v,layer.fmt,layer.diverging)}</b></button>;
+          return <div className="p-2 space-y-2"><div>{ranked.slice(0,7).map(bar)}</div><div className="atlas-bar-sep">· · ·</div><div>{ranked.slice(-7).map(bar)}</div></div>;})()}
+      </div></aside>
     </div>
     <button className="atlas-coverage-toggle" aria-expanded={coverage} onClick={()=>setCoverage(v=>!v)}>{coverage?'Close live coverage':'Open live coverage'}{selName?` · ${selName}`:''}</button>
     {coverage&&<LiveTV iso={sel} name={selName} region={selRec?.region??null}/>}
@@ -167,15 +203,24 @@ function Row({ k, v, children }: { k: string; v?: React.ReactNode; children?: Re
   return <div className="flex justify-between gap-2"><span className="text-text-secondary">{k}</span><span className="font-mono text-text-primary text-right">{children ?? v}</span></div>;
 }
 
-function CountryPanel({ iso, name, c, onOpen, onGo }: { iso: string; name: string; c: any; onOpen: (s: string) => void; onGo?: (fn: string, s?: string) => void }) {
+type Focus = { label: string; value: string; rank: number | null; of: number; color?: string };
+function CountryPanel({ iso, name, c, onOpen, onGo, focus }: { iso: string; name: string; c: any; onOpen: (s: string) => void; onGo?: (fn: string, s?: string) => void; focus?: Focus }) {
   const pt = (v: number | null | undefined, d = 1, u = '%') => (v == null ? '—' : `${v.toFixed(d)}${u}`);
-  const btn = 'px-2 py-1 border border-border hover:border-bloomberg hover:text-bloomberg text-[11px]';
+  const btn = 'px-2 py-1 rounded-md border border-border hover:border-bloomberg hover:text-bloomberg text-[11px]';
   return (
     <>
-      <div className="flex items-baseline justify-between">
-        <div className="text-base font-semibold text-text-primary">{name}</div>
-        <div className="text-[11px] text-text-tertiary">{iso} · {c.currency}{c.rating ? ` · ${c.rating}` : ''}</div>
+      <div className="atlas-country-head">
+        <span className="atlas-flag" aria-hidden>{FLAG(iso)}</span>
+        <div className="min-w-0"><div className="text-base font-semibold text-text-primary truncate">{name}</div>
+          <div className="text-[11px] text-text-tertiary">{iso} · {c.currency}{c.rating ? ` · ${c.rating}` : ''}{c.region ? ` · ${c.region}` : ''}</div></div>
       </div>
+      {focus && (
+        <div className="atlas-focus">
+          <div><span>{focus.label}</span><b><i style={{ background: focus.color ?? 'var(--atlas-no-data)' }} />{focus.value}</b></div>
+          {focus.rank != null && <div className="text-right"><span>Rank</span><b>#{focus.rank} <small>of {focus.of}</small></b></div>}
+          {focus.rank != null && <div className="atlas-focus-track"><i style={{ left: `${focus.of > 1 ? (1 - (focus.rank - 1) / (focus.of - 1)) * 100 : 50}%` }} /></div>}
+        </div>
+      )}
       <div className="mkt-controls flex flex-wrap gap-1">
         {c.index?.symbol && <button onClick={() => onOpen(c.index.symbol)} className={btn}>{c.index.label}</button>}
         {c.etf?.etf && <button onClick={() => onOpen(c.etf.etf)} className={btn}>{c.etf.etf} ETF</button>}
@@ -183,7 +228,7 @@ function CountryPanel({ iso, name, c, onOpen, onGo }: { iso: string; name: strin
         {onGo && <button onClick={() => onGo('N', undefined)} className={btn}>News</button>}
       </div>
       <div className="space-y-0.5">
-        <div className="text-[10px] uppercase tracking-wider text-bloomberg pt-1">Markets</div>
+        <div className="atlas-section-title">Markets</div>
         {c.index && <Row k={c.index.label}>{fmtPrice(c.index.price)} <Chg v={c.index.change_1d} /></Row>}
         {c.index?.change_ytd != null && <Row k="Index YTD (local)"><Chg v={c.index.change_ytd} d={1} /></Row>}
         {c.change_ytd != null && <Row k="Stocks YTD (USD)"><Chg v={c.change_ytd} d={1} /></Row>}
@@ -192,7 +237,7 @@ function CountryPanel({ iso, name, c, onOpen, onGo }: { iso: string; name: strin
         {c.yield_10y != null && <Row k="10Y yield" v={`${c.yield_10y.toFixed(2)}%${c.yield_change_1y_bp != null ? ` (${c.yield_change_1y_bp > 0 ? '+' : ''}${c.yield_change_1y_bp.toFixed(0)}bp 1y)` : ''}`} />}
       </div>
       <div className="space-y-0.5">
-        <div className="text-[10px] uppercase tracking-wider text-bloomberg pt-1">Economy (IMF)</div>
+        <div className="atlas-section-title">Economy (IMF)</div>
         <Row k="GDP growth (this / next yr)" v={`${pt(c.gdp_growth)} / ${pt(c.gdp_growth_next)}`} />
         <Row k="Inflation (this / next yr)" v={`${pt(c.inflation)} / ${pt(c.inflation_next)}`} />
         <Row k="Unemployment" v={pt(c.unemployment)} />
@@ -202,7 +247,7 @@ function CountryPanel({ iso, name, c, onOpen, onGo }: { iso: string; name: strin
       </div>
       {(c.policy != null || c.stance) && (
         <div className="space-y-0.5">
-          <div className="text-[10px] uppercase tracking-wider text-bloomberg pt-1">Policy{c.cb ? ` — ${c.euroArea ? 'ECB (euro area)' : c.cb}` : ''}</div>
+          <div className="atlas-section-title">Policy{c.cb ? ` — ${c.euroArea ? 'ECB (euro area)' : c.cb}` : ''}</div>
           <Row k="Policy rate" v={pt(c.policy, 2)} />
           <Row k="Real policy rate" v={pt(c.real_policy_rate, 2, ' pp')} />
           {c.stance && <Row k="Stance" v={c.stance} />}
@@ -210,7 +255,7 @@ function CountryPanel({ iso, name, c, onOpen, onGo }: { iso: string; name: strin
         </div>)}
       {(c.crp != null || c.rating) && (
         <div className="space-y-0.5">
-          <div className="text-[10px] uppercase tracking-wider text-bloomberg pt-1">Risk (Damodaran)</div>
+          <div className="atlas-section-title">Risk (Damodaran)</div>
           <Row k="Sovereign rating (Moody's)" v={c.rating ?? '—'} />
           <Row k="Country risk premium" v={c.crp != null ? fmtPct(c.crp, 2) : '—'} />
           <Row k="Equity risk premium" v={c.erp_total != null ? fmtPct(c.erp_total, 2) : '—'} />

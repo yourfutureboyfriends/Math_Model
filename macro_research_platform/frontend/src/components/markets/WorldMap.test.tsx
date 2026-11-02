@@ -22,3 +22,16 @@ it('renders data layers without autoplay video and opens coverage only on reques
   act(()=>coverage.click());expect(host.querySelector('[data-testid="live-video"]')).toBeNull();
  }finally{act(()=>root.unmount());host.remove();localStorage.clear();vi.unstubAllGlobals();}
 });
+
+it('colours by class with green for strength, shows the key, summary and the selected country\'s rank', async () => {
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => topo })));
+ const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+ try {
+  await act(async () => root.render(<WorldMap onOpen={() => {}} />));
+  expect(host.querySelectorAll('.atlas-class').length).toBe(8);                      // seven classes plus "no data"
+  expect(host.querySelector('.atlas-summary')?.textContent).toContain('United States');
+  expect(host.querySelector('[data-iso="US"]')?.getAttribute('fill')).toBe('#3fd3a2');   // a positive YTD return: strongest green
+  act(() => { (host.querySelector('.atlas-bar-row') as HTMLButtonElement).click(); });
+  expect(host.querySelector('.atlas-focus')?.textContent).toContain('#1');
+ } finally { act(() => root.unmount()); host.remove(); localStorage.clear(); vi.unstubAllGlobals(); }
+});
