@@ -395,6 +395,16 @@ async def model_orders(result: Dict[str, Any], which: str, sleeve_capital: Optio
     prices = {s: c[max(c)] for s, c in zip(syms, closes) if c}
     # The sleeve is the "Macro Model" book only: the same ETF held in another (discretionary)
     # book is not the model's to trade.
+    # The model's ETFs are US-listed and priced in dollars, while the fund's capital is in its base currency (GBP for
+    # Moriah): everything below is in USD — capital converted at today's rate, other books' holdings valued in USD
+    # (a London line is in pence) — so a £25,000 sleeve buys £25,000 of ETFs, not $25,000.
+    from api.calculations.fx_accounting import usd_per_major
+    from api.handlers.portfolio_analytics import _usd_per_unit
+    settings = await asyncio.to_thread(fund_store.get_settings)
+    base = (settings.get("base_currency") or "USD").upper()
+    fx = (await asyncio.to_thread(usd_per_major, base)) if base != "USD" else 1.0
+    if not fx:
+        raise ValueError(f"No {base}/USD rate available to size the US-listed model sleeve.")
     current: Dict[str, float] = {}
     other_mv = 0.0
     other_by_sym: Dict[str, float] = {}
@@ -403,16 +413,18 @@ async def model_orders(result: Dict[str, Any], which: str, sleeve_capital: Optio
         if pos.get("book") == MODEL_BOOK:
             current[s] = current.get(s, 0.0) + float(pos["quantity"])
         else:
-            mv = abs(float(pos["quantity"]) * float(prices.get(s) or pos.get("avg_cost") or 0))
+            unit = (await asyncio.to_thread(_usd_per_unit, s))[1] or 1.0
+            mv = abs(float(pos["quantity"]) * float(prices.get(s) or pos.get("avg_cost") or 0)) * unit
             other_mv += mv
             other_by_sym[s] = other_by_sym.get(s, 0.0) + mv
-    settings = await asyncio.to_thread(fund_store.get_settings)
-    nav = float(settings.get("capital") or 0)
+    nav = float(settings.get("capital") or 0) * fx
     basis = "given"
     if sleeve_capital is None:
         # Default: fund NAV not already deployed in other books.
         sleeve_capital = max(0.0, nav - other_mv)
         basis = "fund capital less holdings in other books"
+    else:
+        sleeve_capital = float(sleeve_capital) * fx                 # entered in the fund's base currency
     # Respect the fund's hard single-name limit (pre-trade compliance would BLOCK above it):
     # the position in each ETF across ALL books stays below it; the excess is held as cash.
     from api.calculations.limits import merge_limits
@@ -436,6 +448,8 @@ async def model_orders(result: Dict[str, Any], which: str, sleeve_capital: Optio
                          "weight": round(val / sleeve_capital, 4) if val is not None and sleeve_capital else None,
                          "target_weight": round(etf_w.get(sym, 0.0), 4)})
     return {**plan, "holdings": holdings, "portfolio": which, "sleeve_capital": round(sleeve_capital, 2), "sleeve_capital_basis": basis,
+            "currency": "USD", "base_currency": base, "usd_per_base": round(fx, 6),
+            "sleeve_capital_base": round(sleeve_capital / fx, 2),
             "other_books_market_value": round(other_mv, 2), "book": MODEL_BOOK,
             "single_name_limit": hard, "clipped_by_limits": clipped,
             "target_weights": etf_w, "run_id": result.get("run_id"), "as_of": result["as_of"]}

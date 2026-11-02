@@ -633,7 +633,23 @@ def test_quote_probe_resets_a_stuck_yahoo_session_once(monkeypatch):
         def history(self, **k): return pd.DataFrame({"Close": [1.0]}, index=idx) if state["reset"] else pd.DataFrame()
     monkeypatch.setattr(yf, "Ticker", T)
     monkeypatch.setattr(core, "_yahoo_cooling", lambda: None)
-    monkeypatch.setattr(core, "yahoo_reset_session", lambda *a: state.update(reset=state["reset"] + 1) or True)
+    monkeypatch.setattr(core, "yahoo_reset_session", lambda *a, **k: state.update(reset=state["reset"] + 1) or True)
     out = H._probe_quote_freshness()
     assert state["reset"] == 1 and out["status"] != "down"
+    H._FRESH_CACHE.update(data=None, ts=0)
+
+
+def test_quote_probe_tries_a_fresh_session_during_a_stuck_cooldown(monkeypatch):
+    import pandas as pd
+    import yfinance as yf
+    from api import health_sources as H
+    from api.marketdata import core
+    H._FRESH_CACHE.update(data=None, ts=0)
+    seen = {}
+    monkeypatch.setattr(yf, "Ticker", lambda s: type("T", (), {"history": lambda self, **k: pd.DataFrame()})())
+    monkeypatch.setattr(core, "_yahoo_cooling", lambda: "cooling")
+    monkeypatch.setattr(core, "yahoo_reset_session", lambda min_interval=120: seen.update(mi=min_interval) or True)
+    monkeypatch.setitem(core._YH, "until", 9e12)
+    H._probe_quote_freshness()
+    assert seen["mi"] == 600 and core._YH["until"] == 0.0          # slower cadence; the fresh session gets its try
     H._FRESH_CACHE.update(data=None, ts=0)

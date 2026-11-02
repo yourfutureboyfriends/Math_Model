@@ -24,6 +24,8 @@ interface Sleeve {
   est_total_cost: number;
   sleeve_capital: number;
   sleeve_capital_basis: string;
+  base_currency?: string;
+  sleeve_capital_base?: number;
   clipped_by_limits: Record<string, { model_weight: number; capped_weight: number }>;
   single_name_limit: number;
   portfolio: string;
@@ -88,7 +90,8 @@ export function ModelSleeveSection() {
       {data && (
         <div className="border border-border bg-surface-1 p-3">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3 text-xs">
-            <div><div className="text-2xs text-text-tertiary">Sleeve capital</div><div className="font-mono text-text-primary">{usd(data.sleeve_capital)}</div></div>
+            <div><div className="text-2xs text-text-tertiary">Sleeve capital</div><div className="font-mono text-text-primary">{usd(data.sleeve_capital)}{data.base_currency && data.base_currency !== 'USD' && data.sleeve_capital_base != null
+              && <span className="text-text-tertiary text-2xs"> ≈ {data.base_currency} {Math.round(data.sleeve_capital_base).toLocaleString()}</span>}</div></div>
             <div><div className="text-2xs text-text-tertiary">Invested</div><div className="font-mono text-text-primary">{usd(invested)} <span className="text-text-tertiary">({pct(invested / (data.sleeve_capital || 1), 0)})</span></div></div>
             <div><div className="text-2xs text-text-tertiary">Largest drift</div><div className={`font-mono ${maxDrift > 0.02 ? 'text-amber' : 'text-text-primary'}`}>{pct(maxDrift)}</div></div>
             <div><div className="text-2xs text-text-tertiary">To rebalance</div><div className="font-mono text-text-primary">{data.order_count} orders · {usd(data.turnover)}</div></div>

@@ -175,10 +175,15 @@ def _probe_quote_freshness(_healed: bool = False) -> Dict[str, Any]:
     except Exception as e:
         out = {"status": "down", "latency_ms": round((time.perf_counter() - t0) * 1000), "detail": str(e)[:120]}
     if out.get("status") == "down" and not _healed:
-        # SPY, VIX, EUR/USD and crude all empty at once is never the market: it is a stuck Yahoo session (unless
-        # Yahoo is rate-limiting us, when the guard is cooling down and a new session would not help)
+        # SPY, VIX, EUR/USD and crude all empty at once is never the market: it is a stuck Yahoo session. Yahoo's
+        # rate limit can also stick to that session (a new process gets through while the server cools down for
+        # hours), so during a cool-down a fresh session gets one try — at most every 10 minutes; if Yahoo refuses
+        # that too, the guard trips again and backs off as usual.
         from api.marketdata import core as _core
-        if not _core._yahoo_cooling() and _core.yahoo_reset_session():
+        cooling = bool(_core._yahoo_cooling())
+        if _core.yahoo_reset_session(min_interval=600 if cooling else 120):
+            if cooling:
+                _core._YH["until"] = 0.0
             return _probe_quote_freshness(_healed=True)
     _FRESH_CACHE.update(data=out, ts=now)
     return out

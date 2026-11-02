@@ -432,7 +432,7 @@ export function MacroModelSection() {
             {orders && (
               <div>
                 <div className="text-2xs text-text-tertiary mb-1">
-                  Sleeve capital {orders.sleeve_capital?.toLocaleString()} ({orders.sleeve_capital_basis}) · turnover {pct(orders.turnover_pct_nav)} · estimated cost {orders.est_total_cost?.toLocaleString()}
+                  Sleeve capital ${orders.sleeve_capital?.toLocaleString()}{orders.base_currency && orders.base_currency !== 'USD' ? ` (≈ ${orders.base_currency} ${Math.round(orders.sleeve_capital_base ?? 0).toLocaleString()})` : ''} ({orders.sleeve_capital_basis}) · turnover {pct(orders.turnover_pct_nav)} · estimated cost {orders.est_total_cost?.toLocaleString()}
                 </div>
                 {orders.clipped_by_limits && Object.keys(orders.clipped_by_limits).length > 0 && (
                   <div className="text-2xs text-amber mb-1">

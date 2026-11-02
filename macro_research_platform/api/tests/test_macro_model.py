@@ -185,3 +185,28 @@ def test_expired_memory_cache_serves_snapshot_and_deduplicates_refresh(monkeypat
             await asyncio.gather(pending, return_exceptions=True)
 
     asyncio.run(check())
+
+
+def test_model_sleeve_converts_base_currency_capital_to_usd(monkeypatch):
+    """A GBP fund's £25,000 must buy £25,000 of the US-listed ETFs, not $25,000 (2026-11 review)."""
+    import asyncio
+    from api.model import engine as me
+    from api import fund_store, portfolio_store
+    from api.calculations import fx_accounting
+    from api.handlers import market_handler, portfolio_analytics
+    monkeypatch.setattr(fund_store, "get_settings", lambda: {"capital": 25_000.0, "base_currency": "GBP"})
+    monkeypatch.setattr(fund_store, "get_limit_overrides", lambda: {})
+    monkeypatch.setattr(portfolio_store, "list_positions", lambda b=None: [])
+    monkeypatch.setattr(fx_accounting, "usd_per_major", lambda major, on=None: 1.30)
+    monkeypatch.setattr(portfolio_analytics, "_usd_per_unit", lambda s: ("USD", 1.0))
+
+    async def closes(sym):
+        return {"2026-10-30": 100.0}
+    monkeypatch.setattr(market_handler, "_fetch_dated_closes_literal", closes)
+    etf = next(iter(me.ASSETS.values()))[1]
+    result = {"portfolios": {"tactical": {"weights": {"A": 0.10}, "etfs": {"A": etf}}}, "run_id": 1, "as_of": "2026-10-30",
+              "economy": {"tradeable": True}}
+    out = asyncio.run(me.model_orders(result, "tactical", None))
+    assert out["sleeve_capital"] == 32_500.0 and out["sleeve_capital_base"] == 25_000.0 and out["currency"] == "USD"
+    out = asyncio.run(me.model_orders(result, "tactical", 10_000))          # entered in the base currency
+    assert out["sleeve_capital"] == 13_000.0

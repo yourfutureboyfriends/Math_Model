@@ -178,12 +178,16 @@ def waterfall(contributions: List[Dict[str, Any]], distributions: List[Dict[str,
 def index_levels(symbol: str, start: str) -> Dict[str, float]:
     """Daily closes of a public index / ETF from `start` (Yahoo Finance; total-return series such as ^SP500TR
     are preferred for a PME)."""
-    import yfinance as yf
     from datetime import timedelta
     # two weeks early: a flow dated on a market holiday (or the first day) still finds the previous close
     begin = (_d(start) - timedelta(days=14)).isoformat()
-    df = yf.download(symbol, start=begin, interval="1d", auto_adjust=True, progress=False, multi_level_index=False)
+    from api.marketdata.core import Upstream, _yahoo_cooling, yahoo_download
+    try:                                     # through the Yahoo guard: a rate limit says so instead of "no history"
+        df = yahoo_download(symbol, start=begin, interval="1d", auto_adjust=True, multi_level_index=False)
+    except Upstream as e:
+        raise ValueError(f"{symbol}: {e}") from e
     if df is None or df.empty:
-        raise ValueError(f"No price history for {symbol}.")
+        cool = _yahoo_cooling()
+        raise ValueError(f"{symbol}: {cool}" if cool else f"No price history for {symbol}.")
     c = df["Close"].dropna()
     return {d.strftime("%Y-%m-%d"): float(v) for d, v in c.items()}

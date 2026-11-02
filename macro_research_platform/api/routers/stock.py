@@ -159,10 +159,16 @@ async def _usd_per_unit(quote_ccy: Optional[str]) -> Optional[float]:
 
 
 async def _nav() -> Optional[float]:
+    """The fund's capital in USD: position sizes are measured in USD (levels.px_to_usd), and a GBP fund's £25,000
+    is not $25,000."""
     try:
         from api import fund_store
+        from api.calculations.fx_accounting import usd_per_major
         s = await asyncio.to_thread(fund_store.get_settings)
-        return float(s.get("capital") or 0) or None
+        cap = float(s.get("capital") or 0)
+        base = (s.get("base_currency") or "USD").upper()
+        fx = 1.0 if base == "USD" else await asyncio.to_thread(usd_per_major, base)
+        return (cap * fx) if cap and fx else None
     except Exception:
         return None
 
@@ -177,7 +183,8 @@ async def analyze(sym: str, with_history: bool = True) -> Dict[str, Any]:
     Returns:
         The analysis, or `{available: False, reason}` when no data could be fetched.
     """
-    key = f"{sym}:{int(with_history)}"
+    from api import funds as _funds
+    key = f"{_funds.current()}:{sym}:{int(with_history)}"          # sizes depend on the fund's NAV
     hit = _CACHE.get(key)
     if hit and time.time() - hit[0] < _TTL:
         return hit[1]

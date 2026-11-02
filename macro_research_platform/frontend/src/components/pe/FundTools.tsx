@@ -1,7 +1,7 @@
 // Fund tools: the carry waterfall (LP / GP split under a hurdle, catch-up and carry) and fund performance (IRR, TVPI,
 // DPI, RVPI and public-market equivalents vs an index) from dated cash flows typed or pasted in.
 // Reads /api/v1/pe/fund/{waterfall,performance}.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Card, Kpi, NumField, api, pct, spct, xx } from './peShared';
 
@@ -43,6 +43,9 @@ export function Waterfall() {
     try { setRes(await api('/api/v1/pe/fund/waterfall', { contributions: c.flows, distributions: d.flows, ...terms })); }
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
+  const example = useRef({ contrib, dist });
+  const isExample = contrib === example.current.contrib && dist === example.current.dist;
+  useEffect(() => { run(); }, []);                          // eslint-disable-line react-hooks/exhaustive-deps — once, on the example
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[380px_1fr] gap-3 items-start">
       <Card title="Fund cash flows and terms">
@@ -62,6 +65,7 @@ export function Waterfall() {
       </Card>
       {res && (
         <div className="space-y-3 min-w-0">
+          {isExample && <div className="text-[11px] text-text-tertiary">Example fund shown — replace the cash flows with your fund's and run again.</div>}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <Kpi label="GP carry" value={res.gp_carry.toLocaleString(undefined, { maximumFractionDigits: 1 })} sub={`${pct(res.gp_share_of_profit)} of the profit`} />
             <Kpi label="LP net multiple" value={xx(res.lp_net_multiple)} sub={`${res.lp_total.toLocaleString(undefined, { maximumFractionDigits: 1 })} back on ${res.contributed.toLocaleString()}`} />
@@ -105,6 +109,9 @@ export function Performance() {
     try { setRes(await api('/api/v1/pe/fund/performance', { flows: f.flows, nav: nav ?? 0, nav_date: navDate, index: index.trim() || null })); }
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
+  const example = useRef(flows);
+  const isExample = flows === example.current;
+  useEffect(() => { run(); }, []);                          // eslint-disable-line react-hooks/exhaustive-deps — once, on the example
   const p = res?.pme;
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[380px_1fr] gap-3 items-start">
@@ -125,6 +132,7 @@ export function Performance() {
       </Card>
       {res && (
         <div className="space-y-3 min-w-0">
+          {isExample && <div className="text-[11px] text-text-tertiary">Example fund shown — replace the cash flows with your fund's and run again.</div>}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <Kpi label="Net IRR" value={pct(res.irr)} sub={`over ${res.years.toFixed(1)} years`} />
             <Kpi label="TVPI" value={xx(res.tvpi)} sub="total value / paid-in" />
