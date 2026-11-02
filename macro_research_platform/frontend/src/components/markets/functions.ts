@@ -119,6 +119,7 @@ export const FUNCTIONS: MktFunction[] = [
   { code: 'SWAP', name: 'Swap curves', desc: 'SOFR, \u20acSTR, Euribor, SONIA, TONA and CORRA par swap rates from the day\u2019s reported trades, with US swap spreads to Treasuries.', group: 'Rates & FX', aliases: ['USSW', 'IRS', 'ICVS'] },
   { code: 'CDSX', name: 'Credit indices (CDS)', desc: 'CDX IG, HY and EM and iTraxx Main, Crossover and financials: levels, daily change and history from reported trades.', group: 'Rates & FX', aliases: ['CDX', 'ITRAXX', 'CDS'] },
   { code: 'CDSA', name: 'Single-name CDS activity', desc: 'Which companies\u2019 and countries\u2019 default swaps traded most over recent sessions.', group: 'Rates & FX', aliases: ['SNCDS'] },
+  { code: 'TRACE', name: 'Corporate bond market', desc: 'US corporate-bond breadth from TRACE: bonds advancing vs declining and 52-week highs and lows by IG, HY and convertible (needs a free FINRA API key).', group: 'Rates & FX', aliases: ['BONDMKT'] },
   { code: 'WIRP', name: 'Fed rate probabilities', desc: 'Odds of a hike, hold or cut at each FOMC meeting from fed funds futures (FedWatch method).', group: 'Rates & FX', aliases: ['FEDW'] },
   { code: 'AUCT', name: 'Treasury auctions', desc: 'Bills, notes, bonds, TIPS: yield, bid-to-cover vs average, foreign/investor and dealer take-up.', group: 'Rates & FX', aliases: ['AUCTION'] },
   { code: 'WCRS', name: 'FX cross rates', desc: 'Matrix of 18 currencies with today’s moves and strength vs the dollar.', group: 'Rates & FX', aliases: ['FX', 'FXC'] },

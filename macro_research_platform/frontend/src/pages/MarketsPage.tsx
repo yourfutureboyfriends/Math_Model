@@ -48,7 +48,7 @@ import { PageSections } from '@/components/markets/PageSections';
 import { DsView, GeView, ImovView, MrrView, OvmeView, TraView, VapView, WbView, WpeView } from '@/components/markets/StandardViews';
 import { EaView, EcfcView, EmView, FomcView, FwcvView } from '@/components/markets/StandardViews2';
 import { BorrowView, CrprView, DarkView, LeagView, ProbView } from '@/components/markets/GapViews';
-import { CdsaView, CdsxView, ExthView, SwapView, TranView } from '@/components/markets/FreeDataViews';
+import { BondView, CdsaView, CdsxView, ExthView, SwapView, TranView } from '@/components/markets/FreeDataViews';
 import { ViewTools,useMarketDisplay } from '@/components/markets/ViewTools';
 import { tableCSV } from '@/lib/tableData';
 import { AiChat, RightRail } from '@/components/markets/RightRail';
@@ -369,6 +369,7 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'SWAP' && <SwapView />}
     {code === 'CDSX' && <CdsxView />}
     {code === 'CDSA' && <CdsaView onOpen={open} />}
+    {code === 'TRACE' && <BondView />}
     {code === 'EXTH' && <ExthView onOpen={open} />}
     {code === 'MRGR' && <MrgrView onOpen={open} />}
     {code === 'MEMB' && <MembView seed={seed} onOpen={open} />}

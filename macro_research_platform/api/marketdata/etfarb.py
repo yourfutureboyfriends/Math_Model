@@ -8,8 +8,9 @@ something: the basket is hard to trade (bonds in March 2020: LQD ~−5%), the ba
 closed (international ETFs trade on US hours against stale foreign closes), or creations are
 restricted.
 
-Premium = last close ÷ NAV per share − 1, both as of the same close (Yahoo's NAV is the fund's
-last published NAV). Intraday, the move since that close is shown separately — it is not a premium.
+Premium = close ÷ NAV per share − 1, both as of the same close (Yahoo's NAV is the fund's last published NAV: the
+previous day's during the session, the same day's once the fund publishes after the close). Intraday, the move since
+that close is shown separately — it is not a premium.
 """
 from __future__ import annotations
 
@@ -51,10 +52,17 @@ def _one(sym: str) -> Optional[Dict[str, Any]]:
     if not nav or not prev:
         return None
     t = i.get("regularMarketTime")
+    # During the session Yahoo's NAV is the previous day's, matching previousClose. After the close the fund publishes
+    # today's NAV while previousClose still holds yesterday's price, so a big up or down day showed as a huge false
+    # premium (SMH +744bp on a −7% day). Outside the session, pair the NAV with whichever close it belongs to — the one
+    # nearer it, since real premiums on these funds are a small fraction of a day's move.
+    close, basis = float(prev), "previous close"
+    if last and i.get("marketState") != "REGULAR" and abs(float(last) / float(nav) - 1) < abs(float(prev) / float(nav) - 1):
+        close, basis = float(last), "latest close"
     return {"symbol": sym, "name": i.get("shortName") or i.get("longName"), "nav": round(float(nav), 4),
-            "close": round(float(prev), 4), "last": None if last is None else round(float(last), 4),
-            "premium_bp": round((float(prev) / float(nav) - 1) * 1e4, 1),
-            "move_since_close_bp": None if not last else round((float(last) / float(prev) - 1) * 1e4, 1),
+            "close": round(close, 4), "close_basis": basis, "last": None if last is None else round(float(last), 4),
+            "premium_bp": round((close / float(nav) - 1) * 1e4, 1),
+            "move_since_close_bp": None if not last else round((float(last) / close - 1) * 1e4, 1),
             "aum": i.get("totalAssets"), "volume": i.get("averageVolume"),
             "expense_pct": i.get("netExpenseRatio"),                       # Yahoo quotes this in percent (SPY 0.0945)
             "as_of": datetime.fromtimestamp(t, tz=timezone.utc).strftime("%Y-%m-%d %H:%M") if t else None}

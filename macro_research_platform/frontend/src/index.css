@@ -2288,3 +2288,5 @@ table[data-autosort="on"] > thead th[data-sort-dir="asc"]::after { content: " â–
 .tm-ret-bar.pos { background: rgb(var(--c-green)); }
 .tm-ret-bar.neg { background: rgb(var(--c-red)); }
 @media (prefers-reduced-motion: reduce) { .tm-stack > span, .tm-track > span, .tm-ret-bar { transition: none; } }
+.tm-live { margin-left: 6px; padding: 1px 6px; border-radius: 999px; font-size: 9.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: rgb(var(--c-green)); background: rgb(var(--c-green) / 0.12); border: 1px solid rgb(var(--c-green) / 0.35); }

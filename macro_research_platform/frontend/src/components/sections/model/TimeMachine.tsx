@@ -16,6 +16,7 @@ type Row = {
   decided: string; month: string; growth: number; inflation: number; probs: Record<string, number>; top: string;
   p_g: number; p_i: number; weights: Record<string, number>; cash: number; realised?: string | null;
   next_12m?: { model: number | null; strategic: number | null; sixty_forty: number | null };
+  live?: boolean;                                         // the current decision: latest data, no hindsight yet
 };
 
 // Regime colours: the macro page's validated categorical slots, fixed per regime (never by rank).
@@ -263,8 +264,9 @@ export function TimeMachine({ timeline, sixtyForty }: { timeline?: Row[]; sixtyF
       {/* header: date, transport, regime pill, events */}
       <div className="flex flex-wrap items-center gap-3 mb-3">
         <div className="min-w-[11rem]">
-          <div className="text-[10px] uppercase tracking-[0.08em] text-text-tertiary">Model as of</div>
+          <div className="text-[10px] uppercase tracking-[0.08em] text-text-tertiary">{r.live ? 'Current decision for' : 'Positioned for'}</div>
           <div className="text-lg font-semibold text-text-primary leading-tight tabular-nums">{monthName(r.month)}</div>
+          <div className="text-[10px] text-text-tertiary">with data to the end of {monthName(r.decided)}{r.live && <span className="tm-live">Live</span>}</div>
         </div>
         <div className="tm-transport">
           <button type="button" aria-label="Previous month" onClick={() => go(idx - 1)}><SkipBack className="w-3.5 h-3.5" /></button>
@@ -359,7 +361,7 @@ export function TimeMachine({ timeline, sixtyForty }: { timeline?: Row[]; sixtyF
                 {ret('Strategic', n.strategic)}
                 {ret('60/40', n.sixty_forty, sixtyForty ? `${sixtyForty.equity} / ${sixtyForty.bonds}` : undefined)}
               </div>
-            ) : <div className="text-[10.5px] text-text-tertiary">Not 12 months yet.</div>}
+            ) : <div className="text-[10.5px] text-text-tertiary">{r.live ? 'The current decision — no hindsight yet.' : 'Not 12 months yet.'}</div>}
           </div>
         </Card>
       </div>

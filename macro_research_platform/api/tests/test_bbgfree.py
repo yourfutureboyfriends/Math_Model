@@ -52,15 +52,28 @@ def test_cds_levels_take_spreads_for_ig_and_prices_for_hy():
     assert hy["spread_equiv_bp"] == pytest.approx(500 - 5.85 / 4.3 * 100)
 
 
-def test_single_name_cds_groups_bonds_by_issuer(monkeypatch):
-    def t(isin, fisn="NA/CDS Corp SN Sr"):
-        return {"Action type": "NEWT", "UPI FISN": fisn, "Underlier ID-Leg 1": isin, "Notional amount-Leg 1": "5,000,000", "UPI Underlier Name": "SR NT"}
-    df = pd.DataFrame([t("US67066GAN43"), t("US67066GAM69"), t("US105756CE88", "NA/CDS Sov SN Sr"), t("XX")])
+def test_single_name_cds_groups_by_entity_not_by_placeholder_ids(monkeypatch):
+    def t(isin, name="SR NT", fisn="NA/CDS Corp SN Sr", spread=None, exp="2031-12-20"):
+        return {"Action type": "NEWT", "UPI FISN": fisn, "Underlier ID-Leg 1": isin, "Notional amount-Leg 1": "5,000,000",
+                "UPI Underlier Name": name, "Spread-Leg 1": str(spread) if spread else None, "Spread notation-Leg 1": "3" if spread else None,
+                "Expiration Date": exp}
+    df = pd.DataFrame([t("US67066GAN43", spread=0.0040), t("US67066GAN43", spread=0.0042), t("US67066GAN43", spread=0.0044),
+                       t("US105756CE88", "GLOBAL BD", "NA/CDS Sov SN Sr"),
+                       # the standard-reference-obligation placeholder is shared by many names: split by entity name
+                       t("XSSNRREFOBL0", "WORLDLINE", spread=0.0003), t("XSSNRREFOBL0", "TELECOM ITALIA"), t("XX")])
     monkeypatch.setattr(bbgfree, "_latest_tapes", lambda kind, n, regime="cftc": [(date(2026, 10, 30), df)])
     monkeypatch.setattr(bbgfree, "_figi_names", lambda isins: {"US67066GAN43": {"name": "NVIDIA CORP", "ticker": "NVDA 2 06/15/31"}})
     r = bbgfree.single_name_cds(1)
-    assert r["rows"][0]["name"] == "NVIDIA CORP" and r["rows"][0]["trades"] == 2          # two NVIDIA bonds, one entity
-    assert r["rows"][1]["sovereign"] is True and r["total_trades"] == 3
+    by = {x["name"]: x for x in r["rows"]}
+    assert by["NVIDIA CORP"]["trades"] == 3 and by["NVIDIA CORP"]["spread_5y_bp"] == pytest.approx(42)
+    assert by["WORLDLINE"]["trades"] == 1 and by["TELECOM ITALIA"]["trades"] == 1
+    assert by["WORLDLINE"]["spread_5y_bp"] is None                          # a 3bp print is mis-scaled: dropped
+    assert any(x["sovereign"] for x in r["rows"]) and r["total_trades"] == 6
+
+
+def test_isin_check_digit():
+    assert bbgfree._valid_isin("US0378331005") and not bbgfree._valid_isin("US0378331006")
+    assert not bbgfree._valid_isin("XSSNRREFOBL0")
 
 
 def test_extended_hours_filters_small_and_penny_stocks(monkeypatch):
@@ -92,3 +105,21 @@ def test_transcript_search_finds_the_answer_inside_long_prepared_remarks(monkeyp
     assert {h["call_id"] for h in r["hits"]} == {1, 2}
     with pytest.raises(bbgfree.NotFound):
         bbgfree.transcript_search("TST", "the and of")
+
+
+def test_bond_market_breadth_with_credentials(monkeypatch):
+    from api.providers import finra_api
+    monkeypatch.setattr(finra_api, "available", lambda: True)
+    day = lambda d: [{"tradeReportDate": d, "productCategory": "High Yield", "advances": 600, "declines": 300, "unchanged": 50,
+                      "fiftyTwoWeekHigh": 40, "fiftyTwoWeekLow": 10, "totalTrades": 9000, "totalVolume": 2e9}]
+    monkeypatch.setattr(finra_api, "query", lambda g, n, body: day(body["compareFilters"][0]["fieldValue"]))
+    r = bbgfree.bond_market(5)
+    hy = r["categories"][0]
+    assert hy["ad_ratio"] == pytest.approx(2.0) and len(hy["history"]) == 5 and hy["history"][-1]["net_advances"] == 300
+
+
+def test_bond_market_explains_missing_credentials(monkeypatch):
+    from api.providers import finra_api
+    monkeypatch.setattr(finra_api, "available", lambda: False)
+    with pytest.raises(bbgfree.NotFound, match="developer.finra.org"):
+        bbgfree.bond_market()

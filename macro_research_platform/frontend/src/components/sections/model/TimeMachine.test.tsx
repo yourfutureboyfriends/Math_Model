@@ -21,7 +21,7 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals(); delete (HTMLElement.prototype as any).clientWidth; });
 
-it('opens on the latest month with its regime, ribbon and quadrant drawn', async () => {
+it('opens on the latest decision with its regime, ribbon and quadrant drawn', async () => {
   await act(async () => root.render(<TimeMachine timeline={rows} />));
   expect(host.textContent).toContain(new Date('2009-12-15').toLocaleDateString(undefined, { month: 'long', year: 'numeric' }));
   expect(host.querySelector('.tm-pill')!.textContent).toContain(rows[35].top);

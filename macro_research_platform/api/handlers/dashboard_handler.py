@@ -75,6 +75,27 @@ def _label100(s: float) -> str:
     return "Bearish"
 
 
+def _model_disagreement(regime_name: str) -> "str | None":
+    """A note when the walk-forward macro model (economic data) calls a different regime than this market-signal
+    regime (S&P momentum, CPI/breakevens, liquidity), so the desk sees both rather than one silently."""
+    import json
+    from pathlib import Path
+    try:
+        live = Path(__file__).resolve().parents[2] / "data" / "processed" / "live"
+        snaps = sorted((p for p in live.glob("model_*.json") if "-" not in p.stem), key=lambda p: p.stat().st_mtime)
+        if not snaps:
+            return None
+        reg = (json.loads(snaps[-1].read_text()).get("result") or {}).get("regime") or {}
+        top, probs = reg.get("most_likely"), reg.get("probabilities") or {}
+    except Exception:
+        return None
+    norm = lambda s: (s or "").lower().replace("deflationary ", "").strip()
+    if not top or norm(top) == norm(regime_name):
+        return None
+    return (f"The macro model (walk-forward, economic data) calls {top} ({probs.get(top, 0):.0%}). This regime reads growth "
+            f"from S&P 500 momentum, so it turns with markets first; treat a disagreement as a transition signal.")
+
+
 def _build_news_sentiment(regime_name: str, now) -> dict:
     """Real headline-level sentiment from live RSS markets news (see NewsProvider), scored with a
     finance lexicon. Builds the shape the News Sentiment panel reads: overall, per-theme
@@ -393,7 +414,8 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         inf = calculate_inflation_signal(cpi_s.asof(d), be_s.latest if is_now else be_s.asof(d))[0]
         liq = calculate_liquidity_signal(dxy_level if is_now else dxy_s.asof(d), ten_d, ff_d)[0]
         rsk = calculate_risk_signal(vix_level if is_now else vix_s.asof(d))[0]
-        reg = classify_regime(g, inf, liq)[0] if None not in (g, inf, liq) else None
+        prev_reg = next((p["regime"] for p in reversed(points) if p["regime"]), None)
+        reg = classify_regime(g, inf, liq, previous=prev_reg)[0] if None not in (g, inf, liq) else None
         spread_3m10y = (ten_d - three_d) if None not in (ten_d, three_d) else None
         points.append({"label": label, "date": now.strftime("%Y-%m-%d") if is_now else d,
                        "g": g, "i": inf, "l": liq, "r": rsk, "regime": reg,
@@ -419,8 +441,9 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     yield_spread = (_c2[1] - _c2[2]) if _c2 else dgs10.latest - two_yr
 
     # Classify regime using shared module
+    _prev_regime = next((p["regime"] for p in reversed(points[:-1]) if p["regime"]), None)
     regime_name, regime_confidence, _ = classify_regime(
-        growth_score, inflation_score, liquidity_score
+        growth_score, inflation_score, liquidity_score, previous=_prev_regime
     )
 
     # Measured regime duration: step back through trading days (weekly), re-classifying
@@ -495,7 +518,8 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     # Create regime data
     regime = RegimeData(
         current=regime_name,
-        confidence="High" if regime_confidence > 0.75 else "Medium",
+        confidence="High" if regime_confidence > 0.75 else "Medium" if regime_confidence >= 0.6 else "Low",
+        alert=_model_disagreement(regime_name),
         confidenceScore=regime_confidence,
         duration=regime_duration,
         history=[{"date": p["date"], "regime": p["regime"]} for p in points if p["regime"]],

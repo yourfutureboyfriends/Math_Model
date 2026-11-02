@@ -71,7 +71,7 @@ export function NowcastSection({ data }: NowcastSectionProps) {
             </div>
           </div>
           {(anyData.models ?? []).filter((m: any) => m.model.startsWith('NY Fed')).map((m: any) => (
-            <div key={m.model} className="p-2 bg-surface-1 border border-border" title={`${m.model}, as of ${m.asOf}`}>
+            <div key={m.model} className="p-2 bg-surface-1 border border-border" title={`${m.model}${m.quarter ? ` — ${m.quarter}` : ''}${m.asOf ? `, as of ${m.asOf}` : ''}`}>
               <div className="text-2xs text-text-tertiary uppercase tracking-wider">NY Fed Staff · {m.quarter?.replace(':', '')}</div>
               <div className={cn('text-base font-mono font-bold', signColor(m.value))}>{fmtSigned(m.value)}</div>
               <div className="text-2xs text-text-tertiary">{isNum(m.change4w) ? `${m.change4w >= 0 ? '+' : ''}${m.change4w.toFixed(2)}pp in 4 wks` : ''}</div>

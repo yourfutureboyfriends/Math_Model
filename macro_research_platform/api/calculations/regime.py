@@ -1,5 +1,5 @@
 """Regime classification and characteristics - comprehensive, no hardcoding."""
-from typing import Dict, Tuple, List
+from typing import Optional, Dict, Tuple, List
 from dataclasses import dataclass
 
 
@@ -151,7 +151,12 @@ REGIME_CHARACTERISTICS = {
 }
 
 
-def classify_regime(growth: float, inflation: float, liquidity: float) -> Tuple[str, float, None]:
+# Previous regime's side of each axis, for the dead band below: (growth up, inflation up)
+_SIDES = {"goldilocks": (True, False), "reflation": (True, True), "stagflation": (False, True), "slowdown": (False, False)}
+DEAD_BAND = 0.05
+
+
+def classify_regime(growth: float, inflation: float, liquidity: float, previous: Optional[str] = None) -> Tuple[str, float, None]:
     """
     Classify macro regime from signal scores.
 
@@ -201,15 +206,21 @@ def classify_regime(growth: float, inflation: float, liquidity: float) -> Tuple[
         # Mixed signals - use closest match
         # Split at the 0.5 midpoints; ties go to the growth-up / inflation-down side
         # consistently so e.g. growth=0.5, inflation=0.45 is goldilocks, not reflation.
-        if growth >= 0.5 and inflation < 0.5:
-            regime = "goldilocks"
-        elif growth >= 0.5:
-            regime = "reflation"
-        elif inflation >= 0.5:
-            regime = "stagflation"
-        else:
-            regime = "slowdown"
-        confidence = 0.60
+        # Within DEAD_BAND of a midpoint the axis is a coin flip: keep the previous regime's side so one day's market
+        # move (growth here is S&P momentum) doesn't relabel the economy, and report lower confidence.
+        g_up, i_up = growth >= 0.5, inflation >= 0.5
+        prev = _SIDES.get((previous or "").lower())
+        undecided = False
+        if abs(growth - 0.5) < DEAD_BAND:
+            undecided = True
+            if prev:
+                g_up = prev[0]
+        if abs(inflation - 0.5) < DEAD_BAND:
+            undecided = True
+            if prev:
+                i_up = prev[1]
+        regime = {(True, False): "goldilocks", (True, True): "reflation", (False, True): "stagflation", (False, False): "slowdown"}[(g_up, i_up)]
+        confidence = 0.50 if undecided else 0.60
 
     confidence = min(max(confidence, 0.0), 0.95)
     return regime, confidence, None

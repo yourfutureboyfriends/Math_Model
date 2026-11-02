@@ -1647,3 +1647,10 @@ async def mkt_transcript_search(symbol: str, q: str = Query(..., min_length=2, m
     """Search a company's last four years of earnings calls."""
     from api.marketdata import bbgfree
     return await _run(bbgfree.transcript_search, symbol, q, timeout=120)
+
+
+@router.get("/api/v1/mkt/bond")
+async def mkt_bond_market(days: int = Query(30, ge=5, le=90)):
+    """Corporate-bond market breadth (BOND): TRACE advances, declines and 52-week extremes (needs a free FINRA API key)."""
+    from api.marketdata import bbgfree
+    return await _run(bbgfree.bond_market, days, timeout=180)

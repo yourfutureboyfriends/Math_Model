@@ -447,7 +447,9 @@ def build_nowcast(inp: SectionInputs, now, nyfed: Optional[Dict[str, Any]] = Non
     ny = (nyfed or {}).get("nowcast")
     ny_q = (nyfed or {}).get("quarter")
     same_q = ny is not None and gdpnow is not None and ny_q == quarter
-    models = ([{"model": "Atlanta Fed GDPNow", "value": gdpnow, "quarter": quarter, "asOf": s.latest_date}] if s else []) + (
+    # FRED dates GDPNow by the first day of the quarter it estimates (2026-10-01 = Q4), not by when it was updated, so
+    # that date is not an "as of"; the quarter carries the information.
+    models = ([{"model": "Atlanta Fed GDPNow", "value": gdpnow, "quarter": quarter, "asOf": None}] if s else []) + (
         [{"model": "NY Fed Staff Nowcast", "value": ny, "quarter": ny_q, "asOf": nyfed["latest"]["date"],
           "nextQuarter": nyfed.get("next_quarter"), "change4w": nyfed.get("change_4w")}] if ny is not None else [])
     head = gdpnow if gdpnow is not None else ny

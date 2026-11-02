@@ -192,6 +192,30 @@ def _latest_periodic_filing(cik: int) -> Optional[str]:
         return None
 
 
+LIVE_CHECK_TTL = 6 * 3600             # how often to ask SEC whether a newer 10-Q / 10-K exists
+_live_latest: Dict[int, Tuple[float, Optional[str]]] = {}
+
+
+def latest_periodic_live(cik: int) -> Optional[str]:
+    """Filing date of the company's newest 10-Q / 10-K (or foreign equivalent) from SEC's live submissions feed, checked at
+    most every few hours. None when SEC can't be reached — callers then keep what they have."""
+    hit = _live_latest.get(cik)
+    if hit and time.time() - hit[0] < LIVE_CHECK_TTL:
+        return hit[1]
+    latest = None
+    try:
+        sub = _get(f"https://data.sec.gov/submissions/CIK{cik:010d}.json") or {}
+        r = (sub.get("filings") or {}).get("recent") or {}
+        dates = [d for frm, d in zip(r.get("form") or [], r.get("filingDate") or []) if frm in PERIODIC_FORMS]
+        latest = max(dates) if dates else None
+    except Exception as e:                                # noqa: BLE001 — offline: no newer filing known
+        logger.info("[sec] live filing check CIK %s: %s", cik, e)
+        if hit:
+            return hit[1]
+    _live_latest[cik] = (time.time(), latest)
+    return latest
+
+
 def _latest_filed(facts: Dict[str, Any]) -> str:
     best = ""
     for tags in (facts.get("facts") or {}).values():
@@ -213,7 +237,7 @@ def _bulk_facts(cik: int, require_current: bool = True) -> Optional[Dict[str, An
     except Exception:
         return None
     if require_current:
-        latest = _latest_periodic_filing(cik)
+        latest = max(filter(None, (_latest_periodic_filing(cik), latest_periodic_live(cik))), default=None)
         if not latest or _latest_filed(facts) < latest:
             return None
     return facts
@@ -224,9 +248,18 @@ def _raw_facts(cik: int) -> Optional[Dict[str, Any]]:
     local = _bulk_facts(cik)
     if local is not None:
         return local
+    path = CACHE / "facts" / f"CIK{cik:010d}.json"
+    fetch = lambda: _get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json")
     try:
-        return _cached(CACHE / "facts" / f"CIK{cik:010d}.json", FACTS_TTL,
-                       lambda: _get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"), keep=False)
+        facts = _cached(path, FACTS_TTL, fetch, keep=False)
+        # a 10-Q filed since the cache was written (earnings season): fetch again rather than wait out the TTL
+        live = latest_periodic_live(cik)
+        if facts and live and _latest_filed(facts) < live and time.time() - path.stat().st_mtime > 3600:
+            fresh = fetch()
+            if fresh:
+                path.write_text(json.dumps(fresh))
+                facts = fresh
+        return facts
     except Exception as e:
         old = _bulk_facts(cik, require_current=False)          # SEC unreachable: the bulk file, even if a filing behind
         if old is not None:
@@ -535,7 +568,12 @@ def pit_events(ticker: str) -> Dict[str, List[Tuple[str, float]]]:
     path = CACHE / "pit" / f"{ticker.upper().replace('/', '_')}.json"
     try:
         if time.time() - path.stat().st_mtime < FACTS_TTL:
-            return {k: [tuple(x) for x in v] for k, v in json.loads(path.read_text()).items()}
+            cached = {k: [tuple(x) for x in v] for k, v in json.loads(path.read_text()).items()}
+            ent = resolve(ticker)
+            live = latest_periodic_live(ent["cik"]) if ent else None
+            newest = max((d for v in cached.values() for d, _ in v), default="")
+            if not live or newest >= live:                # still current; else a newer 10-Q / 10-K is out
+                return cached
     except Exception:
         pass
     out = _pit_events(ticker)

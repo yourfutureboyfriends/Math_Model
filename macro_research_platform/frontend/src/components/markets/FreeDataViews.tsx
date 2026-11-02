@@ -123,21 +123,24 @@ export function CdsaView({ onOpen }: { onOpen: (s: string) => void }) {
   return (
     <div className="space-y-3">
       {controls}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <Tile label="Single-name trades" value={d.total_trades.toLocaleString()} sub={`${d.from} → ${d.to}`} />
         <Tile label="Reference entities" value={d.entities} sub="companies and countries traded" />
         <Tile label="Busiest" value={d.rows[0]?.name ?? '—'} sub={d.rows[0] ? `${d.rows[0].trades} trades` : ''} />
+        {d.with_spreads != null && <Tile label="Names with a quoted spread" value={d.with_spreads} sub="5-year, from trades that disseminated one" />}
       </div>
       <Panel title="Most-traded single-name CDS">
         <table className="w-full text-2xs font-mono tabular-nums">
           <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Reference entity</th><th className="text-left font-normal">Reference bond</th><th className="text-left font-normal">Type</th>
-            <th className="text-right font-normal">Trades</th><th className="text-right font-normal">Notional</th><th className="text-right font-normal">Days</th></tr></thead>
+            <th className="text-right font-normal">Trades</th><th className="text-right font-normal">5Y spread</th><th className="text-right font-normal">Notional</th><th className="text-right font-normal">Days</th></tr></thead>
           <tbody>{rows.map((r: any) => {
             const eq = r.ticker?.split(' ')[0];
             return (
               <tr key={r.issuer_code} onClick={() => eq && !r.sovereign && onOpen(eq)} className={cn('border-t border-border-subtle', eq && !r.sovereign && 'cursor-pointer hover:bg-surface-2')}>
                 <td className="py-1 font-sans text-text-primary">{r.name ?? r.isin}</td><td className="text-text-tertiary">{r.ticker || r.isin}</td>
                 <td className="font-sans text-text-secondary">{r.sovereign ? 'Sovereign' : 'Corporate'}</td><td className="text-right font-semibold">{r.trades}</td>
+                <td className="text-right" title={r.spread_prints ? `median of ${r.spread_prints} trades that reported a spread` : 'no spread disseminated'}>
+                  {r.spread_5y_bp != null ? `${Math.round(r.spread_5y_bp)} bp` : <span className="text-text-tertiary">—</span>}</td>
                 <td className="text-right text-text-secondary">{big(r.notional)}</td><td className="text-right">{r.days_traded}</td></tr>
             );
           })}</tbody>
@@ -260,6 +263,31 @@ export function TranView({ symbol }: { symbol: string }) {
         </div>
       )}
       <Source>{d.source}</Source>
+    </div>
+  );
+}
+
+// ── BOND ─────────────────────────────────────────────────────────────────────
+export function BondView() {
+  const { data: d, error, loading } = useJSON<any>('/api/v1/mkt/bond?days=30', 3 * 3_600_000);
+  if (loading && !d) return <Loading label="Loading TRACE corporate-bond breadth…" />;
+  if (error && !d) return <ErrorBox msg={error} />;
+  if (!d) return null;
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {d.categories.slice(0, 4).map((c: any) => (
+          <Tile key={c.category} label={c.category} value={c.ad_ratio != null ? `${c.ad_ratio.toFixed(2)} A/D` : '—'}
+            sub={<><span className="text-green">{c.advances}↑</span> <span className="text-red">{c.declines}↓</span> · {c.highs_52w} highs / {c.lows_52w} lows</>} />
+        ))}
+      </div>
+      <Panel title={`Net advancing bonds by category — to ${d.date}`}>
+        <div className="mkt-chart-surface"><LineChart rows={(d.categories[0]?.history ?? []).map((h: any, k: number) => ({ date: h.date,
+          ...Object.fromEntries(d.categories.slice(0, 4).map((c: any) => [c.category, c.history[k]?.net_advances ?? null])) }))}
+          x="date" height={240} controls={false} fmt={(v) => v.toFixed(0)} baseline={0}
+          lines={d.categories.slice(0, 4).map((c: any, i: number) => ({ key: c.category, label: c.category, color: COLORS[i] }))} /></div>
+      </Panel>
+      <Source>{d.note} {d.source}</Source>
     </div>
   );
 }

@@ -164,6 +164,17 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
         lab = realised.get(pd.Timestamp(row["month"] + "-01")) if len(realised) else None
         row["realised"] = lab if isinstance(lab, str) else None
         row["next_12m"] = {k: (round(v[i], 4) if v[i] is not None else None) for k, v in fwd.items()}
+    # The live decision: made with the latest month's data for the month ahead. Without it the timeline ended a month
+    # early, so "today" showed last month's call while the model's current regime said something else.
+    if last is not None and (not timeline or timeline[-1]["decided"] != pd.Timestamp(months[-1]).strftime("%Y-%m")):
+        t_last = pd.Timestamp(months[-1])
+        timeline.append({"decided": t_last.strftime("%Y-%m"), "month": (t_last + pd.offsets.MonthBegin(1)).strftime("%Y-%m"),
+                         "growth": round(float(last.growth.iloc[-1]), 3), "inflation": round(float(last.inflation.iloc[-1]), 3),
+                         "probs": {q: round(v, 3) for q, v in last.regime_probs.items()},
+                         "top": max(last.regime_probs, key=last.regime_probs.get),
+                         "p_g": round(last.p_growth_up["probability"], 3), "p_i": round(last.p_inflation_up["probability"], 3),
+                         "weights": {a: round(float(x), 3) for a, x in zip(last.assets, last.weights) if abs(x) >= 0.0005},
+                         "cash": round(last.cash, 3), "realised": None, "next_12m": {k: None for k in fwd}, "live": True})
 
     # Growth of $1 per strategy from its own first month: a benchmark whose assets start later
     # (60/40 needs both legs) is blank before then, not a flat line of zero returns.

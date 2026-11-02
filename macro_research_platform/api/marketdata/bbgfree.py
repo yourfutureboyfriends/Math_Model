@@ -276,40 +276,116 @@ def _figi_names(isins: List[str]) -> Dict[str, Dict[str, str]]:
     return known
 
 
+GENERIC_NAMES = {"NO NAME OBTAINABLE", "NT", "SR NT", "BD", "GLOBAL BD", "GLOBAL NT", "SR NT 144A", "GTD SR NT", "SUB NT 144A", "NAN"}
+
+
+def _valid_isin(s: Any) -> bool:
+    """ISIN with a correct check digit — and not the standard-reference-obligation placeholder shared by many names."""
+    s = str(s or "")
+    if not re.fullmatch(r"[A-Z]{2}[A-Z0-9]{9}\d", s) or s.startswith("XSSNRREF"):
+        return False
+    digits = "".join(str(int(c, 36)) for c in s[:11])
+    total = 0
+    for k, ch in enumerate(reversed(digits)):
+        d = int(ch) * (2 if k % 2 == 0 else 1)
+        total += d // 10 + d % 10
+    return (10 - total % 10) % 10 == int(s[11])
+
+
+def _entity_key(underlier: Any, name: Any) -> Optional[str]:
+    """One key per reference entity: the issuer part of a real ISIN (country + 6-character issuer code), else the entity
+    name the tape gives (placeholder ISINs and Markit RED codes carry it), else the RED entity code."""
+    u, n = str(underlier or "").strip(), str(name or "").strip().upper()
+    if _valid_isin(u):
+        return u[:8]
+    if n and n not in GENERIC_NAMES and not re.search(r"\d|%|NOTE|BOND|\bNT\b|\bBD\b", n):
+        return "NAME:" + n
+    if re.fullmatch(r"[A-Z0-9]{6}([A-Z0-9]{3})?", u):
+        return "RED:" + u[:6]
+    return None
+
+
 def single_name_cds(days: int = 5) -> Dict[str, Any]:
     """Single-name CDS trading over recent sessions, by reference entity: trades and notional, corporate vs sovereign.
     Single-name prices are rarely disseminated, so this ranks hedging activity, not spreads."""
     def build():
         tapes = _latest_tapes("CREDITS", max(1, days), regime="sec")
+        for d, df in tapes:
+            df["day"] = str(d)
         if not tapes:
             raise Upstream("DTCC's security-based swap tape is unavailable right now.")
         frames = []
         for d, df in tapes:
             x = df[(df["Action type"] == "NEWT") & df["UPI FISN"].fillna("").str.contains("SN")]
-            frames.append(x.assign(day=str(d)))
+            frames.append(x)
         x = pd.concat(frames)
-        x = x[x["Underlier ID-Leg 1"].fillna("").str.match(r"^[A-Z]{2}[A-Z0-9]{9}\d$")]
+        x = x.assign(issuer=[_entity_key(i, n) for i, n in zip(x["Underlier ID-Leg 1"], x["UPI Underlier Name"])])
+        x = x[x["issuer"].notna()]
+        # spreads, where the tape carries one (about one trade in eight): decimal notation, 1bp–50%, CDS not total-return swaps
+        sp = pd.to_numeric(x["Spread-Leg 1"], errors="coerce")
+        nota = pd.to_numeric(x["Spread notation-Leg 1"], errors="coerce")
+        exp = pd.to_datetime(x["Expiration Date"], errors="coerce")
+        tenor = (exp - pd.to_datetime(x["day"])).dt.days / 365.25
+        # some reporters submit the spread 100× too small (Egypt at 3bp): a traded CDS is never under ~5bp, so those go
+        x = x.assign(spread_bp=(sp * 1e4).where((nota == 3) & sp.between(0.0005, 0.5) & x["UPI FISN"].str.contains("CDS")),
+                     tenor=tenor)
         x = x.assign(notional=x["Notional amount-Leg 1"].map(_notional),
-                     # one reference entity, many bonds: group by issuer code (ISIN country + first 6 of the CUSIP/NSIN)
-                     issuer=x["Underlier ID-Leg 1"].str[:8], sovereign=x["UPI FISN"].str.contains("Sov"))
+                     sovereign=x["UPI FISN"].str.contains("Sov"))
         g = x.groupby("issuer").agg(trades=("issuer", "size"), notional=("notional", "sum"), isin=("Underlier ID-Leg 1", "first"),
                                     sovereign=("sovereign", "max"), bond=("UPI Underlier Name", "first"),
                                     days=("day", "nunique")).reset_index().sort_values(["trades", "notional"], ascending=False)
         top = g.head(60)
-        names = _figi_names(top["isin"].tolist())
+        names = _figi_names([i for i in top["isin"].tolist() if _valid_isin(i)])
+        five = x[x["spread_bp"].notna() & x["tenor"].between(4.0, 5.9)]          # the 5-year point, as quoted
+        n5 = five.groupby("issuer").size()
+        spread5 = five.groupby("issuer")["spread_bp"].median()[n5 >= 3]           # one or two prints aren't a market
+        last_day = five.groupby(["issuer", "day"])["spread_bp"].median()
         rows = []
         for _, r in top.iterrows():
             nm = names.get(r["isin"], {})
-            rows.append({"issuer_code": r["issuer"], "isin": r["isin"], "name": nm.get("name") or (r["bond"] if r["bond"] not in ("No name obtainable", "NT", "SR NT", "BD", "GLOBAL BD") else None),
+            hist = last_day.get(r["issuer"]) if r["issuer"] in last_day.index.get_level_values(0) else None
+            rows.append({"issuer_code": r["issuer"], "isin": r["isin"] if _valid_isin(r["isin"]) else None,
+                         "name": nm.get("name") or (r["issuer"][5:] if r["issuer"].startswith("NAME:") else None),
                          "ticker": nm.get("ticker"), "sovereign": bool(r["sovereign"]), "trades": int(r["trades"]),
-                         "notional": float(r["notional"]) if pd.notna(r["notional"]) else None, "days_traded": int(r["days"])})
+                         "notional": float(r["notional"]) if pd.notna(r["notional"]) else None, "days_traded": int(r["days"]),
+                         "spread_5y_bp": float(spread5[r["issuer"]]) if r["issuer"] in spread5.index else None,
+                         "spread_prints": int(n5.get(r["issuer"], 0)),
+                         "spread_history": [{"date": d, "spread_bp": float(v)} for d, v in sorted(hist.items())]
+                         if hist is not None and r["issuer"] in spread5.index else []})
+        # the same company reached through bond ISINs and through its name: one row
+        def norm(nm):
+            w = re.sub(r"[^A-Z0-9 ]", " ", (nm or "").upper()).split()
+            return " ".join(t for t in w if t not in {"INC", "CORP", "CORPORATION", "CO", "LTD", "PLC", "SA", "SPA", "AG", "NV", "THE", "LLC", "COMPANY"})
+        merged: Dict[str, Dict[str, Any]] = {}
+        for r in rows:
+            k = norm(r["name"]) or r["issuer_code"]
+            m = merged.get(k)
+            if m is None:
+                merged[k] = r
+                continue
+            m["trades"] += r["trades"]
+            m["notional"] = (m["notional"] or 0) + (r["notional"] or 0)
+            m["days_traded"] = max(m["days_traded"], r["days_traded"])
+            if r["spread_prints"] > m["spread_prints"]:
+                m["spread_5y_bp"], m["spread_history"] = r["spread_5y_bp"], r["spread_history"]
+            m["spread_prints"] += r["spread_prints"]
+            m["isin"] = m["isin"] or r["isin"]
+            m["ticker"] = m["ticker"] or r["ticker"]
+        for r in merged.values():
+            if not r["name"] and r["issuer_code"].startswith("RED:"):
+                r["name"] = f"RED {r['issuer_code'][4:]} (unnamed: Markit RED codes are licensed)"
+        rows = sorted(merged.values(), key=lambda r: -r["trades"])
         return {"from": tapes[-1][0].isoformat(), "to": tapes[0][0].isoformat(), "sessions": len(tapes), "rows": rows,
                 "total_trades": int(len(x)), "entities": int(len(g)),
+                "with_spreads": int(sum(1 for r in merged.values() if r["spread_5y_bp"] is not None)),
                 "note": "Counts new single-name CDS trades by reference entity (grouped by the issuer part of the reference bond's ISIN). "
+                        "The 5-year spread is the median of the trades that disseminated one (the public tape omits it for most "
+                        "single-name trades), so it shows only for names with at least three such trades; prints under 5bp are "
+                        "dropped as mis-scaled. "
                         "Notional is capped in the public tape for large trades, so it understates block size. Busy names are "
                         "where credit protection is being bought or sold — often around earnings, downgrades or M&A.",
                 "source": "DTCC public security-based swap data (SEC Regulation SBSR), internal use; names OpenFIGI."}
-    return _cached(f"cdsa:{days}", 6 * 3600, build)
+    return _cached(f"cdsa3:{days}", 6 * 3600, build)
 
 
 # ── EXTH ─────────────────────────────────────────────────────────────────────
@@ -478,3 +554,44 @@ def transcript_search(symbol: str, query: str, limit: int = 12) -> Dict[str, Any
                                  "score": recency * cov * cov * n / np.sqrt(1 + len(words) / 80)})
     hits.sort(key=lambda h: -h["score"])
     return {"symbol": symbol, "query": query, "terms": terms, "hits": hits[:limit], "matches": len(hits)}
+
+
+# ── BOND: corporate-bond market breadth (FINRA TRACE, free API account) ──────
+def bond_market(days: int = 30) -> Dict[str, Any]:
+    """US corporate-bond market breadth from TRACE: bonds advancing vs declining, 52-week highs and lows, trades and
+    volume by investment grade / high yield / convertible, over recent sessions."""
+    from api.providers import finra_api
+    if not finra_api.available():
+        raise NotFound("Corporate-bond breadth needs a free FINRA API account: create one at developer.finra.org, then add "
+                       "FINRA_API_CLIENT_ID and FINRA_API_CLIENT_SECRET to .env and restart the backend.")
+
+    def build():
+        rows, d, tries = [], date.today(), 0
+        while len({r["tradeReportDate"] for r in rows}) < days and tries < days * 2:
+            tries += 1
+            if d.weekday() < 5:
+                got = finra_api.query("fixedIncomeMarket", "corporateMarketBreadth",
+                                      {"compareFilters": [{"compareType": "EQUAL", "fieldName": "tradeReportDate", "fieldValue": str(d)}]})
+                rows += got
+            d -= timedelta(days=1)
+        if not rows:
+            raise Upstream("FINRA returned no corporate-bond breadth.")
+        df = pd.DataFrame(rows)
+        latest = df["tradeReportDate"].max()
+        cats = []
+        for cat, g in df.groupby("productCategory"):
+            g = g.sort_values("tradeReportDate")
+            last = g.iloc[-1]
+            adv, dec = float(last.get("advances") or 0), float(last.get("declines") or 0)
+            cats.append({"category": cat, "date": last["tradeReportDate"], "advances": adv, "declines": dec,
+                         "unchanged": float(last.get("unchanged") or 0), "highs_52w": float(last.get("fiftyTwoWeekHigh") or 0),
+                         "lows_52w": float(last.get("fiftyTwoWeekLow") or 0), "trades": float(last.get("totalTrades") or 0),
+                         "volume": float(last.get("totalVolume") or 0), "ad_ratio": adv / dec if dec else None,
+                         "history": [{"date": r["tradeReportDate"], "net_advances": float((r.get("advances") or 0) - (r.get("declines") or 0)),
+                                      "highs_minus_lows": float((r.get("fiftyTwoWeekHigh") or 0) - (r.get("fiftyTwoWeekLow") or 0))}
+                                     for _, r in g.iterrows()]})
+        return {"date": latest, "categories": cats,
+                "note": "Advances and declines count bonds whose last price rose or fell versus their previous trade day; "
+                        "52-week highs and lows count bonds at new price extremes.",
+                "source": "FINRA TRACE market breadth (FINRA Query API)."}
+    return _cached(f"bondmkt:{days}", 3 * 3600, build)
