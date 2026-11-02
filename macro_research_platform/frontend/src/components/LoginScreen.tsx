@@ -151,11 +151,11 @@ export function LoginScreen() {
         <div className="login-card login-access-card">
           <span className="login-eyebrow">MEMBER ACCESS</span>
           <h2>Welcome back</h2>
-          <p className="login-access-copy">Select your fund and sign in to your workspace.</p>
+          <p className="login-access-copy">Choose your fund — or your personal workspace — and sign in.</p>
           <form onSubmit={handleSubmit} className="login-form">
             <div>
-              <label htmlFor="login-fund">Fund</label>
-              <select id="login-fund" aria-label="Fund" value={fundId} disabled={loading||!funds.length} onChange={e=>{setFundId(e.target.value);setNeedOtp(false);setOtp('');setError(null);}}>
+              <label htmlFor="login-fund">Workspace</label>
+              <select id="login-fund" aria-label="Workspace" value={fundId} disabled={loading||!funds.length} onChange={e=>{setFundId(e.target.value);setNeedOtp(false);setOtp('');setError(null);}}>
                 {!funds.length&&<option value={fundId}>{brandingError?'Fund list unavailable':'Loading funds…'}</option>}
                 {funds.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
               </select>
