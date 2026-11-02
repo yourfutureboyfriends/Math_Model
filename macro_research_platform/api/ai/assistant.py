@@ -201,6 +201,29 @@ def _t_world_bonds() -> Any:
     return {"rows": [{k: x.get(k) for k in keep} for x in r["rows"] if not x["stale"]][:30], "note": r["note"]}
 
 
+def _t_fomc() -> Any:
+    from api.marketdata import bbgstd
+    r = bbgstd.fomc()
+    return {k: r.get(k) for k in ("target_lower", "target_upper", "effective", "last_move", "hikes_2y", "cuts_2y", "dots_vs_market")} | {
+        "next_meeting": (r.get("market") or {}).get("next_meeting"),
+        "projections": {k: {"years": v["years"], "longer_run": v["longer_run"]} for k, v in r["sep"].items()}}
+
+
+def _t_earnings_season(index: str = "SPX") -> Any:
+    from api.marketdata import bbgstd
+    r = bbgstd.earnings_analysis(index)
+    keep = ("symbol", "name", "surprise_pct", "reaction")
+    return {k: r[k] for k in ("name", "reported", "members", "beat_rate", "median_surprise", "avg_reaction_beat", "avg_reaction_miss")} | {
+        "sectors": r["sectors"], "biggest_reactions": [{k: x[k] for k in keep} for x in r["biggest_reactions"][:6]]}
+
+
+def _t_forecasts(country: Optional[str] = None) -> Any:
+    from api.marketdata import bbgstd
+    r = bbgstd.economic_forecasts()
+    rows = [x for x in r["rows"] if not country or country.upper() in (x["iso"], x["name"].upper())] or r["rows"][:20]
+    return {"year": r["year"], "rows": rows[:20], "regions": r["regions"]}
+
+
 TOOLS: Dict[str, Tuple[Callable, str, Dict[str, Any]]] = {
     "search_instrument": (_t_search, "Find tickers by company or instrument name (any exchange, FX, futures, crypto).",
                           {"query": {"type": "string", "description": "Company or instrument name"}}),
@@ -229,6 +252,12 @@ TOOLS: Dict[str, Tuple[Callable, str, Dict[str, Any]]] = {
                        {"symbol": {"type": "string"}, "query": {"type": "string", "description": "A few key words, e.g. 'share repurchase'"}}),
     "get_pe_history": (_t_pe_history, "Trailing P/E today vs its own 10-year history: mean, standard deviation, percentile and the "
                        "prices the bands imply.", {"symbol": {"type": "string"}}),
+    "get_fed": (_t_fomc, "The Fed: target range, last decision, the FOMC's projections (dots, GDP, unemployment, inflation) and "
+                "how market pricing compares with the dots.", {}),
+    "get_earnings_season": (_t_earnings_season, "This earnings season for an index (SPX, NDX, INDU): beat rate, surprises, share "
+                            "reactions, by sector.", {"index": {"type": "string", "enum": ["SPX", "NDX", "INDU"]}}),
+    "get_economic_forecasts": (_t_forecasts, "IMF growth, inflation, unemployment and debt forecasts by country with the latest CPI.",
+                               {"country": {"type": "string", "description": "ISO code or name; omit for the largest economies"}}),
     "get_world_bonds": (_t_world_bonds, "10-year government yields by country with spreads to Treasuries, policy rates, real yields "
                         "and 2s10s slopes.", {}),
 }
@@ -276,6 +305,9 @@ _CITE = {  # tool: (source, markets function code or None, research panel or Non
     "search_filings": ("SEC EDGAR filing text", "DS", None),
     "get_pe_history": ("SEC EDGAR EPS / Yahoo prices", "GE", None),
     "get_world_bonds": ("Issuers' curves / OECD / BIS / IMF", "WB", None),
+    "get_fed": ("FRED / CME fed funds futures", "FOMC", None),
+    "get_earnings_season": ("Yahoo earnings calendar", "EA", None),
+    "get_economic_forecasts": ("IMF World Economic Outlook / BIS", "ECFC", None),
 }
 
 

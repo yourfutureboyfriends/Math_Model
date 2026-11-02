@@ -87,8 +87,15 @@ def wirp() -> Dict[str, Any]:
         from api.providers.fred_provider import FREDProvider
 
         def _fred_last(sid):
-            obs = [o for o in (FREDProvider().fetch_series(sid).data or []) if o.value is not None]
-            return obs[-1].value if obs else None
+            try:
+                obs = [o for o in (FREDProvider().fetch_series(sid).data or []) if o.value is not None]
+            except Exception:                            # no API key or API down: FRED's public CSV below
+                obs = []
+            if obs:
+                return obs[-1].value
+            from api.marketdata.insights import _fred
+            h = _fred(sid, years=1)
+            return h[max(h)] if h else None
         today = date.today()
         months = [(today.year + (today.month - 1 + i) // 12, (today.month - 1 + i) % 12 + 1) for i in range(0, 16)]
         syms = {f"ZQ{MONTH_CODES[m - 1]}{str(y)[2:]}.CBT": (y, m) for y, m in months}

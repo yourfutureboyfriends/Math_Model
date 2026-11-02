@@ -1510,3 +1510,39 @@ async def mkt_filing_search(symbol: str, q: str = Query(..., min_length=2, max_l
     """Filing search (DS): the best-matching passages in a company's recent SEC filings."""
     from api.marketdata import bbgplus
     return await _run(bbgplus.filing_search, symbol, q, forms, limit, timeout=150)
+
+
+# ── More Bloomberg-standard screens (marketdata/bbgstd.py) ────────────────────
+@router.get("/api/v1/mkt/fwcv")
+async def mkt_forward_curves():
+    """Forward curves (FWCV): forward rates implied by each government curve."""
+    from api.marketdata import bbgstd
+    return await _run(bbgstd.forward_curves, timeout=90)
+
+
+@router.get("/api/v1/mkt/ecfc")
+async def mkt_economic_forecasts():
+    """Economic forecasts (ECFC): IMF forecasts by country against the latest CPI and policy rate."""
+    from api.marketdata import bbgstd
+    return await _run(bbgstd.economic_forecasts, timeout=150)
+
+
+@router.get("/api/v1/mkt/fomc")
+async def mkt_fomc():
+    """Fed portal (FOMC): target range, decisions, the Fed's projections and market pricing."""
+    from api.marketdata import bbgstd
+    return await _run(bbgstd.fomc, timeout=90)
+
+
+@router.get("/api/v1/mkt/em/{symbol}")
+async def mkt_earnings_matrix(symbol: str, years: int = Query(6, ge=2, le=12)):
+    """Earnings matrix (EM): EPS and revenue by fiscal quarter and year, with growth."""
+    from api.marketdata import bbgstd
+    return await _run(bbgstd.earnings_matrix, symbol, years, timeout=60)
+
+
+@router.get("/api/v1/mkt/ea/{code}")
+async def mkt_earnings_analysis(code: str, days: int = Query(45, ge=14, le=92)):
+    """Earnings analysis (EA): the reporting season so far for an index's members."""
+    from api.marketdata import bbgstd
+    return await _run(bbgstd.earnings_analysis, code, days, timeout=150)

@@ -8,7 +8,7 @@ import { BarList } from '@/components/ui/BarList';
 import { blackScholes, impliedVol, type OptionKind } from '@/lib/blackScholes';
 import { ErrorBox, fmtPct, fmtPrice, Loading, Panel, useJSON } from './shared';
 
-function Tile({ label, value, sub, cls }: { label: string; value: React.ReactNode; sub?: React.ReactNode; cls?: string }) {
+export function Tile({ label, value, sub, cls }: { label: string; value: React.ReactNode; sub?: React.ReactNode; cls?: string }) {
   return (
     <div className="border border-border bg-surface-1 rounded-md px-2.5 py-1.5">
       <div className="text-[10px] uppercase tracking-wide text-text-tertiary">{label}</div>
@@ -17,12 +17,12 @@ function Tile({ label, value, sub, cls }: { label: string; value: React.ReactNod
     </div>
   );
 }
-function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+export function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
   return <button onClick={onClick} className={cn('px-2 py-0.5 border rounded-sm text-[11px]', on ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary hover:text-text-primary')}>{children}</button>;
 }
-const sign = (v: number | null | undefined) => (v == null ? '' : v > 0 ? 'text-green' : v < 0 ? 'text-red' : '');
-const pct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(d)}%`);
-const Source = ({ children }: { children: React.ReactNode }) => <p className="text-[10px] text-text-tertiary leading-relaxed">{children}</p>;
+export const sign = (v: number | null | undefined) => (v == null ? '' : v > 0 ? 'text-green' : v < 0 ? 'text-red' : '');
+export const pct = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(d)}%`);
+export const Source = ({ children }: { children: React.ReactNode }) => <p className="text-[10px] text-text-tertiary leading-relaxed">{children}</p>;
 
 // ── IMOV ─────────────────────────────────────────────────────────────────────
 export function ImovView({ onOpen }: { onOpen: (s: string) => void }) {
