@@ -13,10 +13,23 @@ XML = """<edgarSubmission><repPdDate>2025-06-30</repPdDate>
 def test_holdings_keep_equities_and_normalise_tickers(tmp_path, monkeypatch):
     monkeypatch.setattr(nu, "CACHE", tmp_path)
     monkeypatch.setattr(nu, "_get", lambda url, **p: XML)
-    period, tickers = nu._holdings("0000000000-25-000001")
-    assert period == "2025-06-30" and tickers == ["ABC", "BRK-B"]
+    d = nu._holdings("0000000000-25-000001")
+    assert d["period"] == "2025-06-30" and d["tickers"] == ["ABC", "BRK-B"]
     monkeypatch.setattr(nu, "_get", lambda url, **p: (_ for _ in ()).throw(AssertionError("refetched")))
-    assert nu._holdings("0000000000-25-000001")[1] == ["ABC", "BRK-B"]          # cached
+    assert nu._holdings("0000000000-25-000001")["tickers"] == ["ABC", "BRK-B"]  # cached
+
+
+def test_old_filings_without_tickers_are_mapped_from_later_ones(monkeypatch):
+    docs = {"a": {"v": 2, "period": "2021-03-31", "tickers": [], "pairs": {}, "unmapped": [["111", "Keep Co"], ["222", "Gone Co"]]},
+            "b": {"v": 2, "period": "2023-03-31", "tickers": ["KEEP"], "pairs": {"111": "KEEP"}, "unmapped": []}}
+    monkeypatch.setattr(nu, "_filings", lambda sid: [("a", ""), ("b", "")])
+    monkeypatch.setattr(nu, "_holdings", lambda acc: docs[acc])
+    monkeypatch.setattr(nu, "CACHE", __import__("pathlib").Path(__import__("tempfile").mkdtemp()))
+    import api.quant.smartmoney as sm
+    monkeypatch.setattr(sm, "_map_tickers", lambda rows: {r["cusip"]: "GONE" for r in rows})
+    nu._SNAP_CACHE.clear()
+    snaps = dict(nu.snapshots(("IJR",)))
+    assert snaps[pd.Timestamp("2021-03-31")] == frozenset({"KEEP", "GONE"})     # learned pair + FIGI for the leaver
 
 
 def test_members_frame_uses_only_snapshots_already_dated(monkeypatch):

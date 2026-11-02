@@ -31,3 +31,4 @@ def test_verdicts():
     assert proof._verdict(0.04, 2.6, 0.5, 1.0) == "promising"          # significant but not after multiple testing
     assert proof._verdict(-0.001, -0.1, 0.8, 1.25) == "beta"
     assert proof._verdict(-0.02, -1.3, 0.0, 0.2) == "no edge"
+    assert proof._verdict(0.0018, 2.5, 1.0, 0.0) == "no edge"           # significant but under 1% a year: not worth it

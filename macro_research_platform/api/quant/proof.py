@@ -12,7 +12,8 @@ fund for a few basis points. So every tested strategy and signal is scored on:
     paths stay positive;
   * for stock signals and the macro model's tactical tilt, their own out-of-sample t-statistics.
 
-Verdicts: "alpha" needs multi-factor t ≥ 2 and deflated Sharpe ≥ 0.9; "promising" t ≥ 1.2 with positive alpha;
+Verdicts: "alpha" needs multi-factor t ≥ 2, deflated Sharpe ≥ 0.9 and at least 1% a year; "promising" t ≥ 1.2 and at
+least 1% a year;
 "beta" when equity beta ≥ 0.6 explains most of the return with no alpha; otherwise "no edge".
 """
 from __future__ import annotations
@@ -63,10 +64,13 @@ def _capm(r: np.ndarray, b: np.ndarray) -> Dict[str, Optional[float]]:
     return {"alpha": float(a * 252), "alpha_t": float(t), "beta": beta}
 
 
+MIN_ALPHA = 0.01        # an edge under 1% a year is not worth the operational and tail risk of running it
+
+
 def _verdict(alpha: Optional[float], t: Optional[float], dsr: Optional[float], eq_beta: Optional[float]) -> str:
-    if alpha is not None and t is not None and t >= 2 and (dsr or 0) >= 0.9 and alpha > 0:
+    if alpha is not None and t is not None and t >= 2 and (dsr or 0) >= 0.9 and alpha >= MIN_ALPHA:
         return "alpha"
-    if alpha is not None and t is not None and t >= 1.2 and alpha > 0:
+    if alpha is not None and t is not None and t >= 1.2 and alpha >= MIN_ALPHA:
         return "promising"
     if eq_beta is not None and eq_beta >= 0.6:
         return "beta"
@@ -101,7 +105,13 @@ def scorecard() -> Dict[str, Any]:
         except Exception:                                       # noqa: BLE001
             pass
     n_trials = len(loaded) + sum(len(a["signals"]) + len(a.get("composites", [])) for a in labs)
-    sr_var = float(np.var(srs)) if len(srs) > 1 else 0.0
+    # robust spread of the trials' Sharpe ratios: one near-riskless strategy (an option overlay on cash) has an extreme
+    # per-day Sharpe that would otherwise inflate the variance and deflate every other strategy to zero
+    if len(srs) > 2:
+        med = float(np.median(srs))
+        sr_var = float((1.4826 * np.median(np.abs(np.array(srs) - med))) ** 2)
+    else:
+        sr_var = 0.0
     from api.quant import library
     names = {e["id"]: e for e in library.all_entries()}
     for sid, d, r in loaded:
@@ -121,14 +131,18 @@ def scorecard() -> Dict[str, Any]:
                      "deflated_sharpe": dsr, "pbo": (val.get("pbo") or {}).get("pbo"),
                      "cpcv_positive": (val.get("cpcv") or {}).get("share_positive"),
                      "evaluated_at": d.get("evaluated_at"), "verdict": v, "verdict_text": VERDICT_TEXT[v],
-                     "note": ("Alpha against equities alone (t = {:.1f}) disappears once credit, rates and other exposures are "
+                     "note": ("Statistically clear but economically tiny ({:+.2%} a year) — the kind of steady small gain that "
+                              "short-option strategies earn until a rare large loss.".format(alpha)
+                              if alpha is not None and (t or 0) >= 2 and 0 < alpha < MIN_ALPHA else
+                              "Alpha against equities alone (t = {:.1f}) disappears once credit, rates and other exposures are "
                               "included — it is carry from those risks, not skill.".format(capm["alpha_t"])
                               if (capm["alpha_t"] or 0) >= 2 and (t or 0) < 1.2 else None)})
     for alpha_lab in labs:
         uni = alpha_lab.get("universe_label") or "S&P 500"
         for s in alpha_lab.get("composites", []) + alpha_lab["signals"]:
             ex, t = s.get("excess_vs_universe_ann"), s.get("ic_t")
-            v = "alpha" if (t or 0) >= 2.5 and (ex or 0) > 0 else "promising" if (t or 0) >= 1.2 and (ex or 0) > 0 else "no edge"
+            v = ("alpha" if (t or 0) >= 2.5 and (ex or 0) >= MIN_ALPHA else
+                 "promising" if (t or 0) >= 1.2 and (ex or 0) >= MIN_ALPHA else "no edge")
             rows.append({"id": f"signal:{alpha_lab.get('universe_id', 'sp500')}:{s['id']}", "kind": "stock signal", "name": s["name"],
                          "family": f"Stock Signal Lab · {uni}",
                          "cagr": (s.get("top_quintile_net") or {}).get("ann_return"), "sharpe": (s.get("long_short") or {}).get("sharpe"),
