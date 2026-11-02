@@ -87,7 +87,7 @@ export function SourcesBar({ className }: { className?: string }) {
           </tr>)}</tbody></table></div>
         {!reg.all().length && <p>No provider metadata supplied yet.</p>}
         <p className="mt-2">Retrieval time is when this app received a response, not when the underlying figures changed. Missing dates or delay information do not imply live data. Currency and units follow individual field labels.</p>
-        <div className="mt-2 flex flex-wrap gap-2">{requests.map(r => <a key={r.url} href={r.url} target="_blank" rel="noopener noreferrer" className="text-bloomberg underline">Inspect response: {r.url.split('?')[0]}</a>)}</div>
+        <div className="mt-2 flex flex-wrap gap-2">{[...new Map(requests.map(r => [r.url, r] as const)).values()].map(r => <a key={r.url} href={r.url} target="_blank" rel="noopener noreferrer" className="text-bloomberg underline">Inspect response: {r.url.split('?')[0]}</a>)}</div>
       </details>
       {items.map((m) => (
         <span key={m.source} className="inline-flex items-center gap-1 px-2 py-0.5 border border-border-subtle rounded-full bg-surface-1/60" title={m.source}>

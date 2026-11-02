@@ -8,6 +8,7 @@ import { cn, localToday } from '@/lib/utils';
 import { REGION_CCYS, useRegion } from '@/lib/region';
 import { ErrorBox, fmtBig, Loading, Panel, useJSON } from './shared';
 import { LineChart } from '@/components/ui/LineChart';
+import { useStickyState } from '@/lib/stickyState';
 
 const enc = encodeURIComponent;
 const pc = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);
@@ -136,6 +137,7 @@ const FLAG: Record<string, string> = { USD: 'US', EUR: 'Euro area', GBP: 'UK', J
 export function EcoGlobalView() {
   const [impact, setImpact] = useState('Medium');
   const [ccy, setCcy] = useState('');
+  const [showPast, setShowPast] = useStickyState('eco.past', false);
   const area = useRegion();
   const ccyParam = ccy || REGION_CCYS[area].join(',');          // default: the Markets region's currencies
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/eco/global?days_back=14&min_impact=${impact}${ccyParam ? `&countries=${ccyParam}` : ''}`, 900_000);
@@ -151,12 +153,18 @@ export function EcoGlobalView() {
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [data]);
   const today = localToday();
+  const yesterday = localToday(new Date(Date.now() - 86400000));
+  const shown = showPast ? days : days.filter(([d]) => d >= yesterday);   // the week ahead first; the past on request
+  const pastCount = days.filter(([d]) => d < yesterday).reduce((n, [, evs]) => n + evs.length, 0);
   return (
     <div className="space-y-3">
       <div className="mkt-controls flex flex-wrap items-center gap-1 text-xs">
         {['Low', 'Medium', 'High'].map((i) => <button key={i} onClick={() => setImpact(i)} className={cn('px-2 py-0.5 border', impact === i ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{i === 'Low' ? 'All' : `${i}+ impact`}</button>)}
         <span className="mx-2 text-text-tertiary">|</span>
         {['', 'USD', 'EUR', 'GBP', 'JPY', 'CNY', 'AUD', 'CAD', 'CHF'].map((c) => <button key={c || 'all'} onClick={() => setCcy(c)} className={cn('px-2 py-0.5 border', ccy === c ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{c ? FLAG[c] : 'All'}</button>)}
+        <span className="mx-2 text-text-tertiary">|</span>
+        <button onClick={() => setShowPast(!showPast)} className={cn('px-2 py-0.5 border', showPast ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}
+          title="Releases from the previous two weeks, with actuals and surprises">{showPast ? 'Hide past releases' : `Past 2 weeks${pastCount ? ` (${pastCount})` : ''}`}</button>
       </div>
       {loading && !data && <Loading label="Loading the calendar…" />}
       {error && <ErrorBox msg={error} />}
@@ -165,7 +173,7 @@ export function EcoGlobalView() {
           <table className="w-full text-xs">
             <thead><tr className="text-[10px] uppercase text-text-tertiary"><th className="text-left px-2 py-1 font-normal">Time</th><th className="text-left font-normal">Economy</th><th className="text-left font-normal">Release</th>
               <th className="text-right font-normal">Actual</th><th className="text-right font-normal">Consensus</th><th className="text-right font-normal">Previous</th><th className="text-right px-2 font-normal">Surprise</th></tr></thead>
-            <tbody>{days.map(([day, evs]) => (
+            <tbody>{shown.map(([day, evs]) => (
               <Fragment key={day}>
                 <tr className="bg-surface-2"><td colSpan={7} className={cn('px-2 py-1 text-[11px] font-semibold', day === today ? 'text-bloomberg' : 'text-text-secondary')}>
                   {new Date(day + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' })}{day === today ? ' — today' : ''}</td></tr>
@@ -174,11 +182,11 @@ export function EcoGlobalView() {
                     <td className="px-2 py-1 font-mono text-text-tertiary">{new Date(e.date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</td>
                     <td className="text-text-secondary whitespace-nowrap">{FLAG[e.country] ?? e.country}</td>
                     <td className="text-text-primary"><span className={cn('inline-block w-1.5 h-1.5 rounded-full mr-1.5', e.impact === 'High' ? 'bg-red' : e.impact === 'Medium' ? 'bg-amber' : 'bg-text-tertiary')} />{e.title}</td>
-                    <td className="text-right font-mono text-text-primary">{e.actual != null ? `${e.actual}${e.unit && e.unit !== '%' ? e.unit : e.unit === '%' ? '%' : ''}` : ''}</td>
+                    <td className="text-right font-mono text-text-primary">{e.actual != null ? `${fmtLike(e.actual, e)}${e.unit ?? ''}` : ''}</td>
                     <td className="text-right font-mono text-text-secondary">{e.forecast ?? ''}</td>
                     <td className="text-right font-mono text-text-tertiary">{e.previous ?? ''}</td>
                     <td title={INVERSE.test(e.title) ? 'Lower than expected is better news here' : undefined}
-                      className={cn('text-right px-2 font-mono', surpriseTone(e))}>{e.surprise != null ? `${e.surprise > 0 ? '+' : ''}${+Number(e.surprise).toFixed(3)}${e.unit ?? ''}` : ''}</td>
+                      className={cn('text-right px-2 font-mono', surpriseTone(e))}>{e.surprise != null ? `${e.surprise > 0 ? '+' : ''}${fmtLike(e.surprise, e)}${e.unit ?? ''}` : ''}</td>
                   </tr>))}
               </Fragment>))}</tbody>
           </table>
@@ -186,6 +194,15 @@ export function EcoGlobalView() {
       {data && <div className="text-[10px] text-text-tertiary">{data.note} Recording since {String(data.recorded_since ?? '').slice(0, 10) || 'today'}. Source: {data.source}.</div>}
     </div>
   );
+}
+
+// Actuals computed from an index (StatCan, ONS) carry more decimals than the published figure: show them, and the
+// surprise, at the precision of the consensus / previous print (0.118% → 0.1%)
+function fmtLike(v: number, e: any): string {
+  const ref = String(e.forecast ?? e.previous ?? '');
+  const m = ref.match(/\.(\d+)/);
+  const dp = m ? m[1].length : /\d/.test(ref) ? 0 : 1;
+  return Number(v).toFixed(dp);
 }
 
 // Releases where a lower print is the better news (green)

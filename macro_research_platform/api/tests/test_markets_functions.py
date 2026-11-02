@@ -616,3 +616,24 @@ def test_chokepoints_csv_then_query_fallback(monkeypatch, tmp_path):
     (tmp_path / "portwatch_chokepoints_380.json").unlink()
     d = T.chokepoints(days=380)                                  # CSV down: query the last weeks, after one throttled answer
     assert d["as_of"] == f"{days[-1]:%Y-%m-%d}" and sum(1 for c in calls if c.startswith("date >=")) == 2
+
+
+def test_quote_probe_resets_a_stuck_yahoo_session_once(monkeypatch):
+    """Every liquid symbol empty at once = a stuck yfinance session: reset it and probe again (once)."""
+    import pandas as pd
+    import yfinance as yf
+    from api import health_sources as H
+    from api.marketdata import core
+    H._FRESH_CACHE.update(data=None, ts=0)
+    state = {"reset": 0}
+    idx = pd.DatetimeIndex([pd.Timestamp.now(tz="UTC").floor("5min")])
+
+    class T:
+        def __init__(self, s): pass
+        def history(self, **k): return pd.DataFrame({"Close": [1.0]}, index=idx) if state["reset"] else pd.DataFrame()
+    monkeypatch.setattr(yf, "Ticker", T)
+    monkeypatch.setattr(core, "_yahoo_cooling", lambda: None)
+    monkeypatch.setattr(core, "yahoo_reset_session", lambda *a: state.update(reset=state["reset"] + 1) or True)
+    out = H._probe_quote_freshness()
+    assert state["reset"] == 1 and out["status"] != "down"
+    H._FRESH_CACHE.update(data=None, ts=0)

@@ -107,9 +107,23 @@ export function WhatIfSection() {
                   <span className="text-text-secondary">{d.label}</span>
                   <span className={cn('font-mono', s[d.key] === 0 ? 'text-text-tertiary' : 'text-text-primary')}>{d.fmt(s[d.key])}</span>
                 </span>
-                <input type="range" min={d.min} max={d.max} step={d.step} value={s[d.key]} aria-label={d.label}
-                  onChange={(e) => { setS({ ...s, [d.key]: Number(e.target.value) }); setPreset(null); }}
-                  onDoubleClick={() => setS({ ...s, [d.key]: 0 })} className="whatif-range w-full" />
+                {(() => {
+                  // the ranges are asymmetric (a crash is bigger than a rally), so zero sits at a different place on each
+                  // track: mark it, and fill from zero to the value, so every slider reads the same way
+                  const at = (v: number) => (v - d.min) / (d.max - d.min);
+                  const x = (p: number) => `calc(6.5px + ${(p * 100).toFixed(2)}% - ${(p * 13).toFixed(2)}px)`;   // 13px thumb
+                  const z = at(0), v = at(s[d.key]), lo = Math.min(z, v), hi = Math.max(z, v);
+                  return (
+                    <span className="relative block mt-1">
+                      <input type="range" min={d.min} max={d.max} step={d.step} value={s[d.key]} aria-label={d.label}
+                        onChange={(e) => { setS({ ...s, [d.key]: Number(e.target.value) }); setPreset(null); }}
+                        onDoubleClick={() => setS({ ...s, [d.key]: 0 })} className="whatif-range w-full block"
+                        style={{ background: `linear-gradient(90deg, var(--surface-3) ${x(lo)}, rgb(var(--c-bloomberg) / 0.75) ${x(lo)} ${x(hi)}, var(--surface-3) ${x(hi)})` }} />
+                      <span aria-hidden className="pointer-events-none absolute top-1/2 -translate-y-1/2 w-px h-2.5 bg-text-tertiary/70" style={{ left: x(z) }} />
+                      <span aria-hidden className="flex justify-between text-[9.5px] font-mono text-text-tertiary mt-0.5">
+                        <span>{d.fmt(d.min)}</span><span>{d.fmt(d.max)}</span></span>
+                    </span>);
+                })()}
               </label>
             ))}
           </div>

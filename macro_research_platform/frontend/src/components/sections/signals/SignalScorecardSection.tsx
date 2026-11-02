@@ -91,7 +91,7 @@ export function SignalScorecardSection() {
                   ))}
                 </div>
                 {/* Forward return by state — a working signal separates bullish from bearish */}
-                <BarList diverging labelWidth="4.5rem" fmt={(v) => pct(v)}
+                <BarList diverging labelWidth="7.5rem" fmt={(v) => pct(v)}
                   data={(['BULLISH', 'NEUTRAL', 'BEARISH'] as const).filter((st) => s.forward_return_by_state[st]).map((st) => ({
                     label: st.charAt(0) + st.slice(1).toLowerCase(), value: s.forward_return_by_state[st]!.avg_forward_return,
                     sub: `n=${s.forward_return_by_state[st]!.count}`,

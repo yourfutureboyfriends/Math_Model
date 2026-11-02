@@ -42,7 +42,7 @@ export function BarList({ data, diverging = false, fmt = (v) => v.toFixed(2), co
           const on = hover === d.label;
           return (
             <li key={d.label} onMouseEnter={() => setHover(d.label)} onMouseLeave={() => setHover(null)}
-              onClick={() => onSelect?.(d.label)} title={d.note ? `${d.label}: ${d.note}` : d.label}
+              onClick={() => onSelect?.(d.label)} title={`${d.label}${d.sub ? ` · ${d.sub}` : ''}${d.note ? `: ${d.note}` : ''}`}
               className={`grid items-center gap-2 text-2xs ${onSelect ? 'cursor-pointer' : ''}`}
               style={{ gridTemplateColumns: `${labelWidth} 1fr 4.5rem` }}>
               <span className={`truncate ${on ? 'text-text-primary' : 'text-text-secondary'}`}>{d.label}

@@ -143,7 +143,7 @@ def quote_staleness(kind: str, last_bar_utc, now_utc, tolerance_min: int = 30) -
             "behind_market_min": round(max(lag, 0))}
 
 
-def _probe_quote_freshness() -> Dict[str, Any]:
+def _probe_quote_freshness(_healed: bool = False) -> Dict[str, Any]:
     now = time.time()
     if _FRESH_CACHE["data"] and now - _FRESH_CACHE["ts"] < _FRESH_TTL:
         return _FRESH_CACHE["data"]
@@ -174,6 +174,12 @@ def _probe_quote_freshness() -> Dict[str, Any]:
                "detail": ("all quotes current for their market hours" if not bad else "; ".join(bad))}
     except Exception as e:
         out = {"status": "down", "latency_ms": round((time.perf_counter() - t0) * 1000), "detail": str(e)[:120]}
+    if out.get("status") == "down" and not _healed:
+        # SPY, VIX, EUR/USD and crude all empty at once is never the market: it is a stuck Yahoo session (unless
+        # Yahoo is rate-limiting us, when the guard is cooling down and a new session would not help)
+        from api.marketdata import core as _core
+        if not _core._yahoo_cooling() and _core.yahoo_reset_session():
+            return _probe_quote_freshness(_healed=True)
     _FRESH_CACHE.update(data=out, ts=now)
     return out
 

@@ -445,6 +445,30 @@ def _install_yahoo_throttle() -> None:
 _install_yahoo_throttle()
 _install_bulk_registry()
 
+_YH_RESET = {"at": 0.0, "count": 0}
+
+
+def yahoo_reset_session(min_interval: float = 120.0) -> bool:
+    """Start yfinance on a fresh HTTP session, cookie and crumb. After some hours a long-running server's session can
+    go bad: every symbol then comes back empty ("possibly delisted; no price data found") while a new process works.
+    The throttle above patches the class, so it stays in place. At most once every `min_interval` seconds."""
+    if time.time() - _YH_RESET["at"] < min_interval:
+        return False
+    try:
+        from yfinance import data as _yd
+        from curl_cffi import requests as _cr
+        inst = _yd.YfData()                              # the process-wide singleton
+        with inst._cookie_lock:
+            inst._crumb = None
+            inst._cookie = None
+        inst._set_session(_cr.Session(impersonate="chrome"))
+    except Exception as e:                               # noqa: BLE001 — a failed reset leaves things as they were
+        logger.warning("[yahoo] session reset failed: %s", e)
+        return False
+    _YH_RESET.update(at=time.time(), count=_YH_RESET["count"] + 1)
+    logger.warning("[yahoo] every symbol came back empty — started a fresh Yahoo session (#%d)", _YH_RESET["count"])
+    return True
+
 
 def yahoo_download(symbols, **kw):
     """yf.download under the guard. yfinance swallows per-symbol errors into a dict instead of

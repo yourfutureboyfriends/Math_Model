@@ -231,21 +231,22 @@ function RoleBody({ d }: { d: Desk }) {
 // P&L by book (fund) and by strategy (paper traders): latest session and unrealized.
 function BookPnl({ fund }: { fund: any }) {
   const books: any[] = fund?.by_book ?? [];
+  const ccy = fund?.base_currency ?? 'USD';                  // fund books are in the base currency; paper strategies in USD
   const strats: any[] = fund?.by_strategy ?? [];
   if (!books.length && !strats.length) return null;
   const tone = (v: number | null | undefined) => (v == null ? 'text-text-tertiary' : v > 0 ? 'text-green' : v < 0 ? 'text-red' : 'text-text-secondary');
   return (
     <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Scrollable data table"><table className="w-full text-xs">
       <thead><tr className="text-2xs text-text-tertiary uppercase border-b border-border-subtle">
-        <th className="text-left font-normal py-1">Book / strategy</th><th className="text-right font-normal">Gross / NAV</th>
+        <th className="text-left font-normal py-1">Book / strategy</th><th className="text-right font-normal" title="Fund books: gross exposure · paper strategies: their own NAV">Size</th>
         <th className="text-right font-normal">Day P&amp;L</th><th className="text-right font-normal">Unrealized</th></tr></thead>
       <tbody>
         {books.map((b) => (
           <tr key={b.book} className="border-b border-border-subtle"><td className="py-0.5">{b.book} <span className="text-text-tertiary">· {b.positions} pos</span></td>
-            <td className="text-right font-mono">{money(b.gross)}</td><td className={`text-right font-mono ${tone(b.day_pnl)}`}>{money(b.day_pnl)}</td>
-            <td className={`text-right font-mono ${tone(b.unrealized_pnl)}`}>{money(b.unrealized_pnl)}</td></tr>))}
+            <td className="text-right font-mono">{money(b.gross, ccy)}</td><td className={`text-right font-mono ${tone(b.day_pnl)}`}>{money(b.day_pnl, ccy)}</td>
+            <td className={`text-right font-mono ${tone(b.unrealized_pnl)}`}>{money(b.unrealized_pnl, ccy)}</td></tr>))}
         {strats.map((st) => (
-          <tr key={st.strategy} className="border-b border-border-subtle last:border-0" title={`as of ${st.as_of}`}><td className="py-0.5 text-text-secondary">{st.strategy}</td>
+          <tr key={st.strategy} className="border-b border-border-subtle last:border-0" title={`as of ${st.as_of}`}><td className="py-0.5 text-text-secondary">{st.strategy} <span className="text-text-tertiary">· NAV, USD</span></td>
             <td className="text-right font-mono">{money(st.nav)}</td><td className={`text-right font-mono ${tone(st.day_pnl)}`}>{money(st.day_pnl)}</td>
             <td className="text-right text-text-tertiary">—</td></tr>))}
       </tbody>
