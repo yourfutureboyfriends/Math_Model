@@ -2290,3 +2290,34 @@ table[data-autosort="on"] > thead th[data-sort-dir="asc"]::after { content: " �
 @media (prefers-reduced-motion: reduce) { .tm-stack > span, .tm-track > span, .tm-ret-bar { transition: none; } }
 .tm-live { margin-left: 6px; padding: 1px 6px; border-radius: 999px; font-size: 9.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
   color: rgb(var(--c-green)); background: rgb(var(--c-green) / 0.12); border: 1px solid rgb(var(--c-green) / 0.35); }
+
+/* ── Login refinements: live markets strip, session clock, accent card, clearer button states ── */
+.login-redesign { background:
+    radial-gradient(640px 520px at 80% 46%, rgb(var(--c-bloomberg) / .085), transparent 62%),
+    linear-gradient(105deg, rgb(var(--login-brand-band, 15 35 62)) 0%, rgb(var(--login-brand-band, 15 35 62)) 48%, #080f1a 100%); }
+.login-clock { display: inline-flex; align-items: center; gap: 7px; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.login-clock i { width: 6px; height: 6px; border-radius: 999px; background: #6b7f99; display: inline-block; }
+.login-clock i.on { background: #3fbf8f; box-shadow: 0 0 0 3px #3fbf8f26; }
+.login-markets { max-width: 520px; margin: 26px 0 6px; border: 1px solid #ffffff12; border-radius: 14px; padding: 12px 14px 14px;
+  background: linear-gradient(180deg, #ffffff08, #ffffff02); }
+.login-markets-head { display: flex; justify-content: space-between; font-size: 9.5px; letter-spacing: .16em; color: #7f95b2; margin-bottom: 10px; }
+.login-markets-head span:last-child { letter-spacing: .04em; }
+.login-markets-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 18px; }
+.login-market-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 10.5px; color: #9fb2c9; }
+.login-market-val { font-size: 15px; font-weight: 500; color: #eef3fa; letter-spacing: -.01em; font-variant-numeric: tabular-nums; margin-top: 3px; }
+.login-up, .login-down { font-size: 10.5px; font-variant-numeric: tabular-nums; margin-top: 1px; }
+.login-up { color: #3fbf8f; } .login-down { color: #e66767; }
+.login-capabilities { margin-top: 20px; gap: 0; }
+.login-capabilities > div { padding: 0 14px; border-left: 1px solid #ffffff12; }
+.login-capabilities > div:first-child { padding-left: 0; border-left: 0; }
+.login-access-card { position: relative; overflow: hidden; }
+.login-access-card::before { content: ""; position: absolute; left: 34px; right: 34px; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(var(--c-bloomberg) / .75), transparent); }
+.login-form input:not([type=checkbox]), .login-form select { transition: border-color .15s, box-shadow .15s, background-color .15s; }
+.login-form input:hover:not(:disabled), .login-form select:hover:not(:disabled) { border-color: #4a607c; }
+.login-form input:focus, .login-form select:focus { outline: none; border-color: rgb(var(--c-bloomberg) / .85); box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / .16); background: #0b1729; }
+.login-submit { transition: filter .15s, transform .1s, box-shadow .15s; box-shadow: 0 8px 24px rgb(var(--c-bloomberg) / .22); }
+.login-redesign .login-access-card .login-submit:disabled { opacity: 1; filter: none; background: #1a2a40 !important; color: #8fa3bd !important; box-shadow: none; border: 1px solid #2c3e56; }
+.login-submit:focus-visible { outline: 2px solid rgb(var(--c-bloomberg)); outline-offset: 2px; }
+@media (max-width: 850px) { .login-markets { display: none; } .login-clock { display: none; } }
+@media (prefers-reduced-motion: reduce) { .login-submit, .login-form input, .login-form select { transition: none; } }

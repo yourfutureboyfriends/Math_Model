@@ -1,19 +1,76 @@
 // Fund selection lives before authentication. Credentials and membership are verified by the server.
-import { useEffect, useId, useState, type CSSProperties } from 'react';
-import { ArrowRight, BarChart3, Eye, EyeOff, Layers, Lock, Terminal } from 'lucide-react';
+import { useEffect, useState, type CSSProperties } from 'react';
+import { ArrowRight, BarChart3, Eye, EyeOff, Layers, Lock, ShieldCheck, Terminal } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { currentFund } from '@/lib/fund';
 import { applyBrand, cachedFunds, type FundInfo } from '@/lib/fundBrand';
 
-function ResearchGraphic() {
-  const id=useId().replace(/:/g,'');
-  return <svg className="login-research-graphic" viewBox="0 0 520 180" role="img" aria-label="Illustrative research workflow: market context, valuation and risk review">
-    <defs><linearGradient id={id} x1="0" y1="1" x2="1" y2="0"><stop stopColor="currentColor" stopOpacity=".04"/><stop offset="1" stopColor="currentColor" stopOpacity=".24"/></linearGradient></defs>
-    <path d="M22 144H498M22 108H498M22 72H498M22 36H498M58 20V158M138 20V158M218 20V158M298 20V158M378 20V158M458 20V158" stroke="currentColor" strokeOpacity=".09"/>
-    <path d="M22 144C80 144 78 112 126 112S170 122 208 95S262 110 300 72S354 86 396 47S455 54 498 24V158H22Z" fill={`url(#${id})`}/>
-    <path d="M22 144C80 144 78 112 126 112S170 122 208 95S262 110 300 72S354 86 396 47S455 54 498 24" fill="none" stroke="currentColor" strokeOpacity=".7" strokeWidth="2"/>
-    {[{x:126,y:112,label:'CONTEXT'},{x:300,y:72,label:'VALUATION'},{x:458,y:40,label:'RISK REVIEW'}].map(p=><g key={p.label}><circle cx={p.x} cy={p.y} r="13" fill="currentColor" fillOpacity=".08"/><circle cx={p.x} cy={p.y} r="4" fill="currentColor"/><text x={p.x} y={p.y+29} textAnchor="middle" fontSize="8" fill="currentColor" opacity=".7" letterSpacing="1.2">{p.label}</text></g>)}
-  </svg>;
+// The markets as they stand — real public data, so the first screen is already useful. Hidden if it can't load.
+const STRIP: [string, string, (v: number) => string][] = [
+  ['^GSPC', 'S&P 500', (v) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })],
+  ['^NDX', 'Nasdaq 100', (v) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })],
+  ['^TNX', 'US 10Y', (v) => `${v.toFixed(2)}%`],
+  ['EURUSD=X', 'EUR/USD', (v) => v.toFixed(4)],
+  ['GC=F', 'Gold', (v) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })],
+  ['BTC-USD', 'Bitcoin', (v) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })],
+];
+type StripRow = { symbol: string; price: number; date?: string; change_1d?: number | null; spark?: number[] };
+
+function Spark({ values, up }: { values: number[]; up: boolean }) {
+  if (values.length < 2) return null;
+  const lo = Math.min(...values), hi = Math.max(...values), W = 64, H = 18;
+  const pts = values.map((v, i) => `${(i / (values.length - 1)) * W},${H - 2 - ((v - lo) / (hi - lo || 1)) * (H - 4)}`).join(' ');
+  return <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden><polyline points={pts} fill="none" stroke={up ? '#3fbf8f' : '#e66767'} strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" /></svg>;
+}
+
+function MarketsStrip() {
+  const [rows, setRows] = useState<StripRow[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 12000);
+    fetch('/api/v1/mkt/overview', { signal: c.signal }).then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (!live || !j?.groups) return;
+      const all: Record<string, StripRow> = Object.fromEntries(j.groups.flatMap((g: { rows: StripRow[] }) => g.rows).map((r: StripRow) => [r.symbol, r]));
+      setRows(STRIP.map(([s]) => all[s]).filter((r): r is StripRow => !!r && typeof r.price === 'number'));
+    }).catch(() => {}).finally(() => clearTimeout(t));
+    return () => { live = false; clearTimeout(t); c.abort(); };
+  }, []);
+  if (!rows?.length) return null;
+  const day = rows.find((r) => r.symbol === '^GSPC')?.date;        // the equity session (crypto trades at weekends)
+  return (
+    <div className="login-markets" aria-label="Markets snapshot">
+      <div className="login-markets-head"><span>MARKETS</span>{day && <span>close {new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>}</div>
+      <div className="login-markets-grid">
+        {rows.map((r) => {
+          const [, label, fmt] = STRIP.find(([s]) => s === r.symbol)!;
+          const sp = r.spark ?? [];
+          // yields: the day's change in basis points, from the last two closes
+          const bpChg = r.symbol === '^TNX' && sp.length > 1 ? (sp[sp.length - 1] - sp[sp.length - 2]) * 100 : null;
+          const ch = r.change_1d ?? null, up = (bpChg ?? ch ?? 0) >= 0;
+          return (
+            <div key={r.symbol} className="login-market">
+              <div className="login-market-top"><span>{label}</span><Spark values={(r.spark ?? []).slice(-30)} up={up} /></div>
+              <div className="login-market-val">{fmt(r.price)}</div>
+              <div className={up ? 'login-up' : 'login-down'}>{r.symbol === '^TNX' ? (bpChg == null ? '—' : `${bpChg >= 0 ? '+' : ''}${bpChg.toFixed(1)} bp`) : ch == null ? '—' : `${up ? '+' : ''}${(ch * 100).toFixed(2)}%`}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** US session state and New York time, refreshed each minute. */
+function useMarketClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
+  const ny = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const mins = ny.getHours() * 60 + ny.getMinutes(), wd = ny.getDay();
+  const open = wd >= 1 && wd <= 5 && mins >= 570 && mins < 960;
+  const pre = wd >= 1 && wd <= 5 && mins >= 240 && mins < 570;
+  const state = open ? 'US markets open' : pre ? 'US pre-market' : 'US markets closed';
+  return { open, state, time: ny.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) };
 }
 
 export function LoginScreen() {
@@ -73,8 +130,9 @@ export function LoginScreen() {
     {role:'quant',user:'quant',pass:'quant123',desc:'Quant Researcher'},
   ];
   const band=selectedFund?.brand?.band??'15 35 62';
+  const clock=useMarketClock();
   return <main className="login-stage login-redesign" style={{'--login-brand-band':band} as CSSProperties}>
-    <div className="login-topline"><span className="inline-flex items-center gap-2"><Terminal size={15}/>MACRO TERMINAL</span><span>Research & investment workspace</span></div>
+    <div className="login-topline"><span className="inline-flex items-center gap-2"><Terminal size={15}/>MACRO TERMINAL</span><span className="login-clock"><i className={clock.open?'on':''}/>{clock.state} · New York {clock.time}</span></div>
     <div className="login-layout">
       <section className="login-story" aria-label="Fund identity and platform overview">
         <div className="login-logo-plaque">
@@ -84,11 +142,10 @@ export function LoginScreen() {
         <h1>{selectedFund?.name??'Macro Terminal'}</h1>
         <h2>From market context<br/>to investment decisions.</h2>
         <p className="login-story-copy">Connect macro research, company valuation and portfolio risk in one working environment.</p>
-        <ResearchGraphic/>
+        <MarketsStrip/>
         <div className="login-capabilities">
           {[{Icon:BarChart3,title:'Macro & markets',sub:'Understand the environment'},{Icon:Layers,title:'Valuation & PE',sub:'Inspect the assumptions'},{Icon:Lock,title:'Portfolio & risk',sub:'Review exposures and decisions'}].map(({Icon,title,sub})=><div key={title}><Icon size={17}/><span><strong>{title}</strong><small>{sub}</small></span></div>)}
         </div>
-        <div className="login-graphic-caption">Illustrative research workflow · not market data</div>
       </section>
       <section className="login-access" aria-label="Sign in">
         <div className="login-card login-access-card">
@@ -117,7 +174,7 @@ export function LoginScreen() {
             {error&&<div className="login-error" role="alert">{error}</div>}
             <button type="submit" disabled={loading||!username.trim()||!password} className="login-cta login-submit">{loading?'Signing in…':'Sign In'}{!loading&&<ArrowRight size={17}/>}</button>
           </form>
-          <div className="login-access-note"><Lock size={13}/><span>Account access is verified for your selected fund.</span></div>
+          <div className="login-access-note"><ShieldCheck size={13}/><span>Access is verified for the selected fund · two-factor supported</span></div>
           {showDemo&&<details className="login-development"><summary>Development accounts</summary><p>Default accounts require a new password at first sign-in.</p><div className="grid grid-cols-2 gap-2">{demoCredentials.filter(c=>!defaultAccounts||defaultAccounts.includes(c.user)).map(c=><button type="button" key={c.role} onClick={()=>{setUsername(c.user);setPassword(c.pass);}}><strong>{c.desc}</strong><small>{c.user} / {c.pass}</small></button>)}</div></details>}
         </div>
         <p className="login-support-note">Need access? Contact your fund administrator.</p>
