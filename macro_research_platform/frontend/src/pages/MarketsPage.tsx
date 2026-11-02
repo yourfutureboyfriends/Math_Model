@@ -48,6 +48,7 @@ import { PageSections } from '@/components/markets/PageSections';
 import { DsView, GeView, ImovView, MrrView, OvmeView, TraView, VapView, WbView, WpeView } from '@/components/markets/StandardViews';
 import { EaView, EcfcView, EmView, FomcView, FwcvView } from '@/components/markets/StandardViews2';
 import { BorrowView, CrprView, DarkView, LeagView, ProbView } from '@/components/markets/GapViews';
+import { CdsaView, CdsxView, ExthView, SwapView, TranView } from '@/components/markets/FreeDataViews';
 import { ViewTools,useMarketDisplay } from '@/components/markets/ViewTools';
 import { tableCSV } from '@/lib/tableData';
 import { AiChat, RightRail } from '@/components/markets/RightRail';
@@ -162,6 +163,7 @@ export function SecurityBody({ code, symbol, d, isFund, onGo,compact=false }: { 
         {code === 'CRPR' && <CrprView symbol={symbol} />}
         {code === 'PROB' && <ProbView symbol={symbol} />}
         {code === 'DARK' && <DarkView symbol={symbol} />}
+        {code === 'TRAN' && <TranView symbol={symbol} />}
         {code === 'DS' && <DsView symbol={symbol} onGo={onGo} />}
         {code === 'DCF' && <DcfView symbol={symbol} />}
         {code === 'VAL' && <ValuationHub symbol={symbol} onGo={onGo} />}
@@ -306,7 +308,7 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
 /** Security functions grouped for the two-level function bar (codes not listed fall into the first group). */
 const SECURITY_GROUPS: { name: string; codes: string[] }[] = [
   { name: 'Price & trading', codes: ['DES', 'GP', 'HP', 'TECH', 'SEAS', 'BETA', 'VAP', 'FUTU', 'SI', 'DARK'] },
-  { name: 'Fundamentals', codes: ['FA', 'ERN', 'EM', 'DVD', 'PGEO', 'DDIS', 'CF', 'DS', 'CACS'] },
+  { name: 'Fundamentals', codes: ['FA', 'ERN', 'EM', 'TRAN', 'DVD', 'PGEO', 'DDIS', 'CF', 'DS', 'CACS'] },
   { name: 'Valuation', codes: ['VAL', 'DCF', 'GE', 'RV', 'FAC', 'CRPR'] },
   { name: 'Analysts & ownership', codes: ['ANR', 'HDS', 'INSD', 'MGMT', 'SPLC', 'CN'] },
   { name: 'Options', codes: ['OMON', 'OVDV', 'OSA', 'OVME', 'PROB'] },
@@ -364,6 +366,10 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
     {code === 'EARN' && <EaView onOpen={open} />}
     {code === 'BORROW' && <BorrowView onOpen={open} />}
     {code === 'LEAG' && <LeagView onGo={onGo} />}
+    {code === 'SWAP' && <SwapView />}
+    {code === 'CDSX' && <CdsxView />}
+    {code === 'CDSA' && <CdsaView onOpen={open} />}
+    {code === 'EXTH' && <ExthView onOpen={open} />}
     {code === 'MRGR' && <MrgrView onOpen={open} />}
     {code === 'MEMB' && <MembView seed={seed} onOpen={open} />}
     {code === 'FSRC' && <FsrcView onOpen={open} />}

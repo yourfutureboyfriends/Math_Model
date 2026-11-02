@@ -1596,3 +1596,54 @@ async def mkt_spf():
     """Economist consensus (SPF): Philadelphia Fed Survey of Professional Forecasters medians."""
     from api.marketdata import bbgextra
     return await _run(bbgextra.spf_consensus, timeout=90)
+
+
+# ── "Paid-only" data from free public sources (marketdata/bbgfree.py) ─────────
+@router.get("/api/v1/mkt/swap")
+async def mkt_swap_curves(days: int = Query(10, ge=1, le=30)):
+    """Swap curves (SWAP): SOFR, €STR, Euribor, SONIA, TONA and CORRA par rates from the DTCC public tape."""
+    from api.marketdata import bbgfree
+    return await _run(bbgfree.swap_curves, days, timeout=240)
+
+
+@router.get("/api/v1/mkt/cdsx")
+async def mkt_credit_indices(days: int = Query(22, ge=2, le=60)):
+    """Credit indices (CDSX): CDX and iTraxx levels and history from the DTCC public tape."""
+    from api.marketdata import bbgfree
+    return await _run(bbgfree.credit_indices, days, timeout=240)
+
+
+@router.get("/api/v1/mkt/cdsa")
+async def mkt_single_name_cds(days: int = Query(5, ge=1, le=20)):
+    """Single-name CDS activity (CDSA): the most-traded reference entities on the SEC swap tape."""
+    from api.marketdata import bbgfree
+    return await _run(bbgfree.single_name_cds, days, timeout=240)
+
+
+@router.get("/api/v1/mkt/exth")
+async def mkt_extended_hours(session: str = Query("PRE_MARKET", pattern="^(PRE_MARKET|AFTER_MARKET|REGULAR)$"),
+                             min_cap: float = Query(5e8, ge=0)):
+    """Extended-hours movers (EXTH): pre-market and after-hours gainers and losers."""
+    from api.marketdata import bbgfree
+    return await _run(bbgfree.extended_hours, session, min_cap, timeout=60)
+
+
+@router.get("/api/v1/mkt/tran/{symbol}")
+async def mkt_transcripts(symbol: str):
+    """Earnings-call transcripts (TRAN): the list of calls and the latest call."""
+    from api.marketdata import bbgfree
+    return await _run(bbgfree.transcripts, symbol, timeout=120)
+
+
+@router.get("/api/v1/mkt/tran/{symbol}/call/{call_id}")
+async def mkt_transcript(symbol: str, call_id: int):
+    """One earnings call's full text by speaker."""
+    from api.marketdata import bbgfree
+    return await _run(bbgfree.transcript, symbol, call_id, timeout=120)
+
+
+@router.get("/api/v1/mkt/tran/{symbol}/search")
+async def mkt_transcript_search(symbol: str, q: str = Query(..., min_length=2, max_length=200)):
+    """Search a company's last four years of earnings calls."""
+    from api.marketdata import bbgfree
+    return await _run(bbgfree.transcript_search, symbol, q, timeout=120)

@@ -256,6 +256,35 @@ def _t_consensus() -> Any:
     return {"survey": r["survey"], "series": r["series"]}
 
 
+def _t_calls(symbol: str, query: Optional[str] = None) -> Any:
+    from api.marketdata import bbgfree
+    if query:
+        r = bbgfree.transcript_search(symbol, query, limit=5)
+        return {"query": query, "passages": [{k: h[k] for k in ("date", "quarter", "speaker")} | {"text": h["text"][:650]} for h in r["hits"]]}
+    r = bbgfree.transcripts(symbol)
+    paras = r["latest"]["paragraphs"]
+    return {"call": {k: r["latest"][k] for k in ("date", "fiscal_year", "fiscal_quarter")}, "speakers": r["latest"]["speakers"][:6],
+            "opening": " ".join(p["text"] for p in paras[1:4])[:2500]}
+
+
+def _t_rates_credit() -> Any:
+    from api.marketdata import bbgfree
+    out: Dict[str, Any] = {}
+    try:
+        s = bbgfree.swap_curves(5)
+        out["swaps"] = {c["code"]: {p["tenor"]: round(p["rate"], 3) for p in c["points"] if p["tenor"] in (2, 5, 10, 30)} for c in s["curves"]}
+        out["us_swap_spreads_bp"] = {x["tenor"]: round(x["spread_bp"], 1) for x in s["us_swap_spreads"]}
+        out["swaps_date"] = s["date"]
+    except Exception as e:                                      # noqa: BLE001
+        out["swaps"] = {"error": str(e)[:120]}
+    try:
+        c = bbgfree.credit_indices(10)
+        out["credit_indices"] = [{k: x.get(k) for k in ("name", "quote", "level", "change_1d", "change_period", "spread_equiv_bp")} for x in c["rows"]]
+    except Exception as e:                                      # noqa: BLE001
+        out["credit_indices"] = {"error": str(e)[:120]}
+    return out
+
+
 TOOLS: Dict[str, Tuple[Callable, str, Dict[str, Any]]] = {
     "search_instrument": (_t_search, "Find tickers by company or instrument name (any exchange, FX, futures, crypto).",
                           {"query": {"type": "string", "description": "Company or instrument name"}}),
@@ -298,13 +327,19 @@ TOOLS: Dict[str, Tuple[Callable, str, Dict[str, Any]]] = {
                                  "probability of reaching levels.", {"symbol": {"type": "string"}, "expiry": {"type": "string", "description": "YYYY-MM-DD; optional"}}),
     "get_economist_consensus": (_t_consensus, "US professional forecasters' median forecasts (Philadelphia Fed SPF): GDP, CPI, core "
                                 "CPI, unemployment, 10-year and T-bill yields.", {}),
+    "get_earnings_call": (_t_calls, "A US company's earnings-call transcripts: the latest call's opening remarks, or passages from the last "
+                          "four years of calls that match a query (guidance, margins, demand …).",
+                          {"symbol": {"type": "string"}, "query": {"type": "string", "description": "optional words to search the calls for"}}),
+    "get_swaps_and_cds": (_t_rates_credit, "Swap curves (SOFR, €STR, SONIA, TONA …), US swap spreads, and CDX / iTraxx credit index levels "
+                          "from the DTCC public swap tape.", {}),
     "get_world_bonds": (_t_world_bonds, "10-year government yields by country with spreads to Treasuries, policy rates, real yields "
                         "and 2s10s slopes.", {}),
 }
 REQUIRED = {"get_quote": ["symbol"], "get_profile": ["symbol"], "get_financials": ["symbol"], "get_earnings": ["symbol"],
             "get_analyst_ratings": ["symbol"], "get_holders": ["symbol"], "run_dcf": ["symbol"], "get_peers": ["symbol"],
             "search_instrument": ["query"], "search_filings": ["symbol", "query"], "get_pe_history": ["symbol"],
-            "get_credit_profile": ["symbol"], "get_short_activity": ["symbol"], "get_option_probabilities": ["symbol"]}
+            "get_credit_profile": ["symbol"], "get_short_activity": ["symbol"], "get_option_probabilities": ["symbol"],
+            "get_earnings_call": ["symbol"]}
 
 
 def tool_specs() -> List[Dict[str, Any]]:
@@ -348,6 +383,8 @@ _CITE = {  # tool: (source, markets function code or None, research panel or Non
     "get_world_bonds": ("Issuers' curves / OECD / BIS / IMF", "WB", None),
     "get_fed": ("FRED / CME fed funds futures", "FOMC", None),
     "get_credit_profile": ("SEC EDGAR / Damodaran", "CRPR", None),
+    "get_earnings_call": ("Earnings-call transcripts (open dataset)", "TRAN", None),
+    "get_swaps_and_cds": ("DTCC public swap tape", "SWAP", None),
     "get_short_activity": ("IBKR stock-loan file / FINRA", "DARK", None),
     "get_option_probabilities": ("Option chain (Yahoo)", "PROB", None),
     "get_economist_consensus": ("Philadelphia Fed SPF", "ECFC", None),

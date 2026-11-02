@@ -141,19 +141,19 @@ export function LineChart(props: Props & { controls?: boolean; defaultRange?: st
   }, [enabled, rows, x, range, freq, daily, monthly, last, baseline, lines, custom]);
 
   if (!enabled) return <LineChartCore {...props} />;
-  const btn = (on: boolean) => `px-1.5 py-0.5 text-[10px] font-mono ${on ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary'}`;
+  const btn = (on: boolean) => `px-2 py-0.5 text-[10px] font-medium rounded-[5px] transition-colors ${on ? 'bg-surface-1 text-text-primary shadow-sm ring-1 ring-border' : 'text-text-tertiary hover:text-text-primary'}`;
   const dateType = monthly ? 'month' : 'date';
   const lo = String(first).slice(0, monthly ? 7 : 10), hi = String(last).slice(0, monthly ? 7 : 10);
   return (
     <div>
       <div className="flex flex-wrap items-center gap-1.5 mb-1">
-        <div className="flex border border-border" role="group" aria-label="Period">
+        <div className="flex gap-0.5 p-0.5 rounded-md bg-surface-2/70" role="group" aria-label="Period">
           {presets.map((q) => (
             <button key={q.key} onClick={() => { setRange(q.key); setCustom(null); }} aria-pressed={!custom && range === q.key} className={btn(!custom && range === q.key)}>{q.label}</button>
           ))}
         </div>
         {daily && (
-          <div className="flex border border-border" role="group" aria-label="Interval">
+          <div className="flex gap-0.5 p-0.5 rounded-md bg-surface-2/70" role="group" aria-label="Interval">
             {([['D', 'Daily'], ['W', 'Weekly'], ['M', 'Monthly']] as const).map(([k, l]) => (
               <button key={k} onClick={() => setFreq(k)} aria-pressed={freq === k} className={btn(freq === k)}>{l}</button>
             ))}
@@ -282,7 +282,7 @@ function LineChartCore({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2)
             {/* grid + y axis */}
             {geo.yt.map((t) => (
               <g key={t}>
-                <line x1={geo.L} x2={W - geo.R} y1={geo.sy(t)} y2={geo.sy(t)} stroke="var(--border)" strokeOpacity={0.55} strokeDasharray="2 4" />
+                <line x1={geo.L} x2={W - geo.R} y1={geo.sy(t)} y2={geo.sy(t)} stroke="var(--border)" strokeOpacity={0.4} />
                 <text x={geo.L - 6} y={geo.sy(t) + 3.5} fontSize={FONT} textAnchor="end" fill="var(--text-tertiary)" className="font-mono">{geo.af(t)}</text>
               </g>
             ))}
@@ -299,10 +299,9 @@ function LineChartCore({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2)
               </g>
             ))}
             {/* x axis */}
-            <line x1={geo.L} x2={W - geo.R} y1={height - geo.B} y2={height - geo.B} stroke="var(--border)" />
+            <line x1={geo.L} x2={W - geo.R} y1={height - geo.B} y2={height - geo.B} stroke="var(--border-strong)" strokeOpacity={0.6} />
             {geo.xt.map(({ i, text }) => (
               <g key={i}>
-                <line x1={geo.sx(i)} x2={geo.sx(i)} y1={height - geo.B} y2={height - geo.B + 3} stroke="var(--border)" />
                 <text x={geo.sx(i)} y={height - 5} fontSize={FONT} textAnchor="middle" fill="var(--text-tertiary)" className="font-mono">{text}</text>
               </g>
             ))}
@@ -322,7 +321,7 @@ function LineChartCore({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2)
             {lines.map((l) => {
               const d = rows.map((r, i) => (typeof r[l.key] === 'number' && (!log || r[l.key] > 0)
                 ? `${i && typeof rows[i - 1][l.key] === 'number' ? 'L' : 'M'}${geo.sx(i).toFixed(1)},${geo.sy(r[l.key]).toFixed(1)}` : '')).join('');
-              return <path key={l.key} d={d} fill="none" stroke={l.color} strokeWidth={1.75} strokeLinejoin="round" strokeLinecap="round" />;
+              return <path key={l.key} d={d} fill="none" stroke={l.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />;
             })}
             {/* end labels with leader lines when displaced */}
             {geo.ends.map((e) => {
@@ -339,9 +338,9 @@ function LineChartCore({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2)
             {/* hover */}
             {h && hover !== null && (
               <g pointerEvents="none">
-                <line x1={geo.sx(hover)} x2={geo.sx(hover)} y1={geo.T} y2={height - geo.B} stroke="var(--text-tertiary)" strokeDasharray="2 2" />
+                <line x1={geo.sx(hover)} x2={geo.sx(hover)} y1={geo.T} y2={height - geo.B} stroke="var(--text-tertiary)" strokeOpacity={0.5} />
                 {lines.map((l) => typeof h[l.key] === 'number' && (!log || h[l.key] > 0) && (
-                  <circle key={l.key} cx={geo.sx(hover)} cy={geo.sy(h[l.key])} r={3.5} fill={l.color} stroke="var(--surface-1)" strokeWidth={2} />
+                  <circle key={l.key} cx={geo.sx(hover)} cy={geo.sy(h[l.key])} r={4} fill={l.color} stroke="var(--surface-1)" strokeWidth={2.5} />
                 ))}
               </g>
             )}
@@ -352,7 +351,7 @@ function LineChartCore({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2)
           const right = px > (W - geo.R) * 0.6;
           const items = lines.filter((l) => typeof h[l.key] === 'number').sort((a, b) => h[b.key] - h[a.key]);
           return (
-            <div className="pointer-events-none absolute top-1 z-10 px-2.5 py-1.5 bg-surface-2/95 backdrop-blur border border-border rounded-md text-2xs font-mono shadow-xl"
+            <div className="pointer-events-none absolute top-1 z-10 px-3 py-2 bg-surface-1/95 backdrop-blur-md border border-border-subtle rounded-lg text-2xs font-mono shadow-[0_8px_24px_rgb(0_0_0/0.25)]"
               style={right ? { right: W - px + 10 } : { left: px + 10 }}>
               <div className="text-text-tertiary mb-0.5">{String(h[x])}</div>
               {items.map((l) => (
