@@ -2352,3 +2352,16 @@ table[data-autosort="on"] > thead th[data-sort-dir="asc"]::after { content: " â–
 .atlas-focus-track { grid-column: 1 / -1; position: relative; height: 4px; border-radius: 999px; background: linear-gradient(90deg, rgb(var(--c-surface-3)), rgb(var(--c-bloomberg) / .5)); }
 .atlas-focus-track i { position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 999px; background: rgb(var(--c-bloomberg)); box-shadow: 0 0 0 3px rgb(var(--c-surface-2)); }
 .atlas-section-title { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--c-bloomberg)); padding-top: 8px; margin-top: 4px; border-top: 1px solid rgb(var(--c-border) / .45); }
+
+/* Stock signal lab verdict */
+.alpha-verdict { border-radius: 10px; padding: 10px 13px; font-size: 12px; line-height: 1.55; border: 1px solid; }
+.alpha-verdict b { margin-right: 6px; }
+.alpha-verdict.significant { border-color: rgb(var(--c-green) / .45); background: rgb(var(--c-green) / .07); color: rgb(var(--c-text-primary)); }
+.alpha-verdict.weak { border-color: rgb(var(--c-amber) / .45); background: rgb(var(--c-amber) / .07); color: rgb(var(--c-text-primary)); }
+.alpha-verdict.none { border-color: rgb(var(--c-red) / .4); background: rgb(var(--c-red) / .06); color: rgb(var(--c-text-primary)); }
+
+.proof-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-family: Inter, system-ui, sans-serif; font-size: 10px; font-weight: 600; white-space: nowrap; border: 1px solid; }
+.proof-pill.alpha { color: rgb(var(--c-green)); border-color: rgb(var(--c-green) / .45); background: rgb(var(--c-green) / .1); }
+.proof-pill.promising { color: rgb(var(--c-amber)); border-color: rgb(var(--c-amber) / .45); background: rgb(var(--c-amber) / .1); }
+.proof-pill.beta { color: rgb(var(--c-blue)); border-color: rgb(var(--c-blue) / .4); background: rgb(var(--c-blue) / .08); }
+.proof-pill.no-edge { color: rgb(var(--c-text-tertiary)); border-color: rgb(var(--c-border)); }

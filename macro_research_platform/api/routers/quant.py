@@ -551,6 +551,24 @@ async def strategy_library(request: Request):
     return {"strategies": await asyncio.to_thread(library.summaries), "notes": library.__doc__}
 
 
+@router.get("/api/v1/quant/proof")
+async def what_works(request: Request):
+    """What actually works: every tested strategy and signal scored on alpha (not return), deflated Sharpe and
+    overfitting evidence, with a plain verdict."""
+    from api.quant import proof
+    _user(request)
+    return await asyncio.to_thread(proof.scorecard)
+
+
+@router.get("/api/v1/quant/alphalab")
+async def stock_signal_lab(request: Request, refresh: bool = False):
+    """Stock Signal Lab: which stock-level signals predicted S&P 500 returns, an out-of-sample composite, and today's
+    ranked long and short ideas with sizes and borrow costs."""
+    from api.quant import alphalab
+    _user(request)
+    return await asyncio.to_thread(alphalab.status_or_result, refresh)
+
+
 @router.get("/api/v1/quant/smartmoney/latest")
 async def smartmoney_latest(request: Request):
     """Latest 13F top holdings of the tracked institutions (built from cached SEC filings)."""

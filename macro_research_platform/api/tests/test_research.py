@@ -129,8 +129,12 @@ def test_sec_bulk_facts_used_only_when_current(tmp_path, monkeypatch):
     sub = lambda d: {"filings": {"recent": {"form": ["10-Q", "4"], "filingDate": [d, "2026-10-20"]}}}
     monkeypatch.setenv("SEC_BULK_DIR", str(tmp_path))
     monkeypatch.setattr(se, "bulk_dirs", lambda: [tmp_path])
+    monkeypatch.setattr(se, "latest_periodic_live", lambda cik: None)       # offline: the bulk index decides
     (tmp_path / "submissions" / "CIK0000000042.json").write_text(_j.dumps(sub("2026-07-31")))
     assert se._bulk_facts(42) is not None                                   # current: used
     (tmp_path / "submissions" / "CIK0000000042.json").write_text(_j.dumps(sub("2026-10-28")))
     assert se._bulk_facts(42) is None                                       # a newer 10-Q exists: not used
     assert se._bulk_facts(42, require_current=False) is not None            # but kept as the offline fallback
+    (tmp_path / "submissions" / "CIK0000000042.json").write_text(_j.dumps(sub("2026-07-31")))
+    monkeypatch.setattr(se, "latest_periodic_live", lambda cik: "2026-10-29")
+    assert se._bulk_facts(42) is None                                       # SEC's live feed knows a newer filing

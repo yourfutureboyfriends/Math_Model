@@ -433,7 +433,9 @@ async def lifespan(app: FastAPI):
                          _bbg.total_returns, lambda: _bbg.index_movers("SPX"), lambda: _bbg.member_returns("SPX", "YTD"),
                          _std.economic_forecasts, _std.fomc, _std.forward_curves, lambda: _std.earnings_analysis("SPX"),
                          _ext.borrow_screen, _ext.league_table, _ext.spf_consensus,
-                         _free.swap_curves, _free.credit_indices, _free.single_name_cds)
+                         _free.swap_curves, _free.credit_indices, _free.single_name_cds,
+                         # the Stock Signal Lab rebuilds itself in the background once its saved result is a day old
+                         lambda: __import__("api.quant.alphalab", fromlist=["x"]).status_or_result())
                 # Every 30 minutes, paced: with stale-while-revalidate in the cache (api/marketdata/core.py) a lapsed
                 # screen is served at once and refreshed behind; this keeps every heavy screen inside that window.
                 while True:
