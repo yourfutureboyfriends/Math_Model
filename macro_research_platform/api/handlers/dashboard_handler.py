@@ -16,7 +16,7 @@ from api.calculations import (
     calculate_sector_allocation
 )
 from api.calculations.signals import calculate_inflation_direction
-from api.calculations.regime import commodity_tilt
+from api.calculations.regime import commodity_tilt, duration_tilt
 from api.calculations.models import estrella_mishkin_recession_prob
 from api.handlers.dashboard_sections import (
     load_section_inputs, build_momentum_veto, build_correlation_regime, build_debt_cycle,
@@ -560,7 +560,9 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         ],
         opportunities=[
             f"{regime_chars.equity_bias.title()} equities in {regime_name}",
-            f"{regime_chars.duration_bias.capitalize()} duration positioning",
+            f"{duration_tilt(regime_name, growth_score).capitalize()} duration positioning"
+            + (" (growth momentum " + ("strong" if growth_score > 0.6 else "weak" if growth_score < 0.4 else "middling") + ")"
+               if growth_score is not None else ""),
             f"{commodity_tilt(regime_name, inflation_direction).capitalize()} commodity exposure"
             + (" (inflation pressure " + ("rising" if inflation_direction > 0.55 else "falling" if inflation_direction < 0.45 else "flat")
                + ": breakevens and commodities, 3 months)" if inflation_direction is not None else "")
@@ -585,6 +587,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         ],
         playbook=playbook,
         inflationDirection=inflation_direction,
+        growthScore=growth_score,
     )
 
     # Create scores

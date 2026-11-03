@@ -121,3 +121,24 @@ def test_inflation_direction_and_commodity_call():
     assert commodity_tilt("stagflation", None) == "overweight"                  # no direction → regime's bias
     assert desired_tilts("reflation", 0.30)["commodity"] == -1 and desired_tilts("reflation")["commodity"] == 1
     assert regime_budgets("reflation", 0.30)["DBC"] < regime_budgets("reflation")["DBC"]
+
+
+def test_payroll_growth_uses_last_months_release_and_the_labour_groups():
+    level = {"2026-02": 100.0, "2026-08": 101.0, "2026-09": 105.0}
+    # known in Sept: August's release vs February → 200·ln(1.01)
+    assert abs(re_._pay6(level, "2026-09") - 200 * np.log(1.01)) < 1e-9
+    assert re_._pay6(level, "2026-07") is None
+    rows = _synthetic()
+    for i, r in enumerate(rows):
+        r["pay6"] = 2.0 - 1.5 * r["ebp"] + np.sin(i)          # weak hiring when credit is stressed
+    ev = re_.evaluate(rows, start_year=1990, groups=re_.GROUPS_LABOUR)
+    assert set(ev["calibration_now"]) == {"curve_credit", "with_payrolls"}
+    assert ev["models"]["ensemble_calibrated"]["auroc"] > 0.7
+
+
+def test_duration_call_follows_growth_momentum():
+    from api.calculations.regime import duration_tilt
+    assert duration_tilt("slowdown", 0.8) == "short" and duration_tilt("reflation", 0.2) == "long"
+    assert duration_tilt("reflation", 0.5) == "neutral" and duration_tilt("slowdown", None) == "long"
+    assert desired_tilts("reflation", None, 0.2)["rates"] == 1 and desired_tilts("reflation")["rates"] == -1
+    assert regime_budgets("reflation", None, 0.2)["TLT"] > regime_budgets("reflation")["TLT"]

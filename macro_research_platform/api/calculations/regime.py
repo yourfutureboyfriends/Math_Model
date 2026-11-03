@@ -274,6 +274,22 @@ def commodity_tilt(regime: str, inflation_direction: Optional[float] = None) -> 
     return rc.commodity_bias if rc else "neutral"
 
 
+# Duration call. The regime's static duration bias was wrong-way in three of four decades (1990–2026, next-3-month
+# 10Y yield move: −17.8, −4.6, −0.7, +19.6 bp per call; −2.5 bp overall). Growth momentum (the regime's own growth
+# score: strong → yields up → short duration) was right-way in three of four (−0.8, +11.5, +0.2, +5.6; +4.2 bp
+# overall, 53% hit rate); yield trends, inflation direction and the policy gap were not consistent.
+GROWTH_BAND = (0.4, 0.6)
+
+
+def duration_tilt(regime: str, growth: Optional[float] = None) -> str:
+    """'short' / 'neutral' / 'long' duration: from growth momentum when available, else the regime's static bias."""
+    if growth is not None:
+        lo, hi = GROWTH_BAND
+        return "short" if growth > hi else "long" if growth < lo else "neutral"
+    rc = REGIME_CHARACTERISTICS.get((regime or "").strip().lower())
+    return rc.duration_bias if rc else "neutral"
+
+
 def get_regime_characteristics(regime: str) -> RegimeCharacteristics:
     """Get characteristics for a regime."""
     normalized = regime.lower().strip() if regime else "goldilocks"

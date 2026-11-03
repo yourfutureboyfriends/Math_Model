@@ -39,6 +39,8 @@ class RegimeData(BaseModel):
     playbook: Optional[RegimePlaybookData] = None
     # 0–1, 0.5 = flat: breakevens and commodities over ~3 months; drives the commodity call (regime.commodity_tilt)
     inflationDirection: Optional[float] = None
+    # 0–1 growth momentum (S&P); drives the duration call (regime.duration_tilt)
+    growthScore: Optional[float] = None
 
     @field_validator('confidenceScore', mode='before')
     @classmethod

@@ -360,7 +360,7 @@ async def portfolio_generate_ideas_v1(book: Optional[str] = None):
     from api.calculations.idea_generation import generate_ideas
 
     # Current regime from the live dashboard cache.
-    regime_key, regime_name, infl_dir = None, None, None
+    regime_key, regime_name, infl_dir, growth = None, None, None, None
     try:
         from api.handlers.dashboard_handler import _DASHBOARD_CACHE
         cached = _DASHBOARD_CACHE.get("live")
@@ -370,6 +370,7 @@ async def portfolio_generate_ideas_v1(book: Optional[str] = None):
             regime_name = getattr(reg, "current", None) if not isinstance(reg, dict) else reg.get("current")
             regime_key = (regime_name or "").strip().lower()
             infl_dir = getattr(reg, "inflationDirection", None) if not isinstance(reg, dict) else reg.get("inflationDirection")
+            growth = getattr(reg, "growthScore", None) if not isinstance(reg, dict) else reg.get("growthScore")
     except Exception as e:
         logger.debug(f"[generate-ideas] regime lookup failed: {e}")
     if not regime_key:
@@ -385,7 +386,7 @@ async def portfolio_generate_ideas_v1(book: Optional[str] = None):
     raw = await asyncio.to_thread(portfolio_store.list_positions, book)
     gross = (await _enrich_positions(raw))["summary"]["gross_exposure"] or 0.0 if raw else 0.0
 
-    ideas = generate_ideas(dexp, regime_key, gross_exposure=gross, inflation_direction=infl_dir)
+    ideas = generate_ideas(dexp, regime_key, gross_exposure=gross, inflation_direction=infl_dir, growth=growth)
     return {"available": True, "regime": regime_name, "book": book or "Firm",
             "gross_exposure": round(gross, 2), "dollar_exposures": dexp,
             "ideas": ideas, "computed_at": datetime.now().isoformat()}
