@@ -27,3 +27,10 @@ async def margin_debt():
         return await asyncio.to_thread(freedata.margin_debt)
     except Upstream as e:
         raise HTTPException(503, str(e))
+
+
+@router.get("/api/v1/ops/monitor")
+async def ops_monitor():
+    """Feed state, open data incidents, the last accuracy audit and recent events (for alerts and due diligence)."""
+    from api import ops_monitor as ops
+    return await asyncio.to_thread(ops.summary)

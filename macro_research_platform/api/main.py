@@ -555,6 +555,26 @@ async def lifespan(app: FastAPI):
         _scheduler.add_job(func=_massive_topup, trigger=CronTrigger(day_of_week="tue-sat", hour=5, minute=30),
                            id="massive_topup", replace_existing=True, misfire_grace_time=6 * 3600, coalesce=True)
 
+        # Operations monitor: feed state changes every 10 minutes, the accuracy audit after each US close (api/ops_monitor.py)
+        def _ops_feeds():
+            from api import ops_monitor as _ops
+            try:
+                for ev in _ops.check_feeds():
+                    logger.warning("[ops] feed %s: %s → %s", ev["source"], ev["from"], ev["to"])
+            except Exception as e:                                        # noqa: BLE001
+                logger.info("[ops] feed check failed: %s", e)
+
+        def _ops_audit():
+            from api import ops_monitor as _ops
+            try:
+                logger.info("[ops] accuracy audit: %s", _ops.run_audit().get("detail"))
+            except Exception as e:                                        # noqa: BLE001
+                logger.warning("[ops] accuracy audit failed: %s", e)
+        _scheduler.add_job(func=_ops_feeds, trigger="interval", minutes=10, id="ops_feeds", replace_existing=True,
+                           max_instances=1, coalesce=True)
+        _scheduler.add_job(func=_ops_audit, trigger=CronTrigger(day_of_week="mon-fri", hour=22, minute=30), id="ops_audit",
+                           replace_existing=True, max_instances=1, coalesce=True, misfire_grace_time=3 * 3600)
+
         # T+1 reconciliation of positions against the fills ledger, for funds with governance on (a break halts).
         async def _reconcile_funds():
             from api import fund_store as _fs, funds as _funds, governance as _gov

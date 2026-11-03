@@ -38,3 +38,20 @@ def test_crisis_behaviour_separates_a_hedge_from_beta():
     hb, hh = _crisis(beta, b, dates), _crisis(hedge, b, dates)
     assert hb["crisis_return"] < 0 and hb["role"] is None and abs(hb["downside_capture"] - 1) < 1e-6
     assert hh["crisis_return"] > 0 and hh["role"] == "crisis diversifier"
+
+
+def test_ops_monitor_records_feed_state_changes_and_open_incidents(tmp_path, monkeypatch):
+    from api import health_sources, ops_monitor
+    monkeypatch.setattr(ops_monitor, "DIR", tmp_path)
+    state = {"fred": "live", "market_data": "live"}
+    monkeypatch.setattr(health_sources, "get_sources_health",
+                        lambda force=False: {"sources": {k: {"status": v} for k, v in state.items()}})
+    assert ops_monitor.check_feeds() == []                      # first run only records the baseline
+    state["fred"] = "down"
+    ev = ops_monitor.check_feeds()
+    assert len(ev) == 1 and ev[0]["source"] == "fred" and ev[0]["severity"] == "critical"
+    s = ops_monitor.summary()
+    assert [e["source"] for e in s["open_incidents"]] == ["fred"] and s["feeds"]["fred"] == "down"
+    state["fred"] = "live"
+    assert ops_monitor.check_feeds()[0]["severity"] == "resolved"
+    assert ops_monitor.summary()["open_incidents"] == []

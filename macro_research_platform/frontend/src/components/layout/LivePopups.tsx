@@ -219,6 +219,42 @@ function useRegimeChanges() {
 }
 const pct0 = (v?: number) => (v == null ? '—' : `${Math.round(v * 100)}%`);
 
+// Data incidents from the operations monitor: a feed going down (sticky until dismissed), coming back, or the
+// after-close accuracy audit finding a number that no longer matches its independent source.
+const FEED_NAME: Record<string, string> = { fred: 'FRED (economic data)', market_data: 'Market prices', quote_freshness: 'Yahoo quotes', database: 'Database' };
+function useDataIncidents() {
+  useEffect(() => {
+    const KEY = 'popup_ops_seen';
+    const poll = async () => {
+      try {
+        const j = await (await fetch('/api/v1/ops/monitor')).json();
+        let seen = '';
+        try { seen = localStorage.getItem(KEY) || ''; } catch { /* storage unavailable */ }
+        const cutoff = seen || new Date(Date.now() - 3600_000).toISOString();     // first visit: only the last hour
+        const fresh = (j.events ?? []).filter((e: any) => e.time > cutoff).reverse();
+        for (const e of fresh) {
+          if (e.kind === 'feed') {
+            const name = FEED_NAME[e.source] ?? e.source;
+            pushPopup({ id: `ops:${e.source}:${e.time}`, kind: 'alert', sticky: e.severity === 'critical', tone: e.severity === 'resolved' ? 'up' : 'down',
+              title: e.severity === 'resolved' ? `${name} is back (${e.to})` : `${name} is ${e.to}`,
+              body: e.severity === 'resolved' ? 'Data from this source is current again.' : `Screens using it may show older data. ${e.detail ?? ''}`.trim(),
+              action: { label: 'System health', run: () => revealResearch('system-health') } });
+          } else if (e.kind === 'audit' && e.severity !== 'ok') {
+            pushPopup({ id: `ops:audit:${e.time}`, kind: 'alert', sticky: true, tone: 'down',
+              title: 'Accuracy audit found differences', body: `${e.detail}. ${(e.failures ?? []).slice(0, 2).map((f: any) => f.check).join(', ')}`,
+              action: { label: 'System health', run: () => revealResearch('system-health') } });
+          }
+        }
+        const newest = (j.events ?? [])[0]?.time;
+        if (newest && newest > (seen || '')) { try { localStorage.setItem(KEY, newest); } catch { /* storage unavailable */ } }
+      } catch { /* optional */ }
+    };
+    const first = setTimeout(poll, 15_000);
+    const t = setInterval(poll, 5 * 60_000);
+    return () => { clearTimeout(first); clearInterval(t); };
+  }, []);
+}
+
 // ── UI ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 const KIND_TAG: Record<PopupKind, string> = { alert: 'YOUR ALERT', news: 'NEWS', move: 'MOVE', eco: 'ECO', regime: 'REGIME' };
 
@@ -312,6 +348,7 @@ export function LivePopups() {
   useMarketMoves();
   useEcoReleases();
   useRegimeChanges();
+  useDataIncidents();
   const { toasts, panel } = usePopups();
   return (
     <>

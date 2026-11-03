@@ -178,6 +178,48 @@ export function SystemHealthSection() {
             </>)}
         </div>
       </div>
+      <OpsIncidents />
     </section>
+  );
+}
+
+/** Open data incidents, the last after-close accuracy audit and recent feed events (api/ops_monitor.py). */
+function OpsIncidents() {
+  const [m, setM] = useState<any>(null);
+  useEffect(() => {
+    const load = () => fetch('/api/v1/ops/monitor').then((r) => r.json()).then(setM).catch(() => {});
+    load();
+    const t = setInterval(load, 5 * 60_000);
+    return () => clearInterval(t);
+  }, []);
+  if (!m) return null;
+  const a = m.last_audit;
+  const sev = (s: string) => (s === 'critical' ? 'text-red' : s === 'warning' ? 'text-amber' : 'text-green');
+  return (
+    <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div className="border border-border bg-surface-1 p-3">
+        <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Data incidents</div>
+        {m.open_incidents.length === 0
+          ? <p className="text-xs text-green">No open incidents — every feed is in its normal state.</p>
+          : m.open_incidents.map((e: any) => (
+            <div key={e.source + e.time} className="text-xs py-0.5"><span className={`font-mono uppercase ${sev(e.severity)}`}>{e.to}</span>{' '}
+              <span className="text-text-primary">{e.source}</span> <span className="text-text-tertiary">since {e.time.slice(0, 16).replace('T', ' ')} UTC</span></div>))}
+        <div className="text-2xs text-text-tertiary uppercase tracking-wider mt-3 mb-1">Recent events</div>
+        {m.events.length === 0 ? <p className="text-2xs text-text-tertiary">None recorded yet.</p> : (
+          <ul className="space-y-0.5 max-h-40 overflow-y-auto">{m.events.slice(0, 20).map((e: any, i: number) => (
+            <li key={i} className="text-2xs"><span className="font-mono text-text-tertiary">{e.time.slice(5, 16).replace('T', ' ')}</span>{' '}
+              <span className={sev(e.severity)}>{e.kind === 'feed' ? `${e.source}: ${e.from} → ${e.to}` : `audit: ${e.detail}`}</span></li>))}</ul>)}
+      </div>
+      <div className="border border-border bg-surface-1 p-3">
+        <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-2">Accuracy audit (after each US close)</div>
+        {!a ? <p className="text-xs text-text-tertiary">Not run yet — it runs at 22:30 UTC on weekdays.</p> : (<>
+          <p className={`text-xs ${sev(a.severity)}`}>{a.detail}</p>
+          <p className="text-2xs text-text-tertiary">{a.time.slice(0, 16).replace('T', ' ')} UTC · {a.seconds ?? '—'}s · {a.report ?? ''}</p>
+          {(a.failures ?? []).length > 0 && <ul className="mt-1 space-y-0.5">{a.failures.map((f: any, i: number) => (
+            <li key={i} className="text-2xs text-red">{f.check}: <span className="text-text-secondary">{f.detail}</span></li>))}</ul>}
+        </>)}
+        <p className="text-2xs text-text-tertiary mt-2">{m.note}</p>
+      </div>
+    </div>
   );
 }
