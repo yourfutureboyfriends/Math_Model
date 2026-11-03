@@ -57,6 +57,51 @@ function Card({ title, source, children }: { title: string; source: string; chil
 }
 
 
+/** The headline recession model (term spread + credit ensemble) with its out-of-sample record, so the number on the
+ *  desk comes with the evidence for trusting it — and where it has been wrong. Data: /api/recession. */
+function RecessionRecord() {
+  const [r, setR] = useState<any>(null);
+  useEffect(() => { fetch('/api/recession').then((x) => (x.ok ? x.json() : null)).then(setR).catch(() => setR(null)); }, []);
+  const ev = r?.evaluation;
+  if (!r || r.probability == null) return null;
+  const rows: [string, any, any][] = ev ? [
+    ['Headline ensemble', ev.models?.ensemble, ev.since_2005?.ensemble],
+    ['10Y–3M spread only', ev.models?.term_spread_only, ev.since_2005?.term_spread_only],
+    ['Base rate (always the average)', ev.models?.base_rate, null],
+  ] : [];
+  const skill = (v: number | null | undefined) => (v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(0)}%`);
+  return (
+    <div className="p-3 bg-surface-1 border border-border space-y-2" aria-label="Recession model record">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="text-2xs uppercase tracking-wider text-text-tertiary">Headline recession probability</span>
+        <span className="text-lg font-mono font-bold text-text-primary">{pct(r.probability)}</span>
+        <span className="text-2xs text-text-secondary">{r.model ?? 'model'}</span>
+        <span className="text-2xs text-text-tertiary">· target: {r.target ?? '12 months'}</span>
+      </div>
+      {ev ? <>
+        <div className="overflow-x-auto"><table className="w-full text-2xs">
+          <thead><tr className="text-text-tertiary text-left">
+            <th className="font-normal py-1">Out of sample {ev.from}–{ev.to} ({ev.forecasts} monthly forecasts, {ev.recession_months} recession-ahead)</th>
+            <th className="font-normal text-right" title="How well the model ranks months that led into recession above months that did not; 0.5 is a coin flip">AUROC</th>
+            <th className="font-normal text-right" title="Brier-score improvement over always forecasting the training base rate; negative = worse than the base rate">Skill vs base rate</th>
+            <th className="font-normal text-right">Since 2005: AUROC</th><th className="font-normal text-right">skill</th></tr></thead>
+          <tbody>{rows.map(([name, all, s05]) => <tr key={name} className="border-t border-border-subtle">
+            <td className="py-1 text-text-secondary">{name}</td>
+            <td className="text-right font-mono">{all?.auroc ?? '—'}</td>
+            <td className={`text-right font-mono ${all?.brier_skill_vs_base_rate < 0 ? 'text-red' : ''}`}>{skill(all?.brier_skill_vs_base_rate)}</td>
+            <td className="text-right font-mono">{s05?.auroc ?? '—'}</td>
+            <td className={`text-right font-mono ${s05?.brier_skill_vs_base_rate < 0 ? 'text-red' : ''}`}>{skill(s05?.brier_skill_vs_base_rate)}</td>
+          </tr>)}</tbody></table></div>
+        {ev.calibration?.length > 0 && <div className="text-2xs text-text-tertiary">
+          Calibration (forecast → how often a recession followed):{' '}
+          {ev.calibration.map((c: any) => <span key={c.range} className="mr-2 font-mono">{c.range}: {pct(c.recession_frequency)} <span className="opacity-70">(n={c.forecasts})</span></span>)}
+        </div>}
+        <div className="text-2xs text-text-tertiary">{ev.method} High readings have been over-confident (the 2022–24 inverted curve brought no recession); the EBP history is the Fed's re-estimate, not a real-time vintage.</div>
+      </> : <div className="text-2xs text-text-tertiary">Out-of-sample record unavailable for this model.</div>}
+    </div>
+  );
+}
+
 export function CycleRiskSection() {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +140,7 @@ export function CycleRiskSection() {
 
       {data && (
         <div className="space-y-3">
+          <RecessionRecord />
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
             <Card title="Near-term forward spread" source="Engstrom & Sharpe (2019) · Fed zero-coupon curve">
               {n?.available ? <>

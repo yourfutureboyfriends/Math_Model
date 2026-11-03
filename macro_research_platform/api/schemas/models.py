@@ -469,8 +469,13 @@ class RecessionData(BaseModel):
     models: Optional[Dict[str, Any]] = None
     indicators: Optional[Dict[str, Any]] = None
     lastUpdated: Optional[str] = None
+    # Headline model (term spread + credit ensemble when available), its target and out-of-sample record.
+    ensembleProb: Optional[float] = None
+    model: Optional[str] = None
+    target: Optional[str] = None
+    evaluation: Optional[Dict[str, Any]] = None
 
-    @field_validator('probability', 'logisticProb', 'emProbitProb', mode='before')
+    @field_validator('probability', 'logisticProb', 'emProbitProb', 'ensembleProb', mode='before')
     @classmethod
     def validate_probability(cls, v):
         """Validate probability is 0-1; NaN/None -> None (unavailable)."""

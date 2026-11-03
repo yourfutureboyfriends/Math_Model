@@ -442,9 +442,32 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
 
     # Classify regime using shared module
     _prev_regime = next((p["regime"] for p in reversed(points[:-1]) if p["regime"]), None)
-    regime_name, regime_confidence, _ = classify_regime(
+    raw_regime, regime_confidence, _ = classify_regime(
         growth_score, inflation_score, liquidity_score, previous=_prev_regime
     )
+    # Headline with confirmation (api/calculations/regime.py CONFIRM_DAYS): replay the daily raw label over the last
+    # ~60 trading days with each day's as-of inputs, and switch only once a new label has held CONFIRM_DAYS in a row.
+    from api.calculations.regime import confirmed_regime
+    _raw_days, _prev = [], None
+    for i in range(max(0, len(spx_closes) - 61), len(spx_closes) - 1):
+        d = spx_s.dates[i]
+        g_d = calculate_growth_signal(None, spx_closes[:i + 1])[0]
+        i_d = calculate_inflation_signal(cpi_s.asof(d), be_s.asof(d))[0]
+        l_d = calculate_liquidity_signal(dxy_s.asof(d), dgs10.asof(d), dff.asof(d))[0]
+        if None in (g_d, i_d, l_d):
+            continue
+        _prev = classify_regime(g_d, i_d, l_d, previous=_prev)[0]
+        _raw_days.append(_prev)
+    _conf = confirmed_regime(_raw_days + [raw_regime])
+    regime_name = _conf["current"] or raw_regime
+    if points and points[-1]["label"] == "Now":
+        points[-1]["regime"] = regime_name                     # the history ends on the headline, not the raw read
+    regime_pending = None
+    if regime_name != raw_regime:
+        # today's signals read differently but have not held long enough: keep the confirmed label, say so, lower confidence
+        regime_confidence = min(regime_confidence, 0.55)
+        regime_pending = (f"Signals have read {raw_regime.title()} for {_conf['pending_days']} of the "
+                          f"{_conf['confirm_days']} trading days needed to switch from {regime_name.title()}.")
 
     # Measured regime duration: step back through trading days (weekly), re-classifying
     # with each date's as-of inputs, until the regime differs. Replaces the old
@@ -472,12 +495,26 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     # Recession probability from real models (headline = fitted probit, else E-M)
     _c3 = dgs10.last_common(dgs3mo)
     spread_3m10y_now = (_c3[1] - _c3[2]) if _c3 else dgs10.latest - dgs3mo.latest
+    # Headline: the term spread + credit ensemble (Fed curve + excess bond premium files, cached twice a day). The
+    # first build downloads the curve file; if it is not ready in time the probit serves this build and the
+    # ensemble is used from the next one.
+    ensemble = None
+    try:
+        from api.models_ml.recession_ensemble import get_recession_ensemble
+        ensemble = await _dash_asyncio.wait_for(_dash_asyncio.to_thread(get_recession_ensemble), timeout=45)
+    except Exception as e:
+        logger.warning(f"[dashboard_handler] recession ensemble unavailable: {e}")
     recession_data = calculate_recession_probability(
         spread_3m10y_now, fed_rate, sahm_value,
         _recession_prob_at(spread_3m10y_now, fed_rate) if probit is not None else None,
+        ensemble=ensemble,
     )
-    recession_history = [{"date": p["date"], "probability": round(p["rec"], 4)}
-                         for p in points if p["rec"] is not None]
+    if recession_data.get("ensembleProb") is not None:
+        # monthly history from the same model as the headline (never a different model's line)
+        recession_history = (ensemble.get("history") or [])[-5:]
+    else:
+        recession_history = [{"date": p["date"], "probability": round(p["rec"], 4)}
+                             for p in points if p["rec"] is not None]
 
     # Record today's recession forecast for the validation diagnostics (one row per day —
     # the logger upserts). Best-effort: a logging failure never affects the dashboard.
@@ -488,7 +525,8 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
                 recession_validator.log_recession_forecast(
                     date=now.strftime("%Y-%m-%d"), horizon="12M",
                     components={"logistic": recession_data["logisticProb"],
-                                "probit": recession_data["emProbitProb"], "sahm": None},
+                                "probit": recession_data["emProbitProb"], "sahm": None,
+                                "ensemble": recession_data.get("ensembleProb")},
                     blended_probability=recession_data["probability"],
                     metadata={"model": recession_data.get("model"),
                               "spread_3m10y_pp": round(spread_3m10y_now, 3),
@@ -519,7 +557,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     regime = RegimeData(
         current=regime_name,
         confidence="High" if regime_confidence > 0.75 else "Medium" if regime_confidence >= 0.6 else "Low",
-        alert=_model_disagreement(regime_name),
+        alert=" ".join(x for x in (regime_pending, _model_disagreement(regime_name)) if x) or None,
         confidenceScore=regime_confidence,
         duration=regime_duration,
         history=[{"date": p["date"], "regime": p["regime"]} for p in points if p["regime"]],
@@ -603,6 +641,10 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         description=f"{recession_data['level']} probability ({recession_data['probability']:.0%})",
         components=recession_data["components"],
         history=recession_history,
+        ensembleProb=recession_data.get("ensembleProb"),
+        model=recession_data.get("model"),
+        target=recession_data.get("target"),
+        evaluation=recession_data.get("evaluation"),
     )
 
     # Create key metrics

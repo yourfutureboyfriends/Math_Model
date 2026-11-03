@@ -226,6 +226,36 @@ def classify_regime(growth: float, inflation: float, liquidity: float, previous:
     return regime, confidence, None
 
 
+# A new label must hold this many trading days in a row before the headline switches to it. Replayed daily since 2000
+# (S&P, DXY, 10Y, 3M bill, CPI as released), the bare daily rule changed label 9.3 times a year, 149 times for 10 days
+# or less; with 5-day confirmation 2.9 times a year and 3 such whipsaws, with slightly better agreement with the
+# economy's growth direction (57.0% vs 56.0%) and a wider forward 3-month S&P gap between the playbook's overweight
+# and underweight calls (5.6 vs 5.2 pp). A momentum dip of a few days no longer relabels the economy.
+CONFIRM_DAYS = 5
+
+
+def confirmed_regime(raw_labels: List[str], confirm: int = CONFIRM_DAYS) -> Dict[str, Optional[object]]:
+    """Run the confirmation rule over daily raw labels (oldest first, the last one is today).
+
+    Returns the confirmed current label, the label it has held since the start of the window, and — when today's raw
+    label differs — the pending candidate and how many consecutive days it has held (so the desk sees a switch coming).
+    """
+    cur: Optional[str] = None
+    cand: Optional[str] = None
+    n = 0
+    for raw in raw_labels:
+        if raw is None:
+            continue
+        if cur is None or raw == cur:
+            cur, cand, n = raw, None, 0
+            continue
+        n = n + 1 if raw == cand else 1
+        cand = raw
+        if n >= confirm:
+            cur, cand, n = raw, None, 0
+    return {"current": cur, "pending": cand, "pending_days": n if cand else 0, "confirm_days": confirm}
+
+
 def get_regime_characteristics(regime: str) -> RegimeCharacteristics:
     """Get characteristics for a regime."""
     normalized = regime.lower().strip() if regime else "goldilocks"

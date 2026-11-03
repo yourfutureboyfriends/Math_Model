@@ -17,16 +17,22 @@ def calculate_recession_probability(
     fed_funds: Optional[float] = None,
     sahm_value: Optional[float] = None,
     fitted_probit_prob: Optional[float] = None,
+    ensemble: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     12-month recession probability from real models only.
+
+    - ensembleProb: term spread + credit ensemble (api/models_ml/recession_ensemble.py — 10Y–3M + EBP and the
+      near-term forward spread + EBP, probit average; target a recession within 12 months). The headline when
+      available: out of sample since 1985 it ranked recessions far better (AUROC 0.88 vs 0.65) and, unlike the
+      spread + Fed funds probit, kept beating the base rate after 2005.
 
     - emProbitProb: Estrella-Mishkin (1998) probit on the 10Y-3M spread (pp).
     - logisticProb: probit re-fitted on FRED history (spread + Fed funds, Wright 2006),
       when the fitted model is available; None otherwise.
     - sahmValue: FRED real-time Sahm rule (SAHMREALTIME); signal at >= 0.50.
 
-    Headline probability = fitted probit if available, else Estrella-Mishkin.
+    Headline probability = ensemble if available, else fitted probit, else Estrella-Mishkin.
     Returns probability None (level "Unavailable") when the spread is missing.
     """
     em_prob = None
@@ -36,7 +42,8 @@ def calculate_recession_probability(
         except ValueError:
             em_prob = None
 
-    headline = fitted_probit_prob if fitted_probit_prob is not None else em_prob
+    ens_prob = ensemble.get("probability") if ensemble and ensemble.get("available") else None
+    headline = ens_prob if ens_prob is not None else fitted_probit_prob if fitted_probit_prob is not None else em_prob
     sahm_signal = (
         "Unavailable" if sahm_value is None
         else "Signal" if sahm_value >= 0.50 else "No Signal"
@@ -47,6 +54,12 @@ def calculate_recession_probability(
         # contribution = the input's term inside the E-M probit index (z units)
         components.append({"name": "10Y-3M Spread", "value": round(spread_3m10y_pp, 2),
                            "contribution": round(_EM_SLOPE * spread_3m10y_pp, 3)})
+    if ens_prob is not None:
+        inp = ensemble.get("inputs") or {}
+        if inp.get("near_term_forward_spread_pp") is not None:
+            components.append({"name": "Near-term forward spread", "value": inp["near_term_forward_spread_pp"], "contribution": None})
+        if inp.get("excess_bond_premium_pp") is not None:
+            components.append({"name": "Excess bond premium", "value": inp["excess_bond_premium_pp"], "contribution": None})
     if fed_funds is not None:
         components.append({"name": "Fed Funds", "value": round(fed_funds, 2), "contribution": None})
     if sahm_value is not None:
@@ -59,7 +72,11 @@ def calculate_recession_probability(
         "emProbitProb": round(em_prob, 4) if em_prob is not None else None,
         "sahmValue": round(sahm_value, 2) if sahm_value is not None else None,
         "sahmSignal": sahm_signal,
-        "model": "Fitted probit (FRED)" if fitted_probit_prob is not None else "Estrella-Mishkin probit",
+        "ensembleProb": round(ens_prob, 4) if ens_prob is not None else None,
+        "model": (ensemble["model"] if ens_prob is not None else
+                  "Fitted probit (FRED)" if fitted_probit_prob is not None else "Estrella-Mishkin probit"),
+        "target": ensemble.get("target") if ens_prob is not None else "NBER recession 12 months ahead",
+        "evaluation": ensemble.get("evaluation") if ens_prob is not None else None,
         "components": components,
     }
 

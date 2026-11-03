@@ -121,7 +121,7 @@ def recession_models(macro: Dict[str, Any], cycle: Dict[str, Any], rates: Dict[s
         if isinstance(value, (int, float)):
             rows.append({"model": name, "probability": round(float(value), 4), "basis": basis})
 
-    add("Composite", macro.get("recession_probability"), "platform recession ensemble")
+    add("Composite", macro.get("recession_probability"), "headline: term spread + credit (EBP) ensemble, scored out of sample")
     add("Yield curve (10Y–3M)", ((rates.get("yieldCurves") or {}).get("US") or {}).get("recessionProb"),
         "probit, Estrella & Mishkin (1998)")
     add("Near-term forward spread", (cycle.get("near_term_forward_spread") or {}).get("recession_probability_12m"),

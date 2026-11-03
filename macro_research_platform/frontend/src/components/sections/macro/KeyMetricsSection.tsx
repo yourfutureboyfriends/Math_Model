@@ -161,7 +161,7 @@ export function KeyMetricsSection({ data }: KeyMetricsSectionProps) {
           sparklineData={recessionSparkline}
           sparklineFormat={(v) => `${v.toFixed(1)}%`}
           color={getRecessionColor(isNaN(km?.recession?.value ?? 0) ? 0 : (km?.recession?.value ?? 0)).replace('text-', 'var(--') + ')'}
-          lineage={{ source: 'ensemble recession model', fetched_at: meta.as_of, formula: 'Estrella-Mishkin probit + Sahm + ensemble' }}
+          lineage={{ source: 'ensemble recession model', fetched_at: meta.as_of, formula: 'Term spread + credit (EBP) probit ensemble; recession within 12 months' }}
           stale={isStale('recession')}
         />
 

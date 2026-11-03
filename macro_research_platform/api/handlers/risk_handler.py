@@ -44,6 +44,8 @@ async def get_recession_data() -> Dict[str, Any]:
         "probability": p,
         "regime": (None if p is None else "High Risk" if p > 0.4 else "Moderate Risk" if p > 0.2 else "Low Risk"),
         "models": {
+            **({"ensemble": {"probability": rec.get("ensembleProb"), "signal": _band(rec.get("ensembleProb"), 0.4, 0.2),
+                             "note": rec.get("model")}} if rec.get("ensembleProb") is not None else {}),
             "logistic": {"probability": rec.get("logisticProb"), "signal": _band(rec.get("logisticProb"), 0.4, 0.2)},
             "estrella_mishkin": {"probability": rec.get("emProbitProb"), "signal": _band(rec.get("emProbitProb"), 0.4, 0.2)},
             "sahm": {"value": rec.get("sahmValue"), "signal": rec.get("sahmSignal"),
