@@ -238,7 +238,7 @@ def learned_platt(probs: List[float], outcomes: List[int]) -> Optional[List[floa
     prior, lam = np.array([0.0, 1.0]), 1e-2
     b = prior.copy()
     for _ in range(60):
-        p = 1 / (1 + np.exp(-(X @ b)))
+        p = 1 / (1 + np.exp(-np.clip(X @ b, -35, 35)))
         grad = X.T @ (y - p) - lam * (b - prior)
         hess = -(X * (p * (1 - p))[:, None]).T @ X - lam * np.eye(2)
         step = np.linalg.solve(hess, grad)
@@ -251,7 +251,7 @@ def learned_platt(probs: List[float], outcomes: List[int]) -> Optional[List[floa
 def platt_apply(coef: Optional[List[float]], p: float) -> float:
     if coef is None:
         return p
-    return float(1 / (1 + np.exp(-(coef[0] + coef[1] * float(_logit(p))))))
+    return float(1 / (1 + np.exp(-float(np.clip(coef[0] + coef[1] * float(_logit(p)), -35, 35)))))
 
 
 def evaluate(rows: List[Dict[str, Any]], start_year: int = EVAL_START, announce_lag: int = 12,

@@ -625,6 +625,13 @@ async def lifespan(app: FastAPI):
         _scheduler.add_job(func=_curve_snapshot, trigger=CronTrigger(day_of_week="mon-fri", hour=22, minute=45),
                            id="commodity_curve_snapshot", replace_existing=True, max_instances=1, coalesce=True,
                            misfire_grace_time=6 * 3600)
+        def _challenger():
+            from api.models_ml.recession_challenger import get_challenger
+            r = get_challenger()                                          # retrains on a new month; logs the forecast
+            logger.info("[challenger] %s", r.get("promotion", {}).get("status") if r.get("available") else r.get("reason"))
+        # the ML challenger's shadow record: one forecast a month, scored as outcomes arrive
+        _scheduler.add_job(func=_challenger, trigger=CronTrigger(hour=6, minute=30), id="recession_challenger",
+                           replace_existing=True, max_instances=1, coalesce=True, misfire_grace_time=12 * 3600)
         _scheduler.add_job(func=_archive_packs, trigger=CronTrigger(day=1, hour=7, minute=0), id="governance_monthly_pack",
                            replace_existing=True, misfire_grace_time=3 * 24 * 3600, coalesce=True)
 

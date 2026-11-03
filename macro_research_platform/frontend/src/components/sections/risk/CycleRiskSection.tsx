@@ -106,6 +106,65 @@ function RecessionRecord() {
   );
 }
 
+const FEATURE_LABEL: Record<string, string> = {
+  ts: '10Y–3M spread', ntfs: 'Forward spread', ebp: 'Credit premium (EBP)', pay6: 'Payroll growth',
+  ts_d6: 'Spread change (6m)', ebp_d3: 'EBP change (3m)', spx6: 'S&P 500 (6m)',
+};
+
+/** The machine-learning challenger in shadow mode: its forecast and what drove it, its record against the headline
+ *  by era, and why it is (not) eligible for promotion. Data: /api/v1/models/recession/challenger. */
+function ChallengerPanel() {
+  const [c, setC] = useState<any>(undefined);
+  useEffect(() => { fetch('/api/v1/models/recession/challenger').then((x) => (x.ok ? x.json() : null)).then(setC).catch(() => setC(null)); }, []);
+  if (c === undefined) return <div className="p-3 bg-surface-1 border border-border text-2xs text-text-tertiary">ML challenger: retraining for this month (about a minute after a restart)…</div>;
+  if (!c) return null;
+  if (!c.available) return <div className="p-3 bg-surface-1 border border-border text-2xs text-text-tertiary">ML challenger unavailable — {c.reason}</div>;
+  const contrib = Object.entries(c.contributions ?? {}).sort((a: any, b: any) => Math.abs(b[1]) - Math.abs(a[1])) as [string, number][];
+  const maxAbs = Math.max(0.001, ...contrib.map(([, v]) => Math.abs(v)));
+  const eras = Object.entries(c.backtest?.by_era ?? {}) as [string, any][];
+  return (
+    <div className="p-3 bg-surface-1 border border-border space-y-2" aria-label="Machine-learning challenger">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="text-2xs uppercase tracking-wider text-text-tertiary">ML challenger · shadow mode</span>
+        <span className="text-lg font-mono font-bold text-text-primary">{pct(c.probability)}</span>
+        <span className="text-2xs text-text-secondary">vs headline {pct(c.headline_probability)}</span>
+        <span className="text-2xs text-text-tertiary" title={c.method}>· {c.model}</span>
+      </div>
+      <div className={`text-2xs px-2 py-1 border ${c.promotion?.eligible ? 'border-green/40 text-green' : 'border-amber/40 text-amber'}`}>
+        {c.promotion?.status}{c.promotion?.requires_human_approval ? ' · promotion always needs a person to approve it' : ''}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <div className="text-2xs text-text-tertiary mb-1">What moved today's forecast (raw, percentage points)</div>
+          {contrib.map(([k, v]) => (
+            <div key={k} className="grid grid-cols-[120px_1fr_48px] items-center gap-2 text-2xs">
+              <span className="text-text-secondary truncate">{FEATURE_LABEL[k] ?? k}</span>
+              <div className="h-1.5 bg-surface-3 relative">
+                <div className={`absolute inset-y-0 ${v >= 0 ? 'left-1/2 bg-red/70' : 'right-1/2 bg-green/70'}`} style={{ width: `${(Math.abs(v) / maxAbs) * 50}%` }} />
+              </div>
+              <span className="font-mono text-right">{v > 0 ? '+' : ''}{(v * 100).toFixed(1)}</span>
+            </div>))}
+        </div>
+        <div>
+          <div className="text-2xs text-text-tertiary mb-1">Walk-forward record (Brier; lower is better)</div>
+          <table className="w-full text-2xs">
+            <thead><tr className="text-text-tertiary text-left"><th className="font-normal">Period</th><th className="font-normal text-right">Headline</th>
+              <th className="font-normal text-right">Challenger</th><th className="font-normal text-right">Half-and-half</th></tr></thead>
+            <tbody>{eras.map(([name, e]) => <tr key={name} className="border-t border-border-subtle">
+              <td className="py-0.5 text-text-secondary">{name}</td><td className="text-right font-mono">{e.headline?.brier}</td>
+              <td className="text-right font-mono">{e.challenger?.brier}</td>
+              <td className={`text-right font-mono ${e.blend_brier_gain < 0 ? 'text-red' : 'text-green'}`}>{e.blend?.brier}</td></tr>)}</tbody>
+          </table>
+          <div className="text-2xs text-text-tertiary mt-1">
+            Chance the gain is luck: {c.backtest?.p_no_gain != null ? pct(c.backtest.p_no_gain) : '—'} (bar: {pct(0.05 / (c.backtest?.variants_tried || 1))}, allowing for {c.backtest?.variants_tried} variants tried) ·
+            live record {c.live?.scored ?? 0} scored of {c.live?.logged ?? 0} logged months.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function CycleRiskSection() {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -145,6 +204,7 @@ export function CycleRiskSection() {
       {data && (
         <div className="space-y-3">
           <RecessionRecord />
+          <ChallengerPanel />
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
             <Card title="Near-term forward spread" source="Engstrom & Sharpe (2019) · Fed zero-coupon curve">
               {n?.available ? <>

@@ -38,6 +38,14 @@ async def ops_monitor():
     return await asyncio.to_thread(ops.summary)
 
 
+@router.get("/api/v1/models/recession/challenger")
+async def recession_challenger():
+    """The machine-learning challenger to the headline recession model: today's shadow forecast with what drove it,
+    its walk-forward record against the headline, its live record and why it is (not) eligible for promotion."""
+    from api.models_ml.recession_challenger import get_challenger
+    return await asyncio.to_thread(get_challenger)
+
+
 @router.get("/api/v1/ops/archive")
 async def ops_archive():
     """Point-in-time archive: stored file vintages (e.g. the Fed's EBP) and the daily commodity-curve history."""
