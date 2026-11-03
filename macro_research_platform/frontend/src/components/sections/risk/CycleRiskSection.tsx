@@ -67,6 +67,7 @@ function RecessionRecord() {
   const rows: [string, any, any][] = ev ? [
     ['Headline (ensemble, recalibrated)', ev.models?.ensemble_calibrated ?? ev.models?.ensemble, ev.since_2005?.ensemble_calibrated ?? ev.since_2005?.ensemble],
     ...(ev.models?.ensemble_calibrated ? [['Ensemble before recalibration', ev.models?.ensemble, ev.since_2005?.ensemble] as [string, any, any]] : []),
+    ...(ev.robustness ? [['Fully real-time variant (Baa spread instead of EBP)', ev.robustness, ev.robustness.since_2005] as [string, any, any]] : []),
     ['10Y–3M spread only', ev.models?.term_spread_only, ev.since_2005?.term_spread_only],
     ['Base rate (always the average)', ev.models?.base_rate, null],
   ] : [];
@@ -99,7 +100,7 @@ function RecessionRecord() {
           {ev.calibration.map((c: any) => <span key={c.range} className="mr-3 font-mono whitespace-nowrap" title={`${c.forecasts} monthly forecasts averaging ${pct(c.mean_probability)}`}>
             {c.range}: {pct(c.recession_frequency)}{c.frequency_95 && <span className="opacity-70"> ({pct(c.frequency_95[0])}–{pct(c.frequency_95[1])})</span>}</span>)}
         </div>}
-        <div className="text-2xs text-text-tertiary">{ev.method} The headline is recalibrated on the model's own past forecasts; readings of 70%+ have still been over-confident (the 2022–24 inverted curve brought no recession). The EBP history is the Fed's re-estimate, not a real-time vintage.</div>
+        <div className="text-2xs text-text-tertiary">{ev.method} The headline is recalibrated on the model's own past forecasts; readings of 70%+ have still been over-confident (the 2022–24 inverted curve brought no recession). Payrolls are as first published (ALFRED vintages); the EBP has no vintages, so the fully real-time variant, which swaps it for the never-revised Baa spread, is the lower bound.</div>
       </> : <div className="text-2xs text-text-tertiary">Out-of-sample record unavailable for this model.</div>}
     </div>
   );

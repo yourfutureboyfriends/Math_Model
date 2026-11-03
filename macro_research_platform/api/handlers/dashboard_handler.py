@@ -522,6 +522,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         _recession_prob_at(spread_3m10y_now, fed_rate) if probit is not None else None,
         ensemble=ensemble,
     )
+    carry_z = ((ensemble or {}).get("duration_carry") or {}).get("z")      # duration call input (regime.duration_tilt)
     if recession_data.get("ensembleProb") is not None:
         # monthly history from the same model as the headline (never a different model's line)
         recession_history = (ensemble.get("history") or [])[-5:]
@@ -560,9 +561,11 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         ],
         opportunities=[
             f"{regime_chars.equity_bias.title()} equities in {regime_name}",
-            f"{duration_tilt(regime_name, growth_score).capitalize()} duration positioning"
+            f"{duration_tilt(regime_name, growth_score, carry_z).capitalize()} duration positioning"
             + (" (growth momentum " + ("strong" if growth_score > 0.6 else "weak" if growth_score < 0.4 else "middling")
-               + f"; {CALL_EVIDENCE['duration']})" if growth_score is not None else ""),
+               + (f", curve {'steeper' if carry_z > 0 else 'flatter'} than its 5-year norm; {CALL_EVIDENCE['duration']})"
+                  if carry_z is not None else f"; {CALL_EVIDENCE['duration_growth_only']})")
+               if growth_score is not None else ""),
             f"{commodity_tilt(regime_name, inflation_direction).capitalize()} commodity exposure"
             + (" (inflation pressure " + ("rising" if inflation_direction > 0.55 else "falling" if inflation_direction < 0.45 else "flat")
                + f": breakevens and commodities, 3 months; {CALL_EVIDENCE['commodity']})" if inflation_direction is not None else "")
@@ -588,6 +591,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         playbook=playbook,
         inflationDirection=inflation_direction,
         growthScore=growth_score,
+        carryZ=carry_z,
     )
 
     # Create scores

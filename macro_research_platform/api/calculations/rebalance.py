@@ -29,7 +29,7 @@ _MULT = {"overweight": 1.5, "long": 1.5, "high": 1.5,
 
 
 def regime_budgets(regime: str, inflation_direction: Optional[float] = None,
-                   growth: Optional[float] = None) -> Dict[str, float]:
+                   growth: Optional[float] = None, carry_z: Optional[float] = None) -> Dict[str, float]:
     """Risk budget per universe asset (normalized to sum to 1) for a regime.
     Unknown regimes get equal budgets. The commodity budget follows the inflation direction when given
     (regime.commodity_tilt); the duration budget follows growth momentum (regime.duration_tilt)."""
@@ -37,7 +37,7 @@ def regime_budgets(regime: str, inflation_direction: Optional[float] = None,
     if rc is None:
         return {a: 1.0 / len(UNIVERSE) for a in UNIVERSE}
     eq = _MULT.get(rc.equity_bias, 1.0)
-    dur = _MULT.get(duration_tilt(regime, growth), 1.0)
+    dur = _MULT.get(duration_tilt(regime, growth, carry_z), 1.0)
     com = _MULT.get(commodity_tilt(regime, inflation_direction), 1.0)
     risk = _MULT.get(rc.risk_appetite, 1.0)
     raw = {
@@ -80,7 +80,8 @@ def risk_contributions(cov: np.ndarray, w: np.ndarray) -> np.ndarray:
 
 def target_portfolio(regime: str, daily_returns: Dict[str, Sequence[float]],
                      vol_target: float = 0.10, max_gross: float = 1.5,
-                     inflation_direction: Optional[float] = None, growth: Optional[float] = None) -> Dict:
+                     inflation_direction: Optional[float] = None, growth: Optional[float] = None,
+                     carry_z: Optional[float] = None) -> Dict:
     """Target weights (% of the sleeve's NAV) for a regime.
 
     daily_returns: aligned daily returns per universe ticker. Assets without history are
@@ -92,7 +93,7 @@ def target_portfolio(regime: str, daily_returns: Dict[str, Sequence[float]],
     n = min(len(daily_returns[a]) for a in assets)
     R = np.column_stack([np.asarray(daily_returns[a], dtype=float)[-n:] for a in assets])
     cov = np.cov(R, rowvar=False)
-    budgets_all = regime_budgets(regime, inflation_direction, growth)
+    budgets_all = regime_budgets(regime, inflation_direction, growth, carry_z)
     b = np.array([budgets_all[a] for a in assets])
     w = risk_budget_weights(cov, b)
     unlevered_vol = float(np.sqrt(w @ cov @ w * 252))

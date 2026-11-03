@@ -142,3 +142,13 @@ def test_duration_call_follows_growth_momentum():
     assert duration_tilt("reflation", 0.5) == "neutral" and duration_tilt("slowdown", None) == "long"
     assert desired_tilts("reflation", None, 0.2)["rates"] == 1 and desired_tilts("reflation")["rates"] == -1
     assert regime_budgets("reflation", None, 0.2)["TLT"] > regime_budgets("reflation")["TLT"]
+
+
+def test_duration_call_nets_growth_against_carry():
+    from api.calculations.regime import duration_tilt
+    assert duration_tilt("reflation", 0.7, carry_z=0.0) == "short"             # strong growth, normal curve
+    assert duration_tilt("reflation", 0.7, carry_z=1.5) == "long"              # very steep curve outweighs it
+    assert duration_tilt("slowdown", 0.3, carry_z=-1.5) == "short"             # weak growth, but a very flat curve
+    assert duration_tilt("slowdown", 0.3, carry_z=-1.0) == "neutral"           # the two cancel
+    assert desired_tilts("reflation", None, 0.7, 1.5)["rates"] == 1
+    assert regime_budgets("reflation", None, 0.7, 1.5)["TLT"] > regime_budgets("reflation", None, 0.7, 0.0)["TLT"]

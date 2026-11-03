@@ -7,8 +7,8 @@ Model: the average of four probits, each fitted on monthly data since 1973
     P1 = Φ(a + b·TS + c·EBP)              TS   = 10-year minus 3-month zero-coupon yield (GSW curve)
     P2 = Φ(a + b·NTFS + c·EBP)            NTFS = near-term forward spread (Engstrom & Sharpe, 2019)
     P3 = Φ(a + b·TS + c·EBP + d·PAY6)     EBP  = Gilchrist–Zakrajšek excess bond premium (Fed monthly file)
-    P4 = Φ(a + b·NTFS + c·EBP + d·PAY6)   PAY6 = nonfarm payrolls, annualised 6-month growth (FRED PAYEMS),
-                                                 last month's release (one-month publication lag)
+    P4 = Φ(a + b·NTFS + c·EBP + d·PAY6)   PAY6 = nonfarm payrolls, annualised 6-month growth, as published in
+                                                 each month (ALFRED vintages of PAYEMS — real-time, not revised)
 as two pairs — curve + credit (P1, P2) and the same with payrolls (P3, P4) — each pair averaged and Platt-recalibrated
 on its own past forecasts (below), then the two averaged. Without payrolls it falls back to the first pair.
 
@@ -34,8 +34,17 @@ sample and recalibrated: AUROC 0.850 → 0.865 (since 2005: 0.821 → 0.844), Br
 loss 0.380 → 0.345 (0.413 → 0.363), and readings of 70%+ were followed by recession 61% of the time instead of 48%
 (since 2005: 69% vs 50%). Sahm-rule, unemployment-change and jobless-claims variants were tested and scored worse.
 
-Caveats carried with the result: the EBP history is re-estimated by the Fed (not a real-time vintage); payrolls are
-the revised series, not first releases; NBER dates are final, not as first announced.
+Point in time: trained and scored on payrolls as they were known each month (FRED/ALFRED vintages). With revised
+payrolls the record looked better (Brier skill +0.37, since 2005 +0.21); as known at the time it is +0.32 / +0.16 —
+the record shown is the real-time one. The EBP has no vintages, so a fully real-time variant (Moody's Baa – 10Y spread,
+never revised, in place of the EBP) is scored alongside as a lower bound (`robustness`): about +0.32 / +0.13.
+
+Tested and not adopted: a multi-country model (yield curve and GDP-based 'technical recessions' pooled across seven
+economies on FRED) ranked US recessions poorly (AUROC 0.64; 0.50 since 2005) — free cross-country data has no credit
+premium or payroll equivalent, which carry most of the skill — and blending it in did not help consistently.
+
+Caveats carried with the result: the EBP history is re-estimated by the Fed (not a real-time vintage — see the Baa
+variant); NBER dates are final, not as first announced.
 Data: free Federal Reserve files; payrolls from FRED (the platform's key).
 """
 from __future__ import annotations
@@ -81,14 +90,43 @@ def _fetch_curve() -> Dict[str, Any]:
                        "ntfs": round(float(last["ntfs"]), 4)}}
 
 
-def _fetch_payrolls() -> Dict[str, Any]:
-    """Monthly nonfarm payrolls level (thousands), FRED PAYEMS."""
+def _fred():
     from api.config import FRED_API_KEY
     from fredapi import Fred
     if not FRED_API_KEY:
         raise ValueError("FRED_API_KEY not set")
-    s = Fred(api_key=FRED_API_KEY).get_series("PAYEMS", observation_start="1970-01-01").dropna()
-    return {"monthly": {d.strftime("%Y-%m"): float(v) for d, v in s.items()}}
+    return Fred(api_key=FRED_API_KEY)
+
+
+def _fetch_payrolls() -> Dict[str, Any]:
+    """Nonfarm payrolls: the latest levels, and the 6-month growth as it was known in each month (ALFRED vintages)."""
+    import pandas as pd
+    f = _fred()
+    s = f.get_series("PAYEMS", observation_start="1970-01-01").dropna()
+    rel = f.get_series_all_releases("PAYEMS")
+    rel["date"] = pd.to_datetime(rel["date"])
+    rel["realtime_start"] = pd.to_datetime(rel["realtime_start"])
+    rel = rel.dropna(subset=["value"]).sort_values("realtime_start")
+    known: Dict[pd.Timestamp, float] = {}
+    rt: Dict[str, float] = {}
+    recs = list(zip(rel["realtime_start"], rel["date"], rel["value"].astype(float)))
+    i = 0
+    for month in pd.date_range("1972-01-01", pd.Timestamp.today().normalize(), freq="MS"):
+        asof = month + pd.Timedelta(days=14)                    # the release in the first week of the month is in
+        while i < len(recs) and recs[i][0] <= asof:
+            known[recs[i][1]] = recs[i][2]
+            i += 1
+        a, b = month - pd.DateOffset(months=1), month - pd.DateOffset(months=7)
+        if a in known and b in known and known[b] > 0:
+            rt[month.strftime("%Y-%m")] = float(np.log(known[a] / known[b]) * 200)
+    return {"monthly": {d.strftime("%Y-%m"): float(v) for d, v in s.items()}, "pay6_real_time": rt}
+
+
+def _fetch_baa() -> Dict[str, float]:
+    """Moody's Baa corporate yield minus the 10-year Treasury, monthly (never revised)."""
+    f = _fred()
+    spr = (f.get_series("BAA") - f.get_series("GS10")).dropna()
+    return {d.strftime("%Y-%m"): float(v) for d, v in spr.items()}
 
 
 def _pay6(level: Dict[str, float], month: str) -> Optional[float]:
@@ -105,15 +143,18 @@ def _inputs():
     from api import research_indicators as ri
     curve, c_status = ri._cached("gsw_ts_ntfs", _fetch_curve)
     ebp_rows, e_status = ri._cached("ebp", ri._fetch_ebp)
-    pay, p_status = ri._cached("payems", _fetch_payrolls)
+    pay, p_status = ri._cached("payems_rt", _fetch_payrolls)
+    baa, _ = ri._cached("baa_spread", _fetch_baa)
     if not curve or not ebp_rows:
         return None, {"curve": c_status, "ebp": e_status, "payrolls": p_status}
     ebp = {r[0]: float(r[2]) for r in ebp_rows}
     level = (pay or {}).get("monthly") or {}
+    rt = (pay or {}).get("pay6_real_time") or {}
+    baa = baa or {}
     months = sorted(m for m in curve["monthly"] if m in ebp)
     labels = ri._recession_ahead(months, 12)
     rows = [{"month": m, "ts": curve["monthly"][m][0], "ntfs": curve["monthly"][m][1], "ebp": ebp[m],
-             "pay6": _pay6(level, m), "y": labels[m]} for m in months]
+             "pay6": rt.get(m), "baa": baa.get(m), "y": labels[m]} for m in months]
     pay_now = None
     if level:
         last = max(level)
@@ -157,6 +198,8 @@ SPECS_PAY = {"ts_ebp_pay": ["ts", "ebp", "pay6"], "ntfs_ebp_pay": ["ntfs", "ebp"
 SPECS_LABOUR = {**SPECS, **SPECS_PAY}
 GROUPS_BASE = {"curve_credit": SPECS}
 GROUPS_LABOUR = {"curve_credit": SPECS, "with_payrolls": SPECS_PAY}
+GROUPS_REAL_TIME = {"curve_credit": {"ts_baa": ["ts", "baa"], "ntfs_baa": ["ntfs", "baa"]},
+                    "with_payrolls": {"ts_baa_pay": ["ts", "baa", "pay6"], "ntfs_baa_pay": ["ntfs", "baa", "pay6"]}}
 # the previous headline's shape, for the comparison: term spread + the short rate (3-month yield ≈ policy rate)
 BENCH = {"ts_only": ["ts"]}
 
@@ -212,7 +255,7 @@ def platt_apply(coef: Optional[List[float]], p: float) -> float:
 
 
 def evaluate(rows: List[Dict[str, Any]], start_year: int = EVAL_START, announce_lag: int = 12,
-             groups: Optional[Dict[str, Dict[str, List[str]]]] = None) -> Optional[Dict[str, Any]]:
+             groups: Optional[Dict[str, Dict[str, List[str]]]] = None, return_preds: bool = False) -> Optional[Dict[str, Any]]:
     """Pseudo-out-of-sample: each January refit on months whose label was known (12-month window + NBER lag),
     forecast that year's months. Scores the ensemble, the term spread alone and the base rate."""
     groups = groups or GROUPS_BASE
@@ -287,6 +330,7 @@ def evaluate(rows: List[Dict[str, Any]], start_year: int = EVAL_START, announce_
     return {"forecasts": len(ys), "recession_months": int(y.sum()), "from": test_months[0], "to": test_months[-1],
             "models": out, "since_2005": sub, "calibration": calib,
             "calibration_now": {g: learned_platt([graw[g][i] for i in labelled_now], [ys[i] for i in labelled_now]) for g in groups},
+            **({"preds": {"months": test_months, "y": ys, "calibrated": preds["ensemble_calibrated"]}} if return_preds else {}),
             "method": f"Refit every January from {start_year} on months whose 12-month window and a {announce_lag}-month "
                       "NBER announcement lag had closed; forecasts that year's months; scored against NBER recessions "
                       "within 12 months. Brier skill > 0 beats always forecasting the training base rate."}
@@ -312,11 +356,27 @@ def compute() -> Dict[str, Any]:
     parts = {k: probit_prob(fits[k], [x_now[c] for c in cols]) for k, cols in specs.items()}
     ev = evaluate(rows, groups=groups)
     cal = (ev or {}).get("calibration_now") or {}
+    robust = None
+    if groups is GROUPS_LABOUR and sum(r.get("baa") is not None for r in rows) > 300:
+        rv = evaluate(rows, groups=GROUPS_REAL_TIME)
+        if rv:
+            m_, s5 = rv["models"]["ensemble_calibrated"], rv["since_2005"].get("ensemble_calibrated") or {}
+            robust = {"model": "Fully real-time variant: Moody's Baa – 10Y spread (never revised) in place of the EBP",
+                      "auroc": m_["auroc"], "brier_skill_vs_base_rate": m_["brier_skill_vs_base_rate"],
+                      "since_2005": s5, "from": rv["from"], "to": rv["to"]}
 
     def headline(x):                                    # each group averaged, recalibrated, then the groups averaged
         ps = {g: ensemble_prob(fits, x, sp) for g, sp in groups.items()}
         return float(np.mean(list(ps.values()))), float(np.mean([platt_apply(cal.get(g), v) for g, v in ps.items()]))
     raw, prob = headline(x_now)
+    # carry for the duration call (regime.duration_tilt): today's 10Y–3M spread against its own 5-year norm
+    hist_ts = [r["ts"] for r in rows[-61:-1]]
+    carry = None
+    if len(hist_ts) >= 24:
+        mu, sd = float(np.mean(hist_ts)), float(np.std(hist_ts, ddof=1))
+        if sd > 0:
+            carry = {"z": round((lc["ts"] - mu) / sd, 3), "term_spread_pp": round(lc["ts"], 3),
+                     "mean_5y_pp": round(mu, 3), "sd_5y_pp": round(sd, 3), "as_of": lc["date"]}
     hist = [{"date": r["month"], "probability": round(headline(r)[1], 4)} for r in usable[-24:]]
     return {
         "available": True, "probability": round(prob, 4), "raw_probability": round(raw, 4),
@@ -328,15 +388,16 @@ def compute() -> Dict[str, Any]:
                    "payrolls_as_of": (data.get("payrolls_now") or {}).get("as_of")},
         "coefficients": {k: [round(float(b), 4) for b in v] for k, v in fits.items()},
         "training_months": len(labelled), "history": hist,
-        "evaluation": ev,
+        "evaluation": {**ev, "robustness": robust} if ev else ev,
+        "duration_carry": carry,
         "target": "NBER recession in any of the next 12 months",
         "model": ("Term spread + credit + payrolls ensemble (four probits, recalibrated)" if groups is GROUPS_LABOUR else
                   "Term spread + credit ensemble (10Y–3M + EBP, forward spread + EBP; probit average)"),
         "sources": ["Federal Reserve GSW zero-coupon curve (feds200628)", "Federal Reserve excess bond premium (ebp_csv)"]
-                   + (["FRED PAYEMS (nonfarm payrolls)"] if groups is GROUPS_LABOUR else []),
+                   + (["FRED/ALFRED PAYEMS vintages (payrolls as first published)"] if groups is GROUPS_LABOUR else []),
         "source_status": status,
         "caveats": ["EBP history is re-estimated by the Fed, not a real-time vintage",
-                    *(["Payrolls are the revised series, not first releases"] if groups is GROUPS_LABOUR else
+                    *(["Payrolls as known at the time (ALFRED vintages)"] if groups is GROUPS_LABOUR else
                       ["Payrolls unavailable: running without the labour-market probits"]),
                     "NBER dates are final, not as first announced",
                     "Platt-recalibrated on its own past out-of-sample forecasts" if any(cal.values()) else "Not recalibrated: too little history"],

@@ -275,14 +275,20 @@ def commodity_tilt(regime: str, inflation_direction: Optional[float] = None) -> 
 
 
 # Duration call. The regime's static duration bias was wrong-way in three of four decades (1990–2026, next-3-month
-# 10Y yield move: −17.8, −4.6, −0.7, +19.6 bp per call; −2.5 bp overall). Growth momentum (the regime's own growth
-# score: strong → yields up → short duration) was right-way in three of four (−0.8, +11.5, +0.2, +5.6; +4.2 bp
-# overall, 53% hit rate); yield trends, inflation direction and the policy gap were not consistent.
+# 10Y yield move: −17.8, −4.6, −0.7, +19.6 bp per call; −2.5 bp overall). Growth momentum alone (strong → yields up →
+# short duration) was +4.2 bp overall but −0.8 in the 1990s and +0.2 in the 2010s. Growth momentum minus carry (the
+# 10Y–3M spread against its 5-year norm: a steep curve pays to hold duration) was right-way in every decade
+# (+0.2, +5.5, +3.5, +3.7; +3.3 bp overall) — a smaller but consistent edge, so it is the call when both are known.
+# Carry alone, yield trends, inflation direction and the policy gap were not consistent.
 GROWTH_BAND = (0.4, 0.6)
 
 
-def duration_tilt(regime: str, growth: Optional[float] = None) -> str:
-    """'short' / 'neutral' / 'long' duration: from growth momentum when available, else the regime's static bias."""
+def duration_tilt(regime: str, growth: Optional[float] = None, carry_z: Optional[float] = None) -> str:
+    """'short' / 'neutral' / 'long' duration: growth momentum minus carry when both are known, growth momentum alone
+    when only it is, else the regime's static bias."""
+    if growth is not None and carry_z is not None:
+        score = (growth - 0.5) / 0.2 - carry_z
+        return "short" if score > 0 else "long" if score < 0 else "neutral"
     if growth is not None:
         lo, hi = GROWTH_BAND
         return "short" if growth > hi else "long" if growth < lo else "neutral"
@@ -292,7 +298,8 @@ def duration_tilt(regime: str, growth: Optional[float] = None) -> str:
 
 # How much each playbook call has been worth, stated next to the call (measured as described above).
 CALL_EVIDENCE = {
-    "duration": "small edge: right way in 3 of 4 decades since 1990",
+    "duration": "small edge: right way in each decade since 1990, about 3 bp a call",
+    "duration_growth_only": "small edge: right way in 3 of 4 decades since 1990",
     "commodity": "weak edge: positive overall, not every decade",
 }
 

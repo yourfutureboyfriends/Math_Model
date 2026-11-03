@@ -41,6 +41,8 @@ class RegimeData(BaseModel):
     inflationDirection: Optional[float] = None
     # 0–1 growth momentum (S&P); drives the duration call (regime.duration_tilt)
     growthScore: Optional[float] = None
+    # 10Y–3M spread vs its 5-year norm (z); with growth it drives the duration call
+    carryZ: Optional[float] = None
 
     @field_validator('confidenceScore', mode='before')
     @classmethod

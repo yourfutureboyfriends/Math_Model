@@ -524,6 +524,7 @@ async def rebalance(book: str = "Macro", regime: Optional[str] = None,
     _reg = (await get_dashboard_data(mode="live")).regime
     infl_dir = getattr(_reg, "inflationDirection", None)          # the commodity budget follows inflation direction
     growth = getattr(_reg, "growthScore", None)                   # the duration budget follows growth momentum
+    carry_z = getattr(_reg, "carryZ", None)                       # … minus carry
     if regime is None:
         regime = _reg.current
     limits = merge_limits(await _thread(fund_store.get_limit_overrides))
@@ -535,7 +536,7 @@ async def rebalance(book: str = "Macro", regime: Optional[str] = None,
             common = set(d) if common is None else common & set(d)
     dates = sorted(common or [])
     rets = {a: returns_from_closes([dated[a][x] for x in dates]) for a in UNIVERSE if dated[a]}
-    tp = target_portfolio(regime, rets, inflation_direction=infl_dir, growth=growth, vol_target=vol_target or settings["vol_target"],
+    tp = target_portfolio(regime, rets, inflation_direction=infl_dir, growth=growth, carry_z=carry_z, vol_target=vol_target or settings["vol_target"],
                           max_gross=limits["gross_exposure"]["soft"])
     if not tp.get("available"):
         return tp
