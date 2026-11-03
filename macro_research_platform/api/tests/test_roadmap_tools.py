@@ -55,3 +55,28 @@ def test_ops_monitor_records_feed_state_changes_and_open_incidents(tmp_path, mon
     state["fred"] = "live"
     assert ops_monitor.check_feeds()[0]["severity"] == "resolved"
     assert ops_monitor.summary()["open_incidents"] == []
+
+
+def test_journal_premortem_reward_risk_review_and_calibration(tmp_path, monkeypatch):
+    import sqlite3
+    from api.marketdata import usertools
+
+    def conn():
+        c = sqlite3.connect(tmp_path / "u.db")
+        c.row_factory = sqlite3.Row
+        return c
+    monkeypatch.setattr(usertools, "_conn", conn)
+    monkeypatch.setattr(usertools, "_ready", False)
+    usertools.create_journal("ann", {"symbol": "AAPL", "side": "long", "entry": 100, "stop": 95, "target": 115,
+                                     "confidence": 4, "premortem": "Services growth stalls", "review_date": "2000-01-01"})
+    usertools.create_journal("ann", {"symbol": "MSFT", "side": "long", "entry": 100, "exit": 90, "confidence": 4})
+    usertools.create_journal("ann", {"symbol": "NVDA", "side": "long", "entry": 100, "exit": 120, "confidence": 2})
+    j = usertools.list_journal("ann")
+    a = next(r for r in j["entries"] if r["symbol"] == "AAPL")
+    assert a["reward_risk"] == 3 and a["review_due"] is True
+    assert j["stats"]["reviews_due"] == 1 and j["stats"]["with_premortem"] == 1
+    cal = {c["confidence"]: c for c in j["stats"]["calibration"]}
+    assert cal[4]["win_rate"] == 0 and cal[2]["win_rate"] == 1
+    import pytest
+    with pytest.raises(ValueError):
+        usertools.create_journal("ann", {"side": "long", "confidence": 9})

@@ -61,6 +61,10 @@ def init() -> None:
         for col in ("baseline TEXT", "triggered_text TEXT"):
             if col.split()[0] not in cols:
                 c.execute(f"ALTER TABLE mkt_alerts ADD COLUMN {col}")
+        jcols = {r[1] for r in c.execute("PRAGMA table_info(mkt_journal)")}
+        for col in ("premortem TEXT", "stop REAL", "target REAL", "confidence INTEGER", "review_date TEXT"):
+            if col.split()[0] not in jcols:
+                c.execute(f"ALTER TABLE mkt_journal ADD COLUMN {col}")
     _ready = True
 
 
@@ -375,7 +379,8 @@ def check_alerts() -> Dict[str, Any]:
 
 # ── Journal ──────────────────────────────────────────────────────────────────
 SIDES = ("long", "short", "idea")
-J_FIELDS = ("date", "symbol", "side", "quantity", "entry", "exit", "exit_date", "thesis", "outcome", "tags", "status")
+J_FIELDS = ("date", "symbol", "side", "quantity", "entry", "exit", "exit_date", "thesis", "outcome", "tags", "status",
+            "premortem", "stop", "target", "confidence", "review_date")
 
 
 def _journal_row(r: sqlite3.Row) -> Dict[str, Any]:
@@ -386,6 +391,11 @@ def _journal_row(r: sqlite3.Row) -> Dict[str, Any]:
         pct = sign * (d["exit"] / d["entry"] - 1)
         pnl = sign * (d["exit"] - d["entry"]) * (d["quantity"] or 0) if d["quantity"] else None
     d["return_pct"], d["pnl"] = pct, pnl
+    d["reward_risk"] = None
+    if d.get("entry") and d.get("stop") and d.get("target") and d["side"] in ("long", "short"):
+        risk, reward = abs(d["entry"] - d["stop"]), abs(d["target"] - d["entry"])
+        d["reward_risk"] = reward / risk if risk else None
+    d["review_due"] = bool(d["status"] == "open" and d.get("review_date") and d["review_date"] <= datetime.now().strftime("%Y-%m-%d"))
     d["tags"] = [t for t in (d["tags"] or "").split(",") if t]
     return d
 
@@ -402,7 +412,17 @@ def list_journal(owner: str) -> Dict[str, Any]:
              "avg_return": sum(r["return_pct"] for r in closed) / len(closed) if closed else None,
              "avg_win": sum(r["return_pct"] for r in wins) / len(wins) if wins else None,
              "avg_loss": (sum(r["return_pct"] for r in closed if r["return_pct"] <= 0) / max(1, len(closed) - len(wins))) if len(closed) > len(wins) else None,
-             "total_pnl": sum(r["pnl"] for r in closed if r["pnl"] is not None) if any(r["pnl"] is not None for r in closed) else None}
+             "total_pnl": sum(r["pnl"] for r in closed if r["pnl"] is not None) if any(r["pnl"] is not None for r in closed) else None,
+             "reviews_due": sum(1 for r in rows if r["review_due"]),
+             "with_premortem": sum(1 for r in rows if (r.get("premortem") or "").strip())}
+    # calibration: do the trades you were more confident in actually win more often?
+    calib = []
+    for lvl in range(1, 6):
+        g = [r for r in closed if r.get("confidence") == lvl]
+        if g:
+            calib.append({"confidence": lvl, "trades": len(g), "win_rate": sum(1 for r in g if r["return_pct"] > 0) / len(g),
+                          "avg_return": sum(r["return_pct"] for r in g) / len(g)})
+    stats["calibration"] = calib
     return {"entries": rows, "stats": stats}
 
 
@@ -412,14 +432,21 @@ def _validate_journal(d: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("side must be long, short or idea")
     if out.get("symbol"):
         out["symbol"] = _clean_symbols([out["symbol"]])[0]
-    for k in ("quantity", "entry", "exit"):
+    for k in ("quantity", "entry", "exit", "stop", "target"):
         if out.get(k) in ("", None):
             out[k] = None
         elif k in out:
             out[k] = float(out[k])
             if out[k] < 0:
                 raise ValueError(f"{k} cannot be negative")
-    for k in ("thesis", "outcome"):
+    if "confidence" in out:
+        c = out["confidence"]
+        out["confidence"] = None if c in ("", None) else int(c)
+        if out["confidence"] is not None and not 1 <= out["confidence"] <= 5:
+            raise ValueError("confidence must be 1 to 5")
+    if out.get("review_date") == "":
+        out["review_date"] = None
+    for k in ("thesis", "outcome", "premortem"):
         if k in out and out[k] is not None:
             out[k] = str(out[k])[:4000]
     if "tags" in out:

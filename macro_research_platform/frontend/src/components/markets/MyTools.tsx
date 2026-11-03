@@ -171,7 +171,8 @@ export function AlertsView({ seed }: { seed?: string }) {
 }
 
 // ── JRNL ─────────────────────────────────────────────────────────────────────
-const blank = () => ({ date: localToday(), symbol: '', side: 'long', quantity: '', entry: '', exit: '', thesis: '', outcome: '', tags: '' });
+const blank = () => ({ date: localToday(), symbol: '', side: 'long', quantity: '', entry: '', exit: '', thesis: '', outcome: '', tags: '', premortem: '', stop: '', target: '', confidence: '', review_date: '' });
+const num = (v: any) => (v === '' || v == null ? null : Number(v));
 // alert times are stored in UTC: show them in local time
 const localStamp = (t: string | null | undefined) => {
   const d = t ? new Date(t) : null;
@@ -188,13 +189,15 @@ export function JournalView({ seed, onOpen }: { seed?: string; onOpen: (s: strin
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setErr(null);
     const body = { ...form, tags: String(form.tags || '').split(',').map((t: string) => t.trim()).filter(Boolean),
-      quantity: form.quantity === '' ? null : Number(form.quantity), entry: form.entry === '' ? null : Number(form.entry), exit: form.exit === '' ? null : Number(form.exit) };
+      quantity: num(form.quantity), entry: num(form.entry), exit: num(form.exit), stop: num(form.stop), target: num(form.target), confidence: num(form.confidence),
+      review_date: form.review_date || null };
     try {
       if (editing) await call(`/api/v1/mkt/journal/${editing}`, 'PUT', body); else await call('/api/v1/mkt/journal', 'POST', body);
       setForm(blank()); setEditing(null); load();
     } catch (e2: any) { setErr(e2.message); }
   };
-  const edit = (r: any) => { setEditing(r.id); setForm({ ...r, quantity: r.quantity ?? '', entry: r.entry ?? '', exit: r.exit ?? '', tags: (r.tags ?? []).join(', '), thesis: r.thesis ?? '', outcome: r.outcome ?? '' }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const edit = (r: any) => { setEditing(r.id); setForm({ ...r, quantity: r.quantity ?? '', entry: r.entry ?? '', exit: r.exit ?? '', tags: (r.tags ?? []).join(', '), thesis: r.thesis ?? '', outcome: r.outcome ?? '',
+    premortem: r.premortem ?? '', stop: r.stop ?? '', target: r.target ?? '', confidence: r.confidence ?? '', review_date: r.review_date ?? '' }); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   const del = async (id: number) => { if (window.confirm('Delete this journal entry?')) { try{await call(`/api/v1/mkt/journal/${id}`,'DELETE');load();}catch(e:any){setErr(e.message);} } };
   const st = data?.stats;
   return (
@@ -204,6 +207,12 @@ export function JournalView({ seed, onOpen }: { seed?: string; onOpen: (s: strin
         {[['Entries', st.entries], ['Open', st.open], ['Win rate', st.win_rate != null ? fmtPct(st.win_rate, 0).replace('+', '') : '—'],
           ['Average result', st.avg_return != null ? fmtPct(st.avg_return, 1) : '—'], ['Avg win / loss', st.avg_win != null ? `${fmtPct(st.avg_win, 1)} / ${st.avg_loss != null ? fmtPct(st.avg_loss, 1) : '—'}` : '—']]
           .map(([k, v]) => <div key={k as string} className="px-3 py-2 bg-surface-1 border border-border"><div className="text-[10px] uppercase text-text-tertiary">{k}</div><div className="font-mono text-sm">{v as any}</div></div>)}
+      </div>}
+      {st && (st.reviews_due > 0 || st.calibration?.length > 0) && <div className="flex flex-wrap gap-x-6 gap-y-1 text-2xs px-3 py-2 bg-surface-1 border border-border">
+        {st.reviews_due > 0 && <span className="text-amber">{st.reviews_due} open trade{st.reviews_due > 1 ? 's' : ''} past the review date — is the thesis still intact?</span>}
+        {st.calibration?.length > 0 && <span className="text-text-secondary">Calibration (win rate by your confidence):{' '}
+          {st.calibration.map((c: any) => <span key={c.confidence} className="font-mono mr-2">{c.confidence}★ {fmtPct(c.win_rate, 0).replace('+', '')} <span className="text-text-tertiary">({c.trades})</span></span>)}
+          {st.calibration.length > 1 && st.calibration[st.calibration.length - 1].win_rate <= st.calibration[0].win_rate && <span className="text-amber">— your high-confidence trades are not winning more often</span>}</span>}
       </div>}
       <Panel title={editing ? 'Edit entry' : 'New entry'}>
         <form onSubmit={submit} className="space-y-2">
@@ -217,6 +226,13 @@ export function JournalView({ seed, onOpen }: { seed?: string; onOpen: (s: strin
             <input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="Tags, e.g. momentum, earnings" className={inp} aria-label="Tags" />
           </div>
           <textarea value={form.thesis} onChange={(e) => setForm({ ...form, thesis: e.target.value })} rows={2} placeholder="Thesis — why this trade? What would prove you wrong?" className={cn(inp, 'w-full')} aria-label="Thesis" />
+          <textarea value={form.premortem} onChange={(e) => setForm({ ...form, premortem: e.target.value })} rows={2} placeholder="Pre-mortem — it is six months on and this trade lost money. What went wrong?" className={cn(inp, 'w-full')} aria-label="Pre-mortem" />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <input type="number" step="any" min="0" value={form.stop} onChange={(e) => setForm({ ...form, stop: e.target.value })} placeholder="Stop / invalidation price" className={cn(inp, 'font-mono')} aria-label="Stop price" />
+            <input type="number" step="any" min="0" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} placeholder="Target price" className={cn(inp, 'font-mono')} aria-label="Target price" />
+            <select value={form.confidence} onChange={(e) => setForm({ ...form, confidence: e.target.value })} className={inp} aria-label="Confidence"><option value="">Confidence…</option>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} — {['low', 'some', 'moderate', 'high', 'very high'][n - 1]}</option>)}</select>
+            <label className="flex items-center gap-1 text-2xs text-text-tertiary">Review on<input type="date" value={form.review_date} onChange={(e) => setForm({ ...form, review_date: e.target.value })} className={cn(inp, 'flex-1')} aria-label="Review date" /></label>
+          </div>
           <textarea value={form.outcome} onChange={(e) => setForm({ ...form, outcome: e.target.value })} rows={2} placeholder="Outcome & lessons (after closing)" className={cn(inp, 'w-full')} aria-label="Outcome" />
           <div className="flex gap-2"><button className="px-3 py-1.5 text-xs bg-bloomberg text-text-inverse">{editing ? 'Save changes' : 'Add to journal'}</button>
             {editing && <button type="button" onClick={() => { setEditing(null); setForm(blank()); }} className="px-3 py-1.5 text-xs border border-border">Cancel</button>}</div>
@@ -234,10 +250,14 @@ export function JournalView({ seed, onOpen }: { seed?: string; onOpen: (s: strin
               {r.return_pct != null && <Chg v={r.return_pct} d={1} />}
               {r.pnl != null && <span className={cn('font-mono', r.pnl >= 0 ? 'text-green' : 'text-red')}>{r.pnl >= 0 ? '+' : ''}{r.pnl.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>}
               <span className={cn('text-[10px]', r.status === 'open' ? 'text-amber' : 'text-text-tertiary')}>{r.status}</span>
+              {r.reward_risk != null && <span className="font-mono text-text-tertiary" title="Reward to risk: distance to target ÷ distance to stop">R:R {r.reward_risk.toFixed(1)}</span>}
+              {r.confidence != null && <span className="text-text-tertiary" title="Confidence when entered (1–5)">{r.confidence}★</span>}
+              {r.review_due ? <span className="text-amber">review due</span> : r.review_date && r.status === 'open' ? <span className="text-text-tertiary">review {r.review_date}</span> : null}
               {r.tags.map((t: string) => <span key={t} className="px-1.5 bg-surface-3 text-text-secondary text-[10px]">{t}</span>)}
               <span className="ml-auto flex gap-2"><button onClick={() => edit(r)} className="text-text-tertiary hover:text-text-primary">Edit</button><button onClick={() => del(r.id)} className="text-text-tertiary hover:text-red">Delete</button></span>
             </div>
             {r.thesis && <p className="mt-1.5 text-xs text-text-primary whitespace-pre-line">{r.thesis}</p>}
+            {r.premortem && <p className="mt-1 text-xs text-text-secondary whitespace-pre-line"><span className="text-text-tertiary">Pre-mortem: </span>{r.premortem}</p>}
             {r.outcome && <p className="mt-1 text-xs text-text-secondary whitespace-pre-line"><span className="text-text-tertiary">Outcome: </span>{r.outcome}</p>}
           </div>))}</div>
       )}
