@@ -80,3 +80,23 @@ def test_journal_premortem_reward_risk_review_and_calibration(tmp_path, monkeypa
     import pytest
     with pytest.raises(ValueError):
         usertools.create_journal("ann", {"side": "long", "confidence": 9})
+
+
+def test_mcp_research_server_is_read_only_and_cites_its_source(monkeypatch):
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location("mcp_srv", Path(__file__).resolve().parents[2] / "scripts" / "mcp_research_server.py")
+    srv = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(srv)
+    init = srv.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+    assert init["result"]["capabilities"] == {"tools": {"listChanged": False}}
+    tools = srv.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})["result"]["tools"]
+    assert tools and all(t["annotations"]["readOnlyHint"] and not t["annotations"]["destructiveHint"] for t in tools)
+    seen = []
+    monkeypatch.setattr(srv, "_fetch", lambda path: seen.append(path) or {"source": srv.BASE + path, "fetched_at": "t", "data": {"x": 1}})
+    r = srv.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "country", "arguments": {"iso2": "gb"}}})
+    assert seen == ["/api/v1/mkt/country/GB"] and '"source"' in r["result"]["content"][0]["text"] and not r["result"]["isError"]
+    bad = srv.handle({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "quote", "arguments": {"symbol": "../admin"}}})
+    assert bad["result"]["isError"] and len(seen) == 1                         # rejected before any request
+    assert srv.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
+    assert all("{" not in p or p.count("{") == len(r_) for p, _, _, r_, _ in srv.TOOLS.values())
