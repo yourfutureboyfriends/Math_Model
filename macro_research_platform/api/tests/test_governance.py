@@ -219,6 +219,49 @@ def test_monthly_pack_and_scorecard(fund):
     assert s["organisation"]["milestones"] == 12 and s["organisation"]["budget"]["total"] == 3000.0
 
 
+def test_track_record_grid_and_frozen_monthly_pack(fund, tmp_path, monkeypatch):
+    from api import fund_store, governance_reports as gr
+    for d, v in (("2026-01-02", 25_000), ("2026-01-30", 25_500), ("2026-02-27", 25_245), ("2026-03-31", 25_750)):
+        fund_store.record_nav({"date": d, "nav": v})
+    t = gr.track_record()
+    y = t["years"][0]
+    assert y["year"] == "2026" and y["partial"] and y["months"]["01"] == pytest.approx(2.0) and y["months"]["02"] == pytest.approx(-1.0)
+    assert t["stats"]["months"] == 3 and "return_ann_pct" not in t["stats"]          # < 12 months: not annualised
+    assert t["stats"]["max_drawdown_pct"] == pytest.approx(-1.0) and t["stats"]["positive_months_pct"] == 67
+    monkeypatch.setattr(gr, "_archive_dir", lambda: tmp_path / "packs")
+    a = gr.archive_month("2026-02")
+    assert a["archived"] and gr.archived_months() == ["2026-02"]
+    assert gr.archive_month("2026-02")["archived"] is False                            # frozen: never overwritten
+    assert gr.archived_pack("2026-02")["month"] == "2026-02"
+
+
+def test_ddq_pack_answers_from_records_and_flags_gaps(fund, tmp_path, monkeypatch):
+    from api import backup, ddq, governance_reports as gr, ops_monitor
+    monkeypatch.setattr(gr, "_archive_dir", lambda: tmp_path / "packs")
+    monkeypatch.setattr(ops_monitor, "DIR", tmp_path / "mon")
+    monkeypatch.setattr(backup, "DEST", tmp_path / "bk")
+    d = ddq.pack()
+    qs = {a["question"]: a for a in d["answers"]}
+    assert qs["Has the record been independently verified?"]["status"] == "gap"
+    assert qs["Backups: how often, where, and has a restore been tested?"]["status"] == "gap"
+    assert "Phase I" in qs["What stage is the firm at, and what is it not?"]["answer"]
+    assert sum(d["counts"].values()) == len(d["answers"]) and all(a["source"] for a in d["answers"])
+
+
+def test_backup_copies_checks_and_restore_tests(tmp_path, monkeypatch):
+    import sqlite3
+    from api import backup
+    db = tmp_path / "live.db"
+    with sqlite3.connect(db) as c:
+        c.execute("CREATE TABLE users (id INTEGER)"); c.execute("INSERT INTO users VALUES (1)")
+    monkeypatch.setattr(backup, "_sources", lambda: [db])
+    monkeypatch.setattr(backup, "DEST", tmp_path / "bk")
+    r = backup.run_backup(tmp_path / "bk")
+    assert r["ok"] and r["files"][0]["integrity_ok"] and backup.status()["last"]["day"] == r["day"]
+    t = backup.restore_test()
+    assert t["ok"] and t["files"][0]["rows"] == {"users": 1} and backup.status()["restore_tested"]["ok"]
+
+
 def test_break_even_matches_the_plan():
     from api import governance as gov
     r = gov.break_even([250_000], [0.015], [20e6])

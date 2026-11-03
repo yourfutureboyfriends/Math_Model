@@ -367,3 +367,88 @@ def scorecard() -> Dict[str, Any]:
 def _halts() -> List[Dict[str, Any]]:
     with _conn() as c:
         return [dict(r) for r in c.execute("SELECT * FROM gov_halts")]
+
+
+# ── track record and the monthly-pack archive ───────────────────────────────
+def _archive_dir():
+    from pathlib import Path
+    from api import funds
+    return Path(__file__).resolve().parents[1] / "data" / "processed" / "reports" / "monthly" / funds.current()
+
+
+def track_record() -> Dict[str, Any]:
+    """The one-page track record: monthly net returns (year × month), year totals and the summary statistics an
+    allocator reads first, all from the fund's own flow-adjusted NAV record. Paper / simulated periods carry that label;
+    nothing is backfilled or extrapolated, and fewer than 12 months is said, not annualised away.
+    """
+    from api import fund_store, governance as gov
+    gov.init_db()
+    st = gov.settings()
+    nav = fund_store.nav_history()
+    rets = _daily_returns(nav, _flows())
+    months: Dict[str, float] = {}
+    for r in rets:
+        k = str(r["date"])[:7]
+        months[k] = months.get(k, 1.0) * (1 + r["r"])
+    monthly = {k: v - 1 for k, v in sorted(months.items())}
+    grid: Dict[str, Dict[str, Any]] = {}
+    for k, v in monthly.items():
+        y = grid.setdefault(k[:4], {"months": {}, "year": 1.0})
+        y["months"][k[5:7]] = round(v * 100, 2)
+        y["year"] *= 1 + v
+    years = [{"year": y, "months": g["months"], "total": round((g["year"] - 1) * 100, 2),
+              "partial": len(g["months"]) < 12} for y, g in sorted(grid.items(), reverse=True)]
+    vals = list(monthly.values())
+    n = len(vals)
+    cum = math.prod(1 + v for v in vals) - 1 if vals else None
+    idx, peak, mdd = 1.0, 1.0, 0.0
+    for r in rets:
+        idx *= 1 + r["r"]
+        peak = max(peak, idx)
+        mdd = min(mdd, idx / peak - 1)
+    stats: Dict[str, Any] = {"months": n, "cumulative_pct": round(cum * 100, 2) if cum is not None else None,
+                             "max_drawdown_pct": round(mdd * 100, 2) if rets else None,
+                             "positive_months_pct": round(100 * sum(v > 0 for v in vals) / n) if n else None,
+                             "best_month_pct": round(max(vals) * 100, 2) if n else None,
+                             "worst_month_pct": round(min(vals) * 100, 2) if n else None}
+    if len(rets) >= 20:
+        d = [r["r"] for r in rets]
+        mu = sum(d) / len(d)
+        sd = math.sqrt(sum((x - mu) ** 2 for x in d) / (len(d) - 1))
+        stats["volatility_ann_pct"] = round(sd * math.sqrt(252) * 100, 2)
+        stats["sharpe_ann"] = round(mu / sd * math.sqrt(252), 2) if sd > 0 else None      # excess over zero, not cash
+    if n >= 12:
+        stats["return_ann_pct"] = round(((1 + cum) ** (12 / n) - 1) * 100, 2)
+    return {"fund": st["fund_name"], "currency": st["base_currency"], "stage": st["stage_label"],
+            "label": gov.results_label(st["stage"]), "inception": nav[0]["date"] if nav else None,
+            "as_of": nav[-1]["date"] if nav else None, "years": years, "stats": stats,
+            "archived_packs": archived_months(),
+            "notes": ["Net of all booked costs; daily NAV, flow-adjusted (capital changes are cash flows), geometrically linked.",
+                      "Annualised figures appear only after 12 months of record; Sharpe is against zero, not cash.",
+                      "Paper or simulated periods are labelled as such — they are not an audited track record.",
+                      "Each month's internal pack is archived on the 1st, so past figures cannot drift as data are restated."]}
+
+
+def archive_month(month: Optional[str] = None) -> Dict[str, Any]:
+    """Freeze a month's pack (default: last month) to disk. An existing archive is not overwritten."""
+    if month is None:
+        t = date.today().replace(day=1)
+        month = (date(t.year - (t.month == 1), (t.month - 2) % 12 + 1, 1)).strftime("%Y-%m")
+    d = _archive_dir()
+    path = d / f"{month}.json"
+    if path.exists():
+        return {"month": month, "archived": False, "reason": "already archived", "file": path.name}
+    pack = monthly_report(month)
+    d.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(pack, default=str, indent=1))
+    return {"month": month, "archived": True, "file": path.name}
+
+
+def archived_months() -> List[str]:
+    d = _archive_dir()
+    return sorted((p.stem for p in d.glob("*.json")), reverse=True) if d.exists() else []
+
+
+def archived_pack(month: str) -> Optional[Dict[str, Any]]:
+    p = _archive_dir() / f"{month}.json"
+    return json.loads(p.read_text()) if p.exists() else None

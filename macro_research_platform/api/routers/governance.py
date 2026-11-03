@@ -2,6 +2,7 @@
 incidents, reconciliation, the monthly reporting pack, scorecard, budget, milestones and break-even AUM."""
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -264,6 +265,59 @@ async def gov_monthly(request: Request, month: Optional[str] = Query(None, patte
     from api import governance_reports as gr
     _user(request)
     return await _t(gr.monthly_report, month)
+
+
+@router.get("/api/v1/governance/track-record")
+async def gov_track_record(request: Request):
+    """Monthly net returns (year × month), year totals and summary statistics from the fund's NAV record."""
+    from api import governance_reports as gr
+    _user(request)
+    return await _t(gr.track_record)
+
+
+@router.get("/api/v1/governance/report/monthly/archive/{month}")
+async def gov_monthly_archived(month: str, request: Request):
+    """A month's pack as frozen on the 1st of the following month."""
+    from api import governance_reports as gr
+    _user(request)
+    if not re.fullmatch(r"\d{4}-\d{2}", month):
+        raise HTTPException(400, "month must be YYYY-MM")
+    pack = await _t(gr.archived_pack, month)
+    if pack is None:
+        raise HTTPException(404, f"No archived pack for {month}.")
+    return pack
+
+
+@router.get("/api/v1/governance/ddq")
+async def gov_ddq(request: Request):
+    """Operational due-diligence answers generated from the platform's records, with the gaps a reviewer would flag."""
+    from api import ddq
+    _user(request)
+    return await _t(ddq.pack)
+
+
+@router.get("/api/v1/governance/backup")
+async def gov_backup_status(request: Request):
+    """Last backup, days kept, off-disk copy and the last restore test."""
+    from api import backup
+    _user(request)
+    return await _t(backup.status)
+
+
+@router.post("/api/v1/governance/backup/run")
+async def gov_backup_run(request: Request):
+    """Back up every fund database now (also runs daily at 03:15 UTC)."""
+    from api import backup
+    _user(request, ("pm", "risk"))
+    return await _t(backup.run_backup)
+
+
+@router.post("/api/v1/governance/backup/restore-test")
+async def gov_backup_restore_test(request: Request):
+    """Open the latest backup read-only and check it restores (integrity and row counts); writes nothing back."""
+    from api import backup
+    _user(request, ("pm", "risk"))
+    return await _t(backup.restore_test)
 
 
 @router.get("/api/v1/governance/scorecard")

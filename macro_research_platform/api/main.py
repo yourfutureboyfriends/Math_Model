@@ -591,6 +591,32 @@ async def lifespan(app: FastAPI):
         _scheduler.add_job(func=_reconcile_funds, trigger=CronTrigger(day_of_week="mon-fri", hour=6, minute=30),
                            id="governance_reconcile", replace_existing=True)
 
+        # On the 1st, freeze last month's internal pack for every fund with governance on (the track record's audit trail).
+        async def _archive_packs():
+            from api import fund_store as _fs, funds as _funds, governance_reports as _gr
+            for f in _funds.list_funds():
+                tok = _funds.CURRENT.set(f["id"])
+                try:
+                    if (await asyncio.to_thread(_fs.get_settings)).get("governance"):
+                        r = await asyncio.to_thread(_gr.archive_month)
+                        logger.info("[governance] fund %s monthly pack %s: %s", f["id"], r["month"], "archived" if r["archived"] else r["reason"])
+                except Exception as e:                                    # noqa: BLE001
+                    logger.warning("[governance] monthly pack for fund %s failed: %s", f["id"], e)
+                finally:
+                    _funds.CURRENT.reset(tok)
+        def _backup():
+            from api import backup as _bk
+            try:
+                r = _bk.run_backup()
+                (logger.info if r["ok"] else logger.warning)("[backup] %s: %d files%s", r["day"], len(r["files"]),
+                                                              f", errors: {r['errors']}" if r["errors"] else "")
+            except Exception as e:                                        # noqa: BLE001
+                logger.warning("[backup] failed: %s", e)
+        _scheduler.add_job(func=_backup, trigger=CronTrigger(hour=3, minute=15), id="daily_backup", replace_existing=True,
+                           max_instances=1, coalesce=True, misfire_grace_time=12 * 3600)
+        _scheduler.add_job(func=_archive_packs, trigger=CronTrigger(day=1, hour=7, minute=0), id="governance_monthly_pack",
+                           replace_existing=True, misfire_grace_time=3 * 24 * 3600, coalesce=True)
+
         # FIXED: Phase 7 - Add new consolidated data refresh jobs
         # Price refresh every 60 seconds via new provider architecture
         _scheduler.add_job(

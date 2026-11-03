@@ -341,13 +341,20 @@ function Controls({ reload }: { reload: () => void }) {
 // ── monthly pack ─────────────────────────────────────────────────────────────
 function Monthly() {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-  const { d, err } = useLoad<any>(`/api/v1/governance/report/monthly?month=${month}`);
+  const tr = useLoad<any>('/api/v1/governance/track-record');
+  const archived: string[] = tr.d?.archived_packs ?? [];
+  const [frozen, setFrozen] = useState(false);
+  const useFrozen = frozen && archived.includes(month);
+  const { d, err } = useLoad<any>(useFrozen ? `/api/v1/governance/report/monthly/archive/${month}` : `/api/v1/governance/report/monthly?month=${month}`);
   return (
     <div className="space-y-2 text-xs">
       <div className="flex gap-2 items-center">
         <input type="month" className={inputCls} value={month} onChange={(e) => setMonth(e.target.value)} />
         <button className={btn} onClick={() => window.print()}>Print</button>
+        {archived.includes(month) && <label className="flex items-center gap-1 text-2xs text-text-secondary" title="The pack as frozen on the 1st of the following month — what was reported, not today's restated figures">
+          <input type="checkbox" checked={frozen} onChange={(e) => setFrozen(e.target.checked)} />as archived</label>}
         {d && <span className="text-amber text-2xs">{d.label}</span>}
+        {useFrozen && d && <span className="text-2xs text-text-tertiary">frozen {String(d.generated_at).slice(0, 10)}</span>}
       </div>
       {d && <Letterhead title={`Monthly internal report — ${d.month}`}
                         sub={[String(d.stage).includes('governance off') ? null : d.stage, d.currency, d.label].filter(Boolean).join(' · ')} />}
@@ -394,6 +401,89 @@ function Monthly() {
             <div className="text-[10px] text-text-tertiary mt-1">{d.validation.conventions}</div>
           </Box>
         </div>)}
+    </div>
+  );
+}
+
+// ── track record ─────────────────────────────────────────────────────────────
+const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const signed = (v: number | null | undefined, d = 2) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(d)}%`);
+
+function TrackRecord() {
+  const { d, err } = useLoad<any>('/api/v1/governance/track-record');
+  if (!d) return <div className="text-2xs text-text-tertiary">{err ?? 'Loading…'}</div>;
+  const s = d.stats;
+  const tiles: [string, string][] = [['Since', d.inception ?? '—'], ['Months', String(s.months)], ['Cumulative', signed(s.cumulative_pct)],
+    ['Annualised', s.return_ann_pct != null ? signed(s.return_ann_pct) : 'after 12 m'], ['Volatility', s.volatility_ann_pct != null ? `${s.volatility_ann_pct}%` : '—'],
+    ['Sharpe (vs 0)', s.sharpe_ann != null ? String(s.sharpe_ann) : '—'], ['Max drawdown', signed(s.max_drawdown_pct)],
+    ['Positive months', s.positive_months_pct != null ? `${s.positive_months_pct}%` : '—'], ['Best · worst', `${signed(s.best_month_pct)} · ${signed(s.worst_month_pct)}`]];
+  return (
+    <div className="space-y-2 text-xs">
+      <div className="flex gap-2 items-center"><button className={btn} onClick={() => window.print()}>Print</button><span className="text-amber text-2xs">{d.label}</span></div>
+      <Letterhead title="Track record" sub={[d.stage, d.currency, `as of ${d.as_of ?? '—'}`].join(' · ')} />
+      <div className="grid grid-cols-3 md:grid-cols-9 gap-1">
+        {tiles.map(([k, v]) => <div key={k} className="border border-border bg-surface-2 px-2 py-1"><div className="text-[10px] text-text-tertiary uppercase">{k}</div><div className="font-mono text-xs">{v}</div></div>)}
+      </div>
+      {d.years.length === 0 ? <div className="text-2xs text-text-tertiary">No NAV record yet — the daily NAV snapshot starts the record.</div> : (
+        <div className="workspace-table-scroll" tabIndex={0} role="group" aria-label="Monthly returns"><table className="w-full text-2xs font-mono">
+          <thead><tr className="text-text-tertiary border-b border-border-subtle"><th className="text-left font-normal py-1">Year</th>{MONTH_LABELS.map((m) => <th key={m} className="text-right font-normal">{m}</th>)}<th className="text-right font-normal pl-2">Year</th></tr></thead>
+          <tbody>{d.years.map((y: any) => (
+            <tr key={y.year} className="border-b border-border-subtle"><td className="py-1">{y.year}</td>
+              {MONTHS.map((m) => { const v = y.months[m]; return <td key={m} className={cn('text-right', v == null ? 'text-text-tertiary' : v >= 0 ? 'text-green' : 'text-red')}>{v == null ? '' : v.toFixed(2)}</td>; })}
+              <td className={cn('text-right pl-2 font-medium', y.total >= 0 ? 'text-green' : 'text-red')}>{signed(y.total)}{y.partial ? '*' : ''}</td></tr>))}
+          </tbody></table>
+          <div className="text-[10px] text-text-tertiary mt-1">Monthly net returns, %. * partial year.</div></div>)}
+      <ul className="text-[10px] text-text-tertiary list-disc pl-4">{d.notes.map((n: string) => <li key={n}>{n}</li>)}</ul>
+      {d.archived_packs.length > 0 && <div className="text-2xs text-text-secondary">Archived monthly packs: {d.archived_packs.join(', ')}</div>}
+    </div>
+  );
+}
+
+// ── operational due diligence ────────────────────────────────────────────────
+const DDQ_TONE: Record<string, string> = { 'in place': 'text-green border-green/40', partial: 'text-amber border-amber/40', gap: 'text-red border-red/40' };
+
+function DueDiligence() {
+  const { d, err, load, setErr } = useLoad<any>('/api/v1/governance/ddq');
+  const bk = useLoad<any>('/api/v1/governance/backup');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [only, setOnly] = useState<string | null>(null);
+  const act = async (k: string, url: string) => { setBusy(k); try { await call(url, 'POST'); bk.load(); load(); } catch (e: any) { setErr(e.message); } finally { setBusy(null); } };
+  if (!d) return <div className="text-2xs text-text-tertiary">{err ?? 'Loading…'}</div>;
+  const sections = Array.from(new Set(d.answers.map((a: any) => a.section))) as string[];
+  return (
+    <div className="space-y-2 text-xs">
+      <div className="flex flex-wrap gap-2 items-center">
+        <button className={btn} onClick={() => window.print()}>Print</button>
+        {(['in place', 'partial', 'gap'] as const).map((k) => (
+          <button key={k} onClick={() => setOnly(only === k ? null : k)} className={cn('text-2xs px-2 py-0.5 border', DDQ_TONE[k], only === k && 'bg-surface-3')}>{d.counts[k]} {k}</button>))}
+        <span className="text-2xs text-text-tertiary ml-auto">generated {String(d.generated_at).slice(0, 16).replace('T', ' ')} UTC</span>
+      </div>
+      <Letterhead title="Operational due diligence — answers from the record" sub={[d.stage, d.label].join(' · ')} />
+      {err && <div className="text-amber text-2xs">{err}</div>}
+      {sections.map((sec) => {
+        const rows = d.answers.filter((a: any) => a.section === sec && (!only || a.status === only));
+        return rows.length === 0 ? null : (
+          <Box key={sec} title={sec}>
+            {rows.map((a: any) => (
+              <div key={a.question} className="py-1 border-b border-border-subtle last:border-0">
+                <div className="flex gap-2 items-start"><span className={cn('text-[10px] px-1 border uppercase shrink-0', DDQ_TONE[a.status])}>{a.status}</span>
+                  <span className="text-text-primary">{a.question}</span></div>
+                <div className="text-2xs text-text-secondary mt-0.5 pl-1">{a.answer} <span className="text-text-tertiary">— {a.source}</span></div>
+              </div>))}
+          </Box>);
+      })}
+      {bk.d && <Box title="Backups">
+        <KV k="Last backup" v={bk.d.last ? `${bk.d.last.day} · ${bk.d.last.files.length} databases · ${bk.d.last.ok ? 'ok' : 'errors'}` : 'none yet'} />
+        <KV k="Days kept · off-disk copy" v={`${bk.d.kept_days.length} · ${bk.d.off_disk ? 'yes' : 'no (set BACKUP_COPY_DIR)'}`} />
+        <KV k="Last restore test" v={bk.d.restore_tested ? `${String(bk.d.restore_tested.time).slice(0, 10)} · ${bk.d.restore_tested.ok ? 'restores cleanly' : 'FAILED'}` : 'never'} />
+        <div className="flex gap-1 mt-1">
+          <button className={btn} disabled={!!busy} onClick={() => act('run', '/api/v1/governance/backup/run')}>{busy === 'run' ? 'Backing up…' : 'Back up now'}</button>
+          <button className={btn} disabled={!!busy || !bk.d.last} onClick={() => act('test', '/api/v1/governance/backup/restore-test')}>{busy === 'test' ? 'Testing…' : 'Test restore'}</button>
+        </div>
+        <div className="text-[10px] text-text-tertiary mt-1">{bk.d.note}</div>
+      </Box>}
+      <div className="text-[10px] text-text-tertiary">{d.note}</div>
     </div>
   );
 }
@@ -515,9 +605,9 @@ function BreakEven() {
   );
 }
 
-type Tab = 'overview' | 'team' | 'broker' | 'models' | 'instruments' | 'controls' | 'monthly' | 'budget' | 'roadmap' | 'licences' | 'breakeven';
+type Tab = 'overview' | 'team' | 'broker' | 'models' | 'instruments' | 'controls' | 'monthly' | 'record' | 'ddq' | 'budget' | 'roadmap' | 'licences' | 'breakeven';
 const TABS: [Tab, string][] = [['overview', 'Overview'], ['team', 'Team & positions'], ['broker', 'Broker (IBKR)'], ['models', 'Models G0–G5'], ['instruments', 'Approved instruments'], ['controls', 'Controls'],
-  ['monthly', 'Monthly pack'], ['budget', 'Budget'], ['roadmap', 'Roadmap'], ['licences', 'Data licences'], ['breakeven', 'Break-even AUM']];
+  ['monthly', 'Monthly pack'], ['record', 'Track record'], ['ddq', 'Due diligence'], ['budget', 'Budget'], ['roadmap', 'Roadmap'], ['licences', 'Data licences'], ['breakeven', 'Break-even AUM']];
 
 export function GovernanceSection() {
   const { d: g, err, load } = useLoad<any>('/api/v1/governance');
@@ -544,6 +634,8 @@ export function GovernanceSection() {
           {tab === 'instruments' && <Instruments />}
           {tab === 'controls' && <Controls reload={load} />}
           {tab === 'monthly' && <Monthly />}
+          {tab === 'record' && <TrackRecord />}
+          {tab === 'ddq' && <DueDiligence />}
           {tab === 'budget' && <Budget />}
           {tab === 'roadmap' && <Roadmap />}
           {tab === 'licences' && <Licences />}
