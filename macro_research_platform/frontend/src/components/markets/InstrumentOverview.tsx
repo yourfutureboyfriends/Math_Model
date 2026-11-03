@@ -1,6 +1,6 @@
 // Brokerage-style instrument overview (DES): chart + order ticket, key statistics with a
 // 52-week range bar, analyst consensus gauge, earnings card, similar stocks, news, about.
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chart } from './TickerView';
@@ -58,6 +58,29 @@ export function KeyStats({ q, p }: { q: any; p: any }) {
   );
 }
 
+/** The fund's holding in this symbol (Positions) and the fund's NAV, for the ticket's position line and preview. */
+function useHolding(symbol: string) {
+  const [pos, setPos] = useState<any | null | undefined>(undefined);       // undefined = loading, null = none
+  const [nav, setNav] = useState<number | null>(null);
+  const loadNav = useCallback(() => {
+    fetch('/api/v1/desk/account').then((r) => (r.ok ? r.json() : null)).then((j) => setNav(j?.available ? j.nav : null)).catch(() => {});
+  }, []);
+  const load = useCallback(() => {
+    fetch('/api/v1/portfolio/positions').then((r) => (r.ok ? r.json() : null)).then((j) => {
+      const mine = (j?.positions ?? []).filter((p: any) => String(p.symbol).toUpperCase() === symbol.toUpperCase());
+      if (!mine.length) { setPos(null); return; }
+      // several books can hold the same line: one aggregate (cost-weighted average)
+      const qty = mine.reduce((a: number, p: any) => a + Number(p.quantity || 0), 0);
+      const cost = mine.reduce((a: number, p: any) => a + Number(p.quantity || 0) * Number(p.avg_cost || 0), 0);
+      const sum = (k: string) => (mine.every((p: any) => p[k] != null) ? mine.reduce((a: number, p: any) => a + p[k], 0) : null);
+      setPos({ quantity: qty, avg_cost: qty ? cost / qty : null, market_value: sum('market_value'), unrealized_pnl: sum('unrealized_pnl'), books: mine.length });
+    }).catch(() => setPos(null));
+    loadNav();
+  }, [symbol, loadNav]);
+  useEffect(() => { load(); }, [load]);
+  return { pos, nav, reload: load, loadNav };
+}
+
 export function OrderTicket({ q }: { q: any }) {
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [mode, setMode] = useState<'shares' | 'amount'>('shares');
@@ -65,12 +88,22 @@ export function OrderTicket({ q }: { q: any }) {
   const [limit, setLimit] = useState('');
   const [type, setType] = useState<'market' | 'limit'>('market');
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const { pos, nav, reload, loadNav } = useHolding(q.symbol);
+  useEffect(() => { setPreview(false); setMsg(null); }, [q.symbol]);
   const px = type === 'limit' && Number(limit) > 0 ? Number(limit) : q.price;
   const shares = mode === 'shares' ? Number(qty) : px ? Number(qty) / px : 0;
   const cost = shares && px ? shares * px : null;
-  const submit = async () => {
+  const held = pos?.quantity ?? 0;
+  const after = held + (side === 'buy' ? 1 : -1) * (shares || 0);
+  const navPct = (units: number) => (nav && px ? (units * px) / nav : null);
+  const review = () => {
     if (!shares || shares <= 0 || !px) { setMsg({ ok: false, text: 'Enter a quantity.' }); return; }
+    if (nav == null) loadNav();                         // the account may not have answered yet
+    setMsg(null); setPreview(true);
+  };
+  const submit = async () => {
     setBusy(true); setMsg(null);
     try {
       const r = await fetch('/api/v1/portfolio/positions', {
@@ -81,11 +114,53 @@ export function OrderTicket({ q }: { q: any }) {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(apiError(j, r.status));
       setMsg({ ok: true, text: `Paper ${side} of ${+shares.toFixed(4)} ${q.symbol} at ${fmtPrice(px, q.type)} recorded in My Portfolio.` });
-      setQty('');
+      setQty(''); setPreview(false); reload();
     } catch (e: any) { setMsg({ ok: false, text: e.message }); } finally { setBusy(false); }
   };
+  const positionLine = (
+    <div className="text-[11px] border border-border-subtle rounded px-2 py-1.5" aria-label="Your position">
+      {pos === undefined ? <span className="text-text-tertiary">Position…</span>
+        : pos === null ? <span className="text-text-tertiary">No position in {q.symbol}</span>
+        : <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono tabular-nums">
+            <span className="font-sans text-text-tertiary">Position</span><span className={cn('text-right', held < 0 && 'text-red')}>{+held.toFixed(4)}{held < 0 ? ' short' : ''}</span>
+            <span className="font-sans text-text-tertiary">Avg cost</span><span className="text-right">{fmtPrice(pos.avg_cost, q.type)}</span>
+            <span className="font-sans text-text-tertiary">Unrealized</span>
+            <span className={cn('text-right', pos.unrealized_pnl == null ? 'text-text-tertiary' : pos.unrealized_pnl >= 0 ? 'text-green' : 'text-red')}>
+              {pos.unrealized_pnl == null ? '—' : `${pos.unrealized_pnl >= 0 ? '+' : ''}${fmtBig(pos.unrealized_pnl)}`}</span>
+            <span className="font-sans text-text-tertiary">% of NAV</span><span className="text-right">{navPct(held) != null ? `${(navPct(held)! * 100).toFixed(1)}%` : '—'}</span>
+          </div>}
+    </div>
+  );
+  if (preview) {
+    const rows: [string, React.ReactNode][] = [
+      ['Action', <span className={side === 'buy' ? 'text-green' : 'text-red'}>{side.toUpperCase()} {+shares.toFixed(4)} {q.symbol}</span>],
+      ['Order', type === 'market' ? 'Market' : `Limit ${fmtPrice(px, q.type)}`],
+      [side === 'buy' ? 'Est. cost' : 'Est. proceeds', `${fmtPrice(cost, q.type)} ${q.currency ?? ''}`],
+      ['Order size', navPct(shares) != null ? `${(navPct(shares)! * 100).toFixed(1)}% of NAV` : '—'],
+      ['Position after', `${+after.toFixed(4)}${after < 0 ? ' (short)' : ''}`],
+      ['After, % of NAV', navPct(after) != null ? `${(navPct(after)! * 100).toFixed(1)}%` : '—'],
+    ];
+    return (
+      <div className="space-y-3" role="group" aria-label="Order preview">
+        <div className="text-[11px] uppercase tracking-wide text-text-tertiary">Review paper order</div>
+        <dl className="text-xs space-y-1">
+          {rows.map(([k, v]) => <div key={k} className="flex justify-between gap-2"><dt className="text-text-tertiary">{k}</dt><dd className="font-mono tabular-nums text-right">{v}</dd></div>)}
+        </dl>
+        {side === 'sell' && after < 0 && <p className="text-[11px] text-amber">This sells more than the fund holds and opens a short.</p>}
+        {navPct(after) != null && Math.abs(navPct(after)!) > 0.1 && <p className="text-[11px] text-amber">The position would be over 10% of NAV — check the single-name limit.</p>}
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={() => setPreview(false)} disabled={busy} className="py-2 rounded-md text-sm border border-border text-text-secondary hover:bg-surface-3">Back</button>
+          <button onClick={submit} disabled={busy} className={cn('py-2 rounded-md text-sm font-semibold text-white disabled:opacity-50', side === 'buy' ? 'bg-green hover:bg-green/90' : 'bg-red hover:bg-red/90')}>
+            {busy ? 'Recording…' : `Confirm ${side}`}</button>
+        </div>
+        {msg && <div className={cn('text-xs', msg.ok ? 'text-green' : 'text-red')}>{msg.text}</div>}
+        <p className="text-[10px] text-text-tertiary leading-relaxed">Paper trade only — nothing is sent to a broker.</p>
+      </div>
+    );
+  }
   return (
     <div className="space-y-3">
+      {positionLine}
       <div className="grid grid-cols-2 rounded-md overflow-hidden border border-border">
         {(['buy', 'sell'] as const).map((s) => (
           <button key={s} onClick={() => setSide(s)} className={cn('py-2 text-sm font-semibold capitalize transition-colors',
@@ -111,8 +186,8 @@ export function OrderTicket({ q }: { q: any }) {
         <div className="flex justify-between font-semibold"><span className="text-text-secondary">Estimated {side === 'buy' ? 'cost' : 'proceeds'}</span>
           <span className="font-mono">{cost != null ? `${fmtPrice(cost, q.type)} ${q.currency ?? ''}` : '—'}</span></div>
       </div>
-      <button onClick={submit} disabled={busy} className={cn('w-full py-2.5 rounded-md text-sm font-semibold text-white disabled:opacity-50', side === 'buy' ? 'bg-green hover:bg-green/90' : 'bg-red hover:bg-red/90')}>
-        {busy ? 'Recording…' : `Review & ${side} (paper)`}</button>
+      <button onClick={review} disabled={busy} className={cn('w-full py-2.5 rounded-md text-sm font-semibold text-white disabled:opacity-50', side === 'buy' ? 'bg-green hover:bg-green/90' : 'bg-red hover:bg-red/90')}>
+        {`Review ${side} (paper)`}</button>
       {msg && <div className={cn('text-xs flex gap-1.5', msg.ok ? 'text-green' : 'text-red')}>{msg.ok && <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />}{msg.text}</div>}
       <p className="text-[10px] text-text-tertiary leading-relaxed">Paper trading: records the position in Portfolios → My Portfolio at the shown price. No real order is sent. Prices may be delayed.</p>
     </div>

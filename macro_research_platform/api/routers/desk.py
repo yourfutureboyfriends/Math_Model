@@ -136,6 +136,28 @@ def recession_models(macro: Dict[str, Any], cycle: Dict[str, Any], rates: Dict[s
     return {"models": rows, "min": ps[0], "max": ps[-1], "median": round(median, 4)}
 
 
+@router.get("/api/v1/desk/account")
+async def desk_account(request: Request):
+    """The account bar (status dock): NAV, day and unrealized P&L, gross / net exposure as a share of NAV, positions
+    and the limits state of the current fund — the slim always-on summary a broker platform keeps in view. Only the
+    fund block, so it is cheap enough to poll; the full desk is /api/v1/desk.
+    """
+    from api.core.access import current_user
+    if not current_user(request):
+        raise HTTPException(401, "Authentication required")
+    f = await _safe(_fund_block(), "fund")
+    if not f.get("available"):
+        return {"available": False, "reason": f.get("reason")}
+    nav, ex = f.get("nav") or 0, f.get("exposures") or {}
+    day = f.get("last_day_pnl")
+    return {"available": True, "fund_name": f.get("fund_name"), "base_currency": f.get("base_currency"),
+            "nav": nav, "day_pnl": day, "day_pnl_pct": round(day / (nav - day), 4) if day is not None and nav - day else None,
+            # exposures are already fractions of NAV (the limits read them as % NAV)
+            "unrealized_pnl": f.get("unrealized_pnl"), "gross_pct": ex.get("gross"), "net_pct": ex.get("net"),
+            "positions": f.get("positions"), "limits": (f.get("limits") or {}).get("overall"),
+            "as_of": datetime.now().isoformat(timespec="seconds")}
+
+
 @router.get("/api/v1/desk")
 async def desk(request: Request):
     """My Desk: your position's workspace, a prioritised work queue (approvals, limits, stale data, central-bank

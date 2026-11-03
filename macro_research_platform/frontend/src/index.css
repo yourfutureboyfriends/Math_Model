@@ -1510,7 +1510,24 @@ button.ticker-item { background: transparent; border-top: 0; border-bottom: 0; b
 .status-light { width: 6px; height: 6px; border-radius: 9999px; background: var(--border-strong); flex-shrink: 0; }
 .status-clock.open .status-light, .status-light.open { background: rgb(var(--c-green)); box-shadow: 0 0 6px rgb(var(--c-green) / 0.7); }
 .status-clock.lunch .status-light { background: rgb(var(--c-amber)); }
-.status-light.closed-warn { background: rgb(var(--c-amber)); }
+.status-light.closed-warn, .status-light.warn { background: rgb(var(--c-amber)); }
+.status-light.breach { background: rgb(var(--c-red)); box-shadow: 0 0 6px rgb(var(--c-red) / 0.7); }
+/* Account bar: NAV · day P&L · exposures · limits, label in muted caps and the figure beside it */
+.status-account { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; white-space: nowrap;
+  border-left: 1px solid var(--border-subtle); background: transparent; font: inherit; color: inherit; cursor: pointer; }
+.status-account:hover { background: rgb(var(--c-bloomberg) / 0.10); }
+.status-account:focus-visible { outline: 1px solid rgb(var(--c-bloomberg)); outline-offset: -1px; }
+.status-k { color: var(--text-tertiary); font-weight: 700; letter-spacing: 0.06em; }
+.status-k:not(:first-child) { margin-left: 4px; }
+.status-v { font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.status-v small { font-size: 10px; opacity: 0.85; }
+/* .status-item sets display after Tailwind's utilities, which kept `hidden md:inline-flex` items showing on phones
+   (the dock then pushed the page wider than the screen): restate the responsive visibility at higher specificity. */
+.status-item.hidden { display: none; }
+@media (min-width: 768px) { .status-item.md\:inline-flex { display: inline-flex; } }
+@media (min-width: 1024px) { .status-item.lg\:inline-flex { display: inline-flex; } }
+@media (min-width: 1280px) { .status-item.xl\:inline-flex { display: inline-flex; } }
+@media (max-width: 767px) { .status-account { display: none; } }
 .status-right { margin-left: auto; display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .status-item { display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; height: 24px; white-space: nowrap;
   border-left: 1px solid var(--border-subtle); letter-spacing: 0.04em; }
@@ -2374,3 +2391,48 @@ table[data-autosort="on"] > thead th[data-sort-dir="asc"]::after { content: " �
 .mkt-hero[data-security] p { display: none; }
 .mkt-hero .mkt-hero-tools { margin-top: 10px; padding-top: 9px; }
 .mkt-hero .workspace-emblem { width: 38px; height: 38px; }
+
+/* Page headers, refined (2026-11-03). Professional platforms (Bloomberg, IBKR Desktop, thinkorswim, Futu) open on the
+   data: the header names the page and holds its controls, and gets out of the way.
+   Comfortable: one slimmer card — smaller title, the description beside the area tag, tools on a tighter second row.
+   Compact (the density switch): a single 44-px bar — emblem, area, title, search and switches in one row, no
+   description (it stays available on hover through the title attribute set by the truncation helper). */
+.workspace-hero { padding: 13px 16px 10px; margin: 12px 16px 10px; }
+.workspace-hero h1 { font-size: 21px; margin: 2px 0 2px; }
+.workspace-hero .workspace-emblem { width: 36px; height: 36px; border-radius: 9px; }
+.workspace-hero-tools { margin-top: 10px; padding-top: 9px; }
+.workspace-search { padding: 5px 9px; }
+.workspace-hero p { max-width: 90ch; }
+
+:root[data-content-density="compact"] .workspace-hero {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; padding: 6px 10px; margin: 8px 12px 8px; border-radius: 8px;
+  background: rgb(var(--c-surface-1)); }
+:root[data-content-density="compact"] .pe-workspace > .workspace-hero { margin: 0 0 10px; }
+:root[data-content-density="compact"] .workspace-hero-intro { align-items: center; gap: 9px; flex: 1 1 auto; min-width: 0; }
+:root[data-content-density="compact"] .workspace-hero .workspace-emblem { width: 28px; height: 28px; border-radius: 6px; }
+:root[data-content-density="compact"] .workspace-hero .workspace-emblem svg { width: 15px; height: 15px; }
+:root[data-content-density="compact"] .workspace-hero-intro > div:not(.mkt-hero-actions) { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+:root[data-content-density="compact"] .workspace-hero h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 0; white-space: nowrap; }
+:root[data-content-density="compact"] .workspace-hero p,
+:root[data-content-density="compact"] .workspace-workflow { display: none; }
+:root[data-content-density="compact"] .workspace-eyebrow { letter-spacing: .12em; white-space: nowrap; }
+:root[data-content-density="compact"] .workspace-view-count { padding: 2px 8px; }
+:root[data-content-density="compact"] .workspace-hero-tools { border-top: 0; margin: 0; padding: 0; gap: 8px; flex: 0 1 auto; }
+:root[data-content-density="compact"] .workspace-search { padding: 3px 8px; min-width: 200px; }
+:root[data-content-density="compact"] .workspace-density { padding: 2px; }
+:root[data-content-density="compact"] .workspace-density button { padding: 2px 6px; }
+/* Markets: the function / security command line takes the rest of the row */
+:root[data-content-density="compact"] .mkt-root .workspace-hero.mkt-hero { padding: 6px 10px; margin: 0; }
+:root[data-content-density="compact"] .mkt-hero .mkt-hero-code { min-width: 28px; padding: 0 7px; font-size: 11px; }
+:root[data-content-density="compact"] .mkt-hero .mkt-hero-actions { flex-direction: row; align-items: center; gap: 10px; }
+:root[data-content-density="compact"] .mkt-hero .mkt-hero-tools { flex: 1 1 420px; margin: 0; padding: 0; border-top: 0; }
+
+/* Phones: the hub tabs scroll sideways inside the top bar and the fund chip truncates, so the bar never pushes the
+   page wider than the screen. */
+@media (max-width: 767px) {
+  .topbar-hubs { overflow-x: auto; scrollbar-width: none; }
+  .topbar-hubs::-webkit-scrollbar { display: none; }
+  .topbar-main-row { padding: 0 8px; gap: 6px; }
+  /* off-canvas drawers parked beyond the right edge must not widen the page */
+  html, body { overflow-x: clip; }
+}

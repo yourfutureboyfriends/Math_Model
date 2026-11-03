@@ -1,7 +1,7 @@
 // Futubull-style quote workstation (DES): watchlist on the left (↑/↓ steps through it), a dense
 // quote panel, chart and tabs in the middle, and top of book, intraday tape, buy/sell volume,
 // volume-by-price and the order ticket on the right — everything follows the selected stock.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { toTerminal } from './bbg';
 import { Chart } from './TickerView';
@@ -219,6 +219,41 @@ function TapeBoxes({ symbol, q }: { symbol: string; q: any }) {
   );
 }
 
+// ── Pinned quote: once the quote panel scrolls away, a slim bar keeps the symbol, last and change in view (as IBKR's
+// and Futu's quote pages do), with jumps to the chart and the ticket. A zero-height sticky holder, so nothing shifts.
+function usePinned(ref: React.RefObject<HTMLElement>) {
+  const [pinned, setPinned] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(([e]) => setPinned(!e.isIntersecting && e.boundingClientRect.top < 0), { rootMargin: '-64px 0px 0px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [ref]);
+  return pinned;
+}
+
+function PinnedQuote({ q, show }: { q: any; show: boolean }) {
+  const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  return (
+    <div className="sticky z-20 h-0" style={{ top: 'var(--topbar-height)' }} aria-hidden={!show}>
+      <div className={cn('mkt-pinned-quote flex items-center gap-3 px-3 h-9 bg-surface-1/95 backdrop-blur border border-border shadow-lg text-[12px] transition-[opacity,transform] duration-150',
+        show ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1 pointer-events-none')}>
+        <span className="font-mono font-semibold text-bloomberg">{toTerminal(q.symbol)}</span>
+        <span className="truncate text-text-secondary min-w-0 hidden md:inline">{q.name}</span>
+        <Flash value={q.price} className={cn('font-mono tabular-nums font-semibold text-sm', upDown(q.change))}>{fmtPrice(q.price, q.type)}</Flash>
+        <span className={cn('font-mono tabular-nums', upDown(q.change))}>
+          {q.change != null ? `${q.change >= 0 ? '+' : ''}${fmtPrice(q.change, q.type)}` : ''} {q.change_pct != null ? `(${q.change_pct >= 0 ? '+' : ''}${(q.change_pct * 100).toFixed(2)}%)` : ''}</span>
+        {q.market_state && <span className="text-[10px] text-text-tertiary uppercase hidden lg:inline">{q.market_state === 'REGULAR' ? 'Market open' : q.market_state.toLowerCase()}</span>}
+        <span className="ml-auto flex gap-1">
+          <button tabIndex={show ? 0 : -1} onClick={() => jump('mkt-quote-chart')} className="px-2 py-0.5 border border-border text-text-secondary hover:text-bloomberg hover:border-bloomberg">Chart</button>
+          <button tabIndex={show ? 0 : -1} onClick={() => jump('mkt-ticket')} className="px-2 py-0.5 border border-bloomberg text-bloomberg hover:bg-bloomberg/10 font-semibold">Trade</button>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ── The workstation ─────────────────────────────────────────────────────────
 type Tab = 'overview' | 'news' | 'peers';
 
@@ -227,12 +262,16 @@ export function QuoteWorkstation({ q, onOpen, onGo }: { q: any; onOpen: (s: stri
   const p = useJSON<any>(`/api/v1/mkt/profile/${enc(q.symbol)}`);
   const tape = useJSON<any>(`/api/v1/mkt/tape/${enc(q.symbol)}`, 60_000);
   const isEquity = q.type === 'Stock';
+  const headRef = useRef<HTMLDivElement>(null);
+  const pinned = usePinned(headRef);
   const tabs: [Tab, string][] = [['overview', 'Overview'], ['news', 'News'], ...(isEquity ? [['peers', 'Peers'] as [Tab, string]] : [])];
   return (
+    <div>
+    <PinnedQuote q={q} show={pinned} />
     <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_300px] gap-2">
       <div className="space-y-2 min-w-0">
-        <QuoteHeaderDense q={q} vwap={tape.data?.vwap} />
-        <div className="border border-border"><Chart symbol={q.symbol} height={430} /></div>
+        <div ref={headRef}><QuoteHeaderDense q={q} vwap={tape.data?.vwap} /></div>
+        <div id="mkt-quote-chart" className="border border-border scroll-mt-24"><Chart symbol={q.symbol} height={430} /></div>
         <div className="bg-surface-1 border border-border">
           <nav className="flex items-center gap-1 border-b border-border px-1" aria-label="Quote tabs">
             {tabs.map(([k, l]) => (
@@ -261,8 +300,9 @@ export function QuoteWorkstation({ q, onOpen, onGo }: { q: any; onOpen: (s: stri
         <BookBox q={q} />
         <RelatedOdds terms={predTerms(q.symbol, q.name, q.type)} limit={4} />
         <TapeBoxes symbol={q.symbol} q={q} />
-        <Box title="Trade (paper)"><OrderTicket q={q} /></Box>
+        <div id="mkt-ticket" className="scroll-mt-24"><Box title="Trade (paper)"><OrderTicket q={q} /></Box></div>
       </div>
+    </div>
     </div>
   );
 }

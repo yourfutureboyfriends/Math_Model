@@ -71,6 +71,21 @@ export function TerminalShell({
   useEffect(() => { document.documentElement.style.setProperty('--dock-h', `${dockH}px`); }, [dockH]);
 
   useEffect(() => { try { localStorage.setItem('terminal.sidebarCollapsed', sidebarCollapsed ? '1' : '0'); } catch { /* optional storage */ } }, [sidebarCollapsed]);
+  // Phones: the sidebar is a drawer over the page (closed by default, a backdrop tap closes it) instead of a docked
+  // column that squeezed every page into ~130 px. The remembered desktop setting is left untouched.
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 767px)').matches);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia?.('(max-width: 767px)');
+    if (!mq) return;
+    const h = () => { setNarrow(mq.matches); setDrawerOpen(false); };
+    const close = () => setDrawerOpen(false);            // a Markets function picked in the drawer
+    mq.addEventListener('change', h);
+    window.addEventListener('hashchange', close);
+    return () => { mq.removeEventListener('change', h); window.removeEventListener('hashchange', close); };
+  }, []);
+  const collapsed = narrow ? !drawerOpen : sidebarCollapsed;
+  const toggleSidebar = useCallback(() => (narrow ? setDrawerOpen((v) => !v) : setSidebarCollapsed((v) => !v)), [narrow]);
 
   // Use external state if provided, otherwise internal
   const activeSection = externalActiveSection ?? internalActiveSection;
@@ -104,7 +119,7 @@ export function TerminalShell({
             return;
           case 'b':
             e.preventDefault();
-            setSidebarCollapsed((prev) => !prev);
+            toggleSidebar();
             return;
           case 'd':
             e.preventDefault();
@@ -308,6 +323,7 @@ export function TerminalShell({
 
   const handleNavigate = (sectionId: string) => {
     setActiveSection(sectionId);
+    setDrawerOpen(false);
     // A panel outside the current workspace is hidden: switch to its group first, then
     // scroll once the workspace has re-rendered.
     const switched = revealPanel(sectionId);
@@ -343,35 +359,38 @@ export function TerminalShell({
       <aside
         className={cn(
           'app-sidebar fixed left-0 top-16 z-40 flex flex-col transition-all duration-200 bg-surface-1 border-r border-border overflow-hidden',
-          sidebarCollapsed ? 'w-[48px] min-w-[48px]' : 'w-[224px] min-w-[224px]'
+          collapsed ? 'w-[48px] min-w-[48px]' : 'w-[224px] min-w-[224px]', narrow && !collapsed && 'shadow-2xl'
         )}
         style={{ bottom: dockH }}
       >
         <ErrorBoundary sectionName="Sidebar">
-          {sidebar ? <div className="h-full flex flex-col"><SidebarIdentity collapsed={sidebarCollapsed} currentRegime={currentRegime}/><div className="flex-1 min-h-0 overflow-hidden">{sidebar(sidebarCollapsed)}</div></div> : (
+          {sidebar ? <div className="h-full flex flex-col"><SidebarIdentity collapsed={collapsed} currentRegime={currentRegime}/><div className="flex-1 min-h-0 overflow-hidden">{sidebar(collapsed)}</div></div> : (
             <Sidebar
               activeSection={activeSection}
               onNavigate={handleNavigate}
               currentRegime={currentRegime}
-              collapsed={sidebarCollapsed}
-              onCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+              collapsed={collapsed}
+              onCollapse={toggleSidebar}
             />
           )}
         </ErrorBoundary>
       </aside>
 
+      {narrow && drawerOpen && <button type="button" aria-label="Close the navigation" className="fixed inset-0 z-30 bg-black/45"
+        style={{ top: 64, bottom: dockH }} onClick={() => setDrawerOpen(false)} />}
+
       {/* Main Content */}
       <main
         className={cn(
           'app-main pt-16 transition-all duration-200 min-h-screen',
-          sidebarCollapsed ? 'pl-[48px]' : 'pl-[224px]',
+          collapsed || narrow ? 'pl-[48px]' : 'pl-[224px]',
           detailPanelOpen ? 'lg:pr-72' : 'pr-0'
         )}
         style={{ paddingBottom: dockH }}
       >
         <a href="#terminal-content" onClick={e=>{e.preventDefault();document.getElementById('terminal-content')?.focus();document.getElementById('terminal-content')?.scrollIntoView();}} className="sr-only focus:not-sr-only focus:block focus:p-3">Skip to workspace content</a>
         <WorkspaceTools onCommand={() => setCommandPaletteOpen(true)} onHelp={() => setShortcutsHelpOpen(true)}
-          onSidebar={() => setSidebarCollapsed(v => !v)} refreshing={_loading} />
+          onSidebar={toggleSidebar} refreshing={_loading} />
         <div id="terminal-content" tabIndex={-1} className="min-h-[calc(100vh-64px)]">
           {children}
         </div>

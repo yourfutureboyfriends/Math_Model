@@ -342,7 +342,7 @@ export function Topbar({
       <div className="topbar-main-row">
 
         {/* Branding + hub mode switch */}
-        <div className="flex items-center gap-2 mr-2 shrink-0">
+        <div className="topbar-hubs flex items-center gap-2 mr-2 shrink-0 max-md:shrink max-md:min-w-0">
           <span className="font-mono text-bloomberg font-bold tracking-tight" style={{ fontSize: 13 }}>▸</span>
           <span className="hidden min-[1800px]:inline font-mono text-text-primary font-bold tracking-tight" style={{ fontSize: 12, letterSpacing: '0.06em' }}>
             TERMINAL
@@ -382,7 +382,7 @@ export function Topbar({
         <div className="hidden min-[1800px]:block topbar-divider" />
 
         {/* Data status */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="hidden sm:flex items-center gap-1.5 shrink-0">
           <span className={cn('w-1.5 h-1.5 rounded-full live-dot', statusDot)} />
           <span className="font-mono text-text-secondary" style={{ fontSize: 10, letterSpacing: '0.06em' }}>
             {statusLabel}
@@ -409,10 +409,9 @@ export function Topbar({
         </div>
 
         {/* Mode badge */}
-        <div className="ml-auto flex items-center gap-1.5 shrink-0 pl-2">
+        <div className="ml-auto flex items-center gap-1.5 shrink-0 pl-2 max-md:shrink max-md:min-w-0">
           <FundSwitcher />
-          <DataIntegrityIndicator />
-          <DataHealthIndicator />
+          <span className="hidden md:contents"><DataIntegrityIndicator /><DataHealthIndicator /></span>
           <span className="hidden min-[1800px]:inline font-mono text-bloomberg bg-bloomberg-muted border border-bloomberg-border px-2 py-0.5"
                 style={{ fontSize: 10, letterSpacing: '0.08em' }}>
             {mode}

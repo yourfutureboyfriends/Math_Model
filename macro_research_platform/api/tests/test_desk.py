@@ -122,3 +122,17 @@ def test_desk_endpoint_requires_auth_and_is_role_specific(client):
     assert d2["focus"]["title"] == "Risk Officer"
     if r.status_code in (200, 201):
         assert any(i["kind"] == "approve" for i in d2["queue"])
+
+
+def test_account_bar_is_the_slim_fund_summary(client, monkeypatch):
+    assert client.get("/api/v1/desk/account").status_code == 401
+    import api.routers.desk as desk_mod
+    async def _fund():
+        return {"available": True, "fund_name": "Test", "base_currency": "USD", "nav": 110.0, "last_day_pnl": 10.0,
+                "unrealized_pnl": 4.0, "exposures": {"gross": 0.9, "net": 0.3}, "positions": 3,
+                "limits": {"overall": "WARN"}}
+    monkeypatch.setattr(desk_mod, "_fund_block", _fund)
+    tok = client.post("/api/auth/login", data={"username": "pm", "password": "Desk-pm-Pass-2026!"}).json()["access_token"]
+    d = client.get("/api/v1/desk/account", headers={"Authorization": f"Bearer {tok}"}).json()
+    assert d["available"] and d["nav"] == 110.0 and d["day_pnl_pct"] == 0.1      # 10 on the previous 100
+    assert d["gross_pct"] == 0.9 and d["net_pct"] == 0.3 and d["limits"] == "WARN" and d["positions"] == 3

@@ -4,7 +4,12 @@
 // each with its local time and an open / lunch / closed light; then the data link (live socket), the model's data
 // date, the fund and base currency, the signed-in user, the keyboard hints and the live-alerts button (pop-up
 // history and settings). The tape can be hidden (remembered in this browser).
+//
+// Account bar (between the clocks and the link light), the always-on summary IBKR's account window and Futu's asset
+// bar keep in view: NAV, day P&L, unrealized P&L, gross / net exposure and the limits state of the current fund.
+// Click it to open Positions. Polled every minute while the page is visible (/api/v1/desk/account).
 import { useEffect, useState } from 'react';
+import { openPanel } from '@/lib/commands';
 import { EXCHANGES, sessionState } from '@/components/markets/MarketClock';
 import { useAuth } from '@/context/AuthContext';
 import { currentFund } from '@/lib/fund';
@@ -59,6 +64,48 @@ function WorldClocks() {
   );
 }
 
+type Account = { available: boolean; base_currency?: string; nav?: number; day_pnl?: number | null; day_pnl_pct?: number | null;
+  unrealized_pnl?: number | null; gross_pct?: number | null; net_pct?: number | null; positions?: number; limits?: string };
+
+/** 1,234,567 → 1.23M; signed when asked. */
+export function compactMoney(v: number | null | undefined, signed = false): string {
+  if (v == null || !Number.isFinite(v)) return '—';
+  const a = Math.abs(v);
+  const s = a >= 1e9 ? `${(a / 1e9).toFixed(2)}B` : a >= 1e6 ? `${(a / 1e6).toFixed(2)}M` : a >= 1e4 ? `${(a / 1e3).toFixed(1)}K` : a.toFixed(0);
+  return `${v < 0 ? '−' : signed && v > 0 ? '+' : ''}${s}`;
+}
+const pct0 = (v: number | null | undefined) => (v == null ? '—' : `${(v * 100).toFixed(0)}%`);
+const toneOf = (v: number | null | undefined) => (v == null || v === 0 ? 'text-text-secondary' : v > 0 ? 'text-green' : 'text-red');
+
+function AccountStrip({ fund }: { fund: string }) {
+  const [a, setA] = useState<Account | null>(null);
+  useEffect(() => {
+    let live = true;
+    const get = () => {
+      if (document.visibilityState !== 'visible') return;
+      fetch('/api/v1/desk/account').then((r) => (r.ok ? r.json() : null)).then((j) => live && setA(j)).catch(() => { /* optional */ });
+    };
+    get();
+    const t = setInterval(get, 60_000);
+    document.addEventListener('visibilitychange', get);
+    return () => { live = false; clearInterval(t); document.removeEventListener('visibilitychange', get); };
+  }, [fund]);
+  if (!a?.available) return null;
+  const lim = a.limits === 'BREACH' ? 'breach' : a.limits === 'WARN' ? 'warn' : 'open';
+  return (
+    <button type="button" className="status-account" onClick={() => openPanel('portfolio-positions')}
+      title={`Account summary for this fund — click for Positions.\nNAV ${a.nav?.toLocaleString()} ${a.base_currency ?? ''} · ${a.positions ?? 0} positions · limits ${a.limits ?? '—'}\nDay P&L is the last NAV snapshot's change; it needs two snapshots.`}>
+      <span className="status-k">NAV</span><span className="status-v">{compactMoney(a.nav)}</span>
+      <span className="status-k">DAY</span>
+      <span className={cn('status-v', toneOf(a.day_pnl))}>{compactMoney(a.day_pnl, true)}{a.day_pnl_pct != null && <small> {a.day_pnl_pct >= 0 ? '+' : ''}{(a.day_pnl_pct * 100).toFixed(2)}%</small>}</span>
+      <span className="status-k hidden 2xl:inline">UNRL</span><span className={cn('status-v hidden 2xl:inline', toneOf(a.unrealized_pnl))}>{compactMoney(a.unrealized_pnl, true)}</span>
+      <span className="status-k hidden lg:inline">GROSS</span><span className="status-v hidden lg:inline">{pct0(a.gross_pct)}</span>
+      <span className="status-k hidden lg:inline">NET</span><span className="status-v hidden lg:inline">{pct0(a.net_pct)}</span>
+      <span className="status-k">LIM</span><span className={cn('status-light', lim)} aria-label={`Limits ${a.limits ?? 'unknown'}`} />
+    </button>
+  );
+}
+
 export function BottomDock() {
   const [tape, setTape] = useTapeVisible();
   const ws = useMacroStore((s) => s.wsConnected);
@@ -76,6 +123,7 @@ export function BottomDock() {
       <div className="status-bar">
         <WorldClocks />
         <div className="status-right">
+          {user && <AccountStrip fund={fund} />}
           <span className="status-item" title={ws ? 'Live link to the server is up' : 'Live link down — data refreshes by polling'}>
             <span className={cn('status-light', ws ? 'open' : 'closed-warn')} />{ws ? 'LINK' : 'POLL'}
           </span>
