@@ -100,3 +100,44 @@ def test_mcp_research_server_is_read_only_and_cites_its_source(monkeypatch):
     assert bad["result"]["isError"] and len(seen) == 1                         # rejected before any request
     assert srv.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
     assert all("{" not in p or p.count("{") == len(r_) for p, _, _, r_, _ in srv.TOOLS.values())
+
+
+def test_usage_counts_views_and_lists_never_viewed_screens(tmp_path, monkeypatch):
+    import sqlite3
+    from api import usage
+
+    def conn():
+        c = sqlite3.connect(tmp_path / "u.db")
+        c.row_factory = sqlite3.Row
+        return c
+    monkeypatch.setattr(usage, "_conn", conn)
+    monkeypatch.setattr(usage, "_ready", False)
+    known = [{"screen": "dash:regime", "label": "Regime", "area": "macro"}, {"screen": "mkt:WEI", "label": "World indices", "area": "markets"},
+             {"screen": "dash:cta-trend", "label": "CTA Trends", "area": "macro"}]
+    r = usage.record("ann", [{"screen": "dash:regime", "seconds": 40}, {"screen": "mkt:WEI", "seconds": 5},
+                             {"screen": "bad screen; drop", "seconds": 1}], known)
+    assert r == {"events": 2, "known": 3}
+    usage.record("bob", [{"screen": "dash:regime", "seconds": 20}])
+    s = usage.summary(90)
+    top = s["screens"][0]
+    assert top["screen"] == "dash:regime" and top["views"] == 2 and top["users"] == 2 and top["seconds"] == 60 and top["label"] == "Regime"
+    assert [n["screen"] for n in s["never_viewed"]] == ["dash:cta-trend"]
+
+
+def test_g1_series_report_finds_gaps_stale_runs_holiday_bars_and_late_starts():
+    import pandas as pd
+    from api.quant.data_approval import series_report
+    cal = pd.bdate_range("2020-01-01", "2020-03-31")
+    ref = pd.Series(100.0, index=cal)
+    px = pd.Series(range(100, 100 + len(cal)), index=cal, dtype=float)
+    px = px.drop(cal[10:13])                                         # a three-session gap
+    px.iloc[20:24] = 150.0                                           # a stale run
+    px[pd.Timestamp("2020-02-01")] = 151.0                           # a Saturday print
+    px = px.sort_index()
+    r = series_report("XYZ", px, ref, "2019-06-01")
+    assert r["missing_sessions"] == 3 and r["longest_gap_sessions"] == 3 and r["off_calendar_count"] == 1
+    assert r["stale_runs"] == 1 and r["status"] == "fail"           # starts after the backtest start
+    assert any("starts" in i for i in r["issues"])
+    clean = pd.Series(range(100, 100 + len(cal)), index=cal, dtype=float)
+    impl = series_report("XYZ.L", clean, ref, "2019-06-01", implementation=True)
+    assert impl["status"] == "warn" and any("proxy" in w for w in impl["warnings"])

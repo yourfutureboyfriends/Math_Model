@@ -92,7 +92,8 @@ def pack() -> Dict[str, Any]:
                   "in place", "decision_log"))
     out.append(_q("Valuation", "How are positions priced, and from what source?",
                   "Daily close from the market-data feed; a feed failure is detected within 10 minutes and the accuracy audit "
-                  "cross-checks prices against independent sources after each close. A second licensed price source is not yet in place.",
+                  "cross-checks US prices against the Massive daily-bar store after each close. London-listed holdings have no "
+                  "independent free source yet — a licensed second feed (or the administrator's prices) is needed.",
                   "partial", "Ops monitor; accuracy audit"))
 
     # 5 data & technology

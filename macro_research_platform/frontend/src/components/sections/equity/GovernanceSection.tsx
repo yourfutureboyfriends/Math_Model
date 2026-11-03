@@ -191,6 +191,8 @@ function ModelDetail({ id, g, onChange }: { id: number; g: any; onChange: () => 
           <div className={sh.d.ready ? 'text-green' : 'text-text-tertiary'}>{sh.d.ready ? 'Ready for the G3 sign-off by risk.' : 'Not yet sufficient for G3.'}</div>
         </>)}
       </Box>
+      {next === 'G1' && m.status === 'active' && <G1DataReport id={id} dataset={m.dataset ?? ''}
+        onUse={(notes) => setChecks(Object.fromEntries(Object.entries(notes).map(([k, v]) => [k, { ok: checks[k]?.ok ?? false, note: v }])))} />}
       {next && m.status === 'active' && info && (
         <Box title={`Sign off ${next} — ${info.name} (${info.authority}; never the owner)`}>
           {m.pending_signoffs?.length > 0 && <div className="text-text-secondary mb-1">Signed so far: {m.pending_signoffs.map((s: any) => `${s.user} (${s.role})`).join(', ')} — needs {g.gate_signoffs[next].length} distinct sign-off(s)</div>}
@@ -218,6 +220,64 @@ function ModelDetail({ id, g, onChange }: { id: number; g: any; onChange: () => 
           </div>))}
       </Box>
     </div>
+  );
+}
+
+// tickers named in a model's dataset text, split into what the backtest uses and the London-listed (UCITS) instruments
+function datasetTickers(text: string): { backtest: string; impl: string } {
+  const stop = new Set(['VIX', 'UCITS', 'ETF', 'S', 'P', 'US', 'UK', 'IV', 'G0', 'G1', 'G2', 'G3']);
+  const found = Array.from(new Set((text.match(/\^?\b[A-Z]{2,5}(?:\.L)?\b/g) ?? []).filter((t) => !stop.has(t))));
+  const vix = /\bVIX\b/.test(text) ? ['^VIX'] : [];
+  const spx = /S&P 500/.test(text) ? ['^GSPC'] : [];
+  return { backtest: [...vix, ...spx, ...found.filter((t) => !t.endsWith('.L'))].join(', '), impl: found.filter((t) => t.endsWith('.L')).join(', ') };
+}
+
+/** G1 evidence prepared from the data itself (api/quant/data_approval.py): the reviewers still read it and sign. */
+function G1DataReport({ id, dataset, onUse }: { id: number; dataset: string; onUse: (notes: Record<string, string>) => void }) {
+  const guess = datasetTickers(dataset);
+  const [syms, setSyms] = useState(guess.backtest);
+  const [impl, setImpl] = useState(guess.impl);
+  const [start, setStart] = useState('2005-01-01');
+  const [rep, setRep] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const run = async () => {
+    setBusy(true); setErr(null);
+    try { setRep(await call(`/api/v1/governance/models/${id}/g1-report?symbols=${encodeURIComponent(syms)}&implementation=${encodeURIComponent(impl)}&start=${start}`)); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const tone = (s: string) => (s === 'pass' ? 'text-green' : s === 'warn' ? 'text-amber' : 'text-red');
+  return (
+    <Box title="G1 data report — evidence prepared from the data (two people still review and sign)">
+      <div className="workspace-controls flex flex-wrap gap-1 items-center">
+        <input className={cn(inputCls, 'flex-1 min-w-[12rem] font-mono')} value={syms} onChange={(e) => setSyms(e.target.value)} placeholder="backtest series, e.g. ^VIX, SPY, IEF" aria-label="Backtest series" />
+        <input className={cn(inputCls, 'flex-1 min-w-[10rem] font-mono')} value={impl} onChange={(e) => setImpl(e.target.value)} placeholder="traded instruments, e.g. CSPX.L" aria-label="Traded instruments" />
+        <input type="date" className={inputCls} value={start} onChange={(e) => setStart(e.target.value)} aria-label="Backtest start" />
+        <button className={btn} disabled={busy || !syms.trim()} onClick={run}>{busy ? 'Checking the data…' : 'Run data report'}</button>
+      </div>
+      {err && <div className="text-amber mt-1">{err}</div>}
+      {rep && <>
+        <div className="mt-2 workspace-table-scroll" tabIndex={0} role="group" aria-label="Series checks"><table className="w-full">
+          <thead><tr className="text-text-tertiary border-b border-border-subtle"><th className="text-left font-normal py-0.5">Series</th><th className="text-left font-normal">Role</th><th className="text-left font-normal">History</th>
+            <th className="text-right font-normal">Coverage</th><th className="text-left font-normal pl-2">Known at</th><th className="text-left font-normal pl-2">Findings</th></tr></thead>
+          <tbody>{rep.series.map((x: any) => (
+            <tr key={x.symbol} className="border-b border-border-subtle align-top">
+              <td className={cn('py-0.5 font-mono', tone(x.status))}>{x.symbol}</td><td className="text-text-tertiary">{x.role ?? '—'}</td>
+              <td className="font-mono">{x.first ?? '—'} → {x.last ?? '—'}</td>
+              <td className="text-right font-mono">{x.coverage_pct != null ? `${x.coverage_pct}%` : 'reference'}</td>
+              <td className="pl-2 text-text-tertiary">{x.known_at}</td>
+              <td className="pl-2">{[...(x.issues ?? []).map((t: string) => <div key={t} className="text-red">{t}</div>), ...(x.warnings ?? []).map((t: string) => <div key={t} className="text-amber">{t}</div>)]}
+                {(x.large_moves ?? []).length > 0 && <div className="text-text-tertiary font-mono">{x.large_moves.slice(0, 4).map((l: any) => `${l.date} ${l.return_pct > 0 ? '+' : ''}${l.return_pct}%`).join(' · ')}</div>}
+                {(!x.issues?.length && !x.warnings?.length) && <span className="text-green">clean</span>}</td>
+            </tr>))}</tbody></table></div>
+        <div className="mt-2 space-y-1">{Object.entries(rep.evidence).map(([k, v]: any) => <div key={k}><b>{k}:</b> <span className="text-text-secondary">{v}</span></div>)}</div>
+        <div className="flex gap-2 items-center mt-1">
+          <span className={cn('uppercase', tone(rep.overall))}>overall: {rep.overall}</span>
+          <button className={btn} onClick={() => onUse({ ...rep.evidence, Coverage: `${rep.evidence.Coverage} [data report ${String(rep.generated_at).slice(0, 10)}: ${rep.overall}]` })}>Copy into the sign-off notes</button>
+          <span className="text-text-tertiary">{rep.note}</span>
+        </div>
+      </>}
+    </Box>
   );
 }
 

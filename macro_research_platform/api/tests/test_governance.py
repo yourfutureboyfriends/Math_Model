@@ -353,3 +353,44 @@ def test_aligned_flows_lines_capital_changes_up_with_the_nav_record(fund, monkey
     # a live observation labelled "<today>T" picks up the flows dated today and after the last NAV
     assert gr.aligned_flows(hist, ["2026-01-06T"]) == [0.0, 5_000.0, -1_000.0, 250.0]
     assert gr.aligned_flows([]) == []
+
+
+def test_track_record_ddq_backup_and_usage_over_http(tmp_path, monkeypatch):
+    import sqlite3
+    from fastapi.testclient import TestClient
+    import api.core.auth as auth
+    from api import backup, funds, governance_reports as gr, moriah, ops_monitor, usage
+    from api.core import accounts
+    path = str(tmp_path / "d.db")
+    monkeypatch.setattr(funds, "db_path", lambda fund_id=None: path)
+    monkeypatch.setattr(auth, "get_db_path", lambda: path)
+    monkeypatch.setattr(funds, "get", lambda fid: {"id": fid, "name": "x", "members": []})
+    monkeypatch.setattr(funds, "update", lambda *a, **k: None)
+    monkeypatch.setattr(gr, "_archive_dir", lambda: tmp_path / "packs")
+    monkeypatch.setattr(ops_monitor, "DIR", tmp_path / "mon")
+    monkeypatch.setattr(backup, "DEST", tmp_path / "bk")
+
+    def uconn():
+        c = sqlite3.connect(tmp_path / "usage.db")
+        c.row_factory = sqlite3.Row
+        return c
+    monkeypatch.setattr(usage, "_conn", uconn)
+    monkeypatch.setattr(usage, "_ready", False)
+    accounts.invalidate_cache()
+    accounts.migrate()
+    accounts.set_password("analyst", "Gov-analyst-Pass-2026!x")
+    moriah.setup("main", "admin")
+    from api.main import app
+    c = TestClient(app)
+    assert c.get("/api/v1/governance/track-record").status_code == 401           # signed-in only
+    c.headers["Authorization"] = f"Bearer {accounts.issue_token(accounts.get_user('analyst'))}"
+    assert c.get("/api/v1/governance/track-record").json()["stats"]["months"] == 0
+    d = c.get("/api/v1/governance/ddq").json()
+    assert d["counts"]["gap"] >= 1 and d["answers"]
+    assert c.get("/api/v1/governance/backup").json()["last"] is None
+    assert c.post("/api/v1/governance/backup/run").status_code == 403             # analysts cannot run backups
+    assert c.get("/api/v1/governance/report/monthly/archive/2026-01").status_code == 404
+    assert c.post("/api/v1/usage", json={"events": [{"screen": "mkt:WEI", "seconds": 4}],
+                                         "known": [{"screen": "mkt:WEI", "label": "World indices", "area": "markets"}]}).json() == {"events": 1, "known": 1}
+    s = c.get("/api/v1/usage/summary?days=30").json()
+    assert s["screens"][0]["screen"] == "mkt:WEI" and s["screens"][0]["users"] == 1

@@ -320,6 +320,25 @@ async def gov_backup_restore_test(request: Request):
     return await _t(backup.restore_test)
 
 
+@router.get("/api/v1/governance/models/{mid}/g1-report")
+async def gov_g1_report(mid: int, request: Request, symbols: str = Query(..., max_length=300), implementation: str = Query("", max_length=300),
+                        start: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$")):
+    """G1 data-approval evidence for a model's series: coverage, integrity, point-in-time and timing. Prepares the
+    sign-off; it does not give it."""
+    from api import governance as gov
+    from api.marketdata.core import _cached
+    from api.quant import data_approval
+    from api.quant.data import clean_symbols
+    _user(request)
+    await _t(gov.get_model, mid)                                            # 404 for an unknown model
+    syms, bad = clean_symbols([x for x in symbols.split(",") if x.strip()])
+    impl, bad2 = clean_symbols([x for x in implementation.split(",") if x.strip()])
+    if bad or bad2 or not syms:
+        raise HTTPException(400, f"Invalid symbol(s): {', '.join((bad + bad2)[:5]) or 'none given'}")
+    key = f"g1rep:{','.join(syms)}|{','.join(impl)}|{start}"
+    return await _t(lambda: _cached(key, 6 * 3600, lambda: data_approval.g1_report(syms[:12], start, impl[:12])))
+
+
 @router.get("/api/v1/governance/scorecard")
 async def gov_scorecard(request: Request):
     """The board scorecard: research, trading and risk, organisation, data and commercial measures."""
