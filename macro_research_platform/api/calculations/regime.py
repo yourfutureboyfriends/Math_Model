@@ -290,6 +290,13 @@ def duration_tilt(regime: str, growth: Optional[float] = None) -> str:
     return rc.duration_bias if rc else "neutral"
 
 
+# How much each playbook call has been worth, stated next to the call (measured as described above).
+CALL_EVIDENCE = {
+    "duration": "small edge: right way in 3 of 4 decades since 1990",
+    "commodity": "weak edge: positive overall, not every decade",
+}
+
+
 def get_regime_characteristics(regime: str) -> RegimeCharacteristics:
     """Get characteristics for a regime."""
     normalized = regime.lower().strip() if regime else "goldilocks"

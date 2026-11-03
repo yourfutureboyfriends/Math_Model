@@ -137,7 +137,7 @@ function MacroTiles({ d }: { d: Desk }) {
       <div title={(m.recession_models?.models ?? []).map((r) => `${r.model}: ${fmtPct(r.probability, 1)} — ${r.basis}`).join('\n')}>
         <Tile label="Recession 12M (composite)" value={fmtPct(m.recession_probability ?? null, 1)}
           sub={m.recession_models?.models?.length && m.recession_models.min != null
-            ? `${m.recession_models.models.length} models: ${fmtPct(m.recession_models.min, 0)}–${fmtPct(m.recession_models.max ?? null, 0)} · median ${fmtPct(m.recession_models.median ?? null, 0)}`
+            ? `single indicators ${fmtPct(m.recession_models.min, 0)}–${fmtPct(m.recession_models.max ?? null, 0)}`
             : m.sahm != null ? `Sahm ${m.sahm.toFixed(2)}pp` : undefined}
           className={(m.recession_probability ?? 0) > 0.3 ? 'text-red' : ''} />
       </div>

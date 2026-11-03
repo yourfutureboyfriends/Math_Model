@@ -261,13 +261,21 @@ def evaluate(rows: List[Dict[str, Any]], start_year: int = EVAL_START, announce_
                   "brier_skill_vs_base_rate": round(1 - bs / base_bs, 3) if base_bs else None,
                   "log_loss": round(float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p))), 4)}
     p = np.array(preds["ensemble_calibrated"])
-    edges = [0, .1, .2, .3, .5, .7, 1.0001]
+    # Four buckets, each with a Wilson 95% range: finer buckets held too few forecasts (and few separate recession
+    # episodes) to read — e.g. a 50–70% bucket of 45 months swung on one episode. Months within an episode are not
+    # independent, so even these ranges are on the narrow side.
+    edges = [0, .1, .3, .7, 1.0001]
     calib = []
     for lo, hi in zip(edges[:-1], edges[1:]):
         k = (p >= lo) & (p < hi)
         if k.any():
-            calib.append({"range": f"{lo:.0%}–{min(hi, 1):.0%}", "forecasts": int(k.sum()),
-                          "mean_probability": round(float(p[k].mean()), 3), "recession_frequency": round(float(y[k].mean()), 3)})
+            n, f = int(k.sum()), float(y[k].mean())
+            z = 1.96
+            centre = (f + z * z / (2 * n)) / (1 + z * z / n)
+            half = z * np.sqrt(f * (1 - f) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+            calib.append({"range": f"{lo:.0%}–{min(hi, 1):.0%}", "forecasts": n,
+                          "mean_probability": round(float(p[k].mean()), 3), "recession_frequency": round(f, 3),
+                          "frequency_95": [round(max(0.0, centre - half), 3), round(min(1.0, centre + half), 3)]})
     since_2005 = np.array([m >= "2005-01" for m in test_months])
     sub = {}
     if since_2005.any():

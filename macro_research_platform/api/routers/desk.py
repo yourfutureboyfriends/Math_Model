@@ -114,26 +114,33 @@ async def _macro_block() -> Dict[str, Any]:
 
 
 def recession_models(macro: Dict[str, Any], cycle: Dict[str, Any], rates: Dict[str, Any]) -> Dict[str, Any]:
-    """12-month US recession probability from each model, with the range and median."""
+    """12-month US recession probability: the headline (the scored ensemble) and, separately, the single-indicator
+    models it is built from or compared with. The range and median are of the single indicators only — the headline is
+    not one vote among them (it combines them and carries its own out-of-sample record)."""
     rows = []
 
-    def add(name, value, basis):
+    def add(name, value, basis, role="single indicator"):
         if isinstance(value, (int, float)):
-            rows.append({"model": name, "probability": round(float(value), 4), "basis": basis})
+            rows.append({"model": name, "probability": round(float(value), 4), "basis": basis, "role": role})
 
-    add("Composite", macro.get("recession_probability"), "headline: term spread + credit (EBP) ensemble, scored out of sample")
+    add("Headline", macro.get("recession_probability"),
+        "term spread + credit + payrolls ensemble, recalibrated; scored out of sample", role="headline")
     add("Yield curve (10Y–3M)", ((rates.get("yieldCurves") or {}).get("US") or {}).get("recessionProb"),
-        "probit, Estrella & Mishkin (1998)")
+        "single-indicator probit, Estrella & Mishkin (1998)")
     add("Near-term forward spread", (cycle.get("near_term_forward_spread") or {}).get("recession_probability_12m"),
-        "probit, Engstrom & Sharpe (2019)")
+        "single-indicator probit, Engstrom & Sharpe (2019)")
     add("Excess bond premium", (cycle.get("excess_bond_premium") or {}).get("fed_recession_probability_12m"),
-        "Federal Reserve, Gilchrist & Zakrajšek (2012)")
+        "Federal Reserve's own EBP model, Gilchrist & Zakrajšek (2012)")
+    singles = sorted(r["probability"] for r in rows if r["role"] != "headline")
     if not rows:
         return {"models": []}
-    ps = sorted(r["probability"] for r in rows)
-    mid = len(ps) // 2
-    median = ps[mid] if len(ps) % 2 else (ps[mid - 1] + ps[mid]) / 2
-    return {"models": rows, "min": ps[0], "max": ps[-1], "median": round(median, 4)}
+    out: Dict[str, Any] = {"models": rows,
+                           "headline": next((r["probability"] for r in rows if r["role"] == "headline"), None)}
+    if singles:
+        mid = len(singles) // 2
+        out.update(min=singles[0], max=singles[-1],
+                   median=round(singles[mid] if len(singles) % 2 else (singles[mid - 1] + singles[mid]) / 2, 4))
+    return out
 
 
 @router.get("/api/v1/desk/account")

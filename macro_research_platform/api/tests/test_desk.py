@@ -136,3 +136,13 @@ def test_account_bar_is_the_slim_fund_summary(client, monkeypatch):
     d = client.get("/api/v1/desk/account", headers={"Authorization": f"Bearer {tok}"}).json()
     assert d["available"] and d["nav"] == 110.0 and d["day_pnl_pct"] == 0.1      # 10 on the previous 100
     assert d["gross_pct"] == 0.9 and d["net_pct"] == 0.3 and d["limits"] == "WARN" and d["positions"] == 3
+
+
+def test_recession_models_keep_the_headline_out_of_the_single_indicator_range():
+    from api.routers.desk import recession_models
+    r = recession_models({"recession_probability": 0.035},
+                         {"near_term_forward_spread": {"recession_probability_12m": 0.196},
+                          "excess_bond_premium": {"fed_recession_probability_12m": 0.091}},
+                         {"yieldCurves": {"US": {"recessionProb": 0.2}}})
+    assert r["headline"] == 0.035 and r["min"] == 0.091 and r["max"] == 0.2 and r["median"] == 0.196
+    assert [m["role"] for m in r["models"]].count("headline") == 1

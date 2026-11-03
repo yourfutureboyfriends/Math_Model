@@ -95,8 +95,9 @@ function RecessionRecord() {
             <td className={`text-right font-mono ${s05?.brier_skill_vs_base_rate < 0 ? 'text-red' : ''}`}>{skill(s05?.brier_skill_vs_base_rate)}</td>
           </tr>)}</tbody></table></div>
         {ev.calibration?.length > 0 && <div className="text-2xs text-text-tertiary">
-          Calibration (forecast → how often a recession followed):{' '}
-          {ev.calibration.map((c: any) => <span key={c.range} className="mr-2 font-mono">{c.range}: {pct(c.recession_frequency)} <span className="opacity-70">(n={c.forecasts})</span></span>)}
+          Calibration — when the headline read… (how often a recession followed, 95% range):{' '}
+          {ev.calibration.map((c: any) => <span key={c.range} className="mr-3 font-mono whitespace-nowrap" title={`${c.forecasts} monthly forecasts averaging ${pct(c.mean_probability)}`}>
+            {c.range}: {pct(c.recession_frequency)}{c.frequency_95 && <span className="opacity-70"> ({pct(c.frequency_95[0])}–{pct(c.frequency_95[1])})</span>}</span>)}
         </div>}
         <div className="text-2xs text-text-tertiary">{ev.method} The headline is recalibrated on the model's own past forecasts; readings of 70%+ have still been over-confident (the 2022–24 inverted curve brought no recession). The EBP history is the Fed's re-estimate, not a real-time vintage.</div>
       </> : <div className="text-2xs text-text-tertiary">Out-of-sample record unavailable for this model.</div>}
@@ -154,7 +155,8 @@ export function CycleRiskSection() {
                 </div>
                 <div className="text-xs text-text-secondary">{n.signal}</div>
                 <div className="text-2xs text-text-tertiary">
-                  12M recession probability (probit, {n.model?.training_months} months): <span className="text-text-primary font-mono">{pct(n.recession_probability_12m)}</span>
+                  <span title="This spread on its own, fitted on all history (in-sample). The headline above combines it with the 10Y–3M spread, credit (EBP) and payrolls and is scored out of sample.">
+                    Spread-only probit (in-sample): <span className="text-text-primary font-mono">{pct(n.recession_probability_12m)}</span> · input to the headline</span>
                 </div>
                 <Sparkline points={n.history} unit="pp" zero />
               </> : <div className="text-2xs text-text-tertiary">{n?.reason ?? 'Unavailable'}</div>}
@@ -170,7 +172,8 @@ export function CycleRiskSection() {
                 </div>
                 <div className="text-xs text-text-secondary">{e.signal}</div>
                 <div className="text-2xs text-text-tertiary">
-                  Fed 12M recession probability: <span className="text-text-primary font-mono">{pct(e.fed_recession_probability_12m)}</span>
+                  <span title="The Federal Reserve's own EBP-based model, published with the series. The headline above is this platform's ensemble.">
+                    Fed's EBP-only model: <span className="text-text-primary font-mono">{pct(e.fed_recession_probability_12m)}</span></span>
                   {e.ebp_change_12m_pp != null && <> · 12M change {e.ebp_change_12m_pp > 0 ? '+' : ''}{e.ebp_change_12m_pp.toFixed(2)}pp</>}
                 </div>
                 <Sparkline points={(e.history ?? []).map((h: any) => ({ date: h.date, value: h.ebp }))} unit="pp" zero />
