@@ -38,6 +38,13 @@ async def ops_monitor():
     return await asyncio.to_thread(ops.summary)
 
 
+@router.get("/api/v1/ops/archive")
+async def ops_archive():
+    """Point-in-time archive: stored file vintages (e.g. the Fed's EBP) and the daily commodity-curve history."""
+    from api import vintage_archive as va
+    return await asyncio.to_thread(va.status)
+
+
 class UsageIn(BaseModel):
     events: List[Dict[str, Any]] = Field(default_factory=list, max_length=500)
     known: List[Dict[str, Any]] = Field(default_factory=list, max_length=2000)

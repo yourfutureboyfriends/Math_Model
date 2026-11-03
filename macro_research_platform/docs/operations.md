@@ -22,6 +22,7 @@ Only one backend may hold port 8000. If it is taken: `lsof -nP -iTCP:8000 -sTCP:
 | `governance_monthly_pack` | 07:00 on the 1st | `data/processed/reports/monthly/<fund>/<YYYY-MM>.json` (frozen, never overwritten) |
 | `ops_feeds` | every 10 min | `data/processed/monitor/events.jsonl` (incident opened / resolved) |
 | `ops_audit` | 22:30 Mon–Fri | `data/processed/audit/accuracy_*.json`; failures become critical events |
+| `commodity_curve_snapshot` | 22:45 Mon–Fri | `commodity_curves` table (main db): each commodity's futures curve as of that day — the history commodity carry will be tested on. The Fed's EBP file is also kept per version (`data_vintages`) whenever it changes. Status: `GET /api/v1/ops/archive` |
 
 The scheduler runs only while the backend runs. A job missed while the machine was off runs at the next start if it
 is inside its grace period (backup 12 h, monthly pack 3 days).

@@ -614,6 +614,17 @@ async def lifespan(app: FastAPI):
                 logger.warning("[backup] failed: %s", e)
         _scheduler.add_job(func=_backup, trigger=CronTrigger(hour=3, minute=15), id="daily_backup", replace_existing=True,
                            max_instances=1, coalesce=True, misfire_grace_time=12 * 3600)
+        def _curve_snapshot():
+            from api import vintage_archive as _va
+            try:
+                r = _va.snapshot_commodity_curves()
+                logger.info("[archive] commodity curves %s: %d saved, %d failed", r["day"], len(r["saved"]), len(r["failed"]))
+            except Exception as e:                                        # noqa: BLE001
+                logger.warning("[archive] commodity curve snapshot failed: %s", e)
+        # after the US settlement: the point-in-time history that commodity carry will be tested on
+        _scheduler.add_job(func=_curve_snapshot, trigger=CronTrigger(day_of_week="mon-fri", hour=22, minute=45),
+                           id="commodity_curve_snapshot", replace_existing=True, max_instances=1, coalesce=True,
+                           misfire_grace_time=6 * 3600)
         _scheduler.add_job(func=_archive_packs, trigger=CronTrigger(day=1, hour=7, minute=0), id="governance_monthly_pack",
                            replace_existing=True, misfire_grace_time=3 * 24 * 3600, coalesce=True)
 

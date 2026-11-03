@@ -130,6 +130,11 @@ def _fetch_ebp() -> List[List]:
     import requests
     r = requests.get(EBP_URL, headers=_UA, timeout=60)
     r.raise_for_status()
+    try:                                       # the Fed re-estimates the EBP and keeps no vintages: keep each version
+        from api.vintage_archive import archive
+        archive("ebp_csv", r.text)
+    except Exception as e:                     # noqa: BLE001 — archiving never blocks the data
+        logger.debug("[research] EBP vintage not archived: %s", e)
     rows = []
     for line in r.text.strip().splitlines()[1:]:
         d, gz, ebp, prob = line.split(",")[:4]
