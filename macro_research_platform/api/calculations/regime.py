@@ -256,6 +256,24 @@ def confirmed_regime(raw_labels: List[str], confirm: int = CONFIRM_DAYS) -> Dict
     return {"current": cur, "pending": cand, "pending_days": n if cand else 0, "confirm_days": confirm}
 
 
+# Commodity call. The regime's static commodity bias (overweight in reflation / stagflation / recovery) pointed the
+# wrong way: replayed daily 2004–26, its overweight periods trailed its underweight ones by 4.7 pp of S&P GSCI
+# return over the next 3 months, in both halves of the sample. Following the inflation *direction* instead
+# (signals.calculate_inflation_direction: breakevens and commodities over ~3 months) netted +0.6 pp. Weak and
+# sample-dependent, but no longer systematically wrong — so the commodity call follows direction when it is known.
+DIRECTION_BAND = (0.45, 0.55)
+
+
+def commodity_tilt(regime: str, inflation_direction: Optional[float] = None) -> str:
+    """'overweight' / 'neutral' / 'underweight' for commodities: from the inflation direction when available,
+    else the regime's static bias."""
+    if inflation_direction is not None:
+        lo, hi = DIRECTION_BAND
+        return "overweight" if inflation_direction > hi else "underweight" if inflation_direction < lo else "neutral"
+    rc = REGIME_CHARACTERISTICS.get((regime or "").strip().lower())
+    return rc.commodity_bias if rc else "neutral"
+
+
 def get_regime_characteristics(regime: str) -> RegimeCharacteristics:
     """Get characteristics for a regime."""
     normalized = regime.lower().strip() if regime else "goldilocks"

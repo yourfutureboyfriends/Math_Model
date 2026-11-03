@@ -37,6 +37,8 @@ class RegimeData(BaseModel):
     interpretations: List[Dict[str, str]]
     alert: Optional[str] = None
     playbook: Optional[RegimePlaybookData] = None
+    # 0–1, 0.5 = flat: breakevens and commodities over ~3 months; drives the commodity call (regime.commodity_tilt)
+    inflationDirection: Optional[float] = None
 
     @field_validator('confidenceScore', mode='before')
     @classmethod
@@ -471,6 +473,7 @@ class RecessionData(BaseModel):
     lastUpdated: Optional[str] = None
     # Headline model (term spread + credit ensemble when available), its target and out-of-sample record.
     ensembleProb: Optional[float] = None
+    rawProbability: Optional[float] = None
     model: Optional[str] = None
     target: Optional[str] = None
     evaluation: Optional[Dict[str, Any]] = None

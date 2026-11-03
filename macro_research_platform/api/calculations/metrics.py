@@ -73,6 +73,7 @@ def calculate_recession_probability(
         "sahmValue": round(sahm_value, 2) if sahm_value is not None else None,
         "sahmSignal": sahm_signal,
         "ensembleProb": round(ens_prob, 4) if ens_prob is not None else None,
+        "rawProbability": ensemble.get("raw_probability") if ens_prob is not None else None,
         "model": (ensemble["model"] if ens_prob is not None else
                   "Fitted probit (FRED)" if fitted_probit_prob is not None else "Estrella-Mishkin probit"),
         "target": ensemble.get("target") if ens_prob is not None else "NBER recession 12 months ahead",

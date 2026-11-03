@@ -12,11 +12,11 @@ Regime-aware target portfolio and rebalance orders — pure, tested.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Sequence
+from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 
-from api.calculations.regime import REGIME_CHARACTERISTICS
+from api.calculations.regime import REGIME_CHARACTERISTICS, commodity_tilt
 
 UNIVERSE: Dict[str, str] = {
     "SPY": "US equities", "TLT": "Long Treasuries", "TIP": "Inflation-linked bonds",
@@ -28,15 +28,16 @@ _MULT = {"overweight": 1.5, "long": 1.5, "high": 1.5,
          "underweight": 0.5, "short": 0.5, "low": 0.5}
 
 
-def regime_budgets(regime: str) -> Dict[str, float]:
+def regime_budgets(regime: str, inflation_direction: Optional[float] = None) -> Dict[str, float]:
     """Risk budget per universe asset (normalized to sum to 1) for a regime.
-    Unknown regimes get equal budgets."""
+    Unknown regimes get equal budgets. The commodity budget follows the inflation direction when given
+    (regime.commodity_tilt)."""
     rc = REGIME_CHARACTERISTICS.get((regime or "").strip().lower())
     if rc is None:
         return {a: 1.0 / len(UNIVERSE) for a in UNIVERSE}
     eq = _MULT.get(rc.equity_bias, 1.0)
     dur = _MULT.get(rc.duration_bias, 1.0)
-    com = _MULT.get(rc.commodity_bias, 1.0)
+    com = _MULT.get(commodity_tilt(regime, inflation_direction), 1.0)
     risk = _MULT.get(rc.risk_appetite, 1.0)
     raw = {
         "SPY": eq,
@@ -77,7 +78,8 @@ def risk_contributions(cov: np.ndarray, w: np.ndarray) -> np.ndarray:
 
 
 def target_portfolio(regime: str, daily_returns: Dict[str, Sequence[float]],
-                     vol_target: float = 0.10, max_gross: float = 1.5) -> Dict:
+                     vol_target: float = 0.10, max_gross: float = 1.5,
+                     inflation_direction: Optional[float] = None) -> Dict:
     """Target weights (% of the sleeve's NAV) for a regime.
 
     daily_returns: aligned daily returns per universe ticker. Assets without history are
@@ -89,7 +91,7 @@ def target_portfolio(regime: str, daily_returns: Dict[str, Sequence[float]],
     n = min(len(daily_returns[a]) for a in assets)
     R = np.column_stack([np.asarray(daily_returns[a], dtype=float)[-n:] for a in assets])
     cov = np.cov(R, rowvar=False)
-    budgets_all = regime_budgets(regime)
+    budgets_all = regime_budgets(regime, inflation_direction)
     b = np.array([budgets_all[a] for a in assets])
     w = risk_budget_weights(cov, b)
     unlevered_vol = float(np.sqrt(w @ cov @ w * 252))

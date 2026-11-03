@@ -15,8 +15,16 @@ the ensemble had AUROC 0.88 and a Brier skill of +0.28 vs the base rate; the pre
 fitted in-sample) had AUROC 0.65 and +0.14, and since 2005 it was worse than the base rate (−0.24) where the ensemble
 stayed positive. The record is recomputed live here (`evaluation`) rather than quoted.
 
+Recalibration: raw readings of 70%+ were followed by a recession only 46% of the time (the 2022–24 inverted curve,
+no recession). The published probability is Platt-recalibrated — a logistic map of the raw probability's log-odds,
+learned each year only from earlier out-of-sample forecasts whose outcomes were known (`learned_platt`). Out of
+sample 1985–2025 it raised the Brier skill from +0.28 to +0.31 (since 2005: +0.09 to +0.12) and cut log loss from
+0.410 to 0.380; ranking dipped (AUROC 0.88 → 0.85) because the map is re-learned each year — within a year it keeps
+the order. A hard ceiling was tested too and rejected: it flattened every high reading to one value. Readings of 70%+
+remain over-confident (about half were followed by recession). The raw reading is kept alongside.
+
 Caveats carried with the result: the EBP history is re-estimated by the Fed (not a real-time vintage); NBER dates are
-final, not as first announced; high readings were over-confident in 2022–24 (an inverted curve, no recession).
+final, not as first announced.
 All data are free Federal Reserve files (no FRED key needed).
 """
 from __future__ import annotations
@@ -125,12 +133,46 @@ def _auc(p: np.ndarray, y: np.ndarray) -> Optional[float]:
     return float(np.mean(pos[:, None] > neg[None, :]) + 0.5 * np.mean(pos[:, None] == neg[None, :]))
 
 
+CAL_MIN_FORECASTS, CAL_MIN_POSITIVES = 120, 10
+
+
+def _logit(p):
+    p = np.clip(np.asarray(p, float), 1e-4, 1 - 1e-4)
+    return np.log(p / (1 - p))
+
+
+def learned_platt(probs: List[float], outcomes: List[int]) -> Optional[List[float]]:
+    """[a, b] of P = 1 / (1 + exp(−(a + b·logit(raw)))) fitted on past forecasts (lightly ridge-regularised toward
+    the identity map a=0, b=1); None with too little history."""
+    if len(probs) < CAL_MIN_FORECASTS or sum(outcomes) < CAL_MIN_POSITIVES:
+        return None
+    X = np.column_stack([np.ones(len(probs)), _logit(probs)])
+    y = np.asarray(outcomes, float)
+    prior, lam = np.array([0.0, 1.0]), 1e-2
+    b = prior.copy()
+    for _ in range(60):
+        p = 1 / (1 + np.exp(-(X @ b)))
+        grad = X.T @ (y - p) - lam * (b - prior)
+        hess = -(X * (p * (1 - p))[:, None]).T @ X - lam * np.eye(2)
+        step = np.linalg.solve(hess, grad)
+        b = b - step
+        if np.abs(step).max() < 1e-9:
+            break
+    return [float(b[0]), float(b[1])]
+
+
+def platt_apply(coef: Optional[List[float]], p: float) -> float:
+    if coef is None:
+        return p
+    return float(1 / (1 + np.exp(-(coef[0] + coef[1] * float(_logit(p))))))
+
+
 def evaluate(rows: List[Dict[str, Any]], start_year: int = EVAL_START, announce_lag: int = 12) -> Optional[Dict[str, Any]]:
     """Pseudo-out-of-sample: each January refit on months whose label was known (12-month window + NBER lag),
     forecast that year's months. Scores the ensemble, the term spread alone and the base rate."""
     by_month = {r["month"]: r for r in rows}
     months = sorted(by_month)
-    preds: Dict[str, List[float]] = {"ensemble": [], "term_spread_only": [], "base_rate": []}
+    preds: Dict[str, List[float]] = {"ensemble": [], "ensemble_calibrated": [], "term_spread_only": [], "base_rate": []}
     ys: List[int] = []
     test_months: List[str] = []
     last_year = int(months[-1][:4])
@@ -145,8 +187,13 @@ def evaluate(rows: List[Dict[str, Any]], start_year: int = EVAL_START, announce_
         fits = {k: probit_fit(_design(train, c), ytr) for k, c in {**SPECS, **BENCH}.items()}
         if any(v is None for v in fits.values()):
             continue
+        # recalibration learned from earlier forecasts whose outcome (window + lag) was known by this January
+        known = [i for i, m in enumerate(test_months) if m < cutoff]
+        cal = learned_platt([preds["ensemble"][i] for i in known], [ys[i] for i in known])
         for r in test:
-            preds["ensemble"].append(ensemble_prob(fits, r))
+            p = ensemble_prob(fits, r)
+            preds["ensemble"].append(p)
+            preds["ensemble_calibrated"].append(platt_apply(cal, p))
             preds["term_spread_only"].append(probit_prob(fits["ts_only"], [r["ts"]]))
             preds["base_rate"].append(float(ytr.mean()))
             ys.append(int(r["y"]))
@@ -162,7 +209,7 @@ def evaluate(rows: List[Dict[str, Any]], start_year: int = EVAL_START, announce_
         out[k] = {"auroc": None if k == "base_rate" else round(_auc(p, y), 3), "brier": round(bs, 4),
                   "brier_skill_vs_base_rate": round(1 - bs / base_bs, 3) if base_bs else None,
                   "log_loss": round(float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p))), 4)}
-    p = np.array(preds["ensemble"])
+    p = np.array(preds["ensemble_calibrated"])
     edges = [0, .1, .2, .3, .5, .7, 1.0001]
     calib = []
     for lo, hi in zip(edges[:-1], edges[1:]):
@@ -174,11 +221,13 @@ def evaluate(rows: List[Dict[str, Any]], start_year: int = EVAL_START, announce_
     sub = {}
     if since_2005.any():
         ys5, b5 = y[since_2005], np.mean((np.array(preds["base_rate"])[since_2005] - y[since_2005]) ** 2)
-        for k in ("ensemble", "term_spread_only"):
+        for k in ("ensemble_calibrated", "ensemble", "term_spread_only"):
             pk = np.array(preds[k])[since_2005]
             sub[k] = {"auroc": round(_auc(pk, ys5), 3), "brier_skill_vs_base_rate": round(1 - float(np.mean((pk - ys5) ** 2)) / b5, 3)}
+    labelled_now = [i for i, m in enumerate(test_months)]
     return {"forecasts": len(ys), "recession_months": int(y.sum()), "from": test_months[0], "to": test_months[-1],
             "models": out, "since_2005": sub, "calibration": calib,
+            "calibration_now": learned_platt([preds["ensemble"][i] for i in labelled_now], [ys[i] for i in labelled_now]),
             "method": f"Refit every January from {start_year} on months whose 12-month window and a {announce_lag}-month "
                       "NBER announcement lag had closed; forecasts that year's months; scored against NBER recessions "
                       "within 12 months. Brier skill > 0 beats always forecasting the training base rate."}
@@ -197,23 +246,28 @@ def compute() -> Dict[str, Any]:
     lc = data["latest_curve"]
     x_now = {"ts": lc["ts"], "ntfs": lc["ntfs"], "ebp": data["ebp_latest"]}
     parts = {k: probit_prob(fits[k], [x_now[c] for c in cols]) for k, cols in SPECS.items()}
-    prob = float(np.mean(list(parts.values())))
-    hist = [{"date": r["month"], "probability": round(ensemble_prob(fits, r), 4)} for r in rows[-24:]]
+    raw = float(np.mean(list(parts.values())))
+    ev = evaluate(rows)
+    cal = (ev or {}).get("calibration_now")
+    prob = platt_apply(cal, raw)
+    hist = [{"date": r["month"], "probability": round(platt_apply(cal, ensemble_prob(fits, r)), 4)} for r in rows[-24:]]
     return {
-        "available": True, "probability": round(prob, 4),
+        "available": True, "probability": round(prob, 4), "raw_probability": round(raw, 4),
+        "recalibration": [round(c, 4) for c in cal] if cal else None,
         "components": {"term_spread_plus_ebp": round(parts["ts_ebp"], 4), "forward_spread_plus_ebp": round(parts["ntfs_ebp"], 4)},
         "inputs": {"term_spread_10y_3m_pp": round(lc["ts"], 3), "near_term_forward_spread_pp": round(lc["ntfs"], 3),
                    "curve_as_of": lc["date"], "excess_bond_premium_pp": round(data["ebp_latest"], 3), "ebp_as_of": data["ebp_as_of"]},
         "coefficients": {k: [round(float(b), 4) for b in v] for k, v in fits.items()},
         "training_months": len(labelled), "history": hist,
-        "evaluation": evaluate(rows),
+        "evaluation": ev,
         "target": "NBER recession in any of the next 12 months",
         "model": "Term spread + credit ensemble (10Y–3M + EBP, forward spread + EBP; probit average)",
         "sources": ["Federal Reserve GSW zero-coupon curve (feds200628)", "Federal Reserve excess bond premium (ebp_csv)"],
         "source_status": status,
         "caveats": ["EBP history is re-estimated by the Fed, not a real-time vintage",
                     "NBER dates are final, not as first announced",
-                    "High readings were over-confident in 2022–24 (inverted curve, no recession)"],
+                    "Platt-recalibrated on past out-of-sample forecasts: raw readings of 70%+ were followed by recession "
+                    "only about half the time (2022–24 inverted curve)" if cal else "Not recalibrated: too little history"],
     }
 
 

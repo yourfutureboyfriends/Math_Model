@@ -65,7 +65,8 @@ function RecessionRecord() {
   const ev = r?.evaluation;
   if (!r || r.probability == null) return null;
   const rows: [string, any, any][] = ev ? [
-    ['Headline ensemble', ev.models?.ensemble, ev.since_2005?.ensemble],
+    ['Headline (ensemble, recalibrated)', ev.models?.ensemble_calibrated ?? ev.models?.ensemble, ev.since_2005?.ensemble_calibrated ?? ev.since_2005?.ensemble],
+    ...(ev.models?.ensemble_calibrated ? [['Ensemble before recalibration', ev.models?.ensemble, ev.since_2005?.ensemble] as [string, any, any]] : []),
     ['10Y–3M spread only', ev.models?.term_spread_only, ev.since_2005?.term_spread_only],
     ['Base rate (always the average)', ev.models?.base_rate, null],
   ] : [];
@@ -77,6 +78,7 @@ function RecessionRecord() {
         <span className="text-lg font-mono font-bold text-text-primary">{pct(r.probability)}</span>
         <span className="text-2xs text-text-secondary">{r.model ?? 'model'}</span>
         <span className="text-2xs text-text-tertiary">· target: {r.target ?? '12 months'}</span>
+        {r.rawProbability != null && r.rawProbability !== r.probability && <span className="text-2xs text-text-tertiary" title="The ensemble's reading before the calibration learned from its past forecasts">· raw {pct(r.rawProbability)}</span>}
       </div>
       {ev ? <>
         <div className="overflow-x-auto"><table className="w-full text-2xs">
@@ -96,7 +98,7 @@ function RecessionRecord() {
           Calibration (forecast → how often a recession followed):{' '}
           {ev.calibration.map((c: any) => <span key={c.range} className="mr-2 font-mono">{c.range}: {pct(c.recession_frequency)} <span className="opacity-70">(n={c.forecasts})</span></span>)}
         </div>}
-        <div className="text-2xs text-text-tertiary">{ev.method} High readings have been over-confident (the 2022–24 inverted curve brought no recession); the EBP history is the Fed's re-estimate, not a real-time vintage.</div>
+        <div className="text-2xs text-text-tertiary">{ev.method} The headline is recalibrated on the model's own past forecasts; readings of 70%+ have still been over-confident (the 2022–24 inverted curve brought no recession). The EBP history is the Fed's re-estimate, not a real-time vintage.</div>
       </> : <div className="text-2xs text-text-tertiary">Out-of-sample record unavailable for this model.</div>}
     </div>
   );

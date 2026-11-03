@@ -1,6 +1,7 @@
 """Dashboard data handler using shared calculations module."""
 from api.schemas.models import DashboardData, RegimeData, KeyMetrics, RecessionData, SignalsData, SignalDetails, Scores, DataMetadata, RegimePlaybookData, BusinessLayerData, MetricWithSparkline, SignalStackData, SignalStackLayer
-from datetime import datetime, timedelta
+from datetime import date as _date_cls, datetime, timedelta
+from typing import Optional
 import logging
 
 # Import shared calculations
@@ -14,6 +15,8 @@ from api.calculations import (
     calculate_recession_probability,
     calculate_sector_allocation
 )
+from api.calculations.signals import calculate_inflation_direction
+from api.calculations.regime import commodity_tilt
 from api.calculations.models import estrella_mishkin_recession_prob
 from api.handlers.dashboard_sections import (
     load_section_inputs, build_momentum_veto, build_correlation_regime, build_debt_cycle,
@@ -323,6 +326,15 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
     # CPI YoY keyed by release date (monthly FRED panel; cached on disk).
     from api.handlers.macro_inputs import load_monthly_macro, cpi_release_series
     cpi_s = cpi_release_series(await _dash_asyncio.to_thread(load_monthly_macro))
+    gsci_s = inputs["gsci"]
+
+    def _infl_direction(d: str) -> Optional[float]:
+        """Inflation direction at date d (breakevens and commodities over ~3 months; signals.calculate_inflation_direction).
+        It drives the commodity call; the regime label itself keeps the inflation *level* axis, which is what makes
+        its equity calls useful (replayed 2004–26, swapping in direction cut the equity over/underweight spread from
+        3.6 to 0.7 pp)."""
+        back = (_date_cls.fromisoformat(d[:10]) - timedelta(days=91)).isoformat()
+        return calculate_inflation_direction(be_s.asof(d), be_s.asof(back), gsci_s.asof(d), gsci_s.asof(back))
 
     spx_level = prices.get('SPX') or spx_s.latest
     vix_level = prices.get('VIX') or vix_s.latest
@@ -442,6 +454,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
 
     # Classify regime using shared module
     _prev_regime = next((p["regime"] for p in reversed(points[:-1]) if p["regime"]), None)
+    inflation_direction = _infl_direction(now.strftime("%Y-%m-%d"))
     raw_regime, regime_confidence, _ = classify_regime(
         growth_score, inflation_score, liquidity_score, previous=_prev_regime
     )
@@ -548,7 +561,9 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         opportunities=[
             f"{regime_chars.equity_bias.title()} equities in {regime_name}",
             f"{regime_chars.duration_bias.capitalize()} duration positioning",
-            f"{regime_chars.commodity_bias.capitalize()} commodity exposure"
+            f"{commodity_tilt(regime_name, inflation_direction).capitalize()} commodity exposure"
+            + (" (inflation pressure " + ("rising" if inflation_direction > 0.55 else "falling" if inflation_direction < 0.45 else "flat")
+               + ": breakevens and commodities, 3 months)" if inflation_direction is not None else "")
         ],
         positioningGuidance=f"{regime_name}: {regime_chars.description}"
     )
@@ -564,9 +579,12 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         interpretations=[
             {"factor": "Growth", "impact": "Positive" if growth_score > 0.5 else "Neutral", "color": "success" if growth_score > 0.5 else "neutral"},
             {"factor": "Inflation", "impact": "Stable" if 0.3 < inflation_score < 0.7 else "Elevated", "color": "info" if 0.3 < inflation_score < 0.7 else "warning"},
+            *([{"factor": "Inflation direction", "impact": "Rising" if inflation_direction > 0.55 else "Falling" if inflation_direction < 0.45 else "Flat",
+                "color": "warning" if inflation_direction > 0.55 else "info"}] if inflation_direction is not None else []),
             {"factor": "Liquidity", "impact": "Adequate" if liquidity_score > 0.4 else "Tight", "color": "neutral" if liquidity_score > 0.4 else "warning"},
         ],
-        playbook=playbook
+        playbook=playbook,
+        inflationDirection=inflation_direction,
     )
 
     # Create scores
@@ -642,6 +660,7 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
         components=recession_data["components"],
         history=recession_history,
         ensembleProb=recession_data.get("ensembleProb"),
+        rawProbability=recession_data.get("rawProbability"),
         model=recession_data.get("model"),
         target=recession_data.get("target"),
         evaluation=recession_data.get("evaluation"),

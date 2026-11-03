@@ -86,3 +86,38 @@ def test_a_brief_wobble_does_not_relabel_and_a_different_candidate_restarts_the_
     c = confirmed_regime(raw, confirm=5)
     assert c["current"] == "reflation" and c["pending"] == "stagflation" and c["pending_days"] == 1
     assert confirmed_regime([None, "slowdown"], confirm=5)["current"] == "slowdown"
+
+
+# ── recalibration, inflation direction and the commodity call ────────────────
+from api.calculations.idea_generation import desired_tilts  # noqa: E402
+from api.calculations.rebalance import regime_budgets  # noqa: E402
+from api.calculations.regime import commodity_tilt  # noqa: E402
+from api.calculations.signals import calculate_inflation_direction  # noqa: E402
+
+
+def test_platt_recalibration_learns_overconfidence_and_needs_history():
+    assert re_.learned_platt([0.9] * 50, [1] * 50) is None                      # too little history
+    rng = np.random.default_rng(1)
+    raw = rng.uniform(0.01, 0.99, 600)
+    y = (rng.uniform(size=600) < 0.5 * raw).astype(int)                         # outcomes at half the stated rate
+    coef = re_.learned_platt(list(raw), list(y))
+    assert coef is not None and re_.platt_apply(coef, 0.9) < 0.75               # high readings pulled down
+    assert re_.platt_apply(coef, 0.2) < re_.platt_apply(coef, 0.6)              # order kept
+    assert re_.platt_apply(None, 0.3) == 0.3
+
+
+def test_evaluation_reports_the_recalibrated_headline():
+    ev = re_.evaluate(_synthetic(), start_year=1990)
+    assert "ensemble_calibrated" in ev["models"] and "calibration_now" in ev
+
+
+def test_inflation_direction_and_commodity_call():
+    assert calculate_inflation_direction(2.5, 2.0, 110, 100) > 0.7               # breakevens and commodities up
+    assert calculate_inflation_direction(2.0, 2.5, 90, 100) < 0.3
+    assert calculate_inflation_direction(None, None, None, None) is None
+    assert calculate_inflation_direction(2.3, 2.3, None, None) == 0.5
+    assert commodity_tilt("stagflation", 0.30) == "underweight"                 # direction overrides the regime
+    assert commodity_tilt("slowdown", 0.70) == "overweight"
+    assert commodity_tilt("stagflation", None) == "overweight"                  # no direction → regime's bias
+    assert desired_tilts("reflation", 0.30)["commodity"] == -1 and desired_tilts("reflation")["commodity"] == 1
+    assert regime_budgets("reflation", 0.30)["DBC"] < regime_budgets("reflation")["DBC"]

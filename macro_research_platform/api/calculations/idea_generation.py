@@ -15,9 +15,9 @@ rationale, so a PM can see exactly *why* it was proposed. No fabricated convicti
 """
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
-from api.calculations.regime import REGIME_CHARACTERISTICS
+from api.calculations.regime import REGIME_CHARACTERISTICS, commodity_tilt
 from api.calculations.factor_model import FACTOR_PROXIES, FACTOR_LABELS
 
 # Instruments a trade idea can actually be executed in, where the factor's measurement proxy is not tradable
@@ -26,9 +26,10 @@ TRADE_PROXY: Dict[str, tuple] = {"volatility": ("VIXY", "VIX itself is not trada
                                                         "(it decays in contango)")}
 
 
-def desired_tilts(regime_key: str) -> Dict[str, int]:
+def desired_tilts(regime_key: str, inflation_direction: Optional[float] = None) -> Dict[str, int]:
     """Translate a regime's biases into a desired sign (+1 long / -1 short / 0 neutral)
-    for each tradable factor. Returns {} for an unknown regime."""
+    for each tradable factor. Returns {} for an unknown regime. The commodity sign follows the inflation
+    direction when given (regime.commodity_tilt)."""
     rc = REGIME_CHARACTERISTICS.get((regime_key or "").strip().lower())
     if rc is None:
         return {}
@@ -37,7 +38,7 @@ def desired_tilts(regime_key: str) -> Dict[str, int]:
     tilts: Dict[str, int] = {
         "equity": bias3.get(rc.equity_bias, 0),
         "rates": bias3.get(rc.duration_bias, 0),
-        "commodity": bias3.get(rc.commodity_bias, 0),
+        "commodity": bias3.get(commodity_tilt(regime_key, inflation_direction), 0),
         # Risk appetite drives credit (long HY when risk-on) and volatility (own vol as a
         # hedge when risk-off, i.e. desired +1 on the VIX factor in low-appetite regimes).
         "credit": bias3.get(rc.risk_appetite, 0),
@@ -56,14 +57,15 @@ def desired_tilts(regime_key: str) -> Dict[str, int]:
 
 
 def generate_ideas(dollar_exposures: Dict[str, float], regime_key: str,
-                   gross_exposure: float = 0.0, flat_threshold_frac: float = 0.02) -> List[Dict]:
+                   gross_exposure: float = 0.0, flat_threshold_frac: float = 0.02,
+                   inflation_direction: Optional[float] = None) -> List[Dict]:
     """Propose trades that move the book toward the regime playbook.
 
     dollar_exposures : {factor: $ P&L per 1.0 factor move} — the live book's exposure.
     gross_exposure   : book gross, used to decide when an exposure is effectively "flat".
     Returns a list of ideas ranked by misalignment severity (most misaligned first).
     """
-    tilts = desired_tilts(regime_key)
+    tilts = desired_tilts(regime_key, inflation_direction)
     if not tilts:
         return []
     flat = max(abs(gross_exposure) * flat_threshold_frac, 1.0)

@@ -520,9 +520,11 @@ async def rebalance(book: str = "Macro", regime: Optional[str] = None,
     from api.handlers.market_handler import _fetch_dated_closes_literal
 
     settings = await _thread(fund_store.get_settings)
+    from api.handlers.dashboard_handler import get_dashboard_data
+    _reg = (await get_dashboard_data(mode="live")).regime
+    infl_dir = getattr(_reg, "inflationDirection", None)          # the commodity budget follows inflation direction
     if regime is None:
-        from api.handlers.dashboard_handler import get_dashboard_data
-        regime = (await get_dashboard_data(mode="live")).regime.current
+        regime = _reg.current
     limits = merge_limits(await _thread(fund_store.get_limit_overrides))
 
     dated = {a: await _fetch_dated_closes_literal(a) for a in UNIVERSE}
@@ -532,7 +534,7 @@ async def rebalance(book: str = "Macro", regime: Optional[str] = None,
             common = set(d) if common is None else common & set(d)
     dates = sorted(common or [])
     rets = {a: returns_from_closes([dated[a][x] for x in dates]) for a in UNIVERSE if dated[a]}
-    tp = target_portfolio(regime, rets, vol_target=vol_target or settings["vol_target"],
+    tp = target_portfolio(regime, rets, inflation_direction=infl_dir, vol_target=vol_target or settings["vol_target"],
                           max_gross=limits["gross_exposure"]["soft"])
     if not tp.get("available"):
         return tp

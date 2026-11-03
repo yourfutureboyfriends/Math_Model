@@ -24,7 +24,8 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-YAHOO_TICKERS = {"spx": "^GSPC", "vix": "^VIX", "dxy": "DX-Y.NYB"}
+YAHOO_TICKERS = {"spx": "^GSPC", "vix": "^VIX", "dxy": "DX-Y.NYB",
+                 "gsci": "^SPGSCI"}   # S&P GSCI commodity index: the regime's inflation-direction input
 FRED_SERIES = {
     "dgs10": "DGS10",
     "dgs2": "DGS2",
