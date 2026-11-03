@@ -83,6 +83,26 @@ VERDICT_TEXT = {"alpha": "Real alpha after costs and multiple testing.",
                 "no edge": "No measurable edge after costs."}
 
 
+def _crisis(r: np.ndarray, b: np.ndarray, dates: List[str]) -> Dict[str, Any]:
+    """How a strategy behaves when equities fall — the job of trend and defensive sleeves, which an alpha test misses.
+    Monthly returns; crisis months = the worst tenth of benchmark months."""
+    import pandas as pd
+    if len(b) != len(r) or len(dates) != len(r) or len(r) < 250:
+        return {}
+    idx = pd.to_datetime(dates)
+    m = pd.DataFrame({"s": r, "b": b}, index=idx).fillna(0).groupby(pd.Grouper(freq="ME")).apply(lambda g: (1 + g).prod() - 1)
+    if len(m) < 36:
+        return {}
+    cut = m["b"].quantile(0.10)
+    crisis, down = m[m["b"] <= cut], m[m["b"] < 0]
+    dc = float(down["s"].mean() / down["b"].mean()) if len(down) and down["b"].mean() < 0 else None
+    out = {"crisis_return": float(crisis["s"].mean()), "crisis_benchmark": float(crisis["b"].mean()), "crisis_months": int(len(crisis)),
+           "downside_capture": dc, "down_market_corr": float(down["s"].corr(down["b"])) if len(down) > 5 else None}
+    out["role"] = ("crisis diversifier" if out["crisis_return"] > 0 or (dc is not None and dc < 0.25) else
+                   "partial hedge" if dc is not None and dc < 0.6 else None)
+    return out
+
+
 def scorecard() -> Dict[str, Any]:
     rows: List[Dict[str, Any]] = []
     lib = sorted((ROOT / "quant" / "library").glob("*.json"))
@@ -124,7 +144,8 @@ def scorecard() -> Dict[str, Any]:
         m = d.get("metrics") or {}
         alpha, t = fl.get("alpha"), fl.get("alpha_t")
         v = _verdict(alpha, t, dsr, eq.get("beta"))
-        rows.append({"id": sid, "kind": "strategy", "name": (names.get(sid) or {}).get("name", sid),
+        cr = _crisis(r, b, d.get("dates") or [])
+        rows.append({**cr, "id": sid, "kind": "strategy", "name": (names.get(sid) or {}).get("name", sid),
                      "family": (names.get(sid) or {}).get("family"), "cagr": m.get("cagr"), "sharpe": m.get("sharpe"),
                      "max_drawdown": m.get("max_drawdown"), "alpha": alpha, "alpha_t": t, "r2": fl.get("r2"),
                      "equity_beta": eq.get("beta"), "capm_alpha": capm["alpha"], "capm_t": capm["alpha_t"], "capm_beta": capm["beta"],

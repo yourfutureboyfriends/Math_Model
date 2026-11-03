@@ -148,7 +148,7 @@ function SignalHealth() {
   const ic = (v: number | null | undefined) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(3)}`);
   return (
     <Panel title="Signal health — is each signal's edge holding up?"
-      right={<span className="text-2xs text-text-tertiary">{Object.entries(h.counts).filter(([, n]) => (n as number) > 0).map(([k, n]) => `${n} ${k}`).join(' · ')}</span>}>
+      right={<span className="text-2xs text-text-tertiary">{Object.entries(h.counts??{}).filter(([, n]) => (n as number) > 0).map(([k, n]) => `${n} ${k}`).join(' · ')}</span>}>
       <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Signal health table"><table className="w-full text-2xs tabular-nums">
         <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Signal</th><th className="text-left font-normal">Universe</th>
           <th className="text-left font-normal">Status</th><th className="text-right font-normal">IC early</th><th className="text-right font-normal">IC last 3y</th>
@@ -211,7 +211,8 @@ export function ProofView({ onGo }: { onGo: (fn: string, s?: string) => void }) 
           <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Verdict</th><th className="text-left font-normal">Strategy / signal</th>
             <th className="text-right font-normal px-1">Return a yr</th><th className="text-right font-normal px-1">Sharpe</th><th className="text-right font-normal px-1">Alpha a yr</th>
             <th className="text-right font-normal px-1">t</th><th className="text-right font-normal px-1">Equity β</th><th className="text-right font-normal px-1">Deflated SR</th>
-            <th className="text-right font-normal px-1">PBO</th><th className="text-right font-normal px-1">Max DD</th></tr></thead>
+            <th className="text-right font-normal px-1">PBO</th><th className="text-right font-normal px-1">Max DD</th>
+            <th className="text-right font-normal px-1" title="Average monthly return in the worst tenth of S&P 500 months (index return in brackets)">In crises</th></tr></thead>
           <tbody>{rows.map((r: any) => (
             <tr key={r.id} title={[r.verdict_text, r.note, r.alpha_basis].filter(Boolean).join(' · ')}>
               <td className="py-1"><span className={cn('proof-pill', r.verdict.replace(' ', '-'))}>{VERDICT_LABEL[r.verdict]}</span></td>
@@ -224,9 +225,13 @@ export function ProofView({ onGo }: { onGo: (fn: string, s?: string) => void }) 
               <td className={cn('text-right px-1', (r.deflated_sharpe ?? 0) >= 0.9 ? 'text-green' : 'text-text-secondary')}>{r.deflated_sharpe != null ? `${Math.round(r.deflated_sharpe * 100)}%` : '—'}</td>
               <td className={cn('text-right px-1', (r.pbo ?? 0) > 0.5 ? 'text-red' : 'text-text-secondary')}>{r.pbo != null ? `${Math.round(r.pbo * 100)}%` : '—'}</td>
               <td className="text-right px-1 text-text-secondary">{pct(r.max_drawdown, 0)}</td>
+              <td className="text-right px-1" title={r.downside_capture != null ? `Downside capture ${Math.round(r.downside_capture * 100)}% of the index's down months` : ''}>
+                {r.crisis_return != null ? <><span className={sign(r.crisis_return)}>{pct(r.crisis_return, 1)}</span>
+                  <span className="text-text-tertiary"> ({pct(r.crisis_benchmark, 0)})</span>
+                  {r.role && <span className={cn('block text-[10px]', r.role === 'crisis diversifier' ? 'text-green' : 'text-text-tertiary')}>{r.role}</span>}</> : '—'}</td>
             </tr>))}</tbody>
         </table></div>
-        <p className="text-[10px] text-text-tertiary mt-2">Alpha: multi-factor (equity, credit, rates, EM, dollar, size, low risk, inflation) for strategies; top fifth vs the index for stock signals; tactical vs strategic for the macro model. Deflated SR: the chance the Sharpe ratio is real after {d.n_trials} trials. PBO: probability the backtest's chosen settings were overfitted. Hover a row for the verdict. <button className="text-bloomberg hover:underline" onClick={() => onGo('ALPHA')}>Open the Stock Signal Lab →</button></p>
+        <p className="text-[10px] text-text-tertiary mt-2">Alpha: multi-factor (equity, credit, rates, EM, dollar, size, low risk, inflation) for strategies; top fifth vs the index for stock signals; tactical vs strategic for the macro model. Deflated SR: the chance the Sharpe ratio is real after {d.n_trials} trials. In crises: a diversifier (trend, defensive) can earn little alpha yet pay when equities fall — judge those on this column, not on alpha alone. PBO: probability the backtest's chosen settings were overfitted. Hover a row for the verdict. <button className="text-bloomberg hover:underline" onClick={() => onGo('ALPHA')}>Open the Stock Signal Lab →</button></p>
       </Panel>
       <Source>{d.method} {d.stale_note}</Source>
     </div>
