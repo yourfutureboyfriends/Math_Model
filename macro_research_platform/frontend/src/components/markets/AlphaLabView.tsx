@@ -124,9 +124,48 @@ export function AlphaLabView({ onOpen }: { onOpen: (s: string) => void }) {
         </table></div>
         <p className="text-[10px] text-text-tertiary mt-2">Size: inverse-volatility weights within the book, capped at 8%. Signal cells show each stock's standardised score (green = favourable for a long). Click a stock to open it.</p>
       </Panel>
+      <SignalHealth />
       <Source>{d.method}</Source>
       <ul className="list-disc pl-4 space-y-0.5">{d.caveats.map((t: string) => <li key={t} className="text-[10px] text-text-tertiary">{t}</li>)}</ul>
     </div>
+  );
+}
+
+const HEALTH: Record<string, { cls: string; tip: string }> = {
+  gone: { cls: 'border-red/50 text-red', tip: 'Worked early on, not any more — retire' },
+  'fading fast': { cls: 'border-red/50 text-red', tip: 'Falling sharply with a significant downward trend — retire' },
+  'never worked': { cls: 'border-border text-text-tertiary', tip: 'Not positive in either half of its history — retire' },
+  fading: { cls: 'border-amber/60 text-amber', tip: 'Still positive but well below its early strength — watch' },
+  emerging: { cls: 'border-blue/50 text-blue', tip: 'Positive only lately — watch before trusting it' },
+  'holding up': { cls: 'border-green/50 text-green', tip: 'Recent strength close to or above its early level' },
+};
+
+/** Signal health: decay of each signal's information coefficient, early history against the last three years. */
+function SignalHealth() {
+  const { data: h, error } = useJSON<any>('/api/v1/quant/decay', 3_600_000);
+  if (error && !h) return <ErrorBox msg={error} />;
+  if (!h?.signals?.length) return null;
+  const ic = (v: number | null | undefined) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(3)}`);
+  return (
+    <Panel title="Signal health — is each signal's edge holding up?"
+      right={<span className="text-2xs text-text-tertiary">{Object.entries(h.counts).filter(([, n]) => (n as number) > 0).map(([k, n]) => `${n} ${k}`).join(' · ')}</span>}>
+      <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Signal health table"><table className="w-full text-2xs tabular-nums">
+        <thead><tr className="text-text-tertiary"><th className="text-left font-normal py-1">Signal</th><th className="text-left font-normal">Universe</th>
+          <th className="text-left font-normal">Status</th><th className="text-right font-normal">IC early</th><th className="text-right font-normal">IC last 3y</th>
+          <th className="text-right font-normal">Trend / yr</th><th className="text-right font-normal">Half-life</th></tr></thead>
+        <tbody>{h.signals.map((r: any) => (
+          <tr key={r.universe + r.id} className="border-t border-border-subtle">
+            <td className="py-1 text-text-primary">{r.name}</td>
+            <td className="text-text-secondary">{r.universe === 'sp500' ? 'S&P 500' : 'Mid/small'}</td>
+            <td><span title={HEALTH[r.status]?.tip ?? r.status} className={cn('px-1.5 py-px rounded border', HEALTH[r.status]?.cls ?? 'border-border text-text-tertiary')}>
+              {r.status}{r.retire ? ' · retire' : ''}</span></td>
+            <td className="text-right font-mono">{ic(r.ic_early)}</td>
+            <td className={cn('text-right font-mono', sign(r.ic_recent))}>{ic(r.ic_recent)}</td>
+            <td className="text-right font-mono text-text-secondary" title={r.trend_t != null ? `t = ${r.trend_t}` : ''}>{r.trend_per_year != null ? ic(r.trend_per_year) : '—'}</td>
+            <td className="text-right font-mono text-text-secondary">{r.half_life_years != null ? `${r.half_life_years}y` : '—'}</td></tr>))}</tbody>
+      </table></div>
+      <p className="text-[10px] text-text-tertiary mt-2">{h.rule} {h.method} Basis: {h.signals[0]?.basis}.</p>
+    </Panel>
   );
 }
 

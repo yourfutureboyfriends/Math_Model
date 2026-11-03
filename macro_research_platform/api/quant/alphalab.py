@@ -282,6 +282,7 @@ def _evaluate(name: str, s: np.ndarray, d: Dict[str, Any]) -> Dict[str, Any]:
         "ic_hit_rate": float((ics > 0).mean()) if len(ics) else None,
         "ic_last_36m": float(ics.iloc[-36:].mean()) if len(ics) >= 12 else None,
         "ic_by_year": {int(y): round(float(v), 4) for y, v in by_year.items()},
+        "ic_monthly": [[m.strftime("%Y-%m"), round(float(v), 4)] for m, v in ics.items()],      # for the decay monitor
         "decay": decay,
         "quintile_returns_ann": [float(np.nanmean(q[:, b]) * 12) if np.isfinite(q[:, b]).any() else None for b in range(5)],
         "long_short": _stats(ls), "top_quintile_net": _stats(long_only), "universe": _stats(universe),
@@ -416,6 +417,14 @@ def run(start: Optional[str] = None, universe: str = "sp500") -> Dict[str, Any]:
     CACHE.mkdir(parents=True, exist_ok=True)
     _path(universe).write_text(json.dumps(result, default=str))
     return result
+
+
+def saved_result(universe: str = "sp500") -> Optional[Dict[str, Any]]:
+    """The last saved run, whatever its age, without starting a new one (None if never built)."""
+    try:
+        return json.loads(_path(universe).read_text())
+    except Exception:
+        return None
 
 
 def result(force: bool = False, universe: str = "sp500") -> Dict[str, Any]:

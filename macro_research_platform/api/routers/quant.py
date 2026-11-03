@@ -560,6 +560,14 @@ async def what_works(request: Request):
     return await asyncio.to_thread(proof.scorecard)
 
 
+@router.get("/api/v1/quant/decay")
+async def signal_decay(request: Request):
+    """Signal health: is each signal's information coefficient holding up, fading or gone, with a retirement flag."""
+    from api.quant import decay
+    _user(request)
+    return await asyncio.to_thread(decay.signal_health)
+
+
 @router.get("/api/v1/quant/alphalab")
 async def stock_signal_lab(request: Request, refresh: bool = False, universe: str = "sp500"):
     """Stock Signal Lab: which stock-level signals predicted S&P 500 returns, an out-of-sample composite, and today's
