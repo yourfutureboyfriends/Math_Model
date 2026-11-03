@@ -270,3 +270,38 @@ def gpr_daily() -> Dict[str, Any]:
                 "events": [{"date": d.strftime("%Y-%m-%d"), "event": str(e)} for d, e in zip(ev["date"], ev["event"])][-40:],
                 "source": "Caldara & Iacoviello, Geopolitical Risk Index (daily), matteoiacoviello.com"}
     return _cached("free:gpr_daily", 12 * 3600, fetch)
+
+
+def margin_debt() -> Dict[str, Any]:
+    """FINRA customer margin debt (debit balances in securities margin accounts) and free credit balances, monthly
+    since 1997: how much US investors are borrowing to own stocks. Margin debt growing 30–40%+ a year has marked
+    late-stage rallies (1999–2000, 2007, 2021); its contraction marks deleveraging."""
+    def fetch():
+        import pandas as pd
+        content = _get("https://www.finra.org/sites/default/files/2021-03/margin-statistics.xlsx", timeout=60).content
+        x = pd.read_excel(io.BytesIO(content))
+        cols = {c: c for c in x.columns}
+        ym = next(c for c in cols if "Year" in c)
+        debit = next(c for c in cols if c.startswith("Debit"))
+        cash = next((c for c in cols if "Cash Accounts" in c), None)
+        mcred = next((c for c in cols if "Margin Accounts" in c and c.startswith("Free")), None)
+        x = x[[ym, debit] + [c for c in (cash, mcred) if c]].dropna(subset=[debit])
+        x[ym] = x[ym].astype(str).str[:7]
+        x = x.sort_values(ym)
+        s = x.set_index(ym)[debit].astype(float)
+        yoy = s.pct_change(12)
+        rows = []
+        for i, (m, v) in enumerate(s.items()):
+            fc = sum(float(x.iloc[i][c]) for c in (cash, mcred) if c and pd.notna(x.iloc[i][c])) if (cash or mcred) else None
+            rows.append({"month": m, "debit_bn": round(v / 1000, 1),
+                         "yoy": round(float(yoy.iloc[i]), 4) if pd.notna(yoy.iloc[i]) else None,
+                         "net_bn": round((v - fc) / 1000, 1) if fc else None})
+        valid = [r["yoy"] for r in rows if r["yoy"] is not None]
+        last = rows[-1]
+        return {"rows": rows, "latest": last, "percentile_yoy": _pct_rank(valid, last["yoy"]) if last["yoy"] is not None else None,
+                "peak_bn": max(r["debit_bn"] for r in rows), "units": "USD billions",
+                "note": "Debit balances = what customers have borrowed against securities; net = debit minus free credit "
+                        "balances (cash customers hold at brokers) — negative means investors hold more cash than they borrow. "
+                        "Growth above ~30% y/y has preceded the 2000, 2007 and 2021 tops; it is a late-cycle warning, not a timer.",
+                "source": "FINRA margin statistics (member firms' customer accounts), monthly"}
+    return _cached("free:margin_debt", 12 * 3600, fetch)

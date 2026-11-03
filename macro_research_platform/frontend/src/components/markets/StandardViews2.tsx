@@ -168,7 +168,63 @@ export function FomcView() {
               <td className="text-right">{rate(x.lower)} – {rate(x.upper)}</td></tr>))}</tbody>
         </table></div>
       </Panel>
+      <FedWatch />
       <Source>{d.note} {d.source}</Source>
+    </div>
+  );
+}
+
+/** FOMC statement redline (what changed since the last meeting), dissents, and the tone of statements and speeches. */
+function FedWatch() {
+  const { data: w, error, loading } = useJSON<any>('/api/v1/mkt/fedwatch', 3_600_000);
+  const [full, setFull] = useState(false);
+  if (loading && !w) return <Loading label="Reading the latest FOMC statement…" />;
+  if (error && !w) return <ErrorBox msg={error} />;
+  if (!w?.latest) return null;
+  const tone = (v: number | null | undefined) => (v == null ? 'text-text-tertiary' : v > 5 ? 'text-red' : v < -5 ? 'text-green' : 'text-text-secondary');
+  const chg = w.previous?.tone && w.latest.tone ? w.latest.tone.score - w.previous.tone.score : null;
+  // the redline, collapsed to the changed sentences unless the full statement is asked for
+  const parts: any[] = w.redline ?? [];
+  const shown = full ? parts : parts.map((x: any, i: number) => {
+    if (x.op !== 'eq') return x;
+    const words = x.text.split(' ');
+    if (words.length <= 16) return x;
+    return { ...x, text: `${i > 0 ? words.slice(0, 7).join(' ') : ''} … ${i < parts.length - 1 ? words.slice(-7).join(' ') : ''}` };
+  });
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-3">
+      <Panel title={`What changed — FOMC statement ${w.latest.date} vs ${w.previous?.date ?? '—'}`}
+        right={<button onClick={() => setFull(!full)} className="text-2xs text-text-secondary hover:text-bloomberg">{full ? 'Changes only' : 'Full statement'}</button>}>
+        <div className="flex flex-wrap gap-2 mb-2">
+          <Tile label="Words changed" value={String(w.words_changed ?? 0)} sub={`of ${w.latest.tone?.words ?? '—'}`} />
+          <Tile label="Tone (hawkish +)" value={w.latest.tone ? w.latest.tone.score.toFixed(1) : '—'} cls={tone(w.latest.tone?.score)}
+            sub={chg == null ? w.latest.tone?.label : `${chg > 0 ? '+' : ''}${chg.toFixed(1)} vs last · ${chg > 2 ? 'more hawkish' : chg < -2 ? 'more dovish' : 'about the same'}`} />
+          <Tile label="Dissents" value={String(w.latest.dissents ?? 0)} cls={w.latest.dissents ? 'text-amber' : ''}
+            sub={w.latest.vote ? `vote ${w.latest.vote}` : w.latest.dissents ? 'see below' : 'unanimous'} />
+        </div>
+        <p className="text-xs leading-relaxed whitespace-pre-line">{shown.map((x: any, i: number) => (
+          <span key={i} className={x.op === 'add' ? 'bg-green/15 text-green rounded-sm px-0.5' : x.op === 'del' ? 'bg-red/10 text-red line-through decoration-red/60 rounded-sm px-0.5' : 'text-text-secondary'}>
+            {x.text}{' '}</span>))}</p>
+        {w.latest.dissent && <p className="mt-2 text-2xs text-amber border-l-2 border-amber/60 pl-2">{w.latest.dissent}</p>}
+        <a href={w.latest.link} target="_blank" rel="noreferrer noopener" className="mt-2 inline-block text-2xs text-bloomberg hover:underline">Statement on federalreserve.gov ↗</a>
+      </Panel>
+      <div className="space-y-3">
+        <Panel title="Statement tone by meeting">
+          <BarList diverging fmt={(v) => v.toFixed(1)} labelWidth="5.5rem"
+            data={(w.statements ?? []).map((s: any) => ({ label: s.date, value: s.score, sub: s.dissents ? `${s.dissents} dissent${s.dissents > 1 ? 's' : ''}` : undefined,
+              note: `${s.label}${s.dissent ? ' · with dissent' : ''}` }))} />
+        </Panel>
+        <Panel title="Recent Fed speeches">
+          <ul className="space-y-1.5 text-2xs">{(w.speeches ?? []).map((s: any) => (
+            <li key={s.link} className="flex items-baseline gap-2">
+              <span className="font-mono text-text-tertiary w-[4.5rem] shrink-0">{s.date?.slice(5) ?? ''}</span>
+              <a href={s.link} target="_blank" rel="noreferrer noopener" className="min-w-0 flex-1 hover:text-bloomberg" title={s.title}>
+                <span className="text-text-primary">{s.speaker}</span> <span className="text-text-secondary truncate">— {s.title}</span></a>
+              <span className={cn('font-mono shrink-0', tone(s.tone?.score))} title={s.tone ? `hawkish: ${Object.keys(s.tone.hawkish).join(', ') || 'none'} · dovish: ${Object.keys(s.tone.dovish).join(', ') || 'none'}` : ''}>
+                {s.tone ? s.tone.score.toFixed(1) : '—'}</span></li>))}</ul>
+        </Panel>
+        <Source>{w.method} {w.source}.</Source>
+      </div>
     </div>
   );
 }

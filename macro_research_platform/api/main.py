@@ -941,7 +941,9 @@ from api.routers.ai import router as ai_router  # AI research assistant (local O
 app.include_router(ai_router)
 from fastapi import Request
 from api.routers.workflows import router as workflows_router
+from api.routers.macro_extras import router as macro_extras_router  # Fed watch, margin debt
 app.include_router(workflows_router)
+app.include_router(macro_extras_router)
 
 @app.middleware("http")
 async def workflow_performance(request: Request, call_next):

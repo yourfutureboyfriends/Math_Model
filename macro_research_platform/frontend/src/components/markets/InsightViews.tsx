@@ -266,8 +266,42 @@ export function RiskView() {
               </div>))}</div>
             <div className="text-[10px] text-text-tertiary mt-2">{d.note} {d.source}.</div>
           </Panel>
+          <MarginDebt />
         </div>);
     }}</Frame>
+  );
+}
+
+/** FINRA margin debt: how much investors borrow to own stocks — leverage builds into late-stage rallies. */
+function MarginDebt() {
+  const { data: m, error } = useJSON<any>('/api/v1/mkt/margin-debt', 12 * 3_600_000);
+  const [range, setRange] = useState<'10y' | 'all'>('10y');
+  if (error && !m) return <ErrorBox msg={error} />;
+  if (!m) return null;
+  const l = m.latest;
+  const rows = (m.rows as any[]).filter((r) => range === 'all' || r.month >= `${new Date().getFullYear() - 10}`)
+    .map((r) => ({ month: r.month, yoy: r.yoy != null ? r.yoy * 100 : null, debit: r.debit_bn }));
+  const hot = (l.yoy ?? 0) >= 0.3;
+  return (
+    <Panel title={`Margin debt — investor leverage (FINRA, to ${l.month})`}
+      right={<div className="flex gap-1 text-2xs">{(['10y', 'all'] as const).map((k) => (
+        <button key={k} onClick={() => setRange(k)} className={cn('px-1.5 border rounded', range === k ? 'border-bloomberg text-bloomberg' : 'border-border text-text-secondary')}>{k === 'all' ? 'Since 1997' : '10 years'}</button>))}</div>}>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2 text-xs">
+        <div><div className="text-2xs text-text-tertiary">Margin debt</div><div className="font-mono text-base">${l.debit_bn.toLocaleString()}bn</div>
+          <div className="text-2xs text-text-tertiary">{l.debit_bn >= m.peak_bn * 0.999 ? 'record high' : `peak $${m.peak_bn.toLocaleString()}bn`}</div></div>
+        <div><div className="text-2xs text-text-tertiary">Year on year</div><div className={cn('font-mono text-base', hot ? 'text-amber' : (l.yoy ?? 0) < 0 ? 'text-red' : '')}>{pct(l.yoy)}</div>
+          <div className="text-2xs text-text-tertiary">{m.percentile_yoy != null ? `${Math.round(m.percentile_yoy)}th percentile since 1998` : ''}</div></div>
+        <div><div className="text-2xs text-text-tertiary">Net of cash at brokers</div><div className="font-mono text-base">{l.net_bn != null ? `$${l.net_bn.toLocaleString()}bn` : '—'}</div>
+          <div className="text-2xs text-text-tertiary">debit − free credit</div></div>
+        <div><div className="text-2xs text-text-tertiary">Reading</div><div className={cn('text-sm', hot ? 'text-amber' : 'text-text-primary')}>
+          {hot ? 'Late-cycle leverage build' : (l.yoy ?? 0) < -0.1 ? 'Deleveraging' : 'Normal'}</div>
+          <div className="text-2xs text-text-tertiary">{hot ? '≥30% y/y — as before 2000, 2007, 2021' : 'growth below the warning zone'}</div></div>
+      </div>
+      <div className="mkt-chart-surface"><LineChart rows={rows} x="month" height={200} baseline={0} fmt={(v) => `${v.toFixed(0)}%`}
+        refs={[{ value: 30, label: 'warning zone', color: 'rgb(var(--c-amber))' }]}
+        lines={[{ key: 'yoy', label: 'Margin debt, y/y %', color: 'rgb(var(--c-bloomberg))' }]} /></div>
+      <div className="text-[10px] text-text-tertiary mt-1">{m.note} {m.source}.</div>
+    </Panel>
   );
 }
 
