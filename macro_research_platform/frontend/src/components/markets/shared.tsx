@@ -49,7 +49,7 @@ export function SourceScope({ children }: { children: ReactNode }) {
 /** A thin strip naming the data behind the screen: source, live / delayed, as-of date, refreshing. */
 const ago = (t: number) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.floor(s / 60)}m ago` : `${Math.floor(s / 3600)}h ago`; };
 
-export function SourcesBar({ className }: { className?: string }) {
+export function SourcesBar({ className, extra }: { className?: string; extra?: React.ReactNode }) {
   const reg = useContext(SourceCtx);
   const [, bump] = useState(0);
   const [online,setOnline]=useState(()=>navigator.onLine);
@@ -76,7 +76,7 @@ export function SourcesBar({ className }: { className?: string }) {
       {busy&&<span className="text-text-secondary" role="status">Refreshing…</span>}
       {!busy&&!failed.length&&requests.length>0&&<span>{requests.filter(r=>r.updatedAt).length}/{requests.length} feeds loaded</span>}
       <button type="button" disabled={busy&&!failed.length} onClick={retry} className="mkt-data-refresh" title={failed.length?'Retry unavailable feeds':'Refresh data without resetting inputs'}>{failed.length?'Retry feeds':'Refresh data'}</button>
-      <details className="basis-full rounded-lg border border-border bg-surface-1 px-3 py-2">
+      <details className="mkt-source-details rounded-full open:basis-full open:rounded-lg border border-border-subtle open:border-border bg-surface-1/60 open:bg-surface-1 px-2 py-0.5 open:px-3 open:py-2">
         <summary className="cursor-pointer text-text-secondary">Source details & freshness · {reg.all().length} datasets</summary>
         <div className="overflow-x-auto mt-2"><table className="w-full text-left text-[10px]">
           <thead><tr><th>Provider</th><th>Data date</th><th>Retrieved</th><th>Status</th></tr></thead>
@@ -89,6 +89,7 @@ export function SourcesBar({ className }: { className?: string }) {
         <p className="mt-2">Retrieval time is when this app received a response, not when the underlying figures changed. Missing dates or delay information do not imply live data. Currency and units follow individual field labels.</p>
         <div className="mt-2 flex flex-wrap gap-2">{[...new Map(requests.map(r => [r.url, r] as const)).values()].map(r => <a key={r.url} href={r.url} target="_blank" rel="noopener noreferrer" className="text-bloomberg underline">Inspect response: {r.url.split('?')[0]}</a>)}</div>
       </details>
+      {extra}
       {items.map((m) => (
         <span key={m.source} className="inline-flex items-center gap-1 px-2 py-0.5 border border-border-subtle rounded-full bg-surface-1/60" title={m.source}>
           <span className={cn('w-1.5 h-1.5 rounded-full', m.stale ? 'bg-amber' : m.delay === 0 ? 'live-dot-tick' : 'bg-text-tertiary')} />

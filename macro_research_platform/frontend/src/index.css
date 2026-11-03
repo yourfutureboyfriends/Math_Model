@@ -2436,3 +2436,19 @@ table[data-autosort="on"] > thead th[data-sort-dir="asc"]::after { content: " â–
   /* off-canvas drawers parked beyond the right edge must not widen the page */
   html, body { overflow-x: clip; }
 }
+
+/* Instrument pages (DES and every other security function): the header is always the one-row bar, whatever the
+   density â€” the instrument card right below names the security, so a second, larger title only pushed the quote
+   down. And the function chips are tighter so the ten Price & trading functions fit on one line more often. */
+.mkt-root .workspace-hero.mkt-hero[data-security] { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; padding: 6px 10px; }
+.mkt-hero[data-security] .workspace-hero-intro { align-items: center; gap: 9px; flex: 1 1 auto; min-width: 0; }
+.mkt-hero[data-security] .workspace-emblem { width: 28px; height: 28px; border-radius: 6px; }
+.mkt-hero[data-security] .mkt-hero-code { min-width: 28px; padding: 0 7px; font-size: 11px; }
+.mkt-hero[data-security] .workspace-hero-intro > div:not(.mkt-hero-actions) { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+:root .mkt-root .mkt-hero[data-security] h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 0; white-space: nowrap; }
+.mkt-hero[data-security] .workspace-eyebrow { letter-spacing: .12em; white-space: nowrap; }
+.mkt-hero[data-security] .mkt-hero-actions { flex-direction: row; align-items: center; gap: 10px; }
+.mkt-hero[data-security] .mkt-hero-tools { flex: 1 1 420px; margin: 0; padding: 0; border-top: 0; }
+nav[aria-label="Functions"] > div[role="tablist"] > button { padding-top: 5px; padding-bottom: 5px; }
+nav[aria-label="Functions"] > div:not([role="tablist"]) { padding-top: 5px; padding-bottom: 5px; }
+nav[aria-label="Functions"] > div:not([role="tablist"]) > button { padding: 2px 8px; font-size: 11px; }
