@@ -9,6 +9,7 @@
 // Other toasts auto-dismiss after 12 s (hover pauses them); a click opens the story, chart or panel. Everything shown
 // is also kept in the history (status bar → ALERTS), where pop-ups can be muted by kind. Nothing here is a trading
 // signal: the thresholds only decide what is worth a glance.
+import { startUsageTracking } from '@/lib/usageTracker';
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { openChart } from '@/components/ui/ChartModal';
@@ -349,6 +350,7 @@ export function LivePopups() {
   useEcoReleases();
   useRegimeChanges();
   useDataIncidents();
+  useEffect(() => startUsageTracking(), []);
   const { toasts, panel } = usePopups();
   return (
     <>
