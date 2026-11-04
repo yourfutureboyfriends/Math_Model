@@ -2,44 +2,18 @@
 // (earthquakes and the ports / chokepoints they threaten). One world basemap, zoomable.
 import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { countryPaths, projectPoint } from '@/lib/topo';
+import { GeoMap, type GeoPoint } from '@/components/charts/GeoMap';
 import { ErrorBox, Loading, Panel, Spark, useJSON } from './shared';
 import { LineChart } from '@/components/ui/LineChart';
 import { FlightTracker } from './FlightTracker';
 import { ShipTracker } from './ShipTracker';
 
-const W = 1000;
-
-/** World basemap in the Equal Earth projection, zoomed to a lon/lat box; children get the projector. */
-function Basemap({ box, height = 420, children }: { box?: [number, number, number, number]; height?: number;
-  children: (p: (lon: number, lat: number) => [number, number], k: number) => React.ReactNode }) {
-  const map=useJSON<import('@/lib/topo').Topology>('/world-atlas/countries-50m.json');
-  const topo=map.data;
-  const geo = useMemo(() => (topo ? countryPaths(topo, W) : null), [topo]);
-  const H = W * 0.487;
-  // view box: the requested lon/lat box (with margin), else the whole world
-  let vb = { x: 0, y: 0, w: W, h: H };
-  if (box) {
-    const [lonMin, latMin, lonMax, latMax] = box;
-    const pts = [projectPoint(lonMin, latMin, W), projectPoint(lonMax, latMax, W), projectPoint(lonMin, latMax, W), projectPoint(lonMax, latMin, W)];
-    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
-    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-    const w = Math.max(x1 - x0, 4), h = Math.max(y1 - y0, 4);
-    const aspect = W / height;
-    const ww = Math.max(w, h * aspect) * 1.1, hh = ww / aspect;
-    vb = { x: (x0 + x1) / 2 - ww / 2, y: (y0 + y1) / 2 - hh / 2, w: ww, h: hh };
-  }
-  const k = W / vb.w;
-  const proj = (lon: number, lat: number) => projectPoint(lon, lat, W);
-  if(map.error)return <ErrorBox msg={map.error} onRetry={map.retry}/>;
-  return (
-    <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} width="100%" height={height} className="bg-surface-1 border border-border" role="img">
-      <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="rgb(var(--c-sea) / 0.08)" />
-      {/* land a step lighter than the sea, with visible coastlines: surface-3 on a dark sea left the continents near invisible */}
-      {geo?.shapes.map((s) => <path key={s.id + s.name} d={s.path} fill="rgb(var(--c-text-tertiary) / 0.2)" stroke="rgb(var(--c-text-tertiary) / 0.45)" strokeWidth={0.5 / k} />)}
-      {children(proj, k)}
-    </svg>
-  );
+/** World basemap (shared ECharts GeoMap, Equal Earth), opened on a lon/lat box when given; points carry tooltips. */
+function Basemap({ box, height = 420, points, onPoint, ariaLabel }: { box?: [number, number, number, number]; height?: number;
+  points: GeoPoint[]; onPoint?: (id: string) => void; ariaLabel: string }) {
+  const initial = useMemo(() => (box ? { center: [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2] as [number, number],
+    zoom: Math.min(8, Math.max(1, Math.min(300 / Math.max(1, box[2] - box[0]), 140 / Math.max(1, box[3] - box[1])) * 0.9)) } : null), [box]);
+  return <GeoMap height={height} points={points} onPointClick={onPoint} initial={initial} ariaLabel={ariaLabel} className="border border-border" />;
 }
 
 const yoyColor = (v: number | null | undefined) => (v == null ? 'rgb(var(--c-text-tertiary))' : v <= -0.15 ? 'rgb(var(--c-red))' : v >= 0.15 ? 'rgb(var(--c-green))' : 'rgb(var(--c-amber))');
@@ -75,13 +49,10 @@ export function ShipView() {
           <span className="text-text-tertiary">— 7-day transits ≥ 15% below the same week last year</span></div>}
         {cp.data && (
           <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_520px] gap-3">
-            <Basemap height={360}>{(p, k) => cp.data.chokepoints.filter((c: any) => c.lat != null).map((c: any) => {
-              const [x, y] = p(c.lon, c.lat);
-              const r = (3 + 12 * Math.sqrt((c.transits_7d ?? 0) / maxN)) / k;
-              return <g key={c.name} onClick={() => setSel(c.name)} className="cursor-pointer">
-                <circle cx={x} cy={y} r={r} fill={yoyColor(c.vs_last_year)} fillOpacity={0.55} stroke={sel === c.name ? 'rgb(var(--c-text-primary))' : 'none'} strokeWidth={1.5 / k} />
-                <title>{`${c.name}: ${c.transits_7d?.toFixed(0)} ships/day (${pc(c.vs_last_year)} y/y)`}</title></g>;
-            })}</Basemap>
+            <Basemap height={360} ariaLabel="Maritime chokepoints: traffic and change vs a year ago" onPoint={setSel}
+              points={cp.data.chokepoints.filter((c: any) => c.lat != null).map((c: any) => ({ id: c.name, lon: c.lon, lat: c.lat,
+                size: 6 + 22 * Math.sqrt((c.transits_7d ?? 0) / maxN), color: yoyColor(c.vs_last_year), selected: sel === c.name, pulse: c.vs_last_year != null && c.vs_last_year <= -0.15,
+                label: sel === c.name ? c.name : undefined, tip: `<b>${c.name}</b><br/>${c.transits_7d?.toFixed(0)} ships/day · ${pc(c.vs_last_year)} y/y` }))} />
             <div className="max-h-[360px] overflow-y-auto">
               <table className="w-full text-[11px]">
                 <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left font-normal">Chokepoint</th>{sh('transits_7d', 'Ships/day')}
@@ -138,11 +109,9 @@ export function QuakeView() {
     <div className="space-y-3">
       {risky.length > 0 && <div className="px-3 py-2 border border-red/60 bg-red/5 text-xs text-red">
         Trade-relevant: {risky.map((q: any) => `M${q.mag} ${q.place} — ${q.chokepoint_km < q.port_km ? `${q.chokepoint_km} km from the ${q.nearest_chokepoint}` : `${q.port_km} km from ${q.nearest_port}`}`).join(' · ')}</div>}
-      <Basemap height={400}>{(p, k) => data.quakes.map((q: any) => {
-        const [x, y] = p(q.lon, q.lat);
-        return <circle key={q.time + q.place} cx={x} cy={y} r={(Math.pow(q.mag - 3.5, 1.6) * 1.6) / k} fill={q.trade_risk ? 'rgb(var(--c-red))' : 'rgb(var(--c-amber))'} fillOpacity={0.5}>
-          <title>{`M${q.mag} ${q.place} · ${q.time}`}</title></circle>;
-      })}</Basemap>
+      <Basemap height={400} ariaLabel="Recent earthquakes and trade exposure"
+        points={data.quakes.map((q: any) => ({ id: q.time + q.place, lon: q.lon, lat: q.lat, size: 4 + Math.pow(Math.max(0, q.mag - 3.5), 1.6) * 3.2,
+          color: q.trade_risk ? 'rgb(var(--c-red))' : 'rgb(var(--c-amber))', pulse: !!q.trade_risk, tip: `<b>M${q.mag}</b> ${q.place}<br/>${q.time.slice(0, 16).replace('T', ' ')} UTC` }))} />
       <div className="border border-border max-h-80 overflow-y-auto">
         <table className="w-full text-[11px]">
           <thead className="sticky top-0 bg-surface-1"><tr className="text-text-tertiary"><th className="text-left px-2 font-normal">Mag</th><th className="text-left font-normal">Where</th><th className="text-left font-normal">When (UTC)</th>

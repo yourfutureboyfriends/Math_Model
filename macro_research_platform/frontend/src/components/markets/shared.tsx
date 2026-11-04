@@ -4,6 +4,7 @@ import { fetchJSONWithDeadline } from '@/lib/fetchDeadline';
 import { createContext, useCallback, useContext, useId, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
+import { MiniChart } from '@/components/charts/MiniChart';
 /** A readable message from a FastAPI error body (string detail, or a list of validation errors). */
 export function apiError(j: any, status: number): string {
   const d = j?.detail;
@@ -175,24 +176,8 @@ export function Chg({ v, d = 2, className }: { v: number | null | undefined; d?:
 }
 
 export function Spark({ values, w = 72, h = 20 }: { values?: number[]; w?: number; h?: number }) {
-  if (!values || values.length < 2) return <span className="inline-block" style={{ width: w }} />;
-  const lo = Math.min(...values), hi = Math.max(...values);
-  // a range under 0.2% of the level (stablecoins, pegs) is noise: don't stretch it to full height
-  const flat = hi === lo || (hi - lo) / Math.max(Math.abs((hi + lo) / 2), 1e-12) < 0.002;
-  const pad = 1.5, ih = h - 2 * pad;                    // keep the stroke and end dot inside the box
-  const xy = values.map((v, i) => [(i / (values.length - 1)) * (w - 3), flat ? h / 2 : pad + ih - ((v - lo) / (hi - lo)) * ih]);
-  const pts = xy.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join(' ');
-  const up = values[values.length - 1] >= values[0];
-  if (flat) return <svg width={w} height={h} aria-hidden="true" className="inline-block align-middle"><polyline points={pts} fill="none" stroke="rgb(var(--c-text-tertiary))" strokeWidth={1.25} /></svg>;
-  const col = up ? 'rgb(var(--c-green))' : 'rgb(var(--c-red))';
-  const [lx, ly] = xy[xy.length - 1];
-  return (
-    <svg width={w} height={h} aria-hidden="true" className="inline-block align-middle overflow-visible">
-      <polygon points={`0,${h} ${pts} ${lx.toFixed(1)},${h}`} fill={col} fillOpacity={0.12} />
-      <polyline points={pts} fill="none" stroke={col} strokeWidth={1.3} strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={lx} cy={ly} r={1.8} fill={col} />
-    </svg>
-  );
+  // ECharts sparkline (SVG renderer, starts when visible); a near-flat series such as a peg stays grey and unstretched
+  return <MiniChart values={values} width={w} height={h} />;
 }
 
 export function Panel({ title, right, children, className }: { title?: string; right?: React.ReactNode; children: React.ReactNode; className?: string }) {

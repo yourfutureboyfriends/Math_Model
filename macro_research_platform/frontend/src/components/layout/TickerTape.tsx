@@ -8,20 +8,12 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { openChart } from '@/components/ui/ChartModal';
 import { fmtPulseChange, fmtPulsePrice, SHORT, TAPE_SECTIONS, useMarketPulse, type PulseRow } from '@/lib/marketPulse';
 import { cn } from '@/lib/utils';
+import { MiniChart } from '@/components/charts/MiniChart';
 
 /** A tiny 60-day sparkline coloured by the period's direction. */
 function MiniSpark({ data }: { data: number[] }) {
   if (data.length < 2) return null;
-  const w = 36, h = 12;
-  const lo = Math.min(...data), hi = Math.max(...data), span = hi - lo || 1;
-  const pts = data.map((v, i) => `${((i / (data.length - 1)) * w).toFixed(1)},${(h - ((v - lo) / span) * h).toFixed(1)}`).join(' ');
-  const up = data[data.length - 1] >= data[0];
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="shrink-0" aria-hidden>
-      <polyline points={pts} fill="none" strokeWidth={1} strokeLinejoin="round"
-        stroke={up ? 'rgb(var(--c-green))' : 'rgb(var(--c-red))'} opacity={0.85} />
-    </svg>
-  );
+  return <MiniChart values={data} width={36} height={12} area={false} dot={false} />;
 }
 
 /** Flash class for a value that changed since the last render ('flash-up' / 'flash-down' for 1.2 s). */

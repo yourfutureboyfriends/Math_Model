@@ -13,6 +13,7 @@ import { openChart } from '@/components/ui/ChartModal';
 import { goMarkets } from '@/lib/marketsRoute';
 import { pushPopup } from '@/lib/popups';
 import { cn } from '@/lib/utils';
+import { MiniChart } from '@/components/charts/MiniChart';
 
 const DWELL_MS = 450, CLOSE_MS = 220, TTL_MS = 60_000;
 const TICKER = /^(?=.*[A-Z])[A-Z0-9^][A-Z0-9.\-=^]{0,11}$/;
@@ -86,16 +87,7 @@ const decimals = (p?: number) => (p == null ? 2 : Math.abs(p) >= 1000 ? 0 : Math
 
 function Spark({ s }: { s: number[] }) {
   if (s.length < 2) return <div className="h-10" />;
-  const w = 268, h = 40, lo = Math.min(...s), hi = Math.max(...s), span = hi - lo || 1;
-  const pts = s.map((v, i) => `${((i / (s.length - 1)) * w).toFixed(1)},${(h - ((v - lo) / span) * (h - 4) - 2).toFixed(1)}`).join(' ');
-  const up = s[s.length - 1] >= s[0];
-  const col = up ? 'rgb(var(--c-green))' : 'rgb(var(--c-red))';
-  return (
-    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-label="One-year price">
-      <polygon points={`0,${h} ${pts} ${w},${h}`} fill={col} opacity={0.08} />
-      <polyline points={pts} fill="none" stroke={col} strokeWidth={1.4} vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
+  return <MiniChart values={s} fill height={40} ariaLabel="One-year price" fmt={(v) => fmt(v, decimals(v))} />;
 }
 
 function Range({ lo, hi, v, label }: { lo?: number; hi?: number; v?: number; label: string }) {

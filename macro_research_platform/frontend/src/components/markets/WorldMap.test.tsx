@@ -5,6 +5,9 @@ import topo from '../../../public/world-atlas/countries-50m.json';
 import { WorldMap } from './WorldMap';
 vi.mock('./shared',()=>({useJSON:(url:string)=>({data:url.includes('/map/world')?{countries:{US:{name:'United States',change_ytd:.1}},sources:{}}:{economies:[]},loading:false,error:null}),Loading:()=>null,ErrorBox:()=>null,Chg:()=>null,fmtPct:String,fmtPrice:String}));
 vi.mock('./LiveTV',()=>({LiveTV:()=> <div data-testid="live-video">Live video</div>}));
+// The map draws on a canvas (ECharts); this stand-in exposes the fills WorldMap computes, one path per country.
+vi.mock('./AtlasMap2D',async()=>{const {forwardRef}=await import('react');return {AtlasMap2D:forwardRef((p:any,_r)=><svg className="atlas-map-svg" aria-label={p.title}>
+  {['US',...Object.keys(p.fills).filter(k=>k!=='US')].map(iso=><path key={iso} data-iso={iso} fill={p.fills[iso]??'var(--atlas-no-data)'}/>)}</svg>)};});
 it('renders data layers without autoplay video and opens coverage only on request',async()=>{
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>topo})));localStorage.setItem('mkt_map_mode','invalid');
  const host=document.createElement('div');document.body.append(host);const root=createRoot(host);

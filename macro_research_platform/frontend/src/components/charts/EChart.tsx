@@ -7,20 +7,21 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import * as echarts from 'echarts/core';
-import { BarChart, CandlestickChart, CustomChart, EffectScatterChart, GaugeChart, GraphChart, HeatmapChart, LineChart, LinesChart, PieChart, ScatterChart, TreemapChart } from 'echarts/charts';
+import { BarChart, CandlestickChart, CustomChart, EffectScatterChart, GaugeChart, GraphChart, HeatmapChart, LineChart, LinesChart, MapChart, PieChart, ScatterChart, TreemapChart } from 'echarts/charts';
 import {
-  AxisPointerComponent, BrushComponent, DataZoomComponent, GraphicComponent, GridComponent, LegendComponent, MarkAreaComponent,
+  AxisPointerComponent, BrushComponent, DataZoomComponent, GeoComponent, GraphicComponent, GridComponent, LegendComponent, MarkAreaComponent,
   MarkLineComponent, MarkPointComponent, TitleComponent, ToolboxComponent, TooltipComponent, VisualMapComponent,
 } from 'echarts/components';
 import { LabelLayout } from 'echarts/features';
 import { CanvasRenderer, SVGRenderer } from 'echarts/renderers';
 import type { EChartsCoreOption } from 'echarts/core';
 
-echarts.use([LineChart, BarChart, ScatterChart, HeatmapChart, CandlestickChart, PieChart, GaugeChart, CustomChart, TreemapChart, GraphChart, LinesChart, EffectScatterChart, GridComponent, TooltipComponent,
+echarts.use([LineChart, BarChart, ScatterChart, HeatmapChart, CandlestickChart, PieChart, GaugeChart, CustomChart, TreemapChart, GraphChart, LinesChart, EffectScatterChart, MapChart, GeoComponent, GridComponent, TooltipComponent,
   LegendComponent, DataZoomComponent, ToolboxComponent, MarkAreaComponent, MarkLineComponent, MarkPointComponent,
   VisualMapComponent, BrushComponent, AxisPointerComponent, TitleComponent, GraphicComponent, LabelLayout, CanvasRenderer, SVGRenderer]);
 
 export type ECharts = echarts.ECharts;
+export { echarts };
 
 /** ECharts parses only legacy colour syntax: turn `rgb(r g b / a)` into `rgba(r,g,b,a)`. */
 const legacy = (c: string) => c.replace(/rgba?\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*(?:\/\s*([\d.]+%?))?\s*\)/g,
@@ -31,20 +32,27 @@ const css = (name: string, fallback: string) => {
 };
 const rgb = (name: string, fallback: string) => { const v = css(name, ''); return v ? `rgb(${v.split(/[\s,]+/).join(',')})` : fallback; };
 
-/** Any CSS colour expression the app uses, resolved to a colour ECharts can draw (cached per theme). */
+/** Any CSS colour expression the app uses, resolved to a colour ECharts can draw (cached per theme). A `scope` element
+ *  resolves custom properties defined on it or its ancestors (e.g. a page's own palette); a variable that is not
+ *  defined there falls back instead of silently inheriting the text colour. */
 let probe: HTMLSpanElement | null = null;
 const resolved = new Map<string, string>();
-export function color(c: string | undefined, fallback = '#3987e5'): string {
+export function color(c: string | undefined, fallback = '#3987e5', scope?: Element | null): string {
   if (!c) return fallback;
   if (!c.includes('var(') && !/\s\/\s/.test(c) && !/rgba?\(\s*\d+\s+\d+/.test(c)) return c;
-  const hit = resolved.get(c);
-  if (hit) return hit;
   if (typeof document === 'undefined') return fallback;
-  if (!probe) { probe = document.createElement('span'); probe.style.display = 'none'; document.body.appendChild(probe); }
+  const host = scope ?? document.documentElement;
+  const vars = [...c.matchAll(/var\((--[\w-]+)/g)].map((m) => m[1]);
+  if (vars.some((v) => !getComputedStyle(host).getPropertyValue(v).trim())) return fallback;
+  const key = scope ? '' : c;
+  const hit = key && resolved.get(key);
+  if (hit) return hit;
+  if (!probe) { probe = document.createElement('span'); probe.style.display = 'none'; }
+  (scope ?? document.body).appendChild(probe);
   probe.style.color = '';
   probe.style.color = c;
   const out = legacy(getComputedStyle(probe).color || '') || fallback;
-  resolved.set(c, out);
+  if (key) resolved.set(key, out);
   return out;
 }
 
@@ -142,8 +150,10 @@ const canDraw = () => {
   return drawable;
 };
 
-export function EChart({ option, height = 300, group, onReady, ariaLabel, className, merge = false }: {
+export function EChart({ option, height = 300, group, onReady, ariaLabel, className, merge = false, renderer }: {
   option: EChartsCoreOption; height?: number; group?: string; onReady?: (c: echarts.ECharts) => void; ariaLabel?: string; className?: string;
+  /** 'svg' suits many small charts (sparklines); default canvas. */
+  renderer?: 'canvas' | 'svg';
   /** Update in place instead of redrawing (keeps running effects such as moving particles continuous between frames). */
   merge?: boolean;
 }) {
@@ -156,7 +166,7 @@ export function EChart({ option, height = 300, group, onReady, ariaLabel, classN
     if (!el.current) return;
     if (isTestDom()) return;                      // jsdom: keep the labelled container, skip drawing
     let c: echarts.ECharts;
-    try { c = echarts.init(el.current, undefined, { renderer: canDraw() ? 'canvas' : 'svg' }); } catch { return; }
+    try { c = echarts.init(el.current, undefined, { renderer: renderer ?? (canDraw() ? 'canvas' : 'svg') }); } catch { return; }
     chart.current = c;
     if (group) { c.group = group; echarts.connect(group); }
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => { try { c.resize(); } catch { /* chart mid-update */ } }) : null;
