@@ -1,8 +1,10 @@
 // Market internals: VOL (volatility complex), BRDT (S&P 500 breadth), IMPM (earnings implied moves),
 // UOA (unusual options activity), RISK (risk-on / risk-off regime).
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
+import { EChart, axisStyle, color, useChartTheme } from '@/components/charts/EChart';
+import { Gauge } from '@/components/charts/Gauge';
 import { ErrorBox, fmtBig, Loading, Panel, Spark, useJSON } from './shared';
 import { signedPct as pct } from '@/lib/format';
 
@@ -37,15 +39,32 @@ function PctBar({ p }: { p: number | null | undefined }) {
 }
 
 // ── VOL ─────────────────────────────────────────────────────────────────────
+/** VIX futures-implied term structure now, a week and a month ago — log-spaced tenors, the current curve emphasised. */
+function VixTerm({ terms }: { terms: [string, { tenor: string; days: number; value: number }[], string][] }) {
+  const t = useChartTheme();
+  const option = useMemo(() => {
+    const ax = axisStyle(t);
+    return {
+      legend: { top: 0, left: 0, data: terms.map(([n]) => n) }, toolbox: { show: false },
+      grid: { left: 36, right: 16, top: 30, bottom: 24 },
+      tooltip: { trigger: 'item', formatter: (q: any) => `${q.seriesName} · ${q.data.tenor}<br/><b>${q.data.value[1]}</b>` },
+      xAxis: { type: 'log', logBase: 2, min: 8, max: 400, ...ax, splitLine: { show: false },
+        axisLabel: { ...ax.axisLabel, fontFamily: t.mono, customValues: [9, 30, 93, 183, 365], formatter: (v: number) => ({ 9: '9D', 30: '1M', 93: '3M', 183: '6M', 365: '1Y' } as Record<number, string>)[v] ?? '' },
+        axisTick: { show: false } },
+      yAxis: { type: 'value', scale: true, ...ax, axisLabel: { ...ax.axisLabel, fontFamily: t.mono } },
+      series: [...terms].reverse().map(([n, pts, c]) => { const now = n === 'Now', col = color(c);
+        return { name: n, type: 'line', z: now ? 3 : 1, symbol: 'circle', symbolSize: now ? 7 : 4,
+          lineStyle: { color: col, width: now ? 2.5 : 1.4, type: now ? 'solid' : [4, 3] }, itemStyle: { color: col, borderColor: t.surface1, borderWidth: now ? 1.5 : 0 },
+          data: pts.map((p) => ({ value: [p.days, p.value], tenor: p.tenor })) }; }),
+    };
+  }, [terms, t]);
+  return <EChart option={option} height={240} ariaLabel="VIX term structure" />;
+}
+
 export function VolView({ onOpen }: { onOpen: (s: string) => void }) {
   return (
     <Frame<any> url="/api/v1/mkt/ins/vol" label="Loading the volatility complex…" refresh={900_000}>{(d) => {
       const terms = [['Now', d.term.now, 'rgb(var(--c-bloomberg))'], ['1 week ago', d.term.week_ago, 'rgb(var(--c-blue))'], ['1 month ago', d.term.month_ago, 'rgb(var(--c-text-tertiary))']] as const;
-      const all = terms.flatMap(([, pts]) => pts.map((p: any) => p.value));
-      const lo = Math.floor(Math.min(...all) - 1), hi = Math.ceil(Math.max(...all) + 1);
-      const W = 520, H = 220, L = 34, B = 24, xs = [9, 30, 93, 183, 365];
-      const sx = (days: number) => L + (Math.log(days / 9) / Math.log(365 / 9)) * (W - L - 12);
-      const sy = (v: number) => 10 + (1 - (v - lo) / (hi - lo)) * (H - 10 - B);
       return (
         <div className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
@@ -58,16 +77,7 @@ export function VolView({ onOpen }: { onOpen: (s: string) => void }) {
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,560px)_minmax(0,1fr)] gap-3">
             <Panel title="VIX term structure">
-              <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[600px] mx-auto block" role="img" aria-label="VIX term structure">
-                {Array.from({ length: 5 }, (_, i) => lo + ((hi - lo) * i) / 4).map((v) => <g key={v}>
-                  <line x1={L} x2={W - 12} y1={sy(v)} y2={sy(v)} stroke="rgb(var(--c-border))" strokeOpacity={0.6} strokeDasharray="2 4" />
-                  <text x={L - 6} y={sy(v) + 3} fontSize={10} textAnchor="end" fill="rgb(var(--c-text-tertiary))" className="font-mono">{v.toFixed(0)}</text></g>)}
-                {['9D', '1M', '3M', '6M', '1Y'].map((t, i) => <text key={t} x={sx(xs[i])} y={H - 6} fontSize={10} textAnchor="middle" fill="rgb(var(--c-text-tertiary))" className="font-mono">{t}</text>)}
-                {[...terms].reverse().map(([n, pts, col]) => <g key={n}>
-                  <polyline points={pts.map((p: any) => `${sx(p.days)},${sy(p.value)}`).join(' ')} fill="none" stroke={col} strokeWidth={n === 'Now' ? 2.4 : 1.4} strokeDasharray={n === 'Now' ? undefined : '4 3'} strokeLinejoin="round" />
-                  {pts.map((p: any) => <circle key={p.tenor} cx={sx(p.days)} cy={sy(p.value)} r={n === 'Now' ? 3.5 : 2.2} fill={col}><title>{`${n} ${p.tenor}: ${p.value}`}</title></circle>)}</g>)}
-              </svg>
-              <div className="flex gap-3 text-[10px] text-text-secondary">{terms.map(([n, , c]) => <span key={n} className="inline-flex items-center gap-1"><span className="w-3 h-0.5" style={{ background: c }} />{n}</span>)}</div>
+              <VixTerm terms={terms as any} />
             </Panel>
             <Panel title="VIX vs 3-month VIX and realised volatility">
               <div className="mkt-chart-surface"><LineChart rows={d.history} x="date" height={250} fmt={(v) => v.toFixed(1)} defaultRange="1y"
@@ -227,19 +237,14 @@ export function UoaView({ onOpen }: { onOpen: (s: string) => void }) {
 export function RiskView() {
   return (
     <Frame<any> url="/api/v1/mkt/ins/risk" label="Reading the regime…">{(d) => {
-      const s = d.score, ang = Math.PI * (1 - (Math.max(-2, Math.min(2, s)) + 2) / 4);
+      const s = d.score;
       return (
         <div className="space-y-3">
           <div className="grid grid-cols-1 xl:grid-cols-[360px_minmax(0,1fr)] gap-3">
             <Panel title="Regime">
               <div className="flex flex-col items-center">
-                <svg viewBox="0 0 220 130" className="w-64" role="img" aria-label={`Risk regime ${d.regime}`}>
-                  <defs><linearGradient id="rg" x1="0" x2="1"><stop offset="0%" stopColor="rgb(var(--c-red))" /><stop offset="50%" stopColor="rgb(var(--c-amber))" /><stop offset="100%" stopColor="rgb(var(--c-green))" /></linearGradient></defs>
-                  <path d="M 20 115 A 90 90 0 0 1 200 115" stroke="url(#rg)" strokeWidth="14" fill="none" strokeLinecap="round" opacity="0.85" />
-                  <line x1="110" y1="115" x2={110 + 72 * Math.cos(ang)} y2={115 - 72 * Math.sin(ang)} stroke="rgb(var(--c-text-primary))" strokeWidth="3" strokeLinecap="round" />
-                  <circle cx="110" cy="115" r="6" fill="rgb(var(--c-text-primary))" />
-                  <text x="20" y="128" fontSize="9" fill="rgb(var(--c-text-tertiary))">Risk-off</text><text x="200" y="128" fontSize="9" textAnchor="end" fill="rgb(var(--c-text-tertiary))">Risk-on</text>
-                </svg>
+                <div className="w-64"><Gauge value={s} min={-2} max={2} minLabel="Risk-off" maxLabel="Risk-on" ariaLabel={`Risk regime ${d.regime}`}
+                  bands={[[-0.5, 'rgb(var(--c-red))'], [0.5, 'rgb(var(--c-amber))'], [2, 'rgb(var(--c-green))']]} /></div>
                 <div className={cn('text-xl font-semibold', s > 0.5 ? 'text-green' : s < -0.5 ? 'text-red' : 'text-amber')}>{d.regime}</div>
                 <div className="text-[11px] text-text-tertiary font-mono">score {s > 0 ? '+' : ''}{s} · as of {d.as_of}</div>
                 <div className="mt-3 w-full border-t border-border-subtle pt-2 text-center">

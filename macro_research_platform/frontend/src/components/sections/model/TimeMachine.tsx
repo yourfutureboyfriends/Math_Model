@@ -9,6 +9,7 @@
  * or click anywhere on it to travel, or use the arrow keys.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { EChart, alpha, axisStyle, color, useChartTheme, type ECharts } from '@/components/charts/EChart';
 import { Pause, Play, SkipBack, SkipForward } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -34,173 +35,105 @@ const sig = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(2)}σ`;
 const monthName = (m: string) => new Date(`${m}-15`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 const shortMonth = (m: string) => new Date(`${m}-15`).toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
 
-/** Width of an element in real pixels, so SVG text is drawn at its true size instead of being scaled. */
-function useWidth<T extends HTMLElement>(): [React.RefObject<T>, number] {
-  const ref = useRef<T>(null);
-  const [w, setW] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    setW(el.clientWidth);
-    const ro = new ResizeObserver(() => setW(el.clientWidth));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return [ref, w];
-}
-
-// ── History ribbon: regime called each month, growth and inflation paths, events, draggable playhead ──
+// ── History ribbon: regime called each month, growth and inflation paths, events, draggable playhead (ECharts) ──
 function HistoryRibbon({ rows, i, onPick }: { rows: Row[]; i: number; onPick: (k: number) => void }) {
-  const [ref, W] = useWidth<HTMLDivElement>();
-  const H = 150, band = 16, top = 24, L = 4, R = 4;
-  const plotH = H - top - band - 22;
-  const n = rows.length;
-  const dragging = useRef(false);
-  const sx = useCallback((k: number) => L + (n <= 1 ? 0 : (k / (n - 1)) * (Math.max(W, 1) - L - R)), [W, n]);
+  const t = useChartTheme();
+  const pickRef = useRef(onPick);
+  pickRef.current = onPick;
   const lim = useMemo(() => {                              // 98th percentile, so one spike (Covid) doesn't flatten the rest
     const a = rows.flatMap((r) => [Math.abs(r.growth), Math.abs(r.inflation)]).sort((p, q) => p - q);
     return Math.max(1.25, a[Math.floor(a.length * 0.98)] ?? 1.5);
   }, [rows]);
-  const sy = (v: number) => top + plotH / 2 - (Math.max(-lim, Math.min(lim, v)) / lim) * (plotH / 2);
-  const path = (key: 'growth' | 'inflation') => rows.map((r, k) => `${k ? 'L' : 'M'}${sx(k).toFixed(1)},${sy(r[key]).toFixed(1)}`).join('');
-  const pick = (clientX: number) => {
-    const el = ref.current;
-    if (!el || n < 2) return;
-    const x = clientX - el.getBoundingClientRect().left;
-    onPick(Math.max(0, Math.min(n - 1, Math.round(((x - L) / (W - L - R)) * (n - 1)))));
+  const option = useMemo(() => {
+    const ax = axisStyle(t);
+    const months = rows.map((r) => r.month);
+    const clip = (v: number) => Math.max(-lim, Math.min(lim, v));
+    const growthC = color('rgb(var(--c-text-primary))', t.textStrong), inflC = color('rgb(var(--c-bloomberg))', t.accent);
+    const events = JUMPS.map(([m, label]) => ({ m, label, k: rows.findIndex((x) => x.month >= m) })).filter((e) => e.k >= 0 && rows[0].month <= e.m)
+      .map((e, n) => ({ xAxis: e.k, label: { formatter: e.label, distance: n % 2 ? 12 : 2 } }));       // alternate heights so neighbours never touch
+    const guides = [-1, 0, 1].filter((v) => Math.abs(v) < lim).map((v) => ({ yAxis: v, lineStyle: { color: t.border, opacity: v ? 0.6 : 1, type: v ? 'dashed' : 'solid' },
+      label: { show: v !== 0, position: 'insideStartTop', formatter: `${v > 0 ? '+' : '−'}1σ`, color: t.mutedText, fontSize: 9 } }));
+    const cur = rows[i];
+    return {
+      animation: false, legend: { show: false }, toolbox: { show: false },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'line', lineStyle: { color: t.mutedText, type: 'dashed' } },
+        formatter: (ps: any[]) => { const r = rows[ps[0].dataIndex]; return `<b>${monthName(r.month)}</b><br/>Regime called: <b style="color:${color(colorOf(r.top))}">${r.top}</b><br/>Growth ${sig(r.growth)} · Inflation ${sig(r.inflation)}<br/><span style="opacity:.6">click or drag to travel</span>`; } },
+      axisPointer: { link: [{ xAxisIndex: 'all' }] },
+      grid: [{ left: 8, right: 8, top: 30, bottom: 44 }, { left: 8, right: 8, height: 14, bottom: 22 }],
+      xAxis: [{ type: 'category', data: months, gridIndex: 0, boundaryGap: false, show: false },
+        { type: 'category', data: months, gridIndex: 1, boundaryGap: true, ...ax, axisLine: { show: false }, splitLine: { show: false },
+          axisLabel: { ...ax.axisLabel, fontFamily: t.mono, interval: (k: number) => months[k].endsWith('-01') && Number(months[k].slice(0, 4)) % (rows.length > 240 ? 5 : 2) === 0, formatter: (m: string) => m.slice(0, 4) } }],
+      yAxis: [{ type: 'value', gridIndex: 0, min: -lim, max: lim, show: false },
+        { type: 'value', gridIndex: 1, show: false, max: 1 }],
+      series: [
+        { name: 'Growth', type: 'line', data: rows.map((r) => clip(r.growth)), showSymbol: false, lineStyle: { width: 1.6, color: growthC, opacity: 0.85 }, itemStyle: { color: growthC },
+          markLine: { symbol: 'none', silent: true, lineStyle: { color: t.mutedText, type: [2, 3] }, label: { position: 'end', color: t.mutedText, fontSize: 9.5 }, data: [...events, ...guides] } },
+        { name: 'Inflation', type: 'line', data: rows.map((r) => clip(r.inflation)), showSymbol: false, lineStyle: { width: 1.6, color: inflC }, itemStyle: { color: inflC },
+          markLine: { symbol: 'none', silent: true, animation: false, lineStyle: { color: t.textStrong, width: 1.5, type: 'solid' }, label: { show: false }, data: [{ xAxis: i }] },
+          markPoint: { symbol: 'circle', symbolSize: 8, silent: true, label: { show: false }, data: [{ coord: [i, clip(cur.inflation)], itemStyle: { color: inflC, borderColor: t.surface1, borderWidth: 2 } }] } },
+        { name: 'Regime', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, barCategoryGap: 0, silent: true,
+          data: rows.map((r, k) => ({ value: 1, itemStyle: { color: color(colorOf(r.top)), opacity: k === i ? 1 : 0.62 } })) },
+      ],
+    };
+  }, [rows, i, lim, t]);
+  const onReady = (c: ECharts) => {
+    let down = false;
+    const pick = (x: number) => {
+      const k = c.convertFromPixel({ xAxisIndex: 1 }, x) as unknown;    // pixel along the axis → month index
+      const idx = Array.isArray(k) ? k[0] : k;
+      if (typeof idx === 'number' && Number.isFinite(idx)) pickRef.current(Math.max(0, Math.min(rows.length - 1, Math.round(idx))));
+    };
+    const zr = c.getZr();
+    zr.on('mousedown', (e: any) => { down = true; pick(e.offsetX); });
+    zr.on('mousemove', (e: any) => { if (down) pick(e.offsetX); });
+    zr.on('mouseup', () => { down = false; });
+    zr.on('globalout', () => { down = false; });
   };
-  // year ticks: every k-th January so labels never crowd
-  const years = rows.map((r, k) => ({ k, m: r.month })).filter((x) => x.m.endsWith('-01'));
-  const every = Math.max(1, Math.ceil(years.length / Math.max(1, Math.floor(W / 60))));
-  const r = rows[i];
-  return (
-    <div ref={ref} className="tm-ribbon relative select-none" style={{ height: H }}
-      onPointerDown={(e) => { dragging.current = true; (e.target as Element).setPointerCapture?.(e.pointerId); pick(e.clientX); }}
-      onPointerMove={(e) => { if (dragging.current) pick(e.clientX); }}
-      onPointerUp={() => { dragging.current = false; }} onPointerCancel={() => { dragging.current = false; }}>
-      {W > 0 && (
-        <svg width={W} height={H} className="block" aria-hidden>
-          {/* zero line and ±1σ guides for the factor paths */}
-          {[-1, 0, 1].map((v) => (
-            <line key={v} x1={L} x2={W - R} y1={sy(v)} y2={sy(v)} stroke="var(--border)" strokeOpacity={v === 0 ? 0.7 : 0.3} />
-          ))}
-          <text x={L + 2} y={sy(1) - 3} fontSize={9} fill="var(--text-tertiary)">+1σ</text>
-          <text x={L + 2} y={sy(-1) + 10} fontSize={9} fill="var(--text-tertiary)">−1σ</text>
-          {/* events */}
-          {(() => {
-            // events: a label that would touch the previous one drops to a second line
-            let lastEnd = -Infinity, row = 0;
-            return JUMPS.map(([m, label]) => {
-              const k = rows.findIndex((x) => x.month >= m);
-              if (k < 0 || rows[0].month > m) return null;
-              const w = label.length * 5.4, anchor = sx(k) > W - w / 2 - 4 ? 'end' : sx(k) < w / 2 + 4 ? 'start' : 'middle';
-              const start = anchor === 'end' ? sx(k) - w : anchor === 'start' ? sx(k) : sx(k) - w / 2;
-              row = start < lastEnd + 6 ? 1 - row : 0;
-              lastEnd = start + w;
-              return (
-                <g key={m}>
-                  <line x1={sx(k)} x2={sx(k)} y1={row ? top + 4 : top - 4} y2={H - band - 20} stroke="var(--text-tertiary)" strokeOpacity={0.35} strokeDasharray="2 3" />
-                  <text x={sx(k) + (anchor === 'start' ? 3 : anchor === 'end' ? -3 : 0)} y={row ? top + 2 : top - 8} textAnchor={anchor} fontSize={9.5}
-                    fill="var(--text-tertiary)" paintOrder="stroke" stroke="var(--surface-1)" strokeWidth={3}>{label}</text>
-                </g>
-              );
-            });
-          })()}
-          <path d={path('growth')} fill="none" stroke="rgb(var(--c-text-primary))" strokeOpacity={0.85} strokeWidth={1.6} strokeLinejoin="round" />
-          <path d={path('inflation')} fill="none" stroke="rgb(var(--c-bloomberg))" strokeWidth={1.6} strokeLinejoin="round" />
-          {/* regime band: one cell per month, coloured by the regime the model called */}
-          {rows.map((x, k) => {
-            const w = Math.max(1, sx(1) - sx(0) + 0.6);
-            return <rect key={x.month} x={sx(k) - w / 2} y={H - band - 18} width={w} height={band} fill={colorOf(x.top)} fillOpacity={k === i ? 1 : 0.62} />;
-          })}
-          {years.filter((_, k) => k % every === 0).map(({ k, m }) => (
-            <text key={m} x={sx(k)} y={H - 4} textAnchor="middle" fontSize={9.5} fill="var(--text-tertiary)" className="font-mono">{m.slice(0, 4)}</text>
-          ))}
-          {/* playhead */}
-          <line x1={sx(i)} x2={sx(i)} y1={top - 2} y2={H - 18} stroke="rgb(var(--c-text-primary))" strokeWidth={1.5} />
-          <circle cx={sx(i)} cy={sy(r.growth)} r={3.5} fill="rgb(var(--c-text-primary))" stroke="var(--surface-1)" strokeWidth={2} />
-          <circle cx={sx(i)} cy={sy(r.inflation)} r={3.5} fill="rgb(var(--c-bloomberg))" stroke="var(--surface-1)" strokeWidth={2} />
-          <rect x={sx(i) - 5} y={H - band - 22} width={10} height={band + 8} rx={3} fill="none" stroke="rgb(var(--c-text-primary))" strokeWidth={1.5} />
-        </svg>
-      )}
-    </div>
-  );
+  return <div className="tm-ribbon select-none cursor-ew-resize"><EChart option={option} height={150} onReady={onReady} ariaLabel="Regime history: growth and inflation with the regime called each month" /></div>;
 }
 
-// ── Quadrant map: growth × inflation with regime tints, σ guides, a fading trail and the current point ──
+// ── Quadrant map: growth × inflation with regime tints, σ guides, a fading trail and the current point (ECharts) ──
 function QuadrantMap({ rows, i }: { rows: Row[]; i: number }) {
-  const [ref, W] = useWidth<HTMLDivElement>();
-  const H = Math.max(220, Math.min(300, W * 0.82));
-  const pad = { l: 30, r: 10, t: 10, b: 26 };
-  const trailRows = rows.slice(Math.max(0, i - 11), i + 1);
-  // zoom to the last year's path (never tighter than ±1σ, never wider than ±3σ), in half-σ steps
-  const lim = Math.min(3, Math.max(1, Math.ceil(Math.max(...trailRows.flatMap((r) => [Math.abs(r.growth), Math.abs(r.inflation)])) * 1.35 * 2) / 2));
-  const guides = (lim <= 1.5 ? [-1, -0.5, 0.5, 1] : lim <= 2 ? [-2, -1, 1, 2] : [-3, -2, -1, 1, 2, 3]).filter((v) => Math.abs(v) <= lim);
-  const x = (g: number) => pad.l + ((Math.max(-lim, Math.min(lim, g)) + lim) / (2 * lim)) * (W - pad.l - pad.r);
-  const y = (v: number) => H - pad.b - ((Math.max(-lim, Math.min(lim, v)) + lim) / (2 * lim)) * (H - pad.t - pad.b);
-  const trail = trailRows;
+  const t = useChartTheme();
+  const option = useMemo(() => {
+    const trail = rows.slice(Math.max(0, i - 11), i + 1);
+    // zoom to the last year's path (never tighter than ±1σ, never wider than ±3σ), in half-σ steps
+    const lim = Math.min(3, Math.max(1, Math.ceil(Math.max(...trail.flatMap((r) => [Math.abs(r.growth), Math.abs(r.inflation)])) * 1.35 * 2) / 2));
+    const clip = (v: number) => Math.max(-lim, Math.min(lim, v));
+    const cur = rows[i], probs = cur.probs ?? {};
+    const ax = axisStyle(t);
+    const accent = color('rgb(var(--c-bloomberg))', t.accent), curC = color(colorOf(cur.top));
+    const quads = REGIMES.map((q) => {
+      const [gs, is] = q.corner, on = cur.top === q.name;
+      return [{ coord: [gs > 0 ? 0 : -lim, is > 0 ? lim : 0], itemStyle: { color: alpha(q.color, on ? 0.13 : 0.04) },
+        label: { show: true, position: gs > 0 ? (is > 0 ? 'insideTopRight' : 'insideBottomRight') : (is > 0 ? 'insideTopLeft' : 'insideBottomLeft'),
+          formatter: `${q.name === 'Deflationary slowdown' ? 'Slowdown' : q.name} ${Math.round((probs[q.name] ?? 0) * 100)}%`,
+          color: on ? q.color : t.mutedText, fontWeight: on ? 600 : 400, fontSize: 10.5 } },
+        { coord: [gs > 0 ? lim : 0, is > 0 ? 0 : -lim] }];
+    });
+    const axis = (name: string) => ({ type: 'value', min: -lim, max: lim, interval: lim <= 1.5 ? 0.5 : 1, name, nameLocation: 'end', nameGap: 6, ...ax,
+      axisLine: { show: false, onZero: false }, splitLine: { lineStyle: { color: t.border, opacity: 0.5 } }, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => (v > 0 ? `+${v}` : `${v}`) } });
+    return {
+      animationDurationUpdate: 250, legend: { show: false }, toolbox: { show: false },
+      tooltip: { trigger: 'item', formatter: (p: any) => { const r = trail[p.dataIndex]; return r ? `<b>${monthName(r.month)}</b><br/>${r.top}<br/>growth ${sig(r.growth)} · inflation ${sig(r.inflation)}` : ''; } },
+      grid: { left: 34, right: 14, top: 14, bottom: 30 },
+      xAxis: { ...axis('growth (σ)'), nameLocation: 'end', nameTextStyle: { ...ax.nameTextStyle, padding: [22, 0, 0, 0], align: 'right', verticalAlign: 'top' } },
+      yAxis: { ...axis('inflation (σ)'), nameTextStyle: { ...ax.nameTextStyle, align: 'left' } },
+      series: [
+        { type: 'line', data: trail.map((r) => [clip(r.growth), clip(r.inflation)]), smooth: 0.35, showSymbol: false, silent: true, z: 2,
+          lineStyle: { width: 2, color: { type: 'linear', x: 0, y: 0, x2: 1, y2: 0, colorStops: [{ offset: 0, color: alpha(accent, 0.05) }, { offset: 1, color: alpha(accent, 0.9) }] } },
+          markArea: { silent: true, data: quads },
+          markLine: { symbol: 'none', silent: true, lineStyle: { color: t.borderStrong, type: 'solid' }, label: { show: false }, data: [{ xAxis: 0 }, { yAxis: 0 }] } },
+        { type: 'scatter', z: 3, data: trail.map((r, k) => ({ value: [clip(r.growth), clip(r.inflation)],
+          symbolSize: k === trail.length - 1 ? 12 : 5,
+          itemStyle: k === trail.length - 1
+            ? { color: curC, borderColor: t.surface1, borderWidth: 2.5, shadowBlur: 16, shadowColor: alpha(curC, 0.7) }
+            : { color: color(colorOf(r.top)), opacity: 0.25 + (0.6 * k) / trail.length } })) },
+      ],
+    };
+  }, [rows, i, t]);
   const cur = rows[i];
-  const probs = cur.probs ?? {};
-  // smooth trail through the points (Catmull-Rom → cubic Bézier)
-  const pts = trail.map((r) => [x(r.growth), y(r.inflation)]);
-  const smooth = pts.length < 2 ? '' : pts.reduce((d, p, k) => {
-    if (!k) return `M${p[0]},${p[1]}`;
-    const p0 = pts[k - 2] ?? pts[k - 1], p1 = pts[k - 1], p3 = pts[k + 1] ?? p;
-    const c1 = [p1[0] + (p[0] - p0[0]) / 6, p1[1] + (p[1] - p0[1]) / 6], c2 = [p[0] - (p3[0] - p1[0]) / 6, p[1] - (p3[1] - p1[1]) / 6];
-    return `${d} C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${p[0].toFixed(1)},${p[1].toFixed(1)}`;
-  }, '');
-  const cx = x(cur.growth), cy = y(cur.inflation);
-  return (
-    <div ref={ref} className="w-full">
-      {W > 0 && (
-        <svg width={W} height={H} className="block" role="img" aria-label={`Growth ${sig(cur.growth)}, inflation ${sig(cur.inflation)}; regime ${cur.top}`}>
-          <defs>
-            <linearGradient id="tm-trail" x1="0" x2="1"><stop offset="0%" stopColor="rgb(var(--c-bloomberg))" stopOpacity={0.05} /><stop offset="100%" stopColor="rgb(var(--c-bloomberg))" stopOpacity={0.9} /></linearGradient>
-            <radialGradient id="tm-halo"><stop offset="0%" stopColor={colorOf(cur.top)} stopOpacity={0.45} /><stop offset="100%" stopColor={colorOf(cur.top)} stopOpacity={0} /></radialGradient>
-          </defs>
-          {/* regime quadrants, the called one stronger */}
-          {REGIMES.map((q) => {
-            const [gs, is] = q.corner;
-            const x0 = gs > 0 ? x(0) : pad.l, y0 = is > 0 ? pad.t : y(0);
-            const on = cur.top === q.name;
-            return (
-              <g key={q.name}>
-                <rect x={x0} y={y0} width={gs > 0 ? W - pad.r - x(0) : x(0) - pad.l} height={is > 0 ? y(0) - pad.t : H - pad.b - y(0)}
-                  fill={q.color} fillOpacity={on ? 0.13 : 0.04} rx={2} />
-                <text x={gs > 0 ? W - pad.r - 6 : pad.l + 6} y={is > 0 ? pad.t + 14 : H - pad.b - 8} textAnchor={gs > 0 ? 'end' : 'start'}
-                  fontSize={10.5} fontWeight={on ? 600 : 400} fill={on ? q.color : 'var(--text-tertiary)'}>
-                  {q.name === 'Deflationary slowdown' ? 'Slowdown' : q.name} <tspan className="font-mono" fontWeight={500}>{Math.round((probs[q.name] ?? 0) * 100)}%</tspan>
-                </text>
-              </g>
-            );
-          })}
-          {/* σ guides */}
-          {guides.map((v) => (
-            <g key={v}>
-              <line x1={x(v)} x2={x(v)} y1={pad.t} y2={H - pad.b} stroke="var(--border)" strokeOpacity={0.28} />
-              <line x1={pad.l} x2={W - pad.r} y1={y(v)} y2={y(v)} stroke="var(--border)" strokeOpacity={0.28} />
-              <text x={x(v)} y={H - pad.b + 12} textAnchor="middle" fontSize={9} fill="var(--text-tertiary)" className="font-mono">{v > 0 ? `+${v}` : v}</text>
-              <text x={pad.l - 5} y={y(v) + 3} textAnchor="end" fontSize={9} fill="var(--text-tertiary)" className="font-mono">{v > 0 ? `+${v}` : v}</text>
-            </g>
-          ))}
-          <line x1={x(0)} x2={x(0)} y1={pad.t} y2={H - pad.b} stroke="var(--border-strong)" strokeOpacity={0.8} />
-          <line x1={pad.l} x2={W - pad.r} y1={y(0)} y2={y(0)} stroke="var(--border-strong)" strokeOpacity={0.8} />
-          <text x={W - pad.r} y={H - 4} textAnchor="end" fontSize={9.5} fill="var(--text-tertiary)">growth (σ) →</text>
-          <text x={10} y={pad.t + 2} transform={`rotate(-90 10 ${pad.t + 2})`} textAnchor="end" fontSize={9.5} fill="var(--text-tertiary)">inflation (σ) →</text>
-          {/* crosshair to the axes */}
-          <line x1={pad.l} x2={cx} y1={cy} y2={cy} stroke={colorOf(cur.top)} strokeOpacity={0.45} strokeDasharray="2 3" />
-          <line x1={cx} x2={cx} y1={cy} y2={H - pad.b} stroke={colorOf(cur.top)} strokeOpacity={0.45} strokeDasharray="2 3" />
-          {/* the last 12 months */}
-          <path d={smooth} fill="none" stroke="url(#tm-trail)" strokeWidth={2} strokeLinecap="round" />
-          {trail.slice(0, -1).map((r, k) => (
-            <circle key={r.month} cx={x(r.growth)} cy={y(r.inflation)} r={2.2} fill={colorOf(r.top)} fillOpacity={0.25 + (0.6 * k) / trail.length} />
-          ))}
-          <circle cx={cx} cy={cy} r={16} fill="url(#tm-halo)" />
-          <circle cx={cx} cy={cy} r={5.5} fill={colorOf(cur.top)} stroke="var(--surface-1)" strokeWidth={2.5} />
-        </svg>
-      )}
-    </div>
-  );
+  return <EChart option={option} height={270} ariaLabel={`Growth ${sig(cur.growth)}, inflation ${sig(cur.inflation)}; regime ${cur.top}`} />;
 }
 
 function Card({ title, children, className }: { title: React.ReactNode; children: React.ReactNode; className?: string }) {

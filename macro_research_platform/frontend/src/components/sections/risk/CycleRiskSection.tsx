@@ -9,7 +9,8 @@
  *
  * Reads /api/v1/risk/cycle.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { EChart, alpha, color, useChartTheme } from '@/components/charts/EChart';
 import { Activity, RefreshCw } from 'lucide-react';
 import { pct } from '@/lib/format';
 import { setHubMode } from '@/lib/hubMode';
@@ -18,32 +19,26 @@ import { setMlTab, setMlTask } from '@/components/ml/mlShared';
 type Point = { date: string; value: number };
 
 function Sparkline({ points, unit = '', zero = false }: { points: Point[]; unit?: string; zero?: boolean }) {
-  const [hover, setHover] = useState<number | null>(null);
+  const t = useChartTheme();
+  const option = useMemo(() => {
+    const accent = color('rgb(var(--c-bloomberg))', t.accent);
+    return {
+      animation: false, legend: { show: false }, toolbox: { show: false },
+      grid: { left: 2, right: 2, top: 4, bottom: 2 },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'line', lineStyle: { color: t.mutedText, type: 'dashed' } }, position: (pt: number[]) => [pt[0] + 8, 0],
+        formatter: (ps: any[]) => `${points[ps[0].dataIndex].date} · <b>${points[ps[0].dataIndex].value.toFixed(2)}${unit}</b>` },
+      xAxis: { type: 'category', data: points.map((p) => p.date), show: false, boundaryGap: false },
+      yAxis: { type: 'value', show: false, scale: !zero, min: zero ? (v: any) => Math.min(0, v.min) : undefined, max: zero ? (v: any) => Math.max(0, v.max) : undefined },
+      series: [{ type: 'line', data: points.map((p) => p.value), showSymbol: false, symbol: 'circle', symbolSize: 5, lineStyle: { color: accent, width: 1.5 }, itemStyle: { color: accent },
+        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: alpha(accent, 0.2) }, { offset: 1, color: alpha(accent, 0) }] }, origin: 'start' },
+        markLine: zero ? { symbol: 'none', silent: true, data: [{ yAxis: 0 }], lineStyle: { color: t.borderStrong, type: [2, 3] }, label: { show: false } } : undefined }],
+    };
+  }, [points, unit, zero, t]);
   if (points.length < 2) return null;
-  const W = 220, H = 44, P = 2;
-  const vals = points.map((p) => p.value);
-  const lo = Math.min(...vals, zero ? 0 : Infinity), hi = Math.max(...vals, zero ? 0 : -Infinity);
-  const x = (i: number) => P + (i / (points.length - 1)) * (W - 2 * P);
-  const y = (v: number) => H - P - ((v - lo) / (hi - lo || 1)) * (H - 2 * P);
-  const d = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join('');
-  const h = hover != null ? points[hover] : null;
   return (
-    <div className="relative">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-11" preserveAspectRatio="none"
-        onMouseLeave={() => setHover(null)}
-        onMouseMove={(e) => {
-          const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
-          setHover(Math.max(0, Math.min(points.length - 1, Math.round(((e.clientX - r.left) / r.width) * (points.length - 1)))));
-        }}>
-        {zero && lo < 0 && hi > 0 && (
-          <line x1={P} x2={W - P} y1={y(0)} y2={y(0)} stroke="var(--border-strong)" strokeWidth={1} strokeDasharray="2 3" />
-        )}
-        <path d={d} fill="none" stroke="var(--bloomberg)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-        {h && <circle cx={x(hover!)} cy={y(h.value)} r={2.5} fill="var(--bloomberg)" />}
-      </svg>
-      <div className="text-[10px] font-mono text-text-tertiary h-3">
-        {h ? `${h.date} · ${h.value.toFixed(2)}${unit}` : `${points[0].date} → ${points[points.length - 1].date}`}
-      </div>
+    <div>
+      <EChart option={option} height={44} ariaLabel={`History ${points[0].date} to ${points[points.length - 1].date}`} />
+      <div className="text-[10px] font-mono text-text-tertiary h-3">{points[0].date} → {points[points.length - 1].date}</div>
     </div>
   );
 }

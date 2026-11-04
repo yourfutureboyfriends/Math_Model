@@ -1,4 +1,4 @@
-// Donut chart for part-to-whole (allocations, sector / country mix, exit mix).
+// Donut chart for part-to-whole (allocations, sector / country mix, exit mix), drawn with Apache ECharts.
 //
 // Conventions (kept deliberately strict so composition reads at a glance):
 //   * at most `maxSlices` segments (default 6); the smallest fold into a gray "Other";
@@ -11,6 +11,7 @@
 
 import { useMemo, useState } from 'react';
 import { CATEGORICAL, OTHER_GRAY } from '@/lib/chartPalette';
+import { EChart, color, useChartTheme, type ECharts } from '@/components/charts/EChart';
 
 export interface DonutDatum { label: string; value: number; sub?: string }
 
@@ -26,18 +27,6 @@ interface Props {
   onSelect?: (label: string) => void;
 }
 
-const TAU = Math.PI * 2;
-
-function arc(cx: number, cy: number, r0: number, r1: number, a0: number, a1: number): string {
-  const large = a1 - a0 > Math.PI ? 1 : 0;
-  const p = (r: number, a: number) => `${cx + r * Math.sin(a)},${cy - r * Math.cos(a)}`;
-  if (a1 - a0 >= TAU - 1e-6) {           // full ring: two half arcs
-    const m = a0 + Math.PI;
-    return `M${p(r1, a0)}A${r1},${r1} 0 1 1 ${p(r1, m)}A${r1},${r1} 0 1 1 ${p(r1, a0)}`
-      + `M${p(r0, a0)}A${r0},${r0} 0 1 0 ${p(r0, m)}A${r0},${r0} 0 1 0 ${p(r0, a0)}Z`;
-  }
-  return `M${p(r1, a0)}A${r1},${r1} 0 ${large} 1 ${p(r1, a1)}L${p(r0, a1)}A${r0},${r0} 0 ${large} 0 ${p(r0, a0)}Z`;
-}
 
 export function Donut({ data, title, centerValue, centerLabel, size = 132, maxSlices = 6,
                         fmt = (v) => v.toLocaleString(undefined, { maximumFractionDigits: 0 }), colorFor, onSelect }: Props) {
@@ -49,15 +38,18 @@ export function Donut({ data, title, centerValue, centerLabel, size = 132, maxSl
     const rest = clean.slice(keep.length);
     const all = rest.length ? [...keep, { label: `Other (${rest.length})`, value: rest.reduce((s, d) => s + d.value, 0), other: true }] : keep;
     const total = all.reduce((s, d) => s + d.value, 0);
-    let a = 0;
-    return all.map((d: any, i) => {
-      const share = total > 0 ? d.value / total : 0;
-      const s = { ...d, share, a0: a, a1: a + share * TAU,
-                  color: d.other ? OTHER_GRAY : (colorFor ? colorFor(d.label, i) : CATEGORICAL[i % CATEGORICAL.length]) };
-      a += share * TAU;
-      return s;
-    });
+    return all.map((d: any, i) => ({ ...d, share: total > 0 ? d.value / total : 0,
+      color: color(d.other ? OTHER_GRAY : (colorFor ? colorFor(d.label, i) : CATEGORICAL[i % CATEGORICAL.length])) }));
   }, [data, maxSlices, colorFor]);
+  const t = useChartTheme();
+  const option = useMemo(() => ({
+    animationDuration: 400, legend: { show: false }, toolbox: { show: false }, tooltip: { show: false },
+    series: [{ type: 'pie', radius: ['66%', '96%'], center: ['50%', '50%'], avoidLabelOverlap: false, label: { show: false }, labelLine: { show: false },
+      itemStyle: { borderColor: t.surface1, borderWidth: slices.length > 1 ? 2 : 0, borderRadius: 2 },
+      emphasis: { scale: true, scaleSize: 3, itemStyle: { borderColor: t.surface1 } }, blur: { itemStyle: { opacity: 0.45 } },
+      data: slices.map((s) => ({ name: s.label, value: s.value, itemStyle: { color: s.color } })) }],
+  }), [slices, t]);
+  const cb = useMemo(() => ({ onSelect }), [onSelect]);
 
   if (!slices.length) return <div className="text-2xs text-text-tertiary p-2">No data</div>;
   if (slices.length === 1) {
@@ -73,23 +65,18 @@ export function Donut({ data, title, centerValue, centerLabel, size = 132, maxSl
       </div>
     );
   }
-  const r1 = size / 2 - 2, r0 = r1 * 0.66, cx = size / 2, cy = size / 2;
   const h = hover != null ? slices[hover] : null;
+  const onReady = (c: ECharts) => {
+    c.on('mouseover', (e: any) => setHover(e.dataIndex));
+    c.on('mouseout', () => setHover(null));
+    c.on('click', (e: any) => cb.onSelect?.(e.name));
+  };
 
   return (
     <div className="flex items-center gap-3 min-w-0">
       <div className="relative shrink-0" style={{ width: size, height: size }}>
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img"
-          aria-label={`${title ?? 'Composition'}: ${slices.map((s) => `${s.label} ${(s.share * 100).toFixed(0)}%`).join(', ')}`}>
-          {slices.map((s, i) => (
-            <path key={s.label} d={arc(cx, cy, r0, hover === i ? r1 + 1.5 : r1, s.a0, s.a1)} fill={s.color}
-              stroke="var(--surface-1, #0d1117)" strokeWidth={slices.length > 1 ? 2 : 0} strokeLinejoin="round"
-              opacity={hover == null || hover === i ? 1 : 0.45} tabIndex={0}
-              onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}
-              onFocus={() => setHover(i)} onBlur={() => setHover(null)}
-              onClick={() => onSelect?.(s.label)} style={{ cursor: onSelect ? 'pointer' : 'default', outline: 'none' }} />
-          ))}
-        </svg>
+        <EChart option={option} height={size} onReady={onReady}
+          ariaLabel={`${title ?? 'Composition'}: ${slices.map((s) => `${s.label} ${(s.share * 100).toFixed(0)}%`).join(', ')}`} />
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-3">
           {h ? (
             <>
@@ -109,7 +96,7 @@ export function Donut({ data, title, centerValue, centerLabel, size = 132, maxSl
         {title && <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">{title}</div>}
         <ul className="space-y-0.5">
           {slices.map((s, i) => (
-            <li key={s.label} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}
+            <li key={s.label} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onClick={() => onSelect?.(s.label)}
               className={`flex items-center gap-1.5 text-2xs ${hover === i ? 'text-text-primary' : 'text-text-secondary'}`}>
               <span className="inline-block w-2 h-2 rounded-sm shrink-0" style={{ background: s.color }} />
               <span className="truncate" title={s.sub ? `${s.label} — ${s.sub}` : s.label}>{s.label}</span>

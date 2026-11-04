@@ -1,13 +1,13 @@
-// Interactive price chart: choose the bar interval (5m, 15m, 1H, 1D, 1W, 1M) and the
-// period (1D … Max); candles / line / area; volume; 20/50/200-bar moving averages; log scale;
-// plan levels (entry / stop / target) and signal markers. Scroll to zoom around the cursor,
-// drag to pan, double-click to reset; the crosshair reads out OHLC, change and volume; arrow
-// keys step bar by bar. More bars than pixels are merged into OHLC buckets, so the chart
-// stays sharp and fast at any period.
+// Interactive price chart on Apache ECharts: choose the bar interval (5m, 15m, 1H, 1D, 1W, 1M) and the period
+// (1D … Max); candles / line / area; a volume pane; 20/50/200-bar moving averages; log scale; plan levels
+// (entry / stop / target) and signal markers. Scroll to zoom around the cursor, drag to pan, the slider below
+// picks any window, double-click resets; the crosshair reads out OHLC, change and volume; arrow keys step bar
+// by bar. ECharts samples large histories itself, so the chart stays fast at any period.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, RotateCcw } from 'lucide-react';
 import { cn, localToday } from '@/lib/utils';
+import { EChart, alpha, axisStyle, color, useChartTheme, type ECharts } from '@/components/charts/EChart';
 
 export interface Bar { t: string; o: number; h: number; l: number; c: number; v: number }
 export interface PriceRef { value: number; label: string; color?: string }
@@ -27,12 +27,10 @@ const DEFAULT_PERIOD: Record<string, string> = { '5m': '5d', '15m': '1mo', '1h':
 const allowed = (i: string, p: string) => PERIOD_DAYS[p] <= (MAX_DAYS[i] ?? 1e9);
 
 // theme colours, so the Markets up/down setting (red = up in Asian markets) applies to candles too
-const UP = 'rgb(var(--c-green))', DOWN = 'rgb(var(--c-red))';
+const UP_CSS = 'rgb(var(--c-green))', DOWN_CSS = 'rgb(var(--c-red))';
 const WARM = new Set(['1d', '1wk', '1mo']);     // intervals fetched with 200 extra bars so MAs start on the first bar
 const MA = [{ n: 20, color: '#c98500' }, { n: 50, color: '#3987e5' }, { n: 200, color: '#d55181' }];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const AXIS_W = 58, PAD_T = 6, PAD_B = 20, PAD_L = 6;
-
 function sma(c: number[], n: number): (number | null)[] {
   const out: (number | null)[] = new Array(c.length).fill(null);
   let s = 0;
@@ -41,17 +39,6 @@ function sma(c: number[], n: number): (number | null)[] {
     if (i >= n) s -= c[i - n];
     if (i >= n - 1) out[i] = s / n;
   }
-  return out;
-}
-
-function niceTicks(lo: number, hi: number, count: number): number[] {
-  const span = hi - lo || Math.abs(hi) || 1;
-  const raw = span / Math.max(1, count);
-  const mag = 10 ** Math.floor(Math.log10(raw));
-  const f = raw / mag;
-  const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * mag;
-  const out: number[] = [];
-  for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) out.push(v);
   return out;
 }
 
@@ -73,19 +60,6 @@ function fmtTime(t: string, interval: string, full = false): string {
   }
   if (interval === '1mo') return full ? `${MONTHS[d.getMonth()]} ${d.getFullYear()}` : `${MONTHS[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`;
   return full ? `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}` : `${d.getDate()} ${MONTHS[d.getMonth()]}`;
-}
-
-/** Merge consecutive bars into OHLC buckets of size k. */
-function bucket(b: Bar[], k: number): { bars: Bar[]; first: number[] } {
-  if (k <= 1) return { bars: b, first: b.map((_, i) => i) };
-  const bars: Bar[] = [], first: number[] = [];
-  for (let i = 0; i < b.length; i += k) {
-    const g = b.slice(i, i + k);
-    bars.push({ t: g[0].t, o: g[0].o, c: g[g.length - 1].c, h: Math.max(...g.map((x) => x.h)),
-                l: Math.min(...g.map((x) => x.l)), v: g.reduce((s, x) => s + x.v, 0) });
-    first.push(i);
-  }
-  return { bars, first };
 }
 
 interface Props {
@@ -110,21 +84,11 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [revision,retry]=useState(0);
-  const [win, setWin] = useState<[number, number] | null>(null);       // visible [start, end) in raw bars
+  const [win, setWin] = useState<[number, number] | null>(null);       // visible [start, end] in bars, null = the chosen window
   const [base, setBase] = useState(0);                                  // first bar of the chosen window (earlier bars warm up the MAs)
-  const [hover, setHover] = useState<number | null>(null);              // index into drawn bars
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(640);
-  const drag = useRef<{ x: number; win: [number, number] } | null>(null);
-
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(Math.max(280, el.clientWidth)));
-    ro.observe(el);
-    setWidth(Math.max(280, el.clientWidth));
-    return () => ro.disconnect();
-  }, []);
+  const [hover, setHover] = useState<number | null>(null);              // bar under the crosshair
+  const chartRef = useRef<ECharts | null>(null);
+  const t = useChartTheme();
 
   useEffect(() => {
     let cancelled = false;const controller=new AbortController();
@@ -150,92 +114,83 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
   const all = useMemo(() => data ?? [], [data]);
   const closes = useMemo(() => all.map((b) => b.c), [all]);
   const maLines = useMemo(() => Object.fromEntries(MA.map((m) => [m.n, sma(closes, m.n)])), [closes]);
-  const full: [number, number] = [Math.min(base, Math.max(0, all.length - 1)), all.length];
-  const [s0, s1] = win ?? full;
-  const plotW = Math.max(100, width - AXIS_W - PAD_L);
-  const visible = useMemo(() => all.slice(s0, s1), [all, s0, s1]);
-  const k = Math.max(1, Math.ceil(visible.length / (plotW / 3)));
-  const { bars, first } = useMemo(() => bucket(visible, k), [visible, k]);
+  const n = all.length;
+  const start = Math.min(base, Math.max(0, n - 1));
+  const [s0, s1] = win ?? [start, n - 1];
+  const UP = color(UP_CSS, '#22c55e'), DOWN = color(DOWN_CSS, '#ef4444');
 
-  const volH = showVol ? Math.round((height - PAD_T - PAD_B) * 0.18) : 0;
-  const priceH = height - PAD_T - PAD_B - volH - (showVol ? 6 : 0);
-  const n = bars.length;
-  const slot = n ? plotW / n : plotW;
-  const xOf = (i: number) => PAD_L + (i + 0.5) * slot;
+  const option = useMemo(() => {
+    const ax = axisStyle(t);
+    const cats = all.map((b) => b.t);
+    const label = (v: string) => fmtTime(v, interval);
+    const priceBottom = showVol ? 106 : 52;
+    const upDown = (b: Bar) => (b.c >= b.o ? UP : DOWN);
+    const levels = refs.map((r) => ({ yAxis: r.value, lineStyle: { color: color(r.color, t.mutedText), type: [4, 3] as any, width: 1 },
+      label: { show: true, position: 'end' as const, formatter: `${r.label} ${fmtPx(r.value)}`, color: t.surface1, backgroundColor: color(r.color, t.mutedText),
+        padding: [2, 4], borderRadius: 2, fontSize: 9, fontFamily: t.mono } }));
+    const marks = markers && interval === '1d' ? all.map((b, i) => (markers[b.t.slice(0, 10)] ? { coord: [i, b.l], value: 'BUY' } : null)).filter(Boolean) : [];
+    const priceSeries: any = kind === 'candle'
+      ? { name: symbol, type: 'candlestick', data: all.map((b) => [b.o, b.c, b.l, b.h]), barMaxWidth: 14,
+          itemStyle: { color: UP, color0: DOWN, borderColor: UP, borderColor0: DOWN } }
+      : { name: symbol, type: 'line', data: closes, showSymbol: false, lineStyle: { width: 2, color: t.series[0] }, itemStyle: { color: t.series[0] },
+          ...(kind === 'area' ? { areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: alpha(t.series[0], 0.25) }, { offset: 1, color: alpha(t.series[0], 0) }] } } } : {}) };
+    priceSeries.markLine = levels.length ? { symbol: 'none', silent: true, data: levels, animation: false } : undefined;
+    priceSeries.markPoint = marks.length ? { symbol: 'triangle', symbolSize: 9, symbolOffset: [0, 10], itemStyle: { color: UP }, label: { show: false }, data: marks } : undefined;
+    const series: any[] = [priceSeries,
+      ...MA.filter((m) => mas[m.n]).map((m) => ({ name: `MA${m.n}`, type: 'line', data: maLines[m.n], showSymbol: false, lineStyle: { width: 1.25, color: m.color }, itemStyle: { color: m.color }, silent: true })),
+      ...(showVol ? [{ name: 'Volume', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: all.map((b) => ({ value: b.v, itemStyle: { color: alpha(upDown(b), 0.45) } })), barMaxWidth: 14 }] : [])];
+    const xBase = { type: 'category', data: cats, boundaryGap: true, ...ax, splitLine: { show: false }, axisPointer: { label: { show: false } } };
+    return {
+      animation: false,
+      legend: { show: false }, toolbox: { show: false },
+      axisPointer: { link: [{ xAxisIndex: 'all' }], lineStyle: { color: t.mutedText, type: 'dashed' } },
+      tooltip: { show: true, trigger: 'axis', axisPointer: { type: 'cross', crossStyle: { color: t.mutedText } }, showContent: false },
+      grid: showVol ? [{ left: 6, right: 64, top: 6, bottom: priceBottom }, { left: 6, right: 64, height: 46, bottom: 48 }] : [{ left: 6, right: 64, top: 6, bottom: priceBottom }],
+      xAxis: [{ ...xBase, gridIndex: 0, axisLabel: { show: !showVol, ...ax.axisLabel, fontFamily: t.mono, hideOverlap: true, formatter: label } },
+        ...(showVol ? [{ ...xBase, gridIndex: 1, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, hideOverlap: true, formatter: label } }] : [])],
+      yAxis: [{ type: logScale ? 'log' : 'value', scale: true, position: 'right', gridIndex: 0, ...ax,
+          axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => fmtPx(v) },
+          axisPointer: { label: { formatter: (p: any) => fmtPx(p.value), backgroundColor: t.series[0], fontFamily: t.mono } } },
+        ...(showVol ? [{ type: 'value', gridIndex: 1, position: 'right', ...ax, splitNumber: 2, splitLine: { show: false },
+          axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => fmtVol(v) }, axisPointer: { label: { show: false } } }] : [])],
+      dataZoom: [{ type: 'inside', xAxisIndex: showVol ? [0, 1] : [0], startValue: s0, endValue: s1, minValueSpan: 10 },
+        { type: 'slider', xAxisIndex: showVol ? [0, 1] : [0], startValue: s0, endValue: s1, height: 16, bottom: 4, borderColor: t.border,
+          fillerColor: alpha(t.series[0], 0.12), handleStyle: { color: t.surface, borderColor: t.mutedText }, textStyle: { color: t.mutedText, fontSize: 9 },
+          labelFormatter: (_: number, v: string) => fmtTime(v, interval), dataBackground: { lineStyle: { color: t.mutedText }, areaStyle: { color: alpha(t.series[0], 0.08) } } }],
+      series,
+    };
+  // the zoom window is applied on load and reset only (s0/s1 left out, so panning never rebuilds the chart)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, closes, maLines, kind, mas, showVol, logScale, refs, markers, interval, symbol, t, base, UP, DOWN]);
 
-  const activeMa = MA.filter((m) => mas[m.n]);
-  let lo = Infinity, hi = -Infinity;
-  bars.forEach((b, i) => {
-    lo = Math.min(lo, kind === 'candle' ? b.l : b.c); hi = Math.max(hi, kind === 'candle' ? b.h : b.c);
-    activeMa.forEach((m) => { const v = maLines[m.n][s0 + first[i] + Math.min(k, visible.length - first[i]) - 1]; if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } });
-  });
-  if (Number.isFinite(lo)) refs.forEach((r) => { if (r.value > lo * 0.75 && r.value < hi * 1.33) { lo = Math.min(lo, r.value); hi = Math.max(hi, r.value); } });
-  if (!Number.isFinite(lo)) { lo = 0; hi = 1; }
-  const padY = (hi - lo) * 0.06 || hi * 0.02 || 1;
-  lo -= padY; hi += padY;
-  const useLog = logScale && lo > 0;
-  const tf = (v: number) => (useLog ? Math.log(v) : v);
-  const yOf = (v: number) => PAD_T + (1 - (tf(v) - tf(lo)) / (tf(hi) - tf(lo))) * priceH;
-  const vMax = Math.max(1, ...bars.map((b) => b.v));
-  const volTop = PAD_T + priceH + 6;
-
-  const ticks = useLog
-    ? niceTicks(lo, hi, 5).filter((v) => v > 0)
-    : niceTicks(lo, hi, Math.max(3, Math.floor(priceH / 48)));
-  const xTicks: number[] = [];
-  if (n) {
-    const every = Math.max(1, Math.round(n / Math.max(2, Math.floor(plotW / 90))));
-    for (let i = 0; i < n; i += every) xTicks.push(i);
-  }
-
-  const onMove = (e: React.MouseEvent) => {
-    const rect = (e.currentTarget as SVGElement).getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    if (drag.current && all.length) {
-      const per = (drag.current.win[1] - drag.current.win[0]) / plotW;
-      const shift = Math.round((drag.current.x - x) * per);
-      const len = drag.current.win[1] - drag.current.win[0];
-      const a = Math.max(0, Math.min(all.length - len, drag.current.win[0] + shift));
-      setWin([a, a + len]);
-      return;
-    }
-    const i = Math.floor((x - PAD_L) / slot);
-    setHover(i >= 0 && i < n ? i : null);
+  const onReady = (c: ECharts) => {
+    chartRef.current = c;
+    c.on('updateAxisPointer', (e: any) => { const i = e.axesInfo?.[0]?.value; setHover(typeof i === 'number' ? i : null); });
+    c.on('datazoom', () => { const dz = (c.getOption() as any).dataZoom?.[0]; if (dz?.startValue != null) setWin([Number(dz.startValue), Number(dz.endValue)]); });
+    c.getZr().on('globalout', () => setHover(null));
+    c.getZr().on('dblclick', () => resetZoom());
   };
-  const onWheel = useCallback((e: WheelEvent) => {
-    if (!all.length) return;
-    e.preventDefault();
-    const rect = (e.currentTarget as SVGElement).getBoundingClientRect();
-    const frac = Math.min(1, Math.max(0, (e.clientX - rect.left - PAD_L) / plotW));
-    const [a, b] = win ?? [base, all.length];
-    const len = b - a;
-    const newLen = Math.max(10, Math.min(all.length, Math.round(len * (e.deltaY > 0 ? 1.15 : 0.87))));
-    const center = a + frac * len;
-    let na = Math.round(center - frac * newLen);
-    na = Math.max(0, Math.min(all.length - newLen, na));
-    setWin(newLen >= all.length ? (base ? [0, all.length] : null) : [na, na + newLen]);
-  }, [all.length, plotW, win, base]);
-  const svgRef = useRef<SVGSVGElement>(null);
-  useEffect(() => {
-    const el = svgRef.current;
-    if (!el) return;
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, [onWheel]);
-
+  const resetZoom = () => {
+    setWin(null);
+    chartRef.current?.dispatchAction({ type: 'dataZoom', startValue: start, endValue: n - 1 });
+  };
+  const step = (d: number) => {
+    const i = Math.max(s0, Math.min(s1, (hover ?? s1) + d));
+    setHover(i);
+    chartRef.current?.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: i });
+  };
   const onKey = (e: React.KeyboardEvent) => {
     if (!n) return;
-    if (e.key === 'ArrowLeft') { setHover((h) => Math.max(0, (h ?? n) - 1)); e.preventDefault(); }
-    if (e.key === 'ArrowRight') { setHover((h) => Math.min(n - 1, (h ?? -1) + 1)); e.preventDefault(); }
-    if (e.key === 'Escape') { setWin(null); setHover(null); }
+    if (e.key === 'ArrowLeft') { step(-1); e.preventDefault(); }
+    if (e.key === 'ArrowRight') { step(1); e.preventDefault(); }
+    if (e.key === 'Escape') { resetZoom(); setHover(null); }
   };
 
-  const hb = hover != null ? bars[hover] : bars[n - 1];
-  const prev = hover != null ? (hover > 0 ? bars[hover - 1] : null) : (n > 1 ? bars[n - 2] : null);
+  const hi_ = hover != null && hover < n ? hover : n - 1;
+  const hb = n ? all[hi_] : undefined;
+  const prev = hi_ > 0 ? all[hi_ - 1] : null;
   const chg = hb && prev ? hb.c / prev.c - 1 : null;
-  const rangeChg = n > 1 ? bars[n - 1].c / bars[0].o - 1 : null;
-
-  const linePath = bars.map((b, i) => `${i ? 'L' : 'M'}${xOf(i).toFixed(1)},${yOf(b.c).toFixed(1)}`).join('');
+  const rangeChg = n > 1 && s1 > s0 ? all[s1].c / all[s0].o - 1 : null;
   const Btn = ({ on, disabled, onClick, children, title }: any) => (
     <button onClick={onClick} disabled={disabled} title={title}
       className={cn('px-1.5 py-0.5 text-[10px] font-mono', on ? 'bg-bloomberg text-bg' : 'text-text-secondary hover:text-text-primary', disabled && 'opacity-30 cursor-not-allowed hover:text-text-secondary')}>
@@ -244,7 +199,7 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
   );
 
   return (
-    <div ref={wrapRef} className="w-full select-none">
+    <div className="w-full select-none">
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
         <div className="flex border border-border" role="group" aria-label="Bar interval">
@@ -278,7 +233,7 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
           <Btn on={showVol} onClick={() => setShowVol(!showVol)}>Vol</Btn>
           <Btn on={logScale} onClick={() => setLogScale(!logScale)} title="Logarithmic price scale">Log</Btn>
         </div>
-        {win && <button onClick={() => setWin(null)} className="inline-flex items-center gap-1 text-[10px] text-text-tertiary hover:text-bloomberg"><RotateCcw className="w-3 h-3" />reset zoom</button>}
+        {win && <button onClick={resetZoom} className="inline-flex items-center gap-1 text-[10px] text-text-tertiary hover:text-bloomberg"><RotateCcw className="w-3 h-3" />reset zoom</button>}
         {loading && <Loader2 className="w-3 h-3 animate-spin text-text-tertiary" />}
       </div>
 
@@ -286,7 +241,7 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[11px] font-mono mb-1 min-h-[16px]">
         {hb && (
           <>
-            <span className="text-text-tertiary">{fmtTime(hb.t, interval, true)}{k > 1 ? ` (+${k - 1} bars)` : ''}</span>
+            <span className="text-text-tertiary">{fmtTime(hb.t, interval, true)}</span>
             <span><span className="text-text-tertiary">O</span> {fmtPx(hb.o)}</span>
             <span><span className="text-text-tertiary">H</span> {fmtPx(hb.h)}</span>
             <span><span className="text-text-tertiary">L</span> {fmtPx(hb.l)}</span>
@@ -301,84 +256,12 @@ export function PriceChart({ symbol, refs = [], markers, height = 340, defaultIn
 
       {err && <div role="alert" className="p-2 text-xs text-amber border border-amber/30 flex justify-between gap-3"><span>{err}</span><button onClick={()=>retry(n=>n+1)} className="underline">Retry chart</button></div>}
       {!err && (
-        <svg ref={svgRef} width={width} height={height} tabIndex={0} onKeyDown={onKey} role="img"
-          aria-label={`${symbol} ${interval} price chart`}
-          onMouseMove={onMove} onMouseLeave={() => { setHover(null); drag.current = null; }}
-          onMouseDown={(e) => { const r = (e.currentTarget as SVGElement).getBoundingClientRect(); drag.current = { x: e.clientX - r.left, win: win ?? [s0, s1] }; }}
-          onMouseUp={() => { drag.current = null; }} onDoubleClick={() => setWin(null)}
-          className={cn('outline-none', drag.current ? 'cursor-grabbing' : 'cursor-crosshair')}>
-          {/* grid + y axis */}
-          {ticks.map((v) => (
-            <g key={v}>
-              <line x1={PAD_L} x2={PAD_L + plotW} y1={yOf(v)} y2={yOf(v)} stroke="var(--border, #1f2630)" strokeWidth={1} opacity={0.5} />
-              <text x={PAD_L + plotW + 6} y={yOf(v) + 3} fontSize={10} fill="var(--text-tertiary, #6b7280)" fontFamily="monospace">{fmtPx(v)}</text>
-            </g>
-          ))}
-          {/* x labels */}
-          {xTicks.map((i, j) => {
-            // Intraday: the date where the day changes between ticks, the time otherwise.
-            const day = bars[i].t.slice(0, 10);
-            const newDay = MAX_DAYS[interval] && (j === 0 ? bars[0].t.slice(0, 10) !== bars[n - 1].t.slice(0, 10) : day !== bars[xTicks[j - 1]].t.slice(0, 10));
-            const label = newDay ? fmtTime(day, '1d') : fmtTime(bars[i].t, interval);
-            return (
-              <text key={i} x={xOf(i)} y={height - 6} fontSize={10} textAnchor="middle" fontFamily="monospace"
-                fill={newDay ? 'var(--text-secondary, #9aa4b2)' : 'var(--text-tertiary, #6b7280)'}>{label}</text>
-            );
-          })}
-          {/* volume */}
-          {showVol && bars.map((b, i) => (
-            <rect key={`v${i}`} x={xOf(i) - Math.max(0.5, slot * 0.35)} width={Math.max(1, slot * 0.7)}
-              y={volTop + volH - (b.v / vMax) * volH} height={(b.v / vMax) * volH}
-              fill={b.c >= b.o ? UP : DOWN} opacity={0.35} />
-          ))}
-          {/* price */}
-          {kind === 'candle' && bars.map((b, i) => {
-            const up = b.c >= b.o, x = xOf(i), bw = Math.max(1, slot * 0.62);
-            const yo = yOf(b.o), yc = yOf(b.c);
-            return (
-              <g key={i}>
-                <line x1={x} x2={x} y1={yOf(b.h)} y2={yOf(b.l)} stroke={up ? UP : DOWN} strokeWidth={1} />
-                <rect x={x - bw / 2} width={bw} y={Math.min(yo, yc)} height={Math.max(1, Math.abs(yc - yo))} fill={up ? UP : DOWN} />
-              </g>
-            );
-          })}
-          {kind === 'area' && n > 1 && (
-            <path d={`${linePath}L${xOf(n - 1).toFixed(1)},${(PAD_T + priceH).toFixed(1)}L${xOf(0).toFixed(1)},${(PAD_T + priceH).toFixed(1)}Z`} fill="#3987e5" opacity={0.1} />
-          )}
-          {kind !== 'candle' && <path d={linePath} fill="none" stroke="#3987e5" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />}
-          {/* moving averages (computed on the full history, so the first bars of a zoom are right) */}
-          {activeMa.map((m) => {
-            const pts = bars.map((_, i) => {
-              const v = maLines[m.n][s0 + first[i] + Math.min(k, visible.length - first[i]) - 1];
-              return v == null ? null : `${xOf(i).toFixed(1)},${yOf(v).toFixed(1)}`;
-            });
-            const d = pts.reduce((acc, p, i) => (p ? acc + `${acc && pts[i - 1] ? 'L' : 'M'}${p}` : acc), '');
-            return d ? <path key={m.n} d={d} fill="none" stroke={m.color} strokeWidth={1.25} opacity={0.9} /> : null;
-          })}
-          {/* signal markers (daily) */}
-          {markers && interval === '1d' && bars.map((b, i) => (markers[b.t.slice(0, 10)] ? (
-            <path key={`m${i}`} d={`M${xOf(i)},${yOf(b.l) + 4}l4,7h-8z`} fill={UP} opacity={0.85} />
-          ) : null))}
-          {/* plan levels */}
-          {refs.filter((r) => r.value >= lo && r.value <= hi).map((r) => (
-            <g key={r.label}>
-              <line x1={PAD_L} x2={PAD_L + plotW} y1={yOf(r.value)} y2={yOf(r.value)} stroke={r.color ?? '#9aa4b2'} strokeDasharray="4 3" strokeWidth={1} />
-              <rect x={PAD_L + plotW + 1} y={yOf(r.value) - 7} width={AXIS_W - 2} height={14} fill={r.color ?? '#9aa4b2'} opacity={0.18} />
-              <text x={PAD_L + plotW + 4} y={yOf(r.value) + 3} fontSize={9} fill={r.color ?? '#9aa4b2'} fontFamily="monospace">{r.label} {fmtPx(r.value)}</text>
-            </g>
-          ))}
-          {/* crosshair */}
-          {hover != null && bars[hover] && (
-            <g pointerEvents="none">
-              <line x1={xOf(hover)} x2={xOf(hover)} y1={PAD_T} y2={height - PAD_B} stroke="#9aa4b2" strokeWidth={1} strokeDasharray="2 3" opacity={0.6} />
-              <line x1={PAD_L} x2={PAD_L + plotW} y1={yOf(bars[hover].c)} y2={yOf(bars[hover].c)} stroke="#9aa4b2" strokeWidth={1} strokeDasharray="2 3" opacity={0.6} />
-              <rect x={PAD_L + plotW + 1} y={yOf(bars[hover].c) - 8} width={AXIS_W - 2} height={16} fill="#3987e5" />
-              <text x={PAD_L + plotW + 5} y={yOf(bars[hover].c) + 4} fontSize={10} fill="#fff" fontFamily="monospace">{fmtPx(bars[hover].c)}</text>
-            </g>
-          )}
-        </svg>
+        <div tabIndex={0} onKeyDown={onKey} className="outline-none focus-visible:ring-1 focus-visible:ring-bloomberg/50 rounded">
+          {n ? <EChart option={option} height={height} onReady={onReady} ariaLabel={`${symbol} ${interval} price chart`} />
+            : <div style={{ height }} className="flex items-center justify-center text-2xs text-text-tertiary">{loading ? 'Loading bars…' : 'No bars for this period.'}</div>}
+        </div>
       )}
-      <div className="text-[10px] text-text-tertiary mt-0.5">Scroll to zoom · drag to pan · double-click or Esc to reset · ← → step bars{k > 1 ? ` · ${k} bars per candle at this zoom` : ''}</div>
+      <div className="text-[10px] text-text-tertiary mt-0.5">Scroll to zoom · drag to pan · slider picks a window · double-click or Esc to reset · ← → step bars</div>
     </div>
   );
 }

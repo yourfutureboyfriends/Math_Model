@@ -1,8 +1,10 @@
-// Multi-series line chart drawn in real pixels (measured container width), so text is never
-// stretched: y-axis with gridlines, date ticks, de-overlapped end labels with leader lines,
-// and a hover crosshair with a value tooltip. Optional log scale for cumulative returns.
+// Multi-series line chart on Apache ECharts: legend (click to hide a series), end labels that never overlap,
+// axis crosshair tooltip, drag-to-zoom (double-click resets), log scale, dashed baseline and labelled reference
+// levels, toolbox to save a PNG or read the data. Date-indexed charts add period presets, interval resampling
+// and typed date ranges above the plot.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { EChart, alpha, axisStyle, color, inkOn, useChartTheme, type ECharts } from '@/components/charts/EChart';
 
 export interface ChartLine { key: string; label: string; color: string }
 
@@ -18,59 +20,16 @@ interface Props {
   refs?: { value: number; label: string; color?: string }[];   // labelled horizontal levels
 }
 
-const FONT = 10;
 const NO_REFS: { value: number; label: string; color?: string }[] = [];
-const CHAR_W = 6.1;                  // monospace advance at 10px
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-function niceStep(span: number, count: number): number {
-  const raw = span / Math.max(1, count);
-  const mag = 10 ** Math.floor(Math.log10(raw));
-  const n = raw / mag;
-  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
-}
-
-function linearTicks(lo: number, hi: number, count: number): number[] {
-  const step = niceStep(hi - lo || 1, count);
-  const out: number[] = [];
-  for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) out.push(Math.abs(v) < step * 1e-9 ? 0 : v);
-  return out;
-}
-
-function logTicks(lo: number, hi: number): number[] {
-  const out: number[] = [];
-  const ratio = hi / lo;
-  const mult = ratio > 64 ? 10 : 2;
-  for (let v = mult ** Math.floor(Math.log(lo) / Math.log(mult)); v <= hi * 1.0001; v *= mult) if (v >= lo * 0.9999) out.push(v);
-  return out.length >= 2 ? out : [lo, hi];
-}
-
-function monthTicks(labels: string[], maxTicks: number): { i: number; text: string }[] {
-  if (labels.length && labels.every((l) => /^\d{4}-\d{2}-\d{2}$/.test(l))) {
-    // Daily data: tick the first trading day of every k-th month.
-    const firsts = labels.map((l, i) => ({ m: l.slice(0, 7), i })).filter((x, k, a) => k === 0 || a[k - 1].m !== x.m);
-    const step = Math.max(1, Math.ceil(firsts.length / Math.max(1, maxTicks)));
-    return firsts.filter((_, k) => k % step === 0 && (k > 0 || firsts.length < 3))
-      .map(({ m, i }) => ({ i, text: `${MONTHS[Number(m.slice(5)) - 1]} ${m.slice(2, 4)}` }));
+/** Compact axis label for a date-like x value: "2019" on long monthly spans, "Mar 24" otherwise. */
+function dateLabel(v: string, longSpan: boolean): string {
+  if (/^\d{4}-\d{2}(-\d{2})?$/.test(v)) {
+    const m = Number(v.slice(5, 7)) - 1;
+    return longSpan ? v.slice(0, 4) : `${MONTHS[m]} ${v.slice(2, 4)}`;
   }
-  const isMonth = labels.every((l) => /^\d{4}-\d{2}$/.test(l));
-  const n = labels.length;
-  if (!isMonth) {
-    const step = Math.max(1, Math.ceil((n - 1) / Math.max(1, maxTicks - 1)));
-    const idx: number[] = [];
-    for (let i = 0; i < n; i += step) idx.push(i);
-    return idx.map((i) => ({ i, text: labels[i] }));
-  }
-  const years = n / 12;
-  if (years > 3) {
-    const step = Math.max(1, Math.ceil(years / Math.max(1, maxTicks)));
-    const nice = [1, 2, 5, 10, 20].find((s) => s >= step) ?? step;
-    return labels.map((l, i) => ({ l, i })).filter(({ l }) => l.endsWith('-01') && Number(l.slice(0, 4)) % nice === 0)
-      .map(({ l, i }) => ({ i, text: l.slice(0, 4) }));
-  }
-  const step = [1, 2, 3, 6, 12].find((s) => n / s <= maxTicks) ?? 12;
-  return labels.map((l, i) => ({ l, i })).filter(({ l }) => (Number(l.slice(5)) - 1) % step === 0)
-    .map(({ l, i }) => ({ i, text: `${MONTHS[Number(l.slice(5)) - 1]} ${l.slice(2, 4)}` }));
+  return v;
 }
 
 // ── Period / interval controls ───────────────────────────────────────────────
@@ -181,190 +140,73 @@ export function LineChart(props: Props & { controls?: boolean; defaultRange?: st
 
 function LineChartCore({ rows, x, lines, height = 180, fmt = (v) => v.toFixed(2), axisFmt, log = false, baseline, refs = NO_REFS, onZoom, onReset }:
   Props & { onZoom?: (from: string, to: string) => void; onReset?: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [W, setW] = useState(0);
-  const [hover, setHover] = useState<number | null>(null);
-  const [drag, setDrag] = useState<{ a: number; b: number } | null>(null);
-
+  const t = useChartTheme();
+  const chart = useRef<ECharts | null>(null);
+  const cb = useRef({ onZoom, onReset, rows, x });
+  cb.current = { onZoom, onReset, rows, x };
+  const zoomable = !!onZoom;
+  const option = useMemo(() => {
+    const cats = rows.map((r) => String(r[x]));
+    const first = cats[0] ?? '', last = cats[cats.length - 1] ?? '';
+    const years = (Number(last.slice(0, 4)) - Number(first.slice(0, 4))) || 0;
+    const longSpan = /^\d{4}-\d{2}/.test(first) && years > 3;
+    const lastRow = rows[rows.length - 1] ?? {};
+    const endLen = Math.max(0, ...lines.map((l) => (typeof lastRow[l.key] === 'number' ? fmt(lastRow[l.key]).length : 0)));
+    const finite = rows.flatMap((r) => lines.map((l) => r[l.key])).filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && (!log || v > 0));
+    const extra = [...(baseline !== undefined ? [baseline] : []), ...refs.map((r) => r.value)].filter((v) => !log || v > 0);
+    const lo = Math.min(...finite, ...extra), hi = Math.max(...finite, ...extra);
+    const val = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && (!log || v > 0) ? v : null);
+    const marks = [
+      ...(baseline !== undefined ? [{ yAxis: baseline, lineStyle: { color: t.mutedText, type: 'dashed' as const }, label: { show: false } }] : []),
+      ...refs.map((r) => ({ yAxis: r.value, lineStyle: { color: color(r.color, t.mutedText), type: [4, 3] as any },
+        label: { show: true, position: 'insideStartTop' as const, formatter: `${r.label} ${fmt(r.value)}`, color: color(r.color, t.mutedText), fontSize: 10, fontFamily: t.mono } })),
+    ];
+    const series = lines.map((l, k) => {
+      const c = color(l.color);
+      return {
+        name: l.label, type: 'line', data: rows.map((r) => val(r[l.key])), showSymbol: false, symbol: 'circle', symbolSize: 8, connectNulls: false,
+        lineStyle: { width: 2, color: c }, itemStyle: { color: c, borderColor: t.surface1, borderWidth: 2 }, emphasis: { focus: 'series' as const },
+        endLabel: { show: true, formatter: (p: any) => (p.value == null ? '' : fmt(p.value)), color: inkOn(c), backgroundColor: c, padding: [2, 4], borderRadius: 3, fontSize: 10, fontFamily: t.mono, distance: 6 },
+        labelLayout: { moveOverlap: 'shiftY' as const },
+        ...(k === 0 && lines.length <= 2 ? { areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: alpha(c, 0.22) }, { offset: 1, color: alpha(c, 0) }] }, origin: 'start' as const } } : {}),
+        ...(k === 0 && marks.length ? { markLine: { symbol: 'none', silent: true, data: marks } } : {}),
+      };
+    });
+    const ax = axisStyle(t);
+    return {
+      legend: { type: 'scroll', top: 0, left: 0, right: 90, data: lines.map((l) => l.label), itemHeight: 8, itemWidth: 8, icon: 'circle' },
+      grid: { left: 8, right: endLen * 6.4 + 22, top: 32, bottom: 6, containLabel: true },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'line', lineStyle: { color: t.mutedText, type: 'dashed' } }, order: 'valueDesc',
+        valueFormatter: (v: number) => (v == null ? '—' : fmt(v)) },
+      xAxis: { type: 'category', data: cats, boundaryGap: false, ...ax, splitLine: { show: false },
+        axisLabel: { ...ax.axisLabel, fontFamily: t.mono, hideOverlap: true, formatter: (v: string) => dateLabel(v, longSpan) } },
+      yAxis: { type: log ? 'log' : 'value', scale: !log, ...(log && Number.isFinite(lo) ? { min: lo / 1.08, max: hi * 1.08, logBase: hi / lo > 50 ? 10 : 2 } : {}), ...ax, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => (axisFmt ?? fmt)(v) } },
+      dataZoom: zoomable ? [{ type: 'inside', xAxisIndex: 0, zoomOnMouseWheel: 'shift', moveOnMouseWheel: false, filterMode: 'none' }] : [],
+      toolbox: { top: 0, feature: { ...(zoomable ? { dataZoom: { yAxisIndex: 'none', title: { zoom: 'Drag to zoom', back: 'Back' } } } : {}),
+        dataView: { readOnly: true, title: 'Data', lang: ['Data', 'Close', 'Refresh'], backgroundColor: t.surface, textColor: t.textStrong, textareaColor: t.surface },
+        saveAsImage: { title: 'Save PNG', backgroundColor: t.surface, pixelRatio: 2 } } },
+      series,
+    };
+  }, [rows, x, lines, fmt, axisFmt, log, baseline, refs, zoomable, t]);
+  // drag on the plot selects a window: keep the zoom-select cursor on after every redraw
   useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([e]) => setW(Math.round(e.contentRect.width)));
-    ro.observe(el);
-    setW(el.clientWidth);
-    return () => ro.disconnect();
-  }, []);
-
-  const geo = useMemo(() => {
-    if (rows.length < 2 || W === 0) return null;
-    const vals = rows.flatMap((r) => lines.map((l) => r[l.key])).filter((v): v is number => typeof v === 'number' && (!log || v > 0));
-    if (!vals.length) return null;
-    const extra = [...(baseline !== undefined ? [baseline] : []), ...refs.map((r) => r.value)];
-    let lo = Math.min(...vals, ...extra);
-    let hi = Math.max(...vals, ...extra);
-    if (lo === hi) { lo -= 1; hi += 1; }
-    let yt: number[];
-    if (log) {
-      yt = logTicks(lo, hi);
-    } else {
-      // Round the domain out to whole steps so the outermost gridlines bracket the data.
-      const step = niceStep(hi - lo, Math.max(3, Math.floor(height / 45)));
-      lo = Math.floor(lo / step + 1e-9) * step;
-      hi = Math.ceil(hi / step - 1e-9) * step;
-      yt = linearTicks(lo, hi, Math.round((hi - lo) / step));
-    }
-    const af = axisFmt ?? fmt;
-    const L = Math.max(...yt.map((t) => af(t).length)) * CHAR_W + 10;
-    const last = rows[rows.length - 1];
-    const endText = lines.map((l) => (typeof last[l.key] === 'number' ? `${l.label} ${fmt(last[l.key])}` : ''));
-    const R = Math.min(W * 0.35, Math.max(...endText.map((t) => t.length)) * CHAR_W + 22);
-    const T = 8, B = 20;
-    const f = (v: number) => (log ? Math.log(v) : v);
-    const sx = (i: number) => L + (i / (rows.length - 1)) * (W - L - R);
-    const sy = (v: number) => T + (1 - (f(v) - f(lo)) / (f(hi) - f(lo) || 1)) * (height - T - B);
-    // End labels: sorted by y, pushed apart to >= 13px, kept inside the plot.
-    const ends = lines.map((l, k) => ({ l, v: last[l.key], text: endText[k] }))
-      .filter((e) => typeof e.v === 'number').map((e) => ({ ...e, y0: sy(e.v), y: sy(e.v) }))
-      .sort((a, b) => a.y - b.y);
-    const gap = 13;
-    for (let k = 1; k < ends.length; k++) if (ends[k].y - ends[k - 1].y < gap) ends[k].y = ends[k - 1].y + gap;
-    const overflow = ends.length ? ends[ends.length - 1].y - (height - B) : 0;
-    if (overflow > 0) ends.forEach((e) => { e.y -= overflow; });
-    for (let k = ends.length - 2; k >= 0; k--) if (ends[k + 1].y - ends[k].y < gap) ends[k].y = ends[k + 1].y - gap;
-    const xt = monthTicks(rows.map((r) => String(r[x])), Math.max(2, Math.floor((W - L - R) / 70)));
-    return { L, R, T, B, sx, sy, yt, xt, ends, af };
-  }, [rows, lines, W, height, log, baseline, refs, fmt, axisFmt, x]);
-
-  const legend = (
-    <div className="flex flex-wrap gap-x-3 gap-y-1 mb-1">
-      {lines.map((l) => (
-        <span key={l.key} className="inline-flex items-center gap-1.5 text-2xs text-text-secondary px-1.5 py-0.5 rounded-full bg-surface-2/70 border border-border-subtle">
-          <span className="w-2 h-2 rounded-full" style={{ background: l.color, boxShadow: `0 0 0 2px color-mix(in srgb, ${l.color} 25%, transparent)` }} />{l.label}
-        </span>
-      ))}
-    </div>
-  );
-
-  const h = hover !== null ? rows[hover] : null;
-
-  return (
-    <div>
-      {legend}
-      <div ref={ref} className="relative w-full" style={{ height }}>
-        {geo && (
-          <svg width={W} height={height} className={`block select-none ${onZoom ? 'cursor-crosshair' : ''}`}
-            onMouseLeave={() => { setHover(null); setDrag(null); }}
-            onMouseDown={(e) => {
-              if (!onZoom) return;
-              const r = e.currentTarget.getBoundingClientRect();
-              const i = Math.max(0, Math.min(rows.length - 1, Math.round(((e.clientX - r.left - geo.L) / (W - geo.L - geo.R)) * (rows.length - 1))));
-              setDrag({ a: i, b: i });
-            }}
-            onMouseUp={() => {
-              if (drag && onZoom && Math.abs(drag.b - drag.a) >= 2) {
-                const [i, j] = [Math.min(drag.a, drag.b), Math.max(drag.a, drag.b)];
-                onZoom(String(rows[i][x]), String(rows[j][x]));
-              }
-              setDrag(null);
-            }}
-            onDoubleClick={() => onReset?.()}
-            onMouseMove={(e) => {
-              const r = e.currentTarget.getBoundingClientRect();
-              const px = e.clientX - r.left;
-              const i = Math.max(0, Math.min(rows.length - 1, Math.round(((px - geo.L) / (W - geo.L - geo.R)) * (rows.length - 1))));
-              setHover(i);
-              if (drag) setDrag({ ...drag, b: i });
-            }}>
-            {drag && drag.a !== drag.b && (
-              <rect x={geo.sx(Math.min(drag.a, drag.b))} y={geo.T} width={Math.abs(geo.sx(drag.b) - geo.sx(drag.a))} height={height - geo.T - geo.B}
-                fill="rgb(var(--c-bloomberg) / 0.12)" stroke="rgb(var(--c-bloomberg) / 0.5)" />
-            )}
-            {/* grid + y axis */}
-            {geo.yt.map((t) => (
-              <g key={t}>
-                <line x1={geo.L} x2={W - geo.R} y1={geo.sy(t)} y2={geo.sy(t)} stroke="var(--border)" strokeOpacity={0.4} />
-                <text x={geo.L - 6} y={geo.sy(t) + 3.5} fontSize={FONT} textAnchor="end" fill="var(--text-tertiary)" className="font-mono">{geo.af(t)}</text>
-              </g>
-            ))}
-            {baseline !== undefined && (
-              <line x1={geo.L} x2={W - geo.R} y1={geo.sy(baseline)} y2={geo.sy(baseline)} stroke="var(--text-tertiary)" strokeDasharray="3 3" />
-            )}
-            {refs.map((r) => (
-              <g key={r.label}>
-                <line x1={geo.L} x2={W - geo.R} y1={geo.sy(r.value)} y2={geo.sy(r.value)}
-                  stroke={r.color ?? 'var(--text-tertiary)'} strokeDasharray="4 3" strokeWidth={1} />
-                <text x={geo.L + 4} y={geo.sy(r.value) - 3} fontSize={10} fill={r.color ?? 'var(--text-tertiary)'} className="font-mono">
-                  {r.label} {fmt(r.value)}
-                </text>
-              </g>
-            ))}
-            {/* x axis */}
-            <line x1={geo.L} x2={W - geo.R} y1={height - geo.B} y2={height - geo.B} stroke="var(--border-strong)" strokeOpacity={0.6} />
-            {geo.xt.map(({ i, text }) => (
-              <g key={i}>
-                <text x={geo.sx(i)} y={height - 5} fontSize={FONT} textAnchor="middle" fill="var(--text-tertiary)" className="font-mono">{text}</text>
-              </g>
-            ))}
-            {/* soft gradient under the first series (one or two lines: more would muddy the chart) */}
-            {lines.length <= 2 && (() => {
-              const l = lines[0];
-              const pts = rows.map((r, i) => (typeof r[l.key] === 'number' && (!log || r[l.key] > 0) ? [geo.sx(i), geo.sy(r[l.key])] : null)).filter(Boolean) as number[][];
-              if (pts.length < 2) return null;
-              const base = height - geo.B, id = `lcg-${l.key.replace(/[^a-z0-9]/gi, '')}`;
-              return (
-                <g pointerEvents="none">
-                  <defs><linearGradient id={id} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor={l.color} stopOpacity={0.22} /><stop offset="100%" stopColor={l.color} stopOpacity={0} /></linearGradient></defs>
-                  <path d={`M${pts[0][0]},${base} ${pts.map(([a, b]) => `L${a.toFixed(1)},${b.toFixed(1)}`).join(' ')} L${pts[pts.length - 1][0]},${base} Z`} fill={`url(#${id})`} />
-                </g>);
-            })()}
-            {/* series */}
-            {lines.map((l) => {
-              const d = rows.map((r, i) => (typeof r[l.key] === 'number' && (!log || r[l.key] > 0)
-                ? `${i && typeof rows[i - 1][l.key] === 'number' ? 'L' : 'M'}${geo.sx(i).toFixed(1)},${geo.sy(r[l.key]).toFixed(1)}` : '')).join('');
-              return <path key={l.key} d={d} fill="none" stroke={l.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />;
-            })}
-            {/* end labels with leader lines when displaced */}
-            {geo.ends.map((e) => {
-              const x0 = W - geo.R;
-              return (
-                <g key={e.l.key}>
-                  <circle cx={x0} cy={e.y0} r={2.5} fill={e.l.color} />
-                  {Math.abs(e.y - e.y0) > 1 && <path d={`M${x0 + 3},${e.y0} L${x0 + 8},${e.y}`} stroke="var(--text-tertiary)" fill="none" />}
-                  <rect x={x0 + 10} y={e.y - 3} width={6} height={6} rx={1} fill={e.l.color} />
-                  <text x={x0 + 20} y={e.y + 3.5} fontSize={FONT} fill="var(--text-secondary)" className="font-mono">{e.text}</text>
-                </g>
-              );
-            })}
-            {/* hover */}
-            {h && hover !== null && (
-              <g pointerEvents="none">
-                <line x1={geo.sx(hover)} x2={geo.sx(hover)} y1={geo.T} y2={height - geo.B} stroke="var(--text-tertiary)" strokeOpacity={0.5} />
-                {lines.map((l) => typeof h[l.key] === 'number' && (!log || h[l.key] > 0) && (
-                  <circle key={l.key} cx={geo.sx(hover)} cy={geo.sy(h[l.key])} r={4} fill={l.color} stroke="var(--surface-1)" strokeWidth={2.5} />
-                ))}
-              </g>
-            )}
-          </svg>
-        )}
-        {geo && h && hover !== null && (() => {
-          const px = geo.sx(hover);
-          const right = px > (W - geo.R) * 0.6;
-          const items = lines.filter((l) => typeof h[l.key] === 'number').sort((a, b) => h[b.key] - h[a.key]);
-          return (
-            <div className="pointer-events-none absolute top-1 z-10 px-3 py-2 bg-surface-1/95 backdrop-blur-md border border-border-subtle rounded-lg text-2xs font-mono shadow-[0_8px_24px_rgb(0_0_0/0.25)]"
-              style={right ? { right: W - px + 10 } : { left: px + 10 }}>
-              <div className="text-text-tertiary mb-0.5">{String(h[x])}</div>
-              {items.map((l) => (
-                <div key={l.key} className="flex items-center gap-2 whitespace-nowrap">
-                  <span className="w-2 h-2 rounded-sm" style={{ background: l.color }} />
-                  <span className="text-text-secondary">{l.label}</span>
-                  <span className="ml-auto pl-3 text-text-primary">{fmt(h[l.key])}</span>
-                </div>
-              ))}
-            </div>
-          );
-        })()}
-      </div>
-    </div>
-  );
+    const c = chart.current;
+    if (c && zoomable) c.dispatchAction({ type: 'takeGlobalCursor', key: 'dataZoomSelect', dataZoomSelectActive: true });
+  }, [option, zoomable]);
+  const onReady = (c: ECharts) => {
+    chart.current = c;
+    c.on('datazoom', (e: any) => {
+      const { onZoom: z, rows: rs, x: xk } = cb.current;
+      const b0 = e?.batch?.[0] ?? e ?? {};
+      const last = rs.length - 1;
+      // the drag-select reports values; the inside zoom reports percentages
+      const a = Math.max(0, Math.round(b0.startValue ?? ((b0.start ?? 0) / 100) * last));
+      const b = Math.min(last, Math.round(b0.endValue ?? ((b0.end ?? 100) / 100) * last));
+      if (z && b - a >= 2 && (a > 0 || b < last)) z(String(rs[a][xk]), String(rs[b][xk]));
+    });
+    c.getZr().on('dblclick', () => cb.current.onReset?.());
+    if (onZoom) c.dispatchAction({ type: 'takeGlobalCursor', key: 'dataZoomSelect', dataZoomSelectActive: true });
+  };
+  if (rows.length < 2) return <div className="text-2xs text-text-tertiary p-3" style={{ height }}>Not enough data to chart.</div>;
+  return <EChart option={option} height={height + 30} onReady={onReady} ariaLabel={`Line chart: ${lines.map((l) => l.label).join(', ')}`} />;
 }

@@ -1,10 +1,11 @@
 // Security function screens: ERN, ANR, HDS, DVD, OMON, RV, HP, BETA, DCF.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
 import { Donut } from '@/components/ui/Donut';
 import { CATEGORICAL } from '@/lib/chartPalette';
+import { EChart, alpha, axisStyle, color, useChartTheme } from '@/components/charts/EChart';
 import { Chg, ErrorBox, fmtBig, fmtPct, fmtPrice, Loading, Panel, useJSON } from './shared';
 
 import { ExpectationsPanel } from './ExpectationsPanel';
@@ -24,65 +25,32 @@ function Stat({ label, value, sub, tone }: { label: string; value: React.ReactNo
 }
 
 function Bars({ data, height = 160, fmt = (v: number) => v.toFixed(2) }: { data: { label: string; a: number | null; b?: number | null }[]; height?: number; fmt?: (v: number) => string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [W, setW] = useState(600);
-  const [hover, setHover] = useState<number | null>(null);
-  useEffect(() => {
-    const el = ref.current; if (!el) return;
-    const ro = new ResizeObserver(([e]) => setW(Math.max(200, Math.round(e.contentRect.width))));
-    ro.observe(el); return () => ro.disconnect();
-  }, []);
-  const vals = data.flatMap((d) => [d.a, d.b]).filter((v): v is number => v != null && Number.isFinite(v));
-  if (!vals.length) return <div className="text-2xs text-text-tertiary">No data.</div>;
-  // a rounded value axis with 3–4 gridlines
-  const rawMax = Math.max(0, ...vals), rawMin = Math.min(0, ...vals);
-  const step = (() => { const r = (rawMax - rawMin || 1) / 4, m = 10 ** Math.floor(Math.log10(r)), f = r / m; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * m; })();
-  const max = Math.ceil(rawMax / step) * step, min = Math.floor(rawMin / step) * step;
-  const ticks: number[] = []; for (let t = min; t <= max + step / 2; t += step) ticks.push(+t.toFixed(10));
-  const L = 44, T = 8, B = 4, ph = height - T - B, pw = W - L;
-  const y = (v: number) => T + ((max - v) / (max - min || 1)) * ph;
-  const slot = pw / data.length, paired = data.some((d) => d.b != null);
-  const bw = Math.min(26, slot * (paired ? 0.32 : 0.55)), gap = paired ? Math.min(4, slot * 0.06) : 0;
-  const bar = (x: number, v: number, fill: string, key: string) => {
-    const top = Math.min(y(v), y(0)), h = Math.max(1, Math.abs(y(v) - y(0))), r = Math.min(3, bw / 3, h);
-    const up = v >= 0;
-    return <path key={key} fill={fill} d={up
-      ? `M${x},${top + h} V${top + r} Q${x},${top} ${x + r},${top} H${x + bw - r} Q${x + bw},${top} ${x + bw},${top + r} V${top + h} Z`
-      : `M${x},${top} V${top + h - r} Q${x},${top + h} ${x + r},${top + h} H${x + bw - r} Q${x + bw},${top + h} ${x + bw},${top + h - r} V${top} Z`} />;
-  };
-  const hd = hover != null ? data[hover] : null;
-  return (
-    <div ref={ref} className="relative">
-      <svg width={W} height={height} className="block" role="img" aria-label="Bar chart" onMouseLeave={() => setHover(null)}
-        onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); const i = Math.floor((e.clientX - r.left - L) / slot); setHover(i >= 0 && i < data.length ? i : null); }}>
-        <defs>
-          {[['bg-g', 'var(--c-green)'], ['bg-r', 'var(--c-red)'], ['bg-a', 'var(--c-bloomberg)'], ['bg-e', 'var(--c-text-tertiary)']].map(([id, c]) => (
-            <linearGradient key={id} id={id} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor={`rgb(${c})`} stopOpacity={id === 'bg-e' ? 0.55 : 1} /><stop offset="100%" stopColor={`rgb(${c})`} stopOpacity={id === 'bg-e' ? 0.25 : 0.55} /></linearGradient>))}
-        </defs>
-        {ticks.map((t) => <g key={t}>
-          <line x1={L} x2={W} y1={y(t)} y2={y(t)} stroke="rgb(var(--c-border))" strokeOpacity={t === 0 ? 1 : 0.5} strokeDasharray={t === 0 ? undefined : '2 4'} />
-          <text x={L - 6} y={y(t) + 3.5} fontSize={10} textAnchor="end" fill="rgb(var(--c-text-tertiary))" className="font-mono">{fmt(t)}</text></g>)}
-        {hover != null && <rect x={L + hover * slot} y={T} width={slot} height={ph} fill="rgb(var(--c-text-primary) / 0.04)" rx={4} />}
-        {data.map((d, i) => {
-          const cx = L + i * slot + slot / 2;
-          const xa = paired ? cx + gap / 2 : cx - bw / 2, xb = cx - bw - gap / 2;
-          const col = d.b != null && d.a != null ? (d.a >= d.b ? 'url(#bg-g)' : 'url(#bg-r)') : 'url(#bg-a)';
-          return <g key={d.label + i}>
-            {d.b != null && bar(xb, d.b, 'url(#bg-e)', 'b')}
-            {d.a != null && bar(xa, d.a, col, 'a')}
-          </g>;
-        })}
-      </svg>
-      <div className="flex mt-1" style={{ paddingLeft: L }}>{data.map((d, i) => <div key={d.label + i} className={cn('flex-1 text-center text-[10px] font-mono truncate', hover === i ? 'text-text-primary' : 'text-text-tertiary')}>{d.label}</div>)}</div>
-      {hd && hover != null && <div className="pointer-events-none absolute top-0 z-10 px-2.5 py-1.5 rounded-md border border-border bg-surface-2/95 shadow-xl text-[11px] font-mono"
-        style={{ left: Math.min(W - 150, Math.max(0, L + hover * slot + slot / 2 - 60)) }}>
-        <div className="text-text-tertiary">{hd.label}</div>
-        {hd.a != null && <div className="text-text-primary">{paired ? 'Reported ' : ''}{fmt(hd.a)}</div>}
-        {hd.b != null && <div className="text-text-secondary">Estimate {fmt(hd.b)}</div>}
-        {hd.a != null && hd.b != null && hd.b !== 0 && <div className={hd.a >= hd.b ? 'text-green' : 'text-red'}>{hd.a >= hd.b ? 'Beat' : 'Missed'} by {Math.abs((hd.a / hd.b - 1) * 100).toFixed(1)}%</div>}
-      </div>}
-    </div>
-  );
+  const t = useChartTheme();
+  const paired = data.some((d) => d.b != null);
+  const option = useMemo(() => {
+    const ax = axisStyle(t);
+    const accent = color('rgb(var(--c-bloomberg))', t.accent), est = alpha(t.mutedText, 0.55);
+    const grad = (c: string) => ({ type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: c }, { offset: 1, color: alpha(c, 0.55) }] });
+    return {
+      legend: paired ? { top: 0, left: 0, data: ['Reported', 'Estimate'] } : { show: false }, toolbox: { show: false },
+      grid: { left: 8, right: 8, top: paired ? 26 : 10, bottom: 4, containLabel: true },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow', shadowStyle: { color: alpha(t.textStrong, 0.04) } },
+        formatter: (ps: any[]) => { const d = data[ps[0].dataIndex]; let s = `<b>${d.label}</b>`;
+          if (d.a != null) s += `<br/>${paired ? 'Reported ' : ''}${fmt(d.a)}`; if (d.b != null) s += `<br/>Estimate ${fmt(d.b)}`;
+          if (d.a != null && d.b != null && d.b !== 0) s += `<br/><b style="color:${d.a >= d.b ? t.green : t.red}">${d.a >= d.b ? 'Beat' : 'Missed'} by ${Math.abs((d.a / d.b - 1) * 100).toFixed(1)}%</b>`;
+          return s; } },
+      xAxis: { type: 'category', data: data.map((d) => d.label), ...ax, splitLine: { show: false }, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, interval: 0, hideOverlap: true } },
+      yAxis: { type: 'value', ...ax, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => fmt(v) } },
+      series: [
+        ...(paired ? [{ name: 'Estimate', type: 'bar', barMaxWidth: 22, barGap: '12%', itemStyle: { color: est, borderRadius: 3 }, data: data.map((d) => d.b ?? null) }] : []),
+        { name: 'Reported', type: 'bar', barMaxWidth: 26, itemStyle: { borderRadius: 3, color: paired ? t.green : accent },
+          data: data.map((d) => (d.a == null ? null : { value: d.a, itemStyle: { color: grad(d.b != null ? (d.a >= d.b ? t.green : t.red) : accent),
+            borderRadius: d.a >= 0 ? [3, 3, 0, 0] : [0, 0, 3, 3] } })) },
+      ],
+    };
+  }, [data, fmt, paired, t]);
+  if (!data.some((d) => d.a != null || d.b != null)) return <div className="text-2xs text-text-tertiary">No data.</div>;
+  return <EChart option={option} height={height + (paired ? 40 : 24)} ariaLabel="Bar chart" />;
 }
 
 // ── ERN ──────────────────────────────────────────────────────────────────────
@@ -340,35 +308,36 @@ export function DvdView({ symbol }: { symbol: string }) {
 /** Open interest by strike — calls up, puts down — with the underlying and max pain marked:
  *  where positioning (and often pinning into expiry) is concentrated. */
 function OpenInterest({ data, rows }: { data: any; rows: { k: number; c?: any; p?: any }[] }) {
+  const t = useChartTheme();
   const pts = rows.filter((r) => (r.c?.open_interest ?? 0) + (r.p?.open_interest ?? 0) > 0);
+  const option = useMemo(() => {
+    const ax = axisStyle(t);
+    const strikes = pts.map((r) => r.k);
+    const near = (v: number | null | undefined) => (v == null ? null : strikes.reduce((b, k, i) => (Math.abs(k - v) < Math.abs(strikes[b] - v) ? i : b), 0));
+    const accent = color('rgb(var(--c-bloomberg))', t.accent);
+    const marks = [
+      near(data.underlying) != null && { xAxis: near(data.underlying), lineStyle: { color: accent }, label: { formatter: `spot ${fmtPrice(data.underlying)}`, color: accent } },
+      data.max_pain != null && data.max_pain !== data.underlying && near(data.max_pain) != null && { xAxis: near(data.max_pain), lineStyle: { color: t.text }, label: { formatter: `max pain ${fmtPrice(data.max_pain)}`, color: t.text, position: 'start' } },
+    ].filter(Boolean);
+    return {
+      legend: { top: 0, left: 0, data: ['Calls', 'Puts'] }, toolbox: { show: false },
+      grid: { left: 8, right: 8, top: 40, bottom: 18, containLabel: true },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: (v: number) => fmtBig(Math.abs(v)) },
+      xAxis: { type: 'category', data: strikes.map((k) => fmtPrice(k)), ...ax, splitLine: { show: false }, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, hideOverlap: true } },
+      yAxis: { type: 'value', ...ax, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => fmtBig(Math.abs(v)) } },
+      series: [
+        { name: 'Calls', type: 'bar', stack: 'oi', barCategoryGap: '25%', itemStyle: { color: alpha(t.green, 0.8), borderRadius: [2, 2, 0, 0] }, data: pts.map((r) => r.c?.open_interest ?? 0),
+          markLine: { symbol: 'none', silent: true, lineStyle: { type: [3, 3] }, label: { position: 'end', fontSize: 9 }, data: marks } },
+        { name: 'Puts', type: 'bar', stack: 'oi', itemStyle: { color: alpha(t.red, 0.8), borderRadius: [0, 0, 2, 2] }, data: pts.map((r) => -(r.p?.open_interest ?? 0)) },
+      ],
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, data, t]);
   if (pts.length < 3) return null;
-  const W = 720, H = 220, P = 42, mid = H / 2;
-  const max = Math.max(...pts.flatMap((r) => [r.c?.open_interest ?? 0, r.p?.open_interest ?? 0]), 1);
-  const lo = pts[0].k, hi = pts[pts.length - 1].k;
-  const sx = (k: number) => P + ((k - lo) / (hi - lo || 1)) * (W - 2 * P);
-  const bw = Math.max(2, ((W - 2 * P) / pts.length) * 0.7);
-  const h = (v: number) => (v / max) * (mid - 18);
-  const mark = (k: number | null | undefined, label: string, color: string, ty: number) => k != null && k >= lo && k <= hi && (
-    <g><line x1={sx(k)} x2={sx(k)} y1={8} y2={H - 12} stroke={color} strokeDasharray="3 3" />
-      <text x={sx(k) + 3} y={ty} fontSize="9" fill={color}>{label} {fmtPrice(k)}</text></g>);
   const oc = pts.reduce((a, r) => a + (r.c?.open_interest ?? 0), 0), op = pts.reduce((a, r) => a + (r.p?.open_interest ?? 0), 0);
   return (
     <Panel title={`Open interest by strike · ${data.expiry}`} right={<span className="text-[10px] text-text-tertiary">calls {fmtBig(oc)} · puts {fmtBig(op)} (strikes shown)</span>}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 260 }} role="img" aria-label="Open interest by strike">
-        <line x1={P} x2={W - P} y1={mid} y2={mid} stroke="var(--border)" />
-        {pts.map((r) => (
-          <g key={r.k}>
-            {(r.c?.open_interest ?? 0) > 0 && <rect x={sx(r.k) - bw / 2} y={mid - h(r.c.open_interest)} width={bw} height={h(r.c.open_interest)} fill="rgb(var(--c-green))" opacity="0.75">
-              <title>{`${fmtPrice(r.k)} call OI ${fmtBig(r.c.open_interest)}`}</title></rect>}
-            {(r.p?.open_interest ?? 0) > 0 && <rect x={sx(r.k) - bw / 2} y={mid} width={bw} height={h(r.p.open_interest)} fill="rgb(var(--c-red))" opacity="0.75">
-              <title>{`${fmtPrice(r.k)} put OI ${fmtBig(r.p.open_interest)}`}</title></rect>}
-          </g>))}
-        {mark(data.underlying, 'spot', 'rgb(var(--c-bloomberg))', 12)}
-        {data.max_pain !== data.underlying && mark(data.max_pain, 'max pain', 'var(--text-secondary)', H - 16)}
-        <text x={4} y={mid - 4} fontSize="8" fill="var(--text-tertiary)">calls ▲</text><text x={4} y={mid + 11} fontSize="8" fill="var(--text-tertiary)">puts ▼</text>
-        <text x={sx(lo)} y={H - 2} fontSize="8" textAnchor="middle" fill="var(--text-tertiary)">{fmtPrice(lo)}</text>
-        <text x={sx(hi)} y={H - 2} fontSize="8" textAnchor="middle" fill="var(--text-tertiary)">{fmtPrice(hi)}</text>
-      </svg>
+      <EChart option={option} height={250} ariaLabel="Open interest by strike: calls above, puts below" />
     </Panel>
   );
 }
@@ -522,48 +491,56 @@ function ValuationMap({ rows, onOpen }: { rows: any[]; onOpen: (s: string) => vo
   const X: [string, string][] = [['operating_margin', 'Operating margin'], ['roe', 'ROE'], ['revenue_growth', 'Revenue growth'], ['gross_margin', 'Gross margin']];
   const [yk, setYk] = useState('ev_ebitda');
   const [xk, setXk] = useState('operating_margin');
-  const pts = rows.filter((r) => r[xk] != null && r[yk] != null && r[yk] > 0 && r[yk] < 200 && Math.abs(r[xk]) < 3);
-  if (pts.length < 3) return null;
-  const W = 640, H = 300, P = 36;
-  // outliers (above 3× the median multiple, e.g. Tesla) are pinned to the top edge and left out of the fit
-  const sortedY = pts.map((p) => p[yk]).sort((a, b) => a - b);
-  const medY = sortedY[Math.floor(sortedY.length / 2)];
-  const isOut = (p: any) => p[yk] > 3 * medY;
-  const inl = pts.filter((p) => !isOut(p));
-  const xs = pts.map((p) => p[xk]), ys = inl.map((p) => p[yk]);
-  const [x0, x1] = [Math.min(...xs, 0), Math.max(...xs)], [y0, y1] = [0, Math.max(...ys) * 1.15];
-  const sx = (v: number) => P + ((v - x0) / (x1 - x0 || 1)) * (W - 2 * P);
-  const sy = (v: number) => H - P - ((v - y0) / (y1 - y0 || 1)) * (H - 2 * P);
-  // least squares on the peers (subject excluded so it is judged against them)
-  const peers = inl.filter((p) => !p.subject);
-  const n = peers.length, mx = peers.reduce((a, p) => a + p[xk], 0) / n, my = peers.reduce((a, p) => a + p[yk], 0) / n;
-  const sxx = peers.reduce((a, p) => a + (p[xk] - mx) ** 2, 0);
-  const b = sxx > 0 ? peers.reduce((a, p) => a + (p[xk] - mx) * (p[yk] - my), 0) / sxx : 0, a0 = my - b * mx;
-  const subj = pts.find((p) => p.subject);
-  const fair = subj ? a0 + b * subj[xk] : null;
-  const sel = 'bg-surface-1 border border-border px-1.5 py-0.5 text-[11px] text-text-primary';
+  const t = useChartTheme();
+  const openRef = useRef(onOpen);
+  openRef.current = onOpen;
   const label = (k: string, L: [string, string][]) => L.find(([x]) => x === k)?.[1] ?? k;
+  const fit = useMemo(() => {
+    const pts = rows.filter((r) => r[xk] != null && r[yk] != null && r[yk] > 0 && r[yk] < 200 && Math.abs(r[xk]) < 3);
+    // outliers (above 3× the median multiple, e.g. Tesla) are pinned to the top edge and left out of the fit
+    const sortedY = pts.map((p) => p[yk]).sort((a, b) => a - b);
+    const medY = sortedY[Math.floor(sortedY.length / 2)];
+    const isOut = (p: any) => p[yk] > 3 * medY;
+    const inl = pts.filter((p) => !isOut(p));
+    const xs = pts.map((p) => p[xk]);
+    const x0 = Math.min(...xs, 0), x1 = Math.max(...xs), y1 = Math.max(...inl.map((p) => p[yk])) * 1.15;
+    // least squares on the peers (subject excluded so it is judged against them)
+    const peers = inl.filter((p) => !p.subject);
+    const n = peers.length, mx = peers.reduce((a, p) => a + p[xk], 0) / n, my = peers.reduce((a, p) => a + p[yk], 0) / n;
+    const sxx = peers.reduce((a, p) => a + (p[xk] - mx) ** 2, 0);
+    const b = sxx > 0 ? peers.reduce((a, p) => a + (p[xk] - mx) * (p[yk] - my), 0) / sxx : 0, a0 = my - b * mx;
+    const subj = pts.find((p) => p.subject);
+    return { pts, isOut, x0, x1, y1, n, b, a0, subj, fair: subj ? a0 + b * subj[xk] : null };
+  }, [rows, xk, yk]);
+  const option = useMemo(() => {
+    const { pts, isOut, x0, x1, y1, b, a0 } = fit;
+    const ax = axisStyle(t);
+    const accent = color('rgb(var(--c-bloomberg))', t.accent), blue = color('rgb(var(--c-blue))', t.series[0]);
+    const pt = (p: any) => ({ value: [p[xk], isOut(p) ? y1 : p[yk]], name: p.symbol, p,
+      symbolSize: p.subject ? 13 : 8, itemStyle: p.subject ? { color: accent, borderColor: t.surface1, borderWidth: 2 } : { color: alpha(blue, 0.75), borderColor: t.surface1, borderWidth: 1 },
+      label: { show: true, position: 'right', fontSize: 9, color: p.subject ? accent : t.text, formatter: `${String(p.symbol).split('.')[0]}${isOut(p) ? ` ↑${p[yk].toFixed(0)}` : ''}` } });
+    return {
+      legend: { show: false }, toolbox: { show: false },
+      grid: { left: 8, right: 30, top: 24, bottom: 8, containLabel: true },
+      tooltip: { trigger: 'item', formatter: (q: any) => q.data?.p ? `<b>${q.data.p.name}</b><br/>${label(yk, Y)} ${q.data.p[yk].toFixed(1)}<br/>${label(xk, X)} ${(q.data.p[xk] * 100).toFixed(1)}%${q.data.p.subject ? '' : '<br/><span style="opacity:.6">click to open</span>'}` : '' },
+      xAxis: { type: 'value', min: x0, max: x1, name: `${label(xk, X)} →`, nameLocation: 'end', nameGap: 4, ...ax, nameTextStyle: { ...ax.nameTextStyle, verticalAlign: 'top', padding: [14, 0, 0, 0], align: 'right' }, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => `${(v * 100).toFixed(0)}%` } },
+      yAxis: { type: 'value', min: 0, max: Math.ceil(y1), name: `↑ ${label(yk, Y)}`, nameLocation: 'end', ...ax, axisLabel: { ...ax.axisLabel, fontFamily: t.mono } },
+      series: [
+        { type: 'line', data: [[x0, a0 + b * x0], [x1, a0 + b * x1]], showSymbol: false, silent: true, lineStyle: { color: accent, type: [5, 4], width: 1.2 }, z: 1 },
+        { type: 'scatter', data: pts.map(pt), z: 3, cursor: 'pointer', labelLayout: { hideOverlap: true }, emphasis: { scale: 1.4 } },
+      ],
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fit, t]);
+  if (fit.pts.length < 3) return null;
+  const { subj, fair, n } = fit;
+  const sel = 'bg-surface-1 border border-border px-1.5 py-0.5 text-[11px] text-text-primary';
   return (
     <Panel title="Valuation map" right={<span className="flex gap-1 items-center text-[10px] text-text-tertiary">
       <select value={yk} onChange={(e) => setYk(e.target.value)} className={sel}>{Y.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select> vs
       <select value={xk} onChange={(e) => setXk(e.target.value)} className={sel}>{X.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></span>}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 340 }} role="img" aria-label="Peer valuation scatter">
-        <line x1={P} x2={W - P} y1={H - P} y2={H - P} stroke="var(--border)" /><line x1={P} x2={P} y1={P} y2={H - P} stroke="var(--border)" />
-        {x0 < 0 && <line x1={sx(0)} x2={sx(0)} y1={P} y2={H - P} stroke="var(--border)" strokeDasharray="3 3" />}
-        <line x1={sx(x0)} y1={sy(a0 + b * x0)} x2={sx(x1)} y2={sy(a0 + b * x1)} stroke="rgb(var(--c-bloomberg))" strokeDasharray="5 4" strokeWidth="1.2" />
-        {pts.map((p) => (
-          <g key={p.symbol} onClick={() => !p.subject && onOpen(p.symbol)} className={p.subject ? '' : 'cursor-pointer'}>
-            <circle cx={sx(p[xk])} cy={isOut(p) ? P : sy(p[yk])} r={p.subject ? 6 : 4} fill={p.subject ? 'rgb(var(--c-bloomberg))' : 'rgb(var(--c-blue))'} opacity={p.subject ? 1 : 0.7}>
-              <title>{`${p.name}: ${label(yk, Y)} ${p[yk].toFixed(1)}, ${label(xk, X)} ${(p[xk] * 100).toFixed(1)}%`}</title></circle>
-            <text x={sx(p[xk]) + 7} y={(isOut(p) ? P : sy(p[yk])) + 3} fontSize="9" fill={p.subject ? 'rgb(var(--c-bloomberg))' : 'var(--text-secondary)'}>
-              {String(p.symbol).split('.')[0]}{isOut(p) ? ` ↑${p[yk].toFixed(0)}` : ''}</text>
-          </g>))}
-        <text x={W - P} y={H - 8} fontSize="9" textAnchor="end" fill="var(--text-tertiary)">{label(xk, X)} →</text>
-        <text x={P} y={P - 10} fontSize="9" fill="var(--text-tertiary)">↑ {label(yk, Y)}</text>
-        <text x={P - 4} y={sy(y1) + 3} fontSize="8" textAnchor="end" fill="var(--text-tertiary)">{y1.toFixed(0)}</text>
-        <text x={sx(x0)} y={H - P + 12} fontSize="8" textAnchor="middle" fill="var(--text-tertiary)">{(x0 * 100).toFixed(0)}%</text>
-        <text x={sx(x1)} y={H - P + 12} fontSize="8" textAnchor="middle" fill="var(--text-tertiary)">{(x1 * 100).toFixed(0)}%</text>
-      </svg>
+      <EChart option={option} height={320} ariaLabel="Peer valuation scatter"
+        onReady={(c) => c.on('click', (q: any) => { const p = q.data?.p; if (p && !p.subject) openRef.current(p.symbol); })} />
       {subj && fair != null && fair > 0 && <div className="text-2xs text-text-secondary mt-1">
         At its {label(xk, X).toLowerCase()} of {(subj[xk] * 100).toFixed(1)}%, the peer line implies {label(yk, Y)} ≈ <span className="font-mono text-text-primary">{fair.toFixed(1)}</span>;
         it trades at <span className="font-mono text-text-primary">{subj[yk].toFixed(1)}</span> — <span className={subj[yk] < fair ? 'text-green' : 'text-red'}>{Math.abs(subj[yk] / fair - 1) * 100 < 5 ? 'in line' : `${(Math.abs(subj[yk] / fair - 1) * 100).toFixed(0)}% ${subj[yk] < fair ? 'below' : 'above'}`}</span> the line.</div>}
@@ -650,21 +627,28 @@ export function BetaView({ symbol }: { symbol: string }) {
   );
 }
 
-function Scatter({ pts, beta, alpha }: { pts: { x: number; y: number }[]; beta: number; alpha: number }) {
-  const W = 300, H = 220, P = 24;
-  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
-  const m = Math.max(...xs.map(Math.abs), ...ys.map(Math.abs), 0.01);
-  const sx = (v: number) => P + ((v + m) / (2 * m)) * (W - 2 * P);
-  const sy = (v: number) => H - P - ((v + m) / (2 * m)) * (H - 2 * P);
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 260 }} role="img" aria-label="Return scatter with regression line">
-      <line x1={P} x2={W - P} y1={sy(0)} y2={sy(0)} stroke="var(--border)" />
-      <line y1={P} y2={H - P} x1={sx(0)} x2={sx(0)} stroke="var(--border)" />
-      {pts.map((p, i) => <circle key={i} cx={sx(p.x)} cy={sy(p.y)} r="1.8" fill="rgb(var(--c-blue))" opacity="0.45" />)}
-      <line x1={sx(-m)} y1={sy(alpha + beta * -m)} x2={sx(m)} y2={sy(alpha + beta * m)} stroke="rgb(var(--c-bloomberg))" strokeWidth="1.5" />
-      <text x={W - P} y={P - 6} fontSize="9" textAnchor="end" fill="var(--text-secondary)">slope = beta {beta.toFixed(2)}</text>
-    </svg>
-  );
+function Scatter({ pts, beta, alpha: a }: { pts: { x: number; y: number }[]; beta: number; alpha: number }) {
+  const t = useChartTheme();
+  const option = useMemo(() => {
+    const m = Math.max(...pts.map((p) => Math.abs(p.x)), ...pts.map((p) => Math.abs(p.y)), 0.01) * 1.05;
+    const ax = axisStyle(t);
+    const pctf = (v: number) => `${(v * 100).toFixed(1)}%`;
+    const axis = (name: string) => ({ type: 'value', min: -m, max: m, name, nameLocation: 'middle', nameGap: 24, ...ax, axisLine: { onZero: true, lineStyle: { color: t.borderStrong } },
+      axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => `${(v * 100).toFixed(0)}%` } });
+    const accent = color('rgb(var(--c-bloomberg))', t.accent);
+    return {
+      legend: { show: false }, toolbox: { show: false },
+      grid: { left: 40, right: 52, top: 22, bottom: 34 },
+      tooltip: { trigger: 'item', formatter: (q: any) => (q.seriesIndex === 1 ? `market ${pctf(q.value[0])}<br/>stock ${pctf(q.value[1])}` : '') },
+      xAxis: axis('market return'), yAxis: axis('stock return'),
+      series: [
+        { type: 'line', data: [[-m, a + beta * -m], [m, a + beta * m]], showSymbol: false, silent: true, lineStyle: { color: accent, width: 1.75 }, z: 3,
+          endLabel: { show: true, formatter: `β ${beta.toFixed(2)}`, color: accent, fontSize: 10, fontFamily: t.mono } },
+        { type: 'scatter', data: pts.map((p) => [p.x, p.y]), symbolSize: 4, large: pts.length > 2000, itemStyle: { color: alpha(color('rgb(var(--c-blue))', t.series[0]), 0.45) } },
+      ],
+    };
+  }, [pts, beta, a, t]);
+  return <EChart option={option} height={260} ariaLabel="Return scatter with regression line" />;
 }
 
 // ── DCF ──────────────────────────────────────────────────────────────────────

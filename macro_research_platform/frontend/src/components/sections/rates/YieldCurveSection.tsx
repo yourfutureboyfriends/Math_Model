@@ -1,12 +1,13 @@
 // Section G Panel 2 — Yield Curve Explorer + Phase 2 Store Integration
-// Interactive yield curve visualization using format library
+// Interactive yield curve (Apache ECharts)
 
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { cn } from '@/lib/utils';
 import { useMacroStore } from '@/store/macroStore';
 import { useApiData } from '@/hooks/useApiData';
 import { fmtRate, fmtProbability } from '@/utils/format';
+import { EChart, alpha, axisStyle, color, useChartTheme } from '@/components/charts/EChart';
 
 interface YieldPoint {
   tenor: number;
@@ -53,105 +54,46 @@ const TENOR_LABEL: [number, string][] = [[0.0027, 'ON'], [0.0833, '1M'], [0.25, 
 const tenorLabel = (t: number) => TENOR_LABEL.find(([v]) => Math.abs(v - t) < 0.01)?.[1] ?? `${t}Y`;
 const KEY_TENORS = new Set([0.25, 2, 10, 30]);
 
-/** Yield curve in real pixels: sqrt maturity axis (short end readable), y-axis fitted to the
- *  data in 25/50bp steps, labels at key tenors, hover readout for any point. */
-const PAST_STYLE: Record<string, { color: string; dash: string; width: number }> = {
-  '1M ago': { color: '#9aa4b2', dash: '5 4', width: 1.5 },
-  '1Y ago': { color: '#5b6270', dash: '2 3', width: 1.25 },
+/** Yield curve on Apache ECharts: tenors evenly spaced (as on a terminal curve page), today's curve with labelled
+ *  key tenors, 1M and 1Y ago dashed behind it, and a tooltip with each tenor's change in basis points. */
+const PAST_STYLE: Record<string, { color: string; dash: number[]; width: number }> = {
+  '1M ago': { color: '#9aa4b2', dash: [5, 4], width: 1.5 },
+  '1Y ago': { color: '#5b6270', dash: [2, 3], width: 1.25 },
 };
 
 function CurveChart({ points, history }: { points: YieldPoint[]; history?: Record<string, { date: string; points: YieldPoint[] }> | null }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [W, setW] = useState(0);
-  const [hover, setHover] = useState<number | null>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([e]) => setW(Math.round(e.contentRect.width)));
-    ro.observe(el);
-    setW(el.clientWidth);
-    return () => ro.disconnect();
-  }, []);
-
-  const H = 200, L = 46, R = 16, T = 18, B = 24;
-  const past = Object.entries(history ?? {});
-  const ys = [...points, ...past.flatMap(([, h]) => h.points)].map((p) => p.yield);
-  const span = Math.max(...ys) - Math.min(...ys);
-  const step = span > 2 ? 0.5 : span > 0.8 ? 0.25 : 0.1;
-  const lo = Math.floor((Math.min(...ys) - step * 0.3) / step) * step;
-  const hi = Math.ceil((Math.max(...ys) + step * 0.3) / step) * step;
-  const ticks: number[] = [];
-  for (let v = lo; v <= hi + 1e-9; v += step) ticks.push(Math.round(v * 100) / 100);
-  const tMax = Math.max(...points.map((p) => p.tenor));
-  const sx = (t: number) => L + (Math.sqrt(t) / Math.sqrt(tMax)) * (W - L - R);
-  const sy = (v: number) => T + (1 - (v - lo) / (hi - lo || 1)) * (H - T - B);
-  // x labels: every tenor present, skipping any closer than 26px to the previous one
-  const xl: YieldPoint[] = [];
-  points.forEach((p) => { if (!xl.length || sx(p.tenor) - sx(xl[xl.length - 1].tenor) >= 26) xl.push(p); });
-  const hp = hover !== null ? points[hover] : null;
-
-  return (
-    <div ref={ref} className="relative w-full" style={{ height: H }}>
-      {W > 0 && (
-        <svg width={W} height={H} className="block select-none" onMouseLeave={() => setHover(null)}
-          onMouseMove={(e) => {
-            const px = e.clientX - e.currentTarget.getBoundingClientRect().left;
-            let best = 0;
-            points.forEach((p, i) => { if (Math.abs(sx(p.tenor) - px) < Math.abs(sx(points[best].tenor) - px)) best = i; });
-            setHover(best);
-          }}>
-          {ticks.map((t) => (
-            <g key={t}>
-              <line x1={L} x2={W - R} y1={sy(t)} y2={sy(t)} stroke="var(--border-subtle)" />
-              <text x={L - 6} y={sy(t) + 3.5} fontSize={10} textAnchor="end" fill="var(--text-tertiary)" className="font-mono">{t.toFixed(step < 0.25 ? 1 : 2)}%</text>
-            </g>
-          ))}
-          <line x1={L} x2={W - R} y1={H - B} y2={H - B} stroke="var(--border)" />
-          {xl.map((p) => (
-            <text key={p.tenor} x={sx(p.tenor)} y={H - 7} fontSize={10} textAnchor="middle" fill="var(--text-tertiary)" className="font-mono">{tenorLabel(p.tenor)}</text>
-          ))}
-          {past.map(([label, h]) => (
-            <path key={label} d={h.points.map((p, i) => `${i ? 'L' : 'M'}${sx(p.tenor).toFixed(1)},${sy(p.yield).toFixed(1)}`).join('')}
-              fill="none" stroke={PAST_STYLE[label]?.color ?? '#6b7280'} strokeWidth={PAST_STYLE[label]?.width ?? 1.25}
-              strokeDasharray={PAST_STYLE[label]?.dash ?? '4 3'} strokeLinejoin="round" />
-          ))}
-          <path d={points.map((p, i) => `${i ? 'L' : 'M'}${sx(p.tenor).toFixed(1)},${sy(p.yield).toFixed(1)}`).join('')}
-            fill="none" stroke="var(--bloomberg)" strokeWidth={2} strokeLinejoin="round" />
-          {points.map((p, i) => (
-            <g key={p.tenor}>
-              <circle cx={sx(p.tenor)} cy={sy(p.yield)} r={hover === i ? 4.5 : 3} fill="var(--bloomberg)" stroke="var(--surface-2)" strokeWidth={1.5} />
-              {(KEY_TENORS.has(p.tenor) || points.length <= 3) && hover !== i && (
-                <text x={sx(p.tenor)} y={sy(p.yield) - 8} fontSize={10} textAnchor="middle" fill="var(--text-secondary)" className="font-mono">{p.yield.toFixed(2)}</text>
-              )}
-            </g>
-          ))}
-          {hp && <line x1={sx(hp.tenor)} x2={sx(hp.tenor)} y1={T} y2={H - B} stroke="var(--text-tertiary)" strokeDasharray="2 2" pointerEvents="none" />}
-        </svg>
-      )}
-      {hp && W > 0 && (
-        <div className="pointer-events-none absolute top-0 px-2 py-1 bg-surface-3/95 border border-border text-2xs font-mono shadow-lg"
-          style={sx(hp.tenor) > W * 0.6 ? { right: W - sx(hp.tenor) + 8 } : { left: sx(hp.tenor) + 8 }}>
-          <span className="text-text-tertiary">{tenorLabel(hp.tenor)}</span> <span className="text-text-primary">{hp.yield.toFixed(2)}%</span>
-          {past.map(([label, h]) => {
-            const q = h.points.find((x) => Math.abs(x.tenor - hp.tenor) < 1e-6);
-            if (!q) return null;
-            const d = Math.round((hp.yield - q.yield) * 100);
-            return <div key={label} className="text-text-tertiary">vs {label}: <span className={d >= 0 ? 'text-red' : 'text-green'}>{d >= 0 ? '+' : ''}{d}bp</span></div>;
-          })}
-        </div>
-      )}
-      {past.length > 0 && W > 0 && (
-        <div className="absolute top-0 right-4 flex gap-3 text-[10px] text-text-tertiary pointer-events-none">
-          <span className="flex items-center gap-1"><span className="inline-block w-4 h-0.5 bg-bloomberg" />Today</span>
-          {past.map(([label, h]) => (
-            <span key={label} className="flex items-center gap-1" title={h.date}>
-              <svg width="16" height="4"><line x1="0" x2="16" y1="2" y2="2" stroke={PAST_STYLE[label]?.color} strokeWidth={1.5} strokeDasharray={PAST_STYLE[label]?.dash} /></svg>{label}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  const t = useChartTheme();
+  const option = useMemo(() => {
+    const past = Object.entries(history ?? {});
+    const tenors = points.map((p) => p.tenor);
+    const at = (ps: YieldPoint[]) => tenors.map((tn) => ps.find((q) => Math.abs(q.tenor - tn) < 1e-6)?.yield ?? null);
+    const today = color('rgb(var(--c-bloomberg))', t.accent);
+    const ax = axisStyle(t);
+    return {
+      legend: { top: 0, right: 90, data: ['Today', ...past.map(([l]) => l)] },
+      grid: { left: 8, right: 16, top: 34, bottom: 6, containLabel: true },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'line', lineStyle: { color: t.mutedText, type: 'dashed' } },
+        formatter: (ps: any[]) => {
+          const i = ps[0]?.dataIndex ?? 0, now = points[i].yield;
+          const rows = past.map(([l, h]) => { const q = at(h.points)[i]; if (q == null) return '';
+            const d = Math.round((now - q) * 100); return `<div>vs ${l}: <b style="color:${d >= 0 ? t.red : t.green}">${d >= 0 ? '+' : ''}${d}bp</b> <span style="opacity:.6">(${q.toFixed(2)}%)</span></div>`; }).join('');
+          return `<b>${tenorLabel(points[i].tenor)}</b> ${now.toFixed(2)}%${rows}`;
+        } },
+      xAxis: { type: 'category', data: tenors.map(tenorLabel), boundaryGap: false, ...ax, splitLine: { show: false }, axisLabel: { ...ax.axisLabel, fontFamily: t.mono } },
+      yAxis: { type: 'value', scale: true, ...ax, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => `${v.toFixed(2)}%` } },
+      series: [
+        ...past.map(([l, h]) => ({ name: l, type: 'line', data: at(h.points), showSymbol: false, connectNulls: true, z: 1,
+          lineStyle: { color: PAST_STYLE[l]?.color ?? t.mutedText, width: PAST_STYLE[l]?.width ?? 1.25, type: PAST_STYLE[l]?.dash ?? [4, 3] },
+          itemStyle: { color: PAST_STYLE[l]?.color ?? t.mutedText } })),
+        { name: 'Today', type: 'line', data: points.map((p) => p.yield), z: 3, symbol: 'circle', symbolSize: 7,
+          lineStyle: { color: today, width: 2.5 }, itemStyle: { color: today, borderColor: t.surface1, borderWidth: 2 },
+          areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: alpha(today, 0.18) }, { offset: 1, color: alpha(today, 0) }] }, origin: 'start' },
+          label: { show: true, position: 'top', fontSize: 10, fontFamily: t.mono, color: t.text,
+            formatter: (p: any) => (KEY_TENORS.has(points[p.dataIndex].tenor) || points.length <= 3 ? p.value.toFixed(2) : '') } },
+      ],
+    };
+  }, [points, history, t]);
+  return <EChart option={option} height={230} ariaLabel="Yield curve: today against 1 month and 1 year ago" />;
 }
 
 export function YieldCurveSection() {

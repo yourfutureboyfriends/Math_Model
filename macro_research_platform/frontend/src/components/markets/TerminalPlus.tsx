@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { LineChart } from '@/components/ui/LineChart';
+import { EChart, axisStyle, color, useChartTheme } from '@/components/charts/EChart';
 import { ErrorBox, fmtBig, fmtPrice, Loading, Panel, useJSON } from './shared';
 
 const enc = encodeURIComponent;
@@ -270,23 +271,24 @@ export function IlbeView() {
 
 // ── YAS: Treasuries and the bond calculator ─────────────────────────────────
 function CurveSvg({ curve }: { curve: any }) {
-  const pts = [...curve.nominal.map((p: any) => ({ ...p, k: 'n' })), ...curve.real.map((p: any) => ({ ...p, k: 'r' }))];
-  if (!pts.length) return null;
-  const W = 620, H = 200, P = 30;
-  const xs = pts.map((p: any) => p.years), ys = pts.map((p: any) => p.ytm * 100);
-  const x0 = 0, x1 = Math.max(...xs), y0 = Math.min(0, Math.min(...ys)), y1 = Math.max(...ys) * 1.08;
-  const sx = (v: number) => P + ((v - x0) / (x1 - x0)) * (W - 2 * P), sy = (v: number) => H - P - ((v - y0) / (y1 - y0)) * (H - 2 * P);
-  const path = (k: string) => pts.filter((p: any) => p.k === k).map((p: any, i: number) => `${i ? 'L' : 'M'}${sx(p.years)},${sy(p.ytm * 100)}`).join(' ');
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 230 }} role="img" aria-label="Treasury yield curve">
-      <line x1={P} x2={W - P} y1={H - P} y2={H - P} stroke="var(--border)" />
-      {[0, 5, 10, 20, 30].filter((v) => v <= x1).map((v) => <text key={v} x={sx(v)} y={H - P + 12} fontSize="9" textAnchor="middle" fill="var(--text-tertiary)">{v}y</text>)}
-      {[y0, (y0 + y1) / 2, y1].map((v) => <text key={v} x={P - 4} y={sy(v) + 3} fontSize="9" textAnchor="end" fill="var(--text-tertiary)">{v.toFixed(1)}%</text>)}
-      <path d={path('n')} fill="none" stroke="rgb(var(--c-blue))" strokeWidth="2" /><path d={path('r')} fill="none" stroke="rgb(var(--c-green))" strokeWidth="2" />
-      <text x={W - P} y={sy(curve.nominal[curve.nominal.length - 1]?.ytm * 100 || 0) - 6} fontSize="10" textAnchor="end" fill="rgb(var(--c-blue))">nominal</text>
-      <text x={W - P} y={sy(curve.real[curve.real.length - 1]?.ytm * 100 || 0) + 12} fontSize="10" textAnchor="end" fill="rgb(var(--c-green))">real (TIPS)</text>
-    </svg>
-  );
+  const t = useChartTheme();
+  const option = useMemo(() => {
+    const ax = axisStyle(t);
+    const blue = color('rgb(var(--c-blue))', t.series[0]), green = color('rgb(var(--c-green))', t.green);
+    const line = (name: string, ps: any[], c: string) => ({ name, type: 'line', data: ps.map((p: any) => [p.years, +(p.ytm * 100).toFixed(3)]), symbol: 'circle', symbolSize: 5,
+      lineStyle: { color: c, width: 2 }, itemStyle: { color: c, borderColor: t.surface1, borderWidth: 1 },
+      endLabel: { show: true, formatter: name, color: c, fontSize: 10 } });
+    return {
+      legend: { show: false }, toolbox: { show: false },
+      grid: { left: 8, right: 70, top: 14, bottom: 4, containLabel: true },
+      tooltip: { trigger: 'axis', valueFormatter: (v: number) => `${v.toFixed(2)}%` },
+      xAxis: { type: 'value', min: 0, ...ax, splitLine: { show: false }, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => `${v}y` } },
+      yAxis: { type: 'value', scale: true, ...ax, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => `${v.toFixed(1)}%` } },
+      series: [line('nominal', curve.nominal ?? [], blue), line('real (TIPS)', curve.real ?? [], green)],
+    };
+  }, [curve, t]);
+  if (!(curve.nominal?.length || curve.real?.length)) return null;
+  return <EChart option={option} height={230} ariaLabel="Treasury yield curve" />;
 }
 
 export function YasView() {

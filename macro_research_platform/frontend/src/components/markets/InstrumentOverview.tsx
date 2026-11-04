@@ -5,6 +5,7 @@ import { CheckCircle2, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chart } from './TickerView';
 import { Chg, fmtBig, fmtPct, fmtPrice, Loading, useJSON, apiError } from './shared';
+import { Gauge } from '@/components/charts/Gauge';
 
 const enc = encodeURIComponent;
 
@@ -208,18 +209,11 @@ export function AnalystGauge({ symbol, price }: { symbol: string; price?: number
   const n = useCounts ? total : data.analysts ?? 0;
   const score = useCounts ? (counts[0] * 1 + counts[1] * 2 + counts[2] * 3 + counts[3] * 4 + counts[4] * 5) / total : 6 - rm;   // 1 = strong sell … 5 = strong buy
   const label = score >= 4.5 ? 'Strong buy' : score >= 3.5 ? 'Buy' : score >= 2.5 ? 'Hold' : score >= 1.5 ? 'Sell' : 'Strong sell';
-  const ang = Math.PI * (1 - (score - 1) / 4);
   const t = data.targets ?? {};
   return (
     <div className="flex items-center gap-4">
-      <svg viewBox="0 0 120 70" className="w-36 shrink-0" role="img" aria-label={`Analyst consensus ${label}`}>
-        {[['rgb(var(--c-red))', 0, 0.2], ['rgb(var(--c-red) / 0.5)', 0.2, 0.4], ['var(--text-tertiary)', 0.4, 0.6], ['rgb(var(--c-green) / 0.55)', 0.6, 0.8], ['rgb(var(--c-green))', 0.8, 1]].map(([c, a, b]) => {
-          const a1 = Math.PI * (1 - (a as number)), a2 = Math.PI * (1 - (b as number));
-          return <path key={c as string} d={`M ${60 + 50 * Math.cos(a1)} ${62 - 50 * Math.sin(a1)} A 50 50 0 0 1 ${60 + 50 * Math.cos(a2)} ${62 - 50 * Math.sin(a2)}`} stroke={c as string} strokeWidth="9" fill="none" />;
-        })}
-        <line x1="60" y1="62" x2={60 + 40 * Math.cos(ang)} y2={62 - 40 * Math.sin(ang)} stroke="var(--text-primary)" strokeWidth="2.5" strokeLinecap="round" />
-        <circle cx="60" cy="62" r="4" fill="var(--text-primary)" />
-      </svg>
+      <div className="w-40 shrink-0"><Gauge value={score} min={1} max={5} height={92} ariaLabel={`Analyst consensus ${label}`}
+        bands={[[1.8, 'rgb(var(--c-red))'], [2.6, 'rgb(var(--c-red) / 0.5)'], [3.4, 'var(--text-tertiary)'], [4.2, 'rgb(var(--c-green) / 0.55)'], [5, 'rgb(var(--c-green))']]} /></div>
       <div className="min-w-0 text-xs space-y-1">
         <div className="text-base font-semibold text-text-primary">{label}</div>
         <div className="text-text-tertiary">{useCounts ? `${n} analysts · ${counts[4] + counts[3]} buy · ${counts[2]} hold · ${counts[1] + counts[0]} sell` : `${n || '—'} analysts · mean rating ${rm?.toFixed(2)} (1 = strong buy)`}</div>

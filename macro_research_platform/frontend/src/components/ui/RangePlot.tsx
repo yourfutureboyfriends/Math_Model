@@ -1,44 +1,51 @@
-// Range (forest) plot — point estimates with their uncertainty interval on one shared axis,
-// so outcomes and their spread compare at a glance (scenarios, forecasts, model estimates).
-// Zero line marked; values in text tokens; hover shows the exact interval.
+// Range (forest) plot on Apache ECharts — point estimates with their uncertainty interval on one shared axis,
+// so outcomes and their spread compare at a glance (scenarios, forecasts, model estimates). Zero line marked;
+// the estimate and interval are printed beside each row and the tooltip gives the note.
 
-import { useState } from 'react';
+import { useMemo } from 'react';
+import { EChart, axisStyle, useChartTheme } from '@/components/charts/EChart';
 
 export interface RangeDatum { label: string; value: number; lo: number; hi: number; note?: string }
 
-export function RangePlot({ data, fmt = (v) => v.toFixed(2), title, labelWidth = '9rem' }:
+export function RangePlot({ data, fmt = (v) => v.toFixed(2), title }:
   { data: RangeDatum[]; fmt?: (v: number) => string; title?: string; labelWidth?: string }) {
-  const [hover, setHover] = useState<string | null>(null);
+  const t = useChartTheme();
+  const option = useMemo(() => {
+    const ax = axisStyle(t);
+    const tone = (v: number) => (v >= 0 ? t.green : t.red);
+    const rows = [...data].reverse();                    // first item on top
+    return {
+      legend: { show: false }, toolbox: { show: false },
+      grid: { left: 8, right: 8, top: 6, bottom: 4, containLabel: true },
+      tooltip: { trigger: 'item', formatter: (q: any) => { const d = rows[q.dataIndex];
+        return `<b>${d.label}</b><br/>${fmt(d.value)} <span style="opacity:.6">[${fmt(d.lo)}, ${fmt(d.hi)}]</span>${d.note ? `<br/><span style="opacity:.7">${d.note}</span>` : ''}`; } },
+      xAxis: { type: 'value', min: (v: any) => Math.min(0, v.min), max: (v: any) => Math.max(0, v.max), ...ax, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => fmt(v) } },
+      yAxis: [{ type: 'category', data: rows.map((d) => d.label), ...ax, axisLine: { show: false }, splitLine: { show: false }, axisLabel: { ...ax.axisLabel, color: t.text, fontSize: 11 } },
+        { type: 'category', data: rows.map((d) => `${fmt(d.value)}  [${fmt(d.lo)}, ${fmt(d.hi)}]`), position: 'right', ...ax, axisLine: { show: false }, splitLine: { show: false },
+          axisLabel: { ...ax.axisLabel, fontFamily: t.mono, color: t.text } }],
+      series: [
+        { type: 'custom', silent: true, z: 1,                                          // interval whiskers with end caps
+          renderItem: (_: any, api: any) => {
+            const y = api.coord([0, api.value(0)])[1], a = api.coord([api.value(1), 0])[0], b = api.coord([api.value(2), 0])[0];
+            const c = tone(api.value(3)), cap = 5;
+            const style = { stroke: c, lineWidth: 1.5, opacity: 0.85 };
+            return { type: 'group', children: [
+              { type: 'line', shape: { x1: a, y1: y, x2: b, y2: y }, style },
+              { type: 'line', shape: { x1: a, y1: y - cap, x2: a, y2: y + cap }, style },
+              { type: 'line', shape: { x1: b, y1: y - cap, x2: b, y2: y + cap }, style }] };
+          },
+          encode: { x: [1, 2], y: 0 },
+          data: rows.map((d, i) => [i, d.lo, d.hi, d.value]) },
+        { type: 'scatter', z: 3, symbolSize: 10, data: rows.map((d) => ({ value: [d.value, d.label], itemStyle: { color: tone(d.value), borderColor: t.surface1, borderWidth: 2 } })),
+          markLine: { symbol: 'none', silent: true, data: [{ xAxis: 0 }], lineStyle: { color: t.borderStrong, type: 'solid' }, label: { show: false } } },
+      ],
+    };
+  }, [data, fmt, t]);
   if (!data.length) return null;
-  const lo = Math.min(0, ...data.map((d) => d.lo)), hi = Math.max(0, ...data.map((d) => d.hi));
-  const span = hi - lo || 1;
-  const x = (v: number) => `${((v - lo) / span) * 100}%`;
   return (
     <div>
       {title && <div className="text-[10px] uppercase tracking-wide text-text-tertiary mb-1">{title}</div>}
-      <ul className="space-y-1.5">
-        {data.map((d) => {
-          const on = hover === d.label;
-          const c = d.value >= 0 ? '#199e70' : '#e66767';
-          return (
-            <li key={d.label} className="grid items-center gap-2 text-2xs" style={{ gridTemplateColumns: `${labelWidth} 1fr 9rem` }}
-              onMouseEnter={() => setHover(d.label)} onMouseLeave={() => setHover(null)} title={d.note}>
-              <span className={`truncate ${on ? 'text-text-primary' : 'text-text-secondary'}`}>{d.label}</span>
-              <span className="relative h-4 block" aria-hidden="true">
-                <span className="absolute top-0 bottom-0 w-px bg-border" style={{ left: x(0) }} />
-                <span className="absolute top-1/2 h-px" style={{ left: x(d.lo), width: `calc(${x(d.hi)} - ${x(d.lo)})`, background: c, opacity: 0.7 }} />
-                <span className="absolute top-1 bottom-1 w-px" style={{ left: x(d.lo), background: c }} />
-                <span className="absolute top-1 bottom-1 w-px" style={{ left: x(d.hi), background: c }} />
-                <span className="absolute top-1/2 w-2.5 h-2.5 rounded-full -translate-x-1/2 -translate-y-1/2 border-2"
-                  style={{ left: x(d.value), background: c, borderColor: 'var(--surface-1, #0d1117)' }} />
-              </span>
-              <span className={`text-right font-mono tabular-nums ${on ? 'text-text-primary' : 'text-text-secondary'}`}>
-                {fmt(d.value)} <span className="text-text-tertiary">[{fmt(d.lo)}, {fmt(d.hi)}]</span>
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+      <EChart option={option} height={Math.max(90, data.length * 30 + 30)} ariaLabel={title ?? 'Estimates with 95% intervals'} />
     </div>
   );
 }

@@ -25,7 +25,8 @@ it('opens on the latest decision with its regime, ribbon and quadrant drawn', as
   await act(async () => root.render(<TimeMachine timeline={rows} />));
   expect(host.textContent).toContain(new Date('2009-12-15').toLocaleDateString(undefined, { month: 'long', year: 'numeric' }));
   expect(host.querySelector('.tm-pill')!.textContent).toContain(rows[35].top);
-  expect(host.querySelectorAll('.tm-ribbon rect').length).toBeGreaterThanOrEqual(36);   // one regime cell per month
+  expect(host.querySelector('.tm-ribbon [role=img][aria-label^="Regime history"]')).not.toBeNull();   // ribbon chart mounted
+  expect(host.querySelector(`[role=img][aria-label^="Growth "]`)).not.toBeNull();                    // quadrant chart mounted
   expect(host.textContent).toContain('Not 12 months yet.');
 });
 

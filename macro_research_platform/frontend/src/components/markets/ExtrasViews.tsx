@@ -5,6 +5,7 @@ import { ExternalLink } from 'lucide-react';
 import { cn, localToday } from '@/lib/utils';
 import { ErrorBox, fmtBig, fmtPrice, Loading, Panel, useJSON, useSort } from './shared';
 import { LineChart } from '@/components/ui/LineChart';
+import { EChart, alpha, axisStyle, color, inkOn, useChartTheme } from '@/components/charts/EChart';
 
 const enc = encodeURIComponent;
 const pc = (v: number | null | undefined, d = 1) => (v == null ? '—' : `${(v * 100).toFixed(d)}%`);
@@ -27,9 +28,6 @@ function Frame<T>({ url, label, refresh = 0, children }: { url: string | null; l
 export function WirpView() {
   return <Frame<any> url="/api/v1/mkt/wirp" label="Pricing the FOMC path from fed funds futures…" refresh={900_000}>{(d) => {
     const path = d.path as { month: string; implied_rate: number }[];
-    const lo = Math.min(d.effective_rate, ...path.map((p) => p.implied_rate)) - 0.15, hi = Math.max(d.effective_rate, ...path.map((p) => p.implied_rate)) + 0.15;
-    const W = 760, H = 200, pad = 34;
-    const sx = (i: number) => pad + (i / Math.max(1, path.length - 1)) * (W - 2 * pad), sy = (v: number) => H - pad - ((v - lo) / (hi - lo)) * (H - 2 * pad);
     const next = d.meetings[0];
     return (
       <div className="space-y-3">
@@ -55,13 +53,7 @@ export function WirpView() {
           </table></div>
         </Panel>
         <Panel title="Implied policy-rate path (monthly average)">
-          <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Implied fed funds path">
-            <line x1={pad} x2={W - pad} y1={sy(d.effective_rate)} y2={sy(d.effective_rate)} stroke="rgb(var(--c-border-strong))" strokeDasharray="4 3" />
-            <text x={W - pad} y={sy(d.effective_rate) - 4} textAnchor="end" fontSize="10" fill="rgb(var(--c-text-tertiary))">today {d.effective_rate.toFixed(2)}%</text>
-            <path d={path.map((p, i) => `${i ? 'L' : 'M'}${sx(i)},${sy(p.implied_rate)}`).join('')} fill="none" stroke="rgb(var(--c-bloomberg))" strokeWidth={2} />
-            {path.map((p, i) => <g key={p.month}><circle cx={sx(i)} cy={sy(p.implied_rate)} r={2.5} fill="rgb(var(--c-bloomberg))" />
-              {i % 2 === 0 && <text x={sx(i)} y={H - 10} fontSize="9" textAnchor="middle" fill="rgb(var(--c-text-tertiary))">{p.month.slice(2)}</text>}</g>)}
-          </svg>
+          <RatePath path={path} effective={d.effective_rate} />
         </Panel>
         <div className="text-[10px] text-text-tertiary">{d.method} Source: {d.source}.</div>
       </div>);
@@ -198,27 +190,51 @@ export function IpoView({ onOpen }: { onOpen: (s: string) => void }) {
 // ── WETR ────────────────────────────────────────────────────────────────────
 /** Daily degree days: heating above the axis, cooling below, each with its 10-year normal as a tick. */
 function DegreeDays({ days }: { days: any[] }) {
-  const W = 760, H = 200, L = 30, R = 8, mid = H / 2, lab = 14;
-  const max = Math.max(...days.flatMap((x) => [x.hdd, x.cdd, x.hdd_normal, x.cdd_normal]), 1);
-  const slot = (W - L - R) / days.length, bw = Math.max(4, slot * 0.6);
-  const h = (v: number) => (v / max) * (mid - lab);
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 240 }} role="img" aria-label="Daily heating and cooling degree days vs normal">
-      <line x1={L} x2={W - R} y1={mid} y2={mid} stroke="var(--border)" />
-      <text x={L - 4} y={lab} fontSize="9" textAnchor="end" fill="var(--text-tertiary)">{max.toFixed(0)}</text>
-      <text x={L - 4} y={H - 4} fontSize="9" textAnchor="end" fill="var(--text-tertiary)">{max.toFixed(0)}</text>
-      {days.map((x, i) => { const cx = L + slot * (i + 0.5); return (
-        <g key={x.date}><title>{`${x.date}: HDD ${x.hdd.toFixed(1)} (normal ${x.hdd_normal.toFixed(1)}) · CDD ${x.cdd.toFixed(1)} (normal ${x.cdd_normal.toFixed(1)})`}</title>
-          <rect x={cx - bw / 2} y={mid - h(x.hdd)} width={bw} height={h(x.hdd)} fill="rgb(var(--c-blue))" opacity={0.8} />
-          <rect x={cx - bw / 2} y={mid} width={bw} height={h(x.cdd)} fill="rgb(var(--c-red))" opacity={0.8} />
-          <line x1={cx - bw / 2 - 2} x2={cx + bw / 2 + 2} y1={mid - h(x.hdd_normal)} y2={mid - h(x.hdd_normal)} stroke="var(--text-primary)" strokeWidth={1.5} />
-          <line x1={cx - bw / 2 - 2} x2={cx + bw / 2 + 2} y1={mid + h(x.cdd_normal)} y2={mid + h(x.cdd_normal)} stroke="var(--text-primary)" strokeWidth={1.5} />
-          {i % 2 === 0 && <text x={cx} y={mid - 3 - Math.max(h(x.hdd), h(x.hdd_normal)) - 2} fontSize="8" textAnchor="middle" fill="var(--text-tertiary)">{x.date.slice(5)}</text>}
-        </g>); })}
-      <text x={W - R} y={lab} fontSize="9" textAnchor="end" fill="rgb(var(--c-blue))">heating ▲</text>
-      <text x={W - R} y={H - 4} fontSize="9" textAnchor="end" fill="rgb(var(--c-red))">cooling ▼</text>
-    </svg>
-  );
+  const t = useChartTheme();
+  const option = useMemo(() => {
+    const ax = axisStyle(t);
+    const blue = color('rgb(var(--c-blue))', t.series[0]);
+    const normal = (key: 'hdd_normal' | 'cdd_normal', sign: number) => ({ name: '10-year normal', type: 'scatter', symbol: 'rect', symbolSize: [16, 2], z: 4, silent: true,
+      itemStyle: { color: t.textStrong }, data: days.map((x) => sign * x[key]) });
+    return {
+      legend: { top: 0, left: 0, data: ['Heating', 'Cooling', '10-year normal'] }, toolbox: { show: false },
+      grid: { left: 8, right: 8, top: 28, bottom: 4, containLabel: true },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (ps: any[]) => { const x = days[ps[0].dataIndex];
+        return `<b>${x.date}</b><br/>Heating ${x.hdd.toFixed(1)} <span style="opacity:.6">(normal ${x.hdd_normal.toFixed(1)})</span><br/>Cooling ${x.cdd.toFixed(1)} <span style="opacity:.6">(normal ${x.cdd_normal.toFixed(1)})</span>`; } },
+      xAxis: { type: 'category', data: days.map((x) => x.date.slice(5)), ...ax, axisLine: { onZero: true, lineStyle: { color: t.borderStrong } }, splitLine: { show: false },
+        axisLabel: { ...ax.axisLabel, fontFamily: t.mono } },
+      yAxis: { type: 'value', ...ax, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => `${Math.abs(v)}` } },
+      series: [
+        { name: 'Heating', type: 'bar', stack: 'dd', barMaxWidth: 26, itemStyle: { color: alpha(blue, 0.85), borderRadius: [3, 3, 0, 0] }, data: days.map((x) => x.hdd) },
+        { name: 'Cooling', type: 'bar', stack: 'dd', itemStyle: { color: alpha(t.red, 0.85), borderRadius: [0, 0, 3, 3] }, data: days.map((x) => -x.cdd) },
+        normal('hdd_normal', 1), { ...normal('cdd_normal', -1), name: '10-year normal' },
+      ],
+    };
+  }, [days, t]);
+  return <EChart option={option} height={240} ariaLabel="Daily heating and cooling degree days vs normal" />;
+}
+
+/** Implied policy-rate path from fed funds futures, against today's effective rate. */
+function RatePath({ path, effective }: { path: { month: string; implied_rate: number }[]; effective: number }) {
+  const t = useChartTheme();
+  const option = useMemo(() => {
+    const ax = axisStyle(t);
+    const accent = color('rgb(var(--c-bloomberg))', t.accent);
+    return {
+      legend: { show: false }, toolbox: { show: false },
+      grid: { left: 8, right: 70, top: 16, bottom: 4, containLabel: true },
+      tooltip: { trigger: 'axis', valueFormatter: (v: number) => `${v.toFixed(3)}% (${v - effective >= 0 ? '+' : ''}${Math.round((v - effective) * 100)}bp)` },
+      xAxis: { type: 'category', data: path.map((p) => p.month), boundaryGap: false, ...ax, splitLine: { show: false }, axisLabel: { ...ax.axisLabel, fontFamily: t.mono } },
+      yAxis: { type: 'value', scale: true, ...ax, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => `${v.toFixed(2)}%` } },
+      series: [{ name: 'Implied rate', type: 'line', data: path.map((p) => p.implied_rate), symbol: 'circle', symbolSize: 6, lineStyle: { color: accent, width: 2.5 },
+        itemStyle: { color: accent, borderColor: t.surface1, borderWidth: 1.5 },
+        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: alpha(accent, 0.18) }, { offset: 1, color: alpha(accent, 0) }] }, origin: 'start' },
+        endLabel: { show: true, formatter: (p: any) => `${p.value.toFixed(2)}%`, color: inkOn(accent), backgroundColor: accent, padding: [2, 4], borderRadius: 3, fontSize: 10, fontFamily: t.mono },
+        markLine: { symbol: 'none', silent: true, data: [{ yAxis: effective }], lineStyle: { color: t.mutedText, type: [4, 3] },
+          label: { position: 'insideStartTop', formatter: `today ${effective.toFixed(2)}%`, color: t.mutedText, fontSize: 10 } } }],
+    };
+  }, [path, effective, t]);
+  return <EChart option={option} height={220} ariaLabel="Implied fed funds path" />;
 }
 
 export function WetrView() {
