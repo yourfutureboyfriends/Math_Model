@@ -7,18 +7,18 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import * as echarts from 'echarts/core';
-import { BarChart, CandlestickChart, CustomChart, GaugeChart, HeatmapChart, LineChart, PieChart, ScatterChart } from 'echarts/charts';
+import { BarChart, CandlestickChart, CustomChart, EffectScatterChart, GaugeChart, GraphChart, HeatmapChart, LineChart, LinesChart, PieChart, ScatterChart, TreemapChart } from 'echarts/charts';
 import {
-  AxisPointerComponent, BrushComponent, DataZoomComponent, GridComponent, LegendComponent, MarkAreaComponent,
+  AxisPointerComponent, BrushComponent, DataZoomComponent, GraphicComponent, GridComponent, LegendComponent, MarkAreaComponent,
   MarkLineComponent, MarkPointComponent, TitleComponent, ToolboxComponent, TooltipComponent, VisualMapComponent,
 } from 'echarts/components';
 import { LabelLayout } from 'echarts/features';
 import { CanvasRenderer, SVGRenderer } from 'echarts/renderers';
 import type { EChartsCoreOption } from 'echarts/core';
 
-echarts.use([LineChart, BarChart, ScatterChart, HeatmapChart, CandlestickChart, PieChart, GaugeChart, CustomChart, GridComponent, TooltipComponent,
+echarts.use([LineChart, BarChart, ScatterChart, HeatmapChart, CandlestickChart, PieChart, GaugeChart, CustomChart, TreemapChart, GraphChart, LinesChart, EffectScatterChart, GridComponent, TooltipComponent,
   LegendComponent, DataZoomComponent, ToolboxComponent, MarkAreaComponent, MarkLineComponent, MarkPointComponent,
-  VisualMapComponent, BrushComponent, AxisPointerComponent, TitleComponent, LabelLayout, CanvasRenderer, SVGRenderer]);
+  VisualMapComponent, BrushComponent, AxisPointerComponent, TitleComponent, GraphicComponent, LabelLayout, CanvasRenderer, SVGRenderer]);
 
 export type ECharts = echarts.ECharts;
 
@@ -55,6 +55,16 @@ export function alpha(c: string, a: number): string {
     return `rgba(${parseInt(x.slice(0, 2), 16)},${parseInt(x.slice(2, 4), 16)},${parseInt(x.slice(4, 6), 16)},${a})`; }
   const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i.exec(c);
   return m ? `rgba(${m[1]},${m[2]},${m[3]},${a})` : c;
+}
+
+/** A translucent colour flattened onto a background, as an opaque rgb() — for fills that sit on other fills. */
+export function over(c: string, bg: string): string {
+  const m = /rgba?\(([\d.]+),([\d.]+),([\d.]+)(?:,([\d.]+))?/.exec(alpha(c, 1) === c ? c : c.replace(/\s/g, ''));
+  const b = /rgba?\(([\d.]+),([\d.]+),([\d.]+)/.exec(alpha(bg, 1));
+  if (!m || !b) return c;
+  const a = m[4] == null ? 1 : Number(m[4]);
+  const mix = (i: number) => Math.round(Number(m[i]) * a + Number(b[i]) * (1 - a));
+  return `rgb(${mix(1)},${mix(2)},${mix(3)})`;
 }
 
 /** Dark or light text, whichever reads on the given background colour. */
@@ -132,8 +142,10 @@ const canDraw = () => {
   return drawable;
 };
 
-export function EChart({ option, height = 300, group, onReady, ariaLabel, className }: {
+export function EChart({ option, height = 300, group, onReady, ariaLabel, className, merge = false }: {
   option: EChartsCoreOption; height?: number; group?: string; onReady?: (c: echarts.ECharts) => void; ariaLabel?: string; className?: string;
+  /** Update in place instead of redrawing (keeps running effects such as moving particles continuous between frames). */
+  merge?: boolean;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts | null>(null);
@@ -147,7 +159,7 @@ export function EChart({ option, height = 300, group, onReady, ariaLabel, classN
     try { c = echarts.init(el.current, undefined, { renderer: canDraw() ? 'canvas' : 'svg' }); } catch { return; }
     chart.current = c;
     if (group) { c.group = group; echarts.connect(group); }
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => c.resize()) : null;
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => { try { c.resize(); } catch { /* chart mid-update */ } }) : null;
     ro?.observe(el.current);
     // re-theme when the app's theme changes
     const mo = new MutationObserver(() => c.setOption(withBase(latest.current), { notMerge: true }));
@@ -164,7 +176,7 @@ export function EChart({ option, height = 300, group, onReady, ariaLabel, classN
     try { next = JSON.stringify(option); } catch { next = String(Math.random()); }
     if (next === sig.current) return;
     sig.current = next;
-    try { chart.current?.setOption(withBase(option), { notMerge: true }); } catch { /* keep last frame */ }
-  }, [option]);
+    try { chart.current?.setOption(withBase(option), merge ? { notMerge: false, lazyUpdate: true } : { notMerge: true }); } catch { /* keep last frame */ }
+  }, [option, merge]);
   return <div ref={el} className={className} style={{ height, width: '100%' }} role="img" aria-label={ariaLabel} />;
 }

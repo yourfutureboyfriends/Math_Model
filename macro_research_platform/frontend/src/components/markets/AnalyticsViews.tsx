@@ -1,6 +1,7 @@
 // Analytics functions: SEAS (seasonality), CORR (correlation matrix), RRG (relative rotation),
 // FRD (FX forwards) and OSA (option strategy builder).
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { EChart, alpha, axisStyle, color, useChartTheme, type ECharts } from '@/components/charts/EChart';
 import { cn } from '@/lib/utils';
 import { toTerminal } from './bbg';
 import { ErrorBox, fmtPrice, Loading, Panel, useJSON } from './shared';
@@ -115,22 +116,97 @@ export function CorrView({ seed }: { seed?: string }) {
 
 // ── RRG ─────────────────────────────────────────────────────────────────────
 const RRG_LABEL: Record<string, string> = { us_sectors: 'US sectors', countries: 'Countries', factors: 'Factors', assets: 'Asset classes' };
+/** Option payoff (Apache ECharts): P&L at expiry (profit shaded green, loss red) and today's value dashed, with
+ *  spot and breakevens marked; the axis tooltip reads both at any price. */
+function PayoffChart({ grid, pay, now, spot, breakevens, money }: { grid: number[]; pay: number[]; now: number[]; spot: number; breakevens: number[]; money: (v: number) => string }) {
+  const t = useChartTheme();
+  const option = useMemo(() => {
+    const ax = axisStyle(t);
+    const accent = color('rgb(var(--c-bloomberg))', t.accent), blue = color('rgb(var(--c-blue))', t.series[0]);
+    return {
+      legend: { top: 0, left: 0, data: ['At expiry', 'Today'] }, toolbox: { show: false },
+      grid: { left: 8, right: 16, top: 30, bottom: 4, containLabel: true },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'cross', label: { formatter: (p: any) => (p.axisDimension === 'x' ? fmtPrice(p.value) : money(p.value)) } },
+        formatter: (ps: any[]) => `<b>${fmtPrice(ps[0].value[0])}</b>${ps.map((p) => `<br/>${p.marker}${p.seriesName} ${money(p.value[1])}`).join('')}` },
+      xAxis: { type: 'value', min: grid[0], max: grid[grid.length - 1], ...ax, splitLine: { show: false }, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => fmtPrice(v) } },
+      yAxis: { type: 'value', ...ax, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => money(v) } },
+      visualMap: { show: false, seriesIndex: 0, dimension: 1, pieces: [{ lt: 0, color: t.red }, { gte: 0, color: t.green }] },
+      series: [
+        { name: 'At expiry', type: 'line', data: grid.map((x, i) => [x, pay[i]]), showSymbol: false, lineStyle: { width: 2 },
+          areaStyle: { opacity: 0.12, origin: 0 },
+          markLine: { symbol: 'none', silent: true, data: [
+            { xAxis: spot, lineStyle: { color: accent, type: [3, 3] }, label: { formatter: `spot ${fmtPrice(spot)}`, color: accent, position: 'end' } },
+            { yAxis: 0, lineStyle: { color: t.borderStrong, type: 'solid' }, label: { show: false } }] },
+          markPoint: { symbol: 'circle', symbolSize: 7, silent: true, itemStyle: { color: t.textStrong, borderColor: t.surface1, borderWidth: 2 },
+            label: { show: true, position: 'top', formatter: (q: any) => `BE ${fmtPrice(q.data.coord[0])}`, color: t.textStrong, fontSize: 9 },
+            data: breakevens.map((b) => ({ coord: [b, 0] })) } },
+        { name: 'Today', type: 'line', data: grid.map((x, i) => [x, now[i]]), showSymbol: false, lineStyle: { width: 1.5, type: [4, 3], color: blue }, itemStyle: { color: blue } },
+      ],
+    };
+  }, [grid, pay, now, spot, breakevens, money, t]);
+  return <EChart option={option} height={320} ariaLabel="Payoff diagram" />;
+}
+
 const QCOL: Record<string, string> = { Leading: 'rgb(var(--c-green))', Weakening: 'rgb(var(--c-amber))', Lagging: 'rgb(var(--c-red))', Improving: 'rgb(var(--c-blue))' };
 
 export function RrgView({ onOpen }: { onOpen: (s: string) => void }) {
   const [u, setU] = useState('us_sectors');
+/** Relative rotation graph (Apache ECharts): RS-Ratio × RS-Momentum around 100, quadrant tints, each symbol's tail
+ *  ending in its current point; hover (here or in the table) isolates a symbol, click opens it. */
+function RrgChart({ points, lo, hi, hover, setHover, onOpen }: { points: any[]; lo: number; hi: number; hover: string | null;
+  setHover: (s: string | null) => void; onOpen: (s: string) => void }) {
+  const t = useChartTheme();
+  const cbs = useRef({ setHover, onOpen });
+  cbs.current = { setHover, onOpen };
+  const option = useMemo(() => {
+    const ax = axisStyle(t);
+    const qc = (q: string) => color(QCOL[q]);
+    const quad = (q: string, x0: number, x1: number, y0: number, y1: number, pos: string) => [
+      { coord: [x0, y1], itemStyle: { color: alpha(qc(q), 0.06) }, label: { show: true, position: pos, formatter: q.toUpperCase(), color: qc(q), fontWeight: 600, fontSize: 11 } },
+      { coord: [x1, y0] }];
+    const axis = (name: string, extra: any) => ({ type: 'value', min: lo, max: hi, name, ...ax, splitLine: { show: false },
+      axisLine: { onZero: false, lineStyle: { color: t.border } }, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => v.toFixed(1) }, ...extra });
+    return {
+      animation: false, legend: { show: false }, toolbox: { show: false },
+      grid: { left: 44, right: 16, top: 28, bottom: 34 },
+      tooltip: { trigger: 'item', formatter: (q: any) => { const p = q.data?.p; if (!p) return '';
+        const last = p.trail[p.trail.length - 1];
+        return `<b>${p.label}</b> <span style="opacity:.6">${p.symbol}</span><br/>${p.quadrant}<br/>RS-Ratio ${last.x.toFixed(2)} · RS-Momentum ${last.y.toFixed(2)}<br/><span style="opacity:.6">click to open</span>`; } },
+      xAxis: axis('RS-Ratio (relative trend) →', { nameLocation: 'end', nameGap: 4, nameTextStyle: { ...ax.nameTextStyle, verticalAlign: 'top', align: 'right', padding: [20, 0, 0, 0] } }),
+      yAxis: axis('↑ RS-Momentum', { nameLocation: 'end', nameTextStyle: { ...ax.nameTextStyle, align: 'left' } }),
+      series: [
+        { type: 'line', data: [], silent: true,
+          markArea: { silent: true, data: [quad('Improving', lo, 100, 100, hi, 'insideTopLeft'), quad('Leading', 100, hi, 100, hi, 'insideTopRight'),
+            quad('Lagging', lo, 100, lo, 100, 'insideBottomLeft'), quad('Weakening', 100, hi, lo, 100, 'insideBottomRight')] },
+          markLine: { symbol: 'none', silent: true, lineStyle: { color: t.borderStrong, type: 'solid' }, label: { show: false }, data: [{ xAxis: 100 }, { yAxis: 100 }] } },
+        ...points.flatMap((p) => { const on = !hover || hover === p.symbol, c = qc(p.quadrant), op = on ? 1 : 0.15;
+          return [
+            { type: 'line', data: p.trail.map((q: any) => ({ value: [q.x, q.y], p })), smooth: 0.3, symbol: 'circle', symbolSize: 3.5, z: 2,
+              lineStyle: { color: c, width: 1.5, opacity: 0.7 * op }, itemStyle: { color: c, opacity: 0.5 * op } },
+            { type: 'scatter', z: 3, cursor: 'pointer', data: [{ value: [p.trail.at(-1).x, p.trail.at(-1).y], p }], symbolSize: 11,
+              itemStyle: { color: c, borderColor: t.surface1, borderWidth: 1.5, opacity: op },
+              label: { show: true, position: 'right', formatter: p.label, color: t.textStrong, fontSize: 10, opacity: op } }];
+        }),
+      ],
+    };
+  }, [points, lo, hi, hover, t]);
+  const onReady = (c: ECharts) => {
+    c.on('mouseover', (q: any) => q.data?.p && cbs.current.setHover(q.data.p.symbol));
+    c.on('mouseout', () => cbs.current.setHover(null));
+    c.on('click', (q: any) => q.data?.p && cbs.current.onOpen(q.data.p.symbol));
+  };
+  return <EChart option={option} height={480} onReady={onReady} ariaLabel="Relative rotation graph" />;
+}
+
   const [tail, setTail] = useState(8);
   const [hover, setHover] = useState<string | null>(null);
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/rrg?universe=${u}&tail=${tail}`, 3_600_000);
-  const W = 620, H = 480, pad = 36;
   const bounds = useMemo(() => {
     const xs: number[] = [], ys: number[] = [];
     for (const p of data?.points ?? []) for (const t of p.trail) { xs.push(t.x); ys.push(t.y); }
     const span = Math.max(1.5, ...xs.map((x) => Math.abs(x - 100)), ...ys.map((y) => Math.abs(y - 100))) * 1.15;
     return { lo: 100 - span, hi: 100 + span };
   }, [data]);
-  const sx = (x: number) => pad + ((x - bounds.lo) / (bounds.hi - bounds.lo)) * (W - 2 * pad);
-  const sy = (y: number) => H - pad - ((y - bounds.lo) / (bounds.hi - bounds.lo)) * (H - 2 * pad);
   return (
     <div className="space-y-3">
       <div className="mkt-controls flex flex-wrap items-center gap-1 text-xs">
@@ -144,28 +220,7 @@ export function RrgView({ onOpen }: { onOpen: (s: string) => void }) {
       {data && (
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-3">
           <div className="border border-border bg-surface-1 p-2">
-            <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Relative rotation graph">
-              {([['Improving', pad, pad], ['Leading', W / 2, pad], ['Lagging', pad, H / 2], ['Weakening', W / 2, H / 2]] as const).map(([q, x, y]) => (
-                <g key={q}><rect x={x} y={y} width={W / 2 - pad} height={H / 2 - pad} fill={QCOL[q]} opacity={0.06} />
-                  <text x={q === 'Leading' || q === 'Weakening' ? W - pad - 6 : pad + 6} y={q === 'Improving' || q === 'Leading' ? pad + 14 : H - pad - 6}
-                    textAnchor={q === 'Leading' || q === 'Weakening' ? 'end' : 'start'} fontSize="11" fill={QCOL[q]} fontWeight="600">{q.toUpperCase()}</text></g>))}
-              <line x1={sx(100)} x2={sx(100)} y1={pad} y2={H - pad} stroke="rgb(var(--c-border-strong))" />
-              <line x1={pad} x2={W - pad} y1={sy(100)} y2={sy(100)} stroke="rgb(var(--c-border-strong))" />
-              <text x={W - pad} y={H - 8} textAnchor="end" fontSize="10" fill="rgb(var(--c-text-tertiary))">RS-Ratio (relative trend) →</text>
-              <text x={10} y={pad - 10} fontSize="10" fill="rgb(var(--c-text-tertiary))">↑ RS-Momentum</text>
-              {data.points.map((p: any) => {
-                const on = !hover || hover === p.symbol;
-                const pts = p.trail.map((t: any) => `${sx(t.x)},${sy(t.y)}`).join(' ');
-                const last = p.trail[p.trail.length - 1];
-                return (
-                  <g key={p.symbol} opacity={on ? 1 : 0.15} onMouseEnter={() => setHover(p.symbol)} onMouseLeave={() => setHover(null)} onClick={() => onOpen(p.symbol)} className="cursor-pointer">
-                    <polyline points={pts} fill="none" stroke={QCOL[p.quadrant]} strokeWidth={1.5} strokeOpacity={0.7} />
-                    {p.trail.slice(0, -1).map((t: any, i: number) => <circle key={i} cx={sx(t.x)} cy={sy(t.y)} r={1.8} fill={QCOL[p.quadrant]} opacity={0.5} />)}
-                    <circle cx={sx(last.x)} cy={sy(last.y)} r={5} fill={QCOL[p.quadrant]} stroke="rgb(var(--c-bg))" strokeWidth={1.5} />
-                    <text x={sx(last.x) + 7} y={sy(last.y) + 4} fontSize="10" fill="rgb(var(--c-text-primary))">{p.label}</text>
-                  </g>);
-              })}
-            </svg>
+            <RrgChart points={data.points} lo={bounds.lo} hi={bounds.hi} hover={hover} setHover={setHover} onOpen={onOpen} />
           </div>
           <Panel title="Quadrants">
             <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-xs"><tbody>
@@ -316,11 +371,6 @@ export function OsaView({ symbol }: { symbol: string }) {
   if (payoff(hi * 2) > 0) pop += 1 - normCdf((Math.log(hi) - mu) / sd);
   if (payoff(lo * 0.5) > 0) pop += normCdf((Math.log(lo) - mu) / sd);
   const greeks = ['delta', 'gamma', 'theta', 'vega'].map((g) => [g, legsNow.reduce((s, l) => s + l.side * l.qty * mult * (l.kind === 'stock' ? (g === 'delta' ? 1 : 0) : (l.greeks?.[g] ?? 0)), 0)] as const);
-  const W = 640, H = 300, pad = 40;
-  const ymin = Math.min(...pay, ...now), ymax = Math.max(...pay, ...now);
-  const sx = (x: number) => pad + ((x - lo) / (hi - lo)) * (W - 2 * pad);
-  const sy = (y: number) => H - pad - ((y - ymin) / ((ymax - ymin) || 1)) * (H - 2 * pad);
-  const path = (ys: number[]) => grid.map((x, i) => `${i ? 'L' : 'M'}${sx(x).toFixed(1)},${sy(ys[i]).toFixed(1)}`).join('');
   const money = (v: number) => (v === Infinity ? 'Unlimited' : v === -Infinity ? 'Unlimited' : `${v < 0 ? '−' : ''}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
   const setLeg = (i: number, patch: Partial<Leg>) => setLegs(legsNow.map((l, j) => (j === i ? quoteLeg({ ...l, ...patch }) : l)));
 
@@ -339,17 +389,7 @@ export function OsaView({ symbol }: { symbol: string }) {
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-3">
         <div className="border border-border bg-surface-1 p-2">
-          <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Payoff diagram">
-            <line x1={pad} x2={W - pad} y1={sy(0)} y2={sy(0)} stroke="rgb(var(--c-border-strong))" />
-            <line x1={sx(S)} x2={sx(S)} y1={pad / 2} y2={H - pad} stroke="rgb(var(--c-bloomberg))" strokeDasharray="3 3" />
-            <text x={sx(S) + 4} y={pad / 2 + 8} fontSize="10" fill="rgb(var(--c-bloomberg))">spot {fmtPrice(S)}</text>
-            {breakevens.map((b) => <g key={b}><line x1={sx(b)} x2={sx(b)} y1={sy(0) - 5} y2={sy(0) + 5} stroke="rgb(var(--c-text-secondary))" /><text x={sx(b)} y={sy(0) - 9} fontSize="9" textAnchor="middle" fill="rgb(var(--c-text-primary))"
-                style={{ paintOrder: 'stroke', stroke: 'rgb(var(--c-bg))', strokeWidth: 3 }}>BE {fmtPrice(b)}</text></g>)}
-            <path d={path(now)} fill="none" stroke="rgb(var(--c-blue))" strokeWidth={1.5} strokeDasharray="4 3" />
-            <path d={path(pay)} fill="none" stroke="rgb(var(--c-text-primary))" strokeWidth={2} />
-            {[0, 0.25, 0.5, 0.75, 1].map((f) => { const x = lo + (hi - lo) * f; return <text key={f} x={sx(x)} y={H - pad + 14} fontSize="9" textAnchor="middle" fill="rgb(var(--c-text-tertiary))">{fmtPrice(x)}</text>; })}
-            {[...new Set([ymin, 0, ymax])].map((y) => <text key={y} x={pad - 4} y={sy(y) + 3} fontSize="9" textAnchor="end" fill="rgb(var(--c-text-tertiary))">{money(y)}</text>)}
-          </svg>
+          <PayoffChart grid={grid} pay={pay} now={now} spot={S} breakevens={breakevens} money={money} />
           <div className="text-[10px] text-text-tertiary"><span className="text-text-primary">━</span> at expiry · <span className="text-blue">┅</span> today (each leg at its implied vol) · per 1 contract = 100 shares</div>
         </div>
         <div className="space-y-2">

@@ -11,14 +11,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Panel as RPanel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
-import { Download, Play, RefreshCw } from 'lucide-react';
+import { Download, Pause, Play, RefreshCw } from 'lucide-react';
 import { pct } from '@/lib/format';
 import { EChart, axisStyle, chartTheme } from '@/components/ml/ui/EChart';
 import { DataGrid } from '@/components/ml/ui/DataGrid';
 import { Hint, Panel, RangeSlider, Segmented, Stat } from '@/components/ml/ui/Controls';
-import { DriftBullet } from '@/components/ml/MlCharts';
-import { NetworkDiagram } from '@/components/ml/MlVisuals';
-import { mlQueryClient, send, useFeaturesQ, useHistoryQ, useKnowledgeQ, useRegistryQ, useTaskQ, useTasksQ } from '@/components/ml/api';
+import { DriftBullet } from '@/components/ml/DriftBullet';
+import { NeuralFlow } from '@/components/ml/NeuralFlow';
+import { mlQueryClient, send, useFeaturesQ, useHistoryQ, useInputsQ, useKnowledgeQ, useRegistryQ, useTaskQ, useTasksQ } from '@/components/ml/api';
 import { KNOWN_TASKS, ML_TABS, ensemble, forward, setMlTab, setMlTask, skillText, useMlTab, useMlTask, type Weights } from '@/components/ml/mlShared';
 
 const MODEL_ORDER = ['champion', 'network', 'factor_logit', 'factor_network', 'forest', 'boosting', 'regime_switch', 'deep_sequence', 'average'];
@@ -236,7 +236,29 @@ function Visualizer() {
   const [x, setX] = useState<number[] | null>(null);
   const [netIdx, setNetIdx] = useState(0);
   const [curve, setCurve] = useState(0);
+  // replay: step the real monthly inputs through the network
+  const hq = useInputsQ(sel, !!d?.available);
+  const [idx, setIdx] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState<'1' | '3' | '8'>('3');
   useEffect(() => { if (d?.available) { setX(d.features.map((f: any) => d.inputs[f.key])); setCurve(0); } }, [d?.available, d?.month, sel]);
+  useEffect(() => { setIdx(null); setPlaying(false); }, [sel]);
+  useEffect(() => {
+    const n = hq.data?.months?.length ?? 0;
+    if (!playing || !n) return;
+    const id = window.setInterval(() => setIdx((i) => {
+      const k = i == null || i >= n - 1 ? Math.max(0, n - 240) : i + 1;             // start 20 years back
+      if (k >= n - 1) setPlaying(false);
+      return k;
+    }), 900 / Number(speed));
+    return () => window.clearInterval(id);
+  }, [playing, speed, hq.data]);
+  useEffect(() => { if (idx != null && hq.data) setX(hq.data.values[idx]); }, [idx, hq.data]);
+  const recent = useMemo(() => {
+    const h = hq.data; if (!h?.values?.length) return undefined;
+    const end = (idx ?? h.values.length - 1) + 1, rows = h.values.slice(Math.max(0, end - 24), end);
+    return rows[0].map((_: number, i: number) => rows.map((r: number[]) => r[i]));
+  }, [hq.data, idx]);
   if (!d?.available || !x) return q.isLoading ? <Skeleton /> : <Training d={d} onRetry={() => q.refetch()} />;
   const w: Weights = d.network.weights, cal = d.network.calibration;
   const labels: string[] = d.features.map((f: any) => f.label), keys: string[] = d.features.map((f: any) => f.key);
@@ -259,46 +281,67 @@ function Visualizer() {
     series: [{ type: 'scatter', data: now.each.map((p) => [p, 0]), symbolSize: 12, itemStyle: { color: t.series[0], opacity: 0.75, borderColor: t.surface, borderWidth: 2 },
       markLine: { symbol: 'none', silent: true, data: [{ xAxis: now.p }], lineStyle: { color: t.textStrong, width: 2 }, label: { formatter: `average ${(now.p * 100).toFixed(1)}%`, color: t.textStrong } } }] };
   const hidden = forward(w.nets[netIdx], w, x).h;
+  const h = hq.data;
+  const months: string[] = h?.months ?? [];
+  const jump = (m: string) => { const k = months.findIndex((v) => v >= m); if (k >= 0) { setPlaying(false); setIdx(k); } };
+  const live = idx == null;
   return (
-    <PanelGroup direction="horizontal" autoSaveId="ml-visualizer" style={{ height: 'auto', overflow: 'visible' }}>
-      <RPanel defaultSize={58} minSize={35} style={{ overflow: 'visible' }}>
-        <div className="space-y-2.5 pr-1">
-          <Panel title={`Network ${netIdx + 1} of ${w.nets.length} — ${labels.length} inputs → ${hidden.length} hidden (tanh) → 1 output`} sub="Lines: blue positive, amber negative, thicker = stronger. Nodes shaded by activation for the inputs on the right. Hover any line or node."
-            actions={<Segmented label="Network" value={String(netIdx)} onChange={(v) => setNetIdx(Number(v))} options={w.nets.map((_, i) => ({ value: String(i), label: String(i + 1) }))} />}>
-            <NetworkDiagram w={w} netIdx={netIdx} x={x} labels={labels} />
-          </Panel>
-          <Panel title="Response curve" sub="Probability as one input moves (others held); dashed = lowest and highest of the ten networks."
-            actions={<select value={curve} onChange={(e) => setCurve(Number(e.target.value))} className="ml-btn" aria-label="Input">{labels.map((l, i) => <option key={l} value={i}>{l}</option>)}</select>}>
-            <EChart option={respOpt} height={260} ariaLabel="Response curve" />
-          </Panel>
+    <div className="space-y-2.5">
+      <Panel title={`Signal flow — network ${netIdx + 1} of ${w.nets.length}: ${labels.length} inputs → ${hidden.length} hidden (tanh) → 1 output`}
+        sub="Particles carry each connection's live signal (weight × activation): faster and brighter = stronger; blue raises the probability, amber lowers it. Hidden units pulse with their activation. Press play to replay the real monthly inputs through the network."
+        actions={<Segmented label="Network" value={String(netIdx)} onChange={(v) => setNetIdx(Number(v))} options={w.nets.map((_, i) => ({ value: String(i), label: String(i + 1) }))} />}>
+        <NeuralFlow w={w} netIdx={netIdx} x={x} labels={labels} cal={cal} recent={recent}
+          month={live ? `${d.as_of_inputs} · live` : months[idx]} outcome={live ? null : h?.outcome?.[idx] ?? null} />
+        <div className="flex flex-wrap items-center gap-2 mt-2">
+          <button className="ml-btn" data-variant="primary" disabled={!h} onClick={() => setPlaying((p) => !p)} aria-label={playing ? 'Pause' : 'Play'}>
+            {playing ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}{playing ? 'Pause' : live ? 'Replay history' : 'Play'}</button>
+          <Segmented label="Speed" value={speed} onChange={setSpeed} options={[{ value: '1', label: '1×' }, { value: '3', label: '3×' }, { value: '8', label: '8×' }]} />
+          <div className="flex-1 min-w-[180px] px-1">{h && <RangeSlider label="Month" value={idx ?? months.length - 1} min={0} max={months.length - 1} step={1}
+            onChange={(v) => { setPlaying(false); setIdx(Math.round(v)); }} />}</div>
+          <span className="font-mono text-2xs text-text-secondary w-16 text-right">{live ? 'live' : months[idx]}</span>
+          {[['2001-03', 'Dot-com'], ['2007-12', 'GFC'], ['2020-02', 'Covid'], ['2022-06', 'Inflation']].map(([m, l]) => (
+            <button key={m} className="ml-btn" disabled={!h} onClick={() => jump(m)}>{l}</button>))}
+          <button className="ml-btn" onClick={() => { setPlaying(false); setIdx(null); setX(keys.map((k) => d.inputs[k])); }}>Live</button>
         </div>
-      </RPanel>
-      <PanelResizeHandle className="ml-resize-handle" />
-      <RPanel defaultSize={42} minSize={28} style={{ overflow: 'visible' }}>
-        <div className="space-y-2.5 pl-1">
-          <Panel title="What if…" sub={`Recomputed in your browser from the exported weights. Inputs as of ${d.as_of_inputs}.`}
-            actions={<button className="ml-btn" onClick={() => setX(keys.map((k) => d.inputs[k]))}>Reset to today</button>}>
-            <div className="flex items-baseline gap-3 mb-1"><span className="ml-stat-value">{pct(now.p)}</span><span className="text-2xs text-text-tertiary">networks {pct(now.lo)}–{pct(now.hi)} · champion today {pct(d.champion.probability)}</span></div>
-            <EChart option={ensOpt} height={90} ariaLabel="Each network's probability" />
-            <div className="space-y-2 mt-2">{keys.map((k, i) => (
-              <div key={k} className="grid grid-cols-[150px_1fr_60px] items-center gap-3 text-2xs">
-                <span className="truncate text-text-secondary" title={labels[i]}>{labels[i]}</span>
-                <RangeSlider label={labels[i]} value={x[i]} min={ranges[i].train_min} max={ranges[i].train_max} onChange={(v) => { const n = [...x]; n[i] = v; setX(n); }} />
-                <span className="font-mono text-right">{x[i].toFixed(2)}</span>
-              </div>))}</div>
-          </Panel>
-          {d.deep && d.models?.deep_sequence && <Panel title="Deep sequence network (GRU)" sub={`Reads ${d.deep.sequence_months} months × ${d.deep.inputs_per_month} inputs; answers all six questions at once. Five independently trained seeds.`}>
-            <EChart height={90} ariaLabel="Deep network seeds" option={{ ...ensOpt, series: [{ ...ensOpt.series[0], data: (d.deep.seeds ?? []).map((p: number) => [p, 0]), itemStyle: { color: t.series[1], opacity: 0.8, borderColor: t.surface, borderWidth: 2 },
-              markLine: { symbol: 'none', silent: true, data: [{ xAxis: d.models.deep_sequence.probability }], lineStyle: { color: t.textStrong, width: 2 }, label: { formatter: `${(d.models.deep_sequence.probability * 100).toFixed(1)}%`, color: t.textStrong } } }] }} />
-            <div className="text-2xs text-text-tertiary">Walk-forward skill {skillText(d.models.deep_sequence.record?.skill_vs_base_rate)} · AUROC {d.models.deep_sequence.record?.auroc ?? '—'}</div>
-          </Panel>}
-          {d.tuned_settings && <Panel title="Settings chosen this month" sub="Tuned on a validation slice of the training window only (with a gap equal to the answer delay).">
-            <div className="text-xs space-y-1">{d.tuned_settings.network && <div>Neural network: <b>{d.tuned_settings.network.hidden_units}</b> hidden units, L2 <b>{d.tuned_settings.network.l2_alpha}</b></div>}
-              {d.tuned_settings.boosting && <div>Gradient boosting: <b>{d.tuned_settings.boosting.leaves}</b> leaves, <b>{d.tuned_settings.boosting.trees}</b> trees</div>}</div>
-          </Panel>}
-        </div>
-      </RPanel>
-    </PanelGroup>
+        {hq.isError && <div className="text-2xs text-amber mt-1">Input history unavailable — {(hq.error as Error).message}</div>}
+      </Panel>
+      <PanelGroup direction="horizontal" autoSaveId="ml-visualizer-2" style={{ height: 'auto', overflow: 'visible' }}>
+        <RPanel defaultSize={55} minSize={35} style={{ overflow: 'visible' }}>
+          <div className="space-y-2.5 pr-1">
+            <Panel title="Response curve" sub="Probability as one input moves (others held); dashed = lowest and highest of the ten networks."
+              actions={<select value={curve} onChange={(e) => setCurve(Number(e.target.value))} className="ml-btn" aria-label="Input">{labels.map((l, i) => <option key={l} value={i}>{l}</option>)}</select>}>
+              <EChart option={respOpt} height={260} ariaLabel="Response curve" />
+            </Panel>
+            {d.deep && d.models?.deep_sequence && <Panel title="Deep sequence network (GRU)" sub={`Reads ${d.deep.sequence_months} months × ${d.deep.inputs_per_month} inputs; answers all six questions at once. Five independently trained seeds.`}>
+              <EChart height={90} ariaLabel="Deep network seeds" option={{ ...ensOpt, series: [{ ...ensOpt.series[0], data: (d.deep.seeds ?? []).map((p: number) => [p, 0]), itemStyle: { color: t.series[1], opacity: 0.8, borderColor: t.surface, borderWidth: 2 },
+                markLine: { symbol: 'none', silent: true, data: [{ xAxis: d.models.deep_sequence.probability }], lineStyle: { color: t.textStrong, width: 2 }, label: { formatter: `${(d.models.deep_sequence.probability * 100).toFixed(1)}%`, color: t.textStrong } } }] }} />
+              <div className="text-2xs text-text-tertiary">Walk-forward skill {skillText(d.models.deep_sequence.record?.skill_vs_base_rate)} · AUROC {d.models.deep_sequence.record?.auroc ?? '—'}</div>
+            </Panel>}
+          </div>
+        </RPanel>
+        <PanelResizeHandle className="ml-resize-handle" />
+        <RPanel defaultSize={45} minSize={28} style={{ overflow: 'visible' }}>
+          <div className="space-y-2.5 pl-1">
+            <Panel title="What if…" sub={`Recomputed in your browser from the exported weights. ${live ? `Inputs as of ${d.as_of_inputs}.` : `Inputs from ${months[idx]}.`}`}
+              actions={<button className="ml-btn" onClick={() => { setPlaying(false); setIdx(null); setX(keys.map((k) => d.inputs[k])); }}>Reset to today</button>}>
+              <div className="flex items-baseline gap-3 mb-1"><span className="ml-stat-value">{pct(now.p)}</span><span className="text-2xs text-text-tertiary">networks {pct(now.lo)}–{pct(now.hi)} · champion today {pct(d.champion.probability)}</span></div>
+              <EChart option={ensOpt} height={90} ariaLabel="Each network's probability" />
+              <div className="space-y-2 mt-2">{keys.map((k, i) => (
+                <div key={k} className="grid grid-cols-[150px_1fr_60px] items-center gap-3 text-2xs">
+                  <span className="truncate text-text-secondary" title={labels[i]}>{labels[i]}</span>
+                  <RangeSlider label={labels[i]} value={Math.max(ranges[i].train_min, Math.min(ranges[i].train_max, x[i]))} min={ranges[i].train_min} max={ranges[i].train_max}
+                    onChange={(v) => { setPlaying(false); setIdx(null); const n = [...x]; n[i] = v; setX(n); }} />
+                  <span className="font-mono text-right">{x[i].toFixed(2)}</span>
+                </div>))}</div>
+            </Panel>
+            {d.tuned_settings && <Panel title="Settings chosen this month" sub="Tuned on a validation slice of the training window only (with a gap equal to the answer delay).">
+              <div className="text-xs space-y-1">{d.tuned_settings.network && <div>Neural network: <b>{d.tuned_settings.network.hidden_units}</b> hidden units, L2 <b>{d.tuned_settings.network.l2_alpha}</b></div>}
+                {d.tuned_settings.boosting && <div>Gradient boosting: <b>{d.tuned_settings.boosting.leaves}</b> leaves, <b>{d.tuned_settings.boosting.trees}</b> trees</div>}</div>
+            </Panel>}
+          </div>
+        </RPanel>
+      </PanelGroup>
+    </div>
   );
 }
 

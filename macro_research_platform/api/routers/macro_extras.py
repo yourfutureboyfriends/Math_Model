@@ -113,6 +113,20 @@ async def ml_task_history(name: str, request: Request):
     return d
 
 
+@router.get("/api/v1/ml/tasks/{name}/inputs")
+async def ml_task_inputs(name: str, request: Request):
+    """The task's core inputs month by month with the outcome, for replaying through the network in the browser."""
+    import asyncio
+    from fastapi import HTTPException
+    from api.core import web
+    from api.ml import engine
+    web.user(request, None)
+    out = await asyncio.to_thread(engine.input_history, name)
+    if out is None:
+        raise HTTPException(404, "No input history for this task")
+    return out
+
+
 @router.get("/api/v1/ml/registry")
 async def ml_registry(request: Request):
     """Model registry and operations: stages, promotions, retrain log, latest forecasts."""

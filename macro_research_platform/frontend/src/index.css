@@ -2536,3 +2536,10 @@ nav[aria-label="Functions"] > div:not([role="tablist"]) > button { padding: 2px 
 .ml-resize-handle::after { content: ""; width: 2px; height: 32px; border-radius: 2px; background: var(--border); }
 .ml-resize-handle:hover::after, .ml-resize-handle[data-resize-handle-active]::after { background: rgb(var(--c-bloomberg)); }
 @media (max-width: 1100px) { .ml-span-4, .ml-span-5, .ml-span-6, .ml-span-7, .ml-span-8 { grid-column: span 12 / span 12 !important; } }
+
+/* Neural-network signal flow: a dark stage with a perspective grid floor under the canvas */
+.ml-flow { background: radial-gradient(120% 90% at 30% 20%, rgb(var(--c-surface-2)) 0%, rgb(var(--c-bg)) 70%); border: 1px solid var(--border); }
+.ml-flow-floor { position: absolute; left: -20%; right: -20%; bottom: -30px; height: 160px; z-index: 0; pointer-events: none;
+  background-image: linear-gradient(to right, rgb(var(--c-blue) / 0.22) 1px, transparent 1px), linear-gradient(to bottom, rgb(var(--c-blue) / 0.22) 1px, transparent 1px);
+  background-size: 48px 48px; transform: perspective(260px) rotateX(62deg); transform-origin: bottom;
+  -webkit-mask-image: linear-gradient(to top, black 10%, transparent 95%); mask-image: linear-gradient(to top, black 10%, transparent 95%); }

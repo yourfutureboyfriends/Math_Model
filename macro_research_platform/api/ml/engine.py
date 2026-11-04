@@ -788,6 +788,23 @@ def run_all() -> Dict[str, Any]:
     return {name: bool(run(name).get("available")) for name in TASKS}
 
 
+def input_history(name: str, months: int = 480) -> Optional[Dict[str, Any]]:
+    """The task's core inputs month by month (as published, from the same caches the models train on) with the
+    outcome where known — the network visualizer replays them through the exported weights in the browser."""
+    from api.ml import features as F
+    task = TASKS.get(name)
+    if not task:
+        return None
+    feats = F.load()
+    if any(k not in feats or not feats[k] for k in task.features):
+        return None
+    common = sorted(set.intersection(*[set(feats[k]) for k in task.features]))[-months:]
+    target = task.target()
+    return {"task": name, "features": task.features, "months": common,
+            "values": [[round(float(feats[k][m]), 4) for k in task.features] for m in common],
+            "outcome": [target.get(m) for m in common]}
+
+
 def history(name: str) -> Optional[Dict[str, Any]]:
     """Every model's recalibrated walk-forward forecast by month, with the outcome — for the timeline, ROC and
     reliability charts. Uses this month's cached result (never trains)."""

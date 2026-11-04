@@ -31,6 +31,11 @@ export function useHistoryQ(name: string, enabled: boolean) {
   return useQuery({ queryKey: ['ml', 'history', name], queryFn: () => get(`/api/v1/ml/tasks/${name}/history`), enabled, retry: 2 });
 }
 
+/** The task's monthly input history (for replaying the network through time); loaded once per task. */
+export function useInputsQ(name: string, enabled: boolean) {
+  return useQuery({ queryKey: ['ml', 'inputs', name], queryFn: () => get(`/api/v1/ml/tasks/${name}/inputs`), enabled, staleTime: 6 * 3600_000, retry: 2 });
+}
+
 export const useRegistryQ = () => useQuery({ queryKey: ['ml', 'registry'], queryFn: () => get('/api/v1/ml/registry'), refetchInterval: 60_000 });
 export const useFeaturesQ = () => useQuery({ queryKey: ['ml', 'features'], queryFn: () => get('/api/v1/ml/features'), staleTime: 10 * 60_000 });
 export const useKnowledgeQ = () => useQuery({ queryKey: ['ml', 'knowledge'], queryFn: () => get('/api/v1/ml/knowledge') });

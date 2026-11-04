@@ -7,6 +7,7 @@ import { LineChart } from '@/components/ui/LineChart';
 import { PriceChart } from '@/components/ui/PriceChart';
 import { CorrelationHeatmap } from '@/components/ui/CorrelationHeatmap';
 import { CATEGORICAL } from '@/lib/chartPalette';
+import { EChart, axisStyle, color, inkOn, over, useChartTheme } from '@/components/charts/EChart';
 import { Chg, ErrorBox, fmtBig, fmtPct, fmtPrice, Loading, Panel, Spark, useJSON, useSort } from './shared';
 
 const Bp = ({ v }: { v: number | null | undefined }) => (
@@ -117,46 +118,51 @@ export function BtmmView() {
   );
 }
 
-// ── IMAP (squarified treemap) ────────────────────────────────────────────────
-type Rect = { x: number; y: number; w: number; h: number };
-function squarify<T extends { value: number }>(items: T[], r: Rect): (T & Rect)[] {
-  const out: (T & Rect)[] = [];
-  const total = items.reduce((a, b) => a + b.value, 0);
-  if (!total) return out;
-  let rect = { ...r };
-  let rest = items.map((it) => ({ ...it, area: (it.value / total) * r.w * r.h }));
-  while (rest.length) {
-    const short = Math.min(rect.w, rect.h);
-    let row: typeof rest = [];
-    let best = Infinity;
-    for (const it of rest) {
-      const cand = [...row, it];
-      const s = cand.reduce((a, b) => a + b.area, 0);
-      const worst = Math.max(...cand.map((c) => Math.max((short * short * c.area) / (s * s), (s * s) / (short * short * c.area))));
-      if (worst > best && row.length) break;
-      best = worst;
-      row = cand;
-    }
-    const s = row.reduce((a, b) => a + b.area, 0);
-    const horiz = rect.w >= rect.h;
-    const thick = s / short;
-    let off = 0;
-    for (const it of row) {
-      const len = it.area / thick;
-      out.push({ ...(it as any), ...(horiz ? { x: rect.x, y: rect.y + off, w: thick, h: len } : { x: rect.x + off, y: rect.y, w: len, h: thick }) });
-      off += len;
-    }
-    rect = horiz ? { x: rect.x + thick, y: rect.y, w: rect.w - thick, h: rect.h } : { x: rect.x, y: rect.y + thick, w: rect.w, h: rect.h - thick };
-    rest = rest.slice(row.length);
-  }
-  return out;
-}
-
+// ── IMAP (treemap: sector → stock, sized by market value, coloured by the move) ──
 const heatColor = (v: number | null) => {
   if (v == null) return 'rgb(var(--c-surface-3))';
   const a = Math.min(1, Math.abs(v) / 0.03) * 0.85 + 0.15;
   return v >= 0 ? `rgb(var(--c-green) / ${a})` : `rgb(var(--c-red) / ${a})`;
 };
+
+function MarketTreemap({ data, period, country, onOpen }: { data: any; period: 'change_1d' | 'change_5d'; country: string; onOpen: (s: string) => void }) {
+  const t = useChartTheme();
+  const openRef = useRef(onOpen);
+  openRef.current = onOpen;
+  const option = useMemo(() => {
+    const pctTxt = (v: number | null | undefined) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`);
+    const total = data.rows.reduce((a: number, r: any) => a + (r.market_cap_usd || 0), 0) || 1;
+    const tree = data.sectors.filter((s: any) => s.market_cap_usd).map((s: any) => ({
+      name: s.sector, value: s.market_cap_usd, sector: s,
+      children: data.rows.filter((r: any) => r.sector === s.sector && r.market_cap_usd).map((r: any) => ({
+        name: String(r.symbol).split('.')[0], value: r.market_cap_usd, row: r, itemStyle: { color: over(color(heatColor(r[period])), t.surface1) } })) }));
+    return {
+      legend: { show: false }, toolbox: { show: false },
+      tooltip: { formatter: (q: any) => { const r = q.data?.row, s = q.data?.sector;
+        if (r) return `<b>${r.name}</b> <span style="opacity:.6">${r.symbol}</span><br/>${pctTxt(r[period])} · $${fmtBig(r.market_cap_usd)}<br/><span style="opacity:.6">click to open</span>`;
+        return s ? `<b>${s.sector}</b><br/>${pctTxt(s[period])} · $${fmtBig(s.market_cap_usd)}` : ''; } },
+      series: [{
+        type: 'treemap', left: 0, right: 0, top: 0, bottom: 0, roam: false, nodeClick: false, breadcrumb: { show: false }, squareRatio: 0.5 * (1 + Math.sqrt(5)),
+        data: tree,
+        levels: [
+          { itemStyle: { borderColor: t.surface1, borderWidth: 0, gapWidth: 3 } },                // the root
+          { itemStyle: { color: t.surface, borderColor: t.surface, borderWidth: 2, gapWidth: 1 },
+            upperLabel: { show: true, height: 16, color: t.text, fontSize: 9, backgroundColor: t.surface,
+              formatter: (q: any) => `${String(q.name).toUpperCase()}  ${pctTxt(q.data?.sector?.[period])}` } },
+          { itemStyle: { borderColor: t.surface1, borderWidth: 1, gapWidth: 1, borderRadius: 2 },
+            emphasis: { itemStyle: { borderColor: t.textStrong, borderWidth: 1 } },
+            label: { show: true, color: '#fff', overflow: 'truncate', ellipsis: '', lineHeight: 14,
+              // label only tiles big enough to hold it (share of the whole map's value)
+              formatter: (q: any) => { const f = (q.value ?? 0) / total;
+                return f < 0.0025 ? '' : f < 0.006 ? `{s|${q.name}}` : `{s|${q.name}}\n{p|${pctTxt(q.data?.row?.[period])}}`; },
+              rich: { s: { fontWeight: 600, fontSize: 12, color: '#fff' }, p: { fontSize: 10, color: 'rgba(255,255,255,.85)', fontFamily: t.mono } } } },
+        ],
+      }],
+    };
+  }, [data, period, t]);
+  return <EChart option={option} height={620} ariaLabel={`${country} market heatmap`}
+    onReady={(c) => c.on('click', (q: any) => { const r = q.data?.row; if (r) openRef.current(r.symbol); })} />;
+}
 
 export function ImapView({ onOpen }: { onOpen: (s: string) => void }) {
   const area = useRegion();
@@ -164,28 +170,6 @@ export function ImapView({ onOpen }: { onOpen: (s: string) => void }) {
   useEffect(() => { setCountry(REGION_HEATMAP[area]); }, [area]);            // follow the Markets region
   const [period, setPeriod] = useState<'change_1d' | 'change_5d'>('change_1d');
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/imap?country=${country}&max_names=${country === 'US' ? 300 : 150}`, 300_000);
-  // Lay out at the container's real pixel size so labels stay legible on any screen.
-  const box = useRef<HTMLDivElement>(null);
-  const [W, setW] = useState(1000);
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([e]) => setW(Math.max(320, Math.round(e.contentRect.width))));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  const H = Math.max(420, Math.min(760, Math.round(W * 0.62)));
-  const tiles = useMemo(() => {
-    if (!data) return [];
-    const secs = squarify(data.sectors.map((s: any) => ({ ...s, value: s.market_cap_usd || 0 })), { x: 0, y: 0, w: W, h: H });
-    return secs.flatMap((s: any) => {
-      const pad = 14;
-      const inner = { x: s.x + 1, y: s.y + pad, w: Math.max(0, s.w - 2), h: Math.max(0, s.h - pad - 1) };
-      const stocks = data.rows.filter((r: any) => r.sector === s.sector && r.market_cap_usd).sort((a: any, b: any) => b.market_cap_usd - a.market_cap_usd)
-        .map((r: any) => ({ ...r, value: r.market_cap_usd }));
-      return [{ kind: 'sector', ...s }, ...squarify(stocks, inner).map((t: any) => ({ kind: 'stock', ...t }))];
-    });
-  }, [data, W, H]);
   const countries = data?.countries ?? ['US', 'JP', 'GB', 'DE', 'FR', 'CN', 'IN', 'CA', 'AU', 'KR', 'TW', 'HK', 'CH'];
   return (
     <div className="space-y-3">
@@ -195,21 +179,9 @@ export function ImapView({ onOpen }: { onOpen: (s: string) => void }) {
           <button key={k} onClick={() => setPeriod(k)} className={cn('px-2 py-1 text-2xs', period === k ? 'bg-bloomberg text-text-inverse' : 'text-text-secondary')}>{l}</button>))}</div>
         <span className="text-2xs text-text-tertiary">Tile size = market value · colour = move (full colour at ±3%) · click to open</span>
       </div>
-      <div ref={box} className="w-full" />
       {loading && !data ? <Loading label="Loading heatmap (first build after a restart ~25 s)…" /> : error ? <ErrorBox msg={error} /> : data && (
         <div className="bg-surface-1 border border-border p-1">
-          <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} role="img" aria-label={`${country} market heatmap`}>
-            {tiles.map((t: any, i: number) => t.kind === 'sector' ? (
-              <g key={`s${i}`}><rect x={t.x} y={t.y} width={t.w} height={t.h} fill="var(--surface-2)" stroke="var(--bg)" strokeWidth="2" />
-                {t.w > 60 && <text x={t.x + 4} y={t.y + 10} fontSize="9" fill="var(--text-secondary)" className="uppercase">{t.sector} {t[period] != null ? `${t[period] >= 0 ? '+' : ''}${(t[period] * 100).toFixed(1)}%` : ''}</text>}</g>
-            ) : (
-              <g key={t.symbol} onClick={() => onOpen(t.symbol)} className="cursor-pointer">
-                <rect x={t.x} y={t.y} width={t.w} height={t.h} fill={heatColor(t[period])} stroke="var(--bg)" strokeWidth="1"><title>{`${t.name} (${t.symbol}) ${t[period] != null ? (t[period] * 100).toFixed(2) + '%' : '—'} · $${fmtBig(t.market_cap_usd)}`}</title></rect>
-                {t.w > 34 && t.h > 18 && <text x={t.x + t.w / 2} y={t.y + t.h / 2} fontSize={Math.min(14, Math.max(7, t.w / 6))} textAnchor="middle" fill="var(--text-primary)" pointerEvents="none">
-                  <tspan x={t.x + t.w / 2} dy="-0.1em" fontWeight="600">{t.symbol.split('.')[0]}</tspan>
-                  {t.h > 32 && <tspan x={t.x + t.w / 2} dy="1.2em" fontSize={Math.min(11, Math.max(7, t.w / 8))}>{t[period] != null ? `${(t[period] * 100).toFixed(1)}%` : ''}</tspan>}</text>}
-              </g>))}
-          </svg>
+          <MarketTreemap data={data} period={period} country={country} onOpen={onOpen} />
         </div>
       )}
       {data && <div className="text-[10px] text-text-tertiary">{data.note} {data.source}.</div>}
@@ -255,41 +227,30 @@ export function CryptoView({ onOpen }: { onOpen: (s: string) => void }) {
 /** A futures curve on a true time axis (contracts years out sit where they belong), with the same
  *  contracts a month and a year ago as dashed overlays. */
 function FuturesCurve({ pts, name, show }: { pts: any[]; name: string; show: { m1: boolean; y1: boolean } }) {
-  const [hover, setHover] = useState<number | null>(null);
-  const W = 860, H = 300, L = 60, R = 16, T = 12, B = 28;
-  const t = (m: string) => { const [y, mo] = m.split('-').map(Number); return y + (mo - 1) / 12; };
-  const t0 = t(pts[0].month), t1 = Math.max(t(pts[pts.length - 1].month), t0 + 0.5);
-  const vals = pts.flatMap((p) => [p.price, show.m1 ? p.price_1m_ago : null, show.y1 ? p.price_1y_ago : null]).filter((v): v is number => v != null);
-  const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo || Math.abs(hi) * 0.05 || 1) * 0.08;
-  const sx = (m: string) => L + ((t(m) - t0) / (t1 - t0)) * (W - L - R);
-  const sy = (v: number) => T + ((hi + pad - v) / (hi - lo + 2 * pad)) * (H - T - B);
-  const line = (k: string) => pts.filter((p) => p[k] != null).map((p, i) => `${i ? 'L' : 'M'}${sx(p.month).toFixed(1)},${sy(p[k]).toFixed(1)}`).join('');
-  const years = Array.from(new Set(pts.map((p) => p.month.slice(0, 4)))).filter((y) => t(`${y}-01`) >= t0);
-  const yt = [0, 0.25, 0.5, 0.75, 1].map((f) => lo - pad + f * (hi - lo + 2 * pad));
-  const h = hover != null ? pts[hover] : null;
-  return (
-    <div className="relative">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`${name} futures curve`}
-        onMouseMove={(e) => { const r = (e.currentTarget as SVGElement).getBoundingClientRect(); const x = ((e.clientX - r.left) / r.width) * W;
-          let best = 0; pts.forEach((p, i) => { if (Math.abs(sx(p.month) - x) < Math.abs(sx(pts[best].month) - x)) best = i; }); setHover(best); }}
-        onMouseLeave={() => setHover(null)}>
-        {yt.map((v) => <g key={v}><line x1={L} x2={W - R} y1={sy(v)} y2={sy(v)} stroke="var(--border)" strokeOpacity={0.5} />
-          <text x={L - 6} y={sy(v) + 3} fontSize="10" textAnchor="end" fill="var(--text-tertiary)">{fmtPrice(v)}</text></g>)}
-        {years.map((y) => <text key={y} x={sx(`${y}-01`)} y={H - 8} fontSize="10" textAnchor="middle" fill="var(--text-tertiary)">{y}</text>)}
-        {show.y1 && <path d={line('price_1y_ago')} fill="none" stroke="var(--text-tertiary)" strokeWidth={1.5} strokeDasharray="2 4" />}
-        {show.m1 && <path d={line('price_1m_ago')} fill="none" stroke={CATEGORICAL[0]} strokeWidth={1.5} strokeDasharray="6 4" opacity={0.8} />}
-        <path d={line('price')} fill="none" stroke={CATEGORICAL[3]} strokeWidth={2} />
-        {pts.map((p, i) => <circle key={p.contract} cx={sx(p.month)} cy={sy(p.price)} r={hover === i ? 4 : 2.5} fill={CATEGORICAL[3]} />)}
-        {h && <line x1={sx(h.month)} x2={sx(h.month)} y1={T} y2={H - B} stroke="var(--text-tertiary)" strokeDasharray="2 3" />}
-      </svg>
-      {h && <div className="absolute top-2 right-3 bg-surface-2 border border-border px-2 py-1 text-[11px] font-mono pointer-events-none">
-        <div className="text-text-primary">{h.month} · {h.contract}</div>
-        <div>now <span className="text-text-primary">{fmtPrice(h.price)}</span></div>
-        {h.price_1m_ago != null && <div>1M ago {fmtPrice(h.price_1m_ago)}</div>}
-        {h.price_1y_ago != null && <div>1Y ago {fmtPrice(h.price_1y_ago)}</div>}
-      </div>}
-    </div>
-  );
+  const t = useChartTheme();
+  const option = useMemo(() => {
+    const ax = axisStyle(t);
+    const at = (m: string) => `${m}-15`;
+    const line = (key: string, label: string, c: string, style: any, width: number, z: number) => ({ name: label, type: 'line', z,
+      data: pts.filter((p) => p[key] != null).map((p) => ({ value: [at(p.month), p[key]], contract: p.contract })), showSymbol: key === 'price', symbol: 'circle', symbolSize: 5,
+      lineStyle: { color: c, width, type: style }, itemStyle: { color: c, borderColor: t.surface1, borderWidth: 1 } });
+    const nowC = CATEGORICAL[3];
+    return {
+      legend: { top: 0, left: 0 }, toolbox: { show: false },
+      grid: { left: 8, right: 70, top: 30, bottom: 4, containLabel: true },
+      tooltip: { trigger: 'axis', axisPointer: { type: 'line', lineStyle: { color: t.mutedText, type: 'dashed' } },
+        formatter: (ps: any[]) => `<b>${String(ps[0].value[0]).slice(0, 7)}</b> <span style="opacity:.6">${ps[0].data.contract ?? ''}</span>${ps.map((p) => `<br/>${p.marker}${p.seriesName} ${fmtPrice(p.value[1])}`).join('')}` },
+      xAxis: { type: 'time', ...ax, splitLine: { show: false }, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, hideOverlap: true } },
+      yAxis: { type: 'value', scale: true, ...ax, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => fmtPrice(v) } },
+      series: [
+        ...(show.y1 ? [line('price_1y_ago', '1 year ago', t.mutedText, [2, 4], 1.5, 1)] : []),
+        ...(show.m1 ? [line('price_1m_ago', '1 month ago', CATEGORICAL[0], [6, 4], 1.5, 2)] : []),
+        { ...line('price', 'Now', nowC, 'solid', 2.25, 3),
+          endLabel: { show: true, formatter: (p: any) => fmtPrice(p.value[1]), color: inkOn(nowC), backgroundColor: nowC, padding: [2, 4], borderRadius: 3, fontSize: 10, fontFamily: t.mono } },
+      ],
+    };
+  }, [pts, show, t]);
+  return <EChart option={option} height={320} ariaLabel={`${name} futures curve`} />;
 }
 
 export function CmdtyView({ onOpen }: { onOpen: (s: string) => void }) {
@@ -342,42 +303,32 @@ const tenorLabel = (t: number) => (t < 1 ? `${Math.round(t * 12)}M` : `${+t.toFi
  *  still fits). Each country plots only the tenors it has, so sparse curves stay correct. */
 function CurveChart({ curves, codes, colors, overlay }: { curves: Record<string, any>; codes: string[]; colors: Record<string, string>;
   overlay: { code: string; which: 'week_ago' | 'month_ago' } | null }) {
-  const [hover, setHover] = useState<number | null>(null);
-  const W = 860, H = 340, L = 44, R = 16, T = 14, B = 30;
-  const all = codes.flatMap((c) => curves[c].points);
-  const extra = overlay ? curves[overlay.code]?.[overlay.which]?.points ?? [] : [];
-  const ys = [...all, ...extra].map((p: any) => p.yield);
-  const tmax = Math.max(...all.map((p: any) => p.tenor), 10);
-  const lo = Math.floor(Math.min(...ys) * 2) / 2 - 0.25, hi = Math.ceil(Math.max(...ys) * 2) / 2 + 0.25;
-  const sx = (t: number) => L + (Math.sqrt(t) / Math.sqrt(tmax)) * (W - L - R);
-  const sy = (y: number) => T + ((hi - y) / (hi - lo)) * (H - T - B);
-  const path = (pts: any[]) => pts.map((p, i) => `${i ? 'L' : 'M'}${sx(p.tenor).toFixed(1)},${sy(p.yield).toFixed(1)}`).join('');
-  const ticks = [0.25, 1, 2, 3, 5, 7, 10, 20, 30, 40].filter((t) => t <= tmax);
-  const yticks: number[] = []; for (let v = Math.ceil(lo * 2) / 2; v <= hi; v += 0.5) yticks.push(v);
-  const near = (pts: any[], t: number) => pts.reduce((b: any, p: any) => (Math.abs(p.tenor - t) < Math.abs(b.tenor - t) ? p : b), pts[0]);
-  return (
-    <div className="relative">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Government yield curves"
-        onMouseMove={(e) => { const r = (e.currentTarget as SVGElement).getBoundingClientRect(); const x = ((e.clientX - r.left) / r.width) * W;
-          const t = ((x - L) / (W - L - R)) ** 2 * tmax; setHover(x < L ? null : Math.max(0, Math.min(tmax, t))); }} onMouseLeave={() => setHover(null)}>
-        {yticks.map((v) => <g key={v}><line x1={L} x2={W - R} y1={sy(v)} y2={sy(v)} stroke="var(--border)" strokeOpacity={0.5} />
-          <text x={L - 6} y={sy(v) + 3} fontSize="10" textAnchor="end" fill="var(--text-tertiary)">{v.toFixed(1)}%</text></g>)}
-        {ticks.map((t) => <g key={t}><line x1={sx(t)} x2={sx(t)} y1={H - B} y2={H - B + 4} stroke="var(--border)" />
-          <text x={sx(t)} y={H - B + 15} fontSize="10" textAnchor="middle" fill="var(--text-tertiary)">{tenorLabel(t)}</text></g>)}
-        {overlay && extra.length > 1 && <path d={path(extra)} fill="none" stroke={colors[overlay.code]} strokeWidth={1.5} strokeDasharray="5 4" opacity={0.7} />}
-        {codes.map((c) => <g key={c}>
-          <path d={path(curves[c].points)} fill="none" stroke={colors[c]} strokeWidth={2} />
-          {curves[c].points.map((p: any) => <circle key={p.tenor} cx={sx(p.tenor)} cy={sy(p.yield)} r={2.6} fill={colors[c]}><title>{`${curves[c].name} ${tenorLabel(p.tenor)}: ${p.yield.toFixed(3)}%`}</title></circle>)}
-        </g>)}
-        {hover != null && <line x1={sx(hover)} x2={sx(hover)} y1={T} y2={H - B} stroke="var(--text-tertiary)" strokeDasharray="2 3" />}
-      </svg>
-      {hover != null && (
-        <div className="absolute top-2 right-3 bg-surface-2 border border-border px-2 py-1 text-[11px] font-mono pointer-events-none">
-          {codes.map((c) => { const p = near(curves[c].points, hover); return (
-            <div key={c} className="flex gap-2 justify-between"><span style={{ color: colors[c] }}>{c} {tenorLabel(p.tenor)}</span><span className="text-text-primary">{p.yield.toFixed(3)}%</span></div>); })}
-        </div>)}
-    </div>
-  );
+  const t = useChartTheme();
+  const option = useMemo(() => {
+    const ax = axisStyle(t);
+    const all = codes.flatMap((c) => curves[c].points);
+    const tmax = Math.max(...all.map((p: any) => p.tenor), 10);
+    const ticks = [0.25, 1, 2, 3, 5, 7, 10, 20, 30, 40].filter((v) => v <= tmax);
+    const extra = overlay ? curves[overlay.code]?.[overlay.which]?.points ?? [] : [];
+    // square-root maturity scale: the short end gets room and 30Y still fits
+    const pt = (p: any) => ({ value: [Math.sqrt(p.tenor), p.yield], tenor: p.tenor });
+    return {
+      legend: { top: 0, left: 0 }, toolbox: { show: false },
+      grid: { left: 8, right: 16, top: 30, bottom: 4, containLabel: true },
+      tooltip: { trigger: 'item', formatter: (q: any) => `${q.marker}<b>${q.seriesName}</b> ${tenorLabel(q.data.tenor)}: ${q.data.value[1].toFixed(3)}%` },
+      xAxis: { type: 'value', min: 0, max: Math.sqrt(tmax), ...ax, splitLine: { show: false },
+        axisLabel: { ...ax.axisLabel, fontFamily: t.mono, customValues: ticks.map(Math.sqrt), formatter: (v: number) => tenorLabel(+(v * v).toFixed(2)) },
+        axisTick: { show: true, customValues: ticks.map(Math.sqrt), lineStyle: { color: t.border } } },
+      yAxis: { type: 'value', scale: true, ...ax, axisLabel: { ...ax.axisLabel, fontFamily: t.mono, formatter: (v: number) => `${v.toFixed(1)}%` } },
+      series: [
+        ...(overlay && extra.length > 1 ? [{ name: `${overlay.code} ${overlay.which === 'week_ago' ? '1 week' : '1 month'} ago`, type: 'line', data: extra.map(pt), showSymbol: false,
+          lineStyle: { color: color(colors[overlay.code]), width: 1.5, type: [5, 4], opacity: 0.75 }, itemStyle: { color: color(colors[overlay.code]) } }] : []),
+        ...codes.map((c) => ({ name: curves[c].name ?? c, type: 'line', data: curves[c].points.map(pt), symbol: 'circle', symbolSize: 5,
+          lineStyle: { color: color(colors[c]), width: 2 }, itemStyle: { color: color(colors[c]), borderColor: t.surface1, borderWidth: 1 }, emphasis: { focus: 'series' } })),
+      ],
+    };
+  }, [curves, codes, colors, overlay, t]);
+  return <EChart option={option} height={360} ariaLabel="Government yield curves" />;
 }
 
 export function GcView() {
