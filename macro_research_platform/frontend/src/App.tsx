@@ -16,9 +16,11 @@ import { useAuth } from './context/AuthContext';
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
 const MarketsPage = lazy(() => import('./pages/MarketsPage').then((m) => ({ default: m.MarketsPage })));
 const PrivateEquityPage = lazy(() => import('./pages/PrivateEquityPage').then((m) => ({ default: m.PrivateEquityPage })));
+const MlPage = lazy(() => import('./pages/MlPage').then((m) => ({ default: m.MlPage })));
 import { MarketsSidebar } from './components/markets/MarketsSidebar';
 import { HUB_MODES, isDashboardMode, useHubMode } from './lib/hubMode';
 import { PeSidebar } from './components/pe/PeSidebar';
+import { MlSidebar } from './components/ml/MlSidebar';
 import { applySkin, useMarketsSkin } from './lib/theme';
 import { useMacroStore, selectMeta, selectIsLoading, selectRegime, selectFullDashboard } from './store/macroStore';
 
@@ -115,7 +117,7 @@ function App() {
   const pageKind = isDashboardMode(hubMode) ? 'dashboard' : hubMode;
   const page = useMemo(() => (
     <ErrorBoundary key={pageKind} sectionName={`${HUB_MODES.find(m=>m.id===hubMode)?.label??'Workspace'} view`}><Suspense fallback={<div className="p-6 text-xs text-text-tertiary">Loading {HUB_MODES.find((m) => m.id === hubMode)?.label}…</div>}>
-      {hubMode === 'markets' ? <MarketsPage /> : hubMode === 'pe' ? <PrivateEquityPage /> : <DashboardPage />}
+      {hubMode === 'markets' ? <MarketsPage /> : hubMode === 'pe' ? <PrivateEquityPage /> : hubMode === 'ml' ? <MlPage /> : <DashboardPage />}
     </Suspense></ErrorBoundary>), [hubMode]);
 
   if (!isAuthenticated) return <LoginScreen />;
@@ -135,7 +137,8 @@ function App() {
         activeSection={activeSection}
         onNavigate={handleNavigate}
         sidebar={hubMode === 'markets' ? (collapsed) => <MarketsSidebar collapsed={collapsed} />
-          : hubMode === 'pe' ? (collapsed) => <PeSidebar collapsed={collapsed} /> : undefined}
+          : hubMode === 'pe' ? (collapsed) => <PeSidebar collapsed={collapsed} />
+          : hubMode === 'ml' ? (collapsed) => <MlSidebar collapsed={collapsed} /> : undefined}
       >
         {isDashboardMode(hubMode) && !hasData ? <div className="m-4 p-6 rounded-xl border border-border bg-surface-1" role="status">
           <h2 className="text-sm font-semibold">{meta.dataStatus === 'error' ? 'Macro data is unavailable' : 'Loading macro data…'}</h2>

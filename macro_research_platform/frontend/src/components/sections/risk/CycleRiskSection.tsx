@@ -12,6 +12,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Activity, RefreshCw } from 'lucide-react';
 import { pct } from '@/lib/format';
+import { setHubMode } from '@/lib/hubMode';
+import { setMlTab, setMlTask } from '@/components/ml/mlShared';
 
 type Point = { date: string; value: number };
 
@@ -129,6 +131,7 @@ function ChallengerPanel() {
         <span className="text-lg font-mono font-bold text-text-primary">{pct(c.probability)}</span>
         <span className="text-2xs text-text-secondary">vs headline {pct(c.headline_probability)}</span>
         <span className="text-2xs text-text-tertiary" title={c.method}>· {c.model}</span>
+        <button className="ml-auto text-2xs underline text-bloomberg" onClick={() => { setMlTask('recession_12m'); setMlTab('visualizer'); setHubMode('ml'); }}>Open in ML →</button>
       </div>
       <div className={`text-2xs px-2 py-1 border ${c.promotion?.eligible ? 'border-green/40 text-green' : 'border-amber/40 text-amber'}`}>
         {c.promotion?.status}{c.promotion?.requires_human_approval ? ' · promotion always needs a person to approve it' : ''}

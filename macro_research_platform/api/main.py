@@ -632,6 +632,21 @@ async def lifespan(app: FastAPI):
         # the ML challenger's shadow record: one forecast a month, scored as outcomes arrive
         _scheduler.add_job(func=_challenger, trigger=CronTrigger(hour=6, minute=30), id="recession_challenger",
                            replace_existing=True, max_instances=1, coalesce=True, misfire_grace_time=12 * 3600)
+        def _ml_tasks():
+            from api.ml import engine as _ml
+            logger.info("[ml] tasks: %s", _ml.run_all())                  # retrains on a new month; logs one forecast each
+        def _knowledge_scan():
+            from api.models_ml import knowledge_scanner as _ks
+            r = _ks.screen()
+            logger.info("[ml] knowledge scan: %s", [x["series"] for x in r.get("results", []) if x.get("status") == "proposed"] or "nothing passed the gate")
+        _scheduler.add_job(func=_ml_tasks, trigger=CronTrigger(hour=7, minute=0), id="ml_tasks", replace_existing=True,
+                           max_instances=1, coalesce=True, misfire_grace_time=12 * 3600)
+        _scheduler.add_job(func=_knowledge_scan, trigger=CronTrigger(day=2, hour=7, minute=30), id="ml_knowledge_scan",
+                           replace_existing=True, max_instances=1, coalesce=True, misfire_grace_time=3 * 24 * 3600)
+        # after a restart the tasks' monthly fits are rebuilt in the background, so the ML area fills in by itself
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        _scheduler.add_job(func=_ml_tasks, trigger="date", run_date=_dt.now(_tz.utc) + _td(seconds=60), id="ml_tasks_warm",
+                           replace_existing=True, misfire_grace_time=3600)
         _scheduler.add_job(func=_archive_packs, trigger=CronTrigger(day=1, hour=7, minute=0), id="governance_monthly_pack",
                            replace_existing=True, misfire_grace_time=3 * 24 * 3600, coalesce=True)
 

@@ -74,8 +74,28 @@ def build_rows(rows: List[Dict[str, Any]], spx6: Dict[str, float]) -> List[Dict[
     return out
 
 
-def _complete(r: Dict[str, Any]) -> bool:
-    return all(r.get(k) is not None for k in FEATURES)
+def features() -> List[str]:
+    """The base inputs plus any indicator a person approved from the knowledge scanner."""
+    try:
+        from api.models_ml.knowledge_scanner import approved
+        return FEATURES + [f"x_{a['series']}" for a in approved()]
+    except Exception:                                                    # noqa: BLE001 — base inputs if the store is unavailable
+        return list(FEATURES)
+
+
+def _complete(r: Dict[str, Any], feats: Optional[List[str]] = None) -> bool:
+    return all(r.get(k) is not None for k in (feats or FEATURES))
+
+
+def add_approved(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Attach approved indicators (as known each month) to the rows."""
+    from api import research_indicators as ri
+    from api.models_ml.knowledge_scanner import _monthly_known, approved
+    for a in approved():
+        vals, _ = ri._cached(f"kn_{a['series']}_{a['transform']}", lambda a=a: _monthly_known(a["series"], a["transform"]))
+        for r in rows:
+            r[f"x_{a['series']}"] = (vals or {}).get(r["month"])
+    return rows
 
 
 # ── model ─────────────────────────────────────────────────────────────────────
@@ -93,17 +113,53 @@ class BaggedNet:
                                    random_state=s).fit(Z, y) for s in range(self.n)]
         return self
 
-    def predict(self, X: np.ndarray) -> np.ndarray:
+    def predict_each(self, X: np.ndarray) -> np.ndarray:
+        """Each network's probability, shape (networks, rows) — their disagreement is the uncertainty (deep ensembles,
+        Lakshminarayanan et al.)."""
         Z = (np.atleast_2d(X) - self.mu) / self.sd
-        return np.mean([m.predict_proba(Z)[:, 1] for m in self.nets], axis=0)
+        return np.array([m.predict_proba(Z)[:, 1] for m in self.nets])
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        return self.predict_each(X).mean(0)
+
+    def export(self) -> Dict[str, Any]:
+        """Everything a browser needs to run the networks itself (tanh hidden layer, logistic output)."""
+        r = lambda a: np.round(np.asarray(a, float), 5).tolist()        # noqa: E731
+        return {"mu": r(self.mu), "sd": r(self.sd), "activation": "tanh", "output": "logistic",
+                "nets": [{"W1": r(m.coefs_[0]), "b1": r(m.intercepts_[0]), "W2": r(m.coefs_[1][:, 0]),
+                          "b2": float(m.intercepts_[1][0])} for m in self.nets]}
 
 
-def contributions(model: BaggedNet, x: np.ndarray, baseline: np.ndarray) -> Dict[str, float]:
+def data_checks(X_train: np.ndarray, X_recent: np.ndarray, x_now: np.ndarray, names: List[str]) -> Dict[str, Any]:
+    """Validation gate on the inputs (as in Google's TFX data validation): today's value against the training range
+    (a network extrapolates badly), and drift — the population stability index of the last 12 months against the
+    training distribution (PSI > 0.25 is the usual 'significant shift' line)."""
+    out, flags = {}, []
+    for i, k in enumerate(names):
+        col = X_train[:, i]
+        lo, hi = float(np.min(col)), float(np.max(col))
+        z = float((x_now[i] - col.mean()) / (col.std() + 1e-9))
+        edges = np.quantile(col, np.linspace(0, 1, 11))
+        edges[0], edges[-1] = -np.inf, np.inf
+        e = np.histogram(col, edges)[0] / len(col) + 1e-4
+        a = np.histogram(X_recent[:, i], edges)[0] / max(1, len(X_recent)) + 1e-4
+        psi = float(np.sum((a - e) * np.log(a / e)))
+        outside = bool(x_now[i] < lo or x_now[i] > hi)
+        out[k] = {"value": round(float(x_now[i]), 3), "z": round(z, 2), "train_min": round(lo, 3), "train_max": round(hi, 3),
+                  "outside_training_range": outside, "psi_12m": round(psi, 3)}
+        if outside:
+            flags.append(f"{k} outside the training range")
+        elif psi > 0.25:
+            flags.append(f"{k} has shifted (PSI {psi:.2f})")
+    return {"inputs": out, "flags": flags, "ok": not flags}
+
+
+def contributions(model: BaggedNet, x: np.ndarray, baseline: np.ndarray, names: Optional[List[str]] = None) -> Dict[str, float]:
     """Each input's push on today's raw probability: the forecast minus the forecast with that input set to its
     training average (an occlusion approximation of a Shapley attribution)."""
     p = float(model.predict(x)[0])
     out = {}
-    for i, k in enumerate(FEATURES):
+    for i, k in enumerate(names or FEATURES):
         z = x.copy()
         z[i] = baseline[i]
         out[k] = round(p - float(model.predict(z)[0]), 4)
@@ -195,6 +251,8 @@ def _init() -> None:
     with _conn() as c:
         c.execute("CREATE TABLE IF NOT EXISTS model_shadow_forecasts (model TEXT NOT NULL, month TEXT NOT NULL, "
                   "probability REAL NOT NULL, headline REAL, logged_at TEXT NOT NULL, PRIMARY KEY (model, month))")
+        c.execute("CREATE TABLE IF NOT EXISTS model_retrain_log (model TEXT NOT NULL, month TEXT NOT NULL, trained_at TEXT NOT NULL, "
+                  "training_months INTEGER, features TEXT, settings TEXT, data_ok INTEGER, PRIMARY KEY (model, month))")
     _ready = True
 
 
@@ -204,6 +262,23 @@ def log_forecast(model: str, month: str, p: float, headline: Optional[float]) ->
     with _conn() as c:
         c.execute("INSERT OR IGNORE INTO model_shadow_forecasts (model, month, probability, headline, logged_at) "
                   "VALUES (?,?,?,?,?)", (model, month, p, headline, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+
+
+def log_retrain(model: str, month: str, n: int, feats: List[str], settings: Dict[str, Any], data_ok: bool) -> None:
+    _init()
+    with _conn() as c:
+        c.execute("INSERT OR REPLACE INTO model_retrain_log (model, month, trained_at, training_months, features, settings, data_ok) "
+                  "VALUES (?,?,?,?,?,?,?)", (model, month, datetime.now(timezone.utc).isoformat(timespec="seconds"), n,
+                                             json.dumps(feats), json.dumps(settings), int(data_ok)))
+
+
+def retrain_log(model: str = "recession_nn_challenger", limit: int = 24) -> List[Dict[str, Any]]:
+    _init()
+    with _conn() as c:
+        rows = [dict(r) for r in c.execute("SELECT * FROM model_retrain_log WHERE model = ? ORDER BY month DESC LIMIT ?", (model, limit))]
+    for r in rows:
+        r["features"], r["settings"] = json.loads(r["features"] or "[]"), json.loads(r["settings"] or "{}")
+    return rows
 
 
 def live_record(model: str = "recession_nn_challenger") -> Dict[str, Any]:

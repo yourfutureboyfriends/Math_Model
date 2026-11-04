@@ -551,6 +551,14 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
 
     # Generate sector allocation
 
+    def _ml_ev(task: str, phrase: str):
+        """The ML engine's evidence for a playbook call, if this month's task result is cached and has skill."""
+        try:
+            from api.ml.engine import evidence
+            return evidence(task, phrase)
+        except Exception:                                              # noqa: BLE001 — optional evidence
+            return None
+
     # Create regime playbook from characteristics
     playbook = RegimePlaybookData(
         summary=regime_chars.description,
@@ -560,15 +568,18 @@ async def _build_dashboard_data(mode: str = "live") -> DashboardData:
             f"Yield curve (10Y–2Y) {'inverted' if yield_spread < 0 else 'flat' if yield_spread < 0.5 else 'normal' if yield_spread < 1.5 else 'steep'} ({yield_spread:+.2f}pp)"
         ],
         opportunities=[
-            f"{regime_chars.equity_bias.title()} equities in {regime_name}",
+            f"{regime_chars.equity_bias.title()} equities in {regime_name}"
+            + (f" — {_ml_ev('spx_drawdown_6m', 'chance of a 10% S&P fall within 6 months')}" if _ml_ev('spx_drawdown_6m', '') else ""),
             f"{duration_tilt(regime_name, growth_score, carry_z).capitalize()} duration positioning"
             + (" (growth momentum " + ("strong" if growth_score > 0.6 else "weak" if growth_score < 0.4 else "middling")
                + (f", curve {'steeper' if carry_z > 0 else 'flatter'} than its 5-year norm; {CALL_EVIDENCE['duration']})"
                   if carry_z is not None else f"; {CALL_EVIDENCE['duration_growth_only']})")
-               if growth_score is not None else ""),
+               if growth_score is not None else "")
+            + (f" — {_ml_ev('yields_up_3m', 'chance the 10Y yield is higher in 3 months')}" if _ml_ev('yields_up_3m', '') else ""),
             f"{commodity_tilt(regime_name, inflation_direction).capitalize()} commodity exposure"
             + (" (inflation pressure " + ("rising" if inflation_direction > 0.55 else "falling" if inflation_direction < 0.45 else "flat")
                + f": breakevens and commodities, 3 months; {CALL_EVIDENCE['commodity']})" if inflation_direction is not None else "")
+            + (f" — {_ml_ev('oil_up_3m', 'chance oil is higher in 3 months')}" if _ml_ev('oil_up_3m', '') else ""),
         ],
         positioningGuidance=f"{regime_name}: {regime_chars.description}"
     )

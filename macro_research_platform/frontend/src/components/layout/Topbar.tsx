@@ -208,7 +208,7 @@ function ModeSwitch() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.altKey || !e.shiftKey || e.metaKey || e.ctrlKey) return;
-      const i = /^Digit([1-5])$/.exec(e.code);
+      const i = /^Digit([1-6])$/.exec(e.code);
       if (!i) return;
       e.preventDefault();
       setHubMode(HUB_MODES[Number(i[1]) - 1].id);

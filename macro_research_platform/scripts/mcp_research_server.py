@@ -64,8 +64,16 @@ TOOLS: Dict[str, Tuple[str, str, Dict[str, Any], List[str], bool]] = {
     "data_health": ("/api/v1/ops/monitor", "Data-feed status, open data incidents and the last accuracy audit — check before relying on figures.", {}, [], False),
     "signal_health": ("/api/v1/quant/decay", "Stock-signal decay monitor: which signals are holding up, fading or gone (needs MACRO_API_TOKEN).", {}, [], True),
     "strategy_evidence": ("/api/v1/quant/proof", "Strategy evidence: out-of-sample results and crisis behaviour (needs MACRO_API_TOKEN).", {}, [], True),
+    "ml_signals": ("/api/v1/ml/tasks", "Machine-learning signals for every forecast task (recession, 10% S&P fall, yields, inflation, oil, "
+                   "unemployment): the served probability, its out-of-sample skill, the neural network's reading and data checks "
+                   "(needs MACRO_API_TOKEN).", {}, [], True),
+    "ml_task": ("/api/v1/ml/tasks/{task}", "One ML task in full: champion and network forecasts, what moved them, walk-forward record by "
+                "era, live record and promotion status (needs MACRO_API_TOKEN).",
+                {"task": {"type": "string", "description": "recession_12m, spx_drawdown_6m, yields_up_3m, inflation_up_3m, oil_up_3m or unemployment_up_6m"}},
+                ["task"], True),
 }
-ARG_RE = {"symbol": re.compile(r"^[A-Za-z0-9.\-=^]{1,15}$"), "iso2": re.compile(r"^[A-Za-z]{2}$")}
+ARG_RE = {"symbol": re.compile(r"^[A-Za-z0-9.\-=^]{1,15}$"), "iso2": re.compile(r"^[A-Za-z]{2}$"),
+          "task": re.compile(r"^[a-z0-9_]{3,40}$")}
 
 
 def _fetch(path: str) -> Dict[str, Any]:
@@ -93,7 +101,7 @@ def call_tool(name: str, args: Dict[str, Any]) -> Tuple[str, bool]:
         v = str(args.get(k) or "")
         if not ARG_RE[k].match(v):
             return f"Invalid {k}: {v!r}", True
-        path = path.replace("{" + k + "}", urllib.parse.quote(v.upper() if k != "symbol" else v, safe=".=^-"))
+        path = path.replace("{" + k + "}", urllib.parse.quote(v if k in ("symbol", "task") else v.upper(), safe=".=^-_"))
     out = _fetch(path)
     text = json.dumps(out, default=str, ensure_ascii=False)
     if len(text) > MAX_CHARS:

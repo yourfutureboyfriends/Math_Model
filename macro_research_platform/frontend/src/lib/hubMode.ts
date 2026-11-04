@@ -5,14 +5,15 @@
  *   'quant'   : Quant Lab, Strategy Lab, backtests, model validation, data    (dashboard panels)
  *   'markets' : any instrument's workstation, movers, screener                (MarketsPage)
  *   'pe'      : private equity — LBO deal evaluation                          (PrivateEquityPage)
+ *   'ml'      : machine learning — every forecast task, the networks, their visualizer (MlPage)
  * Remembered per browser; `?mode=…` or a `#mkt/...` link selects one. The old single 'research' mode (macro +
  * trading + quant together) is read as 'macro'.
  */
 import { useEffect, useState } from 'react';
 
-export type HubMode = 'macro' | 'trading' | 'quant' | 'markets' | 'pe';
+export type HubMode = 'macro' | 'trading' | 'quant' | 'markets' | 'pe' | 'ml';
 export type DashboardMode = 'macro' | 'trading' | 'quant';
-const MODES: HubMode[] = ['macro', 'trading', 'quant', 'markets', 'pe'];
+const MODES: HubMode[] = ['macro', 'trading', 'quant', 'markets', 'pe', 'ml'];
 const KEY = 'hub_mode';
 const EVT = 'hub-mode';
 
@@ -22,6 +23,7 @@ export const HUB_MODES: { id: HubMode; label: string; title: string }[] = [
   { id: 'quant', label: 'Quant', title: 'Quant Lab, Strategy Lab, backtests, model validation and the data' },
   { id: 'markets', label: 'Markets', title: 'Any stock, ETF, index, FX, future or crypto — workstation, movers, screener' },
   { id: 'pe', label: 'PE', title: 'Private equity — LBO deal evaluation' },
+  { id: 'ml', label: 'ML', title: 'Machine learning — every forecast task, the neural networks, their visualizer and records' },
 ];
 
 /** The three areas built from dashboard panels (they share the Research dashboard page). */

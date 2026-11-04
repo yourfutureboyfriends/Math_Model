@@ -83,3 +83,6 @@ futu-api==10.11.7108
 ib_async==2.1.0
 aeventkit==2.1.0
 nest_asyncio==1.6.0
+
+# ML engine: deep sequence model (api/ml/deep.py)
+torch>=2.2
