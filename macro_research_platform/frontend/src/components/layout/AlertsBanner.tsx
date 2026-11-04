@@ -1,7 +1,7 @@
 // UPGRADE-5: Signal Alert System — Hedge Fund Grade Alerting
 // Enhanced with sound notifications, action buttons, and real-time triggers
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AlertItem, AlertsData } from '@/types';
 import { X, AlertCircle, AlertTriangle, Info, Volume2, VolumeX, BellRing } from 'lucide-react';
 
@@ -10,6 +10,20 @@ interface AlertsBannerProps {
   onAcknowledge?: (alertId: string) => void;
   onAction?: (action: string) => void;
   soundEnabled?: boolean;
+}
+
+/** A short 800 Hz tone (Web Audio; no asset to load). */
+function playBeep(ctx: AudioContext) {
+  const oscillator = ctx.createOscillator();
+  const gainNode = ctx.createGain();
+  oscillator.connect(gainNode);
+  gainNode.connect(ctx.destination);
+  oscillator.frequency.value = 800;
+  oscillator.type = 'sine';
+  gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+  oscillator.start(ctx.currentTime);
+  oscillator.stop(ctx.currentTime + 0.3);
 }
 
 export function AlertsBanner({ alerts, onAcknowledge, onAction, soundEnabled = true }: AlertsBannerProps) {
@@ -58,22 +72,6 @@ export function AlertsBanner({ alerts, onAcknowledge, onAction, soundEnabled = t
     prevAlertIds.current = currentAlertIds;
   }, [alerts, audioEnabled, hasInteracted]);
 
-  const playBeep = useCallback((ctx: AudioContext) => {
-    const oscillator = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-
-    oscillator.connect(gainNode);
-    gainNode.connect(ctx.destination);
-
-    oscillator.frequency.value = 800;
-    oscillator.type = 'sine';
-
-    gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-
-    oscillator.start(ctx.currentTime);
-    oscillator.stop(ctx.currentTime + 0.3);
-  }, []);
 
   if (!alerts || !alerts.active || alerts.active.length === 0) {
     return null;

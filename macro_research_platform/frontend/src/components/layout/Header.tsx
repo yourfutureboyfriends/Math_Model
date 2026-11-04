@@ -1,3 +1,4 @@
+// Legacy page header (the app uses Topbar).
 import { Activity, RefreshCw, Terminal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

@@ -46,7 +46,7 @@ class PortfolioConstructor:
 
     def __init__(
         self,
-        base_weight: float = 1.0 / 7,  # Equal weight across 7 sectors
+        base_weight: Optional[float] = None,  # None = equal weight across the sectors given
         tilt_magnitude: float = TILT_MAGNITUDE,
         max_weight: float = MAX_SECTOR_WEIGHT,
         min_weight: float = MIN_SECTOR_WEIGHT,
@@ -81,9 +81,15 @@ class PortfolioConstructor:
             DataFrame with portfolio construction details
         """
         rows = []
+        if not sector_signals:
+            return pd.DataFrame(columns=["Sector", "Signal", "Score", "Model Weight",
+                                         "Benchmark Weight", "Deviation", "Active Weight %", "Rationale"])
+        # Equal weight across the sectors actually passed (was hardcoded 1/7 while the
+        # sector config has 11 sectors, so benchmark weights summed to ~157%).
+        base = self.base_weight if self.base_weight is not None else 1.0 / len(sector_signals)
 
         # Step 1: Start with equal weights
-        weights = {sector: self.base_weight for sector in sector_signals}
+        weights = {sector: base for sector in sector_signals}
 
         # Step 2: Apply tilts based on signals
         for sector, signal in sector_signals.items():
@@ -120,9 +126,9 @@ class PortfolioConstructor:
                 "Signal": signal,
                 "Score": score,
                 "Model Weight": weights[sector],
-                "Benchmark Weight": self.base_weight,
-                "Deviation": weights[sector] - self.base_weight,
-                "Active Weight %": (weights[sector] - self.base_weight) * 100,
+                "Benchmark Weight": base,
+                "Deviation": weights[sector] - base,
+                "Active Weight %": (weights[sector] - base) * 100,
                 "Rationale": rationale,
             })
 

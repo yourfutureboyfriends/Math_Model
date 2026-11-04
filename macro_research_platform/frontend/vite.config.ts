@@ -30,6 +30,9 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: { "@": path.resolve(__dirname, "./src") },
     },
+    build: {
+      emptyOutDir: false,  // Don't delete old dist files — avoids EPERM on macOS-mounted folders
+    },
     server: {
       port: parseInt(process.env.VITE_PORT ?? "5173", 10),
       proxy: {

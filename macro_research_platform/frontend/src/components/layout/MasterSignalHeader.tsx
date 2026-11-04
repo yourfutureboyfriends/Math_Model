@@ -127,15 +127,15 @@ export function MasterSignalHeader({ data }: MasterSignalHeaderProps) {
                 <Users className="w-3 h-3" />
                 <span>Agreement</span>
               </div>
-              <div className={cn(
-                'text-lg font-mono font-bold',
-                // FIXED (BUG 8): Handle both decimal (0.72) and percentage (72) formats
-                (data.agreementRatio > 1 ? data.agreementRatio / 100 : data.agreementRatio) >= 0.8 ? 'text-green' :
-                (data.agreementRatio > 1 ? data.agreementRatio / 100 : data.agreementRatio) >= 0.6 ? 'text-amber' : 'text-red'
-              )}>
-                {/* FIXED (BUG 8): Handle both decimal and percentage formats */}
-                {data.agreementRatio > 1 ? data.agreementRatio.toFixed(0) : (data.agreementRatio * 100).toFixed(0)}%
-              </div>
+              {(() => {
+                const ag = data.agreementRatio == null ? null : data.agreementRatio > 1 ? data.agreementRatio / 100 : data.agreementRatio;
+                return (
+                  <div className={cn('text-lg font-mono font-bold',
+                    ag == null ? 'text-text-tertiary' : ag >= 0.8 ? 'text-green' : ag >= 0.6 ? 'text-amber' : 'text-red')}>
+                    {ag == null ? '—' : `${(ag * 100).toFixed(0)}%`}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="text-center">
@@ -144,7 +144,7 @@ export function MasterSignalHeader({ data }: MasterSignalHeaderProps) {
                 <span>Conviction</span>
               </div>
               <div className="text-lg font-mono font-bold text-text-primary">
-                {data.conviction}
+                {data.conviction ?? '—'}
               </div>
             </div>
 
@@ -154,7 +154,7 @@ export function MasterSignalHeader({ data }: MasterSignalHeaderProps) {
                 <span>Risk Budget</span>
               </div>
               <div className="text-lg font-mono font-bold text-text-primary">
-                {data.riskBudgetFinal.toFixed(2)}x
+                {data.riskBudgetFinal != null ? `${data.riskBudgetFinal.toFixed(2)}x` : '—'}
               </div>
             </div>
           </div>

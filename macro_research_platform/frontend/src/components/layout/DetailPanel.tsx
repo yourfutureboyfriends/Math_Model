@@ -150,8 +150,9 @@ export function DetailPanel({ isOpen, onClose, activeSection, data }: DetailPane
         <div
           className={cn(
             'lg:hidden fixed top-16 right-0 bottom-0 w-80 bg-surface-1 border-l border-border z-50',
-            'transform transition-transform duration-200',
-            isOpen ? 'translate-x-0' : 'translate-x-full'
+            'transform transition-[transform,visibility] duration-200',
+            // closed: off-screen and invisible — a translated-away fixed panel still widened the phone layout
+            isOpen ? 'translate-x-0 visible' : 'translate-x-full invisible'
           )}
         >
           <div className="h-12 flex items-center justify-between px-4 border-b border-border">

@@ -1,0 +1,27 @@
+import { act } from 'react';
+import { createRoot } from 'react-dom/client';
+import { it,expect,vi } from 'vitest';
+import { Globe3D } from './Globe3D';
+import type { Topology } from '@/lib/topo';
+it('stops scheduling frames at rest, coalesces interaction and cancels on unmount',()=>{
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);
+ const pending=new Map<number,FrameRequestCallback>();let id=0;
+ vi.stubGlobal('requestAnimationFrame',vi.fn((cb:FrameRequestCallback)=>{pending.set(++id,cb);return id;}));
+ vi.stubGlobal('cancelAnimationFrame',vi.fn((n:number)=>pending.delete(n)));
+ vi.stubGlobal('ResizeObserver',class{observe(){}disconnect(){}});
+ const ctx={scale:vi.fn(),clearRect:vi.fn(),createRadialGradient:()=>({addColorStop:vi.fn()}),beginPath:vi.fn(),arc:vi.fn(),fill:vi.fn(),stroke:vi.fn(),moveTo:vi.fn(),lineTo:vi.fn(),closePath:vi.fn(),strokeText:vi.fn(),fillText:vi.fn()};
+ const getContext=vi.spyOn(HTMLCanvasElement.prototype,'getContext').mockReturnValue(ctx as never);
+ const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
+ const topo={type:'Topology',arcs:[],objects:{countries:{type:'GeometryCollection',geometries:[]}}} as Topology;
+ const props={topo,numToIso:{},selected:null,fill:()=> '#555',onSelect:vi.fn(),onHover:vi.fn(),height:400};
+ act(()=>root.render(<Globe3D {...props}/>));
+ expect(pending.size).toBe(1);
+ const flush=()=>{const jobs=[...pending];pending.clear();act(()=>jobs.forEach(([,cb])=>cb(performance.now())));};
+ flush();expect(ctx.clearRect).toHaveBeenCalledTimes(1);expect(pending.size).toBe(0);
+ const canvas=host.querySelector('canvas')!;
+ canvas.dispatchEvent(new WheelEvent('wheel',{deltaY:-10}));expect(pending.size).toBe(0);
+ canvas.dispatchEvent(new WheelEvent('wheel',{deltaY:-10,ctrlKey:true}));canvas.dispatchEvent(new WheelEvent('wheel',{deltaY:-10,ctrlKey:true}));expect(pending.size).toBe(1);
+ flush();expect(pending.size).toBe(0);
+ act(()=>root.render(<Globe3D {...props} fill={()=> '#777'}/>));expect(pending.size).toBe(1);
+ act(()=>root.unmount());expect(pending.size).toBe(0);host.remove();getContext.mockRestore();vi.unstubAllGlobals();
+});

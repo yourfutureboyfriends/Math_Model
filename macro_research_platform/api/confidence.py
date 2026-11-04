@@ -1,3 +1,4 @@
+"""Confidence intervals for signals and forecasts (bootstrap and analytic)."""
 
 # Confidence Intervals Module (Phase 10C)
 # Bootstrap and Bayesian confidence intervals for forecasts

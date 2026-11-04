@@ -1,6 +1,7 @@
 """
 Centralised data fetcher — the ONLY way metrics should be read.
-Applies unit conversions, bounds checks, NaN guards, and fallbacks.
+Applies unit conversions, bounds checks and NaN guards. A metric that can't be fetched
+(or fails validation) is None — never a hardcoded fallback presented as data.
 """
 import logging, math, time
 from typing import Any, Optional, Callable
@@ -17,10 +18,11 @@ def fetch_metric(
     fred_fetch_fn: Optional[Callable[[str], Optional[float]]] = None,  # callable: fred_fetch_fn(series_id) -> float | None
     yf_fetch_fn: Optional[Callable[[str], Optional[float]]] = None,     # callable: yf_fetch_fn(ticker) -> float | None
     force_refresh: bool = False,
-) -> float:
+) -> Optional[float]:
     """
     THE ONLY way to get a metric value. Never call FRED/yfinance directly.
-    Returns a validated, unit-converted, NaN-free float. Always.
+    Returns a validated, unit-converted, finite float, or None when every source failed
+    or the value was rejected. Failures are not cached, so the next call retries.
     """
     contract: Optional[MetricContract] = CONTRACTS.get(metric_name)
     if not contract:
@@ -58,13 +60,8 @@ def fetch_metric(
 
     # All sources failed
     if raw_value is None:
-        logger.error(
-            f"[FETCH] {metric_name}: ALL SOURCES FAILED — "
-            f"using fallback={contract.fallback_value}. INVESTIGATE."
-        )
-        result = contract.fallback_value if contract.fallback_value is not None else 0.0
-        _METRIC_CACHE[metric_name] = (result, time.time())
-        return result
+        logger.error(f"[FETCH] {metric_name}: ALL SOURCES FAILED — unavailable. INVESTIGATE.")
+        return None
 
     # Apply unit conversion
     converted = raw_value * contract.multiply_by
@@ -73,23 +70,18 @@ def fetch_metric(
     if not math.isfinite(converted):
         logger.critical(
             f"[FETCH] {metric_name}: NaN/Inf from {source} "
-            f"(raw={raw_value}) — using fallback."
+            f"(raw={raw_value}) — unavailable."
         )
-        result = contract.fallback_value if contract.fallback_value is not None else 0.0
-        _METRIC_CACHE[metric_name] = (result, time.time())
-        return result
+        return None
 
     # Hard bounds check — reject completely implausible values
     if not (contract.hard_min <= converted <= contract.hard_max):
         logger.critical(
             f"[FETCH] {metric_name}: {converted} from {source} "
             f"outside hard bounds [{contract.hard_min}, {contract.hard_max}] "
-            f"— REJECTED. Using fallback={contract.fallback_value}. "
-            f"INVESTIGATE SOURCE."
+            f"— REJECTED as unavailable. INVESTIGATE SOURCE."
         )
-        result = contract.fallback_value if contract.fallback_value is not None else 0.0
-        _METRIC_CACHE[metric_name] = (result, time.time())
-        return result
+        return None
 
     # Soft bounds — warn only
     if not (contract.typical_min <= converted <= contract.typical_max):

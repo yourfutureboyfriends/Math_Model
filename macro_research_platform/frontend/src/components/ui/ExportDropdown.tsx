@@ -16,7 +16,7 @@ interface ExportOption {
 }
 
 const exportOptions: ExportOption[] = [
-  { id: 'morning-briefing', label: 'Morning Briefing', icon: <FileText className="w-4 h-4" />, description: 'Full 4-page institutional report' },
+  { id: 'morning-briefing', label: 'Daily Brief', icon: <FileText className="w-4 h-4" />, description: 'Full 4-page institutional report' },
   { id: 'risk-summary', label: 'Risk Summary', icon: <Printer className="w-4 h-4" />, description: '1-page risk indicators + signals' },
   { id: 'global-macro', label: 'Global Macro Report', icon: <Globe className="w-4 h-4" />, description: 'Country matrix + CB divergence' },
   { id: 'portfolio-review', label: 'Portfolio Review', icon: <PieChart className="w-4 h-4" />, description: 'Portfolio analytics + stress tests' },
@@ -238,7 +238,7 @@ export function ExportDropdown() {
           <div className="px-3 py-2 border-t border-border-subtle bg-surface-1">
             <div className="flex items-center justify-between text-2xs text-text-tertiary">
               <span>Format: A4 Landscape</span>
-              {copied && <span className="text-green">Link copied!</span>}
+              {copied && <span className="text-green">Link copied</span>}
             </div>
           </div>
         </div>

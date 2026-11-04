@@ -27,7 +27,7 @@ import pandas as pd
 import statsmodels.api as sm
 from statsmodels.discrete.discrete_model import Probit
 from fredapi import Fred
-import sqlite3, os, logging
+import os, logging
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -74,9 +74,10 @@ class RecessionProbitModel:
         Shifts recession indicator back by horizon months
         so model predicts recession horizon months ahead.
         """
-        api_key = os.getenv('FRED_API_KEY', '')
+        from api.config import FRED_API_KEY
+        api_key = FRED_API_KEY or os.getenv('FRED_API_KEY', '')
         if not api_key:
-            raise ValueError('FRED_API_KEY not set')
+            raise ValueError('FRED_API_KEY not set in .env or config')
 
         fred = Fred(api_key=api_key)
         raw  = {}
@@ -233,8 +234,8 @@ class RecessionProbitModel:
             'probability':     round(prob, 4),
             'probability_pct': round(prob * 100, 1),
             'signal':          signal,
-            'ci_lower':        round(ci_lo, 4),
-            'ci_upper':        round(ci_hi, 4),
+            'ci_lower':        None if np.isnan(ci_lo) else round(ci_lo, 4),
+            'ci_upper':        None if np.isnan(ci_hi) else round(ci_hi, 4),
             'interpretation':  note,
             'inputs': {
                 'yield_spread':   round(spread, 3),
@@ -268,9 +269,11 @@ class RecessionProbitModel:
                 float(np.percentile(probs, 2.5)),
                 float(np.percentile(probs, 97.5)),
             )
-        except Exception:
-            p = self.predict(spread, fed_funds)['probability']
-            return max(0.0, p - 0.06), min(1.0, p + 0.06)
+        except Exception as e:
+            # Don't call predict() here — predict() calls this method, so a persistent
+            # failure would recurse forever. Report the CI as unavailable instead.
+            logger.warning(f'[PROBIT] CI bootstrap failed: {e}')
+            return float('nan'), float('nan')
 
     def _fallback(
         self,
@@ -311,19 +314,76 @@ class RecessionProbitModel:
 # ── Singleton ─────────────────────────────────────────────
 
 _probit: RecessionProbitModel | None = None
+_last_fit_attempt: float = 0.0
+_RETRY_SECONDS = 1800
+
+
+_fit_lock = __import__("threading").Lock()
 
 
 def get_recession_probit() -> RecessionProbitModel:
-    """Return fitted singleton. Fits on first call."""
-    global _probit
-    if _probit is None:
-        _probit = RecessionProbitModel()
-        try:
-            _probit.fit()
-        except Exception as e:
-            logger.error(
-                f'[PROBIT] Startup fit failed: {e}'
-            )
+    """Return the fitted singleton. Fits on first call; if a fit failed (e.g. FRED was
+    unreachable), retries at most every 30 minutes instead of staying unfitted.
+
+    Single-flight: concurrent callers (several dashboard builds at startup) wait for one fit
+    instead of each starting its own — duplicate fits slowed every build past its timeout, so
+    the headline recession probability silently switched models (6.2% vs 8.2%)."""
+    global _probit, _last_fit_attempt
+    import time
+    if _probit is not None and _probit.fitted:
+        return _probit
+    with _fit_lock:
+        if _probit is not None and (_probit.fitted or time.time() - _last_fit_attempt < _RETRY_SECONDS):
+            return _probit
+        return _fit_locked()
+
+
+_PERSIST_PATH = __import__("pathlib").Path(__file__).resolve().parents[2] / "data" / "processed" / "recession_probit.pkl"
+_PERSIST_MAX_AGE = 30 * 24 * 3600
+
+
+def _save(model: "RecessionProbitModel") -> None:
+    import pickle
+    try:
+        _PERSIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _PERSIST_PATH.with_suffix(".tmp")
+        tmp.write_bytes(pickle.dumps(model))
+        tmp.replace(_PERSIST_PATH)
+    except Exception as e:
+        logger.debug(f"[PROBIT] could not persist model: {e}")
+
+
+def _load_persisted() -> "RecessionProbitModel | None":
+    """Last successfully fitted model (≤ 30 days old) — used when a refit fails because the
+    data source is unreachable, so the headline doesn't switch models during an outage."""
+    import pickle, time
+    try:
+        if time.time() - _PERSIST_PATH.stat().st_mtime > _PERSIST_MAX_AGE:
+            return None
+        m = pickle.loads(_PERSIST_PATH.read_bytes())
+        return m if getattr(m, "fitted", False) else None
+    except Exception:
+        return None
+
+
+def _fit_locked() -> RecessionProbitModel:
+    global _probit, _last_fit_attempt
+    import time
+    _last_fit_attempt = time.time()
+    model = RecessionProbitModel()
+    try:
+        model.fit()
+    except Exception as e:
+        logger.error(f'[PROBIT] Fit failed (will retry in {_RETRY_SECONDS // 60} min): {e}')
+    if model.fitted:
+        _save(model)
+    else:
+        persisted = _load_persisted()
+        if persisted is not None:
+            logger.warning(f"[PROBIT] using last fitted model from {persisted.last_trained}")
+            model = persisted
+    if _probit is None or model.fitted:
+        _probit = model
     return _probit
 
 

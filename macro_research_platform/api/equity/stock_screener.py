@@ -14,7 +14,7 @@ Provides ranked list of actionable ideas.
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Callable
 from datetime import datetime
 import logging
 

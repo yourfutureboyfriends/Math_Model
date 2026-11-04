@@ -2,12 +2,297 @@
 @tailwind components;
 @tailwind utilities;
 
+
+/* ═══ TERMINAL SKIN (Markets; lib/theme.ts sets data-skin="terminal") ════════════════════
+   The classic market terminal — black screen, amber labels, white figures, yellow keys,
+   dense monospace data — with a modern finish: sans-serif chrome, mono figures, soft
+   4–6px corners, layered panels, tactile keys, hover/focus states and smooth motion. */
+:root[data-skin="terminal"] {
+  --c-bg: 5 5 7;
+  --c-surface-1: 11 11 14;
+  --c-surface-2: 18 18 22;
+  --c-surface-3: 28 28 34;
+  --c-surface-4: 40 40 48;
+  --c-border: 42 42 50;
+  --c-border-subtle: 24 24 30;
+  --c-border-strong: 74 74 86;
+  --c-text-primary: 240 240 242;
+  --c-text-secondary: 251 146 44;        /* amber */
+  --c-text-tertiary: 166 126 82;         /* dim amber, ≥ 4.5:1 on the terminal black */
+  --c-text-inverse: 0 0 0;
+  --c-bloomberg: 251 139 30;
+  --c-green: 46 214 102;
+  --c-red: 255 82 82;
+  --c-amber: 255 196 0;
+  --c-blue: 96 165 250;
+  --c-purple: 196 140 255;
+  --key-yellow: 255 214 0;
+  --term-radius: 3px;
+  color-scheme: dark;
+}
+:root[data-skin="terminal"] body { background: radial-gradient(1200px 600px at 70% -10%, #0e0e14 0%, #050507 60%) fixed, #050507; }
+
+/* Type: sans for interface chrome, tabular mono for every figure */
+:root[data-skin="terminal"] .mkt-root { font-family: 'Inter', system-ui, sans-serif; font-size: 12px; letter-spacing: 0.005em; -webkit-font-smoothing: antialiased; }
+:root[data-skin="terminal"] .mkt-root :is(td, input, select, textarea, .font-mono, kbd, code, svg text),
+:root[data-skin="terminal"] .mkt-root .tabular-nums { font-family: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', Menlo, monospace; font-variant-numeric: tabular-nums; }
+:root[data-skin="terminal"] .mkt-root h1, :root[data-skin="terminal"] .mkt-root h2, :root[data-skin="terminal"] .mkt-root h3 { color: rgb(var(--c-text-primary)); letter-spacing: -0.01em; }
+
+/* Surfaces: soft corners, layered panels with a hairline top highlight and depth */
+:root[data-skin="terminal"] .mkt-root :is(.rounded, .rounded-md, .rounded-lg) { border-radius: var(--term-radius); }
+:root[data-skin="terminal"] .mkt-root :is(section, .bg-surface-1.border, .bg-surface-1.border-border) {
+  border-radius: 4px; box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03); }
+:root[data-skin="terminal"] .mkt-root :is(section, .bg-surface-1.border) { overflow: hidden; }
+:root[data-skin="terminal"] .mkt-root .panel-hdr, :root[data-skin="terminal"] .panel-bar {
+  background: #121216; border-bottom: 1px solid rgb(var(--c-border)); }
+:root[data-skin="terminal"] .mkt-root .panel-hdr > span:first-child, :root[data-skin="terminal"] .panel-bar > span:first-child {
+  color: rgb(var(--c-bloomberg)); font-weight: 600; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.08em; }
+
+/* Buttons: every bordered control gets rounded, a hover lift and a press */
+:root[data-skin="terminal"] .mkt-root button { transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s, transform .08s, filter .15s; }
+:root[data-skin="terminal"] .mkt-root button.border { border-radius: var(--term-radius); }
+:root[data-skin="terminal"] .mkt-root button.border:hover { border-color: rgb(var(--c-bloomberg) / 0.45); background-color: rgb(255 255 255 / 0.03); }
+:root[data-skin="terminal"] .mkt-root button.border-bloomberg { background-color: rgb(var(--c-bloomberg) / 0.08); }
+:root[data-skin="terminal"] .mkt-root :focus-visible { outline: none; box-shadow: 0 0 0 2px rgb(var(--c-bloomberg) / 0.55); border-radius: var(--term-radius); }
+
+/* Solid orange buttons (selected chart intervals, primary actions) → the same subtle tint */
+:root[data-skin="terminal"] .mkt-root button.bg-bloomberg { background: rgb(251 139 30 / 0.14) !important; color: #ffb15a !important;
+  box-shadow: inset 0 0 0 1px rgb(251 139 30 / 0.4); }
+:root[data-skin="terminal"] .mkt-root button.bg-bloomberg:hover { background: rgb(251 139 30 / 0.22) !important; }
+
+/* Inputs and the command line: recessed, amber glow on focus */
+:root[data-skin="terminal"] .mkt-root :is(input:not([type=checkbox]):not([type=radio]), select, textarea) { border-radius: var(--term-radius); }
+:root[data-skin="terminal"] .mkt-root .focus-within\:border-bloomberg:focus-within { box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.18), inset 0 1px 2px rgb(0 0 0 / 0.6); }
+:root[data-skin="terminal"] .mkt-root [role=combobox] { font-family: 'JetBrains Mono', monospace; }
+
+/* Market keys: flat and quiet — a faint tint of the key colour, coloured label, hairline border */
+.key-yellow, .key-amber, .key-green { font-weight: 600; border-radius: 3px; border: 1px solid transparent; transition: background-color .15s, border-color .15s, color .15s; }
+.key-yellow { color: #ffd84a; background: rgb(255 214 0 / 0.09); border-color: rgb(255 214 0 / 0.26); }
+.key-amber { color: #ff9d3a; background: rgb(251 139 30 / 0.09); border-color: rgb(251 139 30 / 0.28); }
+.key-green { color: #4ade80; background: rgb(34 197 94 / 0.09); border-color: rgb(34 197 94 / 0.28); }
+.key-yellow:hover { background: rgb(255 214 0 / 0.17); border-color: rgb(255 214 0 / 0.45); }
+.key-amber:hover { background: rgb(251 139 30 / 0.17); border-color: rgb(251 139 30 / 0.5); }
+.key-green:hover { background: rgb(34 197 94 / 0.17); border-color: rgb(34 197 94 / 0.5); }
+.panel-bar { background: rgb(var(--c-surface-3)); color: rgb(var(--c-text-secondary)); }
+
+/* Up/down colours: red-up / green-down is the convention in Hong Kong, China, Japan and Korea
+   (Futubull's default there). Swapped inside Markets only; lib/theme.ts sets data-updown. */
+:root[data-updown="red"] .mkt-root { --c-green: 239 68 68; --c-red: 34 197 94; }
+:root[data-theme="light"]:not([data-skin="terminal"])[data-updown="red"] .mkt-root { --c-green: 220 38 38; --c-red: 5 150 105; }
+:root[data-skin="terminal"][data-updown="red"] .mkt-root { --c-green: 255 82 82; --c-red: 46 214 102; }
+
+/* Tables: amber column headers, subtle zebra, blue selection highlight, dense rows */
+:root[data-skin="terminal"] .mkt-root thead th { color: rgb(var(--c-bloomberg) / 0.9) !important; text-transform: uppercase; font-size: 10px; font-weight: 600; letter-spacing: 0.06em;
+  font-family: 'Inter', system-ui, sans-serif; }
+:root[data-skin="terminal"] .mkt-root tbody tr:nth-child(even) { background: rgb(255 255 255 / 0.018); }
+:root[data-skin="terminal"] .mkt-root tbody tr { transition: background-color .12s; }
+:root[data-skin="terminal"] .mkt-root tbody tr:hover { background: rgb(37 99 235 / 0.16) !important; }
+:root[data-skin="terminal"] .mkt-root td, :root[data-skin="terminal"] .mkt-root th { padding-top: 2px; padding-bottom: 2px; }
+:root[data-skin="terminal"] .mkt-root .softkey { color: rgb(255 214 0); border-radius: 4px; padding: 0 6px; }
+:root[data-skin="terminal"] .mkt-root .softkey:hover { background: rgb(255 214 0 / 0.12); text-decoration: none; }
+
+/* ═══ MARKETS POLISH (both skins, both themes) ══════════════════════════════════
+   One finish for every Markets screen: card panels with an accent header, pill toggles,
+   KPI tiles with real hierarchy, sticky table headers, skeleton loading. Colours come from
+   the theme channels, so the classic terminal, modern dark and light themes all inherit it. */
+.mkt-root .mkt-panel { border-radius: 6px; overflow: hidden;
+  background: linear-gradient(180deg, rgb(var(--c-surface-2) / 0.55), rgb(var(--c-surface-1)) 48px);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.25); }
+.mkt-root .mkt-panel > .panel-hdr { position: relative; padding-left: 14px; min-height: 30px;
+  background: linear-gradient(90deg, rgb(var(--c-bloomberg) / 0.07), transparent 55%); }
+.mkt-root .mkt-panel > .panel-hdr::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; border-radius: 0 2px 2px 0;
+  background: rgb(var(--c-bloomberg)); }
+.mkt-root .mkt-panel > .panel-hdr > span:first-child { font-weight: 600; letter-spacing: 0.07em; color: rgb(var(--c-text-primary) / 0.85); }
+:root[data-skin="terminal"] .mkt-root .mkt-panel > .panel-hdr > span:first-child { color: rgb(var(--c-bloomberg)); }
+
+/* Toggle chips (any bordered button): pills with a quiet fill; the selected one filled with the accent */
+.mkt-root button.border { border-radius: 5px; background-color: rgb(var(--c-surface-2) / 0.6); border-color: rgb(var(--c-border) / 0.9);
+  transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s; }
+.mkt-root button.border:hover { border-color: rgb(var(--c-bloomberg) / 0.45); background-color: rgb(var(--c-surface-3) / 0.8); }
+.mkt-root button.border.border-bloomberg { background-color: rgb(var(--c-bloomberg) / 0.14); border-color: rgb(var(--c-bloomberg) / 0.6);
+  box-shadow: 0 0 0 1px rgb(var(--c-bloomberg) / 0.15), 0 0 12px -4px rgb(var(--c-bloomberg) / 0.5); }
+.mkt-root button.border:active { transform: translateY(0.5px); }
+.mkt-root button:disabled { cursor: not-allowed; }
+
+/* KPI tiles: any small bordered card in a grid that starts with a label row */
+.mkt-root .grid > div.border:has(> div.uppercase:first-child) {
+  border-radius: 6px; position: relative; overflow: hidden; border-color: rgb(var(--c-border) / 0.9);
+  background: linear-gradient(160deg, rgb(var(--c-surface-2)) 0%, rgb(var(--c-surface-1)) 70%);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.035) inset; }
+.mkt-root .grid > div.border:has(> div.uppercase:first-child)::after { content: ""; position: absolute; inset: 0 0 auto 0; height: 1px;
+  background: linear-gradient(90deg, rgb(var(--c-bloomberg) / 0.55), transparent 70%); }
+.mkt-root .grid > div.border:has(> div.uppercase:first-child) > div.uppercase:first-child { letter-spacing: 0.08em; font-weight: 500; }
+.mkt-root .grid > div.border:has(> div.uppercase:first-child) > div:nth-child(2) { font-size: 15px; font-weight: 600; line-height: 1.35; letter-spacing: -0.01em; }
+
+/* Tables: sticky, solid header row; hairline rows; numbers right where they belong */
+.mkt-root thead tr { border-bottom: 1px solid rgb(var(--c-border)); }
+.mkt-root thead th { padding-top: 4px; padding-bottom: 4px; white-space: nowrap; }
+.mkt-root thead.sticky, .mkt-root thead .sticky { background: rgb(var(--c-surface-1)); box-shadow: 0 1px 0 rgb(var(--c-border)); }
+.mkt-root tbody tr:hover { background-color: rgb(var(--c-bloomberg) / 0.06); }
+.mkt-root td { font-variant-numeric: tabular-nums; }
+
+/* Inputs */
+.mkt-root :is(input:not([type=checkbox]):not([type=radio]), select) { border-radius: 5px; transition: border-color .15s, box-shadow .15s; }
+.mkt-root :is(input:not([type=checkbox]):not([type=radio]), select):focus { outline: none; border-color: rgb(var(--c-bloomberg) / 0.7); box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.15); }
+.mkt-root input[type=checkbox] { accent-color: rgb(var(--c-bloomberg)); }
+
+/* Skeleton shimmer for loading states */
+.mkt-skeleton { border-radius: 4px; background: linear-gradient(90deg, rgb(var(--c-surface-3) / 0.6) 0%, rgb(var(--c-surface-3)) 40%, rgb(var(--c-surface-3) / 0.6) 80%);
+  background-size: 200% 100%; animation: mkt-shimmer 1.4s ease-in-out infinite; }
+@keyframes mkt-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .mkt-skeleton { animation: none; } }
+
+/* Canvas maps sit in rounded frames */
+.mkt-root canvas.border { border-radius: 6px; }
+
+/* ═══ LIGHT MODE FINISH ═════════════════════════════════════════════════════════
+   White cards on a cool grey canvas with soft, layered shadows (no grey halos), clean white
+   headers, quiet table heads, and the terminal's hard-coded yellows mapped to legible tones. */
+:root[data-theme="light"]:not([data-skin="terminal"]) body { background: radial-gradient(1100px 560px at 88% -10%, rgb(125 211 252 / 0.45), transparent 62%),
+  radial-gradient(900px 520px at -8% 6%, rgb(103 232 249 / 0.32), transparent 60%),
+  linear-gradient(180deg, rgb(207 229 248), rgb(var(--c-bg)) 520px) fixed, rgb(var(--c-bg)); }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root { background: transparent !important; }
+/* the app shell paints the page background itself: give it the same sky gradient */
+:root[data-theme="light"]:not([data-skin="terminal"]) .min-h-screen.bg-bg { background: radial-gradient(1100px 560px at 88% -10%, rgb(125 211 252 / 0.45), transparent 62%),
+  radial-gradient(900px 520px at -8% 6%, rgb(103 232 249 / 0.32), transparent 60%),
+  linear-gradient(180deg, rgb(207 229 248), rgb(var(--c-bg)) 520px), rgb(var(--c-bg)); background-attachment: fixed; }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root .mkt-panel { background: rgb(var(--c-surface-1)); border-color: rgb(var(--c-border));
+  box-shadow: 0 1px 2px rgb(14 76 117 / 0.05), 0 4px 14px -6px rgb(14 116 144 / 0.14); }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root .mkt-panel > .panel-hdr { background: linear-gradient(90deg, rgb(207 236 254), rgb(230 245 255) 45%, rgb(var(--c-surface-1)));
+  border-bottom-color: rgb(var(--c-border-subtle)); }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root .mkt-panel > .panel-hdr > span:first-child { color: rgb(var(--c-text-secondary)); letter-spacing: 0.06em; }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root .grid > div.border:has(> div.uppercase:first-child) {
+  background: linear-gradient(160deg, rgb(255 255 255), rgb(240 249 255)); border-color: rgb(var(--c-border));
+  box-shadow: 0 1px 2px rgb(14 76 117 / 0.05), 0 3px 10px -5px rgb(14 116 144 / 0.16); }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root .grid > div.border:has(> div.uppercase:first-child)::after { height: 2px; background: linear-gradient(90deg, rgb(6 182 212), rgb(59 130 246 / 0.6) 45%, transparent 75%); }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root thead tr { background: rgb(240 248 254); }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root thead th { color: rgb(var(--c-text-tertiary)); font-weight: 600; }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root tbody tr:hover { background-color: rgb(var(--c-bloomberg) / 0.045); }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root button.border { background-color: rgb(var(--c-surface-1)); box-shadow: 0 1px 2px rgb(14 76 117 / 0.06); }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root button.border:hover { background-color: rgb(var(--c-surface-2)); border-color: rgb(var(--c-border-strong)); }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root button.border.border-bloomberg { background-color: rgb(var(--c-bloomberg) / 0.08); border-color: rgb(var(--c-bloomberg) / 0.55);
+  box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.08); }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root :is(input:not([type=checkbox]):not([type=radio]), select, textarea) { background-color: rgb(var(--c-surface-1)); }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root .bg-surface-1.border, :root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root section.border { box-shadow: 0 1px 2px rgb(16 24 40 / 0.04); }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-skeleton { background: linear-gradient(90deg, rgb(var(--c-surface-3)) 0%, rgb(var(--c-surface-4)) 40%, rgb(var(--c-surface-3)) 80%); background-size: 200% 100%; }
+/* terminal yellows / pinks written for a black screen */
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root .text-\[\#ffd84a\] { color: rgb(var(--c-bloomberg)) !important; }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root .bg-\[rgb\(255_214_0\/0\.08\)\] { background-color: rgb(var(--c-bloomberg) / 0.08) !important; }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root .border-\[rgb\(255_214_0\/0\.35\)\] { border-color: rgb(var(--c-bloomberg) / 0.45) !important; }
+:root[data-theme="light"]:not([data-skin="terminal"]) .key-yellow { color: rgb(146 84 0); background: rgb(254 240 199 / 0.7); border-color: rgb(254 200 75 / 0.8); }
+:root[data-theme="light"]:not([data-skin="terminal"]) .key-amber { color: rgb(194 65 12); background: rgb(255 237 213 / 0.7); border-color: rgb(253 186 116 / 0.8); }
+:root[data-theme="light"]:not([data-skin="terminal"]) .key-green { color: rgb(3 120 70); background: rgb(220 250 230 / 0.7); border-color: rgb(117 224 167 / 0.8); }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root * { scrollbar-color: rgb(var(--c-border-strong)) transparent; }
+
+/* Thin dark scrollbars */
+:root[data-skin="terminal"] .mkt-root * { scrollbar-width: thin; scrollbar-color: #2e2e38 transparent; }
+:root[data-skin="terminal"] .mkt-root ::-webkit-scrollbar { width: 8px; height: 8px; }
+:root[data-skin="terminal"] .mkt-root ::-webkit-scrollbar-thumb { background: #2e2e38; border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+@media (prefers-reduced-motion: reduce) { :root[data-skin="terminal"] .mkt-root * { transition: none !important; } }
+/* Price ticks flash like a terminal monitor */
+@keyframes flash-up { from { background: rgb(var(--c-green) / 0.55); } to { background: transparent; } }
+@keyframes flash-down { from { background: rgb(var(--c-red) / 0.55); } to { background: transparent; } }
+.flash-up { animation: flash-up 1.2s ease-out; }
+.flash-down { animation: flash-down 1.2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .flash-up, .flash-down { animation: none; } }
+@keyframes crawl { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.news-crawl { animation: crawl 240s linear infinite; }
+/* FLOW map: arrows animate in the direction money moves */
+.flow-dash { stroke-dasharray: 6 5; animation: flow-dash 1.2s linear infinite; }
+@keyframes flow-dash { to { stroke-dashoffset: -11; } }
+@media (prefers-reduced-motion: reduce) { .flow-dash { animation: none; } }
+.news-crawl:hover { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .news-crawl { animation: none; } }
+
+/* Map oceans follow the theme's blue unless a theme sets its own sea colour */
+:root { --c-sea: var(--c-blue); }
+
+/* ═══ THEME CHANNELS (lib/theme.ts sets data-theme on <html>) ═══════════════════
+   Colours are "R G B" channels so Tailwind opacity modifiers (bg-bloomberg/50) work. */
+:root, :root[data-theme="dark"] {
+  --c-on-accent: 10 14 20;           /* text on the accent fill — kept readable by lib/accentContrast.ts */
+  --c-bg: 6 9 12;
+  --c-surface-1: 13 17 23;
+  --c-surface-2: 19 25 32;
+  --c-surface-3: 26 34 48;
+  --c-surface-4: 30 39 54;
+  --c-border: 30 45 61;
+  --c-border-subtle: 21 31 46;
+  --c-border-strong: 42 63 85;
+  --c-text-primary: 232 237 242;
+  --c-text-secondary: 166 177 191;   /* lifted with tertiary to keep the step between them */
+  --c-text-tertiary: 134 146 162;    /* ≥ 4.5:1 (WCAG AA) on every card surface; was 106 118 134 (3.3–4.0:1) */
+  --c-text-inverse: 9 12 15;
+  --c-bloomberg: 240 112 48;
+  --c-green: 34 197 94;
+  --c-red: 244 92 92;               /* 5:1 on its own tinted badges; was 239 68 68 (4.3:1) */
+  --c-amber: 245 158 11;
+  --c-blue: 96 156 250;             /* ≥ 4.5:1 on its tinted tags; was 59 130 246 (4.3:1) */
+  --c-purple: 168 85 247;
+  --c-nav: var(--c-amber);         /* highlighted navigation (a fund's brand can set it) */
+  color-scheme: dark;
+}
+/* ═══ FUND BRAND (lib/fundBrand.ts) — the current fund's palette replaces the accent and tints the dark canvas.
+   Higher specificity than the theme blocks; the amber "terminal" skin keeps its own palette. */
+:root[data-brand]:not([data-skin="terminal"])[data-theme="dark"],
+:root[data-brand]:not([data-skin="terminal"]):not([data-theme]) {
+  --c-bloomberg: var(--brand-accent-dark);
+  --c-bg: var(--brand-bg-dark);
+  --c-surface-1: var(--brand-surface-dark);
+  --c-surface-2: var(--brand-surface2-dark);
+  --c-surface-3: var(--brand-surface3-dark);
+  --c-border: var(--brand-border-dark);
+  --c-border-subtle: var(--brand-border-subtle-dark);
+  --c-nav: var(--brand-secondary);
+}
+:root[data-brand]:not([data-skin="terminal"])[data-theme="light"] {
+  --c-bloomberg: var(--brand-accent-light);
+  --c-nav: var(--brand-accent-light);
+}
+.brand-mask {
+  display: inline-block; flex-shrink: 0;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-size: contain; mask-size: contain;
+  -webkit-mask-position: left center; mask-position: left center;
+}
+.brand-gold { background-image: linear-gradient(180deg, rgb(var(--brand-accent-dark)) 0%, rgb(var(--brand-secondary)) 100%); background-color: transparent; }
+:root[data-theme="light"]:not([data-skin="terminal"]) .brand-gold { background-image: none; background-color: rgb(var(--brand-accent-light)); }
+
+:root[data-theme="light"]:not([data-skin="terminal"]) {
+  /* Modern light, cool: a soft sky-blue canvas, white cards with blue-tinted chrome, navy text,
+     and a cyan-teal accent (indigo for the secondary chart line so the two never blur) */
+  --c-bg: 220 236 249;
+  --c-surface-1: 255 255 255;
+  --c-surface-2: 243 249 254;
+  --c-surface-3: 228 240 250;
+  --c-surface-4: 219 234 246;
+  --c-border: 210 226 239;
+  --c-border-subtle: 228 238 247;
+  --c-border-strong: 170 196 218;
+  --c-text-primary: 11 37 64;
+  --c-text-secondary: 52 82 112;
+  --c-text-tertiary: 84 108 134;     /* ≥ 4.5:1 on white and the light surfaces; was 98 124 150 (3.75:1) */
+  --c-text-inverse: 255 255 255;
+  --c-bloomberg: 14 116 144;        /* ≥ 4.5:1 on white and light surfaces; was 8 145 178 (3.7:1) */
+  --c-green: 4 120 87;              /* ≥ 4.5:1; was 5 150 105 (3.6:1) */
+  --c-red: 196 30 30;               /* ≥ 4.5:1 on light tints; was 220 38 38 (4.2:1) */
+  --c-amber: 160 72 10;             /* ≥ 4.5:1 on every light surface; was 217 119 6 (3.0:1) */
+  --c-nav: var(--c-amber);
+  --c-blue: 79 70 229;
+  --c-purple: 147 51 234;
+  --key-yellow: 161 92 7;          /* terminal yellow keys, legible on white */
+  --c-sea: 56 189 248;             /* map oceans: sky blue (the chart "blue" is indigo here) */
+  color-scheme: light;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════════
    TERMINAL DESIGN TOKENS — Institutional Trading Terminal
    Bloomberg Terminal × Linear × Vercel Dashboard
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 :root {
+  --workspace-bar-height: 36px;
   /* ═══════════════════════════════════════════════════════════════════════════════
      TYPOGRAPHY TOKENS
      ═══════════════════════════════════════════════════════════════════════════════ */
@@ -44,23 +329,23 @@
   /* ═══════════════════════════════════════════════════════════════════════════════
      BLOOMBERG ORANGE — primary terminal accent
      ═══════════════════════════════════════════════════════════════════════════════ */
-  --bloomberg:        #f07030;
-  --bloomberg-dim:    rgba(240, 112, 48, 0.15);
-  --bloomberg-muted:  rgba(240, 112, 48, 0.08);
-  --bloomberg-border: rgba(240, 112, 48, 0.30);
-  --bloomberg-hover:  rgba(240, 112, 48, 0.20);
+  --bloomberg:        rgb(var(--c-bloomberg));
+  --bloomberg-dim:    rgb(var(--c-bloomberg) / 0.15);
+  --bloomberg-muted:  rgb(var(--c-bloomberg) / 0.08);
+  --bloomberg-border: rgb(var(--c-bloomberg) / 0.30);
+  --bloomberg-hover:  rgb(var(--c-bloomberg) / 0.20);
 
   /* ═══════════════════════════════════════════════════════════════════════════════
      SURFACES — preserve teal, add amber palette
      ═══════════════════════════════════════════════════════════════════════════════ */
-  --bg:              #06090c;
-  --surface-1:       #0d1117;
-  --surface-2:       #131920;
-  --surface-3:       #1a2230;
-  --surface-4:       #1e2736;
-  --border:          #1e2d3d;
-  --border-subtle:   #151f2e;
-  --border-strong:   #2a3f55;
+  --bg:              rgb(var(--c-bg));
+  --surface-1:       rgb(var(--c-surface-1));
+  --surface-2:       rgb(var(--c-surface-2));
+  --surface-3:       rgb(var(--c-surface-3));
+  --surface-4:       rgb(var(--c-surface-4));
+  --border:          rgb(var(--c-border));
+  --border-subtle:   rgb(var(--c-border-subtle));
+  --border-strong:   rgb(var(--c-border-strong));
 
   /* Amber Terminal colors — dual palette support */
   --color-bg:          #0a0a0a;
@@ -72,10 +357,10 @@
   --color-border-dim:  rgba(255,255,255,0.03);
 
   /* Text hierarchy */
-  --text-primary:    #e8edf2;
-  --text-secondary:  #8895a4;
-  --text-tertiary:   #4a5568;
-  --text-inverse:    #090c0f;
+  --text-primary:    rgb(var(--c-text-primary));
+  --text-secondary:  rgb(var(--c-text-secondary));
+  --text-tertiary:   rgb(var(--c-text-tertiary));
+  --text-inverse:    rgb(var(--c-text-inverse));
   --color-text:        #e8e6e1;
   --color-text-muted:  #7a7870;
   --color-text-faint:  #3d3d3a;
@@ -100,16 +385,16 @@
   --color-caution:     #f59e0b;
 
   /* Semantic colours */
-  --green:           #22c55e;
-  --green-dim:       rgba(34, 197, 94, 0.12);
-  --red:             #ef4444;
-  --red-dim:         rgba(239, 68, 68, 0.12);
-  --amber:           #f59e0b;
-  --amber-dim:       rgba(245, 158, 11, 0.12);
-  --blue:            #3b82f6;
-  --blue-dim:        rgba(59, 130, 246, 0.12);
-  --purple:          #a855f7;
-  --purple-dim:      rgba(168, 85, 247, 0.12);
+  --green:           rgb(var(--c-green));
+  --green-dim:       rgb(var(--c-green) / 0.12);
+  --red:             rgb(var(--c-red));
+  --red-dim:         rgb(var(--c-red) / 0.12);
+  --amber:           rgb(var(--c-amber));
+  --amber-dim:       rgb(var(--c-amber) / 0.12);
+  --blue:            rgb(var(--c-blue));
+  --blue-dim:        rgb(var(--c-blue) / 0.12);
+  --purple:          rgb(var(--c-purple));
+  --purple-dim:      rgb(var(--c-purple) / 0.12);
 
   /* Legacy aliases for compatibility */
   --terminal-bg: var(--bg);
@@ -391,6 +676,16 @@ button, a, [role="button"],
 
   .terminal-section {
     margin-bottom: var(--space-4);
+  }
+
+  /* Scrolling performance: the dashboard is one long page (~150 sections, ~13k elements). Off-screen sections are
+     skipped for layout and paint until they come near the viewport. Not while a section holds a fixed-position
+     element (an open dialog or popover), which containment would otherwise trap inside the section. */
+  @media screen {
+    .terminal-section:not(:has(.fixed)) {
+      content-visibility: auto;
+      contain-intrinsic-size: auto 640px;
+    }
   }
 
   /* ─── SIGNAL TAGS ───────────────────────────────────── */
@@ -682,9 +977,51 @@ button, a, [role="button"],
     border-left: 2px solid var(--bloomberg);
     background: var(--surface-2);
     position: sticky;
-    top: var(--topbar-height);
+    top: calc(var(--topbar-height) + var(--workspace-bar-height, 0px));
     z-index: 10;
   }
+
+  /* Panel folding: the first header of each dashboard panel toggles it (DashboardPage). */
+  [data-panel-head] {
+    cursor: pointer;
+    padding-right: 50px;
+  }
+  /* "?" help button (DashboardPage → PanelHelpPopover), left of the fold chevron. */
+  .panel-help-btn {
+    position: absolute;
+    right: 26px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    font: 600 10px/14px var(--font-mono, monospace);
+    text-align: center;
+    color: var(--text-tertiary);
+    background: transparent;
+    cursor: help;
+  }
+  .panel-help-btn:hover, .panel-help-btn:focus-visible { color: var(--text-primary); border-color: var(--bloomberg, #f59e0b); outline: none; }
+  [data-panel-head]:not(.section-header) { position: relative; }
+  [data-panel-head]::after {
+    content: '';
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid var(--text-tertiary);
+    border-bottom: 1.5px solid var(--text-tertiary);
+    transform: translateY(-70%) rotate(45deg);
+    transition: transform 120ms ease, border-color 120ms ease;
+  }
+  [data-panel-head]:hover::after { border-color: var(--text-primary); }
+  [data-collapsed] [data-panel-head]::after { transform: translateY(-40%) rotate(-45deg); }
+  [data-collapsed] [data-panel-head] { border-bottom-color: transparent; }
+  [data-fold] { display: none !important; }
+  /* Jump targets land below the fixed top bar and the workspace tabs. */
+  .terminal-section, section[id] { scroll-margin-top: calc(var(--topbar-height) + var(--workspace-bar-height) + 8px); }
 
   .section-header-left {
     display: flex;
@@ -769,14 +1106,14 @@ button, a, [role="button"],
   .ticker-chg-pos {
     font-family: var(--font-data);
     font-size: 10px;
-    color: #22c55e;
+    color: rgb(var(--c-green));
     font-variant-numeric: tabular-nums;
   }
 
   .ticker-chg-neg {
     font-family: var(--font-data);
     font-size: 10px;
-    color: #ef4444;
+    color: rgb(var(--c-red));
     font-variant-numeric: tabular-nums;
   }
 
@@ -794,7 +1131,7 @@ button, a, [role="button"],
     gap: 4px;
     padding: 1px 6px;
     font-family: var(--font-data);
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -803,7 +1140,7 @@ button, a, [role="button"],
   }
 
   .session-badge.open {
-    color: #22c55e;
+    color: rgb(var(--c-green));
     border-color: rgba(34, 197, 94, 0.30);
     background: rgba(34, 197, 94, 0.08);
   }
@@ -853,7 +1190,7 @@ button, a, [role="button"],
   }
 
   .fn-key-num {
-    font-size: 9px;
+    font-size: 10px;
     color: var(--text-tertiary);
     font-weight: 400;
   }
@@ -1124,10 +1461,512 @@ aside.fixed {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
+   LIVE SCREEN CHROME — world quote board, ticker tape, status bar
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* The topbar board scrolls sideways on narrow screens instead of cutting quotes off. */
+.ticker-strip { overflow-x: auto; scrollbar-width: none; }
+.ticker-strip::-webkit-scrollbar { display: none; }
+button.ticker-item { background: transparent; border-top: 0; border-bottom: 0; border-left: 0; cursor: pointer; }
+.ticker-item .ticker-chg { font-family: var(--font-data); font-size: 10px; font-variant-numeric: tabular-nums; }
+
+/* Bottom dock: tape + status bar, fixed under the page. Floating buttons sit above it. */
+:root { --dock-h: 48px; }
+.bottom-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; display: flex; flex-direction: column;
+  background: var(--bg); border-top: 1px solid var(--border); box-shadow: 0 -6px 18px rgb(0 0 0 / 0.18); }
+.fixed.bottom-4 { bottom: calc(var(--dock-h) + 0.75rem) !important; }
+
+.tape { display: flex; height: 24px; align-items: stretch; border-bottom: 1px solid var(--border-subtle); overflow: hidden; }
+.tape-label { display: flex; align-items: center; gap: 6px; padding: 0 10px; flex-shrink: 0; font-family: var(--font-data);
+  font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: rgb(var(--c-bloomberg));
+  background: rgb(var(--c-bloomberg) / 0.08); border-right: 1px solid rgb(var(--c-bloomberg) / 0.35); }
+.tape-dot { width: 6px; height: 6px; border-radius: 9999px; animation: live-pulse 2s ease-in-out infinite; }
+.tape-viewport { position: relative; flex: 1; overflow: hidden;
+  mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%); }
+.tape-track { display: flex; width: max-content; height: 100%; animation: crawl 120s linear infinite; will-change: transform; }
+.tape:hover .tape-track { animation-play-state: paused; }
+.tape-section { display: flex; align-items: stretch; }
+.tape-tag { display: flex; align-items: center; padding: 0 8px 0 14px; font-family: var(--font-data); font-size: 10px;
+  font-weight: 700; letter-spacing: 0.14em; color: rgb(var(--c-nav)); }
+.tape-quote { display: flex; align-items: center; gap: 6px; padding: 0 10px; height: 100%; white-space: nowrap;
+  background: transparent; border: 0; border-right: 1px solid var(--border-subtle); cursor: pointer; transition: background 120ms; }
+.tape-quote:hover { background: var(--surface-3); }
+.tape-sym { font-family: var(--font-data); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; color: var(--text-secondary); }
+.tape-px { font-family: var(--font-data); font-size: 10.5px; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.tape-chg { font-family: var(--font-data); font-size: 10px; font-variant-numeric: tabular-nums; }
+.tape-empty { display: flex; align-items: center; height: 100%; padding: 0 12px; font-family: var(--font-data); font-size: 10px; color: var(--text-tertiary); }
+@media (prefers-reduced-motion: reduce) { .tape-track { animation: none; } .tape-viewport { overflow-x: auto; } }
+
+.status-bar { display: flex; align-items: center; height: 24px; padding: 0 6px; gap: 8px; background: var(--surface-2);
+  font-family: var(--font-data); font-size: 10px; color: var(--text-secondary); }
+.status-clocks { display: flex; align-items: center; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.status-clocks::-webkit-scrollbar { display: none; }
+.status-clock { display: inline-flex; align-items: center; gap: 4px; padding: 0 7px; border-right: 1px solid var(--border-subtle);
+  white-space: nowrap; cursor: default; }
+.status-city { font-weight: 700; letter-spacing: 0.06em; color: var(--text-tertiary); }
+.status-time { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.status-clock.open .status-city { color: var(--text-primary); }
+.status-clock.open .status-time { color: rgb(var(--c-green)); }
+.status-light { width: 6px; height: 6px; border-radius: 9999px; background: var(--border-strong); flex-shrink: 0; }
+.status-clock.open .status-light, .status-light.open { background: rgb(var(--c-green)); box-shadow: 0 0 6px rgb(var(--c-green) / 0.7); }
+.status-clock.lunch .status-light { background: rgb(var(--c-amber)); }
+.status-light.closed-warn, .status-light.warn { background: rgb(var(--c-amber)); }
+.status-light.breach { background: rgb(var(--c-red)); box-shadow: 0 0 6px rgb(var(--c-red) / 0.7); }
+/* Account bar: NAV · day P&L · exposures · limits, label in muted caps and the figure beside it */
+.status-account { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; white-space: nowrap;
+  border-left: 1px solid var(--border-subtle); background: transparent; font: inherit; color: inherit; cursor: pointer; }
+.status-account:hover { background: rgb(var(--c-bloomberg) / 0.10); }
+.status-account:focus-visible { outline: 1px solid rgb(var(--c-bloomberg)); outline-offset: -1px; }
+.status-k { color: var(--text-tertiary); font-weight: 700; letter-spacing: 0.06em; }
+.status-k:not(:first-child) { margin-left: 4px; }
+.status-v { font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.status-v small { font-size: 10px; opacity: 0.85; }
+/* .status-item sets display after Tailwind's utilities, which kept `hidden md:inline-flex` items showing on phones
+   (the dock then pushed the page wider than the screen): restate the responsive visibility at higher specificity. */
+.status-item.hidden { display: none; }
+@media (min-width: 768px) { .status-item.md\:inline-flex { display: inline-flex; } }
+@media (min-width: 1024px) { .status-item.lg\:inline-flex { display: inline-flex; } }
+@media (min-width: 1280px) { .status-item.xl\:inline-flex { display: inline-flex; } }
+@media (max-width: 767px) { .status-account { display: none; } }
+.status-right { margin-left: auto; display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.status-item { display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; height: 24px; white-space: nowrap;
+  border-left: 1px solid var(--border-subtle); letter-spacing: 0.04em; }
+.status-item kbd { font-family: var(--font-data); font-size: 10px; padding: 0 4px; border: 1px solid var(--border);
+  border-radius: 2px; color: var(--text-secondary); background: var(--surface-3); }
+.status-btn { height: 24px; padding: 0 10px; border-left: 1px solid var(--border-subtle); font-weight: 700; letter-spacing: 0.08em;
+  color: rgb(var(--c-bloomberg)); background: transparent; }
+.status-btn:hover { background: rgb(var(--c-bloomberg) / 0.12); }
+
+/* Research panels read like a terminal monitor: aligned figures, a row highlight that follows the cursor, and the
+   panel under the pointer lifted slightly so the eye knows where it is. */
+.terminal-section .font-mono, .terminal-section td, .ticker-val, .stat-value { font-variant-numeric: tabular-nums; }
+.terminal-section table tbody tr { transition: background-color 90ms ease; }
+.terminal-section table tbody tr:hover { background-color: rgb(var(--c-bloomberg) / 0.06); }
+.terminal-section > .section-header, .terminal-section .section-header { transition: border-left-color 150ms ease, background-color 150ms ease; }
+.terminal-section:hover .section-header { border-left-color: rgb(var(--c-nav)); background: var(--surface-3); }
+.terminal-section .terminal-card, .terminal-section [class*="bg-surface-1"][class*="border"] { transition: border-color 150ms ease; }
+.terminal-section:hover .terminal-card { border-color: var(--border-strong); }
+@media (prefers-reduced-motion: reduce) {
+  .terminal-section table tbody tr, .terminal-section .section-header, .terminal-section .terminal-card { transition: none; }
+}
+
+/* ─── Live pop-ups (components/layout/LivePopups) ─────────────────────────────── */
+.popup-stack { position: fixed; right: 12px; bottom: calc(var(--dock-h) + 12px); z-index: 60; display: flex;
+  flex-direction: column-reverse; gap: 8px; width: 340px; max-width: calc(100vw - 24px); pointer-events: none; }
+.popup-toast { position: relative; pointer-events: auto; overflow: hidden; background: var(--surface-2);
+  border: 1px solid var(--border-strong); border-left: 3px solid rgb(var(--c-nav)); box-shadow: 0 10px 30px rgb(0 0 0 / 0.35);
+  animation: popup-in 220ms cubic-bezier(.2,.8,.2,1); }
+@keyframes popup-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.popup-news { border-left-color: rgb(var(--c-bloomberg)); }
+.popup-eco { border-left-color: rgb(var(--c-amber)); }
+.popup-regime { border-left-color: rgb(var(--c-nav)); }
+.popup-alert { border-left-color: rgb(var(--c-amber)); background: linear-gradient(90deg, rgb(var(--c-amber) / 0.10), transparent 60%), var(--surface-2); }
+.popup-alert .popup-tag { color: rgb(var(--c-amber)); }
+.popup-move.popup-up, .popup-eco.popup-up { border-left-color: rgb(var(--c-green)); }
+.popup-move.popup-down, .popup-eco.popup-down { border-left-color: rgb(var(--c-red)); }
+.popup-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px 0 10px; }
+.popup-tag { font-family: var(--font-data); font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: var(--text-tertiary); }
+.popup-news .popup-tag { color: rgb(var(--c-bloomberg)); }
+.popup-eco .popup-tag { color: rgb(var(--c-amber)); }
+.popup-regime .popup-tag { color: rgb(var(--c-nav)); }
+.popup-up .popup-tag { color: rgb(var(--c-green)); }
+.popup-down .popup-tag { color: rgb(var(--c-red)); }
+.popup-time { font-family: var(--font-data); font-size: 10px; color: var(--text-tertiary); margin-left: auto; }
+.popup-close { color: var(--text-tertiary); background: transparent; border: 0; padding: 2px; cursor: pointer; }
+.popup-close:hover { color: var(--text-primary); }
+.popup-body { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; padding: 3px 10px 9px;
+  background: transparent; border: 0; cursor: pointer; }
+.popup-title { font-size: 12px; font-weight: 600; line-height: 1.35; color: var(--text-primary);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.popup-sub { font-size: 10.5px; color: var(--text-secondary); line-height: 1.35; }
+.popup-cta { font-family: var(--font-data); font-size: 10px; color: rgb(var(--c-bloomberg)); letter-spacing: 0.04em; }
+.popup-body:hover .popup-title { text-decoration: underline; text-decoration-color: var(--border-strong); }
+.popup-life { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: rgb(var(--c-bloomberg) / 0.6);
+  transform-origin: left; animation-name: popup-life; animation-timing-function: linear; animation-fill-mode: forwards; }
+@keyframes popup-life { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.popup-panel { position: fixed; right: 12px; bottom: calc(var(--dock-h) + 8px); z-index: 61; width: 380px; max-width: calc(100vw - 24px);
+  max-height: min(70vh, 560px); display: flex; flex-direction: column; background: var(--surface-1);
+  border: 1px solid var(--border-strong); box-shadow: 0 14px 40px rgb(0 0 0 / 0.4); }
+.popup-panel-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 6px 12px; }
+.popup-panel-list { overflow-y: auto; border-top: 1px solid var(--border-subtle); }
+.popup-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 6px 12px;
+  background: transparent; border: 0; border-bottom: 1px solid var(--border-subtle); cursor: pointer; }
+.popup-row:hover { background: var(--surface-3); }
+.popup-badge { margin-left: 5px; padding: 0 4px; border-radius: 2px; background: rgb(var(--c-red)); color: #fff; font-size: 10px; }
+@media (prefers-reduced-motion: reduce) { .popup-toast, .popup-life { animation: none; } }
+@media print { .popup-stack, .popup-panel { display: none !important; } }
+
+/* ─── Security hover cards (components/layout/HoverCard) ─────────────────────── */
+.hover-card { position: fixed; z-index: 70; padding: 10px 12px; background: var(--surface-1); border: 1px solid var(--border-strong);
+  border-top: 2px solid rgb(var(--c-bloomberg)); box-shadow: 0 12px 34px rgb(0 0 0 / 0.35); animation: hover-card-in 120ms ease-out; }
+@keyframes hover-card-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.hover-card-btn { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; font-size: 10.5px; color: var(--text-secondary);
+  border: 1px solid var(--border); background: var(--surface-2); }
+.hover-card-btn:hover { color: rgb(var(--c-bloomberg)); border-color: rgb(var(--c-bloomberg) / 0.6); }
+[data-symbol] { cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .hover-card { animation: none; } }
+@media print { .hover-card { display: none !important; } }
+
+/* ─── <GO> command line in the Research topbar (components/layout/GlobalCommand) ─ */
+.gcmd { display: flex; align-items: center; gap: 6px; height: 24px; width: clamp(150px, 16vw, 240px); padding: 0 6px 0 0; margin-left: 6px;
+  border: 1px solid var(--border); background: var(--bg); transition: border-color 120ms, width 160ms; }
+.gcmd:focus-within { border-color: rgb(var(--c-bloomberg)); width: clamp(220px, 22vw, 300px); }
+/* grid and flex children may shrink below their content: a wide chart or table scrolls inside its panel instead of
+   pushing the panel past the screen edge */
+.terminal-section .grid > * { min-width: 0; }
+.gcmd-go { align-self: stretch; display: flex; align-items: center; padding: 0 6px; font-family: var(--font-data); font-size: 10px;
+  font-weight: 700; letter-spacing: 0.08em; color: var(--bg); background: rgb(var(--c-bloomberg)); }
+.gcmd input { flex: 1; min-width: 0; background: transparent; outline: none; font-family: var(--font-data); font-size: 11px;
+  color: var(--text-primary); text-transform: uppercase; }
+.gcmd input::placeholder { text-transform: none; color: var(--text-tertiary); }
+.gcmd-list { position: absolute; z-index: 80; top: 28px; left: 6px; width: 380px; max-height: 360px; overflow-y: auto;
+  background: var(--surface-1); border: 1px solid var(--border-strong); box-shadow: 0 12px 30px rgb(0 0 0 / 0.35); }
+.gcmd-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; text-align: left; font-size: 11.5px;
+  background: transparent; border: 0; border-bottom: 1px solid var(--border-subtle); cursor: pointer; }
+.gcmd-item.is-active { background: rgb(var(--c-bloomberg) / 0.12); }
+.gcmd-tag { width: 44px; flex-shrink: 0; font-family: var(--font-data); font-size: 10px; font-weight: 700; letter-spacing: 0.1em; color: rgb(var(--c-bloomberg)); }
+
+/* ─── What-if sliders (components/sections/risk/WhatIfSection) ─────────────────── */
+.tm-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text-secondary); }
+.tm-btn:hover { color: rgb(var(--c-bloomberg)); border-color: rgb(var(--c-bloomberg) / 0.6); }
+.whatif-range { -webkit-appearance: none; appearance: none; height: 4px; background: var(--surface-3); border-radius: 2px; outline: none; cursor: pointer; }
+.whatif-range::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: rgb(var(--c-bloomberg));
+  border: 2px solid var(--surface-1); box-shadow: 0 0 0 1px rgb(var(--c-bloomberg) / 0.6); }
+.whatif-range::-moz-range-thumb { width: 13px; height: 13px; border-radius: 50%; background: rgb(var(--c-bloomberg)); border: 2px solid var(--surface-1); }
+.whatif-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.35); }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   REFINEMENT LAYER — one consistent finish over the older primitives: softer geometry (6–10 px radii), quieter
+   hairlines, translucent sticky headers, tinted (not solid) tags, one focus ring, thin scrollbars and calmer
+   uppercase. Colours come from the theme channels, so dark, light and fund brands all inherit it.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --radius-sm: 4px; --radius-md: 6px; --radius-lg: 10px; --radius-pill: 999px;
+  --hairline: rgb(var(--c-border) / 0.7);
+  --hairline-subtle: rgb(var(--c-border) / 0.45);
+  --ring: 0 0 0 2px rgb(var(--c-bloomberg) / 0.45);
+  --elev-1: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.25);
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+:root[data-theme="light"]:not([data-skin="terminal"]) { --elev-1: 0 1px 2px rgb(16 24 40 / 0.05), 0 1px 1px rgb(16 24 40 / 0.03); }
+
+/* Sections: cards with a hairline, not boxes inside boxes */
+.terminal-section {
+  background: rgb(var(--c-surface-1));
+  border: 1px solid var(--hairline-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-1);
+  overflow: clip;
+  margin-bottom: 12px;
+}
+.section-header {
+  border-left: 0;
+  border-bottom: 1px solid var(--hairline-subtle);
+  background: rgb(var(--c-surface-1) / 0.82);
+  -webkit-backdrop-filter: saturate(140%) blur(10px); backdrop-filter: saturate(140%) blur(10px);
+  padding: 8px 12px;
+  min-height: 38px;
+}
+.section-title { font-size: 11.5px; font-weight: 600; letter-spacing: 0.035em; color: rgb(var(--c-text-primary) / 0.92); }
+.section-meta { font-family: var(--font-ui); color: rgb(var(--c-text-tertiary)); }
+.section-tag {
+  border-radius: var(--radius-sm);
+  background: rgb(var(--c-bloomberg) / 0.13);
+  color: rgb(var(--c-bloomberg));
+  box-shadow: inset 0 0 0 1px rgb(var(--c-bloomberg) / 0.22);
+  padding: 1px 6px; font-weight: 600;
+  display: inline-flex; align-items: center; min-height: 18px;
+}
+.terminal-card { border-color: var(--hairline-subtle); border-radius: var(--radius-lg); box-shadow: var(--elev-1); }
+.terminal-card::before { opacity: 0.55; }
+.terminal-card-label, .terminal-label { letter-spacing: 0.05em; }
+
+/* Inner panels (bg-surface-1 + border inside a section) read as quiet wells */
+.terminal-section :is(.bg-surface-1, .bg-surface-2).border { border-color: var(--hairline-subtle); border-radius: var(--radius-md); }
+.terminal-section .border-border { border-color: var(--hairline-subtle); }
+.terminal-section .border-border-subtle { border-color: rgb(var(--c-border) / 0.35); }
+
+/* Calmer uppercase everywhere: shorter tracking reads as considered, not shouty */
+.uppercase.tracking-wider, .uppercase.tracking-widest { letter-spacing: 0.06em; }
+
+/* Tags and badges: tinted pills */
+.signal-tag, .terminal-badge { border-radius: var(--radius-sm); font-weight: 600; letter-spacing: 0.06em; }
+
+/* Controls */
+.terminal-btn, .icon-btn, .tm-btn { border-radius: var(--radius-md); transition: background-color .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease); }
+.terminal-input { border-radius: var(--radius-md); }
+button:not(.mkt-root button) { -webkit-tap-highlight-color: transparent; }
+:where(button, a, [role=tab], input, select, textarea):focus-visible { outline: none; box-shadow: var(--ring); border-radius: var(--radius-sm); }
+:where(input:not([type=checkbox]):not([type=radio]), select, textarea).border { border-radius: var(--radius-md); transition: border-color .15s, box-shadow .15s; }
+:where(input:not([type=checkbox]):not([type=radio]), select, textarea).border:focus { border-color: rgb(var(--c-bloomberg) / 0.6); box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.14); outline: none; }
+input[type=checkbox], input[type=radio], input[type=range] { accent-color: rgb(var(--c-bloomberg)); }
+/* Segmented controls (role=tablist with bordered buttons) */
+[role=tablist].border { border-radius: var(--radius-md); overflow: hidden; border-color: var(--hairline); }
+[role=tablist].border > [role=tab] { transition: background-color .15s var(--ease), color .15s var(--ease); }
+[role=tablist].border > [role=tab]:not([aria-selected=true]):hover { background: rgb(var(--c-text-primary) / 0.05); color: rgb(var(--c-text-primary)); }
+/* Bordered buttons (the Markets workstation's own, more specific rules still win there) */
+button.border:not([role=tab]) { border-radius: var(--radius-md); }
+
+/* Tables in the research panels */
+.terminal-table thead th { letter-spacing: 0.05em; border-bottom-color: var(--hairline); }
+.terminal-section table tbody tr { transition: background-color .12s var(--ease); }
+.terminal-section table tbody tr:hover { background-color: rgb(var(--c-text-primary) / 0.025); }
+.terminal-section table .border-t.border-border-subtle { border-top-color: rgb(var(--c-border) / 0.35); }
+
+/* Scrollbars: thin and out of the way */
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--c-border-strong) / 0.7) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgb(var(--c-border-strong) / 0.7); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: rgb(var(--c-text-tertiary) / 0.6); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Sidebar navigation (components/layout/Sidebar) */
+.nav-dot { width: 5px; height: 5px; border-radius: 999px; flex-shrink: 0; background: rgb(var(--c-text-tertiary) / 0.45); transition: background-color .15s, transform .15s; }
+.nav-dot.is-key { background: rgb(var(--c-nav) / 0.85); }
+.nav-dot.is-active { background: rgb(var(--c-bloomberg)); transform: scale(1.25); box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.18); }
+
+.section-tag:empty { width: 7px; height: 7px; min-height: 0; padding: 0; border-radius: 999px; background: rgb(var(--c-bloomberg));
+  box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.16); margin: 0 3px; }
+.section-tag svg { width: 12px; height: 12px; }
+/* Segmented control (.seg > .seg-item[aria-selected]) — a raised pill on a recessed track */
+.seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: rgb(var(--c-surface-3) / 0.7);
+  box-shadow: inset 0 0 0 1px rgb(var(--c-border) / 0.6); }
+.seg-item { height: 22px; padding: 0 10px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap;
+  color: rgb(var(--c-text-tertiary)); transition: background-color .15s var(--ease), color .15s var(--ease), box-shadow .15s var(--ease); }
+.seg-item:hover { color: rgb(var(--c-text-primary)); }
+.seg-item[aria-selected=true] { background: rgb(var(--c-surface-1)); color: rgb(var(--c-text-primary));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25), inset 0 0 0 1px rgb(var(--c-border) / 0.8); }
+.seg-item[aria-selected=true]::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 999px; margin-right: 6px;
+  vertical-align: 1px; background: rgb(var(--c-bloomberg)); }
+::selection { background: rgb(var(--c-bloomberg) / 0.28); }
+
+/* ─── Motion: live numbers, streaming markers, scroll reveal, hover lift ─────────── */
+.live-num { border-radius: 4px; transition: color .25s var(--ease); }
+.num-up   { animation: num-up .9s var(--ease); }
+.num-down { animation: num-down .9s var(--ease); }
+@keyframes num-up   { 0% { background: rgb(var(--c-green) / 0.28); color: rgb(var(--c-green)); } 100% { background: transparent; } }
+@keyframes num-down { 0% { background: rgb(var(--c-red) / 0.28);   color: rgb(var(--c-red)); }   100% { background: transparent; } }
+.live-pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px 1px 6px; border-radius: 999px; font-size: 10.5px; font-weight: 600;
+  color: rgb(var(--c-green)); background: rgb(var(--c-green) / 0.12); box-shadow: inset 0 0 0 1px rgb(var(--c-green) / 0.3); align-self: center; }
+.live-pill::before, .tape-live { content: ""; width: 6px; height: 6px; border-radius: 999px; background: rgb(var(--c-green)); animation: live-ping 1.6s ease-out infinite; }
+.tape-live { display: inline-block; width: 5px; height: 5px; margin-right: 4px; vertical-align: 1px; }
+@keyframes live-ping { 0% { box-shadow: 0 0 0 0 rgb(var(--c-green) / 0.55); } 70%, 100% { box-shadow: 0 0 0 6px rgb(var(--c-green) / 0); } }
+.live-dot-tick { display: inline-block; width: 6px; height: 6px; border-radius: 999px; background: rgb(var(--c-green)); animation: live-ping 1.6s ease-out infinite; }
+
+/* Panels rise in as they scroll into view (scroll-driven, no JS; browsers without it just show them) */
+@supports (animation-timeline: view()) {
+  .terminal-section, .mkt-root .mkt-panel {
+    animation: rise-in linear both; animation-timeline: view(); animation-range: entry 0% entry 28%;
+  }
+}
+@keyframes rise-in { from { opacity: 0; transform: translateY(14px) scale(.995); } to { opacity: 1; transform: none; } }
+
+/* Hover lift on stat tiles and cards */
+.mkt-root .grid > div.border:has(> div.uppercase:first-child), .terminal-card {
+  transition: transform .18s var(--ease), box-shadow .18s var(--ease), border-color .18s var(--ease); }
+.mkt-root .grid > div.border:has(> div.uppercase:first-child):hover, .terminal-card:hover {
+  transform: translateY(-1px); box-shadow: 0 6px 18px -8px rgb(0 0 0 / 0.45); border-color: rgb(var(--c-bloomberg) / 0.35); }
+
+/* Folded panels animate open / closed */
+[data-panel-head]::after { transition: transform .2s var(--ease); }
+.terminal-section [data-fold] { animation: none; }
+.terminal-section:not([data-collapsed]) > :not([data-panel-head]) { animation: fold-open .22s var(--ease); }
+@keyframes fold-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* Sliding indicator under the workspace tabs (WorkspaceBar) */
+.ws-indicator { position: absolute; bottom: 0; height: 2px; border-radius: 999px; background: rgb(var(--c-bloomberg));
+  transition: left .28s var(--ease), width .28s var(--ease); box-shadow: 0 0 10px rgb(var(--c-bloomberg) / 0.6); }
+
+@media (prefers-reduced-motion: reduce) {
+  .num-up, .num-down, .live-pill::before, .tape-live, .live-dot-tick, .terminal-section, .mkt-root .mkt-panel,
+  .terminal-section:not([data-collapsed]) > :not([data-panel-head]) { animation: none !important; }
+  .ws-indicator { transition: none; }
+}
+
+@media (prefers-reduced-motion: reduce) { .terminal-section, .nav-dot { transition: none !important; } }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   FINISH LAYER — depth, glass and type. Layered on the refinement layer above:
+   · type: variable Inter at optical size, tabular figures for data (code keeps its monospace)
+   · canvas: a quiet ambient glow in the accent, cards with layered soft shadows and a top highlight
+   · chrome: glass top bar and sidebar, gradient icon badges, accent-glow active states
+   · controls: gradient primary buttons, inset fields, glass chart tooltips, airy tables
+   The amber "terminal" skin keeps its own Bloomberg look and is excluded where it would clash.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  --font-ui: 'Inter', 'Geist', system-ui, sans-serif;
+  --shadow-card: 0 0 0 1px rgb(var(--c-border) / 0.55), 0 1px 2px rgb(0 0 0 / 0.18), 0 8px 24px -12px rgb(0 0 0 / 0.35);
+  --shadow-card-hover: 0 0 0 1px rgb(var(--c-bloomberg) / 0.28), 0 2px 4px rgb(0 0 0 / 0.2), 0 16px 36px -14px rgb(0 0 0 / 0.45);
+  --highlight: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --glass: rgb(var(--c-surface-1) / 0.72);
+}
+:root[data-theme="light"]:not([data-skin="terminal"]) {
+  --c-bg: 238 243 249;                        /* calmer than the old sky blue: a cool paper tone */
+  --c-surface-2: 246 249 252;
+  --c-border: 220 229 239;
+  --shadow-card: 0 0 0 1px rgb(15 35 62 / 0.06), 0 1px 2px rgb(15 35 62 / 0.05), 0 10px 28px -16px rgb(15 35 62 / 0.18);
+  --shadow-card-hover: 0 0 0 1px rgb(var(--c-bloomberg) / 0.22), 0 2px 6px rgb(15 35 62 / 0.06), 0 18px 40px -18px rgb(15 35 62 / 0.28);
+  --highlight: inset 0 1px 0 rgb(255 255 255 / 0.9);
+  --glass: rgb(255 255 255 / 0.74);
+}
+
+/* Type: Inter with its finance-friendly alternates (open digits, single-storey a off, straight-sided 6/9) */
+body { font-family: var(--font-ui); font-optical-sizing: auto; font-feature-settings: "cv11" 1, "ss03" 1, "calt" 1; text-rendering: optimizeLegibility; }
+:root:not([data-skin="terminal"]) :is(.font-mono, .tabular-nums, td, .terminal-metric, .terminal-value) {
+  font-family: var(--font-ui); font-variant-numeric: tabular-nums slashed-zero; font-feature-settings: "tnum" 1, "cv11" 1, "ss03" 1;
+}
+:root:not([data-skin="terminal"]) .font-mono { letter-spacing: -0.005em; }
+/* Code stays monospace */
+:is(pre, code, kbd, samp, .cm-editor, .cm-content, .monaco-editor, textarea.font-mono, .font-code, .font-code *) {
+  font-family: 'JetBrains Mono', 'Geist Mono', ui-monospace, monospace !important; font-variant-numeric: normal; font-feature-settings: normal;
+}
+h1, h2, h3, .section-title { font-feature-settings: "cv11" 1, "ss03" 1; }
+.section-title { letter-spacing: 0.04em; }
+
+/* Canvas: ambient glow in the accent behind everything */
+:root:not([data-skin="terminal"]) body {
+  background:
+    radial-gradient(900px 420px at 18% -8%, rgb(var(--c-bloomberg) / 0.10), transparent 70%),
+    radial-gradient(800px 380px at 92% -12%, rgb(var(--c-blue) / 0.08), transparent 70%),
+    rgb(var(--c-bg)) fixed;
+  background-attachment: fixed;
+}
+:root[data-theme="light"]:not([data-skin="terminal"]) .min-h-screen.bg-bg { background: transparent; }
+
+/* Chrome: glass top bar and sidebar */
+:root:not([data-skin="terminal"]) .app-header {
+  background: var(--glass) !important; -webkit-backdrop-filter: saturate(160%) blur(16px); backdrop-filter: saturate(160%) blur(16px);
+  border-bottom-color: rgb(var(--c-border) / 0.6) !important; box-shadow: 0 1px 0 rgb(255 255 255 / 0.03), 0 6px 20px -14px rgb(0 0 0 / 0.4);
+}
+:root:not([data-skin="terminal"]) .app-sidebar {
+  background: linear-gradient(180deg, rgb(var(--c-surface-1) / 0.88), rgb(var(--c-surface-1) / 0.78)) !important;
+  -webkit-backdrop-filter: saturate(150%) blur(14px); backdrop-filter: saturate(150%) blur(14px);
+  border-right-color: rgb(var(--c-border) / 0.55) !important;
+}
+.app-sidebar .nav-dot.is-active { box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / 0.18), 0 0 10px rgb(var(--c-bloomberg) / 0.6); }
+
+/* Cards: layered soft shadow + top highlight, a gentle lift on hover */
+:root:not([data-skin="terminal"]) .terminal-section {
+  border-color: transparent; box-shadow: var(--shadow-card), var(--highlight);
+  transition: box-shadow .25s var(--ease);
+}
+:root:not([data-skin="terminal"]) .terminal-section:hover { box-shadow: var(--shadow-card-hover), var(--highlight); }
+:root:not([data-skin="terminal"]) .mkt-root .mkt-panel { border-color: transparent !important; box-shadow: var(--shadow-card), var(--highlight); border-radius: 12px; }
+.terminal-section { border-radius: 14px; }
+.section-header { border-top-left-radius: 14px; border-top-right-radius: 14px; }
+/* A hairline that fades out under each header */
+.section-header { border-bottom-color: transparent; background-image: linear-gradient(90deg, rgb(var(--c-border) / 0.9), rgb(var(--c-border) / 0.25) 70%, transparent);
+  background-size: 100% 1px; background-repeat: no-repeat; background-position: bottom; }
+.terminal-section .section-header { background-color: rgb(var(--c-surface-1) / 0.84); }
+
+/* Icon badges in headers: a gradient chip */
+.section-tag:not(:empty) {
+  background: linear-gradient(135deg, rgb(var(--c-bloomberg) / 0.22), rgb(var(--c-bloomberg) / 0.06));
+  box-shadow: inset 0 0 0 1px rgb(var(--c-bloomberg) / 0.28), 0 2px 8px -3px rgb(var(--c-bloomberg) / 0.45);
+  border-radius: 7px; min-width: 22px; min-height: 22px; justify-content: center;
+}
+
+/* Inner wells inside cards: lighter than the card, no hard border */
+:root:not([data-skin="terminal"]) .terminal-section :is(.bg-surface-1, .bg-surface-2).border {
+  background-color: rgb(var(--c-surface-2) / 0.55); border-color: rgb(var(--c-border) / 0.5); border-radius: 10px;
+}
+:root[data-theme="light"]:not([data-skin="terminal"]) .terminal-section :is(.bg-surface-1, .bg-surface-2).border { background-color: rgb(246 249 252); }
+
+/* Primary actions: gradient with an inner highlight */
+:root:not([data-skin="terminal"]) :is(button, a).bg-bloomberg:not([role=tab]) {
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.14), rgb(255 255 255 / 0) 60%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18), 0 1px 2px rgb(0 0 0 / 0.2), 0 6px 16px -8px rgb(var(--c-bloomberg) / 0.7);
+  border-radius: 8px; transition: filter .15s, transform .08s, box-shadow .15s;
+}
+:root:not([data-skin="terminal"]) :is(button, a).bg-bloomberg:not([role=tab]):hover { filter: brightness(1.08); }
+:root:not([data-skin="terminal"]) :is(button, a).bg-bloomberg:not([role=tab]):active { transform: translateY(1px); }
+/* Secondary bordered buttons: soft fill */
+:root:not([data-skin="terminal"]) .app-main button.border:not([role=tab]):not(.bg-bloomberg) {
+  background-color: rgb(var(--c-surface-2) / 0.6); border-color: rgb(var(--c-border) / 0.8); box-shadow: var(--highlight);
+}
+:root:not([data-skin="terminal"]) .app-main button.border:not([role=tab]):not(.bg-bloomberg):hover {
+  background-color: rgb(var(--c-surface-3) / 0.7); border-color: rgb(var(--c-bloomberg) / 0.4);
+}
+
+/* Fields: inset look */
+:root:not([data-skin="terminal"]) .app-main :is(input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea) {
+  background-color: rgb(var(--c-bg) / 0.55); box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.12);
+}
+:root[data-theme="light"]:not([data-skin="terminal"]) .app-main :is(input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea) {
+  background-color: rgb(250 252 254); box-shadow: inset 0 1px 2px rgb(15 35 62 / 0.05);
+}
+
+/* Tables: airy rows, small-caps headers, row hover */
+:root:not([data-skin="terminal"]) .terminal-section thead th {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgb(var(--c-text-tertiary));
+  padding-top: 6px; padding-bottom: 6px;
+}
+:root:not([data-skin="terminal"]) .terminal-section tbody td { padding-top: 5px; padding-bottom: 5px; }
+:root:not([data-skin="terminal"]) .terminal-section tbody tr:hover { background-color: rgb(var(--c-bloomberg) / 0.045); }
+
+/* Charts (Recharts): glass tooltips, faint dashed grid, quiet axes */
+.recharts-default-tooltip {
+  background: var(--glass) !important; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border: 1px solid rgb(var(--c-border) / 0.7) !important; border-radius: 10px !important;
+  box-shadow: 0 10px 30px -12px rgb(0 0 0 / 0.45) !important; padding: 8px 10px !important; font-size: 11px;
+}
+.recharts-tooltip-label { color: rgb(var(--c-text-tertiary)) !important; font-size: 10px; margin-bottom: 4px !important; }
+.recharts-cartesian-grid line { stroke: rgb(var(--c-border) / 0.55); stroke-dasharray: 2 4; }
+.recharts-cartesian-axis-tick text { fill: rgb(var(--c-text-tertiary)); font-size: 10px; }
+.recharts-cartesian-axis-line, .recharts-cartesian-axis-tick-line { stroke: rgb(var(--c-border) / 0.6); }
+.recharts-active-dot circle, .recharts-dot { filter: drop-shadow(0 0 4px rgb(var(--c-bloomberg) / 0.45)); }
+
+/* Status chips and badges: soft fills with a ring */
+:root:not([data-skin="terminal"]) .signal-tag { border-width: 0; box-shadow: inset 0 0 0 1px currentColor; border-radius: 999px; padding: 2px 8px; }
+
+/* Empty / error states: centred and calm */
+:root:not([data-skin="terminal"]) .terminal-section [role=status] { color: rgb(var(--c-text-tertiary)); }
+
+/* Brand mark in the sidebar breathes a little */
+.app-sidebar .brand-mask { filter: drop-shadow(0 1px 6px rgb(var(--c-bloomberg) / 0.25)); }
+
+/* Square boxes, rounded by default: any fully bordered element in a panel without its own radius. Zero specificity
+   (:where), so a component's explicit rounded-* / rounded-none always wins; table cells keep square corners. */
+:where(.terminal-section, .mkt-root) :where(.border:not(td):not(th):not(tr):not(.rounded-none)) { border-radius: 6px; }
+
+/* Sign-in (components/LoginScreen) */
+.login-stage { background:
+  radial-gradient(700px 380px at 50% 18%, rgb(var(--c-bloomberg) / 0.18), transparent 70%),
+  radial-gradient(900px 500px at 85% 110%, rgb(var(--c-blue) / 0.12), transparent 70%), rgb(var(--c-bg)); }
+.login-mark { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 11px; color: #fff;
+  background: linear-gradient(135deg, rgb(var(--c-bloomberg)), rgb(var(--c-bloomberg) / 0.65));
+  box-shadow: 0 8px 24px -8px rgb(var(--c-bloomberg) / 0.7), inset 0 1px 0 rgb(255 255 255 / 0.3); }
+.login-card { border-radius: 18px; background: var(--glass); -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%);
+  box-shadow: 0 0 0 1px rgb(var(--c-border) / 0.7), 0 30px 80px -30px rgb(0 0 0 / 0.55), var(--highlight); }
+.login-cta { color: #fff; background: linear-gradient(180deg, rgb(var(--c-bloomberg)), rgb(var(--c-bloomberg) / 0.82));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), 0 10px 24px -10px rgb(var(--c-bloomberg) / 0.8); transition: filter .15s, transform .08s; }
+.login-cta:hover:not(:disabled) { filter: brightness(1.08); }
+.login-cta:active:not(:disabled) { transform: translateY(1px); }
+
+/* Panel header controls: help "?" and the fold chevron, spaced and softened */
+.panel-help-btn { right: 32px; width: 18px; height: 18px; font: 600 10px/16px var(--font-ui); border-color: rgb(var(--c-border) / 0.8);
+  background: rgb(var(--c-surface-2) / 0.7); transition: color .15s, border-color .15s, background-color .15s; }
+.panel-help-btn:hover { background: rgb(var(--c-bloomberg) / 0.1); }
+[data-panel-head] { padding-right: 58px; }
+[data-panel-head]::after { right: 13px; opacity: .55; }
+[data-panel-head]:hover::after { opacity: .9; }
+
+:root:not([data-skin="terminal"]) .bottom-dock { background: var(--glass); -webkit-backdrop-filter: saturate(160%) blur(16px);
+  backdrop-filter: saturate(160%) blur(16px); border-top: 1px solid rgb(var(--c-border) / 0.6); box-shadow: 0 -6px 20px -14px rgb(0 0 0 / 0.35); }
+
+.step-num { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums;
+  background: linear-gradient(135deg, rgb(var(--c-bloomberg)), rgb(var(--c-bloomberg) / 0.72));
+  box-shadow: 0 2px 6px -1px rgb(var(--c-bloomberg) / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.25); }
+@media (prefers-reduced-motion: reduce) { .terminal-section, .mkt-panel { transition: none !important; } }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
    PRINT STYLES
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 @media print {
+  .bottom-dock { display: none !important; }
   body {
     background: white !important;
     color: black !important;
@@ -1151,3 +1990,556 @@ aside.fixed {
     display: none;
   }
 }
+
+/* Shared accessibility preferences apply in Macro, Trading, Quant, Markets and PE. */
+.terminal-readable .app-main table { font-size: 12px; line-height: 1.65; }
+.terminal-readable .app-main table th, .terminal-readable .app-main table td { padding-top: 7px; padding-bottom: 7px; }
+.app-main table tbody tr:hover { background-color: rgba(128, 144, 160, .07); }
+.app-main :focus-visible { outline: 2px solid var(--color-bloomberg, #f3983e); outline-offset: 3px; }
+.terminal-reduce-motion *, .terminal-reduce-motion *::before, .terminal-reduce-motion *::after {
+  animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+  transition-duration: .01ms !important; scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* The logo sits directly on its fund's colour. Keep the left side of the canvas
+   flat so opaque wordmark edges disappear; fade toward the sign-in form on the right. */
+.login-redesign {
+  --c-text-primary: 232 239 248; --c-text-secondary: 157 175 197;
+  --c-text-tertiary: 117 139 166; --c-bg: 8 17 29; --c-border: 43 60 81;
+  min-height: 100svh; padding: 30px clamp(22px, 5vw, 90px) 22px; color: #e8eff8;
+  background: linear-gradient(105deg, rgb(var(--login-brand-band, 15 35 62)) 0%,
+              rgb(var(--login-brand-band, 15 35 62)) 48%, #080f1a 100%);
+  display: flex; flex-direction: column; font-family: Inter, system-ui, sans-serif; color-scheme: dark;
+}
+.login-topline, .login-footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; font-size: 10px; letter-spacing: .08em; color: #8195af; }
+.login-topline > span:first-child { color: #cad6e6; font-size: 11px; letter-spacing: .18em; }
+.login-layout { width: min(1100px, 100%); margin: auto; display: grid; grid-template-columns: minmax(0,1.15fr) minmax(330px,.85fr); gap: clamp(38px,7vw,100px); align-items: center; padding: 46px 0 40px; }
+.login-story { min-width: 0; }
+.login-logo-plaque { width: 260px; min-height: 124px; padding: 20px 0; border: 0; border-radius: 0; box-shadow: none; display: flex; align-items: center; justify-content: center; margin-bottom: 28px; }
+.login-logo-plaque img { display: block; width: auto; max-width: 100%; max-height: 94px; object-fit: contain; }
+.login-logo-fallback { display:flex; align-items:center; gap:16px; }
+.login-fund-caption, .login-eyebrow { font-size: 10px; font-weight: 600; letter-spacing: .19em; color: rgb(var(--c-bloomberg)); }
+.login-story h1 { font-size: 18px; font-weight: 500; letter-spacing: -.02em; color:#c6d2e2; margin-top: 8px; }
+.login-story h2 { font-size: clamp(30px,3.6vw,47px); line-height: 1.14; font-weight: 500; letter-spacing: -.045em; color: #eef3fa; margin-top: 22px; }
+.login-story-copy { color: #8fa3bc; font-size: 13px; line-height: 1.8; max-width: 380px; margin-top: 16px; }
+.login-research-graphic { width:100%; max-width:500px; height:140px; color:rgb(var(--c-bloomberg)); margin:20px 0 4px; }
+.login-capabilities { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:12px; }
+.login-capabilities > div { display:flex; align-items:flex-start; gap:8px; color:rgb(var(--c-bloomberg)); }
+.login-capabilities strong { display:block; color:#c6d3e3; font-size:10px; font-weight:500; white-space:nowrap; }
+.login-capabilities small { display:block; color:#7b91ae; font-size: 10px; line-height:1.7; margin-top:3px; }
+.login-graphic-caption { font-size: 10px; color:#637995; margin-top:20px; letter-spacing:.03em; }
+.login-access-card { background:linear-gradient(145deg,#152235e0,#0e1929f5); border:1px solid #33465e70; border-radius:20px; padding:34px; box-shadow:0 30px 100px #00000038,inset 0 1px 0 #ffffff05; }
+.login-access-card h2 { margin-top:10px; color:#f0f5fc; font-size:26px; letter-spacing:-.035em; font-weight:500; }
+.login-access-copy { color:#95a8c1; font-size:12px; line-height:1.7; margin-top:8px; margin-bottom:28px; }
+.login-form { display:flex; flex-direction:column; gap:18px; }
+.login-form label:not(.login-remember) { display:block; color:#b9c8db; font-size:11px; margin-bottom:8px; }
+.login-form input:not([type=checkbox]), .login-form select { display:block; width:100%; min-width:0; border:1px solid #34465d; border-radius:8px; background:#091322; color:#e1ebf7; padding:11px 12px; font-size:12px; line-height:1.5; outline:none; transition:border-color .15s,box-shadow .15s; }
+.login-form input::placeholder { color:#647a96; }
+.login-form input:focus, .login-form select:focus { border-color:rgb(var(--c-bloomberg) / .7); box-shadow:0 0 0 3px rgb(var(--c-bloomberg) / .08); }
+.login-password-field { position:relative; }
+.login-password-field input { padding-right:43px !important; }
+.login-password-field button { position:absolute; right:12px; top:50%; transform:translateY(-50%); color:#8ea4bf; padding:2px; }
+.login-remember { display:flex; align-items:center; gap:8px; font-size:10px; color:#96abc4; cursor:pointer; }
+.login-remember input { accent-color:rgb(var(--c-bloomberg)); width:13px; height:13px; }
+.login-submit { display:flex; justify-content:center; align-items:center; gap:12px; width:100%; border-radius:8px; padding:12px; margin-top:3px; font-size:12px; font-weight:600; color:#0b1420; background:linear-gradient(110deg,rgb(var(--c-bloomberg)),rgb(var(--c-bloomberg) / .8)); box-shadow:0 8px 24px rgb(var(--c-bloomberg) / .1); }
+.login-submit:disabled { opacity:.42; cursor:not-allowed; }
+.login-access-note { display:flex; justify-content:center; align-items:center; gap:6px; font-size: 10px; color:#8096b2; margin-top:20px; }
+.login-support-note { text-align:center; font-size:10px; color:#7e94b0; margin-top:20px; }
+.login-inline-note { color:#d4b68d; font-size:10px; line-height:1.6; margin-top:7px; }
+.login-inline-note button { text-decoration:underline; }
+.login-error { padding:10px 12px; border:1px solid #b5595966; background:#9c393914; color:#f4b0b0; font-size:11px; border-radius:8px; }
+.login-development { border-top:1px solid #35445a66; margin-top:22px; padding-top:14px; font-size:10px; color:#8095af; }
+.login-development summary { cursor:pointer; }
+.login-development p { margin:10px 0; }
+.login-development button { text-align:left; border:1px solid #34465d; border-radius:6px; padding:8px; }
+.login-development strong,.login-development small { display:block; font-size: 10px; }
+.login-development small { margin-top:3px; opacity:.7; }
+.login-footer { font-size: 10px; letter-spacing:.02em; padding-top:18px; border-top:1px solid #27374d70; }
+.login-footer b { font-weight:400; color:#536b89; margin-left:8px; }
+@media (max-width:850px) {
+ .login-redesign { padding:22px; background:rgb(var(--login-brand-band, 15 35 62)); }
+ .login-layout { max-width:440px; grid-template-columns:1fr; gap:26px; padding:32px 0; }
+ .login-story { text-align:center; }
+ .login-logo-plaque { margin:0 auto 18px; width:220px; min-height:100px; padding:15px 0; }
+ .login-logo-plaque img { max-height:75px; }
+ .login-story h2,.login-story-copy,.login-research-graphic,.login-capabilities,.login-graphic-caption { display:none; }
+ .login-story h1 { font-size:20px; }
+ .login-access-card { padding:26px; }
+ .login-topline > span:last-child { display:none; }
+ .login-footer { justify-content:center; text-align:center; flex-wrap:wrap; gap:6px; }
+}
+@media (max-height:780px) and (min-width:851px) {
+ .login-redesign { padding-top:20px; padding-bottom:16px; }
+ .login-layout { padding:26px 0; }
+ .login-logo-plaque { min-height:100px; padding:14px 0; margin-bottom:20px; }
+ .login-logo-plaque img { max-height:78px; }
+ .login-story h2 { font-size:38px; margin-top:15px; }
+ .login-research-graphic { height:112px; margin-top:12px; }
+ .login-access-card { padding:28px; }
+ .login-access-copy { margin-bottom:20px; }
+ .login-form { gap:14px; }
+}
+
+/* Shared modern surfaces. Classic terminal styling remains dense and square. */
+:root:not([data-skin="terminal"]) .workspace-tools { background:linear-gradient(110deg,rgb(var(--c-surface-1)),rgb(var(--c-bg))); gap:10px; min-height:48px; }
+:root:not([data-skin="terminal"]) .workspace-tools select { border-color:rgb(var(--c-border) / .75); border-radius:7px; min-height:29px; }
+:root:not([data-skin="terminal"]) .workspace-tools button { transition:color .15s,background .15s,border-color .15s; }
+:root:not([data-skin="terminal"]) .workspace-tools button:hover { color:rgb(var(--c-bloomberg)); }
+:root:not([data-skin="terminal"]) .app-main :is(h1,h2,h3) { text-wrap:balance; }
+:root:not([data-skin="terminal"]) .app-main :is(.rounded-xl.border,.rounded-lg.border) { box-shadow:inset 0 1px 0 rgb(var(--c-text-primary) / .025); }
+
+/* Markets atlas: quiet cartography, distinct missing data and compact research controls. */
+.world-atlas{--atlas-ocean:#091623;--atlas-ocean-light:#142a3d;--atlas-no-data:#263444;--atlas-border:#101f2c;--atlas-graticule:#294052;--atlas-highlight:#b8d8e9;--atlas-selected:#fff2ce;--atlas-label:#f1f6fa}
+.atlas-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:10px 2px}.atlas-eyebrow{font-size: 10px;letter-spacing:.2em;color:rgb(var(--c-bloomberg))}.atlas-heading h2{font-size:23px;font-weight:500;letter-spacing:-.035em;margin:4px 0}.atlas-heading p{font-size:11px;color:rgb(var(--c-text-secondary));max-width:650px}.atlas-coverage{font-size:10px;color:rgb(var(--c-text-secondary));white-space:nowrap;border:1px solid rgb(var(--c-border));padding:7px 10px;border-radius:20px}
+.atlas-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.atlas-toolbar select,.atlas-toolbar input,.atlas-map-controls select,.atlas-map-controls>button{background:rgb(var(--c-surface-1));border:1px solid rgb(var(--c-border));border-radius:6px;padding:7px 9px;font-size:11px;color:rgb(var(--c-text-primary))}.atlas-segments{display:inline-flex;gap:2px;padding:3px;background:rgb(var(--c-surface-1));border:1px solid rgb(var(--c-border));border-radius:7px}.atlas-segments button{padding:5px 10px;font-size:11px;border-radius:4px;color:rgb(var(--c-text-secondary))}.atlas-segments button[aria-pressed=true]{color:rgb(var(--c-text-primary));background:rgb(var(--c-surface-3));box-shadow:0 1px 3px #0002}.atlas-results{position:absolute;right:0;z-index:25;background:rgb(var(--c-surface-1));border:1px solid rgb(var(--c-border));border-radius:6px;min-width:230px;box-shadow:0 12px 24px #0004}.atlas-results button{display:flex;justify-content:space-between;gap:12px;width:100%;padding:8px;font-size:12px}.atlas-results button:hover{background:rgb(var(--c-surface-3))}.atlas-results span{color:rgb(var(--c-text-tertiary))}
+.atlas-stage{position:relative;overflow:hidden;border:1px solid #294052;border-radius:10px;background:#091623;color:#d4e1eb}.atlas-map-controls{display:flex;align-items:center;flex-wrap:wrap;gap:5px;padding:10px;border-bottom:1px solid #294052;background:#0e1e2d}.atlas-map-controls .atlas-segments,.atlas-map-controls select,.atlas-map-controls>button{background:#142839;border-color:#304456;color:#d4e1eb}.atlas-map-controls .atlas-segments button{color:#91aabd}.atlas-map-controls .atlas-segments button[aria-pressed=true]{background:#2c475a;color:#fff}.atlas-map-controls label{font-size:10px;margin-left:auto;display:flex;gap:5px;align-items:center}.atlas-map-svg{width:100%;height:auto;display:block;touch-action:pan-y;cursor:grab}.atlas-map-svg:active{cursor:grabbing}.atlas-map-svg:focus-visible{outline:2px solid #77c8dc;outline-offset:-3px}.atlas-map-caption{padding:9px 12px;font-size: 10px;letter-spacing:.08em;color:#91aabd;border-top:1px solid #294052}.atlas-tooltip{position:absolute;bottom:40px;left:14px;pointer-events:none;border:1px solid #415a6b;border-radius:7px;background:#102332f5;box-shadow:0 8px 24px #0004;padding:10px 13px;min-width:170px;font-size:11px;color:#d4e1eb}.atlas-tooltip strong{display:block;font-size:13px;margin-bottom:4px}.atlas-tooltip span{display:flex;gap:14px;justify-content:space-between}.atlas-tooltip b{color:#fff;font-variant-numeric:tabular-nums}.atlas-legend{display:flex;align-items:center;gap:9px;margin-top:10px;font-size:10px;color:rgb(var(--c-text-secondary));font-variant-numeric:tabular-nums}.atlas-legend i{display:block;width:180px;height:7px;border-radius:4px}.atlas-no-data-key{width:9px;height:9px;background:#263444;border:1px solid #536678;border-radius:2px;margin-left:auto}.atlas-panel{background:rgb(var(--c-surface-1));border:1px solid rgb(var(--c-border));border-radius:9px;overflow:hidden}.atlas-empty{padding:20px 8px}.atlas-empty>span{font-size:28px;color:rgb(var(--c-bloomberg))}.atlas-empty h3{font-size:14px;margin:8px 0}.atlas-empty p{line-height:1.7;color:rgb(var(--c-text-secondary))}.atlas-rank{display:flex;width:100%;justify-content:space-between;gap:6px;padding:5px 4px;border-radius:4px}.atlas-rank:hover{background:rgb(var(--c-surface-3))}.atlas-rank span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.atlas-rank b{font-weight:400;font-variant-numeric:tabular-nums;white-space:nowrap;color:rgb(var(--c-text-secondary))}.atlas-coverage-toggle{width:100%;padding:10px 14px;border:1px solid rgb(var(--c-border));border-radius:7px;text-align:left;font-size:11px;color:rgb(var(--c-text-secondary))}.atlas-coverage-toggle:hover{color:rgb(var(--c-text-primary));background:rgb(var(--c-surface-2))}@media(max-width:640px){.atlas-heading{align-items:flex-start;flex-direction:column}.atlas-toolbar>div.relative{width:100%;margin-left:0}.atlas-toolbar input{width:100%}.atlas-map-controls{gap:4px;padding:6px}.atlas-map-controls label{margin-left:0}.atlas-map-caption{font-size: 10px;letter-spacing:0}.atlas-tooltip{bottom:34px;left:7px;padding:7px;min-width:140px}}
+
+.atlas-exchanges>g{cursor:pointer;outline:none}.atlas-exchanges>g:focus-visible circle:last-of-type{stroke:#fff;stroke-width:2.5}.atlas-exchange-detail{padding:14px}.atlas-exchange-detail h3{font-size:17px;margin:5px 0}.atlas-exchange-detail p{font-size:11px;line-height:1.6;color:rgb(var(--c-text-secondary))}.atlas-exchange-detail a{display:inline-block;margin-top:8px;font-size:11px;color:rgb(var(--c-bloomberg))}.atlas-map-controls label+label{margin-left:4px}
+.markets-navigation{background:linear-gradient(180deg,rgb(var(--c-bloomberg)/.035),transparent 190px);scrollbar-width:thin;scrollbar-color:rgb(var(--c-border)) transparent}.markets-nav-brand{display:flex;align-items:center;justify-content:space-between;margin:17px 15px 12px;gap:6px}.markets-nav-brand>div{display:flex;gap:9px;align-items:center;color:rgb(var(--c-bloomberg))}.markets-nav-brand>div>span{font-size:11px;letter-spacing:.12em;font-weight:600;color:rgb(var(--c-text-primary))}.markets-nav-brand>div>span>span{display:block;font-size: 10px;letter-spacing:.16em;margin-top:3px;color:rgb(var(--c-text-tertiary))}.markets-nav-brand>button{font-family:monospace;font-size: 10px;padding:5px;border:1px solid rgb(var(--c-border));border-radius:4px;color:rgb(var(--c-bloomberg))}.markets-nav-search{display:flex;align-items:center;gap:7px;margin:0 12px 12px;padding:8px 9px;border:1px solid rgb(var(--c-border));border-radius:7px;background:rgb(var(--c-surface-1));color:rgb(var(--c-text-tertiary))}.markets-nav-search:focus-within{border-color:rgb(var(--c-bloomberg)/.55)}.markets-nav-search input{min-width:0;width:100%;font-size:10px;background:transparent;color:rgb(var(--c-text-primary));outline:none}.markets-nav-current{margin:0 12px 7px;padding:10px;display:flex;align-items:center;gap:9px;background:rgb(var(--c-bloomberg)/.055);border:1px solid rgb(var(--c-bloomberg)/.16);border-radius:7px}.markets-nav-current>span{font-size:12px;color:rgb(var(--c-bloomberg));font-family:monospace}.markets-nav-current small{display:block;font-size: 10px;letter-spacing:.12em;color:rgb(var(--c-text-tertiary))}.markets-nav-current strong{display:block;margin-top:3px;font-size:11px;font-weight:500;color:rgb(var(--c-text-primary))}.markets-nav-heading{display:flex;align-items:center;justify-content:space-between;width:100%;padding:17px 17px 7px;font-size: 10px;letter-spacing:.12em;text-transform:uppercase;color:rgb(var(--c-text-tertiary))}.markets-nav-heading>span:last-child{display:flex;gap:7px;align-items:center}.markets-nav-heading b{font-size: 10px;font-weight:400;letter-spacing:0;padding:1px 4px;border-radius:4px;background:rgb(var(--c-text-primary)/.04)}.markets-navigation>div>button[aria-current=page]{box-shadow:inset 2px 0 rgb(var(--c-bloomberg));background:rgb(var(--c-bloomberg)/.09)}.markets-navigation>div>button[aria-current=page]>span:first-child{color:rgb(var(--c-bloomberg))}.markets-nav-empty{font-size:11px;color:rgb(var(--c-text-tertiary));padding:16px}.markets-nav-recent-heading{display:flex;gap:6px;align-items:center;margin:19px 17px 7px;padding-top:12px;border-top:1px solid rgb(var(--c-border));font-size: 10px;letter-spacing:.08em;text-transform:uppercase;color:rgb(var(--c-text-tertiary))}.markets-navigation button:focus-visible{outline:2px solid rgb(var(--c-bloomberg)/.7);outline-offset:-2px}
+.atlas-globe-tools{position:absolute;top:12px;right:12px;display:flex;gap:4px}.atlas-globe-tools button{border:1px solid #344d60;background:#142839e8;color:#d4e1eb;border-radius:5px;padding:5px 9px;font-size:11px}.atlas-globe-tools button:hover{background:#294558}.atlas-stage canvas:focus-visible{outline:2px solid #77c8dc;outline-offset:-3px}
+
+/* Markets pages share one reading rhythm while the classic terminal keeps its compact character. */
+.mkt-view-tools{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:9px 10px;border:1px solid rgb(var(--c-border));border-radius:9px;background:rgb(var(--c-surface-1));font-size:10px;color:rgb(var(--c-text-secondary))}.mkt-view-code{font-family:monospace;font-size:11px;color:rgb(var(--c-bloomberg));padding:3px 6px;border:1px solid rgb(var(--c-bloomberg)/.22);border-radius:4px}.mkt-view-hint{margin-right:auto;color:rgb(var(--c-text-tertiary))}.mkt-view-tools>button,.mkt-density{display:inline-flex;align-items:center;gap:5px}.mkt-view-tools>button{padding:5px 7px;border-radius:5px}.mkt-view-tools>button:hover,.mkt-view-tools>button[aria-pressed=true]{background:rgb(var(--c-text-primary)/.05);color:rgb(var(--c-text-primary))}.mkt-density{border:1px solid rgb(var(--c-border));border-radius:6px;padding:2px 3px}.mkt-density>svg{margin:0 3px}.mkt-density button{padding:3px 5px;border-radius:3px}.mkt-density button[aria-pressed=true]{background:rgb(var(--c-surface-3));color:rgb(var(--c-text-primary))}.mkt-view-status:empty{display:none}.mkt-view-status{width:100%;font-size:10px}.mkt-focused .mkt-security-layout{grid-template-columns:minmax(0,1fr)}.mkt-focused .mkt-watch-column{display:none}.mkt-data-refresh{margin-left:auto;padding:3px 7px;border:1px solid rgb(var(--c-border));border-radius:5px;color:rgb(var(--c-text-secondary));white-space:nowrap}.mkt-data-refresh:disabled{opacity:.5}.mkt-data-refresh:hover:enabled{border-color:rgb(var(--c-bloomberg)/.5);color:rgb(var(--c-text-primary))}.mkt-panel-collapse{width:21px;height:21px;border:1px solid rgb(var(--c-border));border-radius:4px;font-size:13px;color:rgb(var(--c-text-tertiary));line-height:1}.mkt-panel-collapse:hover{color:rgb(var(--c-text-primary));background:rgb(var(--c-surface-3))}.mkt-panel-body[hidden]{display:none!important}.mkt-root .mkt-panel>.panel-hdr>h2{font-size:10px;font-weight:600;letter-spacing:.07em;color:rgb(var(--c-text-primary)/.85)}
+:root:not([data-skin="terminal"]) .mkt-function-heading{align-items:flex-start;gap:8px 12px;padding:5px 0 12px;border-bottom:1px solid rgb(var(--c-border-subtle))}:root:not([data-skin="terminal"]) .mkt-function-heading h1{font-size:22px;letter-spacing:-.025em}:root:not([data-skin="terminal"]) .mkt-function-heading p{flex-basis:100%;max-width:850px;line-height:1.7;font-size:11px}:root:not([data-skin="terminal"]) .mkt-root .mkt-panel{border:1px solid rgb(var(--c-border))!important;box-shadow:0 2px 8px #00000008;border-radius:10px}:root:not([data-skin="terminal"]) .mkt-root .mkt-panel>.panel-hdr{min-height:39px;background:linear-gradient(90deg,rgb(var(--c-text-primary)/.025),transparent);padding:8px 12px}:root:not([data-skin="terminal"]) .mkt-root .mkt-panel>.panel-hdr::before{display:none}
+.mkt-workspace table{font-variant-numeric:tabular-nums;border-collapse:separate;border-spacing:0;max-width:100%}.mkt-workspace table thead th{background:rgb(var(--c-surface-2));font-size:10px;color:rgb(var(--c-text-secondary));font-weight:500;letter-spacing:.02em;border-bottom:1px solid rgb(var(--c-border));vertical-align:bottom}.mkt-workspace table tbody td{border-bottom:1px solid rgb(var(--c-border-subtle)/.6)}.mkt-workspace table tbody tr:last-child td{border-bottom:0}.mkt-workspace table tbody tr:hover td{background-color:rgb(var(--c-bloomberg)/.035)}.mkt-workspace[data-market-density="comfortable"] table :is(th,td){padding:9px 10px;font-size:11px;line-height:1.5}.mkt-workspace[data-market-density="compact"] table :is(th,td){padding:4px 7px;font-size:10px;line-height:1.4}.mkt-workspace table th[tabindex]:focus-visible{outline:2px solid rgb(var(--c-bloomberg));outline-offset:-2px}.mkt-function-content :is(input:not([type=checkbox]):not([type=range]):not([type=radio]),select,textarea){border-radius:5px;max-width:100%}.mkt-function-content :is(input,select,textarea,button):focus-visible,.mkt-view-tools button:focus-visible{outline:2px solid rgb(var(--c-bloomberg)/.65);outline-offset:2px}.mkt-function-content .overflow-x-auto{scrollbar-width:thin;scrollbar-color:rgb(var(--c-border)) transparent;overscroll-behavior-x:contain}.mkt-workspace .mkt-skeleton{border-radius:4px}:root[data-skin="terminal"] .mkt-view-tools{border-radius:2px;padding:5px 7px}:root[data-skin="terminal"] .mkt-workspace .mkt-panel{border-radius:3px}
+@media(max-width:767px){.mkt-workspace{padding:10px!important;gap:10px!important}.mkt-view-hint{display:none}.mkt-density{margin-left:auto}.mkt-view-tools{gap:3px}.mkt-workspace[data-market-density="comfortable"] table :is(th,td){padding:7px 8px}.mkt-function-heading h1{font-size:19px!important}}@media(prefers-reduced-motion:reduce){.mkt-workspace .mkt-skeleton,.mkt-workspace .animate-spin{animation:none}}
+.mkt-table-scroll{max-width:100%;min-width:0;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;scrollbar-color:rgb(var(--c-border)) transparent}.mkt-table-scroll:focus-visible{outline:2px solid rgb(var(--c-bloomberg)/.5);outline-offset:2px}.mkt-workspace tr[tabindex]:focus-visible{outline:2px solid rgb(var(--c-bloomberg)/.65);outline-offset:-2px;background:rgb(var(--c-bloomberg)/.06)}
+.mkt-quick-functions{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}.mkt-quick-functions button{display:grid;grid-template-columns:1fr auto;gap:5px;padding:11px;border:1px solid rgb(var(--c-border));border-radius:8px;background:rgb(var(--c-surface-1));text-align:left}.mkt-quick-functions button:hover{border-color:rgb(var(--c-bloomberg)/.4);background:rgb(var(--c-bloomberg)/.035)}.mkt-quick-functions span{font-family:monospace;font-size: 10px;color:rgb(var(--c-bloomberg))}.mkt-quick-functions strong{font-size:11px;font-weight:500;grid-row:2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mkt-quick-functions b{font-size:13px;color:rgb(var(--c-text-tertiary));font-weight:400;grid-column:2;grid-row:1/3;align-self:center}.mkt-function-directory{border:1px solid rgb(var(--c-border));border-radius:7px;padding:9px 11px}.mkt-function-directory>summary{cursor:pointer;font-size:11px;color:rgb(var(--c-text-secondary))}.mkt-function-directory>summary>span{float:right;font-size:10px;color:rgb(var(--c-text-tertiary))}.mkt-function-directory[open]>summary{margin-bottom:12px}.mkt-function-directory>div>div{border-radius:6px;overflow:hidden}@media(max-width:900px){.mkt-quick-functions{grid-template-columns:repeat(3,minmax(0,1fr))}.mkt-function-directory>summary>span{float:none;display:block;margin:4px 0 0 14px}}
+
+/* Inner-page composition: filters, visualisations, summaries and navigation. */
+.mkt-page-canvas{min-width:0}.mkt-page-sections{display:flex;align-items:center;gap:6px;overflow-x:auto;padding:7px 0 12px;margin-bottom:3px;scrollbar-width:thin}.mkt-page-sections[hidden]{display:none}.mkt-page-sections>span{font-size: 10px;letter-spacing:.09em;text-transform:uppercase;color:rgb(var(--c-text-tertiary));white-space:nowrap;margin-right:4px}.mkt-page-sections button{font-size:10px;color:rgb(var(--c-text-secondary));white-space:nowrap;padding:5px 9px;border:1px solid rgb(var(--c-border));border-radius:20px;background:rgb(var(--c-surface-1))}.mkt-page-sections button:hover{color:rgb(var(--c-bloomberg));border-color:rgb(var(--c-bloomberg)/.35)}.mkt-page-canvas section[data-panel-title]{scroll-margin-top:110px}.mkt-page-canvas section h2:focus{outline:none;color:rgb(var(--c-bloomberg))}
+:root:not([data-skin="terminal"]) .mkt-page-canvas .mkt-controls{gap:8px;padding:11px 12px;border:1px solid rgb(var(--c-border));border-radius:9px;background:rgb(var(--c-surface-1));align-items:center}:root:not([data-skin="terminal"]) .mkt-page-canvas .mkt-controls :is(input:not([type=checkbox]):not([type=range]),select){min-height:32px;padding:6px 9px;background:rgb(var(--c-surface-2));border-color:rgb(var(--c-border));font-size:11px}:root:not([data-skin="terminal"]) .mkt-page-canvas .mkt-controls>button{padding:6px 10px;border-radius:5px;min-height:30px}:root:not([data-skin="terminal"]) .mkt-page-canvas .mkt-controls button[aria-pressed=true]{box-shadow:inset 0 0 0 1px rgb(var(--c-bloomberg)/.2)}
+:root:not([data-skin="terminal"]) .mkt-chart-surface{padding:10px 6px 4px;border:1px solid rgb(var(--c-border-subtle));border-radius:8px;background:linear-gradient(180deg,rgb(var(--c-text-primary)/.015),transparent);overflow-x:auto;min-width:0;max-width:100%}.mkt-stat-card{position:relative;min-width:0;padding:14px 15px;background:rgb(var(--c-surface-1));border:1px solid rgb(var(--c-border));border-radius:9px;overflow:hidden}.mkt-stat-card::before{content:"";position:absolute;top:0;left:14px;right:14px;height:1px;background:linear-gradient(90deg,rgb(var(--c-bloomberg)/.4),transparent)}.mkt-stat-label,.mkt-stat-card>div:first-child{font-size: 10px;text-transform:uppercase;letter-spacing:.07em;color:rgb(var(--c-text-tertiary));line-height:1.5}.mkt-stat-value,.mkt-stat-card>div:nth-child(2){font-size:21px;font-weight:500;letter-spacing:-.025em;font-variant-numeric:tabular-nums;margin:5px 0;line-height:1.35}.mkt-stat-note,.mkt-stat-card>div:nth-child(3){font-size:10px;color:rgb(var(--c-text-tertiary));line-height:1.6}.mkt-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.mkt-results-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;font-size:10px;color:rgb(var(--c-text-tertiary))}.mkt-results-toolbar input{min-width:170px;background:rgb(var(--c-surface-2));border:1px solid rgb(var(--c-border));padding:7px 10px;border-radius:6px;font-size:11px;color:rgb(var(--c-text-primary))}.mkt-screen-filters label{font-size: 10px;letter-spacing:.04em;line-height:1.6}.mkt-screen-filters :is(input,select){margin-top:5px;min-height:34px;padding:7px 9px;font-size:12px;background:rgb(var(--c-surface-2))}.mkt-pending-filters{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border:1px solid rgb(var(--c-amber)/.25);background:rgb(var(--c-amber)/.04);border-radius:7px;padding:10px 12px;font-size:11px;color:rgb(var(--c-text-secondary))}.mkt-pending-filters button{color:rgb(var(--c-bloomberg));white-space:nowrap}.mkt-empty-state{text-align:center;padding:30px 16px;border:1px dashed rgb(var(--c-border));border-radius:8px;color:rgb(var(--c-text-tertiary))}.mkt-empty-state>span{font-size:25px;color:rgb(var(--c-bloomberg)/.6)}.mkt-empty-state h3{font-size:13px;color:rgb(var(--c-text-primary));margin:8px 0;font-weight:500}.mkt-empty-state p{font-size:11px;line-height:1.7;max-width:440px;margin:auto}:root[data-skin="terminal"] .mkt-stat-card{padding:8px;border-radius:2px}:root[data-skin="terminal"] .mkt-stat-card>div:nth-child(2){font-size:15px}:root[data-skin="terminal"] .mkt-page-sections button{border-radius:2px;padding:3px 6px}@media(max-width:640px){.mkt-summary-grid{grid-template-columns:1fr}.mkt-stat-card{padding:11px 13px}.mkt-results-toolbar input{width:100%}.mkt-page-sections{padding-top:4px}.mkt-page-sections>span{display:none}}
+
+/* All five workspaces: one visual system, distinct workspaces and preserved signal colours. */
+.workspace-hero{margin:16px 16px 12px;padding:19px 20px 13px;border:1px solid rgb(var(--c-border));border-radius:12px;background:radial-gradient(ellipse at 0 0,rgb(var(--c-bloomberg)/.065),transparent 65%),rgb(var(--c-surface-1));position:relative}.pe-workspace>.workspace-hero{margin:0 0 14px}.workspace-hero-intro{display:flex;gap:13px;align-items:flex-start}.workspace-emblem{width:43px;height:43px;display:grid;place-items:center;flex-shrink:0;border-radius:11px;background:rgb(var(--c-bloomberg)/.075);color:rgb(var(--c-bloomberg));border:1px solid rgb(var(--c-bloomberg)/.15)}.workspace-hero[data-area=trading] .workspace-emblem{border-radius:6px}.workspace-hero[data-area=quant] .workspace-emblem{border-radius:50%}.workspace-hero[data-area=pe] .workspace-emblem{background:rgb(var(--c-text-primary)/.035)}.workspace-eyebrow{font-size: 10px;text-transform:uppercase;letter-spacing:.17em;color:rgb(var(--c-text-tertiary))}.workspace-hero h1{font-size:25px;line-height:1.25;font-weight:500;letter-spacing:-.035em;margin:4px 0 6px}.workspace-hero p{font-size:11px;line-height:1.65;color:rgb(var(--c-text-secondary))}.workspace-view-count{margin-left:auto;flex-shrink:0;padding:5px 9px;border:1px solid rgb(var(--c-border));border-radius:20px;font-size:10px;color:rgb(var(--c-text-tertiary));font-variant-numeric:tabular-nums}.workspace-hero-tools{display:flex;align-items:center;gap:12px;border-top:1px solid rgb(var(--c-border-subtle));padding-top:12px;margin-top:16px}.workspace-workflow{font-size:10px;color:rgb(var(--c-text-tertiary));margin-right:auto;letter-spacing:.015em}.workspace-search{position:relative;display:flex;align-items:center;gap:7px;border:1px solid rgb(var(--c-border));border-radius:6px;padding:7px 9px;background:rgb(var(--c-surface-2));color:rgb(var(--c-text-tertiary));min-width:220px}.workspace-search:focus-within{border-color:rgb(var(--c-bloomberg)/.5)}.workspace-search input{width:100%;min-width:0;background:transparent;border:0;outline:none;font-size:11px;color:rgb(var(--c-text-primary))}.workspace-search-results{position:absolute;top:calc(100% + 4px);left:0;right:0;min-width:260px;z-index:40;box-shadow:0 12px 24px #0003;background:rgb(var(--c-surface-1));border:1px solid rgb(var(--c-border));border-radius:7px;overflow:hidden}.workspace-search-results button{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:10px;font-size:11px;text-align:left;color:rgb(var(--c-text-primary))}.workspace-search-results button:hover{background:rgb(var(--c-surface-3))}.workspace-search-results small{font-size: 10px;color:rgb(var(--c-text-tertiary));letter-spacing:.04em}.workspace-search-results>p{padding:10px}.workspace-density{display:flex;border:1px solid rgb(var(--c-border));border-radius:6px;padding:3px;font-size:10px;white-space:nowrap}.workspace-density button{padding:4px 7px;border-radius:4px;color:rgb(var(--c-text-tertiary))}.workspace-density button[aria-pressed=true]{color:rgb(var(--c-text-primary));background:rgb(var(--c-surface-3))}
+.dashboard-workspace>.workspace-group-bar{margin:0 16px 12px;padding:0 8px;border:1px solid rgb(var(--c-border));border-radius:8px;background:rgb(var(--c-surface-1)/.95)}.dashboard-workspace .terminal-section{border-radius:11px;border-color:rgb(var(--c-border));box-shadow:0 2px 8px #00000008}.dashboard-workspace .terminal-section .terminal-section{box-shadow:none;margin:0;border-radius:7px}.dashboard-workspace .section-header{min-height:43px;padding-top:10px;padding-bottom:10px;border-bottom:1px solid rgb(var(--c-border-subtle));background:linear-gradient(90deg,rgb(var(--c-text-primary)/.015),transparent)}.dashboard-workspace .section-title{font-size:13px;letter-spacing:.025em}.workspace-navigation nav{scrollbar-width:thin;scrollbar-color:rgb(var(--c-border)) transparent}.workspace-navigation button[aria-current=page]{box-shadow:inset 2px 0 rgb(var(--c-bloomberg));background:rgb(var(--c-bloomberg)/.075)}.workspace-navigation nav button:focus-visible{outline:2px solid rgb(var(--c-bloomberg)/.6);outline-offset:-2px}
+.workspace-controls{gap:9px;padding:11px 12px;border:1px solid rgb(var(--c-border));border-radius:8px;background:rgb(var(--c-surface-1));align-items:center}.workspace-controls :is(input:not([type=checkbox]):not([type=radio]):not([type=range]),select){min-height:31px;border-radius:5px;background:rgb(var(--c-surface-2));padding:6px 8px;font-size:11px}.workspace-controls>button{border-radius:5px;padding:6px 10px}.workspace-chart{border:1px solid rgb(var(--c-border-subtle));border-radius:8px;padding:9px 6px 4px;background:linear-gradient(180deg,rgb(var(--c-text-primary)/.012),transparent);min-width:0;max-width:100%;overflow-x:auto}.workspace-table-scroll{min-width:0;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;scrollbar-color:rgb(var(--c-border)) transparent}.workspace-table-scroll:focus-visible{outline:2px solid rgb(var(--c-bloomberg)/.5);outline-offset:2px}.workspace-stat,.workspace-metric{border-radius:9px;min-width:0;box-shadow:0 1px 4px #00000008}.workspace-stat{padding:13px 14px}.workspace-stat>div:first-child{font-size: 10px;letter-spacing:.065em;line-height:1.5}.workspace-stat>div:nth-child(2){font-size:20px;font-weight:500;line-height:1.4;letter-spacing:-.025em;margin-top:5px}.workspace-stat>div:nth-child(3){font-size:10px;line-height:1.6;margin-top:4px}.workspace-metric{padding:15px}.workspace-empty{border:1px dashed rgb(var(--c-border));border-radius:9px;background:rgb(var(--c-surface-1));padding:28px 18px;font-size:12px;color:rgb(var(--c-text-secondary));line-height:1.7}.workspace-loading,.workspace-skeleton{border-radius:10px}.workspace-field>span:first-child{font-size:10px;margin-bottom:5px}.workspace-field input{padding:8px 9px;font-size:12px;min-height:34px}.workspace-card{scroll-margin-top:120px;padding:16px}.workspace-card>div:first-child{padding-bottom:10px;border-bottom:1px solid rgb(var(--c-border-subtle));margin-bottom:14px}.workspace-card h2{font-size:13px;font-weight:500}.pe-tool-navigation{padding:8px;border:1px solid rgb(var(--c-border));border-radius:9px;background:rgb(var(--c-surface-1));overflow-x:auto}.pe-tool-navigation>.seg{width:max-content;min-width:min(100%,600px);display:flex}.pe-tool-navigation .seg-item{flex:1;padding:8px 13px;font-size:11px;white-space:nowrap}.pe-tool-body{padding-top:3px;min-width:0}
+.terminal-workspace:not([data-workspace=markets]) #terminal-content table{font-variant-numeric:tabular-nums;border-collapse:separate;border-spacing:0}.terminal-workspace:not([data-workspace=markets]) #terminal-content thead th{background:rgb(var(--c-surface-2));border-bottom:1px solid rgb(var(--c-border));font-size:10px;font-weight:500;color:rgb(var(--c-text-secondary))}.terminal-workspace:not([data-workspace=markets]) #terminal-content tbody td{border-bottom:1px solid rgb(var(--c-border-subtle)/.55)}.terminal-workspace:not([data-workspace=markets]) #terminal-content tbody tr:last-child td{border-bottom:0}.terminal-workspace:not([data-workspace=markets]) #terminal-content tbody tr:hover td{background-color:rgb(var(--c-bloomberg)/.035)}.terminal-workspace[data-content-density=comfortable]:not([data-workspace=markets]) #terminal-content table :is(th,td){padding:9px 10px;font-size:11px;line-height:1.5}.terminal-workspace[data-content-density=compact]:not([data-workspace=markets]) #terminal-content table :is(th,td){padding:4px 7px;font-size:10px;line-height:1.4}.terminal-workspace #terminal-content tr[tabindex]:focus-visible{outline:2px solid rgb(var(--c-bloomberg)/.6);outline-offset:-2px}.terminal-workspace #terminal-content [data-workspace-tabs]{border-radius:8px;border-color:rgb(var(--c-border));background:rgb(var(--c-surface-1));overflow-x:auto;max-width:100%}.terminal-workspace #terminal-content [data-workspace-tabs].flex{padding:4px;gap:3px}.terminal-workspace #terminal-content [data-workspace-tabs] [role=tab]{border-radius:5px;min-height:30px;white-space:nowrap}.terminal-workspace #terminal-content [data-workspace-tabs] [role=tab][aria-selected=true]{box-shadow:0 1px 4px #0001}.terminal-workspace #terminal-content :is(input,textarea,select,button):focus-visible{outline:2px solid rgb(var(--c-bloomberg)/.6);outline-offset:2px}.terminal-workspace #terminal-content :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),textarea,select){border-radius:5px;max-width:100%}
+@media(max-width:900px){.workspace-hero{padding:15px}.workspace-workflow{display:none}.workspace-search{flex:1}.workspace-hero-tools{flex-wrap:wrap}.workspace-view-count{font-size: 10px}.workspace-hero h1{font-size:22px}}@media(max-width:600px){.workspace-hero{margin:10px}.workspace-hero-intro{gap:9px;flex-wrap:wrap}.workspace-emblem{width:34px;height:34px}.workspace-view-count{margin-left:43px}.workspace-hero-tools{gap:7px}.workspace-search{width:100%;min-width:0}.workspace-density{margin-left:auto}.dashboard-workspace>.workspace-group-bar{margin:0 10px 10px}.workspace-stat>div:nth-child(2){font-size:17px}.pe-workspace{padding:10px}.pe-tool-navigation .seg-item{padding:7px 10px}}
+@media(prefers-reduced-motion:reduce){.workspace-loading .animate-spin,.workspace-skeleton{animation:none}.workspace-controls,.workspace-stat,.workspace-metric{transition:none}}
+.workspace-fold-toggle{flex-shrink:0;width:23px;height:23px;border:1px solid rgb(var(--c-border));border-radius:5px;font-size:14px;line-height:1;color:rgb(var(--c-text-tertiary));margin-left:6px}.workspace-fold-toggle:hover{background:rgb(var(--c-surface-3));color:rgb(var(--c-text-primary))}[data-panel-head]:has(>[data-fold-toggle])::after{display:none}
+.pe-workspace button[aria-pressed=true]:not(.workspace-density button){border-color:rgb(var(--c-bloomberg)/.4);background:rgb(var(--c-bloomberg)/.055)}
+.workspace-surface{border-radius:9px;min-width:0;box-shadow:0 1px 6px #00000006}.workspace-card-header{border-radius:8px 8px 0 0;padding-top:10px;padding-bottom:10px;background:linear-gradient(90deg,rgb(var(--c-text-primary)/.025),transparent)}.workspace-card-header h3{font-size:10px;font-weight:500;letter-spacing:.06em}
+
+/* Text on accent-filled controls: dark on light accents (Moriah gold), white on dark ones (BIFS navy) — the value is
+   computed from the live accent by lib/accentContrast.ts */
+:root:not([data-skin="terminal"]) :is(.bg-bloomberg.text-white, .bg-bloomberg.text-bg, .login-cta, .login-mark, .step-num) {
+  color: rgb(var(--c-on-accent)) !important; }   /* the classic terminal skin tints these instead, with accent text */
+.bg-green.text-white, .bg-green.text-bg { color: rgb(var(--c-on-green, 10 14 20)) !important; }
+.bg-red.text-white, .bg-red.text-bg { color: rgb(var(--c-on-red, 255 255 255)) !important; }
+
+/* Click-to-sort headers (lib/sortableTables.ts marks a table data-autosort="on" when it qualifies) */
+table[data-autosort="on"] > thead th { cursor: pointer; user-select: none; }
+table[data-autosort="on"] > thead th:hover { color: rgb(var(--c-text-primary)); }
+table[data-autosort="on"] > thead th:focus-visible { outline: 1px solid rgb(var(--c-bloomberg)); outline-offset: -1px; }
+table[data-autosort="on"] > thead th[data-sort-dir] { color: rgb(var(--c-bloomberg)); }
+table[data-autosort="on"] > thead th[data-sort-dir="desc"]::after { content: " ▾"; }
+table[data-autosort="on"] > thead th[data-sort-dir="asc"]::after { content: " ▴"; }
+
+/* ═══ STANDARD — one design system for all five areas ═════════════════════════════════════════════
+   The product is one fund's investment workspace, so Macro, Trading, Quant, Markets and PE share the same parts:
+   page header · card · card header and title · inner tile · table header · controls. Earlier layers above gave each
+   area its own radius, shadow and title style; this layer is the single source and comes last on purpose.
+   The classic Markets skin (data-skin="terminal") keeps its deliberate terminal look. */
+:root {
+  --std-radius-card: 10px;
+  --std-radius-inner: 8px;
+  --std-radius-control: 6px;
+  --std-card-border: rgb(var(--c-border) / 0.75);
+  --std-card-shadow: 0 1px 2px rgb(0 0 0 / 0.18);
+  --std-gap: 12px;
+}
+:root[data-theme="light"] { --std-card-shadow: 0 1px 2px rgb(16 24 40 / 0.06); }
+
+/* Card: every panel, tool and header box */
+:root:not([data-skin="terminal"]) :is(.terminal-section, .mkt-root .mkt-panel, .workspace-card, .workspace-surface,
+  .workspace-hero, .workspace-controls, .pe-tool-navigation, .dashboard-workspace > .workspace-group-bar, .mkt-view-tools) {
+  background-color: rgb(var(--c-surface-1));
+  border: 1px solid var(--std-card-border) !important;
+  border-radius: var(--std-radius-card) !important;
+  box-shadow: var(--std-card-shadow) !important;
+}
+:root:not([data-skin="terminal"]) .terminal-section { margin-bottom: var(--std-gap); }
+/* A panel that draws its own card inside the page's card: one card, not two */
+:root:not([data-skin="terminal"]) .terminal-section .terminal-section {
+  border: 0 !important; border-radius: 0 !important; box-shadow: none !important; background: transparent; margin: 0;
+}
+
+/* Card header: one height, one hairline, a solid background (it sticks while the panel scrolls) */
+:root:not([data-skin="terminal"]) :is(.section-header, .mkt-root .mkt-panel > .panel-hdr) {
+  min-height: 40px; padding: 9px 14px; border-bottom: 1px solid rgb(var(--c-border) / 0.6);
+  background: rgb(var(--c-surface-1)); border-radius: var(--std-radius-card) var(--std-radius-card) 0 0;
+}
+:root:not([data-skin="terminal"]) .terminal-section .terminal-section .section-header { border-radius: 0; }
+
+/* Card title: the same type in every area, with the accent dot */
+:root:not([data-skin="terminal"]) :is(.section-title, .mkt-root .mkt-panel > .panel-hdr > h2,
+  .mkt-root .mkt-panel > .panel-hdr > span:first-child, .workspace-card > div:first-child h2, .workspace-card-header h3) {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.045em; text-transform: uppercase; line-height: 1.4;
+  color: rgb(var(--c-text-primary));
+}
+:root:not([data-skin="terminal"]) :is(.mkt-root .mkt-panel > .panel-hdr > h2, .workspace-card > div:first-child h2)::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 999px;
+  background: rgb(var(--c-bloomberg)); vertical-align: middle; transform: translateY(-1px);
+}
+:root:not([data-skin="terminal"]) .section-tag:empty { width: 6px; height: 6px; min-width: 6px; min-height: 6px; box-shadow: none; }
+:root:not([data-skin="terminal"]) .section-meta { font-size: 11px; letter-spacing: 0; text-transform: none; color: rgb(var(--c-text-tertiary)); }
+
+/* Inner tiles (KPI boxes and wells inside a card) */
+:root:not([data-skin="terminal"]) :is(.terminal-section, .mkt-root .mkt-panel, .workspace-card) :is(.bg-surface-1, .bg-surface-2).border,
+:root:not([data-skin="terminal"]) :is(.workspace-stat, .workspace-metric, .workspace-chart, .mkt-root .grid > div.border) {
+  border-radius: var(--std-radius-inner); box-shadow: none;
+}
+:root:not([data-skin="terminal"]) :is(.terminal-section, .mkt-root, .workspace-card) .text-2xs.uppercase { letter-spacing: 0.06em; }
+
+/* Table header: one style for every data table */
+:root:not([data-skin="terminal"]) :is(.terminal-section, .mkt-root .mkt-panel, .workspace-card, .workspace-surface) thead th {
+  font-size: 10.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; color: rgb(var(--c-text-secondary));
+}
+
+/* Page header: the same title and intro in every area */
+:root:not([data-skin="terminal"]) :is(.workspace-hero h1, .mkt-function-heading h1) {
+  font-size: 22px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25;
+}
+:root:not([data-skin="terminal"]) :is(.workspace-hero p, .mkt-function-heading p) { font-size: 12px; line-height: 1.6; color: rgb(var(--c-text-secondary)); }
+
+/* Controls: one corner radius for buttons, inputs and selects inside the workspace */
+:root:not([data-skin="terminal"]) :where(.terminal-section, .mkt-root, .pe-workspace, .workspace-hero)
+  :where(input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea, button.border) {
+  border-radius: var(--std-radius-control);
+}
+
+/* PE: the left sidebar already lists the tools; the tab row is only needed where the sidebar is narrow */
+@media (min-width: 1024px) { .pe-tool-navigation { display: none; } }
+
+/* Markets page header (MarketsHeader): the area header card, with the function code as the emblem */
+.mkt-root .workspace-hero.mkt-hero { margin: 0; padding: 16px 18px 14px; }
+.mkt-hero .mkt-hero-code { width: auto; min-width: 43px; padding: 0 10px; font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px; font-weight: 600; letter-spacing: 0.04em; border-radius: 9px; }
+.mkt-hero .mkt-hero-actions { margin-left: auto; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  font-size: 11px; color: rgb(var(--c-text-tertiary)); }
+.mkt-hero .mkt-hero-tools { display: block; margin-top: 14px; padding-top: 12px; }
+.mkt-hero .mkt-hero-tools > * { margin: 0; }
+/* the header now names the page, so the view toolbar keeps only its controls */
+:root:not([data-skin="terminal"]) .mkt-view-tools { justify-content: flex-end; }
+:root:not([data-skin="terminal"]) .mkt-view-tools > :is(.mkt-view-code, .mkt-view-hint) { display: none; }
+@media (max-width: 760px) { .mkt-hero .workspace-hero-intro { flex-wrap: wrap; } .mkt-hero .mkt-hero-actions { margin-left: 0; align-items: flex-start; } }
+.mkt-toolbar-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.mkt-toolbar-row > .mkt-view-tools { flex: 0 1 auto; margin-left: auto; }
+:root:not([data-skin="terminal"]) .mkt-toolbar-row > .mkt-view-tools { border: 0 !important; box-shadow: none !important; background: transparent; padding: 0; }
+:root[data-theme="light"]:not([data-skin="terminal"]) .mkt-root .mkt-panel > .panel-hdr { background: rgb(var(--c-surface-1)); }
+
+/* Hover tools for data tables (lib/tableActions.ts) */
+.tbl-actions { position: absolute; z-index: 60; display: flex; gap: 2px; padding: 2px; border-radius: 6px;
+  background: rgb(var(--c-surface-2)); border: 1px solid rgb(var(--c-border)); box-shadow: 0 2px 8px rgb(0 0 0 / 0.18); }
+.tbl-actions[hidden] { display: none; }
+.tbl-actions button { font-size: 10.5px; line-height: 1; padding: 4px 7px; border-radius: 4px; color: rgb(var(--c-text-secondary)); }
+.tbl-actions button:hover, .tbl-actions button:focus-visible { color: rgb(var(--c-text-primary)); background: rgb(var(--c-surface-1)); }
+@media print { .tbl-actions { display: none !important; } }
+
+/* ── REFINED DATA LAYER: one modern look for every data table and chart frame (not the classic terminal skin) ──
+   Quiet small-caps column labels on a faint band, hairline row rules, aligned figures, a soft hover with an accent
+   edge, and a framed chart surface. Appended last so it settles the earlier layers' table styles. */
+:root:not([data-skin="terminal"]) :is(.app-main, .mkt-root) table { font-variant-numeric: tabular-nums; border-collapse: separate; border-spacing: 0; }
+:root:not([data-skin="terminal"]) :is(.app-main, .mkt-root) table thead th {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgb(var(--c-text-tertiary));
+  background: rgb(var(--c-text-primary) / 0.025); border-bottom: 1px solid rgb(var(--c-border)); padding-top: 7px; padding-bottom: 7px; }
+:root:not([data-skin="terminal"]) :is(.app-main, .mkt-root) table thead th:first-child { border-top-left-radius: 6px; }
+:root:not([data-skin="terminal"]) :is(.app-main, .mkt-root) table thead th:last-child { border-top-right-radius: 6px; }
+:root:not([data-skin="terminal"]) :is(.app-main, .mkt-root) table tbody tr { border-top: 0 !important; }
+:root:not([data-skin="terminal"]) :is(.app-main, .mkt-root) table tbody td { border-bottom: 1px solid rgb(var(--c-border) / 0.32); }
+:root:not([data-skin="terminal"]) :is(.app-main, .mkt-root) table tbody tr:last-child td { border-bottom: 0; }
+:root:not([data-skin="terminal"]) :is(.app-main, .mkt-root) table tbody tr { transition: background-color .12s ease, box-shadow .12s ease; }
+:root:not([data-skin="terminal"]) :is(.app-main, .mkt-root) table tbody tr:hover { background-color: rgb(var(--c-bloomberg) / 0.05); box-shadow: inset 2px 0 0 rgb(var(--c-bloomberg) / 0.7); }
+:root:not([data-skin="terminal"]) :is(.app-main, .mkt-root) table tbody tr:hover td { background-color: transparent; }
+:root:not([data-skin="terminal"]) :is(.app-main, .mkt-root) table tbody td:first-child { color: rgb(var(--c-text-primary)); }
+:root:not([data-skin="terminal"]) :is(.app-main, .mkt-root) table thead.sticky th,
+:root:not([data-skin="terminal"]) :is(.app-main, .mkt-root) table thead th.sticky { background: rgb(var(--c-surface-1)); }
+:root[data-theme="light"]:not([data-skin="terminal"]) :is(.app-main, .mkt-root) table thead th { background: rgb(var(--c-text-primary) / 0.035); }
+/* chart frame: a quiet surface with room to breathe */
+:root:not([data-skin="terminal"]) .mkt-chart-surface { border: 1px solid rgb(var(--c-border) / 0.45); border-radius: 10px; padding: 10px 8px 4px;
+  background: linear-gradient(180deg, rgb(var(--c-text-primary) / 0.018), transparent 70%); }
+@media (prefers-reduced-motion: reduce) { :root:not([data-skin="terminal"]) :is(.app-main, .mkt-root) table tbody tr { transition: none; } }
+
+/* ── Time machine (components/sections/model/TimeMachine.tsx) ── */
+.tm-root { outline: none; }
+.tm-root:focus-visible { box-shadow: 0 0 0 2px rgb(var(--c-bloomberg) / 0.45); border-radius: 10px; }
+.tm-ribbon { cursor: ew-resize; border: 1px solid rgb(var(--c-border) / 0.5); border-radius: 10px; padding: 0 2px;
+  background: linear-gradient(180deg, rgb(var(--c-text-primary) / 0.02), transparent 75%); touch-action: none; }
+.tm-transport { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: rgb(var(--c-surface-2)); border: 1px solid rgb(var(--c-border) / 0.6); }
+.tm-transport button { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px;
+  color: rgb(var(--c-text-secondary)); transition: background-color .12s, color .12s; }
+.tm-transport button:hover { color: rgb(var(--c-text-primary)); background: rgb(var(--c-surface-1)); }
+.tm-transport .tm-play { width: 32px; height: 32px; background: rgb(var(--c-bloomberg)); color: rgb(var(--c-bg, 13 17 23)); }
+.tm-transport .tm-play:hover { background: rgb(var(--c-bloomberg) / 0.85); color: rgb(var(--c-bg, 13 17 23)); }
+.tm-pill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  color: var(--tm); background: color-mix(in srgb, var(--tm) 13%, transparent); border: 1px solid color-mix(in srgb, var(--tm) 40%, transparent); }
+.tm-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--tm); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tm) 25%, transparent); }
+.tm-chip { padding: 4px 10px; font-size: 10.5px; border-radius: 999px; border: 1px solid rgb(var(--c-border)); color: rgb(var(--c-text-secondary));
+  transition: border-color .12s, color .12s, background-color .12s; }
+.tm-chip:hover { color: rgb(var(--c-text-primary)); border-color: rgb(var(--c-text-tertiary)); }
+.tm-chip.on { color: rgb(var(--c-bloomberg)); border-color: rgb(var(--c-bloomberg) / 0.7); background: rgb(var(--c-bloomberg) / 0.08); }
+.tm-swatch { display: inline-block; width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.tm-swatch.line { width: 14px; height: 2px; border-radius: 2px; }
+.tm-card { border: 1px solid rgb(var(--c-border) / 0.55); border-radius: 10px; padding: 12px 13px; background: rgb(var(--c-surface-1)); min-width: 0; }
+.tm-card-title { font-size: 11px; font-weight: 600; color: rgb(var(--c-text-primary)); margin-bottom: 9px; }
+.tm-stack { display: flex; height: 12px; border-radius: 999px; overflow: hidden; gap: 2px; background: rgb(var(--c-surface-3)); }
+.tm-stack > span { display: block; height: 100%; transition: width .25s ease; min-width: 0; }
+.tm-track { display: block; height: 6px; border-radius: 999px; background: rgb(var(--c-surface-3)); overflow: hidden; margin-top: 4px; }
+.tm-track > span { display: block; height: 100%; border-radius: 999px; transition: width .25s ease; }
+.tm-track > .tm-weight { background: linear-gradient(90deg, rgb(var(--c-bloomberg) / 0.65), rgb(var(--c-bloomberg))); }
+.tm-mini { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 9px; border-radius: 7px; background: rgb(var(--c-surface-2));
+  font-size: 10.5px; color: rgb(var(--c-text-tertiary)); }
+.tm-mini b { font-family: var(--font-mono, ui-monospace); font-size: 12px; color: rgb(var(--c-text-primary)); font-weight: 600; }
+.tm-hindsight { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 7px; font-size: 11px; color: rgb(var(--c-text-primary));
+  border: 1px dashed rgb(var(--c-border)); }
+.tm-hindsight.ok { border-color: rgb(var(--c-green) / 0.45); background: rgb(var(--c-green) / 0.05); }
+.tm-hindsight.miss { border-color: rgb(var(--c-amber) / 0.45); background: rgb(var(--c-amber) / 0.05); }
+.tm-ret-track { position: relative; height: 6px; margin-top: 3px; border-radius: 999px; background: rgb(var(--c-surface-3)); }
+.tm-ret-track::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: rgb(var(--c-border-strong)); }
+.tm-ret-bar { position: absolute; top: 0; bottom: 0; border-radius: 999px; transition: width .25s ease; }
+.tm-ret-bar.pos { background: rgb(var(--c-green)); }
+.tm-ret-bar.neg { background: rgb(var(--c-red)); }
+@media (prefers-reduced-motion: reduce) { .tm-stack > span, .tm-track > span, .tm-ret-bar { transition: none; } }
+.tm-live { margin-left: 6px; padding: 1px 6px; border-radius: 999px; font-size: 9.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: rgb(var(--c-green)); background: rgb(var(--c-green) / 0.12); border: 1px solid rgb(var(--c-green) / 0.35); }
+
+/* ── Login refinements: live markets strip, session clock, accent card, clearer button states ── */
+.login-redesign { background:
+    radial-gradient(640px 520px at 80% 46%, rgb(var(--c-bloomberg) / .085), transparent 62%),
+    linear-gradient(105deg, rgb(var(--login-brand-band, 15 35 62)) 0%, rgb(var(--login-brand-band, 15 35 62)) 48%, #080f1a 100%); }
+.login-clock { display: inline-flex; align-items: center; gap: 7px; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.login-clock i { width: 6px; height: 6px; border-radius: 999px; background: #6b7f99; display: inline-block; }
+.login-clock i.on { background: #3fbf8f; box-shadow: 0 0 0 3px #3fbf8f26; }
+.login-markets { max-width: 520px; margin: 26px 0 6px; border: 1px solid #ffffff12; border-radius: 14px; padding: 12px 14px 14px;
+  background: linear-gradient(180deg, #ffffff08, #ffffff02); }
+.login-markets-head { display: flex; justify-content: space-between; font-size: 9.5px; letter-spacing: .16em; color: #7f95b2; margin-bottom: 10px; }
+.login-markets-head span:last-child { letter-spacing: .04em; }
+.login-markets-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 18px; }
+.login-market-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 10.5px; color: #9fb2c9; }
+.login-market-val { font-size: 15px; font-weight: 500; color: #eef3fa; letter-spacing: -.01em; font-variant-numeric: tabular-nums; margin-top: 3px; }
+.login-up, .login-down { font-size: 10.5px; font-variant-numeric: tabular-nums; margin-top: 1px; }
+.login-up { color: #3fbf8f; } .login-down { color: #e66767; }
+.login-capabilities { margin-top: 20px; gap: 0; }
+.login-capabilities > div { padding: 0 14px; border-left: 1px solid #ffffff12; }
+.login-capabilities > div:first-child { padding-left: 0; border-left: 0; }
+.login-access-card { position: relative; overflow: hidden; }
+.login-access-card::before { content: ""; position: absolute; left: 34px; right: 34px; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(var(--c-bloomberg) / .75), transparent); }
+.login-form input:not([type=checkbox]), .login-form select { transition: border-color .15s, box-shadow .15s, background-color .15s; }
+.login-form input:hover:not(:disabled), .login-form select:hover:not(:disabled) { border-color: #4a607c; }
+.login-form input:focus, .login-form select:focus { outline: none; border-color: rgb(var(--c-bloomberg) / .85); box-shadow: 0 0 0 3px rgb(var(--c-bloomberg) / .16); background: #0b1729; }
+.login-submit { transition: filter .15s, transform .1s, box-shadow .15s; box-shadow: 0 8px 24px rgb(var(--c-bloomberg) / .22); }
+.login-redesign .login-access-card .login-submit:disabled { opacity: 1; filter: none; background: #1a2a40 !important; color: #8fa3bd !important; box-shadow: none; border: 1px solid #2c3e56; }
+.login-submit:focus-visible { outline: 2px solid rgb(var(--c-bloomberg)); outline-offset: 2px; }
+@media (max-width: 850px) { .login-markets { display: none; } .login-clock { display: none; } }
+@media (prefers-reduced-motion: reduce) { .login-submit, .login-form input, .login-form select { transition: none; } }
+
+/* ── Atlas refinements: summary strip, colour classes, bar rankings, country focus ── */
+.atlas-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.atlas-summary > * { text-align: left; border: 1px solid rgb(var(--c-border) / .6); border-radius: 10px; padding: 9px 12px; background: rgb(var(--c-surface-1)); min-width: 0; }
+.atlas-summary > button:hover { border-color: rgb(var(--c-bloomberg) / .6); }
+.atlas-summary span { display: block; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: rgb(var(--c-text-tertiary)); }
+.atlas-summary b { display: block; font-size: 15px; font-weight: 500; color: rgb(var(--c-text-primary)); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.atlas-summary small { display: block; font-size: 10.5px; color: rgb(var(--c-text-secondary)); margin-top: 1px; font-variant-numeric: tabular-nums; }
+.atlas-classes { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 8px; align-items: center; }
+.atlas-class { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; color: rgb(var(--c-text-secondary)); font-variant-numeric: tabular-nums; }
+.atlas-class i { width: 16px; height: 10px; border-radius: 3px; display: inline-block; box-shadow: inset 0 0 0 1px #ffffff14; }
+.atlas-class small { color: rgb(var(--c-text-tertiary)); font-size: 9.5px; }
+.atlas-class i.atlas-no-data-key { background: var(--atlas-no-data, #263444); background-image: repeating-linear-gradient(45deg, #ffffff10 0 2px, transparent 2px 5px); }
+.atlas-panel-title { padding: 9px 12px; font-size: 11px; font-weight: 600; color: rgb(var(--c-text-primary)); border-bottom: 1px solid rgb(var(--c-border) / .6); }
+.atlas-bar-row { display: grid; grid-template-columns: minmax(0, 1fr) 70px 52px; align-items: center; gap: 8px; width: 100%; padding: 3px 6px; border-radius: 6px; font-size: 11px; text-align: left; }
+.atlas-bar-row:hover, .atlas-bar-row.on { background: rgb(var(--c-surface-2)); }
+.atlas-bar-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: rgb(var(--c-text-secondary)); }
+.atlas-bar-track { height: 6px; border-radius: 999px; background: rgb(var(--c-surface-3)); overflow: hidden; }
+.atlas-bar-track i { display: block; height: 100%; border-radius: 999px; }
+.atlas-bar-row b { text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; color: rgb(var(--c-text-primary)); }
+.atlas-bar-sep { text-align: center; font-size: 10px; color: rgb(var(--c-text-tertiary)); }
+.atlas-country-head { display: flex; align-items: center; gap: 10px; }
+.atlas-flag { font-size: 26px; line-height: 1; }
+.atlas-focus { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; padding: 10px 11px; border-radius: 9px; background: rgb(var(--c-surface-2)); border: 1px solid rgb(var(--c-border) / .5); }
+.atlas-focus span { display: block; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: rgb(var(--c-text-tertiary)); }
+.atlas-focus b { display: inline-flex; align-items: center; gap: 7px; font-size: 18px; font-weight: 500; color: rgb(var(--c-text-primary)); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.atlas-focus b i { width: 10px; height: 10px; border-radius: 3px; }
+.atlas-focus b small { font-size: 11px; color: rgb(var(--c-text-tertiary)); font-weight: 400; }
+.atlas-focus-track { grid-column: 1 / -1; position: relative; height: 4px; border-radius: 999px; background: linear-gradient(90deg, rgb(var(--c-surface-3)), rgb(var(--c-bloomberg) / .5)); }
+.atlas-focus-track i { position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 999px; background: rgb(var(--c-bloomberg)); box-shadow: 0 0 0 3px rgb(var(--c-surface-2)); }
+.atlas-section-title { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--c-bloomberg)); padding-top: 8px; margin-top: 4px; border-top: 1px solid rgb(var(--c-border) / .45); }
+
+/* Stock signal lab verdict */
+.alpha-verdict { border-radius: 10px; padding: 10px 13px; font-size: 12px; line-height: 1.55; border: 1px solid; }
+.alpha-verdict b { margin-right: 6px; }
+.alpha-verdict.significant { border-color: rgb(var(--c-green) / .45); background: rgb(var(--c-green) / .07); color: rgb(var(--c-text-primary)); }
+.alpha-verdict.weak { border-color: rgb(var(--c-amber) / .45); background: rgb(var(--c-amber) / .07); color: rgb(var(--c-text-primary)); }
+.alpha-verdict.none { border-color: rgb(var(--c-red) / .4); background: rgb(var(--c-red) / .06); color: rgb(var(--c-text-primary)); }
+
+.proof-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-family: Inter, system-ui, sans-serif; font-size: 10px; font-weight: 600; white-space: nowrap; border: 1px solid; }
+.proof-pill.alpha { color: rgb(var(--c-green)); border-color: rgb(var(--c-green) / .45); background: rgb(var(--c-green) / .1); }
+.proof-pill.promising { color: rgb(var(--c-amber)); border-color: rgb(var(--c-amber) / .45); background: rgb(var(--c-amber) / .1); }
+.proof-pill.beta { color: rgb(var(--c-blue)); border-color: rgb(var(--c-blue) / .4); background: rgb(var(--c-blue) / .08); }
+.proof-pill.no-edge { color: rgb(var(--c-text-tertiary)); border-color: rgb(var(--c-border)); }
+
+/* Markets page header, compact: the data starts higher on every one of the 124 screens. The description is one line
+   (full text on hover); on an instrument page the instrument card below already names it, so the line is dropped. */
+.mkt-hero { padding: 12px 16px 10px; }
+.mkt-hero h1 { font-size: 20px; margin: 2px 0 3px; }
+.mkt-hero p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 72ch; }
+.mkt-hero[data-security] p { display: none; }
+.mkt-hero .mkt-hero-tools { margin-top: 10px; padding-top: 9px; }
+.mkt-hero .workspace-emblem { width: 38px; height: 38px; }
+
+/* Page headers, refined (2026-11-03). Professional platforms (Bloomberg, IBKR Desktop, thinkorswim, Futu) open on the
+   data: the header names the page and holds its controls, and gets out of the way.
+   Comfortable: one slimmer card — smaller title, the description beside the area tag, tools on a tighter second row.
+   Compact (the density switch): a single 44-px bar — emblem, area, title, search and switches in one row, no
+   description (it stays available on hover through the title attribute set by the truncation helper). */
+.workspace-hero { padding: 13px 16px 10px; margin: 12px 16px 10px; }
+.workspace-hero h1 { font-size: 21px; margin: 2px 0 2px; }
+.workspace-hero .workspace-emblem { width: 36px; height: 36px; border-radius: 9px; }
+.workspace-hero-tools { margin-top: 10px; padding-top: 9px; }
+.workspace-search { padding: 5px 9px; }
+.workspace-hero p { max-width: 90ch; }
+
+:root[data-content-density="compact"] .workspace-hero {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; padding: 6px 10px; margin: 8px 12px 8px; border-radius: 8px;
+  background: rgb(var(--c-surface-1)); }
+:root[data-content-density="compact"] .pe-workspace > .workspace-hero { margin: 0 0 10px; }
+:root[data-content-density="compact"] .workspace-hero-intro { align-items: center; gap: 9px; flex: 1 1 auto; min-width: 0; }
+:root[data-content-density="compact"] .workspace-hero .workspace-emblem { width: 28px; height: 28px; border-radius: 6px; }
+:root[data-content-density="compact"] .workspace-hero .workspace-emblem svg { width: 15px; height: 15px; }
+:root[data-content-density="compact"] .workspace-hero-intro > div:not(.mkt-hero-actions) { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+:root[data-content-density="compact"] .workspace-hero h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 0; white-space: nowrap; }
+:root[data-content-density="compact"] .workspace-hero p,
+:root[data-content-density="compact"] .workspace-workflow { display: none; }
+:root[data-content-density="compact"] .workspace-eyebrow { letter-spacing: .12em; white-space: nowrap; }
+:root[data-content-density="compact"] .workspace-view-count { padding: 2px 8px; }
+:root[data-content-density="compact"] .workspace-hero-tools { border-top: 0; margin: 0; padding: 0; gap: 8px; flex: 0 1 auto; }
+:root[data-content-density="compact"] .workspace-search { padding: 3px 8px; min-width: 200px; }
+:root[data-content-density="compact"] .workspace-density { padding: 2px; }
+:root[data-content-density="compact"] .workspace-density button { padding: 2px 6px; }
+/* Markets: the function / security command line takes the rest of the row */
+:root[data-content-density="compact"] .mkt-root .workspace-hero.mkt-hero { padding: 6px 10px; margin: 0; }
+:root[data-content-density="compact"] .mkt-hero .mkt-hero-code { min-width: 28px; padding: 0 7px; font-size: 11px; }
+:root[data-content-density="compact"] .mkt-hero .mkt-hero-actions { flex-direction: row; align-items: center; gap: 10px; }
+:root[data-content-density="compact"] .mkt-hero .mkt-hero-tools { flex: 1 1 420px; margin: 0; padding: 0; border-top: 0; }
+
+/* Phones: the hub tabs scroll sideways inside the top bar and the fund chip truncates, so the bar never pushes the
+   page wider than the screen. */
+@media (max-width: 767px) {
+  .topbar-hubs { overflow-x: auto; scrollbar-width: none; }
+  .topbar-hubs::-webkit-scrollbar { display: none; }
+  .topbar-main-row { padding: 0 8px; gap: 6px; }
+  /* off-canvas drawers parked beyond the right edge must not widen the page */
+  html, body { overflow-x: clip; }
+}
+
+/* Instrument pages (DES and every other security function): the header is always the one-row bar, whatever the
+   density — the instrument card right below names the security, so a second, larger title only pushed the quote
+   down. And the function chips are tighter so the ten Price & trading functions fit on one line more often. */
+.mkt-root .workspace-hero.mkt-hero[data-security] { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; padding: 6px 10px; }
+.mkt-hero[data-security] .workspace-hero-intro { align-items: center; gap: 9px; flex: 1 1 auto; min-width: 0; }
+.mkt-hero[data-security] .workspace-emblem { width: 28px; height: 28px; border-radius: 6px; }
+.mkt-hero[data-security] .mkt-hero-code { min-width: 28px; padding: 0 7px; font-size: 11px; }
+.mkt-hero[data-security] .workspace-hero-intro > div:not(.mkt-hero-actions) { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+:root .mkt-root .mkt-hero[data-security] h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 0; white-space: nowrap; }
+.mkt-hero[data-security] .workspace-eyebrow { letter-spacing: .12em; white-space: nowrap; }
+.mkt-hero[data-security] .mkt-hero-actions { flex-direction: row; align-items: center; gap: 10px; }
+.mkt-hero[data-security] .mkt-hero-tools { flex: 1 1 420px; margin: 0; padding: 0; border-top: 0; }
+nav[aria-label="Functions"] > div[role="tablist"] > button { padding-top: 5px; padding-bottom: 5px; }
+nav[aria-label="Functions"] > div:not([role="tablist"]) { padding-top: 5px; padding-bottom: 5px; }
+nav[aria-label="Functions"] > div:not([role="tablist"]) > button { padding: 2px 8px; font-size: 11px; }
+
+/* Maritime observations: separate clocks and controls from the geographic evidence. */
+.maritime-brief{border:1px solid rgb(var(--c-border));border-radius:12px;background:linear-gradient(125deg,rgb(var(--c-blue)/.07),rgb(var(--c-surface-1)) 65%);padding:18px;min-width:0}
+.maritime-brief-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.maritime-brief h2{font-size:18px;font-weight:600;letter-spacing:-.025em;margin:7px 0}.maritime-brief p{font-size:11px;line-height:1.7;color:rgb(var(--c-text-secondary));max-width:850px}.maritime-source-badge{flex-shrink:0;border:1px solid rgb(var(--c-blue)/.35);border-radius:20px;padding:6px 10px;font-size:9px;letter-spacing:.08em;color:rgb(var(--c-blue))}
+.maritime-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0}.maritime-metrics>div{padding:13px;background:rgb(var(--c-surface-1)/.8);border:1px solid rgb(var(--c-border-subtle));border-radius:8px;min-width:0}.maritime-metrics span,.maritime-metrics small{display:block;color:rgb(var(--c-text-tertiary));font-size:10px;line-height:1.6}.maritime-metrics strong{display:block;font-size:24px;font-weight:500;letter-spacing:-.03em;margin:5px 0;overflow-wrap:anywhere}.maritime-layer-controls{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:10px}.maritime-layer-controls [role=group]{display:flex;flex-wrap:wrap;gap:4px}.maritime-layer-controls button{font-size:11px;padding:7px 10px;border:1px solid rgb(var(--c-border));border-radius:6px;color:rgb(var(--c-text-secondary))}.maritime-layer-controls button[aria-pressed=true]{background:rgb(var(--c-blue)/.12);border-color:rgb(var(--c-blue)/.5);color:rgb(var(--c-text-primary))}.maritime-layer-controls label{display:flex;align-items:center;gap:8px;font-size:11px}.maritime-layer-controls select{padding:6px;background:rgb(var(--c-surface-2));border:1px solid rgb(var(--c-border));border-radius:5px}.maritime-evidence-note{font-size:10px;line-height:1.7;color:rgb(var(--c-text-tertiary));margin:8px 0}.maritime-filter-bar{padding:10px;border:1px solid rgb(var(--c-border));border-radius:8px;background:rgb(var(--c-surface-1));align-items:center}.maritime-filter-bar>div{flex-wrap:wrap}
+@media(max-width:700px){.maritime-brief{padding:12px}.maritime-brief-heading{flex-direction:column;gap:6px}.maritime-metrics{grid-template-columns:1fr}.maritime-metrics strong{font-size:21px}.maritime-layer-controls label{flex-wrap:wrap}.maritime-filter-bar{gap:8px}}
+
+/* ML charts — the reference categorical palette's first four slots (validated: adjacent and all-pairs CVD ΔE ≥ 8 for
+   three, ≥ 8 adjacent for four), stepped per theme; at most four models are coloured at once, the rest muted. */
+:root, :root[data-theme="light"] {
+  --viz-1: #2a78d6; --viz-2: #eb6834; --viz-3: #1baf7a; --viz-4: #eda100;
+  --viz-muted: rgb(120 120 120 / 0.35); --viz-outcome: rgb(120 120 120 / 0.14); --viz-seq: 42 120 214;
+}
+:root[data-theme="dark"] {
+  --viz-1: #3987e5; --viz-2: #d95926; --viz-3: #199e70; --viz-4: #c98500;
+  --viz-muted: rgb(190 190 190 / 0.28); --viz-outcome: rgb(200 200 200 / 0.10); --viz-seq: 57 135 229;
+}
+.ml-kpi { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); min-width: 0; }
+.ml-kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-tertiary); }
+.ml-kpi-value { font-family: var(--font-data); font-size: 20px; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.ml-kpi-sub { font-size: 10px; color: var(--text-tertiary); }
+.ml-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; font-size: 10px; border: 1px solid var(--border); white-space: nowrap; }
+.ml-chip[data-stage="production"] { border-color: rgb(var(--c-green) / .5); color: rgb(var(--c-green)); }
+.ml-chip[data-stage="shadow"] { color: var(--text-tertiary); }
+.ml-tip { position: absolute; pointer-events: none; z-index: 20; padding: 6px 8px; border-radius: 6px; font-size: 11px;
+  background: var(--surface-2); border: 1px solid var(--border); box-shadow: 0 6px 18px rgb(0 0 0 / .25); color: var(--text-primary); white-space: nowrap; }
+
+/* ── ML workbench design system (panels, stats, grid, controls) ─────────────────────────────────────────────── */
+.ml-shell { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 16px; }
+.ml-toolbar { position: sticky; top: var(--topbar-height, 64px); z-index: 15; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: color-mix(in srgb, var(--surface-1) 92%, transparent); backdrop-filter: blur(6px); }
+.ml-toolbar-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.ml-toolbar-title h1 { font-size: 15px; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
+.ml-toolbar-title span { font-size: 11px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ml-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+.ml-tabs button { padding: 7px 12px; font-size: 12px; color: var(--text-secondary); border-bottom: 2px solid transparent; white-space: nowrap; }
+.ml-tabs button[aria-selected="true"] { color: var(--text-primary); border-bottom-color: rgb(var(--c-bloomberg)); font-weight: 600; }
+.ml-tabs button:hover { color: var(--text-primary); }
+.ml-grid-12 { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 10px; }
+.ml-panel { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); overflow: hidden; }
+.ml-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 9px 12px 7px; border-bottom: 1px solid var(--border-subtle); }
+.ml-panel-head h3 { font-size: 12px; font-weight: 600; color: var(--text-primary); letter-spacing: .01em; }
+.ml-panel-head p { font-size: 10.5px; color: var(--text-tertiary); margin-top: 2px; line-height: 1.45; }
+.ml-panel-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.ml-panel-body { padding: 10px 12px; min-width: 0; }
+.ml-panel-foot { padding: 6px 12px 8px; border-top: 1px solid var(--border-subtle); font-size: 10.5px; color: var(--text-tertiary); }
+.ml-stat { padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-1); min-width: 0; }
+.ml-stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ml-stat-value { font-family: var(--font-data); font-size: 22px; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.ml-stat-delta { font-size: 10.5px; color: var(--text-tertiary); margin-top: 1px; }
+.ml-tone-good { color: rgb(var(--c-green)); } .ml-tone-warn { color: rgb(var(--c-amber)); } .ml-tone-bad { color: rgb(var(--c-red)); }
+.ml-btn { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; font-size: 11px;
+  color: var(--text-secondary); background: var(--surface-2); }
+.ml-btn:hover { color: var(--text-primary); border-color: var(--text-tertiary); }
+.ml-btn[data-variant="primary"] { color: #fff; background: rgb(var(--c-bloomberg)); border-color: rgb(var(--c-bloomberg)); }
+.ml-btn:disabled { opacity: .5; cursor: not-allowed; }
+.ml-grid-search { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text-tertiary); }
+.ml-grid-search input { background: transparent; outline: none; font-size: 11px; color: var(--text-primary); width: 160px; }
+.ml-popover { position: absolute; right: 0; top: 30px; z-index: 30; min-width: 180px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); box-shadow: 0 12px 28px rgb(0 0 0 / .3); }
+.ml-seg { display: inline-flex; padding: 2px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); }
+.ml-seg-item { padding: 3px 9px; font-size: 11px; border-radius: 5px; color: var(--text-secondary); }
+.ml-seg-item[data-state="on"] { background: var(--surface-1); color: var(--text-primary); box-shadow: 0 1px 2px rgb(0 0 0 / .25); }
+.ml-slider { position: relative; display: flex; align-items: center; height: 18px; width: 100%; touch-action: none; user-select: none; }
+.ml-slider-track { position: relative; flex-grow: 1; height: 4px; border-radius: 999px; background: var(--surface-3); }
+.ml-slider-range { position: absolute; height: 100%; border-radius: 999px; background: var(--viz-1); }
+.ml-slider-thumb { display: block; width: 14px; height: 14px; border-radius: 999px; background: var(--surface-1); border: 2px solid var(--viz-1); box-shadow: 0 1px 3px rgb(0 0 0 / .4); }
+.ml-slider-thumb:focus-visible { outline: 2px solid var(--viz-1); outline-offset: 2px; }
+.ml-hint { max-width: 300px; padding: 7px 9px; border-radius: 6px; font-size: 11px; line-height: 1.45; color: var(--text-primary); background: var(--surface-2); border: 1px solid var(--border); box-shadow: 0 8px 22px rgb(0 0 0 / .3); z-index: 60; }
+.ml-hint-arrow { fill: var(--surface-2); }
+.ml-model-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--border); font-size: 11px; color: var(--text-secondary); background: var(--surface-2); }
+.ml-model-chip[aria-pressed="true"] { color: var(--text-primary); border-color: var(--text-tertiary); }
+.ml-dot { width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; }
+.ml-pill { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 7px; border-radius: 999px; font-size: 10px; border: 1px solid var(--border); white-space: nowrap; }
+.ml-pill[data-tone="prod"] { color: rgb(var(--c-green)); border-color: rgb(var(--c-green) / .45); background: rgb(var(--c-green) / .08); }
+.ml-pill[data-tone="shadow"] { color: var(--text-tertiary); }
+.ml-pill[data-tone="eligible"] { color: var(--viz-1); border-color: var(--viz-1); }
+.ml-pill[data-tone="warn"] { color: rgb(var(--c-amber)); border-color: rgb(var(--c-amber) / .45); background: rgb(var(--c-amber) / .08); }
+.ml-pill[data-tone="ok"] { color: rgb(var(--c-green)); border-color: rgb(var(--c-green) / .4); }
+.ml-skeleton { border-radius: 6px; background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2)); background-size: 200% 100%; animation: ml-shimmer 1.4s infinite; }
+@keyframes ml-shimmer { to { background-position: -200% 0; } }
+.ml-resize-handle { width: 6px; display: flex; align-items: center; justify-content: center; }
+.ml-resize-handle::after { content: ""; width: 2px; height: 32px; border-radius: 2px; background: var(--border); }
+.ml-resize-handle:hover::after, .ml-resize-handle[data-resize-handle-active]::after { background: rgb(var(--c-bloomberg)); }
+@media (max-width: 1100px) { .ml-span-4, .ml-span-5, .ml-span-6, .ml-span-7, .ml-span-8 { grid-column: span 12 / span 12 !important; } }
+
+/* Neural-network signal flow: a dark stage with a perspective grid floor under the canvas */
+.ml-flow { background: radial-gradient(120% 90% at 30% 20%, rgb(var(--c-surface-2)) 0%, rgb(var(--c-bg)) 70%); border: 1px solid var(--border); }
+.ml-flow-floor { position: absolute; left: -20%; right: -20%; bottom: -30px; height: 160px; z-index: 0; pointer-events: none;
+  background-image: linear-gradient(to right, rgb(var(--c-blue) / 0.22) 1px, transparent 1px), linear-gradient(to bottom, rgb(var(--c-blue) / 0.22) 1px, transparent 1px);
+  background-size: 48px 48px; transform: perspective(260px) rotateX(62deg); transform-origin: bottom;
+  -webkit-mask-image: linear-gradient(to top, black 10%, transparent 95%); mask-image: linear-gradient(to top, black 10%, transparent 95%); }

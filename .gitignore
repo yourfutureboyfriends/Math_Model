@@ -1,0 +1,11 @@
+# Dependencies — restored by `npm install` (frontend/package-lock.json is tracked)
+node_modules/
+
+# Python virtual environment
+.venv/
+
+# Local tool / editor state
+.claude/
+.DS_Store
+.vscode/
+.idea/

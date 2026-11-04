@@ -1,3 +1,4 @@
+// Hook: the live-price Socket.IO stream with reconnects.
 import { useEffect, useRef, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 
@@ -121,7 +122,11 @@ export function useMarketStream(): MarketStreamState {
           oil: km.oil ?? null,
           fed: km.fedRate ?? null,
         });
-      } catch {}
+      } catch (err) {
+        // Best-effort REST poll fallback; a failed poll keeps the last values and retries in 15s.
+        // Log it so a persistent failure is visible rather than silently swallowed.
+        console.debug('[useMarketStream] REST poll failed:', err);
+      }
     };
 
     // Initial poll after 3s delay (let WebSocket try first)

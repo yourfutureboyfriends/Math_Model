@@ -2,21 +2,10 @@
 // Fetches business outputs: recommendations, decision log, IC pack, expected returns
 
 import { useState, useEffect, useCallback } from 'react';
+import type { BackendRecommendationsResponse } from '@/lib/businessAdapter';
 
-interface Recommendation {
-  asset_class: string;
-  expected_return_score: number;
-  rationale: string;
-  conviction: string;
-}
-
-interface PositionSizing {
-  asset_class: string;
-  recommended_weight: number;
-  min_weight: number;
-  max_weight: number;
-  rationale: string;
-}
+// Re-export backend types for components that need them
+export type { BackendRecommendationsResponse };
 
 interface DecisionLogEntry {
   date: string;
@@ -26,13 +15,8 @@ interface DecisionLogEntry {
   outcome?: string;
 }
 
-interface BusinessRecommendations {
-  summary: string | null;
-  expected_returns: Recommendation[];
-  position_sizing: PositionSizing[];
-  signal_scorecard: unknown[];
-  timestamp: string;
-}
+// Use backend types directly to ensure compatibility
+interface BusinessRecommendations extends BackendRecommendationsResponse {}
 
 interface DecisionLog {
   entries: DecisionLogEntry[];
@@ -111,56 +95,5 @@ export function useBusinessLayer() {
   };
 }
 
-// Hook for expected returns only
-export function useExpectedReturns() {
-  const [returns, setReturns] = useState<Recommendation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchReturns = async () => {
-      try {
-        const res = await fetch('/api/business/expected-returns');
-        if (res.ok) {
-          const data = await res.json();
-          setReturns(data.returns || []);
-        }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchReturns();
-  }, []);
-
-  return { returns, loading, error };
-}
-
-// Hook for position sizing only
-export function usePositionSizing() {
-  const [positions, setPositions] = useState<PositionSizing[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchSizing = async () => {
-      try {
-        const res = await fetch('/api/business/position-sizing');
-        if (res.ok) {
-          const data = await res.json();
-          setPositions(data.positions || []);
-        }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchSizing();
-  }, []);
-
-  return { positions, loading, error };
-}
+// NOTE: useExpectedReturns / usePositionSizing were removed — they had zero consumers
+// (BusinessLayerSection reads expected returns from /api/business/recommendations).

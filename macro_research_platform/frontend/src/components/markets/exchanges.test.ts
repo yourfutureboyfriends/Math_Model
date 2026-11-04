@@ -1,0 +1,3 @@
+import { it,expect } from 'vitest';import { EXCHANGES,exchangeLabels } from './exchanges';
+it('keeps distinct exchange hubs within valid geographic bounds',()=>{expect(new Set(EXCHANGES.map(e=>e.id)).size).toBe(EXCHANGES.length);expect(EXCHANGES.length).toBeGreaterThan(20);for(const e of EXCHANGES){expect(Math.abs(e.point[0])).toBeLessThanOrEqual(180);expect(Math.abs(e.point[1])).toBeLessThanOrEqual(90);expect(e.url).toMatch(/^https:\/\//);}});
+it('keeps a focused hub label visible when nearby exchange labels collide',()=>{const points=[{id:'a',x:10,y:10,label:'Exchange A'},{id:'b',x:14,y:12,label:'Exchange B'},{id:'c',x:200,y:100,label:'Exchange C'}];expect([...exchangeLabels(points,'b')]).toEqual(['b','c']);});

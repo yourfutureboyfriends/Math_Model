@@ -13,6 +13,7 @@ RegimeType = Literal["Goldilocks", "Reflation", "Stagflation", "Slowdown"]
 
 @dataclass(frozen=True)
 class RegimeContext:
+    """The current macro regime and its growth, inflation and liquidity z-scores, shared by the dashboard sections."""
     regime: RegimeType
     confidence: float
     growth_zscore: float
@@ -24,10 +25,12 @@ class RegimeContext:
     # Convenience properties used by downstream sections
     @property
     def is_inflationary(self) -> bool:
+        """Inflation z-score above +0.3."""
         return self.inflation_zscore > 0.3
 
     @property
     def is_above_trend_growth(self) -> bool:
+        """Growth z-score above its threshold."""
         return self.growth_zscore > 0.0
 
     @property

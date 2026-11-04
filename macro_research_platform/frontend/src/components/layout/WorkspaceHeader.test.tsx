@@ -1,0 +1,7 @@
+import{act}from'react';import{createRoot}from'react-dom/client';import{it,expect,vi}from'vitest';import{WorkspaceHeader}from'./WorkspaceHeader';import{getContentDensity}from'@/lib/contentDensity';
+it('shares density across workspaces and finds a real destination',async()=>{
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);localStorage.clear();const host=document.createElement('div'),root=createRoot(host),pick=vi.fn();document.body.append(host);const items=[{id:'risk',label:'Risk review',group:'RISK'},{id:'signals',label:'Signal breakdown',group:'SIGNALS'}];
+ try{await act(async()=>root.render(<><WorkspaceHeader area="macro" items={items} onPick={pick}/><WorkspaceHeader area="quant" items={items} onPick={pick}/></>));const compact=Array.from(host.querySelectorAll('button')).filter(b=>b.textContent==='Compact');act(()=>compact[0].click());expect(getContentDensity()).toBe('compact');expect(compact.every(b=>b.getAttribute('aria-pressed')==='true')).toBe(true);
+ const input=host.querySelector('input')!;act(()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,'risk');input.dispatchEvent(new Event('input',{bubbles:true}));});act(()=>input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})));expect(pick).toHaveBeenCalledWith('risk');expect(input.value).toBe('');
+ }finally{act(()=>root.unmount());host.remove();localStorage.clear();vi.unstubAllGlobals();}
+});

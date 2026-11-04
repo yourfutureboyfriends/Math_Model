@@ -14,10 +14,11 @@ interface TableProps<T> {
   columns: TableColumn<T>[];
   keyExtractor: (item: T) => string;
   className?: string;
+  emptyMessage?: string;
 }
 
-export function Table<T>({ data, columns, keyExtractor, className }: TableProps<T>) {
-  if (!data?.length) return null;
+export function Table<T>({ data, columns, keyExtractor, className,emptyMessage='No rows available for this view.' }: TableProps<T>) {
+  if(!data?.length)return <div className="workspace-empty" role="status">{emptyMessage}</div>;
 
   const getCellValue = (item: T, column: TableColumn<T>): React.ReactNode => {
     if (typeof column.accessor === 'function') {
@@ -27,7 +28,7 @@ export function Table<T>({ data, columns, keyExtractor, className }: TableProps<
   };
 
   return (
-    <div className={cn('overflow-x-auto', className)}>
+    <div className={cn('workspace-table-scroll overflow-x-auto', className)} tabIndex={0} role="group" aria-label="Scrollable data table">
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-border-subtle bg-surface-2">

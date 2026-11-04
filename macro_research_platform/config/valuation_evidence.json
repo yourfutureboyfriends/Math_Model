@@ -1,0 +1,24 @@
+{
+  "reviewed_at": "2026-10-28",
+  "note": "Manually verified issuer facts. Period/currency matching is mandatory; references are not automatic price targets.",
+  "operating_profit": {
+    "0590.HK": {
+      "as_of": "2026-03-31",
+      "published_at": "2026-06-25",
+      "currency": "HKD",
+      "revenue": 17205242000,
+      "ebit": 2648054000,
+      "source": "https://www.lukfook.com/en/category/news-press-releases/post/lukfook-group-0590-announces-annual-results-for-the-year-ended-31-march-2026",
+      "reason": "Issuer-reported operating profit; the provider's Operating Income field uses a different definition. Retain the issuer definition for the matching fiscal-year base."
+    }
+  },
+  "asset_references": {
+    "INVE-B.ST": [
+      {"metric": "Issuer adjusted NAV per share", "per_share": 411, "currency": "SEK", "as_of": "2026-09-30", "published_at": "2026-10-16", "source": "https://www.investorab.com/investors-media/reports-presentations/2026"}
+    ],
+    "VGP.BR": [
+      {"metric": "Issuer EPRA NTA per share", "per_share": 97.1, "currency": "EUR", "as_of": "2026-06-30", "published_at": "2026-08-20", "source": "https://www.vgpparks.eu/content/uploads/2026/08/VGP_Press_Release_H1-26_ENG-1-1.pdf"},
+      {"metric": "Issuer IFRS NAV per share", "per_share": 105.33, "currency": "EUR", "as_of": "2026-06-30", "published_at": "2026-08-20", "source": "https://www.vgpparks.eu/content/uploads/2026/08/VGP_Press_Release_H1-26_ENG-1-1.pdf"}
+    ]
+  }
+}
