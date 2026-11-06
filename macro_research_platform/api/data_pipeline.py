@@ -211,11 +211,16 @@ def update_csv(row: dict) -> bool:
 
 
 def invalidate_cache(cache_obj: dict, lock) -> None:
-    """Clear a dashboard cache so the next request recomputes."""
+    """Drop every cached dashboard build so the next request recomputes.
+
+    `cache_obj` is the handler's cache, keyed mode -> (timestamp, data). Setting "data" and
+    "timestamp" keys — what this used to do — matched only the shape of a second, unread dict in
+    api/main.py, so the pipeline reported cache_cleared=True while the served cache kept its stale
+    build until its own TTL expired.
+    """
     with lock:
-        cache_obj["data"]      = None
-        cache_obj["timestamp"] = 0.0
-    logger.info("[PIPELINE] Cache cleared — next request recomputes")
+        cache_obj.clear()
+    logger.info("[PIPELINE] Dashboard cache cleared — next request recomputes")
 
 
 def run_daily_pipeline(dashboard_cache: dict, cache_lock) -> dict:

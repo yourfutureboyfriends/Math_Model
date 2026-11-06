@@ -58,6 +58,19 @@ _DASHBOARD_FLAG_AFTER = 600   # a cached copy older than this is flagged stale
 _SNAPSHOT_DIR = __import__("pathlib").Path(__file__).resolve().parents[2] / "data" / "processed" / "live"
 _REFRESHING: dict[str, "_dash_asyncio.Task"] = {}
 
+
+def served_cache() -> dict:
+    """The dashboard response cache, keyed mode -> (timestamp, data).
+
+    The single point of access, so the scheduler, the freshness diagnostics and the snapshot
+    builder all read and invalidate the same object. api/main.py used to keep a second dict of the
+    same name shaped {"data", "timestamp", "mode"}: the daily pipeline invalidated that one while
+    every reader read this one, so the pipeline reported cache_cleared=True without clearing
+    anything, and cacheAgeSeconds was computed from a timestamp only ever set to 0.0.
+    """
+    return _DASHBOARD_CACHE
+
+
 # Real headline sentiment (RSS fetch is slow + news moves slowly → cache 10 min).
 _NEWS_CACHE: dict = {"articles": None, "ts": 0.0}
 

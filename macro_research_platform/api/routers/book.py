@@ -362,8 +362,8 @@ async def portfolio_generate_ideas_v1(book: Optional[str] = None):
     # Current regime from the live dashboard cache.
     regime_key, regime_name, infl_dir, growth, carry_z = None, None, None, None, None
     try:
-        from api.handlers.dashboard_handler import _DASHBOARD_CACHE
-        cached = _DASHBOARD_CACHE.get("live")
+        from api.handlers.dashboard_handler import served_cache
+        cached = served_cache().get("live")
         d = cached[1] if cached else None
         if d is not None:
             reg = getattr(d, "regime", None) or {}

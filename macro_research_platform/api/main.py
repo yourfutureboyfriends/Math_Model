@@ -311,9 +311,15 @@ def _get_all_fx_bounds() -> dict:
     return {pair: _build_fx_sanity_bounds(ticker) for pair, ticker in tickers.items()}
 
 
-# FIXED: Tier 1D - Dashboard response caching with 5-minute TTL
-# Reduces response time from ~4s to <100ms for cached responses
-_DASHBOARD_CACHE: Dict[str, Any] = {"data": None, "timestamp": 0.0, "mode": "live"}
+# The dashboard response cache lives in the handler (mode -> (timestamp, data), 60s TTL with
+# stale-while-revalidate). This module only needs to invalidate it and report its age, so it goes
+# through the accessor instead of holding a second dict of the same name. That second dict was what
+# the daily pipeline invalidated while every reader read the handler's, so cache_cleared was always
+# true and nothing was cleared, and cacheAgeSeconds was time.time() minus a timestamp only ever 0.0.
+def _served_dashboard_cache() -> Dict[str, Any]:
+    from api.handlers.dashboard_handler import served_cache
+    return served_cache()
+
 
 # Reusable async response cache (P1 perf) — see api/utils/cache.py.
 # Endpoints that re-fetch live FRED/market data every call (health, cot, calendar, ...) run
@@ -321,7 +327,6 @@ _DASHBOARD_CACHE: Dict[str, Any] = {"data": None, "timestamp": 0.0, "mode": "liv
 # calls instant without changing the data's meaning.
 from api.utils.cache import ttl_cache
 _DASHBOARD_CACHE_LOCK = threading.Lock()
-_DASHBOARD_CACHE_TTL_SECONDS = 300  # 5 minutes
 
 # FIXED: R-01 - APScheduler for automated data pipeline
 # A job that misses its time by up to 10 minutes (slow start-up, a sleeping laptop) still runs, once (coalesce). The
@@ -374,9 +379,8 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[STARTUP] users table init failed: {e}")
     logger.info("Clearing dashboard cache to force fresh computation")
-    global _DASHBOARD_CACHE
-    _DASHBOARD_CACHE["data"] = None
-    _DASHBOARD_CACHE["timestamp"] = 0.0
+    with _DASHBOARD_CACHE_LOCK:
+        _served_dashboard_cache().clear()
 
     # Live AIS collector (whole world): start with the server so SHIP has a picture when opened
     # and the worldwide satellite presence layer (GFW, refreshed daily) for areas without receivers
@@ -461,7 +465,7 @@ async def lifespan(app: FastAPI):
 
         # Daily at 06:00 UTC - full data refresh
         _scheduler.add_job(
-            func=lambda: run_daily_pipeline(_DASHBOARD_CACHE, _DASHBOARD_CACHE_LOCK),
+            func=lambda: run_daily_pipeline(_served_dashboard_cache(), _DASHBOARD_CACHE_LOCK),
             trigger=CronTrigger(hour=6, minute=0),
             id="daily_pipeline_06utc",
             replace_existing=True,
@@ -471,7 +475,7 @@ async def lifespan(app: FastAPI):
         # Once after the US close. The CSV is monthly, so re-running the ~36-request
         # pipeline every 15 minutes only burned FRED's rate limit.
         _scheduler.add_job(
-            func=lambda: run_daily_pipeline(_DASHBOARD_CACHE, _DASHBOARD_CACHE_LOCK),
+            func=lambda: run_daily_pipeline(_served_dashboard_cache(), _DASHBOARD_CACHE_LOCK),
             trigger=CronTrigger(day_of_week="mon-fri", hour=21, minute=15),
             id="post_close_refresh",
             replace_existing=True,
@@ -743,7 +747,7 @@ async def lifespan(app: FastAPI):
                 if fred_guard.is_open():          # FRED refusing requests: don't run a partial refresh
                     res = {"csv_updated": False}
                 else:
-                    res = run_daily_pipeline(_DASHBOARD_CACHE, _DASHBOARD_CACHE_LOCK)
+                    res = run_daily_pipeline(_served_dashboard_cache(), _DASHBOARD_CACHE_LOCK)
                 if (not res.get("csv_updated") or fred_guard.is_open()) and attempt < 8:
                     logger.warning("[PIPELINE] catch-up attempt %d did not update the CSV — retrying in 15 min", attempt)
                     _scheduler.add_job(func=_catchup, args=[attempt + 1], trigger="date",
@@ -1288,8 +1292,8 @@ async def _build_pit_snapshot() -> dict:
     """Compact point-in-time state: regime, ensemble, key metrics, portfolio risk."""
     state: dict = {}
     try:
-        from api.handlers.dashboard_handler import _DASHBOARD_CACHE
-        cached = _DASHBOARD_CACHE.get("live")
+        from api.handlers.dashboard_handler import served_cache
+        cached = served_cache().get("live")
         d = cached[1] if cached else None
         if d is not None:
             reg = getattr(d, "regime", None) or {}
@@ -1446,7 +1450,7 @@ async def get_data_debug():
 async def manual_refresh(background_tasks: BackgroundTasks):
     """Force immediate data pipeline run with CSV update + cache invalidation."""
     background_tasks.add_task(
-        run_daily_pipeline, _DASHBOARD_CACHE, _DASHBOARD_CACHE_LOCK
+        run_daily_pipeline, _served_dashboard_cache(), _DASHBOARD_CACHE_LOCK
     )
     return {
         'status': 'refresh_started',
@@ -1471,7 +1475,10 @@ async def data_freshness():
             last_date = None
             age_secs = 999999
 
-        cache_age = time.time() - _DASHBOARD_CACHE.get('timestamp', 0)
+        # Age of the build actually being served. This used to read a second dict in this module
+        # whose "timestamp" was only ever 0.0, so it reported time.time() — roughly 57 years.
+        _served = _served_dashboard_cache().get('live')
+        cache_age = (time.time() - _served[0]) if _served else None
 
         # Get scheduler status
         scheduler_jobs = []
@@ -1490,8 +1497,8 @@ async def data_freshness():
             'csvLastDate': last_date.strftime('%Y-%m-%d') if last_date else 'Unknown',
             'csvAgeHours': round(age_secs / 3600, 1),
             'csvIsStale': age_secs > 36 * 3600,
-            'cacheAgeSeconds': int(cache_age),
-            'cacheHasData': _DASHBOARD_CACHE.get('data') is not None,
+            'cacheAgeSeconds': int(cache_age) if cache_age is not None else None,
+            'cacheHasData': _served is not None,
             'schedulerActive': _scheduler.running if hasattr(_scheduler, 'running') else False,
             'schedulerJobs': scheduler_jobs,
             'nextScheduledRuns': {
@@ -1505,8 +1512,8 @@ async def data_freshness():
             'csvLastDate': 'Error',
             'csvAgeHours': 0,
             'csvIsStale': True,
-            'cacheAgeSeconds': int(time.time() - _DASHBOARD_CACHE.get('timestamp', 0)),
-            'cacheHasData': _DASHBOARD_CACHE.get('data') is not None,
+            'cacheAgeSeconds': None,
+            'cacheHasData': _served_dashboard_cache().get('live') is not None,
             'schedulerActive': False,
             'error': str(e)
         }

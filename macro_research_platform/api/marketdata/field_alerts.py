@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 def _dash():
-    from api.handlers.dashboard_handler import _DASHBOARD_CACHE
-    hit = _DASHBOARD_CACHE.get("live")
+    from api.handlers.dashboard_handler import served_cache
+    hit = served_cache().get("live")
     return hit[1] if hit else None
 
 
