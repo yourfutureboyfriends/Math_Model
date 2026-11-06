@@ -45,6 +45,11 @@ lightgbm>=4.3.0
 xgboost>=2.0.0
 catboost>=1.2.0
 optuna>=3.5.0
+# api/ml/institutional imports torch at module scope, and api/ml/deep.py inside its model
+# builders. It was only declared in the root requirements.txt, so the README's
+# `pip install -r api/requirements.txt` left the institutional package unimportable.
+# Keep torch and LightGBM out of the same process — see api/tests/conftest.py.
+torch>=2.2
 
 # Data Connectors
 fredapi>=0.5.0
