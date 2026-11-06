@@ -76,8 +76,7 @@ class RegimeContextData(BaseModel):
     duration_months: int
     timestamp: float
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CurrentRegimeValidation(BaseModel):
@@ -1355,8 +1354,7 @@ class YieldPoint(BaseModel):
     tenor: float
     yield_: float = Field(..., alias="yield")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class YieldCurveData(BaseModel):

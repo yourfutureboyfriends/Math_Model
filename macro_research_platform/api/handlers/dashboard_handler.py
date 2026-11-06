@@ -1175,7 +1175,7 @@ Current regime: **{regime_name}** - {regime_chars.description}
     )
 
     # Validate
-    dashboard_dict = dashboard.dict()
+    dashboard_dict = dashboard.model_dump()
     validation = validate_dashboard_payload(dashboard_dict)
 
     if not validation.valid:

@@ -39,7 +39,7 @@ def error_response(
         error=error,
         detail=detail,
         endpoint=endpoint
-    ).dict()
+    ).model_dump()
 
 
 def success_response(data: Any, cached: bool = False) -> dict:
@@ -56,4 +56,4 @@ def success_response(data: Any, cached: bool = False) -> dict:
     return SuccessResponse(
         data=data,
         cached=cached
-    ).dict()
+    ).model_dump()

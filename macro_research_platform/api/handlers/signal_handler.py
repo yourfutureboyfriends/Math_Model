@@ -202,7 +202,7 @@ async def get_signals_data() -> Dict[str, Any]:
         )
     )
 
-    data_dict = data.dict()
+    data_dict = data.model_dump()
     data_dict["regime"] = dashboard.regime.current or "goldilocks"
 
     validation = validate_signal_payload(data_dict)
