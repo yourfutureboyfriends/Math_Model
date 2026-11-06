@@ -1024,6 +1024,13 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
     shares = inp.get("shares")
     if not shares or shares <= 0:
         raise NotFound("Share count unavailable.")
+    # `not x` and `x <= 0` are both False for NaN, so the two guards above let a non-finite input
+    # through to a reported per_share of nan. inputs() rejects non-finite values on the live
+    # ingestion path, but value() is public and also called directly by operating_scenarios,
+    # market_views, expectations and model_archive.replay_forecast, none of which re-validate.
+    for label, number in (("revenue", rev0), ("operating profit", ebit0), ("share count", shares)):
+        if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number):
+            raise NotFound(f"Invalid {label}")
     if not 3 <= years <= 30:
         raise NotFound("Use 3–30 projection years.")
     w = wacc(inp, beta, erp, include_leases, ke_method)
@@ -1226,6 +1233,14 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
     bridge = {"enterprise_value": ev, "debt": -debt, "cash": inp.get("cash") or 0, "investments": inp.get("investments") or 0,
               "minority_interest": -(inp.get("minority_interest") or 0), "equity_value": eq,
               "captive_finance_excluded": inp.get("captive_finance_receivables")}
+    # Backstop. A NaN in growth or sales_to_capital propagates through the projection and the
+    # terminal value without tripping any comparison on the way, so check the results rather than
+    # every input. None is legitimate — the currency conversion above sets per_share to None when
+    # the trading-currency market cap is unavailable — but a non-finite number is never a valuation.
+    for label, number in (("per_share", per_share), ("per_share_reporting_ccy", per_share_fin),
+                          ("enterprise_value", ev), ("equity_value", eq)):
+        if number is not None and not math.isfinite(number):
+            raise NotFound(f"Valuation produced a non-finite {label}; an input was missing or non-finite.")
     return {"model": "fcff", "per_share": per_share, "per_share_reporting_ccy": per_share_fin, "bridge": bridge, "equity_negative": equity_negative, "upside": (per_share / price - 1) if price else None, "enterprise_value": ev, "equity_value": eq,
             "pv_explicit": pv_sum, "pv_terminal": pv_tv, "terminal_share": pv_tv / ev if ev > 0 else None, "terminal_value": tv,
             "terminal_fcff": fcff_next, "terminal_reinvestment_rate": gT / ron,

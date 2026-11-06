@@ -50,3 +50,24 @@ def test_peak_cyclical_margin_returns_to_through_cycle_in_three_years():
     v = dcf.value(base(ebit=40e9, target_margin_default=0.20, margin_fade_years=dcf.CYCLICAL_FADE_YEARS))
     m = [r["margin"] for r in v["projection"]]
     assert m[0] < 0.40 and m[2] == pytest.approx(0.20) and m[9] == pytest.approx(0.20)
+
+
+def test_non_finite_inputs_raise_rather_than_reporting_a_nan_valuation():
+    """`not rev0` and `shares <= 0` are both False for NaN, so the guards in value() let a
+    non-finite input through and it returned per_share = nan with no relevant check. outlook()
+    then read `nan > 0` as False and still published a 24-month price path. inputs() rejects
+    non-finite values on the live ingestion path, but value() is public and called directly by
+    operating_scenarios, market_views, expectations and model_archive.replay_forecast."""
+    nan, inf = float("nan"), float("inf")
+    # the named inputs are rejected with the offending field in the message
+    for kw, label in (({"revenue": nan}, "revenue"), ({"revenue": inf}, "revenue"),
+                      ({"ebit": nan}, "operating profit"), ({"ebit": inf}, "operating profit"),
+                      ({"shares": nan}, "share count")):
+        with pytest.raises(dcf.NotFound, match=label):
+            dcf.value(base(**kw))
+    # everything else is caught by the finiteness backstop on the computed results
+    for kw in ({"growth": nan}, {"sales_to_capital": nan}):
+        with pytest.raises(dcf.NotFound, match="non-finite"):
+            dcf.value(base(**kw))
+    # and the clean path is untouched by either guard
+    assert dcf.value(base())["per_share"] == pytest.approx(296.67, abs=0.5)
