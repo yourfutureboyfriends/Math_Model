@@ -22,7 +22,7 @@ export const HUB_MODES: { id: HubMode; label: string; title: string }[] = [
   { id: 'trading', label: 'Trading', title: 'Ideas, pre-trade checks, positions, risk and governance' },
   { id: 'quant', label: 'Quant', title: 'Quant Lab, Strategy Lab, backtests, model validation and the data' },
   { id: 'markets', label: 'Markets', title: 'Any stock, ETF, index, FX, future or crypto — workstation, movers, screener' },
-  { id: 'pe', label: 'PE', title: 'Private equity — LBO deal evaluation' },
+  { id: 'pe', label: 'PE', title: 'Private equity — companies, funds, real estate and buyouts' },
   { id: 'ml', label: 'ML', title: 'Machine learning — every forecast task, the neural networks, their visualizer and records' },
 ];
 

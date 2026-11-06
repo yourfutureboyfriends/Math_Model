@@ -99,23 +99,23 @@ export function CorrView({ seed }: { seed?: string }) {
       {error && <ErrorBox msg={error} />}
       {data && (
         <div className="overflow-x-auto border border-border bg-surface-1 p-2">
+          {data.calendar_basis && <p className="text-[11px] text-text-secondary mb-3">Analysis calendar: <b>{data.calendar_basis}</b> · minimum 20 paired observations · local-currency returns</p>}
           <table className="text-[11px] font-mono tabular-nums">
             <thead><tr><th />{data.symbols.map((s: string) => <th key={s} className="px-1 font-normal text-text-tertiary [writing-mode:vertical-rl] rotate-180 h-24 text-left">{toTerminal(s)}</th>)}<th className="px-2 font-normal text-text-tertiary text-right">Vol</th></tr></thead>
             <tbody>{data.symbols.map((s: string, i: number) => (
               <tr key={s}><td className="pr-2 text-text-primary whitespace-nowrap">{toTerminal(s)}</td>
                 {data.matrix[i].map((v: number | null, j: number) => (
-                  <td key={j} className="w-11 h-7 text-center" style={i === j ? { background: 'rgb(var(--c-surface-3))' } : heat(v, 1)} title={`${s} × ${data.symbols[j]}: ${v ?? '—'}`}>
+                  <td key={j} className="w-11 h-7 text-center" style={i === j ? { background: 'rgb(var(--c-surface-3))' } : heat(v, 1)} title={`${s} × ${data.symbols[j]}: ${v ?? '—'} · ${data.pair_observations?.[i]?.[j] ?? 'unknown'} paired observations`}>
                     {i === j ? '' : v == null ? '—' : v.toFixed(2)}</td>))}
                 <td className="px-2 text-right text-text-secondary">{data.volatility[i] != null ? `${(data.volatility[i] * 100).toFixed(0)}%` : '—'}</td></tr>))}</tbody>
           </table>
-          <div className="text-[10px] text-text-tertiary mt-2">{data.note} {data.observations} observations. Vol = annualised volatility.</div>
+          <div className="text-[10px] text-text-tertiary mt-2">{data.note} {data.observations} observations. Vol = annualised volatility. Hover a cell for its paired sample count.</div>
+          {!!data.missing?.length && <p className="text-[11px] text-amber mt-2">Insufficient history: {data.missing.join(', ')}</p>}
         </div>)}
     </div>
   );
 }
 
-// ── RRG ─────────────────────────────────────────────────────────────────────
-const RRG_LABEL: Record<string, string> = { us_sectors: 'US sectors', countries: 'Countries', factors: 'Factors', assets: 'Asset classes' };
 /** Option payoff (Apache ECharts): P&L at expiry (profit shaded green, loss red) and today's value dashed, with
  *  spot and breakevens marked; the axis tooltip reads both at any price. */
 function PayoffChart({ grid, pay, now, spot, breakevens, money }: { grid: number[]; pay: number[]; now: number[]; spot: number; breakevens: number[]; money: (v: number) => string }) {
@@ -147,10 +147,10 @@ function PayoffChart({ grid, pay, now, spot, breakevens, money }: { grid: number
   return <EChart option={option} height={320} ariaLabel="Payoff diagram" />;
 }
 
+// ── RRG ─────────────────────────────────────────────────────────────────────
+const RRG_LABEL: Record<string, string> = { us_sectors: 'US sectors', countries: 'Countries', factors: 'Factors', assets: 'Asset classes' };
 const QCOL: Record<string, string> = { Leading: 'rgb(var(--c-green))', Weakening: 'rgb(var(--c-amber))', Lagging: 'rgb(var(--c-red))', Improving: 'rgb(var(--c-blue))' };
 
-export function RrgView({ onOpen }: { onOpen: (s: string) => void }) {
-  const [u, setU] = useState('us_sectors');
 /** Relative rotation graph (Apache ECharts): RS-Ratio × RS-Momentum around 100, quadrant tints, each symbol's tail
  *  ending in its current point; hover (here or in the table) isolates a symbol, click opens it. */
 function RrgChart({ points, lo, hi, hover, setHover, onOpen }: { points: any[]; lo: number; hi: number; hover: string | null;
@@ -198,6 +198,8 @@ function RrgChart({ points, lo, hi, hover, setHover, onOpen }: { points: any[]; 
   return <EChart option={option} height={480} onReady={onReady} ariaLabel="Relative rotation graph" />;
 }
 
+export function RrgView({ onOpen }: { onOpen: (s: string) => void }) {
+  const [u, setU] = useState('us_sectors');
   const [tail, setTail] = useState(8);
   const [hover, setHover] = useState<string | null>(null);
   const { data, error, loading } = useJSON<any>(`/api/v1/mkt/rrg?universe=${u}&tail=${tail}`, 3_600_000);

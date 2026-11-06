@@ -1,3 +1,4 @@
+import {AnalystScenarios,DevelopedMarketContext} from './AnalystScenarios';
 // Security function screens: ERN, ANR, HDS, DVD, OMON, RV, HP, BETA, DCF.
 import { useMemo, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
@@ -792,6 +793,8 @@ export function DcfView({ symbol }: { symbol: string }) {
   return (
     <div className="space-y-3">
       {modelBar}
+      {data?.market_context&&<DevelopedMarketContext data={data.market_context}/>}
+      {data.analyst_scenarios&&<AnalystScenarios data={data.analyst_scenarios}/>}
       {data.expectations && <ExpectationsPanel data={data.expectations} />}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <Stat label="Intrinsic value / share" value={v.per_share != null ? fmtPrice(v.per_share) : '—'} sub={pccy} />

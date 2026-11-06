@@ -126,3 +126,7 @@ wsproto==1.3.2
 xlsxwriter==3.2.9
 yarl==1.23.0
 yfinance==1.3.0
+exchange-calendars==4.13.2
+korean-lunar-calendar==0.4.0
+pyluach==2.3.0
+toolz==1.2.0

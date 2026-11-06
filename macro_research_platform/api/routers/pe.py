@@ -268,3 +268,55 @@ async def pe_macro(request: Request, currency: str = Query("USD", max_length=3))
     _user(request)
     from api.pe import market
     return await _run(market.macro_context, currency)
+
+
+# Sourcing is broader than buyout underwriting: direct equity, funds and property.
+class OpportunityIn(BaseModel):
+    kind: str = Field(..., pattern='^(company|fund|property)$')
+    name: str = Field(..., min_length=1, max_length=160)
+    subtype: str = Field('', max_length=40)
+    country: str = Field('', max_length=80)
+    sector: str = Field('', max_length=100)
+    currency: str = Field('USD', pattern='^[A-Z]{3}$')
+    stage: str = Field('Research', max_length=40)
+    source_url: str = Field('', max_length=1500)
+    as_of: Optional[str] = Field(None, pattern=r'^\d{4}-\d{2}-\d{2}$')
+    nav_date: Optional[str] = Field(None, pattern=r'^\d{4}-\d{2}-\d{2}$')
+    notes: str = Field('', max_length=8000)
+    checks: List[str] = Field(default_factory=list, max_length=20)
+    values: Dict[str, Optional[float]] = Field(default_factory=dict)
+
+
+@router.get('/api/v1/pe/sourcing/catalogue')
+async def pe_sourcing_catalogue(request: Request):
+    _user(request)
+    from api.pe.opportunities import catalogue
+    return catalogue()
+
+
+@router.get('/api/v1/pe/opportunities')
+async def pe_opportunities(request: Request, kind: str = Query(...,pattern='^(company|fund|property)$')):
+    _user(request)
+    from api.pe.opportunities import list_opportunities
+    return {'opportunities':await _run(list_opportunities,kind)}
+
+
+@router.post('/api/v1/pe/opportunities/analyse')
+async def pe_opportunity_analyse(body: OpportunityIn, request: Request):
+    _user(request)
+    from api.pe.opportunities import analyse
+    return await _run(analyse,body.kind,body.values,body.subtype,body.as_of,body.nav_date,body.checks)
+
+
+@router.post('/api/v1/pe/opportunities')
+async def pe_opportunity_create(body: OpportunityIn, request: Request):
+    who=_user(request,WRITE)
+    from api.pe.opportunities import save
+    return await _run(save,who,body.model_dump())
+
+
+@router.put('/api/v1/pe/opportunities/{opportunity_id}')
+async def pe_opportunity_update(opportunity_id: int, body: OpportunityIn, request: Request):
+    who=_user(request,WRITE)
+    from api.pe.opportunities import save
+    return await _run(save,who,body.model_dump(),opportunity_id)

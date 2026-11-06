@@ -17,9 +17,14 @@ import { EChart, axisStyle, chartTheme } from '@/components/ml/ui/EChart';
 import { DataGrid } from '@/components/ml/ui/DataGrid';
 import { Hint, Panel, RangeSlider, Segmented, Stat } from '@/components/ml/ui/Controls';
 import { DriftBullet } from '@/components/ml/DriftBullet';
+import { AutonomousStatus } from '@/components/ml/AutonomousStatus';
+import { OnlineDataStatus } from '@/components/ml/OnlineDataStatus';
+import { ResearchNetwork } from '@/components/ml/ResearchNetwork';
+import { LiveModularFlow } from '@/components/ml/LiveModularFlow';
+import { ModularNetwork } from '@/components/ml/ModularNetwork';
 import { NeuralFlow } from '@/components/ml/NeuralFlow';
-import { mlQueryClient, send, useFeaturesQ, useHistoryQ, useInputsQ, useKnowledgeQ, useRegistryQ, useTaskQ, useTasksQ } from '@/components/ml/api';
-import { KNOWN_TASKS, ML_TABS, ensemble, forward, setMlTab, setMlTask, skillText, useMlTab, useMlTask, type Weights } from '@/components/ml/mlShared';
+import { mlQueryClient, send, useFeaturesQ, useHistoryQ, useInputsQ, useVisualizerQ, useKnowledgeQ, useRegistryQ, useTaskQ, useTasksQ } from '@/components/ml/api';
+import { KNOWN_TASKS, ML_TABS, ensemble, forward, validWeights, setMlTab, setMlTask, skillText, useMlTab, useMlTask, type Weights } from '@/components/ml/mlShared';
 
 const MODEL_ORDER = ['champion', 'network', 'factor_logit', 'factor_network', 'forest', 'boosting', 'regime_switch', 'deep_sequence', 'average'];
 const SHORT: Record<string, string> = { champion: 'Logistic', network: 'Neural net', factor_logit: 'Factor', factor_network: 'Factor NN', forest: 'Forest',
@@ -40,7 +45,7 @@ function Skeleton({ h = 280 }: { h?: number }) { return <div className="ml-skele
 function Training({ d, onRetry }: { d: any; onRetry?: () => void }) {
   if (d?.training) return (
     <div className="ml-panel"><div className="ml-panel-body flex items-center gap-3 text-xs text-text-secondary" role="status">
-      <span className="w-2 h-2 rounded-full bg-bloomberg animate-pulse" />Training nine models on ~85 inputs and building their walk-forward records — {d.elapsed_s ?? 0}s. This page updates by itself.
+      <span className="w-2 h-2 rounded-full bg-bloomberg animate-pulse" />{d.inspection_only?'Preparing the interactive shallow network':'Training models and building their walk-forward records'} — {d.elapsed_s ?? 0}s. This page updates by itself.
     </div></div>);
   return <div className="ml-panel"><div className="ml-panel-body text-xs text-amber">Unavailable — {d?.reason ?? 'error'} {onRetry && <button className="ml-btn ml-2" onClick={onRetry}>Retry</button>}</div></div>;
 }
@@ -79,6 +84,8 @@ function Toolbar({ tasks, period, setPeriod, picked, toggle, models, onExport }:
 // ── Overview ──────────────────────────────────────────────────────────────────
 function Overview({ tasks }: { tasks: any[] | undefined }) {
   const reg = useRegistryQ();
+  const [deepBusy,setDeepBusy]=useState(false),[deepMessage,setDeepMessage]=useState('');
+  const deep=reg.data?.deep_sequence_training;
   const ready = (tasks ?? []).filter((t) => t.ready);
   const models = MODEL_ORDER.filter((m) => ready.some((t) => t.models?.[m]));
   const rows = (tasks?.length ? tasks : KNOWN_TASKS) as any[];
@@ -115,10 +122,21 @@ function Overview({ tasks }: { tasks: any[] | undefined }) {
         <Stat label="Tasks live" value={`${ready.length}/${rows.length}`} delta={ready.length < rows.length ? 'training or queued' : 'all trained this month'} />
         <Stat label="Models per task" value={models.length || 9} delta="simple → deep, walk-forward" />
         <Stat label="Signals with skill" value={`${ready.filter((t) => t.signal?.useful).length}/${ready.length}`} tone="good" delta="beat the base rate out of sample" />
-        <Stat label="Promotions" value={reg.data?.promotions?.length ?? 0} delta="challengers serving" />
+        <Stat label="Promotions" value={reg.data?.promotions?.filter((p:any)=>p.active!==false).length ?? 0} delta="challengers serving" />
         <Stat label="Forecasts logged" value={reg.data ? new Set(reg.data.recent_forecasts.map((r: any) => `${r.task}${r.month}`)).size : '—'} delta="task-months, never rewritten" />
         <Stat label="Data warnings" value={warnings} tone={warnings ? 'warn' : 'good'} delta="inputs out of range or shifted" />
       </div>
+      {deep&&<Panel title="Neural capacity & continual refinement" sub="Research profiles are versioned challengers. Training updates do not promote a model.">
+       <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-2"><Stat label="Configured profile" value={deep.configured.profile} delta={`${deep.configured.hidden} units × ${deep.configured.layers} GRU layers`}/><Stat label="Temporal attention" value={deep.configured.attention_heads} delta="heads over past observations"/><Stat label="Ensemble" value={deep.configured.seeds} delta={`up to ${deep.configured.epochs} epochs / seed`}/><Stat label="Training state" value={deep.training?'Rebuilding':'Ready / idle'} delta={`Version ${deep.fingerprint}`}/></div>
+       <p className="text-xs text-text-secondary mt-3">{deep.learning}</p><p className="text-xs text-text-tertiary mt-2">{deep.validation}</p><p className="text-xs text-text-tertiary mt-2">{deep.promotion}</p>
+       {deep.stages&&<div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2 mt-4" aria-label="Neural processing pipeline">{deep.stages.map((stage:any,i:number)=><div key={stage.name} className="border border-border rounded-lg p-3"><p className="text-xs font-medium">{i+1}. {stage.name}</p><p className="text-[11px] text-text-secondary mt-1">{stage.detail}</p></div>)}</div>}
+       {deep.continual&&<div className="mt-3 text-xs space-y-2"><p>Automatic learning: {deep.continual.enabled?'On':'Off'} · {deep.continual.action??'Awaiting first check'} · Architecture: {deep.configured.architecture}</p><p className="text-text-tertiary">{deep.continual.schedule} Research refits are normally weekly; newly matured outcomes can permit a daily update. All incoming data must pass quality checks.</p><p className="text-text-tertiary">{deep.continual.policy}</p>{deep.continual.observation&&<p>Latest learning inputs: {deep.continual.observation.as_of} · {deep.continual.observation.months} months · {deep.continual.observation.tasks?.length} tasks. {deep.continual.observation.limitation}</p>}{deep.continual.error&&<p role="alert">{deep.continual.error}</p>}</div>}
+       {deep.routing?.length>0&&<div className="mt-3"><p className="text-xs font-medium">Latest specialist routing</p><div className="grid sm:grid-cols-3 gap-2 mt-2">{Object.keys(deep.routing[0]).map((name:string)=>{const weight=deep.routing.reduce((sum:number,row:any)=>sum+(row[name]??0),0)/deep.routing.length;return <div key={name} className="text-xs border border-border rounded p-2"><span>{name.replace(/_/g,' ')}</span><span className="float-right font-mono">{(weight*100).toFixed(1)}%</span><div className="h-1 bg-border rounded mt-2"><div className="h-1 bg-amber rounded" style={{width:`${Math.max(0,Math.min(100,weight*100))}%`}}/></div></div>;})}</div><p className="text-[10px] text-text-tertiary mt-2">Learned internal routing weights averaged across seeds; these are not causal importance or portfolio allocations.</p></div>}
+       <details className="mt-3 text-xs"><summary>Available capacity profiles</summary><div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr><th>Profile</th><th>Hidden units</th><th>Layers</th><th>Attention</th></tr></thead><tbody>{Object.entries(deep.profiles).map(([name,c]:[string,any])=><tr key={name}><td>{name}</td><td>{c.hidden}</td><td>{c.layers}</td><td>{c.attention_heads}</td></tr>)}</tbody></table></div><p className="text-text-tertiary mt-2">{deep.limits} The server’s configuration selects the profile; no profile is certified more accurate before testing.</p></details>
+       <button className="ml-btn mt-3" disabled={deepBusy||deep.training} onClick={async()=>{setDeepBusy(true);setDeepMessage('');try{await send('/api/v1/ml/deep/retrain','POST');setDeepMessage('Research rebuild queued. Existing promotion gates remain in force.');reg.refetch();}catch(e){setDeepMessage(e instanceof Error?e.message:'Could not queue training.');}finally{setDeepBusy(false);}}}>Rebuild research record</button>{deepMessage&&<p role="status" className="text-xs mt-2">{deepMessage}</p>}{deep.error&&<p role="alert" className="text-xs text-red mt-2">{deep.error}</p>}
+      </Panel>}
+      <AutonomousStatus/>
+      <OnlineDataStatus/>
       <div className="ml-grid-12">
         <div style={span(7)} className="ml-span-7"><Panel title="Probability — every task × every model" sub="Shade = today's probability. Hover for the model's walk-forward skill; click a cell to open the model lab.">
           {ready.length ? <EChart option={heat} height={300} ariaLabel="Heatmap of probabilities by task and model"
@@ -230,8 +248,13 @@ function ModelLab({ period, picked }: { period: string; picked: string[] }) {
 
 // ── Network visualizer ────────────────────────────────────────────────────────
 function Visualizer() {
+ const [view,setView]=useState('research');
+ return <div className="space-y-3"><p className="text-xs text-[var(--text-secondary)]">One evidence map and one live model view. Specialist modules are parts of the same model; baseline models remain for validation.</p><Segmented label="Research workspace" value={view} onChange={setView} options={[{value:'research',label:'Research map'},{value:'live',label:'Live model'}]}/>{view==='research'?<ResearchNetwork/>:<><LiveModularFlow/><details className="rounded border p-3"><summary className="cursor-pointer text-xs">Model architecture and baseline diagnostics</summary><ModularNetwork/><ShallowVisualizer/></details></>}</div>;
+
+}
+function ShallowVisualizer() {
   const sel = useMlTask();
-  const q = useTaskQ(sel);
+  const q = useVisualizerQ(sel);
   const d = q.data;
   const [x, setX] = useState<number[] | null>(null);
   const [netIdx, setNetIdx] = useState(0);
@@ -241,7 +264,7 @@ function Visualizer() {
   const [idx, setIdx] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<'1' | '3' | '8'>('3');
-  useEffect(() => { if (d?.available) { setX(d.features.map((f: any) => d.inputs[f.key])); setCurve(0); } }, [d?.available, d?.month, sel]);
+  useEffect(() => { if (d?.available) { setX(d.features.map((f: any) => d.inputs[f.key])); setCurve(0); setNetIdx(0); } }, [d?.available, d?.month, d?.task, sel]);
   useEffect(() => { setIdx(null); setPlaying(false); }, [sel]);
   useEffect(() => {
     const n = hq.data?.months?.length ?? 0;
@@ -259,8 +282,10 @@ function Visualizer() {
     const end = (idx ?? h.values.length - 1) + 1, rows = h.values.slice(Math.max(0, end - 24), end);
     return rows[0].map((_: number, i: number) => rows.map((r: number[]) => r[i]));
   }, [hq.data, idx]);
-  if (!d?.available || !x) return q.isLoading ? <Skeleton /> : <Training d={d} onRetry={() => q.refetch()} />;
+  if (!d?.available || d.task!==sel || !x || x.length!==d.features?.length) return q.isLoading ? <Skeleton /> : <Training d={d} onRetry={() => q.refetch()} />;
+  if(!validWeights(d.network?.weights,d.features.length)) return <Panel title="Network export unavailable"><p role="alert">The exported weights are incomplete or incompatible. Refresh the model before replaying it.</p></Panel>;
   const w: Weights = d.network.weights, cal = d.network.calibration;
+  const selectedNet=Math.min(netIdx,w.nets.length-1);
   const labels: string[] = d.features.map((f: any) => f.label), keys: string[] = d.features.map((f: any) => f.key);
   const ranges = keys.map((k) => d.data_checks.inputs[k]);
   const now = ensemble(w, cal, x);
@@ -280,25 +305,27 @@ function Visualizer() {
     xAxis: { type: 'value', min: 0, max: 1, ...axisStyle(t), axisLabel: { ...axisStyle(t).axisLabel, formatter: (v: number) => `${(v * 100).toFixed(0)}%` } }, yAxis: { type: 'value', show: false, min: -1, max: 1 },
     series: [{ type: 'scatter', data: now.each.map((p) => [p, 0]), symbolSize: 12, itemStyle: { color: t.series[0], opacity: 0.75, borderColor: t.surface, borderWidth: 2 },
       markLine: { symbol: 'none', silent: true, data: [{ xAxis: now.p }], lineStyle: { color: t.textStrong, width: 2 }, label: { formatter: `average ${(now.p * 100).toFixed(1)}%`, color: t.textStrong } } }] };
-  const hidden = forward(w.nets[netIdx], w, x).h;
+  const hidden = forward(w.nets[selectedNet], w, x).h;
   const h = hq.data;
   const months: string[] = h?.months ?? [];
   const jump = (m: string) => { const k = months.findIndex((v) => v >= m); if (k >= 0) { setPlaying(false); setIdx(k); } };
   const live = idx == null;
+  const whatIf=live&&keys.some((k,i)=>Math.abs(x[i]-d.inputs[k])>1e-8);
   return (
     <div className="space-y-2.5">
-      <Panel title={`Signal flow — network ${netIdx + 1} of ${w.nets.length}: ${labels.length} inputs → ${hidden.length} hidden (tanh) → 1 output`}
-        sub="Particles carry each connection's live signal (weight × activation): faster and brighter = stronger; blue raises the probability, amber lowers it. Hidden units pulse with their activation. Press play to replay the real monthly inputs through the network."
+      <p className="text-xs text-text-secondary">{d.calibration_basis??"Interactive shallow neural model — distinct from the modular sequence network."} Historical replay applies today’s fitted weights to past inputs; it is not an out-of-sample forecast.</p>
+      <Panel title={`Signal flow — network ${selectedNet + 1} of ${w.nets.length}: ${labels.length} inputs → ${hidden.length} hidden (tanh) → 1 output`}
+        sub="Particles carry each connection's live signal (weight × activation): faster and brighter = stronger; blue and amber show positive and negative local signals, not causal effects. Hidden units pulse with their activation. Press play to replay the real monthly inputs through the network."
         actions={<Segmented label="Network" value={String(netIdx)} onChange={(v) => setNetIdx(Number(v))} options={w.nets.map((_, i) => ({ value: String(i), label: String(i + 1) }))} />}>
-        <NeuralFlow w={w} netIdx={netIdx} x={x} labels={labels} cal={cal} recent={recent}
-          month={live ? `${d.as_of_inputs} · live` : months[idx]} outcome={live ? null : h?.outcome?.[idx] ?? null} />
+        <NeuralFlow w={w} netIdx={selectedNet} x={x} labels={labels} cal={cal} recent={recent}
+          month={live ? `${d.as_of_inputs} · ${whatIf?'what-if':'live'}` : months[idx]} outcome={live ? null : h?.outcome?.[idx] ?? null} />
         <div className="flex flex-wrap items-center gap-2 mt-2">
           <button className="ml-btn" data-variant="primary" disabled={!h} onClick={() => setPlaying((p) => !p)} aria-label={playing ? 'Pause' : 'Play'}>
             {playing ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}{playing ? 'Pause' : live ? 'Replay history' : 'Play'}</button>
           <Segmented label="Speed" value={speed} onChange={setSpeed} options={[{ value: '1', label: '1×' }, { value: '3', label: '3×' }, { value: '8', label: '8×' }]} />
           <div className="flex-1 min-w-[180px] px-1">{h && <RangeSlider label="Month" value={idx ?? months.length - 1} min={0} max={months.length - 1} step={1}
             onChange={(v) => { setPlaying(false); setIdx(Math.round(v)); }} />}</div>
-          <span className="font-mono text-2xs text-text-secondary w-16 text-right">{live ? 'live' : months[idx]}</span>
+          <span className="font-mono text-2xs text-text-secondary w-16 text-right">{live ? (whatIf?'what-if':'live') : months[idx]}</span>
           {[['2001-03', 'Dot-com'], ['2007-12', 'GFC'], ['2020-02', 'Covid'], ['2022-06', 'Inflation']].map(([m, l]) => (
             <button key={m} className="ml-btn" disabled={!h} onClick={() => jump(m)}>{l}</button>))}
           <button className="ml-btn" onClick={() => { setPlaying(false); setIdx(null); setX(keys.map((k) => d.inputs[k])); }}>Live</button>
@@ -308,7 +335,7 @@ function Visualizer() {
       <PanelGroup direction="horizontal" autoSaveId="ml-visualizer-2" style={{ height: 'auto', overflow: 'visible' }}>
         <RPanel defaultSize={55} minSize={35} style={{ overflow: 'visible' }}>
           <div className="space-y-2.5 pr-1">
-            <Panel title="Response curve" sub="Probability as one input moves (others held); dashed = lowest and highest of the ten networks."
+            <Panel title="Response curve" sub={`Probability as one input moves (others held); dashed = lowest and highest of ${w.nets.length} networks.`}
               actions={<select value={curve} onChange={(e) => setCurve(Number(e.target.value))} className="ml-btn" aria-label="Input">{labels.map((l, i) => <option key={l} value={i}>{l}</option>)}</select>}>
               <EChart option={respOpt} height={260} ariaLabel="Response curve" />
             </Panel>
@@ -324,7 +351,7 @@ function Visualizer() {
           <div className="space-y-2.5 pl-1">
             <Panel title="What if…" sub={`Recomputed in your browser from the exported weights. ${live ? `Inputs as of ${d.as_of_inputs}.` : `Inputs from ${months[idx]}.`}`}
               actions={<button className="ml-btn" onClick={() => { setPlaying(false); setIdx(null); setX(keys.map((k) => d.inputs[k])); }}>Reset to today</button>}>
-              <div className="flex items-baseline gap-3 mb-1"><span className="ml-stat-value">{pct(now.p)}</span><span className="text-2xs text-text-tertiary">networks {pct(now.lo)}–{pct(now.hi)} · champion today {pct(d.champion.probability)}</span></div>
+              <div className="flex items-baseline gap-3 mb-1"><span className="ml-stat-value">{pct(now.p)}</span><span className="text-2xs text-text-tertiary">networks {pct(now.lo)}–{pct(now.hi)} · logistic reference today {pct(d.champion.probability)}</span></div>
               <EChart option={ensOpt} height={90} ariaLabel="Each network's probability" />
               <div className="space-y-2 mt-2">{keys.map((k, i) => (
                 <div key={k} className="grid grid-cols-[150px_1fr_60px] items-center gap-3 text-2xs">

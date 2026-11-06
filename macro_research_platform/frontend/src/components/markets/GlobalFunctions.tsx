@@ -465,14 +465,14 @@ export function CompView({ seed }: { seed?: string }) {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <Panel title="Return and risk">
               <div className="mkt-table-scroll" tabIndex={0} role="group" aria-label="Scrollable market data table"><table className="w-full text-2xs font-mono"><thead><tr className="text-text-tertiary"><th className="text-left font-normal">Symbol</th><th className="text-right font-normal">Total</th>
-                <th className="text-right font-normal">Per year</th><th className="text-right font-normal">Volatility</th><th className="text-right font-normal">Return/vol</th><th className="text-right font-normal">Max drawdown</th></tr></thead>
+                <th className="text-right font-normal">Per year</th><th className="text-right font-normal">Volatility</th><th className="text-right font-normal" title="Arithmetic mean return divided by volatility; assumes zero cash rate">Sharpe (rf 0)</th><th className="text-right font-normal">Max drawdown</th><th className="text-right font-normal" title="Valid daily returns used for risk metrics">Risk samples</th></tr></thead>
                 <tbody>{data.stats.map((s: any) => (<tr key={s.symbol} className="border-t border-border-subtle"><td className="text-text-primary py-0.5">{s.symbol}</td>
-                  <td className="text-right"><Chg v={s.total_return} d={0} /></td><td className="text-right"><Chg v={s.cagr} d={1} /></td><td className="text-right">{(s.vol * 100).toFixed(1)}%</td>
-                  <td className="text-right">{s.sharpe != null ? s.sharpe.toFixed(2) : '—'}</td><td className="text-right text-red">{(s.max_drawdown * 100).toFixed(0)}%</td></tr>))}</tbody></table></div>
+                  <td className="text-right"><Chg v={s.total_return} d={0} /></td><td className="text-right"><Chg v={s.cagr} d={1} /></td><td className="text-right">{s.vol != null ? `${(s.vol * 100).toFixed(1)}%` : '—'}</td>
+                  <td className="text-right">{s.sharpe != null ? s.sharpe.toFixed(2) : '—'}</td><td className="text-right text-red">{(s.max_drawdown * 100).toFixed(0)}%</td><td className="text-right text-text-tertiary" title={`${s.annualization ?? 'Unknown'} periods per year`}>{s.observations ?? '—'}</td></tr>))}</tbody></table></div>
               {data.missing.length > 0 && <div className="text-[10px] text-amber mt-1">No data for: {data.missing.join(', ')}</div>}
             </Panel>
             <Panel title="Correlation of daily returns">
-              <div className="mkt-chart-surface"><CorrelationHeatmap labels={data.symbols} matrix={data.symbols.map((a: string) => data.symbols.map((b: string) => data.correlation[a][b]))} /></div>
+              <div className="mkt-chart-surface"><CorrelationHeatmap labels={data.symbols} observations={data.symbols.map((a:string)=>data.symbols.map((b:string)=>data.pair_observations?.[a]?.[b] ?? null))} matrix={data.symbols.map((a: string) => data.symbols.map((b: string) => data.correlation[a][b]))} /></div>
             </Panel>
           </div>
           <div className="text-[10px] text-text-tertiary">{data.note}</div>

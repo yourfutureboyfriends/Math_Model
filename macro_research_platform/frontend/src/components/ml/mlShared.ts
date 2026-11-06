@@ -129,3 +129,21 @@ export function useJSON(url: string | null, tick = 0) {
   }, [url, tick]);
   return d;
 }
+
+
+/** Reject incomplete or incompatible exported models before drawing a forward pass. */
+export function validWeights(w:any,inputs:number):w is Weights {
+ const finite=(v:any)=>typeof v==='number'&&Number.isFinite(v);
+ return !!w&&inputs>0&&Array.isArray(w.mu)&&w.mu.length===inputs&&w.mu.every(finite)&&Array.isArray(w.sd)&&w.sd.length===inputs&&w.sd.every((v:any)=>finite(v)&&v>0)&&Array.isArray(w.nets)&&w.nets.length>0&&w.nets.every((n:any)=>Array.isArray(n.b1)&&n.b1.length>0&&n.b1.every(finite)&&finite(n.b2)&&Array.isArray(n.W2)&&n.W2.length===n.b1.length&&n.W2.every(finite)&&Array.isArray(n.W1)&&n.W1.length===inputs&&n.W1.every((row:any)=>Array.isArray(row)&&row.length===n.b1.length&&row.every(finite)));
+}
+
+export function connectionSignals(net:Net,w:Weights,x:number[]) {
+ const f=forward(net,w,x);
+ return {input:net.W1.map((row,i)=>row.map(weight=>weight*f.z[i])),output:net.W2.map((weight,j)=>weight*f.h[j])};
+}
+
+
+export function selectedPrediction(net:Net,w:Weights,x:number[],cal:number[]|null|undefined) {
+ const raw=forward(net,w,x).p;
+ return {raw,p:cal?sigmoid(cal[0]+cal[1]*logit(raw)):raw};
+}

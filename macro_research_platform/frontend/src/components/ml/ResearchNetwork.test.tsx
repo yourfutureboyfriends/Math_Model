@@ -1,0 +1,12 @@
+import {act} from 'react';
+import {createRoot} from 'react-dom/client';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {ResearchNetwork} from './ResearchNetwork';
+const state=vi.hoisted(()=>({data:null as any,error:null as any}));
+vi.mock('./api',()=>({useResearchGraphQ:()=>({...state,isLoading:false,isFetching:false,refetch:vi.fn()})}));
+vi.mock('./ui/EChart',()=>({EChart:()=><div aria-label="Graph canvas"/>,useChartTheme:()=>({series:['#00f','#f90'],textStrong:'#fff'})}));
+let host:HTMLDivElement,root:ReturnType<typeof createRoot>;
+beforeEach(()=>{vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);vi.stubGlobal('matchMedia',()=>({matches:false}));host=document.createElement('div');document.body.append(host);root=createRoot(host);state.error=null;state.data={nodes:[{id:'paper:a',kind:'paper',label:'Paper A',detail:'Research only',url:'https://arxiv.org/abs/1'}],edges:[],revision:'1',generated_at:'2026-11-05T00:00:00Z',scope:'Test evidence',limitations:['Not causality.']};});
+afterEach(()=>{act(()=>root.unmount());host.remove();vi.unstubAllGlobals();});
+it('makes graph evidence available through keyboard selection',async()=>{await act(async()=>root.render(<ResearchNetwork/>));await act(async()=>{(Array.from(host.querySelectorAll('button')).find(b=>b.textContent==='Show individual factors') as HTMLButtonElement).click();});const select=host.querySelector('[aria-label="Inspect a research node"]') as HTMLSelectElement;await act(async()=>{select.value='paper:a';select.dispatchEvent(new Event('change',{bubbles:true}));});expect(host.textContent).toContain('Research only');expect(host.querySelector('a')?.getAttribute('href')).toBe('https://arxiv.org/abs/1');});
+it('shows a recoverable error instead of invented data',async()=>{state.error=new Error('Source unavailable');await act(async()=>root.render(<ResearchNetwork/>));expect(host.querySelector('[role="alert"]')?.textContent).toContain('Source unavailable');expect(host.querySelector('[aria-label="Graph canvas"]')).toBeNull();});

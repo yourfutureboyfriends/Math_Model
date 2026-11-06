@@ -635,6 +635,28 @@ async def lifespan(app: FastAPI):
         def _ml_tasks():
             from api.ml import engine as _ml
             logger.info("[ml] tasks: %s", _ml.run_all())                  # retrains on a new month; logs one forecast each
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        def _neural_learning():
+            from api.ml.continual import cycle
+            logger.info("[ml] automatic neural learning: %s", cycle().get('action'))
+        _scheduler.add_job(func=_neural_learning, trigger=CronTrigger(hour=8, minute=15),
+                           id="neural_continual_learning", replace_existing=True, max_instances=1, coalesce=True)
+        _scheduler.add_job(func=_neural_learning, trigger="date", run_date=_dt.now(_tz.utc) + _td(seconds=180),
+                           id="neural_learning_startup", replace_existing=True, max_instances=1)
+        def _online_sources():
+            from api.ml.online import cycle
+            logger.info("[ml] provider supervisor: %s",cycle())
+        _scheduler.add_job(func=_online_sources,trigger='interval',minutes=1,id='ml_provider_supervisor',
+                           replace_existing=True,max_instances=1,coalesce=True)
+        _scheduler.add_job(func=_neural_learning,trigger='interval',hours=6,id='ml_learning_evidence_check',
+                           replace_existing=True,max_instances=1,coalesce=True)
+        def _autonomous_daily():
+            from api.ml.autonomous import due
+            result=due()
+            if result.get('action') not in ('not_due','non_session','already_completed'):
+                logger.info('[ml] autonomous daily pipeline: %s',result)
+        _scheduler.add_job(func=_autonomous_daily,trigger='interval',minutes=10,
+                           id='ml_autonomous_daily',replace_existing=True,max_instances=1,coalesce=True)
         def _knowledge_scan():
             from api.models_ml import knowledge_scanner as _ks
             r = _ks.screen()
@@ -1022,19 +1044,21 @@ from fastapi import Request
 from api.routers.workflows import router as workflows_router
 from api.routers.macro_extras import router as macro_extras_router  # Fed watch, margin debt
 app.include_router(workflows_router)
+from api.routers.macro_research import router as macro_research_router
+app.include_router(macro_research_router)
 app.include_router(macro_extras_router)
 
 @app.middleware("http")
 async def workflow_performance(request: Request, call_next):
     import time
-    from api.workflows.telemetry import observe
-    started=time.monotonic(); status=500
+    from api.workflows.telemetry import observe,begin_request,end_request
+    started=time.monotonic(); status=500; token=begin_request()
     try:
         response=await call_next(request); status=response.status_code
         return response
     finally:
         route=request.scope.get('route')
-        observe(getattr(route,'path','UNMATCHED'),request.method,status,time.monotonic()-started)
+        observe(getattr(route,'path','UNMATCHED'),request.method,status,time.monotonic()-started,end_request(token))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

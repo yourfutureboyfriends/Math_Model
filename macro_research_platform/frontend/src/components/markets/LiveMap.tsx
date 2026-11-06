@@ -14,7 +14,7 @@ export type MapPoint = {
   moving?: boolean;
   big?: boolean;                     // emphasised (emergency, selected kind…)
   ring?: string;                     // outline colour (e.g. military)
-  approx?: boolean;                  // position known only roughly (satellite grid): hidden where it falls on land
+  approx?: boolean;                  // position known only roughly (historical grid); drawn as a cell symbol
   pin?: boolean;                     // followed: gold ring and a label at every zoom
   label?: string;                    // drawn next to the point when zoomed in
 };
@@ -40,7 +40,7 @@ let landCache: { land: any; borders: any } | null = null;
 // island / landmass with its bounding box, so only those in view are drawn
 type Poly = { f: any; w: number; s: number; e: number; n: number };
 let fineCache: Poly[] | null = null;
-let fineLoading = false;
+let finePromise: Promise<Poly[]> | null = null;
 
 export const LiveMap = forwardRef<LiveMapHandle, {
   points: MapPoint[]; lines?: MapLine[]; markers?: MapMarker[]; selected?: string | null; height?: number;
@@ -59,6 +59,7 @@ export const LiveMap = forwardRef<LiveMapHandle, {
   const [W, setW] = useState(900);
   const [land, setLand] = useState(landCache);
   const [fine, setFine] = useState<Poly[] | null>(fineCache);
+  const [mapError,setMapError]=useState<string|null>(null),[mapRetry,setMapRetry]=useState(0);
   const view = useRef<{ cx: number; cy: number; zoom: number }>({ cx: 0, cy: 0, zoom: initial?.zoom ?? 1.6 });
   const [tick, setTick] = useState(0);               // bumps a redraw
   const [hover, setHover] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -86,19 +87,18 @@ export const LiveMap = forwardRef<LiveMapHandle, {
 
   useEffect(() => {
     if (land) return;
-    fetch('/world-atlas/countries-50m.json').then((r) => r.json()).then((t) => {
+    fetch('/world-atlas/countries-50m.json').then((r) => {if(!r.ok)throw new Error('Basemap unavailable');return r.json();}).then((t) => {
       landCache = { land: feature(t, t.objects.land ?? t.objects.countries), borders: mesh(t, t.objects.countries, (a: any, b: any) => a !== b) };
       setLand(landCache);
-    }).catch(() => {});
-  }, [land]);
+    }).catch(()=>setMapError('Basemap unavailable; position markers lack geographic context.'));
+  }, [land,mapRetry]);
 
   const wantFine = view.current.zoom >= 4.5;
   useEffect(() => {
     if (!wantFine || fine) return;
     if (fineCache) { setFine(fineCache); return; }
-    if (fineLoading) return;
-    fineLoading = true;
-    fetch('/world-atlas/land-10m.json').then((r) => r.json()).then((t) => {
+    let mounted=true;
+    if(!finePromise) finePromise=fetch('/world-atlas/land-10m.json').then((r)=>{if(!r.ok)throw new Error('Detailed coastline unavailable');return r.json();}).then((t) => {
       const fc: any = feature(t, t.objects.land);
       const polys: Poly[] = [];
       for (const f of fc.features ?? [fc]) {
@@ -110,9 +110,11 @@ export const LiveMap = forwardRef<LiveMapHandle, {
           polys.push({ f: { type: 'Polygon', coordinates: coords }, w, s: so, e, n });
         }
       }
-      fineCache = polys; setFine(polys); landView.current = null; setTick((x) => x + 1);
-    }).catch(() => {}).finally(() => { fineLoading = false; });
-  }, [wantFine, fine, tick]);
+      fineCache = polys;return polys;
+    }).finally(()=>{finePromise=null;});
+    finePromise.then(polys=>{if(mounted){setFine(polys);landView.current=null;setTick(x=>x+1);}}).catch(()=>{if(mounted)setMapError('Detailed coastline unavailable; coarse basemap retained.');});
+    return()=>{mounted=false;};
+  }, [wantFine, fine, mapRetry]);
 
   const minZ = Math.max(minZoom, Math.log2(H / TILE));            // the world always fills the height
   const S = () => TILE * 2 ** view.current.zoom;
@@ -301,9 +303,9 @@ export const LiveMap = forwardRef<LiveMapHandle, {
       for (const k of copies) {
       const x = x0 + k;
       if (x < -10 || x > W + 10) continue;
-      // on land: approximate positions always drop out; with occludeLand every point does (land would hide it
-      // anyway, and a hidden ship must not answer hover or clicks)
-      if ((p.approx || occludeLand) && p.id !== selected && landTest && ctx.isPointInPath(landTest.path, x * dpr, y * dpr, landTest.rule)) continue;
+      // Historical cell centres may fall on coastal land. Preserve them rather than silently
+      // deleting approximate evidence; only precise points opt into land occlusion.
+      if (occludeLand && !p.approx && p.id !== selected && landTest && ctx.isPointInPath(landTest.path, x * dpr, y * dpr, landTest.rule)) continue;
       xs[m] = x; ys[m] = y; ids[m] = p.id; m++;
       if (p.id === selected) { if (!sel || Math.abs(x - W / 2) < Math.abs(sel.x - W / 2)) sel = { x, y, p }; continue; }
       if (p.pin) { pinned.push([x, y, p]); continue; }
@@ -372,10 +374,12 @@ export const LiveMap = forwardRef<LiveMapHandle, {
   const hoverLabel = hover && hoverText ? hoverText(hover.id) : null;
   const zoomBtn = 'w-7 h-7 grid place-items-center bg-surface-1/90 border border-border text-text-secondary hover:text-text-primary';
   return (
-    <div ref={wrap} className="relative w-full select-none" style={{ height: H }}>
+    <div ref={wrap} className="relative w-full select-none rounded-xl overflow-hidden border border-border shadow-sm" style={{ height: H }}>
+      {mapError && <div role="status" className="absolute top-2 left-2 z-10 rounded-lg bg-surface-1 border border-amber p-2 text-[11px] text-amber">{mapError} <button className="underline ml-2" onClick={()=>{setMapError(null);setMapRetry(n=>n+1);}}>Retry basemap</button></div>}
       <span ref={colors.probe} className="hidden" aria-hidden="true" />
       <canvas ref={canvas} style={{ width: W, height: H, touchAction: 'none' }} className="block cursor-grab active:cursor-grabbing border border-border"
-        role="img" aria-label="Live traffic map"
+        role="img" aria-label="Observed traffic map" tabIndex={0}
+        onKeyDown={e=>{if(e.target!==e.currentTarget)return;if(['+','=','-'].includes(e.key)){e.preventDefault();zoomAt(W/2,H/2,e.key==='-'?-1:1);}else if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();view.current.cx+=e.key==='ArrowRight'?80:e.key==='ArrowLeft'?-80:0;view.current.cy+=e.key==='ArrowDown'?80:e.key==='ArrowUp'?-80:0;changed(true);}}}
         onPointerDown={(e) => { const v = view.current; drag.current = { x: e.clientX, y: e.clientY, cx: v.cx, cy: v.cy, moved: false }; (e.target as Element).setPointerCapture(e.pointerId); }}
         onPointerMove={(e) => {
           const d = drag.current;
@@ -438,6 +442,7 @@ function drawGlyph(ctx: CanvasRenderingContext2D, kind: 'plane' | 'ship', x: num
   c: (s: string) => string, dot: number) {
   const col = c(p.color);
   const size = (p.big ? 1.5 : p.approx ? 0.75 : 1) * (detailed ? (kind === 'plane' ? 6 : 5) : dot + 1.5);
+  if(p.approx){ctx.strokeStyle=col;ctx.lineWidth=1.3;ctx.strokeRect(x-size,y-size,size*2,size*2);return;}
   if (kind === 'ship' && detailed && (p.heading == null || !p.moving)) {
     // stationary or heading unknown: a hull at its reported heading (or north), outlined when the
     // heading is unknown so it doesn't look like a precise course

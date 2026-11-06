@@ -111,7 +111,9 @@ def _fill(key: str, fn: Callable[[], Any]) -> Any:
             current = _cache.get(key)
             if current is not before and current is not None:
                 return current[1]
-        val = fn()
+        from api.workflows.telemetry import stage
+        with stage('market_cache_fill'):
+            val = fn()
         _disk_save(key, val)
         with _lock:
             _cache[key] = (time.time(), val)
@@ -123,7 +125,7 @@ def _fill(key: str, fn: Callable[[], Any]) -> Any:
 # while a fresh one builds in the background. Kept up to PERSIST_MAX old.
 # screens that take 25–110 s cold: kept on disk so a restart serves the last copy at once and refreshes behind
 PERSIST_PREFIXES = ("imap:", "ins:breadth", "ins:impm:", "ins:uoa", "ins:risk", "edge:", "flow:etf", "bw:", "wcrs:", "overview",
-                    "worldmap", "ecfc:", "fxca", "swap:")
+                    "worldmap", "ecfc:", "fxca", "swap:", "macro:fcig:")
 PERSIST_DIR = Path(__file__).resolve().parents[2] / "data" / "processed" / "screen_cache"
 PERSIST_MAX = 3 * 86400
 
@@ -259,7 +261,9 @@ def yahoo_call(fn: Callable[[], Any]) -> Any:
     _wait_or_raise()
     with _YH_SEM:
         try:
-            out = fn()
+            from api.workflows.telemetry import stage
+            with stage('yahoo_provider'):
+                out = fn()
         except Exception as e:
             if _rate_limited(e):
                 _yahoo_tripped()

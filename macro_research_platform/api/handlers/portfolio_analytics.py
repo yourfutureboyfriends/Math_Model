@@ -4,6 +4,7 @@ book, liquidity-adjusted VaR, FIFO lots, transaction-cost analysis of fills and 
 api/calculations/portfolio_analytics.py.
 """
 from __future__ import annotations
+from statistics import median
 
 import logging
 import math
@@ -564,6 +565,30 @@ def _usd_per_unit(sym: str):
     return ccy, (1.0 / per_usd / div) if per_usd else None
 
 
+def _usd_per_unit_on(sym: str, on: str, cache=None):
+    """Historical FX at/before the fill date, at most four days old; never today's FX."""
+    from datetime import date
+    from api.markets import minor_unit_factor, fx_ticker
+    from api.market_bars import bars
+    cache=cache if cache is not None else {}
+    if sym not in cache:
+        try:ccy=bars(sym,'1d','2y').get('currency')
+        except Exception:ccy=None
+        cache[sym]=ccy  # home currency cannot establish quote units (GBP versus GBp, etc.)
+    ccy=cache[sym]
+    if not ccy:return None,None,None
+    major,div=minor_unit_factor(ccy)
+    if major=='USD':return ccy,1/div,on
+    key=('fx',major)
+    if key not in cache:cache[key]=_bars(fx_ticker(major),'2y')
+    history=cache[key] or {};eligible=[d for d in history if d<=on]
+    if not eligible:return ccy,None,None
+    used=max(eligible)
+    if (date.fromisoformat(on)-date.fromisoformat(used)).days>4:return ccy,None,None
+    value=history[used].get('c')
+    return ccy,1/value/div if isinstance(value,(int,float)) and math.isfinite(value) and value>0 else None,used
+
+
 def tca(limit: int = 200) -> Dict[str, Any]:
     """Fills of the fund blotter and the paper traders, against the decision price, the fill session's typical
     price and close."""
@@ -596,7 +621,7 @@ def tca(limit: int = 200) -> Dict[str, Any]:
     syms = sorted({f["symbol"] for f in fills})
     with ThreadPoolExecutor(max_workers=6) as ex:
         px = dict(zip(syms, ex.map(lambda s: _bars(s, "2y"), syms)))
-    rows = []
+    rows = [];historical_fx={}
     for f in fills:
         b = px.get(f["symbol"]) or {}
         fd = str(f["fill_date"])[:10]
@@ -608,7 +633,12 @@ def tca(limit: int = 200) -> Dict[str, Any]:
         sign = 1 if str(f["side"]).upper() in ("BUY", "COVER") else -1
         r = pa.tca_row(sign, float(f["shares"] or 0), float(f["fill_price"]), arrival,
                        bar["h"] if bar else None, bar["l"] if bar else None, bar["c"] if bar else None)
-        ccy, usd = _usd_per_unit(f["symbol"])
+        ccy, usd, fx_date = _usd_per_unit_on(f["symbol"],fd,historical_fx)
+        r["fx_date"]=fx_date
+        r["fx_rate_to_usd"]=usd
+        r["fx_basis"]="Daily FX close dated on/before fill session; not execution-time FX"
+        r["arrival_basis"]="Recorded signal" if f["arrival"] is not None else "Decision-session close proxy"
+        r["vwap_basis"]="Daily typical-price proxy, not actual VWAP"
         r["currency"] = ccy
         r["shortfall_local"] = r.pop("shortfall_usd")
         r["shortfall_usd"] = round(r["shortfall_local"] * usd, 2) if r["shortfall_local"] is not None and usd else None
@@ -616,19 +646,20 @@ def tca(limit: int = 200) -> Dict[str, Any]:
                      "arrival": round(arrival, 4) if arrival else None, **r})
     by_book = {}
     for r in rows:
-        g = by_book.setdefault(r["book"], {"fills": 0, "shortfall_usd": 0.0, "bps": []})
+        g = by_book.setdefault(r["book"], {"fills": 0, "shortfall_usd": 0.0, "incomplete": 0, "bps": []})
         g["fills"] += 1
         g["shortfall_usd"] += r["shortfall_usd"] or 0
+        if r["shortfall_usd"] is None:g["incomplete"]+=1
         if r["vs_arrival_bps"] is not None:
             g["bps"].append(r["vs_arrival_bps"])
-    summary = {k: {"fills": v["fills"], "shortfall_usd": round(v["shortfall_usd"], 2),
+    summary = {k: {"fills": v["fills"], "shortfall_usd": round(v["shortfall_usd"], 2) if not v["incomplete"] else None, "known_shortfall_usd": round(v["shortfall_usd"],2), "incomplete_cost_fills": v["incomplete"],
                    "avg_vs_arrival_bps": round(sum(v["bps"]) / len(v["bps"]), 1) if v["bps"] else None,
-                   "median_vs_arrival_bps": round(sorted(v["bps"])[len(v["bps"]) // 2], 1) if v["bps"] else None}
+                   "median_vs_arrival_bps": round(median(v["bps"]), 1) if v["bps"] else None}
                for k, v in by_book.items()}
     return {"available": True, "fills": rows[:limit], "by_book": summary,
             "method": ("Positive bps = cost. Arrival = the price when the order was decided (signal price, else that "
                        "session's close); VWAP proxy = the fill session's (high+low+close)/3 — no intraday volume "
-                       "is available free. Shortfall is in the listing's currency, converted to USD at the latest rate.")}
+                       "is available free. Shortfall is in the listing's currency, converted to USD using a daily FX close dated on/before the fill session (maximum four calendar days old), not an intraday execution-time rate. Missing historical FX remains unavailable.")}
 
 
 def idea_tracking() -> Dict[str, Any]:

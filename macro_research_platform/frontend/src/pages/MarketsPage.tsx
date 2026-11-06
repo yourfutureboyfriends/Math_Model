@@ -1,3 +1,4 @@
+import { PageEvidence } from '@/components/markets/PageEvidence';
 import { ResearchDesk } from '@/components/markets/ResearchDesk';
 import { SavedLayouts } from '@/components/markets/SavedLayouts';
 // Markets mode — a universal, Bloomberg-style market workstation.
@@ -297,7 +298,7 @@ export function SecurityView({ fn, symbol, onGo, compact = false }: { fn: string
       <ErrorBoundary sectionName={`${f.code} ${symbol}`} key={`${f.code}:${symbol}`}>
         {f.equityOnly && !isEquity && !(f.code === 'HDS' && isFund) ? <NotApplicable fn={f.code} name={f.name} q={d} onGo={onGo} /> : <>
         <SourceScope>
-          <SourcesBar className="mb-2" />
+          <SourcesBar className="mb-2" extra={<PageEvidence code={f.code} compact={compact} inline/>} />
           <SecurityBody compact={compact} code={f.code} symbol={symbol} d={d} isFund={isFund} onGo={onGo} />
         </SourceScope>
         </>}
@@ -321,7 +322,7 @@ export function MarketBody({ code, seed, onGo, open, classic, compact = false }:
   const region = useRegion();
   return (
     <SourceScope><div className="mkt-page-canvas" data-market-page={code}>
-    <SourcesBar className="mb-2" /><PageSections page={code} compact={compact}/>
+    <SourcesBar className="mb-2" extra={<PageEvidence code={code} compact={compact} inline/>} /><PageSections page={code} compact={compact}/>
     {code === 'RMON' && <RegionMonitor onOpen={open} onGo={onGo} />}
     {code === 'CTRY' && <><CountryView iso={seed} onOpen={open} onGo={onGo} /><RelatedOdds terms={countryTerms(seed)} title="Odds on this country" limit={6} className="mt-3" /></>}
     {code === 'WEI' && (classic || compact
@@ -612,7 +613,7 @@ export function MarketsPage() {
             : null}
           <div className="mkt-function-content" id="mkt-fn-body">
           <ErrorBoundary sectionName={`Markets · ${f.code}`} key={f.code}>
-            {f.code === 'LP' ? <LaunchpadGrid classic={classic} /> : <MarketBody code={f.code} seed={route.symbol} onGo={onGo} open={open} classic={classic} />}
+            {f.code === 'LP' ? <><PageEvidence code="LP"/><LaunchpadGrid classic={classic} /></> : <MarketBody code={f.code} seed={route.symbol} onGo={onGo} open={open} classic={classic} />}
           </ErrorBoundary>
           </div>
         </div>

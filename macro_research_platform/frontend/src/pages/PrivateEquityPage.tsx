@@ -1,10 +1,7 @@
-/**
- * PE — the private-equity area (top-bar mode 'pe'): the LBO workbench (a buyout modelled from a company's filings
- * and live credit markets), the deal pipeline (this fund's saved deals by stage), the carry waterfall and fund
- * performance with public-market equivalents. Modelled returns are analysis, never a track record.
- */
+/** Private investment sourcing: direct equity, fund selection, property and buyout underwriting. */
 import { WorkspaceHeader } from '@/components/layout/WorkspaceHeader';
 import { PageSections } from '@/components/markets/PageSections';
+import { CompanyOpportunities, FundFinder, RealEstateOpportunities } from '@/components/pe/InvestmentSourcing';
 import { Workbench } from '@/components/pe/Workbench';
 import { Pipeline } from '@/components/pe/Pipeline';
 import { Precedents } from '@/components/pe/Comparables';
@@ -12,7 +9,7 @@ import { Performance, Waterfall } from '@/components/pe/FundTools';
 import { PE_TABS, setPeTab, usePeTab } from '@/components/pe/peShared';
 
 // Where each tool sits in the area's workflow (Underwrite → Compare → Review), shown above its name
-const STAGE: Record<string, string> = { workbench: 'Underwrite', pipeline: 'Compare', precedents: 'Compare', waterfall: 'Review', performance: 'Review' };
+const STAGE: Record<string, string> = { companies: 'Source', funds: 'Select funds', 'real-estate': 'Source & develop', workbench: 'Underwrite', pipeline: 'Compare', precedents: 'Compare', waterfall: 'Review', performance: 'Review' };
 
 export function PrivateEquityPage() {
   const tab = usePeTab();
@@ -26,6 +23,9 @@ export function PrivateEquityPage() {
         </div>
       </div>
       <div className="pe-tool-body"><PageSections page={`pe-${tab}`}/>
+      {tab === 'companies' && <CompanyOpportunities />}
+      {tab === 'funds' && <FundFinder />}
+      {tab === 'real-estate' && <RealEstateOpportunities />}
       {tab === 'workbench' && <Workbench />}
       {tab === 'pipeline' && <Pipeline />}
       {tab === 'precedents' && <Precedents />}

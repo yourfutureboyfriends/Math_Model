@@ -124,7 +124,7 @@ def tic() -> Dict[str, Any]:
         return {"latest": latest, "months": months[:24], "into_us": list(inflow.values()), "out_of_us": list(outflow.values()),
                 "total_into_us": {k: world_in.get(f) for k, f in INFLOW.items()} if world_in else None,
                 "total_out_of_us": {k: world_out.get(f) for k, f in OUTFLOW.items()} if world_out else None,
-                "units": "USD millions", "source": "US Treasury TIC (SLT tables 1 and 2), monthly",
+                "units": "USD millions", "source": "US Treasury TIC (SLT tables 1 and 2), monthly", "as_of": latest,
                 "note": "Into the US: foreign residents' net purchases of US long-term securities, by the country of the buyer's custodian "
                         "(financial centres such as the UK, Cayman, Luxembourg and Belgium stand in for investors elsewhere). "
                         "Out of the US: US residents' net purchases of that country's securities."}
@@ -203,7 +203,7 @@ SECTOR_ETFS = {"XLK": "Technology", "XLF": "Financials", "XLE": "Energy", "XLV":
 def _universe() -> Dict[str, Dict[str, str]]:
     from api.marketdata.monitors import COUNTRY_ETFS
     u = {sym: {"group": "country", "label": label, "iso2": iso} for iso, (sym, label) in COUNTRY_ETFS.items()}
-    u.update({s: {"group": "asset", "label": l} for s, l in ASSET_ETFS.items()})
+    u.update({s: {**u.get(s, {}), "group": "asset", "label": l} for s, l in ASSET_ETFS.items()})
     u.update({s: {"group": "sector", "label": l} for s, l in SECTOR_ETFS.items()})
     return u
 
@@ -297,28 +297,26 @@ def etf() -> Dict[str, Any]:
                 return float(w.sum() / tot) if tot else None
             avg_dv = float(dv.iloc[-21:].mean())
             # creations / redemptions from our share snapshots
-            flows = {}
+            from api.marketdata.flow_evidence import estimate_etf_flows
             series = [(k, snaps[k][s]) for k in days if s in snaps[k]]
-            if len(series) >= 2:
-                (d0, a), (d1, b) = series[-2], series[-1]
-                flows["last_usd"] = (b[0] - a[0]) * b[1]
-                flows["last_dates"] = [d0, d1]
-                first = next(((k, v) for k, v in series if (date.fromisoformat(series[-1][0]) - date.fromisoformat(k)).days <= 7), None)
-                if first and first[0] != series[-1][0]:
-                    flows["week_usd"] = (b[0] - first[1][0]) * b[1]
-                flows["since"] = series[0][0]
-                flows["total_usd"] = (b[0] - series[0][1][0]) * b[1]
-                flows["aum_usd"] = b[0] * b[1]
+            flows = estimate_etf_flows(series)
+            if flows.get('week_usd') is not None and flows.get('baseline_aum_usd'):
+                flows['week_pct_start_aum'] = flows['week_usd']/flows['baseline_aum_usd']
+                before = d.loc[d.index.strftime('%Y-%m-%d') <= flows['week_start']]
+                after = d.loc[d.index.strftime('%Y-%m-%d') <= flows['week_end']]
+                if not before.empty and not after.empty and before.index[-1].date().isoformat()==flows['week_start'] and after.index[-1].date().isoformat()==flows['week_end'] and float(before['Close'].iloc[-1]) > 0:
+                    flows['price_change_same_window'] = float(after['Close'].iloc[-1]/before['Close'].iloc[-1]-1)
+                    flows['price_window'] = [before.index[-1].date().isoformat(),after.index[-1].date().isoformat()]
             rows.append({"symbol": s, **uni[s], "price": float(d["Close"].iloc[-1]),
                          "chg_1w": float(d["Close"].iloc[-1] / d["Close"].iloc[-6] - 1), "chg_1m": float(d["Close"].iloc[-1] / d["Close"].iloc[-22] - 1),
                          "mf_1w": mf(5), "mf_1m": mf(21), "dollar_volume": avg_dv,
                          "volume_surge": float(dv.iloc[-5:].mean() / avg_dv) if avg_dv else None, **({"flows": flows} if flows else {})})
         return {"rows": rows, "snapshots": len(days), "first_snapshot": days[0] if days else None,
                 "source": "Yahoo Finance prices and shares outstanding (daily snapshots kept by this terminal)",
-                "note": "Flows = change in shares outstanding × price (fund creations minus redemptions), from daily snapshots this terminal "
+                "note": "Estimated flows = sum of interval share-count changes × valuation price; possible splits/revisions require review. Based on snapshots this terminal "
                         "records after each US close. Money-flow indicator: share of the period's dollar volume traded on up days minus down "
                         "days (−1 to +1) — a pressure gauge, not a fund-flow figure."}
-    return _cached("flow:etf", 1800, build)
+    return _cached("flow:etf:v2", 1800, build)
 
 
 # ── Stablecoins ─────────────────────────────────────────────────────────────
@@ -345,7 +343,7 @@ def crypto() -> Dict[str, Any]:
         return {"total": tot[-1][1] if tot else None, "chg_7d": chg(tot, 7), "chg_30d": chg(tot, 30), "chg_90d": chg(tot, 90),
                 "history": [{"date": d, "usd": v} for d, v in tot[-730:]], "chains": top,
                 "source": "DefiLlama (stablecoin supply, all dollar-pegged coins)",
-                "note": "New stablecoins are minted when dollars come on-chain and burned when they leave: supply growth is money flowing into crypto."}
+                "note": "New stablecoins are minted when dollars come on-chain and burned when they leave: supply changes are an issuance proxy, not identified investor cash transfers; treasury inventory, chain migration and redemptions affect interpretation."}
     return _cached("flow:crypto", 3600, build)
 
 

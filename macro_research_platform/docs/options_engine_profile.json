@@ -1,0 +1,95 @@
+{
+  "audit_bytes_stored": 565261,
+  "scope": "Synthetic 2,520-session x 3,117-underlying history; one end-of-history decision tick, not a ten-year options replay or profitability test",
+  "wall_seconds": 0.35572873696219176,
+  "feature_cache_hit_seconds": 9.741401299834251e-05,
+  "peak_process_rss_mb": 395.6796875,
+  "underlying_shape": [
+    2520,
+    3117
+  ],
+  "screening": {
+    "universe": 3117,
+    "valid": 3116,
+    "shortlist": 75,
+    "finalists": 35,
+    "approved_intents": 0
+  },
+  "chain_requests": 35,
+  "option_contracts_loaded": 210,
+  "audit_bytes_uncompressed": 2751630,
+  "hot": [
+    {
+      "function": "features.py:28:features",
+      "calls": 1,
+      "self_seconds": 0.130847758,
+      "cumulative_seconds": 0.217440919
+    },
+    {
+      "function": "~:0:<method 'reduce' of 'numpy.ufunc' objects>",
+      "calls": 6369,
+      "self_seconds": 0.030370564000000003,
+      "cumulative_seconds": 0.030370564000000003
+    },
+    {
+      "function": "regimes.py:10:<genexpr>",
+      "calls": 12604,
+      "self_seconds": 0.029293633000000003,
+      "cumulative_seconds": 0.029293633000000003
+    },
+    {
+      "function": "schema.py:10:utc",
+      "calls": 17197,
+      "self_seconds": 0.021636235,
+      "cumulative_seconds": 0.040009775000000004
+    },
+    {
+      "function": "engine.py:67:tick",
+      "calls": 1,
+      "self_seconds": 0.013160828000000001,
+      "cumulative_seconds": 0.35549647700000003
+    },
+    {
+      "function": "regimes.py:5:forecast",
+      "calls": 3151,
+      "self_seconds": 0.010840453,
+      "cumulative_seconds": 0.060109699
+    },
+    {
+      "function": "features.py:50:<genexpr>",
+      "calls": 12468,
+      "self_seconds": 0.008320736,
+      "cumulative_seconds": 0.011487848
+    },
+    {
+      "function": "dataclasses.py:1323:_asdict_inner",
+      "calls": 11203,
+      "self_seconds": 0.007096309,
+      "cumulative_seconds": 0.012860641
+    },
+    {
+      "function": "~:0:<method 'get' of 'dict' objects>",
+      "calls": 25007,
+      "self_seconds": 0.006501359000000001,
+      "cumulative_seconds": 0.006501359000000001
+    },
+    {
+      "function": "~:0:<method 'astimezone' of 'datetime.datetime' objects>",
+      "calls": 17197,
+      "self_seconds": 0.0054482540000000005,
+      "cumulative_seconds": 0.0054482540000000005
+    },
+    {
+      "function": "~:0:<built-in method builtins.sum>",
+      "calls": 6652,
+      "self_seconds": 0.005364053000000001,
+      "cumulative_seconds": 0.036113879
+    },
+    {
+      "function": "~:0:<built-in method builtins.isinstance>",
+      "calls": 40720,
+      "self_seconds": 0.005271476000000001,
+      "cumulative_seconds": 0.005274191
+    }
+  ]
+}

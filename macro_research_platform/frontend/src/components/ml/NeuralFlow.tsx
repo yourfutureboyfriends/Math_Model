@@ -12,7 +12,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { EChart, alpha, color, useChartTheme } from '@/components/charts/EChart';
-import { ensemble, forward, type Weights } from './mlShared';
+import { forward, connectionSignals, selectedPrediction, type Weights } from './mlShared';
 
 // layout in a 0–100 box; P() tilts it so layers further right recede (a camera looking in from the left)
 const X = { input: 31, hidden: 62, output: 90 };          // names and waves sit at fixed pixel offsets left of the inputs
@@ -31,13 +31,13 @@ export function NeuralFlow({ w, netIdx, x, labels, cal, recent, month, outcome, 
   const net = w.nets[netIdx];
   const option = useMemo(() => {
     const { z, h, p: raw } = forward(net, w, x);
-    const pCal = ensemble(w, cal, x).p;
+    const pCal = selectedPrediction(net,w,x,cal).p;
     const nIn = labels.length, nH = net.b1.length;
     const pos = color('rgb(var(--c-blue))', t.series[0]), neg = color('rgb(var(--c-amber))', t.amber);
     const glow = (c: string, a: number) => ({ shadowBlur: 6 + 18 * Math.min(1, a), shadowColor: alpha(c, 0.9) });
 
     // connections, bucketed by the signal they carry now
-    const s1 = net.W1.map((row, i) => row.map((v) => v * Math.tanh(z[i])));
+    const s1 = connectionSignals(net,w,x).input;
     const s2 = net.W2.map((v, j) => v * h[j]);
     const smax = Math.max(1e-6, ...s1.flat().map(Math.abs), ...s2.map(Math.abs));
     const wmax = Math.max(1e-6, ...net.W1.flat().map(Math.abs), ...net.W2.map(Math.abs));
@@ -76,14 +76,14 @@ export function NeuralFlow({ w, netIdx, x, labels, cal, recent, month, outcome, 
         { type: 'scatter', z: 4, zlevel: 2, data: inputs },
         { type: 'effectScatter', z: 4, zlevel: 2, data: hidden, rippleEffect: { brushType: 'stroke', scale: 2.6, period: 3.2, number: 2 }, showEffectOn: 'render' },
         { type: 'effectScatter', z: 5, zlevel: 2, showEffectOn: 'render', rippleEffect: { brushType: 'stroke', scale: 1.6 + 2 * pCal, period: 2.4, number: 3 },
-          data: [{ value: P(X.output, 50), symbolSize: 18 + 26 * pCal, tip: `output · calibrated probability ${(pCal * 100).toFixed(1)}% (raw ${(raw * 100).toFixed(1)}%)`,
+          data: [{ value: P(X.output, 50), symbolSize: 18 + 26 * pCal, tip: `selected network · probability ${(pCal * 100).toFixed(1)}% (raw ${(raw * 100).toFixed(1)}%)`,
             itemStyle: { color: alpha(outC, 0.25 + 0.7 * pCal), borderColor: outC, borderWidth: 2, ...glow(outC, 0.4 + pCal) } }] },
       ],
     };
   }, [net, w, x, labels, cal, t]);
   // panels, names, waves and readouts as an HTML/SVG overlay: the chart's box is 0–100 on both axes with no margin,
   // so a layout point P(x, y) is simply (x %, y %) of the stage
-  const read = useMemo(() => { const f = forward(net, w, x); return { raw: f.p, p: ensemble(w, cal, x).p }; }, [net, w, x, cal]);
+  const read = useMemo(() => selectedPrediction(net,w,x,cal), [net,w,x,cal]);
   const pos = color('rgb(var(--c-blue))', t.series[0]);
   const at = (xx: number, yy: number) => { const [a, b] = P(xx, yy); return { left: `${a}%`, top: `${b}%` }; };
   const poly = (x0: number, x1: number) => [P(x0, 3), P(x1, 3), P(x1, 97), P(x0, 97)].map(([a, b]) => `${a},${b}`).join(' ');
@@ -124,7 +124,7 @@ export function NeuralFlow({ w, netIdx, x, labels, cal, recent, month, outcome, 
             </span>); })}
         <span className="absolute text-center" style={{ ...at(X.output, 50), transform: 'translate(-50%, 26px)' }}>
           <span className="block text-[15px] font-semibold text-text-primary">{(read.p * 100).toFixed(1)}%</span>
-          <span className="block">raw {(read.raw * 100).toFixed(1)}%</span></span>
+          <span className="block">selected seed · raw {(read.raw * 100).toFixed(1)}%</span></span>
       </div>
     </div>
   );

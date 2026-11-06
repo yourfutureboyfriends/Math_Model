@@ -52,11 +52,16 @@ def _fetch(params: Dict[str, Any], cache_name: str) -> List[Dict[str, Any]]:
     except ImportError:
         pass
     try:
-        r = requests.get(API, params={**params, "api_key": _key(), "file_type": "json"}, timeout=40)
+        from api.workflows.telemetry import stage
+        with stage('alfred_provider'):
+            r = requests.get(API, params={**params, "api_key": _key(), "file_type": "json"}, timeout=40)
         if r.status_code == 400:
             raise AlfredError(r.json().get("error_message", "Bad request"))
         r.raise_for_status()
-        obs = r.json().get("observations", [])
+        result = r.json()
+        obs = result.get("observations", [])
+        if int(result.get('count', len(obs))) > len(obs):
+            raise AlfredError('ALFRED response is truncated; complete vintage history is unavailable.')
     except AlfredError:
         raise
     except Exception as e:
@@ -94,6 +99,14 @@ def first_release(series: str, start: str = "1990-01-01") -> List[Dict[str, Any]
     obs = _fetch({"series_id": series, "realtime_start": "1776-07-04", "realtime_end": "9999-12-31",
                   "output_type": 4, "observation_start": start}, f"{series}_first_{start}")
     return [{"date": o["date"], "value": _num(o["value"]), "released": o.get("realtime_start")} for o in obs]
+
+
+def vintage_history(series: str, start: str = '1990-01-01') -> List[Dict[str, Any]]:
+    """Bounded complete revision intervals; reject truncation rather than backfill today's values."""
+    obs = _fetch({'series_id':series,'realtime_start':'1776-07-04','realtime_end':'9999-12-31',
+                  'observation_start':start,'output_type':1,'limit':100000},f'{series}_intervals_v1_{start}')
+    return [{'date':o['date'],'value':_num(o['value']),'available_from':o['realtime_start'],
+             'available_until':o['realtime_end']} for o in obs]
 
 
 def first_release_changes(series: str, start: str = "1990-01-01") -> List[Dict[str, Any]]:

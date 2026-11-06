@@ -3,8 +3,11 @@
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 
-export type PeTab = 'workbench' | 'pipeline' | 'precedents' | 'waterfall' | 'performance';
+export type PeTab = 'companies' | 'funds' | 'real-estate' | 'workbench' | 'pipeline' | 'precedents' | 'waterfall' | 'performance';
 export const PE_TABS: { id: PeTab; label: string; desc: string }[] = [
+  { id: 'companies', label: 'Company opportunities', desc: 'Source businesses and screen direct equity investments' },
+  { id: 'funds', label: 'Fund finder', desc: 'Compare listed PE vehicles and private fund commitments' },
+  { id: 'real-estate', label: 'Real estate', desc: 'Find and screen houses, land, commercial assets and developments' },
   { id: 'workbench', label: 'LBO workbench', desc: 'Model a buyout: financing, cases, returns, credit' },
   { id: 'pipeline', label: 'Deal pipeline', desc: 'Saved deals by stage, with their activity' },
   { id: 'precedents', label: 'Precedents', desc: 'The fund’s book of precedent transactions, each multiple sourced' },
@@ -17,7 +20,7 @@ const OPEN_EVT = 'pe-open-deal';
 
 export function getPeTab(): PeTab {
   try { const t = localStorage.getItem(TAB_KEY); if (PE_TABS.some((x) => x.id === t)) return t as PeTab; } catch { /* storage unavailable */ }
-  return 'workbench';
+  return 'companies';
 }
 export function setPeTab(t: PeTab) {
   try { localStorage.setItem(TAB_KEY, t); } catch { /* storage unavailable */ }

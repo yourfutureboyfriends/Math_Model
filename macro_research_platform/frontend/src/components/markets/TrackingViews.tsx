@@ -6,6 +6,7 @@ import { GeoMap, type GeoPoint } from '@/components/charts/GeoMap';
 import { ErrorBox, Loading, Panel, Spark, useJSON } from './shared';
 import { LineChart } from '@/components/ui/LineChart';
 import { FlightTracker } from './FlightTracker';
+import { MaritimeTrade } from './TrackingCoverage';
 import { ShipTracker } from './ShipTracker';
 
 /** World basemap (shared ECharts GeoMap, Equal Earth), opened on a lon/lat box when given; points carry tooltips. */
@@ -37,6 +38,7 @@ export function ShipView() {
   return (
     <div className="space-y-3">
       <ShipTracker />
+      <MaritimeTrade/>
       <Panel title={`Maritime chokepoints — daily transits, 7-day average vs a year ago${cp.data ? ` · data to ${cp.data.as_of}` : ''}`}>
         {cp.loading && !cp.data && <Loading label="Loading IMF PortWatch…" />}
         {cp.error && <ErrorBox msg={cp.error} />}
@@ -74,7 +76,7 @@ export function ShipView() {
           // 7-day averages smooth the day-to-day noise of satellite transit counts
           const rows = c.series.map((x: any, i: number, a: any[]) => {
             const w = a.slice(Math.max(0, i - 6), i + 1);
-            const avg = (k: string) => w.reduce((s2: number, y: any) => s2 + (y[k] ?? 0), 0) / w.length;
+            const avg = (k: string) => w.length===7 && new Set(w.map(y=>y.date)).size===7 && Date.parse(x.date)-Date.parse(w[0].date)===6*86400000 && w.every(y=>typeof y[k]==='number' && Number.isFinite(y[k])) ? w.reduce((s2: number,y:any)=>s2+y[k],0)/7 : null;
             return { date: x.date, total: avg('n'), tankers: avg('tankers'), containers: avg('containers'), dry_bulk: avg('dry_bulk') };
           });
           return (
@@ -86,8 +88,7 @@ export function ShipView() {
             </div>);
         })()}
         {cp.data && <div className="text-[10px] text-text-tertiary mt-1">{cp.data.source}. Circle size = traffic; colour = change vs a year ago (red ≤ −15%, green ≥ +15%).
-          Counts come from ships' AIS transponders: vessels sailing with AIS switched off — common in conflict zones, e.g. escorted convoys
-          through Hormuz in 2026 — are not counted, so a war-zone figure can understate traffic.</div>}
+          {cp.data.note} AIS observations can miss vessels because of receiver gaps, outages or absent transmissions; missing coverage is not proof of absent traffic.</div>}
       </Panel>
     </div>
   );

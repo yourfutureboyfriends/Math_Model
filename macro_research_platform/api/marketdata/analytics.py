@@ -14,6 +14,7 @@ import pandas as pd
 
 from api.marketdata.core import NotFound, Upstream, _cached
 from api.marketdata.security import _closes
+from api.marketdata.return_quality import analysis_calendar
 
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -27,7 +28,7 @@ def seasonality(symbol: str, years: int = 15) -> Dict[str, Any]:
     def fetch():
         px = _closes([s], "max", "1d")[s].dropna()
         m = px.resample("ME").last()
-        r = m.pct_change().dropna()
+        r = m.pct_change(fill_method=None).dropna()
         cur_year = r.index[-1].year
         r = r[r.index.year >= cur_year - years]
         if len(r) < 24:
@@ -71,12 +72,13 @@ def correlation(symbols: List[str], period: str = "1y", freq: str = "daily") -> 
         raise NotFound("period 3mo…10y; freq daily or weekly")
 
     def fetch():
-        px = _closes(syms, period).ffill()
+        px = _closes(syms, period)
+        px, annual = analysis_calendar(px)
         if freq == "weekly":
             px = weekly_last(px)
         # log returns on each instrument's own trading days, aligned (different holidays per market)
         rets = np.log(px).diff().dropna(how="all")
-        rets = rets.dropna(axis=1, thresh=int(len(rets) * 0.6))
+        rets = rets.dropna(axis=1, thresh=20)
         if rets.shape[1] < 2:
             raise NotFound("Not enough overlapping history.")
         if freq == "daily":
@@ -84,15 +86,20 @@ def correlation(symbols: List[str], period: str = "1y", freq: str = "daily") -> 
             # non-synchronous-trading bias that understates cross-region correlations
             rets = rets.rolling(2).sum().iloc[1::2]
         c = rets.corr(min_periods=20)
+        if not c.notna().any().any():
+            raise NotFound("At least 20 paired return observations are required.")
+        counts = rets.notna().astype(int).T.dot(rets.notna().astype(int))
         order = _cluster_order(c)
         c = c.loc[order, order]
-        vol = (rets.std() * math.sqrt(52 if freq == "weekly" else 126)).reindex(order)
+        vol = (rets.std() * math.sqrt(52 if freq == "weekly" else annual / 2)).reindex(order)
         return {"symbols": order, "matrix": [[None if pd.isna(v) else round(float(v), 3) for v in row] for row in c.values],
                 "volatility": [None if pd.isna(v) else float(v) for v in vol], "observations": int(len(rets)),
-                "period": period, "freq": freq,
+                "period": period, "freq": freq, "calendar_basis": "calendar days" if annual==365 else "weekdays", "annualization": 52 if freq=="weekly" else annual, "as_of": str(px.index[-1].date()),
+                "pair_observations": counts.loc[order,order].values.tolist(), "missing": [s for s in syms if s not in order],
+                "coverage": "Pairwise complete returns; at least 20 paired observations per cell. No forward-filled prices.",
                 "note": "Correlation of log returns" + (" over 2-day windows (reduces the time-zone bias between markets)" if freq == "daily" else "")
-                        + ". Ordered so that related instruments sit together.", "source": "Yahoo Finance"}
-    return _cached(f"corr:{','.join(syms)}:{period}:{freq}", 1800, fetch)
+                        + f". Analysis calendar: {'calendar days' if annual==365 else 'weekdays'}; mixed weekday/24-hour assets use weekday endpoints, including weekend moves between Friday and Monday. Local-currency returns; pair counts differ. Missing prices are not zero returns. Ordered so that related instruments sit together.", "source": "Yahoo Finance"}
+    return _cached(f"corr:v3:{','.join(syms)}:{period}:{freq}", 1800, fetch)
 
 
 def _cluster_order(c: pd.DataFrame) -> List[str]:
@@ -139,7 +146,7 @@ def rrg(universe: str = "us_sectors", tail: int = 8, benchmark: Optional[str] = 
 
     def fetch():
         syms = [m[0] for m in members]
-        px = weekly_last(_closes(syms + [bench], "3y").ffill()).dropna(how="all")
+        px = weekly_last(_closes(syms + [bench], "3y")).dropna(how="all")
         if bench not in px:
             raise NotFound(f"No prices for the benchmark {bench}.")
         out = []
@@ -158,12 +165,14 @@ def rrg(universe: str = "us_sectors", tail: int = 8, benchmark: Optional[str] = 
             gap = ratio - ratio.ewm(span=n).mean()
             mom = (100 + gap / gap.rolling(52).std()).ewm(span=3).mean()
             df = pd.DataFrame({"x": ratio, "y": mom}).dropna().iloc[-tail:]
-            if df.empty:
+            if df.empty or df.index[-1] != px.index[-1]:
                 continue
             x, y = float(df["x"].iloc[-1]), float(df["y"].iloc[-1])
             quad = "Leading" if x >= 100 and y >= 100 else "Weakening" if x >= 100 else "Lagging" if y < 100 else "Improving"
-            ret_4w = float(px[sym].iloc[-1] / px[sym].iloc[-5] - 1) if len(px[sym].dropna()) > 5 else None
-            rel_4w = float(rs.iloc[-1] / rs.iloc[-5] - 1) if len(rs) > 5 else None
+            recent_px = px[sym].tail(5)
+            ret_4w = float(recent_px.iloc[-1] / recent_px.iloc[0] - 1) if len(recent_px)==5 and recent_px.notna().all() and recent_px.iloc[0]>0 else None
+            relative_window = (px[sym] / px[bench]).tail(5)
+            rel_4w = float(relative_window.iloc[-1] / relative_window.iloc[0] - 1) if len(relative_window)==5 and relative_window.notna().all() and relative_window.iloc[0]>0 else None
             out.append({"symbol": sym, "label": label, "quadrant": quad, "rs_ratio": x, "rs_momentum": y,
                         "trail": [{"date": str(i.date()), "x": float(a), "y": float(b)} for i, a, b in zip(df.index, df["x"], df["y"])],
                         "return_4w": ret_4w, "relative_4w": rel_4w})
@@ -175,7 +184,7 @@ def rrg(universe: str = "us_sectors", tail: int = 8, benchmark: Optional[str] = 
                           "(smoothed); RS-Momentum = 100 + z-score of the RS-Ratio's distance from its own 10-week average "
                           "(an open approximation of the JdK RRG).",
                 "source": "Yahoo Finance"}
-    return _cached(f"rrg:{universe}:{bench}:{tail}", 3600, fetch)
+    return _cached(f"rrg:v2:{universe}:{bench}:{tail}", 3600, fetch)
 
 
 # ── FRD: FX forwards from covered interest parity ────────────────────────────

@@ -95,10 +95,24 @@ def expectations(inp,valuation,overrides=None,normalized_erp=.05,implied_growth=
         except (NotFound,TypeError):pass
     if implied_margin is not None and base_margin is not None and implied_margin>base_margin+.05:findings.append('Price requires a long-run operating margin over five percentage points above the selected case, holding other drivers fixed.')
     if growth_gap is not None and growth_gap>.05:findings.append('Price requires revenue growth over five percentage points above the selected case, holding other drivers fixed.')
+    frontier=[]
+    if base_margin is not None and price and price>0:
+        # A family of price-consistent assumptions, not a unique multi-driver estimate.
+        for md in (-.10,-.05,0,.05,.10):
+            margin=max(-.1,min(.8,base_margin+md));args={**kw,'target_margin':margin}
+            g=dcf.reverse(inp,**args)
+            row={'target_margin':margin,'implied_growth':g,'per_share':None,'revenue_final':None,'reinvestment_explicit':None}
+            if g is not None:
+                v=dcf.value(inp,growth=g,**args)
+                explicit=[r for r in v['projection'] if r.get('stage') in (None,'explicit',1,'I')]
+                if not explicit:explicit=v['projection'][:v['assumptions']['years']]
+                row.update(per_share=v['per_share'],revenue_final=explicit[-1]['revenue'],reinvestment_explicit=sum(r['reinvestment'] for r in explicit),
+                           price_residual=v['per_share']-price)
+            frontier.append(row)
     return {'price':price,'currency':inp.get('price_currency'),'cashflow_currency':inp.get('currency'),'country':inp.get('country'),
             'risk_basis':inp.get('erp_basis'),'risk_free':inp.get('risk_free'),'erp':kw.get('erp',inp.get('erp')),
             'market_implied_mature_erp':inp.get('erp_implied'),'market_implied_source':inp.get('erp_implied_source'),'market_implied_as_of':inp.get('erp_implied_as_of'),'normalized_mature_erp':normalized_erp,
             'implied_growth':implied,'implied_growth_normalized':normalized_implied,'selected_growth':a.get('growth'),'growth_gap':growth_gap,
             'implied_margin':implied_margin,'selected_margin':base_margin,'terminal_share':terminal,'currency_growth_ceiling':cap,
-            'grid':grid,'rate_stress':duration,'findings':findings,
+            'grid':grid,'rate_stress':duration,'findings':findings,'expectations_frontier':frontier,
             'method':'Rate shocks shift every captured discount rate in parallel, holding operating cash flows fixed. Reverse DCF solves one operating driver at a time. Growth/margin grid and rate shocks are deterministic scenarios, not probabilities or confidence intervals. Implied growth and margin are alternative explanations, not jointly required targets. No regional valuation haircut or market-price calibration is applied.'}

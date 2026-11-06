@@ -231,13 +231,19 @@ async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le
                   normalized_erp: float = Query(0.05, ge=0, le=0.15),
                   country_weights: Optional[str] = Query(None, max_length=4000),
                   erp_basis: str = Query("normalized", pattern="^(normalized|market_implied)$"),
-                  working_capital_ratio: Optional[float] = Query(None, ge=-1, le=1)):
+                  working_capital_ratio: Optional[float] = Query(None, ge=-1, le=1),
+                  country_risk_premium: Optional[float] = Query(None, ge=0, le=.2),
+                  governance_risk_premium: Optional[float] = Query(None, ge=0, le=.2),
+                  scenario_profile: str = Query("reported",pattern="^(reported|western_tech|china_structural)$"),
+                  bear_probability: float = Query(.25,ge=0,le=1), base_probability: float = Query(.5,ge=0,le=1), bull_probability: float = Query(.25,ge=0,le=1),
+                  include_scenarios: bool = True):
     """Valuation (FCFF / excess return / DDM) plus a 24-month price outlook built on it."""
     from api.marketdata import dcf
     from api.marketdata.core import _info, div_yield
+    if include_scenarios and abs(bear_probability+base_probability+bull_probability-1)>1e-9:raise HTTPException(422,"Scenario probabilities must sum to one")
     res = await _dcf_core(symbol, growth, years, terminal_growth, target_margin, sales_to_capital, ronic, discount, beta, erp,
                           include_leases, mid_year, roe, terminal_roe, payout, model, method, ke_method, fade_years, working_capital_ratio,
-                          normalized_erp=normalized_erp, erp_basis=erp_basis)
+                          normalized_erp=normalized_erp, erp_basis=erp_basis, country_risk_premium=country_risk_premium, governance_risk_premium=governance_risk_premium)
     weights = None
     if country_weights is not None:
         import json
@@ -259,7 +265,17 @@ async def mkt_dcf(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, le
         res["expectations"] = await _run(expectations, res["inputs"], v,
             {**view_kw,"discount":discount,"erp":v.get("wacc",{}).get("erp"),"ke_method":ke_method},
             normalized_erp, res.get("market_implied_growth"), timeout=30)
+    if res["model"] == "fcff" and include_scenarios:
+        from api.marketdata.dcf_scenarios import operating_scenarios
+        try:
+            res["analyst_scenarios"] = await _run(operating_scenarios,res["inputs"],
+                {**view_kw,"discount":discount,"erp":v.get("wacc",{}).get("erp")},
+                {"bear":bear_probability,"base":base_probability,"bull":bull_probability},scenario_profile, timeout=30)
+        except ValueError as exc:
+            raise HTTPException(422,str(exc)) from exc
     from api.marketdata import dcf_fundamentals
+    from api.marketdata.developed_markets import context
+    res["market_context"]=context(res["inputs"])
     res["calculation_details"] = dcf_fundamentals.diagnostics(res["inputs"], v, res["model"])
     res["research_status"] = dcf_fundamentals.research_status(res["inputs"], v, res["model"], res["calculation_details"])
     ke = (v.get("wacc") or {}).get("cost_of_equity") or (v.get("assumptions") or {}).get("cost_of_equity")
@@ -291,12 +307,16 @@ async def _dcf_core(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, 
                   roe: Optional[float] = Query(None, ge=-0.5, le=1.0), terminal_roe: Optional[float] = Query(None, gt=0, le=1.0),
                   payout: Optional[float] = Query(None, ge=0, le=1.0), model: Optional[str] = Query(None, pattern="^(fcff|excess_return|ddm)$"),
                   method: Optional[str] = None, ke_method: Optional[str] = None, fade_years: Optional[int] = None,
-                  working_capital_ratio: Optional[float] = None, normalized_erp: float = 0.05, erp_basis: str = "normalized"):
+                  working_capital_ratio: Optional[float] = None, normalized_erp: float = 0.05, erp_basis: str = "normalized",
+                  country_risk_premium: Optional[float] = None, governance_risk_premium: Optional[float] = None):
     """FCFF discounted at WACC (Damodaran / McKinsey) for operating companies; Damodaran's excess-return
     model for banks and insurers; a dividend discount model for dividend payers (and as the fallback where
     a DCF can't be built). Reverse DCF and sensitivity grids for all three."""
     from api.marketdata import dcf
     inp = dict(await _run(dcf.inputs, symbol, timeout=60))
+    if country_risk_premium is not None:inp["country_risk_premium"]=country_risk_premium
+    if governance_risk_premium is not None:inp["governance_risk_premium"]=governance_risk_premium
+    from api.workflows.model_archive import calculate as archived_value
     from api.marketdata.dcf_expectations import apply_risk_basis
     inp, erp = apply_risk_basis(inp, erp_basis, normalized_erp, erp, discount)
     ind = inp.get("industry") or ""
@@ -326,7 +346,7 @@ async def _dcf_core(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, 
     try:
         if chosen == "excess_return":
             kw = dict(years=years or 10, roe=roe, terminal_roe=terminal_roe, payout=payout, terminal_growth=terminal_growth, beta=beta, erp=erp, discount=discount)
-            val = await _run(dcf.value_financial, inp, **kw)
+            val = await _run(archived_value, inp, model='excess_return', **kw)
             sens = await _run(dcf.sensitivity_financial, inp, val, **kw)
             implied = await _run(dcf.reverse_financial, inp, **{k: v for k, v in kw.items() if k not in ("roe", "terminal_roe")})
             return {"inputs": inp, "valuation": val, "sensitivity": sens, "market_implied_roe": implied, "model": "excess_return",
@@ -336,14 +356,14 @@ async def _dcf_core(symbol: str, growth: Optional[float] = Query(None, ge=-0.5, 
         kw = dict(growth=growth, years=years, terminal_growth=terminal_growth, target_margin=target_margin, sales_to_capital=sales_to_capital,
                   ronic=ronic, discount=discount, beta=beta, erp=erp, include_leases=include_leases, mid_year=mid_year,
                   method=method, ke_method=ke_method, fade_years=fade_years, working_capital_ratio=working_capital_ratio)
-        val = await _run(dcf.value, inp, **kw)
+        val = await _run(archived_value, inp, **kw)
     except HTTPException as e:
         if chosen == "excess_return" and model is None and not inp.get("is_bank_like", False):
             try:    # a 'financial' that isn't a lender (exchanges, data vendors, crypto brokers) can be valued on cash flow
                 kw = dict(growth=growth, years=years, terminal_growth=terminal_growth, target_margin=target_margin, sales_to_capital=sales_to_capital,
                           ronic=ronic, discount=discount, beta=beta, erp=erp, include_leases=include_leases, mid_year=mid_year,
                           method=method, ke_method=ke_method, fade_years=fade_years, working_capital_ratio=working_capital_ratio)
-                val = await _run(dcf.value, inp, **kw)
+                val = await _run(archived_value, inp, **kw)
                 sens = await _run(dcf.sensitivity, inp, val, **kw)
                 return {"inputs": inp, "valuation": val, "sensitivity": sens, "model": "fcff", "ddm": ddm, "recommended": "fcff",
                         "fallback_reason": f"The excess-return model can't run ({e.detail}) — valued on free cash flow instead.",
@@ -570,6 +590,15 @@ async def mkt_flow(layer: str):
     if not fn:
         raise HTTPException(404, "Unknown flow layer")
     return await _run(fn, timeout=120)
+
+
+@router.get("/api/v1/mkt/flow/disclosures/{symbol}")
+async def mkt_flow_disclosures(symbol: str):
+    """Sampled SEC insider disclosures with transaction-code and amendment controls."""
+    from api.marketdata.flow_evidence import disclosures
+    if not __import__('re').fullmatch(r"[A-Za-z0-9.^=-]{1,20}",symbol):
+        raise HTTPException(422,"Enter one valid company ticker")
+    return await _run(disclosures,symbol.upper(),timeout=120)
 
 
 @router.get("/api/v1/mkt/flow/tic/{iso}")
@@ -1662,3 +1691,59 @@ async def mkt_bond_market(days: int = Query(30, ge=5, le=90)):
     """Corporate-bond market breadth (BOND): TRACE advances, declines and 52-week extremes (needs a free FINRA API key)."""
     from api.marketdata import bbgfree
     return await _run(bbgfree.bond_market, days, timeout=180)
+
+
+@router.get('/api/v1/mkt/ship/events/{query}')
+async def mkt_vessel_events(query:str,kind:str=Query('port_visit',pattern='^(port_visit|loitering|ais_gap)$'),days:int=Query(90,ge=1,le=180)):
+    from api.marketdata.tracking import vessel_events
+    if len(query)>80:raise HTTPException(422,'Vessel query is too long')
+    return await _run(vessel_events,query,kind,days,timeout=90)
+
+
+@router.get("/api/v1/mkt/tracking/coverage")
+async def tracking_coverage(kind: str = Query("ship",pattern="^(ship|flight)$")):
+    from api.marketdata.global_tracking import status
+    return await _run(status,kind)
+
+
+@router.get("/api/v1/mkt/tracking/region")
+async def tracking_region(region: str = Query(...,pattern="^[a-z-]{1,32}$")):
+    from api.marketdata.global_tracking import REGIONS,AIR_ONLY_REGIONS,ship_region
+    if region not in {r[0] for r in REGIONS}-AIR_ONLY_REGIONS:raise HTTPException(400,"Unknown tracking region")
+    return await _run(ship_region,region,timeout=90)
+
+
+@router.get("/api/v1/mkt/tracking/benchmark")
+async def tracking_benchmark():
+    from api.marketdata.global_tracking import benchmark
+    return await _run(benchmark)
+
+
+@router.get("/api/v1/mkt/tracking/trade")
+async def tracking_trade_context():
+    from api.marketdata.tracking_trade import port_trade
+    return await _run(port_trade,timeout=90)
+
+
+@router.post("/api/v1/mkt/dcf-scenarios")
+async def mkt_fcf_scenarios(body: Dict[str, Any] = Body(...)):
+    """Run explicit, single-currency FCFF scenarios without company-data or network lookup."""
+    from api.marketdata.dcf_scenarios import FCFModel,RiskAssumptions,Scenario,scenario_matrix,regional_risk,DEFAULT_SCENARIOS
+    def calculate():
+        try:
+            model=FCFModel(**body.get("model",{}));risk=RiskAssumptions(**body.get("risk",{}))
+            metadata=None
+            if body.get("profile"):risk,metadata=regional_risk(risk,body["profile"],body.get("localized_premium"))
+            scenarios=[Scenario(**x) for x in body["scenarios"]] if "scenarios" in body else DEFAULT_SCENARIOS
+            report=scenario_matrix(model,risk,scenarios,wacc_override=body.get("wacc_override"))
+            report["matrix"]=report["matrix"].astype(object).where(report["matrix"].notna(),None).to_dict(orient="records");report["profile"]=metadata
+            return report
+        except (TypeError,ValueError,KeyError) as exc:
+            raise HTTPException(422,str(exc)) from exc
+    return await _run(calculate,timeout=15)
+
+
+@router.get('/api/v1/mkt/dcf-developed-markets')
+async def mkt_dcf_developed_markets():
+    from api.marketdata.developed_markets import catalogue
+    return catalogue()

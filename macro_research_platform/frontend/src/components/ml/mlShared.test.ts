@@ -23,3 +23,21 @@ describe('in-browser network', () => {
     expect(Math.abs(cal.p - 0.5)).toBeLessThan(Math.abs(plain.p - 0.5) + 1e-12);
   });
 });
+
+import {connectionSignals,selectedPrediction,validWeights} from './mlShared';
+it('displays the actual linear input signal without an extra tanh',()=>{
+ const s=connectionSignals(w.nets[0],w,[7]);
+ expect(s.input[0][0]).toBeCloseTo(3);
+ expect(s.input[0][1]).toBeCloseTo(-3);
+});
+it('labels a selected network output rather than the ensemble average',()=>{
+ const r=selectedPrediction(w.nets[1],w,[3],[0,.5]);
+ expect(r.raw).toBeCloseTo(forward(w.nets[1],w,[3]).p);
+ expect(r.p).not.toBeCloseTo(ensemble(w,[0,.5],[3]).p,5);
+});
+it('rejects incompatible or degenerate exports',()=>{
+ expect(validWeights(w,1)).toBe(true);
+ expect(validWeights({...w,sd:[0]},1)).toBe(false);
+ expect(validWeights(w,2)).toBe(false);
+ expect(validWeights({...w,nets:[]},1)).toBe(false);
+});

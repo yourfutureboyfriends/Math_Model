@@ -60,8 +60,15 @@ class ModelParams:
         """Parameters from a dict (unknown keys ignored, values cast to each field's type)."""
         p = cls()
         for k, v in (d or {}).items():
-            if hasattr(p, k) and v is not None:
+            if k in cls.__dataclass_fields__ and v is not None:
+                if isinstance(v,bool) or not math.isfinite(float(v)):raise ValueError(f'{k} requires a finite number')
+                if isinstance(getattr(p,k),int) and float(v)!=int(float(v)):raise ValueError(f'{k} requires a whole number')
                 setattr(p, k, type(getattr(p, k))(v))
+        bounds={'vol_target':(.001,2),'max_weight':(.001,1),'risk_aversion':(.001,100),'tau':(.000001,10),
+                'view_confidence':(.000001,10000),'shrinkage_months':(0,1200),'cov_months':(24,600),
+                'min_history_months':(36,1200),'momentum_months':(1,24),'cost_bps':(0,1000),'max_gross':(.001,3)}
+        for key,(lo,hi) in bounds.items():
+            if not lo<=getattr(p,key)<=hi:raise ValueError(f'{key} must be between {lo} and {hi}')
         return p
 
 
@@ -186,14 +193,24 @@ def environment_prior(assets: Sequence[str], env_class: Dict[str, str], vols: np
 
 
 def black_litterman(cov: np.ndarray, w_prior: np.ndarray, views: np.ndarray, delta: float,
-                    tau: float, confidence: float) -> Tuple[np.ndarray, np.ndarray]:
+                    tau: float, confidence: float, view_variances=None) -> Tuple[np.ndarray, np.ndarray]:
     """Posterior expected returns with absolute views on every asset (P = I):
     μ = [(τΣ)⁻¹ + Ω⁻¹]⁻¹ [(τΣ)⁻¹ π + Ω⁻¹ Q], π = δ Σ w_prior, Ω = diag(τΣ) / confidence."""
+    if not all(math.isfinite(x) and x>0 for x in (delta,tau,confidence)):raise ValueError('Positive finite risk aversion, tau and confidence are required')
+    if not np.isfinite(cov).all() or not np.isfinite(w_prior).all() or not np.isfinite(views).all():raise ValueError('Finite covariance, weights and views required')
+    if not np.allclose(cov,cov.T):raise ValueError('Covariance must be symmetric')
+    np.linalg.cholesky(cov)
     pi = delta * cov @ w_prior
     ts = tau * cov
-    omega = np.diag(np.diag(ts)) / max(confidence, 1e-6)
-    a = np.linalg.inv(ts) + np.linalg.inv(omega)
-    b = np.linalg.inv(ts) @ pi + np.linalg.inv(omega) @ views
+    variance=np.diag(ts) if view_variances is None else np.asarray(view_variances,dtype=float)
+    if variance.shape!=views.shape or not np.isfinite(variance).all() or (variance<=0).any():raise ValueError('Positive monthly view-error variances required for every view')
+    omega = np.diag(variance) / max(confidence, 1e-6)
+    # With default omega proportional to tau, tau cancels from the posterior mean.
+    # Explicit independently supplied view variances provide a separate research convention.
+    prior_precision=np.linalg.solve(ts,np.eye(len(views)))
+    view_precision=np.linalg.solve(omega,np.eye(len(views)))
+    a = prior_precision + view_precision
+    b = prior_precision @ pi + view_precision @ views
     return np.linalg.solve(a, b), pi
 
 
@@ -255,13 +272,8 @@ class Decision:
     loadings: Dict[str, Dict[str, float]] = field(default_factory=dict)
 
 
-def decide(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str], env_class: Dict[str, str],
-           as_of: pd.Timestamp, p: ModelParams, anchors: Tuple[str, str] = ("INDPRO", "CPIAUCSL")) -> Optional[Decision]:
-    """The model's allocation for the month after `as_of`, using only data up to `as_of`.
-
-    `anchors` are the series the growth and inflation factors must load positively on (the sign convention); the
-    defaults are the US model's industrial production and CPI.
-    """
+def decision_factors(panel: pd.DataFrame, blocks: Dict[str,str], as_of: pd.Timestamp, anchors=("INDPRO","CPIAUCSL")):
+    """Available-history factors, independent of allocation/asset suitability."""
     pan = panel[panel.index <= as_of].replace([np.inf, -np.inf], np.nan)
     # Apply availability at each decision date, including every backtest iteration.
     # Filtering once at today's endpoint would introduce hindsight feature selection.
@@ -278,6 +290,17 @@ def decide(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str], env_
     i_cols = [c for c, b in blocks.items() if b == "inflation" and c in pan]
     g, gl = diffusion_factor(pan[g_cols], anchors[0])
     i, il = diffusion_factor(pan[i_cols], anchors[1])
+    return g,i,{"growth":gl,"inflation":il}
+
+
+def decide(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str], env_class: Dict[str, str],
+           as_of: pd.Timestamp, p: ModelParams, anchors: Tuple[str, str] = ("INDPRO", "CPIAUCSL")) -> Optional[Decision]:
+    """The model's allocation for the month after `as_of`, using only data up to `as_of`.
+
+    `anchors` are the series the growth and inflation factors must load positively on (the sign convention); the
+    defaults are the US model's industrial production and CPI.
+    """
+    g,i,loadings=decision_factors(panel,blocks,as_of,anchors)
     if g.empty or i.empty:
         return None
     if g.index[-1].to_period("M") != as_of.to_period("M") or i.index[-1].to_period("M") != as_of.to_period("M"):
@@ -306,4 +329,4 @@ def decide(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str], env_
     w = optimize(mu_bl, cov, p.risk_aversion, p.max_weight, target_m)
     strategic = scale_to_target(prior, cov, target_m, p.max_gross)
     return Decision(as_of, assets, w, float(1 - w.sum()), probs, pg, pi_, mu_model, mu_bl, prior, strategic,
-                    cov, cond, counts, g, i, {"growth": gl, "inflation": il})
+                    cov, cond, counts, g, i, loadings)

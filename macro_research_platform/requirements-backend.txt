@@ -23,3 +23,6 @@ futu-api==10.11.7108
 ib_async==2.1.0
 aeventkit==2.1.0
 nest_asyncio==1.6.0
+
+# Session-aware autonomous ML scheduling (holidays and early closes).
+exchange-calendars==4.13.2

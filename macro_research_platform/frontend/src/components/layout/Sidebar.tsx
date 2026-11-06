@@ -66,6 +66,8 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
       <div key={item.id} className="group relative flex items-center">
         <button
           aria-current={isActive?'page':undefined}
+          aria-label={panelLabel(item.id, item.label)}
+          title={collapsed ? panelLabel(item.id, item.label) : undefined}
           onClick={() => onNavigate?.(item.id)}
           className={cn(
             'flex-1 h-7 flex items-center transition-colors duration-150 min-w-0 rounded-md',
@@ -206,6 +208,7 @@ export function Sidebar({ activeSection = 'master-signal', onNavigate, currentRe
       {/* Collapse button */}
       <button
         onClick={handleCollapse}
+        aria-label={collapsed ? 'Expand navigation sidebar' : 'Collapse navigation sidebar'}
         className="h-8 flex items-center justify-center border-t border-border-subtle text-text-tertiary hover:text-text-primary hover:bg-surface-3 transition-colors"
       >
         {collapsed ? (

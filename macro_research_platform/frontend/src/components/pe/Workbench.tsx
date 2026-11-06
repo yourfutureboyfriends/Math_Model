@@ -1,3 +1,4 @@
+import {readLboDraft} from './peDraft';
 // LBO workbench: load a listed company (filings + live credit markets) or start from the illustrative case, edit
 // any assumption, and the model re-runs — three cases, returns, the value bridge, the debt paydown, credit stats and
 // covenants, IRR sensitivities, the highest price that clears the hurdle. Save to the fund's pipeline; export the
@@ -135,7 +136,7 @@ export function Workbench() {
         <button disabled={!canUndo} onClick={undo} className="px-2 py-1 border border-border rounded disabled:opacity-40">Undo</button>
         <button disabled={!canRedo} onClick={redo} className="px-2 py-1 border border-border rounded disabled:opacity-40">Redo</button>
         <button onClick={()=>{try{sessionStorage.setItem(draftKey,JSON.stringify({inputs,sources,deal}));setNote('Draft kept for this browser session.');}catch{setErr('Browser draft storage is unavailable.');}}} className="px-2 py-1 border border-border rounded">Keep draft</button>
-        <button onClick={()=>{try{const raw=sessionStorage.getItem(draftKey);if(!raw){setNote('No draft in this session.');return;}const d=JSON.parse(raw);setInputs(d.inputs);setSources(d.sources);setDeal(d.deal);setMarket(null);setNote('Draft restored.');}catch{setErr('Could not restore this draft.');}}} className="px-2 py-1 border border-border rounded">Restore draft</button>
+        <button onClick={()=>{try{const raw=sessionStorage.getItem(draftKey);if(!raw){setNote('No draft in this session.');return;}const d=readLboDraft(raw);setInputs(d.inputs);setSources(d.sources);setDeal(d.deal);setMarket(null);setNote('Draft restored.');}catch{setErr('Could not restore this draft.');}}} className="px-2 py-1 border border-border rounded">Restore draft</button>
         <button disabled={!base||busy||!!err} onClick={()=>setBaseline(base)} className="px-2 py-1 border border-border rounded disabled:opacity-40">Set comparison baseline</button>
         {baseline&&base&&<span className="text-text-secondary">IRR {pct(base.returns.sponsor_irr)} vs {pct(baseline.returns.sponsor_irr)} baseline · equity {amt(base.sponsor_equity-baseline.sponsor_equity,ccy,unit)} change <button onClick={()=>setBaseline(null)} className="underline ml-1">Clear</button></span>}
         <span role="status" className="ml-auto text-text-tertiary">{busy?'Recalculating…':err?'Inputs need attention':completedInputs===JSON.stringify(inputs)?'Model up to date':'Waiting for calculation'}</span>

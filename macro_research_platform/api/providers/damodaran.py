@@ -95,7 +95,7 @@ YAHOO_TO_DAMODARAN: Dict[str, str] = {
 
 EUROPE = {"united kingdom", "germany", "france", "italy", "spain", "netherlands", "switzerland", "sweden", "norway", "denmark",
           "finland", "belgium", "austria", "ireland", "portugal", "luxembourg", "greece", "poland", "czech republic", "hungary"}
-DEVELOPED_OTHER = {"canada", "australia", "new zealand", "singapore", "hong kong", "israel"}
+DEVELOPED_OTHER = {"canada", "australia", "new zealand", "singapore", "hong kong", "israel", "south korea", "korea", "korea, republic of"}
 
 
 def _norm_industry(name: Optional[str]) -> Optional[str]:
@@ -262,3 +262,39 @@ def country_risk(country: Optional[str]) -> Dict[str, Any]:
         out.update({"crp": row["crp"] or 0.0, "default_spread": row["default_spread"] or 0.0,
                     "rating": row["rating"] if isinstance(row["rating"], str) else None})
     return out
+
+
+def country_tax(country: Optional[str]) -> Dict[str, Any]:
+    """Published country marginal-tax reference, with minimum-tax alternative kept separate.
+
+    This is a reference input, not company tax advice: state/local taxes, treaties,
+    special regimes and Pillar Two applicability require company-specific review.
+    """
+    result={'rate':None,'minimum_tax_rate':None,'source':'Damodaran country marginal tax rates (Tax Foundation reference)','available':False,'as_of':None}
+    if not country:return result
+    key='country_tax_v2'
+    with _lock:hit=_mem.get(key)
+    if not hit or time.time()-hit[0]>3600:
+        path=_download('countrytaxrates.xls',BASE+'countrytaxrates.xls',TTL)
+        table={};updated=None
+        if path is not None:
+            try:
+                import pandas as pd
+                raw=pd.read_excel(path,header=None)
+                header=next(i for i in range(min(30,len(raw))) if str(raw.iloc[i,0]).strip().lower()=='country')
+                for i in range(header):
+                    for value in raw.iloc[i]:
+                        if hasattr(value,'date') and not isinstance(value,str):updated=str(value.date())
+                for i in range(header+1,len(raw)):
+                    name=raw.iloc[i,0]
+                    if not isinstance(name,str):continue
+                    rate=_num(raw.iloc[i,1]);minimum=_num(raw.iloc[i,2]) if raw.shape[1]>2 else None
+                    if rate is not None and 0<=rate<=.6 and name.strip().lower() not in table:table[name.strip().lower()]={'rate':rate,'minimum_tax_rate':minimum,'as_of':updated}
+            except Exception as exc:logger.warning('[damodaran] country tax reference unavailable: %s',type(exc).__name__)
+        hit=(time.time(),table)
+        with _lock:_mem[key]=hit
+    aliases={'usa':'united states','us':'united states','uk':'united kingdom','south korea':'korea','korea, republic of':'korea','hong kong sar':'hong kong','czechia':'czech republic'}
+    aliases.update({'united states':'united states of america','united kingdom':'united kingdom of great britain and northern ireland','hong kong':'china, hong kong special administrative region','korea':'republic of korea'})
+    key=country.strip().lower();key=aliases.get(key,key);key=aliases.get(key,key);row=hit[1].get(key)
+    if row:result.update(row,available=True)
+    return result

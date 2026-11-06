@@ -189,3 +189,10 @@ data/processed/fmp/
 
 # Last good results of slow screens (served after a restart while refreshing)
 data/processed/screen_cache/
+
+# The whole generated tree: every path under data/processed/ is written at runtime by the
+# data pipeline, quant lab, SEC/Damodaran/FMP fetchers or ML engine and is rebuildable from
+# its source. Nothing here is tracked, so ignoring it wholesale costs no history — and it
+# supersedes the per-subdirectory rules above, which only ever covered part of the tree
+# (quant/research panels alone were ~131 MB, and the untracked total reached ~5 GB).
+data/processed/

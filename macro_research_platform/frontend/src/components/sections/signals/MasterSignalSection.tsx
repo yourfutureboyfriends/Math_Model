@@ -85,7 +85,7 @@ export function MasterSignalSection({ data }: MasterSignalSectionProps) {
   const convictionDisplay = fmtConviction(conviction);
 
   return (
-    <div id="master-signal" className="h-22 bg-surface-2 border-b border-border">
+    <div className="h-22 bg-surface-2 border-b border-border">
       <div className="h-full flex items-center px-4 gap-6">
         {/* Left: Ensemble Signal */}
         <div className="w-44 flex-shrink-0">

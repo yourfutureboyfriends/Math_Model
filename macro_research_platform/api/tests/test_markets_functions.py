@@ -406,24 +406,25 @@ def test_ship_phase_and_flag():
     from api.marketdata.tracking import _phase, flag_of
     assert _phase({"status": 5, "speed": 0}) == "moored"
     assert _phase({"status": 1, "speed": 3}) == "anchored"
-    assert _phase({"status": None, "speed": 0.2}) == "anchored"          # status unset: speed decides
+    assert _phase({"status": None, "speed": 0.2}) == "unknown"           # stationary does not establish anchorage
     assert _phase({"status": 0, "speed": 12}) == "underway"
     assert flag_of(477123456) == "Hong Kong" and flag_of(636012345) == "Liberia"
     assert flag_of(123) is None and flag_of(970123456) is None            # SART / not a ship MMSI
 
 
-def test_ship_track_keeps_8h_and_skips_stationary():
+def test_ship_track_keeps_8h_and_preserves_stationary_intervals():
     from api.marketdata.tracking import _AisCollector
     c = _AisCollector.__new__(_AisCollector)
     c.tracks, c.t0 = {}, 0.0
     c._track(1, 0, 1.0, 103.0, 10)
     c._track(1, 100, 1.1, 103.1, 10)                 # within 5 minutes: not stored
     c._track(1, 400, 1.2, 103.2, 10)
-    c._track(1, 800, 1.2, 103.2, 0)                  # not moving: time refreshed, no new point
-    assert len(c.tracks[1]) == 8 and c.tracks[1][-4] == 800
+    c._track(1, 800, 1.2, 103.2, 0)                  # stationary observations must not overwrite the earlier timestamp
+    assert list(c.tracks[1][::4]) == [0, 400, 800]
     for i in range(200):
         c._track(1, 1200 + i * 400, 1.3 + i * 0.01, 103.3, 10)
-    assert len(c.tracks[1]) == 4 * _AisCollector.TRACK_POINTS
+    assert len(c.tracks[1]) <= 4 * _AisCollector.TRACK_POINTS
+    assert c.tracks[1][-4] - c.tracks[1][0] <= 8 * 3600
 
 
 def test_flight_route_mismatch_drops_progress(monkeypatch):
@@ -613,7 +614,7 @@ def test_chokepoints_csv_then_query_fallback(monkeypatch, tmp_path):
     suez = next(c for c in d["chokepoints"] if c["name"] == "Suez Canal")
     assert suez["transits_7d"] == 10 and abs(suez["vs_last_year"] + 0.5) < 1e-9
     mode["csv"], calls[:] = False, []
-    (tmp_path / "portwatch_chokepoints_380.json").unlink()
+    (tmp_path / "portwatch_chokepoints_v2_380.json").unlink()
     d = T.chokepoints(days=380)                                  # CSV down: query the last weeks, after one throttled answer
     assert d["as_of"] == f"{days[-1]:%Y-%m-%d}" and sum(1 for c in calls if c.startswith("date >=")) == 2
 

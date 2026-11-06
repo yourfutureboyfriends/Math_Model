@@ -20,7 +20,7 @@ import json
 import logging
 import re
 import xml.etree.ElementTree as ET
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -301,7 +301,7 @@ def _wx_signal(t: Dict[str, float]) -> str:
 
 
 # ── INSD: Form 4 ─────────────────────────────────────────────────────────────
-CODES = {"P": "Buy (open market)", "S": "Sale (open market)", "A": "Grant / award", "M": "Option exercise", "F": "Tax withholding",
+CODES = {"P": "Purchase (market or private)", "S": "Sale (market or private)", "A": "Grant / award", "M": "Option exercise", "F": "Tax withholding",
          "G": "Gift", "D": "Disposition to issuer", "C": "Conversion", "X": "Option exercise", "J": "Other", "W": "Inheritance"}
 
 
@@ -322,51 +322,35 @@ def insiders(symbol: str, limit: int = 40) -> Dict[str, Any]:
         docs = [(r["accessionNumber"][i], r["primaryDocument"][i], r["filingDate"][i]) for i in range(len(r["form"]))
                 if r["form"][i] in ("4", "4/A")][:limit]
 
+        from api.marketdata.flow_evidence import parse_form4
+        failed=[]
         def parse(item):
-            acc, doc, fdate = item
-            raw = doc.split("/")[-1]                                   # strip the xsl rendering prefix
-            url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc.replace('-', '')}/{raw}"
+            acc,doc,fdate=item
+            raw=doc.split('/')[-1]
+            url=f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc.replace('-', '')}/{raw}"
+            form=r['form'][r['accessionNumber'].index(acc)]
             try:
-                root = ET.fromstring(_sec_get(url).content)
+                rows=parse_form4(_sec_get(url).content,acc,fdate,url,form)
+                for row in rows:row['type']=CODES.get(row['code'],row['code'])
+                return rows,None
             except Exception:
-                return []
-            owner = root.findtext(".//reportingOwner/reportingOwnerId/rptOwnerName") or ""
-            rel = root.find(".//reportingOwner/reportingOwnerRelationship")
-            role = []
-            if rel is not None:
-                if (rel.findtext("isDirector") or "").strip() in ("1", "true"):
-                    role.append("Director")
-                if (rel.findtext("isOfficer") or "").strip() in ("1", "true"):
-                    role.append(rel.findtext("officerTitle") or "Officer")
-                if (rel.findtext("isTenPercentOwner") or "").strip() in ("1", "true"):
-                    role.append("10% owner")
-            out = []
-            for t in root.findall(".//nonDerivativeTable/nonDerivativeTransaction"):
-                code = t.findtext("transactionCoding/transactionCode") or ""
-                sh = _f(t.findtext("transactionAmounts/transactionShares/value"))
-                px = _f(t.findtext("transactionAmounts/transactionPricePerShare/value"))
-                ad = t.findtext("transactionAmounts/transactionAcquiredDisposedCode/value")
-                out.append({"filed": fdate, "date": t.findtext("transactionDate/value"), "insider": owner.title(), "role": ", ".join(role) or "—",
-                            "code": code, "type": CODES.get(code, code), "shares": sh, "price": px,
-                            "value": sh * px if sh and px else None, "direction": "buy" if ad == "A" else "sell",
-                            "owned_after": _f(t.findtext("postTransactionAmounts/sharesOwnedFollowingTransaction/value")),
-                            "plan_10b5_1": bool(re.search(r"10b5-1", ET.tostring(root, encoding="unicode") or "")),
-                            "url": url})
-            return out
-        with cf.ThreadPoolExecutor(4) as ex:
-            rows = [x for chunk in ex.map(parse, docs) for x in chunk]
+                return [],{'accession':acc,'filed':fdate,'url':url,'reason':'Filing could not be retrieved or parsed'}
+        with cf.ThreadPoolExecutor(2) as ex:
+            parsed=list(ex.map(parse,docs))
+        rows=[row for chunk,error in parsed for row in chunk]
+        failed=[error for chunk,error in parsed if error]
         rows.sort(key=lambda x: (x["date"] or "", x["filed"]), reverse=True)
         market = [x for x in rows if x["code"] in ("P", "S")]
         cutoff = str(date.today() - timedelta(days=180))
         buys = sum(x["value"] or 0 for x in market if x["code"] == "P" and (x["date"] or "") >= cutoff)
         sells = sum(x["value"] or 0 for x in market if x["code"] == "S" and (x["date"] or "") >= cutoff)
-        return {"symbol": s, "company": sub.get("name"), "transactions": rows, "open_market_buys_6m": buys, "open_market_sales_6m": sells,
+        return {"symbol": s, "company": sub.get("name"), "transactions": rows, "filings_requested": len(docs), "filings_parsed": len(docs)-len(failed), "failed_filings": failed, "fetched_at": datetime.now(timezone.utc).isoformat(), "open_market_buys_6m": buys, "open_market_sales_6m": sells,
                 "buyers_6m": len({x["insider"] for x in market if x["code"] == "P" and (x["date"] or "") >= cutoff}),
                 "sellers_6m": len({x["insider"] for x in market if x["code"] == "S" and (x["date"] or "") >= cutoff}),
-                "note": "Open-market purchases (code P) are the informative signal; sales are often pre-planned (10b5-1) or for "
+                "note": "Code P includes open-market or private purchases; inspect the filing terms. sales are often pre-planned (10b5-1) or for "
                         "taxes and diversification. Grants (A), exercises (M) and tax withholding (F) are compensation mechanics.",
                 "source": f"SEC EDGAR Form 4 filings (last {len(docs)})"}
-    return _cached(f"insd:{s}:{limit}", 6 * 3600, fetch)
+    return _cached(f"insd:v2:{s}:{limit}", 6 * 3600, fetch)
 
 
 # ── 13F ──────────────────────────────────────────────────────────────────────
@@ -499,7 +483,10 @@ def thirteen_f(cik: str = "0001067983") -> Dict[str, Any]:
             raise NotFound("No 13F-HR filings for this filer.")
         cur_acc, cur_period, cur_filed = filings[0]
         cur = _info_table(cik10, cur_acc)
-        prev = _info_table(cik10, filings[1][0]) if len(filings) > 1 else []
+        if not cur:
+            raise NotFound("No readable information table; holdings are not assumed empty.")
+        previous = next((f for f in filings[1:] if f[1] < cur_period), None)
+        prev = _info_table(cik10, previous[0]) if previous else []
 
         def agg(rows):
             out: Dict[str, Dict[str, Any]] = {}
@@ -510,11 +497,11 @@ def thirteen_f(cik: str = "0001067983") -> Dict[str, Any]:
                 a["shares"] += x["shares"] or 0
             return out
         A, B = agg(cur), agg(prev)
-        # SEC switched value reporting from thousands to dollars in 2023 — normalise. Some filers kept reporting in
-        # thousands afterwards: a book under $200m with many positions is read as thousands (Baupost showed $0.0bn)
+        # Filing-date convention changed on 3 January 2023, including reports for Q4 2022.
+        # Do not infer units from portfolio size or silently repair a filer's reporting error.
         raw_total = sum(v["value"] for v in A.values())
-        scale = 1000 if cur_period < "2023-01-01" or (raw_total < 2e8 and len(A) >= 5) else 1
-        total = sum(v["value"] for v in A.values()) * scale or 1
+        scale = 1000 if cur_filed < "2023-01-03" else 1
+        total = sum(v["value"] for v in A.values()) * scale
         tick = _cusip_tickers([v["cusip"] for v in sorted(A.values(), key=lambda v: -v["value"])[:60]])
         try:                                          # second OpenFIGI pass for ADRs and new share classes (cached)
             from api.quant.smartmoney import _figi_retry
@@ -532,17 +519,17 @@ def thirteen_f(cik: str = "0001067983") -> Dict[str, Any]:
             p = B.get(k)
             chg = (v["shares"] / p["shares"] - 1) if p and p["shares"] else None
             rows.append({"issuer": v["issuer"], "ticker": tick.get(v["cusip"]), "cusip": v["cusip"], "put_call": v["put_call"],
-                         "value": v["value"] * scale, "weight": v["value"] * scale / total, "shares": v["shares"],
-                         "change": "new" if not p else ("added" if chg and chg > 0.005 else "reduced" if chg and chg < -0.005 else "unchanged"),
+                         "value": v["value"] * scale, "weight": v["value"] * scale / total if total else None, "shares": v["shares"],
+                         "change": "unavailable" if not prev else "new" if not p else ("added" if chg and chg > 0.005 else "reduced" if chg and chg < -0.005 else "unchanged"),
                          "shares_change_pct": chg})
         sold = [{"issuer": v["issuer"], "cusip": v["cusip"], "put_call": v["put_call"]} for k, v in B.items() if k not in A]
         return {"cik": cik10, "manager": MANAGERS.get(cik10, sub.get("name")), "filer": sub.get("name"), "period": cur_period, "filed": cur_filed,
-                "previous_period": filings[1][1] if len(filings) > 1 else None, "positions": len(rows), "total_value": total,
+                "previous_period": previous[1] if previous else None, "filing_url": f"https://www.sec.gov/Archives/edgar/data/{int(cik10)}/{cur_acc.replace('-','')}/{cur_acc}-index.html", "positions": len(rows), "total_value": total,
                 "holdings": rows, "sold_out": sold, "managers": [{"cik": k, "name": v} for k, v in MANAGERS.items()],
                 "note": "13F filings show US-listed long positions (and listed options) at quarter end, filed up to 45 days later; "
-                        "no shorts, cash, bonds or non-US shares.",
+                        "Short positions and cash are omitted; this is not a complete portfolio or a transaction ledger. Amendments are not consolidated. Values use filing-date units; no book-size scaling heuristic is applied.",
                 "source": "SEC EDGAR 13F-HR information tables; tickers via OpenFIGI"}
-    return _cached(f"13f:{cik10}", 12 * 3600, fetch)
+    return _cached(f"13f:v2:{cik10}", 12 * 3600, fetch)
 
 
 

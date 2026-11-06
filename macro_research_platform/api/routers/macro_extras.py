@@ -192,3 +192,83 @@ async def ml_features(request: Request):
     for k, v in cov.items():
         v["source"] = F.FEATURES.get(k, ("", "", ""))[2]
     return {"features": cov}
+
+
+@router.get('/api/v1/ml/deep/status')
+async def ml_deep_status(request: Request):
+    from api.core import web
+    from api.ml import deep
+    web.user(request,None)
+    return deep.status()
+
+
+@router.post('/api/v1/ml/deep/retrain')
+async def ml_deep_retrain(request: Request):
+    from api.core import web
+    from api.ml import deep
+    web.user(request,('pm','quant'))
+    return deep.request_retrain()
+
+
+@router.post('/api/v1/ml/deep/learn')
+async def ml_deep_learn(request: Request):
+    from api.core import web
+    from api.ml.continual import cycle
+    web.user(request,('pm','quant'))
+    return await asyncio.to_thread(cycle)
+
+
+@router.get('/api/v1/ml/tasks/{name}/visualizer')
+async def ml_visualizer(name: str, request: Request):
+    from api.core import web
+    from api.ml import visualizer
+    web.user(request,None)
+    return visualizer.request(name)
+
+
+@router.get('/api/v1/ml/deep/live')
+async def ml_live_state(request: Request):
+    from api.core import web
+    from api.ml import live
+    web.user(request,None)
+    return live.status()
+
+
+@router.post('/api/v1/ml/deep/live/refresh')
+async def ml_live_refresh(request: Request):
+    from api.core import web
+    from api.ml import live
+    web.user(request,None)
+    return live.request_refresh()
+
+
+@router.get('/api/v1/ml/online/status')
+async def ml_online_status(request: Request):
+    from api.core import web
+    from api.ml.online import status
+    web.user(request,None)
+    return status()
+
+
+@router.get('/api/v1/ml/research/graph')
+async def ml_research_graph(request: Request):
+    from api.core import web
+    from api.ml.research_graph import build
+    web.user(request,None)
+    return await asyncio.to_thread(build)
+
+
+@router.get('/api/v1/ml/autonomous/status')
+async def ml_autonomous_status(request: Request):
+    from api.core import web
+    from api.ml.autonomous import status
+    web.user(request,None)
+    return await asyncio.to_thread(status)
+
+
+@router.post('/api/v1/ml/autonomous/run')
+async def ml_autonomous_run(request: Request):
+    from api.core import web
+    from api.ml.autonomous import request as queue
+    web.user(request,('pm','quant'))
+    return queue(manual=True)

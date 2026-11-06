@@ -108,8 +108,8 @@ def _ok(ret, data, what: str):
 
 def _subscribe(code: str, subtypes: List[Any]) -> None:
     """Subscribe once per (code, type); unsubscribe the oldest beyond SUB_MAX after their minimum duration."""
-    from futu import SubType
     q = _quote_ctx()
+    from futu import SubType
     need = [t for t in subtypes if (code, t) not in _ctx["subs"]]
     if need:
         _ok(*q.subscribe([code], need, subscribe_push=False), f"subscribe {code}")
@@ -199,6 +199,7 @@ def snapshot(symbols: List[str]) -> List[Dict[str, Any]]:
 
 
 def order_book(symbol: str, depth: int = 10) -> Dict[str, Any]:
+    if not opend_running():raise FutuUnavailable("FutuOpenD is not running on this computer.")
     from futu import SubType
     code = to_futu(symbol) or ""
     if not code:
@@ -212,6 +213,7 @@ def order_book(symbol: str, depth: int = 10) -> Dict[str, Any]:
 
 def ticks(symbol: str, n: int = 200) -> Dict[str, Any]:
     """Tick-by-tick trades with the exchange's buy / sell direction (not estimated from bars)."""
+    if not opend_running():raise FutuUnavailable("FutuOpenD is not running on this computer.")
     from futu import SubType
     code = to_futu(symbol) or ""
     if not code:
@@ -249,6 +251,7 @@ def capital_flow(symbol: str) -> Dict[str, Any]:
 
 def broker_queue(symbol: str) -> Dict[str, Any]:
     """Hong Kong only: the brokers queued at the best bid and ask levels."""
+    if not opend_running():raise FutuUnavailable("FutuOpenD is not running on this computer.")
     from futu import SubType
     code = to_futu(symbol) or ""
     if not code.startswith("HK."):

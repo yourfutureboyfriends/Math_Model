@@ -1,0 +1,39 @@
+{
+  "schema": "macro.autonomous.v1",
+  "enabled": false,
+  "model": {
+    "domains": 11, "domain_inputs": 16, "graph_inputs": 20,
+    "known_future_inputs": 4, "tasks": 6, "hidden": 64,
+    "heads": 4, "top_k": 2, "horizons": [1, 3, 6, 12], "dropout": 0.1
+  },
+  "ingestion": {
+    "llm_model_env": "MACRO_EXTRACTION_MODEL",
+    "extractor_version_env": "MACRO_EXTRACTION_VERSION",
+    "confidence_floor": 0.8,
+    "max_documents_per_run": 20,
+    "require_all_configured_sources_healthy": true,
+    "sources": [
+      {"name":"Fed press releases","feed_url":"https://www.federalreserve.gov/feeds/press_all.xml","allowed_hosts":["www.federalreserve.gov"]},
+      {"name":"Fed speeches","feed_url":"https://www.federalreserve.gov/feeds/speeches.xml","allowed_hosts":["www.federalreserve.gov"]},
+      {"name":"Fed data announcements","feed_url":"https://www.federalreserve.gov/feeds/datadownload.xml","allowed_hosts":["www.federalreserve.gov"]}
+    ]
+  },
+  "graph": {"max_nodes":256,"half_life_days":30,"window_days":90,"min_correlation_days":30},
+  "fine_tune": {"steps":20,"learning_rate":0.00001,"replay_per_new":3,"ewc_strength":10,"gradient_clip":1},
+  "drift": {"bins":10,"min_rows":64,"psi_threshold":0.25,"js_threshold":0.1,"patience":3,"full_reset_cooldown_days":7},
+  "promotion": {
+    "minimum_origins":120,"minimum_prospective_origins":12,"minimum_class_count":10,
+    "block_origins":12,"minimum_blocks":8,"minimum_return_days":252,"return_block_days":21,
+    "bootstrap_draws":2000,"minimum_relative_brier_gain":0.02,"family_alpha":0.05,"annual_periods":252
+  },
+  "schedule": {"cron":"*/10 12-17 * * 1-5","timezone":"America/New_York","session_delay_minutes":20},
+  "required_before_enable": [
+    "Version-pinned extraction model integration and credentials",
+    "Audited PIT feature/target adapter implementing LearningPorts",
+    "Maintained exchange session calendar including holidays/early closes",
+    "Registered existing validated champion bundle",
+    "Frozen target definitions for every task/horizon",
+    "Disjoint probability-calibration, conformal-calibration and evaluation cohorts",
+    "Immutable source/graph/model artifact storage and restricted serving reload adapter"
+  ]
+}

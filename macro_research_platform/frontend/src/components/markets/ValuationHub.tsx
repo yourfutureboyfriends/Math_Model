@@ -1,3 +1,4 @@
+import {AnalystScenarios,DevelopedMarketContext} from './AnalystScenarios';
 import { ExpectationsPanel } from './ExpectationsPanel';
 import { ValuationCapture } from './ValuationCapture';
 // VAL: the valuation hub. Everything is filled in automatically (DCF or excess-return model, dividend
@@ -22,7 +23,7 @@ const FCFF_DRIVERS_2STAGE: Driver[] = [
   ...FCFF_DRIVERS.slice(0, 3),
   { key: 'terminal_growth', label: 'Growth forever after the forecast', short: 'Growth ∞', hint: 'Keep at or below the risk-free rate.', min: 0, max: 0.06, step: 0.0025, pct: true },
 ];
-type Opts = { erp_basis?: 'normalized' | 'market_implied'; normalized_erp?: number; method?: 'three_stage' | 'two_stage'; ke_method?: 'capm' | 'building_block' };
+type Opts = { scenario_profile?: 'reported'|'western_tech'|'china_structural'; bear_probability?:number; base_probability?:number; bull_probability?:number; governance_risk_premium?:number; erp_basis?: 'normalized' | 'market_implied'; normalized_erp?: number; method?: 'three_stage' | 'two_stage'; ke_method?: 'capm' | 'building_block' };
 const ER_DRIVERS: Driver[] = [
   { key: 'roe', label: 'Return on equity now', short: 'ROE', hint: 'Profit per unit of book equity — the engine of a bank’s value.', min: -0.1, max: 0.4, step: 0.005, pct: true },
   { key: 'terminal_roe', label: 'Long-run ROE', short: 'Long-run ROE', hint: 'Where returns settle. Above the cost of equity = worth more than book.', min: 0.02, max: 0.35, step: 0.005, pct: true },
@@ -49,6 +50,7 @@ function urlFor(symbol: string, model: string, v: Vals, o: Opts = {}) {
   const p = new URLSearchParams({ model });
   if (o.erp_basis) p.set('erp_basis', o.erp_basis);
   if (o.normalized_erp != null) p.set('normalized_erp', String(o.normalized_erp));
+  for(const k of ['scenario_profile','bear_probability','base_probability','bull_probability','governance_risk_premium'] as const) if(o[k]!=null)p.set(k,String(o[k]));
   if (o.method) p.set('method', o.method);
   if (o.ke_method) p.set('ke_method', o.ke_method);
   for (const [k, x] of Object.entries(v)) if (x != null && Number.isFinite(x)) p.set(k, String(Math.round(x * 1e5) / 1e5));
@@ -89,6 +91,8 @@ function useValuationJSON<T>(url: string | null) {
 
 export function ValuationHub({ symbol, onGo }: { symbol: string; onGo: (fn: string, s?: string) => void }) {
   const [optsKey, setOptsKey] = useState('');
+  const [scenarioDraft,setScenarioDraft]=useState<Opts>({scenario_profile:'reported',bear_probability:.25,base_probability:.5,bull_probability:.25});
+  const probabilitySum=(scenarioDraft.bear_probability??.25)+(scenarioDraft.base_probability??.5)+(scenarioDraft.bull_probability??.25);
   const base = useValuationJSON<any>(`/api/v1/mkt/dcf/${enc(symbol)}${optsKey}`);
   const rv = useValuationJSON<any>(`/api/v1/mkt/rv/${enc(symbol)}`);
   const primaryModel: string | null = base.data ? (base.data.model === 'ddm' ? (base.data.inputs.is_financial ? 'excess_return' : 'fcff') : base.data.model) : null;
@@ -100,7 +104,7 @@ export function ValuationHub({ symbol, onGo }: { symbol: string; onGo: (fn: stri
   const [opts, setOpts] = useState<Opts>({});      // valuation structure and cost-of-equity basis (server defaults when unset)
   useEffect(() => { setOv({}); setDv({}); }, [symbol]);
   useEffect(() => {
-    const p = new URLSearchParams(); if (opts.method) p.set('method', opts.method); if (opts.ke_method) p.set('ke_method', opts.ke_method);
+    const p = new URLSearchParams(); for(const k of ['scenario_profile','bear_probability','base_probability','bull_probability','governance_risk_premium'] as const)if(opts[k]!=null)p.set(k,String(opts[k])); if (opts.method) p.set('method', opts.method); if (opts.ke_method) p.set('ke_method', opts.ke_method);
     if (opts.erp_basis) p.set('erp_basis', opts.erp_basis);
     if (opts.normalized_erp != null) p.set('normalized_erp', String(opts.normalized_erp));
     setOptsKey(p.toString() ? `?${p}` : '');
@@ -202,6 +206,9 @@ export function ValuationHub({ symbol, onGo }: { symbol: string; onGo: (fn: stri
 
       <p className="text-[10px] text-text-tertiary">Peer multiples and analyst targets describe market pricing. Peers are excluded from the headline intrinsic estimate by default; enabling them can import an expensive market’s pricing into the blend.</p>
 
+      {primaryModel==='fcff'&&<Panel title="Analyst risk & probability assumptions"><div className="flex flex-wrap items-end gap-3 text-xs"><label>Regional scenario<select className="block bg-surface-2 border border-border rounded p-2 mt-1" value={scenarioDraft.scenario_profile??'reported'} onChange={e=>setScenarioDraft({...scenarioDraft,scenario_profile:e.target.value as Opts['scenario_profile']})}><option value="reported">Reported / selected country risk</option><option value="western_tech">Western tech · illustrative stability case</option><option value="china_structural">China structural · illustrative +5pt equity risk</option></select></label>{(['bear_probability','base_probability','bull_probability'] as const).map((key,i)=><label key={key}>{['Bear','Base','Bull'][i]} probability %<input type="number" min={0} max={100} step={1} className="block w-24 bg-surface-2 border border-border rounded p-2 mt-1" value={Math.round((scenarioDraft[key]??[.25,.5,.25][i])*100)} onChange={e=>{const n=Number(e.target.value)/100;if(Number.isFinite(n))setScenarioDraft({...scenarioDraft,[key]:n});}}/></label>)}<button className="px-3 py-2 border border-border rounded disabled:opacity-40" disabled={Math.abs(probabilitySum-1)>1e-8||Object.entries(scenarioDraft).some(([k,v])=>k.endsWith('_probability')&&typeof v==='number'&&(v<0||v>1))} onClick={()=>setOpts({...opts,...scenarioDraft})}>Apply scenario assumptions</button><span>{Math.round(probabilitySum*100)}% total</span></div><p className="text-[11px] text-text-tertiary mt-2">Probabilities must total 100%. Regional presets affect the scenario panel; the primary valuation retains its selected risk basis. Premiums are analyst assumptions, not a claim of verified VIE exposure or a market-implied required return.</p></Panel>}
+      {primary?.market_context&&<DevelopedMarketContext data={primary.market_context}/>}
+      {primary?.analyst_scenarios&&<AnalystScenarios data={primary.analyst_scenarios}/>}
       {primary?.expectations && <ExpectationsPanel data={primary.expectations}/>}
       {primary?.market_views && <Panel title="Fundamentals and current market pricing">
         <div className="text-[10px] text-text-tertiary mb-2">Normalized assumptions and market-implied pricing are separate lenses. The default primary ERP is a 5% mature-market research assumption plus country risk, not a fit to market prices. Manual discount-rate choices remain in the main model. Country risk: {primary.market_views.country_risk.basis}.</div>

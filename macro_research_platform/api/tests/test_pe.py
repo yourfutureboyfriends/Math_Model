@@ -225,3 +225,20 @@ def test_api_precedent_book_and_benchmark(client):
     b = client.get("/api/v1/pe/benchmark", params={"entry": 14, "exit": 12, "sector": "Food Processing"}).json()
     assert b["precedent_stats"]["n"] == 1 and b["entry"]["vs_precedents"] == "above the upper quartile"
     assert client.delete(f"/api/v1/pe/precedents/{p['id']}").json() == {"deleted": p["id"]}
+
+
+def test_sourcing_routes_keep_draft_and_calculated_case_separate(client):
+    catalogue=client.get('/api/v1/pe/sourcing/catalogue')
+    assert catalogue.status_code==200 and set(catalogue.json()['fields'])=={'company','fund','property'}
+    body={'kind':'fund','subtype':'private','name':'Test fund screening case','values':{'paid_in':100,'distributed':40,'nav':80}}
+    calculation=client.post('/api/v1/pe/opportunities/analyse',json=body)
+    assert calculation.status_code==200 and calculation.json()['metrics']['tvpi']==1.2
+    assert client.get('/api/v1/pe/opportunities?kind=fund').json()['opportunities']==[]
+    saved=client.post('/api/v1/pe/opportunities',json=body)
+    assert saved.status_code==200
+    identifier=saved.json()['id']
+    updated=client.put(f'/api/v1/pe/opportunities/{identifier}',json={**body,'stage':'Diligence'})
+    assert updated.status_code==200 and updated.json()['stage']=='Diligence'
+    assert len(client.get('/api/v1/pe/opportunities?kind=fund').json()['opportunities'])==1
+    assert client.post('/api/v1/pe/opportunities/analyse',json={**body,'values':{'paid_in':-100}}).status_code==400
+    assert client.post('/api/v1/pe/opportunities',json={**body,'source_url':'javascript:alert(1)'}).status_code==400

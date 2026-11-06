@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from api.marketdata.core import NotFound, Upstream, _cached
+from api.marketdata.tracker_quality import position, recent
 
 logger = logging.getLogger(__name__)
 UA = {"User-Agent": "Mozilla/5.0 (macro research terminal)"}
@@ -35,7 +36,7 @@ SNAPSHOT = Path(__file__).resolve().parents[2] / "data" / "processed" / "opensky
 M_TO_FT, MS_TO_KT, MS_TO_FPM = 3.28084, 1.943844, 196.8504
 
 # world snapshot columns (compact rows keep ~10,000 aircraft to a few hundred kB)
-WORLD_COLS = ["hex", "callsign", "country", "lon", "lat", "alt", "ground", "speed", "track", "vrate", "squawk", "fix", "mil", "type", "tag"]
+WORLD_COLS = ["hex", "callsign", "country", "lon", "lat", "alt", "ground", "speed", "track", "vrate", "squawk", "fix", "mil", "type", "tag", "source", "collection_type"]
 
 
 def _km(a_lat, a_lon, b_lat, b_lon) -> float:
@@ -176,13 +177,13 @@ def _world_rows(j: Dict[str, Any]) -> List[list]:
     for s in j.get("states") or []:
         # icao24, callsign, origin_country, time_position, last_contact, lon, lat, baro_alt, on_ground,
         # velocity, true_track, vertical_rate, sensors, geo_alt, squawk, spi, position_source, category
-        if s[5] is None or s[6] is None:
+        if len(s) < 17 or not position(s[6], s[5]) or not recent(s[3], j.get("time") or time.time(), STALE_S):
             continue
         alt = s[7] if s[7] is not None else s[13]
         rows.append([s[0], (s[1] or "").strip(), s[2], round(s[5], 4), round(s[6], 4),
                      round(alt * M_TO_FT) if alt is not None and not s[8] else None, 1 if s[8] else 0,
                      _kt(s[9] * MS_TO_KT if s[9] is not None else None), round(s[10]) if s[10] is not None else None,
-                     round(s[11] * MS_TO_FPM) if s[11] is not None else None, s[14], s[3] or s[4], 0, None])
+                     round(s[11] * MS_TO_FPM) if s[11] is not None else None, s[14], s[3], 0, None])
     return rows
 
 
@@ -282,7 +283,12 @@ def world() -> Dict[str, Any]:
     """OpenSky snapshot (cached by its allowance) merged with the live regional sweep (refreshed often).
     Positions more than 20 minutes old are dropped: they are not where the aircraft is any more."""
     def merge():
-        base = _world_base()
+        try:
+            base = _world_base()
+        except Exception as exc:
+            # A failed global snapshot must not discard valid regional observations.
+            base = {"cols": WORLD_COLS, "rows": [], "time": None, "stale": f"OpenSky unavailable; regional sample only: {exc}",
+                    "source": "Regional community ADS-B receivers only", "refresh_s": 20}
         by_hex = {r[0]: r for r in base["rows"]}
         added = replaced = 0
         for r in _sweep_rows():
@@ -296,11 +302,17 @@ def world() -> Dict[str, Any]:
                 r[2] = old[2]                              # keep OpenSky's registration country
                 r[12] = r[12] or old[12]
             by_hex[r[0]] = r
+        from api.marketdata.global_tracking import flight_snapshot
+        for v in flight_snapshot():
+            old=by_hex.get(v["hex"])
+            if old is None or v["fix"]>(old[11] or 0):
+                by_hex[v["hex"]]=[v["hex"],v["flight"],old[2] if old else None,v["lon"],v["lat"],v["alt"],int(v["on_ground"]),
+                    v["speed"],v["track"],None,None,v["fix"],old[12] if old else 0,v.get("type"),None,v['source'],v['collection_type']]
         now = time.time()
-        ref = max(base.get("time") or 0, now - 3600) if base.get("stale") else now   # an old snapshot is judged against its own time
-        stale = [r for r in by_hex.values() if r[11] is None or ref - r[11] > STALE_S]
-        rows = [r[:14] + ["".join(t for _, t, _ in flight_tags(r[1], r[13], bool(r[12]), r[10]))]
-                for r in by_hex.values() if r[11] is not None and ref - r[11] <= STALE_S]
+        usable = lambda r: position(r[4], r[3]) and recent(r[11], now, STALE_S)
+        stale = [r for r in by_hex.values() if not usable(r)]
+        rows = [r[:14] + ["".join(t for _, t, _ in flight_tags(r[1], r[13], bool(r[12]), r[10])), r[15] if len(r)>15 else "community / OpenSky", r[16] if len(r)>16 else "receiver observation"]
+                for r in by_hex.values() if usable(r)]
         air = [r for r in rows if not r[6]]
         countries: Dict[str, int] = {}
         regions: Dict[str, int] = {}
@@ -314,6 +326,7 @@ def world() -> Dict[str, Any]:
         return {**base, "rows": rows, "airborne": len(air), "on_ground": len(rows) - len(air), "military": sum(1 for r in rows if r[12]),
                 "top_registrations": sorted(countries.items(), key=lambda kv: -kv[1])[:12],
                 "regions": sorted(regions.items(), key=lambda kv: -kv[1]), "stale_dropped": len(stale),
+                "computed_at": now, "oldest_position_time": min((r[11] for r in rows),default=None), "latest_position_time": max((r[11] for r in rows),default=None), "coverage": "Observed receiver sample, not a global census or passenger/cargo volumes.",
                 "sweep": {"added": added, "refreshed": replaced, "hubs": len(SWEEP), "live_aircraft": added + replaced},
                 "emergencies": [{"hex": r[0], "callsign": r[1], "squawk": r[10], "what": EMERGENCY[str(r[10])], "lat": r[4], "lon": r[3]}
                                 for r in rows if str(r[10] or "") in EMERGENCY]}
@@ -362,8 +375,8 @@ def _world_base() -> Dict[str, Any]:
                 "refresh_s": ttl, "stale": stale, "credits_left": _credits["remaining"],
                 "source": "OpenSky Network (state vectors" + (", authenticated" if _authenticated() else ", anonymous") + "); military: adsb.fi + adsb.lol",
                 "note": ("World positions refresh every " + ("3" if _authenticated() else "15") + " minutes (OpenSky's free allowance); "
-                         "around ~60 hubs in China, Asia, the Middle East, Africa and Latin America they are live (adsb.fi + adsb.lol sweep); "
-                         "zoom in anywhere for live, seconds-old detail.")}
+                         "regional queries attempt to supplement coverage around hubs in China, Asia, the Middle East, Africa and Latin America (adsb.fi + adsb.lol); "
+                         "zoom in to request recent local reports where receivers are available.")}
     return _cached("fly:world", ttl, build)
 
 
@@ -416,11 +429,14 @@ def area(lat: float, lon: float, radius_nm: int = 120) -> Dict[str, Any]:
             if r.status_code != 200:
                 raise Upstream(f"adsb.fi and adsb.lol unavailable ({r.status_code})")
             raw, src = r.json().get("ac", []), "adsb.lol"
-        ac = [_ac(a) for a in raw if a.get("lat") is not None]
+        now = time.time()
+        ac = [_ac(a) for a in raw if position(a.get("lat"), a.get("lon"))]
+        ac = [a for a in ac if isinstance(a.get("seen_s"), (int, float)) and 0 <= a['seen_s'] <= 120]
+        for a in ac:a['position_time'] = now - a['seen_s']
         air = [x for x in ac if not x["on_ground"]]
         return {"center": [key_lat, key_lon], "radius_nm": radius_nm, "aircraft": ac, "airborne": len(air), "on_ground": len(ac) - len(air),
                 "emergencies": [x for x in ac if x["emergency"]], "time": int(time.time()),
-                "source": f"{src} (community ADS-B receivers; live, seconds old)"}
+                "source": f"{src} (community ADS-B receivers)", "coverage": "Only reported positions at most 120 seconds old; missing aircraft do not imply absent traffic."}
     return _cached(f"fly:area:{key_lat}:{key_lon}:{radius_nm}", 8, fetch)
 
 
@@ -440,15 +456,17 @@ SWEEP = [(40.08, 116.58), (31.14, 121.8), (23.39, 113.3), (30.58, 103.95), (25.1
 _sweep: Dict[str, Dict[str, Any]] = {}
 _sweep_lock = threading.Lock()
 _lol_last = [0.0]
+_lol_lock = threading.Lock()
+_sweep_health: Dict[str, Dict[str, Any]] = {}
 SWEEP_KEEP = 420
 
 
 def _adsblol_point(lat: float, lon: float) -> List[Dict[str, Any]]:
     import requests
-    wait = 4.0 - (time.time() - _lol_last[0])            # adsb.lol rate-limits hard: well under one request a second
-    if wait > 0:
-        time.sleep(wait)
-    _lol_last[0] = time.time()
+    with _lol_lock:
+        wait = 4.0 - (time.time() - _lol_last[0])
+        if wait > 0: time.sleep(wait)
+        _lol_last[0] = time.time()
     r = requests.get(f"https://api.adsb.lol/v2/point/{lat}/{lon}/250", headers=UA, timeout=20)
     r.raise_for_status()
     return r.json().get("ac") or []
@@ -458,34 +476,41 @@ _sweep_n = [0]
 
 
 def _sweep_once() -> int:
-    n = 0
+    """Bounded concurrency prevents one slow hub starving the rest; provider rate gates remain shared."""
+    from concurrent.futures import ThreadPoolExecutor
     _sweep_n[0] += 1
-    use_lol = _sweep_n[0] % 2 == 0                         # adsb.lol on every other pass only
-    for i, (lat, lon) in enumerate(SWEEP):
-        sources = [lambda: (_adsbfi(f"lat/{lat}/lon/{lon}/dist/250").get("aircraft") or [])]
-        if use_lol:
-            sources.append(lambda: _adsblol_point(lat, lon))
-        for fetch in sources:
+    use_lol = _sweep_n[0] % 2 == 0
+    def hub(coords):
+        lat,lon=coords;n=0
+        def regional():
+            j=_adsbfi(f"lat/{lat}/lon/{lon}/dist/250")
+            return j.get("aircraft") or j.get("ac") or []
+        sources=[("adsb.fi",regional)]
+        if use_lol:sources.append(("adsb.lol",lambda:_adsblol_point(lat,lon)))
+        for provider,fetch in sources:
+            key=f"{provider}:{lat}:{lon}"
             try:
-                raw = fetch()
-            except Exception as e:
-                logger.debug("[sweep] %s,%s: %s", lat, lon, e)
-                continue
-            now = time.time()
-            with _sweep_lock:
-                for a in raw:
-                    if a.get("lat") is None or not a.get("hex"):
-                        continue
-                    fix = now - float(a.get("seen_pos") or a.get("seen") or 0)
-                    cur = _sweep.get(a["hex"])
-                    if cur is None or cur["fix"] < fix:
-                        _sweep[a["hex"]] = {**_ac(a), "fix": fix}
-                        n += 1
-        with _sweep_lock:                                  # forget aircraft not heard for 5 minutes
-            cut = time.time() - SWEEP_KEEP
-            for k in [k for k, v in _sweep.items() if v["fix"] < cut]:
-                del _sweep[k]
-    return n
+                raw=fetch();now=time.time();accepted=0
+                with _sweep_lock:
+                    for a in raw:
+                        age=a.get("seen_pos")
+                        if not position(a.get("lat"),a.get("lon")) or not a.get("hex") or not isinstance(age,(int,float)) or isinstance(age,bool) or not math.isfinite(age) or not 0<=age<=SWEEP_KEEP:continue
+                        fix=now-age;cur=_sweep.get(a["hex"]);accepted+=1
+                        if cur is None or cur["fix"]<fix:_sweep[a["hex"]]={**_ac(a),"fix":fix};n+=1
+                    previous=_sweep_health.get(key,{})
+                    _sweep_health[key]={"provider":provider,"lat":lat,"lon":lon,"last_attempt":now,"last_success":now,
+                        "revisit_s":now-previous["last_attempt"] if previous.get("last_attempt") else None,
+                        "accepted":accepted,"status":"observed" if accepted else "request succeeded; no recent reports"}
+            except Exception:
+                with _sweep_lock:
+                    _sweep_health[key]={**_sweep_health.get(key,{}),"provider":provider,"lat":lat,"lon":lon,"last_attempt":time.time(),"status":"request failed"}
+        return n
+    with ThreadPoolExecutor(max_workers=4,thread_name_prefix="regional-adsb") as pool:
+        total=sum(pool.map(hub,SWEEP))
+    with _sweep_lock:
+        cut=time.time()-SWEEP_KEEP
+        for key in [k for k,v in _sweep.items() if v["fix"]<cut]:del _sweep[key]
+    return total
 
 
 def sweep_start() -> None:
@@ -504,7 +529,7 @@ def _sweep_rows() -> List[list]:
     with _sweep_lock:
         return [[v["hex"], v["flight"], None, round(v["lon"], 4), round(v["lat"], 4), v["alt"], 1 if v["on_ground"] else 0,
                  _kt(v.get("speed")), round(v["track"]) if v.get("track") is not None else None,
-                 v.get("vrate"), v.get("squawk"), int(v["fix"]), 1 if v.get("military") else 0, v.get("type")] for v in _sweep.values()]
+                 v.get("vrate"), v.get("squawk"), int(v["fix"]), 1 if v.get("military") else 0, v.get("type")] for v in _sweep.values() if recent(v.get("fix"), time.time(), SWEEP_KEEP)]
 
 
 # ── One aircraft ────────────────────────────────────────────────────────────

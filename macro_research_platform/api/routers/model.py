@@ -72,7 +72,7 @@ async def model_params():
                 "vol_target": "Annualised portfolio volatility target",
                 "max_weight": "Maximum weight per asset class (tactical portfolio)",
                 "risk_aversion": "δ — Black–Litterman equilibrium and optimiser risk aversion",
-                "tau": "τ — uncertainty of the prior (Black–Litterman)",
+                "tau": "τ — fixed convention: cancels from posterior means when view uncertainty scales with τ; not an independent allocation control",
                 "view_confidence": "Confidence in the model's views relative to the prior (>1 = trust views more)",
                 "shrinkage_months": "Shrinkage of regime means toward the unconditional mean (months of pseudo-data)",
                 "cov_months": "Covariance estimation window (months, Ledoit–Wolf shrinkage)",

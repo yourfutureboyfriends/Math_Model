@@ -1,7 +1,7 @@
-import { BookMarked, Calculator, GitBranch, Layers, TrendingUp } from 'lucide-react';
+import { BookMarked, Calculator, GitBranch, Layers, TrendingUp, Search, Building2, Landmark } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PE_TABS,setPeTab,usePeTab } from './peShared';
-const ICONS={workbench:Calculator,pipeline:GitBranch,precedents:BookMarked,waterfall:Layers,performance:TrendingUp};
+const ICONS={companies:Search,funds:Landmark,'real-estate':Building2,workbench:Calculator,pipeline:GitBranch,precedents:BookMarked,waterfall:Layers,performance:TrendingUp};
 /** Fund identity is supplied by the common shell, as in Markets and Macro. */
 export function PeSidebar({ collapsed=false }: { collapsed?:boolean }) {
  const tab=usePeTab();

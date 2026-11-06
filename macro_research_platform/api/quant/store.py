@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 _ready = False
+_ready_path = None
 RESULTS_KEEP = 50
 RESULT_MAX_BYTES = 12_000_000
 
@@ -37,8 +38,10 @@ def _now() -> str:
 
 def init() -> None:
     """Create the Quant Lab tables once per process."""
-    global _ready
-    if _ready:
+    global _ready,_ready_path
+    from api.core.app_db import app_db_path
+    path=app_db_path()
+    if _ready and _ready_path==path:
         return
     with _conn() as c:
         c.executescript("""
@@ -83,6 +86,7 @@ def init() -> None:
                     if "duplicate column" not in str(e):
                         raise
     _ready = True
+    _ready_path = path
 
 
 def _row(r: sqlite3.Row) -> Dict[str, Any]:
@@ -333,3 +337,21 @@ def register_code_run(owner: str, family: str, prov: Dict[str, Any], metrics: Di
     return {"family": family, "runs": len(rows), "distinct_trials": len(distinct),
             "trial_sharpes": [s for s in distinct.values() if s is not None],
             "holdout_views": views if hold else 0, "first_run": rows[0]["ts"] if rows else None}
+
+
+def experiment_audit(owner: str):
+    """Account-scoped registry coverage, including runs without headline metrics."""
+    init()
+    with _conn() as c:
+        rows=c.execute('''SELECT family, COUNT(*) AS runs, COUNT(sharpe) AS scored,
+            COUNT(DISTINCT json_array(code_hash,config_hash)) AS distinct_specs,
+            SUM(CASE WHEN holdout IS NOT NULL AND last_date IS NOT NULL AND holdout<=last_date THEN 1 ELSE 0 END) AS holdout_evaluations,
+            MIN(ts) AS first_run, MAX(ts) AS last_run FROM code_runs WHERE owner=? GROUP BY family ORDER BY last_run DESC LIMIT 101''',(owner,)).fetchall()
+        strategy=c.execute('SELECT COUNT(*) FROM quant_runs WHERE owner=?',(owner,)).fetchone()[0]
+    families=[]
+    for row in rows[:100]:
+        views=row['holdout_evaluations']
+        families.append({**dict(row),
+                         'runs_without_sharpe':row['runs']-row['scored'],'holdout_evaluations':views,'holdout_reused':views>1})
+    return {'families':families,'truncated':len(rows)>100,'strategy_spec_records':strategy,'registry_scope':'account-wide existing quant research registry; not a fund-specific portfolio ledger','complete_search_history_verified':False,
+            'note':'Existing account-wide Code Lab and strategy registries. Runs without Sharpe may be failed, incomplete or use a different metric; failure is not inferred. Counts cover registered engines only. Repeated holdout evaluation requires review; registry coverage is not proof of independence.'}

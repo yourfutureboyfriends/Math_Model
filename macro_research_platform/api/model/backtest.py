@@ -22,7 +22,7 @@ from typing import Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from api.model.core import ModelParams, decide, realized_regimes
+from api.model.core import ModelParams, decide, realized_regimes, decision_factors
 
 
 def _stats(r: pd.Series) -> Dict[str, Optional[float]]:
@@ -33,7 +33,8 @@ def _stats(r: pd.Series) -> Dict[str, Optional[float]]:
     years = len(r) / 12
     cagr = growth.iloc[-1] ** (1 / years) - 1
     vol = r.std() * math.sqrt(12)
-    dd = (growth / growth.cummax() - 1).min()
+    peak=np.maximum.accumulate(np.r_[1.,growth.values])[1:]
+    dd = (growth / peak - 1).min()
     downside = r[r < 0].std() * math.sqrt(12)
     return {"months": len(r), "cagr": round(float(cagr), 4), "vol": round(float(vol), 4),
             "sharpe": round(float(r.mean() * 12 / vol), 2) if vol > 0 else None,
@@ -46,7 +47,7 @@ def _stats(r: pd.Series) -> Dict[str, Optional[float]]:
 def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str], env_class: Dict[str, str],
                  p: ModelParams, start: Optional[str] = None, anchors: Tuple[str, str] = ("INDPRO", "CPIAUCSL"),
                  benchmark: Tuple[str, str] = ("US equity", "Intermediate Treasuries"),
-                 returns_are: str = "monthly excess returns over 3-month T-bills") -> Dict:
+                 returns_are: str = "monthly excess returns over 3-month T-bills", panel_at=None, research_challengers=False) -> Dict:
     """Monthly walk-forward backtest of the macro model: at each month-end the model decides weights from data
     available then, and is credited with the next month's excess returns.
 
@@ -68,10 +69,14 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
     rows, weights_log, fc, timeline = [], [], [], []
     w_prev = pd.Series(dtype=float)
     ws_prev = pd.Series(dtype=float)
+    if research_challengers:
+        from api.model.challengers import Laboratory
+        laboratory=Laboratory(p,env_class)
     for t, t_next in zip(months[:-1], months[1:]):
         if first is not None and t < first:
             continue
-        d = decide(panel, rets, blocks, env_class, t, p, anchors)
+        decision_panel = panel_at(t) if panel_at is not None else panel
+        d = decide(decision_panel, rets, blocks, env_class, t, p, anchors)
         if d is None:
             continue
         w = pd.Series(d.weights, index=d.assets)
@@ -93,8 +98,12 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
         gross = float((w * r_next).sum())
         net = gross - turnover * p.cost_bps / 1e4
         ws = pd.Series(d.strategic, index=d.assets)
-        s_turn = float((ws.reindex(all_idx, fill_value=0) - ws_prev.reindex(all_idx, fill_value=0)).abs().sum()) \
-            if not ws_prev.empty else float(ws.abs().sum())
+        ws_drift=ws_prev
+        if not ws_prev.empty:
+            prior_returns=rets.loc[t].reindex(ws_prev.index).fillna(0.) # held inputs validated above
+            ws_drift=ws_prev*(1+prior_returns)/(1+float((ws_prev*prior_returns).sum()))
+        strategic_idx=ws.index.union(ws_drift.index)
+        s_turn=float((ws.reindex(strategic_idx,fill_value=0)-ws_drift.reindex(strategic_idx,fill_value=0)).abs().sum())
         strat = float((ws * r_next).sum()) - s_turn * p.cost_bps / 1e4
         # benchmarks on the same assets/month
         avail = [a for a in d.assets if not math.isnan(rets.loc[t_next, a])]
@@ -120,21 +129,24 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
                    "p_i": d.p_inflation_up["probability"], "base_i": d.p_inflation_up["base_rate"],
                    "probs": d.regime_probs})
         w_prev, ws_prev = w, ws
+        if research_challengers:laboratory.observe(d,t,t_next,rets)
     if not rows:
         return {"available": False, "reason": "not enough history to run the model"}
     df = pd.DataFrame(rows).set_index("month")
 
     # Forecast skill vs realised direction (labels from the final factor history)
-    last = decide(panel, rets, blocks, env_class, months[-1], p, anchors)
+    last = decide(panel_at(months[-1]) if panel_at is not None else panel, rets, blocks, env_class, months[-1], p, anchors)
+    evaluation_panel=panel_at(months[-1]) if panel_at is not None else panel
+    eval_growth,eval_inflation,_=decision_factors(evaluation_panel,blocks,months[-1],anchors)
     skill = {}
-    if last is not None:
-        labels = realized_regimes(last.growth, last.inflation, p.momentum_months)
-        growth, inflation = last.growth.asfreq("MS"), last.inflation.asfreq("MS")
+    if not eval_growth.empty and not eval_inflation.empty:
+        labels = realized_regimes(eval_growth, eval_inflation, p.momentum_months)
+        growth, inflation = eval_growth.asfreq("MS"), eval_inflation.asfreq("MS")
         gc, ic = growth.diff(p.momentum_months), inflation.diff(p.momentum_months)
         dg, di = (gc > 0).astype(float).where(gc.notna()), (ic > 0).astype(float).where(ic.notna())
         f = pd.DataFrame(fc).set_index("month")
         f = f[f.index.isin(dg.index)]
-        if len(f) > 24:
+        if len(f):
             yg, yi = dg.reindex(f.index).astype(float), di.reindex(f.index).astype(float)
             def _brier(pcol, base, y):
                 valid = y.notna() & f[pcol].notna() & f[base].notna()
@@ -143,7 +155,9 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
                     return {"brier": None, "brier_base_rate": None, "skill": None, "accuracy": None, "months_scored": 0}
                 bs = float(((scored[pcol] - y) ** 2).mean())
                 ref = float(((scored[base] - y) ** 2).mean())
-                return {"brier": round(bs, 4), "brier_base_rate": round(ref, 4),
+                from api.model.calibration import probability_diagnostics
+                return {"reliability": probability_diagnostics(scored[pcol].tolist(), y.tolist(), scored[base].tolist()),
+                        "brier": round(bs, 4), "brier_base_rate": round(ref, 4),
                         "skill": round(1 - bs / ref, 3) if ref > 0 else None,
                         "accuracy": round(float(((scored[pcol] > 0.5) == (y > 0.5)).mean()), 3), "months_scored": int(valid.sum())}
             lab = labels.reindex(f.index)
@@ -151,10 +165,10 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
             hit = float(np.mean(hits)) if hits else None
             skill = {"growth_direction": _brier("p_g", "base_g", yg),
                      "inflation_direction": _brier("p_i", "base_i", yi),
-                     "top_regime_hit_rate": round(hit, 3) if hit is not None else None, "months_scored": len(hits), "target_basis": "Ex-post revised factor history; not real-time vintage verification"}
+                     "top_regime_hit_rate": round(hit, 3) if hit is not None else None, "months_scored": len(hits), "target_basis": "Factor labels re-estimated at the final evaluation vintage; not immutable realized GDP/CPI outcomes" if panel_at is not None else "Ex-post revised factor history; not real-time vintage verification"}
 
     # Timeline, in hindsight: the regime that was realised in each allocated month, and the next 12 months' returns
-    realised = realized_regimes(last.growth, last.inflation, p.momentum_months) if last is not None else pd.Series(dtype=object)
+    realised = realized_regimes(eval_growth, eval_inflation, p.momentum_months) if not eval_growth.empty and not eval_inflation.empty else pd.Series(dtype=object)
     fwd = {}
     for c in ("model", "strategic", "sixty_forty"):
         s_ = df[c]
@@ -191,6 +205,7 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
             "information_ratio": round(float(diff.mean() * 12 / (diff.std() * math.sqrt(12))), 2) if diff.std() > 0 else None}
     return {
         "available": True,
+        **({'research_challengers':laboratory.result(last,eval_growth,eval_inflation)} if research_challengers else {}),
         "start": df.index[0].strftime("%Y-%m"), "end": df.index[-1].strftime("%Y-%m"),
         "stats": {"Tactical (net of costs)": _stats(df["model"]), "Strategic (net of costs)": _stats(df["strategic"]),
                   "60/40": _stats(df["sixty_forty"]),
@@ -202,6 +217,7 @@ def run_backtest(panel: pd.DataFrame, rets: pd.DataFrame, blocks: Dict[str, str]
         "equity_curve": [{"month": m.strftime("%Y-%m"), **{k: (round(float(v), 4) if pd.notna(v) else None) for k, v in row.items()}}
                          for m, row in curve.iterrows()],
         "weights": weights_log[-60:],
+        "monthly_returns":[{'month':m.strftime('%Y-%m'),'net':float(r['model'])} for m,r in df.iterrows()],
         "timeline": timeline,
         "returns_are": returns_are,
         "sixty_forty": {"equity": benchmark[0], "bonds": benchmark[1]},

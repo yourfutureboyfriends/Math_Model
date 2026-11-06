@@ -105,7 +105,7 @@ function Liquidity() {
             <td className="text-right font-mono">{usd(p.market_value)}</td><td className="text-right font-mono">{p.pct_of_adv != null ? `${p.pct_of_adv}%` : '—'}</td>
             <td className="text-right font-mono">{p.days_to_liquidate == null ? '—' : p.days_to_liquidate < 0.01 ? '< 0.01' : p.days_to_liquidate.toFixed(2)}</td>
             <td className="text-right font-mono">{p.spread_bps ?? '—'}</td><td className="text-right font-mono">{usd(p.liquidity_cost)}</td></tr>))}</tbody></table></div>
-      <div className="text-[10px] text-text-tertiary">{d.method}</div>
+      <div className="text-[10px] text-text-tertiary">{d.method}</div><a className="text-bloomberg text-xs" href="#mkt/rdesk">Research desk → Evidence tools → Execution evidence: evaluate actual timestamped prints</a>
     </div>
   );
 }
@@ -122,7 +122,7 @@ function Lots() {
           <tr key={`${s}-${i}`} className="border-b border-border-subtle last:border-0"><td className="py-1 font-mono">{s}</td><td>{l.date}</td>
             <td className="text-right font-mono">{l.quantity}</td><td className="text-right font-mono">{l.price}</td>
             <td className="text-right font-mono">{l.holding_days ?? '—'}</td><td className="pl-3">{l.term ?? '—'}</td><td className="text-text-tertiary">{l.source}</td></tr>)))}</tbody></table></div>
-      <div className="text-[10px] text-text-tertiary">{d.method}</div>
+      <div className="text-[10px] text-text-tertiary">{d.method}</div><a className="text-bloomberg text-xs" href="#mkt/rdesk">Research desk → Evidence tools → Execution evidence: evaluate actual timestamped prints</a>
     </div>
   );
 }
@@ -151,9 +151,9 @@ function Tca() {
               <td className={cn('text-right font-mono', tone(f.vs_arrival_bps, true))}>{bps(f.vs_arrival_bps)}</td>
               <td className={cn('text-right font-mono', tone(f.vs_vwap_proxy_bps, true))}>{bps(f.vs_vwap_proxy_bps)}</td>
               <td className={cn('text-right font-mono', tone(f.vs_close_bps, true))}>{bps(f.vs_close_bps)}</td>
-              <td className="text-right font-mono">{usd(f.shortfall_usd)}</td></tr>))}</tbody></table>
+              <td className="text-right font-mono" title={`FX observation: ${f.fx_date??'unavailable'} · ${f.arrival_basis??'Arrival basis unavailable'} · ${f.vwap_basis??''}`}>{usd(f.shortfall_usd)}</td></tr>))}</tbody></table>
       </div>
-      <div className="text-[10px] text-text-tertiary">{d.method}</div>
+      <div className="text-[10px] text-text-tertiary">{d.method}</div><a className="text-bloomberg text-xs" href="#mkt/rdesk">Research desk → Evidence tools → Execution evidence: evaluate actual timestamped prints</a>
     </div>
   );
 }
@@ -175,7 +175,7 @@ function Ideas() {
             <td className={cn('text-right font-mono', tone(i.return))}>{pct(i.return, 1)}</td>
             <td className="pl-3">{i.status}{i.closed_on ? ` ${i.closed_on}` : ''}</td>
             <td className="text-right font-mono text-text-tertiary">{pct(i.max_favourable, 1)} / {pct(i.max_adverse, 1)}</td></tr>))}</tbody></table></div>
-      <div className="text-[10px] text-text-tertiary">{d.method}</div>
+      <div className="text-[10px] text-text-tertiary">{d.method}</div><a className="text-bloomberg text-xs" href="#mkt/rdesk">Research desk → Evidence tools → Execution evidence: evaluate actual timestamped prints</a>
     </div>
   );
 }
@@ -202,7 +202,7 @@ function HoldingNews() {
             </div>))}
           {v.filings?.length > 0 && <div className="text-2xs text-text-tertiary mt-0.5">SEC: {v.filings.map((f: any) => `${f.form ?? f.type ?? ''} ${f.date ?? f.filed ?? ''}`).join(' · ')}</div>}
         </div>))}
-      <div className="text-[10px] text-text-tertiary">{d.method}</div>
+      <div className="text-[10px] text-text-tertiary">{d.method}</div><a className="text-bloomberg text-xs" href="#mkt/rdesk">Research desk → Evidence tools → Execution evidence: evaluate actual timestamped prints</a>
     </div>
   );
 }

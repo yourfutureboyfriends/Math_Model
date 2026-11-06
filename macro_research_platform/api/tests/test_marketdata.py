@@ -88,11 +88,12 @@ def test_overview_reports_yield_moves_in_basis_points(monkeypatch):
     assert "change_1d" not in tnx                      # no misleading % change of a yield level
 
 
-@pytest.mark.network
-def test_cross_listing_detection():
+def test_cross_listing_detection(monkeypatch):
     """Foreign companies' lines on another market are dropped; domestic companies (including
     Hong Kong's mainland-Chinese majors and dual primaries) are kept."""
     from api.marketdata import core
+    # Classification is deterministic; do not make this unit test depend on a live FX lookup.
+    monkeypatch.setattr(core, "to_usd", lambda value, currency: value * (1.1 if currency == "EUR" else 1))
     fidx = {"names": {core._norm("NVIDIA Corporation")}}
     row = lambda sym, name, mc, px, vol, ccy="EUR": {"symbol": sym, "name": name, "market_cap": mc, "price": px, "volume": vol, "currency": ccy}
     assert core._is_cross_listing(row("NVD.DE", "NVIDIA Corporation", 4.9e12, 200, 1e5), "de", fidx)            # name

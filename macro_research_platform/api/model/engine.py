@@ -30,7 +30,7 @@ from api.model.economies import Economy, get as get_economy
 
 logger = logging.getLogger(__name__)
 
-MODEL_VERSION = "1.2"
+MODEL_VERSION = "1.4"
 MODEL_BOOK = "Macro Model"
 _CACHE: Dict[str, tuple] = {}
 _TTL = 6 * 3600

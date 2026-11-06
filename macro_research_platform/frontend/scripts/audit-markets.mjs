@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 process.chdir(path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'));
+const auditDate=process.argv[2] || new Date().toISOString().slice(0,10);
+if(!/^\d{4}-\d{2}-\d{2}$/.test(auditDate))throw new Error('Expected YYYY-MM-DD');
 const dir='src/components/markets';
 const files=[...fs.readdirSync(dir).filter(n=>/\.tsx?$/.test(n)&&!n.includes('.test.')).map(n=>`${dir}/${n}`),'src/pages/MarketsPage.tsx','src/components/ui/PriceChart.tsx'];
 const sources=files.map(file=>({file,ast:ts.createSourceFile(file,fs.readFileSync(file,'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX)}));
@@ -20,6 +22,6 @@ const rows=registry.map(f=>{
  const nodes=[...visited].map(n=>functions.get(n));const text=nodes.map(n=>n.text).join('\n');
  return {...f,nestedSections:[...new Set([...text.matchAll(/(?:title|aria-label)="([^"]+)"/g)].map(m=>m[1]))],entries:entry,files:[...new Set(nodes.map(n=>n.file))],components:nodes.map(({name,file,line})=>({name,file,line})),endpoints:[...new Set([...text.matchAll(/(?:['"`])(\/api\/[^'"`\s]+)/g)].map(m=>m[1]))],signals:{tables:(text.match(/<table\b/g)||[]).length,panels:(text.match(/<Panel\b/g)||[]).length,loading:/\bLoading\b|\.loading/.test(text),errors:/\bErrorBox\b|\.error/.test(text),empty:/no data|no .{0,20}found|\.length === 0|\.length===0|empty|not available/i.test(text),customRequests:/\bfetch\(/.test(text),canvas:/<canvas|<LiveMap|<Globe3D|<Chart\b/.test(text)}};
 });
-const output={date:'2026-10-29',method:'Static registry → route body → transitive local component graph. Signals are review aids, not proof of runtime behaviour.',total:rows.length,filesReviewed:sources.length,unmapped:rows.filter(r=>!r.entries.length).map(r=>r.code),pages:rows};
-fs.writeFileSync('../docs/markets_page_inventory_2026-10-29.json',JSON.stringify(output,null,2)+'\n');
+const output={date:auditDate,method:'Static registry → route body → transitive local component graph. Signals are review aids, not proof of runtime behaviour.',total:rows.length,filesReviewed:sources.length,unmapped:rows.filter(r=>!r.entries.length).map(r=>r.code),pages:rows};
+fs.writeFileSync(`../docs/markets_page_inventory_${auditDate}.json`,JSON.stringify(output,null,2)+'\n');
 console.log(JSON.stringify({total:rows.length,files:sources.length,unmapped:output.unmapped,customRequests:rows.filter(r=>r.signals.customRequests).map(r=>r.code),noExplicitError:rows.filter(r=>!r.signals.errors).map(r=>r.code)},null,2));

@@ -58,6 +58,15 @@ def scan(fund,owner,symbols):
                     if json.dumps(previous,sort_keys=True,default=str)==json.dumps(evidence,sort_keys=True,default=str):continue
                 observation={'id':rid,'symbol':symbol,'kind':kind,'observedAt':store.now(),'payload':payload,'collection':'scheduled','fingerprint':fingerprint}
                 event={'symbol':symbol,'kind':kind,'baseline':old is None,'summary':'Baseline created' if old is None else 'New estimate snapshot' if kind=='earnings' else 'Filing sample changed','fingerprint':fingerprint}
+                event.update(record_id=rid,prior_version=old['version'] if old else None,source=payload.get('source'))
+                if kind=='filings':
+                    earlier=set(previous) if old else set()
+                    event['new_filing_urls']=[url for url in evidence if url and url not in earlier]
+                    event['source_url']=next(iter(event['new_filing_urls']),None)
+                else:
+                    from api.workflows.intelligence import estimate_revisions
+                    revisions=estimate_revisions(([{'payload':prior,'version':old['version'],'recorded_at':prior.get('observedAt','')}] if old else [])+[{'payload':observation,'version':(old['version'] if old else 0)+1,'recorded_at':observation['observedAt']}])
+                    event['matched_estimate_changes']=revisions['changes'];event['unmatched_period_rows']=revisions['unmatched_period_rows']
                 store.put(fund,owner,rid,'observation',observation,old['version'] if old else 0,event=event)
                 new_events+=1
             except Exception as e:failures.append(f'{symbol} {kind}: {type(e).__name__}')

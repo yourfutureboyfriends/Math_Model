@@ -1,0 +1,11 @@
+# PE sourcing and ML refinement — 4 November 2026
+
+PE now has company opportunities, PE fund diligence (listed vehicles and private funds), and real-estate underwriting alongside the existing LBO workbench. Company cases model primary investment ownership, dilution, exit economics and scenarios. Fund cases distinguish net LP DPI/RVPI/TVPI and listed NAV discounts. Property cases separate rental assets from land/development, account for negative interim equity contributions and debt repayment, and withhold ambiguous IRRs. Evidence and inputs can be saved to per-fund shortlists. Sources link to public registries and property advisers; this does not constitute a connected global private-deal or property inventory. Missing inputs remain unknown.
+
+PE browser drafts are retained by fund, user and section. LBO restore validates stored data before applying it. New backend and UI tests exercise calculations, isolation and invalid-input handling.
+
+ML now has bounded reference, expanded and research-XL profiles. Expanded is the default (64 recurrent units, two layers, attention); XL provides 256 units, four layers and eight attention heads. It is optional because larger networks are not necessarily more accurate on a relatively small monthly dataset. Environment configuration is documented in .env.example. Training remains isolated from the API process and serialized across task requests; configurations have distinct cache/model versions.
+
+Refinement uses matured labels, chronological validation, target-horizon purging, training-only preprocessing, recency weights, regularization, gradient clipping, early stopping and per-seed time budgets. Completed walk-forward folds are cached by data/configuration fingerprint. Live comparisons pair challenger and champion on the same forecast months; previous-version promotions cannot authorize new models. Retraining does not bypass promotion gates. UI displays capacity/configuration and rebuild status.
+
+Synthetic subprocess tests trained the reference, expanded and XL architectures and checked finite unseen-row predictions. These verify execution and capacity, not superior real-world forecasting accuracy. Historical/revised-data limitations remain; a genuine point-in-time evaluation and sufficient prospective matured forecasts are required before claiming investment benefit.

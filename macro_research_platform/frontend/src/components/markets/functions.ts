@@ -15,7 +15,7 @@ export const FUNCTIONS: MktFunction[] = [
   { code: 'RDESK', name: 'Research desk', desc: 'Watchlist changes, timestamped captures, thesis reviews, portfolio look-through and exposure-aware earnings events.', group: 'My tools', aliases: ['RESEARCH', 'THESIS'] },
   // Security
   { code: 'DES', name: 'Description', desc: 'Price, key stats, business or fund profile, valuation and analyst target.', group: 'Security', security: true },
-  { code: 'GP', name: 'Price chart', desc: 'Interactive chart: candles, intervals from 5 minutes to monthly, moving averages, volume.', group: 'Security', security: true, aliases: ['GIP', 'CHART'] },
+  { code: 'GP', name: 'Price chart', desc: 'Interactive chart: candles, intervals from 5 minutes to monthly, moving averages, volume.', group: 'Security', security: true, aliases: ['GIP'] },
   { code: 'FA', name: 'Financials', desc: 'Income statement, balance sheet, cash flow and ratios — SEC filings for US companies.', group: 'Security', security: true, equityOnly: true },
   { code: 'ERN', name: 'Earnings & estimates', desc: 'Reported vs expected EPS, beat rate, next date, consensus and revisions.', group: 'Security', security: true, equityOnly: true, aliases: ['EE', 'EEO'] },
   { code: 'ANR', name: 'Analyst ratings', desc: 'Buy/hold/sell mix, price targets and recent upgrades and downgrades.', group: 'Security', security: true, equityOnly: true },
@@ -63,7 +63,7 @@ export const FUNCTIONS: MktFunction[] = [
   { code: 'MAP', name: 'World map', desc: 'Every country coloured by its stock market or economy — returns, rates, inflation, growth.', group: 'Markets', aliases: ['BMAP', 'WORLD'] },
   { code: 'CORR', name: 'Correlation matrix', desc: 'Correlations across any instruments, clustered — cross-asset, sectors, indices, currencies.', group: 'Markets', aliases: ['CORREL'] },
   { code: 'RRG', name: 'Relative rotation', desc: 'Sectors, countries, factors or asset classes: leading, weakening, lagging or improving vs the market.', group: 'Markets', aliases: ['ROT'] },
-  { code: 'EDGE', name: 'Signal board', desc: 'The most unusual readings right now: crowded positioning, prediction-market jumps, port and trade shocks, fund-flow surges.', group: 'Alternative data', aliases: ['SIG', 'ALPHA', 'IDEAS'] },
+  { code: 'EDGE', name: 'Signal board', desc: 'The most unusual readings right now: crowded positioning, prediction-market jumps, port and trade shocks, fund-flow surges.', group: 'Alternative data', aliases: ['SIG', 'IDEAS'] },
   { code: 'RISK', name: 'Risk regime', desc: 'Risk-on / risk-off gauge from credit, volatility, curve, dollar, copper/gold and trend — plus the yield-curve recession probability.', group: 'Markets', aliases: ['REGIME', 'RECESS'] },
   { code: 'VOL', name: 'Volatility', desc: 'VIX term structure, VVIX, SKEW, MOVE, oil and gold vol, implied vs realised volatility.', group: 'Markets', aliases: ['VOLA'] },
   { code: 'BRDT', name: 'Market breadth', desc: 'S&P 500 participation: members above 50/200-day averages, advance/decline line, new highs/lows, McClellan, by sector.', group: 'Markets', aliases: ['BREADTH'] },
@@ -76,7 +76,7 @@ export const FUNCTIONS: MktFunction[] = [
   { code: 'HGRL', name: 'Holy Grail diversification', desc: 'Dalio’s Holy Grail: how many independent bets your instruments really are, and the risk-vs-streams curve.', group: 'Economy & policy', aliases: ['HOLYGRAIL', 'DIVERSIFY'] },
   { code: 'WPWR', name: 'World power index', desc: 'Dalio’s Changing World Order: education, innovation, competitiveness, output, trade, military, finance and reserve currency.', group: 'Economy & policy', aliases: ['WORLDORDER', 'EMPIRES'] },
   { code: 'CHART', name: 'Formula charts', desc: 'Chart any formula over instruments and FRED series — AAPL/SPY, {^TNX}-FRED:DGS2, ma(SPY,200), yoy(FRED:CPIAUCSL).', group: 'Markets', aliases: ['FORMULA', 'GRAPH'] },
-  { code: 'DATA', name: 'Data grid (BDP / BDH)', desc: 'Any fields for up to 100 instruments, or their price history side by side — download as CSV or copy into Excel.', group: 'Markets', aliases: ['BDP', 'BDH', 'GRID'] },
+  { code: 'DATA', name: 'Data grid (BDP / BDH)', desc: 'Any fields for up to 100 instruments, or their price history side by side — download as CSV or copy into Excel.', group: 'Markets', aliases: ['BDP', 'BDH'] },
   { code: 'YAS', name: 'Treasuries & bond calculator', desc: 'Every marketable Treasury priced from TreasuryDirect with yield, duration and DV01; price ↔ yield calculator with a shock grid.', group: 'Rates & FX', aliases: ['TSY', 'BONDS', 'BONDCALC'] },
   { code: 'ILBE', name: 'Inflation expectations', desc: 'TIPS breakevens, 5y5y forward, real yields, Cleveland Fed and Michigan expectations vs actual CPI.', group: 'Rates & FX', aliases: ['BREAKEVENS', 'TIPS', 'INFLEXP'] },
   { code: 'FXCA', name: 'FX carry', desc: 'Carry of 25 currencies vs the dollar from central-bank rates, ranked by carry-to-volatility, with forwards and a carry basket.', group: 'Rates & FX', aliases: ['CARRY'] },
@@ -100,13 +100,13 @@ export const FUNCTIONS: MktFunction[] = [
   { code: 'EXTH', name: 'Pre-market & after hours', desc: 'Biggest pre-market and after-hours gainers and losers, filtered by company size.', group: 'Markets', aliases: ['PREMKT', 'AFTERHOURS', 'AH'] },
   { code: 'CBRT', name: 'Central bank rates', desc: 'Policy rates of ~40 central banks (BIS): level, latest decision, 12-month moves and the global easing/tightening cycle.', group: 'Economy & policy', aliases: ['POLICY', 'CENTRALBANKS', 'CBANKS'] },
   { code: 'ECOS', name: 'Economic data explorer', desc: 'Search and chart any of FRED’s 800,000 series — overlay up to four, as levels, changes, year-on-year or rebased.', group: 'Economy & policy', aliases: ['FRED', 'ECON', 'SERIES'] },
-  { code: 'CRED', name: 'Credit spreads', desc: 'IG, BBB, high-yield, CCC, euro and EM corporate spreads — levels, changes, 3-year percentiles and stress signals.', group: 'Rates & FX', aliases: ['CREDIT', 'OAS', 'SPREADS'] },
+  { code: 'CRED', name: 'Credit spreads', desc: 'IG, BBB, high-yield, CCC, euro and EM corporate spreads — levels, changes, 3-year percentiles and stress signals.', group: 'Rates & FX', aliases: ['OAS', 'SPREADS'] },
   { code: 'PORT', name: 'Portfolio risk', desc: 'Your holdings’ exposures, volatility, VaR, risk contributions, correlations, factor loadings, stress tests and crisis replays.', group: 'Markets', aliases: ['PRTU', 'STRESS', 'PORTFOLIO'] },
   { code: 'PRED', name: 'Prediction markets', desc: 'Real-money odds (Polymarket, Kalshi) for Fed decisions, inflation, recession, geopolitics — and today’s biggest moves.', group: 'Economy & policy', aliases: ['ODDS', 'POLY', 'KALSHI'] },
   { code: 'NOW', name: 'Nowcasts & trade', desc: 'GDPNow, Cleveland Fed inflation nowcasts, weekly activity, financial conditions, and world trade from ship data — before the official numbers.', group: 'Economy & policy', aliases: ['NOWCAST', 'GDPNOW'] },
   { code: 'FLOW', name: 'Money flow map', desc: 'Where money is moving: cross-border portfolio flows (TIC), bank lending (BIS), ETF creations and money flow, stablecoins, Fed liquidity.', group: 'Alternative data', aliases: ['MONEY', 'CAPF', 'TIC'] },
-  { code: 'SHIP', name: 'Shipping tracker', desc: 'Every vessel worldwide (live AIS + satellite), port congestion, ship photos, and traffic through 28 chokepoints.', group: 'Alternative data', aliases: ['AIS', 'VSL', 'CHOKE'] },
-  { code: 'FLY', name: 'Flight tracker', desc: 'Every aircraft in the world; zoom in for live detail, routes, airframes, photos and tracks flown.', group: 'Alternative data', aliases: ['PLANE', 'ADSB'] },
+  { code: 'SHIP', name: 'Shipping tracker', desc: 'Observed vessels from recent receiver reports and historical AIS grids, port presence, vessel details and chokepoint traffic.', group: 'Alternative data', aliases: ['AIS', 'VSL', 'CHOKE'] },
+  { code: 'FLY', name: 'Flight tracker', desc: 'Observed aircraft with position age, regional receiver detail, usual callsign routes, airframes and reported tracks.', group: 'Alternative data', aliases: ['PLANE', 'ADSB'] },
   { code: 'QUAK', name: 'Earthquakes', desc: 'Magnitude 4.5+ quakes this week, flagged when near a major port or shipping chokepoint.', group: 'Alternative data', aliases: ['QUAKE', 'HAZ'] },
   { code: 'EIA', name: 'Oil & gas inventories', desc: 'Weekly US crude, gasoline, distillate, SPR and Cushing stocks, and natural-gas storage (EIA).', group: 'Alternative data', aliases: ['DOE', 'INV'] },
   { code: 'WETR', name: 'Weather & energy demand', desc: '16-day heating and cooling degree days vs 10-year normals for US demand centres.', group: 'Alternative data', aliases: ['WEATHER', 'HDD'] },
@@ -133,7 +133,7 @@ export const FUNCTIONS: MktFunction[] = [
   { code: 'EVTS', name: 'Earnings calendar', desc: 'Who reports this week, with estimates and surprises.', group: 'Research', aliases: ['ERNC', 'CAL'] },
   { code: 'ECO', name: 'Economic calendar', desc: 'Global releases with consensus, previous and actual (US as first published) and the surprise.', group: 'Economy & policy' },
   { code: 'ECST', name: 'Economic surprises', desc: 'US data surprise index since 2010: releases vs their own trend, as first published.', group: 'Economy & policy', aliases: ['CESI', 'SURP'] },
-  { code: 'N', name: 'News', desc: 'Markets headlines from Bloomberg, CNBC, the FT and more — searchable, with tone.', group: 'Research', aliases: ['TOP', 'NEWS'] },
+  { code: 'N', name: 'News', desc: 'Markets headlines from Bloomberg, CNBC, the FT and more — searchable, with tone.', group: 'Research', aliases: ['NEWS'] },
   // My tools
   { code: 'W', name: 'Watchlists', desc: 'Your lists of instruments with live prices.', group: 'My tools', aliases: ['WATCH', 'MON'] },
   { code: 'ALRT', name: 'Alerts', desc: 'Price and move alerts that notify you in the terminal.', group: 'My tools', aliases: ['ALERT'] },
@@ -141,9 +141,10 @@ export const FUNCTIONS: MktFunction[] = [
   { code: 'JRNL', name: 'Trading journal', desc: 'Record trades and ideas with your reasoning; review what worked.', group: 'My tools', aliases: ['NOTES'] },
 ];
 
-const BY_CODE: Record<string, MktFunction> = {};
+// Canonical destinations always take priority, independently of registry order.
+const BY_CODE: Record<string, MktFunction> = Object.create(null);
+for (const f of FUNCTIONS) BY_CODE[f.code] = f;
 for (const f of FUNCTIONS) {
-  BY_CODE[f.code] = f;
   for (const a of f.aliases ?? []) if (!BY_CODE[a]) BY_CODE[a] = f;
 }
 

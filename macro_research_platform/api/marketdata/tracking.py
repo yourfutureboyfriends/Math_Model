@@ -12,6 +12,7 @@ Physical-economy trackers, free sources:
   QUAK  · Earthquakes M4.5+ in the last week: USGS, with distance to the nearest major port.
 """
 from __future__ import annotations
+from api.marketdata.tracker_quality import position as valid_position, recent as recent_position, ship_phase, calendar_average
 
 import json
 import logging
@@ -156,27 +157,27 @@ def chokepoints(days: int = 1100) -> Dict[str, Any]:
             xs.sort(key=lambda x: x["date"])
             last_date = xs[-1]["date"]
             def avg(lo: int, hi: int, field: str) -> Optional[float]:
-                v = [x[field] or 0 for x in xs[-hi:len(xs) - lo]] if lo else [x[field] or 0 for x in xs[-hi:]]
-                return sum(v) / len(v) if v else None
+                end = date.fromisoformat(last_date[:10]) - timedelta(days=lo)
+                return calendar_average(xs,end.isoformat(),hi-lo,field)
             wk = avg(0, 7, "n_total")
-            # same 7 days a year earlier
-            ya = [x for x in xs if 358 <= (datetime.fromisoformat(str(last_date)[:10]) - datetime.fromisoformat(str(x["date"])[:10])).days <= 371]
-            ya_avg = sum((x["n_total"] or 0) for x in ya) / len(ya) if ya else None
-            yr = [x["n_total"] or 0 for x in xs[-365:]]
+            prior_end = date.fromisoformat(last_date[:10]) - timedelta(days=365)
+            ya_avg = calendar_average(xs,prior_end.isoformat(),7,"n_total")
+            year_avg = calendar_average(xs,last_date,365,"n_total",minimum=330)
             meta = CHOKEPOINTS.get(name, {})
             out.append({"name": name, "lat": meta.get("lat"), "lon": meta.get("lon"), "why": meta.get("why"), "date": str(last_date)[:10],
                         "transits_7d": wk, "vs_last_year": (wk / ya_avg - 1) if wk is not None and ya_avg else None,
-                        "vs_1y_avg": (wk / (sum(yr) / len(yr)) - 1) if wk is not None and yr and sum(yr) else None,
+                        "vs_1y_avg": (wk / year_avg - 1) if wk is not None and year_avg else None,
                         "tankers_7d": avg(0, 7, "n_tanker"), "containers_7d": avg(0, 7, "n_container"), "dry_bulk_7d": avg(0, 7, "n_dry_bulk"),
                         "capacity_7d": avg(0, 7, "capacity"),
                         "series": [{"date": str(x["date"])[:10], "n": x["n_total"], "tankers": x["n_tanker"], "containers": x["n_container"],
                                     "dry_bulk": x["n_dry_bulk"]} for x in xs]})
         out.sort(key=lambda c: -(c["transits_7d"] or 0))
         return {"chokepoints": out, "as_of": max(c["date"] for c in out),
-                "source": "IMF PortWatch (satellite AIS; daily transits through maritime chokepoints, updated weekly)"}
+                "source": "IMF PortWatch (AIS-derived daily transits)",
+                "note": "Seven-day averages require seven dated observations; annual mean requires 330 of 365 days. Year-on-year compares seven dates shifted 365 days. Missing observations stay unavailable; receiver gaps are not zero traffic."}
     def persisted():   # PortWatch updates weekly and a cold pull pages ~30k rows (≈1 min): keep a disk copy
         import time as _t
-        path = DATA / f"portwatch_chokepoints_{days}.json"
+        path = DATA / f"portwatch_chokepoints_v2_{days}.json"
         try:
             if path.exists() and _t.time() - path.stat().st_mtime < 6 * 3600:
                 d = json.loads(path.read_text())
@@ -188,7 +189,7 @@ def chokepoints(days: int = 1100) -> Dict[str, Any]:
             data = fetch()
         except Exception:
             if path.exists():                        # upstream down: serve the last copy rather than nothing
-                return json.loads(path.read_text())
+                return {**json.loads(path.read_text()), "stale": True, "note": "Provider unavailable; saved PortWatch observations shown with their original dates."}
             raise
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -196,7 +197,7 @@ def chokepoints(days: int = 1100) -> Dict[str, Any]:
         except Exception:
             pass
         return data
-    return _cached(f"chokepoints:{days}", 6 * 3600, persisted)
+    return _cached(f"chokepoints:v2:{days}", 6 * 3600, persisted)
 
 
 # ── SHIP: live vessels ───────────────────────────────────────────────────────
@@ -257,13 +258,13 @@ class _AisCollector:
         """Every vessel seen recently with a position."""
         cutoff = time_now() - self.MAX_AGE
         with self.lock:
-            return [v for v in self.ships.values() if v.get("lat") is not None and v.get("seen", 0) >= cutoff]
+            return [dict(v) for v in self.ships.values() if valid_position(v.get("lat"), v.get("lon")) and recent_position(v.get("seen"), time_now(), self.MAX_AGE)]
 
     def one(self, mmsi: int) -> Optional[Dict[str, Any]]:
         """One vessel with its recent track, or None."""
         with self.lock:
             v = self.ships.get(mmsi)
-            if v is None:
+            if v is None or not valid_position(v.get("lat"), v.get("lon")) or not recent_position(v.get("seen"), time_now(), self.MAX_AGE):
                 return None
             tr = self.tracks.get(mmsi)
             pts = [[round(self.t0 + tr[i]), round(tr[i + 1], 5), round(tr[i + 2], 5), tr[i + 3] if tr[i + 3] >= 0 else None]
@@ -347,12 +348,27 @@ class _AisCollector:
                 p = m["Message"][kind]
                 sp, co, hd = _ais_clean(p.get("Sog"), p.get("Cog"), p.get("TrueHeading"))
                 lat, lon = p.get("Latitude"), p.get("Longitude")
-                if lat is None or lon is None or abs(lat) > 90 or abs(lon) > 180 or (lat == 0 and lon == 0):
+                if not valid_position(lat, lon):
                     return                                   # 91/181 = "not available"
+                raw_time = meta.get("time_utc")
+                stamp = now
+                basis = "receiver_receipt"
+                if raw_time:
+                    try:
+                        text = str(raw_time).removesuffix(" UTC").strip().replace("Z", "+00:00")
+                        parsed = datetime.fromisoformat(text)
+                        if parsed.tzinfo is None:
+                            parsed = parsed.replace(tzinfo=timezone.utc)
+                        stamp, basis = parsed.timestamp(), "provider_report"
+                    except (ValueError, TypeError):
+                        return
+                if not recent_position(stamp, now, self.MAX_AGE) or stamp < v.get("seen", 0):
+                    return
                 v.update({"lat": lat, "lon": lon, "speed": sp, "course": co,
-                          "heading": hd, "status": p.get("NavigationalStatus"), "seen": now})
+                          "heading": hd, "status": p.get("NavigationalStatus"), "seen": stamp,
+                          "received_at": now, "time_basis": basis})
                 self.msgs += 1
-                self._track(mmsi, now, lat, lon, sp)
+                self._track(mmsi, stamp, lat, lon, sp)
             elif kind == "ShipStaticData":
                 d = m["Message"]["ShipStaticData"]
                 dim = d.get("Dimension") or {}
@@ -366,14 +382,12 @@ class _AisCollector:
                                  if eta.get("Month") and eta.get("Day") and eta.get("Hour", 24) < 24 and eta.get("Minute", 60) < 60 else None)}
                 v.update(ident)
                 self.static[mmsi] = {**ident, **({"name": v["name"]} if v.get("name") else {})}
-                v.setdefault("seen", now)
             elif kind == "StaticDataReport":             # class B (smaller vessels): part B carries the type
                 d = m["Message"]["StaticDataReport"]
                 rb = d.get("ReportB") or {}
                 if rb.get("Valid") and rb.get("ShipType") is not None:
                     v["type"] = _ship_type(rb.get("ShipType"))
                     self.static[mmsi] = {**self.static.get(mmsi, {}), "type": v["type"], **({"name": v["name"]} if v.get("name") else {})}
-                v.setdefault("seen", now)
             if now - self.static_saved > 300 and self.static:
                 self.static_saved = now
                 import threading
@@ -396,19 +410,16 @@ class _AisCollector:
             return
         if t - tr[-4] < self.TRACK_EVERY:
             return
-        if abs(lat - tr[-3]) < 0.0005 and abs(lon - tr[-2]) < 0.0005:       # not moving: refresh the time only
-            tr[-4] = t
-            return
         tr.extend((t, lat, lon, sp if sp is not None else -1))
-        if len(tr) > 4 * self.TRACK_POINTS:
+        while len(tr) > 4 and (len(tr) > 4 * self.TRACK_POINTS or t - tr[0] > 8 * 3600):
             del tr[:4]
 
 
 def _ais_clean(speed, course, heading):
     """AIS 'not available' codes (speed 102.3 kn, course 360°, heading 511) and impossible speeds → None."""
-    sp = speed if speed is not None and speed <= 60 else None          # 102.3 = not available; above ~60 kn is a bad fix
-    co = course if course is not None and course < 360 else None
-    hd = heading if heading is not None and heading < 360 else None
+    sp = speed if isinstance(speed, (int, float)) and not isinstance(speed, bool) and math.isfinite(speed) and 0 <= speed <= 60 else None          # 102.3 = not available; above ~60 kn is a bad fix
+    co = course if isinstance(course, (int, float)) and not isinstance(course, bool) and math.isfinite(course) and 0 <= course < 360 else None
+    hd = heading if isinstance(heading, (int, float)) and not isinstance(heading, bool) and math.isfinite(heading) and 0 <= heading < 360 else None
     return sp, co, hd
 
 
@@ -471,7 +482,7 @@ MID = {201: "Albania", 205: "Belgium", 209: "Cyprus", 210: "Cyprus", 211: "Germa
 NAV_STATUS = {0: "Under way (engine)", 1: "At anchor", 2: "Not under command", 3: "Restricted manoeuvrability", 4: "Constrained by draught",
               5: "Moored", 6: "Aground", 7: "Fishing", 8: "Under way (sailing)", 14: "AIS-SART (distress)"}
 TYPE_CODES = ["Cargo", "Tanker", "Passenger", "Fishing", "Tug", "Towing", "Military", "Sailing/pleasure", "Other", "Unknown"]
-WORLD_SHIP_COLS = ["mmsi", "lat", "lon", "speed", "heading", "type", "status", "name", "sat", "tag", "t"]   # sat: 1 = GFW position (days old); t: last report (epoch s)
+WORLD_SHIP_COLS = ["mmsi", "lat", "lon", "speed", "heading", "type", "status", "name", "sat", "tag", "t", "time_basis", "source", "collection_type"]   # sat: 1 = GFW position (days old); t: last report (epoch s)
 # tag letters (vessel_intel.notable_reasons): s sanctioned, m military, l gas carrier, g giant, h dangerous goods, z tanker in a hot zone
 
 
@@ -483,12 +494,7 @@ def flag_of(mmsi: Any) -> Optional[str]:
 
 def _phase(v: Dict[str, Any]) -> str:
     """underway / anchored / moored, from the navigational status (and speed when it's unset)."""
-    st, sp = v.get("status"), v.get("speed")
-    if st == 5:
-        return "moored"
-    if st == 1 or (st in (None, 15) and sp is not None and sp < 0.5):
-        return "anchored"
-    return "underway"
+    return ship_phase(v.get("status"), v.get("speed"))
 
 
 # ── Satellite + terrestrial AIS presence (Global Fishing Watch), worldwide, ~3 days behind ──
@@ -511,7 +517,7 @@ def _presence_load() -> None:
     try:
         d = json.loads(_presence_path().read_text())
         with _presence_lock:
-            _presence.update(rows={int(k): v for k, v in d["rows"].items()}, day=d["day"], built=d["built"], status="ready (from disk)")
+            _presence.update(rows={int(k): v for k, v in d["rows"].items()}, day=d["day"], built=d["built"], status=d.get("status", "ready (from disk)"), boxes=d.get("boxes", 0), boxes_done=d.get("boxes_done", 0), boxes_failed=d.get("boxes_failed"))
     except Exception:
         pass
 
@@ -529,7 +535,7 @@ def _presence_build() -> None:
     url = f"{GFW}/4wings/report"
     # latest day with data: GFW's presence layer runs ~2–4 days behind
     day = None
-    for back in (2, 3, 4, 5):
+    for back in (2, 3, 4, 5, 6, 7):
         d0 = date.today() - timedelta(days=back)
         probe = {"type": "Polygon", "coordinates": [[[103, 1], [104.5, 1], [104.5, 1.5], [103, 1.5], [103, 1]]]}    # Singapore Strait
         try:
@@ -545,9 +551,10 @@ def _presence_build() -> None:
         _presence["status"] = "GFW presence data unavailable"
         return
     boxes = [(lo, la) for la in range(-75, 90, 15) for lo in range(-180, 180, 15)]
-    _presence.update(status="building", boxes=len(boxes), boxes_done=0)
+    _presence.update(status="building", boxes=len(boxes), boxes_done=0, boxes_failed=0)
     latest: Dict[int, list] = {}
     for lo, la in boxes:
+        succeeded = False
         geo = {"type": "Polygon", "coordinates": [[[lo, la], [lo + 15, la], [lo + 15, la + 15], [lo, la + 15], [lo, la]]]}
         for attempt in range(3):
             try:
@@ -569,18 +576,21 @@ def _presence_build() -> None:
                             continue
                         latest[m] = [round(x["lat"], 2), round(x["lon"], 2), GFW_TYPES.get(vt, "Other"), x.get("flag") or "",
                                      (x.get("shipName") or "").strip(), x.get("imo") or "", x.get("callsign") or "", ts]
+                succeeded = True
                 break
             except Exception as e:
                 logger.info("[gfw] box %s,%s: %s", lo, la, e)
                 _t.sleep(3)
         _presence["boxes_done"] += 1
+        if not succeeded:
+            _presence["boxes_failed"] += 1
         _t.sleep(0.3)
     if latest:
         built = int(time_now())
         with _presence_lock:
-            _presence.update(rows=latest, day=str(day), built=built, status="ready")
+            _presence.update(rows=latest, day=str(day), built=built, status="partial" if _presence["boxes_failed"] else "ready")
         try:
-            _presence_path().write_text(json.dumps({"rows": latest, "day": str(day), "built": built}, separators=(",", ":")))
+            _presence_path().write_text(json.dumps({"rows": latest, "day": str(day), "built": built, **{k: _presence[k] for k in ("status", "boxes", "boxes_done", "boxes_failed")}}, separators=(",", ":")))
         except Exception as e:
             logger.info("[gfw] not saved: %s", e)
         logger.info("[gfw] presence: %d vessels for %s", len(latest), day)
@@ -612,27 +622,20 @@ def _sat_rows() -> List[list]:
     idx = {t: i for i, t in enumerate(TYPE_CODES)}
     with _presence_lock:
         if _sat_cache["built"] != _presence.get("built"):
-            # GFW positions are 0.1° cell centres: scatter each vessel within its cell (stable per MMSI) so a
-            # busy area reads as traffic, not a grid — the true position is only known to ±5 km anyway
-            def jit(m: int, salt: int) -> float:
-                z = (m * 0x9E3779B97F4A7C15 + salt * 0xBF58476D1CE4E5B9) & 0xFFFFFFFFFFFFFFFF   # splitmix64: no pattern
-                z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & 0xFFFFFFFFFFFFFFFF
-                z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & 0xFFFFFFFFFFFFFFFF
-                z ^= z >> 31
-                return (z / 0xFFFFFFFFFFFFFFFF - 0.5) * 0.095
-            def wrap(lon: float) -> float:                  # scatter near the date line must stay on the map
-                return ((lon + 180) % 360) - 180
+            # Preserve provider cell centres. Never invent apparent vessel positions by jittering.
             from api.marketdata import vessel_intel as VI
 
             def tag(m: int, p: list) -> str:
                 return "".join(t for _, t, _ in VI.notable_reasons({"mmsi": m, "imo": p[5], "name": p[4], "type": p[2], "lat": p[0], "lon": p[1]}))
             def epoch(ts: str) -> Optional[int]:
                 try:
-                    return int(datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp())
+                    parsed = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                    return int((parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)).timestamp())
                 except Exception:
                     return None
-            _sat_cache["rows"] = [[m, round(max(-89.99, min(89.99, p[0] + jit(m, 1))), 4), round(wrap(p[1] + jit(m, 2)), 4), None, None,
-                                   idx.get(p[2], idx["Other"]), None, p[4], 1, tag(m, p), epoch(p[7])] for m, p in _presence["rows"].items()]
+            _sat_cache["rows"] = [[m, p[0], p[1], None, None, idx.get(p[2], idx["Other"]), None,
+                                   p[4], 1, tag(m, p), epoch(p[7]), "historical_cell", "gfw", "historical grid"]
+                                  for m, p in _presence["rows"].items() if valid_position(p[0], p[1])]
             _sat_cache["built"] = _presence.get("built")
         return _sat_cache["rows"]
 
@@ -645,29 +648,39 @@ def world_vessels_json(layer: str = "all") -> bytes:
             rows = _sat_rows()
             return json.dumps({"cols": WORLD_SHIP_COLS, "types": TYPE_CODES, "rows": rows, "built": _presence.get("built"),
                                "satellite": {"day": _presence.get("day"), "status": _presence.get("status"), "boxes_done": _presence.get("boxes_done"),
-                                             "boxes": _presence.get("boxes"), "source": "Global Fishing Watch AIS presence (satellite + terrestrial), "
+                                             "boxes": _presence.get("boxes"), "boxes_failed": _presence.get("boxes_failed"), "grid_degrees": 0.1, "position_basis": "provider cell centre, not a vessel fix", "source": "Global Fishing Watch AIS presence (satellite + terrestrial), "
                                                                                        "last available day, 0.1° grid"}}, separators=(",", ":")).encode()
-        return _cached(f"ship:world:sat:{_presence.get('built')}", 3600, sat)
+        return _cached(f"ship:world:sat:{_presence.get('built')}", 300, sat)
     if layer == "live":
         def live():
-            w = world_vessels()
+            w = world_vessels(include_history=False)
             return json.dumps({**w, "rows": w["rows"][:w["live_count"]]}, separators=(",", ":")).encode()
         return _cached("ship:world:live:bytes", 15, live)
     return _cached("ship:world:bytes", 15, lambda: json.dumps(world_vessels(), separators=(",", ":")).encode())
 
 
-def world_vessels() -> Dict[str, Any]:
+def recent_vessels():
+    """Merge independently dated sources by MMSI; paid acquisition is explicit elsewhere."""
+    from api.marketdata.global_tracking import ship_snapshot
+    col=ais_collector()
+    selected={}
+    for v in ([{**r,"source":"aisstream","collection_type":"community receivers"} for r in col.all()] if col else [])+ship_snapshot():
+        if valid_position(v.get("lat"),v.get("lon")) and recent_position(v.get("seen"),time_now(),3600):
+            old=selected.get(v["mmsi"])
+            if old is None or v["seen"]>old["seen"]:selected[v["mmsi"]]=v
+    return list(selected.values())
+
+
+def world_vessels(include_history: bool = True) -> Dict[str, Any]:
     """Vessels worldwide from live AIS and satellite data."""
     col = ais_collector()
-    if not col:
-        raise NotFound("Global ship tracking needs a free aisstream.io key (AISSTREAM_API_KEY).")
 
     def build():
         from api.marketdata import vessel_intel as VI
-        rows, by_type, phase = [], {t: 0 for t in TYPE_CODES}, {"underway": 0, "anchored": 0, "moored": 0}
+        rows, by_type, phase = [], {t: 0 for t in TYPE_CODES}, {"underway": 0, "anchored": 0, "moored": 0, "unknown": 0}
         idx = {t: i for i, t in enumerate(TYPE_CODES)}
         live_ids = set()
-        for v in col.all():
+        for v in recent_vessels():
             live_ids.add(v["mmsi"])
             t = v.get("type") or "Unknown"
             ti = idx.get(t, idx["Other"])
@@ -678,27 +691,27 @@ def world_vessels() -> Dict[str, Any]:
             if sp is not None and sp > 35 and t in ("Cargo", "Tanker", "Fishing", "Tug", "Towing"):
                 sp = None                                  # no laden merchant ship or tug does 35 kn: a bad fix
             rows.append([v["mmsi"], round(v["lat"], 4), round(v["lon"], 4), round(sp, 1) if sp is not None else None,
-                         round(hd) if hd is not None else None, ti, v.get("status"), v.get("name") or "", 0,
-                         "".join(t for _, t, _ in VI.notable_reasons(v)), int(v.get("seen") or 0)])
+                         round(hd) % 360 if hd is not None else None, ti, v.get("status"), v.get("name") or "", 0,
+                         "".join(t for _, t, _ in VI.notable_reasons(v)), int(v.get("seen") or 0), v.get("time_basis", "receiver_receipt"), v.get("source", "aisstream"), v.get("collection_type", "community receivers")])
         n_live = len(rows)
         sat_by_type = {t: 0 for t in TYPE_CODES}
-        for r in _sat_rows():                          # prebuilt once per daily snapshot
+        for r in _sat_rows() if include_history else []:  # keep frequent receiver responses independent of historical rows
             if r[0] in live_ids:
                 continue
             sat_by_type[TYPE_CODES[r[5]]] += 1
             rows.append(r)
-        age = time_now() - col.started
-        return {"cols": WORLD_SHIP_COLS, "types": TYPE_CODES, "rows": rows, "by_type": by_type, "phase": phase, "status": col.status,
+        age = time_now() - col.started if col else 0
+        return {"cols": WORLD_SHIP_COLS, "types": TYPE_CODES, "rows": rows, "by_type": by_type, "phase": phase, "status": col.status if col else "licensed observations available" if n_live else "receiver feed not configured",
                 "live_count": n_live, "satellite_count": len(rows) - n_live, "satellite_by_type": sat_by_type,
-                "satellite": {"day": _presence.get("day"), "status": _presence.get("status"), "boxes_done": _presence.get("boxes_done"), "boxes": _presence.get("boxes"),
+                "satellite": {"day": _presence.get("day"), "status": _presence.get("status"), "boxes_done": _presence.get("boxes_done"), "boxes": _presence.get("boxes"), "boxes_failed": _presence.get("boxes_failed"), "grid_degrees": 0.1, "position_basis": "provider cell centre, not a vessel fix",
                               "source": "Global Fishing Watch AIS presence (satellite + terrestrial), last available day, 0.1° grid"},
                 "listening_s": int(age), "time": int(time_now()),
-                "source": "Live: aisstream.io (volunteer AIS receivers). Elsewhere: Global Fishing Watch satellite AIS, a few days behind",
-                "coverage": "Coastal and port waters where volunteer receivers exist — dense in Europe, North America, Japan, "
-                            "Singapore and parts of China; open ocean is not covered (no satellite AIS)."
+                "source": "Recent reports: community AIS receivers and configured licensed feeds (source retained per report). Historical cells: Global Fishing Watch satellite + terrestrial AIS",
+                "coverage": "Receiver coverage is incomplete, uneven and not measured by this sample. Missing positions do not establish absent vessels. "
+                            "Historical cells are a separate, delayed satellite + terrestrial dataset."
                             + (f" The picture is still filling in ({int(age // 60)} min since start — anchored ships report every "
-                               "few minutes, identities every 6)." if age < 900 else "")}
-    return _cached("ship:world", 15, build)
+                               "few minutes, identities every 6)." if col and age < 900 else "")}
+    return _cached(f"ship:world:v2:{include_history}", 15, build)
 
 
 TAG_NAMES = {"s": "Sanctioned (OFAC)", "m": "Military", "l": "Gas carriers", "g": "Giants (VLCC / ULCV)", "h": "Dangerous goods (cat. A)",
@@ -712,7 +725,7 @@ def notable_ships(limit: int = 600) -> Dict[str, Any]:
         from api.marketdata import vessel_intel as VI
         w = world_vessels()
         ix = {c: i for i, c in enumerate(w["cols"])}
-        col = ais_collector()
+        live_records={v["mmsi"]:v for v in recent_vessels()}
         out, counts = [], {k: 0 for k in TAG_NAMES}
         for r in w["rows"]:
             tags = r[ix["tag"]]
@@ -723,14 +736,13 @@ def notable_ships(limit: int = 600) -> Dict[str, Any]:
                 p = _presence["rows"].get(m) or [None] * 8
                 rec = {"mmsi": m, "imo": p[5], "name": p[4], "type": p[2], "lat": r[ix["lat"]], "lon": r[ix["lon"]]}
             else:
-                with col.lock:
-                    rec = dict(col.ships.get(m) or {})
+                rec = live_records.get(m,{})
             reasons = VI.notable_reasons(rec)
             for t in set(tags):
                 if t in counts:
                     counts[t] += 1
             out.append({"mmsi": m, "name": r[ix["name"]] or f"MMSI {m}", "type": w["types"][r[ix["type"]]], "lat": r[ix["lat"]], "lon": r[ix["lon"]],
-                        "speed": r[ix["speed"]], "satellite": bool(r[ix["sat"]]), "tags": tags, "priority": reasons[0][0] if reasons else 9,
+                        "speed": r[ix["speed"]], "satellite": bool(r[ix["sat"]]), "position_time": r[ix["t"]], "time_basis": r[ix["time_basis"]], "tags": tags, "priority": reasons[0][0] if reasons else 9,
                         "reasons": [x for _, _, x in reasons], "destination": (rec.get("destination") or None) if not r[ix["sat"]] else None})
         out.sort(key=lambda x: (x["priority"], x["satellite"], x["name"]))
         return {"ships": out[:limit], "total": len(out), "counts": counts, "tag_names": TAG_NAMES,
@@ -744,19 +756,22 @@ def vessel_live(mmsi: int) -> Dict[str, Any]:
     """One vessel's latest position and track."""
     col = ais_collector()
     v = col.one(int(mmsi)) if col else None
+    from api.marketdata.global_tracking import ship_snapshot
+    other=next((r for r in ship_snapshot() if r["mmsi"]==int(mmsi)),None)
+    if other and (not v or other["seen"]>v.get("seen",0)):v={**other,"track":[]}
     if not v:
         p = _presence["rows"].get(int(mmsi))
         if not p:
             raise NotFound(f"No recent AIS position for MMSI {mmsi}.")
         return _enrich({"mmsi": int(mmsi), "name": p[4] or None, "type": p[2], "imo": p[5] or None, "callsign": p[6] or None,
                         "lat": p[0], "lon": p[1], "flag": FLAGS.get(p[3], p[3]) if p[3] else flag_of(mmsi), "phase": None,
-                        "status_text": f"Satellite position ({(p[7] or '')[:16].replace('T', ' ')} UTC)", "satellite": True,
-                        "position_time": p[7], "track": [],
-                        "note": "Outside live receiver range: last position from Global Fishing Watch satellite AIS (a few days old, ±5 km)."})
+                        "status_text": f"Historical AIS cell ({(p[7] or '')[:16].replace('T', ' ')} UTC)", "satellite": True,
+                        "position_time": p[7], "time_basis": "historical_cell", "grid_degrees": 0.1, "track": [],
+                        "note": "Historical AIS presence cell from Global Fishing Watch (satellite + terrestrial). Cell centre is approximate, not a current vessel position; receipt time is not observation time."})
     out = {k: v.get(k) for k in ("mmsi", "name", "type", "type_code", "callsign", "imo", "destination", "eta", "draught", "length_m", "beam_m",
-                                  "lat", "lon", "speed", "course", "heading", "status")}
+                                  "lat", "lon", "speed", "course", "heading", "status", "source", "collection_type")}
     out.update({"flag": flag_of(v.get("mmsi")), "status_text": NAV_STATUS.get(v.get("status")), "phase": _phase(v),
-                "seen_s": round(time_now() - v.get("seen", time_now())), "track": v.get("track") or []})
+                "seen_s": round(time_now() - v.get("seen", time_now())), "position_time": v.get("seen"), "time_basis": v.get("time_basis", "receiver_receipt"), "track": v.get("track") or []})
     return _enrich(out)
 
 
@@ -802,35 +817,48 @@ def _enrich(out: Dict[str, Any]) -> Dict[str, Any]:
 def port_congestion(radius_km: float = 30) -> Dict[str, Any]:
     """Ships waiting (at anchor) and berthed (moored) near each major port, by kind — a live
     read on port congestion from the AIS picture."""
+    radius_km = max(1.0, min(100.0, float(radius_km)))
     col = ais_collector()
-    if not col:
-        raise NotFound("Port congestion needs a free aisstream.io key (AISSTREAM_API_KEY).")
+    if not col and not recent_vessels():
+        raise NotFound("Port presence needs receiver reports or an enabled licensed source.")
 
     def build():
-        cells: Dict[tuple, List[Dict[str, Any]]] = {}
-        for v in col.all():
-            cells.setdefault((int(math.floor(v["lat"])), int(math.floor(v["lon"]))), []).append(v)
-        out = []
-        for name, (plat, plon) in MAJOR_PORTS.items():
-            c = {"port": name, "lat": plat, "lon": plon, "anchored": 0, "moored": 0, "underway": 0, "cargo_waiting": 0, "tankers_waiting": 0}
-            for dy in (-1, 0, 1):
-                for dx in (-1, 0, 1):
-                    for v in cells.get((int(math.floor(plat)) + dy, int(math.floor(plon)) + dx), []):
-                        if _km(plat, plon, v["lat"], v["lon"]) > radius_km:
-                            continue
-                        ph = _phase(v)
-                        c[ph] += 1
-                        if ph == "anchored" and v.get("type") == "Cargo":
-                            c["cargo_waiting"] += 1
-                        if ph == "anchored" and v.get("type") == "Tanker":
-                            c["tankers_waiting"] += 1
-            c["total"] = c["anchored"] + c["moored"] + c["underway"]
-            out.append(c)
+        now = time_now()
+        out = [{"port": name, "lat": lat, "lon": lon, "anchored": 0, "moored": 0, "underway": 0,
+                "cargo_waiting": 0, "tankers_waiting": 0, "unknown": 0, "total": 0,
+                "newest_report": None, "oldest_report": None} for name, (lat, lon) in MAJOR_PORTS.items()]
+        seen_ids = set()
+        for v in recent_vessels():
+            if not valid_position(v.get("lat"), v.get("lon")) or not recent_position(v.get("seen"), now, 900):
+                continue
+            ident = v.get("mmsi")
+            if ident is not None and ident in seen_ids:
+                continue
+            seen_ids.add(ident)
+            candidates = [( _km(p["lat"], p["lon"], v["lat"], v["lon"]), i) for i, p in enumerate(out)
+                          if abs(p["lat"] - v["lat"]) <= radius_km / 110 + 0.01]
+            if not candidates:
+                continue
+            distance, index = min(candidates)
+            if distance > radius_km:
+                continue
+            c = out[index]
+            ph = _phase(v)
+            c[ph] += 1
+            c["total"] += 1
+            if ph == "anchored" and v.get("type") == "Cargo": c["cargo_waiting"] += 1
+            if ph == "anchored" and v.get("type") == "Tanker": c["tankers_waiting"] += 1
+            c["newest_report"] = max(c["newest_report"] or 0, v["seen"])
+            c["oldest_report"] = min(c["oldest_report"] or v["seen"], v["seen"])
+        for c in out:
+            c["sample_status"] = "observed" if c["total"] else "no recent observations"
         out.sort(key=lambda c: -c["anchored"])
-        return {"ports": out, "radius_km": radius_km, "listening_s": int(time_now() - col.started),
-                "note": "Within 30 km of each port: at anchor (usually waiting for a berth), moored (at berth) and moving. "
-                        "Counts depend on receiver coverage, so compare a port with itself over time rather than across ports."}
-    return _cached("ship:ports", 60, build)
+        return {"ports": out, "radius_km": radius_km, "listening_s": int(time_now() - col.started) if col else None,
+                "as_of": int(time_now()), "max_report_age_s": 900, "assignment": "nearest port within radius, one port per MMSI", "source": "aisstream.io receiver sample", "coverage": "Observed AIS positions only; zero observations do not establish zero port activity.",
+                "note": f"Within {radius_km:g} km of each port: reported at anchor, moored, underway or unknown status. "
+                        "Anchorage is not confirmed berth waiting, moored is not verified berth occupancy. Each vessel is assigned to the nearest port only; reports older than 15 minutes are excluded. "
+                        "Counts depend on receiver coverage; this is a presence proxy, not measured congestion or port throughput."}
+    return _cached(f"ship:ports:{radius_km:g}:v2", 60, build)
 
 
 def _digitraffic(box) -> Dict[str, Any]:
@@ -947,6 +975,27 @@ def vessel_info(query: str) -> Dict[str, Any]:
         cur = history[0] if history else {}
         return {"query": q, "name": cur.get("name"), "imo": imo, "mmsi": cur.get("mmsi"), "flag": cur.get("flag_name"), "callsign": cur.get("callsign"),
                 "types": types, "length_m": reg.get("lengthM"), "tonnage_gt": reg.get("tonnageGt"), "built": reg.get("builtYear"),
-                "history": history, "owners": owners, "port_calls": calls,
+                "history": history, "owners": owners, "port_calls": calls, "vessel_ids": ids,
                 "source": "Global Fishing Watch (vessel identity from AIS and registries; port visits from AIS)"}
-    return _cached(f"gfw:{q}", 6 * 3600, fetch)
+    return _cached(f"gfw:v2:{q}", 6 * 3600, fetch)
+
+
+def vessel_events(query: str, kind: str = 'port_visit', days: int = 90) -> Dict[str, Any]:
+    """Bounded, on-demand GFW activity sample; identities must resolve first."""
+    kinds={'port_visit':'public-global-port-visits-events:latest','loitering':'public-global-loitering-events:latest','ais_gap':'public-global-gaps-events:latest'}
+    if kind not in kinds:raise NotFound('Choose port_visit, loitering or ais_gap')
+    days=max(1,min(int(days),180))
+    def fetch():
+        token=os.getenv('GFW_API_TOKEN') or ''
+        if not token:raise NotFound('Activity events need the existing GFW_API_TOKEN integration')
+        info=vessel_info(query);ids=info.get('vessel_ids') or []
+        if not ids:raise NotFound('No verified vessel identifiers available for activity lookup')
+        import requests
+        params={'datasets[0]':kinds[kind],'start-date':str(date.today()-timedelta(days=days)),'end-date':str(date.today()),'limit':100,'offset':0,'sort':'-start'}
+        for i,vid in enumerate(ids[:5]):params[f'vessels[{i}]']=vid
+        r=requests.get(f'{GFW}/events',headers={**UA,'Authorization':f'Bearer {token}'},params=params,timeout=30)
+        r.raise_for_status();data=r.json();entries=data.get('entries') or []
+        return {'query':query,'kind':kind,'events':[{'id':e.get('id'),'start':e.get('start'),'end':e.get('end'),'type':e.get('type'),'position':e.get('position'),'regions':e.get('regions'),'details':e.get(kind) or e.get('port_visit') or e} for e in entries],
+                'limit':100,'has_more':bool(data.get('nextOffset') is not None or len(entries)==100),'retrieved_at':datetime.now(timezone.utc).isoformat(),'source':'Global Fishing Watch Events API','dataset':kinds[kind],
+                'note':'Bounded event sample, not complete maritime coverage. Gaps/loitering do not establish intentional concealment, illicit activity or actual cargo.'}
+    return _cached(f'gfw:events:{query}:{kind}:{days}',3600,fetch)

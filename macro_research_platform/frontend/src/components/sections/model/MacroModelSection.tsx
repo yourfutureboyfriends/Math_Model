@@ -16,6 +16,7 @@ import { useMacroStore } from '@/store/macroStore';
 import { pct } from '@/lib/format';
 import { MacroDataQuality } from './MacroDataQuality';
 import { TimeMachine } from './TimeMachine';
+import { EvidenceResults } from '@/components/markets/EvidenceResults';
 
 // Categorical slots validated on the dark surface (#0d1117): fixed order, never cycled.
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500'];
@@ -231,7 +232,7 @@ export function MacroModelSection() {
             {Object.keys(meta.defaults).map((k) => (
               <label key={k} className="text-2xs text-text-tertiary" title={meta.descriptions[k]}>
                 <span className="block mb-0.5">{meta.descriptions[k]}</span>
-                <input type="number" step="any" value={params[k] ?? ''} aria-label={k}
+                <input type="number" step="any" value={params[k] ?? ''} aria-label={k} disabled={k==='tau'}
                   onChange={(e) => setParams({ ...params, [k]: Number(e.target.value) })}
                   className="w-full bg-bg border border-border px-2 py-1 font-mono text-xs text-text-primary" />
               </label>
@@ -320,10 +321,12 @@ export function MacroModelSection() {
               </div>
               {bt?.forecast_skill?.growth_direction && (
                 <div className="mt-2 text-[10px] text-text-tertiary">
-                  Out-of-sample skill ({bt.forecast_skill.months_scored} months): growth direction {pct(bt.forecast_skill.growth_direction.accuracy, 0)} correct
+                  Walk-forward skill against final factor labels ({bt.forecast_skill.months_scored} months): growth direction {pct(bt.forecast_skill.growth_direction.accuracy, 0)} correct
                   (Brier skill {bt.forecast_skill.growth_direction.skill}); inflation {pct(bt.forecast_skill.inflation_direction.accuracy, 0)} (skill {bt.forecast_skill.inflation_direction.skill}).
                 </div>
               )}
+              {bt?.forecast_skill?.growth_direction?.reliability&&<details className="mt-3"><summary className="text-xs cursor-pointer">Probability reliability and sample coverage</summary><p className="text-[10px] text-text-tertiary my-2">{bt.forecast_skill.target_basis}</p>{(['growth_direction','inflation_direction'] as const).map(key=><div className="mt-3" key={key}><h4 className="text-xs mb-2">{key==='growth_direction'?'Growth':'Inflation'} direction</h4><EvidenceResults tab="Probability check" result={bt.forecast_skill[key]?.reliability??{}}/></div>)}</details>}
+              <a href="#mkt/rdesk" className="text-xs text-bloomberg inline-block mt-3">Research desk → Evidence tools → Macro vintages: compare historical information sets</a>
             </Step>
           </div>
 

@@ -16,9 +16,9 @@ cost of capital, following Damodaran and Koller/Goedhart/Wessels (McKinsey, "Val
                (McKinsey) — growth must be paid for with reinvestment. Default three-stage RONIC fades
                to WACC; the optional two-stage framework retains half the excess return for non-cyclicals.
                Cyclical / commodity businesses earn their cost of capital on terminal new investment
-  WACC         cost of equity = risk-free + β × ERP, with market-value financing weights:
+  WACC         cost of equity = risk-free + β × mature-market ERP + country premium + governance premium, with market-value financing weights:
                · ERP = an editable normalized mature-market assumption + the home country's risk
-                 premium (over the US's); current market-implied ERP is a separate selectable lens
+                 premium; current market-implied ERP is a separate selectable lens
                · β bottom-up: the industry's unlevered beta (corrected for cash) relevered
                  at the firm's market D/E — far less noisy than a single regression beta
                · risk-free = 10-year government yield in the cash-flow currency, less the
@@ -61,7 +61,7 @@ TERMINAL_RULE = "gdp"    # currency-specific sustainable nominal-growth ceiling;
 # (OECD / IMF long-run estimates, rounded). Used only as a ceiling under the risk-free rate.
 LR_NOMINAL_GROWTH = {"USD": 0.040, "EUR": 0.032, "GBP": 0.035, "JPY": 0.025, "CHF": 0.022, "CAD": 0.037, "AUD": 0.045,
                      "NZD": 0.042, "SEK": 0.035, "NOK": 0.035, "DKK": 0.032, "KRW": 0.038, "CNY": 0.055, "HKD": 0.040,
-                     "TWD": 0.035, "SGD": 0.040, "INR": 0.09, "BRL": 0.065, "MXN": 0.055, "ZAR": 0.065}
+                     "TWD": 0.035, "SGD": 0.040, "ILS":0.04, "PLN":0.045, "INR": 0.09, "BRL": 0.065, "MXN": 0.055, "ZAR": 0.065}
 # A cyclical company at a margin peak returns to its through-cycle margin over this many years (normalising
 # cyclical earnings — McKinsey, Damodaran), not over the whole forecast.
 CYCLICAL_FADE_YEARS = 3
@@ -109,13 +109,13 @@ CYCLICAL = {"Semiconductor", "Semiconductor Equip", "Metals & Mining", "Steel", 
 # currency → the sovereign whose bond sets its risk-free rate (for the default-spread adjustment)
 CCY_SOVEREIGN = {"JPY": "Japan", "GBP": "United Kingdom", "EUR": "Germany", "CAD": "Canada", "AUD": "Australia", "CHF": "Switzerland",
                  "KRW": "Korea", "MXN": "Mexico", "ZAR": "South Africa", "INR": "India", "SEK": "Sweden", "NOK": "Norway",
-                 "DKK": "Denmark", "NZD": "New Zealand", "BRL": "Brazil"}
+                 "DKK": "Denmark", "NZD": "New Zealand", "BRL": "Brazil", "ILS":"Israel", "PLN":"Poland", "HKD":"Hong Kong", "SGD":"Singapore", "USD":"United States"}
 # 10-year government bond yield by currency — the risk-free rate must be in the currency of
 # the cash flows (Damodaran). OECD long-term yields via FRED (monthly).
 RF_SERIES = {"JPY": "IRLTLT01JPM156N", "EUR": "IRLTLT01DEM156N", "GBP": "IRLTLT01GBM156N", "CAD": "IRLTLT01CAM156N",
              "AUD": "IRLTLT01AUM156N", "CHF": "IRLTLT01CHM156N", "KRW": "IRLTLT01KRM156N", "MXN": "IRLTLT01MXM156N",
              "ZAR": "IRLTLT01ZAM156N", "INR": "INDIRLTLT01STM", "SEK": "IRLTLT01SEM156N", "NOK": "IRLTLT01NOM156N",
-             "DKK": "IRLTLT01DKM156N", "NZD": "IRLTLT01NZM156N", "BRL": "IRLTLT01BRM156N"}
+             "DKK": "IRLTLT01DKM156N", "NZD": "IRLTLT01NZM156N", "BRL": "IRLTLT01BRM156N", "ILS":"IRLTLT01ILM156N", "PLN":"IRLTLT01PLM156N"}
 # 'financials' that don't lend or underwrite — exchanges, data vendors, brokers' platforms — have ordinary operating cash flows
 NON_LENDER_FINANCIALS = ("financial data", "stock exchange")
 FINANCIAL_INDUSTRIES = ("bank", "insurance", "capital markets", "credit services", "asset management", "mortgage")
@@ -168,12 +168,19 @@ def risk_free(currency: Optional[str]) -> Dict[str, Any]:
     """10-year government yield for the cash-flow currency (decimal) with its source."""
     from api.marketdata.core import _cached
     ccy = (currency or "USD").upper()
-    if ccy in ("USD", "HKD"):                       # HKD is pegged to the dollar
+    if ccy == "HKD":
+        reference=risk_free("USD")
+        return {"rate":reference['rate'],"source":"USD default-free proxy for HKD's currency peg; not an observed HKD government yield", "currency_matched":True,"basis":"currency-peg proxy","proxy":True}
+    if ccy == "USD":
         try:
             from api.marketdata.core import quote
-            return {"rate": round((quote("^TNX")["price"] or 0) / 100, 4), "source": "US 10-year Treasury (^TNX)", "currency_matched": True}
+            observed=(quote("^TNX")["price"] or 0)/100
+            if not math.isfinite(observed) or observed<=0:raise ValueError('US Treasury yield unavailable')
+            from api.providers import damodaran
+            spread=damodaran.country_risk('United States').get('default_spread') or 0.
+            return {"rate":round(observed-spread,4),"source":f"US 10-year Treasury (^TNX) less {spread:.2%} sovereign default spread","currency_matched":True,"basis":"observed government yield less sovereign spread"}
         except Exception:
-            return {"rate": 0.04, "source": "default 4% (live rate unavailable)", "currency_matched": True}
+            return {"rate":.04,"source":"Research fallback 4%; live USD risk-free reference unavailable","currency_matched":True,"basis":"fallback assumption","proxy":True}
     # the issuer's daily 10-year (the Bund for the euro) — OECD's FRED series are monthly averages
     daily = {"EUR": "DE", "GBP": "GB", "JPY": "JP", "CAD": "CA", "AUD": "AU"}.get(ccy)
     if daily:
@@ -221,7 +228,7 @@ def risk_free(currency: Optional[str]) -> Dict[str, Any]:
         # Damodaran's inflation-differential method: rf_local = (1 + rf_US) × (1 + π_local) / (1 + π_US) − 1
         rate = (1 + us["rate"]) * (1 + LT_INFLATION[ccy]) / (1 + LT_INFLATION["USD"]) - 1
         return {"rate": round(rate, 4), "source": f"US 10-year Treasury adjusted for expected inflation ({ccy} {LT_INFLATION[ccy]:.1%} vs USD "
-                                                  f"{LT_INFLATION['USD']:.1%}; Damodaran's inflation-differential method)", "currency_matched": True}
+                                                  f"{LT_INFLATION['USD']:.1%}; Damodaran's inflation-differential method)", "currency_matched": True,"basis":"inflation-differential estimate","proxy":True}
     return {"rate": us["rate"], "source": f"US 10-year Treasury — no {ccy} government yield available", "currency_matched": False}
 
 
@@ -296,6 +303,7 @@ def inputs(symbol: str) -> Dict[str, Any]:
     out["beta_source"] = "regression beta, Blume-adjusted (Yahoo)"
     rfi = risk_free(out["currency"])
     out["risk_free"], out["risk_free_source"], out["risk_free_matched"] = rfi["rate"], rfi["source"], rfi["currency_matched"]
+    out["risk_free_basis"]=rfi.get("basis","local yield reference" if not rfi.get("proxy") else "proxy assumption")
     rf = out["risk_free"] if out["risk_free"] is not None else 0.04
     # Debt cross-check: filers tag debt inconsistently — if the filing-based figure is missing
     # or far below Yahoo's total debt, use Yahoo's (and say so).
@@ -314,6 +322,12 @@ def inputs(symbol: str) -> Dict[str, Any]:
     out["tax_effective"] = round(min(TAX_EFFECTIVE_CAP, max(0.0, eff)), 4) if eff is not None else None
     us = (out.get("country") or "").lower() in ("united states", "usa", "us")
     out["tax_marginal"] = MARGINAL_TAX_US if us else MARGINAL_TAX_OTHER
+    from api.providers import damodaran
+    reference=damodaran.country_tax(out.get('country'))
+    out['tax_reference']=reference
+    if reference['available']:
+        out['tax_marginal']=reference['rate'];out['tax_marginal_source']=reference['source']
+    else:out['tax_marginal_source']='Fallback research assumption: country marginal tax reference unavailable' 
     # Pre-tax cost of debt: interest ÷ debt, bounded to [rf, rf + 6%]; else rf + 1.5%
     debt, intr = out.get("debt"), out.get("interest_expense")
     kd = intr / debt if debt and intr and debt > 0 else None
@@ -604,9 +618,11 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
         out["erp_source"] = f"Normalized mature-market ERP assumption {ERP_STANDARD:.1%}; not calibrated to the current share price"
     out["erp_basis"] = ERP_BASIS
 
-    home, us = damodaran.country_risk(out.get("country")), damodaran.country_risk("United States")
-    crp = max(0.0, (home.get("crp") or 0.0) - (us.get("crp") or 0.0))
+    home = damodaran.country_risk(out.get("country"))
+    crp = max(0.0, home.get("crp") or 0.0)
     out["country_risk_premium"], out["country_rating"] = round(crp, 4), home.get("rating")
+    out['country_risk_available']=bool(home.get('rating'));out['country_risk_source']=home.get('source','Damodaran country-risk reference')
+    out.setdefault('governance_risk_premium',0.)
     out["erp"] = round(out["erp_mature"] + crp, 4)
 
     # Captive finance: long-dated receivables funded by debt (car / equipment loans)
@@ -713,6 +729,7 @@ def _market_inputs(symbol: str, info: Dict[str, Any], out: Dict[str, Any]) -> No
                 out["roic"] = round(out["ebit"] * (1 - out["tax_effective"]) / out["invested_capital"], 4)
         if len(trs) >= 2 and trs[0] >= out["tax_marginal"] + 0.05:
             out["tax_marginal"] = round(t_med, 4)
+            out["tax_marginal_source"]="Persistently higher reported group effective tax rate; overrides country reference"
             out["tax_note"] = (f"Effective tax has been at least {trs[0]:.0%} in each of the last {len(trs)} years — kept in the long run "
                                "rather than converging to the statutory rate")
     try:
@@ -877,6 +894,35 @@ def moat(inp: Dict[str, Any], r: float) -> Dict[str, Any]:
             "years": len(vals), "basis": basis}
 
 
+def equity_risk_components(inp: Dict[str, Any], beta: float, erp: Optional[float] = None, risk_free: Optional[float] = None) -> Dict[str, Any]:
+    """Decompose the legacy total-ERP input into mature MRP plus additive CRP/GRP.
+
+    Existing API ERP controls include country risk. Deduct CRP once before beta scaling;
+    governance is separately named and never silently folded into beta or counted twice.
+    """
+    crp = inp.get("country_risk_premium") or 0.0
+    grp = inp.get("governance_risk_premium") or 0.0
+    if erp is not None:
+        mature = erp - crp
+    elif inp.get("erp_mature") is not None and not inp.get("erp_is_total_override"):
+        mature = inp["erp_mature"]
+    elif inp.get("erp") is not None:
+        mature = inp["erp"] - crp
+    else:
+        mature = ERP_FALLBACK
+    rf = risk_free if risk_free is not None else inp.get("risk_free") if inp.get("risk_free") is not None else 0.04
+    # Keep the archived forecast kernel self-contained for offline standard-library replay.
+    for label,number,lo,hi in (("risk-free",rf,-.5,1.),("beta",beta,-1.,5.),("mature premium",mature,0.,1.),("country premium",crp,0.,1.),("governance premium",grp,0.,1.)):
+        if isinstance(number,bool) or not isinstance(number,(int,float)) or not math.isfinite(number) or not lo<=number<=hi:
+            raise NotFound(f"Invalid {label}")
+    ke_model=rf+beta*mature+crp+grp
+    result={"cost_of_equity_model":ke_model,"cost_of_equity":max(KE_FLOOR,ke_model)}
+    return {"risk_free":rf,"market_risk_premium":mature,"country_risk_premium":crp,
+            "governance_risk_premium":grp,"systematic_premium":beta*mature,
+            "cost_of_equity_model":result["cost_of_equity_model"],"cost_of_equity":result["cost_of_equity"],
+            "erp":mature+crp,"formula":"risk_free + beta × mature_market_premium + country_risk_premium + governance_risk_premium"}
+
+
 def building_block_ke(inp: Dict[str, Any], beta: float) -> Dict[str, Any]:
     """Morningstar-style cost of equity: real market return + long-run inflation (the currency's, so a low-inflation
     currency gets a lower nominal rate) + a systematic-risk step by beta bucket + the country risk premium."""
@@ -887,8 +933,8 @@ def building_block_ke(inp: Dict[str, Any], beta: float) -> Dict[str, Any]:
         infl = BB_INFLATION_USD
     step = next(p for cap, p in BB_SYSTEMATIC if beta <= cap)
     crp = inp.get("country_risk_premium") or 0.0
-    return {"cost_of_equity": BB_REAL_RETURN + infl + step + crp, "real_return": BB_REAL_RETURN, "inflation": infl,
-            "systematic_step": step, "country_risk_premium": crp}
+    return {"cost_of_equity": BB_REAL_RETURN + infl + step + crp + (inp.get("governance_risk_premium") or 0.0), "real_return": BB_REAL_RETURN, "inflation": infl,
+            "systematic_step": step, "country_risk_premium": crp, "governance_risk_premium": inp.get("governance_risk_premium") or 0.0}
 
 
 def uncertainty(sigma: Optional[float], terminal_share: Optional[float] = None) -> Dict[str, Any]:
@@ -916,11 +962,11 @@ def wacc(inp: Dict[str, Any], beta: Optional[float] = None, erp: Optional[float]
     """
     rf = inp.get("risk_free") if inp.get("risk_free") is not None else 0.04
     b = beta if beta is not None else (inp.get("beta") if inp.get("beta") is not None else 1.0)
-    if erp is None:
-        erp = inp.get("erp") or ERP_FALLBACK
+    risk = equity_risk_components(inp, b, erp)
+    erp = risk["erp"]
     method = ke_method or KE_METHOD
     bb = building_block_ke(inp, b) if method == "building_block" else None
-    ke_model = bb["cost_of_equity"] if bb else rf + b * erp
+    ke_model = bb["cost_of_equity"] if bb else risk["cost_of_equity_model"]
     ke = max(ke_model, KE_FLOOR)
     debt = (inp.get("debt") or 0) + ((inp.get("leases") or 0) if include_leases else 0)
     # Equity at market value; convert to the financial-statement currency if needed
@@ -933,7 +979,8 @@ def wacc(inp: Dict[str, Any], beta: Optional[float] = None, erp: Optional[float]
     kd_after = inp["cost_of_debt"] * (1 - inp["tax_marginal"])
     w = (E * ke + D * kd_after) / (E + D) if E + D > 0 else ke
     return {"wacc": w, "cost_of_equity": ke, "cost_of_equity_model": ke_model, "ke_floored": ke > ke_model + 1e-12,
-            "ke_method": method, "building_blocks": bb,
+            "ke_method": method, "building_blocks": bb, "risk_components": risk,
+            "market_risk_premium":risk["market_risk_premium"], "country_risk_premium":risk["country_risk_premium"], "governance_risk_premium":risk["governance_risk_premium"],
             "cost_of_debt_after_tax": kd_after, "beta": b, "erp": erp, "risk_free": rf,
             "weight_equity": E / (E + D) if E + D > 0 else 1.0, "weight_debt": D / (E + D) if E + D > 0 else 0.0}
 
@@ -984,7 +1031,7 @@ def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: 
         rT, beta_T = r, None
     else:
         beta_T = min(1.2, max(0.8, w["beta"]))
-        ke_T = building_block_ke(inp, beta_T)["cost_of_equity"] if w["ke_method"] == "building_block" else rf + beta_T * w["erp"]
+        ke_T = building_block_ke(inp, beta_T)["cost_of_equity"] if w["ke_method"] == "building_block" else equity_risk_components(inp, beta_T, w["erp"])["cost_of_equity_model"]
         ke_T = max(ke_T, KE_FLOOR)
         rT = w["weight_equity"] * ke_T + w["weight_debt"] * w["cost_of_debt_after_tax"]
     if rT - gT < 0.005:
@@ -1197,35 +1244,33 @@ def default_terminal_growth(inp: Dict[str, Any]) -> float:
 
 
 def implied_discount(inp: Dict[str, Any], **kw) -> Optional[float]:
-    """The discount rate at which the model's value equals today's price — the market's required
-    return given these cash flows. A gap to the model WACC shows how much risk the market prices in
-    (Japanese automakers: ~6% model vs low-teens implied)."""
-    kw = {k: v for k, v in kw.items() if k != "discount"}
-    def f(r):
-        v = value(inp, **{**kw, "discount": r})
-        return None if v["per_share"] is None or not v.get("price") else v["per_share"] - v["price"]
-    g = kw.get("terminal_growth")
-    g = default_terminal_growth(inp) if g is None else g
-    lo, hi = g + 0.0055, 0.30                              # the rate must stay >0.5pt above terminal growth
+    """Flat WACC implied by price, holding captured FCFF and terminal FCFF fixed.
+
+    Previously, re-running value() at every trial rate also changed terminal RONIC
+    and reinvestment. That was a joint operating/risk solve, not pure implied WACC.
+    """
+    from api.marketdata.dcf_scenarios import price_cashflows, solve_bounded
     try:
-        flo, fhi = f(lo), f(hi)
-    except NotFound:
+        captured=value(inp,**kw)
+        price=captured.get("price")
+        if price is None or price<=0:return None
+        reporting=captured.get("per_share_reporting_ccy")
+        if inp.get("currency")==inp.get("price_currency"):
+            factor=1.0
+        elif reporting and reporting>0 and captured.get("per_share") is not None:
+            factor=captured["per_share"]/reporting
+        else:return None
+        shares=inp["shares"];a=captured["assumptions"];g=a["terminal_growth"]
+        debt=(inp.get("debt") or 0)+((inp.get("leases") or 0) if kw.get("include_leases") else 0)
+        net_debt=debt-(inp.get("cash") or 0)
+        other=(inp.get("investments") or 0)-(inp.get("minority_interest") or 0)
+        cf=[r["fcff"] for r in captured["projection"]]
+        def gap(rate):
+            return price_cashflows(cf,captured["terminal_fcff"],rate,g,shares,net_debt,other,a.get("mid_year",True))["per_share"]*factor-price
+        result=solve_bounded(gap,max(.0001,g+.0050001),.60,tolerance=max(1e-8,price*1e-10))
+        return result["value"]
+    except (NotFound,ValueError,TypeError,KeyError):
         return None
-    if flo is None or fhi is None or flo * fhi > 0:
-        return None
-    for _ in range(50):
-        mid = (lo + hi) / 2
-        try:
-            fm = f(mid)
-        except NotFound:
-            return None
-        if fm is None:
-            return None
-        if (fm > 0) == (flo > 0):
-            lo, flo = mid, fm
-        else:
-            hi, fhi = mid, fm
-    return round((lo + hi) / 2, 4)
 
 
 def reverse_bound(inp: Dict[str, Any], **kw) -> Optional[str]:
@@ -1316,9 +1361,10 @@ def value_financial(inp: Dict[str, Any], years: int = 10, roe: Optional[float] =
         raise NotFound("Use 3–30 projection years.")
     rf = inp.get("risk_free") if inp.get("risk_free") is not None else 0.04
     b = beta if beta is not None else (inp.get("beta") if inp.get("beta") is not None else 1.0)
-    e = erp if erp is not None else (inp.get("erp") or ERP_FALLBACK)
-    ke_floored = discount is None and rf + b * e < KE_FLOOR
-    ke = discount if discount is not None else max(rf + b * e, KE_FLOOR)
+    e = erp if erp is not None else (inp.get("erp") if inp.get("erp") is not None else ERP_FALLBACK)
+    risk = equity_risk_components(inp, b, e)
+    ke_floored = discount is None and risk["cost_of_equity_model"] < KE_FLOOR
+    ke = discount if discount is not None else risk["cost_of_equity"]
     roe0 = roe if roe is not None else min(0.40, max(-0.10, ni / bv0))
     # stable ROE: half of today's excess return persists (as for RONIC in the FCFF model)
     roeT = terminal_roe if terminal_roe is not None else (ke + 0.5 * (roe0 - ke) if roe0 > ke else roe0 + 0.5 * (ke - roe0))
@@ -1471,13 +1517,13 @@ def value_ddm(inp: Dict[str, Any], years: int = 10, high_years: int = 5, growth:
         raise NotFound("Dividend cash flows are in the trading currency; a matching dividend-currency risk-free rate is required.")
     rf = inp.get("dividend_risk_free") if inp.get("dividend_risk_free") is not None else (inp.get("risk_free") if inp.get("risk_free") is not None else 0.04)
     b = beta if beta is not None else (inp.get("beta") if inp.get("beta") is not None else 1.0)
-    e = erp if erp is not None else (inp.get("erp") or ERP_FALLBACK)
-    ke_model = rf + b * e
+    e = erp if erp is not None else (inp.get("erp") if inp.get("erp") is not None else ERP_FALLBACK)
+    ke_model = equity_risk_components(inp, b, e, rf)["cost_of_equity_model"]
     ke = discount if discount is not None else max(ke_model, KE_FLOOR)
     infl = LT_INFLATION.get(ccy, 0.02 if ccy in ("EUR", "JPY", "GBP", "CHF", "CAD", "AUD") else LT_INFLATION["USD"])
     g_cap = 0.02 + infl                                   # ≈ 2% real growth plus the currency's inflation
     # stable phase: a mature firm's beta drifts toward the market's (bounded 0.8–1.2, as in the DCF)
-    keT = ke if discount is not None else max(KE_FLOOR, rf + min(1.2, max(0.8, b)) * e)
+    keT = ke if discount is not None else max(KE_FLOOR, equity_risk_components(inp, min(1.2, max(0.8, b)), e, rf)["cost_of_equity_model"])
     gT = min(rf, keT - 0.03, g_cap) if terminal_growth is None else terminal_growth
     gT = max(gT, 0.0) if terminal_growth is None else gT
     if keT - gT < 0.005:
@@ -1658,9 +1704,6 @@ def exposure_risk(inp: Dict[str, Any], weights: Optional[Dict[str, float]] = Non
     if not weights or any(not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0 for v in weights.values()) or not math.isclose(sum(weights.values()), 1.0, abs_tol=0.001):
         raise NotFound("Country exposure weights must be finite, non-negative and sum to 1.")
     from api.providers import damodaran
-    us = damodaran.country_risk("United States").get("crp")
-    if us is None:
-        raise NotFound("US country risk unavailable; cannot calculate exposure-weighted risk.")
     premium = 0.0
     for country, weight in weights.items():
         if weight == 0:
@@ -1669,7 +1712,7 @@ def exposure_risk(inp: Dict[str, Any], weights: Optional[Dict[str, float]] = Non
         risk = record.get("crp")
         if risk is None or not record.get("rating"):
             raise NotFound(f"Country risk unavailable for {country}.")
-        premium += weight * max(0.0, risk - us)
+        premium += weight * max(0.0, risk)
     return {"premium": premium, "basis": "operating-country weights", "weights": dict(weights)}
 
 
@@ -1695,7 +1738,7 @@ def market_views(inp: Dict[str, Any], model: str = "fcff", overrides: Optional[D
     if market_erp is None:
         market_erp = inp.get("erp_mature")
     if market_erp is None:
-        market_erp = max(0.0, (inp.get("erp") or ERP_FALLBACK) - (inp.get("country_risk_premium") or 0.0))
+        market_erp = max(0.0, (inp.get("erp") if inp.get("erp") is not None else ERP_FALLBACK) - (inp.get("country_risk_premium") or 0.0))
     lenses = {}
     for name, mature in (("fundamental", normalized_erp), ("current_market", market_erp)):
         cases = {}

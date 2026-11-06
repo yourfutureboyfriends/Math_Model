@@ -1,0 +1,11 @@
+# Optional deployment integrations. Resolve exact versions in a separate lockfile
+# for the deployment image; existing application dependencies are unchanged.
+langchain>=1.0,<2
+langchain-core>=1.0,<2
+prefect>=3,<4
+# Install exactly one approved, version-pinned LangChain model-provider adapter.
+# Causal research, source-selection replay and PROV-JSON verification.
+tigramite==5.2.10.1
+gymnasium==1.0.0
+stable-baselines3==2.4.1
+prov==3.2.3

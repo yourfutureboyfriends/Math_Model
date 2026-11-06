@@ -1,10 +1,11 @@
+import { sourceMeta, type SourceMeta } from './dataEvidence';
 import { fetchJSONWithDeadline } from '@/lib/fetchDeadline';
 // Shared bits for the Markets mode: data hook, number formats that respect the instrument
 // (FX/crypto precision, currency), change colouring, compact market caps.
 import { createContext, useCallback, useContext, useId, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
-
 import { MiniChart } from '@/components/charts/MiniChart';
+
 /** A readable message from a FastAPI error body (string detail, or a list of validation errors). */
 export function apiError(j: any, status: number): string {
   const d = j?.detail;
@@ -25,18 +26,11 @@ const NOT_APPLICABLE = new Set<string>();
 // ── Where each screen's numbers come from ──────────────────────────────────────────────────────────────────────────
 // Every useJSON inside a <SourceScope> reports its response's source, delay, date and stale flag; <SourcesBar> lists
 // them for that screen (each launchpad pane has its own scope).
-type SourceMeta = { source: string; delay?: number | null; stale?: boolean; asOf?: string | null; fetchedAt?: number };
 type RequestMeta={url:string;loading:boolean;refreshing:boolean;error:string|null;updatedAt:number|null;retry:()=>void};
 type Registry = { request:(id:number,m:RequestMeta|null)=>void; requests:()=>RequestMeta[]; set: (id: number, m: SourceMeta | null) => void; subscribe: (fn: () => void) => () => void; all: () => SourceMeta[] };
 const SourceCtx = createContext<Registry | null>(null);
 let _metaId = 0;
 
-function metaOf(j: any): SourceMeta | null {
-  if (!j || typeof j !== 'object' || Array.isArray(j) || typeof j.source !== 'string' || !j.source) return null;
-  const asOf = j.as_of ?? j.price_date ?? j.computed_at ?? j.last_updated ?? (typeof j.date === 'string' ? j.date : null);
-  return { source: j.source, delay: typeof j.delay_minutes === 'number' ? j.delay_minutes : null, stale: !!j.stale,
-           asOf: typeof asOf === 'string' ? asOf : null };
-}
 
 export function SourceScope({ children }: { children: ReactNode }) {
   const reg = useMemo<Registry>(() => {
@@ -66,6 +60,7 @@ export function SourcesBar({ className, extra }: { className?: string; extra?: R
                          fetchedAt: Math.max(prev.fetchedAt ?? 0, m.fetchedAt ?? 0) } : { ...m, source: k });
   }
   const items = [...seen.values()].slice(0, 6);
+  const evidence=reg.all(), undocumented=evidence.filter(m=>!m.supplied).length, undated=evidence.filter(m=>!m.asOf).length, stale=evidence.filter(m=>m.stale).length;
   const requests=reg.requests(),failed=requests.filter(r=>r.error),busy=requests.some(r=>r.loading||r.refreshing);
   if(!items.length&&!requests.length)return null;
   const retry=()=>{for(const r of failed.length?failed:requests)r.retry();};
@@ -78,13 +73,13 @@ export function SourcesBar({ className, extra }: { className?: string; extra?: R
       {!busy&&!failed.length&&requests.length>0&&<span>{requests.filter(r=>r.updatedAt).length}/{requests.length} feeds loaded</span>}
       <button type="button" disabled={busy&&!failed.length} onClick={retry} className="mkt-data-refresh" title={failed.length?'Retry unavailable feeds':'Refresh data without resetting inputs'}>{failed.length?'Retry feeds':'Refresh data'}</button>
       <details className="mkt-source-details rounded-full open:basis-full open:rounded-lg border border-border-subtle open:border-border bg-surface-1/60 open:bg-surface-1 px-2 py-0.5 open:px-3 open:py-2">
-        <summary className="cursor-pointer text-text-secondary">Source details & freshness · {reg.all().length} datasets</summary>
+        <summary className="cursor-pointer text-text-secondary">Source details & freshness · {evidence.length} datasets{stale>0 ? ` · ${stale} stale` : ''}{undocumented>0 ? ` · ${undocumented} without provider metadata` : ''}{undated>0 ? ` · ${undated} undated` : ''}</summary>
         <div className="overflow-x-auto mt-2"><table className="w-full text-left text-[10px]">
-          <thead><tr><th>Provider</th><th>Data date</th><th>Retrieved</th><th>Status</th></tr></thead>
+          <thead><tr><th>Provider</th><th>Data date</th><th>Retrieved</th><th>Status</th><th>Coverage / methodology</th></tr></thead>
           <tbody>{reg.all().map((m,i) => <tr key={i} className="border-t border-border-subtle">
-            <td className="py-2 pr-3">{m.source}</td><td className="pr-3">{m.asOf ?? 'Not supplied'}</td>
+            <td className="py-2 pr-3">{m.source}</td><td className="pr-3">{m.asOf ?? 'Not supplied'}{m.dateBasis && <span className="block text-text-tertiary">{m.dateBasis.replace(/_/g,' ')}</span>}</td>
             <td className="pr-3">{m.fetchedAt ? new Date(m.fetchedAt).toLocaleString() : 'Unknown'}</td>
-            <td>{m.stale ? 'Saved / stale' : m.delay === 0 ? 'Provider reports live' : m.delay != null ? `${m.delay} min delayed` : 'Delay not supplied'}</td>
+            <td>{m.stale ? 'Saved / stale' : m.delay === 0 ? 'Provider reports live' : m.delay != null ? `${m.delay} min delayed` : 'Delay not supplied'}</td><td className="max-w-lg py-2">{[m.coverage,m.note].filter(Boolean).join(' · ') || 'Not supplied'}</td>
           </tr>)}</tbody></table></div>
         {!reg.all().length && <p>No provider metadata supplied yet.</p>}
         <p className="mt-2">Retrieval time is when this app received a response, not when the underlying figures changed. Missing dates or delay information do not imply live data. Currency and units follow individual field labels.</p>
@@ -96,10 +91,10 @@ export function SourcesBar({ className, extra }: { className?: string; extra?: R
           <span className={cn('w-1.5 h-1.5 rounded-full', m.stale ? 'bg-amber' : m.delay === 0 ? 'live-dot-tick' : 'bg-text-tertiary')} />
           <span className="truncate max-w-[16rem] text-text-secondary">{m.source}</span>
           {m.stale ? <span className="text-amber">· saved / stale copy</span>
-            : m.delay === 0 ? <span className="text-green">· live</span>
+            : m.delay === 0 ? <span className="text-green">· provider reports live</span>
             : m.delay ? <span>· {m.delay}-min delayed</span>
             : m.asOf ? <span>· as of {m.asOf}</span> : null}
-          {m.fetchedAt ? <span className="tabular-nums text-text-tertiary">· updated {ago(m.fetchedAt)}</span> : null}
+          {m.fetchedAt ? <span className="tabular-nums text-text-tertiary">· received {ago(m.fetchedAt)}</span> : null}
         </span>))}
     </div>
   );
@@ -139,7 +134,7 @@ export function useJSON<T = any>(url: string | null, refreshMs = 0) {
   const active=state.url===url?state:{url,data:null,error:null,refreshError:null,loading:!!url,refreshing:false,updatedAt:null};
   useEffect(()=>{
     if(!reg)return;
-    const id=metaId.current,m=metaOf(active.data);
+    const id=metaId.current,m=sourceMeta(active.data);
     reg.set(id,m?{...m,stale:m.stale||!!active.refreshError,fetchedAt:active.updatedAt??undefined}:null);
     reg.request(id,url?{url,loading:active.loading,refreshing:active.refreshing,error:active.error??active.refreshError,updatedAt:active.updatedAt,retry}:null);
     return()=>{reg.set(id,null);reg.request(id,null);};
@@ -251,7 +246,7 @@ export function useSort<T extends Record<string, any>>(rows: T[] | undefined, in
     if (!s) return r;
     const val = (x: T) => {
       const v = s.key.split('.').reduce((o: any, k) => (o == null ? o : o[k]), x);
-      return typeof v === 'string' ? v.toLowerCase() : v;
+      return typeof v === 'number' && !Number.isFinite(v) ? null : typeof v === 'string' ? v.toLowerCase() : v;
     };
     return r.sort((a, b) => {
       const va = val(a), vb = val(b);

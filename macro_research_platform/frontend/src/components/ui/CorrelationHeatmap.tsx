@@ -11,6 +11,7 @@
 interface CorrelationHeatmapProps {
   labels: string[];
   matrix: (number | null)[][];
+  observations?: (number | null)[][];
   onCellClick?: (a: string, b: string, value: number | null) => void;
   selected?: { a: string; b: string } | null;
 }
@@ -26,8 +27,8 @@ function describe(v: number | null): string {
   if (v === null || Number.isNaN(v)) return 'no data';
   const m = Math.abs(v);
   const strength = m >= 0.7 ? 'strongly' : m >= 0.4 ? 'moderately' : m >= 0.2 ? 'weakly' : null;
-  if (!strength) return 'largely unrelated';
-  return v > 0 ? `move together ${strength}` : `move ${strength} in opposite directions (a hedge)`;
+  if (!strength) return 'little linear co-movement in this sample';
+  return v > 0 ? `move together ${strength}` : `move ${strength} in opposite directions in this sample`;
 }
 // Keep the number legible on both dark surface and saturated cells.
 function cellFg(v: number | null): string {
@@ -37,7 +38,7 @@ function cellFg(v: number | null): string {
   return Math.abs(v) > 0.45 ? 'var(--text-primary)' : 'var(--text-secondary)';
 }
 
-export function CorrelationHeatmap({ labels, matrix, onCellClick, selected }: CorrelationHeatmapProps) {
+export function CorrelationHeatmap({ labels, matrix, observations, onCellClick, selected }: CorrelationHeatmapProps) {
   if (!labels.length || !matrix.length) {
     return <div className="text-2xs text-text-tertiary p-3">No correlation data.</div>;
   }
@@ -54,17 +55,20 @@ export function CorrelationHeatmap({ labels, matrix, onCellClick, selected }: Co
           ))}
         </div>
         {/* Matrix rows */}
-        {matrix.map((row, i) => (
+        {labels.map((_, i) => (
           <div key={labels[i]} className="grid gap-px" style={{ gridTemplateColumns: cols }}>
             <div title={labels[i]} className="min-w-0 truncate text-[10px] font-medium text-text-tertiary text-right self-center pr-2">{labels[i]}</div>
-            {row.map((v, j) => {
+            {labels.map((_, j) => {
+              const raw=matrix[i]?.[j],v=typeof raw==='number'&&Number.isFinite(raw)&&Math.abs(raw)<=1 ? raw : null;
+              const n=observations?.[i]?.[j];
               const isSel = selected && ((selected.a === labels[i] && selected.b === labels[j]) || (selected.a === labels[j] && selected.b === labels[i]));
               const diagonal = i === j;
               return (
                 <button
                   key={j}
+                  disabled={diagonal || !onCellClick || v===null}
                   onClick={() => !diagonal && onCellClick?.(labels[i], labels[j], v)}
-                  title={`${labels[i]} vs ${labels[j]}: ${v === null ? 'n/a' : (v > 0 ? '+' : '') + v.toFixed(2)} — ${describe(v)}`}
+                  title={`${labels[i]} vs ${labels[j]}: ${v === null ? 'n/a' : (v > 0 ? '+' : '') + v.toFixed(2)} — ${describe(v)}${n!=null ? ` · ${n} paired observations` : ''}`}
                   className={`h-8 flex items-center justify-center text-2xs font-mono tabular-nums transition-none ${diagonal ? '' : 'cursor-pointer'} ${isSel ? 'ring-1 ring-bloomberg z-10' : ''}`}
                   style={{ background: diagonal ? 'var(--surface-3)' : cellBg(v), color: diagonal ? 'var(--text-tertiary)' : cellFg(v) }}
                 >

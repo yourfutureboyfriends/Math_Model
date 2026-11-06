@@ -7,7 +7,7 @@ def finite(x):
     return isinstance(x,(int,float)) and not isinstance(x,bool) and math.isfinite(x)
 
 
-def valuation_bridge(before,after):
+def valuation_bridge(before,after,method="ordered"):
     """Ordered counterfactual bridge of captured FCFF projections; sums exactly to the change."""
     def extract(p):
         p=p.get('payload',p)
@@ -42,9 +42,22 @@ def valuation_bridge(before,after):
         result.append({'driver':label,'contribution':current-prior,'value_after':current});prior=current
     if abs(prior-new['price'])>max(1e-6,abs(new['price'])*1e-6):
         raise ValueError('Comparison cash flows do not reconcile to the saved valuation')
+    if method not in ('ordered','shapley'):raise ValueError('Unknown attribution method')
+    if method=='shapley':
+        groups=['revenue','margin_tax','reinvestment','discount','terminal','bridge','units'];n=len(groups);cache={}
+        for mask in range(1<<n):
+            state={**old,**{k:new[k] for i,k in enumerate(groups) if mask&(1<<i)}}
+            cache[mask]=value(state)
+        for i,row in enumerate(result):
+            total=0.
+            for mask in range(1<<n):
+                if mask&(1<<i):continue
+                size=mask.bit_count();weight=math.factorial(size)*math.factorial(n-size-1)/math.factorial(n)
+                total+=weight*(cache[mask|(1<<i)]-cache[mask])
+            row.update(contribution=total,value_after=None)
     return {'before':old['price'],'after':new['price'],'change':new['price']-old['price'],'contributions':result,
             'residual':new['price']-old['price']-sum(r['contribution'] for r in result),'currency':old['currency'],
-            'method':'Ordered counterfactual substitution of captured projections; order-dependent, not causal attribution. Terminal discount effects remain in the terminal group. No new provider data is fetched.'}
+            'method':('Exact Shapley allocation across seven captured driver groups; interactions shared across all substitution orders. Not causal attribution. No path value is implied.' if method=='shapley' else 'Ordered counterfactual substitution of captured projections; order-dependent, not causal attribution.')+' Terminal discount effects remain in the terminal group. No provider data is fetched.'}
 
 
 def reconcile(broker,book,quantity_tolerance=1e-6):

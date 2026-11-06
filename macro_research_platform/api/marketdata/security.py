@@ -893,35 +893,46 @@ def history(symbol: str, period: str = "1y", interval: str = "1d") -> Dict[str, 
 
 def compare(symbols: List[str], period: str = "5y") -> Dict[str, Any]:
     """Rebased performance of up to 8 securities."""
-    syms = [x.strip().upper() for x in symbols if x.strip()][:8]
+    syms = list(dict.fromkeys(x.strip().upper() for x in symbols if x.strip()))[:8]
     if len(syms) < 1:
         raise NotFound("Give at least one symbol.")
 
     def fetch():
         px = _closes(syms, period)
-        px = px.dropna(how="all").ffill().dropna()
+        px = px.where((px > 0) & np.isfinite(px)).dropna(how="all")
+        px = px.dropna(axis=1, how="all")
+        observed = px.copy()
+        px = px.ffill(limit=3).dropna()
         if len(px) < 20:
             raise NotFound("Not enough overlapping history.")
-        rets = px.pct_change().dropna()
+        from api.marketdata.return_quality import analysis_calendar, observed_returns
+        analysis_px, _ = analysis_calendar(observed.loc[px.index[0]:px.index[-1]])
+        rets = analysis_px.pct_change(fill_method=None)
         yrs = max((px.index[-1] - px.index[0]).days / 365.25, 1 / 365)
         stats = []
         for c in px.columns:
             eq = px[c] / px[c].iloc[0]
-            dd = eq / eq.cummax() - 1
-            vol = float(rets[c].std() * math.sqrt(252))
+            native = observed[c].dropna().loc[px.index[0]:px.index[-1]]
+            dd = native / native.cummax() - 1
+            native_returns, annual = observed_returns(native)
+            own_returns = native_returns.dropna()
+            vol = _f(own_returns.std() * math.sqrt(annual))
             cagr = float(eq.iloc[-1] ** (1 / yrs) - 1)
             stats.append({"symbol": c, "total_return": float(eq.iloc[-1] - 1), "cagr": cagr, "vol": vol,
-                          "sharpe": cagr / vol if vol else None, "max_drawdown": float(dd.min())})
+                          "sharpe": _f(own_returns.mean() * annual / vol) if vol else None, "observations": len(own_returns), "annualization": annual, "risk_free_rate": 0, "max_drawdown": float(dd.min())})
         step = max(1, len(px) // 600)
         curve = [{"date": d.strftime("%Y-%m-%d"), **{c: round(float(px[c].iloc[k] / px[c].iloc[0]), 4) for c in px.columns}}
                  for k, d in enumerate(px.index) if k % step == 0 or k == len(px) - 1]
-        corr = rets.corr()
-        return {"symbols": list(px.columns), "missing": [x for x in syms if x not in px.columns], "period": period,
+        corr = rets.corr(min_periods=20)
+        paired = rets.notna().astype(int).T.dot(rets.notna().astype(int))
+        return {"pair_observations": {a:{b:int(paired.loc[a,b]) for b in px.columns} for a in px.columns}, "symbols": list(px.columns), "missing": [x for x in syms if x not in px.columns], "period": period,
                 "start": px.index[0].strftime("%Y-%m-%d"), "curve": curve, "stats": stats,
-                "correlation": {a: {b: round(float(corr.loc[a, b]), 3) for b in px.columns} for a in px.columns},
+                "correlation": {a: {b: _f(round(float(corr.loc[a, b]), 3)) for b in px.columns} for a in px.columns},
                 "note": "Total return (dividends reinvested, adjusted closes), each rebased to 1 on the first common date; "
-                        "returns in each instrument's own currency.", "source": "Yahoo Finance"}
-    return _cached(f"comp:{','.join(syms)}:{period}", 900, fetch)
+                        "returns in each instrument's own currency. Curve fills at most 3 rows; risk/correlation use observed returns. "
+                        "Sharpe uses arithmetic mean returns with a zero cash-rate assumption; observed weekend-traded series annualize at 365, others at 252. Native daily risk omits gaps beyond one calendar/business day; correlation uses shared calendar endpoints.",
+                "as_of": px.index[-1].strftime("%Y-%m-%d"), "coverage": "At least 20 paired observations required for correlations. No missing-price zero returns.", "source": "Yahoo Finance"}
+    return _cached(f"comp:v3:{','.join(syms)}:{period}", 900, fetch)
 
 
 def home_benchmark(symbol: str) -> str:

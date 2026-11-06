@@ -47,3 +47,22 @@ export async function send(url: string, method: 'POST' | 'DELETE') {
   await mlQueryClient.invalidateQueries({ queryKey: ['ml'] });
   return j;
 }
+
+
+export function useVisualizerQ(name:string) {
+ return useQuery({queryKey:['ml','visualizer',name],queryFn:()=>get(`/api/v1/ml/tasks/${name}/visualizer`),refetchInterval:q=>(q.state.data as any)?.training?2000:60000});
+}
+export const useDeepStatusQ=()=>useQuery({queryKey:['ml','deep-status'],queryFn:()=>get('/api/v1/ml/deep/status'),refetchInterval:10000});
+
+export function useLiveStateQ(){return useQuery({queryKey:['ml','live-state'],queryFn:()=>get('/api/v1/ml/deep/live'),refetchInterval:2000});}
+export async function refreshLiveState(){
+ const response=await fetch('/api/v1/ml/deep/live/refresh',{method:'POST'});
+ if(!response.ok)throw new Error('Could not refresh measured network state');
+ return response.json();
+}
+
+export const useOnlineStatusQ=()=>useQuery({queryKey:['ml','online-status'],queryFn:()=>get('/api/v1/ml/online/status'),refetchInterval:30000});
+
+export const useResearchGraphQ=()=>useQuery({queryKey:['ml','research-graph'],queryFn:()=>get('/api/v1/ml/research/graph'),refetchInterval:30000});
+
+export const useAutonomousStatusQ=()=>useQuery({queryKey:['ml','autonomous-status'],queryFn:()=>get('/api/v1/ml/autonomous/status'),refetchInterval:5000});

@@ -1,6 +1,6 @@
 import {fetchJSONWithDeadline} from './fetchDeadline';
 export async function workflowRequest(path:string,method='GET',body?:unknown,signal?:AbortSignal){
- const {response:r,json:j,invalid}=await fetchJSONWithDeadline(`/api/v1/workflows${path}`,signal??new AbortController().signal,60_000,{method,headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined});
+ const {response:r,json:j,invalid}=await fetchJSONWithDeadline(`/api/v1/workflows${path}`,signal??new AbortController().signal,['/macro-vintages','/macro/challengers'].includes(path)?300_000:60_000,{method,headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined});
  if(!r.ok||invalid||!j)throw Error(typeof j?.detail==='string'?j.detail:`Workflow request failed (${r.status})`);return j;
 }
 export function recordPayload(r:any){return {...r.payload,_serverVersion:r.version,_serverReceivedAt:r.updated_at};}

@@ -58,10 +58,11 @@ FFILL_MONTHS = 3                         # the latest months may carry a series'
 ALPHA = 0.05
 MIN_LIVE_MONTHS = 24
 BACKTEST_TTL = 30 * 24 * 3600
-ROSTER = ["champion", "network", "factor_logit", "factor_network", "forest", "boosting", "regime_switch", "deep_sequence"]
-LOCAL = [k for k in ROSTER if k != "deep_sequence"]          # fitted per task here; the deep model is fitted jointly
+ROSTER = ["champion", "network", "factor_logit", "factor_network", "forest", "boosting", "regime_switch", "deep_sequence", "sections"]
+LOCAL = [k for k in ROSTER if k not in ("deep_sequence", "sections")]   # fitted per task here; deep and sections bring their own refits
 CANDIDATES = ROSTER[1:] + ["average"]
 MODEL_INFO = {
+    "autonomous_tft": ("Autonomous TFT / GAT", "Gated prospective deployment with domain experts, graph context and multi-horizon forecasting."),
     "champion": ("Logistic (core inputs)", "Regularised logistic regression on the task's few chosen inputs — the baseline."),
     "network": ("Neural network (core, tuned)", "Ten one-hidden-layer networks on the core inputs, averaged; size and regularisation chosen each refit."),
     "factor_logit": ("Factor model", "Logistic on the core inputs plus 8 factors extracted from the ~70-series panel."),
@@ -69,7 +70,8 @@ MODEL_INFO = {
     "forest": ("Random forest (all data)", "300 trees on the core inputs, every panel series and the text block."),
     "boosting": ("Gradient boosting (all data, tuned)", "LightGBM on the core inputs, every panel series and the text block; size chosen each refit."),
     "regime_switch": ("Regime-switching model", "Two-state Markov-switching model of an activity composite; the hidden recession-state probability, mapped to the task."),
-    "deep_sequence": ("Deep sequence network", "A GRU reading the last 24 months of every input, answering all six questions at once (PyTorch)."),
+    "deep_sequence": ("Deep sequence network", "Specialist input encoders, learned routing, 24-month recurrent memory and separate task heads (PyTorch; shared reference profile available)."),
+    "sections": ("Section experts + situation gate", "One expert per economic section (rates, credit, financial conditions, labour, activity, housing, inflation, money, markets, sentiment) on every input incl. newer series; a gate weights them by the situation (curve, credit stress, inflation, labour, volatility)."),
     "average": ("Average of all models", "Equal-weight average of every model, recalibrated."),
 }
 _locks: Dict[str, threading.Lock] = {}
@@ -100,14 +102,14 @@ class Logit:
 
 
 class BaggedNet:
-    def __init__(self, n: int = N_NETS):
-        self.n = n
+    def __init__(self, n: int = N_NETS, max_iter: int = 3000):
+        self.n, self.max_iter = n, max_iter
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> "BaggedNet":
         from sklearn.neural_network import MLPClassifier
         self.mu, self.sd = X.mean(0), X.std(0) + 1e-9
         Z = (X - self.mu) / self.sd
-        self.nets = [MLPClassifier(hidden_layer_sizes=(8,), activation="tanh", alpha=1.0, max_iter=3000, random_state=s).fit(Z, y)
+        self.nets = [MLPClassifier(hidden_layer_sizes=(8,), activation="tanh", alpha=1.0, max_iter=self.max_iter, random_state=s).fit(Z, y)
                      for s in range(self.n)]
         return self
 
@@ -119,7 +121,7 @@ class BaggedNet:
         return self.predict_each(X).mean(0)
 
     def export(self) -> Dict[str, Any]:
-        r = lambda a: np.round(np.asarray(a, float), 5).tolist()        # noqa: E731
+        r = lambda a: np.asarray(a, float).tolist()        # noqa: E731
         return {"mu": r(self.mu), "sd": r(self.sd), "activation": "tanh", "output": "logistic",
                 "nets": [{"W1": r(m.coefs_[0]), "b1": r(m.intercepts_[0]), "W2": r(m.coefs_[1][:, 0]),
                           "b2": float(m.intercepts_[1][0])} for m in self.nets]}
@@ -354,9 +356,11 @@ def _arrays(rows: List[Dict[str, Any]]) -> Tuple[np.ndarray, np.ndarray, np.ndar
 
 
 def walk_forward(task: Task, rows: List[Dict[str, Any]], roster: Optional[List[str]] = None,
-                 panel_keys_: Optional[List[str]] = None, deep: Optional[Dict[str, float]] = None) -> Optional[Dict[str, Any]]:
+                 panel_keys_: Optional[List[str]] = None, deep: Optional[Dict[str, float]] = None,
+                 sections: Optional[Dict[str, float]] = None) -> Optional[Dict[str, Any]]:
     from api.models_ml import recession_ensemble as R
-    roster = [k for k in (roster or ROSTER) if k != "deep_sequence" or deep]
+    pre = {"deep_sequence": deep, "sections": sections}                    # models that bring their own refits: month → raw
+    roster = [k for k in (roster or ROSTER) if k not in pre or pre[k]]
     lab = [r for r in rows if r["y"] is not None]
     pos = {r["month"]: i for i, r in enumerate(rows)}
     P_all = np.array([r["p"] for r in rows], float)
@@ -376,8 +380,8 @@ def walk_forward(task: Task, rows: List[Dict[str, Any]], roster: Optional[List[s
         Ctr, Ptr, _, Ttr = _arrays(tr)
         Cte, Pte, _, Tte = _arrays(te)
         for k in roster:
-            if k == "deep_sequence":
-                raw[k] += [deep.get(r["month"], np.nan) for r in te]
+            if k in pre:
+                raw[k] += [pre[k].get(r["month"], np.nan) for r in te]
             elif k == "regime_switch":
                 end = pos[tr[-1]["month"]] + 1
                 comp = activity_composite(P_all, panel_keys_ or [], end) if panel_keys_ else None
@@ -395,8 +399,9 @@ def walk_forward(task: Task, rows: List[Dict[str, Any]], roster: Optional[List[s
     if len(tm) < 60:
         return None
     y = np.array(ys)
-    if "deep_sequence" in raw:                                    # months the deep model did not cover: the champion's
-        raw["deep_sequence"] = [c if not np.isfinite(d) else d for d, c in zip(raw["deep_sequence"], raw["champion"])]
+    for k in pre:                                                 # months a precomputed model did not cover: the champion's
+        if k in raw:
+            raw[k] = [c if not np.isfinite(d) else d for d, c in zip(raw[k], raw["champion"])]
     cal = {k: _platt_series(raw[k], ys, tm, task.known_after) for k in roster}
     cal["average"] = np.mean([cal[k] for k in roster], axis=0)
     base = []
@@ -448,11 +453,16 @@ def _init() -> None:
                   "training_months INTEGER, data_ok INTEGER, flags TEXT, PRIMARY KEY (task, month))")
         c.execute("CREATE TABLE IF NOT EXISTS ml_promotions (task TEXT PRIMARY KEY, model TEXT NOT NULL, approved_by TEXT NOT NULL, "
                   "approved_at TEXT NOT NULL, note TEXT)")
+        columns={r[1] for r in c.execute("PRAGMA table_info(ml_promotions)")}
+        if 'model_version' not in columns:c.execute('ALTER TABLE ml_promotions ADD COLUMN model_version TEXT')
     _ready = True
 
 
 def log_forecast(task: str, model: str, month: str, p: float) -> None:
     _init()
+    if model in ('deep_sequence','average'):
+        from api.ml.deep_config import fingerprint
+        model=model+'__'+fingerprint()
     with _conn() as c:
         c.execute("INSERT OR IGNORE INTO ml_forecasts (task, model, month, probability, logged_at) VALUES (?,?,?,?,?)",
                   (task, model, month, p, datetime.now(timezone.utc).isoformat(timespec="seconds")))
@@ -467,16 +477,26 @@ def live_record(task: Task, target: Optional[Dict[str, int]] = None) -> Dict[str
         return {"logged_months": 0, "scored_months": 0, "models": {}}
     target = target if target is not None else task.target()
     by: Dict[str, Dict[str, float]] = {}
+    from api.ml.deep_config import model_key
+    deep_key=model_key()
+    month_index=datetime.now(timezone.utc).year*12+datetime.now(timezone.utc).month-1-task.known_after
+    known_before=f"{month_index//12}-{month_index%12+1:02d}"
     for r in rows:
+        for versioned in ('deep_sequence','average'):
+            if r['model']==versioned or r['model'].startswith(versioned+'__'):
+                if r['model']!=versioned+'__'+deep_key.split('__',1)[1]:r['model']='obsolete_version'
+                else:r['model']=versioned
+        if r['model']=='obsolete_version':continue
         by.setdefault(r["month"], {})[r["model"]] = r["probability"]
-    scored = {m: v for m, v in by.items() if m in target and "champion" in v}
+    scored = {m: v for m, v in by.items() if m in target and m<known_before and "champion" in v}
     out: Dict[str, Any] = {"logged_months": len(by), "first": min(by), "scored_months": len(scored), "models": {}}
     if scored:
         champ = float(np.mean([(v["champion"] - target[m]) ** 2 for m, v in scored.items()]))
         for k in {mm for v in scored.values() for mm in v}:
-            pairs = [(v[k], target[m]) for m, v in scored.items() if k in v]
-            b = float(np.mean([(p - y_) ** 2 for p, y_ in pairs]))
-            out["models"][k] = {"scored": len(pairs), "brier": round(b, 4), "ahead_of_champion": b < champ if k != "champion" else None}
+            pairs = [(v[k],target[m],v['champion']) for m,v in scored.items() if k in v]
+            b=float(np.mean([(p-y_)**2 for p,y_,_ in pairs]))
+            paired_champion=float(np.mean([(c-y_)**2 for _,y_,c in pairs]))
+            out["models"][k] = {"scored":len(pairs),"brier":round(b,4),"paired_champion_brier":round(paired_champion,4),"ahead_of_champion":b<paired_champion if k!='champion' else None}
         # backward-compatible summary for the network
         if "network" in out["models"]:
             out["champion_brier"] = round(champ, 4)
@@ -489,7 +509,11 @@ def promoted(task: str) -> Optional[Dict[str, Any]]:
     _init()
     with _conn() as c:
         r = c.execute("SELECT * FROM ml_promotions WHERE task = ?", (task,)).fetchone()
-    return dict(r) if r else None
+    result=dict(r) if r else None
+    if result and result['model'] in ('deep_sequence','average'):
+        from api.ml.deep_config import fingerprint
+        if result.get('model_version')!=fingerprint():return None
+    return result
 
 
 def promote(task_name: str, user: str, model: Optional[str] = None, note: str = "") -> Dict[str, Any]:
@@ -505,8 +529,9 @@ def promote(task_name: str, user: str, model: Optional[str] = None, note: str = 
         raise ValueError(f"{model} is not eligible ({', '.join(eligible)} are)")
     _init()
     with _conn() as c:
-        c.execute("INSERT OR REPLACE INTO ml_promotions (task, model, approved_by, approved_at, note) VALUES (?,?,?,?,?)",
-                  (task_name, model, user, datetime.now(timezone.utc).isoformat(timespec="seconds"), note[:500]))
+        from api.ml.deep_config import fingerprint
+        c.execute("INSERT OR REPLACE INTO ml_promotions (task,model,approved_by,approved_at,note,model_version) VALUES (?,?,?,?,?,?)",
+                  (task_name,model,user,datetime.now(timezone.utc).isoformat(timespec="seconds"),note[:500],fingerprint() if model in ('deep_sequence','average') else None))
     _mem.pop(task_name, None)
     return {"task": task_name, "promoted": model, "by": user}
 
@@ -572,7 +597,7 @@ def compute(task: Task) -> Dict[str, Any]:
         return {"available": False, "task": task.name, "reason": f"inputs unavailable: {', '.join(ds['missing'])}"}
     rows, pk, tk = ds["rows"], ds["panel_keys"], ds["text_keys"]
     try:
-        joint = D.joint()                                      # the deep model's joint record and today's readings
+        joint = D.peek(start=True)                                      # the deep model's joint record and today's readings
     except Exception as e:                                     # noqa: BLE001 — the deep model is optional
         logger.warning("[ml] deep model unavailable: %s", e)
         joint = None
@@ -580,7 +605,13 @@ def compute(task: Task) -> Dict[str, Any]:
     lab = [r for r in rows if r["y"] is not None]
     if len(lab) < 240:
         return {"available": False, "task": task.name, "reason": "not enough history with known answers"}
-    bt, bt_status = ri._cached(f"ml_bt3_{task.name}", lambda: walk_forward(task, rows, panel_keys_=pk, deep=deep_bt), ttl=BACKTEST_TTL)
+    from api.ml import sections as SX
+    sx_data, sx_sec, sx_lab = SX.inputs()
+    months_all = [r["month"] for r in rows]
+    y_of = {r["month"]: r["y"] for r in rows}
+    sx_wf, _ = ri._cached(f"ml_sec1_{task.name}", lambda: SX.walk_forward(task, months_all, y_of, sx_data, sx_sec), ttl=BACKTEST_TTL)
+    bt, bt_status = ri._cached(f"ml_bt6_{D.fingerprint()}_{(joint or {}).get('data_digest','no_deep')[:16]}_{task.name}", lambda: walk_forward(task, rows, panel_keys_=pk, deep=deep_bt,
+                                                                             sections=(sx_wf or {}).get("prob")), ttl=BACKTEST_TTL)
     C, P, y, T = _arrays(lab)
     now = rows[-1]
     c_now, p_now, t_now = np.array(now["c"], float), np.array(now["p"], float), np.array(now["t"], float)
@@ -597,6 +628,13 @@ def compute(task: Task) -> Dict[str, Any]:
             raws["regime_switch"] = float(Logit().fit(Fr[[pos[r["month"]] for r in lab]], y).predict(Fr[[len(rows) - 1]])[0])
             regime_now = {"low_growth_state_probability": round(float(prob[-1]), 4),
                           "history": [{"month": rows[i]["month"], "p": round(float(prob[i]), 4)} for i in range(max(0, len(rows) - 120), len(rows))]}
+    sections_now = None
+    if sx_wf and sx_wf.get("prob"):
+        try:
+            sections_now = SX.live(task, months_all, y_of, sx_data, sx_sec, sx_wf, sx_lab)
+            raws["sections"] = sections_now["probability_raw"]
+        except Exception as e:                                 # noqa: BLE001 — the sections model is optional
+            logger.warning("[ml] sections model unavailable: %s", e)
     if joint and task.name in (joint.get("now") or {}):
         raws["deep_sequence"] = float(joint["now"][task.name])
     probs: Dict[str, float] = {}
@@ -627,7 +665,7 @@ def compute(task: Task) -> Dict[str, Any]:
     for k in CANDIDATES:
         g = gains.get(k) or {}
         sig = g.get("brier", 0) > 0 and g.get("p_no_gain", 1) < bar
-        rec_ok = not recent or k not in recent or recent[k]["brier"] <= recent["champion"]["brier"]
+        rec_ok = bool(recent.get(k) and recent.get("champion") and recent[k]["brier"] <= recent["champion"]["brier"])
         lm = (live.get("models") or {}).get(k) or {}
         live_ok = lm.get("scored", 0) >= MIN_LIVE_MONTHS and lm.get("ahead_of_champion") is True
         reasons = []
@@ -683,9 +721,10 @@ def compute(task: Task) -> Dict[str, Any]:
         "regime": regime_now,
         "deep": ({"seeds": [round(float(R.platt_apply(R.learned_platt(hist.get("raw", {}).get("deep_sequence", []), hist.get("y", [])) if hist else None, v)), 4)
                             for v in (joint.get("seeds") or {}).get(task.name, [])],
-                  "inputs_per_month": joint.get("inputs"), "sequence_months": joint.get("sequence_months"), "as_of": joint.get("as_of")}
+                  "inputs_per_month": joint.get("inputs"), "sequence_months": joint.get("sequence_months"), "as_of": joint.get("as_of"),"configuration":joint.get("configuration"),"fingerprint":joint.get("fingerprint"),"training_reports":joint.get("training_reports"),"modules":joint.get("modules"),"routing":joint.get("routing")}
                  if joint else None),
         "importance": importance,
+        "sections_detail": sections_now,
         "panel": {"series": len(pk), "groups": {**PN.groups(pk), **({"Text & news": len(tk)} if tk else {})},
                   "factor_variance_share": [round(v, 3) for v in fac.share]},
         "data_checks": checks, "training_months": len(lab), "positive_share": round(float(y.mean()), 3),
@@ -699,6 +738,11 @@ def compute(task: Task) -> Dict[str, Any]:
     }
 
 
+def _autonomous_result(data):
+    from api.ml.autonomous import decorate
+    return decorate(data)
+
+
 def run(name: str, force: bool = False) -> Dict[str, Any]:
     """A task's result, retrained once a month (and after a restart). Never raises."""
     task = TASKS.get(name)
@@ -707,11 +751,11 @@ def run(name: str, force: bool = False) -> Dict[str, Any]:
     month = datetime.now(timezone.utc).strftime("%Y-%m")
     hit = _mem.get(name)
     if not force and hit and hit["month"] == month:
-        return hit["data"]
+        return _autonomous_result(hit["data"])
     with _lock_for(name):
         hit = _mem.get(name)
         if not force and hit and hit["month"] == month:
-            return hit["data"]
+            return _autonomous_result(hit["data"])
         t = time.time()
         try:
             data = compute(task)
@@ -721,7 +765,7 @@ def run(name: str, force: bool = False) -> Dict[str, Any]:
         logger.info("[ml] %s: %s in %.0fs", name, "ok" if data.get("available") else data.get("reason"), time.time() - t)
         if data.get("available") or not hit:
             _mem[name] = {"month": month, "data": data}
-        return _mem[name]["data"]
+        return _autonomous_result(_mem[name]["data"])
 
 
 def request(name: str) -> Dict[str, Any]:
@@ -732,7 +776,7 @@ def request(name: str) -> Dict[str, Any]:
     month = datetime.now(timezone.utc).strftime("%Y-%m")
     hit = _mem.get(name)
     if hit and hit["month"] == month:
-        return hit["data"]
+        return _autonomous_result(hit["data"])
     if name not in _training:
         _training[name] = time.time()
 
@@ -750,7 +794,7 @@ def request(name: str) -> Dict[str, Any]:
 def cached(name: str) -> Optional[Dict[str, Any]]:
     """This month's result if already computed (never trains) — for the desk, the playbook and the assistant."""
     hit = _mem.get(name)
-    return hit["data"] if hit and hit["data"].get("available") else None
+    return _autonomous_result(hit["data"]) if hit and hit["data"].get("available") else None
 
 
 def evidence(name: str, phrase: str) -> Optional[str]:
@@ -813,7 +857,7 @@ def history(name: str) -> Optional[Dict[str, Any]]:
     if not d or not task:
         return None
     from api.handlers.macro_inputs import _disk_load
-    bt = (_disk_load(f"ri_ml_bt3_{name}") or {}).get("data")          # the stored walk-forward record (read only)
+    bt = (_disk_load(f"ri_ml_bt4_{name}") or {}).get("data")          # the stored walk-forward record (read only)
     h = (bt or {}).get("history") or {}
     if not h:
         return None
@@ -837,9 +881,19 @@ def registry() -> Dict[str, Any]:
         counts = {r["task"]: r["n"] for r in c.execute("SELECT task, COUNT(DISTINCT month) AS n FROM ml_forecasts GROUP BY task")}
     for r in retrains:
         r["flags"] = json.loads(r.get("flags") or "[]")
+    from api.ml.deep_config import fingerprint
+    version=fingerprint()
+    for p in promos:p['active']=p['model'] not in ('deep_sequence','average') or p.get('model_version')==version
+    model_counts={}
+    with _conn() as c:cohorts=[dict(r) for r in c.execute('SELECT task,model,month FROM ml_forecasts')]
+    for r in cohorts:
+        key=r['model']
+        for v in ('deep_sequence','average'):
+            if key==v+'__'+version:key=v
+        model_counts.setdefault((r['task'],key),set()).add(r['month'])
     stages = []
     for name, task in TASKS.items():
-        prom = next((p for p in promos if p["task"] == name), None)
+        prom = next((p for p in promos if p["task"] == name and p['active']), None)
         d = cached(name)
         for k in ROSTER + ["average"]:
             stage = "production" if (prom and prom["model"] == k) or (not prom and k == "champion") else "shadow"
@@ -847,6 +901,6 @@ def registry() -> Dict[str, Any]:
             stages.append({"task": name, "task_title": task.title, "model": k, "model_name": MODEL_INFO.get(k, (k,))[0],
                            "stage": stage, "probability": rec.get("probability"),
                            "skill": (rec.get("record") or {}).get("skill_vs_base_rate"), "gate": rec.get("gate"),
-                           "live_months": counts.get(name, 0)})
+                           "live_months":len(model_counts.get((name,k),set()))})
     return {"stages": stages, "promotions": promos, "retrains": retrains, "recent_forecasts": recent,
-            "training": sorted(_training), "models": {k: {"name": v[0], "what": v[1]} for k, v in MODEL_INFO.items()}}
+            "deep_sequence_training":__import__("api.ml.deep",fromlist=["status"]).status(),"training": sorted(_training), "models": {k: {"name": v[0], "what": v[1]} for k, v in MODEL_INFO.items()}}

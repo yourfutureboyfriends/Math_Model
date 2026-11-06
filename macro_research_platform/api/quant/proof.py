@@ -186,11 +186,12 @@ def scorecard() -> Dict[str, Any]:
     rows.sort(key=lambda x: (order[x["verdict"]], -(x.get("alpha_t") or -9)))
     counts = {k: sum(1 for x in rows if x["verdict"] == k) for k in order}
     best = [x for x in rows if x["verdict"] in ("alpha", "promising")]
-    headline = (f"{counts['alpha']} with proven alpha, {counts['promising']} promising, {counts['beta']} mostly market beta and "
+    headline = (f"{counts['alpha']} meeting historical alpha criteria, {counts['promising']} promising, {counts['beta']} mostly market beta and "
                 f"{counts['no edge']} without an edge, out of {len(rows)} tested.")
     names_by_id = {x["id"]: x["name"] for x in rows}
     forward = [{**f, "name": names_by_id.get(f["id"], f.get("name"))} for f in forward_record()]
     return {"rows": rows, "counts": counts, "n_trials": n_trials, "headline": headline, "forward": forward,
+            "trial_count_basis":"Current loaded strategy/signal catalogue; not the complete historical search ledger. Historical criteria do not prove future alpha.",
             "takeaways": _takeaways(rows, counts),
             "method": __doc__.strip().split("\n\n", 1)[1],
             "stale_note": "Strategy results are re-evaluated when opened in the Quant Lab library; dates are shown per row."}
