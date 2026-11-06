@@ -22,9 +22,6 @@ LEGACY = {
     "pipeline.py": "legacy batch data pipeline",
     "settings.py": "legacy settings for the Streamlit-era modules",
     "validation_runner.py": "legacy validation runner",
-    "database": "legacy SQLite database helpers",
-    "api/asgi.py": "old entry point run from inside api/ (the app starts from api.main)",
-    "api/equity_router.py": "old entry point run from inside api/",
 }
 SEPARATE = ("api/quant/optengine", "api/routers/options_engine.py")   # the options decision engine (its own project)
 
