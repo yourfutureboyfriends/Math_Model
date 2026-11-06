@@ -1,0 +1,9 @@
+// ESLint's type-aware rules parse every linted file through a TS project. tsconfig.json
+// excludes **/*.test.ts and src/test/** so that `npm run build` type-checks production code
+// only — which made ESLint emit a fatal parse error for all 82 test files and lint none of
+// them. This widens the file set for linting without changing what the build checks.
+{
+  "extends": "./tsconfig.json",
+  "include": ["src", "vitest.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

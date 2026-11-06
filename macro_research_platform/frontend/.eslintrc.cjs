@@ -12,7 +12,9 @@ module.exports = {
   ignorePatterns: ['dist', '.eslintrc.cjs', 'vite.config.ts', 'src/types/api-generated.ts'],
   parser: '@typescript-eslint/parser',
   // Type-aware rules (prefer-optional-chain / prefer-nullish-coalescing) need the TS project.
-  parserOptions: { project: ['./tsconfig.json'], tsconfigRootDir: __dirname },
+  // tsconfig.eslint.json, not tsconfig.json: the latter excludes the test files, so pointing
+  // at it made ESLint fail to parse all 82 of them and lint none.
+  parserOptions: { project: ['./tsconfig.eslint.json'], tsconfigRootDir: __dirname },
   plugins: ['react-refresh'],
   rules: {
     'react-refresh/only-export-components': [
