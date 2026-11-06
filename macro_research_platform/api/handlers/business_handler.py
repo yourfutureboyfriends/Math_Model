@@ -332,14 +332,21 @@ async def get_recommendations_data() -> Dict[str, Any]:
     # `risk` here is risk APPETITE (high = benign/risk-on), so a high value means "position
     # risk-ON", not "the environment is high-risk". Label it as a stance to avoid reading as a
     # warning (and it collides in tone with the header's complementary "risk level" metric).
-    if not risk_inputs_known:
+    #
+    # Order matters. Each defensive trigger is evaluated first and on its own input, so a known
+    # recession probability still goes DEFENSIVE when the VIX is missing, and a known high VIX
+    # still goes DEFENSIVE when the recession model is down. The cap comes after them: missing
+    # inputs must block leaning in, never block leaning out.
+    if rec_known and rec_prob > 0.4:
+        overall_position = "DEFENSIVE"
+    elif vix is not None and vix > 30:
+        overall_position = "DEFENSIVE"
+    elif not risk_inputs_known:
         overall_position = "BALANCED"      # capped: unknown risk inputs cannot justify leaning in
     elif risk > 0.7 and rec_prob < 0.2:
         overall_position = "RISK-ON"
     elif risk > 0.5 and rec_prob < 0.3:
         overall_position = "MODERATE RISK-ON"
-    elif rec_prob > 0.4 or vix > 30:       # vix is not None here; a missing VIX no longer reads as 0
-        overall_position = "DEFENSIVE"
     else:
         overall_position = "BALANCED"
 

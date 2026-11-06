@@ -109,3 +109,18 @@ def test_missing_recession_probability_still_displays_as_na(patched):
     assert _scorecard(out, "Recession Risk")["value"] == "n/a"
     assert _scorecard(out, "Recession Risk")["status"] == "Grey"
     assert "recession probability n/a" in out["summary"]["risk_assessment"]
+
+
+def test_a_known_recession_signal_still_goes_defensive_when_vix_is_missing(patched):
+    """The cap exists to stop missing data leaning IN; it must not suppress a defensive trigger
+    the available data fully justifies. Gating the whole chain on both inputs being present made a
+    55% recession probability with the VIX feed down read BALANCED."""
+    out = patched(_dashboard(recession=0.55, vix=None, risk=80.0))
+    assert out["summary"]["overall_position"] == "DEFENSIVE"
+    assert out["summary"]["degraded_inputs"] == ["vix"]
+
+
+def test_a_known_high_vix_still_goes_defensive_when_the_recession_model_is_down(patched):
+    out = patched(_dashboard(recession=None, vix=38.0, risk=80.0))
+    assert out["summary"]["overall_position"] == "DEFENSIVE"
+    assert out["summary"]["degraded_inputs"] == ["recession_probability"]
