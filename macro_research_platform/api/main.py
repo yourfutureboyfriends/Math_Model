@@ -224,14 +224,12 @@ def _module_present(name: str) -> bool:
         return False
 
 
+# NOTE: this is a file-existence check, not a wiring check. Nothing in the running app imports
+# financial_conditions_model (only the dead pipeline.py did), so /api/health reports
+# "fin_conditions": true for a model no code path calls, and the UI renders that as a green
+# tick. Seven sibling flags computed here were never read by anything and have been removed;
+# this one survives only because SystemStatusBadge.tsx and SystemHealthSection.tsx consume it.
 _FC_OK = _module_present("src.models.macro_regime.financial_conditions_model")
-_NOWCAST_OK = _module_present("src.models.nowcasting.gdp_nowcast")
-_LIQUIDITY_OK = _module_present("src.models.liquidity.liquidity_index")
-_SENTIMENT_OK = _module_present("src.models.sentiment.risk_appetite")
-_VALUATION_OK = _module_present("src.models.valuation.valuation_filter")
-_MOMENTUM_OK = _module_present("src.models.momentum.momentum_veto")
-_CORRELATION_OK = _module_present("src.models.portfolio_construction.correlation_regime")
-_SIGNALSTACK_OK = _module_present("src.models.signal_hierarchy")
 
 try:
     from src.models.macro_regime.classifier import classify_regime
