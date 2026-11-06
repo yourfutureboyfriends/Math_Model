@@ -44,6 +44,11 @@ NBER_RECESSIONS = [
     ('2020-02-01', '2020-04-01'),
 ]
 
+# Bumped whenever the training target's definition changes, so a persisted fit from an earlier
+# definition is refused rather than served. 1 = recession at exactly t+horizon (the old
+# shift(-horizon) label); 2 = any recession month in (t, t+horizon].
+LABEL_VERSION = 2
+
 
 def recession_window_label(recession, horizon: int):
     """1 where any month in (t, t+horizon] is a recession month; NaN where the window is incomplete.
@@ -72,6 +77,7 @@ class RecessionProbitModel:
         self.fitted    = False
         self.fit_stats: dict = {}
         self.last_trained: str | None = None
+        self.label_version = LABEL_VERSION
 
     def _nber_indicator(
         self, index: pd.DatetimeIndex
@@ -170,6 +176,11 @@ class RecessionProbitModel:
                 coefs.iloc[2] if len(coefs) > 2 else 0
             )), 4),
             'horizon_months': self.horizon,
+            # So a reader can tell which event this probability answers. The point definition
+            # (recession at exactly t+horizon) and this window one differ on 99 of 780 months,
+            # and the ensemble beside this model uses the window too.
+            'label_version': self.label_version,
+            'label_definition': f'any recession month in (t, t+{self.horizon}]',
             'trained_at':  self.last_trained,
             'papers': [
                 'Estrella & Mishkin (1998) REStat 80(1)',
@@ -368,13 +379,25 @@ def _save(model: "RecessionProbitModel") -> None:
 
 def _load_persisted() -> "RecessionProbitModel | None":
     """Last successfully fitted model (≤ 30 days old) — used when a refit fails because the
-    data source is unreachable, so the headline doesn't switch models during an outage."""
+    data source is unreachable, so the headline doesn't switch models during an outage.
+
+    A fit stamped with a different label_version is refused: its coefficients answer a different
+    question, and serving them silently during an outage is worse than having no fallback at all.
+    Pickles written before versioning existed carry no attribute and count as version 1.
+    """
     import pickle, time
     try:
         if time.time() - _PERSIST_PATH.stat().st_mtime > _PERSIST_MAX_AGE:
             return None
         m = pickle.loads(_PERSIST_PATH.read_bytes())
-        return m if getattr(m, "fitted", False) else None
+        if not getattr(m, "fitted", False):
+            return None
+        found = getattr(m, "label_version", 1)
+        if found != LABEL_VERSION:
+            logger.warning("[PROBIT] discarding persisted fit from label version %s (current %s)",
+                           found, LABEL_VERSION)
+            return None
+        return m
     except Exception:
         return None
 

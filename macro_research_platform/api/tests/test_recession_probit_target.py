@@ -69,3 +69,39 @@ def test_the_base_rate_is_the_window_rate():
     # 0.2487 against 0.1218 measured over 1960-2025; assert the relationship, not the digits
     assert both["w"].mean() == pytest.approx(0.2487, abs=0.02)
     assert both["w"].mean() > 1.5 * both["p"].mean()
+
+
+def test_a_persisted_fit_from_an_earlier_label_definition_is_refused(tmp_path, monkeypatch):
+    """_load_persisted is the outage fallback, so it can hand back a fit up to 30 days old. Those
+    coefficients answer the question they were fitted on: serving a point-target fit as a
+    window-target probability would be a silent inconsistency in exactly the situation where
+    nobody can cross-check it. A version mismatch must be refused, not used."""
+    import pickle
+
+    from api.models_ml import recession_probit as rp
+
+    path = tmp_path / "recession_probit.pkl"
+    monkeypatch.setattr(rp, "_PERSIST_PATH", path)
+
+    def persist(**attrs):
+        m = rp.RecessionProbitModel()
+        m.fitted = True
+        for k, v in attrs.items():
+            setattr(m, k, v)
+        path.write_bytes(pickle.dumps(m))
+
+    unversioned = rp.RecessionProbitModel()
+    unversioned.fitted = True
+    del unversioned.label_version                     # written before versioning existed
+    path.write_bytes(pickle.dumps(unversioned))
+    assert rp._load_persisted() is None, "an unversioned pickle is version 1 and must be refused"
+
+    persist(label_version=1)                          # fitted on the point target
+    assert rp._load_persisted() is None
+
+    persist(label_version=99)                         # from a future definition
+    assert rp._load_persisted() is None
+
+    persist()                                         # __init__ stamps the current version
+    loaded = rp._load_persisted()
+    assert loaded is not None and loaded.label_version == rp.LABEL_VERSION
