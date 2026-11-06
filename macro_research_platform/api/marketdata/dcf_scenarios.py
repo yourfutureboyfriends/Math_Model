@@ -260,11 +260,20 @@ def operating_scenarios(inp:dict,overrides:dict|None=None,probabilities:dict|Non
         if shift['wacc']:args['discount']=rate+shift['wacc']
         try:
             v=dcf.value(d,**args);price=v.get('price');per=v['per_share']
+            # A negative equity value is floored to 0.0 by the engine (limited liability: the shares
+            # are worth only their option value on a turnaround). That is a placeholder, not a
+            # valuation, so it must not be averaged into the probability-weighted expected value —
+            # two floored scenarios plus one real one produced a confident ~-93% "expected upside"
+            # while complete_probability_mass still read True. per_share stays as the engine
+            # returned it for display; the row is flagged and dropped from the aggregation.
+            neg=bool(v.get('equity_negative'))
             rows.append({'scenario':name,'probability':p[name],'growth':d['growth'],'wacc':v['assumptions']['discount'],
                 'terminal_wacc':v['assumptions']['discount_terminal'],'per_share':per,'enterprise_value':v['enterprise_value'],
-                'weighted_value':p[name]*per if per is not None else None,'upside':per/price-1 if per is not None and price and price>0 else None,'error':None})
+                'equity_negative':neg,
+                'weighted_value':p[name]*per if per is not None and not neg else None,
+                'upside':per/price-1 if per is not None and not neg and price and price>0 else None,'error':None})
         except dcf.NotFound as exc:rows.append({'scenario':name,'probability':p[name],'per_share':None,'weighted_value':None,'error':str(exc)})
-    complete=all(r['per_share'] is not None or r['probability']==0 for r in rows)
+    complete=all((r['per_share'] is not None and not r.get('equity_negative')) or r['probability']==0 for r in rows)
     expected=sum(r['weighted_value'] or 0 for r in rows) if complete else None
     model_price=baseline.get('price')
     return {'profile':profile_info,'risk':baseline['wacc'],'matrix':rows,'expected_value':expected,

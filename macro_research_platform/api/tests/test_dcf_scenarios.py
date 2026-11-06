@@ -72,3 +72,28 @@ def test_invalid_weighted_mass_and_regional_override():
     report=operating_scenarios(base(),profile='china_structural')
     assert report['risk']['governance_risk_premium']==pytest.approx(.02)
     assert report['risk']['country_risk_premium']==pytest.approx(.03)
+
+
+def test_a_floored_negative_equity_scenario_is_not_averaged_into_the_expected_value():
+    """dcf.value floors a negative equity value to 0.0 for limited liability, which is a
+    placeholder and not a valuation. The completeness test used to be `per_share is not None`, so
+    the floor counted as computed and the probability-weighted expected value — a headline KPI —
+    was built partly out of placeholders while complete_probability_mass still read True. At this
+    leverage bear floors while base and bull are genuine, so that one row must invalidate the
+    aggregate on its own."""
+    r=operating_scenarios(base(debt=300e9))
+    bear,base_row,bull=r['matrix']
+    assert bear['equity_negative'] is True and bear['per_share']==0.0      # the engine's own display value is kept
+    assert bear['weighted_value'] is None and bear['upside'] is None
+    assert not base_row['equity_negative'] and not bull['equity_negative']
+    assert base_row['weighted_value']>0 and bull['weighted_value']>0
+    assert r['complete_probability_mass'] is False
+    assert r['expected_value'] is None and r['expected_upside'] is None
+
+
+def test_expected_value_still_aggregates_when_nothing_floors():
+    """Guards the fix above against simply refusing to aggregate."""
+    r=operating_scenarios(base(debt=150e9))
+    assert all(m['equity_negative'] is False for m in r['matrix'])
+    assert r['complete_probability_mass'] is True
+    assert r['expected_value']==pytest.approx(sum(m['weighted_value'] for m in r['matrix']))
