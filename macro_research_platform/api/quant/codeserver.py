@@ -696,7 +696,10 @@ def analyze(dates: List[str], returns: List[float], benchmark: Optional[List[flo
         n = max(reg["distinct_trials"], 1)
         dsr = robust.deflated_sharpe(ex, n, [s / math.sqrt(252) for s in reg["trial_sharpes"]] if len(reg["trial_sharpes"]) >= 2 else None)
         reg["deflated_sharpe"] = dsr.get("dsr")
-        sr_ann, yrs = robust.sharpe(ex, dates), robust._years(dates)
+        # `ex` is already net of the account-currency rate, so pass no dates: robust.sharpe would
+        # subtract a second rate on top of it, and its internal rates.excess defaults to USD
+        # regardless of the account currency. See the same fix in api/quant/backtest.py.
+        sr_ann, yrs = robust.sharpe(ex), robust._years(dates)
         reg["haircut_sharpe"] = robust.haircut_sharpe(sr_ann, yrs, n)          # Harvey & Liu (2015)
         reg["min_backtest_length"] = robust.min_backtest_length(sr_ann, n)     # Bailey et al. (2014)
         reg.pop("trial_sharpes", None)

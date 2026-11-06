@@ -340,6 +340,27 @@ def test_min_backtest_length_matches_bailey_et_al():
     assert robust.min_backtest_length(0.5, 50)["years"] == pytest.approx(r["years"] * 4, rel=0.02)   # ∝ 1 / SR²
 
 
+def test_sharpe_of_an_excess_series_is_not_discounted_twice():
+    """robust.sharpe subtracts the T-bill rate whenever dates are passed, so handing it a series
+    that is already excess double-counts cash. backtest.py and codeserver.py both build `ex` and
+    then feed sr_ann into haircut_sharpe and min_backtest_length, so a regression here quietly
+    changes which strategies the overfitting guards reject — and once sr_ann goes <= 0 both
+    guards report available=False and verdict() skips them altogether."""
+    from api.quant import rates, robust
+    rng = np.random.default_rng(7)
+    dates = [d.isoformat() for d in IDX[:500]]
+    net = rng.normal(0.0006, 0.01, 500)
+    ex = rates.excess(net, dates)
+
+    # The whole point: discounting once, up front, is identical to letting sharpe() do it.
+    assert robust.sharpe(ex) == pytest.approx(robust.sharpe(net, dates), rel=1e-12)
+
+    # And the buggy call is materially different, so the assertion above is not vacuous.
+    # Guarded because it needs a non-zero reference rate over the window to distinguish them.
+    if float(np.nansum(rates.daily(dates).to_numpy())) != 0.0:
+        assert robust.sharpe(ex, dates) != pytest.approx(robust.sharpe(ex), rel=1e-6)
+
+
 def test_break_even_cost():
     from api.quant import robust
     be = robust.break_even_cost(np.full(100, 0.0006), np.full(100, 0.0002), 10.0)

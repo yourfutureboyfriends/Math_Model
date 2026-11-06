@@ -104,7 +104,12 @@ def run(spec_in: Dict[str, Any], n_trials: int = 1, trial_sharpes: Optional[Sequ
     rb["deflated_sharpe"] = {"dsr": _r(dsr.get("dsr"), 3), "trials": dsr.get("trials", n_trials),
                              "sr0_annual": dsr.get("sr0_annual")}
     yrs = robust._years(dates)
-    sr_ann = robust.sharpe(ex, dates)
+    # `ex` is already net of the reference rate, so pass no dates: robust.sharpe subtracts the
+    # T-bill rate again whenever dates are given. That double-counted cash and fed a Sharpe of
+    # net-2*rf into both overfitting guards below — too pessimistic while it stayed positive,
+    # and, once it went <= 0 at 4-5% bills, both guards returned available=False and verdict()
+    # skipped them entirely. Must equal cost_sensitivity[k=1]["sharpe"], which is sharpe(net).
+    sr_ann = robust.sharpe(ex)
     rb["haircut_sharpe"] = robust.haircut_sharpe(sr_ann, yrs, n_trials)
     rb["min_backtest_length"] = robust.min_backtest_length(sr_ann, n_trials)
     rb["break_even_cost"] = robust.break_even_cost(gross, cost, spec["costs"]["bps"])
