@@ -975,14 +975,23 @@ def wacc(inp: Dict[str, Any], beta: Optional[float] = None, erp: Optional[float]
         usd = to_usd(mcap, inp["price_currency"])
         per_fin = to_usd(1.0, inp["currency"])
         mcap = usd / per_fin if usd and per_fin else None
-    E, D = (mcap or 0), debt
+    # A missing market cap is not the same fact as "no equity". E=0 collapses WACC to the
+    # after-tax cost of debt, which measured +121% to +132% on fair value across terminal growth
+    # of 2.0-3.5% on the base fixture; only an incidental g>=WACC guard stopped it at 4.0%. The
+    # currency conversion above can also null this out when to_usd fails, so a rate-limited FX
+    # feed used to arrive here as a missing number rather than an error. Raise like the revenue
+    # and share-count guards in value() instead of weighting the cost of equity by zero.
+    if not mcap or mcap <= 0:
+        raise NotFound("Market capitalisation unavailable — cannot weight the cost of equity against debt.")
+    E, D = mcap, debt
     kd_after = inp["cost_of_debt"] * (1 - inp["tax_marginal"])
-    w = (E * ke + D * kd_after) / (E + D) if E + D > 0 else ke
+    # E > 0 is guaranteed above, so the total is never zero and the weights are always defined.
+    w = (E * ke + D * kd_after) / (E + D)
     return {"wacc": w, "cost_of_equity": ke, "cost_of_equity_model": ke_model, "ke_floored": ke > ke_model + 1e-12,
             "ke_method": method, "building_blocks": bb, "risk_components": risk,
             "market_risk_premium":risk["market_risk_premium"], "country_risk_premium":risk["country_risk_premium"], "governance_risk_premium":risk["governance_risk_premium"],
             "cost_of_debt_after_tax": kd_after, "beta": b, "erp": erp, "risk_free": rf,
-            "weight_equity": E / (E + D) if E + D > 0 else 1.0, "weight_debt": D / (E + D) if E + D > 0 else 0.0}
+            "weight_equity": E / (E + D), "weight_debt": D / (E + D)}
 
 
 def value(inp: Dict[str, Any], growth: Optional[float] = None, terminal_growth: Optional[float] = None, years: Optional[int] = None,

@@ -57,6 +57,24 @@ def test_dcf_uses_wacc_for_fcff_and_market_weights():
     assert w["wacc"] == pytest.approx((5000 * ke + 1000 * kd) / 6000)       # FCFF discounted at WACC, not ke
 
 
+def test_dcf_missing_market_cap_raises_instead_of_collapsing_wacc_onto_debt():
+    """`E = (mcap or 0)` treated a missing market cap as the fact "no equity", so WACC became the
+    after-tax cost of debt and fair value inflated 121-132% across terminal growth of 2.0-3.5% on
+    this fixture. Only an incidental g>=WACC guard caught it at exactly 4.0%. The currency
+    conversion can also null mcap when to_usd fails, so a rate-limited FX feed reached the same
+    place as a number rather than an error."""
+    from api.marketdata import dcf
+    from api.marketdata.core import NotFound
+    kd_after = 0.05 * 0.75
+    for bad in (None, 0, -1):
+        with pytest.raises(NotFound):
+            dcf.wacc(_inp(market_cap=bad), erp=0.05)
+    with pytest.raises(NotFound):
+        dcf.value(_inp(market_cap=None), terminal_growth=0.025)
+    # and the surviving path is genuinely above the debt-only floor, not equal to it
+    assert dcf.wacc(_inp(), erp=0.05)["wacc"] > kd_after
+
+
 def test_dcf_hand_check_terminal_value_driver_formula():
     from api.marketdata import dcf
     v = dcf.value(_inp(), growth=0.03, terminal_growth=0.03, years=3, discount=0.08, ronic=0.12, mid_year=False, method="two_stage")
