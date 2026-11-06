@@ -80,8 +80,8 @@ macro_research_platform/
 
 ---
 
-**Note**: The original Streamlit dashboard is backed up at `dashboard.py.backup`
-and `src/ui_backup/`. To restore it, rename these files.
+**Note**: The original Streamlit dashboard was removed; this file is only a redirect.
+Recover it from git history if needed — `git show dffb2d0a:macro_research_platform/src/ui_backup/theme.py`.
 """)
 
 st.divider()
