@@ -45,6 +45,20 @@ NBER_RECESSIONS = [
 ]
 
 
+def recession_window_label(recession, horizon: int):
+    """1 where any month in (t, t+horizon] is a recession month; NaN where the window is incomplete.
+
+    The Federal Reserve staff definition of a horizon-ahead recession, and the same event that
+    api/research_indicators._recession_ahead labels for the ensemble and the challenger — so all
+    three models are trained to predict one thing. The point alternative, recession at exactly
+    t+horizon, is a different and much rarer event: over 1960-2025 it disagrees with this on 99 of
+    780 months and halves the base rate, and it marks all of 2001 and 2020 as negatives in those
+    years, so a model trained on it never saw two of the recessions it exists to predict.
+    """
+    shifted = pd.concat([recession.shift(-k) for k in range(1, horizon + 1)], axis=1)
+    return shifted.max(axis=1).where(shifted.notna().all(axis=1))
+
+
 class RecessionProbitModel:
     """
     Probit model: P(recession in 12M) = Φ(α + β1*spread + β2*ff)
@@ -111,10 +125,9 @@ class RecessionProbitModel:
         else:
             df['recession'] = self._nber_indicator(df.index)
 
-        # Shift recession BACK so we predict horizon ahead
-        df['recession_future'] = df['recession'].shift(
-            -self.horizon
-        )
+        # Label: 1 if ANY month in (t, t+horizon] is a recession month — see recession_window_label
+        # for why this is the window definition and not recession at exactly t+horizon.
+        df['recession_future'] = recession_window_label(df['recession'], self.horizon)
 
         df = df.dropna(subset=['recession_future', 'spread'])
         logger.info(
