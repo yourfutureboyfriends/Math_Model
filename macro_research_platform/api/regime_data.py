@@ -344,17 +344,23 @@ def get_regime_data(df: Optional[pd.DataFrame] = None) -> RegimeData:
                for d, r, c in zip(recent.index, recent["regime"], recent["confidence"])]
 
     def _val(x):
-        return 0.0 if x is None or pd.isna(x) else float(x)
+        # Missing stays missing. Returning 0.0 here made an absent series indistinguishable from a
+        # genuine dead-centre reading, which _dir then rendered as "Neutral" — contradicting this
+        # module's own "Data honesty" contract that values are never fabricated.
+        return None if x is None or pd.isna(x) else float(x)
 
+    credit_z = _val(last["credit_z"])
     scores = {
         "growth": _val(last["g_z"]),
         "inflation": _val(last["i_z"]),
         "liquidity": _val(last["curve_z"]),          # steeper curve = easier conditions
-        "risk": -_val(last["credit_z"]),             # wider credit spreads = risk-off
+        "risk": None if credit_z is None else -credit_z,   # wider credit spreads = risk-off
     }
 
     # Interpretations from z-scores
-    def _dir(score: float, pos_label: str, neg_label: str) -> tuple:
+    def _dir(score: Optional[float], pos_label: str, neg_label: str) -> tuple:
+        if score is None:
+            return "Unavailable", "neutral"     # an absent input is not a dead-centre reading
         if score > 0.2:
             return pos_label, "success"
         elif score < -0.2:
@@ -374,16 +380,20 @@ def get_regime_data(df: Optional[pd.DataFrame] = None) -> RegimeData:
     # ═══════════════════════════════════════════════════════════════════════════════
     # LOG REGIME PREDICTION TO FORECAST TRACKER (Phase 2 Validation)
     # ═══════════════════════════════════════════════════════════════════════════════
-    try:
-        forecast_tracker.log_regime_forecast(
-            regime=regime,
-            confidence=confidence_score,
-            method="threshold",
-            growth_score=scores.get("growth", 0.0),
-            inflation_score=scores.get("inflation", 0.0)
-        )
-    except Exception as e:
-        logger.warning(f"[ForecastTracker] Failed to log regime: {e}")
+    # Do not log a forecast built on inputs that never arrived. log_regime_forecast takes floats,
+    # and the old `scores.get(..., 0.0)` default would have recorded a fabricated score against a
+    # real prediction — the same substitution the interpretations above just stopped making.
+    if scores["growth"] is not None and scores["inflation"] is not None:
+        try:
+            forecast_tracker.log_regime_forecast(
+                regime=regime,
+                confidence=confidence_score,
+                method="threshold",
+                growth_score=scores["growth"],
+                inflation_score=scores["inflation"],
+            )
+        except Exception as e:
+            logger.warning(f"[ForecastTracker] Failed to log regime: {e}")
 
     # ═══════════════════════════════════════════════════════════════════════════════
     # BUILD REGIME PLAYBOOK - Required for all classified regimes
