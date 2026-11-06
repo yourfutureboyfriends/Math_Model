@@ -1,0 +1,122 @@
+# Verification gate.
+#
+# This lives at the repository root on purpose: GitHub Actions only discovers workflows in
+# <repo-root>/.github/workflows/. The project sits one level down in macro_research_platform/,
+# and a previous copy of this directory there meant no workflow ever executed on any commit.
+#
+# Jobs marked "advisory" are allowed to fail and say so in their name. They are not gates yet
+# because the baseline is far from clean (ESLint reports ~2.7k errors, ruff ~3.6k under its
+# defaults with no config committed). Wiring them as hard gates would make CI red on day one
+# and therefore useless; ratchet each to blocking as its count is driven down.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 9 * * 1'
+
+defaults:
+  run:
+    working-directory: macro_research_platform
+
+jobs:
+  # The suite runs as two processes. torch ships libiomp5 and LightGBM resolves libomp; both
+  # export the same OpenMP symbols, so loading both in one interpreter segfaults at an
+  # unrelated-looking test. api/tests/conftest.py fails the run if one process collects both.
+  backend:
+    name: Backend tests (no torch)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: macro_research_platform/api/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r api/requirements.txt
+
+      - name: Run backend suite
+        run: make test-backend
+
+  torch:
+    name: Backend tests (torch group)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: macro_research_platform/api/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r api/requirements.txt
+
+      - name: Run torch suite
+        run: make test-torch
+
+  frontend:
+    name: Frontend typecheck + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: macro_research_platform/frontend/package-lock.json
+
+      # npm ci, not npm install: package.json uses caret ranges throughout, so only the
+      # lockfile makes the install reproducible.
+      - name: Install dependencies
+        working-directory: macro_research_platform/frontend
+        run: npm ci
+
+      # Production code only: tsconfig.json excludes the test files, so this gate does not
+      # cover them. The advisory lint job does type-parse the tests via tsconfig.eslint.json.
+      - name: Typecheck
+        working-directory: macro_research_platform/frontend
+        run: npx tsc --noEmit
+
+      - name: Tests
+        working-directory: macro_research_platform/frontend
+        run: npx vitest run
+
+  lint:
+    name: Lint (advisory — not yet a gate)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: macro_research_platform/frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install
+        run: |
+          pip install ruff
+          cd frontend && npm ci
+
+      # No ruff config is committed, so this runs on ruff's defaults (E4/E7/E9/F) and reports
+      # the pre-existing baseline rather than a standard the code was written to.
+      - name: ruff (advisory)
+        run: ruff check api src scripts database --statistics || true
+
+      # `npm run lint` passes --max-warnings 0 against ~2.3k warnings, so it cannot pass today.
+      - name: ESLint (advisory)
+        working-directory: macro_research_platform/frontend
+        run: npx eslint . --ext ts,tsx || true

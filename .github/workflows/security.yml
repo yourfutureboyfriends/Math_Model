@@ -1,13 +1,25 @@
+# Dependency vulnerability scan.
+#
+# Relocated to the repository root: GitHub Actions only discovers workflows in
+# <repo-root>/.github/workflows/, and this file previously sat in macro_research_platform/,
+# so it never ran. Paths are relative to the repo root, hence the working-directory default.
+#
+# The `test` job this file used to carry ran `cd api && pytest tests/`, which aborts during
+# collection: api/tests/conftest.py asserts that api/ itself is not on sys.path. Testing now
+# lives in ci.yml, which runs the documented make targets from the project root.
+
 name: Security Audit
 
 on:
   push:
-    branches: [main, develop]
   pull_request:
-    branches: [main, develop]
   schedule:
     # Run weekly on Mondays at 9am UTC
     - cron: '0 9 * * 1'
+
+defaults:
+  run:
+    working-directory: macro_research_platform
 
 jobs:
   audit:
@@ -18,35 +30,14 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: macro_research_platform/api/requirements.txt
 
       - name: Install dependencies
         run: |
-          cd api
-          pip install -r requirements.txt
+          pip install -r api/requirements.txt
           pip install pip-audit
 
       - name: Run pip-audit
-        run: |
-          cd api
-          pip-audit --desc
-
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          cd api
-          pip install -r requirements.txt
-
-      - name: Run tests
-        run: |
-          cd api
-          pytest tests/ -v --tb=short
+        run: pip-audit --desc
