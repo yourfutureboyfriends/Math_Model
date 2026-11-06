@@ -1090,7 +1090,11 @@ async def websocket_prices(websocket: WebSocket):
             payload = {"type": "heartbeat", "timestamp": datetime.now().isoformat()}
             try:
                 from api.services.price_service import price_service
-                prices = price_service.get_latest_prices(["SPY", "QQQ", "IWM", "GLD", "TLT"])
+                # {SYMBOL: price} from the repository cache — no fetch inside the socket loop.
+                # The store spreads `data` into its `prices` map, which is keyed SPX/NDX/VIX/
+                # DXY/TENYR/..., so send the cache rather than a watchlist: the previous
+                # SPY/QQQ/IWM/GLD/TLT list shares only GLD with what the UI reads.
+                prices = price_service.get_current_prices()
                 if prices:
                     payload = {"type": "prices", "timestamp": datetime.now().isoformat(), "data": prices}
             except Exception as e:
