@@ -1,9 +1,14 @@
 /**
  * Frontend API Integration Tests
  * Verifies that backend responses match expected TypeScript types
+ *
+ * These are live tests: they need the API running (see the README's `pytest tests` equivalent).
+ * `npx vitest run` must stay green without a backend, so the whole suite skips when nothing
+ * answers on the API origin — a skipped run is reported, never silently passed.
  */
 
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { request } from 'node:http';
+import { describe, it, expect, vi } from 'vitest';
 import { api } from '@/lib/apiClient';
 import { validateDashboardData, ValidationError } from '@/lib/apiValidation';
 
@@ -11,13 +16,42 @@ import { validateDashboardData, ValidationError } from '@/lib/apiValidation';
 // after the data pipeline invalidated it), which takes longer than vitest's 5s default.
 vi.setConfig({ testTimeout: 30_000 });
 
-describe('API Integration Tests', () => {
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// A relative base (same-origin production build) names no host to probe.
+const PROBE_ORIGIN = /^https?:\/\//i.test(API_BASE_URL) ? API_BASE_URL : 'http://localhost:8000';
 
-  beforeAll(() => {
-    // Ensure backend is running on localhost:8000
-    console.log(`Testing against: ${API_BASE_URL}`);
+/** Reachability only: any HTTP status counts as "up", a refused/timeout connection does not. */
+function probeBackend(timeoutMs = 2000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const url = new URL(`${PROBE_ORIGIN.replace(/\/$/, '')}/api/health`);
+    const req = request(
+      {
+        hostname: url.hostname,
+        port: url.port || (url.protocol === 'https:' ? 443 : 80),
+        path: url.pathname,
+        method: 'GET',
+        timeout: timeoutMs,
+      },
+      (res) => {
+        res.resume();
+        resolve(true);
+      },
+    );
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.end();
   });
+}
+
+const backendUp = await probeBackend();
+if (!backendUp) {
+  console.warn(`[api-integration] no backend on ${PROBE_ORIGIN} — skipping live integration suite`);
+}
+
+describe.runIf(backendUp)('API Integration Tests', () => {
 
   describe('Dashboard Endpoint', () => {
     it('dashboard endpoint returns valid DashboardData', async () => {

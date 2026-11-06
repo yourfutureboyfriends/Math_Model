@@ -66,10 +66,20 @@ export function getWsBaseUrl(): string {
     return envWsUrl.replace(/\/$/, ''); // Remove trailing slash
   }
 
-  // Derive from an absolute API base; a same-origin (relative) base still needs an absolute socket URL, and sockets
-  // go to the backend directly (no CORS for WebSockets)
-  const apiBase = getApiBaseUrl() || `http://localhost:${getDiscoveredPort() || DEFAULT_API_PORT}`;
-  return apiBase
+  const apiBase = getApiBaseUrl();
+
+  // A same-origin (relative) API base carries no host to upgrade, so take the origin from the
+  // page itself: in production the host serves the API and the socket together. An empty base
+  // means dev, where the Vite proxy does not forward /ws — sockets go to the backend directly
+  // (browsers apply no CORS to WebSocket handshakes).
+  if (apiBase.startsWith('/')) {
+    if (typeof window !== 'undefined') {
+      return `${window.location.protocol}//${window.location.host}`;
+    }
+  }
+
+  const absolute = apiBase || `http://localhost:${getDiscoveredPort() || DEFAULT_API_PORT}`;
+  return absolute
     .replace(/^http:/, 'ws:')
     .replace(/^https:/, 'wss:');
 }
