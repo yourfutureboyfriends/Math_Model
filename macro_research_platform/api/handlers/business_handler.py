@@ -291,7 +291,7 @@ async def get_recommendations_data() -> Dict[str, Any]:
     from api.handlers.dashboard_handler import get_dashboard_data
     dashboard = await get_dashboard_data(mode="live")
 
-    regime = dashboard.regime.current or "goldilocks"
+    regime = dashboard.regime.current or "unknown"
     confidence = dashboard.regime.confidenceScore
     growth = (dashboard.scores.growth / 100)
     inflation = (dashboard.scores.inflation / 100)
@@ -300,8 +300,16 @@ async def get_recommendations_data() -> Dict[str, Any]:
     ten_yr = dashboard.keyMetrics.tenYearYield
     vix = dashboard.keyMetrics.vix
     rec_known = dashboard.recession.probability is not None
-    # Unavailable recession model (e.g. FRED down): sizing treats it as 0 and every text says n/a.
+    # An unavailable recession model (FRED down, ensemble timeout) must not read as "no recession
+    # risk". rec_prob keeps the real value and is only ever formatted behind a rec_known guard, so
+    # the text still says n/a. rec_for_sizing is what the arithmetic uses: when the input is
+    # unknown it takes the midpoint of its own 0-1 domain — maximum ignorance, not the most benign
+    # extreme. Sizing on 0.0 used to give maximum SPY, minimum GLD and a RISK-ON stance out of a
+    # data outage, i.e. the least information produced the most bullish advice.
     rec_prob = dashboard.recession.probability if rec_known else 0.0
+    rec_for_sizing = dashboard.recession.probability if rec_known else 0.5
+    # A stance that leans on risk appetite is only justified if the risk inputs actually arrived.
+    risk_inputs_known = rec_known and vix is not None
 
     # Calculate regime from signals if not set (backup classification)
     if not regime or regime == "unknown":
@@ -316,17 +324,21 @@ async def get_recommendations_data() -> Dict[str, Any]:
         elif liquidity < 0.3:
             regime = "contraction"
         else:
-            regime = "goldilocks"
+            # A dead-centre reading matches none of the four quadrants. It used to fall through to
+            # "goldilocks", labelling the least informative outcome as the most bullish regime.
+            regime = "unknown"
 
     # Determine overall position based on real risk metrics
     # `risk` here is risk APPETITE (high = benign/risk-on), so a high value means "position
     # risk-ON", not "the environment is high-risk". Label it as a stance to avoid reading as a
     # warning (and it collides in tone with the header's complementary "risk level" metric).
-    if risk > 0.7 and rec_prob < 0.2:
+    if not risk_inputs_known:
+        overall_position = "BALANCED"      # capped: unknown risk inputs cannot justify leaning in
+    elif risk > 0.7 and rec_prob < 0.2:
         overall_position = "RISK-ON"
     elif risk > 0.5 and rec_prob < 0.3:
         overall_position = "MODERATE RISK-ON"
-    elif rec_prob > 0.4 or (vix or 0) > 30:
+    elif rec_prob > 0.4 or vix > 30:       # vix is not None here; a missing VIX no longer reads as 0
         overall_position = "DEFENSIVE"
     else:
         overall_position = "BALANCED"
@@ -389,7 +401,7 @@ async def get_recommendations_data() -> Dict[str, Any]:
 
     # Calculate position sizing dynamically based on signals
     # SPY: Higher when growth is strong and recession risk is low
-    spy_target = max(0.10, min(0.35, 0.15 + (growth - 0.3) * 0.2 - rec_prob * 0.15))
+    spy_target = max(0.10, min(0.35, 0.15 + (growth - 0.3) * 0.2 - rec_for_sizing * 0.15))
 
     # QQQ: Higher when growth is strong and liquidity is loose
     qqq_target = max(0.05, min(0.25, 0.08 + (growth - 0.3) * 0.15 + (liquidity - 0.5) * 0.05))
@@ -398,7 +410,7 @@ async def get_recommendations_data() -> Dict[str, Any]:
     tlt_target = max(0.05, min(0.30, 0.10 + ((ten_yr - 3.5) * 0.03 if ten_yr else 0) - (growth - 0.5) * 0.05))
 
     # GLD: Higher when inflation is elevated or recession risk is high
-    gld_target = max(0.03, min(0.20, 0.05 + inflation * 0.10 + rec_prob * 0.10))
+    gld_target = max(0.03, min(0.20, 0.05 + inflation * 0.10 + rec_for_sizing * 0.10))
 
     # Calculate conviction levels from signal strength
     def get_conviction(value, threshold_high=0.7, threshold_low=0.4):
@@ -419,20 +431,27 @@ async def get_recommendations_data() -> Dict[str, Any]:
             "regime_confidence": confidence,
             "overall_position": overall_position,
             "key_themes": themes,
-            "risk_assessment": f"VIX {f'{vix:.1f}' if vix is not None else 'n/a'}, 12M recession probability {f'{rec_prob:.0%}' if rec_known else 'n/a'}, Risk Appetite signal {risk:.2f} (0–1)"
+            "risk_assessment": f"VIX {f'{vix:.1f}' if vix is not None else 'n/a'}, 12M recession probability {f'{rec_prob:.0%}' if rec_known else 'n/a'}, Risk Appetite signal {risk:.2f} (0–1)",
+            # Inputs that were missing when this was built. Non-empty means the stance was capped
+            # at BALANCED and the recession terms in position sizing fell back to the midpoint of
+            # their range — so the UI can say why the advice looks neutral instead of implying it
+            # was computed from a view on recession risk.
+            "degraded_inputs": [name for name, known in
+                                (("recession_probability", rec_known), ("vix", vix is not None))
+                                if not known],
         },
         "expected_returns": expected_returns,
         "position_sizing": [
             {"asset": "SPY", "target": round(spy_target, 2), "range": f"{int(spy_target*100-5)}-{int(spy_target*100+5)}%", "conviction": get_conviction(growth, 0.65, 0.45)},
             {"asset": "QQQ", "target": round(qqq_target, 2), "range": f"{int(qqq_target*100-5)}-{int(qqq_target*100+5)}%", "conviction": get_conviction(growth * liquidity, 0.45, 0.25)},
             {"asset": "TLT", "target": round(tlt_target, 2), "range": "5-20%", "conviction": get_conviction(1 - growth + (ten_yr - 4.0) * 0.2 if ten_yr else 0.5, 0.6, 0.4)},
-            {"asset": "GLD", "target": round(gld_target, 2), "range": f"{int(gld_target*100-2)}-{int(gld_target*100+5)}%", "conviction": get_conviction(inflation + rec_prob * 0.5, 0.6, 0.4)},
-            {"asset": "VIX Hedge", "target": round(0.02 + rec_prob * 0.05, 2), "range": "2-7%", "conviction": get_conviction(rec_prob + ((vix if vix is not None else 20) - 20) * 0.01, 0.4, 0.2)},
+            {"asset": "GLD", "target": round(gld_target, 2), "range": f"{int(gld_target*100-2)}-{int(gld_target*100+5)}%", "conviction": get_conviction(inflation + rec_for_sizing * 0.5, 0.6, 0.4)},
+            {"asset": "VIX Hedge", "target": round(0.02 + rec_for_sizing * 0.05, 2), "range": "2-7%", "conviction": get_conviction(rec_for_sizing + ((vix if vix is not None else 20) - 20) * 0.01, 0.4, 0.2)},
         ],
         "signal_scorecard": [
             {"signal": "Recession Risk", "value": f"{rec_prob:.0%}" if rec_known else "n/a",
              "status": "Grey" if not rec_known else "Red" if rec_prob > 0.35 else "Yellow" if rec_prob > 0.2 else "Green"},
-            {"signal": "Regime", "value": regime.title(), "status": "Green" if regime in ["goldilocks", "reflation"] else "Yellow" if regime == "slowdown" else "Red"},
+            {"signal": "Regime", "value": regime.title(), "status": "Grey" if regime == "unknown" else "Green" if regime in ["goldilocks", "reflation"] else "Yellow" if regime == "slowdown" else "Red"},
             {"signal": "Growth Momentum", "value": f"{growth:.2f}", "status": "Green" if growth > 0.6 else "Yellow" if growth > 0.4 else "Red"},
             {"signal": "Inflation Pressure", "value": f"{inflation:.2f}", "status": "Red" if inflation > 0.6 else "Yellow" if inflation > 0.45 else "Green"},
             {"signal": "Liquidity", "value": f"{liquidity:.2f}", "status": "Green" if liquidity > 0.6 else "Yellow" if liquidity > 0.4 else "Red"},
