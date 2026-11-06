@@ -1,8 +1,28 @@
 """
-Tests for Look-Ahead Bias
+Tests for the look-ahead bias DETECTOR (src/backtesting/walk_forward_validator.NoLookAheadTester).
 
-Ensures the model does not use future information when generating signals.
-These tests should be run regularly to validate model integrity.
+KNOWN GAP — these tests cannot currently fail, and the detector they exercise does not work.
+
+NoLookAheadTester.test_no_future_data compares a model's output on the full frame against its
+output on the first half, but only when both outputs are a DataFrame or a Series. Anything
+else — a scalar, a dict, a numpy number — falls through to `is_equal = True  # Can't compare`
+(walk_forward_validator.py:373). Every model defined inline below returns a scalar, so every
+one of those comparisons is skipped and reported as a pass.
+
+Verified empirically: feeding the tester shift(-1) (next period's value), a full-sample mean,
+a centred rolling window, and a function reading the last row all return True — indistinguishable
+from the clean shift(1) control. The detector does not detect look-ahead for scalar-returning
+models, which is what a signal model normally is.
+
+The design is also wrong for scalars, not just the branch: truncating a frame necessarily
+changes a "current signal" computed from its last row, so a clean scalar model would fail a
+naive value comparison. Comparing scalars needs the model evaluated at a fixed origin with
+data masked after it, which is an API change, not a one-line fix.
+
+Until that is done, treat this file as documenting intent rather than verifying anything. The
+one check that does run against production code is
+api/tests/test_quant.py::test_formula_has_no_lookahead, which perturbs only the future of a
+series and asserts the past is bit-identical through the production expression evaluator.
 """
 
 import unittest
