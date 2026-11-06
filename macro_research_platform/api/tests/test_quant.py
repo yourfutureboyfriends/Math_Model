@@ -231,3 +231,43 @@ def test_macro_trader_orders_then_fills_at_next_open(tmp_path, monkeypatch):
         fills = c.execute("SELECT fill_price, fill_date FROM macro_trader_orders WHERE symbol='SPY'").fetchone()
     assert pos["SPY"] == pytest.approx(6000, rel=1e-6)          # 60% of $1m at the order's close price
     assert fills["fill_price"] == pytest.approx(101.0) and fills["fill_date"] == idx[1].strftime("%Y-%m-%d")
+
+
+# ── risk rules: the per-name cap must survive volatility targeting ────────────────────────────
+_RISK_RETURNS = np.zeros((30, 4))          # _cov_vol is stubbed, so the window is only shape
+
+
+def test_vol_target_scaling_does_not_breach_the_per_name_cap(monkeypatch):
+    """Scaling to a volatility target multiplies every weight by the same factor, so a target above
+    realised vol breached max_weight by exactly that factor: 0.10 capped, 4x scaling, 0.40 out.
+    normalize() validates max_weight on the way in, so exceeding it afterwards contradicted the
+    specification the user wrote."""
+    monkeypatch.setattr(engine, "_cov_vol", lambda rets, w: 0.05)     # 0.20 / 0.05 = 4x
+    spec = {"risk": {"max_weight": 0.10, "vol_target": 0.20, "max_gross": 4.0}}
+    out = engine.apply_risk(spec, np.full(4, 0.10), _RISK_RETURNS)
+    assert np.all(np.abs(out) <= 0.10 + 1e-12)
+    assert np.allclose(out, 0.10)
+
+
+def test_vol_target_still_scales_down_when_vol_is_above_target(monkeypatch):
+    """The re-clip must not turn into a no-op scale: shrinking to the target is unchanged."""
+    monkeypatch.setattr(engine, "_cov_vol", lambda rets, w: 0.40)     # 0.20 / 0.40 = 0.5x
+    spec = {"risk": {"max_weight": 0.10, "vol_target": 0.20, "max_gross": 4.0}}
+    out = engine.apply_risk(spec, np.full(4, 0.10), _RISK_RETURNS)
+    assert np.allclose(out, 0.05)
+
+
+def test_gross_cap_still_binds_after_the_reclip(monkeypatch):
+    """The cap wins over the vol target, and the gross cap is applied to the capped weights."""
+    monkeypatch.setattr(engine, "_cov_vol", lambda rets, w: 0.05)     # 4x, then clipped back to 0.10
+    spec = {"risk": {"max_weight": 0.10, "vol_target": 0.20, "max_gross": 0.20}}
+    out = engine.apply_risk(spec, np.full(4, 0.10), _RISK_RETURNS)
+    assert np.isclose(np.abs(out).sum(), 0.20)                        # gross 0.40 scaled to the 0.20 cap
+    assert np.all(np.abs(out) <= 0.10 + 1e-12)
+
+
+def test_no_vol_target_leaves_the_single_clip_unchanged(monkeypatch):
+    monkeypatch.setattr(engine, "_cov_vol", lambda rets, w: pytest.fail("must not be called"))
+    spec = {"risk": {"max_weight": 0.10, "vol_target": None, "max_gross": 4.0}}
+    out = engine.apply_risk(spec, np.array([0.50, -0.50, 0.02, 0.0]), _RISK_RETURNS)
+    assert np.allclose(out, [0.10, -0.10, 0.02, 0.0])

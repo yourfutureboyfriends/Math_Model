@@ -208,8 +208,15 @@ def target_weights(spec: Dict[str, Any], score: np.ndarray, eligible: np.ndarray
 
 
 def apply_risk(spec: Dict[str, Any], w: np.ndarray, hist_rets: np.ndarray) -> np.ndarray:
-    """Apply the specification's risk rules to target weights: per-name cap, then scale to the volatility target from
-    trailing covariance, then the gross cap.
+    """Apply the specification's risk rules to target weights: per-name cap, then scale to the
+    volatility target from trailing covariance, then re-impose the per-name cap, then the gross cap.
+
+    The second clip matters. Scaling to a volatility target multiplies every weight by the same
+    factor, so whenever the target exceeds realised vol the cap is breached by exactly that factor
+    — a 4x scaling turned a 10% per-name limit into 40%. normalize() validates max_weight on the
+    way in, so silently exceeding it afterwards contradicts the specification the user wrote. The
+    cap wins over the vol target: not hitting the target is a return shortfall, while breaching a
+    per-name limit is unintended concentrated idiosyncratic risk.
     """
     r = spec["risk"]
     w = np.clip(w, -r["max_weight"], r["max_weight"])
@@ -217,6 +224,7 @@ def apply_risk(spec: Dict[str, Any], w: np.ndarray, hist_rets: np.ndarray) -> np
         v = _cov_vol(hist_rets, w)
         if v and v > 0:
             w = w * (r["vol_target"] / v)
+            w = np.clip(w, -r["max_weight"], r["max_weight"])
     g = np.abs(w).sum()
     if g > r["max_gross"]:
         w = w * (r["max_gross"] / g)
