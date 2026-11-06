@@ -166,7 +166,12 @@ def test_dashboard_contract():
     print(f"SUMMARY: {len(failures)} failures, {len(null_fields)} nulls, {len(warnings)} warnings")
     print("=" * 60)
 
-    return 1 if failures else 0
+    # pytest ignores return values, so without this the test stayed green even when required
+    # fields were missing or the HY-spread unit bug was present. null_fields and warnings stay
+    # advisory: a field can legitimately be null, and the duration/rationale checks are
+    # heuristics rather than contract terms.
+    assert not failures, f"{len(failures)} contract failures:\n" + "\n".join(failures)
+    return 0
 
 
 def test_sector_rationale():
@@ -175,12 +180,10 @@ def test_sector_rationale():
     print("SECTOR RATIONALE TEST")
     print("=" * 60)
 
-    try:
-        r = requests.get(f"{BASE}/api/dashboard", timeout=30)
-        data = r.json()
-    except Exception as e:
-        print(f"❌ Failed to fetch: {e}")
-        return 1
+    # Let a ConnectionError propagate: tests/conftest.py reports an unreachable dev server as
+    # a skip. Catching it and returning 1 made a down backend look like a passing test.
+    r = requests.get(f"{BASE}/api/dashboard", timeout=30)
+    data = r.json()
 
     sectors = data.get("sectorAllocation", {}).get("sectors", [])
     print(f"\nFound {len(sectors)} sectors:")
@@ -209,10 +212,13 @@ def test_sector_rationale():
         print("\n❌ RATIONALE ISSUES:")
         for i in issues:
             print(f"   {i}")
-        return 1
     else:
         print("\n✅ All rationales look valid")
-        return 0
+
+    # pytest ignores the return value, so the collected issues have to be asserted or this
+    # test passes no matter what the endpoint returned.
+    assert not issues, f"{len(issues)} sector rationale issues:\n" + "\n".join(issues)
+    return 0
 
 
 if __name__ == "__main__":
@@ -221,8 +227,15 @@ if __name__ == "__main__":
     print("=" * 60)
     print(f"\nTesting against: {BASE}")
 
-    exit_code = test_dashboard_contract()
-    exit_code += test_sector_rationale()
+    # The tests now assert instead of returning a status, so the script entry point has to
+    # catch rather than sum. Same exit-code semantics as before: 0 only if both passed.
+    exit_code = 0
+    for _fn in (test_dashboard_contract, test_sector_rationale):
+        try:
+            _fn()
+        except AssertionError as e:
+            print(f"\n❌ {_fn.__name__} FAILED: {e}")
+            exit_code += 1
 
     print("\n" + "=" * 60)
     if exit_code == 0:
