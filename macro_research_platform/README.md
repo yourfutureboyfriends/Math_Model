@@ -95,10 +95,23 @@ macro_research_platform/
 ### Running Tests
 
 ```bash
-pytest api/tests --ignore=api/tests/integration   # unit + regression
-pytest tests                                       # includes live checks against :8000
-cd frontend && npx vitest run                      # frontend
+make test          # offline gate: backend + torch group + frontend
+make test-live     # integration checks against a backend on :8000
 ```
+
+Or individually:
+
+```bash
+make test-backend  # unit + regression (no torch)
+make test-torch    # api/ml/institutional tests (torch)
+make test-frontend # cd frontend && npx vitest run
+```
+
+The backend runs as two processes on purpose. torch ships `libiomp5.dylib` and LightGBM resolves
+Homebrew's `libomp.dylib`; both export the same OpenMP symbols and dyld binds them by flat lookup,
+so fitting a LightGBM model after torch is loaded segfaults the interpreter — at a test that looks
+unrelated to the cause and moves between runs. `api/tests/conftest.py` fails the run with an
+explanation rather than letting it crash if one process ever collects both groups.
 
 ### Code Style
 

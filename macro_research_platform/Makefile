@@ -3,7 +3,7 @@
 # Quick commands for development and production operations
 # ═══════════════════════════════════════════════════════════════════════════════
 
-.PHONY: help install data test run export clean start stop restart logs backup update shell db status ps rebuild
+.PHONY: help install data test test-backend test-torch test-frontend test-live run export clean start stop restart logs backup update shell db status ps rebuild
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Development Commands (Local)
@@ -15,7 +15,8 @@ help:
 	@echo "Development (Local):"
 	@echo "  make install    - Install all dependencies"
 	@echo "  make data       - Generate sample data"
-	@echo "  make test       - Run test suite"
+	@echo "  make test       - Run the offline suite (backend, torch group, frontend)"
+	@echo "  make test-live  - Run integration checks against a backend on :8000"
 	@echo "  make run        - Start the Streamlit dashboard"
 	@echo "  make export     - Export data to Excel/PDF"
 	@echo "  make clean      - Clean cache and temp files"
@@ -45,8 +46,31 @@ data:
 	@echo "Sample data generated in data/raw/"
 
 # Run tests
-test:
-	pytest tests/ -v
+#
+# The backend suite runs in two processes. torch ships libiomp5.dylib and LightGBM resolves
+# Homebrew's libomp.dylib; both export the same OpenMP symbols and dyld binds them by flat
+# lookup, so fitting a LightGBM model after torch is loaded segfaults the interpreter — at a
+# test that looks unrelated and moves between runs. api/tests/conftest.py fails the run with
+# an explanation if one process ever collects both.
+TORCH_TESTS = api/tests/test_advanced_autonomous.py \
+              api/tests/test_autonomous_application.py \
+              api/tests/test_institutional_pipeline.py
+
+test-backend:
+	pytest api/tests --ignore=api/tests/integration $(addprefix --ignore=,$(TORCH_TESTS))
+
+test-torch:
+	MACRO_TEST_TORCH=1 pytest $(TORCH_TESTS)
+
+test-frontend:
+	cd frontend && npx vitest run
+
+# Everything that runs offline. api/tests/integration and tests/ both need the API on :8000.
+test: test-backend test-torch test-frontend
+
+# Live checks against a running backend (start it first: uvicorn api.main:socket_app)
+test-live:
+	pytest api/tests/integration tests/ -v
 
 # Start dashboard (legacy Streamlit)
 run:

@@ -83,3 +83,19 @@ def pytest_collection_finish(session):
     assert not bad, f"api/ is on sys.path ({bad}); insert the project root instead"
     import database.db as d
     assert Path(d.__file__).resolve().parent == api_dir.parent / "database", d.__file__
+
+    # Collection imports every test module, so torch is already resident here if any test
+    # uses it. torch's libiomp5.dylib and LightGBM's libomp.dylib export the same OpenMP
+    # symbols; dyld resolves them by flat lookup, so fitting a LightGBM model once torch is
+    # loaded segfaults the interpreter. Which test dies depends on what else has loaded, so
+    # the crash looks unrelated to its cause and moves between runs. api/ml/institutional is
+    # the only torch user and is opt-in, so the two groups run in separate processes.
+    if "torch" in sys.modules and os.environ.get("MACRO_TEST_TORCH") != "1":
+        pytest.exit(
+            "torch was imported while collecting tests, and this process will also fit "
+            "LightGBM models. Their OpenMP runtimes (libiomp5.dylib and libomp.dylib) clash "
+            "and the process segfaults at an unrelated-looking test. Run the groups "
+            "separately: `make test-backend` then `make test-torch`.",
+            returncode=4,
+        )
+
