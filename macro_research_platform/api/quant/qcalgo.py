@@ -118,10 +118,8 @@ class DayOfWeek(_Enum):
     Monday, Tuesday, Wednesday, Thursday, Friday = range(5)
 
 
-class Market(_Enum):
-    """LEAN's market names (USA, Oanda …). Accepted for compatibility."""
-    USA = "usa"
-    Usa = USA
+# `Market` is defined once, further down, with the full LEAN market list and _PassThroughMeta.
+# A two-member stub used to sit here and was silently shadowed by it.
 
 
 class SecurityType(_Enum):
