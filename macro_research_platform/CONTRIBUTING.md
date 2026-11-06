@@ -177,28 +177,47 @@ frontend/src/
 
 ## Testing
 
-### Backend Tests
+### Running the tests
+
+Run everything from the project root (`macro_research_platform/`). **Never `cd api` first** —
+`api/tests/conftest.py` asserts in `pytest_collection_finish` that `api/` is not on `sys.path`,
+because a stale gitignored `api/database/` copy otherwise shadows the real `database/` package
+and failures start depending on test order. Invoking pytest from inside `api/` dies with an
+`INTERNALERROR` during collection, before a single test runs.
 
 ```bash
-cd api
-pytest tests/ -v --cov=api --cov-report=html
+make test          # the offline gate: backend + torch group + frontend
+make test-live     # integration checks against a backend on :8000 (start it first)
 ```
 
-Test coverage should remain above 80%.
-
-### Frontend Tests
+Or individually:
 
 ```bash
-cd frontend
-npm test
+make test-backend  # pytest api/tests, excluding integration and the torch group
+make test-torch    # the api/ml/institutional tests
+make test-frontend # cd frontend && npx vitest run
 ```
 
-### Integration Tests
+The backend runs as two processes on purpose. torch ships `libiomp5.dylib` and LightGBM resolves
+Homebrew's `libomp.dylib`; both export the same OpenMP symbols and dyld binds them by flat lookup,
+so fitting a LightGBM model after torch is loaded segfaults the interpreter — at a test that looks
+unrelated to the cause and moves between runs. `api/tests/conftest.py` fails the run with an
+explanation rather than letting it crash if one process ever collects both groups. If you add a
+test that imports torch, add its file to `TORCH_TESTS` in the Makefile.
 
-```bash
-cd api
-pytest tests/integration/ -v
-```
+Use `npx vitest run`, not `npm test`: the latter is bare `vitest`, which starts watch mode and
+never exits.
+
+### Coverage
+
+Coverage is **not** currently enforced or measured in CI, and there is no coverage config.
+`pytest-cov` and `coverage` are installed, so you can measure a slice with
+`pytest api/tests/test_governance.py --cov=api.governance --cov-report=term`.
+
+This section previously stated that coverage "should remain above 80%". That was never measured,
+and it is not close: `api/` is ~86k statements, and six of the strongest test files reach about
+15% of it. The best-covered cluster in the repo sits around 76%. Treat 80% as an aspiration to
+ratchet towards, not a standing guarantee, and do not cite it as a reason to trust a change.
 
 ***
 
