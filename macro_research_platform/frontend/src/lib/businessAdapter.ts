@@ -8,6 +8,10 @@ export interface BackendSummary {
   conviction: string;
   overall_position: string;
   key_themes: string[];
+  /** Inputs missing when this was built, e.g. ["recession_probability", "vix"]. Non-empty means
+   *  the stance was capped at BALANCED and the recession terms in position sizing fell back to the
+   *  midpoint of their range, so the advice is deliberately not a computed view. */
+  degraded_inputs?: string[];
 }
 
 export interface BackendRecommendation {

@@ -243,6 +243,16 @@ export function TradeRecommendationsSection({ data, onRefresh }: TradeRecommenda
                 </div>
               </div>
             )}
+            {summaryLite?.degraded_inputs?.length > 0 && (
+              <div className="p-2 bg-surface-1 border border-border" role="status">
+                <div className="text-2xs text-text-tertiary uppercase tracking-wider">Degraded inputs</div>
+                <div className="text-xs text-text-secondary mt-0.5">
+                  {summaryLite.degraded_inputs.map((name: string) => name.replace(/_/g, ' ')).join(', ')}
+                  {' '}unavailable. The stance is capped at BALANCED and recession-sensitive sizing uses the
+                  midpoint of its range, so these targets are not a computed view.
+                </div>
+              </div>
+            )}
             {summaryLite?.key_themes?.length > 0 && (
               <div className="p-3 bg-surface-1 border border-border">
                 <div className="text-2xs text-text-tertiary uppercase tracking-wider mb-1">Key Themes</div>

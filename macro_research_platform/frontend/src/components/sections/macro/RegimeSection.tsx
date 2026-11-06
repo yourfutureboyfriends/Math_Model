@@ -176,8 +176,12 @@ export function RegimeSection({ data: dataProp }: RegimeSectionProps) {
                     <td className="py-2 px-3 text-sm text-text-primary">{interp.factor}</td>
                     <td className="py-2 px-3 text-sm text-text-secondary">{interp.impact}</td>
                     <td className="py-2 px-3 text-right">
+                      {/* An absent series arrives as impact "Unavailable" with a neutral colour.
+                          Rendering that as NEUTRAL made missing data look like a dead-centre
+                          reading, which is the one distinction this row has to preserve. */}
                       <span className={interp.color === 'success' ? 'signal-tag bullish' : interp.color === 'danger' ? 'signal-tag bearish' : 'signal-tag neutral'}>
-                        {interp.color === 'success' ? 'UP' : interp.color === 'danger' ? 'DOWN' : 'NEUTRAL'}
+                        {interp.color === 'success' ? 'UP' : interp.color === 'danger' ? 'DOWN'
+                          : interp.impact === 'Unavailable' ? 'N/A' : 'NEUTRAL'}
                       </span>
                     </td>
                   </tr>
