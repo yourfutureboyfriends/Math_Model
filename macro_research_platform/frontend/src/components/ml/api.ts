@@ -61,7 +61,8 @@ export async function refreshLiveState(){
  return response.json();
 }
 
-export const useOnlineStatusQ=()=>useQuery({queryKey:['ml','online-status'],queryFn:()=>get('/api/v1/ml/online/status'),refetchInterval:30000});
+/** `live` stops the poll while the pushed stream is delivering this panel's frames. */
+export const useOnlineStatusQ=(live=false)=>useQuery({queryKey:['ml','online-status'],queryFn:()=>get('/api/v1/ml/online/status'),refetchInterval:live?false:30000});
 
 export const useResearchGraphQ=()=>useQuery({queryKey:['ml','research-graph'],queryFn:()=>get('/api/v1/ml/research/graph'),refetchInterval:30000});
 

@@ -1,8 +1,14 @@
 import {Panel} from './ui/Controls';
 import {useOnlineStatusQ} from './api';
+import {useMlStreamStore} from '@/store/mlStreamStore';
 const date=(v:any)=>typeof v==='number'?new Date(v*1000).toISOString().replace('T',' ').slice(0,19)+' UTC':'Awaiting first update';
 export function OnlineDataStatus(){
- const q=useOnlineStatusQ(),d=q.data;
+ // Prefer the pushed frame over the poll. The stream samples the same api.ml.online.status function
+ // the REST route returns, on the same 30s cadence, so the payload is identical by construction. A
+ // frame whose producer failed reads as undefined, which resumes the poll as an automatic fallback.
+ const frame=useMlStreamStore((s)=>s.frames.online_status);
+ const streamed=frame?.ok?frame.payload:undefined;
+ const q=useOnlineStatusQ(streamed!==undefined),d=streamed??q.data;
  return <Panel title="Continuous financial data & learning" sub="Automatic provider checks, accepted data versions and learning readiness.">
  {!d?<p className="text-xs">{q.isError?'Provider supervision status is unavailable.':'Loading provider supervision…'}</p>:<>
  <p className="text-xs">{d.enabled?'Online supervision enabled':'Online supervision disabled'} · {d.running?'Refreshing a source':'Waiting for the next scheduled source'} · Last check {date(d.last_check)}</p>
