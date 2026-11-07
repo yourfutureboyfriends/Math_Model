@@ -17,6 +17,8 @@ import { EChart, axisStyle, chartTheme } from '@/components/ml/ui/EChart';
 import { DataGrid } from '@/components/ml/ui/DataGrid';
 import { Hint, Panel, RangeSlider, Segmented, Stat } from '@/components/ml/ui/Controls';
 import { DriftBullet } from '@/components/ml/DriftBullet';
+import { useAuth } from '@/context/AuthContext';
+import { useNeuralStream } from '@/hooks/useNeuralStream';
 import { AutonomousStatus } from '@/components/ml/AutonomousStatus';
 import { OnlineDataStatus } from '@/components/ml/OnlineDataStatus';
 import { ResearchNetwork } from '@/components/ml/ResearchNetwork';
@@ -617,6 +619,11 @@ function Workbench() {
 }
 
 export function MlPage() {
+  // Mount the push transport for the whole workbench. The backend samples a topic only while a
+  // socket is subscribed, so this is what turns the stream on; panels that have not migrated yet
+  // keep polling, and a migrated panel's poll resumes automatically if the socket drops.
+  const { token } = useAuth();
+  useNeuralStream({ token });
   return <QueryClientProvider client={mlQueryClient}><Workbench /></QueryClientProvider>;
 }
 

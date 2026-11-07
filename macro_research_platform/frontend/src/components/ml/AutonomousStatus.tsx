@@ -1,10 +1,16 @@
 import {useState} from 'react';
 import {Panel} from './ui/Controls';
 import {send,useAutonomousStatusQ} from './api';
+import {useMlStreamStore} from '@/store/mlStreamStore';
 const time=(value:any)=>value?new Date(value).toLocaleString():'Not yet recorded';
 const LABELS:Record<string,string>={recession_12m:'Recession',spx_drawdown_6m:'Equity drawdown',yields_up_3m:'Treasury yields',inflation_up_3m:'Inflation',oil_up_3m:'Oil',unemployment_up_6m:'Unemployment'};
 export function AutonomousStatus(){
- const q=useAutonomousStatusQ(),d=q.data,s=d?.state??{},f=d?.forecast;
+ // Prefer the pushed frame over the poll. The stream samples the same api.ml.autonomous.status
+ // function on the same 5s cadence, so the payload shape is identical by construction. A frame
+ // whose producer failed reads as undefined, which resumes the poll as an automatic fallback.
+ const frame=useMlStreamStore((s)=>s.frames.autonomous_status);
+ const streamed=frame?.ok?frame.payload:undefined;
+ const q=useAutonomousStatusQ(streamed!==undefined),d=streamed??q.data,s=d?.state??{},f=d?.forecast;
  const [busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const dataHeld=s.last_run?.status==='held_data_quality';
  const forage=s.query_collection??s.research_probes?.foraging;

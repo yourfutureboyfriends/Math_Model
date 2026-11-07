@@ -65,4 +65,5 @@ export const useOnlineStatusQ=()=>useQuery({queryKey:['ml','online-status'],quer
 
 export const useResearchGraphQ=()=>useQuery({queryKey:['ml','research-graph'],queryFn:()=>get('/api/v1/ml/research/graph'),refetchInterval:30000});
 
-export const useAutonomousStatusQ=()=>useQuery({queryKey:['ml','autonomous-status'],queryFn:()=>get('/api/v1/ml/autonomous/status'),refetchInterval:5000});
+/** `live` stops the poll while the pushed stream is delivering this panel's frames. */
+export const useAutonomousStatusQ=(live=false)=>useQuery({queryKey:['ml','autonomous-status'],queryFn:()=>get('/api/v1/ml/autonomous/status'),refetchInterval:live?false:5000});
