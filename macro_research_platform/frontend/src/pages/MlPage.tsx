@@ -99,7 +99,7 @@ function Overview({ tasks }: { tasks: any[] | undefined }) {
     const data: any[] = [];
     rows.forEach((r, yi) => models.forEach((m, xi) => { const v = r.models?.[m]?.probability; if (v != null) data.push([xi, yi, Math.round(v * 1000) / 10, r.models[m].skill]); }));
     return {
-      tooltip: { formatter: (p: any) => `${rows[p.value[1]].title}<br/>${SHORT[models[p.value[0]]]}: <b>${p.value[2].toFixed(1)}%</b><br/>walk-forward skill ${skillText(p.value[3])}` },
+      tooltip: { formatter: (p: any) => { const r = rows[p.value[1]]; return `${r.title}${r.question ? `<br/>${r.question}` : ''}<br/>${SHORT[models[p.value[0]]]}: <b>${p.value[2].toFixed(1)}%</b><br/>walk-forward skill ${skillText(p.value[3])}`; } },
       grid: { left: 210, right: 70, top: 10, bottom: 56 },
       xAxis: { type: 'category', data: models.map((m) => SHORT[m]), ...axisStyle(t), axisLabel: { ...axisStyle(t).axisLabel, interval: 0, rotate: 30 }, splitArea: { show: false } },
       yAxis: { type: 'category', data: rows.map((r) => r.title), inverse: true, ...axisStyle(t) },
@@ -111,7 +111,13 @@ function Overview({ tasks }: { tasks: any[] | undefined }) {
     };
   }, [rows, models]);
   const cols: ColumnDef<any, any>[] = [
-    { header: 'Question', accessorKey: 'title', cell: (c) => <span className="text-text-primary">{c.getValue()}</span> },
+    { header: 'Question', accessorKey: 'title', cell: (c) => (
+      // The engine serves the exact event each task is trained on; the short title alone is
+      // ambiguous for recession_12m, where "within 12 months" does not say whether the question is
+      // month t+12 or any month in the window. A native title matches the Skill column beside it and
+      // costs one attribute rather than a tooltip provider per row. Nothing is supplied from the
+      // frontend when the server has not answered — an invented definition is worse than none.
+      <span className="text-text-primary" title={[c.row.original.question, ...(c.row.original.notes ?? [])].filter(Boolean).join(' ') || undefined}>{c.getValue()}</span>) },
     { header: 'Signal', accessorFn: (r) => r.signal?.probability, meta: { numeric: true }, cell: (c) => <b>{c.getValue() == null ? '—' : pct(c.getValue())}</b> },
     { header: 'Model', accessorFn: (r) => r.signal?.model, cell: (c) => c.getValue() ? <span className="ml-pill" data-tone="prod">{SHORT[c.getValue()]}</span> : <span className="text-text-tertiary">training…</span> },
     { header: 'Skill', accessorFn: (r) => r.signal?.skill_vs_base_rate, meta: { numeric: true, title: 'Out-of-sample Brier skill vs the base rate' }, cell: (c) => <span className={toneOf(c.getValue())}>{skillText(c.getValue())}</span> },
@@ -235,7 +241,12 @@ function ModelLab({ period, picked }: { period: string; picked: string[] }) {
   ];
   return (
     <div className="space-y-2.5">
-      <Panel title={`Leaderboard — ${d.title}`} sub={`Walk-forward ${d.backtest?.from}–${d.backtest?.to} · ${d.backtest?.forecasts} monthly forecasts · base rate ${pct(d.positive_share)} · promotion bar P(luck) < ${pct(d.promotion.bar)} (${d.promotion.comparisons} comparisons)`}>
+      <Panel title={`Leaderboard — ${d.title}`} sub={<>
+        {/* Every probability on this page answers the question below, not the short title above it. */}
+        {d.question && <span className="block">{d.question}</span>}
+        {`Walk-forward ${d.backtest?.from}–${d.backtest?.to} · ${d.backtest?.forecasts} monthly forecasts · base rate ${pct(d.positive_share)} · promotion bar P(luck) < ${pct(d.promotion.bar)} (${d.promotion.comparisons} comparisons)`}
+        {!!d.notes?.length && <span className="block">{d.notes.join(' ')}</span>}
+      </>}>
         <DataGrid data={lb} columns={cols} initialSort={[{ id: 'skill', desc: true }]} filterPlaceholder="Filter models…" rowClassName={(r) => (r.serving ? 'bg-surface-2' : '')} />
       </Panel>
       <Panel title="Forecasts over time" sub="Out-of-sample probability by month; shaded = the answer was yes. Shift-scroll or drag the slider to zoom; click legend items to show or hide; the toolbox saves a PNG or shows the data.">
