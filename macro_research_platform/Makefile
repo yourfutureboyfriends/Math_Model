@@ -54,7 +54,8 @@ data:
 # an explanation if one process ever collects both.
 TORCH_TESTS = api/tests/test_advanced_autonomous.py \
               api/tests/test_autonomous_application.py \
-              api/tests/test_institutional_pipeline.py
+              api/tests/test_institutional_pipeline.py \
+              api/tests/test_institutional_components.py
 
 test-backend:
 	pytest api/tests --ignore=api/tests/integration $(addprefix --ignore=,$(TORCH_TESTS))
