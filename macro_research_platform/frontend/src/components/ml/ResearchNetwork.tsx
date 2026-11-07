@@ -2,22 +2,35 @@ import {useMemo,useState} from 'react';
 import {useChartTheme} from './ui/EChart';
 import {ResearchGraphCanvas} from './ResearchGraphCanvas';
 import {useResearchGraphQ} from './api';
+import {useStreamedPayload} from '@/store/mlStreamStore';
 import {KINDS,overviewGraph,safeResearchUrl,selectGraph} from './researchGraph';
 import type {ResearchGraph,ResearchNode} from './researchGraph';
 
 export function ResearchNetwork(){
- const q=useResearchGraphQ(),graph=q.data as ResearchGraph|undefined,t=useChartTheme();
+ // Prefer the pushed frame over the poll. The stream's research_graph channel samples
+ // api.ml.research_graph.build through asyncio.to_thread, which is exactly what the REST route
+ // returns, on the same 30s cadence — so the graph cannot differ between the two transports. The
+ // helper withholds it when the producer failed or the socket is no longer open, which resumes the
+ // poll as an automatic fallback.
+ const streamed=useStreamedPayload<ResearchGraph>('research_graph');
+ const q=useResearchGraphQ(streamed!==undefined),graph=(streamed??q.data) as ResearchGraph|undefined,t=useChartTheme();
  const [search,setSearch]=useState(''),[kind,setKind]=useState('all'),[selected,setSelected]=useState<string|null>(null),[focus,setFocus]=useState<string|null>(null),[detailed,setDetailed]=useState(false),[reset,setReset]=useState(0);
  const filtered=useMemo(()=>graph?selectGraph(detailed||search||kind!=='all'?graph:overviewGraph(graph),search,kind,focus):{nodes:[],edges:[]},[graph?.revision,search,kind,focus,detailed]);
  const node=filtered.nodes.find(n=>n.id===selected)??graph?.nodes.find(n=>n.id===selected);
  const connections=filtered.edges.filter(e=>e.source===selected||e.target===selected)??[];
  const colors=useMemo(()=>Object.fromEntries(KINDS.map((k,i)=>[k,t.series[i%t.series.length]])),[t]);
- if(q.isLoading)return <div role="status" className="p-6 text-sm">Loading research connections…</div>;
- if(q.error)return <div role="alert" className="p-6 text-sm">{String(q.error.message)} <button className="underline" onClick={()=>void q.refetch()}>Retry</button></div>;
+ // A pushed graph outranks the query's own pending and error states. The poll still mounts and
+ // fetches once even with its interval off, so gating on those first would blank or override a panel
+ // the stream has already filled. With no pushed graph the precedence is exactly as before: a failed
+ // fetch is reported even when the query still holds an older response.
+ if(!streamed){
+  if(q.isLoading)return <div role="status" className="p-6 text-sm">Loading research connections…</div>;
+  if(q.error)return <div role="alert" className="p-6 text-sm">{String(q.error.message)} <button className="underline" onClick={()=>void q.refetch()}>Retry</button></div>;
+ }
  if(!graph)return null;
  const sourceLink=(n:ResearchNode,url:string|undefined,label:string)=>{const safe=safeResearchUrl(url);return safe?<a key={n.id+label} href={safe} target="_blank" rel="noreferrer" className="text-blue-400 underline">{label}</a>:null;};
  return <section className="overflow-hidden rounded-xl border border-[var(--border-primary)] bg-[var(--bg-secondary)]" aria-label="Research evidence map">
-  <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border-primary)] p-4"><div><h2 className="font-semibold">Research evidence map</h2><p className="mt-1 text-xs text-[var(--text-secondary)]">Follow the evidence from data sources to research outputs. Sources, factors and forecasts in one view. Checks every 30 seconds.</p></div><button className="rounded border px-3 py-1 text-xs" onClick={()=>void q.refetch()} disabled={q.isFetching}>{q.isFetching?'Checking…':'Refresh evidence'}</button></header>
+  <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border-primary)] p-4"><div><h2 className="font-semibold">Research evidence map</h2><p className="mt-1 text-xs text-[var(--text-secondary)]">Follow the evidence from data sources to research outputs. Sources, factors and forecasts in one view. Revised every 30 seconds while this view is open, and polled instead if the push stream drops.</p></div><button className="rounded border px-3 py-1 text-xs" onClick={()=>void q.refetch()} disabled={q.isFetching}>{q.isFetching?'Checking…':'Refresh evidence'}</button></header>
   <div className="flex flex-wrap gap-3 p-4"><input aria-label="Search research network" placeholder="Search indicators, forecasts or papers…" value={search} onChange={e=>setSearch(e.target.value)} className="min-w-0 flex-1 rounded border bg-transparent px-3 py-2 text-sm"/>
    <select aria-label="Filter research network" value={kind} onChange={e=>setKind(e.target.value)} className="rounded border bg-[var(--bg-secondary)] px-3 text-sm"><option value="all">All connections</option>{KINDS.map(k=><option key={k} value={k}>{k}</option>)}</select>
    <button className="rounded border px-3 text-xs" aria-pressed={detailed} onClick={()=>{setDetailed(v=>!v);setSelected(null);setFocus(null);}}>{detailed?'Group factors':'Show individual factors'}</button>
