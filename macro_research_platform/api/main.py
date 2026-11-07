@@ -1169,11 +1169,12 @@ async def disconnect(sid):
     await _ml_stream_cleanup(sid)
 
 
-@sio.on("subscribe_market_data")
-async def subscribe_market_data(sid, data):
-    """Acknowledge a client's market-data subscription."""
-    logger.info(f"Client {sid} subscribed to market data")
-    await sio.emit("market_data_update", {"status": "subscribed"}, room=sid)
+# The market-data subscription moved into its own module so main.py does not grow another handler
+# block, and so the handler that acknowledges a subscription is the same one that starts sampling.
+# Registering a second `subscribe_market_data` here would silently replace the module's, because
+# python-socketio keeps one handler per event.
+from api.marketdata import socketio_market as _market_stream
+_market_stream.register(sio)
 
 
 @app.get("/api/health")
