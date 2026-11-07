@@ -17,6 +17,7 @@ import { EChart, axisStyle, chartTheme } from '@/components/ml/ui/EChart';
 import { DataGrid } from '@/components/ml/ui/DataGrid';
 import { Hint, Panel, RangeSlider, Segmented, Stat } from '@/components/ml/ui/Controls';
 import { DriftBullet } from '@/components/ml/DriftBullet';
+import { StreamBadge } from '@/components/ml/StreamBadge';
 import { useAuth } from '@/context/AuthContext';
 import { useNeuralStream } from '@/hooks/useNeuralStream';
 import { AutonomousStatus } from '@/components/ml/AutonomousStatus';
@@ -53,8 +54,8 @@ function Training({ d, onRetry }: { d: any; onRetry?: () => void }) {
 }
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
-function Toolbar({ tasks, period, setPeriod, picked, toggle, models, onExport }: {
-  tasks: any[] | undefined; period: string; setPeriod: (p: any) => void; picked: string[]; toggle: (m: string) => void; models: string[]; onExport?: () => void;
+function Toolbar({ tasks, period, setPeriod, picked, toggle, models, onExport, stream }: {
+  tasks: any[] | undefined; period: string; setPeriod: (p: any) => void; picked: string[]; toggle: (m: string) => void; models: string[]; onExport?: () => void; stream: ReturnType<typeof useNeuralStream>;
 }) {
   const sel = useMlTask();
   const tab = useMlTab();
@@ -72,6 +73,7 @@ function Toolbar({ tasks, period, setPeriod, picked, toggle, models, onExport }:
         {notReady.length > 0 && <button className="ml-btn" data-variant="primary" disabled={busy} onClick={async () => { setBusy(true); await Promise.all(notReady.map((x) => fetch(`/api/v1/ml/tasks/${x.task}`).catch(() => null))); setBusy(false); mlQueryClient.invalidateQueries({ queryKey: ['ml'] }); }}>
           <Play className="w-3 h-3" />{busy ? 'Starting…' : `Train ${notReady.length}`}</button>}
         {onExport && <button className="ml-btn" onClick={onExport}><Download className="w-3 h-3" />Export CSV</button>}
+        <StreamBadge {...stream} />
         <button className="ml-btn" onClick={() => mlQueryClient.invalidateQueries({ queryKey: ['ml'] })} aria-label="Refresh"><RefreshCw className="w-3 h-3" /></button>
       </div>
       {tab === 'lab' && models.length > 0 && <div className="w-full flex flex-wrap items-center gap-1.5">
@@ -585,7 +587,7 @@ function Method() {
   );
 }
 
-function Workbench() {
+function Workbench({ stream }: { stream: ReturnType<typeof useNeuralStream> }) {
   const tab = useMlTab();
   const tasksQ = useTasksQ();
   const sel = useMlTask();
@@ -601,7 +603,7 @@ function Workbench() {
   } : undefined;
   return (
     <div className="ml-shell">
-      <Toolbar tasks={tasksQ.data} period={period} setPeriod={setPeriod} picked={picked} toggle={toggle} models={models} onExport={exportCsv} />
+      <Toolbar tasks={tasksQ.data} period={period} setPeriod={setPeriod} picked={picked} toggle={toggle} models={models} onExport={exportCsv} stream={stream} />
       <nav className="ml-tabs" role="tablist" aria-label="Machine learning">
         {ML_TABS.map((x) => <button key={x.id} role="tab" aria-selected={tab === x.id} onClick={() => setMlTab(x.id)}>{x.label}</button>)}
       </nav>
@@ -620,11 +622,11 @@ function Workbench() {
 
 export function MlPage() {
   // Mount the push transport for the whole workbench. The backend samples a topic only while a
-  // socket is subscribed, so this is what turns the stream on; panels that have not migrated yet
-  // keep polling, and a migrated panel's poll resumes automatically if the socket drops.
+  // socket is subscribed, so this is what turns the stream on. All four observability panels now
+  // read it, and each one's poll resumes automatically if the socket drops or its producer fails.
   const { token } = useAuth();
-  useNeuralStream({ token });
-  return <QueryClientProvider client={mlQueryClient}><Workbench /></QueryClientProvider>;
+  const stream = useNeuralStream({ token });
+  return <QueryClientProvider client={mlQueryClient}><Workbench stream={stream} /></QueryClientProvider>;
 }
 
 export default MlPage;
