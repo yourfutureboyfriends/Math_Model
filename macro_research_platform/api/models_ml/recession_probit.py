@@ -79,6 +79,17 @@ class RecessionProbitModel:
         self.last_trained: str | None = None
         self.label_version = LABEL_VERSION
 
+    @property
+    def label_definition(self) -> str:
+        """The event this model's probability answers, in words.
+
+        Defined once so the fit record and every prediction cannot drift apart. "12 months" on
+        its own is ambiguous between "in recession at month t+12" and "in recession at some point
+        in the next 12 months"; the two differ on 99 of 780 months since 1960, and the second is
+        what this model trains on and what the ensemble and challenger beside it also use.
+        """
+        return f'any recession month in (t, t+{self.horizon}]'
+
     def _nber_indicator(
         self, index: pd.DatetimeIndex
     ) -> pd.Series:
@@ -180,7 +191,7 @@ class RecessionProbitModel:
             # (recession at exactly t+horizon) and this window one differ on 99 of 780 months,
             # and the ensemble beside this model uses the window too.
             'label_version': self.label_version,
-            'label_definition': f'any recession month in (t, t+{self.horizon}]',
+            'label_definition': self.label_definition,
             'trained_at':  self.last_trained,
             'papers': [
                 'Estrella & Mishkin (1998) REStat 80(1)',
@@ -266,7 +277,12 @@ class RecessionProbitModel:
                 'fed_funds_rate': round(fed_funds, 3),
             },
             'model':    'Probit',
-            'horizon':  '12 months',
+            'horizon':  f'{self.horizon} months',
+            # "12 months" on its own does not say which event is being predicted. This is the
+            # probability of any recession month inside the window, not of month t+12 specifically
+            # — the two differ on 99 of 780 months, so the number is not interpretable without it.
+            'label_definition': self.label_definition,
+            'label_version': self.label_version,
             'paper':    'Estrella & Mishkin (1998)',
             'pseudo_r2': self.fit_stats.get('pseudo_r2'),
         }
@@ -331,6 +347,16 @@ class RecessionProbitModel:
             'ci_upper':       min(1.0, round(prob+0.07, 4)),
             'interpretation': 'Rule-based (Probit not fitted)',
             'model':          'Fallback',
+            # The ladder above is the published 12-month table, so this path declares 12 months
+            # literally rather than inheriting self.horizon, which could disagree with it. It is
+            # still the same window event the fitted model targets — "any month in the next 12",
+            # not "month t+12" — and declaring it on both paths matters because
+            # api/calculations/metrics.py serves this one as the second-choice headline whenever
+            # the ensemble times out, and nothing downstream could previously tell which model, or
+            # which question, produced the number.
+            'horizon':          '12 months',
+            'label_definition': 'any recession month in (t, t+12]',
+            'label_version':    self.label_version,
             'paper':          'Estrella & Mishkin (1998) Table 1',
         }
 

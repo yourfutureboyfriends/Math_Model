@@ -105,3 +105,33 @@ def test_a_persisted_fit_from_an_earlier_label_definition_is_refused(tmp_path, m
     persist()                                         # __init__ stamps the current version
     loaded = rp._load_persisted()
     assert loaded is not None and loaded.label_version == rp.LABEL_VERSION
+
+
+def test_the_served_payload_says_which_event_the_probability_answers():
+    """Both prediction paths serve a headline number — api/calculations/metrics.py falls back to
+    the rule-based one when the ensemble times out — so both must declare the event. Putting the
+    wording only in fit_stats, as an earlier change did, reaches nobody: nothing serves fit_stats.
+    """
+    from api.models_ml.recession_probit import LABEL_VERSION, RecessionProbitModel
+
+    m = RecessionProbitModel(horizon_months=12)
+    assert m.label_definition == "any recession month in (t, t+12]"
+
+    out = m.predict(-0.8, 4.5)                        # unfitted -> the rule-based path
+    assert out["model"] == "Fallback"
+    assert out["label_definition"] == "any recession month in (t, t+12]"
+    assert out["label_version"] == LABEL_VERSION
+    assert out["horizon"] == "12 months"
+    # the wording must name the window, not the point event the model used to be trained on
+    assert "any recession month" in out["label_definition"]
+
+
+def test_the_fitted_definition_follows_the_horizon_but_the_fallback_does_not():
+    """The fallback is the published 12-month table, so it must keep declaring 12 months even if
+    the instance is configured for another horizon — otherwise it would misdescribe itself."""
+    from api.models_ml.recession_probit import RecessionProbitModel
+
+    assert RecessionProbitModel(horizon_months=6).label_definition == "any recession month in (t, t+6]"
+    fallback = RecessionProbitModel(horizon_months=24).predict(-0.8, 4.5)
+    assert fallback["label_definition"] == "any recession month in (t, t+12]"
+    assert fallback["horizon"] == "12 months"
