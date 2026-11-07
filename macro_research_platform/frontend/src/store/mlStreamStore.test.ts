@@ -1,10 +1,13 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { act, createElement } from 'react';
+import { createRoot } from 'react-dom/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   type StreamFrame,
   readFrame,
   readPayload,
   useMlStreamStore,
+  useStreamedPayload,
 } from './mlStreamStore';
 
 const frame = (channel: string, overrides: Partial<StreamFrame> = {}): StreamFrame => ({
@@ -126,5 +129,69 @@ describe('non-reactive reads', () => {
     expect(readPayload('deep_live')).toBeUndefined();
     // The frame itself is still readable, so a panel can show the fault and its reason.
     expect(readFrame('deep_live')?.error).toBe('collector unavailable');
+  });
+});
+
+describe('useStreamedPayload', () => {
+  let host: HTMLDivElement, root: ReturnType<typeof createRoot>, seen: unknown;
+
+  // The hook is the single place the "is this frame current?" rule lives, so it is tested directly
+  // rather than only through whichever panel happens to have migrated.
+  function Probe({ channel }: { channel: string }) {
+    seen = useStreamedPayload(channel);
+    return null;
+  }
+
+  const mount = async () => {
+    host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => { root.render(createElement(Probe, { channel: 'deep_live' })); });
+  };
+  const push = (overrides: Partial<StreamFrame> = {}) =>
+    act(() => { useMlStreamStore.getState().accept(frame('deep_live', overrides)); });
+
+  beforeEach(() => { vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); useMlStreamStore.getState().reset(); seen = 'unset'; });
+  afterEach(() => { act(() => root.unmount()); host.remove(); useMlStreamStore.getState().reset(); vi.unstubAllGlobals(); });
+
+  it('serves a good frame while the socket is open', async () => {
+    act(() => useMlStreamStore.getState().setStatus('open'));
+    push({ payload: { value: 7 } });
+    await mount();
+    expect(seen).toEqual({ value: 7 });
+  });
+
+  it('withholds a good frame under every status that is not open', async () => {
+    // Nothing expires a frame, so a panel that trusted the frame alone would serve this reading
+    // indefinitely after a drop, with its own poll switched off because it believed it was pushed.
+    push({ payload: { value: 7 } });
+    await mount();
+    for (const status of ['idle', 'connecting', 'closed', 'unauthorized', 'error'] as const) {
+      act(() => useMlStreamStore.getState().setStatus(status));
+      expect(seen, status).toBeUndefined();
+    }
+  });
+
+  it('withholds a failed frame even while the socket is open', async () => {
+    act(() => useMlStreamStore.getState().setStatus('open'));
+    push({ ok: false, payload: null, error: 'collector unavailable' });
+    await mount();
+    expect(seen).toBeUndefined();
+  });
+
+  it('hands a panel back to its poll when the socket drops after a good frame', async () => {
+    act(() => useMlStreamStore.getState().setStatus('open'));
+    push({ payload: { value: 7 } });
+    await mount();
+    expect(seen).toEqual({ value: 7 });
+    // Reactive, so the drop re-renders the panel rather than leaving it on the last value.
+    act(() => useMlStreamStore.getState().setStatus('closed'));
+    expect(seen).toBeUndefined();
+  });
+
+  it('is undefined before any frame arrives', async () => {
+    act(() => useMlStreamStore.getState().setStatus('open'));
+    await mount();
+    expect(seen).toBeUndefined();
   });
 });

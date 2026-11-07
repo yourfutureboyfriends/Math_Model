@@ -85,3 +85,21 @@ export function readPayload<T = unknown>(channel: string): T | undefined {
   const frame = readFrame(channel);
   return frame && frame.ok ? (frame.payload as T) : undefined;
 }
+
+/** The payload a panel should serve, or undefined when it must fall back to its own poll.
+ *
+ * Reactive, for panels that re-render. Two conditions, and the second is the one that is easy to
+ * miss: a frame is only current while the socket that delivered it is still open. `accept` keeps
+ * the newest frame per channel and nothing expires it, so after a dropped connection the last good
+ * frame would otherwise be served indefinitely — with the poll switched off, because the panel
+ * concluded it was being pushed to. A frozen reading that looks live is worse than a visible gap,
+ * so a closed, connecting or refused socket hands every panel back to its poll.
+ *
+ * A frame whose producer raised (ok=false) is withheld for the same reason: its payload is null,
+ * and the poll behind it has its own error state to report.
+ */
+export function useStreamedPayload<T = unknown>(channel: string): T | undefined {
+  const frame = useMlStreamStore((s) => s.frames[channel]);
+  const status = useMlStreamStore((s) => s.status);
+  return status === 'open' && frame?.ok ? (frame.payload as T) : undefined;
+}

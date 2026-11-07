@@ -1,13 +1,13 @@
 import {Panel} from './ui/Controls';
 import {useOnlineStatusQ} from './api';
-import {useMlStreamStore} from '@/store/mlStreamStore';
+import {useStreamedPayload} from '@/store/mlStreamStore';
 const date=(v:any)=>typeof v==='number'?new Date(v*1000).toISOString().replace('T',' ').slice(0,19)+' UTC':'Awaiting first update';
 export function OnlineDataStatus(){
  // Prefer the pushed frame over the poll. The stream samples the same api.ml.online.status function
- // the REST route returns, on the same 30s cadence, so the payload is identical by construction. A
- // frame whose producer failed reads as undefined, which resumes the poll as an automatic fallback.
- const frame=useMlStreamStore((s)=>s.frames.online_status);
- const streamed=frame?.ok?frame.payload:undefined;
+ // the REST route returns, on the same 30s cadence, so the payload is identical by construction.
+ // The helper withholds it when the producer failed or the socket is no longer open, which resumes
+ // the poll as an automatic fallback.
+ const streamed=useStreamedPayload('online_status');
  const q=useOnlineStatusQ(streamed!==undefined),d=streamed??q.data;
  return <Panel title="Continuous financial data & learning" sub="Automatic provider checks, accepted data versions and learning readiness.">
  {!d?<p className="text-xs">{q.isError?'Provider supervision status is unavailable.':'Loading provider supervision…'}</p>:<>
