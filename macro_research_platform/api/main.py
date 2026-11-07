@@ -921,6 +921,13 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    # Stop the stream's sampling loops before the scheduler, so no frame is built against a
+    # half-torn-down app.
+    try:
+        await _ml_stream_bridge.shutdown()
+    except Exception as e:
+        logger.warning(f"[SHUTDOWN] ML stream shutdown error: {e}")
+
     # Shutdown: gracefully stop scheduler and remove port file
     logger.info("[SHUTDOWN] Stopping APScheduler")
     try:
@@ -1139,6 +1146,14 @@ async def get_port_info():
     }
 
 
+# ML observability stream (api/ml/stream.py). Registered here rather than inline so this module
+# does not grow another handler block. It returns the per-client cleanup that disconnect awaits,
+# because python-socketio keeps one handler per event: a second `disconnect` registered in the
+# bridge would silently replace the one below, or be replaced by it.
+from api.ml import socketio_bridge as _ml_stream_bridge
+_ml_stream_cleanup = _ml_stream_bridge.register(sio)
+
+
 @sio.event
 async def connect(sid, environ):
     """Socket.IO connection opened."""
@@ -1150,6 +1165,8 @@ async def connect(sid, environ):
 async def disconnect(sid):
     """Socket.IO connection closed."""
     logger.info(f"Client disconnected: {sid}")
+    # Drop this client's stream sinks, or the broadcaster keeps sampling a topic nobody reads.
+    await _ml_stream_cleanup(sid)
 
 
 @sio.on("subscribe_market_data")
