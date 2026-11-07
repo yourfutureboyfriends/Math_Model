@@ -3,11 +3,21 @@ import {Panel,RangeSlider,Segmented} from './ui/Controls';
 import {EChart,axisStyle,chartTheme} from './ui/EChart';
 import {measuredFlowOption,flowPoint} from './liveFlow';
 import {useLiveStateQ,refreshLiveState} from './api';
+import {useStreamedPayload} from '@/store/mlStreamStore';
 const number=(v:any,d=3)=>typeof v==='number'&&Number.isFinite(v)?v.toFixed(d):'—';
 export function LiveModularFlow(){
- const q=useLiveStateQ(),d=q.data,trace=d?.trace;
+ // Prefer the pushed frame over the poll. The deep_live channel samples api.ml.live.status, the same
+ // function the REST route returns; it reads trace/training JSON off disk and the in-process job
+ // dict, so running it in a worker thread rather than on the event loop cannot change the value.
+ const streamed=useStreamedPayload('deep_live'),live=streamed!==undefined;
+ const q=useLiveStateQ(live),d=streamed??q.data,trace=d?.trace;
  const [seed,setSeed]=useState(0),[step,setStep]=useState(23),[playing,setPlaying]=useState(false),[follow,setFollow]=useState(true),[error,setError]=useState('');
- useEffect(()=>{let active=true;const update=()=>refreshLiveState().catch(e=>{if(active)setError(String(e.message));});void update();const timer=setInterval(update,60000);return()=>{active=false;clearInterval(timer);};},[]);
+ // While the stream is delivering, the broadcaster is already kicking api.ml.live.request_refresh
+ // once a minute for as long as a socket is subscribed — which is what this timer did, except that
+ // it kept asking after the view went away. Only the polled fallback needs it, because nothing else
+ // would request a new measurement. request_refresh coalesces under a lock to one subprocess a
+ // minute, so the two paths could never have double-spawned; this removes the redundant one.
+ useEffect(()=>{if(live)return;let active=true;const update=()=>refreshLiveState().catch(e=>{if(active)setError(String(e.message));});void update();const timer=setInterval(update,60000);return()=>{active=false;clearInterval(timer);};},[live]);
  useEffect(()=>{if(trace){setSeed(v=>Math.min(v,trace.seeds.length-1));if(follow)setStep(trace.months.length-1);else setStep(v=>Math.min(v,trace.months.length-1));}},[trace?.input_digest,trace?.trained_at,follow]);
  useEffect(()=>{if(!playing||!trace)return;const timer=setInterval(()=>setStep(v=>{if(v>=trace.months.length-1){setPlaying(false);return v;}return v+1;}),650);return()=>clearInterval(timer);},[playing,trace?.input_digest]);
  const [theme,setTheme]=useState(()=>chartTheme());
@@ -39,6 +49,6 @@ export function LiveModularFlow(){
    </div>
    <p className="text-[10px] text-text-tertiary mt-3">{trace.note} {d?.cadence}</p>
   </>}
-  {(error||d?.job?.error||q.isError)&&<p role="alert" className="text-xs text-red mt-3">{error||d?.job?.error||'Live state is temporarily unreachable; the last measured state is retained.'}</p>}
+  {(error||d?.job?.error||(!live&&q.isError))&&<p role="alert" className="text-xs text-red mt-3">{error||d?.job?.error||'Live state is temporarily unreachable; the last measured state is retained.'}</p>}
  </Panel>;
 }

@@ -54,7 +54,8 @@ export function useVisualizerQ(name:string) {
 }
 export const useDeepStatusQ=()=>useQuery({queryKey:['ml','deep-status'],queryFn:()=>get('/api/v1/ml/deep/status'),refetchInterval:10000});
 
-export function useLiveStateQ(){return useQuery({queryKey:['ml','live-state'],queryFn:()=>get('/api/v1/ml/deep/live'),refetchInterval:2000});}
+/** `live` stops the poll while the pushed stream is delivering this panel's frames. */
+export function useLiveStateQ(live=false){return useQuery({queryKey:['ml','live-state'],queryFn:()=>get('/api/v1/ml/deep/live'),refetchInterval:live?false:2000});}
 export async function refreshLiveState(){
  const response=await fetch('/api/v1/ml/deep/live/refresh',{method:'POST'});
  if(!response.ok)throw new Error('Could not refresh measured network state');
