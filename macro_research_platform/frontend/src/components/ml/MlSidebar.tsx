@@ -1,9 +1,9 @@
-import { Activity, BookOpen, FlaskConical, Gauge, Library, Network, Radar, Sparkles } from 'lucide-react';
+import { Activity, BookOpen, FlaskConical, Gauge, Layers, Library, Network, Radar, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { pct } from '@/lib/format';
-import { KNOWN_TASKS, ML_TABS, setMlTab, setMlTask, useMlTab, useMlTask, useTasks } from './mlShared';
+import { KNOWN_TASKS, ML_TABS, setMlTab, setMlTask, useMlTab, useMlTask, useTasks, type MlTab } from './mlShared';
 
-const ICONS = { overview: Activity, lab: FlaskConical, visualizer: Network, explain: Sparkles, monitoring: Gauge, registry: Library, knowledge: Radar, method: BookOpen };
+const ICONS: Record<MlTab, typeof Activity> = { overview: Activity, lab: FlaskConical, sections: Layers, visualizer: Network, explain: Sparkles, monitoring: Gauge, registry: Library, knowledge: Radar, method: BookOpen };
 
 /** ML area navigation: its tabs, then every task with its current signal (click to open its network). */
 export function MlSidebar({ collapsed = false }: { collapsed?: boolean }) {

@@ -29,9 +29,11 @@ import { NeuralFlow } from '@/components/ml/NeuralFlow';
 import { mlQueryClient, send, useFeaturesQ, useHistoryQ, useInputsQ, useVisualizerQ, useKnowledgeQ, useRegistryQ, useTaskQ, useTasksQ } from '@/components/ml/api';
 import { KNOWN_TASKS, ML_TABS, ensemble, forward, validWeights, setMlTab, setMlTask, skillText, useMlTab, useMlTask, type Weights } from '@/components/ml/mlShared';
 
-const MODEL_ORDER = ['champion', 'network', 'factor_logit', 'factor_network', 'forest', 'boosting', 'regime_switch', 'deep_sequence', 'average'];
+const MODEL_ORDER = ['champion', 'network', 'factor_logit', 'factor_network', 'forest', 'boosting', 'regime_switch', 'deep_sequence', 'sections', 'autonomous_tft', 'average'];
 const SHORT: Record<string, string> = { champion: 'Logistic', network: 'Neural net', factor_logit: 'Factor', factor_network: 'Factor NN', forest: 'Forest',
-  boosting: 'Boosting', regime_switch: 'Regime', deep_sequence: 'Deep GRU', average: 'Average' };
+  boosting: 'Boosting', regime_switch: 'Regime', deep_sequence: 'Deep GRU', sections: 'Sections', autonomous_tft: 'Autonomous TFT', average: 'Average' };
+/** A model's short label; unknown keys are shown as sent rather than as a blank. */
+const short = (m: string | undefined | null) => (m ? SHORT[m] ?? m : '—');
 const PICK_KEY = 'ml_compare';
 const span = (n: number) => ({ gridColumn: `span ${n} / span ${n}` });
 const toneOf = (v: number | null | undefined) => (v == null ? '' : v > 0 ? 'text-green' : v < 0 ? 'text-red' : '');
@@ -119,9 +121,11 @@ function Overview({ tasks }: { tasks: any[] | undefined }) {
       // frontend when the server has not answered — an invented definition is worse than none.
       <span className="text-text-primary" title={[c.row.original.question, ...(c.row.original.notes ?? [])].filter(Boolean).join(' ') || undefined}>{c.getValue()}</span>) },
     { header: 'Signal', accessorFn: (r) => r.signal?.probability, meta: { numeric: true }, cell: (c) => <b>{c.getValue() == null ? '—' : pct(c.getValue())}</b> },
-    { header: 'Model', accessorFn: (r) => r.signal?.model, cell: (c) => c.getValue() ? <span className="ml-pill" data-tone="prod">{SHORT[c.getValue()]}</span> : <span className="text-text-tertiary">training…</span> },
+    { header: 'Model', accessorFn: (r) => r.signal?.model, cell: (c) => c.getValue() ? (c.getValue() === 'autonomous_tft'
+      ? <Hint text="Promoted by automated evidence gates without a PM or risk approval"><span className="ml-pill" data-tone="warn">{short(c.getValue())} · no sign-off</span></Hint>
+      : <span className="ml-pill" data-tone="prod">{short(c.getValue())}</span>) : <span className="text-text-tertiary">training…</span> },
     { header: 'Skill', accessorFn: (r) => r.signal?.skill_vs_base_rate, meta: { numeric: true, title: 'Out-of-sample Brier skill vs the base rate' }, cell: (c) => <span className={toneOf(c.getValue())}>{skillText(c.getValue())}</span> },
-    { header: 'Best record', accessorFn: (r) => r.best_by_record, cell: (c) => c.getValue() ? `${SHORT[c.getValue()]} (${skillText(c.row.original.models?.[c.getValue()]?.skill)})` : '—' },
+    { header: 'Best record', accessorFn: (r) => r.best_by_record, cell: (c) => c.getValue() ? `${short(c.getValue())} (${skillText(c.row.original.models?.[c.getValue()]?.skill)})` : '—' },
     { header: 'Network range', accessorFn: (r) => r.network_probability, meta: { numeric: true }, cell: (c) => c.getValue() == null ? '—' : `${pct(c.getValue())} (${pct(c.row.original.network_range[0])}–${pct(c.row.original.network_range[1])})` },
     { header: 'Data', accessorFn: (r) => r.flags?.length ?? 0, cell: (c) => c.row.original.ready ? (c.getValue() ? <span className="ml-pill" data-tone="warn">⚠ {c.getValue()}</span> : <span className="ml-pill" data-tone="ok">✓ OK</span>) : '—' },
     { header: 'Used for', accessorKey: 'used_for', cell: (c) => <span className="text-text-tertiary">{c.getValue()}</span> },
@@ -143,7 +147,8 @@ function Overview({ tasks }: { tasks: any[] | undefined }) {
        {deep.continual&&<div className="mt-3 text-xs space-y-2"><p>Automatic learning: {deep.continual.enabled?'On':'Off'} · {deep.continual.action??'Awaiting first check'} · Architecture: {deep.configured.architecture}</p><p className="text-text-tertiary">{deep.continual.schedule} Research refits are normally weekly; newly matured outcomes can permit a daily update. All incoming data must pass quality checks.</p><p className="text-text-tertiary">{deep.continual.policy}</p>{deep.continual.observation&&<p>Latest learning inputs: {deep.continual.observation.as_of} · {deep.continual.observation.months} months · {deep.continual.observation.tasks?.length} tasks. {deep.continual.observation.limitation}</p>}{deep.continual.error&&<p role="alert">{deep.continual.error}</p>}</div>}
        {deep.routing?.length>0&&<div className="mt-3"><p className="text-xs font-medium">Latest specialist routing</p><div className="grid sm:grid-cols-3 gap-2 mt-2">{Object.keys(deep.routing[0]).map((name:string)=>{const weight=deep.routing.reduce((sum:number,row:any)=>sum+(row[name]??0),0)/deep.routing.length;return <div key={name} className="text-xs border border-border rounded p-2"><span>{name.replace(/_/g,' ')}</span><span className="float-right font-mono">{(weight*100).toFixed(1)}%</span><div className="h-1 bg-border rounded mt-2"><div className="h-1 bg-amber rounded" style={{width:`${Math.max(0,Math.min(100,weight*100))}%`}}/></div></div>;})}</div><p className="text-[10px] text-text-tertiary mt-2">Learned internal routing weights averaged across seeds; these are not causal importance or portfolio allocations.</p></div>}
        <details className="mt-3 text-xs"><summary>Available capacity profiles</summary><div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr><th>Profile</th><th>Hidden units</th><th>Layers</th><th>Attention</th></tr></thead><tbody>{Object.entries(deep.profiles).map(([name,c]:[string,any])=><tr key={name}><td>{name}</td><td>{c.hidden}</td><td>{c.layers}</td><td>{c.attention_heads}</td></tr>)}</tbody></table></div><p className="text-text-tertiary mt-2">{deep.limits} The server’s configuration selects the profile; no profile is certified more accurate before testing.</p></details>
-       <button className="ml-btn mt-3" disabled={deepBusy||deep.training} onClick={async()=>{setDeepBusy(true);setDeepMessage('');try{await send('/api/v1/ml/deep/retrain','POST');setDeepMessage('Research rebuild queued. Existing promotion gates remain in force.');reg.refetch();}catch(e){setDeepMessage(e instanceof Error?e.message:'Could not queue training.');}finally{setDeepBusy(false);}}}>Rebuild research record</button>{deepMessage&&<p role="status" className="text-xs mt-2">{deepMessage}</p>}{deep.error&&<p role="alert" className="text-xs text-red mt-2">{deep.error}</p>}
+       <button className="ml-btn mt-3" disabled={deepBusy||deep.training} onClick={async()=>{setDeepBusy(true);setDeepMessage('');try{await send('/api/v1/ml/deep/retrain','POST');setDeepMessage('Research rebuild queued. Existing promotion gates remain in force.');reg.refetch();}catch(e){setDeepMessage(e instanceof Error?e.message:'Could not queue training.');}finally{setDeepBusy(false);}}}>Rebuild research record</button><button className="ml-btn mt-3 ml-2" disabled={deepBusy} title="Check for changed validated inputs or newly matured answers and run a research refit if due (PM or quant)"
+         onClick={async()=>{setDeepBusy(true);setDeepMessage('');try{const r:any=await send('/api/v1/ml/deep/learn','POST');setDeepMessage(r?.action?`Learning cycle: ${r.action}.`:'Learning cycle checked. Promotion gates are unchanged.');reg.refetch();}catch(e){setDeepMessage(e instanceof Error?e.message:'Could not run the learning cycle.');}finally{setDeepBusy(false);}}}>Run learning cycle</button>{deepMessage&&<p role="status" className="text-xs mt-2">{deepMessage}</p>}{deep.error&&<p role="alert" className="text-xs text-red mt-2">{deep.error}</p>}
       </Panel>}
       <AutonomousStatus/>
       <OnlineDataStatus/>
@@ -244,6 +249,7 @@ function ModelLab({ period, picked }: { period: string; picked: string[] }) {
   ];
   return (
     <div className="space-y-2.5">
+      <AutonomousNotice d={d} />
       <Panel title={`Leaderboard — ${d.title}`} sub={<>
         {/* Every probability on this page answers the question below, not the short title above it. */}
         {d.question && <span className="block">{d.question}</span>}
@@ -511,7 +517,7 @@ function Registry() {
   ];
   const auditCols: ColumnDef<any, any>[] = [
     { header: 'Logged', accessorKey: 'logged_at', cell: (c) => c.getValue()?.slice(0, 16).replace('T', ' ') }, { header: 'Task', accessorKey: 'task' },
-    { header: 'Model', accessorKey: 'model', cell: (c) => SHORT[c.getValue()] ?? c.getValue() }, { header: 'Month', accessorKey: 'month' },
+    { header: 'Model', accessorKey: 'model', cell: (c) => short(c.getValue()) }, { header: 'Month', accessorKey: 'month' },
     { header: 'Probability', accessorKey: 'probability', meta: { numeric: true }, cell: (c) => pct(c.getValue()) },
   ];
   return (
@@ -626,6 +632,98 @@ function Method() {
   );
 }
 
+/** Shown wherever a task's served signal came from the autonomous model, which is promoted by automated evidence gates
+ *  rather than the PM / risk approval the other challengers need. */
+function AutonomousNotice({ d }: { d: any }) {
+  if (d?.promotion?.requires_human_approval !== false && d?.signal?.model !== 'autonomous_tft') return null;
+  const prov = d.autonomous_provenance ?? {};
+  return (
+    <div className="ml-panel" role="note"><div className="ml-panel-body text-xs flex flex-wrap items-center gap-2">
+      <span className="ml-pill" data-tone="warn">Autonomous model serving</span>
+      <span className="text-text-secondary">This task's signal comes from the autonomous TFT/GAT model, promoted by automated evidence gates <b>without a PM or risk approval</b>.
+        {prov.model_id ? ` Model ${String(prov.model_id).slice(0, 12)}, forecast origin ${String(prov.origin ?? '').slice(0, 16).replace('T', ' ')}.` : ''}
+        {d.legacy_signal?.probability != null ? ` The approved champion would read ${pct(d.legacy_signal.probability)}.` : ''}</span>
+    </div></div>
+  );
+}
+
+/** Section experts and the situation gate: what each economic section says, how much it is trusted now, and its own
+ *  out-of-sample record. Data: the task's `sections_detail` and the `sections` model record. */
+function Sections() {
+  const sel = useMlTask();
+  const q = useTaskQ(sel);
+  const d = q.data;
+  const t = chartTheme();
+  if (!d?.available) return q.isLoading ? <Skeleton /> : <Training d={d} onRetry={() => q.refetch()} />;
+  const sx = d.sections_detail;
+  const m = d.models?.sections;
+  if (!sx) return (
+    <Panel title="Section experts not computed for this month yet">
+      <p className="text-xs text-text-secondary">They are built with the task's monthly retrain. After a backend update the first request retrains the task, and this view fills in once it finishes.</p>
+    </Panel>);
+  const rows = [...sx.sections].sort((a: any, b: any) => (b.weight_now ?? 0) - (a.weight_now ?? 0));
+  const ax = axisStyle(t);
+  const weightOpt = {
+    legend: { show: false }, toolbox: { show: false },
+    grid: { left: 8, right: 48, top: 8, bottom: 8, containLabel: true },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (ps: any[]) => { const r = rows[rows.length - 1 - ps[0].dataIndex];
+      return `<b>${r.label}</b><br/>weight now ${pct(r.weight_now ?? 0)}<br/>section says ${r.probability == null ? 'no reading' : pct(r.probability)}`; } },
+    xAxis: { type: 'value', max: 1, ...ax, axisLabel: { ...ax.axisLabel, formatter: (v: number) => `${Math.round(v * 100)}%` } },
+    yAxis: { type: 'category', data: [...rows].reverse().map((r: any) => r.label), ...ax },
+    series: [{ type: 'bar', barMaxWidth: 14, data: [...rows].reverse().map((r: any) => ({ value: r.weight_now ?? 0,
+      itemStyle: { color: r.available ? t.series[0] : t.muted, borderRadius: [0, 3, 3, 0] } })),
+      label: { show: true, position: 'right', fontSize: 10, color: t.text, formatter: (p: any) => { const r = rows[rows.length - 1 - p.dataIndex]; return r.probability == null ? 'n/a' : pct(r.probability); } } }],
+  };
+  const contrib = [...sx.sections].filter((r: any) => r.available).sort((a: any, b: any) => Math.abs(a.contribution) - Math.abs(b.contribution));
+  const contribOpt = {
+    legend: { show: false }, toolbox: { show: false },
+    grid: { left: 8, right: 16, top: 8, bottom: 8, containLabel: true },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(3)} log-odds` },
+    xAxis: { type: 'value', ...ax },
+    yAxis: { type: 'category', data: contrib.map((r: any) => r.label), ...ax },
+    series: [{ type: 'bar', barMaxWidth: 14, data: contrib.map((r: any) => ({ value: r.contribution, itemStyle: { color: r.contribution >= 0 ? t.red : t.green } })),
+      markLine: { symbol: 'none', silent: true, data: [{ xAxis: 0 }], lineStyle: { color: t.borderStrong }, label: { show: false } } }],
+  };
+  const cols: ColumnDef<any, any>[] = [
+    { header: 'Section', accessorKey: 'label', enableHiding: false, cell: (c) => <span className="text-text-primary">{c.getValue()}</span> },
+    { header: 'Inputs', accessorKey: 'inputs', meta: { numeric: true } },
+    { header: 'Reading now', accessorKey: 'probability', meta: { numeric: true }, cell: (c) => (c.getValue() == null ? <span className="text-text-tertiary">no data</span> : pct(c.getValue())) },
+    { header: 'Weight now', accessorKey: 'weight_now', meta: { numeric: true }, cell: (c) => (c.getValue() == null ? '—' : pct(c.getValue())) },
+    { header: 'OOS skill', accessorFn: (r) => r.record?.skill_vs_base_rate, meta: { numeric: true, title: 'Out-of-sample Brier skill against the base rate (raw, uncalibrated)' },
+      cell: (c) => (c.getValue() == null ? '—' : <span className={toneOf(c.getValue())}>{skillText(c.getValue())}</span>) },
+    { header: 'AUROC', accessorFn: (r) => r.record?.auroc, meta: { numeric: true }, cell: (c) => c.getValue() ?? '—' },
+    { header: 'Record from', accessorFn: (r) => r.record?.from, cell: (c) => c.getValue() ?? '—' },
+    { header: 'Strongest inputs', accessorFn: (r) => (r.top_inputs ?? []).map((x: any) => x.label).join(', '), enableSorting: false,
+      cell: (c) => <span className="text-text-secondary">{(c.row.original.top_inputs ?? []).slice(0, 3).map((x: any) => `${x.label} (${x.coef > 0 ? '↑' : '↓'})`).join(' · ') || '—'}</span> },
+  ];
+  const on = sx.situation.filter((s: any) => s.on);
+  return (
+    <div className="space-y-2.5">
+      <AutonomousNotice d={d} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+        <Stat label="Sections model" value={m?.probability != null ? pct(m.probability) : '—'} delta={`raw ${pct(sx.probability_raw)} · calibrated on its own record`} />
+        <Stat label="Walk-forward skill" value={skillText(m?.record?.skill_vs_base_rate)} tone={(m?.record?.skill_vs_base_rate ?? 0) > 0 ? 'good' : 'warn'} delta={m?.gate ? 'promotion gate: ' + m.gate : 'shadow challenger'} />
+        <Stat label="Inputs" value={sx.inputs_total} delta={`${sx.sections.filter((r: any) => r.available).length} of ${sx.sections.length} sections reading now`} />
+        <Stat label="Gate" value={sx.method === 'gate' ? 'Track record' : 'Anchor only'} delta={sx.method === 'gate' ? 'weights from each section\'s earlier out-of-sample skill' : 'not enough history for the gate yet'} />
+      </div>
+      <Panel title={`Situation now · ${sx.as_of}`} sub="Point-in-time rules. In each situation the gate weights the sections by how they did in earlier months with the same situation (shrunk towards their overall record when a situation is rare).">
+        <div className="flex flex-wrap gap-1.5">{sx.situation.map((s: any) => <span key={s.key} className="ml-pill" data-tone={s.on ? 'warn' : undefined}>{s.on ? '● ' : '○ '}{s.label}</span>)}</div>
+        <p className="text-2xs text-text-tertiary mt-2">{on.length ? `${on.length} situation${on.length > 1 ? 's' : ''} active — the weights reflect the sections' record in such months.` : 'No situation active — the weights reflect each section\'s overall record.'}</p>
+      </Panel>
+      <div className="ml-grid-12">
+        <div style={span(6)} className="ml-span-6"><Panel title="Who the model trusts now" sub="Each section's weight in today's forecast; the label is what that section alone says. Grey = no reading (too few of its inputs this month).">
+          <EChart option={weightOpt} height={Math.max(220, rows.length * 28)} ariaLabel="Section weights now" /></Panel></div>
+        <div style={span(6)} className="ml-span-6"><Panel title="What moved the forecast" sub="Each section's contribution to the combined log-odds (weight × its log-odds). Red raises the probability, green lowers it.">
+          <EChart option={contribOpt} height={Math.max(220, rows.length * 28)} ariaLabel="Section contributions" /></Panel></div>
+      </div>
+      <Panel title="Sections and their records" sub="Every section's own out-of-sample record, refit each January on answers known then. A section with a weak record gets little or no weight.">
+        <DataGrid data={sx.sections} columns={cols} initialSort={[{ id: 'weight_now', desc: true }]} filterPlaceholder="Filter sections…" />
+      </Panel>
+      <p className="text-2xs text-text-tertiary">Sections model: a challenger like the others — logged and scored monthly, and served only after the promotion gate and a PM or risk approval. Monthly macro samples are short; more inputs do not by themselves mean more accuracy, which is why its weights come from each section's earlier out-of-sample record rather than a fitted combination.</p>
+    </div>
+  );
+}
+
 function Workbench({ stream }: { stream: ReturnType<typeof useNeuralStream> }) {
   const tab = useMlTab();
   const tasksQ = useTasksQ();
@@ -649,6 +747,7 @@ function Workbench({ stream }: { stream: ReturnType<typeof useNeuralStream> }) {
       {tasksQ.isError && <div className="ml-panel"><div className="ml-panel-body text-xs text-amber">Could not reach the ML engine — {(tasksQ.error as Error).message}. Retrying…</div></div>}
       {tab === 'overview' && <Overview tasks={tasksQ.data} />}
       {tab === 'lab' && <ModelLab period={period} picked={picked} />}
+      {tab === 'sections' && <Sections />}
       {tab === 'visualizer' && <Visualizer />}
       {tab === 'explain' && <Explain />}
       {tab === 'monitoring' && <Monitoring />}

@@ -2,10 +2,11 @@
  *  and the in-browser forward pass the visualizer uses. */
 import { useEffect, useState } from 'react';
 
-export type MlTab = 'overview' | 'lab' | 'visualizer' | 'explain' | 'monitoring' | 'registry' | 'knowledge' | 'method';
+export type MlTab = 'overview' | 'lab' | 'sections' | 'visualizer' | 'explain' | 'monitoring' | 'registry' | 'knowledge' | 'method';
 export const ML_TABS: { id: MlTab; label: string; desc: string }[] = [
   { id: 'overview', label: 'Overview', desc: 'Every task × every model, the served signals and the platform’s health' },
   { id: 'lab', label: 'Model lab', desc: 'Leaderboard and head-to-head comparison: forecasts over time, ROC, calibration, skill by era' },
+  { id: 'sections', label: 'Sections & situations', desc: 'One expert per economic section, weighted by the current situation — what each section says and how much it is trusted' },
   { id: 'visualizer', label: 'Network visualizer', desc: 'The neural networks drawn and run in your browser; the deep sequence and regime models' },
   { id: 'explain', label: 'Explainability', desc: 'What drives each forecast: attributions, importance by series and data group, coefficients' },
   { id: 'monitoring', label: 'Monitoring', desc: 'Input drift and range checks, retraining log, feature store and panel coverage' },
@@ -18,12 +19,12 @@ const TAB_KEY = 'ml_tab', TASK_KEY = 'ml_task', TAB_EVT = 'ml-tab', TASK_EVT = '
 function sticky<T extends string>(key: string, evt: string, valid: (v: string | null) => v is T, fallback: T) {
   const get = (): T => { try { const v = localStorage.getItem(key); return valid(v) ? v : fallback; } catch { return fallback; } };
   const set = (v: T) => { try { localStorage.setItem(key, v); } catch { /* storage unavailable */ } window.dispatchEvent(new CustomEvent(evt, { detail: v })); };
-  const use = (): T => {
+  const useSticky = (): T => {
     const [v, setV] = useState<T>(get);
     useEffect(() => { const h = (e: Event) => setV((e as CustomEvent).detail as T); window.addEventListener(evt, h); return () => window.removeEventListener(evt, h); }, []);
     return v;
   };
-  return { get, set, use };
+  return { get, set, use: useSticky };
 }
 const tab = sticky<MlTab>(TAB_KEY, TAB_EVT, (v): v is MlTab => ML_TABS.some((t) => t.id === v), 'overview');
 const task = sticky<string>(TASK_KEY, TASK_EVT, (v): v is string => !!v && /^[a-z0-9_]+$/.test(v), 'recession_12m');

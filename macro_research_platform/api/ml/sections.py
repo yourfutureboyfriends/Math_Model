@@ -105,7 +105,7 @@ class Expert:
         self.keys, self.compress = keys, compress
 
     def matrix(self, data, months: List[str]) -> Tuple[np.ndarray, np.ndarray]:
-        X = np.array([[data[k].get(m, np.nan) for k in self.keys] for m in months], float)
+        X = np.array([[data.get(k, {}).get(m, np.nan) for k in self.keys] for m in months], float)   # a series gone today counts as missing
         ok = np.isfinite(X).mean(1) >= MIN_COVER if len(self.keys) else np.zeros(len(months), bool)
         return X, ok
 
@@ -305,21 +305,23 @@ def live(task, months: List[str], y_of: Dict[str, Optional[int]], data, sec: Dic
          labels: Dict[str, str]) -> Dict[str, Any]:
     """Today's reading: experts fit on every known answer, the gate fit on every out-of-sample expert forecast; each
     section's probability, its contribution to the final log-odds, and the situation now."""
-    keys, oos = wf["keys"], wf["experts"]
+    # the walk-forward may be cached from a day a series was available that is not today; use today's inputs
+    keys = {s: [k for k in ks if k in data] for s, ks in wf["keys"].items()}
+    oos = wf["experts"]
     lab = [m for m in months if y_of.get(m) is not None]
     y = np.array([y_of[m] for m in lab], float)
     now = months[-1]
     experts: Dict[str, Optional[Expert]] = {s: (Expert(ks, compress=s != "core").fit(data, lab, y) if ks else None) for s, ks in keys.items()}
     L_now = np.array([[_logit(experts[s].predict(data, [now]))[0] if experts[s] is not None and np.isfinite(experts[s].predict(data, [now])[0]) else np.nan
                        for s in SECTIONS]])
-    S_now_d = wf["situations"][now]
+    S_now_d = situation(data, now)                                    # always today's, never the cached record's
     S_now = np.array([[S_now_d[k] for k in SITUATIONS]])
     gm = [m for m in lab if any(m in oos[s] for s in SECTIONS)]
     gy = np.array([y_of[m] for m in gm], float)
     contrib: Dict[str, float] = {}
     if len(gm) >= GATE_MIN and gy.sum() >= MIN_POS:
         L_tr = np.array([[_logit(np.array([oos[s][m]]))[0] if m in oos[s] else np.nan for s in SECTIONS] for m in gm])
-        S_tr = np.array([[wf["situations"][m][k] for k in SITUATIONS] for m in gm])
+        S_tr = np.array([[(wf["situations"].get(m) or situation(data, m))[k] for k in SITUATIONS] for m in gm])
         g = _make_gate(L_tr, S_tr, gy, gm, lab, y_of, task)
         p_now = float(g.predict(L_now, S_now)[0])
         W = g.weights(L_now, S_now)[0]

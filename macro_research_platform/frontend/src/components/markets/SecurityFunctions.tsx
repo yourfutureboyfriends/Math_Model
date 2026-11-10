@@ -10,6 +10,7 @@ import { EChart, alpha, axisStyle, color, useChartTheme } from '@/components/cha
 import { Chg, ErrorBox, fmtBig, fmtPct, fmtPrice, Loading, Panel, useJSON } from './shared';
 
 import { ExpectationsPanel } from './ExpectationsPanel';
+import { DcfScenarioLab } from './DcfScenarioLab';
 import { earningsInsights } from '@/lib/earningsInsights';
 
 const enc = encodeURIComponent;
@@ -860,6 +861,7 @@ export function DcfView({ symbol }: { symbol: string }) {
           </div>
         </Panel>
       </div>
+      <DcfScenarioLab inp={inp} v={v} w={w} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <SensGrid title="Value per share — WACC (rows) × terminal growth (columns)" rows={sens.discount_rates} cols={sens.terminal_growth} grid={sens.per_share} price={v.price} />
         <SensGrid title="Value per share — target margin (rows) × years 1–3 growth (columns)" rows={sens.target_margins} cols={sens.growth_rates} grid={sens.per_share_growth_margin} price={v.price} />
