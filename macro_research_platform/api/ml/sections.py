@@ -42,6 +42,7 @@ PANEL_SECTION = {"Output & income": "activity", "Consumption & orders": "activit
 SITUATIONS = {"curve_inverted": "Yield curve inverted", "credit_stress": "Credit stress", "high_inflation": "High inflation",
               "labour_turning": "Labour market turning", "vol_spike": "Volatility spike"}
 
+VERSION = "sec3"           # bump when the section engine changes: invalidates its cached walk-forward and the backtest
 MIN_TRAIN = 120             # labelled months an expert needs
 MIN_POS = 8                 # and positive months
 MIN_COVER = 0.6             # share of a section's inputs a month must have
@@ -56,6 +57,20 @@ N_FACT = 3                  # factors per section
 def _logit(p: np.ndarray) -> np.ndarray:
     p = np.clip(p, 1e-4, 1 - 1e-4)
     return np.log(p / (1 - p))
+
+
+def _extend(series: Dict[str, float], months: int = 3) -> Dict[str, float]:
+    """The series with its last value carried up to `months` past its end — the ragged release edge, as the panel
+    does (FFILL_MONTHS): a value published last month is still the latest known value now. No look-ahead."""
+    if not series:
+        return series
+    last = max(series)
+    y, m = map(int, last.split("-"))
+    out = dict(series)
+    for _ in range(months):
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+        out[f"{y}-{m:02d}"] = series[last]
+    return out
 
 
 def inputs() -> Tuple[Dict[str, Dict[str, float]], Dict[str, str], Dict[str, str]]:
@@ -82,6 +97,8 @@ def inputs() -> Tuple[Dict[str, Dict[str, float]], Dict[str, str], Dict[str, str
     for k, v in X.load().items():
         if v and k in X.SECTION_OF:                                     # cached series no longer listed are skipped
             data[k], sec[k], lab[k] = v, X.SECTION_OF[k], X.LABEL_OF[k]
+    from api.ml.engine import FFILL_MONTHS
+    data = {k: _extend(v, FFILL_MONTHS) for k, v in data.items()}
     return data, sec, lab
 
 

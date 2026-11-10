@@ -15,6 +15,8 @@ existing handler to await, rather than claiming the event.
 """
 from __future__ import annotations
 
+import time
+
 import logging
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
@@ -33,6 +35,10 @@ ACK_EVENT = "ml_stream_state"
 #: sid -> topic -> sink, so a disconnect can always find what to unsubscribe.
 _sinks: Dict[str, Dict[str, stream.Sink]] = {}
 _started: bool = False
+
+
+#: How often a live subscription's token is re-validated.
+RECHECK_SECONDS = 60
 
 
 def _identity(auth: Any) -> Optional[Dict[str, Any]]:
@@ -69,7 +75,19 @@ def register(sio: Any) -> Callable[[str], Awaitable[None]]:
         if topic in mine:
             return                                            # idempotent
 
+        auth = payload.get("auth")
+        checked = {"at": time.monotonic()}
+
         async def sink(event: str, frame: Dict[str, Any]) -> None:
+            # A subscription outlives the moment it was authorised: re-check the token (expiry, revocation,
+            # disabled account, password change) at most once per RECHECK_SECONDS before sending more frames.
+            if time.monotonic() - checked["at"] >= RECHECK_SECONDS:
+                checked["at"] = time.monotonic()
+                if _identity(auth) is None:
+                    for t, fn in _sinks.pop(sid, {}).items():
+                        stream.broadcaster().unsubscribe(t, fn)
+                    await sio.emit(ERROR_EVENT, {"error": "unauthorized", "detail": "Session ended; sign in again."}, room=sid)
+                    return
             await sio.emit(event, frame, room=sid)
 
         state = stream.broadcaster().subscribe(topic, sink)

@@ -161,3 +161,20 @@ def test_shutdown_clears_state(wired):
     _subscribe(sio, "sid-1")
     asyncio.run(bridge.shutdown())
     assert bridge._sinks == {} and bridge._started is False
+
+
+def test_a_revoked_session_stops_receiving_frames(wired, monkeypatch):
+    """Authorised at subscribe time, revoked later: once the recheck interval passes the client gets
+    `unauthorized`, its subscriptions are dropped and no further frame is sent."""
+    import api.core.access as access
+    sio, _, fake, _ = wired
+    _subscribe(sio, "sid-1")
+    sink = bridge._sinks["sid-1"][stream.SYSTEM1]
+    asyncio.run(sink("ml_frame", {"n": 1}))                              # still valid: delivered
+    assert ("ml_frame", {"n": 1}, "sid-1") in sio.emitted
+    monkeypatch.setattr(access, "decode_token", lambda t: None)          # the token is revoked
+    monkeypatch.setattr(bridge, "RECHECK_SECONDS", 0)
+    asyncio.run(sink("ml_frame", {"n": 2}))
+    assert ("ml_frame", {"n": 2}, "sid-1") not in sio.emitted
+    assert sio.sent(bridge.ERROR_EVENT)[-1]["error"] == "unauthorized"
+    assert "sid-1" not in bridge._sinks

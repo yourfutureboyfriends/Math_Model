@@ -71,6 +71,7 @@ def _apply(s, how: str):
 def _build() -> Dict[str, Dict[str, float]]:
     import pandas as pd
     from api.models_ml.recession_ensemble import _fred
+    from api.ml import fred_fetch as FF
     f = _fred()
     cache: Dict[str, object] = {}
     out: Dict[str, Dict[str, float]] = {}
@@ -78,14 +79,14 @@ def _build() -> Dict[str, Dict[str, float]]:
         sid = key.split("_")[0]
         try:
             if sid not in cache:
-                s = f.get_series(sid).dropna()
+                s = FF.get_series(f, sid).dropna()
                 s.index = pd.to_datetime(s.index)
                 cache[sid] = s.resample("MS").mean().ffill(limit=2)          # quarterly / sparse series hold for a quarter
             v = _apply(cache[sid], how).shift(1).dropna()                        # known the month after
             out[f"x_{key}"] = {d.strftime("%Y-%m"): round(float(x), 5) for d, x in v.items() if np.isfinite(x)}
         except Exception as e:                                                  # noqa: BLE001 — a missing series is skipped
             logger.warning("[ml.extended] %s unavailable: %s", sid, e)
-    return out
+    return FF.keep_last_good("ml_extended", out, [f"x_{k}" for k in SERIES])
 
 
 def load() -> Dict[str, Dict[str, float]]:

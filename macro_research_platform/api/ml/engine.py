@@ -72,6 +72,7 @@ MODEL_INFO = {
     "regime_switch": ("Regime-switching model", "Two-state Markov-switching model of an activity composite; the hidden recession-state probability, mapped to the task."),
     "deep_sequence": ("Deep sequence network", "Specialist input encoders, learned routing, 24-month recurrent memory and separate task heads (PyTorch; shared reference profile available)."),
     "sections": ("Section experts + situation gate", "One expert per economic section (rates, credit, financial conditions, labour, activity, housing, inflation, money, markets, sentiment) on every input incl. newer series; a gate weights them by the situation (curve, credit stress, inflation, labour, volatility)."),
+    "autonomous_tft": ("Autonomous TFT / GAT", "Temporal fusion transformer with a graph-attention layer, trained by the autonomous pipeline; serves automatically once its prospective evidence gates pass, without a PM/risk sign-off."),
     "average": ("Average of all models", "Equal-weight average of every model, recalibrated."),
 }
 _locks: Dict[str, threading.Lock] = {}
@@ -609,8 +610,11 @@ def compute(task: Task) -> Dict[str, Any]:
     sx_data, sx_sec, sx_lab = SX.inputs()
     months_all = [r["month"] for r in rows]
     y_of = {r["month"]: r["y"] for r in rows}
-    sx_wf, _ = ri._cached(f"ml_sec1_{task.name}", lambda: SX.walk_forward(task, months_all, y_of, sx_data, sx_sec), ttl=BACKTEST_TTL)
-    bt, bt_status = ri._cached(f"ml_bt6_{D.fingerprint()}_{(joint or {}).get('data_digest','no_deep')[:16]}_{task.name}", lambda: walk_forward(task, rows, panel_keys_=pk, deep=deep_bt,
+    sx_wf, _ = ri._cached(f"ml_{SX.VERSION}_{task.name}", lambda: SX.walk_forward(task, months_all, y_of, sx_data, sx_sec), ttl=BACKTEST_TTL)
+    # one key for the walk-forward record: any change to the deep model, its data or the section engine invalidates it,
+    # and history() reads exactly this key (stored on the result) rather than rebuilding its own
+    bt_key = f"ml_bt6_{D.fingerprint()}_{(joint or {}).get('data_digest','no_deep')[:16]}_{SX.VERSION}_{task.name}"
+    bt, bt_status = ri._cached(bt_key, lambda: walk_forward(task, rows, panel_keys_=pk, deep=deep_bt,
                                                                              sections=(sx_wf or {}).get("prob")), ttl=BACKTEST_TTL)
     C, P, y, T = _arrays(lab)
     now = rows[-1]
@@ -701,6 +705,7 @@ def compute(task: Task) -> Dict[str, Any]:
     fac: Factors = models["factor_logit"].fac
     return {
         "available": True, "task": task.name, "title": task.title, "question": task.question, "used_for": task.used_for,
+        "backtest_key": bt_key,
         "notes": task.notes, "month": month, "as_of_inputs": now["month"],
         "signal": {"probability": round(probs[serving], 4), "model": serving, "skill_vs_base_rate": skill,
                    "useful": skill is not None and skill > 0},
@@ -804,7 +809,10 @@ def evidence(name: str, phrase: str) -> Optional[str]:
     if not d or not d["signal"].get("useful"):
         return None
     s = d["signal"]
-    return f"ML: {phrase} {s['probability']:.0%} ({MODEL_INFO.get(s['model'], (s['model'],))[0]}, out-of-sample skill {s['skill_vs_base_rate']:+.0%})"
+    sign = ", promoted automatically without sign-off" if s.get("model") == "autonomous_tft" else ""
+    skill = s.get("skill_vs_base_rate")
+    return (f"ML: {phrase} {s['probability']:.0%} ({MODEL_INFO.get(s['model'], (s['model'],))[0]}"
+            f"{'' if skill is None else f', out-of-sample skill {skill:+.0%}'}{sign})")
 
 
 def summary() -> List[Dict[str, Any]]:
@@ -857,7 +865,8 @@ def history(name: str) -> Optional[Dict[str, Any]]:
     if not d or not task:
         return None
     from api.handlers.macro_inputs import _disk_load
-    bt = (_disk_load(f"ri_ml_bt4_{name}") or {}).get("data")          # the stored walk-forward record (read only)
+    key = d.get("backtest_key")                                       # the record this result was built from
+    bt = (_disk_load(f"ri_{key}") or {}).get("data") if key else None  # read only
     h = (bt or {}).get("history") or {}
     if not h:
         return None
@@ -895,8 +904,11 @@ def registry() -> Dict[str, Any]:
     for name, task in TASKS.items():
         prom = next((p for p in promos if p["task"] == name and p['active']), None)
         d = cached(name)
-        for k in ROSTER + ["average"]:
-            stage = "production" if (prom and prom["model"] == k) or (not prom and k == "champion") else "shadow"
+        # the autonomous model serves without a promotion record once its own gates pass; show it as production then
+        auto = ((d or {}).get("signal") or {}).get("model") == "autonomous_tft"
+        for k in ROSTER + (["autonomous_tft"] if auto else []) + ["average"]:
+            stage = ("production" if k == "autonomous_tft" else "shadow") if auto else \
+                    "production" if (prom and prom["model"] == k) or (not prom and k == "champion") else "shadow"
             rec = ((d or {}).get("models") or {}).get(k) or {}
             stages.append({"task": name, "task_title": task.title, "model": k, "model_name": MODEL_INFO.get(k, (k,))[0],
                            "stage": stage, "probability": rec.get("probability"),

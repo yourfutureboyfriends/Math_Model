@@ -89,11 +89,12 @@ def transform(s, code: int):
 def _build() -> Dict[str, Dict[str, float]]:
     import pandas as pd
     from api.models_ml.recession_ensemble import _fred
+    from api.ml import fred_fetch as FF
     f = _fred()
     raw: Dict[str, object] = {}
     for sid in SERIES:
         try:
-            s = f.get_series(sid, observation_start="1959-01-01").dropna()
+            s = FF.get_series(f, sid, observation_start="1959-01-01").dropna()
             s.index = pd.to_datetime(s.index)
             raw[sid] = s.resample("MS").mean()
         except Exception as e:                                          # noqa: BLE001 — a missing series is skipped
@@ -107,7 +108,7 @@ def _build() -> Dict[str, Dict[str, float]]:
         if a in raw and b in raw:
             v = (raw[a] - raw[b]).shift(1)
             out[f"p_{k}"] = {d.strftime("%Y-%m"): float(x) for d, x in v.dropna().items() if np.isfinite(x)}
-    return out
+    return FF.keep_last_good("ml_panel", out, [f"p_{k}" for k in SERIES] + [f"p_{k}" for k in SPREADS])
 
 
 def load() -> Dict[str, Dict[str, float]]:

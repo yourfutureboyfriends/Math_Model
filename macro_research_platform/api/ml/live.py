@@ -105,6 +105,16 @@ def worker(preview=False):
     from api.ml.deep_config import configured,DeepConfig
     torch.set_num_threads(2)
     training_event(stage='loading_inputs',message='Reading lagged market, macro and news data')
+    path=None if preview else _checkpoint()
+    if not preview:
+        if path is None:raise ValueError('No compatible checkpoint yet')
+        saved=torch.load(path,map_location='cpu',weights_only=True)
+        probe=deep.load_frame(include_targets=False)
+        if any(probe[key]!=saved[key] for key in ('core_keys','text_keys','panel_keys','tasks')):
+            # the inputs changed since that checkpoint (a series added or no longer published): replaying it would
+            # misalign inputs, so fit a fresh bounded inspection checkpoint instead of failing on every refresh
+            training_event(stage='schema_changed',message='Inputs changed since the last checkpoint; fitting a fresh inspection checkpoint')
+            preview=True
     fr=deep.load_frame(include_targets=preview)
     if preview:
         cfg=replace(configured(),epochs=3,seeds=1,seed_budget_seconds=20)
@@ -114,11 +124,6 @@ def worker(preview=False):
         net=deep._train(deep._windows(X,idx),Yw,0,cfg,cut,weights,deep._groups(fr))
         result=save_checkpoint(fr,[net],deep.fit_preprocessor(fr,idx[cut]),cfg,'inspection_preview')
     else:
-        path=_checkpoint()
-        if path is None:raise ValueError('No compatible checkpoint yet')
-        saved=torch.load(path,map_location='cpu',weights_only=True)
-        for key in ('core_keys','text_keys','panel_keys','tasks'):
-            if fr[key]!=saved[key]:raise ValueError('Input schema changed; rebuild this checkpoint')
         cfg=DeepConfig(**saved['metadata']['configuration']);state={k:v.numpy() for k,v in saved['preprocessor'].items()}
         d_in=len(fr['core_keys'])+state['V'].shape[1]+2*len(fr['text_keys']);nets=[]
         for weights,heads in zip(saved['states'],saved['trained_heads']):
@@ -139,7 +144,7 @@ def request_refresh():
             try:
                 env={**os.environ,'OMP_NUM_THREADS':'2','ML_TRACE_WORKER':'1','ML_TRACE_KIND':'preview' if preview else 'inference','ML_DEEP_PARENT_PID':str(os.getpid())}
                 result=subprocess.run([sys.executable,'-m','api.ml.deep','--preview' if preview else '--infer'],cwd=str(Path(__file__).resolve().parents[2]),env=env,capture_output=True,text=True,timeout=240)
-                if result.returncode:raise RuntimeError('Isolated live inspection failed')
+                if result.returncode:raise RuntimeError('Isolated live inspection failed: '+(result.stderr or '').strip().splitlines()[-1:][0][:300] if (result.stderr or '').strip() else 'Isolated live inspection failed')
                 _job.update(last_completed=time.time())
             except Exception as exc:
                 log.exception('Live neural inspection failed')

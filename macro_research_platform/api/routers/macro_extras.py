@@ -238,7 +238,7 @@ async def ml_live_state(request: Request):
 async def ml_live_refresh(request: Request):
     from api.core import web
     from api.ml import live
-    web.user(request,None)
+    web.user(request,('pm','quant'))              # starts a model fit: same roles as retrain and learn
     return live.request_refresh()
 
 
