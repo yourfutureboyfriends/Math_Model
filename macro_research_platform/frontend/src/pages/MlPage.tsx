@@ -581,6 +581,21 @@ const RESEARCH: [string, string, string][] = [
   ['Champion / challenger, human control', 'Federal Reserve SR 11-7 model-risk guidance; Bridgewater AIA (humans control risk, data and the kill switch); Man AHL on overfitting; AQR (Israel, Kelly & Moskowitz) on ML in finance.', 'https://www.man.com/insights/overfitting-and-its-impact-on-the-investor'],
 ];
 
+/** Research components that exist and are exercised by api/tests/test_institutional_components.py
+ *  (21 tests) but are imported by nothing outside that file. Listed here because a passing test is
+ *  evidence a component works, not evidence it is in the serving path — and the evidence map beside
+ *  this tab already uses the word "fusion" for a different thing. */
+const UNWIRED: { name: string; what: string; status: string }[] = [
+  { name: 'state_store.py', what: 'Bitemporal SQLite feature store — asynchronous System 2 writers, synchronous System 1 reads.',
+    status: 'No importer. The served path builds its features in features.py and panel.py instead.' },
+  { name: 'fusion.py', what: 'Shape-checked graph cross-attention and FiLM modulation, written to sit on the existing TFT encoder.',
+    status: 'No importer. The “Fusion & temporal memory” node on the evidence map is the modular network’s own concatenation layer, not this.' },
+  { name: 'incremental_graph.py', what: 'Bounded sliding-window VAR-Lasso updates; positive lags give a temporal DAG.',
+    status: 'No importer, and deliberately so — see the note below.' },
+  { name: 'foraging_agent.py', what: 'Behaviour-cloned PPO agent for source selection, with bounded offline and online execution paths.',
+    status: 'No importer. The learning panel’s foraging figures come from recorded query history and report live PPO selection as inactive.' },
+];
+
 function Method() {
   return (
     <div className="ml-grid-12">
@@ -596,6 +611,16 @@ function Method() {
         </ol></Panel></div>
       <div style={span(7)} className="ml-span-7"><Panel title="The research it follows">
         <div className="space-y-2">{RESEARCH.map(([title, s, u]) => <div key={title} className="text-xs"><div className="text-text-primary font-semibold">{title}</div><div className="text-text-secondary">{s} <a href={u} target="_blank" rel="noopener noreferrer" className="text-bloomberg underline">source</a></div></div>)}</div>
+      </Panel></div>
+      <div style={span(12)} className="ml-span-12"><Panel title="Built and tested, not in the serving path"
+        sub="Four research components are exercised by the test suite and imported by nothing else. A passing test says a component works; it does not say anything on this platform reads from it.">
+        <div className="grid sm:grid-cols-2 gap-2 text-xs">
+          {UNWIRED.map((c) => <div key={c.name} className="border border-border rounded-lg p-3">
+            <b className="font-mono">{c.name}</b><p className="mt-1 text-text-secondary">{c.what}</p><p className="mt-1 text-text-tertiary">{c.status}</p>
+          </div>)}
+        </div>
+        <p className="mt-3 text-xs text-amber">The causal graph updater is schema-compatible with the graph on the evidence map but is not the same graph: it fits a VAR-Lasso DAG over macro variables, while the map served here is an event and knowledge graph. Replacing one with the other would change what the models train on and invalidate the saved checkpoints, so whether to replace, supplement or leave it is an owner’s decision rather than a gap to close.</p>
+        <p className="mt-2 text-[11px] text-text-tertiary">Listed from the source tree as at this commit; nothing here is served by an endpoint, so this panel is the only place their wiring state is stated.</p>
       </Panel></div>
     </div>
   );

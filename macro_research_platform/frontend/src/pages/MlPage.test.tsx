@@ -133,3 +133,15 @@ it('plots an unrecorded skill as no bar rather than as skill of zero',async()=>{
  expect(data).toContain('"value":null');
  expect(data).not.toContain('"value":0');
 });
+
+it('names the components that are tested but not wired, and keeps the graph decision open',async()=>{
+ seed(true);localStorage.setItem('ml_tab','method');await mount();
+ const text=host.textContent??'';
+ expect(text).toContain('Built and tested, not in the serving path');
+ for(const name of ['state_store.py','fusion.py','incremental_graph.py','foraging_agent.py'])expect(text.includes(name),name).toBe(true);
+ // The evidence map has its own node called "Fusion & temporal memory"; the panel must not let a
+ // reader take the unwired module for the fusion that is actually serving.
+ expect(text).toContain('concatenation layer, not this');
+ // Swapping the causal DAG for the live graph is the owner's call, not a gap to paper over.
+ expect(text).toContain('decision rather than a gap to close');
+});
