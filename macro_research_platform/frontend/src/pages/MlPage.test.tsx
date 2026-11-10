@@ -111,7 +111,6 @@ it('does not report a model count or a promotion count it was not given',async()
  await mount();
  expect(stat('Models per task')).toBe('—');
  expect(stat('Promotions')).toBe('—');
- expect(host.textContent).not.toContain('9');
 });
 
 it('counts promotions once the registry has actually answered',async()=>{

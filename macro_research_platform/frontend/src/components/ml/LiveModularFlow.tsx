@@ -12,11 +12,11 @@ export function LiveModularFlow(){
  const streamed=useStreamedPayload('deep_live'),live=streamed!==undefined;
  const q=useLiveStateQ(live),d=streamed??q.data,trace=d?.trace;
  const [seed,setSeed]=useState(0),[step,setStep]=useState(23),[playing,setPlaying]=useState(false),[follow,setFollow]=useState(true),[error,setError]=useState('');
- // While the stream is delivering, the broadcaster is already kicking api.ml.live.request_refresh
- // once a minute for as long as a socket is subscribed — which is what this timer did, except that
- // it kept asking after the view went away. Only the polled fallback needs it, because nothing else
- // would request a new measurement. request_refresh coalesces under a lock to one subprocess a
- // minute, so the two paths could never have double-spawned; this removes the redundant one.
+ // While the stream is delivering, the broadcaster already kicks api.ml.live.request_refresh once a
+ // minute for as long as any socket is subscribed, so this timer would be a second request for the
+ // same work. request_refresh coalesces under a lock to one bounded subprocess a minute, so the two
+ // never double-spawned — the redundancy is the request, not the subprocess. The polled fallback is
+ // the one case where nothing else asks for a new measurement, so that is the only case still timed.
  useEffect(()=>{if(live)return;let active=true;const update=()=>refreshLiveState().catch(e=>{if(active)setError(String(e.message));});void update();const timer=setInterval(update,60000);return()=>{active=false;clearInterval(timer);};},[live]);
  useEffect(()=>{if(trace){setSeed(v=>Math.min(v,trace.seeds.length-1));if(follow)setStep(trace.months.length-1);else setStep(v=>Math.min(v,trace.months.length-1));}},[trace?.input_digest,trace?.trained_at,follow]);
  useEffect(()=>{if(!playing||!trace)return;const timer=setInterval(()=>setStep(v=>{if(v>=trace.months.length-1){setPlaying(false);return v;}return v+1;}),650);return()=>clearInterval(timer);},[playing,trace?.input_digest]);
