@@ -28,7 +28,8 @@ it('renders measured preview states and timestamps with explicit scope',async()=
 });
 it('serves the pushed trace and leaves the once-a-minute kick to the broadcaster',async()=>{
  // The stream's deep_live channel kicks api.ml.live.request_refresh every 60s while a socket is
- // subscribed. The panel's own timer did the same work and kept doing it after the view went away.
+ // subscribed, which is the same request the panel's own timer made. The timer cleaned itself up on
+ // unmount; the duplication was while both were live, and the lock coalesced it to one subprocess.
  open();act(()=>useMlStreamStore.getState().accept(frame(true,measured)));
  await act(async()=>root.render(<LiveModularFlow/>));
  expect(state.live).toBe(true);
